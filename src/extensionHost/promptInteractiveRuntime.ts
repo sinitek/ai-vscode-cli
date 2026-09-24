@@ -18,7 +18,10 @@ import {
 import { ClaudeInteractiveRunner } from "../interactive/claudeRunner";
 import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
 import { CodexInteractiveRunner } from "../interactive/codexRunner";
-import { isCodexRetryProgressTraceKind } from "../interactive/codexRunnerRuntime";
+import {
+  isCodexRetryProgressTraceKind,
+  resolveCodexAssistantMessageContinuation,
+} from "../interactive/codexRunnerRuntime";
 import { decideCodexThreadForSelection, normalizeCodexRunSelection, type CodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -292,6 +295,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     applyProcessTitle(runId, cli, processSessionId);
 
     let assistantMessageId: string | undefined;
+    let activeThinkingMessageId: string | undefined;
+    let activeThinkingItemId: string | undefined;
     let assistantMessageIndex: number | null = null;
     let completionSent = false;
     let interactiveInput = thinkingPrompt;
@@ -487,27 +492,27 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       syncInteractiveRunEntry();
     };
 
-    const normalizeAssistantKindForTab = (kind?: ChatMessage["kind"]): "thinking" | "normal" => (
-      kind === "thinking" ? "thinking" : "normal"
-    );
-
-    const hasSameAssistantKindForTab = (message: ChatMessage | undefined, kind?: ChatMessage["kind"]): boolean => {
-      return normalizeAssistantKindForTab(message?.kind) === normalizeAssistantKindForTab(kind);
-    };
-
     const ensureAssistantMessage = (
       kind?: ChatMessage["kind"],
-      options: { forceNew?: boolean; codexFinalAnswer?: boolean } = {}
+      options: { forceNew?: boolean; codexFinalAnswer?: boolean; reasoningItemId?: string } = {}
     ): void => {
-      const last = messageTarget[messageTarget.length - 1];
-      if (
-        options.forceNew !== true
-        && assistantMessageId
-        && last
-        && last.role === "assistant"
-        && last.id === assistantMessageId
-        && hasSameAssistantKindForTab(last, kind)
-      ) {
+      const continuation = resolveCodexAssistantMessageContinuation({
+        messages: messageTarget,
+        activeMessageId: assistantMessageId,
+        activeThinkingMessageId,
+        activeThinkingItemId,
+        kind: kind === "thinking" ? "thinking" : "normal",
+        reasoningItemId: options.reasoningItemId,
+        forceNew: options.forceNew,
+      });
+      activeThinkingMessageId = continuation.thinkingMessageId;
+      activeThinkingItemId = continuation.thinkingItemId;
+      if (continuation.reuseMessageId) {
+        assistantMessageId = continuation.reuseMessageId;
+        const nextIndex = messageTarget.findIndex((message) => message.id === continuation.reuseMessageId);
+        if (nextIndex >= 0) {
+          assistantMessageIndex = nextIndex;
+        }
         return;
       }
       assistantMessageId = createMessageId();
@@ -525,6 +530,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       };
       appendMessageToStore(messageTarget, message);
       assistantMessageIndex = messageTarget.length - 1;
+      if (kind === "thinking") {
+        activeThinkingMessageId = assistantMessageId;
+        activeThinkingItemId = continuation.thinkingItemId;
+      }
       sendPanelMessage({ type: "appendMessage", message, tabId });
       syncInteractiveRunEntry();
     };
@@ -532,7 +541,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const appendAssistantChunkForTab = (
       chunk: string,
       kind?: ChatMessage["kind"],
-      options: { codexFinalAnswer?: boolean } = {}
+      options: { codexFinalAnswer?: boolean; reasoningItemId?: string } = {}
     ): void => {
       const marksCodexFinalAnswer = options.codexFinalAnswer === true;
       if (!chunk && !marksCodexFinalAnswer) {
@@ -552,6 +561,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         ensureAssistantMessage(kind, {
           forceNew: forceNewFinalAnswer,
           codexFinalAnswer: marksCodexFinalAnswer,
+          reasoningItemId: options.reasoningItemId,
         });
       }
       if (!assistantMessageId || assistantMessageIndex === null) {
@@ -1069,7 +1079,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 return;
               }
               if (meta?.kind === "thinking") {
-                appendAssistantChunkForTab(chunk, "thinking");
+                appendAssistantChunkForTab(chunk, "thinking", {
+                  reasoningItemId: meta.reasoningItemId,
+                });
                 appendDebugStdout(chunk);
                 return;
               }

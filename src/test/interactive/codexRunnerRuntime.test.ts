@@ -26,7 +26,9 @@ import {
   mapCodexReasoningEffort,
   pickArgValue,
   resolveCodexPackageVersionFromCommand,
+  resolveCodexAssistantMessageContinuation,
   shouldEmitItemTraceCandidate,
+  shouldUseDetailedCodexReasoningSummary,
 } from "../../interactive/codexRunnerRuntime";
 
 test("visible Codex errors use an error trace kind", () => {
@@ -469,6 +471,58 @@ test("trace candidate helper rejects blanks and repeated item content", () => {
   assert.equal(shouldEmitItemTraceCandidate(emitted, "command_execution", "1", "ok"), true);
   assert.equal(shouldEmitItemTraceCandidate(emitted, "command_execution", "1", "ok"), false);
   assert.equal(shouldEmitItemTraceCandidate(emitted, "", "", "ok"), true);
+});
+
+test("Grok thread config requests a detailed reasoning summary", () => {
+  assert.equal(shouldUseDetailedCodexReasoningSummary("grok-4.7-kedaya"), true);
+  assert.equal(shouldUseDetailedCodexReasoningSummary("GPT-5.6"), false);
+  assert.equal(
+    buildCodexAppServerConfig({ model: "grok-4.7-kedaya", multiAgentEnabled: true }).model_reasoning_summary,
+    "detailed",
+  );
+  assert.equal(
+    buildCodexAppServerConfig({ model: "gpt-5.6", multiAgentEnabled: true }).model_reasoning_summary,
+    undefined,
+  );
+});
+
+test("thinking deltas stay on the same reasoning item after a tool bubble", () => {
+  const messages = [
+    { id: "think-1", role: "assistant", kind: "thinking" },
+    { id: "trace-1", role: "trace", kind: "normal" },
+  ];
+  assert.deepEqual(resolveCodexAssistantMessageContinuation({
+    messages,
+    activeMessageId: "think-1",
+    activeThinkingMessageId: "think-1",
+    activeThinkingItemId: "rs-1",
+    kind: "thinking",
+    reasoningItemId: "rs-1",
+  }), {
+    reuseMessageId: "think-1",
+    thinkingMessageId: "think-1",
+    thinkingItemId: "rs-1",
+  });
+  assert.deepEqual(resolveCodexAssistantMessageContinuation({
+    messages,
+    activeMessageId: "think-1",
+    activeThinkingMessageId: "think-1",
+    activeThinkingItemId: "rs-1",
+    kind: "thinking",
+    reasoningItemId: "rs-2",
+  }), {
+    thinkingItemId: "rs-2",
+  });
+  assert.deepEqual(resolveCodexAssistantMessageContinuation({
+    messages,
+    activeMessageId: "think-1",
+    activeThinkingMessageId: "think-1",
+    activeThinkingItemId: "rs-1",
+    kind: "normal",
+  }), {
+    thinkingMessageId: "think-1",
+    thinkingItemId: "rs-1",
+  });
 });
 
 test("reasoning deltas concatenate without extra newlines and ignore leaked final_answer snapshots", () => {

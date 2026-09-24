@@ -229,6 +229,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           && existingTarget.role === "assistant"
           && existingTarget.subagentId
         );
+        const canContinueThinking = Boolean(
+          kind === "thinking"
+          && existingTarget
+          && existingTarget.role === "assistant"
+          && isSameAssistantKind(existingTarget, "thinking")
+        );
         let requiresFullRender = false;
         if (targetIndex !== -1 && !hasContent && marksCodexFinalAnswer) {
           const target = state.messages[targetIndex];
@@ -242,7 +248,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (targetIndex === -1 && !hasContent && marksCodexFinalAnswer) {
           return;
         }
-        if (targetIndex === -1 || (!isLastAssistant && !canUpdateDetachedSubagent)) {
+        if (targetIndex === -1 || (!isLastAssistant && !canUpdateDetachedSubagent && !canContinueThinking)) {
           const newId = createMessageId();
           assistantRedirects[id] = newId;
           state.messages.push({

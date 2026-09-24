@@ -2410,3 +2410,22 @@ test("routes window message handler branches without a real webview", () => {
   handler({ data: { type: "state", payload: { fail: true } } });
   assert.ok(!calls.includes("unreachable"));
 });
+
+test("thinking deltas continue the original bubble after a tool trace is inserted", () => {
+  const { api } = createRuntimeHarness();
+  api.state.messages.push({ id: "think-1", role: "assistant", kind: "thinking", content: "partial thought" });
+  api.state.messages.push({ id: "trace-1", role: "trace", content: "exec ls" });
+
+  api.appendAssistantDelta("think-1", " continues", "thinking");
+
+  assert.equal(api.state.messages.length, 2);
+  assert.equal(api.state.messages[0].id, "think-1");
+  assert.equal(api.state.messages[0].content, "partial thought continues");
+  assert.equal(api.state.messages[1].role, "trace");
+
+  api.appendAssistantDelta("think-2", "next thought", "thinking");
+  assert.equal(api.state.messages.length, 3);
+  assert.equal(api.state.messages[2].kind, "thinking");
+  assert.equal(api.state.messages[2].content, "next thought");
+  assert.equal(api.state.messages[0].content, "partial thought continues");
+});

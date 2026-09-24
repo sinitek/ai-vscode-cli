@@ -3,13 +3,16 @@
   "version": "0.3.0",
   "generated_at": "2026-08-29T02:14:18Z",
   "repo_root": ".",
-  "focus": "Loop Graph 我要说话 继续 主子模型",
+  "focus": "grok thinking bubble truncated 思考气泡截断",
   "focus_terms": [
-    "loop",
-    "graph",
-    "我要说话",
-    "继续",
-    "主子模型"
+    "grok",
+    "thinking",
+    "bubble",
+    "truncated",
+    "思考气泡截断",
+    "思考",
+    "考气",
+    "气泡"
   ],
   "anchor_id": "",
   "selection_mode": "baseline-fallback",
@@ -1715,57 +1718,17 @@
   "active_plans": [],
   "design_docs": [
     {
-      "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
-      "title": "Graph 编排模式详细设计",
-      "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / graph。",
-      "score": 31,
-      "modified_at": "2026-08-30T01:34:50Z",
-      "matched_terms": [
-        "loop",
-        "graph"
-      ],
-      "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
-    },
-    {
       "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
       "title": "Loop 红蓝辩论多智能体模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 继续。",
-      "score": 26,
-      "modified_at": "2026-09-13T11:39:19Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：气泡。",
+      "score": 1,
+      "modified_at": "2026-09-23T09:36:43Z",
       "matched_terms": [
-        "loop",
-        "继续"
+        "气泡"
       ],
       "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`"
-    },
-    {
-      "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-      "title": "VS Code CLI 插件运行时架构",
-      "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / graph。",
-      "score": 7,
-      "modified_at": "2026-09-17T01:54:25Z",
-      "matched_terms": [
-        "loop",
-        "graph"
-      ],
-      "summary": "状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`"
     }
   ],
-  "runbooks": [
-    {
-      "path": ".ch/docs/runbooks/local-development.md",
-      "title": "本地开发与打包手册",
-      "kind": "runbook",
-      "reason": "与当前 focus 相关的排障或规避动作入口，命中：loop。",
-      "score": 6,
-      "modified_at": "2026-09-20T00:47:21Z",
-      "matched_terms": [
-        "loop"
-      ],
-      "summary": "本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。"
-    }
-  ]
+  "runbooks": []
 }

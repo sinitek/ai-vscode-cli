@@ -57,7 +57,84 @@ export type CodexRuntimeTraceMeta = {
 export type CodexAssistantDeltaMeta = {
   codexFinalAnswer?: boolean;
   kind?: "thinking";
+  reasoningItemId?: string;
 };
+
+export type CodexAssistantMessageRef = {
+  id: string;
+  role: string;
+  kind?: string;
+};
+
+export function shouldUseDetailedCodexReasoningSummary(model: string | undefined): boolean {
+  return String(model || "").trim().toLowerCase().includes("grok");
+}
+
+export function resolveCodexAssistantMessageContinuation(input: {
+  messages: readonly CodexAssistantMessageRef[];
+  activeMessageId?: string;
+  activeThinkingMessageId?: string;
+  activeThinkingItemId?: string;
+  kind?: "thinking" | "normal";
+  reasoningItemId?: string;
+  forceNew?: boolean;
+}): {
+  reuseMessageId?: string;
+  thinkingMessageId?: string;
+  thinkingItemId?: string;
+} {
+  const kind = input.kind === "thinking" ? "thinking" : "normal";
+  const reasoningItemId = String(input.reasoningItemId || "").trim();
+  const thinkingItemId = String(input.activeThinkingItemId || "").trim();
+  const thinkingMessageId = String(input.activeThinkingMessageId || "").trim();
+  const preservedThinking = {
+    ...(thinkingMessageId ? { thinkingMessageId } : {}),
+    ...(thinkingItemId ? { thinkingItemId } : {}),
+  };
+  if (input.forceNew === true) {
+    if (kind !== "thinking") {
+      return preservedThinking;
+    }
+    return reasoningItemId ? { thinkingItemId: reasoningItemId } : {};
+  }
+  if (kind === "thinking" && reasoningItemId && reasoningItemId === thinkingItemId && thinkingMessageId) {
+    const existing = input.messages.find((message) => (
+      message.id === thinkingMessageId
+      && message.role === "assistant"
+      && message.kind === "thinking"
+    ));
+    if (existing) {
+      return {
+        reuseMessageId: existing.id,
+        thinkingMessageId: existing.id,
+        thinkingItemId: reasoningItemId,
+      };
+    }
+  }
+  const last = input.messages[input.messages.length - 1];
+  const lastKind = last?.kind === "thinking" ? "thinking" : "normal";
+  if (
+    input.activeMessageId
+    && last
+    && last.role === "assistant"
+    && last.id === input.activeMessageId
+    && lastKind === kind
+  ) {
+    if (kind !== "thinking") {
+      return { reuseMessageId: last.id, ...preservedThinking };
+    }
+    const nextItemId = reasoningItemId || thinkingItemId;
+    return {
+      reuseMessageId: last.id,
+      thinkingMessageId: last.id,
+      ...(nextItemId ? { thinkingItemId: nextItemId } : {}),
+    };
+  }
+  if (kind !== "thinking") {
+    return preservedThinking;
+  }
+  return reasoningItemId ? { thinkingItemId: reasoningItemId } : {};
+}
 
 export type CodexReasoningBufferState = {
   raw: string;
@@ -387,6 +464,9 @@ export function buildCodexAppServerConfig(options: CodexThreadOptions): Record<s
       job_max_runtime_seconds: CODEX_AGENT_JOB_MAX_RUNTIME_SECONDS,
     },
   };
+  if (shouldUseDetailedCodexReasoningSummary(options.model)) {
+    config.model_reasoning_summary = "detailed";
+  }
   if (options.multiAgentEnabled !== true) {
     config.features = {
       multi_agent: false,
@@ -696,7 +776,10 @@ export function handleCodexReasoningNotification(options: {
   );
   options.reasoningBuffers.set(bufferKey, applied.state);
   if (applied.delta) {
-    options.handlers.onAssistantDelta(applied.delta, { kind: "thinking" });
+    options.handlers.onAssistantDelta(applied.delta, {
+      kind: "thinking",
+      reasoningItemId: bufferKey,
+    });
   }
 }
 
@@ -809,7 +892,10 @@ export function handleCodexItemEvent(options: {
       reasoningBuffers.delete(bufferKey);
     }
     if (applied.delta) {
-      handlers.onAssistantDelta(applied.delta, { kind: "thinking" });
+      handlers.onAssistantDelta(applied.delta, {
+        kind: "thinking",
+        reasoningItemId: bufferKey,
+      });
     }
     return;
   }

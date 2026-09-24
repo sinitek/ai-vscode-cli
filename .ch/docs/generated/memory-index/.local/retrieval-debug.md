@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-08-29T02:14:18Z
-- Focus: Loop Graph 我要说话 继续 主子模型
-- Focus terms: `loop`, `graph`, `我要说话`, `继续`, `主子模型`
+- Focus: grok thinking bubble truncated 思考气泡截断
+- Focus terms: `grok`, `thinking`, `bubble`, `truncated`, `思考气泡截断`, `思考`, `考气`, `气泡`
 - Anchor ID: -
 - Selection mode: baseline-fallback
 - Candidate count: 2
