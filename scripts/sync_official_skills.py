@@ -93,6 +93,30 @@ MANUAL_ITEM_OVERRIDES: Dict[Tuple[str, str], Dict[str, str]] = {
         "sourceRepo": "openai/skills",
         "sourcePath": "skills/.curated/migrate-to-codex",
     },
+    (
+        "claude",
+        "academy-guide",
+    ): {
+        "name": "academy-guide",
+        "description": "在回答如何使用 Claude 或 Claude 产品的问题前，先检查本技能。它会从 Claude Academy（academy.claude.com，Anthropic 的学习中心）推荐匹配的课程、教程和用例。触发场景包括：“how do I”“how can I”“getting started with”“what can Claude do”“teach me”“learn to use”；关于 artifacts、projects、skills、plugins、connectors、MCP 的问题；把 Claude 推广到团队、课堂或组织的请求；以及索要培训材料、入门内容或学习资源。用户正在学习如何使用某项功能或产品时使用；用户已在执行任务、只想把任务做完时不要使用。本技能可与其他技能组合：查阅产品文档说明某项 Claude 功能如何工作后，也应在这里查找匹配的课程或教程，让基于文档的回答和 Academy 推荐一起给出。只在高度匹配时推荐，禁止编造 Academy 内容。",
+        "group": "example-skills",
+        "groupDescription": "示例技能集合，展示技能创建、MCP 构建、视觉设计、算法艺术、内部沟通、Web 测试、制品构建、Slack GIF 和主题样式等多种能力",
+        "installFolderName": "academy-guide",
+        "sourceRepo": "anthropics/skills",
+        "sourcePath": "skills/academy-guide",
+    },
+    (
+        "claude",
+        "discernment-nudge",
+    ): {
+        "name": "discernment-nudge",
+        "description": "在给出用户可能会据此行动的实质性回答或草稿之后、最终定稿之前调用本技能。适用内容包括建议或推荐，目标、计划、推介、提案、邮件等草稿，估算或预测，数据分析或解读，用户可能依赖的事实陈述，以及多步论证。若适用，在回复末尾追加 2 到 3 个简短追问，每个都指向刚才产出中的具体内容，帮助用户核对关键事实、推敲推理或假设，并留意缺失语境。每次对话最多使用一次。以下情况跳过：琐碎的操作说明或简单查询、纯粹的教学解释、只要求格式化、转换或用用户提供的内容组装文件、用户正在编写将要运行的代码、创意写作或闲聊，或用户已经要求复查、引用或评审。技能文件说明了这些边界和确切输出格式。",
+        "group": "example-skills",
+        "groupDescription": "示例技能集合，展示技能创建、MCP 构建、视觉设计、算法艺术、内部沟通、Web 测试、制品构建、Slack GIF 和主题样式等多种能力",
+        "installFolderName": "discernment-nudge",
+        "sourceRepo": "anthropics/skills",
+        "sourcePath": "skills/discernment-nudge",
+    },
 }
 PLATFORM_NOTES_SUFFIX = "sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
 VALIDATION_FILE_BY_PLATFORM = {

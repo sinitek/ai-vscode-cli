@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-06-27T12:34:44Z",
+  "generatedAt": "2026-09-24T08:50:44Z",
   "platforms": {
     "claude": {
       "repo": "anthropics/skills",
-      "ref": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "ref": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourceUrl": "https://github.com/anthropics/skills",
       "installRootHint": "~/.claude/skills",
       "notes": "Anthropic 官方 skills 仓库快照，按单个 skill 打包为 zip，可直接安装到 Claude 用户 skills 目录。 sourceRef 使用上游 codeload tarball 的 ETag，便于配置页识别内置官方包是否可更新。"
@@ -24,6 +24,24 @@
     }
   },
   "skills": [
+    {
+      "id": "claude:academy-guide",
+      "platform": "claude",
+      "group": "example-skills",
+      "groupDescription": "示例技能集合，展示技能创建、MCP 构建、视觉设计、算法艺术、内部沟通、Web 测试、制品构建、Slack GIF 和主题样式等多种能力",
+      "name": "academy-guide",
+      "description": "在回答如何使用 Claude 或 Claude 产品的问题前，先检查本技能。它会从 Claude Academy（academy.claude.com，Anthropic 的学习中心）推荐匹配的课程、教程和用例。触发场景包括：“how do I”“how can I”“getting started with”“what can Claude do”“teach me”“learn to use”；关于 artifacts、projects、skills、plugins、connectors、MCP 的问题；把 Claude 推广到团队、课堂或组织的请求；以及索要培训材料、入门内容或学习资源。用户正在学习如何使用某项功能或产品时使用；用户已在执行任务、只想把任务做完时不要使用。本技能可与其他技能组合：查阅产品文档说明某项 Claude 功能如何工作后，也应在这里查找匹配的课程或教程，让基于文档的回答和 Academy 推荐一起给出。只在高度匹配时推荐，禁止编造 Academy 内容。",
+      "archivePath": "official-skills/claude/academy-guide.zip",
+      "installFolderName": "academy-guide",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
+      "sourcePath": "skills/academy-guide",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/academy-guide",
+      "version": "sha256:b083d0e9d934",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:b083d0e9d9345acd908e07f3f8e902bb7b21ea864171f0ef3f97cf9e74bbd5a2",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
+    },
     {
       "id": "claude:algorithmic-art",
       "platform": "claude",
@@ -88,13 +106,31 @@
       "archivePath": "official-skills/claude/claude-api.zip",
       "installFolderName": "claude-api",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourcePath": "skills/claude-api",
       "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/claude-api",
-      "version": "sha256:7ceb0369c1f1",
+      "version": "sha256:f408e2fb372e",
       "versionSource": "contentHash:sha256",
-      "contentHash": "sha256:7ceb0369c1f1a177b9b2b316566dd6ca088e40084bc8fa975d42d7adb4120d56",
-      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
+      "contentHash": "sha256:f408e2fb372e2e35f48fe583a8c219917edd6066d96281a2b9fb647b9a1e0c2a",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
+    },
+    {
+      "id": "claude:discernment-nudge",
+      "platform": "claude",
+      "group": "example-skills",
+      "groupDescription": "示例技能集合，展示技能创建、MCP 构建、视觉设计、算法艺术、内部沟通、Web 测试、制品构建、Slack GIF 和主题样式等多种能力",
+      "name": "discernment-nudge",
+      "description": "在给出用户可能会据此行动的实质性回答或草稿之后、最终定稿之前调用本技能。适用内容包括建议或推荐，目标、计划、推介、提案、邮件等草稿，估算或预测，数据分析或解读，用户可能依赖的事实陈述，以及多步论证。若适用，在回复末尾追加 2 到 3 个简短追问，每个都指向刚才产出中的具体内容，帮助用户核对关键事实、推敲推理或假设，并留意缺失语境。每次对话最多使用一次。以下情况跳过：琐碎的操作说明或简单查询、纯粹的教学解释、只要求格式化、转换或用用户提供的内容组装文件、用户正在编写将要运行的代码、创意写作或闲聊，或用户已经要求复查、引用或评审。技能文件说明了这些边界和确切输出格式。",
+      "archivePath": "official-skills/claude/discernment-nudge.zip",
+      "installFolderName": "discernment-nudge",
+      "sourceRepo": "anthropics/skills",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
+      "sourcePath": "skills/discernment-nudge",
+      "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/discernment-nudge",
+      "version": "sha256:b4b84991cf27",
+      "versionSource": "contentHash:sha256",
+      "contentHash": "sha256:b4b84991cf27be459dfa7d8fa1f4d98fcbdc7ea476ef10fd4e859b1bedb4fcb2",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
     },
     {
       "id": "claude:doc-coauthoring",
@@ -124,13 +160,13 @@
       "archivePath": "official-skills/claude/docx.zip",
       "installFolderName": "docx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourcePath": "skills/docx",
       "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/docx",
-      "version": "sha256:ed21fff938f4",
+      "version": "sha256:b91d264f6489",
       "versionSource": "contentHash:sha256",
-      "contentHash": "sha256:ed21fff938f40b7626d0507512b0a0c2a76ae5bf867c9f2bfcd0b616788c8414",
-      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
+      "contentHash": "sha256:b91d264f64899b7f534b3b26243c7be18f5d9c0cb09cb8cb8e4293b1c68a8231",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
     },
     {
       "id": "claude:frontend-design",
@@ -142,13 +178,13 @@
       "archivePath": "official-skills/claude/frontend-design.zip",
       "installFolderName": "frontend-design",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourcePath": "skills/frontend-design",
       "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
-      "version": "sha256:93c43e5f441c",
+      "version": "sha256:ea81245f6a33",
       "versionSource": "contentHash:sha256",
-      "contentHash": "sha256:93c43e5f441c83a4da675cecc8ec098b069c602b2834b0e16330838d00bc65f8",
-      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
+      "contentHash": "sha256:ea81245f6a330133f2d2dc219f0a66b3eddeedafb0858fdd8588739fdb6c35ef",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
     },
     {
       "id": "claude:internal-comms",
@@ -214,13 +250,13 @@
       "archivePath": "official-skills/claude/pptx.zip",
       "installFolderName": "pptx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourcePath": "skills/pptx",
       "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/pptx",
-      "version": "sha256:6742ce183b7b",
+      "version": "sha256:4bb7020a94dd",
       "versionSource": "contentHash:sha256",
-      "contentHash": "sha256:6742ce183b7bcded9a1303fc2e4f83397e7f6af448e0e75264d9fe53fb146c67",
-      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
+      "contentHash": "sha256:4bb7020a94dd7479c16964cccc4b5f438bfd4134d1fe7159552cc482c7bf1aff",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
     },
     {
       "id": "claude:skill-creator",
@@ -322,13 +358,13 @@
       "archivePath": "official-skills/claude/xlsx.zip",
       "installFolderName": "xlsx",
       "sourceRepo": "anthropics/skills",
-      "sourceRef": "etag:4b27ec34fc47a905512388dffc7201a4c826b7354ec9fcc68de158066a6d50c5",
+      "sourceRef": "etag:58085d724cbaa42c4fa8f5b3df43ba1088ce2d0886fc52b7111765a751180d28",
       "sourcePath": "skills/xlsx",
       "sourceUrl": "https://github.com/anthropics/skills/tree/main/skills/xlsx",
-      "version": "sha256:4dcef9cdfe10",
+      "version": "sha256:462b3a21a71a",
       "versionSource": "contentHash:sha256",
-      "contentHash": "sha256:4dcef9cdfe105f2f34600c540ef4a3b623ed941ad764d8bc706391776684e468",
-      "sourceCommit": "57546260929473d4e0d1c1bb75297be2fdfa1949"
+      "contentHash": "sha256:462b3a21a71a2997a088bab4b1c1feb377a9016696476c63cd377c7bda29da1d",
+      "sourceCommit": "34040c9c568585f6929bedeaad110ad08f079624"
     },
     {
       "id": "codex:aspnet-core",
