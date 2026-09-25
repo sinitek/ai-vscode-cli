@@ -903,3 +903,39 @@ test("parent stop keeps release and promote from bypassing the stop gate", () =>
   assert.equal(scheduler.resumeParent().reason, "running_outstanding");
   assert.deepEqual(attemptIds(scheduler.snapshot().running), ["beta-1"]);
 });
+
+test("queues user speech separately from reviews and still loads snapshots without the field", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("alpha")]);
+  assert.equal(scheduler.enqueueUserMessage("   ").queued, false);
+  const first = scheduler.enqueueUserMessage("  first message  ");
+  const second = scheduler.enqueueUserMessage("second message");
+  assert.equal(first.queued, true);
+  assert.equal(second.depth, 2);
+  assert.deepEqual(scheduler.snapshot().userMessageQueue, ["first message", "second message"]);
+  assert.equal(scheduler.snapshot().currentReview, null);
+  assert.deepEqual(scheduler.snapshot().reviewQueue, []);
+  assert.deepEqual(scheduler.getCompletionBlockers(), ["running", "user_messages"]);
+  assert.equal(scheduler.complete().ok, false);
+
+  const acked = scheduler.ackUserMessages(1);
+  assert.deepEqual(acked.acked, ["first message"]);
+  assert.deepEqual(scheduler.snapshot().userMessageQueue, ["second message"]);
+  assert.deepEqual(scheduler.ackUserMessages(0).acked, []);
+
+  scheduler.stopParent();
+  assert.equal(scheduler.enqueueUserMessage("late").queued, false);
+  assert.deepEqual(scheduler.snapshot().userMessageQueue, ["second message"]);
+
+  const legacy = JSON.parse(JSON.stringify(scheduler.snapshot())) as { userMessageQueue?: string[] };
+  delete legacy.userMessageQueue;
+  const restored = createLoopPlusScheduler({ snapshot: legacy });
+  assert.deepEqual(restored.snapshot().userMessageQueue, []);
+
+  const invalid = scheduler.snapshot();
+  invalid.userMessageQueue = [" padded "];
+  assert.throws(
+    () => createLoopPlusScheduler({ snapshot: invalid }),
+    /Invalid Loop\+ scheduler snapshot: userMessageQueue/,
+  );
+});

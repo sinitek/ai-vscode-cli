@@ -397,6 +397,19 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_user_message_wake",
+      "name": "Loop+ 用户消息唤醒或进入主任务队列",
+      "description": "仅 event_driven 的 Loop+ 在群聊提交“我要说话”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue，当前调用结束后一起查看。主任务可立刻 dispatch 子任务，或在仍有 running、pending 时 wait，等待在途子任务结束后再发起。该队列不是验收队列。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": "src/loopPlusScheduler.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/panelDiagnostics.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.opencode_model_selection_scoped_to_config",
       "name": "OpenCode 模型选择必须绑定配置档案",
       "description": "AI 对话面板更新 OpenCode 主/子角色模型时必须携带当前 configId；扩展宿主优先按该配置 ID 校验和写入。Webview 在同一配置尚未回显有效模型引用前保留待确认选择，异步旧快照不得覆盖用户刚完成的选择。",

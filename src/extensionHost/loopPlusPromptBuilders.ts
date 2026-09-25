@@ -10,10 +10,11 @@ export type LoopPlusMainPromptContext = {
   rootPrompt: string;
   taskStoreFile: string;
   mainCommunicationFile: string;
-  kind: "initial" | "review" | "closeout" | "continue";
+  kind: "initial" | "review" | "closeout" | "continue" | "user";
   view: LoopPlusSchedulerView;
   currentEventId: string | null;
   supplementalRequirements: readonly string[];
+  pendingUserMessages?: readonly string[];
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -132,6 +133,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const requirements = context.supplementalRequirements.length > 0
     ? context.supplementalRequirements.map((item, index) => `${index + 1}. ${item}`).join("\n")
     : "(none)";
+  const pendingUserMessages = context.pendingUserMessages ?? [];
+  const pendingUserText = pendingUserMessages.length > 0
+    ? pendingUserMessages.map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "(none)";
   const running = context.view.running.length > 0
     ? context.view.running.map(formatExecution).join("\n")
     : "(none)";
@@ -180,6 +185,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Snapshot says completion is allowed: ${context.view.canComplete ? "yes" : "no"}`,
     "Supplemental requirements:",
     requirements,
+    "New user messages, oldest first. Read every message in this list together and make one decision:",
+    pendingUserText,
     "Root request:",
     context.rootPrompt,
     "This prompt is a snapshot captured when the CLI started. More executions may finish and join the FIFO queue after that. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
@@ -189,6 +196,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- accept confirms only the one current reviewEventId and must copy Current review eventId exactly. It may append 0 to " + LOOP_PLUS_DECISION_SUBTASK_MAX + " new subtasks. Do not send accept when Current review eventId is (none).",
     acceptExampleRule,
     "- wait confirms nothing. Do not include reviewEventId or subtasks. Use wait only when there is no current review and at least one execution is still running or pending.",
+    "- When New user messages is not (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId or subtasks. finalSummary is optional.",
     "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks.",
     "- When a current review item is open, completed must include that exact eventId. When no current review item is open, omit reviewEventId. A completed object missing any required field, or containing a failed check, is rejected.",

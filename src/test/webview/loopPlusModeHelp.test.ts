@@ -80,6 +80,8 @@ test("renders Loop and Loop+ differences in both help locales", () => {
     "visible queue",
     "accepted one by one",
     "waits while other tasks are still running",
+    "Speaking wakes the main task",
+    "reads the queued messages together",
     "Vibe",
   ]) {
     assert.ok(english.includes(snippet), `Missing English help snippet: ${snippet}`);
@@ -93,6 +95,8 @@ test("renders Loop and Loop+ differences in both help locales", () => {
     "可见队列",
     "再逐个验收",
     "仍有任务在运行时继续等待",
+    "说话会唤醒主任务",
+    "一起查看",
     "快速问答",
   ]) {
     assert.ok(chinese.includes(snippet), `Missing Chinese help snippet: ${snippet}`);

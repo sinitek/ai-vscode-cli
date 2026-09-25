@@ -359,6 +359,8 @@
 
 ## 决策记录
 
+- 2026-09-25：Loop+ 群聊“我要说话”会唤醒主任务，或在主任务执行中进入 `userMessageQueue`，之后一起判断立刻派发还是等待。细节和验证见 `.ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md`。这不把整个 Loop+ 标成已上线。
+
 - 2026-09-24：首轮先固定行为、后固定字面量。第 2 轮已经改成独立 `loop_plus`，本条只保留为历史。
 - 2026-09-24：经典 `continue` 且无子任务转为 `needs-review` 是现有事实，不能当作 Loop+ 的正常等待。
 - 2026-09-24：冲突规则复用 `conflictGroup` 与 `writeFilePathsOverlap`。路径规范化已经把反斜杠换成斜杠并忽略大小写。`loopParallel` 没有另一套数字并发上限。

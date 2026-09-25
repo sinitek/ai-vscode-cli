@@ -61,7 +61,7 @@ export type LoopPlusRunResult = {
   done: Promise<void>;
 };
 
-export type LoopPlusMainKind = "initial" | "review" | "closeout" | "continue";
+export type LoopPlusMainKind = "initial" | "review" | "closeout" | "continue" | "user";
 
 export type LoopPlusMainRequest = {
   taskId: string;
@@ -69,6 +69,7 @@ export type LoopPlusMainRequest = {
   prompt: string;
   modelPrompt: string;
   reviewEventId: string | null;
+  userMessageCount?: number;
   target: LoopPlusPromptTarget;
 };
 
@@ -149,6 +150,7 @@ type InFlightAttempt = {
 type MainStep = {
   kind: LoopPlusMainKind;
   eventId: string | null;
+  userMessageCount: number;
 };
 
 type Lifecycle = {
@@ -632,6 +634,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       let failed = false;
       let failureMessage = "";
       try {
+        if (step.kind === "user") {
+          deps.appendMessage(runtime.target, "loop-plus-user-messages", runtime.taskId);
+        }
         handle = deps.runMain(request);
         runtime.currentMainRequest = request;
         runtime.currentMain = handle;
@@ -671,6 +676,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return;
       }
       if (applied === "wait") {
+        if (hasUserMessages(runtime) || hasReview(runtime)) {
+          continue;
+        }
         return;
       }
     }
@@ -681,25 +689,38 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (runtime.released || snapshot.completed || snapshot.parentStopped || runtime.stopRequested || runtime.autoPaused) {
       return null;
     }
-    if (snapshot.currentReview || snapshot.reviewQueue.length > 0) {
+    if (snapshot.currentReview) {
       const claimed = runtime.scheduler.claimNextReview();
       persist(runtime);
       if (!claimed.ok || !claimed.item) {
         return null;
       }
-      return { kind: "review", eventId: claimed.item.eventId };
+      return { kind: "review", eventId: claimed.item.eventId, userMessageCount: 0 };
     }
     if (!runtime.initialPromptDone) {
       runtime.initialPromptDone = true;
-      return { kind: "initial", eventId: null };
+      return { kind: "initial", eventId: null, userMessageCount: 0 };
+    }
+    const pendingUserMessages = runtime.scheduler.snapshot().userMessageQueue.length;
+    if (pendingUserMessages > 0) {
+      runtime.forcePrompt = false;
+      return { kind: "user", eventId: null, userMessageCount: pendingUserMessages };
+    }
+    if (snapshot.reviewQueue.length > 0) {
+      const claimed = runtime.scheduler.claimNextReview();
+      persist(runtime);
+      if (!claimed.ok || !claimed.item) {
+        return null;
+      }
+      return { kind: "review", eventId: claimed.item.eventId, userMessageCount: 0 };
     }
     if (runtime.forcePrompt) {
       runtime.forcePrompt = false;
-      return { kind: "continue", eventId: null };
+      return { kind: "continue", eventId: null, userMessageCount: 0 };
     }
     if (runtime.closeoutBudget > 0 && snapshot.running.length === 0 && snapshot.pending.length === 0) {
       runtime.closeoutBudget -= 1;
-      return { kind: "closeout", eventId: null };
+      return { kind: "closeout", eventId: null, userMessageCount: 0 };
     }
     return null;
   }
@@ -720,12 +741,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (held) {
         return protocolMiss(runtime, true);
       }
+      acknowledgeSeenUserMessages(runtime, step);
       if (hasReview(runtime)) {
         return "continue";
       }
       runtime.protocolRetries = 0;
       resetMainFailure(runtime);
       if (snapshot.running.length === 0 && snapshot.pending.length === 0) {
+        if (hasUserMessages(runtime)) {
+          return "continue";
+        }
         pause(runtime, "needs-review", "loop-plus-idle-wait");
         return "stop";
       }
@@ -738,6 +763,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (held) {
         return protocolMiss(runtime, true);
       }
+      acknowledgeSeenUserMessages(runtime, step);
       runtime.protocolRetries = 0;
       resetMainFailure(runtime);
       dispatchDecisions(runtime, decision.subtasks ?? []);
@@ -747,6 +773,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       const after = runtime.scheduler.snapshot();
       if (after.running.length === 0 && after.pending.length === 0) {
+        if (hasUserMessages(runtime)) {
+          return "continue";
+        }
         pause(runtime, "needs-review", "loop-plus-no-work");
         return "stop";
       }
@@ -780,17 +809,22 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (runtime.scheduler.snapshot().currentReview) {
         runtime.scheduler.requeueCurrentReview();
       }
+      acknowledgeSeenUserMessages(runtime, step);
       runtime.protocolRetries = 0;
+      if (hasUserMessages(runtime)) {
+        return "continue";
+      }
       pause(runtime, "needs-review", "loop-plus-blocked", decision.finalSummary);
       return "stop";
     }
-    return applyCompleted(runtime, held, decision);
+    return applyCompleted(runtime, held, decision, step);
   }
 
   function applyCompleted(
     runtime: ParentRuntime,
     held: LoopPlusReviewItem | null,
     decision: LoopPlusDecision,
+    step: MainStep,
   ): "continue" | "wait" | "stop" {
     if (held) {
       if (decision.reviewEventId !== held.eventId) {
@@ -804,9 +838,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     } else if (decision.reviewEventId) {
       return protocolMiss(runtime, false);
     }
-    if (hasReview(runtime) || runtime.scheduler.snapshot().running.length > 0 || runtime.scheduler.snapshot().pending.length > 0) {
+    acknowledgeSeenUserMessages(runtime, step);
+    if (hasReview(runtime) || hasUserMessages(runtime) || runtime.scheduler.snapshot().running.length > 0 || runtime.scheduler.snapshot().pending.length > 0) {
       runtime.protocolRetries = 0;
-      if (hasReview(runtime)) {
+      if (hasReview(runtime) || hasUserMessages(runtime)) {
         return "continue";
       }
       persist(runtime, { status: "running" });
@@ -814,7 +849,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     const completed = runtime.scheduler.complete();
     if (!completed.ok) {
-      if (hasReview(runtime)) {
+      if (hasReview(runtime) || hasUserMessages(runtime)) {
         return "continue";
       }
       persist(runtime, { status: "running" });
@@ -1347,6 +1382,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       view: runtime.scheduler.wait().view,
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],
+      pendingUserMessages: step.kind === "user"
+        ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
+        : [],
     });
     return {
       taskId: runtime.taskId,
@@ -1354,6 +1392,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       prompt,
       modelPrompt: prompt,
       reviewEventId: step.eventId,
+      userMessageCount: step.userMessageCount,
       target: runtime.target,
     };
   }
@@ -1391,6 +1430,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const refreshed = buildMainRequest(runtime, {
       kind: request.kind,
       eventId: request.reviewEventId,
+      userMessageCount: request.userMessageCount ?? 0,
     });
     request.prompt = refreshed.prompt;
     request.modelPrompt = refreshed.modelPrompt;
@@ -1508,6 +1548,87 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return Boolean(snapshot.currentReview) || snapshot.reviewQueue.length > 0;
   }
 
+  function hasUserMessages(runtime: ParentRuntime): boolean {
+    return runtime.scheduler.snapshot().userMessageQueue.length > 0;
+  }
+
+  function acknowledgeSeenUserMessages(runtime: ParentRuntime, step: MainStep): void {
+    if (step.kind !== "user" || step.userMessageCount <= 0) {
+      return;
+    }
+    runtime.scheduler.ackUserMessages(step.userMessageCount);
+  }
+
+  function submitUserMessage(taskId: string, text: string): boolean {
+    const normalized = normalizeId(taskId);
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!normalized || !trimmed) {
+      return false;
+    }
+    const runtime = runtimes.get(normalized);
+    if (!runtime) {
+      return enqueueStoredUserMessage(normalized, trimmed);
+    }
+    return enqueueLiveUserMessage(runtime, trimmed);
+  }
+
+  function enqueueLiveUserMessage(runtime: ParentRuntime, text: string): boolean {
+    if (runtime.released || runtime.stopRequested || runtime.stopping) {
+      return false;
+    }
+    const snapshot = runtime.scheduler.snapshot();
+    if (snapshot.parentStopped || snapshot.completed) {
+      return false;
+    }
+    const task = deps.readTask(runtime.taskId);
+    if (task && isLoopMainAiFailureLimitReached(task)) {
+      return false;
+    }
+    const queued = runtime.scheduler.enqueueUserMessage(text);
+    if (!queued.queued) {
+      return false;
+    }
+    if (runtime.autoPaused) {
+      runtime.autoPaused = false;
+      armLifecycle(runtime);
+    }
+    persist(runtime, { status: "running" });
+    if (runtime.currentMain) {
+      return true;
+    }
+    requestPump(runtime);
+    return true;
+  }
+
+  function enqueueStoredUserMessage(taskId: string, text: string): boolean {
+    const task = deps.readTask(taskId);
+    if (!task || resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven" || task.loopPlus == null) {
+      return false;
+    }
+    if (isLoopMainAiFailureLimitReached(task)) {
+      return false;
+    }
+    let scheduler: LoopPlusScheduler;
+    try {
+      scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus });
+    } catch {
+      return false;
+    }
+    if (scheduler.snapshot().parentStopped || scheduler.snapshot().completed) {
+      return false;
+    }
+    const queued = scheduler.enqueueUserMessage(text);
+    if (!queued.queued) {
+      return false;
+    }
+    deps.updateTask(task.id, {
+      schedulingMode: "event_driven",
+      loopPlus: scheduler.snapshot(),
+      updatedAt: now(),
+    });
+    return true;
+  }
+
   function armLifecycle(runtime: ParentRuntime): void {
     if (runtime.lifecycle.settled) {
       runtime.lifecycle = createLifecycle();
@@ -1546,6 +1667,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     notifySubtaskContinuation,
     hasController,
     reportAttempt,
+    submitUserMessage,
   };
 }
 

@@ -2978,6 +2978,9 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   runLoopPrompt,
   stopRunsForTask: stopLoopRunsForTask,
   markTaskStoppedByUser: markLoopTaskStoppedByUser,
+  notifyLoopPlusUserMessage: (taskId, text) => {
+    getLoopPlusOrchestrationHost().submitUserMessage(taskId, text);
+  },
   postPanelState,
   getActiveConversationTaskId: () => (
     normalizeLoopTaskId(activeTaskRun?.loopTaskId)
@@ -4106,6 +4109,9 @@ function loopPlusHostMessage(message: string, taskId: string): string {
   }
   if (message === "loop-plus-waiting") {
     return t("run.loopPlusWaiting");
+  }
+  if (message === "loop-plus-user-messages") {
+    return t("run.loopPlusUserMessages");
   }
   if (message === "loop-plus-stopped") {
     return t("run.loopPlusStopped");

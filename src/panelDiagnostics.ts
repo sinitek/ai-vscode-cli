@@ -48,6 +48,7 @@ import {
   readLoopCommunicationFilePreview,
 } from "./loopCommunicationFilePreview";
 import {
+  resolveLoopSchedulingMode,
   type LoopTaskOriginProfile,
   type LoopTaskRecord,
 } from "./loopTaskStore";
@@ -747,6 +748,7 @@ type LoopDebateChatPanelDeps = {
   showInformationMessage: (message: string) => void;
   showWarningMessage: (message: string) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
+  notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
   t: typeof import("./i18n").t;
 };
 
@@ -1346,6 +1348,9 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       updatedAt: Date.now(),
     });
     deps.appendSupplementalRequirementToCommunication(task, supplementalRequirement);
+    if (resolveLoopSchedulingMode(task.schedulingMode) === "event_driven") {
+      deps.notifyLoopPlusUserMessage?.(task.id, supplementalRequirement);
+    }
     await refresh(normalizedTaskId);
   };
 

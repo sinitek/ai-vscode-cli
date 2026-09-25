@@ -48,6 +48,7 @@ function view(overrides: Partial<LoopPlusSchedulerView> = {}): LoopPlusScheduler
     seq: 4,
     wake: true,
     wakeSeq: 4,
+    userMessageQueue: [],
     running: [],
     pending: [],
     reviewQueue: [],
@@ -362,3 +363,23 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
   assert.doesNotMatch(emptyPaths, /\/Users\//);
   assert.equal(emptyPaths.toLowerCase().includes("round"), false);
 });
+
+test("asks the main task to judge a batch of new user messages before launching", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    kind: "user",
+    pendingUserMessages: ["FIRST_USER_MESSAGE", "SECOND_USER_MESSAGE"],
+    view: view({
+      phase: "waiting",
+      running: [execution("sub-running", "running")],
+      blockers: ["running", "user_messages"],
+      canComplete: false,
+    }),
+  }));
+  assert.match(prompt, /Prompt kind: user/);
+  assert.match(prompt, /1\. FIRST_USER_MESSAGE/);
+  assert.match(prompt, /2\. SECOND_USER_MESSAGE/);
+  assert.match(prompt, /judge the whole list together/);
+  assert.match(prompt, /wait instead when a still-running or pending execution must finish/);
+  assert.match(prompt, /Do not dispatch a placeholder just to wait/);
+});
+

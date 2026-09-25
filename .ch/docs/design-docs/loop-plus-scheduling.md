@@ -18,7 +18,8 @@
 - 增加可选的 Loop+，使验收由完成事件驱动，而不是由整批结束驱动。
 - 让主任务在验收时知道当前项、仍在运行项和待验收队列。
 - 验收之后允许增量派发；没有新任务但还有在途任务时，父任务保持 `running` 并正常等待。
-- 只有运行、待启动和待验收都清空，并且运行时复核过最新状态，才允许结束。
+- 只有运行、待启动、待验收和尚未查看的用户消息都清空，并且运行时复核过最新状态，才允许结束。
+- 群聊“我要说话”在主任务空闲时唤醒它；主任务正在执行时只入队。当前调用结束后，主任务一起查看这批消息，并决定立刻派发子任务，或等待某个仍在运行或待启动的子任务结束后再发起。
 
 ## 非目标
 
@@ -63,7 +64,7 @@
 
 - `dispatch`：必须有 1–6 个子任务，禁止携带 `reviewEventId`。宿主把子任务交给内核 dispatch；冲突或超额的进入 pending，不能只在新批次内部判断。
 - `accept`：必须有一个 trim 后非空的 `reviewEventId`，可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。宿主必须先确认该 id 就是当前验收项，再调用 `submitReview`；不一致时不得改确认成另一项。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
-- `wait`：不能有 `reviewEventId`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。
+- `wait`：不能有 `reviewEventId`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。用户消息批次里，只有仍有 running 或 pending 时才允许 `wait`；它表示先等在途子任务结束，而不是立刻派发一个占位子任务。没有在途工作时，`wait` 仍按原规则进入人工复核，不能空转。
 - `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId` 或新子任务。`finalSummary` 可选。解析器不改父状态。
 - `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。可以带一个非空 `reviewEventId` 申请确认当前项；字段缺失表示不确认，字段存在但为空则整份拒绝。不能附带子任务。解析器不完成任务。宿主在 `reviewEventId` 与当前项一致时先 `submitReview` 确认当前项，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一项 `accept` 并追加子任务。没有任何剩余工作时，最后一项同样合法的 `completed` 可以确认该项并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
 
@@ -84,7 +85,8 @@
 
 - 事件 ID 是 `loop-plus-finish#` 加两段十进制长度前缀。`buildLoopPlusFinishEventId("a:b", "c")` 为 `loop-plus-finish#3:a:b1:c`，`("a", "b:c")` 为 `loop-plus-finish#1:a3:b:c`。两者不同。
 - 未发布的 `loop-plus-finish:` 冒号拼接不做迁移。恢复时 `eventId` 必须等于该条 `subtaskId` / `attemptId` 的规范编码，并且能解析回同一对；否则抛出 `Invalid Loop+ scheduler snapshot`，不能映射到另一个 tuple。
-- 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。加载时不信任 `phase` 文本。
+- 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`userMessageQueue`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。旧快照没有 `userMessageQueue` 时读成空数组；字段存在但不是去空白后的非空字符串数组则拒绝。加载时不信任 `phase` 文本。
+- `userMessageQueue` 只保存尚未被主任务查看的用户消息，不进入验收队列。当前验收先做完；没有当前验收时，积压的用户消息先于下一条验收被同一次主任务查看。查看成功后只确认本轮开始时的前缀，执行期间新到的消息留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
 - 没有当前验收且父任务未停止时，队首进入当前验收，并只在新的 wake 边沿返回 `wake: true`。已有当前验收时，新事件只追加。
 - 同一 attempt 的重复 `finish` 不覆盖新执行。已经按规范 ID 验收过的 `submitReview` 幂等成功且不推进队列。当前项不匹配时返回 `mismatch`，没有当前项时返回 `no_current`。
 - 同一时刻只有一个验收消费者。宿主只在 `wake === true` 时唤醒一次，只启动本次返回的 `started`。

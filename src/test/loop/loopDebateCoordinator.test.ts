@@ -373,3 +373,87 @@ test("previews a communication file from the open Loop group chat", async () => 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("forwards Loop+ user speech to the main-task queue and leaves classic Loop unchanged", async () => {
+  const vscode = require("vscode") as typeof import("vscode");
+  const previousCreate = vscode.window.createWebviewPanel;
+  let messageHandler: ((message: unknown) => void) | undefined;
+  (vscode.window as { createWebviewPanel: (...args: unknown[]) => unknown }).createWebviewPanel = () => ({
+    title: "",
+    webview: {
+      cspSource: "self",
+      html: "",
+      postMessage() {
+        return undefined;
+      },
+      onDidReceiveMessage(handler: (message: unknown) => void) {
+        messageHandler = handler;
+        return { dispose: () => undefined };
+      },
+    },
+    reveal() {
+      return undefined;
+    },
+    onDidDispose() {
+      return { dispose: () => undefined };
+    },
+  });
+  try {
+    const task = createStoppedTask();
+    task.schedulingMode = "event_driven";
+    const notices: string[] = [];
+    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    const deps: CoordinatorDeps = {
+      getExtensionUri: () => ({ fsPath: "/extension" } as any),
+      panelsByTaskId: new Map(),
+      defaultDebateRound: 1,
+      normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+      normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+      appendSupplementalRequirement: (existing, nextItem) => [...(existing ?? []), nextItem],
+      appendSupplementalRequirementToCommunication: () => undefined,
+      readTaskRecord: (taskId) => taskId === task.id ? task : null,
+      updateTaskRecord: () => task,
+      listTaskStoreFiles: () => [],
+      readTaskStoreTasks: () => [],
+      collectRunningTaskIds: () => new Set([task.id]),
+      readTextFileIfNonEmpty: () => null,
+      fileExists: () => false,
+      writeTextFileEnsuringDir: () => true,
+      getActiveSubtaskIds: () => [],
+      buildCompletedConclusionAndSummaryMarkdown: () => "",
+      resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "codex" }),
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => true,
+      getActiveConfigIdForCli: () => "current-config",
+      getSelectedCliModel: () => "current-model",
+      runLoopPrompt: async () => undefined,
+      stopRunsForTask: () => undefined,
+      markTaskStoppedByUser: () => task,
+      postPanelState: async () => undefined,
+      getActiveConversationTaskId: () => task.id,
+      showInformationMessage: () => undefined,
+      showWarningMessage: () => undefined,
+      pickTask: async () => task,
+      notifyLoopPlusUserMessage: (_taskId, text) => {
+        notices.push(text);
+      },
+      t: ((key: string) => key) as CoordinatorDeps["t"],
+    };
+    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    await coordinator.open(task.id);
+    assert.equal(typeof messageHandler, "function");
+    messageHandler?.({ type: "loopDebateChat:supplementTask", prompt: "  please check the running subtask  " });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(notices, ["please check the running subtask"]);
+
+    notices.length = 0;
+    task.schedulingMode = "classic";
+    messageHandler?.({ type: "loopDebateChat:supplementTask", prompt: "classic only" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(notices, []);
+  } finally {
+    vscode.window.createWebviewPanel = previousCreate;
+  }
+});
+

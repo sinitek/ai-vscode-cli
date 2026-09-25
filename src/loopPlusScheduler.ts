@@ -23,6 +23,7 @@ export type LoopPlusCompletionBlocker =
   | "pending"
   | "review_queue"
   | "current_review"
+  | "user_messages"
   | "parent_stopped"
   | "completed";
 export type LoopPlusReviewFollowUp = "claim_next" | "wait" | "may_complete" | "stopped";
@@ -68,6 +69,7 @@ export type LoopPlusSchedulerSnapshot = {
   seq: number;
   wakeSeq: number;
   wakePending: boolean;
+  userMessageQueue: string[];
   running: LoopPlusExecutionRecord[];
   pending: LoopPlusExecutionRecord[];
   reviewQueue: LoopPlusReviewItem[];
@@ -87,6 +89,7 @@ export type LoopPlusSchedulerView = {
   seq: number;
   wake: boolean;
   wakeSeq: number;
+  userMessageQueue: string[];
   running: LoopPlusExecutionRecord[];
   pending: LoopPlusExecutionRecord[];
   reviewQueue: LoopPlusReviewItem[];
@@ -249,6 +252,17 @@ export type LoopPlusPromoteResult = {
   view: LoopPlusSchedulerView;
 };
 
+export type LoopPlusUserMessageResult = {
+  queued: boolean;
+  depth: number;
+  view: LoopPlusSchedulerView;
+};
+
+export type LoopPlusAckUserMessagesResult = {
+  acked: string[];
+  view: LoopPlusSchedulerView;
+};
+
 export type LoopPlusScheduler = {
   dispatch: (specs: readonly unknown[]) => LoopPlusDispatchResult;
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
@@ -259,6 +273,8 @@ export type LoopPlusScheduler = {
   stopParent: () => LoopPlusStopResult;
   resumeParent: () => LoopPlusResumeResult;
   requeueCurrentReview: () => LoopPlusRequeueResult;
+  enqueueUserMessage: (text: string) => LoopPlusUserMessageResult;
+  ackUserMessages: (count: number) => LoopPlusAckUserMessagesResult;
   releaseUnstarted: (attemptIds: readonly string[]) => LoopPlusReleaseResult;
   promotePending: () => LoopPlusPromoteResult;
   getCompletionBlockers: () => LoopPlusCompletionBlocker[];
@@ -308,6 +324,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   let reviewQueue = restored?.reviewQueue.map(copyReview) ?? [];
   let currentReview = restored?.currentReview ? copyReview(restored.currentReview) : null;
   let seenAttempts = restored?.seenAttempts.map(copySeen) ?? [];
+  let userMessageQueue = restored?.userMessageQueue.slice() ?? [];
   normalizeWake();
 
   function snapshot(): LoopPlusSchedulerSnapshot {
@@ -320,6 +337,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       seq,
       wakeSeq,
       wakePending,
+      userMessageQueue: userMessageQueue.slice(),
       running: running.map(copyExecution),
       pending: pending.map(copyExecution),
       reviewQueue: reviewQueue.map(copyReview),
@@ -337,6 +355,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       seq,
       wake: visibleWake(),
       wakeSeq,
+      userMessageQueue: userMessageQueue.slice(),
       running: running.map(copyExecution),
       pending: pending.map(copyExecution),
       reviewQueue: queue,
@@ -613,6 +632,28 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return { started, view: view() };
   }
 
+  function enqueueUserMessage(text: string): LoopPlusUserMessageResult {
+    const trimmed = typeof text === "string" ? text.trim() : "";
+    if (!trimmed || parentStopped || completed) {
+      return { queued: false, depth: userMessageQueue.length, view: view() };
+    }
+    userMessageQueue.push(trimmed);
+    commit();
+    return { queued: true, depth: userMessageQueue.length, view: view() };
+  }
+
+  function ackUserMessages(count: number): LoopPlusAckUserMessagesResult {
+    if (!isNonNegativeInteger(count) || count <= 0 || userMessageQueue.length === 0) {
+      return { acked: [], view: view() };
+    }
+    const acked = userMessageQueue.slice(0, count);
+    userMessageQueue = userMessageQueue.slice(acked.length);
+    if (acked.length > 0) {
+      commit();
+    }
+    return { acked, view: view() };
+  }
+
   function requeueCurrentReview(): LoopPlusRequeueResult {
     if (!currentReview) {
       return { requeued: false, item: null, view: view() };
@@ -742,6 +783,9 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     if (currentReview) {
       blockers.push("current_review");
     }
+    if (userMessageQueue.length > 0) {
+      blockers.push("user_messages");
+    }
     return blockers;
   }
 
@@ -794,6 +838,8 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     stopParent,
     resumeParent,
     requeueCurrentReview,
+    enqueueUserMessage,
+    ackUserMessages,
     releaseUnstarted,
     promotePending,
     getCompletionBlockers: completionBlockers,
@@ -973,12 +1019,28 @@ function readSnapshot(value: unknown): LoopPlusSchedulerSnapshot {
     seq: value.seq,
     wakeSeq: value.wakeSeq,
     wakePending: value.wakePending,
+    userMessageQueue: readUserMessages(value.userMessageQueue),
     running,
     pending,
     reviewQueue,
     currentReview,
     seenAttempts,
   };
+}
+
+function readUserMessages(value: unknown): string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    invalidSnapshot("userMessageQueue");
+  }
+  return value.map((item, index) => {
+    if (typeof item !== "string" || !item.trim() || item.trim() !== item) {
+      invalidSnapshot(`userMessageQueue[${index}]`);
+    }
+    return item;
+  });
 }
 
 function readExecutions(value: unknown, field: string): LoopPlusExecutionRecord[] {

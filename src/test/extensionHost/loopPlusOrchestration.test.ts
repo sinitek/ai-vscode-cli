@@ -1603,3 +1603,87 @@ test("keeps an in-flight completion queued while paused without starting the suc
   assert.equal(stored()?.mainAiFailureCount ?? 0, 0);
   assert.equal(stored()?.status, "running");
 });
+
+test("reads user messages that arrived during the main task together, then waits or dispatches", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.mains[0].request.kind, "initial");
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "while planning"), true);
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "also while planning"), true);
+  assert.equal(env.mains.length, 1);
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).userMessageQueue, [
+    "while planning",
+    "also while planning",
+  ]);
+
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  const firstUser = env.mains.filter((item) => item.request.kind === "user");
+  assert.equal(firstUser.length, 1);
+  assert.match(firstUser[0].request.prompt, /1\. while planning/);
+  assert.match(firstUser[0].request.prompt, /2\. also while planning/);
+  assert.equal(env.messages.includes("loop-plus-user-messages"), true);
+  firstUser[0].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0].request.subtaskId, "alpha");
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).userMessageQueue, []);
+  assert.equal(env.mains.filter((item) => item.request.kind === "user").length, 1);
+
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "start the follow-up"), true);
+  await flush();
+  const followUp = env.mains.filter((item) => item.request.kind === "user");
+  assert.equal(followUp.length, 2);
+  assert.match(followUp[1].request.prompt, /start the follow-up/);
+  assert.equal(followUp[1].request.prompt.includes("while planning"), false);
+  followUp[1].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta"]);
+});
+
+test("keeps a stopped or failed-limit Loop+ parent from being woken by user speech", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  const task = env.tasks.get(run.taskId ?? "");
+  assert.ok(task);
+  task.mainAiFailureLimitReached = true;
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "blocked by failure limit"), false);
+  task.mainAiFailureLimitReached = false;
+  env.host.stopParent(run.taskId ?? "");
+  await flush();
+  const mainsBefore = env.mains.length;
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "after stop"), false);
+  await flush();
+  assert.equal(env.mains.length, mainsBefore);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).userMessageQueue.includes("after stop"), false);
+
+  const reloaded = env.reloadHost();
+  assert.equal(reloaded.submitUserMessage(run.taskId ?? "", "without a live controller"), false);
+  const running = env.tasks.get(run.taskId ?? "");
+  assert.ok(running);
+  running.status = "running";
+  const snapshot = snapshotOf(running);
+  snapshot.parentStopped = false;
+  snapshot.completed = false;
+  running.loopPlus = snapshot;
+  assert.equal(reloaded.submitUserMessage(run.taskId ?? "", "stored while the controller is gone"), true);
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).userMessageQueue, [
+    "stored while the controller is gone",
+  ]);
+  assert.equal(env.mains.length, mainsBefore);
+});
+
