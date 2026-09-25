@@ -249,7 +249,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     getSelectedCliModel: () => null,
     getSelectedLoopCliModel: () => null,
     isInteractiveMode: (value: unknown): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "loop" || value === "graph"
+      value === "coding" || value === "plan" || value === "loop" || value === "graph" || value === "loop_plus"
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
     setWorkspaceLoopExecutionModeForCli: (cli, mode) => {
@@ -1271,4 +1271,57 @@ test("stopRun stops active OpenCode tab without creating a provider error", asyn
   assert.deepEqual(calls.stoppedTabs, ["tab-opencode-smoke"]);
   assert.equal(calls.runPrompt.length, 0);
   assert.equal(calls.runLoopPrompt.length, 0);
+});
+
+test("routes a new Loop+ send through runLoopPrompt as event_driven without a loop execution mode", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run loop plus",
+    interactiveMode: "loop_plus",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    model: "provider/general-model",
+  }, deps);
+
+  assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "loop_plus");
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runGraphPrompt.length, 0);
+  assert.equal(calls.loopExecutionModes.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.equal(calls.runLoopPrompt[0].options.schedulingMode, "event_driven");
+  assert.equal(calls.runLoopPrompt[0].options.resumeRequested, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls.runLoopPrompt[0].input, "loopExecutionMode"), false);
+  assert.equal(calls.runLoopPrompt[0].input.loopMainModel, "provider/general-model");
+  assert.equal(calls.runLoopPrompt[0].input.loopSubtaskModel, "provider/general-model");
+});
+
+test("does not start Loop+ from a Loop+ subtask tab", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  deps.resolveLoopSubtaskConversationContext = () => ({
+    taskId: "task-loop-plus",
+    subtaskId: "subtask-plus",
+    round: 1,
+  });
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "continue the loop plus subtask",
+    interactiveMode: "loop_plus",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+  }, deps);
+
+  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "coding" }]);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.equal(calls.runPrompt[0].input.taskRole, "subtask");
+  assert.equal(calls.wakeMain.length, 1);
 });

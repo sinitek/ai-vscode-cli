@@ -552,9 +552,33 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           return null;
         }
         const contextOptions = payload.contextOptions || {};
-        const interactiveMode = payload.interactiveMode === "loop" || payload.interactiveMode === "coding" || payload.interactiveMode === "graph"
+        const interactiveMode = payload.interactiveMode === "loop"
+          || payload.interactiveMode === "loop_plus"
+          || payload.interactiveMode === "coding"
+          || payload.interactiveMode === "graph"
           ? payload.interactiveMode
           : undefined;
+        const normalizeModelValue = (value) => typeof value === "string" ? value.trim() : "";
+        const normalizeThinkingValue = (value) => {
+          const normalized = typeof value === "string" ? value.trim() : "";
+          if (normalized === "off") {
+            return "low";
+          }
+          return normalized === "low"
+            || normalized === "medium"
+            || normalized === "high"
+            || normalized === "xhigh"
+            || normalized === "max"
+            || normalized === "ultra"
+            ? normalized
+            : "";
+        };
+        const loopMainModel = normalizeModelValue(payload.loopMainModel)
+          || normalizeModelValue(payload.lobsterMainModel);
+        const loopSubtaskModel = normalizeModelValue(payload.loopSubtaskModel)
+          || normalizeModelValue(payload.lobsterSubtaskModel);
+        const loopMainThinkingMode = normalizeThinkingValue(payload.loopMainThinkingMode);
+        const loopSubtaskThinkingMode = normalizeThinkingValue(payload.loopSubtaskThinkingMode);
         return {
           prompt,
           contextOptions: {
@@ -563,6 +587,10 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           },
           ...(interactiveMode ? { interactiveMode } : {}),
           ...(payload.skipPromptHistory === true ? { skipPromptHistory: true } : {}),
+          ...(loopMainModel ? { loopMainModel } : {}),
+          ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+          ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
+          ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
         };
       }
 

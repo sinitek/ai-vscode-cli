@@ -6,7 +6,7 @@ import { getCliArgs, getCliCommand, getThinkingMode } from "../cli/config";
 import { inspectCodeGraphStatus } from "../cli/codegraphStatus";
 import { getCodeGraphInstallCommand } from "../cli/installer";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
-import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
+import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, LOOP_PLUS_INTERACTIVE_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
 import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput, type ParsedOpenCodeConfigModels } from "../cli/opencodeconfigmodels";
 import { resolveOpenCodeThinkingCapability, type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import * as configService from "../config/configService";
@@ -1185,4 +1185,8 @@ return {
   cleanupPromptHistoryRetentionAcrossWorkspaces: wrap(cleanupPromptHistoryRetentionAcrossWorkspaces),
   collectWorkspaceKeysForPromptHistoryCleanup: wrap(collectWorkspaceKeysForPromptHistoryCleanup),
 };
+}
+
+export function schedulingModeForInteractiveMode(mode: unknown): "event_driven" | undefined {
+  return mode === LOOP_PLUS_INTERACTIVE_MODE ? "event_driven" : undefined;
 }

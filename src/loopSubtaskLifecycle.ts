@@ -65,3 +65,9 @@ export async function finalizeLoopSubtaskRun(
   await deps.closeSubtaskTab(tabId);
   deps.logSubtaskTabAutoClosed({ taskId, round, subtaskId, tabId });
 }
+
+export function shouldDelegateSubtaskContinuationToLoopPlus(
+  task: { schedulingMode?: unknown } | null | undefined,
+): boolean {
+  return task?.schedulingMode === "event_driven";
+}

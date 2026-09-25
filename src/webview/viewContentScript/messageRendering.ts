@@ -125,11 +125,41 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         }
       }
 
+      var lastAutoInteractiveModeTabKey = "";
+
       function normalizeInteractiveMode(value) {
-        if (value === "loop" || value === "graph") {
+        if (value === "loop" || value === "graph" || value === "loop_plus") {
           return value;
         }
         return "coding";
+      }
+
+      function isMessageLoopTaskEventDriven(message) {
+        const taskId = normalizeLoopTaskId(message && message.loopTaskId);
+        if (!taskId || !state || !state.conversationTabs || !Array.isArray(state.conversationTabs.tabs)) {
+          return false;
+        }
+        let sawEventDriven = false;
+        let sawOtherExplicitMode = false;
+        const tabs = state.conversationTabs.tabs;
+        for (let index = 0; index < tabs.length; index += 1) {
+          const tab = tabs[index];
+          if (normalizeLoopTaskId(tab && tab.loopTaskId) !== taskId) {
+            continue;
+          }
+          const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
+            ? tab.loopSchedulingMode.trim()
+            : "";
+          if (!schedulingMode) {
+            continue;
+          }
+          if (schedulingMode === "event_driven") {
+            sawEventDriven = true;
+          } else {
+            sawOtherExplicitMode = true;
+          }
+        }
+        return sawEventDriven && !sawOtherExplicitMode;
       }
 
       function getMessageTaskRoleLabel(message) {
@@ -138,6 +168,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         }
         if (message.taskRole === "main") {
           return t("taskRoleMain");
+        }
+        if (isMessageLoopTaskEventDriven(message)) {
+          return t("taskRoleSubtask");
         }
         const round = typeof message.loopRound === "number" && Number.isFinite(message.loopRound)
           ? Math.floor(message.loopRound)
@@ -755,9 +788,58 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta && meta.taskRole === "main") {
-          return "loop";
+          const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
+            ? tab.loopSchedulingMode.trim()
+            : "";
+          return schedulingMode === "event_driven" ? "loop_plus" : "loop";
         }
         return "coding";
+      }
+
+      function autoInteractiveModeTabKey(tab) {
+        if (!tab || typeof tab.id !== "string" || !tab.id) {
+          return "";
+        }
+        const graphMeta = typeof getGraphMetaForTabSummary === "function"
+          ? getGraphMetaForTabSummary(tab)
+          : null;
+        const meta = typeof getLoopMetaForTabSummary === "function"
+          ? getLoopMetaForTabSummary(tab)
+          : null;
+        const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
+          ? tab.loopSchedulingMode.trim()
+          : "";
+        return [
+          tab.id,
+          graphMeta && graphMeta.graphRunId ? graphMeta.graphRunId : "",
+          meta && meta.taskRole ? meta.taskRole : "",
+          meta && meta.loopTaskId ? meta.loopTaskId : "",
+          schedulingMode === "event_driven" ? "event_driven" : "classic",
+        ].join("|");
+      }
+
+      function syncAutoInteractiveModeForActiveTab() {
+        const activeTab = typeof getConversationTabSummary === "function"
+          ? getConversationTabSummary(typeof getActiveConversationTabId === "function" ? getActiveConversationTabId() : "")
+          : null;
+        const nextKey = autoInteractiveModeTabKey(activeTab);
+        if (nextKey === lastAutoInteractiveModeTabKey) {
+          return false;
+        }
+        lastAutoInteractiveModeTabKey = nextKey;
+        if (!nextKey) {
+          return false;
+        }
+        const meta = typeof getLoopMetaForTabSummary === "function"
+          ? getLoopMetaForTabSummary(activeTab)
+          : null;
+        if (!(meta && (meta.taskRole === "main" || meta.taskRole === "subtask"))) {
+          return false;
+        }
+        if (typeof applyAutoInteractiveModeForTab !== "function") {
+          return false;
+        }
+        return applyAutoInteractiveModeForTab(activeTab);
       }
 
       function applyAutoInteractiveModeForTab(tab) {
@@ -939,6 +1021,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function renderConversationTabs() {
+        syncAutoInteractiveModeForActiveTab();
         if (!elements.conversationTabs) {
           return;
         }

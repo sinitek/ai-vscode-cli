@@ -10,6 +10,7 @@ function renderInteractiveModeSelect(
   return `<select id="${options.id}" class="interactive-mode-select" aria-label="${options.ariaLabel}">
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="loop">${i18n.interactiveModeLoop}</option>
+            <option value="loop_plus" title="${i18n.interactiveModeLoopPlusHint}">${i18n.interactiveModeLoopPlus}</option>
             <option value="graph">${i18n.interactiveModeGraph}</option>
           </select>`;
 }
@@ -806,6 +807,14 @@ ${webviewStyles}    </style>
                 <li>${i18n.helpModeLoopBest}</li>
                 <li>${i18n.helpModeLoopPros}</li>
                 <li>${i18n.helpModeLoopCons}</li>
+              </ul>
+            </div>
+            <div class="help-section">
+              <h4>${i18n.helpModeLoopPlusTitle}</h4>
+              <ul>
+                <li>${i18n.helpModeLoopPlusBest}</li>
+                <li>${i18n.helpModeLoopPlusPros}</li>
+                <li>${i18n.helpModeLoopPlusCons}</li>
               </ul>
             </div>
             <div class="help-section">

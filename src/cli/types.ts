@@ -36,7 +36,10 @@ export type OpenCodeThinkingState = {
   messageKey?: OpenCodeThinkingMessageKey;
 };
 
-export type InteractiveMode = "coding" | "plan" | "loop" | "graph";
+export const LOOP_PLUS_INTERACTIVE_MODE = "loop_plus" as const;
+export const LOOP_PLUS_DISPLAY_NAME = "Loop+";
+
+export type InteractiveMode = "coding" | "plan" | "loop" | "graph" | typeof LOOP_PLUS_INTERACTIVE_MODE;
 
 export type LoopExecutionMode = "main_sub_multi_agent" | "debate_multi_agent";
 

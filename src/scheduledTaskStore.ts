@@ -42,9 +42,10 @@ export function resolveScheduledTaskExecutionConfig(
   interactiveMode: InteractiveMode,
   loopExecutionMode: LoopExecutionMode,
 ): ScheduledTaskExecutionConfig {
-  return interactiveMode === "loop"
-    ? { interactiveMode, loopExecutionMode }
-    : { interactiveMode };
+  if (interactiveMode === "loop") {
+    return { interactiveMode, loopExecutionMode };
+  }
+  return { interactiveMode };
 }
 
 export function resolveScheduledTaskExecutionConfigForTask(
@@ -92,7 +93,9 @@ export function createScheduledTaskRecord(
     ...(normalizeOptionalString(input.loopSubtaskModel) ? { loopSubtaskModel: normalizeOptionalString(input.loopSubtaskModel) } : {}),
     ...(input.loopMainThinkingMode ? { loopMainThinkingMode: input.loopMainThinkingMode } : {}),
     ...(input.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: input.loopSubtaskThinkingMode } : {}),
-    ...(input.loopExecutionMode ? { loopExecutionMode: input.loopExecutionMode } : {}),
+    ...(input.interactiveMode !== "loop_plus" && input.loopExecutionMode
+      ? { loopExecutionMode: input.loopExecutionMode }
+      : {}),
     attachments: Array.isArray(input.attachments) ? input.attachments.map((attachment) => ({
       name: attachment.name,
       path: attachment.path,
@@ -162,6 +165,23 @@ function normalizeAttachment(value: unknown): ScheduledTaskAttachment | null {
   return { path: filePath, name };
 }
 
+
+function readScheduledInteractiveMode(
+  value: unknown,
+  isInteractiveMode: ScheduledTaskStoreDeps["isInteractiveMode"],
+): InteractiveMode | undefined {
+  if (value === "loop_plus") {
+    return "loop_plus";
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  if (!isInteractiveMode) {
+    return value as InteractiveMode;
+  }
+  return isInteractiveMode(value) ? value : undefined;
+}
+
 function normalizeStatus(value: unknown): ScheduledTaskStatus {
   if (value === "completed" || value === "failed" || value === "cancelled") {
     return value;
@@ -197,6 +217,7 @@ export function normalizeScheduledTaskRecord(
   const attachments = Array.isArray(raw.attachments)
     ? raw.attachments.map(normalizeAttachment).filter((item): item is ScheduledTaskAttachment => Boolean(item))
     : [];
+  const interactiveMode = readScheduledInteractiveMode(raw.interactiveMode, deps.isInteractiveMode);
   return {
     id,
     prompt,
@@ -207,9 +228,7 @@ export function normalizeScheduledTaskRecord(
     tabId: typeof raw.tabId === "string" && raw.tabId.trim() ? raw.tabId.trim() : null,
     workspaceKey: normalizeOptionalString(raw.workspaceKey, 500) ?? "no-workspace",
     status: normalizeStatus(raw.status),
-    ...(typeof raw.interactiveMode === "string" && (!deps.isInteractiveMode || deps.isInteractiveMode(raw.interactiveMode))
-      ? { interactiveMode: raw.interactiveMode }
-      : {}),
+    ...(interactiveMode ? { interactiveMode } : {}),
     ...(contextOptions ? { contextOptions } : {}),
     ...(normalizeOptionalString(raw.model) ? { model: normalizeOptionalString(raw.model) } : {}),
     ...(normalizeOptionalString(raw.loopMainModel) ? { loopMainModel: normalizeOptionalString(raw.loopMainModel) } : {}),
@@ -220,7 +239,9 @@ export function normalizeScheduledTaskRecord(
     ...(typeof raw.loopSubtaskThinkingMode === "string" && (!deps.isThinkingMode || deps.isThinkingMode(raw.loopSubtaskThinkingMode))
       ? { loopSubtaskThinkingMode: raw.loopSubtaskThinkingMode }
       : {}),
-    ...(typeof raw.loopExecutionMode === "string" ? { loopExecutionMode: raw.loopExecutionMode } : {}),
+    ...(interactiveMode !== "loop_plus" && typeof raw.loopExecutionMode === "string"
+      ? { loopExecutionMode: raw.loopExecutionMode }
+      : {}),
     attachments,
     ...(executedAt ? { executedAt } : {}),
     ...(normalizeOptionalString(raw.lastError, 4_000) ? { lastError: normalizeOptionalString(raw.lastError, 4_000) } : {}),

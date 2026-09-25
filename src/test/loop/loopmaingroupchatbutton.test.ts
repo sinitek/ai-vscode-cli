@@ -155,6 +155,21 @@ test("shows only for the active Loop main tab and survives every task status", (
   assert.equal(harness.classes.has("has-current-loop-group-chat"), false);
 });
 
+test("keeps the main-task group chat entry when the composer mode is Loop+", () => {
+  const harness = buildHarness();
+  harness.state.interactiveMode = "loop_plus";
+  harness.state.conversationTabs = {
+    activeTabId: "main-tab",
+    tabs: [{ id: "main-tab", loopTaskRole: "main", loopTaskId: "loop-plus-task" }],
+  };
+
+  harness.syncOpenCurrentLoopGroupChatButton();
+  assert.equal(harness.elements.openCurrentLoopGroupChat.style.display, "inline-flex");
+  assert.equal(harness.elements.openCurrentLoopGroupChat.disabled, false);
+  harness.openCurrentLoopGroupChat();
+  assert.deepEqual(harness.messages, [{ type: "openLoopGroupChat", taskId: "loop-plus-task" }]);
+});
+
 test("opens the existing Loop group chat with the active main task id", () => {
   const harness = buildHarness();
   harness.state.conversationTabs = {

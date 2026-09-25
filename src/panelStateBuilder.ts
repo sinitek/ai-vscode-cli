@@ -28,6 +28,7 @@ import {
 import {
   type LoopDebateChatPanelRound,
   type LoopDebateChatPanelState,
+  type LoopPlusPanelProjection,
 } from "./webview/loopDebatePanel";
 import {
   formatGraphEdgeKind,
@@ -68,10 +69,17 @@ import {
   resolveLoopTaskRunControlState,
 } from "./loopDebate";
 import {
+  resolveLoopSchedulingMode,
   type LoopRoundRecord,
   type LoopSubtaskRecord,
   type LoopTaskRecord,
 } from "./loopTaskStore";
+import {
+  createLoopPlusScheduler,
+  type LoopPlusExecutionRecord,
+  type LoopPlusReviewItem,
+  type LoopPlusSchedulerPhase,
+} from "./loopPlusScheduler";
 import {
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
@@ -716,10 +724,11 @@ export function buildLoopDebateChatPanelStateWithDeps(
 ): LoopDebateChatPanelState {
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
+  const loopPlus = projectLoopPlusPanel(task);
   const mode = isLoopDebateGroupChatTask(task) ? "debate" : "main_sub";
   const rounds = mode === "debate"
-    ? buildLoopDebateWithExecutionChatPanelRounds(task, deps)
-    : buildLoopMainSubChatPanelRounds(task, deps);
+    ? buildLoopDebateWithExecutionChatPanelRounds(task, deps, loopPlus)
+    : buildLoopMainSubChatPanelRounds(task, deps, loopPlus);
   const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, mode, deps);
   const missingChatFiles = rounds
     .map((round) => round.chatFile)
@@ -729,6 +738,7 @@ export function buildLoopDebateChatPanelStateWithDeps(
     : null;
   return {
     mode,
+    ...(loopPlus ? { loopPlus } : {}),
     task: {
       id: task.id,
       cli: task.cli,
@@ -745,6 +755,112 @@ export function buildLoopDebateChatPanelStateWithDeps(
     rounds,
     chatMarkdown,
     error,
+  };
+}
+
+export function projectLoopPlusPanel(
+  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status">,
+): LoopPlusPanelProjection | null {
+  if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
+    return null;
+  }
+  if (task.loopPlus === undefined || task.loopPlus === null) {
+    return invalidLoopPlusProjection("missing");
+  }
+  try {
+    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus });
+    const snapshot = scheduler.snapshot();
+    const view = scheduler.wait().view;
+    const currentReview = view.currentReview ? copyLoopPlusReviewItem(view.currentReview) : null;
+    const reviewQueue = view.reviewQueue.map(copyLoopPlusReviewItem);
+    const currentReviewCount = currentReview ? 1 : 0;
+    const reviewQueueCount = reviewQueue.length;
+    if (view.visibleReviewCount !== currentReviewCount + reviewQueueCount) {
+      return invalidLoopPlusProjection("visibleReviewCount");
+    }
+    return {
+      ok: true,
+      schedulingMode: "event_driven",
+      activity: loopPlusActivityForPhase(view.phase, task.status),
+      phase: view.phase,
+      wakePending: snapshot.wakePending,
+      currentReview,
+      reviewQueue,
+      currentReviewCount,
+      reviewQueueCount,
+      visibleReviewCount: view.visibleReviewCount,
+      running: view.running.map(copyLoopPlusExecutionItem),
+      pending: view.pending.map(copyLoopPlusExecutionItem),
+      runningCount: view.running.length,
+      pendingCount: view.pending.length,
+      seenAttempts: snapshot.seenAttempts.map((item) => ({
+        subtaskId: item.subtaskId,
+        attemptId: item.attemptId,
+        disposition: item.disposition,
+      })),
+    };
+  } catch (error) {
+    const reason = error instanceof Error && error.message.trim() ? error.message.trim() : "invalid";
+    return invalidLoopPlusProjection(reason);
+  }
+}
+
+function invalidLoopPlusProjection(error: string): LoopPlusPanelProjection {
+  return {
+    ok: false,
+    schedulingMode: "event_driven",
+    activity: "invalid",
+    phase: "invalid",
+    error,
+  };
+}
+
+function loopPlusActivityForPhase(
+  phase: LoopPlusSchedulerPhase,
+  parentStatus: string,
+): Extract<LoopPlusPanelProjection, { ok: true }>["activity"] {
+  switch (phase) {
+    case "stopped":
+      return "stopped";
+    case "completed":
+      return "completed";
+    case "waiting":
+      return isLoopPlusDisplayPaused(parentStatus) ? "paused" : "waiting";
+    case "review_ready":
+      return isLoopPlusDisplayPaused(parentStatus) ? "paused" : "review_pending";
+    case "reviewing":
+      return isLoopPlusDisplayPaused(parentStatus) ? "paused" : "reviewing";
+    case "idle":
+      return isLoopPlusDisplayPaused(parentStatus) ? "paused" : "idle";
+    default: {
+      const unexpected: never = phase;
+      throw new Error(`Unexpected Loop+ phase: ${unexpected}`);
+    }
+  }
+}
+
+function isLoopPlusDisplayPaused(status: string): boolean {
+  return status === "needs-review" || status === "error";
+}
+
+function copyLoopPlusReviewItem(item: LoopPlusReviewItem): Extract<LoopPlusPanelProjection, { ok: true }>["reviewQueue"][number] {
+  return {
+    eventId: item.eventId,
+    subtaskId: item.subtaskId,
+    attemptId: item.attemptId,
+    outcome: item.outcome,
+    detail: item.detail,
+  };
+}
+
+function copyLoopPlusExecutionItem(
+  item: LoopPlusExecutionRecord,
+): Extract<LoopPlusPanelProjection, { ok: true }>["running"][number] {
+  return {
+    subtaskId: item.subtaskId,
+    attemptId: item.attemptId,
+    title: item.title,
+    state: item.state,
   };
 }
 
@@ -917,6 +1033,7 @@ function buildLoopDebateChatPanelRounds(task: LoopTaskRecord): LoopDebateChatPan
 function buildLoopDebateWithExecutionChatPanelRounds(
   task: LoopTaskRecord,
   deps: LoopDebateChatPanelStateBuilderDeps,
+  loopPlus: LoopPlusPanelProjection | null,
 ): LoopDebateChatPanelRound[] {
   const debateRounds = buildLoopDebateChatPanelRounds(task);
   const executionChatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
@@ -925,7 +1042,7 @@ function buildLoopDebateWithExecutionChatPanelRounds(
   if (!shouldIncludeExecution) {
     return debateRounds;
   }
-  return [...debateRounds, buildLoopMainSubChatPanelRound(task, "任务执行群聊", deps)];
+  return [...debateRounds, buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+" : "任务执行群聊", deps, loopPlus)];
 }
 
 function shouldPrioritizeLoopExecutionChatRound(
@@ -940,16 +1057,53 @@ function shouldPrioritizeLoopExecutionChatRound(
 function buildLoopMainSubChatPanelRounds(
   task: LoopTaskRecord,
   deps: LoopDebateChatPanelStateBuilderDeps,
+  loopPlus: LoopPlusPanelProjection | null,
 ): LoopDebateChatPanelRound[] {
-  return [buildLoopMainSubChatPanelRound(task, "主从群聊", deps)];
+  return [buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+" : "主从群聊", deps, loopPlus)];
 }
 
 function buildLoopMainSubChatPanelRound(
   task: LoopTaskRecord,
   label: string,
   deps: LoopDebateChatPanelStateBuilderDeps,
+  loopPlus: LoopPlusPanelProjection | null = null,
 ): LoopDebateChatPanelRound {
   const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
+  if (loopPlus) {
+    const mainTitle = getLoopMainSubChatMainTitle(task);
+    return {
+      key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
+      kind: "execution",
+      label,
+      loopRound: Math.max(1, task.currentRound || 1),
+      debateRound: 0,
+      status: loopPlus.ok ? loopPlus.phase : "invalid",
+      chatFile,
+      startedAt: task.createdAt,
+      completedAt: loopPlus.ok && loopPlus.phase === "completed" ? task.updatedAt : undefined,
+      participants: [
+        {
+          id: "main",
+          title: mainTitle,
+          role: "main",
+          status: loopPlusMemberStatus(loopPlus, "main", "main", task.status),
+          sessionId: task.sessionId ?? null,
+          summary: task.finalSummary,
+          updatedAt: task.updatedAt,
+        },
+        ...task.subTasks.map((subtask, index) => ({
+          id: subtask.id,
+          title: getLoopSubtaskDisplayTitle(index, subtask),
+          role: "subtask",
+          status: loopPlusMemberStatus(loopPlus, "subtask", subtask.id, subtask.status),
+          sessionId: null,
+          summary: subtask.summary,
+          updatedAt: subtask.updatedAt,
+        })),
+      ],
+      moderatorDecisions: [],
+    };
+  }
   const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
   const mainTitle = getLoopMainSubChatMainTitle(task);
@@ -1019,6 +1173,54 @@ function buildLoopMainSubChatActiveSpeaker(
     };
   }
   return undefined;
+}
+
+function loopPlusMemberStatus(
+  projection: LoopPlusPanelProjection,
+  kind: "main" | "subtask",
+  subtaskId: string,
+  recordedStatus: string,
+): string {
+  if (!projection.ok) {
+    return "invalid";
+  }
+  if (kind === "main") {
+    switch (projection.activity) {
+      case "waiting":
+        return "waiting";
+      case "review_pending":
+        return "review_pending";
+      case "reviewing":
+        return "reviewing";
+      case "paused":
+        return "paused";
+      case "stopped":
+        return "stopped";
+      case "completed":
+        return "completed";
+      case "idle":
+        return "idle";
+    }
+  }
+  if (projection.currentReview?.subtaskId === subtaskId) {
+    return projection.activity === "reviewing" ? "reviewing" : "held_review";
+  }
+  if (projection.reviewQueue.some((item) => item.subtaskId === subtaskId)) {
+    return "queued_review";
+  }
+  if (projection.running.some((item) => item.subtaskId === subtaskId)) {
+    return "running";
+  }
+  if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
+    return "pending";
+  }
+  if (projection.seenAttempts.some((item) => item.subtaskId === subtaskId && item.disposition === "reviewed")) {
+    return "reviewed";
+  }
+  if (recordedStatus === "completed") {
+    return "execution_completed";
+  }
+  return "not_in_snapshot";
 }
 
 export function getLoopMainSubChatMainTitle(task: Pick<LoopTaskRecord, "executionMode">): string {

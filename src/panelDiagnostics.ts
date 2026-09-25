@@ -686,6 +686,7 @@ type LoopPromptRunOptions = {
   resumeTaskId: string;
   resumeRequested: boolean;
   preserveLoopOrigin?: boolean;
+  schedulingMode?: "classic" | "event_driven";
 };
 
 type LoopOriginRestoreResult = {
@@ -1250,6 +1251,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
         resumeTaskId: task.id,
         resumeRequested: true,
         preserveLoopOrigin: true,
+        ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
       });
       await refresh(normalizedTaskId);
       return;
@@ -1306,6 +1308,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       targetTabId: target.tabId,
       resumeTaskId: task.id,
       resumeRequested: true,
+      ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
     });
     await refresh(normalizedTaskId);
   };

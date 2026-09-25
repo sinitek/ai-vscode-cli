@@ -5,6 +5,7 @@ import path = require("node:path");
 
 import {
   finalizeLoopSubtaskRun,
+  shouldDelegateSubtaskContinuationToLoopPlus,
   shouldWakeLoopMainAfterSubtaskCompletion,
   type LoopSubtaskCompletionDeps,
 } from "../../loopSubtaskLifecycle";
@@ -156,4 +157,17 @@ test("uses the same completion lifecycle for automatic retries and manual subtas
   assert.match(automaticRetrySource, /const groupResults = await Promise\.all\(groupRuns\)/);
   assert.match(manualResumeSource, /await finalizeLoopSubtaskRun\(\{[\s\S]*tabId: subtaskTarget\?\.tabId \?\? null/);
   assert.match(manualResumeSource, /shouldWakeLoopMainAfterSubtaskCompletion\(latestTask\)/);
+});
+
+test("delegates only event_driven continuations to Loop+ and still wakes classic batches", () => {
+  assert.equal(shouldDelegateSubtaskContinuationToLoopPlus({ schedulingMode: "event_driven" }), true);
+  assert.equal(shouldDelegateSubtaskContinuationToLoopPlus({ schedulingMode: "classic" }), false);
+  assert.equal(shouldDelegateSubtaskContinuationToLoopPlus({}), false);
+  assert.equal(shouldDelegateSubtaskContinuationToLoopPlus(null), false);
+  assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({
+    status: "running",
+    activeSubtaskIds: ["other"],
+    mainAiFailureCount: 0,
+    mainAiFailureLimitReached: false,
+  }), false);
 });

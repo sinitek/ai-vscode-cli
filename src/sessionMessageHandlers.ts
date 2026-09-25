@@ -167,7 +167,7 @@ export type PanelMessageHandlerDeps = {
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
   preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
-  runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean }) => Promise<void>;
+  runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   runGraphPrompt?: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   maybeWakeLoopMainAfterSubtaskContinuation: (

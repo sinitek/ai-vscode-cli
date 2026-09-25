@@ -13,6 +13,7 @@ const {
   buildLoopDebateChatPanelTitle,
   getStrings,
 } = require("../../webview/loopDebatePanelRenderer") as typeof import("../../webview/loopDebatePanelRenderer");
+const { resolveLocale } = require("../../i18n") as typeof import("../../i18n");
 
 test("renders the Loop task prompt before submitted supplemental requirements", () => {
   const html = buildLoopDebateChatPanelHtml(
@@ -212,6 +213,10 @@ function createPanelHarness() {
   return harness;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function createState(overrides: any = {}) {
   return {
     mode: "debate",
@@ -377,13 +382,14 @@ test("covers Loop debate panel lifecycle, title, roster, active speaker, and tra
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.createCalls[0][0], "sinitek-cli-tools.loopDebateChat");
   assert.equal(harness.createCalls[0][3].enableScripts, true);
+  const activeStrings = getStrings(resolveLocale());
   assert.match(harness.panel.title, /task-123456/u);
-  assert.match(harness.panel.webview.html, /Red\/Blue debate group chat/u);
-  assert.match(harness.panel.webview.html, /Judge moderator/u);
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.debateSubtitle)));
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.moderator)));
   assert.match(harness.panel.webview.html, /moderator-session/u);
-  assert.match(harness.panel.webview.html, /Open disagreements/u);
-  assert.match(harness.panel.webview.html, /Final stance/u);
-  assert.match(harness.panel.webview.html, /Stopped/u);
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.openDisagreements)));
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.finalStance)));
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.stopped)));
   assert.match(harness.panel.webview.html, /<pre class="message-text empty">\(empty\)<\/pre>/u);
   harness.messageHandler({ type: "loopDebateChat:refresh" });
   assert.deepEqual(received, [{ type: "loopDebateChat:refresh" }]);
@@ -391,8 +397,8 @@ test("covers Loop debate panel lifecycle, title, roster, active speaker, and tra
   panel.show({ ...state, task: { ...state.task, id: "task-2", canStop: true, canContinue: true } });
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.reveal.preserveFocus, true);
-  assert.match(harness.panel.webview.html, /Stop/u);
-  assert.doesNotMatch(harness.panel.webview.html, />Continue<\/button>/u);
+  assert.match(harness.panel.webview.html, new RegExp(`>${escapeRegExp(activeStrings.stopTask)}</button>`));
+  assert.doesNotMatch(harness.panel.webview.html, new RegExp(`>${escapeRegExp(activeStrings.continueTask)}</button>`));
 
   harness.disposeHandler();
   assert.equal(disposed, 1);
@@ -641,4 +647,198 @@ test("covers Loop panel empty, error, no transcript, execution, and active speak
     "en",
   );
   assert.doesNotMatch(completedTaskHtml, /is thinking/u);
+});
+
+test("keeps classic main/sub and debate panels on the round rhythm", () => {
+  const mainHtml = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({
+      mode: "main_sub",
+      rounds: [{
+        key: "execution-1",
+        kind: "execution",
+        loopRound: 2,
+        debateRound: 0,
+        status: "running",
+        startedAt: Date.now(),
+        activeSpeaker: { kind: "main", id: "main", title: "Main task", dialogueTurn: 2 },
+        participants: [{ id: "main", title: "Main task", role: "main", status: "running" }],
+        moderatorDecisions: [],
+      }],
+      chatMarkdown: "# Loop 主从群聊记录\n",
+    }),
+    "zh-CN",
+  );
+  assert.match(mainHtml, /<h1>Loop 群聊<\/h1>/u);
+  assert.match(mainHtml, /主从群聊/u);
+  assert.match(mainHtml, /<div class="meta-label">当前轮次<\/div>/u);
+  assert.match(mainHtml, /主任务 思考中|Main task 思考中/u);
+  assert.doesNotMatch(mainHtml, /data-loop-plus-/u);
+
+  const debateHtml = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState(),
+    "en",
+  );
+  assert.match(debateHtml, /<h1>Loop Group Chat<\/h1>/u);
+  assert.match(debateHtml, /Red\/Blue debate group chat/u);
+  assert.match(debateHtml, /<div class="meta-label">Current round<\/div>/u);
+  assert.match(debateHtml, /preparing a final stance/u);
+  assert.doesNotMatch(debateHtml, /data-loop-plus-|Loop\+/u);
+
+  assert.equal(getStrings("en").title, "Loop Group Chat");
+  assert.equal(getStrings("zh-CN").title, "Loop 群聊");
+  assert.equal(getStrings("en").titleLoopPlus, "Loop+");
+  assert.equal(getStrings("zh-CN").titleLoopPlus, "Loop+");
+  assert.equal(getStrings("en").loopPlusActivityStopped.includes("Reviewing"), false);
+  assert.equal(getStrings("zh-CN").loopPlusActivityStopped.includes("正在验收"), false);
+  assert.equal(getStrings("en").loopPlusActivityPaused.includes("Reviewing"), false);
+  assert.equal(getStrings("zh-CN").loopPlusActivityPaused.includes("正在验收"), false);
+  assert.match(getStrings("en").loopPlusActivityPaused, /paused until you continue/u);
+  assert.match(getStrings("zh-CN").loopPlusActivityPaused, /自动验收已暂停，需要继续/u);
+  assert.equal(getStrings("en").loopPlusStatusPaused, "Automatic review paused");
+  assert.equal(getStrings("zh-CN").loopPlusStatusPaused, "自动验收已暂停");
+});
+
+test("does not show a generating speaker for an explicit Loop+ projection", () => {
+  const loopPlus = {
+    ok: true as const,
+    schedulingMode: "event_driven" as const,
+    activity: "reviewing" as const,
+    phase: "reviewing" as const,
+    wakePending: false,
+    currentReview: {
+      eventId: "loop-plus-finish#1:A3:a-1",
+      subtaskId: "A",
+      attemptId: "a-1",
+      outcome: "completed" as const,
+      detail: "<i>report</i>",
+    },
+    reviewQueue: [{
+      eventId: "loop-plus-finish#1:B3:b-1",
+      subtaskId: "B",
+      attemptId: "b-1",
+      outcome: "failed" as const,
+      detail: null,
+    }],
+    currentReviewCount: 1,
+    reviewQueueCount: 1,
+    visibleReviewCount: 2,
+    running: [{ subtaskId: "D", attemptId: "d-1", title: null, state: "running" as const }],
+    pending: [{ subtaskId: "E", attemptId: "e-1", title: "Echo", state: "pending" as const }],
+    runningCount: 1,
+    pendingCount: 1,
+    seenAttempts: [],
+  };
+  for (const locale of ["zh-CN", "en"] as const) {
+    const page = buildLoopDebateChatPanelHtml(
+      { cspSource: "self" } as any,
+      createState({
+        mode: "main_sub",
+        loopPlus,
+        task: { ...createState().task, status: "running", currentRound: 9, canStop: true, canContinue: false },
+        rounds: [{
+          key: "execution-1",
+          kind: "execution",
+          loopRound: 9,
+          debateRound: 0,
+          status: "running",
+          startedAt: Date.now(),
+          activeSpeaker: { kind: "main", id: "main", title: "Main task" },
+          participants: [
+            { id: "main", title: "Main task", role: "main", status: "reviewing" },
+            { id: "D", title: "Delta", role: "subtask", status: "running" },
+          ],
+          moderatorDecisions: [],
+        }],
+        chatMarkdown: "# Loop chat\n",
+      }),
+      locale,
+    );
+    assert.match(page, /<h1>Loop\+<\/h1>/u);
+    assert.match(page, /data-loop-plus-role="current" data-loop-plus-subtask="A"/u);
+    assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
+    assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);
+    assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
+    assert.match(page, /&lt;i&gt;report&lt;\/i&gt;/u);
+    assert.doesNotMatch(page, /<i>report<\/i>/u);
+    assert.doesNotMatch(page, /class="message [^"]*thinking|思考中| is thinking/u);
+    assert.doesNotMatch(page, /<div class="meta-label">(?:当前轮次|Current round)<\/div>/u);
+    assert.match(page, /<button[^>]*data-action="stopTask"/u);
+    assert.doesNotMatch(page, /<button[^>]*data-action="continueTask"/u);
+  }
+});
+
+test("renders an explicit paused Loop+ projection without a reviewing or thinking bubble", () => {
+  const loopPlus = {
+    ok: true as const,
+    schedulingMode: "event_driven" as const,
+    activity: "paused" as const,
+    phase: "reviewing" as const,
+    wakePending: false,
+    currentReview: {
+      eventId: "loop-plus-finish#1:A3:a-1",
+      subtaskId: "A",
+      attemptId: "a-1",
+      outcome: "completed" as const,
+      detail: null,
+    },
+    reviewQueue: [{
+      eventId: "loop-plus-finish#1:B3:b-1",
+      subtaskId: "B",
+      attemptId: "b-1",
+      outcome: "failed" as const,
+      detail: null,
+    }],
+    currentReviewCount: 1,
+    reviewQueueCount: 1,
+    visibleReviewCount: 2,
+    running: [{ subtaskId: "D", attemptId: "d-1", title: "Delta", state: "running" as const }],
+    pending: [{ subtaskId: "E", attemptId: "e-1", title: "Echo", state: "pending" as const }],
+    runningCount: 1,
+    pendingCount: 1,
+    seenAttempts: [],
+  };
+  for (const locale of ["zh-CN", "en"] as const) {
+    const page = buildLoopDebateChatPanelHtml(
+      { cspSource: "self" } as any,
+      createState({
+        mode: "main_sub",
+        loopPlus,
+        task: { ...createState().task, status: "needs-review", canContinue: true, canStop: false },
+        rounds: [{
+          key: "execution-1",
+          kind: "execution",
+          loopRound: 4,
+          debateRound: 0,
+          status: "reviewing",
+          startedAt: Date.now(),
+          activeSpeaker: { kind: "main", id: "main", title: "Main task" },
+          participants: [
+            { id: "main", title: "Main task", role: "main", status: "paused" },
+            { id: "A", title: "Alpha", role: "subtask", status: "held_review" },
+          ],
+          moderatorDecisions: [],
+        }],
+        chatMarkdown: "# Loop chat\n",
+      }),
+      locale,
+    );
+    assert.match(page, /data-loop-plus-status="paused"/u);
+    assert.match(page, /data-loop-plus-phase="reviewing"/u);
+    assert.match(page, /data-loop-plus-role="current" data-loop-plus-subtask="A"/u);
+    assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
+    assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);
+    assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
+    assert.doesNotMatch(page, /class="message [^"]*thinking|思考中| is thinking|正在验收|Reviewing /u);
+    assert.match(page, /<button[^>]*data-action="continueTask"/u);
+    assert.doesNotMatch(page, /<button[^>]*data-action="stopTask"/u);
+    if (locale === "zh-CN") {
+      assert.match(page, /自动验收已暂停，需要继续后才会恢复/u);
+      assert.match(page, /验收已暂停/u);
+    } else {
+      assert.match(page, /Automatic review is paused until you continue/u);
+      assert.match(page, /Automatic review paused/u);
+    }
+  }
 });

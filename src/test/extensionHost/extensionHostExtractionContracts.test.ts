@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
+import ts = require("typescript");
 
 import { createLoopOrchestrationHost } from "../../extensionHost/loopOrchestration";
 import {
@@ -12,9 +13,201 @@ import {
 } from "../../extensionHost/openCodeSubagentRuntime";
 import { createPromptParallelRuntimeHost } from "../../extensionHost/promptParallelRuntime";
 import type { OpenCodeRuntimePreparation } from "../../extensionHost/promptExecutionShared";
+import { attachConversationTabLoopSchedulingMode } from "../../sessionTabs";
+import type { ConversationTabSummary } from "../../webview/types";
 
 function readSource(...relativePath: string[]): string {
   return fs.readFileSync(path.join(process.cwd(), ...relativePath), "utf8");
+}
+
+function parseTypeScript(fileName: string, sourceText: string): ts.SourceFile {
+  return ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+}
+
+function findFunctionByName(root: ts.Node, name: string): ts.FunctionDeclaration | undefined {
+  let declaration: ts.FunctionDeclaration | undefined;
+  const visit = (node: ts.Node): void => {
+    if (declaration) {
+      return;
+    }
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
+      declaration = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return declaration;
+}
+
+function requireFunction(root: ts.Node, name: string, label: string): ts.FunctionDeclaration {
+  const declaration = findFunctionByName(root, name);
+  if (!declaration) {
+    assert.fail(`${label} is missing function ${name}`);
+  }
+  return declaration;
+}
+
+function isIdentifierCall(node: ts.Node, name: string): node is ts.CallExpression {
+  return ts.isCallExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === name;
+}
+
+function hasIdentifierCall(root: ts.Node, name: string): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+    if (isIdentifierCall(node, name)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+function hasMethodCallOnIdentifierCall(root: ts.Node, calleeName: string, methodName: string): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+    if (
+      ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === methodName
+      && isIdentifierCall(node.expression.expression, calleeName)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+function isTaskCliAccess(node: ts.Expression): boolean {
+  return ts.isPropertyAccessExpression(node)
+    && node.name.text === "cli"
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === "task";
+}
+
+function referencesInteractiveMode(expression: ts.Expression, mode: string): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+    if (
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+    ) {
+      const leftIsMode = ts.isPropertyAccessExpression(node.left) && node.left.name.text === "interactiveMode";
+      const rightIsMode = ts.isPropertyAccessExpression(node.right) && node.right.name.text === "interactiveMode";
+      const leftIsLiteral = ts.isStringLiteral(node.left) && node.left.text === mode;
+      const rightIsLiteral = ts.isStringLiteral(node.right) && node.right.text === mode;
+      if ((leftIsMode && rightIsLiteral) || (rightIsMode && leftIsLiteral)) {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(expression);
+  return found;
+}
+
+function assertScheduledTaskPrefersTaskConfig(executeScheduled: ts.FunctionDeclaration): void {
+  let matched = false;
+  const visit = (node: ts.Node): void => {
+    if (matched || !isIdentifierCall(node, "resolveScheduledTaskExecutionConfigForTask")) {
+      ts.forEachChild(node, visit);
+      return;
+    }
+    const [taskArgument, interactiveArgument, loopModeArgument, ...rest] = node.arguments;
+    matched = rest.length === 0
+      && !!taskArgument
+      && ts.isIdentifier(taskArgument)
+      && taskArgument.text === "task"
+      && !!interactiveArgument
+      && isIdentifierCall(interactiveArgument, "getWorkspaceInteractiveMode")
+      && interactiveArgument.arguments.length === 1
+      && isTaskCliAccess(interactiveArgument.arguments[0])
+      && !!loopModeArgument
+      && isIdentifierCall(loopModeArgument, "getWorkspaceLoopExecutionMode")
+      && loopModeArgument.arguments.length === 1
+      && isTaskCliAccess(loopModeArgument.arguments[0]);
+    if (!matched) {
+      ts.forEachChild(node, visit);
+    }
+  };
+  visit(executeScheduled);
+  assert.equal(matched, true, "scheduled execution must resolve the task config before workspace fallbacks");
+}
+
+function assertScheduledModeDispatch(executeScheduled: ts.FunctionDeclaration): void {
+  let loopBranch: ts.IfStatement | undefined;
+  const visit = (node: ts.Node): void => {
+    if (loopBranch) {
+      return;
+    }
+    if (
+      ts.isIfStatement(node)
+      && referencesInteractiveMode(node.expression, "loop")
+      && referencesInteractiveMode(node.expression, "loop_plus")
+    ) {
+      loopBranch = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(executeScheduled);
+  if (!loopBranch) {
+    assert.fail("scheduled execution is missing the loop/loop_plus branch");
+  }
+  assert.equal(hasIdentifierCall(loopBranch.thenStatement, "schedulingModeForInteractiveMode"), true);
+  assert.equal(hasIdentifierCall(loopBranch.thenStatement, "runLoopPrompt"), true);
+  assert.equal(hasIdentifierCall(loopBranch.thenStatement, "runGraphPrompt"), false);
+  const graphBranch = loopBranch.elseStatement;
+  if (!graphBranch || !ts.isIfStatement(graphBranch)) {
+    assert.fail("scheduled graph branch must stay on the loop else-if");
+  }
+  assert.equal(referencesInteractiveMode(graphBranch.expression, "graph"), true);
+  assert.equal(hasIdentifierCall(graphBranch.thenStatement, "runGraphPrompt"), true);
+  assert.equal(hasIdentifierCall(graphBranch.thenStatement, "runLoopPrompt"), false);
+  if (!graphBranch.elseStatement) {
+    assert.fail("scheduled non-loop/non-graph execution must keep the default prompt branch");
+  }
+  assert.equal(hasIdentifierCall(graphBranch.elseStatement, "runPrompt"), true);
+}
+
+function assertLoopPlusOrchestrationChain(extensionFile: ts.SourceFile, adapterFile: ts.SourceFile): void {
+  const runtimeAdapter = requireFunction(extensionFile, "getLoopPlusRuntimeAdapter", "extension.ts");
+  assert.equal(hasIdentifierCall(runtimeAdapter, "createLoopPlusRuntimeAdapter"), true);
+  const orchestrationAccessor = requireFunction(extensionFile, "getLoopPlusOrchestrationHost", "extension.ts");
+  assert.equal(
+    hasMethodCallOnIdentifierCall(orchestrationAccessor, "getLoopPlusRuntimeAdapter", "host"),
+    true,
+  );
+  const eventDrivenPrompt = requireFunction(extensionFile, "runEventDrivenLoopPrompt", "extension.ts");
+  assert.equal(
+    hasMethodCallOnIdentifierCall(eventDrivenPrompt, "getLoopPlusRuntimeAdapter", "runEventDriven"),
+    true,
+  );
+  const loopOrchestration = requireFunction(extensionFile, "runLoopPromptOrchestration", "extension.ts");
+  assert.equal(hasIdentifierCall(loopOrchestration, "runEventDrivenLoopPrompt"), true);
+
+  const adapterFactory = requireFunction(adapterFile, "createLoopPlusRuntimeAdapter", "loopPlusRuntimeAdapter.ts");
+  const adapterHost = requireFunction(adapterFactory, "host", "loopPlusRuntimeAdapter.ts");
+  assert.equal(hasIdentifierCall(adapterHost, "createLoopPlusOrchestrationHost"), true);
+  const adapterRun = requireFunction(adapterFactory, "runEventDriven", "loopPlusRuntimeAdapter.ts");
+  assert.equal(hasMethodCallOnIdentifierCall(adapterRun, "host", "tryRun"), true);
 }
 
 function createOpenCodeRuntimePreparation(
@@ -87,8 +280,18 @@ test("scheduled tasks resolve their execution mode from the selected task config
     /const executionConfig = resolveScheduledTaskExecutionConfigForTask\(\s*task,\s*getWorkspaceInteractiveMode\(task\.cli\),\s*getWorkspaceLoopExecutionMode\(task\.cli\),/,
   );
   assert.match(extensionSource, /const modelPrompt = executionConfig\.interactiveMode === "graph"/);
-  assert.match(extensionSource, /if \(executionConfig\.interactiveMode === "loop"\)/);
+  assert.match(extensionSource, /if \(executionConfig\.interactiveMode === "loop" \|\| executionConfig\.interactiveMode === "loop_plus"\)/);
   assert.match(extensionSource, /else if \(executionConfig\.interactiveMode === "graph"\)/);
+  assert.match(extensionSource, /runEventDrivenLoopPrompt/);
+  const extensionFile = parseTypeScript("extension.ts", extensionSource);
+  const adapterFile = parseTypeScript(
+    "loopPlusRuntimeAdapter.ts",
+    readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts"),
+  );
+  const executeScheduled = requireFunction(extensionFile, "executeScheduledTask", "extension.ts");
+  assertScheduledTaskPrefersTaskConfig(executeScheduled);
+  assertScheduledModeDispatch(executeScheduled);
+  assertLoopPlusOrchestrationChain(extensionFile, adapterFile);
 });
 
 test("keeps a persisted running Loop main task stoppable without a direct runner", () => {
@@ -364,4 +567,24 @@ test("interactive prompt runtime source contract lives in extensionHost/promptIn
   assert.match(interactiveRuntimeSource, /onThreadId: \(threadId\) => \{[\s\S]*updateSessionForNewRun\(threadId/);
   assert.match(interactiveRuntimeSource, /onSessionId: \(newSessionId: string\) => \{[\s\S]*updateSessionForNewRun\(newSessionId\)/);
   assert.match(interactiveRuntimeSource, /return \{ runPromptInteractive \};/);
+});
+
+test("conversation tab summaries carry the persisted Loop scheduling mode", () => {
+  const summary: ConversationTabSummary = attachConversationTabLoopSchedulingMode({
+    id: "tab-1",
+    cli: "codex",
+    sessionId: null,
+    createdAt: 1,
+    loopTaskRole: "main",
+    loopTaskId: "task-1",
+  }, undefined);
+  assert.equal(summary.loopSchedulingMode, "classic");
+  const eventDriven: ConversationTabSummary = {
+    ...summary,
+    loopSchedulingMode: "event_driven",
+  };
+  assert.equal(eventDriven.loopSchedulingMode, "event_driven");
+  const hostSource = readSource("src", "extensionHost", "sessionTabs.ts");
+  assert.equal(hostSource.includes("readLoopTaskRecord(summary.loopTaskId)?.schedulingMode"), true);
+  assert.equal(hostSource.includes("attachConversationTabLoopSchedulingMode("), true);
 });

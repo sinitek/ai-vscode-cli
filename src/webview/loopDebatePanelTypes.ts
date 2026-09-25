@@ -1,3 +1,5 @@
+import type { ContinueModelChoice } from "../continueModelChoice";
+
 export type LoopDebateChatPanelParticipant = {
   id: string;
   title: string;
@@ -46,10 +48,73 @@ export type LoopDebateChatPanelRound = {
   openDisagreementCount?: number;
 };
 
-import type { ContinueModelChoice } from "../continueModelChoice";
+export type LoopPlusPanelExecutionItem = {
+  subtaskId: string;
+  attemptId: string;
+  title: string | null;
+  state: "running" | "pending";
+};
+
+export type LoopPlusPanelReviewItem = {
+  eventId: string;
+  subtaskId: string;
+  attemptId: string;
+  outcome: "completed" | "failed" | "stopped";
+  detail: string | null;
+};
+
+export type LoopPlusPanelSeenAttempt = {
+  subtaskId: string;
+  attemptId: string;
+  disposition: "open" | "finished" | "reviewed";
+};
+
+export type LoopPlusPanelActivity =
+  | "waiting"
+  | "review_pending"
+  | "reviewing"
+  | "paused"
+  | "stopped"
+  | "completed"
+  | "idle"
+  | "invalid";
+
+export type LoopPlusPanelPhase =
+  | "idle"
+  | "waiting"
+  | "review_ready"
+  | "reviewing"
+  | "stopped"
+  | "completed"
+  | "invalid";
+
+export type LoopPlusPanelProjection = {
+  ok: true;
+  schedulingMode: "event_driven";
+  activity: Exclude<LoopPlusPanelActivity, "invalid">;
+  phase: Exclude<LoopPlusPanelPhase, "invalid">;
+  wakePending: boolean;
+  currentReview: LoopPlusPanelReviewItem | null;
+  reviewQueue: LoopPlusPanelReviewItem[];
+  currentReviewCount: number;
+  reviewQueueCount: number;
+  visibleReviewCount: number;
+  running: LoopPlusPanelExecutionItem[];
+  pending: LoopPlusPanelExecutionItem[];
+  runningCount: number;
+  pendingCount: number;
+  seenAttempts: LoopPlusPanelSeenAttempt[];
+} | {
+  ok: false;
+  schedulingMode: "event_driven";
+  activity: "invalid";
+  phase: "invalid";
+  error: string;
+};
 
 export type LoopDebateChatPanelState = {
   mode: "main_sub" | "debate";
+  loopPlus?: LoopPlusPanelProjection;
   continueModels?: ContinueModelChoice;
   task: {
     id: string;

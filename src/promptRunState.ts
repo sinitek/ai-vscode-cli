@@ -136,10 +136,13 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
 }
 
 export function isInteractiveMode(value: unknown): value is InteractiveMode {
-  return value === "coding" || value === "plan" || value === "loop" || value === "graph";
+  return value === "coding" || value === "plan" || value === "loop" || value === "graph" || value === "loop_plus";
 }
 
 export function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
+  if (value === "loop_plus") {
+    return "loop_plus";
+  }
   if (value === "graph") {
     return "graph";
   }

@@ -18,6 +18,7 @@ type TabSummary = {
   loopTaskRunning?: boolean;
   loopTaskStatus?: string;
   loopMainTabCloseLocked?: boolean;
+  loopSchedulingMode?: string;
 };
 
 function extractFunctionSource(script: string, name: string): string {
@@ -230,6 +231,11 @@ test("automatically selects Loop mode only for a Loop main task tab", () => {
   const ordinaryTab = { id: "ordinary-tab" };
 
   assert.equal(resolveWebviewMode(mainTab), "loop");
+  assert.equal(resolveWebviewMode({ ...mainTab, loopSchedulingMode: "classic" }), "loop");
+  assert.equal(resolveWebviewMode({ ...mainTab, loopSchedulingMode: " event_driven " }), "loop_plus");
+  assert.equal(resolveWebviewMode({ ...mainTab, loopSchedulingMode: "event_driven" }), "loop_plus");
+  assert.equal(resolveWebviewMode({ ...mainTab, id: "other-main", loopSchedulingMode: "unknown" }), "loop");
+  assert.equal(resolveWebviewMode({ ...subtaskTab, loopSchedulingMode: "event_driven" }), "coding");
   assert.equal(resolveAutoInteractiveModeForLoopTask("main", "task-1"), "loop");
   assert.equal(resolveWebviewMode(subtaskTab), "coding");
   assert.equal(resolveAutoInteractiveModeForLoopTask("subtask", "task-1"), "coding");

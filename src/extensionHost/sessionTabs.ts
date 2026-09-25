@@ -3,11 +3,11 @@ import { CLI_LIST } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
-import { bindLoopTaskToSession, buildLoopSessionIdsByCli } from "../loopTaskStore";
+import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord } from "../loopTaskStore";
 import { normalizeLoopDebateSessionId } from "../loopDebate";
 import { logError } from "../logger";
 import { buildGraphRunIdsBySessionByCli, listGraphRuns } from "../graph/graphStore";
-import { buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
+import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "./graphRuntime";
 import type { GraphRunRecord } from "../graph/types";
 
@@ -226,14 +226,20 @@ function buildConversationTabsState(): {
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
-      const graphRunId = normalizeChatGraphRunId(summary.graphRunId)
-        ?? resolveConversationTabGraphRunId(tabsById.get(summary.id) ?? null, graphRunIdsBySessionByCli);
+      const withSchedulingMode = summary.loopTaskId
+        ? attachConversationTabLoopSchedulingMode(
+          summary,
+          readLoopTaskRecord(summary.loopTaskId)?.schedulingMode,
+        )
+        : summary;
+      const graphRunId = normalizeChatGraphRunId(withSchedulingMode.graphRunId)
+        ?? resolveConversationTabGraphRunId(tabsById.get(withSchedulingMode.id) ?? null, graphRunIdsBySessionByCli);
       if (!graphRunId) {
-        return summary;
+        return withSchedulingMode;
       }
       const graphRun = graphRunsById.get(graphRunId) ?? null;
       return {
-        ...summary,
+        ...withSchedulingMode,
         graphRunId,
         graphRunStatus: graphRun?.status,
         graphRunBlocked: graphRun ? isGraphRunBlockedForMainTab(graphRun) : undefined,

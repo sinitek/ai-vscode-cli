@@ -154,11 +154,11 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
   ]);
   assert.match(
     html,
-    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="Accept each finished subtask immediately, and queue other completions\.">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
-    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="Accept each finished subtask immediately, and queue other completions\.">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
@@ -295,6 +295,10 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "CodeGraph",
     "Rules",
     "How to Choose",
+    "Loop+",
+    "visible queue",
+    "execution end is not acceptance complete",
+    "Accept each finished subtask immediately, and queue other completions.",
     "Vibe",
     "Loop",
     "Graph",
@@ -319,6 +323,10 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "工具设置",
     "规则配置",
     "如何选择",
+    "Loop+",
+    "可见队列",
+    "执行结束不等于验收完成",
+    "单个子任务执行结束后立即验收，其它完成进入队列。",
     "Vibe",
     "Loop",
     "Graph",
@@ -331,6 +339,10 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Codex Loop/Graph 主模型选择",
     "Codex Loop/Graph 子模型选择",
   ]);
+  assert.doesNotMatch(englishHtml, /automatic conflict resolution|没有自动解冲突/);
+  assert.doesNotMatch(chineseHtml, /自动解冲突|不能自动解冲突/);
+  assert.match(englishHtml, /id="helpTabInstall"/);
+  assert.match(chineseHtml, /id="helpPanelInstall" class="help-panel active"/);
 });
 
 test("keeps required anchors when optional resource inputs are empty", () => {

@@ -224,6 +224,7 @@ export type ConversationTabSummary = {
   loopTaskId?: string;
   loopTaskRunning?: boolean;
   loopTaskStatus?: LoopTaskStatus;
+  loopSchedulingMode?: "classic" | "event_driven";
   loopMainTabCloseLocked?: boolean;
   graphRunId?: string;
   graphRunStatus?: GraphRunStatus;

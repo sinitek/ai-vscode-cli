@@ -218,6 +218,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (mode === "loop") {
           return t("interactiveModeLoop");
         }
+        if (mode === "loop_plus") {
+          return t("interactiveModeLoopPlus");
+        }
         if (mode === "graph") {
           return t("interactiveModeGraph");
         }
@@ -1176,25 +1179,26 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         closeRunConflictOverlay();
       });
 
-      elements.queuePrompt.addEventListener("click", () => {
+      function queueConflictPromptForLater() {
         const runtimeState = getActiveConversationRuntimeState({ create: false });
         const promptPayload = normalizePromptPayload(runtimeState ? runtimeState.pendingRunPrompt : null);
         if (!promptPayload) {
           closeRunConflictOverlay();
-          return;
+          return false;
         }
         queuePromptForLater(promptPayload);
         elements.promptInput.value = "";
         closeRunConflictOverlay();
         resetPromptContextForNextPrompt();
-      });
+        return true;
+      }
 
-      elements.pauseAndSend.addEventListener("click", () => {
+      function pauseAndSendConflictPrompt() {
         const runtimeState = getActiveConversationRuntimeState({ create: false });
         const promptPayload = normalizePromptPayload(runtimeState ? runtimeState.pendingRunPrompt : null);
         if (!promptPayload) {
           closeRunConflictOverlay();
-          return;
+          return false;
         }
         elements.promptInput.value = "";
         closeRunConflictOverlay();
@@ -1207,6 +1211,15 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (sent) {
           resetPromptContextForNextPrompt();
         }
+        return sent;
+      }
+
+      elements.queuePrompt.addEventListener("click", () => {
+        queueConflictPromptForLater();
+      });
+
+      elements.pauseAndSend.addEventListener("click", () => {
+        pauseAndSendConflictPrompt();
       });
 
       elements.queueIndicator.addEventListener("click", () => {

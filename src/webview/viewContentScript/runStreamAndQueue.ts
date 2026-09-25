@@ -643,7 +643,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           showToast(t("toastQueueEmptyPrompt"));
           return;
         }
-        const currentPayload = normalizePromptPayload(runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex]);
+        const currentPayload = typeof normalizePromptPayloadWithModelFields === "function"
+          ? normalizePromptPayloadWithModelFields(runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex])
+          : normalizePromptPayload(runtimeState.pendingPromptQueue[runtimeState.queueEditingIndex]);
         if (!currentPayload) {
           runtimeState.queueEditingIndex = -1;
           runtimeState.queueEditingDraft = "";
@@ -864,9 +866,12 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState) {
           return;
         }
+        const interactiveMode = normalizedPayload.interactiveMode
+          ? normalizeInteractiveMode(normalizedPayload.interactiveMode)
+          : normalizeInteractiveMode(state.interactiveMode);
         const queuedPayload = {
           ...normalizedPayload,
-          interactiveMode: normalizeInteractiveMode(state.interactiveMode),
+          interactiveMode,
           skipPromptHistory: true,
         };
         runtimeState.pendingPromptQueue.push(queuedPayload);

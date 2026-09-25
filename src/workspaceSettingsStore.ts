@@ -85,6 +85,10 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       const normalized: Partial<Record<CliName, InteractiveMode>> = {};
       CLI_LIST.forEach((cli) => {
         const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
+        if (mode === "loop_plus") {
+          normalized[cli] = "loop_plus";
+          return;
+        }
         if (options.isInteractiveMode(mode) || isLegacyLoopInteractiveMode(mode)) {
           normalized[cli] = isLegacyLoopInteractiveMode(mode)
             ? "loop"

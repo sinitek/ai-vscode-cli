@@ -40,6 +40,11 @@ export type LoopTaskRole = "main" | "subtask";
 export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
 export type LoopRunStatus = "end" | "error" | "stopped";
 export type LoopTaskKind = "development" | "non_development";
+export type LoopSchedulingMode = "classic" | "event_driven";
+
+export function resolveLoopSchedulingMode(value: unknown): LoopSchedulingMode {
+  return typeof value === "string" && value.trim() === "event_driven" ? "event_driven" : "classic";
+}
 
 export type LoopSubtaskRecord = {
   id: string;
@@ -114,6 +119,8 @@ export type LoopTaskRecord = {
   rootPrompt: string;
   taskKind?: LoopTaskKind;
   executionMode?: LoopExecutionMode;
+  schedulingMode?: LoopSchedulingMode;
+  loopPlus?: unknown;
   status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -749,6 +756,33 @@ export function bindLoopTaskToRuntimeTarget(
   });
 }
 
+
+function normalizeStoredLoopSchedulingMode(value: unknown): LoopSchedulingMode | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (normalized === "classic" || normalized === "event_driven") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function preserveLoopPlusSnapshot(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    if (typeof serialized !== "string") {
+      return undefined;
+    }
+    return JSON.parse(serialized) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
@@ -791,6 +825,8 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   const originProfile = normalizeLoopTaskOriginProfile((raw as { originProfile?: unknown }).originProfile);
   const debateRounds = normalizeLoopDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
+  const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
+  const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
   return {
     id: raw.id,
     cli,
@@ -799,6 +835,8 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     rootPrompt: raw.rootPrompt,
     ...(taskKind ? { taskKind } : {}),
     executionMode: normalizeLoopExecutionMode((raw as { executionMode?: unknown }).executionMode),
+    ...(schedulingMode ? { schedulingMode } : {}),
+    ...(loopPlus !== undefined ? { loopPlus } : {}),
     status,
     createdAt,
     updatedAt,

@@ -129,7 +129,7 @@ function buildHarness() {
     loopExecutionModeSelect: createControl(),
   };
   const normalizeInteractiveMode = (value: string) => (
-    value === "loop" || value === "graph" ? value : "coding"
+    value === "loop" || value === "graph" || value === "loop_plus" ? value : "coding"
   );
   const modelFunctionSource = [
     "cliSupportsManagedModelSelection",
@@ -395,4 +395,45 @@ test("saves automatic compact setting while OpenCode is selected", () => {
     key: "autoCompactContextAfterRun",
     value: true,
   });
+});
+
+test("keeps Loop+ role controls without exposing debate for OpenCode or Codex", () => {
+  const harness = buildHarness();
+
+  harness.elements.interactiveModeSelect.dispatchChange("loop_plus");
+  assert.equal(harness.state.interactiveMode, "loop_plus");
+  assert.deepEqual(harness.postedMessages[0], {
+    type: "updateSetting",
+    key: "interactiveMode.opencode",
+    value: "loop_plus",
+  });
+  assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
+  assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
+
+  harness.state.currentCli = "codex";
+  harness.state.interactive = { supported: true, enabled: true };
+  harness.elements.interactiveModeSelect.dispatchChange("loop_plus");
+  assert.equal(harness.state.interactiveMode, "loop_plus");
+  assert.deepEqual(harness.postedMessages[1], {
+    type: "updateSetting",
+    key: "interactiveMode.codex",
+    value: "loop_plus",
+  });
+  assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopMainThinkingMode.style.display, "");
+  assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.style.display, "");
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
+  assert.equal(harness.elements.modelSelect.style.display, "none");
+  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
+  assert.equal(harness.postedMessages.some((message) => (
+    message
+    && typeof message === "object"
+    && "key" in message
+    && String((message as { key?: string }).key).startsWith("loopExecutionMode.")
+  )), false);
 });

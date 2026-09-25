@@ -1,5 +1,6 @@
 import { supportsCliManagedModelSelection } from "./cli/modelArgs";
 import { normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
+import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
@@ -314,7 +315,8 @@ export async function handleSendPromptMessage(
   const requestedInteractiveMode = deps.isInteractiveMode(message.interactiveMode)
     ? deps.normalizeVisibleInteractiveMode(message.interactiveMode)
     : undefined;
-  const effectiveInteractiveMode = isLoopSubtaskContinuation && requestedInteractiveMode === "loop"
+  const requestedLoopFamily = requestedInteractiveMode === "loop" || requestedInteractiveMode === "loop_plus";
+  const effectiveInteractiveMode = isLoopSubtaskContinuation && requestedLoopFamily
     ? "coding"
     : requestedInteractiveMode;
 
@@ -347,7 +349,8 @@ export async function handleSendPromptMessage(
     return;
   }
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
-  const shouldRunLoop = effectiveInteractiveMode === "loop";
+  const loopPlusSchedulingMode = schedulingModeForInteractiveMode(effectiveInteractiveMode);
+  const shouldRunLoop = effectiveInteractiveMode === "loop" || loopPlusSchedulingMode === "event_driven";
   const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;
   const promptModels = resolvePromptRoleModels(message, targetCli, activeConfigId, deps, {
     includeLoopModels,
@@ -402,7 +405,7 @@ export async function handleSendPromptMessage(
         loopSubtaskContext.subtaskId
       )?.endedAt ?? 0)
     : 0;
-  if (isLoopSubtaskContinuation && requestedInteractiveMode === "loop") {
+  if (isLoopSubtaskContinuation && requestedLoopFamily) {
     void logInfo("loop-subtask-manual-continue-forced-coding", {
       cli: targetCli,
       tabId: promptTargetTabId,
@@ -421,6 +424,7 @@ export async function handleSendPromptMessage(
       targetTabId: promptTargetTabId,
       resumeTaskId: loopResumeTask?.id ?? null,
       resumeRequested: loopResumeRequested,
+      ...(loopPlusSchedulingMode ? { schedulingMode: loopPlusSchedulingMode } : {}),
     });
   } else if (shouldRunGraph) {
     if (!deps.runGraphPrompt) {

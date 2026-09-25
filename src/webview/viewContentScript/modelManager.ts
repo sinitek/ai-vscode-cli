@@ -208,12 +208,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
 
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
         const normalizedMode = normalizeInteractiveMode(interactiveMode);
-        return cliSupportsLoopRoleModelSelection(cli) && (normalizedMode === "loop" || normalizedMode === "graph");
+        return cliSupportsLoopRoleModelSelection(cli) && (
+          normalizedMode === "loop" || normalizedMode === "graph" || normalizedMode === "loop_plus"
+        );
       }
 
       function isOpenCodeRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
         const normalizedMode = normalizeInteractiveMode(interactiveMode);
-        return cli === "opencode" && (normalizedMode === "loop" || normalizedMode === "graph");
+        return cli === "opencode" && (
+          normalizedMode === "loop" || normalizedMode === "graph" || normalizedMode === "loop_plus"
+        );
       }
 
       function getLoopRoleModelsForCli(cli, role) {

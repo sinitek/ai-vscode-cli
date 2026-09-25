@@ -1,6 +1,6 @@
-import { CliName, CLI_LIST, InteractiveMode } from "./cli/types";
+import { CliName, CLI_LIST, InteractiveMode, LOOP_PLUS_INTERACTIVE_MODE } from "./cli/types";
 import { ConversationTabSummary, ChatMessage } from "./webview/types";
-import { type LoopTaskStatus } from "./loopTaskStore";
+import { resolveLoopSchedulingMode, type LoopSchedulingMode, type LoopTaskStatus } from "./loopTaskStore";
 import { type SessionStore } from "./sessionStore";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
@@ -57,10 +57,42 @@ export type SessionTabsController = ReturnType<typeof createSessionTabsControlle
 export function resolveAutoInteractiveModeForLoopTask(
   taskRole: LoopConversationTabContext["taskRole"],
   loopTaskId: LoopConversationTabContext["loopTaskId"],
+  schedulingMode?: unknown,
 ): InteractiveMode {
-  return taskRole === "main" && typeof loopTaskId === "string" && loopTaskId.trim()
-    ? "loop"
-    : "coding";
+  if (!(taskRole === "main" && typeof loopTaskId === "string" && loopTaskId.trim())) {
+    return "coding";
+  }
+  return resolveLoopSchedulingMode(schedulingMode) === "event_driven"
+    ? LOOP_PLUS_INTERACTIVE_MODE
+    : "loop";
+}
+
+export function resolveConversationTabAutoInteractiveMode(input: {
+  hasGraphRun: boolean;
+  taskRole: LoopConversationTabContext["taskRole"];
+  loopTaskId: LoopConversationTabContext["loopTaskId"];
+  schedulingMode?: unknown;
+}): InteractiveMode {
+  if (input.hasGraphRun) {
+    return "graph";
+  }
+  return resolveAutoInteractiveModeForLoopTask(input.taskRole, input.loopTaskId, input.schedulingMode);
+}
+
+export function attachConversationTabLoopSchedulingMode<T extends object>(
+  summary: T,
+  schedulingMode: unknown,
+): T & { loopSchedulingMode?: LoopSchedulingMode } {
+  const loopTaskId = "loopTaskId" in summary
+    ? (summary as { loopTaskId?: unknown }).loopTaskId
+    : undefined;
+  if (typeof loopTaskId !== "string" || !loopTaskId.trim()) {
+    return summary;
+  }
+  return {
+    ...summary,
+    loopSchedulingMode: resolveLoopSchedulingMode(schedulingMode),
+  };
 }
 
 export function buildConversationTabSessionLookupKey(cli: CliName, sessionId: string): string {
@@ -150,6 +182,7 @@ export function createSessionTabsController(deps: {
   collectRunningLoopTaskIds: () => Set<string>;
   isLoopTaskRunning: (taskId: string, runningTaskIds: ReadonlySet<string>) => boolean;
   getLoopTaskStatus: (taskId: string) => LoopTaskStatus | null;
+  getLoopTaskSchedulingMode?: (taskId: string) => unknown;
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => LoopConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
 }): {
@@ -424,7 +457,7 @@ export function createSessionTabsController(deps: {
           loopContext.taskRole === "main"
           && loopTaskRunning
         );
-        return {
+        const summary = {
           id: tab.id,
           cli: tab.cli,
           sessionId: tab.sessionId,
@@ -435,6 +468,10 @@ export function createSessionTabsController(deps: {
           loopTaskStatus: loopTaskStatus ?? undefined,
           loopMainTabCloseLocked,
         };
+        if (typeof loopTaskId !== "string" || !deps.getLoopTaskSchedulingMode) {
+          return summary;
+        }
+        return attachConversationTabLoopSchedulingMode(summary, deps.getLoopTaskSchedulingMode(loopTaskId));
       }),
     };
   };

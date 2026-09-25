@@ -10,13 +10,159 @@ import { normalizeLoopWriteFiles } from "../loopParallel";
 import { buildNextLoopMainAiFailureState, isLoopMainAiFailureLimitReached, LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopAnswerConclusion } from "../loopDebate";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopDebateFinalSummary";
-import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
+import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
 import { appendLoopRound, bindLoopTaskToSession, buildLoopSubtaskCommunicationFile, getLoopCommunicationPaths, getLoopTaskStoreSessionFile, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
 import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskResumable, isLoopTaskSessionCompatible } from "../panelDiagnostics";
 import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
+
+export type LoopPlusPromptRoleBinding = {
+  model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
+  loopMainThinkingMode?: ThinkingMode;
+  loopSubtaskThinkingMode?: ThinkingMode;
+};
+
+export function createLoopPlusPersistedTaskRefresher<TPatch>(deps: {
+  updateTask: (taskId: string, patch: TPatch) => LoopTaskRecord | null;
+  refreshTaskSurfaces: (taskId: string) => void;
+}): (taskId: string, patch: TPatch) => LoopTaskRecord | null {
+  return (taskId, patch) => {
+    const updated = deps.updateTask(taskId, patch);
+    deps.refreshTaskSurfaces(taskId);
+    return updated;
+  };
+}
+
+export function resolveLoopPlusAttemptOutcome(input: {
+  aborted: boolean;
+  thrown: boolean;
+  runStatus: TaskRunStatus | null;
+}): "completed" | "failed" | "stopped" {
+  if (input.aborted || input.runStatus === "stopped") {
+    return "stopped";
+  }
+  if (input.thrown || input.runStatus === "error") {
+    return "failed";
+  }
+  return "completed";
+}
+
+export function shouldCloseLoopPlusParentGateBeforeAbort(input: {
+  schedulingMode: unknown;
+  taskRole: "main" | "subtask" | null | undefined;
+  gateAlreadyClosing: boolean;
+}): boolean {
+  return !input.gateAlreadyClosing
+    && input.taskRole === "main"
+    && input.schedulingMode === "event_driven";
+}
+
+export function shouldBindLoopPlusResumeTarget(input: {
+  resumeRequested: boolean;
+  preserveLoopOrigin: boolean;
+  sameWorkspace: boolean;
+  runtimeTargetDiffers: boolean;
+}): boolean {
+  return input.resumeRequested
+    && !input.preserveLoopOrigin
+    && input.sameWorkspace
+    && input.runtimeTargetDiffers;
+}
+
+export function loopPlusResumeRefusal(input: {
+  hasExistingTask: boolean;
+  resumeRequested: boolean;
+  preserveLoopOrigin: boolean;
+  compatible: boolean;
+}): "original-unavailable" | "incompatible" | null {
+  if (!input.resumeRequested) {
+    return null;
+  }
+  if (!input.hasExistingTask) {
+    return input.preserveLoopOrigin ? "original-unavailable" : null;
+  }
+  if (!input.compatible) {
+    return input.preserveLoopOrigin ? "original-unavailable" : "incompatible";
+  }
+  return null;
+}
+
+export function mergeLoopPlusResumeContinueInstruction(
+  existing: readonly string[] | undefined,
+  continuePrompt: string | null | undefined,
+  hiddenContinuePrompt: string,
+): string[] | null {
+  const normalized = typeof continuePrompt === "string" ? continuePrompt.trim() : "";
+  const hidden = hiddenContinuePrompt.trim();
+  if (!normalized || normalized === hidden) {
+    return null;
+  }
+  const current = Array.isArray(existing)
+    ? existing.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  if (current[current.length - 1] === normalized) {
+    return null;
+  }
+  return [...current, normalized];
+}
+
+function normalizeLoopPlusModelName(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function resolveLoopPlusPromptRoleBinding(input: {
+  role: "main" | "subtask";
+  task: Pick<LoopTaskRecord, "modelRouting" | "originProfile"> | null;
+  live?: {
+    model?: string;
+    loopMainModel?: string;
+    loopSubtaskModel?: string;
+    loopMainThinkingMode?: ThinkingMode;
+    loopSubtaskThinkingMode?: ThinkingMode;
+  } | null;
+}): LoopPlusPromptRoleBinding {
+  const live = input.live ?? null;
+  const mainModel = normalizeLoopPlusModelName(live?.loopMainModel)
+    ?? normalizeLoopPlusModelName(live?.model)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.main.model);
+  const subtaskModel = normalizeLoopPlusModelName(live?.loopSubtaskModel)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtask.model)
+    ?? mainModel;
+  const binding: LoopPlusPromptRoleBinding = {
+    model: input.role === "subtask" ? subtaskModel : mainModel,
+    loopMainModel: mainModel,
+    loopSubtaskModel: subtaskModel,
+    loopMainThinkingMode: live?.loopMainThinkingMode ?? input.task?.originProfile?.mainThinkingMode,
+    loopSubtaskThinkingMode: live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode,
+  };
+  return binding;
+}
+
+export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => void } | null, T>(
+  create: () => TRoot,
+  run: (root: TRoot) => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
+  let root: TRoot | null = null;
+  let created = false;
+  try {
+    root = create();
+    created = true;
+  } catch (error) {
+    return { ok: false, error };
+  }
+  try {
+    return { ok: true, value: await run(root as TRoot) };
+  } finally {
+    if (created) {
+      root?.dispose();
+    }
+  }
+}
+
 
 export type PromptRunRuntimeHostDeps = {
   getActiveWorkspaceKey: () => string;
@@ -35,7 +181,7 @@ export type PromptRunRuntimeHostDeps = {
   writeTaskStore: (store: TaskStore) => void;
   appendLoopMainSubChatMainDecision: (task: LoopTaskRecord, decision: LoopMainDecision, subtasks?: LoopSubtaskRecord[]) => void;
   buildLoopDebateChatMessageAction: (taskId: string, round?: number) => ChatMessageAction;
-  runLoopPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean }) => Promise<void>;
+  runLoopPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => { taskRole?: string | null; loopTaskId?: string | null };
@@ -43,6 +189,8 @@ export type PromptRunRuntimeHostDeps = {
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+  handleLoopPlusSubtaskContinuation?: (context: LoopSubtaskConversationContext, tabId: string) => Promise<void>;
+  stopLoopPlusParent?: (taskId: string) => void;
 };
 
 export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
@@ -889,6 +1037,21 @@ function markLoopTaskInterrupted(
   options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
 ): void {
   const existing = readLoopTaskRecord(taskId);
+  if (existing?.schedulingMode === "event_driven") {
+    deps.stopLoopPlusParent?.(taskId);
+    const latest = readLoopTaskRecord(taskId) ?? existing;
+    if (latest.status !== "running") {
+      return;
+    }
+    const record = updateLoopTaskRecord(taskId, {
+      status: "error",
+      schedulingMode: "event_driven",
+      finalSummary: options.failureMessage?.trim() || "Loop+ orchestration stopped after an error. The scheduling snapshot was not cleared or downgraded.",
+      updatedAt: Date.now(),
+    }) ?? latest;
+    appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
+    return;
+  }
   if (existing && existing.status !== "running") {
     return;
   }
@@ -985,6 +1148,17 @@ function markLoopTaskStopped(
       participants,
     };
   });
+
+  if (task.schedulingMode === "event_driven") {
+    const record = updateLoopTaskRecord(taskId, {
+      status: "stopped",
+      schedulingMode: "event_driven",
+      ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
+      updatedAt: now,
+    });
+    refreshOpenLoopGroupChatPanelForTask(taskId);
+    return record;
+  }
 
   const record = updateLoopTaskRecord(taskId, {
     status: "stopped",
@@ -1123,6 +1297,12 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     context.subtaskId
   );
   if (!latestRun || latestRun.endedAt <= options.previousRunEndedAt || latestRun.status !== "end") {
+    return;
+  }
+
+  const loopPlusTask = readLoopTaskRecord(context.taskId);
+  if (shouldDelegateSubtaskContinuationToLoopPlus(loopPlusTask)) {
+    await deps.handleLoopPlusSubtaskContinuation?.(context, options.tabId);
     return;
   }
 

@@ -827,45 +827,19 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
       }
 
-      function readPromptPayloadModelField(payload, key) {
-        if (!payload || typeof payload !== "object") {
-          return "";
-        }
-        return normalizeModelSelection(payload[key]);
-      }
-
-      function readPromptPayloadThinkingField(payload, key) {
-        if (!payload || typeof payload !== "object") {
-          return "";
-        }
-        return normalizeThinkingModeSelection(payload[key]);
-      }
-
       function normalizePromptPayloadWithModelFields(payload) {
-        const normalizedPayload = normalizePromptPayload(payload);
-        if (!normalizedPayload) {
-          return null;
-        }
-        const loopMainModel = readPromptPayloadModelField(payload, "loopMainModel")
-          || readPromptPayloadModelField(payload, "lobsterMainModel");
-        const loopSubtaskModel = readPromptPayloadModelField(payload, "loopSubtaskModel")
-          || readPromptPayloadModelField(payload, "lobsterSubtaskModel");
-        const loopMainThinkingMode = readPromptPayloadThinkingField(payload, "loopMainThinkingMode");
-        const loopSubtaskThinkingMode = readPromptPayloadThinkingField(payload, "loopSubtaskThinkingMode");
-        return {
-          ...normalizedPayload,
-          ...(loopMainModel ? { loopMainModel } : {}),
-          ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
-          ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
-          ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
-        };
+        return normalizePromptPayload(payload);
       }
 
       function shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab) {
         if (targetCli !== "codex") {
           return false;
         }
-        if (targetInteractiveMode === "loop" || targetInteractiveMode === "graph") {
+        if (
+          targetInteractiveMode === "loop"
+          || targetInteractiveMode === "graph"
+          || targetInteractiveMode === "loop_plus"
+        ) {
           return true;
         }
         return Boolean(targetTab && targetTab.loopTaskRole === "subtask");
@@ -912,9 +886,18 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (!normalizedPayload) {
           return null;
         }
-        const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
+        const interactiveMode = normalizedPayload.interactiveMode
+          ? normalizeInteractiveMode(normalizedPayload.interactiveMode)
+          : normalizeInteractiveMode(state.interactiveMode);
+        const capturedPayload = {
+          ...normalizedPayload,
+          interactiveMode,
+        };
+        if (normalizedPayload.interactiveMode) {
+          return capturedPayload;
+        }
         return applyCodexLoopRoleModelsToPromptPayload(
-          normalizedPayload,
+          capturedPayload,
           state.currentCli,
           interactiveMode,
           getConversationTabSummary(getActiveConversationTabId())
@@ -1041,7 +1024,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function openRunConflictOverlay(payload) {
-        const normalizedPayload = normalizePromptPayload(payload);
+        const normalizedPayload = snapshotPromptPayloadForQueue(payload);
         if (!normalizedPayload) {
           return;
         }
