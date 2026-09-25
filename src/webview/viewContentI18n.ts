@@ -227,7 +227,7 @@ export const WEBVIEW_I18N = {
     toolSettingsInstallCodeGraphInstallingHint:
       "CodeGraph setup is running in a terminal. This checkbox will turn on automatically when the CLI, MCP interaction, and workspace index are ready.",
     toolSettingsInstallCodeGraphInstalledHint:
-      "CodeGraph is installed and interactive in this workspace, so it cannot be turned off here.",
+      "A CodeGraph index already exists in this workspace, so it cannot be turned off here.",
     toolSettingsLanguageLabel: "Language",
     toolSettingsLanguageAria: "Language setting",
     toolSettingsLanguageAuto: "Auto (VS Code)",
@@ -681,7 +681,7 @@ export const WEBVIEW_I18N = {
     toolSettingsInstallCodeGraphInstallingHint:
       "正在终端中安装 CodeGraph。CLI、MCP 交互和工作区索引就绪后，此开关会自动勾选。",
     toolSettingsInstallCodeGraphInstalledHint:
-      "当前工作区已安装并可交互使用 CodeGraph，无法在此关闭。",
+      "当前工作区已存在 CodeGraph 索引，无法在此关闭。",
     toolSettingsLanguageLabel: "语言",
     toolSettingsLanguageAria: "语言设置",
     toolSettingsLanguageAuto: "自动（跟随 VS Code）",

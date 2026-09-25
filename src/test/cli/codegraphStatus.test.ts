@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   inspectCodeGraphStatus,
   isCodeGraphInstalledAndInteractive,
+  isCodeGraphWorkspaceIndexed,
 } from "../../cli/codegraphStatus";
 
 function withTempHome<T>(run: (homeDir: string, workspaceRoot: string) => T): T {
@@ -62,6 +63,7 @@ test("requires CLI, MCP interaction, and workspace index before checking ready",
     assert.equal(withMcpOnly.ready, false);
 
     fs.mkdirSync(path.join(workspaceRoot, ".codegraph"));
+    assert.equal(isCodeGraphWorkspaceIndexed(workspaceRoot), true);
     const ready = inspectCodeGraphStatus({
       homeDir,
       workspaceRoot,
@@ -75,6 +77,19 @@ test("requires CLI, MCP interaction, and workspace index before checking ready",
       env: {},
       resolveCommand: () => ({ command: "/usr/bin/codegraph" }),
     }), true);
+  });
+});
+
+test("recognizes an existing workspace CodeGraph index independently of interactive setup", () => {
+  withTempHome((homeDir, workspaceRoot) => {
+    fs.mkdirSync(path.join(workspaceRoot, ".codegraph"));
+    assert.equal(isCodeGraphWorkspaceIndexed(workspaceRoot), true);
+    assert.equal(inspectCodeGraphStatus({
+      homeDir,
+      workspaceRoot,
+      env: {},
+      resolveCommand: () => null,
+    }).ready, false);
   });
 });
 

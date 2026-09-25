@@ -75,7 +75,7 @@ import {
   type OpenCodeCanonicalModelRole,
   type OpenCodeModelRoleInput,
 } from "./cli/opencodeconfigmodels";
-import { isCodeGraphInstalledAndInteractive } from "./cli/codegraphStatus";
+import { isCodeGraphWorkspaceIndexed } from "./cli/codegraphStatus";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { getLocaleSetting, resolveLocale, t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
@@ -1528,7 +1528,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     configState,
     workspaceSettings,
     workspaceHarnessInstalled: isWorkspaceHarnessInstalled(resolveWorkspaceCwd() ?? null),
-    codeGraphInstalled: isCodeGraphInstalledAndInteractive(resolveWorkspaceCwd() ?? null),
+    codeGraphInstalled: isCodeGraphWorkspaceIndexed(resolveWorkspaceCwd() ?? null),
     codeGraphInstalling: isCodeGraphInstalling(),
     processPlatform: process.platform,
     cliRulePathsGlobal: CLI_RULE_PATHS_GLOBAL,
