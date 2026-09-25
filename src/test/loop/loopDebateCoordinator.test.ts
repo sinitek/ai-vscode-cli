@@ -4,7 +4,7 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { createLoopDebateChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
+const { buildLoopDebateChatPanelState, createLoopDebateChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 import type { LoopTaskRecord } from "../../loopTaskStore";
 
 function createStoppedTask(): LoopTaskRecord {
@@ -33,11 +33,9 @@ function createStoppedTask(): LoopTaskRecord {
   };
 }
 
-test("Loop group chat continuation uses the main tab current CLI config and model", async () => {
+test("does not recreate a closed main tab while rendering a terminal Loop panel", () => {
   const task = createStoppedTask();
-  const configCalls: string[] = [];
-  const modelCalls: Array<{ cli: string; configId: string | null }> = [];
-  const runCalls: Array<{ input: Record<string, unknown>; options: Record<string, unknown> }> = [];
+  let createOptions: { createIfMissing?: boolean } | undefined;
   type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -57,7 +55,60 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
     writeTextFileEnsuringDir: () => true,
     getActiveSubtaskIds: () => [],
     buildCompletedConclusionAndSummaryMarkdown: () => "",
-    resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "opencode" }),
+    resolveMainPromptTarget: (_task, options) => {
+      createOptions = options;
+      return null;
+    },
+    revealPanelView: async () => undefined,
+    switchVisibleConversationTabForLoop: async () => undefined,
+    isTabRunActive: () => false,
+    getActiveConfigIdForCli: () => "current-config",
+    getSelectedCliModel: () => "current-model",
+    runLoopPrompt: async () => undefined,
+    stopRunsForTask: () => undefined,
+    markTaskStoppedByUser: () => task,
+    postPanelState: async () => undefined,
+    getActiveConversationTaskId: () => task.id,
+    showInformationMessage: () => undefined,
+    showWarningMessage: () => undefined,
+    pickTask: async () => task,
+    t: ((key: string) => key) as CoordinatorDeps["t"],
+  };
+
+  buildLoopDebateChatPanelState(task, deps);
+
+  assert.deepEqual(createOptions, { createIfMissing: false });
+});
+
+test("Loop group chat continuation uses the main tab current CLI config and model", async () => {
+  const task = createStoppedTask();
+  const configCalls: string[] = [];
+  const modelCalls: Array<{ cli: string; configId: string | null }> = [];
+  const runCalls: Array<{ input: Record<string, unknown>; options: Record<string, unknown> }> = [];
+  let continueTargetOptions: { createIfMissing?: boolean } | undefined;
+  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  const deps: CoordinatorDeps = {
+    getExtensionUri: () => ({ fsPath: "/extension" } as any),
+    panelsByTaskId: new Map(),
+    defaultDebateRound: 1,
+    normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+    normalizeSupplementalRequirement: () => null,
+    appendSupplementalRequirement: (existing) => [...(existing ?? [])],
+    appendSupplementalRequirementToCommunication: () => undefined,
+    readTaskRecord: (taskId) => taskId === task.id ? task : null,
+    updateTaskRecord: () => task,
+    listTaskStoreFiles: () => [],
+    readTaskStoreTasks: () => [],
+    collectRunningTaskIds: () => new Set(),
+    readTextFileIfNonEmpty: () => null,
+    fileExists: () => false,
+    writeTextFileEnsuringDir: () => true,
+    getActiveSubtaskIds: () => [],
+    buildCompletedConclusionAndSummaryMarkdown: () => "",
+    resolveMainPromptTarget: (_task, options) => {
+      continueTargetOptions = options;
+      return { tabId: "main-tab", cli: "opencode" };
+    },
     revealPanelView: async () => undefined,
     switchVisibleConversationTabForLoop: async () => undefined,
     isTabRunActive: () => false,
@@ -92,6 +143,7 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
   assert.equal(runCalls[0]?.options.targetTabId, "main-tab");
   assert.equal(runCalls[0]?.options.resumeTaskId, task.id);
   assert.equal(runCalls[0]?.options.resumeRequested, true);
+  assert.deepEqual(continueTargetOptions, { createIfMissing: true });
 });
 
 test("Loop group chat continuation can keep the recorded main and subtask models", async () => {

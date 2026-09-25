@@ -1185,10 +1185,26 @@ function prepareLoopOriginContinuationTarget(task: LoopTaskRecord): PromptRunTar
     persistConversationTabsToWorkspaceSettings();
     return resolvePromptRunTargetFromConversationTab(chosen);
   }
-  return resolveLoopMainPromptTarget(task);
+  return resolveLoopMainPromptTarget(task, { createIfMissing: true });
 }
 
-function resolveLoopMainPromptTarget(task: LoopTaskRecord): PromptRunTarget | null {
+function shouldCreateMissingLoopMainTab(
+  task: LoopTaskRecord,
+  options: { createIfMissing?: boolean },
+): boolean {
+  if (options.createIfMissing === false) {
+    return false;
+  }
+  if (options.createIfMissing === true) {
+    return true;
+  }
+  return task.status === "running";
+}
+
+function resolveLoopMainPromptTarget(
+  task: LoopTaskRecord,
+  options: { createIfMissing?: boolean } = {},
+): PromptRunTarget | null {
   const state = ensureConversationTabs();
   let sessionFallback: ConversationTabRecord | null = null;
   for (const tab of state.tabs) {
@@ -1209,6 +1225,10 @@ function resolveLoopMainPromptTarget(task: LoopTaskRecord): PromptRunTarget | nu
   }
   if (sessionFallback) {
     return resolvePromptRunTargetFromConversationTab(sessionFallback);
+  }
+
+  if (!shouldCreateMissingLoopMainTab(task, options)) {
+    return null;
   }
 
   const newTab: ConversationTabRecord = {

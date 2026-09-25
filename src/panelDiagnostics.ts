@@ -718,7 +718,10 @@ type LoopDebateChatPanelDeps = {
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
   getActiveSubtaskIds: (task: LoopTaskRecord) => string[];
   buildCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
-  resolveMainPromptTarget: (task: LoopTaskRecord) => LoopPromptTarget | null;
+  resolveMainPromptTarget: (
+    task: LoopTaskRecord,
+    options?: { createIfMissing?: boolean },
+  ) => LoopPromptTarget | null;
   revealPanelView: () => Promise<void>;
   switchVisibleConversationTabForLoop: (tabId: string | null) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
@@ -780,7 +783,7 @@ type GraphRunPanelControlResult = {
   run?: GraphRunRecord | null;
 };
 
-function buildLoopDebateChatPanelState(
+export function buildLoopDebateChatPanelState(
   task: LoopTaskRecord,
   deps: LoopDebateChatPanelDeps,
 ): LoopDebateChatPanelState {
@@ -793,7 +796,7 @@ function buildLoopDebateChatPanelState(
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
-  const target = deps.resolveMainPromptTarget(task);
+  const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   const cli = target?.cli ?? task.cli;
   const originalModels = task.originProfile?.configId
     ? continueModelPairFromLoopRouting(task.modelRouting)
@@ -1257,7 +1260,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       return;
     }
 
-    const target = deps.resolveMainPromptTarget(task);
+    const target = deps.resolveMainPromptTarget(task, { createIfMissing: true });
     if (!target) {
       deps.showWarningMessage(deps.t("loopDebateChat.continueUnavailable"));
       return;

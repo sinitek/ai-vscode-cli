@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { installVscodeMock } from "../vscodeMock";
+import type { LoopTaskRecord } from "../../loopTaskStore";
 
 installVscodeMock();
 
@@ -35,6 +36,72 @@ function createRuntimeHost() {
   };
   return createPromptRunRuntimeHost(deps);
 }
+
+
+function createNeedsReviewTask(): LoopTaskRecord {
+  return {
+    id: "task-needs-review",
+    cli: "codex",
+    workspaceKey: "workspace",
+    taskStoreFile: "/tmp/task-needs-review/loop-tasks.json",
+    rootPrompt: "Finished review.",
+    executionMode: "main_sub_multi_agent",
+    status: "needs-review",
+    createdAt: 1,
+    updatedAt: 2,
+    maxRounds: 20,
+    currentRound: 24,
+    communicationDir: "/tmp/task-needs-review",
+    mainCommunicationFile: "/tmp/task-needs-review/main-task.md",
+    sessionId: "codex-session",
+    activeSubtaskId: null,
+    activeSubtaskIds: [],
+    subTasks: [],
+    rounds: [],
+    supplementalRequirements: [],
+    completionRoundSummaries: [],
+    completionRequirementCoverage: [],
+  };
+}
+
+test("terminal Loop tasks do not regain a main tab unless continuation explicitly creates one", () => {
+  const tabs: Array<{ id: string; cli: "codex"; sessionId: string | null; sessionIdByCli: { codex: string }; createdAt: number }> = [];
+  const deps: Parameters<typeof createPromptRunRuntimeHost>[0] = {
+    getActiveWorkspaceKey: () => "workspace",
+    getConversationTabById: (tabId) => tabs.find((tab) => tab.id === tabId) ?? null,
+    getConversationTabs: () => tabs,
+    createConversationTabId: () => "reopened-tab",
+    persistConversationTabsToWorkspaceSettings: () => undefined,
+    postPanelState: async () => undefined,
+    loadSessionMessages: () => [],
+    persistMessagesForTab: () => undefined,
+    getPendingSessionDraft: () => ({ messages: [] }),
+    updatePendingSessionDraft: () => undefined,
+    sendPanelMessage: () => undefined,
+    createMessageId: () => "message-1",
+    readTaskStore: () => ({ runs: [] }),
+    writeTaskStore: () => undefined,
+    appendLoopMainSubChatMainDecision: () => undefined,
+    buildLoopDebateChatMessageAction: () => ({ type: "openLoopGroupChat", taskId: "task-needs-review" }),
+    runLoopPrompt: async () => undefined,
+    isTabRunActive: () => false,
+    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+    resolveConversationTabLoopContext: () => ({}),
+    resolveLoopTaskSessionId: () => null,
+    isLoopTaskBlockedByMainAiFailureLimit: () => false,
+    appendLoopMainSubChatSubtaskFinished: () => undefined,
+    closeConversationTabAndRefreshPanel: async () => undefined,
+  };
+  const host = createPromptRunRuntimeHost(deps);
+  const task = createNeedsReviewTask();
+
+  assert.equal(host.resolveLoopMainPromptTarget(task), null);
+  assert.equal(tabs.length, 0);
+
+  const created = host.resolveLoopMainPromptTarget(task, { createIfMissing: true });
+  assert.equal(created?.tabId, "reopened-tab");
+  assert.equal(tabs.length, 1);
+});
 
 function buildContinueDecision() {
   return {

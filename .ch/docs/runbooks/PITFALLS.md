@@ -329,6 +329,35 @@
 - `src/extensionHost/promptRunRuntime.ts`
 - `src/test/extensionHost/loopMainDecisionParsing.test.ts`
 
+## 终态 Loop 群聊刷新不能重建已关闭主 Tab
+
+- 状态：已规避，需随 Loop 群聊刷新和主 Tab 生命周期变化复核
+- 首次发现：2026-09-25
+- 适用范围：Loop 群聊面板、`src/extensionHost/promptRunRuntime.ts`、`src/panelDiagnostics.ts`
+
+### 现象
+- `needs-review` 主任务已经没有活动子任务，关闭主任务 Tab 后 Tab 仍会自动出现，并可反复发生。
+- 同时存在其他 Loop 主任务或子任务时更容易被误认为是那些任务把已结束任务唤醒。
+
+### 触发条件与根因
+- Loop 群聊面板可见时每 5 秒发送 `loopDebateChat:refresh`。
+- 刷新构建面板状态会解析主任务目标；旧实现在找不到主 Tab 时直接创建新 Tab，并绑定原 session。
+- 其他任务的子任务完成只会在该任务自身仍为 `running` 时恢复它自己的主 Tab，不会把 `needs-review` 任务改回运行。
+
+### 长期规避
+- `needs-review`、`error`、`stopped`、`completed` 默认只查找现有主 Tab，不创建。
+- 只有用户明确继续或恢复原始运行时，才传入 `createIfMissing: true`。
+- 群聊面板渲染必须使用 `createIfMissing: false`。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/loop/loopDebateCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js`。
+
+### 关联资料
+- `src/webview/loopDebatePanel.ts`
+- `src/extensionHost/promptRunRuntime.ts`
+- `src/panelDiagnostics.ts`
+
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
 - 状态：已规避，需随 Codex / Claude / OpenCode 澄清回复样式变化复核
