@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-09-25T06:43:59Z
-- Focus: Loop 群聊 沟通文件 markdown 弹窗
-- Focus terms: `loop`, `群聊`, `沟通文件`, `markdown`, `弹窗`
+- Focus: Loop+ 主任务 用户消息 队列 唤醒 子任务
+- Focus terms: `loop`, `主任务`, `用户消息`, `队列`, `唤醒`, `子任务`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5

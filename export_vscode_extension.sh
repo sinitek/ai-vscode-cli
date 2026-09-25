@@ -156,6 +156,7 @@ REQUIRED_ENTRIES=(
   "extension/media/workspace-scaffold/AGENTS.md"
   "extension/node_modules/@dagrejs/dagre/package.json"
   "extension/node_modules/@dagrejs/graphlib/package.json"
+  "extension/node_modules/marked/package.json"
 )
 
 for required_entry in "${REQUIRED_ENTRIES[@]}"; do

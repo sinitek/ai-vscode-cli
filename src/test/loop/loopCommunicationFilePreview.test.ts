@@ -143,3 +143,13 @@ test("rejects an unreadable communication file and a file above the preview limi
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("packages marked for extension host communication markdown preview", () => {
+  const repositoryRoot = path.join(__dirname, "..", "..", "..");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  const vscodeIgnoreText = fs.readFileSync(path.join(repositoryRoot, ".vscodeignore"), "utf8");
+  assert.equal(packageJson.dependencies?.marked, "^15.0.12");
+  assert.match(vscodeIgnoreText, /^!node_modules\/marked\/\*\*$/m);
+});

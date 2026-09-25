@@ -525,6 +525,7 @@
 ### 现象
 - 开发态和本地 `dist/` 加载正常，但安装新打出的 VSIX 后插件激活失败。
 - VS Code Extension Host 报错：`Cannot find module '@dagrejs/dagre'`，require stack 指向 `dist/webview/graphRunPanel.js -> dist/panelDiagnostics.js -> dist/extension.js`。
+- 2026-09-25 复发：`src/loopCommunicationFilePreview.ts` 在扩展宿主执行 `require("marked")`，安装目录没有 `node_modules/marked`。激活失败报 `Cannot find module 'marked'`，调用栈经过 `dist/loopCommunicationFilePreview.js -> dist/webview/loopDebatePanel.js -> dist/extension.js`。
 
 ### 触发条件
 - 源码新增了扩展宿主运行时的第三方依赖，并已写入 `package.json` / `package-lock.json`。
@@ -540,8 +541,8 @@
 - 单元测试至少覆盖关键依赖的声明和 `.vscodeignore` 放行；发布前仍必须以实际 VSIX 解包验证为准。
 
 ### 验证方式
-- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graph/graphRunPanel.test.js`。
-- 执行 `./export_vscode_extension.sh` 后，用 `unzip -l dist/sinitek-cli-tools-<version>.vsix | rg 'extension/node_modules/@dagrejs/(dagre|graphlib)/'` 确认主依赖和传递依赖都进入包。
+- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graph/graphRunPanel.test.js dist/test/loop/loopCommunicationFilePreview.test.js`。
+- 执行 `./export_vscode_extension.sh` 后，用 `unzip -l dist/sinitek-cli-tools-<version>.vsix | rg 'extension/node_modules/(@dagrejs/(dagre|graphlib)|marked)/'` 确认主依赖和传递依赖都进入包。
 - 可进一步解包到临时目录并加载对应 `dist` 模块，确认不会再因缺少依赖抛错。
 
 ### 关联资料

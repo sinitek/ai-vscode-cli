@@ -3,7 +3,7 @@
 ## Summary
 
 - Generated at: 2026-09-25T06:43:59Z
-- Focus: Loop 群聊 沟通文件 markdown 弹窗
+- Focus: Loop+ 主任务 用户消息 队列 唤醒 子任务
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Available observation entries: 5
@@ -129,21 +129,21 @@ Narrative:
 
 ## Related Design Docs
 
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 群聊
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 唤醒
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 唤醒。
   Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
 
-- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop
-  Why: 与当前 focus 相关的设计决策入口，命中：loop。
+- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop, 队列
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 队列。
   Summary: 状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop, 群聊, markdown
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊 / markdown。
-  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
-
-- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, 群聊
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊。
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, 唤醒
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 唤醒。
   Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
+
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop
+  Why: 与当前 focus 相关的设计决策入口，命中：loop。
+  Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
 
 ## Related Runbooks
 
