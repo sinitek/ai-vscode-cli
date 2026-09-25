@@ -1,5 +1,9 @@
 export const TASKLIST_STYLES = `      /* Tasklist Panel */
       .tasklist-panel {
+        --tasklist-visible-count: 5;
+        --tasklist-row-height: 20px;
+        --tasklist-row-gap: 6px;
+        --tasklist-list-padding-top: 8px;
         padding: 8px 16px 12px;
         border-top: 1px solid var(--vscode-widget-border);
         background: var(--vscode-editor-background);
@@ -48,17 +52,27 @@ export const TASKLIST_STYLES = `      /* Tasklist Panel */
       }
       .tasklist-items {
         list-style: none;
-        padding: 8px 0 0;
+        box-sizing: border-box;
+        padding: var(--tasklist-list-padding-top) 0 0;
         margin: 0;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--tasklist-row-gap);
+        max-height: calc(
+          var(--tasklist-visible-count) * var(--tasklist-row-height)
+          + (var(--tasklist-visible-count) - 1) * var(--tasklist-row-gap)
+          + var(--tasklist-list-padding-top)
+        );
+        overflow-y: auto;
+        overscroll-behavior: contain;
       }
       .tasklist-item {
         display: flex;
         align-items: flex-start;
         gap: 8px;
+        min-height: var(--tasklist-row-height);
         font-size: 13px;
+        line-height: var(--tasklist-row-height);
       }
       .tasklist-checkbox {
         margin-top: 6px;

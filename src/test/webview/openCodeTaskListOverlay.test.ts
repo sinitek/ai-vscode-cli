@@ -210,6 +210,15 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
   assert.equal(taskListDetails.open, false);
 });
 
+test("caps the expanded task list at about five rows", () => {
+  assert.match(TASKLIST_STYLES, /--tasklist-visible-count:\s*5;/);
+  assert.match(TASKLIST_STYLES, /--tasklist-row-height:\s*20px;/);
+  assert.match(
+    TASKLIST_STYLES,
+    /\.tasklist-items\s*\{[\s\S]*max-height:\s*calc\([\s\S]*var\(--tasklist-visible-count\)[\s\S]*overflow-y:\s*auto;/,
+  );
+});
+
 test("renders a visible collapse icon in the task-list summary", () => {
   const html = buildWebviewStaticHtml({
     locale: "en",
