@@ -2054,6 +2054,39 @@
 - `src/test/extensionHost/opencodethinkingrefreshstate.test.ts`
 - `src/cli/openCodeModelCapabilities.ts`
 
+## Webview 的 display 规则会盖住 hidden，模型选择会在“我要说话”里露出来
+
+- 状态：已规避
+- 首次发现：2026-09-25
+- 适用范围：Loop / Loop+ 群聊面板、Graph 运行图面板、使用 `hidden` 切换可见性的 Webview
+
+### 现象
+- Loop 与 Loop+ 群聊点击“我要说话”时，确认框仍然显示“继续使用的运行配置 / 主子模型”选择。
+- 该选择本应只在点击“继续”时出现。
+
+### 触发条件
+- 同一个弹窗用 `element.hidden` 隐藏 `#continueModelChoice`。
+- 样式里有 `.model-choice { display: flex; }`，且没有让 `[hidden]` 使用 `display: none !important`。
+
+### 根因
+- 当前 Chrome / VS Code Webview 里，作者样式的 `display: flex` 会覆盖 `[hidden]` 的默认 `display: none`。
+- `hidden=true` 时计算样式仍是 `display: flex`，所以模型选择继续可见。
+
+### 长期规避
+- 使用 `hidden` 控制显隐的 Webview 必须声明 `[hidden], .model-choice[hidden] { display: none !important; }`。
+- 不要给会被 `hidden` 隐藏的元素写 `display: ... !important`，除非选择器同时包含 `[hidden]` 且优先级更高。
+- “我要说话”只调用 `setContinueModelChoiceVisible(false)`；只有“继续”调用 `setContinueModelChoiceVisible(true)`。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/loop/loopDebatePanel.test.js`
+- 用 Chrome 计算样式确认 `hidden` 的 `.model-choice` 为 `display: none`。
+
+### 关联资料
+- `src/webview/loopDebatePanelStyles.ts`
+- `src/webview/loopDebatePanel.ts`
+- `src/webview/graphRunPanelStyles.ts`
+
 ## 建议模板
 
 ```md

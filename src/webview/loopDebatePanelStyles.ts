@@ -21,6 +21,10 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
       button {
         font: inherit;
       }
+      [hidden],
+      .model-choice[hidden] {
+        display: none !important;
+      }
       .shell {
         width: 100%;
         height: 100vh;

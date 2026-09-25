@@ -375,7 +375,7 @@
     {
       "id": "plugin.rule.loop_graph_continue_model_choice",
       "name": "Loop 与 Graph 继续时可选择主子模型",
-      "description": "Loop 群聊和 Graph 运行图在有“我要说话”的页面点击继续时，必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会写回 Loop modelRouting 或 Graph modelRouting，并用于后续续跑；未记录原模型时不能伪造成保持原模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
+      "description": "Loop 群聊、Loop+ 群聊和 Graph 运行图点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会写回 Loop modelRouting 或 Graph modelRouting，并用于后续续跑；未记录原模型时不能伪造成保持原模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
       "source_refs": [

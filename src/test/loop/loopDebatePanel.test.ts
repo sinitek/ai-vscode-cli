@@ -145,6 +145,47 @@ test("does not render removed automatic wake controls for review tasks", () => {
   assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/u);
 });
 
+test("hides the continue model choice when speaking in Loop and Loop+ group chat", () => {
+  const html = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    {
+      mode: "main_sub",
+      task: {
+        id: "task-speak",
+        cli: "codex",
+        status: "running",
+        rootPrompt: "继续补充需求。",
+        taskStoreFile: "/tmp/loop-tasks.json",
+        mainCommunicationFile: "/tmp/main-task.md",
+        currentRound: 1,
+        updatedAt: Date.now(),
+        canSupplement: true,
+        canContinue: true,
+        canStop: false,
+      },
+      rounds: [],
+      chatMarkdown: "",
+    },
+    "zh-CN",
+  );
+
+  assert.match(html, /\[hidden\],\s*\.model-choice\[hidden\] \{\s*display: none !important;\s*\}/);
+  const supplementDialog = html.slice(
+    html.indexOf("function openSupplementDialog"),
+    html.indexOf("function restoreDialogState"),
+  );
+  const continueDialog = html.slice(
+    html.indexOf("function openContinueDialog"),
+    html.indexOf("function closeContinueDialog"),
+  );
+  assert.match(supplementDialog, /setContinueModelChoiceVisible\(false\)/);
+  assert.doesNotMatch(supplementDialog, /setContinueModelChoiceVisible\(true\)/);
+  assert.match(continueDialog, /setContinueModelChoiceVisible\(true\)/);
+  assert.match(html, /loopDebateChat:supplementTask", prompt \}/);
+  assert.doesNotMatch(html, /loopDebateChat:supplementTask", prompt, modelSource/);
+  assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/);
+});
+
 test("renders recorded and current Loop models on the continue dialog", () => {
   const html = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,
