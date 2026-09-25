@@ -2,19 +2,21 @@
 
 这个文件把 observation entries 按 topic 分组，作为跨任务复用和 reference pack 导出的轻量 corpus 起点。
 
+## plan
+
+- Entries: 3
+- Estimated read cost: ~296 tokens
+
+- `mem-538cb1444d` `plan` Loop+ 完成事件驱动验收 -> `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
+- `mem-91b4245892` `plan` 可维护性重构 -> `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
+- `mem-d3aa6ffe1b` `plan` 计划标题 -> `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md`
+
 ## gotcha
 
 - Entries: 1
 - Estimated read cost: ~46 tokens
 
 - `mem-431f2548e1` `rule` 热区记忆面 -> `.ch/docs/memory/README.md`
-
-## plan
-
-- Entries: 1
-- Estimated read cost: ~108 tokens
-
-- `mem-538cb1444d` `plan` Loop+ 完成事件驱动验收 -> `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 
 ## rule
 

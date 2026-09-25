@@ -5,15 +5,15 @@
 
 ## Run Context
 
-- Generated at: 2026-09-24T22:41:21Z
-- Focus: Loop+ 子任务结束后关闭 tab
-- Focus terms: `loop`, `子任务结束后关闭`, `子任`, `任务`, `务结`, `结束`, `束后`, `后关`
+- Generated at: 2026-09-25T06:43:59Z
+- Focus: Loop 群聊 沟通文件 markdown 弹窗
+- Focus terms: `loop`, `群聊`, `沟通文件`, `markdown`, `弹窗`
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Candidate count: 3
+- Candidate count: 5
 - Ranked candidate count: 1
 - Focus match count: 1
-- Focus excluded count: 2
+- Focus excluded count: 4
 
 ## Heuristics
 
@@ -81,6 +81,6 @@
 
 ## Watch Items
 
-- 当前有 1 份 active plans。
+- 当前有 3 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。

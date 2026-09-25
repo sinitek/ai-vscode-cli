@@ -139,4 +139,14 @@ export type LoopDebateChatPanelMessage =
   | { type: "loopDebateChat:refresh" }
   | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
   | { type: "loopDebateChat:supplementTask"; prompt?: string }
-  | { type: "loopDebateChat:stopTask" };
+  | { type: "loopDebateChat:stopTask" }
+  | { type: "loopDebateChat:openCommunicationFile"; requestId?: string; path?: string };
+
+export type LoopCommunicationFilePreviewMessage = {
+  type: "loopDebateChat:communicationFile";
+  requestId: string;
+  path: string;
+  ok: boolean;
+  html?: string;
+  error?: "invalid" | "forbidden" | "missing" | "unreadable" | "empty" | "too_large";
+};

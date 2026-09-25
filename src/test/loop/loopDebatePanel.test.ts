@@ -233,6 +233,9 @@ function createPanelHarness() {
       webview: {
         cspSource: "self",
         html: "",
+        postMessage(message: unknown) {
+          harness.messages.push(message);
+        },
         onDidReceiveMessage(handler: (message: unknown) => void) {
           harness.messageHandler = handler;
           return { dispose: () => undefined };
@@ -887,4 +890,55 @@ test("renders an explicit paused Loop+ projection without a reviewing or thinkin
       assert.match(page, /Automatic review paused/u);
     }
   }
+});
+
+test("renders communication file paths as preview links and posts markdown preview results", () => {
+  const filePath = "/Users/demo/.sinitek_cli/loop-communications/task-1/subtasks/round-1-demo.md";
+  const html = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({
+      mode: "main_sub",
+      chatMarkdown: [
+        "# Loop 主从群聊记录",
+        "",
+        "## 子任务加入：【子任务 4】",
+        [
+          "- 成员 ID：chain-scenario-architecture",
+          `- 沟通文件：${filePath}`,
+          "- 说明：<b>keep</b>",
+        ].join("\n"),
+      ].join("\n"),
+    }),
+    "zh-CN",
+  );
+  assert.match(html, new RegExp(`data-action="openCommunicationFile"[^>]*data-file-path="${escapeRegExp(filePath)}"`));
+  assert.match(html, /id="filePreviewBackdrop"/u);
+  assert.match(html, /查看沟通文件/u);
+  assert.match(html, /loopDebateChat:openCommunicationFile/u);
+  assert.match(html, /&lt;b&gt;keep&lt;\/b&gt;/u);
+
+  const harness = createPanelHarness();
+  const panel = new LoopDebateChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
+  panel.postCommunicationFilePreview({
+    type: "loopDebateChat:communicationFile",
+    requestId: "early",
+    path: filePath,
+    ok: false,
+    error: "missing",
+  });
+  panel.show(createState());
+  panel.postCommunicationFilePreview({
+    type: "loopDebateChat:communicationFile",
+    requestId: "req-1",
+    path: filePath,
+    ok: true,
+    html: "<h1>标题</h1>",
+  });
+  assert.deepEqual(harness.messages, [{
+    type: "loopDebateChat:communicationFile",
+    requestId: "req-1",
+    path: filePath,
+    ok: true,
+    html: "<h1>标题</h1>",
+  }]);
 });

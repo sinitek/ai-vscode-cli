@@ -2,17 +2,17 @@
 
 ## Summary
 
-- Generated at: 2026-09-24T22:41:21Z
-- Focus: Loop+ 子任务结束后关闭 tab
+- Generated at: 2026-09-25T06:43:59Z
+- Focus: Loop 群聊 沟通文件 markdown 弹窗
 - Anchor ID: -
 - Selection mode: focus-filtered
-- Available observation entries: 3
-- Available read cost: ~193 tokens
+- Available observation entries: 5
+- Available read cost: ~381 tokens
 - Selected index entries: 1 (~108 tokens if fully expanded)
 - Expanded entries in this pack: 1 (~108 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
-- Active plans: 1
+- Active plans: 3
 - Related design docs: 4
 - Related runbooks: 1
 - Source diversity: 1 unique sources / 1 selected observations
@@ -109,7 +109,7 @@ Narrative:
   Why: 热区边界和阅读顺序入口。
   Summary: 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
 
-- `.ch/docs/MEMORY.md` | 记忆流转规则 | matches=任务
+- `.ch/docs/MEMORY.md` | 记忆流转规则
   Why: 记忆分层与流转规则入口。
   Summary: 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
 
@@ -119,33 +119,41 @@ Narrative:
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用
 
+- `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` | 计划标题
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话
+
+- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | 可维护性重构
+  Why: 当前任务推进中的 working-layer 事实来源。
+  Summary: 日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...
+
 ## Related Design Docs
 
-- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 子任, 任务
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 群聊
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊。
   Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
 
-- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop, 子任, 任务, 务结, 结束
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务 / 务结 / 结束。
+- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop
+  Why: 与当前 focus 相关的设计决策入口，命中：loop。
   Summary: 状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop, 子任, 任务
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务。
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop, 群聊, markdown
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊 / markdown。
   Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
 
-- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, 子任, 任务, 结束, 束后
-  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务 / 结束 / 束后。
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, 群聊
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 群聊。
   Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop, 子任, 任务
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop / 子任 / 任务。
+- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop
+  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop。
   Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
 
 ## Watch Items
 
-- 当前有 1 份 active plans。
+- 当前有 3 份 active plans。
 - 存在 stale memory docs：`.ch/docs/MEMORY.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。
 

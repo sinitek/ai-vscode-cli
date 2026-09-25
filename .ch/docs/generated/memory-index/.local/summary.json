@@ -93,6 +93,48 @@
       ],
       "summary": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
       "title": "Loop+ 完成事件驱动验收"
+    },
+    {
+      "modified_at": "2026-09-25T06:43:59+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 497,
+      "references": [
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/runbooks/PITFALLS.md",
+        "src/extensionHost/promptRunRuntime.ts",
+        "src/panelDiagnostics.ts"
+      ],
+      "summary": "日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话",
+      "title": "计划标题"
+    },
+    {
+      "modified_at": "2026-09-25T01:16:44+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 1986,
+      "references": [
+        ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "src/config/claudeSkills.ts",
+        "src/config/codexSkills.ts",
+        "src/config/geminiSkills.ts",
+        "src/config/skillDiscovery.ts",
+        "src/extension.ts",
+        "src/extensionHost/openCodePromptRunTemplate.ts",
+        "src/extensionHost/promptOneShotRuntime.ts",
+        "src/extensionHost/promptParallelRuntime.ts",
+        "src/extensionHost/promptRunRuntime.ts",
+        "src/loopPlusDecision.ts",
+        "src/shared/jsonObject.ts",
+        "src/shared/jsonObjectText.ts",
+        "src/test/config/skillDiscovery.test.ts",
+        "src/test/extensionHost/openCodePromptRunTemplate.test.ts",
+        "src/test/loop/loopPlusDecision.test.ts",
+        "src/test/shared/jsonObjectText.test.ts"
+      ],
+      "summary": "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
+      "title": "可维护性重构"
     }
   ],
   "claim_count": 121,
@@ -1809,7 +1851,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-09-24T22:41:21+00:00",
+  "generated_at": "2026-09-25T06:43:59+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2057,7 +2099,7 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 3,
+  "observation_count": 5,
   "observations": [
     {
       "concepts": [
@@ -2093,6 +2135,72 @@
       "source_title": "Loop+ 完成事件驱动验收",
       "subtitle": "Active execution plan",
       "title": "Loop+ 完成事件驱动验收",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "91b42458921345a8fb0f503b28de7b5daf54f86bdd855f19fabe10c288a7e789",
+      "facts": [
+        "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
+        "Modified at: 2026-09-25T01:16:44+00:00"
+      ],
+      "files": [
+        ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "src/config/claudeSkills.ts",
+        "src/config/codexSkills.ts",
+        "src/config/geminiSkills.ts",
+        "src/config/skillDiscovery.ts",
+        "src/extension.ts",
+        "src/extensionHost/openCodePromptRunTemplate.ts",
+        "src/extensionHost/promptOneShotRuntime.ts",
+        "src/extensionHost/promptParallelRuntime.ts",
+        "src/extensionHost/promptRunRuntime.ts",
+        "src/loopPlusDecision.ts"
+      ],
+      "id": "mem-91b4245892",
+      "modified_at": "2026-09-25T01:16:44+00:00",
+      "narrative": "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
+      "private_stripped": false,
+      "read_tokens": 128,
+      "source_anchor": "可维护性重构",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
+      "source_title": "可维护性重构",
+      "subtitle": "Active execution plan",
+      "title": "可维护性重构",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "d3aa6ffe1b112c0adce81307eb8f68aee1c38cc95b914b6d297867c0e15e7216",
+      "facts": [
+        "日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话",
+        "Modified at: 2026-09-25T06:43:59+00:00"
+      ],
+      "files": [
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/runbooks/PITFALLS.md",
+        "src/extensionHost/promptRunRuntime.ts",
+        "src/panelDiagnostics.ts"
+      ],
+      "id": "mem-d3aa6ffe1b",
+      "modified_at": "2026-09-25T06:43:59+00:00",
+      "narrative": "日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话",
+      "private_stripped": false,
+      "read_tokens": 60,
+      "source_anchor": "计划标题",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md",
+      "source_title": "计划标题",
+      "subtitle": "Active execution plan",
+      "title": "计划标题",
       "topic": "plan",
       "type": "plan"
     },
@@ -2153,7 +2261,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 1,
+    "active_plan_count": 3,
     "active_risks": [],
     "pending_items": []
   },
@@ -2181,11 +2289,13 @@
       "read_tokens": 46
     },
     "plan": {
-      "count": 1,
+      "count": 3,
       "ids": [
-        "mem-538cb1444d"
+        "mem-538cb1444d",
+        "mem-91b4245892",
+        "mem-d3aa6ffe1b"
       ],
-      "read_tokens": 108
+      "read_tokens": 296
     },
     "rule": {
       "count": 1,
@@ -2195,6 +2305,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 193,
+  "total_read_tokens": 381,
   "version": "0.2.0"
 }

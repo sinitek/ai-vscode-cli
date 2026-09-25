@@ -5,13 +5,13 @@
 ## 当前概览
 
 - 热区/规则文档：9
-- 活跃计划：1
+- 活跃计划：3
 - Pending items：0
 - Active risks：0
 - Lessons：0
-- Observation entries：3
+- Observation entries：5
 - Claim entries：121
-- Estimated read cost：~193 tokens
+- Estimated read cost：~381 tokens
 - Fresh docs：1
 - Stale docs：1
 - Starter docs：7

@@ -44,6 +44,10 @@ import {
 } from "./panelStateBuilder";
 import { resolveLoopTaskRunControlState } from "./loopDebate";
 import {
+  collectLoopCommunicationPreviewRoots,
+  readLoopCommunicationFilePreview,
+} from "./loopCommunicationFilePreview";
+import {
   type LoopTaskOriginProfile,
   type LoopTaskRecord,
 } from "./loopTaskStore";
@@ -1389,7 +1393,31 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
     if (message.type === "loopDebateChat:stopTask") {
       await stopTask(taskId);
+      return;
     }
+    if (message.type === "loopDebateChat:openCommunicationFile") {
+      openCommunicationFile(taskId, message.requestId, message.path);
+    }
+  };
+
+  const openCommunicationFile = (taskId: string, requestId: unknown, requestedPath: unknown): void => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId);
+    const panel = normalizedTaskId ? deps.panelsByTaskId.get(normalizedTaskId) : undefined;
+    const safeRequestId = typeof requestId === "string" ? requestId.trim() : "";
+    if (!panel || !normalizedTaskId || !safeRequestId || safeRequestId.length > 80) {
+      return;
+    }
+    const task = deps.readTaskRecord(normalizedTaskId);
+    const preview = task
+      ? readLoopCommunicationFilePreview(requestedPath, collectLoopCommunicationPreviewRoots(task))
+      : { ok: false as const, path: typeof requestedPath === "string" ? requestedPath : "", error: "missing" as const };
+    panel.postCommunicationFilePreview({
+      type: "loopDebateChat:communicationFile",
+      requestId: safeRequestId,
+      path: preview.path,
+      ok: preview.ok,
+      ...(preview.ok ? { html: preview.html } : { error: preview.error }),
+    });
   };
 
   const resolveTask = async (arg?: unknown): Promise<LoopTaskRecord | null> => {

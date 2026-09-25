@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { resolveLocale, type AppLocale } from "../i18n";
+import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
 import {
   buildLoopDebateChatPanelTitle,
@@ -9,6 +10,7 @@ import {
   type LoopDebateChatPanelStrings,
 } from "./loopDebatePanelRenderer";
 import type {
+  LoopCommunicationFilePreviewMessage,
   LoopDebateChatPanelActiveSpeaker,
   LoopDebateChatPanelMessage,
   LoopDebateChatPanelParticipant,
@@ -20,6 +22,7 @@ import type {
   LoopPlusPanelSeenAttempt,
 } from "./loopDebatePanelTypes";
 export type {
+  LoopCommunicationFilePreviewMessage,
   LoopDebateChatPanelActiveSpeaker,
   LoopDebateChatPanelMessage,
   LoopDebateChatPanelModeratorDecision,
@@ -89,6 +92,14 @@ export class LoopDebateChatPanel {
   public getState(): LoopDebateChatPanelState | undefined {
     return this.state;
   }
+
+  public postCommunicationFilePreview(message: LoopCommunicationFilePreviewMessage): void {
+    const panel = this.panel;
+    if (!panel) {
+      return;
+    }
+    void panel.webview.postMessage(message);
+  }
 }
 
 export function buildLoopDebateChatPanelHtml(
@@ -143,6 +154,21 @@ ${LOOP_DEBATE_PANEL_STYLES}
           </div>
         </div>
       </div>
+      <div id="filePreviewBackdrop" class="dialog-backdrop file-preview-backdrop" aria-hidden="true">
+        <div class="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
+          <div class="dialog-header">
+            <h2 id="filePreviewTitle" class="dialog-title">${escapeHtml(strings.communicationFileDialogTitle)}</h2>
+            <p id="filePreviewPath" class="dialog-description"></p>
+          </div>
+          <div class="dialog-body file-preview-body">
+            <div id="filePreviewError" class="dialog-error" aria-live="polite"></div>
+            <div id="filePreviewContent" class="markdown-body"></div>
+          </div>
+          <div class="dialog-actions">
+            <button id="filePreviewClose" class="button" type="button">${escapeHtml(strings.communicationFileClose)}</button>
+          </div>
+        </div>
+      </div>
       <div class="layout">
         <aside class="sidebar">
           ${renderTaskPanel(state, strings, locale)}
@@ -178,10 +204,17 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
+	      const filePreviewBackdrop = document.getElementById("filePreviewBackdrop");
+	      const filePreviewPath = document.getElementById("filePreviewPath");
+	      const filePreviewError = document.getElementById("filePreviewError");
+	      const filePreviewContent = document.getElementById("filePreviewContent");
+	      const filePreviewClose = document.getElementById("filePreviewClose");
 	      let autoRefreshTimer = undefined;
 	      let suppressScrollButtonUntil = 0;
 	      let continueDialogOpen = false;
 	      let continueDialogMode = undefined;
+	      let communicationPreviewOpen = false;
+	      let communicationPreviewSeq = 0;
 
 	      function getStoredState() {
 	        return vscode.getState() || {};
@@ -446,12 +479,124 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        saveDialogState();
 	      }
 
+	      function getStoredCommunicationFile() {
+	        const stored = getStoredState().communicationFile;
+	        return stored && typeof stored === "object" ? stored : null;
+	      }
+
+	      function communicationPreviewErrorText(code) {
+	        if (code === "missing") {
+	          return "${escapeJsString(strings.communicationFileMissing)}";
+	        }
+	        if (code === "forbidden" || code === "invalid") {
+	          return "${escapeJsString(strings.communicationFileForbidden)}";
+	        }
+	        if (code === "empty") {
+	          return "${escapeJsString(strings.communicationFileEmpty)}";
+	        }
+	        if (code === "too_large") {
+	          return "${escapeJsString(strings.communicationFileTooLarge)}";
+	        }
+	        return "${escapeJsString(strings.communicationFileUnreadable)}";
+	      }
+
+	      function showCommunicationFilePreview(filePath, html, errorText) {
+	        if (!filePreviewBackdrop) {
+	          return;
+	        }
+	        communicationPreviewOpen = true;
+	        filePreviewBackdrop.classList.add("visible");
+	        filePreviewBackdrop.setAttribute("aria-hidden", "false");
+	        if (filePreviewPath) {
+	          filePreviewPath.textContent = filePath || "";
+	        }
+	        if (filePreviewError) {
+	          filePreviewError.textContent = errorText || "";
+	        }
+	        if (filePreviewContent) {
+	          filePreviewContent.innerHTML = html || "";
+	        }
+	      }
+
+	      function rememberCommunicationFilePreview(filePath, requestId, html) {
+	        const cachedHtml = typeof html === "string" && html.length <= 200000 ? html : "";
+	        vscode.setState({
+	          ...getStoredState(),
+	          communicationFile: {
+	            open: true,
+	            path: filePath,
+	            requestId: requestId,
+	            html: cachedHtml,
+	          },
+	        });
+	        return cachedHtml;
+	      }
+
+	      function openCommunicationFilePreview(filePath, focusClose) {
+	        communicationPreviewSeq += 1;
+	        const requestId = String(Date.now()) + "-" + String(communicationPreviewSeq);
+	        const existing = getStoredCommunicationFile();
+	        const cachedHtml = existing && existing.path === filePath && typeof existing.html === "string" ? existing.html : "";
+	        showCommunicationFilePreview(filePath, cachedHtml, cachedHtml ? "" : "${escapeJsString(strings.communicationFileLoading)}");
+	        rememberCommunicationFilePreview(filePath, requestId, cachedHtml);
+	        vscode.postMessage({ type: "loopDebateChat:openCommunicationFile", requestId: requestId, path: filePath });
+	        if (focusClose !== false && filePreviewClose) {
+	          filePreviewClose.focus();
+	        }
+	      }
+
+	      function closeCommunicationFilePreview() {
+	        communicationPreviewOpen = false;
+	        if (filePreviewBackdrop) {
+	          filePreviewBackdrop.classList.remove("visible");
+	          filePreviewBackdrop.setAttribute("aria-hidden", "true");
+	        }
+	        if (filePreviewError) {
+	          filePreviewError.textContent = "";
+	        }
+	        if (filePreviewContent) {
+	          filePreviewContent.innerHTML = "";
+	        }
+	        const stored = Object.assign({}, getStoredState());
+	        delete stored.communicationFile;
+	        vscode.setState(stored);
+	        if (!continueDialogOpen) {
+	          requestRefresh();
+	        }
+	      }
+
+	      function restoreCommunicationFilePreview() {
+	        const stored = getStoredCommunicationFile();
+	        if (!stored || !stored.open || typeof stored.path !== "string" || !stored.path) {
+	          return;
+	        }
+	        openCommunicationFilePreview(stored.path, false);
+	      }
+
+	      function applyCommunicationFilePreview(message) {
+	        const stored = getStoredCommunicationFile();
+	        if (!message || message.type !== "loopDebateChat:communicationFile" || !stored || !stored.open) {
+	          return;
+	        }
+	        if (stored.requestId !== message.requestId) {
+	          return;
+	        }
+	        if (!message.ok) {
+	          showCommunicationFilePreview(message.path || stored.path, "", communicationPreviewErrorText(message.error));
+	          rememberCommunicationFilePreview(stored.path, stored.requestId, "");
+	          return;
+	        }
+	        const html = typeof message.html === "string" ? message.html : "";
+	        showCommunicationFilePreview(message.path || stored.path, html, "");
+	        rememberCommunicationFilePreview(message.path || stored.path, stored.requestId, html);
+	      }
+
 	      function startAutoRefresh() {
 	        if (autoRefreshTimer !== undefined) {
 	          return;
 	        }
 	        autoRefreshTimer = window.setInterval(() => {
-	          if (document.visibilityState === "visible" && !continueDialogOpen) {
+	          if (document.visibilityState === "visible" && !continueDialogOpen && !communicationPreviewOpen) {
 	            requestRefresh();
 	          }
 	        }, AUTO_REFRESH_INTERVAL_MS);
@@ -498,6 +643,16 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          scrollMainToBottom("smooth");
 	          return;
 	        }
+	        if (action === "openCommunicationFile") {
+	          const filePath = target.getAttribute("data-file-path");
+	          if (filePath) {
+	            openCommunicationFilePreview(filePath, true);
+	          }
+	          return;
+	        }
+	      });
+	      window.addEventListener("message", (event) => {
+	        applyCommunicationFilePreview(event.data);
 	      });
 	      if (mainElement) {
 	        mainElement.addEventListener("scroll", () => {
@@ -547,13 +702,31 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          }
 	        });
 	      }
+	      if (filePreviewBackdrop) {
+	        filePreviewBackdrop.addEventListener("click", (event) => {
+	          if (event.target === filePreviewBackdrop) {
+	            closeCommunicationFilePreview();
+	          }
+	        });
+	      }
+	      if (filePreviewClose) {
+	        filePreviewClose.addEventListener("click", () => {
+	          closeCommunicationFilePreview();
+	        });
+	      }
+	      document.addEventListener("keydown", (event) => {
+	        if (event.key === "Escape" && communicationPreviewOpen) {
+	          event.preventDefault();
+	          closeCommunicationFilePreview();
+	        }
+	      });
 	      if (sidebarElement) {
 	        sidebarElement.addEventListener("scroll", () => {
 	          saveScrollState();
 	        }, { passive: true });
 	      }
 	      document.addEventListener("visibilitychange", () => {
-	        if (document.visibilityState === "visible" && !continueDialogOpen) {
+	        if (document.visibilityState === "visible" && !continueDialogOpen && !communicationPreviewOpen) {
 	          requestRefresh();
 	        }
 	      });
@@ -567,6 +740,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      window.requestAnimationFrame(() => {
 	        restoreScrollState();
 	        restoreDialogState();
+	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
 	      startAutoRefresh();
@@ -1093,7 +1267,7 @@ function renderSegment(
         <span class="speaker">${escapeHtml(speaker)}</span>
         <span class="tag">${escapeHtml(tag)}</span>
       </header>
-      ${renderMessageBody(segment.body)}
+      ${renderMessageBody(segment.body, strings)}
     </section>
   </article>`;
 }
@@ -1157,11 +1331,11 @@ function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPa
   return strings.system;
 }
 
-function renderMessageBody(body: string): string {
+function renderMessageBody(body: string, strings: LoopDebateChatPanelStrings): string {
   if (!body.trim()) {
     return `<pre class="message-text empty">(empty)</pre>`;
   }
-  return `<pre class="message-text">${escapeHtml(body)}</pre>`;
+  return `<pre class="message-text">${renderLoopGroupChatMessageText(body, strings.communicationFileOpen)}</pre>`;
 }
 
 function renderMetaRow(label: string, value: string): string {

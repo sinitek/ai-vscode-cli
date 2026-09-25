@@ -17,3 +17,5 @@
 ## Active Plan Activity
 
 - `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 最后修改于 2026-09-24T22:41:21+00:00，读取成本约 11662 tokens
+- `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` 最后修改于 2026-09-25T06:43:59+00:00，读取成本约 497 tokens
+- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` 最后修改于 2026-09-25T01:16:44+00:00，读取成本约 1986 tokens

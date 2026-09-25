@@ -283,3 +283,93 @@ test("Loop group chat original runtime restores the recorded group, config, mode
   assert.equal(runCalls[0]?.options.preserveLoopOrigin, true);
   assert.equal(runCalls[0]?.options.resumeTaskId, task.id);
 });
+
+test("previews a communication file from the open Loop group chat", async () => {
+  const fs = require("fs") as typeof import("fs");
+  const os = require("os") as typeof import("os");
+  const path = require("path") as typeof import("path");
+  const vscode = require("vscode") as typeof import("vscode");
+  const previousCreate = vscode.window.createWebviewPanel;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "loop-chat-preview-"));
+  const posted: unknown[] = [];
+  let messageHandler: ((message: unknown) => void) | undefined;
+  (vscode.window as { createWebviewPanel: (...args: unknown[]) => unknown }).createWebviewPanel = () => ({
+    title: "",
+    webview: {
+      cspSource: "self",
+      html: "",
+      postMessage(message: unknown) {
+        posted.push(message);
+      },
+      onDidReceiveMessage(handler: (message: unknown) => void) {
+        messageHandler = handler;
+        return { dispose: () => undefined };
+      },
+    },
+    reveal() {
+      return undefined;
+    },
+    onDidDispose() {
+      return { dispose: () => undefined };
+    },
+  });
+  try {
+    const task = createStoppedTask();
+    const communicationDir = path.join(root, task.id);
+    const filePath = path.join(communicationDir, "subtasks", "round-1-demo.md");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, "# 标题\n\n- 一条\n<script>alert(1)</script>\n", "utf8");
+    task.communicationDir = communicationDir;
+    task.mainCommunicationFile = path.join(communicationDir, "main-task.md");
+    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    const deps: CoordinatorDeps = {
+      getExtensionUri: () => ({ fsPath: "/extension" } as any),
+      panelsByTaskId: new Map(),
+      defaultDebateRound: 1,
+      normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+      normalizeSupplementalRequirement: () => null,
+      appendSupplementalRequirement: (existing) => [...(existing ?? [])],
+      appendSupplementalRequirementToCommunication: () => undefined,
+      readTaskRecord: (taskId) => taskId === task.id ? task : null,
+      updateTaskRecord: () => task,
+      listTaskStoreFiles: () => [],
+      readTaskStoreTasks: () => [],
+      collectRunningTaskIds: () => new Set(),
+      readTextFileIfNonEmpty: () => null,
+      fileExists: () => false,
+      writeTextFileEnsuringDir: () => true,
+      getActiveSubtaskIds: () => [],
+      buildCompletedConclusionAndSummaryMarkdown: () => "",
+      resolveMainPromptTarget: () => null,
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => false,
+      getActiveConfigIdForCli: () => "current-config",
+      getSelectedCliModel: () => "current-model",
+      runLoopPrompt: async () => undefined,
+      stopRunsForTask: () => undefined,
+      markTaskStoppedByUser: () => task,
+      postPanelState: async () => undefined,
+      getActiveConversationTaskId: () => task.id,
+      showInformationMessage: () => undefined,
+      showWarningMessage: () => undefined,
+      pickTask: async () => task,
+      t: ((key: string) => key) as CoordinatorDeps["t"],
+    };
+    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    await coordinator.open(task.id);
+    assert.equal(typeof messageHandler, "function");
+    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: " ", path: filePath });
+    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: "x".repeat(81), path: filePath });
+    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: "req-1", path: filePath });
+    assert.equal(posted.length, 1);
+    const message = posted[0] as { ok?: boolean; html?: string; error?: string };
+    assert.equal(message.ok, true);
+    assert.match(message.html ?? "", /<h1>标题<\/h1>/u);
+    assert.match(message.html ?? "", /&lt;script&gt;alert\(1\)&lt;\/script&gt;/u);
+    assert.doesNotMatch(message.html ?? "", /<script>/u);
+  } finally {
+    vscode.window.createWebviewPanel = previousCreate;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

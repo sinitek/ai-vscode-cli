@@ -453,6 +453,111 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
 	        color: var(--vscode-descriptionForeground);
 	        font-style: italic;
 	      }
+	      .communication-file-link {
+	        display: inline;
+	        margin: 0;
+	        padding: 0;
+	        border: 0;
+	        border-radius: 0;
+	        color: var(--vscode-textLink-foreground);
+	        background: transparent;
+	        font: inherit;
+	        line-height: inherit;
+	        text-align: inherit;
+	        text-decoration: underline;
+	        cursor: pointer;
+	        overflow-wrap: anywhere;
+	      }
+	      .communication-file-link:hover,
+	      .communication-file-link:focus {
+	        color: var(--vscode-textLink-activeForeground);
+	      }
+	      .file-preview-backdrop {
+	        z-index: 30;
+	      }
+	      .file-preview-dialog {
+	        width: min(920px, 100%);
+	        max-height: min(86vh, 900px);
+	        display: flex;
+	        flex-direction: column;
+	      }
+	      .file-preview-body {
+	        min-height: 0;
+	        overflow: auto;
+	        max-height: min(68vh, 720px);
+	        padding-bottom: 16px;
+	      }
+	      .markdown-body {
+	        overflow-wrap: anywhere;
+	      }
+	      .markdown-body > :first-child {
+	        margin-top: 0;
+	      }
+	      .markdown-body h1,
+	      .markdown-body h2,
+	      .markdown-body h3,
+	      .markdown-body h4 {
+	        margin: 1em 0 0.4em;
+	        line-height: 1.3;
+	      }
+	      .markdown-body h1 {
+	        font-size: 1.35em;
+	      }
+	      .markdown-body h2 {
+	        font-size: 1.2em;
+	      }
+	      .markdown-body h3,
+	      .markdown-body h4 {
+	        font-size: 1.05em;
+	      }
+	      .markdown-body p,
+	      .markdown-body ul,
+	      .markdown-body ol,
+	      .markdown-body pre,
+	      .markdown-body blockquote {
+	        margin: 0.6em 0;
+	      }
+	      .markdown-body ul,
+	      .markdown-body ol {
+	        padding-left: 1.4em;
+	      }
+	      .markdown-body code {
+	        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+	        font-size: 0.92em;
+	      }
+	      .markdown-body pre {
+	        overflow: auto;
+	        padding: 10px 12px;
+	        border-radius: 4px;
+	        background: var(--vscode-textCodeBlock-background);
+	      }
+	      .markdown-body pre code {
+	        background: transparent;
+	      }
+	      .markdown-body :not(pre) > code {
+	        padding: 0 0.25em;
+	        border-radius: 3px;
+	        background: var(--vscode-textCodeBlock-background);
+	      }
+	      .markdown-body a {
+	        color: var(--vscode-textLink-foreground);
+	      }
+	      .markdown-body blockquote {
+	        margin-left: 0;
+	        padding-left: 12px;
+	        border-left: 3px solid var(--vscode-textBlockQuote-border);
+	        color: var(--vscode-textBlockQuote-foreground, var(--vscode-descriptionForeground));
+	      }
+	      .markdown-body table {
+	        border-collapse: collapse;
+	        width: 100%;
+	      }
+	      .markdown-body th,
+	      .markdown-body td {
+	        border: 1px solid var(--vscode-widget-border);
+	        padding: 4px 8px;
+	        text-align: left;
+	      }
       @media (max-width: 780px) {
         .topbar {
           align-items: stretch;
