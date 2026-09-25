@@ -798,7 +798,6 @@ ${webviewStyles}    </style>
               <ul>
                 <li>${i18n.helpModeVibeBest}</li>
                 <li>${i18n.helpModeVibePros}</li>
-                <li>${i18n.helpModeVibeCons}</li>
               </ul>
             </div>
             <div class="help-section">
@@ -806,7 +805,6 @@ ${webviewStyles}    </style>
               <ul>
                 <li>${i18n.helpModeLoopBest}</li>
                 <li>${i18n.helpModeLoopPros}</li>
-                <li>${i18n.helpModeLoopCons}</li>
               </ul>
             </div>
             <div class="help-section">
@@ -814,7 +812,6 @@ ${webviewStyles}    </style>
               <ul>
                 <li>${i18n.helpModeLoopPlusBest}</li>
                 <li>${i18n.helpModeLoopPlusPros}</li>
-                <li>${i18n.helpModeLoopPlusCons}</li>
               </ul>
             </div>
             <div class="help-section">
@@ -822,7 +819,6 @@ ${webviewStyles}    </style>
               <ul>
                 <li>${i18n.helpModeGraphBest}</li>
                 <li>${i18n.helpModeGraphPros}</li>
-                <li>${i18n.helpModeGraphCons}</li>
               </ul>
             </div>
           </div>

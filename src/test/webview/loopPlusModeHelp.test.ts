@@ -80,7 +80,6 @@ test("renders Loop and Loop+ differences in both help locales", () => {
     "visible queue",
     "accepted one by one",
     "waits while other tasks are still running",
-    "execution end is not acceptance complete",
     "Vibe",
   ]) {
     assert.ok(english.includes(snippet), `Missing English help snippet: ${snippet}`);
@@ -94,7 +93,6 @@ test("renders Loop and Loop+ differences in both help locales", () => {
     "可见队列",
     "再逐个验收",
     "仍有任务在运行时继续等待",
-    "执行结束不等于验收完成",
     "快速问答",
   ]) {
     assert.ok(chinese.includes(snippet), `Missing Chinese help snippet: ${snippet}`);
@@ -126,10 +124,6 @@ test("stops claiming Graph cannot resolve conflicts and keeps the existing help 
     }
   }
 
-  assert.match(englishHtml, /highest setup cost and UI complexity/);
-  assert.match(englishHtml, /still no graph editor/);
-  assert.doesNotMatch(englishHtml, /still no graph editor or automatic conflict resolution/);
-  assert.match(chineseHtml, /准备成本和界面复杂度最高/);
-  assert.match(chineseHtml, /目前还没有图编辑器/);
-  assert.doesNotMatch(chineseHtml, /目前还没有图编辑器或自动解冲突能力/);
+  assert.doesNotMatch(englishHtml, /highest setup cost and UI complexity|still no graph editor|Cons:/);
+  assert.doesNotMatch(chineseHtml, /准备成本和界面复杂度最高|目前还没有图编辑器|缺点：/);
 });
