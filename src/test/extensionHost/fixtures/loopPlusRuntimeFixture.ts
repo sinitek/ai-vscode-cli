@@ -59,6 +59,8 @@ export type LoopPlusRuntimeFixture = {
   parkedAttempts: () => Array<{ subtaskId: string; tabId: string; input: PromptRunInput }>;
   peekParked: (subtaskId: string) => { input: PromptRunInput; tabId: string } | null;
   cancelledTabs: string[];
+  closedSubtaskTabs: string[];
+  setCloseSubtaskTabError: (message: string | null) => void;
   finishParked: (subtaskId: string, options?: PublishOptions) => void;
   releaseParked: (subtaskId: string) => void;
   releaseHeldMain: () => void;
@@ -109,6 +111,8 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
   let reportFailure: string | null = null;
   let cancelOverride: ((tabId: string) => void) | null = null;
   const cancelledTabs: string[] = [];
+  const closedSubtaskTabs: string[] = [];
+  let closeSubtaskTabError: string | null = null;
 
   function nextId(prefix: string): string {
     sequence += 1;
@@ -359,6 +363,13 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
       cli,
       sessionId: null,
     }),
+    closeSubtaskTab: async (tabId) => {
+      closedSubtaskTabs.push(tabId);
+      messages.delete(tabId);
+      if (closeSubtaskTabError) {
+        throw new Error(closeSubtaskTabError);
+      }
+    },
     cancelInvocation: (tabId) => {
       cancelledTabs.push(tabId);
       if (cancelOverride) {
@@ -482,6 +493,10 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
       return { input: attempt.input, tabId: attempt.tabId };
     },
     cancelledTabs,
+    closedSubtaskTabs,
+    setCloseSubtaskTabError: (message) => {
+      closeSubtaskTabError = message;
+    },
     finishParked,
     releaseParked,
     releaseHeldMain: () => {

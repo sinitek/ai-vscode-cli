@@ -770,6 +770,54 @@ test("adapter releases execution roots after success, failure, and creation fail
   }
 });
 
+test("closes a Loop+ subtask tab only after a completed attempt", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    const request = {
+      taskId: "task-close",
+      subtaskId: "close-me",
+      title: "close-me",
+      prompt: longPrompt("close-me", "src/close.ts"),
+      modelPrompt: "model",
+      writeFiles: ["src/close.ts"],
+      round: 1,
+      targetCli: "codex" as const,
+    };
+
+    fixture.setAttemptAction(async () => {
+      throw new Error("prompt failed");
+    });
+    const failed = await fixture.adapter.startAttempt({ ...request, attemptId: "close-failed" }).promise;
+    assert.equal(failed.outcome, "failed");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+
+    fixture.setAttemptAction(async (input, tabId) => {
+      fixture.publish(input, tabId, { status: "stopped", content: "stopped result" });
+    });
+    const stopped = await fixture.adapter.startAttempt({ ...request, attemptId: "close-stopped" }).promise;
+    assert.equal(stopped.outcome, "stopped");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+
+    fixture.setRootFailure("root failed");
+    const unavailable = await fixture.adapter.startAttempt({ ...request, attemptId: "close-root" }).promise;
+    assert.equal(unavailable.outcome, "failed");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+    fixture.setRootFailure(null);
+
+    fixture.setCloseSubtaskTabError("panel refresh failed");
+    fixture.setAttemptAction(async (input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "kept before close" });
+    });
+    const closed = await fixture.adapter.startAttempt({ ...request, attemptId: "close-ok" }).promise;
+    assert.equal(closed.outcome, "completed");
+    assert.equal(closed.detail, "kept before close");
+    assert.equal(fixture.closedSubtaskTabs.length, 1);
+    assert.equal(fixture.attemptCalls.at(-1)?.loopSubtaskId, "close-me");
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("continuation detail uses only the assistant inside the qualifying run", () => {
   const query = {
     taskId: "task-main",

@@ -38,6 +38,7 @@
 - 主任务和子任务 AI 不得写 `schedulingMode`、`loopPlus`、队列、running、pending、`parentStopped` 或父任务完成状态。解析器只产出决策；宿主按顺序调用内核，再持久化 `snapshot()`。
 - 持久化恢复沿用现有边界：缺失或未知父状态不得恢复成运行中。快照里的 `phase` 字符串不是事实源，运行相位由停止、完成、当前验收、队列和在途集合推导。
 - 子任务临时根、Windows junction / hardlink 和任务结束清理继续走 `src/loopSubtaskExecutionRoot.ts`。
+- 子任务 attempt 成功结束（outcome 为 `completed`，对应经典 run status `end`）后，先取走本次助手结果，再固定自动关闭该子任务 tab。失败、停止，以及用户中止后的原 tab 不关闭，便于继续。用户在子任务 tab 手动继续并成功结束后同样先关闭 tab，再通知验收。这与经典 Loop 的成功收尾一致，不提供关闭开关。
 - 中英文模式说明走现有 Webview i18n 和现有帮助弹窗；颜色继续复用 VS Code 主题变量。本设计不新增主题。
 
 ## 方案选项

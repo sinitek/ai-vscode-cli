@@ -184,6 +184,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(wiring.includes("updateLoopTaskRecord(taskId, patch),"), false);
   assert.equal(wiring.includes("cancelInvocation: (tabId) => {"), true);
   assert.equal(wiring.includes("cancelLoopPlusInvocation(tabId)"), true);
+  assert.equal(wiring.includes("closeSubtaskTab: (tabId) => closeConversationTabAndRefreshPanel(tabId)"), true);
   assert.equal(wiring.includes("stopRunForTab"), false);
   const eventDriven = functionBody(extensionSource, "runEventDrivenLoopPrompt");
   assert.equal(eventDriven.includes("getLoopPlusRuntimeAdapter().runEventDriven("), true);
@@ -192,6 +193,15 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const continuation = functionBody(extensionSource, "handleLoopPlusSubtaskContinuation");
   assert.equal(continuation.includes("selectLoopPlusContinuationDetail("), true);
   assert.equal(continuation.includes("getLastLoopAssistantContent("), false);
+  assert.equal(continuation.includes("closeLoopPlusSubtaskTab(tabId,"), true);
+  assert.equal(
+    continuation.indexOf("selectLoopPlusContinuationDetail(") < continuation.indexOf("closeLoopPlusSubtaskTab(tabId,"),
+    true,
+  );
+  assert.equal(
+    continuation.indexOf("closeLoopPlusSubtaskTab(tabId,") < continuation.indexOf("notifySubtaskContinuation("),
+    true,
+  );
 });
 
 test("maps only loop_plus to event_driven and resumes from the saved mode", () => {

@@ -3989,6 +3989,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         return workspaceCwd ? createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd) : null;
       },
       createSubtaskTarget: (cli) => createLoopSubtaskRunTarget(cli),
+      closeSubtaskTab: (tabId) => closeConversationTabAndRefreshPanel(tabId),
       cancelInvocation: (tabId) => {
         cancelLoopPlusInvocation(tabId);
       },
@@ -4069,7 +4070,29 @@ async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subt
     role: "subtask",
     subtaskId: context.subtaskId,
   });
+  await closeLoopPlusSubtaskTab(tabId, {
+    taskId: context.taskId,
+    round: context.round,
+    subtaskId: context.subtaskId,
+    source: "continuation",
+  });
   getLoopPlusOrchestrationHost().notifySubtaskContinuation(context.taskId, context.subtaskId, "completed", summary);
+}
+
+async function closeLoopPlusSubtaskTab(
+  tabId: string,
+  event: { taskId: string; round: number; subtaskId: string; source: "continuation" },
+): Promise<void> {
+  try {
+    await closeConversationTabAndRefreshPanel(tabId);
+    void logInfo("loop-plus-subtask-tab-auto-closed", { ...event, tabId });
+  } catch (error) {
+    void logError("loop-plus-subtask-tab-auto-close-error", {
+      ...event,
+      tabId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function loopPlusHostMessage(message: string, taskId: string): string {

@@ -71,6 +71,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   ) => ThinkingMode | undefined;
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
   createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"]) => LoopPlusPromptTarget;
+  closeSubtaskTab: (tabId: string) => Promise<void>;
   cancelInvocation: (tabId: string) => void;
   appendSubtaskPrompt: (message: LoopPlusTranscriptMessage) => void;
   resolveSessionId: (target: LoopPlusPromptTarget) => string | null;
@@ -364,7 +365,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         run: invocation.run,
       });
       if (outcome === "completed") {
-        return { outcome, detail: invocation.content };
+        const detail = invocation.content;
+        await closeCompletedLoopPlusSubtaskTab(deps, request, rootResult.value.target.tabId);
+        return { outcome, detail };
       }
       if (outcome === "stopped") {
         return {
@@ -513,6 +516,32 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     startAttempt,
     getLivePrompt: (taskId) => livePrompts.get(taskId) ?? null,
   };
+}
+
+async function closeCompletedLoopPlusSubtaskTab(
+  deps: LoopPlusRuntimeAdapterDeps,
+  request: Pick<LoopPlusAttemptRequest, "taskId" | "round" | "subtaskId" | "attemptId">,
+  tabId: string,
+): Promise<void> {
+  try {
+    await deps.closeSubtaskTab(tabId);
+    deps.log?.("loop-plus-subtask-tab-auto-closed", {
+      taskId: request.taskId,
+      round: request.round,
+      subtaskId: request.subtaskId,
+      attemptId: request.attemptId,
+      tabId,
+    });
+  } catch (error) {
+    deps.log?.("loop-plus-subtask-tab-auto-close-error", {
+      taskId: request.taskId,
+      round: request.round,
+      subtaskId: request.subtaskId,
+      attemptId: request.attemptId,
+      tabId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function resolveAttemptOutcome(input: {
