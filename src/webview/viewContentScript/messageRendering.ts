@@ -101,6 +101,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return state.messages
           .map((message, index) => ({ message, index }))
           .filter(({ message, index }) => {
+            if (isHiddenLoopPlusProtocolPrompt(message && message.content)) {
+              return false;
+            }
             if (shouldHideSystemRunStatusMessage(message)) {
               return false;
             }

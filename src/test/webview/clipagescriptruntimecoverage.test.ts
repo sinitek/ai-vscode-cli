@@ -1742,6 +1742,7 @@ test("normalizes core runtime state and prompt context edge cases in isolation",
     "normalizePromptPayload",
     "buildQueuePausedStatusText",
     "isRunStatusSummaryText",
+    "isHiddenLoopPlusProtocolPrompt",
     "deriveLatestRunPromptFromMessages",
     "deriveLatestRunStatusMessageFromMessages",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, name)).join("\n");
@@ -1793,6 +1794,10 @@ test("normalizes core runtime state and prompt context edge cases in isolation",
   assert.equal(helpers.isRunStatusSummaryText("Task completed"), true);
   assert.equal(helpers.isRunStatusSummaryText("still running"), false);
   assert.equal(helpers.deriveLatestRunPromptFromMessages([{ role: "user", content: " first " }, { role: "user", content: " latest " }]), "latest");
+  assert.equal(helpers.deriveLatestRunPromptFromMessages([
+    { role: "user", content: "real goal" },
+    { role: "user", content: "You are the Loop+ main reviewer.\nsecret" },
+  ]), "real goal");
   assert.equal(helpers.deriveLatestRunStatusMessageFromMessages([{ role: "system", content: "Task completed" }]), "Task completed");
 });
 
@@ -2202,11 +2207,14 @@ test("handles run stream, queue, attachments, history, and settings function bra
   }), ["file:///a", "file:///b"]);
 
   const historySource = [
-    "buildHistorySessionKey",
-    "normalizeHistorySessionMessages",
-    "resolveHistoryMessageRoleLabel",
-    "resolveHistoryMessageKindLabel",
-  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, name)).join("\n");
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt"),
+    ...[
+      "buildHistorySessionKey",
+      "normalizeHistorySessionMessages",
+      "resolveHistoryMessageRoleLabel",
+      "resolveHistoryMessageKindLabel",
+    ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, name)),
+  ].join("\n");
   const historyHelpers = new Function(
     "normalizeMessageOrder",
     "t",
@@ -2225,6 +2233,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
     { content: "two", sequence: 2 },
     { content: "one", sequence: 1 },
     { content: " " },
+    { content: "You are one independent Loop+ execution attempt.\nhidden", sequence: 3 },
   ]).map((item: any) => item.content), ["one", "two"]);
   assert.equal(historyHelpers.resolveHistoryMessageRoleLabel("trace"), "historySessionMessageTrace");
   assert.equal(historyHelpers.resolveHistoryMessageKindLabel("tool-use"), "historySessionMessageToolUse");

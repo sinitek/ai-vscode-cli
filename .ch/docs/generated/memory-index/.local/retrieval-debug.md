@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-09-25T09:46:19Z
-- Focus: Loop+ 主任务完成后当前上下文再做新任务 提交无法发起
-- Focus terms: `loop`, `主任务完成后当前上下文再做新任务`, `主任`, `任务`, `务完`, `完成`, `成后`, `后当`
+- Focus: Loop+ protocol prompt bubble hide displayPrompt
+- Focus terms: `loop`, `protocol`, `prompt`, `bubble`, `hide`, `displayprompt`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
@@ -32,22 +32,22 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-538cb1444d` | `105` | `103` | loop, 完成 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
+| 1 | `mem-538cb1444d` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
 
 ## Score Breakdown
 
 ### mem-538cb1444d - Loop+ 完成事件驱动验收
 
-- Final score: `105`
-- Base score: `103`
-- Matched terms: `loop`, `完成`
+- Final score: `93`
+- Base score: `91`
+- Matched terms: `loop`
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 
 | Heuristic | Contribution |
 | --- | --- |
 | `type_priority` | `68` |
-| `focus_terms` | `24` |
+| `focus_terms` | `12` |
 | `open_loop_bonus` | `0` |
 | `read_cost_adjustment` | `2` |
 | `evidence_bonus` | `6` |

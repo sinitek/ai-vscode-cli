@@ -2,6 +2,10 @@ import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
 } from "../loopPlusDecision";
+import {
+  LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
+  LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX,
+} from "../loopPlusProtocolPrompt";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
@@ -154,7 +158,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ? `communicationFile of subtask ${current.subtaskId} in the latest task record`
     : "(no current item)";
   return [
-    "You are the Loop+ main reviewer. Loop+ has no batch barrier and no shared round gate.",
+    `${LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX} Loop+ has no batch barrier and no shared round gate.`,
     "Execution finishing is not review completion. The host owns scheduling state.",
     "Before deciding, read only these sources, in order: the current attempt report, the main communication file, and the latest task record.",
     "Compare those sources with the code and the verification evidence. Review only work that was already dispatched. Do not implement that work yourself.",
@@ -213,7 +217,7 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     ? context.subtask.writeFiles.join(", ")
     : "(not declared; follow the subtask instructions)";
   return [
-    "You are one independent Loop+ execution attempt. Finishing this attempt only writes your attempt report. It does not accept, complete, or schedule the parent task.",
+    `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Finishing this attempt only writes your attempt report. It does not accept, complete, or schedule the parent task.`,
     `Parent task: ${context.taskId}`,
     `Subtask: ${context.subtask.id ?? context.subtask.title}`,
     `Attempt: ${context.attemptId}`,

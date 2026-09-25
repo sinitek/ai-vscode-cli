@@ -4,6 +4,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState) {
           return;
         }
+        if (isHiddenLoopPlusProtocolPrompt(prompt)) {
+          return;
+        }
         runtimeState.currentRunPrompt = typeof prompt === "string" ? prompt : "";
         if (!isRuntimeStateForActiveTab(tabId)) {
           return;

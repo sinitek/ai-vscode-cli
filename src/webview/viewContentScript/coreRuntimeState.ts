@@ -1,3 +1,5 @@
+import { buildHiddenLoopPlusProtocolPromptRuntimeSource } from "../../loopPlusProtocolPrompt";
+
 // Conversation runtime and prompt context state helpers.
 export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTaskListState() {
         return {
@@ -243,6 +245,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         return false;
       }
 
+      ${buildHiddenLoopPlusProtocolPromptRuntimeSource()}
+
       function deriveLatestRunPromptFromMessages(messages) {
         if (!Array.isArray(messages)) {
           return "";
@@ -253,7 +257,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
             continue;
           }
           const prompt = String(item.content || "").trim();
-          if (prompt) {
+          if (prompt && !isHiddenLoopPlusProtocolPrompt(prompt)) {
             return prompt;
           }
         }

@@ -1066,7 +1066,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const prompts = ensureRuntimeStateMessages(runtimeState)
           .map((message, index) => ({ message, index }))
-          .filter(({ message }) => message && message.role === "user" && String(message.content || "").trim())
+          .filter(({ message }) => {
+            const content = String(message && message.content || "").trim();
+            return message && message.role === "user" && content && !isHiddenLoopPlusProtocolPrompt(content);
+          })
           .map(({ message, index }) => ({
             content: String(message.content || "").trim(),
             createdAt: Number.isFinite(message.createdAt) ? message.createdAt : 0,
@@ -1074,7 +1077,11 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           }))
           .sort((left, right) => right.createdAt - left.createdAt || right.index - left.index);
         const currentPrompt = String(runtimeState.currentRunPrompt || "").trim();
-        if (currentPrompt && (!prompts[0] || prompts[0].content !== currentPrompt)) {
+        if (
+          currentPrompt
+          && !isHiddenLoopPlusProtocolPrompt(currentPrompt)
+          && (!prompts[0] || prompts[0].content !== currentPrompt)
+        ) {
           prompts.unshift({ content: currentPrompt, createdAt: 0, index: Number.MAX_SAFE_INTEGER });
         }
         return prompts;

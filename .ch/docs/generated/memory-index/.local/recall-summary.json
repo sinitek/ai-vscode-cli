@@ -3,16 +3,14 @@
   "version": "0.3.0",
   "generated_at": "2026-09-25T09:46:19Z",
   "repo_root": ".",
-  "focus": "Loop+ 主任务完成后当前上下文再做新任务 提交无法发起",
+  "focus": "Loop+ protocol prompt bubble hide displayPrompt",
   "focus_terms": [
     "loop",
-    "主任务完成后当前上下文再做新任务",
-    "主任",
-    "任务",
-    "务完",
-    "完成",
-    "成后",
-    "后当"
+    "protocol",
+    "prompt",
+    "bubble",
+    "hide",
+    "displayprompt"
   ],
   "anchor_id": "",
   "selection_mode": "focus-filtered",
@@ -118,15 +116,14 @@
       "id": "mem-538cb1444d",
       "type": "plan",
       "title": "Loop+ 完成事件驱动验收",
-      "reason": "命中 focus：loop, 完成。",
-      "score": 105,
+      "reason": "命中 focus：loop。",
+      "score": 93,
       "read_tokens": 108,
       "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
       "source_kind": "active_plan",
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop",
-        "完成"
+        "loop"
       ],
       "concepts": [
         "open-loop"
@@ -151,11 +148,11 @@
         ".ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md"
       ],
       "topic": "plan",
-      "preliminary_score": 103,
-      "final_score": 105,
+      "preliminary_score": 91,
+      "final_score": 93,
       "score_breakdown": {
         "type_priority": 68,
-        "focus_terms": 24,
+        "focus_terms": 12,
         "open_loop_bonus": 0,
         "read_cost_adjustment": 2,
         "evidence_bonus": 6,
@@ -179,22 +176,21 @@
     "active_plan"
   ],
   "matched_terms": [
-    "loop",
-    "完成"
+    "loop"
   ],
   "score": {
-    "max": 105,
-    "min": 105,
-    "average": 105.0,
+    "max": 93,
+    "min": 93,
+    "average": 93.0,
     "by_observation": [
       {
         "id": "mem-538cb1444d",
-        "score": 105,
-        "preliminary_score": 103,
+        "score": 93,
+        "preliminary_score": 91,
         "rank": 1,
         "score_breakdown": {
           "type_priority": 68,
-          "focus_terms": 24,
+          "focus_terms": 12,
           "open_loop_bonus": 0,
           "read_cost_adjustment": 2,
           "evidence_bonus": 6,
@@ -208,18 +204,18 @@
     ]
   },
   "score_summary": {
-    "max": 105,
-    "min": 105,
-    "average": 105.0,
+    "max": 93,
+    "min": 93,
+    "average": 93.0,
     "by_observation": [
       {
         "id": "mem-538cb1444d",
-        "score": 105,
-        "preliminary_score": 103,
+        "score": 93,
+        "preliminary_score": 91,
         "rank": 1,
         "score_breakdown": {
           "type_priority": 68,
-          "focus_terms": 24,
+          "focus_terms": 12,
           "open_loop_bonus": 0,
           "read_cost_adjustment": 2,
           "evidence_bonus": 6,
@@ -323,11 +319,9 @@
       "title": "记忆流转规则",
       "kind": "hot_zone",
       "reason": "记忆分层与流转规则入口。",
-      "score": 46,
+      "score": 42,
       "modified_at": "2026-08-24T05:35:11+00:00",
-      "matched_terms": [
-        "任务"
-      ],
+      "matched_terms": [],
       "summary": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**"
     }
   ],
@@ -337,11 +331,10 @@
       "title": "Loop+ 完成事件驱动验收",
       "kind": "active_plan",
       "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 32,
+      "score": 26,
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop",
-        "完成"
+        "loop"
       ],
       "summary": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用"
     },
@@ -368,51 +361,41 @@
   ],
   "design_docs": [
     {
-      "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
-      "title": "Loop+ 完成事件调度",
-      "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 主任 / 任务 / 完成。",
-      "score": 43,
-      "modified_at": "2026-09-25T09:43:47Z",
-      "matched_terms": [
-        "loop",
-        "主任",
-        "任务",
-        "完成"
-      ],
-      "summary": "状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`"
-    },
-    {
       "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
       "title": "Loop 红蓝辩论多智能体模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 主任 / 任务 / 务完 / 完成 / 成后。",
-      "score": 40,
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop / prompt。",
+      "score": 31,
       "modified_at": "2026-09-25T08:43:17Z",
       "matched_terms": [
         "loop",
-        "主任",
-        "任务",
-        "务完",
-        "完成",
-        "成后"
+        "prompt"
       ],
       "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`"
+    },
+    {
+      "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
+      "title": "Loop+ 完成事件调度",
+      "kind": "design_doc",
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop / prompt。",
+      "score": 26,
+      "modified_at": "2026-09-25T12:09:46Z",
+      "matched_terms": [
+        "loop",
+        "prompt"
+      ],
+      "summary": "状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`"
     },
     {
       "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
       "title": "Graph 编排模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 主任 / 任务 / 务完 / 完成 / 成后。",
-      "score": 16,
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop / prompt。",
+      "score": 7,
       "modified_at": "2026-09-22T08:17:21Z",
       "matched_terms": [
         "loop",
-        "主任",
-        "任务",
-        "务完",
-        "完成",
-        "成后"
+        "prompt"
       ],
       "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
     },
@@ -420,12 +403,11 @@
       "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
       "title": "VS Code CLI 插件运行时架构",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 任务。",
-      "score": 12,
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
+      "score": 6,
       "modified_at": "2026-09-23T05:37:46Z",
       "matched_terms": [
-        "loop",
-        "任务"
+        "loop"
       ],
       "summary": "状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`"
     }
@@ -435,13 +417,11 @@
       "path": ".ch/docs/runbooks/local-development.md",
       "title": "本地开发与打包手册",
       "kind": "runbook",
-      "reason": "与当前 focus 相关的排障或规避动作入口，命中：loop / 主任 / 任务。",
-      "score": 13,
+      "reason": "与当前 focus 相关的排障或规避动作入口，命中：loop。",
+      "score": 6,
       "modified_at": "2026-09-25T09:05:52Z",
       "matched_terms": [
-        "loop",
-        "主任",
-        "任务"
+        "loop"
       ],
       "summary": "本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。"
     }

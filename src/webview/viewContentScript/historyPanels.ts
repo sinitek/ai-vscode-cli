@@ -30,7 +30,8 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           return message
             && typeof message === "object"
             && typeof message.content === "string"
-            && message.content.trim();
+            && message.content.trim()
+            && !isHiddenLoopPlusProtocolPrompt(message.content);
         });
       }
 

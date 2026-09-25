@@ -47,6 +47,36 @@
 - `src/extensionHost/promptRunRuntime.ts`
 - `.ch/docs/design-docs/loop-plus-scheduling.md`
 
+## Loop+ 协议提示词不能从会话消息里删掉
+
+- 状态：已规避
+- 首次发现：2026-09-25
+- 适用范围：Loop+ 主任务复核提示词、子任务执行提示词、对话气泡和历史展示
+
+### 现象
+- 对话气泡、历史会话或当前运行提示里出现整段 `You are the Loop+ main reviewer.` 或 `You are one independent Loop+ execution attempt.` 开头的内部协议提示词。
+
+### 触发条件
+- Loop+ 把同一段协议全文同时作为 `displayPrompt` 和 `modelPrompt` 发给 CLI。
+- 子任务协议全文作为 system 消息写入子任务会话。
+- 这些消息已经落盘。
+
+### 根因
+- 交互运行时用 `displayPrompt` 生成用户气泡，子任务路径再把协议全文写成系统消息。
+- `isInvocationUserAnchor` 用 `message.content === query.displayPrompt` 锚定本轮助手结果，所以不能从存储删除这段全文。
+
+### 长期规避
+- 只在展示层隐藏 trim 后以上面两个前缀开头的内容，覆盖对话气泡、历史会话、当前运行提示和提示词历史。
+- 不要改调度状态，也不要为了界面干净去删已落盘消息或改锚点匹配。
+
+### 验证方式
+- `node --test dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/webview/looppluswebviewintegration.test.js dist/test/webview/runPromptHistoryWebview.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`
+
+### 关联资料
+- `src/loopPlusProtocolPrompt.ts`
+- `src/webview/viewContentScript/messageRendering.ts`
+- `.ch/docs/design-docs/loop-plus-scheduling.md`
+
 ## vsce package 不能对 pnpm node_modules 执行 npm list
 
 - 状态：已规避

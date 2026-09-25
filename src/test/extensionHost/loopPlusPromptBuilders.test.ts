@@ -6,6 +6,7 @@ import {
   buildLoopPlusSubtaskModelPrompt,
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
+import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
@@ -381,5 +382,26 @@ test("asks the main task to judge a batch of new user messages before launching"
   assert.match(prompt, /judge the whole list together/);
   assert.match(prompt, /wait instead when a still-running or pending execution must finish/);
   assert.match(prompt, /Do not dispatch a placeholder just to wait/);
+});
+
+test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence text", () => {
+  const mainPrompt = buildLoopPlusMainModelPrompt(mainContext());
+  const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
+    taskId: "task-token",
+    rootPrompt: "ROOT_REQUEST_TOKEN",
+    subtask: {
+      title: "title-token",
+      prompt: "INSTRUCTION_TOKEN",
+    },
+    attemptId: "attempt-token",
+    communicationFile: "attempt-report",
+    taskStoreFile: "task-record",
+  });
+  assert.equal(isHiddenLoopPlusProtocolPrompt(mainPrompt), true);
+  assert.equal(isHiddenLoopPlusProtocolPrompt(`\n${subtaskPrompt}`), true);
+  assert.equal(isHiddenLoopPlusProtocolPrompt("fix the bubble"), false);
+  assert.equal(isHiddenLoopPlusProtocolPrompt("请看 You are the Loop+ main reviewer."), false);
+  assert.equal(isHiddenLoopPlusProtocolPrompt(""), false);
+  assert.equal(isHiddenLoopPlusProtocolPrompt(null), false);
 });
 

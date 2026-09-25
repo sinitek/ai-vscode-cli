@@ -1,6 +1,8 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
+import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
@@ -26,12 +28,13 @@ function extractFunctionSource(source: string, functionName: string): string {
 }
 
 function buildPromptHistory(messages: unknown[], currentRunPrompt = "") {
+  const helperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt");
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "getRunPromptHistory");
   const runtimeState = { messages, currentRunPrompt };
   return new Function(
     "getConversationRuntimeState",
     "ensureRuntimeStateMessages",
-    `${functionSource}; return getRunPromptHistory("tab-1");`,
+    `${helperSource}\n${functionSource}; return getRunPromptHistory("tab-1");`,
   )(
     () => runtimeState,
     (state: typeof runtimeState) => state.messages,
@@ -78,6 +81,40 @@ test("keeps a repeated current prompt when only an older duplicate was restored"
   ], "repeat");
 
   assert.deepEqual(prompts.map((item) => item.content), ["repeat", "different", "repeat"]);
+});
+
+test("omits Loop+ protocol prompts from prompt history", () => {
+  const prompts = buildPromptHistory([
+    { role: "user", content: "real goal", createdAt: 100 },
+    { role: "user", content: "You are the Loop+ main reviewer.\nsecret", createdAt: 200 },
+    { role: "user", content: "  You are one independent Loop+ execution attempt. secret", createdAt: 300 },
+  ], "You are the Loop+ main reviewer. current");
+
+  assert.deepEqual(prompts.map((item) => item.content), ["real goal"]);
+});
+
+test("does not replace the visible run prompt with a Loop+ protocol prompt", () => {
+  const helperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt");
+  const updateSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "updateCurrentRunPrompt");
+  const runtimeState = { currentRunPrompt: "real goal" };
+  const calls: string[] = [];
+  const protocolPrompt = "You are the Loop+ main reviewer.\nsecret";
+  new Function(
+    "getConversationRuntimeState",
+    "isRuntimeStateForActiveTab",
+    "updateRunPromptButton",
+    "syncRunPromptOverlay",
+    "protocolPrompt",
+    `${helperSource}\n${updateSource}; updateCurrentRunPrompt(protocolPrompt, "tab-1"); updateCurrentRunPrompt("next goal", "tab-1");`,
+  )(
+    () => runtimeState,
+    () => true,
+    () => calls.push("button"),
+    () => calls.push("overlay"),
+    protocolPrompt,
+  );
+  assert.equal(runtimeState.currentRunPrompt, "next goal");
+  assert.deepEqual(calls, ["button", "overlay"]);
 });
 
 test("sets loading animation state on historyButton and removes it after modal render", () => {

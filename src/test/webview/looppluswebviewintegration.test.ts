@@ -16,7 +16,7 @@ const LOOP_EXECUTION_MODE_DEBATE = "debate_multi_agent";
 
 type RoleMessage = {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   taskRole?: "main" | "subtask";
   loopTaskId?: string;
@@ -382,6 +382,8 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getMessageTaskRoleLabel"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageTaskRoleElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyMessageElementClasses"],
+    [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "shouldShowMessageInResultOnlyMode"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getVisibleMessages"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "captureOpenTraceCollapsibleKeys"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "forceCollapseToolResultBubbles"],
@@ -990,3 +992,28 @@ test("keeps Loop+ busy-send payload while classic debate, Graph priority, and Vi
   assert.equal(posted.filter((message) => message.type === "sendPrompt").length, 0);
   assert.equal(api.getConversationRuntimeState("graph-main").pendingPromptQueue.length, 0);
 });
+
+test("hides Loop+ protocol prompts from message bubbles", () => {
+  const browser = loadBrowser("plus-main");
+  const userPrompt = "真实用户目标";
+  const mentioned = "请看 You are the Loop+ main reviewer. 这不是协议开头";
+  browser.state.messages = [
+    { id: "user", role: "user", content: userPrompt },
+    { id: "main", role: "user", content: "You are the Loop+ main reviewer.\nMAIN_PROTOCOL_SECRET", taskRole: "main" },
+    { id: "sub", role: "system", content: "  You are one independent Loop+ execution attempt.\nSUB_PROTOCOL_SECRET", taskRole: "subtask" },
+    { id: "mention", role: "user", content: mentioned },
+  ];
+  browser.api.renderMessages();
+  const bubbles = browser.messages.children.map((node) => node.querySelector(".bubble")?.innerHTML ?? "");
+  assert.equal(bubbles.some((html) => html.includes(userPrompt)), true);
+  assert.equal(bubbles.some((html) => html.includes(mentioned)), true);
+  assert.equal(bubbles.some((html) => html.includes("MAIN_PROTOCOL_SECRET")), false);
+  assert.equal(bubbles.some((html) => html.includes("SUB_PROTOCOL_SECRET")), false);
+
+  browser.state.onlyShowFinalResults = true;
+  browser.api.renderMessages();
+  const resultBubbles = browser.messages.children.map((node) => node.querySelector(".bubble")?.innerHTML ?? "");
+  assert.equal(resultBubbles.some((html) => html.includes(userPrompt)), true);
+  assert.equal(resultBubbles.some((html) => html.includes("MAIN_PROTOCOL_SECRET")), false);
+});
+
