@@ -14,6 +14,39 @@
 
 ## 当前有效条目
 
+## 已完成的 Loop+ 不能按经典完成气泡缺失来恢复
+
+- 状态：已规避
+- 首次发现：2026-09-25
+- 适用范围：Loop+ 主任务完成后，在同一会话再提交新目标
+
+### 现象
+- Loop+ 父任务状态已经是 `completed`，用户在当前会话提交新目标后，提示词历史有记录，但没有新的主任务运行，会话里也没有新的用户消息落盘。
+- 旧任务的 `supplementalRequirements` 会多出这段新目标，`loopPlus.completed` 仍为 true，`userMessageQueue` 仍为空。
+
+### 触发条件
+- 任务是 `schedulingMode: event_driven`，并且调度快照已经完成。
+- Loop+ 完成只写“Loop+ 任务已完成”系统消息，不写经典 Loop 的回答结论和最终总结气泡。
+- 同一会话的后续普通 prompt 被当成可恢复任务，又因为完成快照被宿主直接结算。
+
+### 根因
+- 经典恢复规则把“状态已完成但缺少完成气泡”视为仍可恢复。Loop+ 正常完成恰好满足这个条件。
+- 恢复入口会把新目标写入旧任务补充需求，随后 `tryRun` 看到 `completed` 快照只释放控制器，不启动主任务。
+
+### 长期规避
+- `event_driven` 且状态为 `completed` 的任务不是同一会话后续 prompt 的恢复候选。
+- 该 prompt 必须新建并启动绑定当前 session 的 Loop+ 任务。显式继续已完成快照仍然只结算，不重新打开旧父任务。
+- 不要为了让这段恢复逻辑成立，去给 Loop+ 补写经典完成气泡。
+
+### 验证方式
+- `node --test dist/test/core/panelDiagnostics.test.js` 中的 “does not resume a completed Loop+ task just because classic completion bubbles are missing”。
+- 真实会话：Loop+ 完成后在同一标签提交新目标，应出现新的 Loop+ 任务启动消息，而不是只改旧任务补充需求。
+
+### 关联资料
+- `src/panelDiagnostics.ts`
+- `src/extensionHost/promptRunRuntime.ts`
+- `.ch/docs/design-docs/loop-plus-scheduling.md`
+
 ## vsce package 不能对 pnpm node_modules 执行 npm list
 
 - 状态：已规避

@@ -87,6 +87,7 @@
 - 未发布的 `loop-plus-finish:` 冒号拼接不做迁移。恢复时 `eventId` 必须等于该条 `subtaskId` / `attemptId` 的规范编码，并且能解析回同一对；否则抛出 `Invalid Loop+ scheduler snapshot`，不能映射到另一个 tuple。
 - 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`userMessageQueue`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。旧快照没有 `userMessageQueue` 时读成空数组；字段存在但不是去空白后的非空字符串数组则拒绝。加载时不信任 `phase` 文本。
 - `userMessageQueue` 只保存尚未被主任务查看的用户消息，不进入验收队列。当前验收先做完；没有当前验收时，积压的用户消息先于下一条验收被同一次主任务查看。查看成功后只确认本轮开始时的前缀，执行期间新到的消息留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
+- 已完成的 Loop+ 父任务不写经典回答结论和最终总结气泡。缺少这些气泡不能把它当成“完成信息不全、仍可恢复”的任务。用户之后在同一会话提交新的目标时，宿主新建一个绑定该 session 的 Loop+ 任务并启动主任务；新目标不能只追加到旧任务的 `supplementalRequirements`，也不能因为旧快照 `completed` 而被吞掉。显式继续一个已经完成的快照仍然只结算并释放控制器，不重新打开旧父任务。
 - 没有当前验收且父任务未停止时，队首进入当前验收，并只在新的 wake 边沿返回 `wake: true`。已有当前验收时，新事件只追加。
 - 同一 attempt 的重复 `finish` 不覆盖新执行。已经按规范 ID 验收过的 `submitReview` 幂等成功且不推进队列。当前项不匹配时返回 `mismatch`，没有当前项时返回 `no_current`。
 - 同一时刻只有一个验收消费者。宿主只在 `wake === true` 时唤醒一次，只启动本次返回的 `started`。

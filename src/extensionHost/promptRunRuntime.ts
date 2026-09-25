@@ -15,7 +15,7 @@ import { appendLoopRound, bindLoopTaskToSession, buildLoopSubtaskCommunicationFi
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
-import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskResumable, isLoopTaskSessionCompatible } from "../panelDiagnostics";
+import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskPromptResumeCandidate, isLoopTaskResumable, isLoopTaskSessionCompatible } from "../panelDiagnostics";
 import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
 
@@ -282,9 +282,9 @@ function findResumableLoopTaskForTarget(target: PromptRunTarget): LoopTaskRecord
   }
 
   const resumable = candidates
-    .filter((task) => isLoopTaskResumable(task) || (
-      task.status === "completed" && !hasCompleteLoopCompletionMessagesForTask(target, task.id)
-    ))
+    .filter((task) => isLoopTaskPromptResumeCandidate(task, {
+      hasCompleteCompletionMessages: hasCompleteLoopCompletionMessagesForTask(target, task.id),
+    }))
     .sort((left, right) => right.updatedAt - left.updatedAt);
   return resumable[0] ?? null;
 }

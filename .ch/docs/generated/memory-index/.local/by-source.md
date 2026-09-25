@@ -14,9 +14,9 @@
 - `.ch/docs/exec-plans/TEMPLATE.md` <- `mem-538cb1444d`
 - `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` <- `mem-91b4245892`
 - `.ch/docs/exec-plans/completed/2026-09/` <- `mem-538cb1444d`
+- `.ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md` <- `mem-538cb1444d`
 - `.ch/docs/generated/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
 - `.ch/docs/generated/memory-index/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
-- `.ch/docs/generated/memory-index/.local` <- `mem-538cb1444d`
 - `.ch/docs/generated/memory-index/.local/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
 - `.ch/docs/ontology/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
 - `.ch/docs/product-specs/FEATURE_INVENTORY.md` <- `mem-91b4245892`, `mem-d3aa6ffe1b`

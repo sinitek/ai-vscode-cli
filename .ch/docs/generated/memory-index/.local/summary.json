@@ -1,10 +1,10 @@
 {
   "active_plans": [
     {
-      "modified_at": "2026-09-24T22:41:21+00:00",
+      "modified_at": "2026-09-25T09:46:19+00:00",
       "path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 11662,
+      "read_tokens": 11709,
       "references": [
         ".ch/docs/MEMORY.md",
         ".ch/docs/TESTING.md",
@@ -17,6 +17,7 @@
         ".ch/docs/exec-plans/README.md",
         ".ch/docs/exec-plans/TEMPLATE.md",
         ".ch/docs/exec-plans/completed/2026-09/",
+        ".ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md",
         ".ch/docs/generated/memory-index/.local",
         ".ch/docs/memory/",
         ".ch/docs/ontology/",
@@ -1851,7 +1852,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-09-25T06:43:59+00:00",
+  "generated_at": "2026-09-25T09:46:19+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -2105,43 +2106,6 @@
       "concepts": [
         "open-loop"
       ],
-      "content_hash": "538cb1444da9f28936a9f6222dbb52fc9bbeb208824f167d734e7e2f8d79c10b",
-      "facts": [
-        "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
-        "Modified at: 2026-09-24T22:41:21+00:00"
-      ],
-      "files": [
-        ".ch/docs/MEMORY.md",
-        ".ch/docs/TESTING.md",
-        ".ch/docs/design-docs/TEMPLATE.md",
-        ".ch/docs/design-docs/graph-orchestration-mode.md",
-        ".ch/docs/design-docs/index.md",
-        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
-        ".ch/docs/design-docs/loop-plus-scheduling.md",
-        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-        ".ch/docs/exec-plans/README.md",
-        ".ch/docs/exec-plans/TEMPLATE.md",
-        ".ch/docs/exec-plans/completed/2026-09/",
-        ".ch/docs/generated/memory-index/.local"
-      ],
-      "id": "mem-538cb1444d",
-      "modified_at": "2026-09-24T22:41:21+00:00",
-      "narrative": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
-      "private_stripped": false,
-      "read_tokens": 108,
-      "source_anchor": "Loop+ 完成事件驱动验收",
-      "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
-      "source_title": "Loop+ 完成事件驱动验收",
-      "subtitle": "Active execution plan",
-      "title": "Loop+ 完成事件驱动验收",
-      "topic": "plan",
-      "type": "plan"
-    },
-    {
-      "concepts": [
-        "open-loop"
-      ],
       "content_hash": "91b42458921345a8fb0f503b28de7b5daf54f86bdd855f19fabe10c288a7e789",
       "facts": [
         "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
@@ -2201,6 +2165,43 @@
       "source_title": "计划标题",
       "subtitle": "Active execution plan",
       "title": "计划标题",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "538cb1444da9f28936a9f6222dbb52fc9bbeb208824f167d734e7e2f8d79c10b",
+      "facts": [
+        "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
+        "Modified at: 2026-09-25T09:46:19+00:00"
+      ],
+      "files": [
+        ".ch/docs/MEMORY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/design-docs/TEMPLATE.md",
+        ".ch/docs/design-docs/graph-orchestration-mode.md",
+        ".ch/docs/design-docs/index.md",
+        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
+        ".ch/docs/design-docs/loop-plus-scheduling.md",
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/exec-plans/README.md",
+        ".ch/docs/exec-plans/TEMPLATE.md",
+        ".ch/docs/exec-plans/completed/2026-09/",
+        ".ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md"
+      ],
+      "id": "mem-538cb1444d",
+      "modified_at": "2026-09-25T09:46:19+00:00",
+      "narrative": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
+      "private_stripped": false,
+      "read_tokens": 108,
+      "source_anchor": "Loop+ 完成事件驱动验收",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
+      "source_title": "Loop+ 完成事件驱动验收",
+      "subtitle": "Active execution plan",
+      "title": "Loop+ 完成事件驱动验收",
       "topic": "plan",
       "type": "plan"
     },
@@ -2291,9 +2292,9 @@
     "plan": {
       "count": 3,
       "ids": [
-        "mem-538cb1444d",
         "mem-91b4245892",
-        "mem-d3aa6ffe1b"
+        "mem-d3aa6ffe1b",
+        "mem-538cb1444d"
       ],
       "read_tokens": 296
     },

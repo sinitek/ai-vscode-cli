@@ -7,6 +7,7 @@ installVscodeMock();
 const {
   isHiddenRetryEligibleAttempt,
   isHiddenRetryEligibleErrorInfo,
+  isLoopTaskPromptResumeCandidate,
   isLoopTaskResumable,
   isNonRetryableBillingErrorInfo,
 } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
@@ -57,7 +58,7 @@ test("rejects a billing failure reported through a nonzero CLI exit", () => {
 });
 
 test("keeps interrupted Loop task states resumable from the main tab", () => {
-  const baseTask = { id: "task-1", mainAiFailureLimitReached: false } as Parameters<typeof isLoopTaskResumable>[0];
+  const baseTask = { id: "task-1", status: "needs-review", mainAiFailureLimitReached: false } as Parameters<typeof isLoopTaskResumable>[0];
 
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "needs-review" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "error" }), true);
@@ -65,4 +66,31 @@ test("keeps interrupted Loop task states resumable from the main tab", () => {
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "running" }), true);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "completed" }), false);
   assert.equal(isLoopTaskResumable({ ...baseTask, status: "error", mainAiFailureLimitReached: true }), false);
+});
+
+test("does not resume a completed Loop+ task just because classic completion bubbles are missing", () => {
+  const baseTask = {
+    status: "completed",
+    schedulingMode: "event_driven",
+    mainAiFailureLimitReached: false,
+  } as const;
+
+  assert.equal(isLoopTaskPromptResumeCandidate(baseTask, { hasCompleteCompletionMessages: false }), false);
+  assert.equal(isLoopTaskPromptResumeCandidate(baseTask, { hasCompleteCompletionMessages: true }), false);
+  assert.equal(isLoopTaskPromptResumeCandidate(
+    { ...baseTask, status: "needs-review" },
+    { hasCompleteCompletionMessages: false },
+  ), true);
+  assert.equal(isLoopTaskPromptResumeCandidate(
+    { ...baseTask, status: "stopped", mainAiFailureLimitReached: true },
+    { hasCompleteCompletionMessages: false },
+  ), false);
+  assert.equal(isLoopTaskPromptResumeCandidate(
+    { status: "completed", schedulingMode: "classic", mainAiFailureLimitReached: false },
+    { hasCompleteCompletionMessages: false },
+  ), true);
+  assert.equal(isLoopTaskPromptResumeCandidate(
+    { status: "completed", mainAiFailureLimitReached: false },
+    { hasCompleteCompletionMessages: true },
+  ), false);
 });

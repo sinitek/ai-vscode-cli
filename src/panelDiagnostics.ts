@@ -340,7 +340,9 @@ export function collectRecentLoopTaskIdsFromMessages(messages: readonly ChatMess
   return ids;
 }
 
-export function isLoopTaskResumable(task: LoopTaskRecord): boolean {
+export function isLoopTaskResumable(
+  task: Pick<LoopTaskRecord, "status" | "mainAiFailureLimitReached">,
+): boolean {
   return !isLoopMainAiFailureLimitReached(task)
     && (
       task.status === "needs-review"
@@ -348,6 +350,18 @@ export function isLoopTaskResumable(task: LoopTaskRecord): boolean {
       || task.status === "stopped"
       || task.status === "running"
     );
+}
+
+export function isLoopTaskPromptResumeCandidate(
+  task: Pick<LoopTaskRecord, "status" | "schedulingMode" | "mainAiFailureLimitReached">,
+  options: { hasCompleteCompletionMessages: boolean },
+): boolean {
+  if (isLoopTaskResumable(task)) {
+    return true;
+  }
+  return task.status === "completed"
+    && resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven"
+    && !options.hasCompleteCompletionMessages;
 }
 
 export function isLoopTaskSessionCompatible(

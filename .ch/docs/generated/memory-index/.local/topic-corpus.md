@@ -7,9 +7,9 @@
 - Entries: 3
 - Estimated read cost: ~296 tokens
 
-- `mem-538cb1444d` `plan` Loop+ 完成事件驱动验收 -> `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - `mem-91b4245892` `plan` 可维护性重构 -> `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
 - `mem-d3aa6ffe1b` `plan` 计划标题 -> `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md`
+- `mem-538cb1444d` `plan` Loop+ 完成事件驱动验收 -> `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 
 ## gotcha
 
