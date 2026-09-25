@@ -207,6 +207,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLoopMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
+    toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop+ Dispatch Limit",
+    toolSettingsLoopPlusDecisionSubtaskMaxTitle:
+      "Global setting. Limits how many subtasks one Loop+ dispatch or accept may include. Default 6, range 1-20. It does not change how many subtasks can run at the same time.",
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop Subtask Max Thinking",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "Global setting. Loop subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
@@ -657,6 +660,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
+    toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop+ 单次派发上限",
+    toolSettingsLoopPlusDecisionSubtaskMaxTitle:
+      "全局设置。限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1–20。不改变同时运行的并发上限。",
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop 子任务最大思考力度",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "全局设置。Loop 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",

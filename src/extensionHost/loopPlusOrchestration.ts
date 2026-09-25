@@ -4,7 +4,7 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { parseLoopPlusDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   createLoopPlusScheduler,
   type LoopPlusExecutionOutcome,
@@ -107,6 +107,7 @@ export type LoopPlusOrchestrationDeps = {
   decisionSafetyLimit?: number;
   protocolRetryLimit?: number;
   launchDelayMs?: (lastLaunchAt: number | null, now: number) => number;
+  decisionSubtaskMax?: () => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
   readTask: (taskId: string) => LoopTaskRecord | null;
@@ -213,6 +214,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     setTimeout(resolve, ms);
   }));
   const launchDelayMs = deps.launchDelayMs ?? (() => 0);
+  const decisionSubtaskMax = () => resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
 
   function tryRun(input: LoopPlusRunInput, target: LoopPlusPromptTarget, options: LoopPlusRunOptions = {}): LoopPlusRunResult {
     const resumeTaskId = normalizeId(options.resumeTaskId);
@@ -670,7 +672,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         continue;
       }
-      const decision = parseLoopPlusDecision(content);
+      const decision = parseLoopPlusDecision(content, { subtaskMax: decisionSubtaskMax() });
       const applied = applyDecision(runtime, step, decision);
       if (applied === "stop") {
         return;
@@ -1385,6 +1387,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       pendingUserMessages: step.kind === "user"
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
+      subtaskMax: decisionSubtaskMax(),
     });
     return {
       taskId: runtime.taskId,

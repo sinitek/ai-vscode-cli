@@ -88,6 +88,7 @@ import {
   describeLoopExecutionPlan,
   type LoopSubtaskExecutionPlan,
 } from "./loopParallel";
+import { LOOP_PLUS_DECISION_SUBTASK_MAX, resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -121,6 +122,7 @@ export type PanelStateBuilderDeps = {
   getGlobalHumanInteractionEnabled: () => boolean;
   getGlobalHistoryRetentionDays?: () => number;
   getGlobalLoopMaxRounds: () => number;
+  getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
   buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
   getDebugLogging: typeof getDebugLogging;
@@ -217,6 +219,9 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
     historyRetentionDays: deps.getGlobalHistoryRetentionDays?.() ?? 30,
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
+    loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
+      deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,
+    ),
     loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
     loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),
     debug: deps.getDebugLogging(),

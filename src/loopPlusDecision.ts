@@ -8,6 +8,8 @@ import type {
 } from "./loopTaskStore";
 
 export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
+export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
+export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 export const LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH = 80;
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
@@ -37,13 +39,33 @@ export type LoopPlusDecision = {
   estimatedRemainingRounds?: number;
 };
 
-export function parseLoopPlusDecision(content: string | null | undefined): LoopPlusDecision | null {
+export type LoopPlusDecisionOptions = {
+  subtaskMax?: number;
+};
+
+export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return LOOP_PLUS_DECISION_SUBTASK_MAX;
+  }
+  return Math.min(
+    Math.max(Math.floor(numeric), LOOP_PLUS_DECISION_SUBTASK_MIN),
+    LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+  );
+}
+
+export function parseLoopPlusDecision(
+  content: string | null | undefined,
+  options?: LoopPlusDecisionOptions,
+): LoopPlusDecision | null {
   if (typeof content !== "string" || !content.trim()) {
     return null;
   }
   for (const jsonText of extractJsonObjectTexts(content)) {
     try {
-      const decision = normalizeLoopPlusDecision(JSON.parse(jsonText));
+      const decision = normalizeLoopPlusDecision(JSON.parse(jsonText), options);
       if (decision) {
         return decision;
       }
@@ -54,7 +76,10 @@ export function parseLoopPlusDecision(content: string | null | undefined): LoopP
   return null;
 }
 
-export function normalizeLoopPlusDecision(value: unknown): LoopPlusDecision | null {
+export function normalizeLoopPlusDecision(
+  value: unknown,
+  options?: LoopPlusDecisionOptions,
+): LoopPlusDecision | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -62,17 +87,18 @@ export function normalizeLoopPlusDecision(value: unknown): LoopPlusDecision | nu
     return null;
   }
   const estimatedRemainingRounds = normalizeEstimatedRemainingRounds(value.estimatedRemainingRounds);
+  const subtaskMax = resolveLoopPlusDecisionSubtaskMax(options?.subtaskMax);
   switch (value.status) {
     case "dispatch":
-      return normalizeDispatchDecision(value, estimatedRemainingRounds);
+      return normalizeDispatchDecision(value, estimatedRemainingRounds, subtaskMax);
     case "accept":
-      return normalizeAcceptDecision(value, estimatedRemainingRounds);
+      return normalizeAcceptDecision(value, estimatedRemainingRounds, subtaskMax);
     case "wait":
-      return normalizeWaitDecision(value, estimatedRemainingRounds);
+      return normalizeWaitDecision(value, estimatedRemainingRounds, subtaskMax);
     case "blocked":
-      return normalizeBlockedDecision(value, estimatedRemainingRounds);
+      return normalizeBlockedDecision(value, estimatedRemainingRounds, subtaskMax);
     case "completed":
-      return normalizeCompletedDecision(value, estimatedRemainingRounds);
+      return normalizeCompletedDecision(value, estimatedRemainingRounds, subtaskMax);
     default:
       return null;
   }
@@ -81,11 +107,12 @@ export function normalizeLoopPlusDecision(value: unknown): LoopPlusDecision | nu
 function normalizeDispatchDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
 ): LoopPlusDecision | null {
   if (hasOwn(raw, "reviewEventId")) {
     return null;
   }
-  const subtasks = readSubtasks(raw);
+  const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length < 1) {
     return null;
   }
@@ -98,12 +125,13 @@ function normalizeDispatchDecision(
 function normalizeAcceptDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
 ): LoopPlusDecision | null {
   const reviewEventId = readRequiredReviewEventId(raw.reviewEventId);
   if (!reviewEventId) {
     return null;
   }
-  const subtasks = readSubtasks(raw);
+  const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks) {
     return null;
   }
@@ -117,11 +145,12 @@ function normalizeAcceptDecision(
 function normalizeWaitDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
 ): LoopPlusDecision | null {
   if (hasOwn(raw, "reviewEventId")) {
     return null;
   }
-  const subtasks = readSubtasks(raw);
+  const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length > 0) {
     return null;
   }
@@ -131,11 +160,12 @@ function normalizeWaitDecision(
 function normalizeBlockedDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
 ): LoopPlusDecision | null {
   if (hasOwn(raw, "reviewEventId")) {
     return null;
   }
-  const subtasks = readSubtasks(raw);
+  const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length > 0) {
     return null;
   }
@@ -149,12 +179,13 @@ function normalizeBlockedDecision(
 function normalizeCompletedDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
 ): LoopPlusDecision | null {
   const reviewEventId = readOptionalReviewEventId(raw, "reviewEventId");
   if (reviewEventId === null) {
     return null;
   }
-  const subtasks = readSubtasks(raw);
+  const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length > 0) {
     return null;
   }
@@ -198,9 +229,9 @@ function withEstimatedRemainingRounds(
   };
 }
 
-function readSubtasks(raw: Record<string, unknown>): LoopSubtaskDecision[] | null {
+function readSubtasks(raw: Record<string, unknown>, subtaskMax: number): LoopSubtaskDecision[] | null {
   const items = readRawSubtasks(raw);
-  if (!items || items.length > LOOP_PLUS_DECISION_SUBTASK_MAX) {
+  if (!items || items.length > subtaskMax) {
     return null;
   }
   const subtasks: LoopSubtaskDecision[] = [];

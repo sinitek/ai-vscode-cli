@@ -1,6 +1,6 @@
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
-  LOOP_PLUS_DECISION_SUBTASK_MAX,
+  resolveLoopPlusDecisionSubtaskMax,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -19,6 +19,7 @@ export type LoopPlusMainPromptContext = {
   currentEventId: string | null;
   supplementalRequirements: readonly string[];
   pendingUserMessages?: readonly string[];
+  subtaskMax?: number;
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -131,6 +132,7 @@ function buildLoopPlusProtocolExamples(currentEventId: string | null): string {
 }
 
 export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext): string {
+  const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const liveEventId = liveReviewEventId(context.currentEventId);
@@ -195,9 +197,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     context.rootPrompt,
     "This prompt is a snapshot captured when the CLI started. More executions may finish and join the FIFO queue after that. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
     "Rules:",
-    "- dispatch starts 1 to " + LOOP_PLUS_DECISION_SUBTASK_MAX + " new self-contained subtasks and confirms nothing. Do not send dispatch while a current review event is open. Do not include reviewEventId.",
+    "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while a current review event is open. Do not include reviewEventId.",
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
-    "- accept confirms only the one current reviewEventId and must copy Current review eventId exactly. It may append 0 to " + LOOP_PLUS_DECISION_SUBTASK_MAX + " new subtasks. Do not send accept when Current review eventId is (none).",
+    "- accept confirms only the one current reviewEventId and must copy Current review eventId exactly. It may append 0 to " + subtaskMax + " new subtasks. Do not send accept when Current review eventId is (none).",
     acceptExampleRule,
     "- wait confirms nothing. Do not include reviewEventId or subtasks. Use wait only when there is no current review and at least one execution is still running or pending.",
     "- When New user messages is not (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",

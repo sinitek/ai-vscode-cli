@@ -11,6 +11,11 @@ import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "./viewContentScript/eventBin
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "./viewContentScript/modelManager";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "./viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "./viewContentScript/windowMessageDispatch";
+import {
+  LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+  LOOP_PLUS_DECISION_SUBTASK_MAX,
+  LOOP_PLUS_DECISION_SUBTASK_MIN,
+} from "../loopPlusDecision";
 
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
@@ -18,6 +23,9 @@ export type BuildWebviewRuntimeScriptInput = {
   loopMaxRoundsDefault: number;
   loopMaxRoundsMin: number;
   loopMaxRoundsMax: number;
+  loopPlusDecisionSubtaskMaxDefault?: number;
+  loopPlusDecisionSubtaskMaxMin?: number;
+  loopPlusDecisionSubtaskMaxLimit?: number;
   loopSubtaskMaxThinkingModeDefault: string;
   loopExecutionModeMainSubMultiAgent: string;
   loopExecutionModeDebateMultiAgent: string;
@@ -51,6 +59,9 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
     ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
     ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],
+    ["${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT}", String(input.loopPlusDecisionSubtaskMaxDefault ?? LOOP_PLUS_DECISION_SUBTASK_MAX)],
+    ["${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}", String(input.loopPlusDecisionSubtaskMaxMin ?? LOOP_PLUS_DECISION_SUBTASK_MIN)],
+    ["${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}", String(input.loopPlusDecisionSubtaskMaxLimit ?? LOOP_PLUS_DECISION_SUBTASK_LIMIT)],
     ["${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}", input.loopSubtaskMaxThinkingModeDefault],
     ["${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.loopExecutionModeMainSubMultiAgent],
     ["${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.loopExecutionModeDebateMultiAgent],

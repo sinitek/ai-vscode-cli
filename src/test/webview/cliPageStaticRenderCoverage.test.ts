@@ -248,6 +248,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="historyRetentionDays"',
     'id="codeGraphEnabled"',
     'id="loopMaxRounds"',
+    'id="loopPlusDecisionSubtaskMax"',
     'id="loopSubtaskMaxThinkingMode"',
     'id="languageSelect"',
     'id="commonCommandsOverlay"',

@@ -325,6 +325,7 @@ export type PanelState = {
   humanInteractionEnabled: boolean;
   historyRetentionDays: number;
   loopMaxRounds: number;
+  loopPlusDecisionSubtaskMax: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;

@@ -101,6 +101,7 @@ function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRec
 
 function harness(options: {
   maxConcurrency?: number;
+  decisionSubtaskMax?: () => number;
   decisionSafetyLimit?: number;
   launchDelayMs?: (last: number | null, now: number) => number;
   delay?: (ms: number) => Promise<void>;
@@ -126,6 +127,7 @@ function harness(options: {
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
     maxConcurrency: options.maxConcurrency ?? 6,
+    ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
@@ -240,6 +242,31 @@ test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current 
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "event_driven" }, "classic"), "event_driven");
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "classic" }, "event_driven"), "classic");
   assert.equal(resolveLoopPlusEntry({}, "event_driven"), "classic");
+});
+
+test("uses the configured Loop+ dispatch subtask maximum", async () => {
+  const limited = harness({ decisionSubtaskMax: () => 1 });
+  limited.host.tryRun({ displayPrompt: "ship the feature" }, limited.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.match(limited.mains[0].request.modelPrompt, /1 to 1 new self-contained subtasks/);
+  limited.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.equal(limited.attempts.length, 0);
+  assert.equal(limited.logs.some((item) => item.event === "loop-plus-protocol-miss"), true);
+
+  const raised = harness({ decisionSubtaskMax: () => 8, maxConcurrency: 8 });
+  raised.host.tryRun({ displayPrompt: "ship the feature" }, raised.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.match(raised.mains[0].request.modelPrompt, /1 to 8 new self-contained subtasks/);
+  raised.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: Array.from({ length: 7 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
+  }));
+  await flush();
+  assert.equal(raised.attempts.length, 7);
 });
 
 test("starts one main review when A finishes while B is still running", async () => {

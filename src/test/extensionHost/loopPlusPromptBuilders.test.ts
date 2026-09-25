@@ -218,6 +218,11 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   }));
   assert.match(prompt, new RegExp(`1 to ${LOOP_PLUS_DECISION_SUBTASK_MAX}`));
   assert.match(prompt, new RegExp(`0 to ${LOOP_PLUS_DECISION_SUBTASK_MAX}`));
+  const limited = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 3 }));
+  assert.match(limited, /1 to 3 new self-contained subtasks/);
+  assert.match(limited, /0 to 3 new subtasks/);
+  const clamped = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 99 }));
+  assert.match(clamped, /1 to 20 new self-contained subtasks/);
   assert.match(prompt, new RegExp(String(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH)));
   PLURAL_CONFIRMATION_KEYS.forEach((key) => {
     assert.match(prompt, new RegExp(key));

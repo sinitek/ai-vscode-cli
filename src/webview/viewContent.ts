@@ -8,6 +8,11 @@ import * as path from "path";
 import { WEBVIEW_STYLES } from "./viewContentStyles";
 import { buildWebviewRuntimeScript } from "./viewContentScript";
 import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
+import {
+  LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+  LOOP_PLUS_DECISION_SUBTASK_MAX,
+  LOOP_PLUS_DECISION_SUBTASK_MIN,
+} from "../loopPlusDecision";
 import { LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT } from "../loopSubtaskThinking";
 
 const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
@@ -48,6 +53,9 @@ ${buildWebviewRuntimeScript({
     loopMaxRoundsDefault: LOOP_MAX_ROUNDS_SETTING_DEFAULT,
     loopMaxRoundsMin: LOOP_MAX_ROUNDS_SETTING_MIN,
     loopMaxRoundsMax: LOOP_MAX_ROUNDS_SETTING_MAX,
+    loopPlusDecisionSubtaskMaxDefault: LOOP_PLUS_DECISION_SUBTASK_MAX,
+    loopPlusDecisionSubtaskMaxMin: LOOP_PLUS_DECISION_SUBTASK_MIN,
+    loopPlusDecisionSubtaskMaxLimit: LOOP_PLUS_DECISION_SUBTASK_LIMIT,
     loopSubtaskMaxThinkingModeDefault: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
     loopExecutionModeMainSubMultiAgent:
       LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,

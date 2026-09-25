@@ -21,6 +21,7 @@ export type ToolSettingsState = {
   multiAgentEnabled?: boolean;
   humanInteractionEnabled?: boolean;
   loopMaxRounds?: number;
+  loopPlusDecisionSubtaskMax?: number;
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
@@ -90,6 +91,17 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       : (record.loopMaxRounds.trim() ? Number(record.loopMaxRounds) : Number.NaN);
     if (Number.isFinite(parsed)) {
       normalized.loopMaxRounds = Math.floor(parsed);
+    }
+  }
+  if (
+    typeof record.loopPlusDecisionSubtaskMax === "number"
+    || typeof record.loopPlusDecisionSubtaskMax === "string"
+  ) {
+    const parsed = typeof record.loopPlusDecisionSubtaskMax === "number"
+      ? record.loopPlusDecisionSubtaskMax
+      : (record.loopPlusDecisionSubtaskMax.trim() ? Number(record.loopPlusDecisionSubtaskMax) : Number.NaN);
+    if (Number.isFinite(parsed)) {
+      normalized.loopPlusDecisionSubtaskMax = Math.floor(parsed);
     }
   }
   const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(

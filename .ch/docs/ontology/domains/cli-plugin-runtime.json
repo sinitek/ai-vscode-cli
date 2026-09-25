@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-23",
+  "as_of": "2026-09-25",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -408,6 +408,19 @@
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/panelDiagnostics.ts"},
         {"path": "src/extensionHost/promptRunRuntime.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_dispatch_subtask_max",
+      "name": "Loop+ 单次派发子任务上限可配置",
+      "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency；超出并发上限的已接受子任务留在 pending。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/toolSettings.ts"}
       ]
     },
     {

@@ -101,6 +101,7 @@
 - 写范围冲突复用 `conflictGroup` 与 `writeFilePathsOverlap`，实现通过 `buildLoopSubtaskExecutionPlan` 的同一路径语义。
 - 路径比较继续使用现有规范化：反斜杠转斜杠、合并重复分隔符、去掉尾部斜杠、忽略大小写，并用父目录前缀判断重叠。
 - `maxConcurrency` 是宿主必须传入的正整数策略。内核在超额度时把任务留在 pending，不另选一个产品数字。`loopParallel` 本身仍没有数字上限。
+- 一次 `dispatch` 或 `accept` 能附带的子任务数由 `loopPlusDecisionSubtaskMax` 决定。它来自工具设置“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 6，范围 1–20。宿主在解析决策和生成下一轮主任务提示时读取当前值；未配置时仍用 `LOOP_PLUS_DECISION_SUBTASK_MAX`。这个上限不替代 `maxConcurrency`，也不改变经典 Loop 的批次上限。
 - 错峰继续使用 `LOOP_SUBTASK_LAUNCH_INTERVAL_MS`（3 秒）。内核返回 `started` 后由宿主延迟，调度器内部不睡眠。
 - 待启动任务必须参与冲突判断。同一子任务有未验收 attempt 时，新 attempt 被拒绝。
 

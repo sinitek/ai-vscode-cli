@@ -424,6 +424,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
         state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
+        state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
+          panelState.loopPlusDecisionSubtaskMax
+        );
         state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
           panelState.loopSubtaskMaxThinkingMode
         );
@@ -492,6 +495,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);
+        }
+        if (elements.loopPlusDecisionSubtaskMax) {
+          elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
         }
         if (elements.loopSubtaskMaxThinkingMode) {
           elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;

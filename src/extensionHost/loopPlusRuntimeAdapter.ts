@@ -51,6 +51,7 @@ type LoopPlusTranscriptMessage = {
 export type LoopPlusRuntimeAdapterDeps = {
   maxConcurrency?: number;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
+  decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   readTask: (taskId: string) => LoopTaskRecord | null;
@@ -399,6 +400,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       hostInstance = createLoopPlusOrchestrationHost({
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
+        decisionSubtaskMax: deps.decisionSubtaskMax,
         delay: deps.delay,
         now,
         readTask: deps.readTask,

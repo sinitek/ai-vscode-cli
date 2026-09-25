@@ -2,9 +2,12 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
+  LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
+  LOOP_PLUS_DECISION_SUBTASK_MIN,
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
+  resolveLoopPlusDecisionSubtaskMax,
   type LoopPlusDecision,
 } from "../../loopPlusDecision";
 
@@ -143,6 +146,33 @@ test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown
     status: "dispatch",
     subtasks: [subtask("short", "太短")],
   })), null);
+});
+
+test("applies a configured Loop+ dispatch subtask maximum", () => {
+  assert.equal(resolveLoopPlusDecisionSubtaskMax(undefined), LOOP_PLUS_DECISION_SUBTASK_MAX);
+  assert.equal(resolveLoopPlusDecisionSubtaskMax("2.9"), 2);
+  assert.equal(resolveLoopPlusDecisionSubtaskMax(0), LOOP_PLUS_DECISION_SUBTASK_MIN);
+  assert.equal(resolveLoopPlusDecisionSubtaskMax(99), LOOP_PLUS_DECISION_SUBTASK_LIMIT);
+
+  const two = parseLoopPlusDecision(JSON.stringify({
+    status: "dispatch",
+    subtasks: [subtask("alpha"), subtask("beta")],
+  }), { subtaskMax: 2 });
+  assert.equal(two?.subtasks?.length, 2);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "dispatch",
+    subtasks: [subtask("alpha"), subtask("beta"), subtask("gamma")],
+  }), { subtaskMax: 2 }), null);
+
+  const raised = Array.from({ length: LOOP_PLUS_DECISION_SUBTASK_MAX + 1 }, (_, index) => subtask(`raised-${index}`));
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "dispatch",
+    subtasks: raised,
+  })), null);
+  assert.equal(normalizeLoopPlusDecision({
+    status: "dispatch",
+    subtasks: raised,
+  }, { subtaskMax: raised.length })?.subtasks?.length, raised.length);
 });
 
 test("rejects decisions that would confirm a review implicitly or dispatch while waiting", () => {

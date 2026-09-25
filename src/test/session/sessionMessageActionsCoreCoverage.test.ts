@@ -335,6 +335,19 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
   assert.equal(calls.postPanelState, 10);
 });
 
+test("persists the Loop+ dispatch subtask maximum as a global setting", async () => {
+  const { deps, calls } = createSettingHarness();
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: "8.9" }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 0 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: "nope" }, deps);
+  assert.deepEqual(calls.toolSettings, [
+    { loopPlusDecisionSubtaskMax: 8 },
+    { loopPlusDecisionSubtaskMax: 1 },
+    { loopPlusDecisionSubtaskMax: 6 },
+  ]);
+  assert.equal(calls.postPanelState, 3);
+});
+
 test("persists automatic-cleanup retention days as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "historyRetentionDays", value: "45.9" }, deps);

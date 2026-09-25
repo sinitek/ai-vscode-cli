@@ -1,4 +1,8 @@
 import { AppLocale } from "../i18n";
+import {
+  LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+  LOOP_PLUS_DECISION_SUBTASK_MIN,
+} from "../loopPlusDecision";
 import { WebviewI18nKey } from "./viewContentI18n";
 
 type WebviewHtmlStrings = Record<WebviewI18nKey, string>;
@@ -510,6 +514,21 @@ ${webviewStyles}    </style>
                     step="1"
                     title="${i18n.toolSettingsLoopMaxRoundsTitle}"
                     aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
+                  />
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
+                  <input
+                    type="number"
+                    id="loopPlusDecisionSubtaskMax"
+                    class="tool-settings-number"
+                    min="${LOOP_PLUS_DECISION_SUBTASK_MIN}"
+                    max="${LOOP_PLUS_DECISION_SUBTASK_LIMIT}"
+                    step="1"
+                    title="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxTitle}"
+                    aria-label="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}"
                   />
                 </div>
               </section>

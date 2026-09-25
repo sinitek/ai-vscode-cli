@@ -163,16 +163,19 @@ test("normalizes global Loop tool settings", () => {
   assert.deepEqual(
     normalizeToolSettings({
       loopMaxRounds: "42.9",
+      loopPlusDecisionSubtaskMax: "8.2",
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
       loopMaxRounds: 42,
+      loopPlusDecisionSubtaskMax: 8,
       loopSubtaskMaxThinkingMode: "high",
     },
   );
   assert.deepEqual(
     normalizeToolSettings({
       loopMaxRounds: "",
+      loopPlusDecisionSubtaskMax: "",
       loopSubtaskMaxThinkingMode: "invalid",
     }),
     {},

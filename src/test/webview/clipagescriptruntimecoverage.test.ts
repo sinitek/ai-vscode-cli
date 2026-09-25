@@ -1186,6 +1186,12 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   document.getElementById("loopMaxRounds").value = "0";
   document.getElementById("loopMaxRounds").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopMaxRounds", value: 1 });
+  document.getElementById("loopPlusDecisionSubtaskMax").value = "0";
+  document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 1 });
+  document.getElementById("loopPlusDecisionSubtaskMax").value = "99";
+  document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 20 });
   document.getElementById("languageSelect").value = "zh-CN";
   document.getElementById("languageSelect").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "locale", value: "zh-CN" });
