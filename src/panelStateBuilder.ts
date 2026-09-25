@@ -759,7 +759,9 @@ export function buildLoopDebateChatPanelStateWithDeps(
 }
 
 export function projectLoopPlusPanel(
-  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status">,
+  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status"> & {
+    subTasks?: LoopTaskRecord["subTasks"];
+  },
 ): LoopPlusPanelProjection | null {
   if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
     return null;
@@ -793,11 +795,18 @@ export function projectLoopPlusPanel(
       pending: view.pending.map(copyLoopPlusExecutionItem),
       runningCount: view.running.length,
       pendingCount: view.pending.length,
-      seenAttempts: snapshot.seenAttempts.map((item) => ({
-        subtaskId: item.subtaskId,
-        attemptId: item.attemptId,
-        disposition: item.disposition,
-      })),
+      seenAttempts: snapshot.seenAttempts.map((item) => {
+        const recordedStatus = task.subTasks?.find((subtask) => subtask.id === item.subtaskId)?.status;
+        return {
+          subtaskId: item.subtaskId,
+          attemptId: item.attemptId,
+          disposition: item.disposition,
+          ...(item.outcome ? { outcome: item.outcome } : {}),
+          ...(item.disposition === "reviewed"
+            ? { acceptance: loopPlusReviewedAcceptance(item.outcome, recordedStatus) }
+            : {}),
+        };
+      }),
     };
   } catch (error) {
     const reason = error instanceof Error && error.message.trim() ? error.message.trim() : "invalid";
@@ -841,6 +850,22 @@ function loopPlusActivityForPhase(
 
 function isLoopPlusDisplayPaused(status: string): boolean {
   return status === "needs-review" || status === "error";
+}
+
+function loopPlusReviewedAcceptance(
+  outcome: "completed" | "failed" | "stopped" | undefined,
+  recordedStatus: string | undefined,
+): "passed" | "failed" {
+  if (outcome === "failed" || outcome === "stopped") {
+    return "failed";
+  }
+  if (outcome === "completed") {
+    return "passed";
+  }
+  if (recordedStatus === "blocked") {
+    return "failed";
+  }
+  return "passed";
 }
 
 function copyLoopPlusReviewItem(item: LoopPlusReviewItem): Extract<LoopPlusPanelProjection, { ok: true }>["reviewQueue"][number] {
@@ -1282,8 +1307,12 @@ function loopPlusMemberStatus(
   if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
     return "pending";
   }
-  if (projection.seenAttempts.some((item) => item.subtaskId === subtaskId && item.disposition === "reviewed")) {
-    return "reviewed";
+  const reviewed = projection.seenAttempts.filter((item) => (
+    item.subtaskId === subtaskId && item.disposition === "reviewed"
+  ));
+  const latestReviewed = reviewed[reviewed.length - 1];
+  if (latestReviewed) {
+    return latestReviewed.acceptance === "failed" ? "acceptance_failed" : "acceptance_passed";
   }
   if (recordedStatus === "completed") {
     return "execution_completed";

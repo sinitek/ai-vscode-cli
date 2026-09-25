@@ -2211,3 +2211,29 @@
 ## 历史归档入口
 
 - [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)：已修复、已废弃、仅历史版本有效条目，保留完整追溯信息。
+
+## Loop+ 群聊不能把调度 attempt 显示成验收状态
+
+- 状态：已规避
+- 首次发现：2026-09-25
+- 适用范围：Loop+ 群聊侧栏的已确认验收
+
+### 现象
+- 已确认的子任务整列显示“已验收尝试”，每一行还带内部 attempt id。用户无法判断这项验收是成功还是失败。
+
+### 触发条件
+- `seenAttempts` 里 `disposition` 为 `reviewed` 的记录被直接渲染成尝试列表。
+- 执行结果 `outcome` 在确认验收后没有留给展示层。
+
+### 根因
+- attempt 是调度身份，不是验收结论。确认验收只表示主任务已经处理这条完成事件。
+
+### 长期规避
+- 群聊已确认项只显示验收成功或验收失败。执行结果为 `completed` 是成功，`failed` 或 `stopped` 是失败。
+- 旧快照没有 `outcome` 时，不要发明第三种“尝试”状态；只有子任务记录为 `blocked` 才显示失败，否则显示成功。
+- 还在队列里、尚未确认的项继续显示待验收，不要提前写成验收失败。
+- 内部 attempt id 可以留在数据属性里，不写进用户可见文案。
+
+### 验证方式
+- `node --test dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopPlusScheduler.test.js`
+

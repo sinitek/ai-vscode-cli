@@ -939,3 +939,41 @@ test("queues user speech separately from reviews and still loads snapshots witho
     /Invalid Loop\+ scheduler snapshot: userMessageQueue/,
   );
 });
+
+test("keeps the execution outcome after review and still loads a legacy attempt without one", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("alpha")]);
+  const finished = scheduler.finish({
+    subtaskId: "alpha",
+    attemptId: "alpha-1",
+    outcome: "stopped",
+  });
+  assert.equal(finished.applied, true);
+  assert.equal(scheduler.snapshot().seenAttempts[0]?.outcome, "stopped");
+  assert.equal(scheduler.snapshot().seenAttempts[0]?.disposition, "finished");
+  assert.equal(scheduler.submitReview(reviewEvent("alpha")).ok, true);
+  assert.equal(scheduler.snapshot().seenAttempts[0]?.disposition, "reviewed");
+  assert.equal(scheduler.snapshot().seenAttempts[0]?.outcome, "stopped");
+
+  const legacy = scheduler.snapshot();
+  delete legacy.seenAttempts[0]?.outcome;
+  const restored = createLoopPlusScheduler({ snapshot: legacy });
+  assert.equal(restored.snapshot().seenAttempts[0]?.disposition, "reviewed");
+  assert.equal(restored.snapshot().seenAttempts[0]?.outcome, undefined);
+
+  const invalid = scheduler.snapshot();
+  (invalid.seenAttempts[0] as { outcome?: string }).outcome = "nope";
+  assert.throws(
+    () => createLoopPlusScheduler({ snapshot: invalid }),
+    /Invalid Loop\+ scheduler snapshot: seenAttempts\[0\]/,
+  );
+
+  const running = createLoopPlusScheduler({ maxConcurrency: 1 });
+  running.dispatch([spec("beta")]);
+  const open = running.snapshot();
+  open.seenAttempts[0]!.outcome = "completed";
+  assert.throws(
+    () => createLoopPlusScheduler({ snapshot: open }),
+    /Invalid Loop\+ scheduler snapshot: seenAttempts\[0\]/,
+  );
+});

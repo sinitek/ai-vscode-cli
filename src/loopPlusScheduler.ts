@@ -58,6 +58,7 @@ export type LoopPlusSeenAttempt = {
   subtaskId: string;
   attemptId: string;
   disposition: LoopPlusAttemptDisposition;
+  outcome?: LoopPlusExecutionOutcome;
 };
 
 export type LoopPlusSchedulerSnapshot = {
@@ -460,6 +461,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     running = running.filter((item) => item.attemptId !== attemptId);
     pending = pending.filter((item) => item.attemptId !== attemptId);
     seen.disposition = "finished";
+    seen.outcome = input.outcome;
     const item: LoopPlusReviewItem = {
       eventId,
       subtaskId,
@@ -1104,10 +1106,15 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
     if (!isRecord(item) || !isDisposition(item.disposition)) {
       invalidSnapshot(`seenAttempts[${index}]`);
     }
+    const outcome = readSeenOutcome(item.outcome, `seenAttempts[${index}]`);
+    if (item.disposition === "open" && outcome) {
+      invalidSnapshot(`seenAttempts[${index}]`);
+    }
     return {
       subtaskId: readRequiredId(item.subtaskId, `seenAttempts[${index}]`),
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
       disposition: item.disposition,
+      ...(outcome ? { outcome } : {}),
     };
   });
 }
@@ -1254,7 +1261,18 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     subtaskId: record.subtaskId,
     attemptId: record.attemptId,
     disposition: record.disposition,
+    ...(record.outcome ? { outcome: record.outcome } : {}),
   };
+}
+
+function readSeenOutcome(value: unknown, field: string): LoopPlusExecutionOutcome | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isOutcome(value)) {
+    invalidSnapshot(field);
+  }
+  return value;
 }
 
 function isOutcome(value: unknown): value is LoopPlusExecutionOutcome {

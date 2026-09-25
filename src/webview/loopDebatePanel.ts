@@ -793,7 +793,7 @@ function renderLoopPlusPanels(
       <div class="notice" data-loop-plus-error="${escapeAttribute(projection.error)}">${escapeHtml(formatTemplate(strings.loopPlusInvalid, { reason: projection.error }))}</div>
     </section>`;
   }
-  const activity = loopPlusActivityText(projection, strings);
+  const activity = loopPlusActivityText(state, projection, strings);
   return `<section class="panel" data-loop-plus-mode="event_driven" data-loop-plus-status="${escapeAttribute(projection.activity)}" data-loop-plus-phase="${escapeAttribute(projection.phase)}">
     <h2>${escapeHtml(strings.titleLoopPlus)}</h2>
     <div class="meta-grid">
@@ -810,14 +810,15 @@ function renderLoopPlusPanels(
     </div>
     <div class="member-meta" data-loop-plus-activity="${escapeAttribute(projection.activity)}">${escapeHtml(activity)}</div>
   </section>
-  ${renderLoopPlusReviewSection("current", strings.loopPlusCurrentHeading, projection.currentReview ? [projection.currentReview] : [], strings.loopPlusEmptyCurrent, strings)}
-  ${renderLoopPlusReviewSection("queue", strings.loopPlusQueueHeading, projection.reviewQueue, strings.loopPlusEmptyQueue, strings)}
+  ${renderLoopPlusReviewSection(state, "current", strings.loopPlusCurrentHeading, projection.currentReview ? [projection.currentReview] : [], strings.loopPlusEmptyCurrent, strings)}
+  ${renderLoopPlusReviewSection(state, "queue", strings.loopPlusQueueHeading, projection.reviewQueue, strings.loopPlusEmptyQueue, strings)}
   ${renderLoopPlusExecutionSection("running", strings.loopPlusRunningHeading, projection.running, strings.loopPlusEmptyRunning, strings)}
   ${renderLoopPlusExecutionSection("pending", strings.loopPlusPendingHeading, projection.pending, strings.loopPlusEmptyPending, strings)}
-  ${renderLoopPlusSeenSection(projection.seenAttempts, strings)}`;
+  ${renderLoopPlusSeenSection(state, projection.seenAttempts, strings)}`;
 }
 
 function loopPlusActivityText(
+  state: LoopDebateChatPanelState,
   projection: Extract<LoopPlusPanelProjection, { ok: true }>,
   strings: LoopDebateChatPanelStrings,
 ): string {
@@ -828,8 +829,7 @@ function loopPlusActivityText(
       return strings.loopPlusActivityReviewPending;
     case "reviewing":
       return formatTemplate(strings.loopPlusActivityReviewing, {
-        subtask: projection.currentReview?.subtaskId ?? "",
-        attempt: projection.currentReview?.attemptId ?? "",
+        subtask: loopPlusSubtaskLabel(state, projection.currentReview?.subtaskId ?? ""),
       });
     case "stopped":
       return strings.loopPlusActivityStopped;
@@ -842,7 +842,23 @@ function loopPlusActivityText(
   }
 }
 
+function loopPlusSubtaskLabel(state: LoopDebateChatPanelState, subtaskId: string): string {
+  const normalized = subtaskId.trim();
+  if (!normalized) {
+    return "";
+  }
+  for (const round of state.rounds) {
+    const participant = round.participants.find((item) => item.role === "subtask" && item.id === normalized);
+    const title = participant?.title.trim();
+    if (title) {
+      return title;
+    }
+  }
+  return normalized;
+}
+
 function renderLoopPlusReviewSection(
+  state: LoopDebateChatPanelState,
   role: "current" | "queue",
   heading: string,
   items: readonly LoopPlusPanelReviewItem[],
@@ -850,7 +866,7 @@ function renderLoopPlusReviewSection(
   strings: LoopDebateChatPanelStrings,
 ): string {
   const body = items.length > 0
-    ? items.map((item) => renderLoopPlusReviewItem(role === "current" ? "current" : "queued", item, strings)).join("")
+    ? items.map((item) => renderLoopPlusReviewItem(state, role === "current" ? "current" : "queued", item, strings)).join("")
     : `<div class="member-meta">${escapeHtml(emptyText)}</div>`;
   return `<section class="panel" data-loop-plus-list="${escapeAttribute(role)}">
     <h2>${escapeHtml(heading)}</h2>
@@ -859,14 +875,13 @@ function renderLoopPlusReviewSection(
 }
 
 function renderLoopPlusReviewItem(
+  state: LoopDebateChatPanelState,
   role: "current" | "queued",
   item: LoopPlusPanelReviewItem,
   strings: LoopDebateChatPanelStrings,
 ): string {
   const text = [
-    item.subtaskId,
-    `${strings.loopPlusAttempt} ${item.attemptId}`,
-    `${strings.loopPlusEvent} ${item.eventId}`,
+    loopPlusSubtaskLabel(state, item.subtaskId),
     loopPlusOutcomeLabel(item.outcome, strings),
     item.detail ? `${strings.loopPlusDetail} ${item.detail}` : "",
   ].filter(Boolean).join(" · ");
@@ -881,7 +896,7 @@ function renderLoopPlusExecutionSection(
   strings: LoopDebateChatPanelStrings,
 ): string {
   const body = items.length > 0
-    ? items.map((item) => renderLoopPlusExecutionItem(role, item, strings)).join("")
+    ? items.map((item) => renderLoopPlusExecutionItem(role, item)).join("")
     : `<div class="member-meta">${escapeHtml(emptyText)}</div>`;
   return `<section class="panel" data-loop-plus-list="${escapeAttribute(role)}">
     <h2>${escapeHtml(heading)}</h2>
@@ -892,25 +907,26 @@ function renderLoopPlusExecutionSection(
 function renderLoopPlusExecutionItem(
   role: "running" | "pending",
   item: LoopPlusPanelExecutionItem,
-  strings: LoopDebateChatPanelStrings,
 ): string {
   const text = [
     item.title ?? "",
     item.subtaskId,
-    `${strings.loopPlusAttempt} ${item.attemptId}`,
   ].filter(Boolean).join(" · ");
   return `<div class="member-meta" data-loop-plus-role="${escapeAttribute(role)}" data-loop-plus-subtask="${escapeAttribute(item.subtaskId)}" data-loop-plus-attempt="${escapeAttribute(item.attemptId)}">${escapeHtml(text)}</div>`;
 }
 
 function renderLoopPlusSeenSection(
+  state: LoopDebateChatPanelState,
   attempts: readonly LoopPlusPanelSeenAttempt[],
   strings: LoopDebateChatPanelStrings,
 ): string {
   const reviewed = attempts.filter((item) => item.disposition === "reviewed");
   const body = reviewed.length > 0
     ? reviewed.map((item) => {
-      const text = `${item.subtaskId} · ${strings.loopPlusAttempt} ${item.attemptId}`;
-      return `<div class="member-meta" data-loop-plus-role="reviewed" data-loop-plus-subtask="${escapeAttribute(item.subtaskId)}" data-loop-plus-attempt="${escapeAttribute(item.attemptId)}">${escapeHtml(text)}</div>`;
+      const acceptance = item.acceptance === "failed" ? "failed" : "passed";
+      const result = acceptance === "failed" ? strings.loopPlusAcceptanceFailed : strings.loopPlusAcceptancePassed;
+      const text = `${loopPlusSubtaskLabel(state, item.subtaskId)} · ${result}`;
+      return `<div class="member-meta" data-loop-plus-role="reviewed" data-loop-plus-subtask="${escapeAttribute(item.subtaskId)}" data-loop-plus-attempt="${escapeAttribute(item.attemptId)}" data-loop-plus-acceptance="${acceptance}">${escapeHtml(text)}</div>`;
     }).join("")
     : `<div class="member-meta">${escapeHtml(strings.loopPlusEmptyReviewed)}</div>`;
   return `<section class="panel" data-loop-plus-list="reviewed">
@@ -965,7 +981,10 @@ function formatParticipantStatus(
     case "queued_review":
       return strings.loopPlusStatusQueued;
     case "reviewed":
-      return strings.loopPlusStatusReviewed;
+    case "acceptance_passed":
+      return strings.loopPlusAcceptancePassed;
+    case "acceptance_failed":
+      return strings.loopPlusAcceptanceFailed;
     case "review_pending":
       return strings.loopPlusStatusReviewPending;
     case "waiting":

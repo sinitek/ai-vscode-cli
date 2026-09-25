@@ -68,6 +68,8 @@ export type LoopPlusPanelSeenAttempt = {
   subtaskId: string;
   attemptId: string;
   disposition: "open" | "finished" | "reviewed";
+  outcome?: "completed" | "failed" | "stopped";
+  acceptance?: "passed" | "failed";
 };
 
 export type LoopPlusPanelActivity =

@@ -154,7 +154,8 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
     assert.doesNotMatch(page, /class="message[^"]*thinking/u);
     if (locale === "zh-CN") {
       assert.match(page, /事件驱动逐项验收/u);
-      assert.match(page, /正在验收 A，尝试 a-1/u);
+      assert.match(page, /正在验收 子任务 1：Alpha。/u);
+      assert.doesNotMatch(page, /尝试|已验收尝试/u);
       assert.match(page, /执行结束，尚未验收/u);
       assert.match(page, /待验收队列/u);
       assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
@@ -162,7 +163,8 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
       assert.doesNotMatch(page, /已全部收口/u);
     } else {
       assert.match(page, /Event-driven review/u);
-      assert.match(page, /Reviewing A attempt a-1 now/u);
+      assert.match(page, /Reviewing 子任务 1：Alpha\./u);
+      assert.doesNotMatch(page, /Accepted attempts|Attempt /u);
       assert.match(page, /Execution finished, not accepted/u);
       assert.match(page, /Review queue/u);
       assert.doesNotMatch(page, /<div class="meta-label">Current round<\/div>/u);
@@ -311,7 +313,8 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(JSON.stringify(snapshot), before);
   assert.match(resumedPage, /data-loop-plus-status="reviewing"/u);
   assert.match(resumedPage, /data-loop-plus-phase="reviewing"/u);
-  assert.match(resumedPage, /正在验收 A，尝试 a-1/u);
+  assert.match(resumedPage, /正在验收 子任务 1：Alpha。/u);
+  assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
   assert.deepEqual(identities(resumedPage, "current"), ["A:a-1"]);
   assert.deepEqual(identities(resumedPage, "queued"), ["B:b-1"]);
   assert.doesNotMatch(resumedPage, /自动验收已暂停|思考中/u);
@@ -364,4 +367,62 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(missingPage, /data-loop-plus-status="invalid"/u);
   assert.match(missingPage, /快照缺失或损坏（missing）/u);
   assert.doesNotMatch(missingPage, /自动验收已暂停|正在验收|data-loop-plus-count=/u);
+});
+
+test("shows acceptance passed or failed instead of reviewed attempts", () => {
+  const passedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(passedScheduler, "A", "a-1");
+  const passedCurrent = passedScheduler.snapshot().currentReview;
+  assert.ok(passedCurrent);
+  assert.equal(passedScheduler.submitReview(passedCurrent.eventId).ok, true);
+  const passedPage = html(build(passedScheduler.snapshot()), "zh-CN");
+  assert.match(passedPage, /验收结果/u);
+  assert.match(passedPage, /子任务 1：Alpha · 验收成功/u);
+  assert.match(passedPage, /data-loop-plus-acceptance="passed"/u);
+  assert.doesNotMatch(passedPage, /尝试|已验收尝试/u);
+
+  const failedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(failedScheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  const failedFinish = failedScheduler.finish({
+    subtaskId: "B",
+    attemptId: "b-1",
+    outcome: "failed",
+    detail: "boom",
+  });
+  assert.equal(failedFinish.applied, true);
+  const failedCurrent = failedScheduler.snapshot().currentReview;
+  assert.ok(failedCurrent);
+  assert.equal(failedScheduler.submitReview(failedCurrent.eventId).ok, true);
+  const failedPage = html(build(failedScheduler.snapshot()), "zh-CN");
+  assert.match(failedPage, /子任务 2：Bravo · 验收失败/u);
+  assert.match(failedPage, /data-loop-plus-acceptance="failed"/u);
+  assert.doesNotMatch(failedPage, /验收成功|尝试/u);
+
+  const stoppedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(stoppedScheduler.dispatch([spec("C", "c-1")]).started.length, 1);
+  assert.equal(stoppedScheduler.finish({
+    subtaskId: "C",
+    attemptId: "c-1",
+    outcome: "stopped",
+  }).applied, true);
+  const stoppedCurrent = stoppedScheduler.snapshot().currentReview;
+  assert.ok(stoppedCurrent);
+  assert.equal(stoppedScheduler.submitReview(stoppedCurrent.eventId).ok, true);
+  const stoppedPage = html(build(stoppedScheduler.snapshot()), "en");
+  assert.match(stoppedPage, /子任务 3：Charlie · Acceptance failed/u);
+  assert.match(stoppedPage, /data-loop-plus-acceptance="failed"/u);
+  assert.doesNotMatch(stoppedPage, /Accepted attempts|Attempt /u);
+
+  const legacy = passedScheduler.snapshot();
+  const seen = legacy.seenAttempts.find((item) => item.attemptId === "a-1");
+  assert.ok(seen);
+  delete seen.outcome;
+  const legacyFailed = html(build(legacy, {
+    subTasks: [{ id: "A", title: "Alpha", status: "blocked", updatedAt: 11 }],
+  }), "zh-CN");
+  assert.match(legacyFailed, /子任务 1：Alpha · 验收失败/u);
+  const legacyPassed = html(build(legacy, {
+    subTasks: [{ id: "A", title: "Alpha", status: "completed", updatedAt: 11 }],
+  }), "zh-CN");
+  assert.match(legacyPassed, /子任务 1：Alpha · 验收成功/u);
 });

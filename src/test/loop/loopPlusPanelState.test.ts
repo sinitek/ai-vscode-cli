@@ -220,7 +220,9 @@ test("does not present a review queue as complete when nothing is running", () =
   assert.equal(state.rounds[0]?.status, "review_ready");
   assert.equal(state.rounds[0]?.completedAt, undefined);
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "reviewed");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_passed");
+  assert.equal(projection.seenAttempts.find((item) => item.attemptId === "a-1")?.outcome, "completed");
+  assert.equal(projection.seenAttempts.find((item) => item.attemptId === "a-1")?.acceptance, "passed");
 });
 
 test("keeps a damaged or missing event-driven snapshot from looking idle or complete", () => {
@@ -562,4 +564,36 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(debate.mode, "debate");
   assert.equal(debate.rounds[0]?.activeSpeaker?.kind, "moderator");
   assert.equal(debate.rounds.some((round) => round.kind === "execution"), false);
+});
+
+test("projects a failed reviewed execution as acceptance_failed and keeps a legacy snapshot binary", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  assert.equal(scheduler.finish({
+    subtaskId: "B",
+    attemptId: "b-1",
+    outcome: "failed",
+  }).applied, true);
+  const current = scheduler.snapshot().currentReview;
+  assert.ok(current);
+  assert.equal(scheduler.submitReview(current.eventId).ok, true);
+  const failed = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
+  assert.equal(failed.loopPlus?.ok, true);
+  if (!failed.loopPlus?.ok) {
+    return;
+  }
+  assert.equal(failed.loopPlus.seenAttempts.find((item) => item.attemptId === "b-1")?.acceptance, "failed");
+  assert.equal(failed.rounds[0]?.participants.find((item) => item.id === "B")?.status, "acceptance_failed");
+
+  const legacy = scheduler.snapshot();
+  delete legacy.seenAttempts.find((item) => item.attemptId === "b-1")?.outcome;
+  const legacyState = buildLoopDebateChatPanelStateWithDeps(task(legacy, {
+    subTasks: [{ id: "B", title: "Bravo", status: "blocked", updatedAt: 12 }],
+  }), deps());
+  assert.equal(legacyState.loopPlus?.ok, true);
+  if (!legacyState.loopPlus?.ok) {
+    return;
+  }
+  assert.equal(legacyState.loopPlus.seenAttempts.find((item) => item.attemptId === "b-1")?.acceptance, "failed");
+  assert.equal(legacyState.rounds[0]?.participants.find((item) => item.id === "B")?.status, "acceptance_failed");
 });
