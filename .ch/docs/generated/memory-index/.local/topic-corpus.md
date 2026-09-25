@@ -9,6 +9,13 @@
 
 - `mem-431f2548e1` `rule` 热区记忆面 -> `.ch/docs/memory/README.md`
 
+## plan
+
+- Entries: 1
+- Estimated read cost: ~108 tokens
+
+- `mem-538cb1444d` `plan` Loop+ 完成事件驱动验收 -> `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
+
 ## rule
 
 - Entries: 1

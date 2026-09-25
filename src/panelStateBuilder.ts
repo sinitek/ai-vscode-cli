@@ -1042,7 +1042,7 @@ function buildLoopDebateWithExecutionChatPanelRounds(
   if (!shouldIncludeExecution) {
     return debateRounds;
   }
-  return [...debateRounds, buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+" : "任务执行群聊", deps, loopPlus)];
+  return [...debateRounds, buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+ 群聊" : "任务执行群聊", deps, loopPlus)];
 }
 
 function shouldPrioritizeLoopExecutionChatRound(
@@ -1059,7 +1059,53 @@ function buildLoopMainSubChatPanelRounds(
   deps: LoopDebateChatPanelStateBuilderDeps,
   loopPlus: LoopPlusPanelProjection | null,
 ): LoopDebateChatPanelRound[] {
-  return [buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+" : "主从群聊", deps, loopPlus)];
+  return [buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+ 群聊" : "主从群聊", deps, loopPlus)];
+}
+
+function latestLoopMemberStartedAt(
+  task: LoopTaskRecord,
+  role: "main" | "subtask",
+  subtaskId?: string,
+): number | undefined {
+  let latest: number | undefined;
+  for (const round of task.rounds) {
+    if (round.role !== role) {
+      continue;
+    }
+    if (role === "subtask" && round.subtaskId !== subtaskId) {
+      continue;
+    }
+    if (typeof round.startedAt !== "number" || !Number.isFinite(round.startedAt)) {
+      continue;
+    }
+    latest = latest === undefined ? round.startedAt : Math.max(latest, round.startedAt);
+  }
+  return latest;
+}
+
+function resolveLoopMemberLastStartedAt(
+  task: LoopTaskRecord,
+  role: "main" | "subtask",
+  status: string,
+  updatedAt: number | undefined,
+  subtaskId?: string,
+): number | null {
+  const recorded = latestLoopMemberStartedAt(task, role, subtaskId);
+  if (status === "pending" || status === "skipped") {
+    return recorded ?? null;
+  }
+  if (typeof recorded === "number") {
+    if (
+      status === "running"
+      && typeof updatedAt === "number"
+      && Number.isFinite(updatedAt)
+      && updatedAt > recorded
+    ) {
+      return updatedAt;
+    }
+    return recorded;
+  }
+  return typeof updatedAt === "number" && Number.isFinite(updatedAt) ? updatedAt : null;
 }
 
 function buildLoopMainSubChatPanelRound(
@@ -1090,6 +1136,12 @@ function buildLoopMainSubChatPanelRound(
           sessionId: task.sessionId ?? null,
           summary: task.finalSummary,
           updatedAt: task.updatedAt,
+          lastStartedAt: resolveLoopMemberLastStartedAt(
+            task,
+            "main",
+            loopPlusMemberStatus(loopPlus, "main", "main", task.status),
+            task.updatedAt,
+          ),
         },
         ...task.subTasks.map((subtask, index) => ({
           id: subtask.id,
@@ -1099,6 +1151,13 @@ function buildLoopMainSubChatPanelRound(
           sessionId: null,
           summary: subtask.summary,
           updatedAt: subtask.updatedAt,
+          lastStartedAt: resolveLoopMemberLastStartedAt(
+            task,
+            "subtask",
+            loopPlusMemberStatus(loopPlus, "subtask", subtask.id, subtask.status),
+            subtask.updatedAt,
+            subtask.id,
+          ),
         })),
       ],
       moderatorDecisions: [],
@@ -1107,14 +1166,16 @@ function buildLoopMainSubChatPanelRound(
   const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
   const mainTitle = getLoopMainSubChatMainTitle(task);
+  const mainStatus = mainRunning ? "running" : task.status;
   const mainParticipant: LoopDebateChatPanelRound["participants"][number] = {
     id: "main",
     title: mainTitle,
     role: "main",
-    status: mainRunning ? "running" : task.status,
+    status: mainStatus,
     sessionId: task.sessionId ?? null,
     summary: task.finalSummary,
     updatedAt: task.updatedAt,
+    lastStartedAt: resolveLoopMemberLastStartedAt(task, "main", mainStatus, task.updatedAt),
   };
   const subtaskParticipants = task.subTasks.map((subtask, index) => ({
     id: subtask.id,
@@ -1124,6 +1185,13 @@ function buildLoopMainSubChatPanelRound(
     sessionId: null,
     summary: subtask.summary,
     updatedAt: subtask.updatedAt,
+    lastStartedAt: resolveLoopMemberLastStartedAt(
+      task,
+      "subtask",
+      subtask.status,
+      subtask.updatedAt,
+      subtask.id,
+    ),
   }));
   return {
     key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,

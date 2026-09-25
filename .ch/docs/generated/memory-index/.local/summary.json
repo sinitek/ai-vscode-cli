@@ -1,5 +1,100 @@
 {
-  "active_plans": [],
+  "active_plans": [
+    {
+      "modified_at": "2026-09-24T22:41:21+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 11662,
+      "references": [
+        ".ch/docs/MEMORY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/design-docs/TEMPLATE.md",
+        ".ch/docs/design-docs/graph-orchestration-mode.md",
+        ".ch/docs/design-docs/index.md",
+        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
+        ".ch/docs/design-docs/loop-plus-scheduling.md",
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/exec-plans/README.md",
+        ".ch/docs/exec-plans/TEMPLATE.md",
+        ".ch/docs/exec-plans/completed/2026-09/",
+        ".ch/docs/generated/memory-index/.local",
+        ".ch/docs/memory/",
+        ".ch/docs/ontology/",
+        ".ch/docs/ontology/README.md",
+        ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+        ".ch/docs/references/cli-runtime-reference.md",
+        "scripts/check_trailing_whitespace.js",
+        "src/cli/types.ts",
+        "src/extension.ts",
+        "src/extensionHost/loopOrchestration.ts",
+        "src/extensionHost/loopPlusOrchestration.ts",
+        "src/extensionHost/loopPlusPromptBuilders.ts",
+        "src/extensionHost/loopPlusRuntimeAdapter.ts",
+        "src/extensionHost/modelSettings.ts",
+        "src/extensionHost/promptRunRuntime.ts",
+        "src/extensionHost/sessionTabs.ts",
+        "src/i18n.ts",
+        "src/loopDebate.ts",
+        "src/loopParallel.ts",
+        "src/loopPlusDecision.ts",
+        "src/loopPlusScheduler.ts",
+        "src/loopSubtaskExecutionRoot.ts",
+        "src/loopSubtaskLifecycle.ts",
+        "src/loopTaskStore.ts",
+        "src/panelDiagnostics.ts",
+        "src/panelStateBuilder.ts",
+        "src/promptRunState.ts",
+        "src/scheduledTaskStore.ts",
+        "src/sessionMessageActions.ts",
+        "src/sessionMessageHandlers.ts",
+        "src/sessionTabs.ts",
+        "src/shared/writeScope.ts",
+        "src/test/extensionHost/extensionHostExtractionContracts.test.ts",
+        "src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts",
+        "src/test/extensionHost/loopPlusEntryRouting.test.ts",
+        "src/test/extensionHost/loopPlusOrchestration.test.ts",
+        "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+        "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts",
+        "src/test/extensionHost/loopPlusRuntimeWiring.test.ts",
+        "src/test/loop/loopDebatePanel.test.ts",
+        "src/test/loop/loopPlusContracts.test.ts",
+        "src/test/loop/loopPlusDecision.test.ts",
+        "src/test/loop/loopPlusGroupChatPanel.test.ts",
+        "src/test/loop/loopPlusPanelState.test.ts",
+        "src/test/loop/loopPlusScheduler.test.ts",
+        "src/test/loop/loopPromptQueue.test.ts",
+        "src/test/loop/loopSubtaskLifecycle.test.ts",
+        "src/test/session/conversationTabLock.test.ts",
+        "src/test/session/loopPlusSessionTabs.test.ts",
+        "src/test/session/sessionMessageActions.test.ts",
+        "src/test/webview/cliPageStaticRenderCoverage.test.ts",
+        "src/test/webview/loopPlusModeEntry.test.ts",
+        "src/test/webview/loopPlusModeHelp.test.ts",
+        "src/test/webview/loopPlusWebviewIntegration.test.ts",
+        "src/test/webview/looppluswebviewintegration.test.ts",
+        "src/webview/loopDebatePanel.ts",
+        "src/webview/loopDebatePanelRenderer.ts",
+        "src/webview/loopDebatePanelStyles.ts",
+        "src/webview/loopDebatePanelTypes.ts",
+        "src/webview/types.ts",
+        "src/webview/viewContent.ts",
+        "src/webview/viewContentHtml.ts",
+        "src/webview/viewContentI18n.ts",
+        "src/webview/viewContentScript.ts",
+        "src/webview/viewContentScript/coreRuntimeState.ts",
+        "src/webview/viewContentScript/messageRendering.ts",
+        "src/webview/viewContentScript/modelManager.ts",
+        "src/webview/viewContentScript/runStreamAndQueue.ts",
+        "src/webview/viewContentScript/settingsAndOverlays.ts",
+        "src/webview/viewContentScript/taskListAndUi.ts",
+        "src/workspaceSettingsStore.ts"
+      ],
+      "summary": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
+      "title": "Loop+ 完成事件驱动验收"
+    }
+  ],
   "claim_count": 121,
   "claim_stats": {
     "by_confidence": {
@@ -1714,7 +1809,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-08-29T02:14:18+00:00",
+  "generated_at": "2026-09-24T22:41:21+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1962,8 +2057,45 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 2,
+  "observation_count": 3,
   "observations": [
+    {
+      "concepts": [
+        "open-loop"
+      ],
+      "content_hash": "538cb1444da9f28936a9f6222dbb52fc9bbeb208824f167d734e7e2f8d79c10b",
+      "facts": [
+        "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
+        "Modified at: 2026-09-24T22:41:21+00:00"
+      ],
+      "files": [
+        ".ch/docs/MEMORY.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/design-docs/TEMPLATE.md",
+        ".ch/docs/design-docs/graph-orchestration-mode.md",
+        ".ch/docs/design-docs/index.md",
+        ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
+        ".ch/docs/design-docs/loop-plus-scheduling.md",
+        ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+        ".ch/docs/exec-plans/README.md",
+        ".ch/docs/exec-plans/TEMPLATE.md",
+        ".ch/docs/exec-plans/completed/2026-09/",
+        ".ch/docs/generated/memory-index/.local"
+      ],
+      "id": "mem-538cb1444d",
+      "modified_at": "2026-09-24T22:41:21+00:00",
+      "narrative": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用",
+      "private_stripped": false,
+      "read_tokens": 108,
+      "source_anchor": "Loop+ 完成事件驱动验收",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
+      "source_title": "Loop+ 完成事件驱动验收",
+      "subtitle": "Active execution plan",
+      "title": "Loop+ 完成事件驱动验收",
+      "topic": "plan",
+      "type": "plan"
+    },
     {
       "concepts": [
         "general"
@@ -2021,7 +2153,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 0,
+    "active_plan_count": 1,
     "active_risks": [],
     "pending_items": []
   },
@@ -2048,6 +2180,13 @@
       ],
       "read_tokens": 46
     },
+    "plan": {
+      "count": 1,
+      "ids": [
+        "mem-538cb1444d"
+      ],
+      "read_tokens": 108
+    },
     "rule": {
       "count": 1,
       "ids": [
@@ -2056,6 +2195,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 85,
+  "total_read_tokens": 193,
   "version": "0.2.0"
 }

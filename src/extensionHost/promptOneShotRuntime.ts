@@ -54,6 +54,7 @@ import type {
   PreparedOpenCodeSubagentRuntime,
   PromptRunExecutionOptions,
 } from "./promptExecutionShared";
+import { runOpenCodePromptTemplate } from "./openCodePromptRunTemplate";
 
 const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 * 1024;
 
@@ -281,180 +282,31 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     target: PromptRunTarget,
     executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
-    const prompt = input.displayPrompt;
     const runCli = target.cli;
-    if (runCli !== "opencode") {
-      throw new Error(`one-shot-run-unsupported:${runCli}`);
-    }
-    const modelPrompt = input.modelPrompt || prompt;
-    const contextTags = Array.isArray(input.contextTags)
-      ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
-      : [];
-    if (!prompt) {
-      return;
-    }
-    const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
-    if (!cwd) {
-      void logInfo("runPrompt-no-workspace", { cli: runCli });
-    }
-    const runtimePreparation = await prepareOpenCodeRuntime({
-      role: input.taskRole === "subtask" ? "subtask" : "main",
-      model: input.model ?? null,
-      requiresSubtaskModel: Boolean(input.loopTaskId || input.graphRunId),
-    });
-    const runtimeModel = runtimePreparation.effectiveModel;
-    const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
-    applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-    const runtimeEnvOverrides = runtimePreparation.envOverrides;
-    const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
+    const prompt = input.displayPrompt;
     const activeTabId = target.tabId;
-    const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
-    preparePendingLabel(runCli, activeTabId, prompt);
-    const initialSessionId = target.sessionId;
-    const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, initialSessionId);
-    const includeFinalAnswerInstruction = !input.loopTaskId;
-    const humanInteractionEnabledForVibeRun = !input.loopTaskId
-      && !input.graphRunId
-      && getGlobalHumanInteractionEnabled();
-    const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
-      includeFinalAnswerInstruction,
-      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
-    });
-    const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode, {
-      includeFinalAnswerInstruction,
-    });
-    const debugLogging = getDebugLogging();
-    const messageTarget = initialSessionId
-      ? loadSessionMessages(runCli, initialSessionId)
-      : getPendingSessionDraft(activeTabId, runCli).messages;
-    const args = buildCliArgs(
-      runCli,
-      {
-        sessionId: initialRuntimeSessionId,
-        thinkingMode,
-        openCodeVariant: runtimePreparation.effectiveVariant,
-        openCodeSmallVariant: runtimePreparation.subtaskVariant,
-        model: runtimeModel,
-        openCodeConfigContent: runtimeOpenCodeConfigContent,
-        envOverrides: runtimeEnvOverrides,
-        isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-      },
-      thinkingPrompt,
-    );
-    const command = getCliCommand(runCli);
-    logCliStartup({
-      cli: runCli,
-      cwd,
-      command,
-      args: redactPromptArg(args, thinkingPrompt),
-      env: sanitizeEnv({
-        ...process.env,
-        ...(runtimeEnvOverrides ?? {}),
-        ...(cwd ? { PWD: cwd } : {}),
-      }),
-      mode: "one-shot",
-    });
-    void logInfo("runPrompt-start", {
-      cli: runCli,
-      command: getCliCommand(runCli),
-      args,
-      cwd,
-      sessionId: initialSessionId,
-      thinkingMode,
-      modelRole: runtimePreparation.role,
-      mainModel: runtimePreparation.mainModel,
-      subtaskModel: runtimePreparation.subtaskModel,
-      effectiveModel: runtimePreparation.effectiveModel,
-      modelFallback: runtimePreparation.modelFallback,
-      mainVariant: runtimePreparation.mainVariant,
-      subtaskVariant: runtimePreparation.subtaskVariant,
-      effectiveVariant: runtimePreparation.effectiveVariant,
-    });
-
-    const userMessageId = input.preloadedUserMessageId ?? createMessageId();
-    const userCreatedAt = Date.now();
-    const runId = createMessageId();
-    setActiveRunId(runId);
-    applyProcessTitle(runId, runCli, initialSessionId);
-    startTaskRun(runId, runCli, initialSessionId, prompt, {
-      taskRole: input.taskRole,
-      loopTaskId: input.loopTaskId,
-      loopRound: input.loopRound,
-      loopSubtaskId: input.loopSubtaskId,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
-    });
-    setActiveMessageTarget(messageTarget);
-    setActiveSessionId(initialSessionId);
-    setActiveCliForRun(runCli);
-    setActiveTabIdForRun(activeTabId);
-    if (!input.preloadedUserMessageId) {
-      const userMessage = buildUserChatMessage(input, userCreatedAt, userMessageId);
-      appendMessageToStore(messageTarget, userMessage);
-      sendPanelMessage({
-        type: "appendMessage",
-        message: userMessage,
-      });
-    }
-
-    resetActiveAssistantMessage();
-    startTraceMessage(runCli);
-    resetTraceState();
-
-    sendRunStatus("start");
-    let hiddenRetryCount = 0;
-    const isLoopMainRun = Boolean(input.loopTaskId && input.taskRole === "main");
-    let freshSessionRecoveryPending = false;
-    let freshSessionRecoveryAttempted = false;
-    let silentProgressNoticeShown = false;
-    let monitorUnavailableNoticeShown = false;
-
-    const isCurrentOneShotRunActive = (): boolean => getActiveRunId() === runId;
-    const subagentProgress = createSubagentProgressController({
-      labels: buildSubagentProgressLabels(),
-      createMessageId,
-      messageMetadata: {
-        taskRole: input.taskRole,
-        loopTaskId: input.loopTaskId,
-        loopRound: input.loopRound,
-        loopSubtaskId: input.loopSubtaskId,
-      },
-      appendMessage: (message) => {
-        if (!activeMessageTarget || !isCurrentOneShotRunActive()) {
-          return;
-        }
-        resetActiveAssistantMessage();
-        appendMessageToStore(activeMessageTarget, message);
-        sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
-      },
-      replaceMessage: (message) => {
-        if (!activeMessageTarget || !isCurrentOneShotRunActive()) {
-          return;
-        }
-        const index = activeMessageTarget.findIndex((item) => item.id === message.id);
-        if (index < 0) {
-          appendMessageToStore(activeMessageTarget, message);
-          sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
-          return;
-        }
-        activeMessageTarget[index] = message;
-        sendPanelMessage({ type: "replaceMessage", message, tabId: activeTabId });
-      },
-      appendDelta: (messageId, content) => {
-        if (!isCurrentOneShotRunActive()) {
-          return;
-        }
-        sendPanelMessage({
-          type: "assistantDelta",
-          id: messageId,
-          content,
-          tabId: activeTabId,
-        });
-      },
-    });
-
-    let naturalLanguageHumanInteractionCount = 0;
+    let messageTarget: ChatMessage[] = [];
+    let runId = "";
+    let userMessageId = "";
+    let userCreatedAt = 0;
+    let thinkingMode: ThinkingMode = "off";
+    let humanInteractionEnabledForVibeRun = false;
+    let includeFinalAnswerInstruction = true;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
+    let naturalLanguageHumanInteractionCount = 0;
+    let silentProgressNoticeShown = false;
+    let debugLogging = false;
+    let startupCommand = "";
+    let startupArgs: string[] = [];
+    let runCwd: string | undefined;
+    let successfulSessionId: string | null = null;
+    let successfulDurationMs: number | null = null;
+    let openCodeActivityTracker!: ReturnType<typeof createOpenCodeStreamActivityTracker>;
+    let attemptSubagentMonitor: OpenCodeSubagentMonitor | null = null;
+    let refreshStartupTimeout = (): void => {};
+    let noteStartupOutputActivity = (_active: boolean): void => {};
+    let markExternalStartupActivity = (): void => {};
+    let subagentProgress: ReturnType<typeof createSubagentProgressController> | null = null;
 
     const appendHumanInteractionSubmission = (
       targetMessages: ChatMessage[],
@@ -652,137 +504,247 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       });
     };
 
-    while (true) {
-      const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
-      freshSessionRecoveryPending = false;
-      if (isFreshSessionRecoveryAttempt) {
-        freshSessionRecoveryAttempted = true;
-      }
-      const attemptNumber = hiddenRetryCount + 1;
-      const attemptPrompt = pendingHumanInteractionContinuationPrompt
-        ?? (isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
-          ? thinkingPrompt
-          : hiddenRetryPrompt);
-      pendingHumanInteractionContinuationPrompt = null;
-      let attemptHadNormalReply = false;
+    const buildRetryFailureMessage = (
+      attemptResult: { type: "exit"; code: number | null } | { type: "error"; error: Error },
+      rawStdout: string,
+      rawStderr: string,
+    ) => {
+      const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
+      return {
+        openCodeOutput,
+        retryFailureMessage: buildOpenCodeFailureMessage(
+          openCodeOutput,
+          getAttemptFailureMessage(attemptResult, rawStderr || null),
+        ),
+      };
+    };
 
-      if (hiddenRetryCount > 0) {
-        const retryNumber = hiddenRetryCount;
-        const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
-        const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isCurrentOneShotRunActive);
-        if (!shouldContinue) {
-          return;
+    await runOpenCodePromptTemplate(input, target, executionOptions, {
+      guardRun: (runInput, runTarget) => {
+        const displayPrompt = runInput.displayPrompt;
+        const cli = runTarget.cli;
+        if (cli !== "opencode") {
+          throw new Error(`one-shot-run-unsupported:${cli}`);
         }
-        if (isFreshSessionRecoveryAttempt) {
-          appendSystemMessage(t("run.openCodeLoopFreshSessionRecoveryStarted"));
+        const modelPrompt = runInput.modelPrompt || displayPrompt;
+        const contextTags = Array.isArray(runInput.contextTags)
+          ? runInput.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+          : [];
+        void contextTags;
+        if (!displayPrompt) {
+          return { status: "skip" };
         }
-        appendSystemMessage(buildHiddenRetryStartedMessage(retryNumber));
+        return { status: "ready", prompt: displayPrompt, modelPrompt, runCli: cli };
+      },
+      resolveWorkspaceCwd,
+      noteMissingWorkspace: (cli, cwd) => {
+        if (!cwd) {
+          void logInfo("runPrompt-no-workspace", { cli });
+        }
+      },
+      prepareOpenCodeRuntime,
+      getEffectiveThinkingMode,
+      applyThinkingWorkspaceFiles,
+      shouldAutoCompactContextAfterRunForTarget,
+      preparePendingLabel,
+      readGlobalHumanInteractionEnabled: () => getGlobalHumanInteractionEnabled(),
+      buildThinkingPrompt,
+      buildHiddenRetryPrompt,
+      beforeLoadMessages: () => {
+        debugLogging = getDebugLogging();
+      },
+      loadSessionMessages,
+      getPendingSessionDraft,
+      stageRunBeforeUserMessage: (prepared) => {
+        messageTarget = prepared.messageTarget;
+        thinkingMode = prepared.thinkingMode;
+        humanInteractionEnabledForVibeRun = prepared.humanInteractionEnabled;
+        includeFinalAnswerInstruction = prepared.includeFinalAnswerInstruction;
+        runCwd = prepared.cwd;
+        const initialRuntimeSessionId = resolveCliSessionIdForResume(runCli, target.sessionId);
+        startupArgs = buildCliArgs(
+          runCli,
+          {
+            sessionId: initialRuntimeSessionId,
+            thinkingMode: prepared.thinkingMode,
+            openCodeVariant: prepared.runtimePreparation.effectiveVariant,
+            openCodeSmallVariant: prepared.runtimePreparation.subtaskVariant,
+            model: prepared.runtimeModel,
+            openCodeConfigContent: prepared.runtimePreparation.configContent,
+            envOverrides: prepared.runtimePreparation.envOverrides,
+            isolateProjectInstructions: prepared.executionOptions.isolateProjectInstructions,
+          },
+          prepared.thinkingPrompt,
+        );
+        startupCommand = getCliCommand(runCli);
+        logCliStartup({
+          cli: runCli,
+          cwd: prepared.cwd,
+          command: startupCommand,
+          args: redactPromptArg(startupArgs, prepared.thinkingPrompt),
+          env: sanitizeEnv({
+            ...process.env,
+            ...(prepared.runtimePreparation.envOverrides ?? {}),
+            ...(prepared.cwd ? { PWD: prepared.cwd } : {}),
+          }),
+          mode: "one-shot",
+        });
+        void logInfo("runPrompt-start", {
+          cli: runCli,
+          command: getCliCommand(runCli),
+          args: startupArgs,
+          cwd: prepared.cwd,
+          sessionId: target.sessionId,
+          thinkingMode: prepared.thinkingMode,
+          modelRole: prepared.runtimePreparation.role,
+          mainModel: prepared.runtimePreparation.mainModel,
+          subtaskModel: prepared.runtimePreparation.subtaskModel,
+          effectiveModel: prepared.runtimePreparation.effectiveModel,
+          modelFallback: prepared.runtimePreparation.modelFallback,
+          mainVariant: prepared.runtimePreparation.mainVariant,
+          subtaskVariant: prepared.runtimePreparation.subtaskVariant,
+          effectiveVariant: prepared.runtimePreparation.effectiveVariant,
+        });
+      },
+      createMessageId,
+      bindRunIdentityBeforeUserBubble: (prepared, identity) => {
+        userMessageId = identity.userMessageId;
+        userCreatedAt = identity.userCreatedAt;
+        runId = createMessageId();
+        setActiveRunId(runId);
+        applyProcessTitle(runId, runCli, target.sessionId);
+        startTaskRun(runId, runCli, target.sessionId, prepared.prompt, {
+          taskRole: input.taskRole,
+          loopTaskId: input.loopTaskId,
+          loopRound: input.loopRound,
+          loopSubtaskId: input.loopSubtaskId,
+          graphRunId: input.graphRunId,
+          graphNodeId: input.graphNodeId,
+        });
+        setActiveMessageTarget(prepared.messageTarget);
+        setActiveSessionId(target.sessionId);
+        setActiveCliForRun(runCli);
+        setActiveTabIdForRun(activeTabId);
+      },
+      buildUserChatMessage,
+      appendUserMessage: (targetMessages, userMessage) => {
+        appendMessageToStore(targetMessages, userMessage);
+        sendPanelMessage({
+          type: "appendMessage",
+          message: userMessage,
+        });
+      },
+      finishRunActivation: () => {
+        resetActiveAssistantMessage();
+        startTraceMessage(runCli);
+        resetTraceState();
+        sendRunStatus("start");
+        subagentProgress = createSubagentProgressController({
+          labels: buildSubagentProgressLabels(),
+          createMessageId,
+          messageMetadata: {
+            taskRole: input.taskRole,
+            loopTaskId: input.loopTaskId,
+            loopRound: input.loopRound,
+            loopSubtaskId: input.loopSubtaskId,
+          },
+          appendMessage: (message) => {
+            if (!activeMessageTarget || getActiveRunId() !== runId) {
+              return;
+            }
+            resetActiveAssistantMessage();
+            appendMessageToStore(activeMessageTarget, message);
+            sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
+          },
+          replaceMessage: (message) => {
+            if (!activeMessageTarget || getActiveRunId() !== runId) {
+              return;
+            }
+            const index = activeMessageTarget.findIndex((item) => item.id === message.id);
+            if (index < 0) {
+              appendMessageToStore(activeMessageTarget, message);
+              sendPanelMessage({ type: "appendMessage", message, tabId: activeTabId });
+              return;
+            }
+            activeMessageTarget[index] = message;
+            sendPanelMessage({ type: "replaceMessage", message, tabId: activeTabId });
+          },
+          appendDelta: (messageId, content) => {
+            if (getActiveRunId() !== runId) {
+              return;
+            }
+            sendPanelMessage({
+              type: "assistantDelta",
+              id: messageId,
+              content,
+              tabId: activeTabId,
+            });
+          },
+        });
+      },
+      isRunActive: () => getActiveRunId() === runId,
+      resolveMessageTarget: () => activeMessageTarget ?? messageTarget,
+      getRunId: () => runId,
+      getSessionId: () => activeSessionId,
+      takeContinuationPrompt: () => {
+        const continuationPrompt = pendingHumanInteractionContinuationPrompt;
+        pendingHumanInteractionContinuationPrompt = null;
+        return continuationPrompt;
+      },
+      getHiddenRetryDelayMs,
+      waitForHiddenRetryDelay,
+      prepareHiddenRetry: () => {},
+      publishSystem: (content) => {
+        appendSystemMessage(content);
+      },
+      t,
+      buildHiddenRetryStartedMessage,
+      logHiddenRetry: (context) => {
         void logInfo("runPrompt-one-shot-hidden-retry", {
           cli: runCli,
           runId,
           tabId: activeTabId,
           sessionId: activeSessionId,
-          attempt: attemptNumber,
-          retryCount: hiddenRetryCount,
+          attempt: context.attemptNumber,
+          retryCount: context.hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          retryDelayMs,
-          freshSessionRecovery: isFreshSessionRecoveryAttempt,
+          retryDelayMs: context.retryDelayMs,
+          freshSessionRecovery: context.isFreshSessionRecoveryAttempt,
         });
-      }
-
-      let sessionBuffer = "";
-      let rawStdout = "";
-      let rawStderr = "";
-      const openCodeActivityTracker = createOpenCodeStreamActivityTracker();
-      const runtimeSessionId = isFreshSessionRecoveryAttempt
-        ? null
-        : resolveCliSessionIdForResume(runCli, activeSessionId);
-      const subagentRuntime = await prepareOpenCodeSubagentRuntime({
-        cwd,
-        runId,
-        runtime: runtimePreparation,
-        isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-      });
-      if (subagentRuntime.error && !monitorUnavailableNoticeShown && isCurrentOneShotRunActive()) {
-        monitorUnavailableNoticeShown = true;
+      },
+      resolveCliSessionIdForResume,
+      beginStreamAttempt: () => {
+        openCodeActivityTracker = createOpenCodeStreamActivityTracker();
+      },
+      prepareOpenCodeSubagentRuntime,
+      shouldAnnounceSubagentMonitorUnavailable: (error, alreadyShown) => (
+        Boolean(error) && !alreadyShown && getActiveRunId() === runId
+      ),
+      prepareSubagentMonitorUnavailableNotice: () => {
         resetActiveAssistantMessage();
-        appendSystemMessage(t("run.openCodeSubagentMonitorUnavailable"));
-      }
-      void logInfo("runPrompt-one-shot-subagent-monitor-start", {
-        cli: runCli,
-        runId,
-        tabId: activeTabId,
-        sessionId: runtimeSessionId,
-        endpointSource: subagentRuntime.endpointSource,
-        serverPort: subagentRuntime.connection?.serverPort ?? null,
-        pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-      });
-      const attemptResult = await new Promise<
-        { type: "exit"; code: number | null }
-        | { type: "error"; error: Error }
-      >((resolve) => {
-        let settled = false;
+      },
+      logSubagentMonitorStart: ({ subagentRuntime, runtimeSessionId }) => {
+        void logInfo("runPrompt-one-shot-subagent-monitor-start", {
+          cli: runCli,
+          runId,
+          tabId: activeTabId,
+          sessionId: runtimeSessionId,
+          endpointSource: subagentRuntime.endpointSource,
+          serverPort: subagentRuntime.connection?.serverPort ?? null,
+          pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+        });
+      },
+      createStartupWatchdog: (context) => {
         let startupTimeoutHandle: NodeJS.Timeout | null = null;
         let sawOpenCodeActivity = false;
-        const subagentMonitor = subagentRuntime.connection
-          ? createOpenCodeSubagentMonitor({
-              connection: subagentRuntime.connection,
-              directory: cwd ?? process.cwd(),
-              onUpdate: (update) => {
-                if (isCurrentOneShotRunActive()) {
-                  sawOpenCodeActivity = true;
-                  refreshStartupTimeout();
-                  subagentProgress.update(update);
-                }
-              },
-              onNoChildren: () => {
-                if (silentProgressNoticeShown || !isCurrentOneShotRunActive()) {
-                  return;
-                }
-                silentProgressNoticeShown = true;
-                resetActiveAssistantMessage();
-                appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
-                void logInfo("runPrompt-one-shot-subagent-poll-empty", {
-                  cli: runCli,
-                  runId,
-                  tabId: activeTabId,
-                  sessionId: activeSessionId,
-                  attempt: attemptNumber,
-                  pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-                });
-              },
-              onError: (error) => {
-                void logDebug("runPrompt-one-shot-subagent-monitor-error", {
-                  cli: runCli,
-                  runId,
-                  tabId: activeTabId,
-                  sessionId: activeSessionId,
-                  attempt: attemptNumber,
-                  error: error.message,
-                });
-              },
-            })
-          : createDisabledOpenCodeSubagentMonitor();
-        const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          subagentMonitor.finish(
-            result.type === "exit" && result.code === 0 ? "completed" : "failed",
-          );
-          subagentRuntime.dispose();
+        const clearStartupTimeout = (): void => {
           if (startupTimeoutHandle) {
             clearTimeout(startupTimeoutHandle);
             startupTimeoutHandle = null;
           }
-          resolve(result);
         };
-        const refreshStartupTimeout = (): void => {
-          if (startupTimeoutHandle) {
-            clearTimeout(startupTimeoutHandle);
-            startupTimeoutHandle = null;
-          }
+        refreshStartupTimeout = () => {
+          clearStartupTimeout();
           const timeoutMs = resolveOpenCodeOneShotWatchdogTimeoutMs(sawOpenCodeActivity);
           if (timeoutMs === null) {
             return;
@@ -799,8 +761,8 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
               return;
             }
             const error = new Error(buildOpenCodeOneShotStartupTimeoutMessage(timeoutMs));
-            if (!isCurrentOneShotRunActive()) {
-              settle({ type: "error", error });
+            if (getActiveRunId() !== runId) {
+              context.settle({ type: "error", error });
               return;
             }
             void logError("runPrompt-one-shot-idle-timeout", {
@@ -808,116 +770,149 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
               runId,
               tabId: activeTabId,
               sessionId: activeSessionId,
-              attempt: attemptNumber,
-              retryCount: hiddenRetryCount,
+              attempt: context.attemptNumber,
+              retryCount: context.hiddenRetryCount,
               timeoutMs,
-              stdoutLength: rawStdout.length,
-              stderrLength: rawStderr.length,
+              stdoutLength: context.getOutputLengths().stdout,
+              stderrLength: context.getOutputLengths().stderr,
             });
             killActiveProcess();
-            settle({ type: "error", error });
+            context.settle({ type: "error", error });
           }, timeoutMs);
         };
-        refreshStartupTimeout();
-        const runProcess = runCliStream(
-          runCli,
-          attemptPrompt,
-          {
-            onStdout: (chunk: string) => {
-              if (!isCurrentOneShotRunActive()) {
-                return;
-              }
-              rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-              const activity = openCodeActivityTracker.updateStdout(chunk);
-              if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
-                sawOpenCodeActivity = true;
-              }
-              refreshStartupTimeout();
-              sendRawStreamDelta(chunk, { stream: "stdout" });
-              appendOpenCodeJsonlEvents(chunk);
-              sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              syncDetectedSessionTargetFromBuffer(sessionBuffer, "stdout");
-              subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
-              if (activity.hasAssistantAnswer) {
-                attemptHadNormalReply = true;
-              }
-              if (debugLogging) {
-                void logCliStream(runCli, activeSessionId, "stdout", chunk);
-              }
-            },
-            onStderr: (chunk: string) => {
-              if (!isCurrentOneShotRunActive()) {
-                return;
-              }
-              rawStderr = appendBoundedUtf8Text(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-              const activity = openCodeActivityTracker.updateStderr(chunk);
-              if (activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress) {
-                sawOpenCodeActivity = true;
-              }
-              refreshStartupTimeout();
-              sendRawStreamDelta(chunk, { stream: "stderr" });
-              sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              syncDetectedSessionTargetFromBuffer(sessionBuffer, "stderr");
-              subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
-              appendTraceLines(chunk);
-              if (debugLogging) {
-                void logCliStream(runCli, activeSessionId, "stderr", chunk);
-              }
-            },
-            onExit: (code: number | null) => {
-              settle({ type: "exit", code });
-            },
-            onError: (error: Error) => {
-              settle({ type: "error", error });
-            },
-          },
-          {
-            cwd,
-            sessionId: runtimeSessionId,
-            thinkingMode,
-            openCodeVariant: runtimePreparation.effectiveVariant,
-            openCodeSmallVariant: runtimePreparation.subtaskVariant,
-            model: runtimeModel,
-            openCodeSmallModel: runtimePreparation.subtaskModel,
-            openCodeConfigContent: runtimeOpenCodeConfigContent,
-            envOverrides: runtimeEnvOverrides,
-            isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-            openCodeServerUrl: subagentRuntime.connection?.serverUrl,
-            processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
+        noteStartupOutputActivity = (active) => {
+          if (active) {
+            sawOpenCodeActivity = true;
           }
+          refreshStartupTimeout();
+        };
+        markExternalStartupActivity = () => {
+          sawOpenCodeActivity = true;
+          refreshStartupTimeout();
+        };
+        return {
+          arm: () => {
+            refreshStartupTimeout();
+          },
+          dispose: () => {
+            clearStartupTimeout();
+          },
+        };
+      },
+      createSubagentMonitor: ({ subagentRuntime, attemptNumber, directory }) => {
+        const subagentMonitor = subagentRuntime.connection
+          ? createOpenCodeSubagentMonitor({
+            connection: subagentRuntime.connection,
+            directory,
+            onUpdate: (update) => {
+              if (getActiveRunId() !== runId) {
+                return;
+              }
+              markExternalStartupActivity();
+              subagentProgress?.update(update);
+            },
+            onNoChildren: () => {
+              if (silentProgressNoticeShown || getActiveRunId() !== runId) {
+                return;
+              }
+              silentProgressNoticeShown = true;
+              resetActiveAssistantMessage();
+              appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
+              void logInfo("runPrompt-one-shot-subagent-poll-empty", {
+                cli: runCli,
+                runId,
+                tabId: activeTabId,
+                sessionId: activeSessionId,
+                attempt: attemptNumber,
+                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+              });
+            },
+            onError: (error) => {
+              void logDebug("runPrompt-one-shot-subagent-monitor-error", {
+                cli: runCli,
+                runId,
+                tabId: activeTabId,
+                sessionId: activeSessionId,
+                attempt: attemptNumber,
+                error: error.message,
+              });
+            },
+          })
+          : createDisabledOpenCodeSubagentMonitor();
+        attemptSubagentMonitor = subagentMonitor;
+        return subagentMonitor;
+      },
+      runCliStream,
+      buildProcessLabel,
+      appendBoundedUtf8Text,
+      maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
+      maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      onStdoutChunk: (chunk, stream) => {
+        const activity = openCodeActivityTracker.updateStdout(chunk);
+        if (activity.hasAssistantAnswer) {
+          stream.attemptHadNormalReply = true;
+        }
+        noteStartupOutputActivity(
+          activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress,
         );
+        sendRawStreamDelta(chunk, { stream: "stdout" });
+        appendOpenCodeJsonlEvents(chunk);
+        stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        syncDetectedSessionTargetFromBuffer(stream.sessionBuffer, "stdout");
+        attemptSubagentMonitor?.setParentSessionId(extractSessionId(runCli, stream.sessionBuffer));
+        if (debugLogging) {
+          void logCliStream(runCli, activeSessionId, "stdout", chunk);
+        }
+      },
+      onStderrChunk: (chunk, stream) => {
+        const activity = openCodeActivityTracker.updateStderr(chunk);
+        noteStartupOutputActivity(
+          activity.hasAssistantAnswer || activity.hasError || activity.hasStatus || activity.hasProgress,
+        );
+        sendRawStreamDelta(chunk, { stream: "stderr" });
+        stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        syncDetectedSessionTargetFromBuffer(stream.sessionBuffer, "stderr");
+        attemptSubagentMonitor?.setParentSessionId(extractSessionId(runCli, stream.sessionBuffer));
+        appendTraceLines(chunk);
+        if (debugLogging) {
+          void logCliStream(runCli, activeSessionId, "stderr", chunk);
+        }
+      },
+      onAttemptProcessStarted: (runProcess, runtimeSessionId) => {
         setActiveProcess(runProcess);
-        subagentMonitor.setParentSessionId(runtimeSessionId);
-      });
-
-      if (getActiveRunId() !== runId) {
-        return;
-      }
-      const finalActivity = openCodeActivityTracker.flush();
-      if (finalActivity.hasAssistantAnswer) {
-        attemptHadNormalReply = true;
-      }
-
-      if (debugLogging) {
-        void logCliRaw(runCli, activeSessionId, {
-          command,
-          args,
-          cwd,
-          exitCode: attemptResult.type === "exit" ? attemptResult.code : null,
-          error: attemptResult.type === "error" ? attemptResult.error.message : undefined,
-          stdin: attemptPrompt,
-          stdout: rawStdout,
-          raw: rawStdout,
-          stderr: rawStderr,
-        });
-      }
-
-      if (attemptResult.type === "exit" && attemptResult.code === 0) {
-        const detectedSessionId = extractSessionId(runCli, `${rawStdout}
-  ${rawStderr}`);
+        attemptSubagentMonitor?.setParentSessionId(runtimeSessionId);
+      },
+      finishStreamAttempt: (context) => {
+        if (getActiveRunId() !== runId) {
+          return false;
+        }
+        const finalActivity = openCodeActivityTracker.flush();
+        if (finalActivity.hasAssistantAnswer) {
+          context.stream.attemptHadNormalReply = true;
+        }
+        if (debugLogging) {
+          void logCliRaw(runCli, activeSessionId, {
+            command: startupCommand,
+            args: startupArgs,
+            cwd: runCwd,
+            exitCode: context.attemptResult.type === "exit" ? context.attemptResult.code : null,
+            error: context.attemptResult.type === "error" ? context.attemptResult.error.message : undefined,
+            stdin: context.attemptPrompt,
+            stdout: context.stream.rawStdout,
+            raw: context.stream.rawStdout,
+            stderr: context.stream.rawStderr,
+          });
+        }
+        return true;
+      },
+      adoptSession: (adoption) => {
+        if (!(adoption.attemptResult.type === "exit" && adoption.attemptResult.code === 0)) {
+          return;
+        }
+        const detectedSessionId = extractSessionId(runCli, `${adoption.rawStdout}\n${adoption.rawStderr}`);
         if (
-          isFreshSessionRecoveryAttempt
-          && isLoopMainRun
+          adoption.isFreshSessionRecoveryAttempt
+          && adoption.isLoopMainRun
           && detectedSessionId
           && detectedSessionId !== activeSessionId
           && input.loopTaskId
@@ -932,120 +927,73 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           }));
           setActiveSessionId(detectedSessionId);
         }
-        const finalSessionId = activeSessionId;
+      },
+      beginSuccessfulExit: (context) => {
+        successfulSessionId = activeSessionId;
         const activeTaskRun = getActiveTaskRun();
-        const durationMs = activeTaskRun?.id === runId
+        successfulDurationMs = activeTaskRun?.id === runId
           ? Math.max(0, Date.now() - activeTaskRun.startedAt)
           : null;
-        void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
+        void logInfo("runPrompt-exit", {
+          cli: runCli,
+          code: context.attemptResult.type === "exit" ? context.attemptResult.code : null,
+        });
         flushOpenCodeJsonlBuffer();
         flushTraceBuffer();
+      },
+      parseOpenCodeRunOutput,
+      appendParsedOutput: (openCodeOutput) => {
         let finalMessageTarget = activeMessageTarget ?? messageTarget;
-        const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
         if (openCodeOutput.finalText) {
           appendOpenCodeFinalText(openCodeOutput.finalText);
           finalMessageTarget = activeMessageTarget ?? finalMessageTarget;
         }
-        const humanInteractionResult = await maybeHandleNaturalLanguageHumanInteraction(
-          finalMessageTarget,
-          openCodeOutput.finalText,
-        );
-        if (humanInteractionResult === "stopped") {
-          return;
-        }
-        if (humanInteractionResult === "continue") {
-          hiddenRetryCount = 0;
-          freshSessionRecoveryPending = false;
-          continue;
-        }
-        const conversationHasFinalConclusion = hasAssistantFinalConclusionAfterMessage(finalMessageTarget, userMessageId, {
-          observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-          fallbackCreatedAt: userCreatedAt,
-          requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
-        });
-        const currentAttemptHasAssistantAnswer = attemptHadNormalReply || Boolean(openCodeOutput.finalText?.trim());
-        const successfulExitOutcome = resolveOpenCodeSuccessfulExitOutcome({
-          isLoopRun: Boolean(input.loopTaskId),
-          currentAttemptHasAssistantAnswer,
-          conversationHasFinalConclusion,
-          hiddenRetryCount,
-          maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
-        });
-        if (successfulExitOutcome !== "complete") {
-          const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
-          if (successfulExitOutcome === "retry") {
-            const shouldRecoverFreshSession = shouldRecoverOpenCodeLoopMainSessionInFreshSession({
-              isLoopMainRun,
-              hasResumableSession: Boolean(resolveCliSessionIdForResume(runCli, activeSessionId)),
-              hasProviderError: Boolean(openCodeOutput.errorText),
-              freshSessionRecoveryAttempted,
-            });
-            void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", {
-              cli: runCli,
-              runId,
-              tabId: activeTabId,
-              sessionId: activeSessionId,
-              taskRole: input.taskRole,
-              loopTaskId: input.loopTaskId,
-              loopRound: input.loopRound,
-              attempt: hiddenRetryCount + 1,
-              retryCount: hiddenRetryCount,
-              maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-              conversationHasFinalConclusion,
-              currentAttemptHasAssistantAnswer,
-              structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-              stdoutLength: rawStdout.length,
-              stderrLength: rawStderr.length,
-              freshSessionRecoveryQueued: shouldRecoverFreshSession,
-            });
-            if (shouldRecoverFreshSession) {
-              freshSessionRecoveryPending = true;
-              appendSystemMessage(t("run.openCodeLoopFreshSessionRecoveryQueued"));
-            } else {
-              appendHiddenRetryErrorTraceMessage(finalMessageTarget, missingConclusionMessage, {
-                taskRole: input.taskRole,
-                loopTaskId: input.loopTaskId,
-                loopRound: input.loopRound,
-                loopSubtaskId: input.loopSubtaskId,
-              }, { createMessageId, sendPanelMessage });
-            }
-            appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
-            hiddenRetryCount += 1;
-            continue;
-          }
-          void logError("runPrompt-one-shot-missing-final-conclusion", {
-            cli: runCli,
-            runId,
-            tabId: activeTabId,
-            sessionId: activeSessionId,
+        return finalMessageTarget;
+      },
+      maybeHandleNaturalLanguageHumanInteraction,
+      hasAssistantFinalConclusionAfterMessage,
+      shouldRequireExplicitFinalAnswerForRun,
+      resolveOpenCodeSuccessfulExitOutcome,
+      buildOpenCodeMissingFinalConclusionMessage,
+      shouldRecoverOpenCodeLoopMainSessionInFreshSession,
+      logMissingFinalConclusionRetry: (payload) => {
+        void logInfo("runPrompt-one-shot-missing-final-conclusion-retry", payload);
+      },
+      publishMissingConclusionRetry: (finalMessageTarget, retry) => {
+        if (retry.shouldRecoverFreshSession) {
+          appendSystemMessage(t("run.openCodeLoopFreshSessionRecoveryQueued"));
+        } else {
+          appendHiddenRetryErrorTraceMessage(finalMessageTarget, retry.missingConclusionMessage, {
             taskRole: input.taskRole,
             loopTaskId: input.loopTaskId,
             loopRound: input.loopRound,
-            hiddenRetryCount,
-            conversationHasFinalConclusion,
-            currentAttemptHasAssistantAnswer,
-            structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-            stdoutLength: rawStdout.length,
-            stderrLength: rawStderr.length,
-          });
-          const userMessageText = buildHiddenRetryFailureMessage({
-            hiddenRetryCount,
-            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-            retryLimitMessage: buildHiddenRetryLimitMessage(),
-            fallbackMessage: missingConclusionMessage,
-            lastFailureMessage: missingConclusionMessage,
-            lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-          });
-          sendRunStatus("error", userMessageText);
-          appendSystemMessage(userMessageText);
-          appendCompletionMessage("error");
-          persistActiveMessages();
-          clearActiveRun();
-          if (input.throwOnError) {
-            throw new Error(userMessageText);
-          }
-          return;
+            loopSubtaskId: input.loopSubtaskId,
+          }, { createMessageId, sendPanelMessage });
         }
+        appendSystemMessage(buildHiddenRetryQueuedMessage(retry.hiddenRetryCount));
+      },
+      logMissingFinalConclusionFailure: (payload) => {
+        void logError("runPrompt-one-shot-missing-final-conclusion", payload);
+      },
+      finalizeMissingFinalConclusion: async ({ missingConclusionMessage, hiddenRetryCount }) => {
+        const userMessageText = buildHiddenRetryFailureMessage({
+          hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryLimitMessage: buildHiddenRetryLimitMessage(),
+          fallbackMessage: missingConclusionMessage,
+          lastFailureMessage: missingConclusionMessage,
+          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+        });
+        sendRunStatus("error", userMessageText);
+        appendSystemMessage(userMessageText);
+        appendCompletionMessage("error");
+        persistActiveMessages();
+        clearActiveRun();
+        if (input.throwOnError) {
+          throw new Error(userMessageText);
+        }
+      },
+      finalizeSuccessfulExit: async () => {
         sendRunStatus("end");
         appendCompletionMessage("end");
         persistActiveMessages();
@@ -1060,97 +1008,102 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           loopSubtaskId: input.loopSubtaskId,
           skip: input.skipLongTermMemoryPersist,
         });
+        const completion = {
+          sessionId: successfulSessionId,
+          durationMs: successfulDurationMs,
+        };
         clearActiveRun();
-        if (shouldAutoCompactAfterRun) {
-          await maybeAutoCompactContextAfterPromptSuccess(target, finalSessionId, durationMs);
-        }
-        return;
-      }
-
-      hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-      const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
-      const retryFailureMessage = buildOpenCodeFailureMessage(
-        openCodeOutput,
-        getAttemptFailureMessage(attemptResult, rawStderr || null),
-      );
-      const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
-        && isHiddenRetryEligibleAttempt(attemptResult, retryFailureMessage);
-      if (shouldRetry) {
-        appendHiddenRetryErrorTraceMessage(activeMessageTarget, retryFailureMessage, {
+        return completion;
+      },
+      maybeAutoCompactContextAfterPromptSuccess,
+      evaluateFailedAttempt: (context) => {
+        const nextHiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(
+          context.hiddenRetryCount,
+          context.attemptHadNormalReply,
+        );
+        const failure = buildRetryFailureMessage(context.attemptResult, context.rawStdout, context.rawStderr);
+        return {
+          hiddenRetryCount: nextHiddenRetryCount,
+          shouldRetry: nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+            && isHiddenRetryEligibleAttempt(context.attemptResult, failure.retryFailureMessage),
+        };
+      },
+      recordFailedAttemptRetry: (context) => {
+        const failure = buildRetryFailureMessage(context.attemptResult, context.rawStdout, context.rawStderr);
+        appendHiddenRetryErrorTraceMessage(activeMessageTarget, failure.retryFailureMessage, {
           taskRole: input.taskRole,
           loopTaskId: input.loopTaskId,
           loopRound: input.loopRound,
           loopSubtaskId: input.loopSubtaskId,
         }, { createMessageId, sendPanelMessage });
-        appendSystemMessage(buildHiddenRetryQueuedMessage(hiddenRetryCount));
-        hiddenRetryCount += 1;
-        continue;
-      }
-
-      let userMessageForThrow = retryFailureMessage;
-      if (attemptResult.type === "error") {
-        const error = attemptResult.error;
-        const errnoError = error as NodeJS.ErrnoException;
-        const isNotFound = errnoError?.code === "ENOENT";
-        const rawUserMessage = isNotFound
-          ? buildCliCommandNotFoundMessage(runCli, command, process.platform, t)
-          : error.message;
-        const userMessage = buildHiddenRetryFailureMessage({
-          hiddenRetryCount,
-          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          retryLimitMessage: buildHiddenRetryLimitMessage(),
-          fallbackMessage: rawUserMessage,
-          lastFailureMessage: rawUserMessage,
-          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-        });
-        userMessageForThrow = userMessage;
-        if (isNotFound) {
-          showCliCommandNotFoundError(userMessage, runCli);
+        appendSystemMessage(buildHiddenRetryQueuedMessage(context.hiddenRetryCount));
+      },
+      finalizeFailedAttempt: async (context) => {
+        const failure = buildRetryFailureMessage(context.attemptResult, context.rawStdout, context.rawStderr);
+        const { openCodeOutput, retryFailureMessage } = failure;
+        let userMessageForThrow = retryFailureMessage;
+        if (context.attemptResult.type === "error") {
+          const error = context.attemptResult.error;
+          const errnoError = error as NodeJS.ErrnoException;
+          const isNotFound = errnoError?.code === "ENOENT";
+          const rawUserMessage = isNotFound
+            ? buildCliCommandNotFoundMessage(runCli, startupCommand, process.platform, t)
+            : error.message;
+          const userMessage = buildHiddenRetryFailureMessage({
+            hiddenRetryCount: context.hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+            retryLimitMessage: buildHiddenRetryLimitMessage(),
+            fallbackMessage: rawUserMessage,
+            lastFailureMessage: rawUserMessage,
+            lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+          });
+          userMessageForThrow = userMessage;
+          if (isNotFound) {
+            showCliCommandNotFoundError(userMessage, runCli);
+          }
+          void logError("runPrompt-error", {
+            cli: runCli,
+            error: isNotFound ? `${error.message} (ENOENT)` : error.message,
+          });
+          sendRunStatus("error", userMessage);
+          appendSystemMessage(userMessage);
+        } else {
+          void logInfo("runPrompt-exit", { cli: runCli, code: context.attemptResult.code });
+          const lastFailureMessage = context.rawStderr.trim()
+            ? context.rawStderr.trim()
+            : t("run.exitCode", { code: context.attemptResult.code ?? "unknown" });
+          const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
+          const userMessage = buildHiddenRetryFailureMessage({
+            hiddenRetryCount: context.hiddenRetryCount,
+            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+            retryLimitMessage: buildHiddenRetryLimitMessage(),
+            fallbackMessage: finalFailureMessage,
+            lastFailureMessage: finalFailureMessage,
+            lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+          });
+          userMessageForThrow = userMessage;
+          void logError("runPrompt-opencode-final-failure", {
+            cli: runCli,
+            code: context.attemptResult.code,
+            hiddenRetryCount: context.hiddenRetryCount,
+            errorText: openCodeOutput.errorText,
+            statusText: openCodeOutput.statusText,
+            stdoutLength: context.rawStdout.length,
+            stderrLength: context.rawStderr.length,
+          });
+          sendRunStatus("error", userMessage);
+          appendSystemMessage(userMessage);
         }
-        void logError("runPrompt-error", {
-          cli: runCli,
-          error: isNotFound ? `${error.message} (ENOENT)` : error.message,
-        });
-        sendRunStatus("error", userMessage);
-        appendSystemMessage(userMessage);
-      } else {
-        void logInfo("runPrompt-exit", { cli: runCli, code: attemptResult.code });
-        const lastFailureMessage = rawStderr.trim()
-          ? rawStderr.trim()
-          : t("run.exitCode", { code: attemptResult.code ?? "unknown" });
-        const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
-        const userMessage = buildHiddenRetryFailureMessage({
-          hiddenRetryCount,
-          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          retryLimitMessage: buildHiddenRetryLimitMessage(),
-          fallbackMessage: finalFailureMessage,
-          lastFailureMessage: finalFailureMessage,
-          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-        });
-        userMessageForThrow = userMessage;
-        void logError("runPrompt-opencode-final-failure", {
-          cli: runCli,
-          code: attemptResult.code,
-          hiddenRetryCount,
-          errorText: openCodeOutput.errorText,
-          statusText: openCodeOutput.statusText,
-          stdoutLength: rawStdout.length,
-          stderrLength: rawStderr.length,
-        });
-        sendRunStatus("error", userMessage);
-        appendSystemMessage(userMessage);
-      }
-
-      flushOpenCodeJsonlBuffer();
-      flushTraceBuffer();
-      appendCompletionMessage("error");
-      persistActiveMessages();
-      clearActiveRun();
-      if (input.throwOnError) {
-        throw new Error(userMessageForThrow);
-      }
-      return;
-    }
+        flushOpenCodeJsonlBuffer();
+        flushTraceBuffer();
+        appendCompletionMessage("error");
+        persistActiveMessages();
+        clearActiveRun();
+        if (input.throwOnError) {
+          throw new Error(userMessageForThrow);
+        }
+      },
+    });
   }
 
   function appendOpenCodeFinalText(finalText: string): void {

@@ -16,4 +16,4 @@
 
 ## Active Plan Activity
 
-- 当前无 active plan
+- `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 最后修改于 2026-09-24T22:41:21+00:00，读取成本约 11662 tokens

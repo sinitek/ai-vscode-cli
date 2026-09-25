@@ -6,3 +6,4 @@
 | --- | --- | --- | --- | --- | --- |
 | `mem-c1d7e714b7` | 2026-08-24T05:35:11+00:00 | `rule` | 记忆流转规则 | `.ch/docs/MEMORY.md` | ~39 |
 | `mem-431f2548e1` | 2026-08-29T02:14:18+00:00 | `rule` | 热区记忆面 | `.ch/docs/memory/README.md` | ~46 |
+| `mem-538cb1444d` | 2026-09-24T22:41:21+00:00 | `plan` | Loop+ 完成事件驱动验收 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | ~108 |

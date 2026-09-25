@@ -146,7 +146,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
       <div class="layout">
         <aside class="sidebar">
           ${renderTaskPanel(state, strings, locale)}
-          ${renderRosterPanel(state, strings)}
+          ${renderRosterPanel(state, strings, locale)}
         </aside>
         <main class="main">
           ${renderTimeline(state, transcript.segments, strings)}
@@ -820,13 +820,14 @@ function formatParticipantStatus(
 function renderRosterPanel(
   state: LoopDebateChatPanelState,
   strings: LoopDebateChatPanelStrings,
+  locale: AppLocale,
 ): string {
   if (state.rounds.length === 0) {
     return "";
   }
   const debateRound = findLatestPanelRound(state.rounds, "debate");
   const moderator = state.mode === "debate" && debateRound
-    ? renderModeratorMember(debateRound, strings)
+    ? renderModeratorMember(debateRound, strings, locale)
     : "";
   const rosterParticipants = collectRosterParticipants(state.rounds);
   const participants = rosterParticipants.map((participant) => `<div class="member">
@@ -834,7 +835,7 @@ function renderRosterPanel(
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
       <div class="member-meta">${escapeHtml(formatParticipantStatus(state, participant.status, strings))}${participant.stance ? ` · ${escapeHtml(participant.stance)}` : ""}</div>
-      <div class="member-meta">${escapeHtml(strings.session)}：${escapeHtml(participant.sessionId ?? strings.noSession)}</div>
+      ${renderMemberLastStarted(memberLastStartedAt(participant), strings, locale)}
     </div>
   </div>`).join("");
   const consensusRound = state.rounds.slice().reverse().find((round) => Boolean(round.consensusSummary));
@@ -884,19 +885,47 @@ function collectRosterParticipants(
   return Array.from(participantsByKey.values());
 }
 
+function memberLastStartedAt(participant: LoopDebateChatPanelParticipant): number | undefined {
+  if (participant.lastStartedAt === null) {
+    return undefined;
+  }
+  if (typeof participant.lastStartedAt === "number" && Number.isFinite(participant.lastStartedAt)) {
+    return participant.lastStartedAt;
+  }
+  if (participant.status === "pending" || participant.status === "skipped") {
+    return undefined;
+  }
+  if (typeof participant.updatedAt === "number" && Number.isFinite(participant.updatedAt)) {
+    return participant.updatedAt;
+  }
+  return undefined;
+}
+
+function renderMemberLastStarted(
+  startedAt: number | undefined,
+  strings: LoopDebateChatPanelStrings,
+  locale: AppLocale,
+): string {
+  const formatted = formatTimestamp(startedAt, locale);
+  return `<div class="member-meta" data-member-last-started="${escapeAttribute(formatted)}">${escapeHtml(strings.lastStarted)}：${escapeHtml(formatted || strings.notStarted)}</div>`;
+}
+
 function renderModeratorMember(
   round: LoopDebateChatPanelRound,
   strings: LoopDebateChatPanelStrings,
+  locale: AppLocale,
 ): string {
-  const moderatorSession = round.moderatorDecisions
+  const decisionStartedAt = round.moderatorDecisions
     .slice()
     .reverse()
-    .find((decision) => decision.sessionId)?.sessionId ?? round.participantRosterSessionId ?? null;
+    .find((decision) => typeof decision.updatedAt === "number" && Number.isFinite(decision.updatedAt))
+    ?.updatedAt;
+  const startedAt = typeof decisionStartedAt === "number" ? decisionStartedAt : round.startedAt;
   return `<div class="member">
     <span class="avatar">${escapeHtml(getAvatarLabel(strings.moderator, "M"))}</span>
     <div>
       <div class="member-name">${escapeHtml(strings.moderator)}</div>
-      <div class="member-meta">${escapeHtml(strings.session)}：${escapeHtml(moderatorSession ?? strings.noSession)}</div>
+      ${renderMemberLastStarted(startedAt, strings, locale)}
     </div>
   </div>`;
 }

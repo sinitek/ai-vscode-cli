@@ -386,7 +386,8 @@ test("covers Loop debate panel lifecycle, title, roster, active speaker, and tra
   assert.match(harness.panel.title, /task-123456/u);
   assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.debateSubtitle)));
   assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.moderator)));
-  assert.match(harness.panel.webview.html, /moderator-session/u);
+  assert.doesNotMatch(harness.panel.webview.html, /moderator-session|main-session|会话：|Session：/u);
+  assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.lastStarted)));
   assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.openDisagreements)));
   assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.finalStance)));
   assert.match(harness.panel.webview.html, new RegExp(escapeRegExp(activeStrings.stopped)));
@@ -688,8 +689,12 @@ test("keeps classic main/sub and debate panels on the round rhythm", () => {
 
   assert.equal(getStrings("en").title, "Loop Group Chat");
   assert.equal(getStrings("zh-CN").title, "Loop 群聊");
-  assert.equal(getStrings("en").titleLoopPlus, "Loop+");
-  assert.equal(getStrings("zh-CN").titleLoopPlus, "Loop+");
+  assert.equal(getStrings("en").titleLoopPlus, "Loop+ Group Chat");
+  assert.equal(getStrings("zh-CN").titleLoopPlus, "Loop+ 群聊");
+  assert.equal(getStrings("en").lastStarted, "Last started");
+  assert.equal(getStrings("zh-CN").lastStarted, "最后启动");
+  assert.equal(getStrings("en").notStarted, "Not started");
+  assert.equal(getStrings("zh-CN").notStarted, "未启动");
   assert.equal(getStrings("en").loopPlusActivityStopped.includes("Reviewing"), false);
   assert.equal(getStrings("zh-CN").loopPlusActivityStopped.includes("正在验收"), false);
   assert.equal(getStrings("en").loopPlusActivityPaused.includes("Reviewing"), false);
@@ -755,7 +760,7 @@ test("does not show a generating speaker for an explicit Loop+ projection", () =
       }),
       locale,
     );
-    assert.match(page, /<h1>Loop\+<\/h1>/u);
+    assert.match(page, locale === "zh-CN" ? /<h1>Loop\+ 群聊<\/h1>/u : /<h1>Loop\+ Group Chat<\/h1>/u);
     assert.match(page, /data-loop-plus-role="current" data-loop-plus-subtask="A"/u);
     assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
     assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);

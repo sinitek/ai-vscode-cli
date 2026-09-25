@@ -4,31 +4,13 @@ import * as path from "path";
 import { ClaudeSkillItem, ClaudeSkillToggle } from "./types";
 import { t } from "../i18n";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+import {
+  extractSkillDescription,
+  listSkillDirNames,
+  skillDescriptionStrategies,
+} from "./skillDiscovery";
 
 const CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
-
-function extractSkillDescription(content: string): string | undefined {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*/);
-  if (!match) {
-    return undefined;
-  }
-  const lines = match[1].split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    if (trimmed.startsWith("description:")) {
-      const raw = trimmed.slice("description:".length).trim();
-      const unquoted = raw.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
-      const description = unquoted.trim();
-      if (description) {
-        return description;
-      }
-    }
-  }
-  return undefined;
-}
 
 function toShortDescription(description?: string): string {
   const normalized = (description ?? "").trim();
@@ -174,35 +156,7 @@ export function stripManagedClaudeSkillRules(
 }
 
 export async function listClaudeSkills(): Promise<ClaudeSkillItem[]> {
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = await fs.promises.readdir(CLAUDE_SKILLS_DIR, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  const dirs: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-    if (entry.isDirectory()) {
-      dirs.push(entry.name);
-      continue;
-    }
-    if (!entry.isSymbolicLink()) {
-      continue;
-    }
-    try {
-      const linkTargetStat = await fs.promises.stat(path.join(CLAUDE_SKILLS_DIR, entry.name));
-      if (linkTargetStat.isDirectory()) {
-        dirs.push(entry.name);
-      }
-    } catch {
-      // Ignore broken symlinks.
-    }
-  }
-
+  const dirs = await listSkillDirNames(CLAUDE_SKILLS_DIR);
   const skills: ClaudeSkillItem[] = [];
   for (const name of dirs) {
     const skillPath = path.join(CLAUDE_SKILLS_DIR, name);
@@ -210,7 +164,9 @@ export async function listClaudeSkills(): Promise<ClaudeSkillItem[]> {
       const skillFile = path.join(skillPath, "SKILL.md");
       await fs.promises.access(skillFile);
       const content = await fs.promises.readFile(skillFile, "utf-8");
-      const description = toShortDescription(extractSkillDescription(content));
+      const description = toShortDescription(
+        extractSkillDescription(content, skillDescriptionStrategies.continueOnEmpty),
+      );
       skills.push({
         name,
         path: skillPath,

@@ -3,6 +3,13 @@ import * as path from "path";
 import { CodexSkillItem, CodexSkillToggle } from "./types";
 import { AppLocale, resolveLocale, t } from "../i18n";
 import { resolveAgentsHomeDir, resolveCodexHomeDir } from "../shared/userHomePaths";
+import {
+  collectAncestorDirs,
+  extractSkillDescription,
+  listSkillDirNames,
+  normalizeWorkspaceRoots,
+  skillDescriptionStrategies,
+} from "./skillDiscovery";
 
 export const CODEX_SKILLS_BLOCK_START = "# --- sinitek codex skills start ---";
 export const CODEX_SKILLS_BLOCK_END = "# --- sinitek codex skills end ---";
@@ -105,26 +112,6 @@ function ensureFeaturesSkillsEnabled(content: string): string {
   return content.replace(featuresRegex, nextBlock);
 }
 
-function extractSkillDescription(content: string): string | undefined {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*/);
-  if (!match) {
-    return undefined;
-  }
-  const lines = match[1].split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    if (trimmed.startsWith("description:")) {
-      const raw = trimmed.slice("description:".length).trim();
-      const unquoted = raw.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
-      return unquoted.trim() || undefined;
-    }
-  }
-  return undefined;
-}
-
 function toShortDescription(locale: AppLocale, name: string, description?: string): string {
   const raw = (description ?? "").trim();
   const hasChinese = /[\u4e00-\u9fff]/.test(raw);
@@ -146,38 +133,6 @@ function toShortDescription(locale: AppLocale, name: string, description?: strin
     return mapped;
   }
   return t("skill.descriptionMissing", undefined, locale);
-}
-
-function normalizeWorkspaceRoots(workspaceRoots: string[] | undefined): string[] {
-  if (!Array.isArray(workspaceRoots)) {
-    return [];
-  }
-  const unique = new Set<string>();
-  workspaceRoots.forEach((root) => {
-    if (typeof root !== "string") {
-      return;
-    }
-    const normalized = root.trim();
-    if (!normalized) {
-      return;
-    }
-    unique.add(path.resolve(normalized));
-  });
-  return [...unique];
-}
-
-function collectAncestorDirs(startPath: string): string[] {
-  const output: string[] = [];
-  let current = path.resolve(startPath);
-  while (true) {
-    output.push(current);
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  return output;
 }
 
 function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] {
@@ -209,39 +164,6 @@ function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] 
   }
 
   return roots;
-}
-
-async function listSkillDirNames(skillRoot: string): Promise<string[]> {
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = await fs.promises.readdir(skillRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  const dirs: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-    if (entry.isDirectory()) {
-      dirs.push(entry.name);
-      continue;
-    }
-    if (!entry.isSymbolicLink()) {
-      continue;
-    }
-    try {
-      const linkTargetStat = await fs.promises.stat(path.join(skillRoot, entry.name));
-      if (linkTargetStat.isDirectory()) {
-        dirs.push(entry.name);
-      }
-    } catch {
-      // Ignore broken symlinks.
-    }
-  }
-
-  return dirs;
 }
 
 export function mergeCodexSkillsConfig(
@@ -278,7 +200,11 @@ export async function listCodexSkills(workspaceRoots?: string[]): Promise<CodexS
         const skillFile = path.join(skillPath, "SKILL.md");
         await fs.promises.access(skillFile);
         const content = await fs.promises.readFile(skillFile, "utf-8");
-        const description = toShortDescription(locale, name, extractSkillDescription(content));
+        const description = toShortDescription(
+          locale,
+          name,
+          extractSkillDescription(content, skillDescriptionStrategies.stopAtFirstKey),
+        );
         skillsByName.set(name, { name, path: skillPath, description });
       } catch {
         // skip non-skill directories

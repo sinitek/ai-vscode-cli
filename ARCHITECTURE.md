@@ -68,15 +68,16 @@ cli / interactive / config 服务层
 - 负责命令注册、状态管理、消息分发、会话与标签页编排
 - 不应承载具体 CLI 协议细节和配置文件读写实现
 - 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Webview 消息路由、Graph/Loop/session/model/config host 装配和跨运行时生命周期适配
-- 本次运行时抽取后，`src/extension.ts` 为 4993 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
+- 本次运行时抽取后，`src/extension.ts` 为 5659 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
 
 #### 扩展运行时 Host 层
 
 - 位于 `src/extensionHost/`
-- `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发；当前 1224 行
-- `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发；当前 1181 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
-- `promptInteractiveRuntime.ts` 承载 Codex / Claude interactive turn、runner 事件映射、session adoption、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 判定；当前 1387 行
-- `loopOrchestration.ts` 承载 Loop 主从与红蓝辩论编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界；当前 3043 行
+- `openCodePromptRunTemplate.ts` 用显式端口 Template Method 固定 OpenCode attempt 顺序。`runOpenCodePromptTemplate` 接收 `OpenCodePromptRunPorts`，由 one-shot 与 parallel 工厂在调用点构造端口；不使用类继承、DI 容器或 `mode` 旗标。当前 705 行
+- `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDeps)`。运行身份（`getActiveRunId() === runId`）和启动空闲超时留在本 host。当前 1193 行
+- `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps)`。运行身份与 tab 流留在本 host，不补 one-shot 启动超时。当前 1078 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
+- `promptInteractiveRuntime.ts` 承载 Codex / Claude interactive turn、runner 事件映射、session adoption、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 判定；当前 1426 行
+- `loopOrchestration.ts` 承载 Loop 主从与红蓝辩论编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界；当前 3092 行
 - `openCodeSubagentRuntime.ts` 承载 OpenCode 子代理 server attach / managed startup / ready wait / Basic auth env override / unavailable fallback 和 disabled monitor；当前 201 行
 - `promptExecutionShared.ts` 只保存提示运行 host 共享的窄类型；当前 59 行
 - 依赖方向固定为 `extension.ts` 导入 host 并注入显式回调，host 可以依赖 `cli/`、`interactive/`、`promptRunState` 等服务与类型，但不能反向依赖 `extension.ts`

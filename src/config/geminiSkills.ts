@@ -4,6 +4,13 @@ import * as path from "path";
 import { OpenCodeSkillItem, OpenCodeSkillToggle } from "./types";
 import { t } from "../i18n";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+import {
+  collectAncestorDirs,
+  extractSkillDescription,
+  listSkillDirNames,
+  normalizeWorkspaceRoots,
+  skillDescriptionStrategies,
+} from "./skillDiscovery";
 
 const HOME_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
 const SYSTEM_OPENCODE_SKILLS_DIR = path.join(path.sep, "etc", "opencode", "skills");
@@ -19,38 +26,6 @@ function parseOpenCodeConfig(content: string): Record<string, unknown> {
 
 function normalizeSkillName(name: string): string {
   return String(name ?? "").trim();
-}
-
-function normalizeWorkspaceRoots(workspaceRoots: string[] | undefined): string[] {
-  if (!Array.isArray(workspaceRoots)) {
-    return [];
-  }
-  const unique = new Set<string>();
-  workspaceRoots.forEach((root) => {
-    if (typeof root !== "string") {
-      return;
-    }
-    const normalized = root.trim();
-    if (!normalized) {
-      return;
-    }
-    unique.add(path.resolve(normalized));
-  });
-  return [...unique];
-}
-
-function collectAncestorDirs(startPath: string): string[] {
-  const output: string[] = [];
-  let current = path.resolve(startPath);
-  while (true) {
-    output.push(current);
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  return output;
 }
 
 function resolveOpenCodeSkillRoots(workspaceRoots: string[] | undefined): string[] {
@@ -81,62 +56,6 @@ function resolveOpenCodeSkillRoots(workspaceRoots: string[] | undefined): string
   }
 
   return roots;
-}
-
-async function listSkillDirNames(skillRoot: string): Promise<string[]> {
-  let entries: fs.Dirent[] = [];
-  try {
-    entries = await fs.promises.readdir(skillRoot, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  const dirs: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-    if (entry.isDirectory()) {
-      dirs.push(entry.name);
-      continue;
-    }
-    if (!entry.isSymbolicLink()) {
-      continue;
-    }
-    try {
-      const linkTargetStat = await fs.promises.stat(path.join(skillRoot, entry.name));
-      if (linkTargetStat.isDirectory()) {
-        dirs.push(entry.name);
-      }
-    } catch {
-      // Ignore broken symlinks.
-    }
-  }
-
-  return dirs;
-}
-
-function extractSkillDescription(content: string): string | undefined {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*/);
-  if (!match) {
-    return undefined;
-  }
-  const lines = match[1].split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    if (trimmed.startsWith("description:")) {
-      const raw = trimmed.slice("description:".length).trim();
-      const unquoted = raw.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
-      const description = unquoted.trim();
-      if (description) {
-        return description;
-      }
-    }
-  }
-  return undefined;
 }
 
 function toShortDescription(description?: string): string {
@@ -293,7 +212,9 @@ export async function listOpenCodeSkills(workspaceRoots?: string[]): Promise<Ope
         const skillFile = path.join(skillPath, "SKILL.md");
         await fs.promises.access(skillFile);
         const content = await fs.promises.readFile(skillFile, "utf-8");
-        const description = toShortDescription(extractSkillDescription(content));
+        const description = toShortDescription(
+          extractSkillDescription(content, skillDescriptionStrategies.continueOnEmpty),
+        );
         skillsByName.set(name, { name, path: skillPath, description });
       } catch {
         // Ignore non-skill directories.

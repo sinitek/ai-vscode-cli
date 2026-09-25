@@ -5,13 +5,13 @@
 ## 当前概览
 
 - 热区/规则文档：9
-- 活跃计划：0
+- 活跃计划：1
 - Pending items：0
 - Active risks：0
 - Lessons：0
-- Observation entries：2
+- Observation entries：3
 - Claim entries：121
-- Estimated read cost：~85 tokens
+- Estimated read cost：~193 tokens
 - Fresh docs：1
 - Stale docs：1
 - Starter docs：7
@@ -50,7 +50,3 @@
 - `<private>` / `<no-memory>` 等隐私标签内的内容会从 generated 结果中剥离
 - claim 抽取只覆盖 front matter、表格行和标题下的短 bullet；内容不足以稳定抽取时宁可跳过
 - generated memory index 只做召回压缩，不替代原始事实来源
-
-## 当前状态
-
-当前没有活跃计划、pending item 或 active risk。复杂任务开始前，如上下文不清晰，可先检查热区文档是否需要补充。

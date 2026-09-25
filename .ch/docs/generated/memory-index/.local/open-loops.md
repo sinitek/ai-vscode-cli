@@ -4,7 +4,7 @@
 
 ## Active Plans
 
-- 当前无 active plan
+- `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`：Loop+ 完成事件驱动验收 (~11662 tokens)
 
 ## Pending Items
 

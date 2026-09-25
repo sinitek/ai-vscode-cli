@@ -22,6 +22,7 @@ import type {
   PreparedOpenCodeSubagentRuntime,
   PromptRunExecutionOptions,
 } from "./promptExecutionShared";
+import { runOpenCodePromptTemplate } from "./openCodePromptRunTemplate";
 
 type OpenCodeRunOutput = ReturnType<typeof import("../cli/commandRunner").parseOpenCodeRunOutput>;
 
@@ -249,69 +250,21 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
     target: PromptRunTarget,
     executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
-    const prompt = input.displayPrompt;
-    if (!prompt) {
-      return;
-    }
     const runCli = target.cli;
-    if (runCli !== "opencode") {
-      throw new Error(`parallel-run-unsupported:${runCli}`);
-    }
-    const modelPrompt = input.modelPrompt || prompt;
-    const contextTags = Array.isArray(input.contextTags)
-      ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
-      : [];
-    const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
-    const runtimePreparation = await prepareOpenCodeRuntime({
-      role: input.taskRole === "subtask" ? "subtask" : "main",
-      model: input.model ?? null,
-      requiresSubtaskModel: Boolean(input.loopTaskId || input.graphRunId),
-    });
-    const runtimeModel = runtimePreparation.effectiveModel;
-    const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(runCli, runtimeModel);
-    applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-    const runtimeEnvOverrides = runtimePreparation.envOverrides;
-    const runtimeOpenCodeConfigContent = runtimePreparation.configContent;
-    const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
-
-    preparePendingLabel(runCli, target.tabId, prompt);
+    const prompt = input.displayPrompt;
     let sessionId = target.sessionId;
-    const includeFinalAnswerInstruction = !input.loopTaskId;
-    const humanInteractionEnabledForVibeRun = !input.loopTaskId
-      && !input.graphRunId
-      && (typeof getGlobalHumanInteractionEnabled === "function"
-        ? getGlobalHumanInteractionEnabled()
-        : false);
-    const thinkingPrompt = buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
-      includeFinalAnswerInstruction,
-      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
-    });
-    const hiddenRetryPrompt = buildHiddenRetryPrompt(runCli, thinkingMode, {
-      includeFinalAnswerInstruction,
-    });
-    let messageTarget = sessionId
-      ? loadSessionMessages(runCli, sessionId)
-      : getPendingSessionDraft(target.tabId, runCli).messages;
-    const userMessageId = input.preloadedUserMessageId ?? createMessageId();
-    const userCreatedAt = Date.now();
-
-    if (!input.preloadedUserMessageId) {
-      const userMessage = buildUserChatMessage(input, userCreatedAt, userMessageId);
-      appendMessageToStore(messageTarget, userMessage);
-      sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
-    }
-
-    const runId = createMessageId();
-    const startedAt = Date.now();
-    let hiddenRetryCount = 0;
-    const isLoopMainRun = Boolean(input.loopTaskId && input.taskRole === "main");
-    let freshSessionRecoveryPending = false;
-    let freshSessionRecoveryAttempted = false;
-    let silentProgressNoticeShown = false;
-    let monitorUnavailableNoticeShown = false;
-    let naturalLanguageHumanInteractionCount = 0;
+    let messageTarget: ChatMessage[] = [];
+    let runId = "";
+    let startedAt = 0;
+    let userMessageId = "";
+    let userCreatedAt = 0;
+    let thinkingMode: ThinkingMode = "off";
+    let humanInteractionEnabledForVibeRun = false;
+    let includeFinalAnswerInstruction = true;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
-    let openCodeTabStreamState = createOpenCodeTabStreamState();
+    let naturalLanguageHumanInteractionCount = 0;
+    let silentProgressNoticeShown = false;
+    let openCodeTabStreamState!: ReturnType<typeof createOpenCodeTabStreamState>;
     const openCodeTabStreamContext = {
       createMessageId,
       metadata: {
@@ -323,26 +276,8 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         graphNodeId: input.graphNodeId,
       },
     };
-    void logInfo("runPrompt-parallel-start", {
-      cli: runCli,
-      cwd,
-      tabId: target.tabId,
-      sessionId,
-      modelRole: runtimePreparation.role,
-      mainModel: runtimePreparation.mainModel,
-      subtaskModel: runtimePreparation.subtaskModel,
-      effectiveModel: runtimePreparation.effectiveModel,
-      modelFallback: runtimePreparation.modelFallback,
-      mainVariant: runtimePreparation.mainVariant,
-      subtaskVariant: runtimePreparation.subtaskVariant,
-      effectiveVariant: runtimePreparation.effectiveVariant,
-    });
-    sendRunStatusForTab(target.tabId, "start", {
-      prompt,
-      startedAt,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
-    });
+    let attemptSubagentMonitor: OpenCodeSubagentMonitor | null = null;
+    let subagentProgress: ReturnType<typeof createSubagentProgressController> | null = null;
 
     const isParallelRunActive = (): boolean => {
       const current = parallelRunsByTabId.get(target.tabId);
@@ -366,7 +301,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       return messageTarget;
     };
 
-    const syncParallelRun = (process: RunProcess): void => {
+    const syncParallelRun = (runProcess: RunProcess): void => {
       const currentMessageTarget = resolveParallelMessageTarget();
       parallelRunsByTabId.set(target.tabId, {
         runId,
@@ -375,7 +310,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         sessionId,
         prompt,
         startedAt,
-        process,
+        process: runProcess,
         messageTarget: currentMessageTarget,
         stopped: false,
         taskRole: input.taskRole,
@@ -443,7 +378,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           sendPanelMessage({ type: "appendMessage", message: action.message, tabId: target.tabId });
           return;
         }
-
         const currentMessageTarget = resolveParallelMessageTarget();
         let message = currentMessageTarget.find((item) => item.id === action.id);
         if (!message) {
@@ -474,40 +408,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         });
       });
     };
-
-    const subagentProgress = createSubagentProgressController({
-      labels: buildSubagentProgressLabels(),
-      createMessageId,
-      messageMetadata: openCodeTabStreamContext.metadata,
-      appendMessage: (message: ChatMessage) => {
-        openCodeTabStreamState = {
-          ...openCodeTabStreamState,
-          activeAssistantMessageId: null,
-          activeAssistantKind: null,
-        };
-        appendMessageToStore(resolveParallelMessageTarget(), message);
-        sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-      },
-      replaceMessage: (message: ChatMessage) => {
-        const currentMessageTarget = resolveParallelMessageTarget();
-        const index = currentMessageTarget.findIndex((item) => item.id === message.id);
-        if (index < 0) {
-          appendMessageToStore(currentMessageTarget, message);
-          sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-          return;
-        }
-        currentMessageTarget[index] = message;
-        sendPanelMessage({ type: "replaceMessage", message, tabId: target.tabId });
-      },
-      appendDelta: (messageId: string, content: string) => {
-        sendPanelMessage({
-          type: "assistantDelta",
-          id: messageId,
-          content,
-          tabId: target.tabId,
-        });
-      },
-    });
 
     const appendParallelSystemMessage = (content: string, status?: "stopped" | "error"): ChatMessage => {
       const message: ChatMessage = {
@@ -677,269 +577,302 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       return "continue";
     };
 
-    while (true) {
-      const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
-      freshSessionRecoveryPending = false;
-      if (isFreshSessionRecoveryAttempt) {
-        freshSessionRecoveryAttempted = true;
-      }
-      const attemptNumber = hiddenRetryCount + 1;
-      const attemptPrompt = pendingHumanInteractionContinuationPrompt
-        ?? (isFreshSessionRecoveryAttempt || hiddenRetryCount === 0
-          ? thinkingPrompt
-          : hiddenRetryPrompt);
-      pendingHumanInteractionContinuationPrompt = null;
-      const runtimeSessionId = isFreshSessionRecoveryAttempt
-        ? null
-        : resolveCliSessionIdForResume(runCli, sessionId);
-      let attemptHadNormalReply = false;
-
-      if (hiddenRetryCount > 0) {
-        const retryNumber = hiddenRetryCount;
-        const retryDelayMs = getHiddenRetryDelayMs(retryNumber);
-        const shouldContinue = await waitForHiddenRetryDelay(retryNumber, isParallelRunActive);
-        if (!shouldContinue) {
-          return;
+    await runOpenCodePromptTemplate(input, target, executionOptions, {
+      guardRun: (runInput, runTarget) => {
+        const displayPrompt = runInput.displayPrompt;
+        if (!displayPrompt) {
+          return { status: "skip" };
         }
+        const cli = runTarget.cli;
+        if (cli !== "opencode") {
+          throw new Error(`parallel-run-unsupported:${cli}`);
+        }
+        const modelPrompt = runInput.modelPrompt || displayPrompt;
+        const contextTags = Array.isArray(runInput.contextTags)
+          ? runInput.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+          : [];
+        void contextTags;
+        return { status: "ready", prompt: displayPrompt, modelPrompt, runCli: cli };
+      },
+      resolveWorkspaceCwd,
+      noteMissingWorkspace: () => {},
+      prepareOpenCodeRuntime,
+      getEffectiveThinkingMode,
+      applyThinkingWorkspaceFiles,
+      shouldAutoCompactContextAfterRunForTarget,
+      preparePendingLabel,
+      readGlobalHumanInteractionEnabled: () => (
+        typeof getGlobalHumanInteractionEnabled === "function"
+          ? getGlobalHumanInteractionEnabled()
+          : false
+      ),
+      buildThinkingPrompt,
+      buildHiddenRetryPrompt,
+      beforeLoadMessages: () => {},
+      loadSessionMessages,
+      getPendingSessionDraft,
+      stageRunBeforeUserMessage: (prepared) => {
+        messageTarget = prepared.messageTarget;
+        thinkingMode = prepared.thinkingMode;
+        humanInteractionEnabledForVibeRun = prepared.humanInteractionEnabled;
+        includeFinalAnswerInstruction = prepared.includeFinalAnswerInstruction;
+      },
+      createMessageId,
+      bindRunIdentityBeforeUserBubble: (_prepared, identity) => {
+        userMessageId = identity.userMessageId;
+        userCreatedAt = identity.userCreatedAt;
+      },
+      buildUserChatMessage,
+      appendUserMessage: (targetMessages, userMessage) => {
+        appendMessageToStore(targetMessages, userMessage);
+        sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });
+      },
+      finishRunActivation: (prepared) => {
+        runId = createMessageId();
+        startedAt = Date.now();
+        openCodeTabStreamState = createOpenCodeTabStreamState();
+        void logInfo("runPrompt-parallel-start", {
+          cli: runCli,
+          cwd: prepared.cwd,
+          tabId: target.tabId,
+          sessionId,
+          modelRole: prepared.runtimePreparation.role,
+          mainModel: prepared.runtimePreparation.mainModel,
+          subtaskModel: prepared.runtimePreparation.subtaskModel,
+          effectiveModel: prepared.runtimePreparation.effectiveModel,
+          modelFallback: prepared.runtimePreparation.modelFallback,
+          mainVariant: prepared.runtimePreparation.mainVariant,
+          subtaskVariant: prepared.runtimePreparation.subtaskVariant,
+          effectiveVariant: prepared.runtimePreparation.effectiveVariant,
+        });
+        sendRunStatusForTab(target.tabId, "start", {
+          prompt,
+          startedAt,
+          graphRunId: input.graphRunId,
+          graphNodeId: input.graphNodeId,
+        });
+        subagentProgress = createSubagentProgressController({
+          labels: buildSubagentProgressLabels(),
+          createMessageId,
+          messageMetadata: openCodeTabStreamContext.metadata,
+          appendMessage: (message: ChatMessage) => {
+            openCodeTabStreamState = {
+              ...openCodeTabStreamState,
+              activeAssistantMessageId: null,
+              activeAssistantKind: null,
+            };
+            appendMessageToStore(resolveParallelMessageTarget(), message);
+            sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+          },
+          replaceMessage: (message: ChatMessage) => {
+            const currentMessageTarget = resolveParallelMessageTarget();
+            const index = currentMessageTarget.findIndex((item) => item.id === message.id);
+            if (index < 0) {
+              appendMessageToStore(currentMessageTarget, message);
+              sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+              return;
+            }
+            currentMessageTarget[index] = message;
+            sendPanelMessage({ type: "replaceMessage", message, tabId: target.tabId });
+          },
+          appendDelta: (messageId: string, content: string) => {
+            sendPanelMessage({
+              type: "assistantDelta",
+              id: messageId,
+              content,
+              tabId: target.tabId,
+            });
+          },
+        });
+      },
+      isRunActive: isParallelRunActive,
+      resolveMessageTarget: resolveParallelMessageTarget,
+      getRunId: () => runId,
+      getSessionId: () => sessionId,
+      takeContinuationPrompt: () => {
+        const continuationPrompt = pendingHumanInteractionContinuationPrompt;
+        pendingHumanInteractionContinuationPrompt = null;
+        return continuationPrompt;
+      },
+      getHiddenRetryDelayMs,
+      waitForHiddenRetryDelay,
+      prepareHiddenRetry: () => {
         openCodeTabStreamState = {
           ...openCodeTabStreamState,
           activeAssistantMessageId: null,
           activeAssistantKind: null,
         };
-        if (isFreshSessionRecoveryAttempt) {
-          const recoveryMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "system",
-            content: t("run.openCodeLoopFreshSessionRecoveryStarted"),
-            createdAt: Date.now(),
-          };
-          const recoveryMessageTarget = resolveParallelMessageTarget();
-          appendMessageToStore(recoveryMessageTarget, recoveryMessage);
-          sendPanelMessage({ type: "appendMessage", message: recoveryMessage, tabId: target.tabId });
-        }
-        const retryStartedMessage: ChatMessage = {
-          id: createMessageId(),
-          role: "system",
-          content: buildHiddenRetryStartedMessage(retryNumber),
-          createdAt: Date.now(),
-        };
-        const retryMessageTarget = resolveParallelMessageTarget();
-        appendMessageToStore(retryMessageTarget, retryStartedMessage);
-        sendPanelMessage({ type: "appendMessage", message: retryStartedMessage, tabId: target.tabId });
+      },
+      publishSystem: (content) => {
+        appendParallelSystemMessage(content);
+      },
+      t,
+      buildHiddenRetryStartedMessage,
+      logHiddenRetry: (context) => {
         void logInfo("runPrompt-parallel-hidden-retry", {
           cli: runCli,
           tabId: target.tabId,
           runId,
           sessionId,
-          attempt: attemptNumber,
-          retryCount: hiddenRetryCount,
+          attempt: context.attemptNumber,
+          retryCount: context.hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-          retryDelayMs,
-          freshSessionRecovery: isFreshSessionRecoveryAttempt,
+          retryDelayMs: context.retryDelayMs,
+          freshSessionRecovery: context.isFreshSessionRecoveryAttempt,
         });
-      }
-
-      let rawStdout = "";
-      let rawStderr = "";
-      let sessionBuffer = "";
-      const subagentRuntime = await prepareOpenCodeSubagentRuntime({
-        cwd,
-        runId,
-        runtime: runtimePreparation,
-        isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-      });
-      if (subagentRuntime.error && !monitorUnavailableNoticeShown) {
-        monitorUnavailableNoticeShown = true;
-        const message: ChatMessage = {
-          id: createMessageId(),
-          role: "system",
-          content: t("run.openCodeSubagentMonitorUnavailable"),
-          createdAt: Date.now(),
-        };
-        appendMessageToStore(resolveParallelMessageTarget(), message);
-        sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-      }
-      void logInfo("runPrompt-parallel-subagent-monitor-start", {
-        cli: runCli,
-        runId,
-        tabId: target.tabId,
-        sessionId: runtimeSessionId,
-        endpointSource: subagentRuntime.endpointSource,
-        serverPort: subagentRuntime.connection?.serverPort ?? null,
-        pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-      });
-      const attemptResult = await new Promise<
-        { type: "exit"; code: number | null }
-        | { type: "error"; error: Error }
-      >((resolve) => {
-        let settled = false;
+      },
+      resolveCliSessionIdForResume,
+      beginStreamAttempt: () => {},
+      prepareOpenCodeSubagentRuntime,
+      shouldAnnounceSubagentMonitorUnavailable: (error, alreadyShown) => Boolean(error) && !alreadyShown,
+      prepareSubagentMonitorUnavailableNotice: () => {},
+      logSubagentMonitorStart: ({ subagentRuntime, runtimeSessionId }) => {
+        void logInfo("runPrompt-parallel-subagent-monitor-start", {
+          cli: runCli,
+          runId,
+          tabId: target.tabId,
+          sessionId: runtimeSessionId,
+          endpointSource: subagentRuntime.endpointSource,
+          serverPort: subagentRuntime.connection?.serverPort ?? null,
+          pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+        });
+      },
+      createStartupWatchdog: () => ({
+        arm: () => {},
+        dispose: () => {},
+      }),
+      createSubagentMonitor: ({ subagentRuntime, attemptNumber, directory }) => {
         const subagentMonitor = subagentRuntime.connection
           ? createOpenCodeSubagentMonitor({
-              connection: subagentRuntime.connection,
-              directory: cwd ?? process.cwd(),
-              onUpdate: (update: SubagentProgressUpdate) => {
-                const current = parallelRunsByTabId.get(target.tabId);
-                if (!current || current.runId !== runId) {
-                  return;
-                }
-                subagentProgress.update(update);
-              },
-              onNoChildren: () => {
-                if (silentProgressNoticeShown || !isParallelRunActive()) {
-                  return;
-                }
-                silentProgressNoticeShown = true;
-                openCodeTabStreamState = {
-                  ...openCodeTabStreamState,
-                  activeAssistantMessageId: null,
-                  activeAssistantKind: null,
-                };
-                const message: ChatMessage = {
-                  id: createMessageId(),
-                  role: "system",
-                  content: t("run.openCodeSubagentPollEmpty"),
-                  createdAt: Date.now(),
-                };
-                appendMessageToStore(resolveParallelMessageTarget(), message);
-                sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-                void logInfo("runPrompt-parallel-subagent-poll-empty", {
-                  cli: runCli,
-                  runId,
-                  tabId: target.tabId,
-                  sessionId,
-                  attempt: attemptNumber,
-                  pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-                });
-              },
-              onError: (error: Error) => {
-                void logDebug("runPrompt-parallel-subagent-monitor-error", {
-                  cli: runCli,
-                  runId,
-                  tabId: target.tabId,
-                  sessionId,
-                  attempt: attemptNumber,
-                  error: error.message,
-                });
-              },
-            })
-          : createDisabledOpenCodeSubagentMonitor();
-        const settle = (result: { type: "exit"; code: number | null } | { type: "error"; error: Error }): void => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          subagentMonitor.finish(
-            result.type === "exit" && result.code === 0 ? "completed" : "failed",
-          );
-          subagentRuntime.dispose();
-          resolve(result);
-        };
-        const runProcess = runCliStream(
-          runCli,
-          attemptPrompt,
-          {
-            onStdout: (chunk: string) => {
-              if (!isParallelRunActive()) {
+            connection: subagentRuntime.connection,
+            directory,
+            onUpdate: (update: SubagentProgressUpdate) => {
+              const current = parallelRunsByTabId.get(target.tabId);
+              if (!current || current.runId !== runId) {
                 return;
               }
-              rawStdout = appendBoundedUtf8Text(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-              sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              subagentMonitor.setParentSessionId(extractSessionId(runCli, sessionBuffer));
-              sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
-              const streamResult = consumeOpenCodeTabStreamChunk(
-                openCodeTabStreamState,
-                chunk,
-                false,
-                openCodeTabStreamContext,
-              );
-              openCodeTabStreamState = streamResult.state;
-              applyOpenCodeTabStreamActions(streamResult.actions);
-              if (streamResult.actions.some((action: OpenCodeTabStreamAction) => (
-                action.type === "append-assistant-delta" && action.kind !== "thinking"
-              ))) {
-                attemptHadNormalReply = true;
-              }
+              subagentProgress?.update(update);
             },
-            onStderr: (chunk: string) => {
-              if (!isParallelRunActive()) {
+            onNoChildren: () => {
+              if (silentProgressNoticeShown || !isParallelRunActive()) {
                 return;
               }
-              rawStderr = appendBoundedUtf8Text(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES).text;
-              sessionBuffer = updateSessionBuffer(sessionBuffer, chunk);
-              sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
-            },
-            onExit: (code: number | null) => {
-              settle({ type: "exit", code });
+              silentProgressNoticeShown = true;
+              openCodeTabStreamState = {
+                ...openCodeTabStreamState,
+                activeAssistantMessageId: null,
+                activeAssistantKind: null,
+              };
+              const message: ChatMessage = {
+                id: createMessageId(),
+                role: "system",
+                content: t("run.openCodeSubagentPollEmpty"),
+                createdAt: Date.now(),
+              };
+              appendMessageToStore(resolveParallelMessageTarget(), message);
+              sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+              void logInfo("runPrompt-parallel-subagent-poll-empty", {
+                cli: runCli,
+                runId,
+                tabId: target.tabId,
+                sessionId,
+                attempt: attemptNumber,
+                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+              });
             },
             onError: (error: Error) => {
-              settle({ type: "error", error });
+              void logDebug("runPrompt-parallel-subagent-monitor-error", {
+                cli: runCli,
+                runId,
+                tabId: target.tabId,
+                sessionId,
+                attempt: attemptNumber,
+                error: error.message,
+              });
             },
-          },
-          {
-            cwd,
-            sessionId: runtimeSessionId,
-            thinkingMode,
-            openCodeVariant: runtimePreparation.effectiveVariant,
-            openCodeSmallVariant: runtimePreparation.subtaskVariant,
-            model: runtimeModel,
-            openCodeSmallModel: runtimePreparation.subtaskModel,
-            openCodeConfigContent: runtimeOpenCodeConfigContent,
-            envOverrides: runtimeEnvOverrides,
-            isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-            openCodeServerUrl: subagentRuntime.connection?.serverUrl,
-            processLabel: buildProcessLabel(runCli, runtimeSessionId ?? runId),
-          }
-        );
-        syncParallelRun(runProcess);
-        subagentMonitor.setParentSessionId(runtimeSessionId);
-      });
-
-      if (isParallelRunActive()) {
+          })
+          : createDisabledOpenCodeSubagentMonitor();
+        attemptSubagentMonitor = subagentMonitor;
+        return subagentMonitor;
+      },
+      runCliStream,
+      buildProcessLabel,
+      appendBoundedUtf8Text,
+      maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
+      maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      onStdoutChunk: (chunk, stream) => {
+        stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        attemptSubagentMonitor?.setParentSessionId(extractSessionId(runCli, stream.sessionBuffer));
+        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
         const streamResult = consumeOpenCodeTabStreamChunk(
           openCodeTabStreamState,
-          "",
-          true,
+          chunk,
+          false,
           openCodeTabStreamContext,
         );
         openCodeTabStreamState = streamResult.state;
         applyOpenCodeTabStreamActions(streamResult.actions);
-      }
-      if (!isParallelRunActive()) {
-        return;
-      }
-
-      const detectedSessionId = extractSessionId(runCli, sessionBuffer) ?? extractSessionId(runCli, `${rawStdout}
-  ${rawStderr}`);
-      if (
-        isFreshSessionRecoveryAttempt
-        && isLoopMainRun
-        && detectedSessionId
-        && detectedSessionId !== sessionId
-        && input.loopTaskId
-      ) {
-        const previousSessionId = sessionId;
-        messageTarget = adoptFreshOpenCodeLoopRecoverySession({
-          sessionId: detectedSessionId,
-          previousSessionId,
-          tabId: target.tabId,
-          messageTarget,
-          loopTaskId: input.loopTaskId,
-        });
-        sessionId = detectedSessionId;
-        const current = parallelRunsByTabId.get(target.tabId);
-        if (current && current.runId === runId) {
-          current.sessionId = sessionId;
-          current.messageTarget = messageTarget;
+        if (streamResult.actions.some((action: OpenCodeTabStreamAction) => (
+          action.type === "append-assistant-delta" && action.kind !== "thinking"
+        ))) {
+          stream.attemptHadNormalReply = true;
         }
-      } else if ((!sessionId || isLocalSessionId(sessionId)) && detectedSessionId) {
-        adoptDetectedSessionId(runCli, detectedSessionId, target.tabId, sessionId);
-        sessionId = detectedSessionId;
-        messageTarget = loadSessionMessages(runCli, detectedSessionId);
-      }
-
-      if (attemptResult.type === "exit" && attemptResult.code === 0) {
+      },
+      onStderrChunk: (chunk, stream) => {
+        stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
+      },
+      onAttemptProcessStarted: (runProcess, runtimeSessionId) => {
+        syncParallelRun(runProcess);
+        attemptSubagentMonitor?.setParentSessionId(runtimeSessionId);
+      },
+      finishStreamAttempt: () => {
+        if (isParallelRunActive()) {
+          const streamResult = consumeOpenCodeTabStreamChunk(
+            openCodeTabStreamState,
+            "",
+            true,
+            openCodeTabStreamContext,
+          );
+          openCodeTabStreamState = streamResult.state;
+          applyOpenCodeTabStreamActions(streamResult.actions);
+        }
+        return isParallelRunActive();
+      },
+      adoptSession: (adoption) => {
+        const detectedSessionId = extractSessionId(runCli, adoption.sessionBuffer)
+          ?? extractSessionId(runCli, `${adoption.rawStdout}\n${adoption.rawStderr}`);
+        if (
+          adoption.isFreshSessionRecoveryAttempt
+          && adoption.isLoopMainRun
+          && detectedSessionId
+          && detectedSessionId !== sessionId
+          && input.loopTaskId
+        ) {
+          const previousSessionId = sessionId;
+          messageTarget = adoptFreshOpenCodeLoopRecoverySession({
+            sessionId: detectedSessionId,
+            previousSessionId,
+            tabId: target.tabId,
+            messageTarget,
+            loopTaskId: input.loopTaskId,
+          });
+          sessionId = detectedSessionId;
+          const current = parallelRunsByTabId.get(target.tabId);
+          if (current && current.runId === runId) {
+            current.sessionId = sessionId;
+            current.messageTarget = messageTarget;
+          }
+        } else if ((!sessionId || isLocalSessionId(sessionId)) && detectedSessionId) {
+          adoptDetectedSessionId(runCli, detectedSessionId, target.tabId, sessionId);
+          sessionId = detectedSessionId;
+          messageTarget = loadSessionMessages(runCli, detectedSessionId);
+        }
+      },
+      beginSuccessfulExit: () => {},
+      parseOpenCodeRunOutput,
+      appendParsedOutput: (openCodeOutput) => {
         const currentMessageTarget = resolveParallelMessageTarget();
-        const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
         if (openCodeOutput.finalText) {
           const finalTextResult = appendOpenCodeFinalTextToTabStream(
             openCodeTabStreamState,
@@ -949,135 +882,86 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           openCodeTabStreamState = finalTextResult.state;
           applyOpenCodeTabStreamActions(finalTextResult.actions);
         }
-        const humanInteractionResult = await maybeHandleNaturalLanguageHumanInteraction(currentMessageTarget);
-        if (humanInteractionResult === "stopped") {
-          return;
-        }
-        if (humanInteractionResult === "continue") {
-          hiddenRetryCount = 0;
-          freshSessionRecoveryPending = false;
-          continue;
-        }
-        const conversationHasFinalConclusion = hasAssistantFinalConclusionAfterMessage(currentMessageTarget, userMessageId, {
-          observedFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-          fallbackCreatedAt: userCreatedAt,
-          requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
-        });
-        const currentAttemptHasAssistantAnswer = attemptHadNormalReply || Boolean(openCodeOutput.finalText?.trim());
-        const successfulExitOutcome = resolveOpenCodeSuccessfulExitOutcome({
-          isLoopRun: Boolean(input.loopTaskId),
-          currentAttemptHasAssistantAnswer,
-          conversationHasFinalConclusion,
-          hiddenRetryCount,
-          maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
-        });
-        if (successfulExitOutcome !== "complete") {
-          const missingConclusionMessage = buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
-          if (successfulExitOutcome === "retry") {
-            const shouldRecoverFreshSession = shouldRecoverOpenCodeLoopMainSessionInFreshSession({
-              isLoopMainRun,
-              hasResumableSession: Boolean(resolveCliSessionIdForResume(runCli, sessionId)),
-              hasProviderError: Boolean(openCodeOutput.errorText),
-              freshSessionRecoveryAttempted,
-            });
-            void logInfo("runPrompt-parallel-missing-final-conclusion-retry", {
-              cli: runCli,
-              runId,
-              tabId: target.tabId,
-              sessionId,
-              taskRole: input.taskRole,
-              loopTaskId: input.loopTaskId,
-              loopRound: input.loopRound,
-              attempt: hiddenRetryCount + 1,
-              retryCount: hiddenRetryCount,
-              maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-              conversationHasFinalConclusion,
-              currentAttemptHasAssistantAnswer,
-              structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-              stdoutLength: rawStdout.length,
-              stderrLength: rawStderr.length,
-              freshSessionRecoveryQueued: shouldRecoverFreshSession,
-            });
-            if (shouldRecoverFreshSession) {
-              freshSessionRecoveryPending = true;
-              const recoveryMessage: ChatMessage = {
-                id: createMessageId(),
-                role: "system",
-                content: t("run.openCodeLoopFreshSessionRecoveryQueued"),
-                createdAt: Date.now(),
-              };
-              appendMessageToStore(currentMessageTarget, recoveryMessage);
-              sendPanelMessage({ type: "appendMessage", message: recoveryMessage, tabId: target.tabId });
-            } else {
-              appendHiddenRetryErrorTraceMessage(currentMessageTarget, missingConclusionMessage, {
-                tabId: target.tabId,
-                taskRole: input.taskRole,
-                loopTaskId: input.loopTaskId,
-                loopRound: input.loopRound,
-                loopSubtaskId: input.loopSubtaskId,
-              }, { createMessageId, sendPanelMessage });
-            }
-            const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
-            const systemMessage: ChatMessage = {
-              id: createMessageId(),
-              role: "system",
-              content: retryMessage,
-              createdAt: Date.now(),
-            };
-            appendMessageToStore(currentMessageTarget, systemMessage);
-            sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-            hiddenRetryCount += 1;
-            continue;
-          }
-          void logError("runPrompt-parallel-missing-final-conclusion", {
-            cli: runCli,
-            runId,
+        return currentMessageTarget;
+      },
+      maybeHandleNaturalLanguageHumanInteraction: (targetMessages) => (
+        maybeHandleNaturalLanguageHumanInteraction(targetMessages)
+      ),
+      hasAssistantFinalConclusionAfterMessage,
+      shouldRequireExplicitFinalAnswerForRun,
+      resolveOpenCodeSuccessfulExitOutcome,
+      buildOpenCodeMissingFinalConclusionMessage,
+      shouldRecoverOpenCodeLoopMainSessionInFreshSession,
+      logMissingFinalConclusionRetry: (payload) => {
+        void logInfo("runPrompt-parallel-missing-final-conclusion-retry", payload);
+      },
+      publishMissingConclusionRetry: (currentMessageTarget, retry) => {
+        if (retry.shouldRecoverFreshSession) {
+          const recoveryMessage: ChatMessage = {
+            id: createMessageId(),
+            role: "system",
+            content: t("run.openCodeLoopFreshSessionRecoveryQueued"),
+            createdAt: Date.now(),
+          };
+          appendMessageToStore(currentMessageTarget, recoveryMessage);
+          sendPanelMessage({ type: "appendMessage", message: recoveryMessage, tabId: target.tabId });
+        } else {
+          appendHiddenRetryErrorTraceMessage(currentMessageTarget, retry.missingConclusionMessage, {
             tabId: target.tabId,
-            sessionId,
             taskRole: input.taskRole,
             loopTaskId: input.loopTaskId,
             loopRound: input.loopRound,
-            hiddenRetryCount,
-            conversationHasFinalConclusion,
-            currentAttemptHasAssistantAnswer,
-            structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
-            stdoutLength: rawStdout.length,
-            stderrLength: rawStderr.length,
-          });
-          parallelRunsByTabId.delete(target.tabId);
-          const taskRecord = buildParallelTaskRunRecord("error");
-          appendTaskRun(taskRecord);
-          const userMessageText = buildHiddenRetryFailureMessage({
-            hiddenRetryCount,
-            maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-            retryLimitMessage: buildHiddenRetryLimitMessage(),
-            fallbackMessage: missingConclusionMessage,
-            lastFailureMessage: missingConclusionMessage,
-            lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-          });
-          const systemMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "system",
-            content: userMessageText,
-            createdAt: Date.now(),
-          };
-          appendMessageToStore(currentMessageTarget, systemMessage);
-          sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-          sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
-          const completionMessage: ChatMessage = {
-            id: createMessageId(),
-            role: "system",
-            content: buildTaskRunCompletionText("error", taskRecord.durationMs),
-            createdAt: Date.now(),
-          };
-          appendMessageToStore(currentMessageTarget, completionMessage);
-          sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-          persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
-          if (input.throwOnError) {
-            throw new Error(userMessageText);
-          }
-          return;
+            loopSubtaskId: input.loopSubtaskId,
+          }, { createMessageId, sendPanelMessage });
         }
+        const retryMessage = buildHiddenRetryQueuedMessage(retry.hiddenRetryCount);
+        const systemMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: retryMessage,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(currentMessageTarget, systemMessage);
+        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+      },
+      logMissingFinalConclusionFailure: (payload) => {
+        void logError("runPrompt-parallel-missing-final-conclusion", payload);
+      },
+      finalizeMissingFinalConclusion: async ({ missingConclusionMessage, finalMessageTarget, hiddenRetryCount }) => {
+        parallelRunsByTabId.delete(target.tabId);
+        const taskRecord = buildParallelTaskRunRecord("error");
+        appendTaskRun(taskRecord);
+        const userMessageText = buildHiddenRetryFailureMessage({
+          hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryLimitMessage: buildHiddenRetryLimitMessage(),
+          fallbackMessage: missingConclusionMessage,
+          lastFailureMessage: missingConclusionMessage,
+          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+        });
+        const systemMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: userMessageText,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(finalMessageTarget, systemMessage);
+        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+        sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
+        const completionMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: buildTaskRunCompletionText("error", taskRecord.durationMs),
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(finalMessageTarget, completionMessage);
+        sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+        persistMessagesForTab(runCli, sessionId, target.tabId, finalMessageTarget);
+        if (input.throwOnError) {
+          throw new Error(userMessageText);
+        }
+      },
+      finalizeSuccessfulExit: async ({ finalMessageTarget }) => {
         parallelRunsByTabId.delete(target.tabId);
         const taskRecord = buildParallelTaskRunRecord("end");
         appendTaskRun(taskRecord);
@@ -1088,32 +972,41 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           content: buildTaskRunCompletionText("end", taskRecord.durationMs),
           createdAt: Date.now(),
         };
-        appendMessageToStore(currentMessageTarget, completionMessage);
+        appendMessageToStore(finalMessageTarget, completionMessage);
         sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-        persistMessagesForTab(runCli, sessionId, target.tabId, currentMessageTarget);
+        persistMessagesForTab(runCli, sessionId, target.tabId, finalMessageTarget);
         maybePersistLongTermMemoryFromRun({
           status: "end",
           cli: runCli,
           prompt,
-          messages: currentMessageTarget,
+          messages: finalMessageTarget,
           taskRole: input.taskRole,
           loopTaskId: input.loopTaskId,
           loopRound: input.loopRound,
           loopSubtaskId: input.loopSubtaskId,
           skip: input.skipLongTermMemoryPersist,
         });
-        if (shouldAutoCompactAfterRun) {
-          await maybeAutoCompactContextAfterPromptSuccess(target, sessionId, taskRecord.durationMs);
-        }
-        return;
-      }
-
-      const lastFailureMessage = getAttemptFailureMessage(attemptResult, rawStderr || null);
-      hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-      const shouldRetry = hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
-        && isHiddenRetryEligibleAttempt(attemptResult, lastFailureMessage);
-      const failureMessageTarget = resolveParallelMessageTarget();
-      if (shouldRetry) {
+        return {
+          sessionId,
+          durationMs: taskRecord.durationMs,
+        };
+      },
+      maybeAutoCompactContextAfterPromptSuccess,
+      evaluateFailedAttempt: (context) => {
+        const lastFailureMessage = getAttemptFailureMessage(context.attemptResult, context.rawStderr || null);
+        const nextHiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(
+          context.hiddenRetryCount,
+          context.attemptHadNormalReply,
+        );
+        return {
+          hiddenRetryCount: nextHiddenRetryCount,
+          shouldRetry: nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+            && isHiddenRetryEligibleAttempt(context.attemptResult, lastFailureMessage),
+        };
+      },
+      recordFailedAttemptRetry: (context) => {
+        const lastFailureMessage = getAttemptFailureMessage(context.attemptResult, context.rawStderr || null);
+        const failureMessageTarget = resolveParallelMessageTarget();
         appendHiddenRetryErrorTraceMessage(failureMessageTarget, lastFailureMessage, {
           tabId: target.tabId,
           taskRole: input.taskRole,
@@ -1121,7 +1014,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           loopRound: input.loopRound,
           loopSubtaskId: input.loopSubtaskId,
         }, { createMessageId, sendPanelMessage });
-        const retryMessage = buildHiddenRetryQueuedMessage(hiddenRetryCount);
+        const retryMessage = buildHiddenRetryQueuedMessage(context.hiddenRetryCount);
         const systemMessage: ChatMessage = {
           id: createMessageId(),
           role: "system",
@@ -1130,57 +1023,55 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         };
         appendMessageToStore(failureMessageTarget, systemMessage);
         sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-        hiddenRetryCount += 1;
-        continue;
-      }
-
-      parallelRunsByTabId.delete(target.tabId);
-      const openCodeOutput = parseOpenCodeRunOutput(rawStdout, rawStderr);
-      if (openCodeOutput.finalText) {
-        const finalTextResult = appendOpenCodeFinalTextToTabStream(
-          openCodeTabStreamState,
-          openCodeOutput.finalText,
-          openCodeTabStreamContext,
-        );
-        openCodeTabStreamState = finalTextResult.state;
-        applyOpenCodeTabStreamActions(finalTextResult.actions);
-      }
-
-      const taskRecord = buildParallelTaskRunRecord("error");
-      appendTaskRun(taskRecord);
-
-      const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
-      const userMessageText = buildHiddenRetryFailureMessage({
-        hiddenRetryCount,
-        maxRetries: HIDDEN_RETRY_MAX_RETRIES,
-        retryLimitMessage: buildHiddenRetryLimitMessage(),
-        fallbackMessage: finalFailureMessage,
-        lastFailureMessage: finalFailureMessage,
-        lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
-      });
-      const systemMessage: ChatMessage = {
-        id: createMessageId(),
-        role: "system",
-        content: userMessageText,
-        createdAt: Date.now(),
-      };
-      appendMessageToStore(failureMessageTarget, systemMessage);
-      sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
-      sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
-      const completionMessage: ChatMessage = {
-        id: createMessageId(),
-        role: "system",
-        content: buildTaskRunCompletionText("error", taskRecord.durationMs),
-        createdAt: Date.now(),
-      };
-      appendMessageToStore(failureMessageTarget, completionMessage);
-      sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
-      persistMessagesForTab(runCli, sessionId, target.tabId, failureMessageTarget);
-      if (input.throwOnError) {
-        throw new Error(userMessageText);
-      }
-      return;
-    }
+      },
+      finalizeFailedAttempt: async (context) => {
+        const lastFailureMessage = getAttemptFailureMessage(context.attemptResult, context.rawStderr || null);
+        const failureMessageTarget = resolveParallelMessageTarget();
+        parallelRunsByTabId.delete(target.tabId);
+        const openCodeOutput = parseOpenCodeRunOutput(context.rawStdout, context.rawStderr);
+        if (openCodeOutput.finalText) {
+          const finalTextResult = appendOpenCodeFinalTextToTabStream(
+            openCodeTabStreamState,
+            openCodeOutput.finalText,
+            openCodeTabStreamContext,
+          );
+          openCodeTabStreamState = finalTextResult.state;
+          applyOpenCodeTabStreamActions(finalTextResult.actions);
+        }
+        const taskRecord = buildParallelTaskRunRecord("error");
+        appendTaskRun(taskRecord);
+        const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
+        const userMessageText = buildHiddenRetryFailureMessage({
+          hiddenRetryCount: context.hiddenRetryCount,
+          maxRetries: HIDDEN_RETRY_MAX_RETRIES,
+          retryLimitMessage: buildHiddenRetryLimitMessage(),
+          fallbackMessage: finalFailureMessage,
+          lastFailureMessage: finalFailureMessage,
+          lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
+        });
+        const systemMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: userMessageText,
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(failureMessageTarget, systemMessage);
+        sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: target.tabId });
+        sendRunStatusForTab(target.tabId, "error", { message: userMessageText });
+        const completionMessage: ChatMessage = {
+          id: createMessageId(),
+          role: "system",
+          content: buildTaskRunCompletionText("error", taskRecord.durationMs),
+          createdAt: Date.now(),
+        };
+        appendMessageToStore(failureMessageTarget, completionMessage);
+        sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
+        persistMessagesForTab(runCli, sessionId, target.tabId, failureMessageTarget);
+        if (input.throwOnError) {
+          throw new Error(userMessageText);
+        }
+      },
+    });
   }
 
   return { runPromptParallel };

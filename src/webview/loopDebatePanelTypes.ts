@@ -9,6 +9,7 @@ export type LoopDebateChatPanelParticipant = {
   sessionId?: string | null;
   summary?: string;
   updatedAt?: number;
+  lastStartedAt?: number | null;
 };
 
 export type LoopDebateChatPanelModeratorDecision = {

@@ -126,7 +126,10 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
   assert.equal(state.task.currentRound, 4);
   for (const locale of ["zh-CN", "en"] as const) {
     const page = html(state, locale);
-    assert.match(page, /<h1>Loop\+<\/h1>/u);
+    assert.match(page, locale === "zh-CN" ? /<h1>Loop\+ 群聊<\/h1>/u : /<h1>Loop\+ Group Chat<\/h1>/u);
+    assert.match(page, locale === "zh-CN" ? /最后启动/u : /Last started/u);
+    assert.match(page, /子任务 1：Alpha/u);
+    assert.doesNotMatch(page, /会话：|Session：|无会话|No session/u);
     assert.equal(countValue(page, "current"), "1");
     assert.equal(countValue(page, "queue"), "2");
     assert.equal(countValue(page, "visible"), "3");
@@ -264,7 +267,7 @@ test("keeps an event-driven debate record from showing a generating speaker whil
   });
   const page = html(state, "en");
   assert.equal(state.mode, "debate");
-  assert.match(page, /<h1>Loop\+<\/h1>/u);
+  assert.match(page, /<h1>Loop\+ Group Chat<\/h1>/u);
   assert.deepEqual(identities(page, "current"), ["B:b-1"]);
   assert.doesNotMatch(page, /is thinking|Red\/Blue debate group chat/u);
   assert.match(page, /Event-driven review/u);
