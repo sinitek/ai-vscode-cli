@@ -422,7 +422,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 
 ## 9. 用户可见能力
 
-工具设置“工作区”页中的 harness 骨架开关默认关闭。若当前工作区已存在 `.ch` 目录，则视为已安装，开关展示为已勾选且禁用。尚未安装时，开启必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`；骨架初始化不会自动安装 CodeGraph、注册 MCP 或初始化索引；用户取消时保持关闭，不写入启用状态。工具设置“工作区”页还提供独立 CodeGraph 开关，可不启用 harness 骨架而单独安装/升级本机 CodeGraph CLI、注册 MCP 交互并初始化当前工作区索引。开关默认关闭；点击后弹窗确认并在终端开始安装，安装完成后根据检测脚本自动勾选且禁用。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到 Vibe 模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
+工具设置“工作区”页中的 harness 骨架开关默认关闭。若当前工作区已存在 `.ch` 目录，则视为已安装，开关展示为已勾选且禁用。尚未安装时，即使当前对话或 Loop 主任务处于运行态，开关仍可点击；开启必须先弹窗确认是否初始化工作区骨架。用户确认后，扩展安装 `media/workspace-scaffold` 对应的 `.ch/`、`.agents/`、`ARCHITECTURE.md`、`AGENTS.md`、`CLAUDE.md`，并创建或补充根级 `.gitignore` 以忽略 `.codegraph/`；骨架初始化不会自动安装 CodeGraph、注册 MCP 或初始化索引；用户取消时保持关闭，不写入启用状态。工具设置“工作区”页还提供独立 CodeGraph 开关，可不启用 harness 骨架而单独安装/升级本机 CodeGraph CLI、注册 MCP 交互并初始化当前工作区索引。开关默认关闭；没有 `.codegraph/` 索引时，对话或 Loop 主任务运行态也不会禁用该开关。点击后弹窗确认并在终端开始安装，安装完成后根据检测脚本自动勾选且禁用。骨架安装成功后，扩展会再弹窗询问是否由 AI 初始化 `ARCHITECTURE.md`，确认后当前 AI 对话会切到 Vibe 模式并使用当前选择的 CLI 分组、配置和模型发起项目架构分析任务。
 
 该开关同时控制“插件侧记忆系统是否参与本次任务”。
 

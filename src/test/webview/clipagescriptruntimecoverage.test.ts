@@ -726,6 +726,64 @@ test("shows the CodeGraph toggle as checked and disabled when the workspace is r
   );
 });
 
+test("keeps uninstalled workspace toggles clickable while a Loop main task is running", () => {
+  const { document, window } = createRuntimeHarness();
+  const runningLoopMainTabs = {
+    activeTabId: "tab-1",
+    tabs: [{
+      id: "tab-1",
+      cli: "codex",
+      loopTaskRole: "main",
+      loopTaskId: "task-1",
+      loopTaskStatus: "running",
+      loopTaskRunning: true,
+    }],
+  };
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      longTermMemoryEnabled: false,
+      workspaceMemoryEnabled: false,
+      workspaceHarnessInstalled: false,
+      codeGraphInstalled: false,
+      codeGraphInstalling: false,
+      conversationTabs: runningLoopMainTabs,
+    }),
+  });
+  const harnessToggle = document.getElementById("longTermMemoryEnabled");
+  const codeGraphToggle = document.getElementById("codeGraphEnabled");
+  assert.equal(harnessToggle.checked, false);
+  assert.equal(harnessToggle.disabled, false);
+  assert.equal(codeGraphToggle.checked, false);
+  assert.equal(codeGraphToggle.disabled, false);
+  assert.equal(
+    document.getElementById("longTermMemoryNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsLongTermMemoryHint,
+  );
+  assert.equal(
+    document.getElementById("codeGraphNote").textContent,
+    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphHint,
+  );
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  assert.equal(harnessToggle.disabled, false);
+  assert.equal(codeGraphToggle.disabled, false);
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      workspaceHarnessInstalled: true,
+      codeGraphInstalled: false,
+      codeGraphInstalling: true,
+      conversationTabs: runningLoopMainTabs,
+    }),
+  });
+  assert.equal(harnessToggle.checked, true);
+  assert.equal(harnessToggle.disabled, true);
+  assert.equal(codeGraphToggle.checked, false);
+  assert.equal(codeGraphToggle.disabled, true);
+});
+
 test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },

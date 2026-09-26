@@ -596,7 +596,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const installed = Boolean(state.workspaceHarnessInstalled);
         if (elements.longTermMemoryEnabled) {
           elements.longTermMemoryEnabled.checked = installed || Boolean(state.workspaceMemoryEnabled);
-          elements.longTermMemoryEnabled.disabled = installed || Boolean(state.isRunning);
+          elements.longTermMemoryEnabled.disabled = installed;
         }
         if (elements.longTermMemoryNote) {
           elements.longTermMemoryNote.textContent = installed
@@ -610,7 +610,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const installing = Boolean(state.codeGraphInstalling);
         if (elements.codeGraphEnabled) {
           elements.codeGraphEnabled.checked = installed;
-          elements.codeGraphEnabled.disabled = installed || installing || Boolean(state.isRunning);
+          elements.codeGraphEnabled.disabled = installed || installing;
         }
         if (elements.codeGraphNote) {
           elements.codeGraphNote.textContent = installed
