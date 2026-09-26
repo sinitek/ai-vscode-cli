@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-26",
+  "as_of": "2026-09-25",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -302,7 +302,7 @@
     {
       "id": "plugin.rule.cli_child_lifecycle_guarded",
       "name": "CLI 子进程必须完整跟踪并清理",
-      "description": "本地 CLI 运行时必须跟踪所有活跃子进程；Codex app-server 等会派生后代进程的运行应使用独立进程组并在停止、取消、扩展停用和 spawn error 时收口 promise、pipe 和进程组，避免残留资源导致 EAGAIN。Claude 热会话停止优先 interrupt，OpenCode serve 空闲复用，二者都只在扩展停用、工作区切换或连接失效时关闭进程。",
+      "description": "本地 CLI 运行时必须跟踪所有活跃子进程；Codex app-server 等会派生后代进程的运行应使用独立进程组并在停止、取消、扩展停用和 spawn error 时收口 promise、pipe 和进程组，避免残留资源导致 EAGAIN。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.loop_task", "plugin.graph_run"],
       "source_refs": [

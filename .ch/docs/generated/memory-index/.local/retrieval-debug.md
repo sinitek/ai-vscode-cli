@@ -6,14 +6,14 @@
 ## Run Context
 
 - Generated at: 2026-09-25T09:46:19Z
-- Focus: codex long connection opencode claude persistent session
-- Focus terms: `codex`, `long`, `connection`, `opencode`, `claude`, `persistent`, `session`
+- Focus: Loop+ 子任务完成沟通文件消息
+- Focus terms: `loop`, `子任务完成沟通文件消息`, `子任`, `任务`, `务完`, `完成`, `成沟`, `沟通`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
-- Ranked candidate count: 3
-- Focus match count: 3
-- Focus excluded count: 2
+- Ranked candidate count: 1
+- Focus match count: 1
+- Focus excluded count: 4
 
 ## Heuristics
 
@@ -32,66 +32,22 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-d3aa6ffe1b` | `95` | `93` | codex | `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` | `0` |
-| 2 | `mem-538cb1444d` | `93` | `91` | codex | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
-| 3 | `mem-91b4245892` | `93` | `91` | codex | `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | `0` |
+| 1 | `mem-538cb1444d` | `105` | `103` | loop, 完成 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
 
 ## Score Breakdown
 
-### mem-d3aa6ffe1b - 计划标题
-
-- Final score: `95`
-- Base score: `93`
-- Matched terms: `codex`
-- Source: `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md`
-- Selected claim IDs: -
-
-| Heuristic | Contribution |
-| --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `12` |
-| `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `4` |
-| `evidence_bonus` | `6` |
-| `concept_bonus` | `1` |
-| `topic_bonus` | `2` |
-| `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
-| `same_source_penalty` | `0` |
-
 ### mem-538cb1444d - Loop+ 完成事件驱动验收
 
-- Final score: `93`
-- Base score: `91`
-- Matched terms: `codex`
+- Final score: `105`
+- Base score: `103`
+- Matched terms: `loop`, `完成`
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 
 | Heuristic | Contribution |
 | --- | --- |
 | `type_priority` | `68` |
-| `focus_terms` | `12` |
-| `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `2` |
-| `evidence_bonus` | `6` |
-| `concept_bonus` | `1` |
-| `topic_bonus` | `2` |
-| `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
-| `same_source_penalty` | `0` |
-
-### mem-91b4245892 - 可维护性重构
-
-- Final score: `93`
-- Base score: `91`
-- Matched terms: `codex`
-- Source: `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
-- Selected claim IDs: -
-
-| Heuristic | Contribution |
-| --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `12` |
+| `focus_terms` | `24` |
 | `open_loop_bonus` | `0` |
 | `read_cost_adjustment` | `2` |
 | `evidence_bonus` | `6` |
@@ -107,19 +63,17 @@
 
 ## Source Diversity
 
-- Unique source count: 3
-- Selected observation count: 3
+- Unique source count: 1
+- Selected observation count: 1
 - Max same-source observations: 1
 
 ### Source Path Counts
 
 - `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`: 1
-- `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md`: 1
-- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`: 1
 
 ### Source Kind Counts
 
-- `active_plan`: 3
+- `active_plan`: 1
 
 ## Claim Status Snapshot
 

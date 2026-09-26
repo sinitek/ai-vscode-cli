@@ -2325,29 +2325,3 @@
 ### 验证方式
 - `node --test dist/test/interactive/codexRunnerReuse.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
 
-## Claude / OpenCode 长连接不要每回合冷启动
-
-- 状态：已规避
-- 首次发现：2026-09-26
-- 适用范围：Claude 交互 Runner、OpenCode `serve`
-
-### 现象
-- Claude 每个回合都重新拉起 CLI，再 `resume` 已有 session。
-- OpenCode 每个尝试都启动并在结束时关掉 `opencode serve`，下一次又做健康检查。
-
-### 触发条件
-- Claude `query()` 使用字符串 prompt，SDK 在第一条 result 后关闭 stdin。
-- OpenCode 子代理 runtime 把 managed server 的生命周期绑在单次尝试的 `dispose()` 上。
-
-### 根因
-- Claude Code 2.1.283 没有 Codex app-server。它的可编程长连接是 stream-json / SDK streaming input，不是 `claude --bg`。
-- OpenCode 1.18.32 有 `acp` 和 `serve`。插件已经用 `serve` + `run --attach` 解析 JSONL，不能把“有 ACP”理解成要重写事件流。
-
-### 长期规避
-- Claude 同一启动参数只 `query()` 一次；后续回合往打开的 stdin 追加 user 消息。停止调用 `interrupt()`。启动参数变化、session 不存在、dispose 或进程退出才重开并 `resume`。
-- OpenCode 按命令、工作区、模型、variant、config 和 env 复用 `serve`。尝试结束只减引用。配置变化替换同目录空闲服务。扩展停用和工作区切换调用 `dispose()`。
-- 不要用 `run --port` 代替经过 `/global/health` 的 `serve`。
-
-### 验证方式
-- `node --test dist/test/interactive/claudeRunner.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js`
-

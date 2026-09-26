@@ -24,8 +24,6 @@ import { type ConfigManagerPanel } from "./webview/configPanel";
 import { handleSendPromptMessage, handleUpdateSettingMessage } from "./sessionMessageActions";
 import { isPanelMessageType } from "./sessionMessageRouter";
 import { countAliveCodexAppServerConnections } from "./interactive/codexAppServerPool";
-import { countAliveClaudeLongConnections } from "./interactive/claudePromptConnection";
-import { countAliveOpenCodeLongConnections } from "./extensionHost/openCodeSubagentRuntime";
 import { type ConfigApplyResult } from "./config/configApplyQueue";
 
 export type PromptRunInputForPanel = {
@@ -659,9 +657,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     postWebviewMessage({
       type: "codexLongConnectionCount",
       token,
-      count: countAliveCodexAppServerConnections()
-        + countAliveClaudeLongConnections()
-        + countAliveOpenCodeLongConnections(),
+      count: countAliveCodexAppServerConnections(),
     });
     return;
   }

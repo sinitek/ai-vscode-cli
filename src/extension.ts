@@ -1100,7 +1100,6 @@ function stopAllRuns(): void {
   }
 
   interactiveRunnerManager?.disposeAll();
-  prepareOpenCodeSubagentRuntime.dispose();
 }
 
 async function maybeDisableMarketplaceUpdateCheckInDev(
@@ -2130,7 +2129,6 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   }
   sessionMessageCache.clear();
   interactiveRunnerManager?.disposeAll();
-  prepareOpenCodeSubagentRuntime.dispose();
   suppressCompactPrompt.clear();
   Object.keys(pendingSessionDrafts).forEach((tabId) => {
     delete pendingSessionDrafts[tabId];

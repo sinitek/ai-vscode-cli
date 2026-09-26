@@ -444,66 +444,7 @@ test("OpenCode subagent runtime starts, configures, and idempotently disposes a 
 
   result.dispose();
   result.dispose();
-  assert.equal(killCount, 0);
-  assert.equal(prepareOpenCodeSubagentRuntime.countAlive(), 1);
-
-  prepareOpenCodeSubagentRuntime.dispose();
   assert.equal(killCount, 1);
-  assert.equal(prepareOpenCodeSubagentRuntime.countAlive(), 0);
-});
-
-test("OpenCode long connection reuses one server and only closes it from the pool", async () => {
-  let startCount = 0;
-  let killCount = 0;
-  const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer(
-    createOpenCodeSubagentRuntimeDeps({
-      getOpenCodeCliArgs: () => ["serve"],
-      resolveConnection: async () => ({
-        serverUrl: "http://127.0.0.1:4101",
-        serverPort: 4101,
-      }),
-      startServer: () => {
-        startCount += 1;
-        return {
-          pid: 77,
-          kill: () => {
-            killCount += 1;
-          },
-        };
-      },
-    }),
-  );
-
-  const first = await prepareOpenCodeSubagentRuntime({
-    cwd: "/tmp/opencode-workspace",
-    runId: "run-1",
-    runtime: createOpenCodeRuntimePreparation(),
-  });
-  first.dispose();
-  const second = await prepareOpenCodeSubagentRuntime({
-    cwd: "/tmp/opencode-workspace",
-    runId: "run-2",
-    runtime: createOpenCodeRuntimePreparation(),
-  });
-
-  assert.equal(startCount, 1);
-  assert.equal(killCount, 0);
-  assert.equal(second.connection?.serverUrl, "http://127.0.0.1:4101");
-  assert.equal(prepareOpenCodeSubagentRuntime.countAlive(), 1);
-  second.dispose();
-  assert.equal(killCount, 0);
-
-  const switched = await prepareOpenCodeSubagentRuntime({
-    cwd: "/tmp/opencode-workspace",
-    runId: "run-3",
-    runtime: createOpenCodeRuntimePreparation({ effectiveModel: "provider/other" }),
-  });
-  assert.equal(startCount, 2);
-  assert.equal(killCount, 1);
-  switched.dispose();
-  prepareOpenCodeSubagentRuntime.dispose();
-  assert.equal(killCount, 2);
-  assert.equal(prepareOpenCodeSubagentRuntime.countAlive(), 0);
 });
 
 test("OpenCode subagent runtime reports startup failures and kills the managed process", async () => {

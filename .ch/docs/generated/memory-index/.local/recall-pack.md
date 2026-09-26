@@ -3,19 +3,19 @@
 ## Summary
 
 - Generated at: 2026-09-25T09:46:19Z
-- Focus: codex long connection opencode claude persistent session
+- Focus: Loop+ 子任务完成沟通文件消息
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Available observation entries: 5
 - Available read cost: ~381 tokens
-- Selected index entries: 3 (~296 tokens if fully expanded)
-- Expanded entries in this pack: 3 (~296 tokens)
+- Selected index entries: 1 (~108 tokens if fully expanded)
+- Expanded entries in this pack: 1 (~108 tokens)
 - Generated recall surfaces: 9
 - Hot-zone docs: 2
 - Active plans: 3
-- Related design docs: 2
+- Related design docs: 4
 - Related runbooks: 1
-- Source diversity: 3 unique sources / 3 selected observations
+- Source diversity: 1 unique sources / 1 selected observations
 - Retrieval debug: `.ch/docs/generated/memory-index/.local/retrieval-debug.md`
 
 ## Progressive Disclosure
@@ -27,37 +27,15 @@
 
 ## Focus Match Summary
 
-- Matched terms: `codex`
+- Matched terms: `loop`, `完成`
 
 ## Observation Index
 
 | ID | Type | Title | Read | Source | Why |
 | --- | --- | --- | --- | --- | --- |
-| `mem-d3aa6ffe1b` | `plan` | 计划标题 | ~60 | `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` | 命中 focus：codex。 |
-| `mem-538cb1444d` | `plan` | Loop+ 完成事件驱动验收 | ~108 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | 命中 focus：codex。 |
-| `mem-91b4245892` | `plan` | 可维护性重构 | ~128 | `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | 命中 focus：codex。 |
+| `mem-538cb1444d` | `plan` | Loop+ 完成事件驱动验收 | ~108 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | 命中 focus：loop, 完成。 |
 
 ## Expanded Observation Details
-
-### mem-d3aa6ffe1b - 计划标题
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~60 tokens
-- Source: `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md`
-- Score: `95` (base `93`)
-- Matches: `codex`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=4, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
-- Concepts: `open-loop`
-- Files: `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/runbooks/PITFALLS.md`, `src/extensionHost/promptRunRuntime.ts`, `src/panelDiagnostics.ts`
-
-Facts:
-- 日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话
-- Modified at: 2026-09-25T06:43:59+00:00
-
-Narrative:
-
-日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话
 
 ### mem-538cb1444d - Loop+ 完成事件驱动验收
 
@@ -65,9 +43,9 @@ Narrative:
 - Topic: `plan`
 - Read: ~108 tokens
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
-- Score: `93` (base `91`)
-- Matches: `codex`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
+- Score: `105` (base `103`)
+- Matches: `loop`, `完成`
+- Score breakdown: type_priority=68, focus_terms=24, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
 - Concepts: `open-loop`
 - Files: `.ch/docs/MEMORY.md`, `.ch/docs/TESTING.md`, `.ch/docs/design-docs/TEMPLATE.md`, `.ch/docs/design-docs/graph-orchestration-mode.md`, `.ch/docs/design-docs/index.md`, `.ch/docs/design-docs/loop-debate-multi-agent-mode.md`, `.ch/docs/design-docs/loop-plus-scheduling.md`, `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
@@ -78,26 +56,6 @@ Facts:
 Narrative:
 
 日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用
-
-### mem-91b4245892 - 可维护性重构
-
-- Type: `plan`
-- Topic: `plan`
-- Read: ~128 tokens
-- Source: `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
-- Score: `93` (base `91`)
-- Matches: `codex`
-- Score breakdown: type_priority=68, focus_terms=12, open_loop_bonus=0, read_cost_adjustment=2, evidence_bonus=6, concept_bonus=1, topic_bonus=2, source_diversity_bonus=2, claim_bonus=0, same_source_penalty=0
-- Concepts: `open-loop`
-- Files: `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `src/config/claudeSkills.ts`, `src/config/codexSkills.ts`, `src/config/geminiSkills.ts`, `src/config/skillDiscovery.ts`, `src/extension.ts`, `src/extensionHost/openCodePromptRunTemplate.ts`
-
-Facts:
-- 日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...
-- Modified at: 2026-09-25T01:16:44+00:00
-
-Narrative:
-
-日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...
 
 ## Recommended Reading Order
 
@@ -151,38 +109,46 @@ Narrative:
   Why: 热区边界和阅读顺序入口。
   Summary: 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
 
-- `.ch/docs/MEMORY.md` | 记忆流转规则
+- `.ch/docs/MEMORY.md` | 记忆流转规则 | matches=任务
   Why: 记忆分层与流转规则入口。
   Summary: 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | Loop+ 完成事件驱动验收 | matches=codex
+- `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | Loop+ 完成事件驱动验收 | matches=loop, 完成
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用
 
-- `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` | 计划标题 | matches=codex
+- `.ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md` | 计划标题
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话
 
-- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | 可维护性重构 | matches=codex
+- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | 可维护性重构
   Why: 当前任务推进中的 working-layer 事实来源。
   Summary: 日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...
 
 ## Related Design Docs
 
-- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=codex, opencode
-  Why: 与当前 focus 相关的设计决策入口，命中：codex / opencode。
-  Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
+- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop, 子任, 任务, 完成
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务 / 完成。
+  Summary: 状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
-- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=codex, claude
-  Why: 与当前 focus 相关的设计决策入口，命中：codex / claude。
+- `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop, 子任, 任务, 务完, 完成, 沟通
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务 / 务完 / 完成 / 沟通。
+  Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
+
+- `.ch/docs/design-docs/vscode-cli-extension-runtime.md` | VS Code CLI 插件运行时架构 | matches=loop, 子任, 任务
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务。
   Summary: 状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`
+
+- `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop, 子任, 任务, 务完, 完成
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 子任 / 任务 / 务完 / 完成。
+  Summary: 状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 ## Related Runbooks
 
-- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=codex, opencode, claude
-  Why: 与当前 focus 相关的排障或规避动作入口，命中：codex / opencode / claude。
+- `.ch/docs/runbooks/local-development.md` | 本地开发与打包手册 | matches=loop, 子任, 任务
+  Why: 与当前 focus 相关的排障或规避动作入口，命中：loop / 子任 / 任务。
   Summary: 本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。
 
 ## Watch Items
