@@ -4,6 +4,7 @@ import * as path from "path";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
+import { ClaudePromptConnection } from "./claudePromptConnection";
 import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
@@ -32,6 +33,8 @@ export type ClaudeCompactionResult = {
   previousSessionId: string | null;
   sessionId: string | null;
 };
+
+const CLAUDE_LONG_CONNECTION_MAX_TURNS = 100000;
 
 type ClaudeToolUseEvent = {
   id?: string;
@@ -269,6 +272,21 @@ function createAbortError(): Error {
   return error;
 }
 
+function buildClaudeConnectionKey(options: Record<string, unknown>): string {
+  const extraArgs = options.extraArgs && typeof options.extraArgs === "object"
+    ? options.extraArgs as Record<string, unknown>
+    : {};
+  return JSON.stringify({
+    cwd: options.cwd ?? "",
+    model: options.model ?? "",
+    permissionMode: options.permissionMode ?? "",
+    effort: extraArgs.effort ?? "",
+    maxThinkingTokens: options.maxThinkingTokens ?? null,
+    entrypoint: options.pathToClaudeCodeExecutable ?? "",
+    settingSources: options.settingSources ?? [],
+  });
+}
+
 async function loadClaudeSettings(): Promise<Record<string, string>> {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
   try {
@@ -301,6 +319,9 @@ export class ClaudeInteractiveRunner {
   private abortController: AbortController | null = null;
   private abortGeneration = 0;
   private disposeGeneration = 0;
+  private connection: ClaudePromptConnection | null = null;
+  private connectionKey = "";
+  private connectionStarting = false;
 
   public constructor(
     private readonly options: {
@@ -327,14 +348,68 @@ export class ClaudeInteractiveRunner {
   public dispose(): void {
     this.disposed = true;
     this.disposeGeneration += 1;
-    this.stopAndRebuild();
+    this.abortGeneration += 1;
+    this.connection?.close();
+    this.connection = null;
+    this.connectionKey = "";
+    const abortController = this.abortController;
+    this.abortController = null;
+    abortController?.abort();
   }
 
   public stopAndRebuild(): void {
     this.abortGeneration += 1;
+    if (this.connection?.interruptActiveTurn()) {
+      return;
+    }
+    if (!this.connection?.hasActiveTurn() && !this.connectionStarting) {
+      return;
+    }
     const abortController = this.abortController;
+    this.connection?.close();
+    this.connection = null;
+    this.connectionKey = "";
+    this.connectionStarting = false;
     this.abortController = null;
     abortController?.abort();
+  }
+
+  private async ensureClaudeConnection(
+    queryFn: (input: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => AsyncIterable<unknown>,
+    options: Record<string, unknown>,
+  ): Promise<ClaudePromptConnection> {
+    const key = buildClaudeConnectionKey(options);
+    if (this.connection?.isAlive() && this.connectionKey === key) {
+      this.abortController = this.connection.getAbortController();
+      void logInfo("claude-long-connection-reused", {
+        model: options.model ?? null,
+        cwd: options.cwd ?? null,
+        sessionId: this.options.sessionId,
+      });
+      return this.connection;
+    }
+    this.connection?.close();
+    const connection = new ClaudePromptConnection();
+    try {
+      await connection.start(queryFn, options);
+      const startupAbort = options.abortController;
+      if (startupAbort instanceof AbortController && startupAbort.signal.aborted) {
+        connection.close();
+        throw createAbortError();
+      }
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
+    this.connection = connection;
+    this.connectionKey = key;
+    this.abortController = connection.getAbortController();
+    void logInfo("claude-long-connection-started", {
+      model: options.model ?? null,
+      cwd: options.cwd ?? null,
+      sessionId: this.options.sessionId,
+    });
+    return connection;
   }
 
   public async runForText(prompt: string): Promise<{ sessionId: string | null; text: string }> {
@@ -401,6 +476,7 @@ export class ClaudeInteractiveRunner {
 
     const abortController = new AbortController();
     this.abortController = abortController;
+    this.connectionStarting = true;
 
     const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
     const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
@@ -431,9 +507,8 @@ export class ClaudeInteractiveRunner {
       settingSources: this.options.isolateProjectInstructions ? [] : ["user", "project", "local"],
       // 使用当前配置的 Claude 可执行入口，避免 SDK 退回内置 CLI 导致自定义网关/包装脚本失效
       pathToClaudeCodeExecutable: this.options.entrypoint,
-      // 设置较大的 maxTurns 限制，避免复杂任务被过早中断
-      // SDK 默认值为 10，对于交互模式来说太小了
-      maxTurns: 200,
+      // 长连接进程会连续承接多个回合，上限覆盖整条连接而不是单次冷启动。
+      maxTurns: CLAUDE_LONG_CONNECTION_MAX_TURNS,
       // 传递环境变量给 SDK
       env: {
         ...process.env,
@@ -603,9 +678,9 @@ export class ClaudeInteractiveRunner {
       if (this.abortGeneration !== runAbortGeneration) {
         throw createAbortError();
       }
-      const queryResult = queryFn({ prompt, options });
-
-      for await (const msg of queryResult as AsyncGenerator<any>) {
+      const connection = await this.ensureClaudeConnection(queryFn, options);
+      await connection.runTurn(prompt, async (rawMessage) => {
+        const msg = rawMessage as any;
         if (this.disposeGeneration !== runDisposeGeneration) {
           throw createRunnerDisposedError();
         }
@@ -637,7 +712,7 @@ export class ClaudeInteractiveRunner {
                   : undefined;
             processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
           }
-          continue;
+          return "continue";
         }
 
         // 助手消息
@@ -658,7 +733,7 @@ export class ClaudeInteractiveRunner {
             const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
             processMessageBlocks(blocks, "assistant", messageId);
           }
-          continue;
+          return "continue";
         }
 
         // 用户事件里也会带 tool_result（例如 AskUserQuestion/ExitPlanMode 的结果）
@@ -684,12 +759,12 @@ export class ClaudeInteractiveRunner {
               }
             }
           }
-          continue;
+          return "continue";
         }
 
         // 工具进度
         if (msg?.type === "tool_progress") {
-          continue;
+          return "continue";
         }
 
         // 系统消息 - Hook 响应
@@ -706,7 +781,7 @@ export class ClaudeInteractiveRunner {
           if (content.trim()) {
             handlers.onTrace(content);
           }
-          continue;
+          return "continue";
         }
 
         // 系统消息 - 状态
@@ -714,7 +789,7 @@ export class ClaudeInteractiveRunner {
           if (msg.status) {
             handlers.onTrace(`status: ${String(msg.status)}`);
           }
-          continue;
+          return "continue";
         }
 
         // 结果消息
@@ -729,9 +804,10 @@ export class ClaudeInteractiveRunner {
           if (resultText && !lastAssistantText) {
             handlers.onAssistantDelta(resultText);
           }
-          break;
+          return "done";
         }
-      }
+        return "continue";
+      });
     };
 
     let runError: unknown = null;
@@ -752,7 +828,8 @@ export class ClaudeInteractiveRunner {
     } catch (error) {
       runError = error;
     } finally {
-      if (this.abortController === abortController) {
+      this.connectionStarting = false;
+      if (!this.connection?.isAlive() && this.abortController === abortController) {
         this.abortController = null;
       }
     }

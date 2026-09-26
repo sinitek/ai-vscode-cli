@@ -130,48 +130,43 @@ test("passes AbortController to Claude SDK query and aborts active runs", async 
   await assert.rejects(runPromise, { name: "AbortError" });
 });
 
-test("keeps the current Claude AbortController when an older run finishes", async (t) => {
+test("reuses one Claude stream for the next turn and interrupts without killing it", async (t) => {
   const originalDynamicImport = dynamicImportModule.dynamicImport;
-  type MockRun = {
-    prompt: string;
-    abortController: AbortController;
-    finish: () => void;
-  };
-  const runs: MockRun[] = [];
-  const waitForRunCount = (count: number): Promise<void> => new Promise((resolve) => {
-    const check = (): void => {
-      if (runs.length >= count) {
-        resolve();
-        return;
-      }
-      setTimeout(check, 0);
-    };
-    check();
+  const prompts: string[] = [];
+  let queryCalls = 0;
+  let interruptCalls = 0;
+  let releaseInterruptResult: (() => void) | null = null;
+  const interruptResultReady = new Promise<void>((resolve) => {
+    releaseInterruptResult = resolve;
   });
+  const abortState: { controller: AbortController | null } = { controller: null };
 
   dynamicImportModule.dynamicImport = async () => ({
-    query: ({ prompt, options }: { prompt: string; options: { abortController: AbortController } }) => {
-      let finish: (() => void) | null = null;
-      const finished = new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      runs.push({
-        prompt,
-        abortController: options.abortController,
-        finish: () => finish?.(),
-      });
-      return (async function* stream() {
-        yield { type: "system", subtype: "status", status: "running" };
-        await new Promise<void>((resolve, reject) => {
-          options.abortController.signal.addEventListener("abort", () => {
-            const error = new Error("mock claude aborted");
-            error.name = "AbortError";
-            reject(error);
-          }, { once: true });
-          finished.then(resolve, reject);
-        });
-        yield { type: "result", result: `done:${prompt}` };
+    query: ({ prompt, options }: { prompt: AsyncIterable<any>; options: { abortController: AbortController } }) => {
+      queryCalls += 1;
+      abortState.controller = options.abortController;
+      const query = (async function* stream() {
+        while (!options.abortController.signal.aborted) {
+          const next = await prompt[Symbol.asyncIterator]().next();
+          if (next.done) {
+            return;
+          }
+          const text = next.value?.message?.content?.[0]?.text;
+          if (typeof text === "string") {
+            prompts.push(text);
+          }
+          if (text === "second") {
+            await interruptResultReady;
+          }
+          yield { type: "result", result: text, session_id: "session-1" };
+        }
       })();
+      return Object.assign(query, {
+        interrupt: async () => {
+          interruptCalls += 1;
+          releaseInterruptResult?.();
+        },
+      });
     },
   }) as any;
   t.after(() => {
@@ -192,20 +187,23 @@ test("keeps the current Claude AbortController when an older run finishes", asyn
     onSessionId: () => {},
   };
 
-  const firstRun = runner.runStreamed("first", handlers);
-  await waitForRunCount(1);
+  await runner.runStreamed("first", handlers);
   const secondRun = runner.runStreamed("second", handlers);
-  await waitForRunCount(2);
-
-  const firstController = runs[0].abortController;
-  const secondController = runs[1].abortController;
-  assert.notEqual(firstController, secondController);
-
-  runs[0].finish();
-  await firstRun;
-  assert.equal(secondController.signal.aborted, false);
+  const promptDeadline = Date.now() + 1000;
+  while (prompts.length < 2 && Date.now() < promptDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.equal(queryCalls, 1);
+  assert.deepEqual(prompts, ["first", "second"]);
+  assert.equal(abortState.controller?.signal.aborted, false);
 
   runner.stopAndRebuild();
-  assert.equal(secondController.signal.aborted, true);
+  assert.equal(interruptCalls, 1);
+  assert.equal(abortState.controller?.signal.aborted, false);
   await assert.rejects(secondRun, { name: "AbortError" });
+
+  await runner.runStreamed("third", handlers);
+  assert.equal(queryCalls, 1);
+  assert.deepEqual(prompts, ["first", "second", "third"]);
+  runner.dispose();
 });
