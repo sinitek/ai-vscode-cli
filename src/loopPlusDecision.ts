@@ -21,7 +21,6 @@ export const LOOP_PLUS_DECISION_STATUSES = [
 
 const ESTIMATED_REMAINING_ROUNDS_MAX = 100;
 const IMPLICIT_QUEUE_CONFIRMATION_KEYS = [
-  "reviewEventIds",
   "confirmedEventIds",
   "acceptedEventIds",
 ] as const;
@@ -31,6 +30,7 @@ export type LoopPlusDecisionStatus = (typeof LOOP_PLUS_DECISION_STATUSES)[number
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
   reviewEventId?: string;
+  reviewEventIds?: string[];
   subtasks?: LoopSubtaskDecision[];
   answerConclusion?: string;
   finalSummary?: string;
@@ -109,7 +109,7 @@ function normalizeDispatchDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  if (hasOwn(raw, "reviewEventId")) {
+  if (hasReviewEventConfirmation(raw)) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -127,8 +127,8 @@ function normalizeAcceptDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  const reviewEventId = readRequiredReviewEventId(raw.reviewEventId);
-  if (!reviewEventId) {
+  const reviewEvents = readReviewConfirmation(raw, true);
+  if (!reviewEvents) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -137,7 +137,7 @@ function normalizeAcceptDecision(
   }
   return withEstimatedRemainingRounds({
     status: "accept",
-    reviewEventId,
+    ...reviewEvents,
     ...(subtasks.length > 0 ? { subtasks } : {}),
   }, estimatedRemainingRounds);
 }
@@ -147,7 +147,7 @@ function normalizeWaitDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  if (hasOwn(raw, "reviewEventId")) {
+  if (hasReviewEventConfirmation(raw)) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -162,7 +162,7 @@ function normalizeBlockedDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  if (hasOwn(raw, "reviewEventId")) {
+  if (hasReviewEventConfirmation(raw)) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -181,8 +181,8 @@ function normalizeCompletedDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  const reviewEventId = readOptionalReviewEventId(raw, "reviewEventId");
-  if (reviewEventId === null) {
+  const reviewEvents = readReviewConfirmation(raw, false);
+  if (!reviewEvents) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -208,7 +208,7 @@ function normalizeCompletedDecision(
   }
   return withEstimatedRemainingRounds({
     status: "completed",
-    ...(reviewEventId ? { reviewEventId } : {}),
+    ...reviewEvents,
     answerConclusion,
     finalSummary,
     acceptance,
@@ -337,11 +337,45 @@ function readRequiredReviewEventId(value: unknown): string | null {
   return reviewEventId ?? null;
 }
 
-function readOptionalReviewEventId(raw: Record<string, unknown>, key: string): string | undefined | null {
-  if (!hasOwn(raw, key)) {
-    return undefined;
+function hasReviewEventConfirmation(raw: Record<string, unknown>): boolean {
+  return hasOwn(raw, "reviewEventId") || hasOwn(raw, "reviewEventIds");
+}
+
+function readReviewConfirmation(
+  raw: Record<string, unknown>,
+  required: boolean,
+): Pick<LoopPlusDecision, "reviewEventId" | "reviewEventIds"> | null {
+  const hasSingle = hasOwn(raw, "reviewEventId");
+  const hasMany = hasOwn(raw, "reviewEventIds");
+  if (hasSingle && hasMany) {
+    return null;
   }
-  return readOptionalText(raw[key]) ?? null;
+  if (hasMany) {
+    const reviewEventIds = readReviewEventIds(raw.reviewEventIds);
+    return reviewEventIds ? { reviewEventIds } : null;
+  }
+  if (!hasSingle) {
+    return required ? null : {};
+  }
+  const reviewEventId = readRequiredReviewEventId(raw.reviewEventId);
+  return reviewEventId ? { reviewEventId } : null;
+}
+
+function readReviewEventIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const id = readOptionalText(item);
+    if (!id || seen.has(id)) {
+      return null;
+    }
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 function readOptionalText(value: unknown): string | undefined {

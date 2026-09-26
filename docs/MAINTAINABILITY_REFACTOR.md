@@ -144,10 +144,10 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 
 归一化规则不能合成一个函数：
 
-- classic `continue`（`normalizeLoopMainDecision`，462 之后）要求 1 到 `LOOP_PARALLEL_SUBTASK_MAX`（`promptRunRuntime.ts` 200，值为 6）个子任务；缺省 acceptance 被补成 `{ passed: false, checks: [] }`。Loop+ 没有 `continue`。`dispatch` 要求至少 1 个子任务且不能带 `reviewEventId`；`accept` 必须带单个 `reviewEventId`，子任务可以是 0 个；`wait` 要求子任务为空且不能带 `reviewEventId`。
-- classic `completed` 要求 `acceptance.passed`、全部 checks 通过、非空且全部通过的 `requirementCoverage`、`finalSummary`、`roundSummaries`，并把 `estimatedRemainingRounds` 写成 0。`answerConclusion` 可缺。Loop+ `completed`（`normalizeCompletedDecision`）要求 `answerConclusion` 与 `finalSummary` 都非空，不读 `roundSummaries`；`reviewEventId` 缺省可以，出现时必须是非空文本；剩余轮次沿用解析值，不强制为 0。
-- classic `blocked` 不检查子任务，`finalSummary` 只要是字符串就保留，包括空串。Loop+ `blocked` 要求子任务为空，且不能带 `reviewEventId`；`finalSummary` 走 `readOptionalText`，trim 后为空就丢掉。
-- Loop+ 拒绝 `reviewEventIds` / `confirmedEventIds` / `acceptedEventIds`（`hasImplicitQueueConfirmation`）。classic 没有这条。
+- classic `continue`（`normalizeLoopMainDecision`，462 之后）要求 1 到 `LOOP_PARALLEL_SUBTASK_MAX`（`promptRunRuntime.ts` 200，值为 6）个子任务；缺省 acceptance 被补成 `{ passed: false, checks: [] }`。Loop+ 没有 `continue`。`dispatch` 要求至少 1 个子任务，且不能带 `reviewEventId` 或 `reviewEventIds`；`accept` 确认一个 `reviewEventId`，或按顺序确认一组 `reviewEventIds`，二者不能同时出现，子任务可以是 0 个；`wait` 要求子任务为空，且不能带这两种确认字段。
+- classic `completed` 要求 `acceptance.passed`、全部 checks 通过、非空且全部通过的 `requirementCoverage`、`finalSummary`、`roundSummaries`，并把 `estimatedRemainingRounds` 写成 0。`answerConclusion` 可缺。Loop+ `completed`（`normalizeCompletedDecision`）要求 `answerConclusion` 与 `finalSummary` 都非空，不读 `roundSummaries`；确认字段可以缺省，单项用非空 `reviewEventId`，多项用非空且不重复的 `reviewEventIds`；剩余轮次沿用解析值，不强制为 0。
+- classic `blocked` 不检查子任务，`finalSummary` 只要是字符串就保留，包括空串。Loop+ `blocked` 要求子任务为空，且不能带 `reviewEventId` 或 `reviewEventIds`；`finalSummary` 走 `readOptionalText`，trim 后为空就丢掉。
+- Loop+ 仍拒绝 `confirmedEventIds` / `acceptedEventIds`（`hasImplicitQueueConfirmation`）。`reviewEventIds` 只在 `accept` 和 `completed` 上作为显式批次，不能和 `reviewEventId` 并存。classic 没有这条。
 - acceptance checks：classic 会丢弃坏项并把缺省名字写成 `"acceptance"`；Loop+ 任一坏项就让整份决策失败。
 - 子任务 prompt 下限今天都是 80，但是两个常量：`LOOP_SUBTASK_PROMPT_MIN_LENGTH`（`promptRunRuntime.ts` 201）和 `LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH`（`loopPlusDecision.ts` 10）。上限 6 也分属 `LOOP_PARALLEL_SUBTASK_MAX` 与 `LOOP_PLUS_DECISION_SUBTASK_MAX`。数字相同不是合并协议的理由。
 - classic 归一化后面紧跟着 `applyLoopMainDecision` 写任务记录。Loop+ 归一化是纯函数，供 Loop+ 编排单独消费。合成一个 normalizer 会让 `continue` 被 Loop+ 拒绝、`dispatch` 被 classic 拒绝，或者更糟：用默认分支把一种状态误收成另一种。

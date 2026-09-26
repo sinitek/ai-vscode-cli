@@ -269,6 +269,7 @@ export type LoopPlusScheduler = {
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
   claimNextReview: () => LoopPlusClaimResult;
   submitReview: (eventId: string) => LoopPlusSubmitReviewResult;
+  submitReviewBatch: (eventIds: readonly string[]) => LoopPlusSubmitReviewResult;
   wait: () => LoopPlusWaitResult;
   complete: () => LoopPlusCompleteResult;
   stopParent: () => LoopPlusStopResult;
@@ -503,34 +504,62 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   function submitReview(eventId: string): LoopPlusSubmitReviewResult {
-    if (typeof eventId !== "string" || !eventId.trim()) {
+    return submitReviewBatch([eventId]);
+  }
+
+  function submitReviewBatch(eventIds: readonly string[]): LoopPlusSubmitReviewResult {
+    if (!Array.isArray(eventIds) || eventIds.length === 0) {
       return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
     }
-    const normalizedEventId = eventId.trim();
-    const reviewed = seenAttempts.find((item) => (
+    const ids: string[] = [];
+    const seenIds = new Set<string>();
+    for (const eventId of eventIds) {
+      if (typeof eventId !== "string" || !eventId.trim()) {
+        return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
+      }
+      const normalized = eventId.trim();
+      if (seenIds.has(normalized)) {
+        return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
+      }
+      seenIds.add(normalized);
+      ids.push(normalized);
+    }
+    const alreadyReviewed = (eventId: string) => seenAttempts.some((item) => (
       item.disposition === "reviewed"
-      && buildLoopPlusFinishEventId(item.subtaskId, item.attemptId) === normalizedEventId
+      && buildLoopPlusFinishEventId(item.subtaskId, item.attemptId) === eventId
     ));
-    if (reviewed) {
+    if (ids.every(alreadyReviewed)) {
       return { ok: true, reason: "submitted", followUp: followUp(), view: view() };
     }
     if (parentStopped) {
       return { ok: false, reason: "parent_stopped", followUp: followUp(), view: view() };
     }
-    if (currentReview?.eventId === normalizedEventId) {
-      const seen = seenAttempts.find((item) => item.attemptId === currentReview?.attemptId);
+    if (!currentReview || currentReview.eventId !== ids[0]) {
+      return {
+        ok: false,
+        reason: currentReview ? "mismatch" : "no_current",
+        followUp: followUp(),
+        view: view(),
+      };
+    }
+    const queued = ids.slice(1);
+    for (let index = 0; index < queued.length; index += 1) {
+      if (reviewQueue[index]?.eventId !== queued[index]) {
+        return { ok: false, reason: "mismatch", followUp: followUp(), view: view() };
+      }
+    }
+    const accepted = [currentReview, ...reviewQueue.slice(0, queued.length)];
+    for (const item of accepted) {
+      const seen = seenAttempts.find((entry) => entry.attemptId === item.attemptId);
       if (seen) {
         seen.disposition = "reviewed";
       }
-      currentReview = null;
-      wakePending = false;
-      commit();
-      return { ok: true, reason: "submitted", followUp: followUp(), view: view() };
     }
-    if (!currentReview) {
-      return { ok: false, reason: "no_current", followUp: followUp(), view: view() };
-    }
-    return { ok: false, reason: "mismatch", followUp: followUp(), view: view() };
+    currentReview = null;
+    reviewQueue = reviewQueue.slice(queued.length);
+    wakePending = false;
+    commit();
+    return { ok: true, reason: "submitted", followUp: followUp(), view: view() };
   }
 
   function wait(): LoopPlusWaitResult {
@@ -835,6 +864,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     finish,
     claimNextReview,
     submitReview,
+    submitReviewBatch,
     wait,
     complete,
     stopParent,

@@ -302,9 +302,9 @@ test("starts one main review when A finishes while B is still running", async ()
   assert.equal(beta.request.attemptId.length > 0, true);
 });
 
-test("reviews completions that arrive during review one at a time in FIFO order", async () => {
+test("accepts reviews already queued, plus user messages, together in the next decision", async () => {
   const env = harness({ maxConcurrency: 3 });
-  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({
     status: "dispatch",
@@ -321,20 +321,42 @@ test("reviews completions that arrive during review one at a time in FIFO order"
   assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
   env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
   env.attempts[2].resolve({ outcome: "failed", detail: "gamma" });
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "cover the new failure"), true);
   await flush();
   assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
   assert.equal(env.activeMains(), 1);
   const firstReview = env.mains[1];
-  assert.equal(firstReview.request.reviewEventId, buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId));
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId);
+  assert.equal(firstReview.request.reviewEventId, alphaEventId);
+  assert.deepEqual(firstReview.request.reviewEventIds, [alphaEventId]);
+  assert.match(firstReview.request.modelPrompt, /Acceptance batch count: 1/);
   assert.match(firstReview.request.modelPrompt, /FIFO review queue count: 2/);
-  firstReview.resolve(decisionJson({ status: "accept", reviewEventId: firstReview.request.reviewEventId }));
+  assert.equal(firstReview.request.prompt.includes("cover the new failure"), false);
+  firstReview.resolve(decisionJson({ status: "accept", reviewEventId: alphaEventId }));
   await flush();
   const second = env.mains.filter((item) => item.request.kind === "review")[1];
-  assert.equal(second.request.reviewEventId, buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId));
-  second.resolve(decisionJson({ status: "accept", reviewEventId: second.request.reviewEventId }));
+  const betaEventId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
+  const gammaEventId = buildLoopPlusFinishEventId("gamma", env.attempts[2].request.attemptId);
+  assert.deepEqual(second.request.reviewEventIds, [betaEventId, gammaEventId]);
+  assert.match(second.request.modelPrompt, /Acceptance batch count: 2/);
+  assert.match(second.request.prompt, /cover the new failure/);
+  second.resolve(decisionJson({ status: "accept", reviewEventId: betaEventId }));
   await flush();
-  const third = env.mains.filter((item) => item.request.kind === "review")[2];
-  assert.equal(third.request.reviewEventId, buildLoopPlusFinishEventId("gamma", env.attempts[2].request.attemptId));
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 3);
+  const retried = env.mains.filter((item) => item.request.kind === "review")[2];
+  assert.deepEqual(retried.request.reviewEventIds, [betaEventId, gammaEventId]);
+  assert.match(retried.request.prompt, /cover the new failure/);
+  retried.resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: [betaEventId, gammaEventId],
+    subtasks: [],
+  }));
+  await flush();
+  const task = env.tasks.get(run.taskId ?? "");
+  assert.equal(snapshotOf(task).currentReview, null);
+  assert.equal(snapshotOf(task).reviewQueue.length, 0);
+  assert.deepEqual(snapshotOf(task).userMessageQueue, []);
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 3);
   assert.equal(env.maxMains(), 1);
 });
 
@@ -1091,18 +1113,21 @@ test("retains a finished attempt when report writing fails and reviews the queue
   assert.equal(stored()?.status, "running");
   assert.equal(env.mainCalls(), 2);
   assert.equal(env.mains[1]?.request.kind, "review");
-  assert.equal(env.mains[1]?.request.reviewEventId, snapshotOf(stored()).currentReview?.eventId);
-  assert.equal(env.mains[1]?.request.reviewEventId, buildLoopPlusFinishEventId("alpha", alpha.request.attemptId));
+  assert.deepEqual(env.mains[1]?.request.reviewEventIds, [
+    buildLoopPlusFinishEventId("alpha", alpha.request.attemptId),
+    buildLoopPlusFinishEventId("beta", beta.request.attemptId),
+  ]);
   assert.equal(env.attempts.length, 2);
   assert.equal(await isSettled(continued.done), false);
   env.mains[1]?.resolve(decisionJson({
     status: "accept",
-    reviewEventId: env.mains[1]?.request.reviewEventId,
+    reviewEventIds: env.mains[1]?.request.reviewEventIds,
     subtasks: [],
   }));
   await flush();
-  assert.equal(env.mains[2]?.request.kind, "review");
-  assert.equal(env.mains[2]?.request.reviewEventId, buildLoopPlusFinishEventId("beta", beta.request.attemptId));
+  assert.equal(snapshotOf(stored()).currentReview, null);
+  assert.equal(snapshotOf(stored()).reviewQueue.length, 0);
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
   assert.equal(env.attempts.length, 2);
   assert.equal(stored()?.mainAiFailureCount ?? 0, 0);
   assert.equal(stored()?.currentRound ?? 0, 0);
@@ -1605,23 +1630,17 @@ test("keeps an in-flight completion queued while paused without starting the suc
   assert.equal(env.attempts.filter((item) => item.request.attemptId === parkedId).length, 1);
   assert.equal(env.attempts.length, 3);
   const alphaEventId = buildLoopPlusFinishEventId("alpha", alpha.request.attemptId);
-  assert.equal(env.mains[1]?.request.reviewEventId, alphaEventId);
+  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
+  assert.deepEqual(env.mains[1]?.request.reviewEventIds, [alphaEventId, betaEventId]);
   env.mains[1]?.resolve(decisionJson({
     status: "accept",
-    reviewEventId: alphaEventId,
+    reviewEventIds: [alphaEventId, betaEventId],
     subtasks: [],
   }));
   await flush();
-  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
-  assert.equal(env.mains[2]?.request.reviewEventId, betaEventId);
-  assert.equal(env.mains.filter((item) => item.request.reviewEventId === alphaEventId).length, 1);
-  env.mains[2]?.resolve(decisionJson({
-    status: "accept",
-    reviewEventId: betaEventId,
-    subtasks: [],
-  }));
-  await flush();
-  assert.equal(env.mains.filter((item) => item.request.reviewEventId === betaEventId).length, 1);
+  assert.equal(snapshotOf(stored()).currentReview, null);
+  assert.equal(snapshotOf(stored()).reviewQueue.length, 0);
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
   const gamma = env.attempts.find((item) => item.request.attemptId === parkedId);
   assert.ok(gamma);
   gamma.resolve({ outcome: "completed", detail: "gamma done" });

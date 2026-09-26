@@ -1,7 +1,7 @@
 # Loop+ 完成事件调度
 
 - 状态：proposed
-- 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
+- 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md`
 - 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 - 相关目录：`src/loopPlusScheduler.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/`、`src/webview/`
 
@@ -61,13 +61,13 @@
 
 `estimatedRemainingRounds` 始终可选。合法数字或数字字符串夹到 0–100 的整数，非法值省略而不是拒绝整份决策。它不建立轮次屏障，也不是完成前提。`roundSummaries` 与 `completionRoundSummaries` 不进入 Loop+ 决策，也不是 `completed` 的条件。
 
-出现 `reviewEventIds`、`confirmedEventIds` 或 `acceptedEventIds` 时整份决策为 `null`。解析器不能丢掉这些字段后假装只确认了当前项。
+出现 `confirmedEventIds` 或 `acceptedEventIds` 时整份决策为 `null`。`reviewEventId` 与 `reviewEventIds` 不能同时出现。解析器不能丢掉未声明的复数确认字段后假装只确认了当前项。
 
-- `dispatch`：必须有 1–6 个子任务，禁止携带 `reviewEventId`。宿主把子任务交给内核 dispatch；冲突或超额的进入 pending，不能只在新批次内部判断。
-- `accept`：必须有一个 trim 后非空的 `reviewEventId`，可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。宿主必须先确认该 id 就是当前验收项，再调用 `submitReview`；不一致时不得改确认成另一项。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
-- `wait`：不能有 `reviewEventId`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。用户消息批次里，只有仍有 running 或 pending 时才允许 `wait`；它表示先等在途子任务结束，而不是立刻派发一个占位子任务。没有在途工作时，`wait` 仍按原规则进入人工复核，不能空转。
-- `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId` 或新子任务。`finalSummary` 可选。解析器不改父状态。
-- `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。可以带一个非空 `reviewEventId` 申请确认当前项；字段缺失表示不确认，字段存在但为空则整份拒绝。不能附带子任务。解析器不完成任务。宿主在 `reviewEventId` 与当前项一致时先 `submitReview` 确认当前项，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一项 `accept` 并追加子任务。没有任何剩余工作时，最后一项同样合法的 `completed` 可以确认该项并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
+- `dispatch`：必须有 1–6 个子任务，禁止携带 `reviewEventId` 或 `reviewEventIds`。宿主把子任务交给内核 dispatch；冲突或超额的进入 pending，不能只在新批次内部判断。
+- `accept`：确认本轮验收批次。只有一项时必须有一个 trim 后非空的 `reviewEventId`；多于一项时必须有按顺序完全相同的 `reviewEventIds`，不能只写第一项。可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。宿主必须先确认这组 id 就是本轮冻结的批次，再调用 `submitReviewBatch`；不一致时不得改确认成另一组。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
+- `wait`：不能有 `reviewEventId` 或 `reviewEventIds`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。没有验收批次的用户消息轮次里，只有仍有 running 或 pending 时才允许 `wait`；它表示先等在途子任务结束，而不是立刻派发一个占位子任务。没有在途工作时，`wait` 仍按原规则进入人工复核，不能空转。验收批次开着时不能 `wait`。
+- `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId`、`reviewEventIds` 或新子任务。`finalSummary` 可选。解析器不改父状态。
+- `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。没有验收批次时省略确认字段。只有一项时可以带一个非空 `reviewEventId`；多于一项时必须带顺序完全相同的 `reviewEventIds`。字段存在但为空，或两种确认字段同时出现，则整份拒绝。不能附带子任务。解析器不完成任务。宿主在确认字段与本轮冻结批次一致时先 `submitReviewBatch` 确认整批，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一批 `accept` 并追加子任务。没有任何剩余工作时，最后一批同样合法的 `completed` 可以确认该批并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
 
 经典 `normalizeLoopMainDecision` 不变。
 
@@ -88,7 +88,7 @@
 - 未发布的 `loop-plus-finish:` 冒号拼接不做迁移。恢复时 `eventId` 必须等于该条 `subtaskId` / `attemptId` 的规范编码，并且能解析回同一对；否则抛出 `Invalid Loop+ scheduler snapshot`，不能映射到另一个 tuple。
 - 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`userMessageQueue`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。旧快照没有 `userMessageQueue` 时读成空数组；字段存在但不是去空白后的非空字符串数组则拒绝。加载时不信任 `phase` 文本。
 - `seenAttempts[*].outcome` 可选，只在执行结束后写入 `completed`、`failed` 或 `stopped`，验收后保留。旧快照没有该字段时仍可加载。`open` 不能带 outcome，非法 outcome 拒绝恢复。群聊不把调度 attempt 显示成验收状态：已确认且 outcome 为 `completed` 显示验收成功，`failed` 或 `stopped` 显示验收失败；旧快照缺少 outcome 时，失败或停止的执行在子任务记录里是 `blocked`，只有这种记录显示验收失败，否则显示验收成功。尚未确认的队列仍是待验收，不提前写成验收失败。
-- `userMessageQueue` 只保存尚未被主任务查看的用户消息，不进入验收队列。当前验收先做完；没有当前验收时，积压的用户消息先于下一条验收被同一次主任务查看。查看成功后只确认本轮开始时的前缀，执行期间新到的消息留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
+- `userMessageQueue` 只保存尚未被主任务查看的用户消息，不把消息本身变成验收事件。开始一轮验收时，当前项和当时已经排在 `reviewQueue` 里的完成事件一起确认；当时已经到达的用户消息也放进这一轮。没有待验收项时，积压消息仍先于下一条验收被单独查看。查看成功后只确认本轮开始时的前缀，执行期间新到的消息和完成事件留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
 - 已完成的 Loop+ 父任务不写经典回答结论和最终总结气泡。缺少这些气泡不能把它当成“完成信息不全、仍可恢复”的任务。用户之后在同一会话提交新的目标时，宿主新建一个绑定该 session 的 Loop+ 任务并启动主任务；新目标不能只追加到旧任务的 `supplementalRequirements`，也不能因为旧快照 `completed` 而被吞掉。显式继续一个已经完成的快照仍然只结算并释放控制器，不重新打开旧父任务。
 - 主任务和子任务发给模型的协议提示词仍写入会话消息，用来锚定本轮结果。展示层不渲染这些消息：trim 后以 `You are the Loop+ main reviewer.` 或 `You are one independent Loop+ execution attempt.` 开头的内容，不出现在对话气泡、历史会话、当前运行提示和提示词历史里。不要从存储删除它们，否则本轮助手结果对不上。
 - 没有当前验收且父任务未停止时，队首进入当前验收，并只在新的 wake 边沿返回 `wake: true`。已有当前验收时，新事件只追加。
@@ -133,7 +133,7 @@
 
 - 纯调度内核已阶段验收，可作为宿主调用的 API。它本身不接触 VS Code、CLI 或磁盘。
 - 模式、store 和决策解析已阶段验收。宿主已在经典批次循环之前增加 `event_driven` 分流。第 4 轮恢复死等、重复 `finish`、被拒绝派发、payload、按 Tab 模式、主 prompt 和暂停展示只在各自切片通过，不能当成接入完成。证据计数以执行计划为准。
-- 使用说明要求保持有效：中英文写清 Loop 等整批执行结束后集中复核，Loop+ 一个执行结束就逐个验收，验收期间其它完成进入可见队列，之后可以追加任务，没有新任务但仍有运行任务就等待。执行结束不等于验收完成。该帮助不代替整体验收。
+- 使用说明要求保持有效：中英文写清 Loop 等整批执行结束后集中复核，Loop+ 一个执行结束就开始验收；开始验收时，队列里已经在等待的完成事件一起确认，并带上当时已经到达的用户消息。验收期间新到的完成仍进入可见队列，留给下一轮。之后可以追加任务，没有新任务但仍有运行任务就等待。执行结束不等于验收完成。该帮助不代替整体验收。
 - 两处模式下拉都要求 `value="loop_plus"`，同时保留双语正文和 Graph 检查。这不是待用户决策。选择器断言已有 UI 切片通过，仍不是整体功能验收。
 - Graph 运行时已经会因同一 `conflictGroup` 或重叠 `writeFiles` 串行化。帮助缺点只保留准备成本、界面复杂度，以及仍然没有图编辑器；不再写不能自动解冲突。这不改变 Graph 行为，也不新声称自动合并冲突内容。
 - 基础 `normalizePromptPayload` 在 UI 切片中会保留 `loop_plus` 和角色模型字段。每个 Tab 只接受 `classic | event_driven`，未知或缺失为 classic；前端据此区分主任务模式，子任务仍是 coding，Graph 优先。这些都还不是端到端验收。Loop+ 子消息按自己的任务 ID 关联已有 `loopSchedulingMode` 为 `event_driven` 时不显示统一轮次，已有 UI 切片通过；未知或 classic 继续保留原轮次标签。这不是真实 Webview 验收。

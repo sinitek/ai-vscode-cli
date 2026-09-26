@@ -322,6 +322,34 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(parseExample(examples, "dispatch").subtasks?.length, 1);
 });
 
+test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    currentEventId: "event-live-42",
+    acceptanceEventIds: ["event-live-42", "event-queued-7"],
+    pendingUserMessages: ["cover the queued failure"],
+    view: view({
+      currentReview: review("event-live-42", "sub-current"),
+      reviewQueue: [review("event-queued-7", "sub-queued")],
+      visibleReviewCount: 2,
+    }),
+  }));
+  assert.match(prompt, /Acceptance batch count: 2/);
+  assert.match(prompt, /1\. event-live-42/);
+  assert.match(prompt, /2\. event-queued-7/);
+  assert.match(prompt, /1\. cover the queued failure/);
+  assert.match(prompt, /read those messages in the same decision/);
+  const examples = extractProtocolExamples(prompt);
+  const accept = JSON.parse(examples.get("accept") ?? "{}") as Record<string, unknown>;
+  assert.deepEqual(accept.reviewEventIds, ["event-live-42", "event-queued-7"]);
+  assert.equal(Object.prototype.hasOwnProperty.call(accept, "reviewEventId"), false);
+  const parsed = parseLoopPlusDecision(JSON.stringify(accept));
+  assert.deepEqual(parsed?.reviewEventIds, ["event-live-42", "event-queued-7"]);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    ...accept,
+    reviewEventId: "event-live-42",
+  })), null);
+});
+
 test("subtask prompt limits itself to the supplied attempt report and write scope", () => {
   const prompt = buildLoopPlusSubtaskModelPrompt({
     taskId: "task-token",

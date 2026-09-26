@@ -9,7 +9,6 @@ import {
   createLoopPlusScheduler,
   type LoopPlusExecutionOutcome,
   type LoopPlusExecutionRecord,
-  type LoopPlusReviewItem,
   type LoopPlusScheduler,
   type LoopPlusSchedulerSnapshot,
 } from "../loopPlusScheduler";
@@ -71,6 +70,7 @@ export type LoopPlusMainRequest = {
   prompt: string;
   modelPrompt: string;
   reviewEventId: string | null;
+  reviewEventIds?: string[];
   userMessageCount?: number;
   target: LoopPlusPromptTarget;
 };
@@ -154,6 +154,7 @@ type InFlightAttempt = {
 type MainStep = {
   kind: LoopPlusMainKind;
   eventId: string | null;
+  eventIds: string[];
   userMessageCount: number;
 };
 
@@ -689,51 +690,68 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
   }
 
+  function heldBatchIntact(snapshot: LoopPlusSchedulerSnapshot, step: MainStep): boolean {
+    const current = snapshot.currentReview;
+    if (!current || step.eventIds.length === 0 || current.eventId !== step.eventIds[0]) {
+      return false;
+    }
+    return step.eventIds.slice(1).every((eventId, index) => snapshot.reviewQueue[index]?.eventId === eventId);
+  }
+
   function planStep(runtime: ParentRuntime): MainStep | null {
     const snapshot = runtime.scheduler.snapshot();
     if (runtime.released || snapshot.completed || snapshot.parentStopped || runtime.stopRequested || runtime.autoPaused) {
       return null;
     }
-    if (snapshot.currentReview) {
-      const claimed = runtime.scheduler.claimNextReview();
-      persist(runtime);
-      if (!claimed.ok || !claimed.item) {
-        return null;
-      }
-      return { kind: "review", eventId: claimed.item.eventId, userMessageCount: 0 };
+    if (snapshot.currentReview || snapshot.reviewQueue.length > 0) {
+      return planReview(runtime);
     }
     if (!runtime.initialPromptDone) {
       runtime.initialPromptDone = true;
-      return { kind: "initial", eventId: null, userMessageCount: 0 };
+      return plainStep("initial");
     }
     const pendingUserMessages = runtime.scheduler.snapshot().userMessageQueue.length;
     if (pendingUserMessages > 0) {
       runtime.forcePrompt = false;
-      return { kind: "user", eventId: null, userMessageCount: pendingUserMessages };
-    }
-    if (snapshot.reviewQueue.length > 0) {
-      const claimed = runtime.scheduler.claimNextReview();
-      persist(runtime);
-      if (!claimed.ok || !claimed.item) {
-        return null;
-      }
-      return { kind: "review", eventId: claimed.item.eventId, userMessageCount: 0 };
+      return plainStep("user", pendingUserMessages);
     }
     if (runtime.forcePrompt) {
       runtime.forcePrompt = false;
-      return { kind: "continue", eventId: null, userMessageCount: 0 };
+      return plainStep("continue");
     }
     if (runtime.closeoutBudget > 0 && snapshot.running.length === 0 && snapshot.pending.length === 0) {
       runtime.closeoutBudget -= 1;
-      return { kind: "closeout", eventId: null, userMessageCount: 0 };
+      return plainStep("closeout");
     }
     return null;
+  }
+
+  function planReview(runtime: ParentRuntime): MainStep | null {
+    const claimed = runtime.scheduler.claimNextReview();
+    persist(runtime);
+    if (!claimed.ok || !claimed.item) {
+      return null;
+    }
+    const eventIds = [
+      claimed.item.eventId,
+      ...claimed.view.reviewQueue.map((item) => item.eventId),
+    ];
+    return {
+      kind: "review",
+      eventId: claimed.item.eventId,
+      eventIds,
+      userMessageCount: claimed.view.userMessageQueue.length,
+    };
+  }
+
+  function plainStep(kind: Exclude<LoopPlusMainKind, "review">, userMessageCount = 0): MainStep {
+    return { kind, eventId: null, eventIds: [], userMessageCount };
   }
 
   function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): "continue" | "wait" | "stop" {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
-    if (step.kind === "review" && (!held || held.eventId !== step.eventId)) {
+    if (step.kind === "review" && !heldBatchIntact(snapshot, step)) {
       if (hasReview(runtime)) {
         return "continue";
       }
@@ -787,14 +805,15 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return "wait";
     }
     if (decision.status === "accept") {
-      if (!held || decision.reviewEventId !== held.eventId) {
-        return protocolMiss(runtime, Boolean(held));
+      if (step.kind !== "review" || !sameIds(confirmedReviewIds(decision), step.eventIds)) {
+        return protocolMiss(runtime, step.eventIds.length > 0);
       }
-      const submitted = runtime.scheduler.submitReview(held.eventId);
+      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
       if (!submitted.ok) {
         persist(runtime);
         return runtime.scheduler.snapshot().parentStopped ? "stop" : protocolMiss(runtime, true);
       }
+      acknowledgeSeenUserMessages(runtime, step);
       runtime.protocolRetries = 0;
       resetMainFailure(runtime);
       dispatchDecisions(runtime, decision.subtasks ?? []);
@@ -822,25 +841,25 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       pause(runtime, "needs-review", "loop-plus-blocked", decision.finalSummary);
       return "stop";
     }
-    return applyCompleted(runtime, held, decision, step);
+    return applyCompleted(runtime, decision, step);
   }
 
   function applyCompleted(
     runtime: ParentRuntime,
-    held: LoopPlusReviewItem | null,
     decision: LoopPlusDecision,
     step: MainStep,
   ): "continue" | "wait" | "stop" {
-    if (held) {
-      if (decision.reviewEventId !== held.eventId) {
+    const confirmed = confirmedReviewIds(decision);
+    if (step.eventIds.length > 0) {
+      if (!sameIds(confirmed, step.eventIds)) {
         return protocolMiss(runtime, true);
       }
-      const submitted = runtime.scheduler.submitReview(held.eventId);
+      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
       if (!submitted.ok) {
         persist(runtime);
         return "stop";
       }
-    } else if (decision.reviewEventId) {
+    } else if (confirmed.length > 0) {
       return protocolMiss(runtime, false);
     }
     acknowledgeSeenUserMessages(runtime, step);
@@ -1438,7 +1457,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       view: runtime.scheduler.wait().view,
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],
-      pendingUserMessages: step.kind === "user"
+      acceptanceEventIds: step.eventIds,
+      pendingUserMessages: step.userMessageCount > 0
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
       subtaskMax: decisionSubtaskMax(),
@@ -1449,6 +1469,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       prompt,
       modelPrompt: prompt,
       reviewEventId: step.eventId,
+      reviewEventIds: step.eventIds.slice(),
       userMessageCount: step.userMessageCount,
       target: runtime.target,
     };
@@ -1487,6 +1508,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const refreshed = buildMainRequest(runtime, {
       kind: request.kind,
       eventId: request.reviewEventId,
+      eventIds: request.reviewEventIds ?? (request.reviewEventId ? [request.reviewEventId] : []),
       userMessageCount: request.userMessageCount ?? 0,
     });
     request.prompt = refreshed.prompt;
@@ -1610,7 +1632,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function acknowledgeSeenUserMessages(runtime: ParentRuntime, step: MainStep): void {
-    if (step.kind !== "user" || step.userMessageCount <= 0) {
+    if (step.userMessageCount <= 0) {
       return;
     }
     runtime.scheduler.ackUserMessages(step.userMessageCount);
@@ -1726,6 +1748,20 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     reportAttempt,
     submitUserMessage,
   };
+}
+
+function confirmedReviewIds(decision: LoopPlusDecision): string[] {
+  if (decision.reviewEventIds && decision.reviewEventIds.length > 0) {
+    return decision.reviewEventIds;
+  }
+  if (decision.reviewEventId) {
+    return [decision.reviewEventId];
+  }
+  return [];
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
 function invalidSnapshotReason(task: LoopTaskRecord): string | null {

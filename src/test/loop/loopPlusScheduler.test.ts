@@ -122,6 +122,32 @@ test("keeps completions that arrive during review in a stable FIFO queue", () =>
   assert.ok(scheduler.snapshot().seq > seqBeforeArrivals);
 });
 
+test("confirms a queued review prefix together and leaves a later arrival", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
+  scheduler.dispatch([spec("alpha"), spec("beta"), spec("gamma"), spec("delta")]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "failed" });
+  assert.equal(scheduler.submitReview(reviewEvent("alpha")).ok, true);
+  assert.deepEqual(attemptIds(scheduler.snapshot().reviewQueue), ["beta-1", "gamma-1"]);
+
+  scheduler.finish({ subtaskId: "delta", attemptId: "delta-1", outcome: "stopped" });
+  assert.equal(scheduler.snapshot().currentReview?.attemptId, "beta-1");
+  assert.deepEqual(attemptIds(scheduler.snapshot().reviewQueue), ["gamma-1", "delta-1"]);
+  const skipped = scheduler.submitReviewBatch([reviewEvent("beta"), reviewEvent("delta")]);
+  assert.equal(skipped.reason, "mismatch");
+  assert.equal(scheduler.submitReviewBatch([reviewEvent("beta"), reviewEvent("beta")]).reason, "invalid_event");
+  assert.equal(scheduler.snapshot().currentReview?.attemptId, "beta-1");
+
+  const batch = [reviewEvent("beta"), reviewEvent("gamma")];
+  const submitted = scheduler.submitReviewBatch(batch);
+  assert.equal(submitted.ok, true);
+  assert.equal(scheduler.snapshot().currentReview, null);
+  assert.deepEqual(attemptIds(scheduler.snapshot().reviewQueue), ["delta-1"]);
+  assert.equal(scheduler.submitReviewBatch(batch).ok, true);
+  assert.equal(scheduler.snapshot().seq, submitted.view.seq);
+});
+
 test("ignores duplicate notifications and stale attempts without touching the new run", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   scheduler.dispatch([spec("alpha")]);

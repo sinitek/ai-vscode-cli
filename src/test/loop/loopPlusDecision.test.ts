@@ -199,6 +199,23 @@ test("rejects decisions that would confirm a review implicitly or dispatch while
     reviewEventId: "event-1",
     reviewEventIds: ["event-1", "event-2"],
   })), null);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "dispatch",
+    reviewEventIds: ["event-1"],
+    subtasks: [subtask("alpha")],
+  })), null);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-1"],
+    confirmedEventIds: ["event-1"],
+  })), null);
+  const batch = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventIds: [" event-1 ", "event-2"],
+    subtasks: [],
+  }));
+  assert.deepEqual(batch?.reviewEventIds, ["event-1", "event-2"]);
+  assert.equal(batch?.reviewEventId, undefined);
 });
 
 test("parses blocked and completed without requiring estimated rounds", () => {
@@ -228,6 +245,13 @@ test("parses blocked and completed without requiring estimated rounds", () => {
   assert.equal(withoutEvent?.reviewEventId, undefined);
   assert.equal(withoutEvent?.estimatedRemainingRounds, 4);
   assert.equal(Object.prototype.hasOwnProperty.call(withoutEvent ?? {}, "roundSummaries"), false);
+
+  const batch = parseLoopPlusDecision(JSON.stringify({
+    ...completedFields(),
+    reviewEventIds: [" event-1 ", "event-2"],
+  }));
+  assert.deepEqual(batch?.reviewEventIds, ["event-1", "event-2"]);
+  assert.equal(batch?.reviewEventId, undefined);
 });
 
 test("rejects illegal completed decisions instead of dropping failed evidence", () => {
@@ -241,7 +265,10 @@ test("rejects illegal completed decisions instead of dropping failed evidence", 
     { ...completedFields(), requirementCoverage: [{ name: "原始需求", passed: false }] },
     { ...completedFields(), reviewEventId: " " },
     { ...completedFields(), subtasks: [subtask("alpha")] },
-    { ...completedFields(), reviewEventIds: ["event-2"] },
+    { ...completedFields("event-1"), reviewEventIds: ["event-2"] },
+    { ...completedFields(), reviewEventIds: ["event-2", "event-2"] },
+    { ...completedFields(), reviewEventIds: [] },
+    { ...completedFields(), reviewEventIds: ["  "] },
   ];
   cases.forEach((value) => {
     assert.equal(normalizeLoopPlusDecision(value), null);
