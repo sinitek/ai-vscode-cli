@@ -271,6 +271,65 @@ export function buildLoopMainSubSubtaskTurnBody(options: {
   return lines.join("\n");
 }
 
+export function buildLoopSubtaskJoinedChatSection(options: {
+  subtaskId: string;
+  title: string;
+  round: number;
+  communicationFile?: string | null;
+  retryCount?: number;
+  timestamp?: string;
+}): { heading: string; body: string } {
+  const retryCount = options.retryCount ?? 0;
+  const communicationFile = normalizeLoopCommunicationFilePath(options.communicationFile);
+  const lines = [
+    `- 成员 ID：${options.subtaskId}`,
+    `- 时间：${options.timestamp ?? new Date().toISOString()}`,
+    `- 轮次：${options.round}`,
+    retryCount > 0 ? `- 重试：第 ${retryCount} 次` : null,
+    `- 状态：running`,
+    communicationFile ? `- 沟通文件：${communicationFile}` : null,
+  ].filter((line): line is string => Boolean(line));
+  return {
+    heading: `子任务加入：${formatLoopGroupChatMemberName(options.title)}`,
+    body: lines.join("\n"),
+  };
+}
+
+export function buildLoopSubtaskFinishedChatSection(options: {
+  subtaskId: string;
+  title: string;
+  runStatus: string;
+  assistantContent?: string | null;
+  communicationFile?: string | null;
+  includeCommunicationFile?: boolean;
+}): { heading: string; body: string } {
+  const communicationFile = normalizeLoopCommunicationFilePath(options.communicationFile);
+  const turn = buildLoopMainSubSubtaskTurnBody({
+    runStatus: options.runStatus,
+    assistantContent: options.assistantContent,
+    communicationFile,
+  });
+  const fileLine = communicationFile ? `- 沟通文件：${communicationFile}` : "";
+  const shouldAppendFile = Boolean(
+    options.includeCommunicationFile
+    && fileLine
+    && !turn.split("\n").some((line) => line.trim() === fileLine),
+  );
+  return {
+    heading: `子任务发言：${formatLoopGroupChatMemberName(options.title)}`,
+    body: [
+      `- 成员 ID：${options.subtaskId}`,
+      "",
+      turn,
+      ...(shouldAppendFile ? ["", fileLine] : []),
+    ].join("\n"),
+  };
+}
+
+function normalizeLoopCommunicationFilePath(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export type LoopDebateConsensusValidationResult = {
   canProceed: boolean;
   consensusReached: boolean;

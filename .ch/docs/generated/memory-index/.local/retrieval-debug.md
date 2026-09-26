@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-09-25T09:46:19Z
-- Focus: Loop+ protocol prompt bubble hide displayPrompt
-- Focus terms: `loop`, `protocol`, `prompt`, `bubble`, `hide`, `displayprompt`
+- Focus: Loop+ 子任务完成沟通文件消息
+- Focus terms: `loop`, `子任务完成沟通文件消息`, `子任`, `任务`, `务完`, `完成`, `成沟`, `沟通`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
@@ -32,22 +32,22 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-538cb1444d` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
+| 1 | `mem-538cb1444d` | `105` | `103` | loop, 完成 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
 
 ## Score Breakdown
 
 ### mem-538cb1444d - Loop+ 完成事件驱动验收
 
-- Final score: `93`
-- Base score: `91`
-- Matched terms: `loop`
+- Final score: `105`
+- Base score: `103`
+- Matched terms: `loop`, `完成`
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 
 | Heuristic | Contribution |
 | --- | --- |
 | `type_priority` | `68` |
-| `focus_terms` | `12` |
+| `focus_terms` | `24` |
 | `open_loop_bonus` | `0` |
 | `read_cost_adjustment` | `2` |
 | `evidence_bonus` | `6` |

@@ -1,6 +1,5 @@
 import type { ChildProcess } from "child_process";
 import { spawn } from "cross-spawn";
-import * as readline from "readline";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
@@ -13,6 +12,11 @@ import {
   shouldSettleCodexPrimaryTurn,
   type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
+import {
+  createCodexAppServerNdjsonReader,
+  serializeCodexAppServerMessage,
+  type CodexAppServerNdjsonReader,
+} from "./codexAppServerNdjson";
 import {
   buildAppServerRequestResolution,
   buildForwardedRawEvent,
@@ -279,7 +283,7 @@ export class CodexInteractiveRunner {
     let exitSettled = false;
     let threadCompacted = false;
     const pendingRequests = new Map<number, JsonRpcPendingRequest>();
-    let rl: readline.Interface | null = null;
+    let stdoutReader: CodexAppServerNdjsonReader | null = null;
     let completionResolve: ((value: CodexCompactionResult) => void) | null = null;
     let completionReject: ((error: Error) => void) | null = null;
 
@@ -326,7 +330,7 @@ export class CodexInteractiveRunner {
           activeChildren: this.activeChildren.size,
           error: error.message,
         });
-        rl?.close();
+        stdoutReader?.close();
         settleExit({ code: null, signal: null });
         failRun(normalizedError);
       });
@@ -377,7 +381,7 @@ export class CodexInteractiveRunner {
       if (!child.stdin || !child.stdin.writable) {
         throw new Error(t("codex.appServerStdinUnavailable"));
       }
-      child.stdin.write(`${JSON.stringify(message)}\n`);
+      child.stdin.write(serializeCodexAppServerMessage(message));
     };
 
     const request = <T = unknown>(method: string, params: Record<string, unknown>): Promise<T> => {
@@ -417,11 +421,8 @@ export class CodexInteractiveRunner {
       throw new Error(t("codex.appServerNoStdout"));
     }
 
-    rl = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    });
-    const outputReader = rl;
+    stdoutReader = createCodexAppServerNdjsonReader(child.stdout);
+    const outputReader = stdoutReader.lines;
 
     const outputLoopPromise = (async (): Promise<void> => {
       try {
@@ -570,7 +571,7 @@ export class CodexInteractiveRunner {
       }
       throw error;
     } finally {
-      rl?.close();
+      stdoutReader?.close();
       child.removeAllListeners();
       child.stderr?.removeAllListeners();
       child.stdout?.removeAllListeners();
@@ -680,7 +681,7 @@ export class CodexInteractiveRunner {
     const reasoningBuffers = new Map<string, CodexReasoningBufferState>();
     const emittedTraceContents = new Map<string, string>();
     let activeTurnId = "";
-    let rl: readline.Interface | null = null;
+    let stdoutReader: CodexAppServerNdjsonReader | null = null;
     let turnCompletionResolve: (() => void) | null = null;
     let turnCompletionReject: ((error: Error) => void) | null = null;
 
@@ -734,7 +735,7 @@ export class CodexInteractiveRunner {
           code: (error as NodeJS.ErrnoException).code ?? null,
           error: normalizedError.message,
         });
-        rl?.close();
+        stdoutReader?.close();
         settleExit({ code: null, signal: null });
         failRun(normalizedError);
       });
@@ -790,7 +791,7 @@ export class CodexInteractiveRunner {
       if (!child.stdin || !child.stdin.writable) {
         throw new Error(t("codex.appServerStdinUnavailable"));
       }
-      child.stdin.write(`${JSON.stringify(message)}\n`);
+      child.stdin.write(serializeCodexAppServerMessage(message));
     };
 
     const request = <T = unknown>(method: string, params: Record<string, unknown>): Promise<T> => {
@@ -873,11 +874,8 @@ export class CodexInteractiveRunner {
       throw new Error(t("codex.appServerNoStdout"));
     }
 
-    rl = readline.createInterface({
-      input: child.stdout,
-      crlfDelay: Infinity,
-    });
-    const outputReader = rl;
+    stdoutReader = createCodexAppServerNdjsonReader(child.stdout);
+    const outputReader = stdoutReader.lines;
 
     const outputLoopPromise = (async (): Promise<void> => {
       try {
@@ -1256,7 +1254,7 @@ export class CodexInteractiveRunner {
       }
       throw error;
     } finally {
-      rl?.close();
+      stdoutReader?.close();
       child.removeAllListeners();
       child.stderr?.removeAllListeners();
       child.stdout?.removeAllListeners();

@@ -363,6 +363,37 @@
 - `src/interactive/codexRunnerProcess.ts`
 - `src/test/interactive/codexRunnerLifecycle.test.ts`
 
+## Codex app-server 不能用 readline 拆 NDJSON
+
+- 状态：已规避，需随 app-server stdout 读取实现变化复核
+- 首次发现：2026-09-26
+- 适用范围：`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerNdjson.ts`、VS Code Extension Host
+
+### 现象
+- 提示词里只要带上从网页或文档粘贴来的行分隔符，AI 对话一发起就失败：`解析 Codex app-server 消息失败：Unterminated string in JSON`。
+- 普通换行、引号和反斜杠本身可以被 `JSON.stringify` 正确转义；失败位置会落在 U+2028 第一次出现的地方。
+
+### 触发条件
+- VS Code 1.138 的 Extension Host 是 Node 24。`readline.createInterface` 会把 U+2028 LINE SEPARATOR 和 U+2029 PARAGRAPH SEPARATOR 当成换行。
+- Codex app-server 把用户提示词原样放进 `item/started` 等单行 JSON 后，这些字符仍留在字符串里。readline 先把消息截断，`JSON.parse` 才报未闭合字符串。
+
+### 根因
+- `JSON.stringify` 不转义 U+2028/U+2029，而 Node 24 readline 把它们当行边界。NDJSON 的真实边界只有 LF/CRLF。
+
+### 长期规避
+- 读取 Codex app-server stdout 只能按 LF/CRLF 拆帧，不能使用 `readline`。
+- 写往 stdin 的 JSON-RPC 要把 U+2028/U+2029 转义成 `\u2028` / `\u2029`。
+- 多字节字符被拆到两个 chunk 时要用 `StringDecoder`，避免把行分隔符的 UTF-8 截断。
+
+### 验证方式
+- 执行 `npm run build`。
+- 执行 `node --test dist/test/interactive/codexAppServerNdjson.test.js dist/test/interactive/codexRunnerLifecycle.test.js`。
+
+### 关联资料
+- `src/interactive/codexAppServerNdjson.ts`
+- `src/interactive/codexRunner.ts`
+- `src/test/interactive/codexAppServerNdjson.test.ts`
+
 ## LoopMainDecision 解析不能优先采用 prompt 内 fenced JSON 示例
 
 - 状态：已规避，需随 Loop 主任务协议和 prompt 模板变化复核

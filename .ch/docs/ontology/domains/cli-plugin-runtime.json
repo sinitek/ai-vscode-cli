@@ -424,6 +424,19 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_subtask_chat",
+      "name": "Loop+ 子任务完成写入沟通文件消息",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopPlusSubtaskChat.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_dispatch_subtask_max",
       "name": "Loop+ 单次派发子任务上限可配置",
       "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency；超出并发上限的已接受子任务留在 pending。",

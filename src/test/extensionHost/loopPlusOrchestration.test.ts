@@ -11,6 +11,7 @@ import {
   type LoopPlusOrchestrationDeps,
   type LoopPlusPromptTarget,
 } from "../../extensionHost/loopPlusOrchestration";
+import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
 
@@ -110,6 +111,7 @@ function harness(options: {
   throwOnStart?: boolean;
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   recordAttempt?: LoopPlusOrchestrationDeps["recordAttempt"];
+  appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
   beforeReadTask?: () => void;
   beforeUpdateTask?: (patch: Partial<LoopTaskRecord>) => void;
   adaptMain?: (request: LoopPlusMainRequest, callIndex: number) => LoopPlusMainHandle | undefined;
@@ -132,6 +134,7 @@ function harness(options: {
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
     prepareCommunication: options.prepareCommunication,
+    appendSubtaskChat: options.appendSubtaskChat,
     readTask: (taskId) => {
       options.beforeReadTask?.();
       return tasks.get(taskId) ?? null;
@@ -1714,3 +1717,53 @@ test("keeps a stopped or failed-limit Loop+ parent from being woken by user spee
   assert.equal(env.mains.length, mainsBefore);
 });
 
+
+test("posts the communication file when a Loop+ subtask starts and finishes", async () => {
+  const notices: LoopPlusSubtaskChatNotice[] = [];
+  const env = harness({
+    prepareCommunication: (_task, subtask) => `/tmp/loop-plus/${subtask.id}.md`,
+    appendSubtaskChat: (_target, notice) => {
+      notices.push(notice);
+    },
+  });
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0]?.phase, "started");
+  assert.equal(notices[0]?.subtaskId, "alpha");
+  assert.equal(notices[0]?.communicationFile, "/tmp/loop-plus/alpha.md");
+  assert.equal(env.attempts[0]?.request.communicationFile, "/tmp/loop-plus/alpha.md");
+  env.attempts[0]?.resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  assert.equal(notices.length, 2);
+  assert.equal(notices[1]?.phase, "finished");
+  assert.equal(notices[1]?.runStatus, "end");
+  assert.equal(notices[1]?.assistantContent, "alpha done");
+  assert.equal(notices[1]?.communicationFile, "/tmp/loop-plus/alpha.md");
+  assert.equal(env.mains.some((item) => item.request.kind === "review"), true);
+});
+
+test("still accepts a finished Loop+ subtask when the chat notice fails", async () => {
+  const env = harness({
+    prepareCommunication: () => "/tmp/loop-plus/alpha.md",
+    appendSubtaskChat: () => {
+      throw new Error("chat down");
+    },
+  });
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  env.attempts[0]?.resolve({ outcome: "failed", detail: "boom" });
+  await flush();
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-chat-failed"), true);
+  assert.equal(env.mains.some((item) => item.request.kind === "review"), true);
+});

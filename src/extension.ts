@@ -447,6 +447,11 @@ import {
   LOOP_SUBTASK_RETRY_MAX_RETRIES,
 } from "./extensionHost/loopOrchestration";
 import { createLoopPlusRuntimeAdapter, selectLoopPlusContinuationDetail } from "./extensionHost/loopPlusRuntimeAdapter";
+import {
+  buildLoopPlusGroupChatSection,
+  buildLoopPlusSubtaskParentMessage,
+  type LoopPlusSubtaskChatNotice,
+} from "./extensionHost/loopPlusSubtaskChat";
 import { createModelSettingsHost, schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { createExtensionSessionTabsHost } from "./extensionHost/sessionTabs";
 import { createGraphMessagesHost, type GraphRuntimeMessageKey } from "./extensionHost/graphMessages";
@@ -3972,6 +3977,9 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           actions: [buildLoopDebateChatMessageAction(taskId)],
         });
       },
+      appendSubtaskChat: (target, notice) => {
+        appendLoopPlusSubtaskChat(target, notice);
+      },
       prepareCommunication: (task, subtask, round) => prepareLoopSubtaskCommunicationFile(task, subtask, round, 0),
       appendAttemptReport: (filePath, content) => {
         appendTextFileEnsuringDir(filePath, content);
@@ -4098,6 +4106,32 @@ async function closeLoopPlusSubtaskTab(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function appendLoopPlusSubtaskChat(
+  target: Parameters<typeof appendSystemMessageForLoop>[0],
+  notice: LoopPlusSubtaskChatNotice,
+): void {
+  const task = readLoopTaskRecord(notice.taskId);
+  if (task && !isLoopDebateGroupChatTask(task)) {
+    const index = task.subTasks.findIndex((subtask) => subtask.id === notice.subtaskId);
+    const recorded = index >= 0 ? task.subTasks[index] : undefined;
+    const displayTitle = getLoopSubtaskDisplayTitle(index, {
+      title: recorded?.title || notice.title,
+    });
+    const section = buildLoopPlusGroupChatSection(notice, displayTitle);
+    const chatFile = ensureLoopMainSubChatTranscript(task);
+    appendTextFileEnsuringDir(chatFile, `\n## ${section.heading}\n${section.body.trim()}\n`);
+    refreshOpenLoopGroupChatPanelForTask(task.id);
+  }
+  appendSystemMessageForLoop(target, buildLoopPlusSubtaskParentMessage(notice), {
+    taskRole: "main",
+    loopTaskId: notice.taskId,
+    loopRound: notice.round,
+    loopSubtaskId: notice.subtaskId,
+    merge: false,
+    actions: [buildLoopDebateChatMessageAction(notice.taskId)],
+  });
 }
 
 function loopPlusHostMessage(message: string, taskId: string): string {

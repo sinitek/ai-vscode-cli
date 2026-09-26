@@ -26,10 +26,12 @@ import {
   buildLoopPlusMainModelPrompt,
   buildLoopPlusSubtaskModelPrompt,
 } from "./loopPlusPromptBuilders";
+import type { LoopPlusSubtaskChatNotice } from "./loopPlusSubtaskChat";
 
 export const LOOP_PLUS_MAX_CONCURRENCY = 6;
 const DECISION_SAFETY_LIMIT = 200;
 const PROTOCOL_RETRY_LIMIT = 2;
+const LOOP_PLUS_ATTEMPT_ROUND = 1;
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -131,6 +133,7 @@ export type LoopPlusOrchestrationDeps = {
     detail: string | null;
     communicationFile?: string;
   }) => void;
+  appendSubtaskChat?: (target: LoopPlusPromptTarget, notice: LoopPlusSubtaskChatNotice) => void;
   log?: (event: string, payload?: unknown) => void;
 };
 
@@ -1040,6 +1043,46 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     });
   }
 
+
+  function finishedChatNotice(
+    input: {
+      subtaskId: string;
+      outcome: LoopPlusExecutionOutcome;
+      detail: string | null;
+    },
+    meta: SubtaskMeta | undefined,
+  ): LoopPlusSubtaskChatNotice {
+    return {
+      taskId: "",
+      subtaskId: input.subtaskId,
+      title: meta?.decision.title ?? input.subtaskId,
+      phase: "finished",
+      round: LOOP_PLUS_ATTEMPT_ROUND,
+      communicationFile: meta?.communicationFile,
+      runStatus: input.outcome === "completed" ? "end" : input.outcome === "stopped" ? "stopped" : "error",
+      assistantContent: input.detail,
+    };
+  }
+
+  function notifySubtaskChat(runtime: ParentRuntime, notice: Omit<LoopPlusSubtaskChatNotice, "taskId">): void {
+    if (!deps.appendSubtaskChat) {
+      return;
+    }
+    try {
+      deps.appendSubtaskChat(runtime.target, {
+        ...notice,
+        taskId: runtime.taskId,
+      });
+    } catch (error) {
+      deps.log?.("loop-plus-chat-failed", {
+        taskId: runtime.taskId,
+        subtaskId: notice.subtaskId,
+        phase: notice.phase,
+        error: errorText(error),
+      });
+    }
+  }
+
   async function startQueuedAttempt(
     runtime: ParentRuntime,
     record: LoopPlusExecutionRecord,
@@ -1121,6 +1164,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         meta.executionStatus = "running";
       }
       persist(runtime, { status: runtime.scheduler.snapshot().parentStopped ? "stopped" : "running" });
+      notifySubtaskChat(runtime, {
+        phase: "started",
+        subtaskId: record.subtaskId,
+        title: decision.title,
+        round: LOOP_PLUS_ATTEMPT_ROUND,
+        communicationFile,
+      });
       const request: LoopPlusAttemptRequest = {
         taskId: runtime.taskId,
         subtaskId: record.subtaskId,
@@ -1138,7 +1188,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         writeFiles: record.writeFiles,
         conflictGroup: record.conflictGroup ?? undefined,
         communicationFile,
-        round: 1,
+        round: LOOP_PLUS_ATTEMPT_ROUND,
         targetCli: runtime.cli,
       };
       let handle: LoopPlusAttemptHandle;
@@ -1276,6 +1326,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
+      notifySubtaskChat(runtime, finishedChatNotice(input, meta));
       return;
     }
     if (task && deps.recordAttempt) {
@@ -1298,6 +1349,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         });
         releaseUnstartedReservations(runtime, result.started);
         retainFinishFailure(runtime, "loop-plus-report-failed", `Loop+ attempt report failed: ${detail}`);
+        notifySubtaskChat(runtime, finishedChatNotice(input, meta));
         return;
       }
     }
@@ -1315,8 +1367,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
+      notifySubtaskChat(runtime, finishedChatNotice(input, meta));
       return;
     }
+    notifySubtaskChat(runtime, finishedChatNotice(input, meta));
     if (
       runtime.autoPaused
       || runtime.released

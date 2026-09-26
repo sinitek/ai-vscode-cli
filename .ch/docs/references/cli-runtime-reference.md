@@ -42,7 +42,7 @@
 ### Codex
 
 - 使用当前用户安装的官方 `codex` CLI
-- 通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话
+- 通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话。消息按 NDJSON 拆帧，只把 LF/CRLF 当边界；提示词里的 U+2028/U+2029 行分隔符留在 JSON 字符串内，写出时转义为 `\u2028` / `\u2029`，避免被 Node readline 截断成 Unterminated string
 - 优先直接 `spawn` 已解析的 Codex 可执行路径；macOS 仅在命令无法直接解析时回退到用户配置的 shell 包装
 - Codex app-server 在 macOS/Linux 下以独立 process group 运行；运行时以 active child 集合跟踪，停止、取消、扩展停用或 `spawn error` 都会对所有活跃 child 先关 stdin、再升级到 `SIGTERM` / `SIGKILL` 清理进程组，避免 Node wrapper / vendor binary 残留导致后续 `EAGAIN`
 - 会为 Codex 子进程显式注入 `CODEX_HOME` / `CODEX_HOME_DIR`，并移除 `npm_config_prefix` / `NPM_CONFIG_PREFIX`
