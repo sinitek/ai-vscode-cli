@@ -403,6 +403,8 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
     taskStoreFile: "task-record",
   });
   assert.equal(isHiddenLoopPlusProtocolPrompt(mainPrompt), true);
+  assert.match(mainPrompt, /Any earlier task list in this thread is stale/);
+  assert.doesNotMatch(subtaskPrompt, /Any earlier task list in this thread is stale/);
   assert.equal(isHiddenLoopPlusProtocolPrompt(`\n${subtaskPrompt}`), true);
   assert.equal(isHiddenLoopPlusProtocolPrompt("fix the bubble"), false);
   assert.equal(isHiddenLoopPlusProtocolPrompt("请看 You are the Loop+ main reviewer."), false);

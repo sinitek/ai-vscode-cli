@@ -21,6 +21,7 @@ import type {
   LoopDebateRoundStatus,
 } from "../loopDebate";
 import type { LoopDebateParticipantDefinition } from "../loopPromptBuilders";
+import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
 import type {
   LoopDebateParticipantBatchRunItem,
   LoopDebateRunnerDeps,
@@ -2901,6 +2902,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你继续复核。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
+      `6. ${LOOP_MAIN_STALE_TASK_LIST_RULE_ZH}`,
       "",
       "主任务职责：",
       "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、activeSubtaskIds、subTasks 和 rounds 概要。",

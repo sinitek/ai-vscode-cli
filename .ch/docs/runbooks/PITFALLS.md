@@ -713,6 +713,36 @@
 - `src/test/webview/openCodeTaskListOverlay.test.ts`
 - `src/test/webview/clipagescriptruntimecoverage.test.ts`
 
+## Loop 主任务不能一直显示旧任务列表
+
+- 状态：已规避，需随 Loop / Loop+ 主任务会话续接复核
+- 首次发现：2026-09-26
+- 适用范围：Loop 主任务 Tab、Loop+ 主任务 Tab、Webview task list overlay、external `taskListUpdate`
+
+### 现象
+- 主任务面板一直显示早先的任务列表，但当前实际执行的是编排决策或子任务，已经不是那张清单里的事项。
+
+### 触发条件与根因
+- Loop / Loop+ 主任务 Tab 在父任务 `running` 或子任务仍在执行时被视为 busy。
+- `setMessagesForTab` 因此一直保留 external 任务列表；`shouldDisplayTaskListForTab` 也继续显示浮层。
+- 同一 Codex / Claude / OpenCode 会话里的历史 `Tasklist` 会在消息刷新后被重新解析出来。主任务后续轮次做的是复核、派发或等待，不会自然替换这张旧清单。
+
+### 长期规避
+- 主任务 Tab 不展示任务列表浮层，消息刷新也不保留它的 external 列表。
+- 子任务和普通对话仍只展示当前 run 的任务列表。
+- Loop 与 Loop+ 主任务提示必须禁止复述、续写或调用计划/待办工具去维护旧 Tasklist。
+
+### 验证方式
+- 运行 `npm run build`。
+- 运行 `node --test dist/test/webview/loopMainTaskList.test.js dist/test/webview/openCodeTaskListOverlay.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopMainTaskListPolicy.test.js`。
+
+### 关联资料
+- `src/loopMainTaskListPolicy.ts`
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/webview/viewContentScript/coreRuntimeState.ts`
+- `src/extensionHost/loopOrchestration.ts`
+- `src/extensionHost/loopPlusPromptBuilders.ts`
+
 ## Codex 同一 UI 分组切换模型/配置时必须 resume 已映射 thread
 
 - 状态：已规避，需随 Codex app-server provider 恢复语义复核

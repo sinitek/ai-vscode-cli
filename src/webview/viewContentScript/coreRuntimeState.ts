@@ -158,9 +158,11 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           const loopMetaChanged = updateLoopMetaForTabFromMessages(tabId, runtimeState.messages);
           const graphMetaChanged = updateGraphMetaForTabFromMessages(tabId, runtimeState.messages);
           const taskListState = ensureRuntimeTaskList(runtimeState);
+          const loopMainTab = typeof isLoopMainTaskListTab === "function" && isLoopMainTaskListTab(tabId);
           const shouldPreserveExternalTaskList = Boolean(
             taskListState
             && taskListState.source === "external"
+            && !loopMainTab
             && isConversationTabBusy(tabId)
           );
           if (!shouldPreserveExternalTaskList) {

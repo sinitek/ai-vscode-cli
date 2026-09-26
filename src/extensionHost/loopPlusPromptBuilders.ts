@@ -6,6 +6,7 @@ import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
   LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX,
 } from "../loopPlusProtocolPrompt";
+import { LOOP_MAIN_STALE_TASK_LIST_RULE_EN } from "../loopMainTaskListPolicy";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
@@ -197,6 +198,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     context.rootPrompt,
     "This prompt is a snapshot captured when the CLI started. More executions may finish and join the FIFO queue after that. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
     "Rules:",
+    "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while a current review event is open. Do not include reviewEventId.",
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
     "- accept confirms only the one current reviewEventId and must copy Current review eventId exactly. It may append 0 to " + subtaskMax + " new subtasks. Do not send accept when Current review eventId is (none).",

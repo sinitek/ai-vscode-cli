@@ -37,6 +37,7 @@
 - `loopPlus` 保存内核整份快照。store 只做 JSON 往返，不校验、不解释、不应用。`event_driven` 在快照缺失、`null`、数组、字符串或部分损坏时仍保持 `event_driven`，不把父状态改成 `completed`，也不把队列清成空数组。内核加载失败必须抛出，不能静默降成经典任务。
 - 执行结束和验收完成不是同一状态。成功、局部失败和局部停止都可以成为待验收结果。
 - 主任务和子任务 AI 不得写 `schedulingMode`、`loopPlus`、队列、running、pending、`parentStopped` 或父任务完成状态。解析器只产出决策；宿主按顺序调用内核，再持久化 `snapshot()`。
+- 主任务提示禁止输出或续写 Tasklist / todo。主任务 Tab 不展示任务列表浮层，也不因父任务仍在运行而保留上一轮列表；正在执行的是当前编排决策和子任务，不是历史清单。子任务 Tab 仍展示自己的当前任务列表。
 - 持久化恢复沿用现有边界：缺失或未知父状态不得恢复成运行中。快照里的 `phase` 字符串不是事实源，运行相位由停止、完成、当前验收、队列和在途集合推导。
 - 子任务临时根、Windows junction / hardlink 和任务结束清理继续走 `src/loopSubtaskExecutionRoot.ts`。
 - 子任务 attempt 成功结束（outcome 为 `completed`，对应经典 run status `end`）后，先取走本次助手结果，再固定自动关闭该子任务 tab。失败、停止，以及用户中止后的原 tab 不关闭，便于继续。用户在子任务 tab 手动继续并成功结束后同样先关闭 tab，再通知验收。这与经典 Loop 的成功收尾一致，不提供关闭开关。

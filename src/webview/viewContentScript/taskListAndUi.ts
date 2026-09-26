@@ -86,8 +86,35 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return Array.isArray(items) && items.length > 0;
       }
 
+      function readConversationTabLoopTaskRole(tab) {
+        if (!tab) {
+          return "";
+        }
+        if (typeof normalizeLoopTaskRole === "function") {
+          return normalizeLoopTaskRole(tab.loopTaskRole) || "";
+        }
+        return typeof tab.loopTaskRole === "string" ? tab.loopTaskRole : "";
+      }
+
+      function isLoopMainTaskListTab(tabId) {
+        if (!tabId || typeof getConversationTabSummary !== "function") {
+          return false;
+        }
+        const tab = getConversationTabSummary(tabId);
+        if (!tab) {
+          return false;
+        }
+        if (readConversationTabLoopTaskRole(tab) === "main") {
+          return true;
+        }
+        return typeof isLoopMainTab === "function" && isLoopMainTab(tab);
+      }
+
       function shouldDisplayTaskListForTab(tabId) {
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        if (typeof isLoopMainTaskListTab === "function" && isLoopMainTaskListTab(targetTabId)) {
+          return false;
+        }
         const hasRunStateHelper = typeof isTabRunning === "function" || typeof isConversationTabBusy === "function";
         if (!hasRunStateHelper) {
           return true;
