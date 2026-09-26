@@ -254,6 +254,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         currentCli: document.getElementById("currentCli"),
         openConfig: document.getElementById("openConfig"),
         newSession: document.getElementById("newSession"),
+        newSessionConnectionTooltip: document.getElementById("newSessionConnectionTooltip"),
         resetSession: document.getElementById("resetSession"),
         conversationTabs: document.getElementById("conversationTabs"),
         resultOnlyToggle: document.getElementById("resultOnlyToggle"),

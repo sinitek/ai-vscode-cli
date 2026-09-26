@@ -111,6 +111,97 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         vscode.postMessage({ type: "newSession" });
       });
 
+      let applyCodexLongConnectionCount = function applyCodexLongConnectionCount() {};
+
+      function createCodexLongConnectionTooltipController(options) {
+        const delayMs = 3000;
+        const button = options.button;
+        const tooltip = options.tooltip;
+        const postMessage = options.postMessage;
+        const translate = options.translate;
+        const schedule = options.schedule;
+        const cancel = options.cancel;
+        let hoverToken = 0;
+        let pendingToken = null;
+        let hoverTimer = null;
+        const defaultTitle = button.getAttribute("title") || translate("headerNewSession");
+
+        function normalizeCount(count) {
+          const numeric = Number(count);
+          if (!Number.isFinite(numeric) || numeric <= 0) {
+            return 0;
+          }
+          return Math.floor(numeric);
+        }
+
+        function hideTooltip() {
+          hoverToken += 1;
+          pendingToken = null;
+          if (hoverTimer !== null) {
+            cancel(hoverTimer);
+            hoverTimer = null;
+          }
+          tooltip.hidden = true;
+          tooltip.textContent = "";
+          button.removeAttribute("aria-describedby");
+          button.setAttribute("title", defaultTitle);
+        }
+
+        function showTooltip(count) {
+          tooltip.textContent = translate("headerNewSessionConnectionCount", {
+            count: normalizeCount(count),
+          });
+          tooltip.hidden = false;
+          button.setAttribute("aria-describedby", tooltip.id || "newSessionConnectionTooltip");
+          button.removeAttribute("title");
+        }
+
+        function onEnter() {
+          hoverToken += 1;
+          const token = hoverToken;
+          pendingToken = null;
+          if (hoverTimer !== null) {
+            cancel(hoverTimer);
+          }
+          hoverTimer = schedule(() => {
+            hoverTimer = null;
+            if (token !== hoverToken) {
+              return;
+            }
+            pendingToken = token;
+            postMessage({ type: "queryCodexLongConnectionCount", token });
+          }, delayMs);
+        }
+
+        function applyCount(data) {
+          const token = Number(data && data.token);
+          if (!Number.isInteger(token) || token <= 0 || token !== pendingToken) {
+            return;
+          }
+          pendingToken = null;
+          showTooltip(data ? data.count : 0);
+        }
+
+        button.addEventListener("pointerenter", onEnter);
+        button.addEventListener("pointerleave", hideTooltip);
+        button.addEventListener("pointercancel", hideTooltip);
+        return { applyCount, hideTooltip };
+      }
+
+      if (elements.newSession && elements.newSessionConnectionTooltip) {
+        const codexLongConnectionTooltipController = createCodexLongConnectionTooltipController({
+          button: elements.newSession,
+          tooltip: elements.newSessionConnectionTooltip,
+          postMessage: (payload) => vscode.postMessage(payload),
+          translate: (key, params) => t(key, params),
+          schedule: (callback, delay) => setTimeout(callback, delay),
+          cancel: (timer) => clearTimeout(timer),
+        });
+        applyCodexLongConnectionCount = (data) => {
+          codexLongConnectionTooltipController.applyCount(data);
+        };
+      }
+
       if (elements.resetSession) {
         elements.resetSession.addEventListener("click", () => {
           requestResetConversationTabSession();

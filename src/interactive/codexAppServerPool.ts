@@ -89,6 +89,20 @@ export function acquireCodexAppServer(
   return connection;
 }
 
+export function countAliveConnections(entries: Iterable<{ isAlive(): boolean }>): number {
+  let alive = 0;
+  for (const entry of entries) {
+    if (entry.isAlive()) {
+      alive += 1;
+    }
+  }
+  return alive;
+}
+
+export function countAliveCodexAppServerConnections(): number {
+  return countAliveConnections(connections.values());
+}
+
 export function shutdownCodexAppServerPool(): void {
   for (const connection of Array.from(connections.values())) {
     connection.shutdown("terminate");

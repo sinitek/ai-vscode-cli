@@ -60,6 +60,31 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         opacity: 0.45;
         pointer-events: none;
       }
+      .header-action-anchor {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .header-hover-tooltip {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 50%;
+        z-index: 30;
+        transform: translateX(-50%);
+        padding: 4px 8px;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        border-radius: var(--radius-sm);
+        background: var(--vscode-editorWidget-background);
+        color: var(--vscode-editorWidget-foreground);
+        box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+        font-size: 12px;
+        line-height: 16px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .header-hover-tooltip[hidden] {
+        display: none;
+      }
       .send-icon-button {
         background: var(--vscode-button-background);
         color: var(--vscode-button-foreground);

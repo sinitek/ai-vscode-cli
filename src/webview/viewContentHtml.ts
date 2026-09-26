@@ -88,10 +88,13 @@ ${webviewStyles}    </style>
             <path d="M8 11h8" />
             <path d="M8 15h8" />
           </svg>
-          <svg id="newSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <span class="header-action-anchor">
+            <svg id="newSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <div id="newSessionConnectionTooltip" class="header-hover-tooltip" role="tooltip" hidden></div>
+          </span>
           <svg id="resetSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 12a8 8 0 1 1-2.34-5.66" />
             <polyline points="20 4 20 10 14 10" />

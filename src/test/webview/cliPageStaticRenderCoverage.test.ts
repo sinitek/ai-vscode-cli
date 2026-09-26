@@ -109,6 +109,7 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="toolSettingsButton"',
     'id="rulesButton"',
     'id="newSession"',
+    'id="newSessionConnectionTooltip"',
     'id="resetSession"',
     'id="conversationTabs" class="conversation-tabs" role="tablist"',
     'id="chatArea" class="chat-area"',

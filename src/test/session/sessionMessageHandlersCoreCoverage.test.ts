@@ -816,3 +816,18 @@ test("routes optional panel fields through their empty and fallback contracts", 
   assert.ok(harness.calls.webviewMessages.some((message) => message.type === "rulesContent" && message.error));
   assert.ok(harness.calls.webviewMessages.some((message) => message.type === "rulesSaved" && message.error));
 });
+
+test("reports the live Codex long-connection count without changing sessions", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  await handlePanelMessageWithDeps({ type: "queryCodexLongConnectionCount", token: 4 }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "queryCodexLongConnectionCount", token: Number.NaN }, harness.deps);
+  const counts = harness.calls.webviewMessages.filter((message) => message.type === "codexLongConnectionCount");
+  assert.equal(counts.length, 2);
+  assert.equal(counts[0]?.token, 4);
+  assert.equal(typeof counts[0]?.count, "number");
+  assert.ok(Number(counts[0]?.count) >= 0);
+  assert.equal(counts[1]?.token, null);
+  assert.equal(harness.calls.sessionMessages.length, 0);
+  assert.equal(harness.state.tabs.size, 1);
+});

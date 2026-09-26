@@ -23,6 +23,7 @@ import { type LoopTaskRecord } from "./loopTaskStore";
 import { type ConfigManagerPanel } from "./webview/configPanel";
 import { handleSendPromptMessage, handleUpdateSettingMessage } from "./sessionMessageActions";
 import { isPanelMessageType } from "./sessionMessageRouter";
+import { countAliveCodexAppServerConnections } from "./interactive/codexAppServerPool";
 import { type ConfigApplyResult } from "./config/configApplyQueue";
 
 export type PromptRunInputForPanel = {
@@ -646,6 +647,18 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
     setWorkspaceInteractiveModeForCli(currentCliRef.value, "coding");
     await postPanelState();
     sendSessionMessagesToPanel(currentCliRef.value, sessionId);
+    return;
+  }
+
+  if (message.type === "queryCodexLongConnectionCount") {
+    const token = typeof message.token === "number" && Number.isFinite(message.token)
+      ? message.token
+      : null;
+    postWebviewMessage({
+      type: "codexLongConnectionCount",
+      token,
+      count: countAliveCodexAppServerConnections(),
+    });
     return;
   }
 
