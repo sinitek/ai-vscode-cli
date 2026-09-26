@@ -1047,6 +1047,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               tabId,
             });
           }
+          const runnerWasManaged = Boolean(uiSessionId);
           const runner = uiSessionId
             ? interactiveRunnerManager.getOrCreateCodexRunner({
                 sessionId: uiSessionId,
@@ -1071,6 +1072,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 multiAgentEnabled: getGlobalMultiAgentEnabled(),
               });
 
+          try {
           stopCurrentTurn = () => runner.stopAndRebuild();
           syncInteractiveRunEntry(stopFn);
           await runner.runStreamed(attemptPrompt, {
@@ -1196,6 +1198,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           }
           await cleanupAfterRun("end");
           return;
+          } finally {
+            if (!runnerWasManaged) {
+              const threadId = runner.getThreadId();
+              if (!threadId || !interactiveRunnerManager.hasCodexRunner(threadId, runner)) {
+                runner.dispose();
+              }
+            }
+          }
         }
 
         if (cli === "claude") {

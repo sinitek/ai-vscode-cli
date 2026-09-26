@@ -145,16 +145,25 @@ export class InteractiveRunnerManager {
       model: options.model,
     });
     if (existing && existing.cli === "codex") {
-      if (
-        existing.thinkingMode === options.thinkingMode
-        && existing.interactiveMode === options.interactiveMode
-        && existing.model === nextSelection.model
-        && existing.configId === nextSelection.configId
-        && existing.multiAgentEnabled === options.multiAgentEnabled
+      const sameProcess = existing.multiAgentEnabled === options.multiAgentEnabled
         && existing.command === options.command
         && existing.cwd === options.cwd
-        && areRunnerArgsEqual(existing.args, options.args)
-      ) {
+        && existing.configId === nextSelection.configId;
+      if (sameProcess) {
+        existing.thinkingMode = options.thinkingMode;
+        existing.interactiveMode = options.interactiveMode;
+        existing.model = nextSelection.model;
+        existing.args = [...options.args];
+        existing.runner.updateOptions({
+          command: options.command,
+          args: options.args,
+          cwd: options.cwd,
+          thinkingMode: options.thinkingMode,
+          interactiveMode: options.interactiveMode,
+          model: nextSelection.model,
+          threadId: options.threadId,
+          multiAgentEnabled: options.multiAgentEnabled,
+        });
         this.touch(existing);
         return existing.runner;
       }
@@ -188,6 +197,11 @@ export class InteractiveRunnerManager {
     this.entries.set(key, entry);
     this.touch(entry);
     return runner;
+  }
+
+  public hasCodexRunner(sessionId: string | null, runner: CodexInteractiveRunner): boolean {
+    const entry = this.getEntry("codex", sessionId);
+    return Boolean(entry && entry.cli === "codex" && entry.runner === runner);
   }
 
   public getCodexRunnerSelection(sessionId: string | null): CodexRunSelection | null {
@@ -341,9 +355,3 @@ export class InteractiveRunnerManager {
   }
 }
 
-function areRunnerArgsEqual(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((value, index) => value === right[index]);
-}

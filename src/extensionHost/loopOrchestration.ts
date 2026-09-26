@@ -2649,15 +2649,23 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     progressMonitor.start();
 
     let retryCount = 0;
+    let subtaskTarget: PromptRunTarget | null = null;
     try {
       while (true) {
         if (isLoopTaskExecutionInterrupted(task.id)) {
           terminalProgressStatus = "interrupted";
           return "stopped";
         }
+        if (!subtaskTarget) {
+          subtaskTarget = createLoopSubtaskRunTarget(target.cli);
+          currentSubtaskTarget = subtaskTarget;
+        } else {
+          const refreshedSessionId = resolvePromptRunTargetSessionId(subtaskTarget);
+          if (refreshedSessionId) {
+            subtaskTarget.sessionId = refreshedSessionId;
+          }
+        }
         const communicationFile = prepareLoopSubtaskCommunicationFile(task, subtask, round, retryCount);
-        const subtaskTarget = createLoopSubtaskRunTarget(target.cli);
-        currentSubtaskTarget = subtaskTarget;
         appendSystemMessageForLoop(
           target,
           buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)

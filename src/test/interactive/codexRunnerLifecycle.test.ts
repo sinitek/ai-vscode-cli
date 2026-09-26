@@ -679,13 +679,13 @@ test("Codex runner stop requests shutdown for every active app-server child", as
 
     const firstRun = runner.runStreamed("first", createHandlers()).catch((error: Error) => error);
     const secondRun = runner.runStreamed("second", createHandlers()).catch((error: Error) => error);
-    await waitForSpawnCount(spawned, 2);
+    await waitForSpawnCount(spawned, 1);
 
     runner.stopAndRebuild();
 
     assert.deepEqual(
       killCalls.filter((call) => call.signal === "SIGTERM").map((call) => call.pid),
-      [-61000, -61001],
+      [-61000],
     );
 
     for (const child of spawned) {
@@ -738,7 +738,10 @@ test("Codex runner resumes the mapped thread with the active TOML model provider
     assert.deepEqual(JSON.parse(fs.readFileSync(requestLogPath, "utf8")), {
       threadId: "thread-before-provider-switch",
       sandbox: "workspace-write",
-      config: { agents: { job_max_runtime_seconds: 86400 } },
+      config: {
+        agents: { job_max_runtime_seconds: 86400 },
+        model_reasoning_summary: "detailed",
+      },
       experimentalRawEvents: false,
       model: "gpt-5.6",
       modelProvider: "gateway-b",

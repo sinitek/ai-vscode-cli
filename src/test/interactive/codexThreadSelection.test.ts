@@ -154,3 +154,42 @@ test("InteractiveRunnerManager does not reuse Codex runners across execution roo
     manager.disposeAll();
   }
 });
+
+test("InteractiveRunnerManager keeps the Codex runner when only the model or args change", () => {
+  const manager = new InteractiveRunnerManager();
+  try {
+    const first = manager.getOrCreateCodexRunner({
+      sessionId: "ui-session",
+      threadId: "thread-a",
+      command: "codex",
+      args: ["--image", "one.png"],
+      cwd: "/tmp/root-a",
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      model: "gpt-5.5",
+      configId: "config-a",
+      multiAgentEnabled: false,
+    });
+    const second = manager.getOrCreateCodexRunner({
+      sessionId: "ui-session",
+      threadId: "thread-a",
+      command: "codex",
+      args: ["--image", "two.png"],
+      cwd: "/tmp/root-a",
+      thinkingMode: "high",
+      interactiveMode: "plan",
+      model: "gpt-5.6",
+      configId: "config-a",
+      multiAgentEnabled: false,
+    });
+
+    assert.equal(second, first);
+    assert.equal(second.getThreadId(), "thread-a");
+    assert.deepEqual(manager.getCodexRunnerSelection("ui-session"), {
+      configId: "config-a",
+      model: "gpt-5.6",
+    });
+  } finally {
+    manager.disposeAll();
+  }
+});

@@ -121,6 +121,7 @@ function createInteractiveRuntimeHarness(options: {
 
   const manager = {
     getCodexRunnerSelection: () => null,
+    hasCodexRunner: () => false,
     getOrCreateCodexRunner: () => {
       codexRunnerCreateCalls += 1;
       return codexRunner;

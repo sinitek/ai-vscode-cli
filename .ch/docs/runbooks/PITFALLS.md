@@ -2298,3 +2298,30 @@
 ### 验证方式
 - `node --test dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopPlusScheduler.test.js`
 
+## 热 thread 上不要重复 thread/resume
+
+- 状态：已规避
+- 首次发现：2026-09-26
+- 适用范围：Codex app-server 长连接
+
+### 现象
+- 同一会话的后续回合、hidden retry 或 Loop 子任务重试启动很慢。
+- 日志里每个回合都有新的 `codex app-server` 进程，以及 `initialize` 和 `thread/resume`。
+
+### 触发条件
+- 回合结束关闭了 app-server，下一次又从冷进程恢复 thread。
+- 或者连接还活着、thread 已被当前连接订阅，却再次 `thread/resume` 并指望它应用新的 provider/cwd override。
+
+### 根因
+- `thread/start` / `thread/resume` 会重载 config、创建 session、固定 MCP profile 并 websocket prewarm。
+- app-server 对已加载且仍有订阅者的 thread 会忽略 resume override，并保留旧 session。
+
+### 长期规避
+- 每条连接只 `initialize` 一次。当前进程里已加载的 thread 只发 `turn/start`。
+- 模型、effort、cwd、sandbox、approval 走 `turn/start`。`modelProvider` 放进连接键；要改 provider 就换连接，再冷 `thread/resume`。
+- 已加载回合停止用 `turn/interrupt`。只有冷启动、dispose 或进程退出才杀进程。
+- Loop 子任务重试复用原来的 tab 和 thread，不要每轮新建会话。
+
+### 验证方式
+- `node --test dist/test/interactive/codexRunnerReuse.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
+

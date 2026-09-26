@@ -1,10 +1,9 @@
-import type { ChildProcess } from "child_process";
-import { spawn } from "cross-spawn";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
 import {
   extractCodexRawResponseToolCall,
+  extractCodexSubagentLifecycleUpdates,
   extractCodexWaitTimeoutPayload,
   isCodexFinalAnswerPhase,
   isCodexContextCompactionCompletedNotification,
@@ -12,11 +11,6 @@ import {
   shouldSettleCodexPrimaryTurn,
   type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
-import {
-  createCodexAppServerNdjsonReader,
-  serializeCodexAppServerMessage,
-  type CodexAppServerNdjsonReader,
-} from "./codexAppServerNdjson";
 import {
   buildAppServerRequestResolution,
   buildForwardedRawEvent,
@@ -54,10 +48,14 @@ import {
   type CodexRuntimeTraceKind,
   type CodexRuntimeTraceMeta,
 } from "./codexRunnerRuntime";
+import { resolveSpawnCommand } from "./codexRunnerProcess";
 import {
-  requestChildShutdown,
-  resolveSpawnCommand,
-} from "./codexRunnerProcess";
+  acquireCodexAppServer,
+  buildCodexAppServerConnectionKey,
+  type CodexAppServerCloseInfo,
+  type CodexAppServerConnection,
+  type CodexAppServerListener,
+} from "./codexAppServerPool";
 
 export type CodexTraceKind = CodexRuntimeTraceKind;
 
@@ -89,16 +87,6 @@ export type CodexStreamHandlers = {
   requestUserInputEnabled?: boolean;
 };
 
-type JsonRpcPendingRequest = {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-};
-
-type AppServerResponse = {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-};
-
 type CodexCompactionResult = {
   compacted: boolean;
   threadId: string;
@@ -106,7 +94,7 @@ type CodexCompactionResult = {
 
 const createAbortError = createCodexAbortError;
 const createRunnerDisposedError = (): Error => createCodexRunnerDisposedError(t("run.disposedExternally"));
-const CODEX_APP_SERVER_PROCESS_LABEL = "sinitek-ai-vscode-cli-codex-app-server";
+let nextRunnerListenerId = 1;
 
 function normalizeCodexSpawnError(error: Error, command: string): Error {
   const errnoError = error as NodeJS.ErrnoException;
@@ -144,28 +132,71 @@ function emitPrimaryTokenUsageUpdate(
   });
 }
 
+
+type CodexRunnerMutableOptions = {
+  command: string;
+  args: string[];
+  cwd?: string;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model?: string | null;
+  threadId: string | null;
+  multiAgentEnabled: boolean;
+};
+
+type CodexRunnerOperation = {
+  kind: "turn" | "compact";
+  handlers: CodexStreamHandlers;
+  abortGeneration: number;
+  disposeGeneration: number;
+  assistantBuffers: Map<string, string>;
+  reasoningBuffers: Map<string, CodexReasoningBufferState>;
+  emittedTraceContents: Map<string, string>;
+  rawResponseToolNames: Map<string, string>;
+  observer: ReturnType<typeof createCodexTurnAssistantObserver> | null;
+  activeTurnId: string;
+  settled: boolean;
+  threadCompacted: boolean;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  done: Promise<void>;
+};
+
 export class CodexInteractiveRunner {
   public readonly cli: CliName = "codex";
-  private readonly activeChildren = new Set<ChildProcess>();
+  private readonly listenerId = `codex-runner-${nextRunnerListenerId++}`;
+  private readonly listener: CodexAppServerListener;
+  private options: CodexRunnerMutableOptions;
+  private connection: CodexAppServerConnection | null = null;
+  private activeConnectionId: number | null = null;
+  private operationTail: Promise<unknown> = Promise.resolve();
+  private activeOperation: CodexRunnerOperation | null = null;
   private abortGeneration = 0;
   private disposeGeneration = 0;
   private disposed = false;
 
-  public constructor(
-    private readonly options: {
-      command: string;
-      args: string[];
-      cwd?: string;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model?: string | null;
-      threadId: string | null;
-      multiAgentEnabled: boolean;
-    }
-  ) {}
+  public constructor(options: CodexRunnerMutableOptions) {
+    this.options = { ...options, args: [...options.args] };
+    this.listener = {
+      id: this.listenerId,
+      isActive: () => this.activeOperation !== null,
+      handleNotification: (message) => this.handleNotification(message),
+      handleServerRequest: (method, params) => this.handleServerRequest(method, params),
+      onClosed: (info) => this.handleConnectionClosed(info),
+    };
+  }
 
   public getThreadId(): string | null {
     return this.options.threadId ?? null;
+  }
+
+  public updateOptions(options: CodexRunnerMutableOptions): void {
+    this.options = {
+      ...this.options,
+      ...options,
+      args: [...options.args],
+      threadId: options.threadId || this.options.threadId,
+    };
   }
 
   public async ensureReady(): Promise<void> {
@@ -179,24 +210,38 @@ export class CodexInteractiveRunner {
 
   public stopAndRebuild(): void {
     this.abortGeneration += 1;
-    for (const child of Array.from(this.activeChildren)) {
-      requestChildShutdown(child, "terminate");
+    const threadId = String(this.options.threadId || "").trim();
+    const hot = Boolean(
+      threadId
+      && this.connection?.isAlive()
+      && this.connection.hasLoadedThread(threadId),
+    );
+    if (hot && this.connection) {
+      void this.connection.request(this.listenerId, "turn/interrupt", {
+        threadId,
+        turnId: this.activeOperation?.activeTurnId || "",
+      }).catch(() => undefined);
+      this.settleActive(createAbortError());
+      return;
     }
-    this.rebuild();
-  }
-
-  private trackActiveChild(child: ChildProcess): void {
-    this.activeChildren.add(child);
-  }
-
-  private releaseActiveChild(child: ChildProcess): void {
-    this.activeChildren.delete(child);
+    this.settleActive(createAbortError());
+    this.connection?.rejectOwner(this.listenerId, createAbortError());
+    if (this.connection && this.connection.retainerCount() <= 1) {
+      const connection = this.connection;
+      this.connection = null;
+      this.activeConnectionId = null;
+      connection.shutdown("terminate");
+    }
   }
 
   public dispose(): void {
     this.disposed = true;
     this.disposeGeneration += 1;
-    this.stopAndRebuild();
+    this.settleActive(createRunnerDisposedError());
+    const connection = this.connection;
+    this.connection = null;
+    this.activeConnectionId = null;
+    connection?.release(this.listenerId);
   }
 
   public async runForText(prompt: string): Promise<{ threadId: string | null; text: string }> {
@@ -212,389 +257,124 @@ export class CodexInteractiveRunner {
   }
 
   public async compactThread(): Promise<CodexCompactionResult> {
+    const abortGeneration = this.abortGeneration;
+    const disposeGeneration = this.disposeGeneration;
+    return this.enqueue(async () => {
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      return this.compactThreadOnce(abortGeneration, disposeGeneration);
+    });
+  }
+
+  public async runStreamed(prompt: string, handlers: CodexStreamHandlers): Promise<void> {
     await this.ensureReady();
+    const abortGeneration = this.abortGeneration;
+    const disposeGeneration = this.disposeGeneration;
+    await this.enqueue(async () => {
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      await this.runStreamedOnce(prompt, handlers, abortGeneration, disposeGeneration);
+    });
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.operationTail.then(operation, operation);
+    this.operationTail = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  private async compactThreadOnce(
+    abortGeneration: number,
+    disposeGeneration: number,
+  ): Promise<CodexCompactionResult> {
     const existingThreadId = String(this.options.threadId || "").trim();
     if (!existingThreadId) {
       throw new Error("Codex thread not established");
     }
-
-    const runGeneration = this.abortGeneration;
-    const runDisposeGeneration = this.disposeGeneration;
-    const threadOptions = buildCodexThreadOptions(
-      this.options.args,
-      this.options.cwd,
-      this.options.thinkingMode,
-      this.options.interactiveMode,
-      this.options.model,
-      this.options.multiAgentEnabled
-    );
-    let resolvedWorkspaceDir = threadOptions.workingDirectory;
-    const configOverrides: string[] = [];
-    const childEnvResult = buildCodexChildEnv(process.env);
-    threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
-
-    if (resolvedWorkspaceDir) {
-      resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
-      threadOptions.workingDirectory = resolvedWorkspaceDir;
-      configOverrides.push(buildCodexWorkspaceTrustConfigOverride(resolvedWorkspaceDir));
-      try {
-        await ensureCodexProjectTrusted({
-          projectRoot: resolvedWorkspaceDir,
-          codexHomeDir: childEnvResult.codexHomeDir,
-        });
-      } catch {
-        // compact should still attempt to proceed; trust failure will surface from app-server if required
-      }
-    }
-
-    const spawnCommand = resolveSpawnCommand(
-      this.options.command,
-      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides)
-    );
-    void logInfo("codex-app-server-compact-spawn", {
-      command: spawnCommand.command,
-      args: spawnCommand.args,
-      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
-      usesShell: spawnCommand.usesShell,
-      resolvedFrom: spawnCommand.resolvedFrom,
-      codexHomeDir: childEnvResult.codexHomeDir,
-      removedEnvKeys: childEnvResult.removedEnvKeys,
-      threadId: existingThreadId,
-      interactiveMode: this.options.interactiveMode,
-    });
-
-    const child = spawn(spawnCommand.command, spawnCommand.args, {
-      cwd: resolvedWorkspaceDir ?? this.options.cwd,
-      env: childEnvResult.env,
-      argv0: CODEX_APP_SERVER_PROCESS_LABEL,
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    this.trackActiveChild(child);
-
-    let spawnError: Error | null = null;
-    let streamError: Error | null = null;
-    let stdoutParseError: Error | null = null;
-    const stderrChunks: Buffer[] = [];
-    let nextRequestId = 1;
-    let settled = false;
-    let childClosed = false;
-    let exitSettled = false;
-    let threadCompacted = false;
-    const pendingRequests = new Map<number, JsonRpcPendingRequest>();
-    let stdoutReader: CodexAppServerNdjsonReader | null = null;
-    let completionResolve: ((value: CodexCompactionResult) => void) | null = null;
-    let completionReject: ((error: Error) => void) | null = null;
-
-    const completionPromise = new Promise<CodexCompactionResult>((resolve, reject) => {
-      completionResolve = resolve;
-      completionReject = reject;
-    });
-    void completionPromise.catch(() => undefined);
-    const exitPromise = new Promise<AppServerResponse>((resolve) => {
-      const settleExit = (response: AppServerResponse): boolean => {
-        if (exitSettled) {
-          return false;
-        }
-        exitSettled = true;
-        childClosed = true;
-        resolve(response);
-        return true;
-      };
-      child.once("close", (code, signal) => {
-        if (!settleExit({ code, signal })) {
-          return;
-        }
-        if (!settled) {
-          const error = this.disposeGeneration !== runDisposeGeneration
-            ? createRunnerDisposedError()
-            : this.abortGeneration !== runGeneration
-              ? createAbortError()
-              : new Error(
-                t("codex.appServerExited", {
-                  detail: signal ? `signal ${signal}` : `code ${code ?? 1}`,
-                  stderr: Buffer.concat(stderrChunks).toString("utf8") || "-",
-                })
-              );
-          settleFailure(error);
-        }
-      });
-      child.once("error", (error) => {
-        const normalizedError = normalizeCodexSpawnError(error, spawnCommand.command);
-        spawnError = normalizedError;
-        void logError("codex-app-server-compact-spawn-error", {
-          command: spawnCommand.command,
-          code: (error as NodeJS.ErrnoException).code ?? null,
-          pid: child.pid ?? null,
-          activeChildren: this.activeChildren.size,
-          error: error.message,
-        });
-        stdoutReader?.close();
-        settleExit({ code: null, signal: null });
-        failRun(normalizedError);
-      });
-    });
-
-    const settleSuccess = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      completionResolve?.({
-        compacted: threadCompacted,
-        threadId: existingThreadId,
-      });
+    const handlers: CodexStreamHandlers = {
+      onAssistantDelta: () => {},
+      onTrace: () => {},
+      onTaskListUpdate: () => {},
+      onThreadId: () => {},
     };
-
-    const settleFailure = (error: Error): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      completionReject?.(error);
-    };
-
-    const rejectPendingRequests = (error: Error): void => {
-      for (const pending of pendingRequests.values()) {
-        pending.reject(error);
-      }
-      pendingRequests.clear();
-    };
-
-    const failRun = (error: Error): void => {
-      if (!streamError) {
-        streamError = error;
-      }
-      rejectPendingRequests(error);
-      settleFailure(error);
-    };
-
-    const shutdownChild = (mode: "graceful" | "terminate"): void => {
-      if (childClosed) {
-        return;
-      }
-      requestChildShutdown(child, mode);
-    };
-
-    const sendJsonRpcMessage = (message: Record<string, unknown>): void => {
-      if (!child.stdin || !child.stdin.writable) {
-        throw new Error(t("codex.appServerStdinUnavailable"));
-      }
-      child.stdin.write(serializeCodexAppServerMessage(message));
-    };
-
-    const request = <T = unknown>(method: string, params: Record<string, unknown>): Promise<T> => {
-      return new Promise<T>((resolve, reject) => {
-        const id = nextRequestId;
-        nextRequestId += 1;
-        pendingRequests.set(id, {
-          resolve: (value) => resolve(value as T),
-          reject,
-        });
-        try {
-          sendJsonRpcMessage({ jsonrpc: "2.0", id, method, params });
-        } catch (error) {
-          pendingRequests.delete(id);
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-    };
-
-    const notify = (method: string, params?: Record<string, unknown>): void => {
-      const message: Record<string, unknown> = {
-        jsonrpc: "2.0",
-        method,
-      };
-      if (params && Object.keys(params).length > 0) {
-        message.params = params;
-      }
-      sendJsonRpcMessage(message);
-    };
-
-    child.stderr?.on("data", (chunk: string | Buffer) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-
-    if (!child.stdout) {
-      child.kill();
-      throw new Error(t("codex.appServerNoStdout"));
-    }
-
-    stdoutReader = createCodexAppServerNdjsonReader(child.stdout);
-    const outputReader = stdoutReader.lines;
-
-    const outputLoopPromise = (async (): Promise<void> => {
-      try {
-        for await (const line of outputReader) {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            continue;
-          }
-
-          let message: Record<string, unknown>;
-          try {
-            message = JSON.parse(trimmed) as Record<string, unknown>;
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            stdoutParseError = new Error(t("codex.appServerParseFailed", { error: detail }));
-            failRun(stdoutParseError);
-            shutdownChild("terminate");
-            break;
-          }
-
-          const hasId = Object.prototype.hasOwnProperty.call(message, "id");
-          const hasResult = Object.prototype.hasOwnProperty.call(message, "result");
-          const hasError = Object.prototype.hasOwnProperty.call(message, "error");
-          const method = String(message.method || "").trim();
-
-          if (hasId && (hasResult || hasError) && !method) {
-            const id = Number(message.id);
-            const pending = pendingRequests.get(id);
-            if (!pending) {
-              continue;
-            }
-            pendingRequests.delete(id);
-            if (hasError) {
-              const errorRecord = message.error && typeof message.error === "object"
-                ? message.error as Record<string, unknown>
-                : {};
-              pending.reject(new Error(String(errorRecord.message || t("codex.appServerRequestFailed"))));
-            } else {
-              pending.resolve(message.result);
-            }
-            continue;
-          }
-
-          if (hasId && method) {
-            const resolution = buildAppServerRequestResolution(
-              method,
-              t("codex.appServerUnsupportedRequest", { method: method || "unknown" })
-            );
-            try {
-              sendJsonRpcMessage(resolution.error
-                ? { jsonrpc: "2.0", id: message.id, error: resolution.error }
-                : { jsonrpc: "2.0", id: message.id, result: resolution.result ?? {} });
-            } catch (error) {
-              failRun(error instanceof Error ? error : new Error(String(error)));
-              shutdownChild("terminate");
-              break;
-            }
-            continue;
-          }
-
-          if (isCodexContextCompactionCompletedNotification(message, existingThreadId)) {
-            threadCompacted = true;
-            settleSuccess();
-            setTimeout(() => shutdownChild("terminate"), 0);
-            continue;
-          }
-
-          if (!method) {
-            continue;
-          }
-
-          if (method === "error") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
-            if (rateLimitMessage) {
-              failRun(new Error(rateLimitMessage));
-              setTimeout(() => shutdownChild("terminate"), 0);
-              continue;
-            }
-            const errorMessage = String(params.message || "").trim();
-            if (errorMessage) {
-              failRun(new Error(errorMessage));
-              setTimeout(() => shutdownChild("terminate"), 0);
-            }
-            continue;
-          }
-        }
-      } catch (error) {
-        const nextError = error instanceof Error ? error : new Error(String(error));
-        failRun(nextError);
-        throw nextError;
-      }
-    })();
-
+    const operation = this.beginOperation("compact", handlers, abortGeneration, disposeGeneration);
     try {
-      await request("initialize", buildCodexAppServerInitializeParams(spawnCommand.command));
-      notify("initialized");
-
-      const threadParams = buildCodexThreadParams(threadOptions);
-
-      await request<Record<string, unknown>>("thread/resume", {
-        threadId: existingThreadId,
-        ...threadParams,
+      const opened = await this.openConnection(handlers, false, true);
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      await opened.connection.request(this.listenerId, "thread/compact/start", {
+        threadId: this.options.threadId,
       });
-      await request("thread/compact/start", {
-        threadId: existingThreadId,
-      });
-
-      const result = await completionPromise;
-      const { code, signal } = await exitPromise;
-      await outputLoopPromise;
-
-      if (spawnError) {
-        throw spawnError;
-      }
-      if (stdoutParseError) {
-        throw stdoutParseError;
-      }
-      if (streamError) {
-        throw streamError;
-      }
-      if (this.disposeGeneration !== runDisposeGeneration) {
-        throw createRunnerDisposedError();
-      }
-      if (this.abortGeneration !== runGeneration) {
-        throw createAbortError();
-      }
-      if (code !== 0 && !signal) {
-        const stderr = Buffer.concat(stderrChunks).toString("utf8");
-        throw new Error(t("codex.appServerExited", { detail: `code ${code ?? 1}`, stderr: stderr || "-" }));
-      }
-      return result;
+      await operation.done;
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      return {
+        compacted: operation.threadCompacted,
+        threadId: String(this.options.threadId || existingThreadId),
+      };
     } catch (error) {
-      if (!settled && error instanceof Error) {
-        failRun(error);
-      }
-      shutdownChild("terminate");
-      await Promise.allSettled([exitPromise, outputLoopPromise]);
-      if (this.disposeGeneration !== runDisposeGeneration) {
-        throw createRunnerDisposedError();
-      }
-      if (this.abortGeneration !== runGeneration) {
-        throw createAbortError();
-      }
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
       throw error;
     } finally {
-      stdoutReader?.close();
-      child.removeAllListeners();
-      child.stderr?.removeAllListeners();
-      child.stdout?.removeAllListeners();
-      child.stdin?.removeAllListeners();
-      this.releaseActiveChild(child);
+      if (this.activeOperation === operation) {
+        this.activeOperation = null;
+      }
     }
   }
 
-  public async runStreamed(
+  private async runStreamedOnce(
     prompt: string,
-    handlers: CodexStreamHandlers
+    handlers: CodexStreamHandlers,
+    abortGeneration: number,
+    disposeGeneration: number,
   ): Promise<void> {
-    await this.ensureReady();
+    const operation = this.beginOperation("turn", handlers, abortGeneration, disposeGeneration);
+    try {
+      const opened = await this.openConnection(handlers, handlers.requestUserInputEnabled === true, false);
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      const turnResult = await opened.connection.request<Record<string, unknown>>(
+        this.listenerId,
+        "turn/start",
+        buildCodexTurnStartParams(
+          this.options.threadId,
+          prompt,
+          opened.imagePaths,
+          opened.threadOptions,
+        ),
+      );
+      const startedTurn = turnResult?.turn && typeof turnResult.turn === "object"
+        ? turnResult.turn as Record<string, unknown>
+        : {};
+      operation.activeTurnId = String(startedTurn.id || "").trim();
+      handlers.onEvent?.({ type: "turn.started" });
+      await operation.done;
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    } catch (error) {
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      throw error;
+    } finally {
+      if (this.activeOperation === operation) {
+        this.activeOperation = null;
+      }
+    }
+  }
 
-    const runGeneration = this.abortGeneration;
-    const runDisposeGeneration = this.disposeGeneration;
+  private async openConnection(
+    handlers: CodexStreamHandlers | undefined,
+    requestUserInputEnabled: boolean,
+    reuseLoadedThread: boolean,
+  ): Promise<{
+    connection: CodexAppServerConnection;
+    threadOptions: ReturnType<typeof buildCodexThreadOptions>;
+    imagePaths: string[];
+  }> {
     const threadOptions = buildCodexThreadOptions(
       this.options.args,
       this.options.cwd,
       this.options.thinkingMode,
       this.options.interactiveMode,
       this.options.model,
-      this.options.multiAgentEnabled
+      this.options.multiAgentEnabled,
     );
     const imagePaths = collectArgValues(this.options.args, ["--image", "-i"])
       .map((item) => item.trim())
@@ -603,7 +383,15 @@ export class CodexInteractiveRunner {
     const configOverrides: string[] = [];
     const childEnvResult = buildCodexChildEnv(process.env);
     threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
-
+    const loadedThreadId = String(this.options.threadId || "").trim();
+    if (
+      reuseLoadedThread
+      && loadedThreadId
+      && this.connection?.isAlive()
+      && this.connection.hasLoadedThread(loadedThreadId)
+    ) {
+      return { connection: this.connection, threadOptions, imagePaths };
+    }
     if (resolvedWorkspaceDir) {
       resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
       threadOptions.workingDirectory = resolvedWorkspaceDir;
@@ -613,7 +401,7 @@ export class CodexInteractiveRunner {
           projectRoot: resolvedWorkspaceDir,
           codexHomeDir: childEnvResult.codexHomeDir,
         });
-        handlers.onEvent?.({
+        handlers?.onEvent?.({
           type: "codex.lifecycle",
           event: "project_trust_ready",
           status: trustResult.status,
@@ -621,7 +409,7 @@ export class CodexInteractiveRunner {
           configPath: trustResult.configPath,
         });
       } catch (error) {
-        handlers.onEvent?.({
+        handlers?.onEvent?.({
           type: "codex.lifecycle",
           event: "project_trust_failed",
           projectRoot: resolvedWorkspaceDir,
@@ -629,637 +417,553 @@ export class CodexInteractiveRunner {
         });
       }
     }
-
     const spawnCommand = resolveSpawnCommand(
       this.options.command,
       buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides, {
-        requestUserInputEnabled: handlers.requestUserInputEnabled === true,
-      })
+        requestUserInputEnabled,
+      }),
     );
-    void logInfo("codex-app-server-spawn", {
+    const cwd = resolvedWorkspaceDir ?? this.options.cwd;
+    const key = buildCodexAppServerConnectionKey({
       command: spawnCommand.command,
       args: spawnCommand.args,
-      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
-      usesShell: spawnCommand.usesShell,
-      resolvedFrom: spawnCommand.resolvedFrom,
+      cwd,
       codexHomeDir: childEnvResult.codexHomeDir,
-      removedEnvKeys: childEnvResult.removedEnvKeys,
-      threadId: this.options.threadId,
-      interactiveMode: this.options.interactiveMode,
+      modelProvider: threadOptions.modelProvider ?? null,
     });
-    handlers.onEvent?.({
-      type: "codex.lifecycle",
-      event: "spawn_prepare",
-      command: spawnCommand.command,
-      args: spawnCommand.args,
-      cwd: resolvedWorkspaceDir ?? this.options.cwd ?? null,
-      usesShell: spawnCommand.usesShell,
-      resolvedFrom: spawnCommand.resolvedFrom,
-      codexHomeDir: childEnvResult.codexHomeDir,
-      removedEnvKeys: childEnvResult.removedEnvKeys,
-    });
-    const child = spawn(spawnCommand.command, spawnCommand.args, {
-      cwd: resolvedWorkspaceDir ?? this.options.cwd,
-      env: childEnvResult.env,
-      argv0: CODEX_APP_SERVER_PROCESS_LABEL,
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    this.trackActiveChild(child);
+    if (this.connection && (!this.connection.isAlive() || this.connection.key !== key)) {
+      const previous = this.connection;
+      this.connection = null;
+      this.activeConnectionId = null;
+      previous.release(this.listenerId);
+    }
+    if (!this.connection) {
+      this.connection = acquireCodexAppServer({
+        key,
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+        cwd,
+        env: childEnvResult.env,
+        codexHomeDir: childEnvResult.codexHomeDir,
+        initializeParams: buildCodexAppServerInitializeParams(spawnCommand.command, {
+          requestUserInputEnabled,
+        }),
+      }, this.listener);
+      this.activeConnectionId = this.connection.id;
+    }
+    const connection = this.connection;
+    if (connection.takeFresh()) {
+      void logInfo("codex-app-server-spawn-runner", {
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+        cwd: cwd ?? null,
+        usesShell: spawnCommand.usesShell,
+        resolvedFrom: spawnCommand.resolvedFrom,
+        codexHomeDir: childEnvResult.codexHomeDir,
+        removedEnvKeys: childEnvResult.removedEnvKeys,
+        threadId: this.options.threadId,
+      });
+      handlers?.onEvent?.({
+        type: "codex.lifecycle",
+        event: "spawn_prepare",
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+        cwd: cwd ?? null,
+        usesShell: spawnCommand.usesShell,
+        resolvedFrom: spawnCommand.resolvedFrom,
+        codexHomeDir: childEnvResult.codexHomeDir,
+        removedEnvKeys: childEnvResult.removedEnvKeys,
+      });
+    }
+    try {
+      await connection.whenReady();
+    } catch (error) {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      const normalized = normalizeCodexSpawnError(cause, spawnCommand.command);
+      void logError("codex-app-server-ready-error", {
+        command: spawnCommand.command,
+        code: (cause as NodeJS.ErrnoException).code ?? null,
+        error: normalized.message,
+      });
+      handlers?.onEvent?.({
+        type: "codex.lifecycle",
+        event: "spawn_error",
+        command: spawnCommand.command,
+        code: (cause as NodeJS.ErrnoException).code ?? null,
+        error: normalized.message,
+      });
+      throw normalized;
+    }
+    return { connection, threadOptions, imagePaths };
+  }
 
-    let spawnError: Error | null = null;
-    let streamError: Error | null = null;
-    let stdoutParseError: Error | null = null;
-    const stderrChunks: Buffer[] = [];
-    let nextRequestId = 1;
-    let turnSettled = false;
-    let childClosed = false;
-    let exitSettled = false;
-    const pendingRequests = new Map<number, JsonRpcPendingRequest>();
-    const assistantBuffers = new Map<string, string>();
-    const reasoningBuffers = new Map<string, CodexReasoningBufferState>();
-    const emittedTraceContents = new Map<string, string>();
-    let activeTurnId = "";
-    let stdoutReader: CodexAppServerNdjsonReader | null = null;
-    let turnCompletionResolve: (() => void) | null = null;
-    let turnCompletionReject: ((error: Error) => void) | null = null;
+  private async ensureThreadLoaded(
+    connection: CodexAppServerConnection,
+    threadOptions: ReturnType<typeof buildCodexThreadOptions>,
+  ): Promise<void> {
+    const threadId = String(this.options.threadId || "").trim();
+    if (threadId && connection.hasLoadedThread(threadId)) {
+      connection.claimThread(threadId, this.listenerId);
+      void logInfo("codex-app-server-thread-reused", { threadId });
+      return;
+    }
+    const threadParams = buildCodexThreadParams(threadOptions);
+    const threadResult = threadId
+      ? await connection.request<Record<string, unknown>>(this.listenerId, "thread/resume", {
+        threadId,
+        ...threadParams,
+      })
+      : await connection.request<Record<string, unknown>>(this.listenerId, "thread/start", threadParams);
+    const thread = threadResult?.thread && typeof threadResult.thread === "object"
+      ? threadResult.thread as Record<string, unknown>
+      : null;
+    this.updateThreadId(thread?.id, true);
+    const loadedThreadId = String(this.options.threadId || threadId).trim();
+    if (loadedThreadId) {
+      connection.claimThread(loadedThreadId, this.listenerId);
+    }
+  }
 
-    const turnCompletionPromise = new Promise<void>((resolve, reject) => {
-      turnCompletionResolve = resolve;
-      turnCompletionReject = reject;
+  private beginOperation(
+    kind: CodexRunnerOperation["kind"],
+    handlers: CodexStreamHandlers,
+    abortGeneration: number,
+    disposeGeneration: number,
+  ): CodexRunnerOperation {
+    let resolve: () => void = () => undefined;
+    let reject: (error: Error) => void = () => undefined;
+    const done = new Promise<void>((resolveDone, rejectDone) => {
+      resolve = resolveDone;
+      reject = rejectDone;
     });
-    void turnCompletionPromise.catch(() => undefined);
-    const exitPromise = new Promise<AppServerResponse>((resolve) => {
-      const settleExit = (response: AppServerResponse): boolean => {
-        if (exitSettled) {
-          return false;
+    void done.catch(() => undefined);
+    const operation: CodexRunnerOperation = {
+      kind,
+      handlers,
+      abortGeneration,
+      disposeGeneration,
+      assistantBuffers: new Map<string, string>(),
+      reasoningBuffers: new Map<string, CodexReasoningBufferState>(),
+      emittedTraceContents: new Map<string, string>(),
+      rawResponseToolNames: new Map<string, string>(),
+      observer: kind === "turn" ? createCodexTurnAssistantObserver(handlers.onAssistantDelta) : null,
+      activeTurnId: "",
+      settled: false,
+      threadCompacted: false,
+      resolve,
+      reject,
+      done,
+    };
+    this.activeOperation = operation;
+    return operation;
+  }
+
+  private settleActive(error?: Error): void {
+    const operation = this.activeOperation;
+    if (!operation || operation.settled) {
+      return;
+    }
+    operation.settled = true;
+    if (error) {
+      operation.reject(error);
+      return;
+    }
+    operation.resolve();
+  }
+
+  private throwIfSuperseded(abortGeneration: number, disposeGeneration: number): void {
+    if (this.disposeGeneration !== disposeGeneration || this.disposed) {
+      throw createRunnerDisposedError();
+    }
+    if (this.abortGeneration !== abortGeneration) {
+      throw createAbortError();
+    }
+  }
+
+  private updateThreadId(threadId: unknown, allowReplace = false): void {
+    const normalized = String(threadId || "").trim();
+    if (!normalized || this.options.threadId === normalized) {
+      return;
+    }
+    if (this.options.threadId && !allowReplace) {
+      return;
+    }
+    this.options.threadId = normalized;
+    this.activeOperation?.handlers.onThreadId(normalized);
+  }
+
+  private handleConnectionClosed(info: CodexAppServerCloseInfo): void {
+    if (info.connectionId !== this.activeConnectionId) {
+      return;
+    }
+    this.connection = null;
+    this.activeConnectionId = null;
+    if (!this.activeOperation || this.activeOperation.settled) {
+      return;
+    }
+    if (this.disposeGeneration !== this.activeOperation.disposeGeneration || this.disposed) {
+      this.settleActive(createRunnerDisposedError());
+      return;
+    }
+    if (this.abortGeneration !== this.activeOperation.abortGeneration) {
+      this.settleActive(createAbortError());
+      return;
+    }
+    const spawnError = info.spawnError ? normalizeCodexSpawnError(info.spawnError, this.options.command) : null;
+    this.settleActive(spawnError ?? new Error(t("codex.appServerExited", {
+      detail: info.signal ? `signal ${info.signal}` : `code ${info.code ?? 1}`,
+      stderr: info.stderr || "-",
+    })));
+  }
+
+  private handleServerRequest(
+    method: string,
+    params: unknown,
+  ): Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined {
+    const operation = this.activeOperation;
+    this.forwardEvent({ method, params });
+    if (!operation || operation.kind !== "turn") {
+      return buildAppServerRequestResolution(
+        method,
+        t("codex.appServerUnsupportedRequest", { method: method || "unknown" }),
+      );
+    }
+    return operation.handlers.onRequest?.({ method, params })
+      ?? buildAppServerRequestResolution(
+        method,
+        t("codex.appServerUnsupportedRequest", { method: method || "unknown" }),
+      );
+  }
+
+  private forwardEvent(message: Record<string, unknown>): void {
+    const operation = this.activeOperation;
+    if (!operation) {
+      return;
+    }
+    const forwarded = buildForwardedRawEvent(message);
+    if (forwarded) {
+      operation.handlers.onEvent?.(forwarded);
+    }
+  }
+
+  private failVisible(message: string): void {
+    const normalized = message.trim();
+    if (!normalized) {
+      return;
+    }
+    const operation = this.activeOperation;
+    if (operation) {
+      emitCodexVisibleErrorTrace(operation.handlers.onTrace, normalized);
+    }
+    this.settleActive(new Error(normalized));
+  }
+
+  private claimItemThreads(rawItem: unknown): void {
+    if (!this.connection) {
+      return;
+    }
+    for (const update of extractCodexSubagentLifecycleUpdates(rawItem)) {
+      if (update.threadId) {
+        this.connection.claimThread(update.threadId, this.listenerId);
+      }
+    }
+    const item = rawItem && typeof rawItem === "object" ? rawItem as Record<string, unknown> : null;
+    const receivers = item?.receiverThreadIds ?? item?.receiver_thread_ids;
+    if (!Array.isArray(receivers)) {
+      return;
+    }
+    for (const value of receivers) {
+      const threadId = String(value || "").trim();
+      if (threadId) {
+        this.connection.claimThread(threadId, this.listenerId);
+      }
+    }
+  }
+
+  private handleNotification(message: Record<string, unknown>): void {
+    const operation = this.activeOperation;
+    if (!operation) {
+      return;
+    }
+    this.forwardEvent(message);
+    const method = String(message.method || "").trim();
+    if (operation.kind === "compact" && isCodexContextCompactionCompletedNotification(message, this.options.threadId ?? undefined)) {
+      operation.threadCompacted = true;
+      this.settleActive();
+      return;
+    }
+    if (!method) {
+      return;
+    }
+    if (method === "thread/started") {
+      const thread = message.params && typeof message.params === "object"
+        ? (message.params as Record<string, unknown>).thread
+        : null;
+      const startedThreadId = thread && typeof thread === "object"
+        ? (thread as Record<string, unknown>).id
+        : undefined;
+      const normalizedStartedThreadId = String(startedThreadId || "").trim();
+      if (
+        normalizedStartedThreadId
+        && this.options.threadId
+        && normalizedStartedThreadId !== this.options.threadId
+      ) {
+        operation.handlers.onSubagentUpdate?.({
+          threadId: normalizedStartedThreadId,
+          status: "running",
+        });
+      } else {
+        this.updateThreadId(normalizedStartedThreadId);
+      }
+      return;
+    }
+    if (
+      method === "item/reasoning/summaryTextDelta"
+      || method === "item/reasoning/textDelta"
+      || method === "item/reasoning/summaryPartAdded"
+    ) {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      if (!operation.observer) {
+        return;
+      }
+      handleCodexReasoningNotification({
+        method,
+        params,
+        primaryThreadId: this.options.threadId ?? undefined,
+        reasoningBuffers: operation.reasoningBuffers,
+        handlers: {
+          onAssistantDelta: operation.observer.emit,
+          onSubagentUpdate: operation.handlers.onSubagentUpdate,
+          onTrace: operation.handlers.onTrace,
+          onTaskListUpdate: operation.handlers.onTaskListUpdate,
+        },
+      });
+      return;
+    }
+    if (method === "item/agentMessage/delta") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || "").trim();
+      const itemId = String(params.itemId || "").trim();
+      const delta = String(params.delta || "");
+      const isSubagentDelta = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+      const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
+      if (bufferKey) {
+        operation.assistantBuffers.set(bufferKey, `${operation.assistantBuffers.get(bufferKey) ?? ""}${delta}`);
+      }
+      if (delta && operation.observer) {
+        if (isSubagentDelta) {
+          operation.handlers.onSubagentUpdate?.({
+            threadId: eventThreadId,
+            status: "running",
+            delta,
+          });
+        } else {
+          operation.observer.emit(
+            delta,
+            isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined,
+          );
+          if (Object.prototype.hasOwnProperty.call(params, "phase")) {
+            operation.observer.observeAgentMessagePhase(params.phase);
+          }
         }
-        exitSettled = true;
-        childClosed = true;
-        resolve(response);
-        return true;
-      };
-      child.once("close", (code, signal) => {
-        if (!settleExit({ code, signal })) {
+      }
+      return;
+    }
+    if (method === "thread/tokenUsage/updated") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      emitPrimaryTokenUsageUpdate(params, operation.handlers, this.options.threadId);
+      return;
+    }
+    if (method === "turn/plan/updated") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || "").trim();
+      if (!eventThreadId || !this.options.threadId || eventThreadId === this.options.threadId) {
+        emitCodexTodoListUpdate(Array.isArray(params.plan) ? params.plan : [], operation.handlers.onTaskListUpdate);
+      } else {
+        operation.handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
+      }
+      return;
+    }
+    if (method === "rawResponseItem/completed") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || "").trim();
+      if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+        operation.handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
+        return;
+      }
+      const rawItem = params.item;
+      const toolCall = extractCodexRawResponseToolCall(rawItem);
+      if (toolCall) {
+        operation.rawResponseToolNames.set(toolCall.callId, toolCall.toolName);
+        return;
+      }
+      const outputRecord = rawItem && typeof rawItem === "object"
+        ? rawItem as Record<string, unknown>
+        : {};
+      const callId = String(outputRecord.call_id || "").trim();
+      const toolName = callId ? (operation.rawResponseToolNames.get(callId) ?? "") : "";
+      const waitTimeout = extractCodexWaitTimeoutPayload(rawItem, toolName);
+      if (waitTimeout) {
+        if (callId) {
+          operation.rawResponseToolNames.delete(callId);
+        }
+        this.failVisible(t("codex.collabWaitTimedOut", { detail: waitTimeout.detail }));
+        return;
+      }
+      if (callId) {
+        operation.rawResponseToolNames.delete(callId);
+      }
+      return;
+    }
+    if (method === "turn/completed") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || "").trim();
+      const turn = params.turn && typeof params.turn === "object"
+        ? params.turn as Record<string, unknown>
+        : {};
+      const completedTurnId = String(turn.id || "").trim();
+      const turnStatus = String(turn.status || "").trim();
+      const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+      if (!isSubagentTurn) {
+        emitPrimaryTokenUsageUpdate(params, operation.handlers, this.options.threadId);
+      }
+      if (isSubagentTurn) {
+        const error = turnStatus === "failed"
+          ? buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))
+          : "";
+        operation.handlers.onSubagentUpdate?.({
+          threadId: eventThreadId,
+          status: turnStatus === "failed"
+            ? "failed"
+            : turnStatus === "interrupted"
+              ? "interrupted"
+              : "completed",
+          ...(error ? { error } : {}),
+        });
+        return;
+      }
+      if (!shouldSettleCodexPrimaryTurn({
+        eventThreadId,
+        eventTurnId: completedTurnId,
+        primaryThreadId: this.options.threadId,
+        activeTurnId: operation.activeTurnId,
+      })) {
+        return;
+      }
+      if (turnStatus === "failed") {
+        this.settleActive(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
+        return;
+      }
+      if (turnStatus === "completed") {
+        operation.observer?.promoteUnspecifiedFinalOnCompletedTurn();
+        operation.handlers.onTurnCompleted?.({
+          threadId: eventThreadId || this.options.threadId || "",
+          turnId: completedTurnId,
+          status: "completed",
+        });
+      }
+      this.settleActive();
+      return;
+    }
+    if (method === "error") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || "").trim();
+      const structuredError = params.error && typeof params.error === "object"
+        ? params.error as Record<string, unknown>
+        : {};
+      const warning = String(
+        params.message
+        || structuredError.message
+        || structuredError.additionalDetails
+        || "",
+      ).trim();
+      if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+        operation.handlers.onSubagentUpdate?.({
+          threadId: eventThreadId,
+          status: params.willRetry === true ? "running" : "failed",
+          ...(warning ? { error: warning } : {}),
+        });
+        return;
+      }
+      if (operation.kind === "compact") {
+        const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
+        if (rateLimitMessage) {
+          this.settleActive(new Error(rateLimitMessage));
           return;
         }
-        if (!turnSettled) {
-          const error = this.disposeGeneration !== runDisposeGeneration
-            ? createRunnerDisposedError()
-            : this.abortGeneration !== runGeneration
-              ? createAbortError()
-              : new Error(
-                t("codex.appServerExited", {
-                  detail: signal ? `signal ${signal}` : `code ${code ?? 1}`,
-                  stderr: Buffer.concat(stderrChunks).toString("utf8") || "-",
-                })
-              );
-          failRun(error);
+        if (warning) {
+          this.settleActive(new Error(warning));
         }
-      });
-      child.once("error", (error) => {
-        const normalizedError = normalizeCodexSpawnError(error, spawnCommand.command);
-        spawnError = normalizedError;
-        void logError("codex-app-server-spawn-error", {
-          command: spawnCommand.command,
-          code: (error as NodeJS.ErrnoException).code ?? null,
-          pid: child.pid ?? null,
-          activeChildren: this.activeChildren.size,
-          error: error.message,
-        });
-        handlers.onEvent?.({
-          type: "codex.lifecycle",
-          event: "spawn_error",
-          command: spawnCommand.command,
-          code: (error as NodeJS.ErrnoException).code ?? null,
-          error: normalizedError.message,
-        });
-        stdoutReader?.close();
-        settleExit({ code: null, signal: null });
-        failRun(normalizedError);
-      });
-    });
-
-    const settleTurnCompletion = (error?: Error): void => {
-      if (turnSettled) {
         return;
       }
-      turnSettled = true;
-      if (error) {
-        turnCompletionReject?.(error);
+      const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
+      if (rateLimitMessage) {
+        this.failVisible(rateLimitMessage);
         return;
       }
-      turnCompletionResolve?.();
-    };
-
-    const rejectPendingRequests = (error: Error): void => {
-      for (const pending of pendingRequests.values()) {
-        pending.reject(error);
-      }
-      pendingRequests.clear();
-    };
-
-    const failRun = (error: Error): void => {
-      if (!streamError) {
-        streamError = error;
-      }
-      rejectPendingRequests(error);
-      settleTurnCompletion(error);
-    };
-
-    const shutdownChild = (mode: "graceful" | "terminate"): void => {
-      if (childClosed) {
-        return;
-      }
-      requestChildShutdown(child, mode);
-    };
-
-    const updateThreadId = (threadId: unknown, allowReplace = false): void => {
-      const normalized = String(threadId || "").trim();
-      if (!normalized || this.options.threadId === normalized) {
-        return;
-      }
-      if (this.options.threadId && !allowReplace) {
-        return;
-      }
-      this.options.threadId = normalized;
-      handlers.onThreadId(normalized);
-    };
-
-    const sendJsonRpcMessage = (message: Record<string, unknown>): void => {
-      if (!child.stdin || !child.stdin.writable) {
-        throw new Error(t("codex.appServerStdinUnavailable"));
-      }
-      child.stdin.write(serializeCodexAppServerMessage(message));
-    };
-
-    const request = <T = unknown>(method: string, params: Record<string, unknown>): Promise<T> => {
-      return new Promise<T>((resolve, reject) => {
-        const id = nextRequestId;
-        nextRequestId += 1;
-        pendingRequests.set(id, {
-          resolve: (value) => resolve(value as T),
-          reject,
-        });
-        try {
-          sendJsonRpcMessage({ jsonrpc: "2.0", id, method, params });
-        } catch (error) {
-          pendingRequests.delete(id);
-          reject(error instanceof Error ? error : new Error(String(error)));
+      if (warning) {
+        const lower = warning.toLowerCase();
+        if (lower.startsWith("reconnecting") || lower.startsWith("retrying")) {
+          operation.handlers.onTrace(`warning ${warning}`);
+        } else {
+          emitCodexVisibleErrorTrace(operation.handlers.onTrace, warning);
         }
-      });
-    };
-
-    const notify = (method: string, params?: Record<string, unknown>): void => {
-      const message: Record<string, unknown> = {
-        jsonrpc: "2.0",
-        method,
-      };
-      if (params && Object.keys(params).length > 0) {
-        message.params = params;
       }
-      sendJsonRpcMessage(message);
-    };
-
-    const failRunWithVisibleMessage = (message: string): void => {
-      const normalized = message.trim();
-      if (!normalized) {
+      return;
+    }
+    if (method === "account/rateLimits/updated" || method === "account/updated") {
+      return;
+    }
+    if (method === "item/started" || method === "item/completed") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      this.claimItemThreads(params.item);
+      if (!operation.observer && operation.kind === "turn") {
         return;
       }
-      emitCodexVisibleErrorTrace(handlers.onTrace, normalized);
-      failRun(new Error(normalized));
-      setTimeout(() => shutdownChild("terminate"), 0);
-    };
-
-    const rawResponseToolNames = new Map<string, string>();
-    const turnAssistantObserver = createCodexTurnAssistantObserver(handlers.onAssistantDelta);
-    const runtimeItemHandlers = {
-      onAssistantDelta: turnAssistantObserver.emit,
-      onSubagentUpdate: handlers.onSubagentUpdate,
-      onTrace: handlers.onTrace,
-      onTaskListUpdate: handlers.onTaskListUpdate,
-      onPrimaryAgentMessageCompleted: turnAssistantObserver.observeAgentMessagePhase,
-      onPrimaryToolActivity: turnAssistantObserver.observeToolActivity,
-    };
-
-    const handleItemEvent = (
-      eventType: "item.started" | "item.completed",
-      rawItem: unknown,
-      threadId?: string,
-    ): void => {
       handleCodexItemEvent({
-        eventType,
-        rawItem,
-        threadId,
+        eventType: method === "item/started" ? "item.started" : "item.completed",
+        rawItem: params.item,
+        threadId: String(params.threadId || "").trim(),
         primaryThreadId: this.options.threadId ?? undefined,
-        assistantBuffers,
-        reasoningBuffers,
-        emittedTraceContents,
-        handlers: runtimeItemHandlers,
-        onVisibleError: failRunWithVisibleMessage,
+        assistantBuffers: operation.assistantBuffers,
+        reasoningBuffers: operation.reasoningBuffers,
+        emittedTraceContents: operation.emittedTraceContents,
+        handlers: {
+          onAssistantDelta: operation.observer
+            ? operation.observer.emit
+            : () => undefined,
+          onSubagentUpdate: operation.handlers.onSubagentUpdate,
+          onTrace: operation.handlers.onTrace,
+          onTaskListUpdate: operation.handlers.onTaskListUpdate,
+          onPrimaryAgentMessageCompleted: operation.observer
+            ? operation.observer.observeAgentMessagePhase
+            : undefined,
+          onPrimaryToolActivity: operation.observer
+            ? operation.observer.observeToolActivity
+            : undefined,
+        },
+        onVisibleError: (messageText) => this.failVisible(messageText),
         formatCollabToolFailure: (failure) => t("codex.collabToolFailed", {
           tool: failure.tool,
           detail: failure.detail,
         }),
       });
-    };
-
-    child.stderr?.on("data", (chunk: string | Buffer) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-
-    if (!child.stdout) {
-      child.kill();
-      throw new Error(t("codex.appServerNoStdout"));
-    }
-
-    stdoutReader = createCodexAppServerNdjsonReader(child.stdout);
-    const outputReader = stdoutReader.lines;
-
-    const outputLoopPromise = (async (): Promise<void> => {
-      try {
-        for await (const line of outputReader) {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            continue;
-          }
-
-          let message: Record<string, unknown>;
-          try {
-            message = JSON.parse(trimmed) as Record<string, unknown>;
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            stdoutParseError = new Error(t("codex.appServerParseFailed", { error: detail }));
-            failRun(stdoutParseError);
-            shutdownChild("terminate");
-            break;
-          }
-
-          const hasId = Object.prototype.hasOwnProperty.call(message, "id");
-          const hasResult = Object.prototype.hasOwnProperty.call(message, "result");
-          const hasError = Object.prototype.hasOwnProperty.call(message, "error");
-          const method = String(message.method || "").trim();
-          const forwardedEvent = buildForwardedRawEvent(message);
-          if (forwardedEvent) {
-            handlers.onEvent?.(forwardedEvent);
-          }
-
-          if (hasId && (hasResult || hasError) && !method) {
-            const id = Number(message.id);
-            const pending = pendingRequests.get(id);
-            if (!pending) {
-              continue;
-            }
-            pendingRequests.delete(id);
-            if (hasError) {
-              const errorRecord = message.error && typeof message.error === "object"
-                ? message.error as Record<string, unknown>
-                : {};
-              pending.reject(new Error(String(errorRecord.message || t("codex.appServerRequestFailed"))));
-            } else {
-              pending.resolve(message.result);
-            }
-            continue;
-          }
-
-          if (hasId && method) {
-            const resolution = await handlers.onRequest?.({ method, params: message.params })
-              ?? buildAppServerRequestResolution(
-                method,
-                t("codex.appServerUnsupportedRequest", { method: method || "unknown" })
-              );
-            try {
-              sendJsonRpcMessage(resolution.error
-                ? { jsonrpc: "2.0", id: message.id, error: resolution.error }
-                : { jsonrpc: "2.0", id: message.id, result: resolution.result ?? {} });
-            } catch (error) {
-              failRun(error instanceof Error ? error : new Error(String(error)));
-              shutdownChild("terminate");
-              break;
-            }
-            continue;
-          }
-
-          if (!method) {
-            continue;
-          }
-
-          if (method === "thread/started") {
-            const startedThreadId = (message.params as Record<string, unknown> | undefined)?.thread && typeof (message.params as Record<string, unknown>).thread === "object"
-              ? ((message.params as Record<string, unknown>).thread as Record<string, unknown>).id
-              : undefined;
-            const normalizedStartedThreadId = String(startedThreadId || "").trim();
-            if (
-              normalizedStartedThreadId
-              && this.options.threadId
-              && normalizedStartedThreadId !== this.options.threadId
-            ) {
-              handlers.onSubagentUpdate?.({
-                threadId: normalizedStartedThreadId,
-                status: "running",
-              });
-            } else {
-              updateThreadId(normalizedStartedThreadId);
-            }
-            continue;
-          }
-
-          if (
-            method === "item/reasoning/summaryTextDelta"
-            || method === "item/reasoning/textDelta"
-            || method === "item/reasoning/summaryPartAdded"
-          ) {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            handleCodexReasoningNotification({
-              method,
-              params,
-              primaryThreadId: this.options.threadId ?? undefined,
-              reasoningBuffers,
-              handlers: runtimeItemHandlers,
-            });
-            continue;
-          }
-
-          if (method === "item/agentMessage/delta") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const eventThreadId = String(params.threadId || "").trim();
-            const itemId = String(params.itemId || "").trim();
-            const delta = String(params.delta || "");
-            const isSubagentDelta = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
-            const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
-            if (bufferKey) {
-              assistantBuffers.set(bufferKey, `${assistantBuffers.get(bufferKey) ?? ""}${delta}`);
-            }
-            if (delta) {
-              if (isSubagentDelta) {
-                handlers.onSubagentUpdate?.({
-                  threadId: eventThreadId,
-                  status: "running",
-                  delta,
-                });
-              } else {
-                turnAssistantObserver.emit(
-                  delta,
-                  isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined
-                );
-                if (Object.prototype.hasOwnProperty.call(params, "phase")) {
-                  turnAssistantObserver.observeAgentMessagePhase(params.phase);
-                }
-              }
-            }
-            continue;
-          }
-
-          if (method === "thread/tokenUsage/updated") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            emitPrimaryTokenUsageUpdate(params, handlers, this.options.threadId);
-            continue;
-          }
-
-          if (method === "turn/plan/updated") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const eventThreadId = String(params.threadId || "").trim();
-            if (!eventThreadId || !this.options.threadId || eventThreadId === this.options.threadId) {
-              emitCodexTodoListUpdate(Array.isArray(params.plan) ? params.plan : [], handlers.onTaskListUpdate);
-            } else {
-              handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
-            }
-            continue;
-          }
-
-          if (method === "rawResponseItem/completed") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const eventThreadId = String(params.threadId || "").trim();
-            if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
-              handlers.onSubagentUpdate?.({ threadId: eventThreadId, status: "running" });
-              continue;
-            }
-            const rawItem = params.item;
-            const toolCall = extractCodexRawResponseToolCall(rawItem);
-            if (toolCall) {
-              rawResponseToolNames.set(toolCall.callId, toolCall.toolName);
-              continue;
-            }
-            const outputRecord = rawItem && typeof rawItem === "object"
-              ? rawItem as Record<string, unknown>
-              : {};
-            const callId = String(outputRecord.call_id || "").trim();
-            const toolName = callId ? (rawResponseToolNames.get(callId) ?? "") : "";
-            const waitTimeout = extractCodexWaitTimeoutPayload(rawItem, toolName);
-            if (waitTimeout) {
-              if (callId) {
-                rawResponseToolNames.delete(callId);
-              }
-              failRunWithVisibleMessage(t("codex.collabWaitTimedOut", { detail: waitTimeout.detail }));
-              continue;
-            }
-            if (callId) {
-              rawResponseToolNames.delete(callId);
-            }
-            continue;
-          }
-
-          if (method === "turn/completed") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const eventThreadId = String(params.threadId || "").trim();
-            const turn = params.turn && typeof params.turn === "object"
-              ? params.turn as Record<string, unknown>
-              : {};
-            const completedTurnId = String(turn.id || "").trim();
-            const turnStatus = String(turn.status || "").trim();
-            const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
-            if (!isSubagentTurn) {
-              emitPrimaryTokenUsageUpdate(params, handlers, this.options.threadId);
-            }
-            if (isSubagentTurn) {
-              const error = turnStatus === "failed"
-                ? buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))
-                : "";
-              handlers.onSubagentUpdate?.({
-                threadId: eventThreadId,
-                status: turnStatus === "failed"
-                  ? "failed"
-                  : turnStatus === "interrupted"
-                    ? "interrupted"
-                    : "completed",
-                ...(error ? { error } : {}),
-              });
-              continue;
-            }
-            if (!shouldSettleCodexPrimaryTurn({
-              eventThreadId,
-              eventTurnId: completedTurnId,
-              primaryThreadId: this.options.threadId,
-              activeTurnId,
-            })) {
-              continue;
-            }
-            if (turnStatus === "failed") {
-              settleTurnCompletion(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));
-            } else {
-              if (turnStatus === "completed") {
-                turnAssistantObserver.promoteUnspecifiedFinalOnCompletedTurn();
-                handlers.onTurnCompleted?.({
-                  threadId: eventThreadId || this.options.threadId || "",
-                  turnId: completedTurnId,
-                  status: "completed",
-                });
-              }
-              settleTurnCompletion();
-            }
-            setTimeout(() => shutdownChild("graceful"), 0);
-            continue;
-          }
-
-          if (method === "error") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            const eventThreadId = String(params.threadId || "").trim();
-            const structuredError = params.error && typeof params.error === "object"
-              ? params.error as Record<string, unknown>
-              : {};
-            const warning = String(
-              params.message
-              || structuredError.message
-              || structuredError.additionalDetails
-              || ""
-            ).trim();
-            if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
-              handlers.onSubagentUpdate?.({
-                threadId: eventThreadId,
-                status: params.willRetry === true ? "running" : "failed",
-                ...(warning ? { error: warning } : {}),
-              });
-              continue;
-            }
-            const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
-            if (rateLimitMessage) {
-              failRunWithVisibleMessage(rateLimitMessage);
-              continue;
-            }
-            if (warning) {
-              const lower = warning.toLowerCase();
-              if (lower.startsWith("reconnecting") || lower.startsWith("retrying")) {
-                handlers.onTrace(`warning ${warning}`);
-              } else {
-                emitCodexVisibleErrorTrace(handlers.onTrace, warning);
-              }
-            }
-            continue;
-          }
-
-          if (method === "account/rateLimits/updated" || method === "account/updated") {
-            continue;
-          }
-
-          if (method === "item/started" || method === "item/completed") {
-            const params = message.params && typeof message.params === "object"
-              ? message.params as Record<string, unknown>
-              : {};
-            handleItemEvent(
-              method === "item/started" ? "item.started" : "item.completed",
-              params.item,
-              String(params.threadId || "").trim(),
-            );
-            continue;
-          }
-        }
-      } catch (error) {
-        const nextError = error instanceof Error ? error : new Error(String(error));
-        failRun(nextError);
-        throw nextError;
-      }
-    })();
-
-    try {
-      await request("initialize", buildCodexAppServerInitializeParams(spawnCommand.command, {
-        requestUserInputEnabled: handlers.requestUserInputEnabled === true,
-      }));
-      notify("initialized");
-
-      const threadParams = buildCodexThreadParams(threadOptions);
-
-      const threadResult = this.options.threadId
-        ? await request<Record<string, unknown>>("thread/resume", {
-            threadId: this.options.threadId,
-            ...threadParams,
-          })
-        : await request<Record<string, unknown>>("thread/start", threadParams);
-      const thread = threadResult?.thread && typeof threadResult.thread === "object"
-        ? threadResult.thread as Record<string, unknown>
-        : null;
-      updateThreadId(thread?.id, true);
-
-      const turnResult = await request<Record<string, unknown>>("turn/start", buildCodexTurnStartParams(
-        this.options.threadId,
-        prompt,
-        imagePaths,
-        threadOptions
-      ));
-      const startedTurn = turnResult?.turn && typeof turnResult.turn === "object"
-        ? turnResult.turn as Record<string, unknown>
-        : {};
-      activeTurnId = String(startedTurn.id || "").trim();
-      handlers.onEvent?.({ type: "turn.started" });
-
-      await turnCompletionPromise;
-      const { code, signal } = await exitPromise;
-      await outputLoopPromise;
-
-      if (spawnError) {
-        throw spawnError;
-      }
-      if (stdoutParseError) {
-        throw stdoutParseError;
-      }
-      if (streamError) {
-        throw streamError;
-      }
-      if (this.disposeGeneration !== runDisposeGeneration) {
-        throw createRunnerDisposedError();
-      }
-      if (this.abortGeneration !== runGeneration) {
-        throw createAbortError();
-      }
-      if (code !== 0 || signal) {
-        const stderr = Buffer.concat(stderrChunks).toString("utf8");
-        const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
-        throw new Error(t("codex.appServerExited", { detail, stderr: stderr || "-" }));
-      }
-    } catch (error) {
-      if (!turnSettled && error instanceof Error) {
-        failRun(error);
-      }
-      shutdownChild("terminate");
-      await Promise.allSettled([exitPromise, outputLoopPromise]);
-      if (this.disposeGeneration !== runDisposeGeneration) {
-        throw createRunnerDisposedError();
-      }
-      if (this.abortGeneration !== runGeneration) {
-        throw createAbortError();
-      }
-      throw error;
-    } finally {
-      stdoutReader?.close();
-      child.removeAllListeners();
-      child.stderr?.removeAllListeners();
-      child.stdout?.removeAllListeners();
-      child.stdin?.removeAllListeners();
-      this.releaseActiveChild(child);
     }
   }
 }
