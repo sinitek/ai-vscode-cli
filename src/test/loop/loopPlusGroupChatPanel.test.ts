@@ -103,12 +103,12 @@ function countValue(page: string, name: string): string {
   return match?.[1] ?? "";
 }
 
-function identities(page: string, role: string): string[] {
-  const expression = new RegExp(
-    `data-loop-plus-role="${role}" data-loop-plus-subtask="([^"]+)" data-loop-plus-attempt="([^"]+)"`,
-    "g",
+function assertLoopPlusDetailCardsHidden(page: string): void {
+  assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=|data-loop-plus-acceptance=/u);
+  assert.doesNotMatch(
+    page,
+    /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果|Current review|Review queue|Still running|Waiting to start|Acceptance results)<\/h2>/u,
   );
-  return [...page.matchAll(expression)].map((match) => `${match[1]}:${match[2]}`);
 }
 
 function parallelSnapshot() {
@@ -136,17 +136,10 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
     assert.equal(countValue(page, "running"), "1");
     assert.equal(countValue(page, "pending"), "1");
     assert.equal(countValue(page, "reviewed"), "0");
-    assert.deepEqual(identities(page, "current"), ["A:a-1"]);
-    assert.deepEqual(identities(page, "queued"), ["B:b-1", "C:c-1"]);
-    assert.deepEqual(identities(page, "running"), ["D:d-1"]);
-    assert.deepEqual(identities(page, "pending"), ["E:e-1"]);
-    assert.ok(page.indexOf('data-loop-plus-role="queued" data-loop-plus-subtask="B"')
-      < page.indexOf('data-loop-plus-role="queued" data-loop-plus-subtask="C"'));
-    assert.match(page, new RegExp(buildLoopPlusFinishEventId("A", "a-1").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/u);
-    assert.match(page, /&lt;b&gt;running&lt;\/b&gt;/u);
-    assert.doesNotMatch(page, /<script>alert\(1\)<\/script>/u);
-    assert.doesNotMatch(page, /<b>running<\/b>/u);
+    assertLoopPlusDetailCardsHidden(page);
+    assert.doesNotMatch(page, new RegExp(buildLoopPlusFinishEventId("A", "a-1").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(page, /<script>alert\(1\)<\/script>|&lt;script&gt;alert\(1\)&lt;\/script&gt;/u);
+    assert.doesNotMatch(page, /<b>running<\/b>|&lt;b&gt;running&lt;\/b&gt;/u);
     assert.match(page, /<button[^>]*data-action="stopTask"/u);
     assert.match(page, /<button[^>]*data-action="supplementTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="continueTask"/u);
@@ -159,8 +152,7 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
       assert.match(page, /事件驱动逐项验收/u);
       assert.match(page, /正在验收 子任务 1：Alpha。/u);
       assert.doesNotMatch(page, /尝试|已验收尝试/u);
-      assert.match(page, /执行结束，尚未验收/u);
-      assert.match(page, /待验收队列/u);
+      assert.doesNotMatch(page, /执行结束，尚未验收|待验收队列/u);
       assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
       assert.match(page, /子任务 4：Delta 思考中/u);
       assert.match(page, /主任务 思考中/u);
@@ -169,8 +161,7 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
       assert.match(page, /Event-driven review/u);
       assert.match(page, /Reviewing 子任务 1：Alpha\./u);
       assert.doesNotMatch(page, /Accepted attempts|Attempt /u);
-      assert.match(page, /Execution finished, not accepted/u);
-      assert.match(page, /Review queue/u);
+      assert.doesNotMatch(page, /Execution finished, not accepted|Review queue/u);
       assert.doesNotMatch(page, /<div class="meta-label">Current round<\/div>/u);
       assert.match(page, /子任务 4：Delta is thinking/u);
       assert.match(page, /主任务 is thinking/u);
@@ -205,7 +196,7 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.equal(countValue(queued, "running"), "0");
   assert.equal(countValue(queued, "queue"), "2");
   assert.equal(countValue(queued, "visible"), "2");
-  assert.deepEqual(identities(queued, "queued"), ["B:b-1", "C:c-1"]);
+  assertLoopPlusDetailCardsHidden(queued);
   assert.match(queued, /This task is not complete\./u);
   assert.doesNotMatch(queued, /fully closed|Reviewing /u);
 
@@ -231,8 +222,7 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   const stoppedPage = html(build(scheduler.snapshot(), { status: "stopped" }), "zh-CN");
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /不会自动验收/u);
-  assert.deepEqual(identities(stoppedPage, "current"), ["A:a-1"]);
-  assert.deepEqual(identities(stoppedPage, "queued"), ["B:b-1"]);
+  assertLoopPlusDetailCardsHidden(stoppedPage);
   assert.match(stoppedPage, /验收已暂停/u);
   assert.doesNotMatch(stoppedPage, /正在验收|思考中/u);
   assert.match(stoppedPage, /<button[^>]*data-action="continueTask"/u);
@@ -244,8 +234,7 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   assert.match(resumedPage, /data-loop-plus-phase="review_ready"/u);
   assert.match(resumedPage, /data-loop-plus-status="review_pending"/u);
   assert.match(resumedPage, /data-loop-plus-field="wake"[\s\S]*?<div class="meta-value">Yes<\/div>/u);
-  assert.deepEqual(identities(resumedPage, "queued"), ["A:a-1", "B:b-1"]);
-  assert.deepEqual(identities(resumedPage, "current"), []);
+  assertLoopPlusDetailCardsHidden(resumedPage);
   assert.match(resumedPage, /not complete/u);
   assert.doesNotMatch(resumedPage, /Reviewing |fully closed|is thinking/u);
 });
@@ -278,7 +267,7 @@ test("shows the Loop+ main reviewer animation without reusing a debate active sp
   const page = html(state, "en");
   assert.equal(state.mode, "debate");
   assert.match(page, /<h1>Loop\+ Group Chat<\/h1>/u);
-  assert.deepEqual(identities(page, "current"), ["B:b-1"]);
+  assertLoopPlusDetailCardsHidden(page);
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
   assert.match(page, /主持人主智能体 is thinking/u);
   assert.doesNotMatch(page, /data-thinking-kind="moderator"|Judge is thinking|Red\/Blue debate group chat/u);
@@ -310,10 +299,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(countValue(heldPage, "visible"), "2");
   assert.equal(countValue(heldPage, "running"), "1");
   assert.equal(countValue(heldPage, "pending"), "1");
-  assert.deepEqual(identities(heldPage, "current"), ["A:a-1"]);
-  assert.deepEqual(identities(heldPage, "queued"), ["B:b-1"]);
-  assert.deepEqual(identities(heldPage, "running"), ["D:d-1"]);
-  assert.deepEqual(identities(heldPage, "pending"), ["E:e-1"]);
+  assertLoopPlusDetailCardsHidden(heldPage);
   assert.match(heldPage, /自动验收已暂停/u);
   assert.match(heldPage, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
   assert.match(heldPage, /子任务 4：Delta 思考中/u);
@@ -327,8 +313,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(resumedPage, /data-loop-plus-phase="reviewing"/u);
   assert.match(resumedPage, /正在验收 子任务 1：Alpha。/u);
   assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
-  assert.deepEqual(identities(resumedPage, "current"), ["A:a-1"]);
-  assert.deepEqual(identities(resumedPage, "queued"), ["B:b-1"]);
+  assertLoopPlusDetailCardsHidden(resumedPage);
   assert.match(resumedPage, /子任务 4：Delta 思考中/u);
   assert.match(resumedPage, /主任务 思考中/u);
   assert.doesNotMatch(resumedPage, /自动验收已暂停/u);
@@ -351,8 +336,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(countValue(queuedPage, "current"), "0");
   assert.equal(countValue(queuedPage, "queue"), "1");
   assert.equal(countValue(queuedPage, "visible"), "1");
-  assert.deepEqual(identities(queuedPage, "current"), []);
-  assert.deepEqual(identities(queuedPage, "queued"), ["B:b-1"]);
+  assertLoopPlusDetailCardsHidden(queuedPage);
   assert.doesNotMatch(queuedPage, /Reviewing |is thinking|fully closed/u);
   assert.match(queuedPage, /<button[^>]*data-action="continueTask"/u);
 
@@ -367,7 +351,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   const stoppedPage = html(build(scheduler.snapshot(), { status: "needs-review" }), "zh-CN");
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /data-loop-plus-phase="stopped"/u);
-  assert.deepEqual(identities(stoppedPage, "current"), ["A:a-1"]);
+  assertLoopPlusDetailCardsHidden(stoppedPage);
   assert.match(stoppedPage, /data-thinking-kind="subtask" data-thinking-id="D"/u);
   assert.match(stoppedPage, /子任务 4：Delta 思考中/u);
   assert.doesNotMatch(stoppedPage, /data-thinking-kind="main"|自动验收已暂停|正在验收|主任务 思考中/u);
@@ -410,9 +394,11 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.ok(passedCurrent);
   assert.equal(passedScheduler.submitReview(passedCurrent.eventId).ok, true);
   const passedPage = html(build(passedScheduler.snapshot()), "zh-CN");
+  assertLoopPlusDetailCardsHidden(passedPage);
   assert.match(passedPage, /验收结果/u);
-  assert.match(passedPage, /子任务 1：Alpha · 验收成功/u);
-  assert.match(passedPage, /data-loop-plus-acceptance="passed"/u);
+  assert.match(passedPage, /子任务 1：Alpha/u);
+  assert.match(passedPage, /验收成功/u);
+  assert.doesNotMatch(passedPage, /子任务 1：Alpha · 验收成功/u);
   assert.doesNotMatch(passedPage, /尝试|已验收尝试/u);
 
   const failedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
@@ -428,8 +414,10 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.ok(failedCurrent);
   assert.equal(failedScheduler.submitReview(failedCurrent.eventId).ok, true);
   const failedPage = html(build(failedScheduler.snapshot()), "zh-CN");
-  assert.match(failedPage, /子任务 2：Bravo · 验收失败/u);
-  assert.match(failedPage, /data-loop-plus-acceptance="failed"/u);
+  assertLoopPlusDetailCardsHidden(failedPage);
+  assert.match(failedPage, /子任务 2：Bravo/u);
+  assert.match(failedPage, /验收失败/u);
+  assert.doesNotMatch(failedPage, /子任务 2：Bravo · 验收失败/u);
   assert.doesNotMatch(failedPage, /验收成功|尝试/u);
 
   const stoppedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
@@ -443,8 +431,10 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.ok(stoppedCurrent);
   assert.equal(stoppedScheduler.submitReview(stoppedCurrent.eventId).ok, true);
   const stoppedPage = html(build(stoppedScheduler.snapshot()), "en");
-  assert.match(stoppedPage, /子任务 3：Charlie · Acceptance failed/u);
-  assert.match(stoppedPage, /data-loop-plus-acceptance="failed"/u);
+  assertLoopPlusDetailCardsHidden(stoppedPage);
+  assert.match(stoppedPage, /子任务 3：Charlie/u);
+  assert.match(stoppedPage, /Acceptance failed/u);
+  assert.doesNotMatch(stoppedPage, /子任务 3：Charlie · Acceptance failed/u);
   assert.doesNotMatch(stoppedPage, /Accepted attempts|Attempt /u);
 
   const legacy = passedScheduler.snapshot();
@@ -454,9 +444,15 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const legacyFailed = html(build(legacy, {
     subTasks: [{ id: "A", title: "Alpha", status: "blocked", updatedAt: 11 }],
   }), "zh-CN");
-  assert.match(legacyFailed, /子任务 1：Alpha · 验收失败/u);
+  assertLoopPlusDetailCardsHidden(legacyFailed);
+  assert.match(legacyFailed, /子任务 1：Alpha/u);
+  assert.match(legacyFailed, /验收失败/u);
+  assert.doesNotMatch(legacyFailed, /验收成功|子任务 1：Alpha · 验收失败/u);
   const legacyPassed = html(build(legacy, {
     subTasks: [{ id: "A", title: "Alpha", status: "completed", updatedAt: 11 }],
   }), "zh-CN");
-  assert.match(legacyPassed, /子任务 1：Alpha · 验收成功/u);
+  assertLoopPlusDetailCardsHidden(legacyPassed);
+  assert.match(legacyPassed, /子任务 1：Alpha/u);
+  assert.match(legacyPassed, /验收成功/u);
+  assert.doesNotMatch(legacyPassed, /子任务 1：Alpha · 验收成功/u);
 });

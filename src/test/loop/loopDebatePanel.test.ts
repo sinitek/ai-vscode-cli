@@ -805,12 +805,9 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
       locale,
     );
     assert.match(page, locale === "zh-CN" ? /<h1>Loop\+ 群聊<\/h1>/u : /<h1>Loop\+ Group Chat<\/h1>/u);
-    assert.match(page, /data-loop-plus-role="current" data-loop-plus-subtask="A"/u);
-    assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
-    assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);
-    assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
-    assert.match(page, /&lt;i&gt;report&lt;\/i&gt;/u);
-    assert.doesNotMatch(page, /<i>report<\/i>/u);
+    assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=/u);
+    assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果|Current review|Review queue|Still running|Waiting to start|Acceptance results)<\/h2>/u);
+    assert.doesNotMatch(page, /<i>report<\/i>|&lt;i&gt;report&lt;\/i&gt;/u);
     assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
     assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
     assert.match(page, /typing-dots/u);
@@ -878,10 +875,8 @@ test("keeps a paused Loop+ review from looking active while a running subtask st
     );
     assert.match(page, /data-loop-plus-status="paused"/u);
     assert.match(page, /data-loop-plus-phase="reviewing"/u);
-    assert.match(page, /data-loop-plus-role="current" data-loop-plus-subtask="A"/u);
-    assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
-    assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);
-    assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
+    assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=/u);
+    assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果|Current review|Review queue|Still running|Waiting to start|Acceptance results)<\/h2>/u);
     assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
     assert.match(page, locale === "zh-CN" ? /Delta 思考中/u : /Delta is thinking/u);
     assert.doesNotMatch(page, /data-thinking-kind="main"|Main task 思考中|Main task is thinking|正在验收|Reviewing /u);
