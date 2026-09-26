@@ -1135,11 +1135,11 @@ function renderTimeline(
   if (state.rounds.length === 0) {
     return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
   }
-  const thinkingBubble = renderThinkingBubble(state, strings);
+  const thinkingBubbles = renderThinkingBubbles(state, strings);
   if (!state.chatMarkdown.trim() || segments.length === 0) {
-    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubble}</div>`;
+    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubbles}</div>`;
   }
-  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubble}</div>`;
+  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubbles}</div>`;
 }
 
 function renderInitialTaskPromptBubble(
@@ -1157,14 +1157,23 @@ function renderInitialTaskPromptBubble(
   }, strings, strings.initialTaskPrompt);
 }
 
-function renderThinkingBubble(
+type RuntimeThinkingSpeaker = LoopDebateChatPanelActiveSpeaker & {
+  attemptId?: string;
+};
+
+function renderThinkingBubbles(
   state: LoopDebateChatPanelState,
   strings: LoopDebateChatPanelStrings,
 ): string {
-  const speaker = getActiveSpeaker(state);
-  if (!speaker) {
-    return "";
-  }
+  return getThinkingSpeakers(state)
+    .map((speaker) => renderThinkingBubble(speaker, strings))
+    .join("");
+}
+
+function renderThinkingBubble(
+  speaker: RuntimeThinkingSpeaker,
+  strings: LoopDebateChatPanelStrings,
+): string {
   const isParticipant = speaker.kind === "participant" || speaker.kind === "main" || speaker.kind === "subtask";
   const isModerator = speaker.kind === "moderator";
   const hasAvatar = isParticipant || isModerator;
@@ -1175,7 +1184,10 @@ function renderThinkingBubble(
   const avatar = hasAvatar
     ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker.title, speaker.id))}</span>`
     : "";
-  return `<article class="message ${messageKind} thinking ${layoutClass}">
+  const attemptAttribute = speaker.attemptId
+    ? ` data-thinking-attempt="${escapeAttribute(speaker.attemptId)}"`
+    : "";
+  return `<article class="message ${messageKind} thinking ${layoutClass}" data-thinking-kind="${escapeAttribute(speaker.kind)}" data-thinking-id="${escapeAttribute(speaker.id)}"${attemptAttribute}>
     ${avatar}
     <section class="bubble">
       <header class="bubble-header">
@@ -1190,8 +1202,70 @@ function renderThinkingBubble(
   </article>`;
 }
 
+function getThinkingSpeakers(state: LoopDebateChatPanelState): RuntimeThinkingSpeaker[] {
+  if (state.loopPlus) {
+    return getLoopPlusRuntimeSpeakers(state);
+  }
+  const speaker = getActiveSpeaker(state);
+  return speaker ? [speaker] : [];
+}
+
+function getLoopPlusRuntimeSpeakers(state: LoopDebateChatPanelState): RuntimeThinkingSpeaker[] {
+  const projection = state.loopPlus;
+  if (!projection?.ok || projection.activity === "completed") {
+    return [];
+  }
+  const speakers: RuntimeThinkingSpeaker[] = [];
+  for (const item of projection.running) {
+    const id = item.subtaskId.trim();
+    if (!id) {
+      continue;
+    }
+    const attemptId = item.attemptId.trim();
+    speakers.push({
+      kind: "subtask",
+      id,
+      title: loopPlusRunningTitle(state, item),
+      ...(attemptId ? { attemptId } : {}),
+    });
+  }
+  if (projection.activity === "reviewing") {
+    speakers.push({
+      kind: "main",
+      id: "main",
+      title: loopPlusMainTitle(state),
+    });
+  }
+  return speakers;
+}
+
+function loopPlusRunningTitle(
+  state: LoopDebateChatPanelState,
+  item: Extract<LoopPlusPanelProjection, { ok: true }>["running"][number],
+): string {
+  const label = loopPlusSubtaskLabel(state, item.subtaskId);
+  if (label && label !== item.subtaskId) {
+    return label;
+  }
+  const snapshotTitle = item.title?.trim() ?? "";
+  return snapshotTitle || label || item.subtaskId;
+}
+
+function loopPlusMainTitle(state: LoopDebateChatPanelState): string {
+  for (let index = state.rounds.length - 1; index >= 0; index -= 1) {
+    const main = state.rounds[index]?.participants.find((participant) => (
+      participant.role === "main" || participant.id === "main"
+    ));
+    const title = main?.title.trim();
+    if (title) {
+      return title;
+    }
+  }
+  return "主任务";
+}
+
 function getActiveSpeaker(state: LoopDebateChatPanelState): LoopDebateChatPanelActiveSpeaker | null {
-  if (state.loopPlus || state.task.status !== "running") {
+  if (state.task.status !== "running") {
     return null;
   }
   for (let index = state.rounds.length - 1; index >= 0; index -= 1) {

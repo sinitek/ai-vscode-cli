@@ -426,12 +426,13 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/extensionHost/loopPlusSubtaskChat.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/webview/loopDebatePanel.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]

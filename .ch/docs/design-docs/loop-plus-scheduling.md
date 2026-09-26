@@ -80,7 +80,7 @@
 - `reviewQueue`：按完成到达顺序排列的待验收事件，不按启动顺序。
 - `currentReview`：唯一消费者正在验收的一项。
 
-`visibleReviewCount` 等于排队数加当前项。群聊投影要把当前项和另行计数的排队数同时给主任务，不能用父任务 `running` 或经典 `activeSubtaskIds` 为空来猜测没有待验收项。投影只读现有 `event_driven` 快照，不要求宿主为展示新增 API。
+`visibleReviewCount` 等于排队数加当前项。群聊投影要把当前项和另行计数的排队数同时给主任务，不能用父任务 `running` 或经典 `activeSubtaskIds` 为空来猜测没有待验收项。投影只读现有 `event_driven` 快照，不要求宿主为展示新增 API。群聊时间线不复用经典 `activeSpeaker`。快照 `running` 里的每个子任务在时间线末尾显示“思考中”气泡和打字动画；`activity` 为 `reviewing` 时再追加主任务气泡。`pending`、`review_pending`、`paused`、`stopped` 和 `completed` 不把主任务显示成正在生成，但 `paused` 与 `stopped` 仍为尚未结束的 running 子任务保留该动画。
 
 ### 完成事件与单消费者
 

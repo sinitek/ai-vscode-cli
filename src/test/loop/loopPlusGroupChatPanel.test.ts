@@ -151,7 +151,10 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
     assert.match(page, /<button[^>]*data-action="supplementTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="continueTask"/u);
     assert.doesNotMatch(page, /loopPlus:|claimNextReview|submitReview|resumeParent/u);
-    assert.doesNotMatch(page, /class="message[^"]*thinking/u);
+    assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+    assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
+    assert.match(page, /typing-dots/u);
+    assert.doesNotMatch(page, /data-thinking-kind="moderator"|<b>running<\/b>/u);
     if (locale === "zh-CN") {
       assert.match(page, /事件驱动逐项验收/u);
       assert.match(page, /正在验收 子任务 1：Alpha。/u);
@@ -159,7 +162,8 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
       assert.match(page, /执行结束，尚未验收/u);
       assert.match(page, /待验收队列/u);
       assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
-      assert.doesNotMatch(page, /思考中/u);
+      assert.match(page, /子任务 4：Delta 思考中/u);
+      assert.match(page, /主任务 思考中/u);
       assert.doesNotMatch(page, /已全部收口/u);
     } else {
       assert.match(page, /Event-driven review/u);
@@ -168,7 +172,8 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
       assert.match(page, /Execution finished, not accepted/u);
       assert.match(page, /Review queue/u);
       assert.doesNotMatch(page, /<div class="meta-label">Current round<\/div>/u);
-      assert.doesNotMatch(page, /is thinking/u);
+      assert.match(page, /子任务 4：Delta is thinking/u);
+      assert.match(page, /主任务 is thinking/u);
       assert.doesNotMatch(page, /fully closed/u);
     }
   }
@@ -182,7 +187,10 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.match(waiting, /等待执行结束。主任务没有在生成。/u);
   assert.equal(countValue(waiting, "running"), "1");
   assert.equal(countValue(waiting, "visible"), "0");
-  assert.doesNotMatch(waiting, /思考中|已全部收口|正在验收/u);
+  assert.match(waiting, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+  assert.match(waiting, /子任务 4：Delta 思考中/u);
+  assert.match(waiting, /typing-dots/u);
+  assert.doesNotMatch(waiting, /data-thinking-kind="main"|主任务 思考中|已全部收口|正在验收/u);
 
   const queuedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(queuedScheduler, "A", "a-1");
@@ -242,7 +250,7 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   assert.doesNotMatch(resumedPage, /Reviewing |fully closed|is thinking/u);
 });
 
-test("keeps an event-driven debate record from showing a generating speaker while its queue is visible", () => {
+test("shows the Loop+ main reviewer animation without reusing a debate active speaker", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(scheduler, "B", "b-1");
   const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot(), {
@@ -271,7 +279,9 @@ test("keeps an event-driven debate record from showing a generating speaker whil
   assert.equal(state.mode, "debate");
   assert.match(page, /<h1>Loop\+ Group Chat<\/h1>/u);
   assert.deepEqual(identities(page, "current"), ["B:b-1"]);
-  assert.doesNotMatch(page, /is thinking|Red\/Blue debate group chat/u);
+  assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
+  assert.match(page, /主持人主智能体 is thinking/u);
+  assert.doesNotMatch(page, /data-thinking-kind="moderator"|Judge is thinking|Red\/Blue debate group chat/u);
   assert.match(page, /Event-driven review/u);
 });
 
@@ -305,7 +315,9 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.deepEqual(identities(heldPage, "running"), ["D:d-1"]);
   assert.deepEqual(identities(heldPage, "pending"), ["E:e-1"]);
   assert.match(heldPage, /自动验收已暂停/u);
-  assert.doesNotMatch(heldPage, /正在验收|思考中|已全部收口/u);
+  assert.match(heldPage, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+  assert.match(heldPage, /子任务 4：Delta 思考中/u);
+  assert.doesNotMatch(heldPage, /data-thinking-kind="main"|主任务 思考中|正在验收|已全部收口/u);
   assert.match(heldPage, /<button[^>]*data-action="continueTask"/u);
   assert.doesNotMatch(heldPage, /<button[^>]*data-action="stopTask"/u);
 
@@ -317,7 +329,9 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
   assert.deepEqual(identities(resumedPage, "current"), ["A:a-1"]);
   assert.deepEqual(identities(resumedPage, "queued"), ["B:b-1"]);
-  assert.doesNotMatch(resumedPage, /自动验收已暂停|思考中/u);
+  assert.match(resumedPage, /子任务 4：Delta 思考中/u);
+  assert.match(resumedPage, /主任务 思考中/u);
+  assert.doesNotMatch(resumedPage, /自动验收已暂停/u);
   assert.match(resumedPage, /<button[^>]*data-action="stopTask"/u);
   assert.doesNotMatch(resumedPage, /<button[^>]*data-action="continueTask"/u);
 
@@ -354,7 +368,9 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /data-loop-plus-phase="stopped"/u);
   assert.deepEqual(identities(stoppedPage, "current"), ["A:a-1"]);
-  assert.doesNotMatch(stoppedPage, /自动验收已暂停|正在验收|思考中/u);
+  assert.match(stoppedPage, /data-thinking-kind="subtask" data-thinking-id="D"/u);
+  assert.match(stoppedPage, /子任务 4：Delta 思考中/u);
+  assert.doesNotMatch(stoppedPage, /data-thinking-kind="main"|自动验收已暂停|正在验收|主任务 思考中/u);
 
   const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(completedScheduler.complete().ok, true);
@@ -367,6 +383,24 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(missingPage, /data-loop-plus-status="invalid"/u);
   assert.match(missingPage, /快照缺失或损坏（missing）/u);
   assert.doesNotMatch(missingPage, /自动验收已暂停|正在验收|data-loop-plus-count=/u);
+});
+
+
+test("shows one execution animation for every running Loop+ subtask without pretending the waiting main task is generating", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  const dispatched = scheduler.dispatch([spec("D", "d-1"), spec("E", "e-1")]);
+  assert.deepEqual(dispatched.started.map((item) => item.subtaskId), ["D", "E"]);
+  const page = html(build(scheduler.snapshot()), "zh-CN");
+  assert.match(page, /data-loop-plus-status="waiting"/u);
+  assert.match(page, /等待执行结束。主任务没有在生成。/u);
+  const delta = page.indexOf('data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"');
+  const echo = page.indexOf('data-thinking-kind="subtask" data-thinking-id="E" data-thinking-attempt="e-1"');
+  assert.ok(delta >= 0 && echo > delta);
+  assert.match(page, /子任务 4：Delta 思考中/u);
+  assert.match(page, /子任务 5：Echo 思考中/u);
+  assert.equal(page.match(/data-thinking-kind="subtask"/gu)?.length, 2);
+  assert.equal(page.match(/class="typing-dots"/gu)?.length, 2);
+  assert.doesNotMatch(page, /data-thinking-kind="main"|主任务 思考中|正在验收/u);
 });
 
 test("shows acceptance passed or failed instead of reviewed attempts", () => {

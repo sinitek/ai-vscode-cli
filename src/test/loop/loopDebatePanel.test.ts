@@ -749,7 +749,7 @@ test("keeps classic main/sub and debate panels on the round rhythm", () => {
   assert.equal(getStrings("zh-CN").loopPlusStatusPaused, "自动验收已暂停");
 });
 
-test("does not show a generating speaker for an explicit Loop+ projection", () => {
+test("shows Loop-style execution animation for Loop+ runtime work without reusing a classic active speaker", () => {
   const loopPlus = {
     ok: true as const,
     schedulingMode: "event_driven" as const,
@@ -811,14 +811,17 @@ test("does not show a generating speaker for an explicit Loop+ projection", () =
     assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
     assert.match(page, /&lt;i&gt;report&lt;\/i&gt;/u);
     assert.doesNotMatch(page, /<i>report<\/i>/u);
-    assert.doesNotMatch(page, /class="message [^"]*thinking|思考中| is thinking/u);
+    assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+    assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
+    assert.match(page, /typing-dots/u);
+    assert.match(page, locale === "zh-CN" ? /Delta 思考中[\s\S]*Main task 思考中/u : /Delta is thinking[\s\S]*Main task is thinking/u);
     assert.doesNotMatch(page, /<div class="meta-label">(?:当前轮次|Current round)<\/div>/u);
     assert.match(page, /<button[^>]*data-action="stopTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="continueTask"/u);
   }
 });
 
-test("renders an explicit paused Loop+ projection without a reviewing or thinking bubble", () => {
+test("keeps a paused Loop+ review from looking active while a running subtask still animates", () => {
   const loopPlus = {
     ok: true as const,
     schedulingMode: "event_driven" as const,
@@ -879,7 +882,9 @@ test("renders an explicit paused Loop+ projection without a reviewing or thinkin
     assert.match(page, /data-loop-plus-role="queued" data-loop-plus-subtask="B"/u);
     assert.match(page, /data-loop-plus-role="running" data-loop-plus-subtask="D"/u);
     assert.match(page, /data-loop-plus-role="pending" data-loop-plus-subtask="E"/u);
-    assert.doesNotMatch(page, /class="message [^"]*thinking|思考中| is thinking|正在验收|Reviewing /u);
+    assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+    assert.match(page, locale === "zh-CN" ? /Delta 思考中/u : /Delta is thinking/u);
+    assert.doesNotMatch(page, /data-thinking-kind="main"|Main task 思考中|Main task is thinking|正在验收|Reviewing /u);
     assert.match(page, /<button[^>]*data-action="continueTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="stopTask"/u);
     if (locale === "zh-CN") {
