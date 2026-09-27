@@ -5,10 +5,11 @@ import {
   extractCodexRawResponseToolCall,
   extractCodexSubagentLifecycleUpdates,
   extractCodexWaitTimeoutPayload,
+  extractCodexEventTurnId,
   isCodexFinalAnswerPhase,
   isCodexContextCompactionCompletedNotification,
   isCodexSubagentThreadEvent,
-  shouldSettleCodexPrimaryTurn,
+  shouldSettleObservedCodexPrimaryTurn,
   type CodexSubagentUpdate,
 } from "./codexAppServerEvents";
 import {
@@ -155,6 +156,8 @@ type CodexRunnerOperation = {
   rawResponseToolNames: Map<string, string>;
   observer: ReturnType<typeof createCodexTurnAssistantObserver> | null;
   activeTurnId: string;
+  observedPrimaryTurnIds: Set<string>;
+  sawPrimaryAssistantOutput: boolean;
   settled: boolean;
   threadCompacted: boolean;
   resolve: () => void;
@@ -332,7 +335,7 @@ export class CodexInteractiveRunner {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      const turnResult = await opened.connection.request<Record<string, unknown>>(
+      const turnStartPromise = opened.connection.request<Record<string, unknown>>(
         this.listenerId,
         "turn/start",
         buildCodexTurnStartParams(
@@ -342,12 +345,20 @@ export class CodexInteractiveRunner {
           opened.threadOptions,
         ),
       );
-      const startedTurn = turnResult?.turn && typeof turnResult.turn === "object"
-        ? turnResult.turn as Record<string, unknown>
-        : {};
-      operation.activeTurnId = String(startedTurn.id || "").trim();
-      handlers.onEvent?.({ type: "turn.started" });
-      await operation.done;
+      const turnStartResult = await Promise.race([
+        turnStartPromise.then((result) => ({ settledBeforeStart: false, result })),
+        operation.done.then(() => ({ settledBeforeStart: true, result: null })),
+      ]);
+      if (turnStartResult.settledBeforeStart) {
+        void turnStartPromise.then(() => undefined, () => undefined);
+      } else {
+        const startedTurn = turnStartResult.result?.turn && typeof turnStartResult.result.turn === "object"
+          ? turnStartResult.result.turn as Record<string, unknown>
+          : {};
+        this.adoptStartedTurnId(operation, String(startedTurn.id || "").trim());
+        handlers.onEvent?.({ type: "turn.started" });
+        await operation.done;
+      }
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
     } catch (error) {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
@@ -548,6 +559,8 @@ export class CodexInteractiveRunner {
       rawResponseToolNames: new Map<string, string>(),
       observer: kind === "turn" ? createCodexTurnAssistantObserver(handlers.onAssistantDelta) : null,
       activeTurnId: "",
+      observedPrimaryTurnIds: new Set<string>(),
+      sawPrimaryAssistantOutput: false,
       settled: false,
       threadCompacted: false,
       resolve,
@@ -556,6 +569,35 @@ export class CodexInteractiveRunner {
     };
     this.activeOperation = operation;
     return operation;
+  }
+
+  private notePrimaryTurnId(params: Record<string, unknown>): void {
+    const operation = this.activeOperation;
+    if (!operation || operation.kind !== "turn") {
+      return;
+    }
+    const eventThreadId = String(params.threadId || params.thread_id || "").trim();
+    if (isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+      return;
+    }
+    const turnId = extractCodexEventTurnId(params);
+    if (turnId) {
+      operation.observedPrimaryTurnIds.add(turnId);
+    }
+  }
+
+  private adoptStartedTurnId(operation: CodexRunnerOperation, turnId: string): void {
+    if (!turnId) {
+      return;
+    }
+    if (!operation.activeTurnId || !operation.observedPrimaryTurnIds.has(operation.activeTurnId)) {
+      if (
+        operation.observedPrimaryTurnIds.size === 0
+        || operation.observedPrimaryTurnIds.has(turnId)
+      ) {
+        operation.activeTurnId = turnId;
+      }
+    }
   }
 
   private settleActive(error?: Error): void {
@@ -695,6 +737,20 @@ export class CodexInteractiveRunner {
     if (!method) {
       return;
     }
+    if (method !== "turn/completed" && message.params && typeof message.params === "object") {
+      this.notePrimaryTurnId(message.params as Record<string, unknown>);
+    }
+    if (method === "turn/started") {
+      const params = message.params && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {};
+      const eventThreadId = String(params.threadId || params.thread_id || "").trim();
+      const startedTurnId = extractCodexEventTurnId(params);
+      if (startedTurnId && !isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+        this.adoptStartedTurnId(operation, startedTurnId);
+      }
+      return;
+    }
     if (method === "thread/started") {
       const thread = message.params && typeof message.params === "object"
         ? (message.params as Record<string, unknown>).thread
@@ -750,6 +806,9 @@ export class CodexInteractiveRunner {
       const itemId = String(params.itemId || "").trim();
       const delta = String(params.delta || "");
       const isSubagentDelta = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+      if (!isSubagentDelta && delta.trim()) {
+        operation.sawPrimaryAssistantOutput = true;
+      }
       const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
       if (bufferKey) {
         operation.assistantBuffers.set(bufferKey, `${operation.assistantBuffers.get(bufferKey) ?? ""}${delta}`);
@@ -833,7 +892,7 @@ export class CodexInteractiveRunner {
       const turn = params.turn && typeof params.turn === "object"
         ? params.turn as Record<string, unknown>
         : {};
-      const completedTurnId = String(turn.id || "").trim();
+      const completedTurnId = extractCodexEventTurnId(params);
       const turnStatus = String(turn.status || "").trim();
       const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
       if (!isSubagentTurn) {
@@ -854,13 +913,29 @@ export class CodexInteractiveRunner {
         });
         return;
       }
-      if (!shouldSettleCodexPrimaryTurn({
+      const activeTurnWasStreamed = Boolean(
+        operation.activeTurnId
+        && operation.observedPrimaryTurnIds.has(operation.activeTurnId),
+      );
+      const settleUnlabeledPrimaryCompletion = Boolean(
+        completedTurnId
+        && operation.sawPrimaryAssistantOutput
+        && operation.observedPrimaryTurnIds.size === 0
+        && operation.activeTurnId
+        && operation.activeTurnId !== completedTurnId
+        && !activeTurnWasStreamed
+      );
+      if (!settleUnlabeledPrimaryCompletion && !shouldSettleObservedCodexPrimaryTurn({
         eventThreadId,
         eventTurnId: completedTurnId,
         primaryThreadId: this.options.threadId,
         activeTurnId: operation.activeTurnId,
+        observedPrimaryTurnIds: operation.observedPrimaryTurnIds,
       })) {
         return;
+      }
+      if (completedTurnId) {
+        operation.observedPrimaryTurnIds.add(completedTurnId);
       }
       if (turnStatus === "failed") {
         this.settleActive(new Error(buildTurnFailureMessage(params, t("codex.appServerTaskFailed"))));

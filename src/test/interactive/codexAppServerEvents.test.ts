@@ -9,6 +9,7 @@ import {
   isCodexFinalAnswerAgentMessage,
   isCodexFinalAnswerPhase,
   shouldSettleCodexPrimaryTurn,
+  shouldSettleObservedCodexPrimaryTurn,
 } from "../../interactive/codexAppServerEvents";
 
 test("keeps child thread completion separate from the active parent turn", () => {
@@ -146,4 +147,28 @@ test("detects Codex final answer agent messages", () => {
     }),
     false
   );
+});
+
+test("settles a streamed primary turn when the RPC turn id never appeared", () => {
+  assert.equal(shouldSettleObservedCodexPrimaryTurn({
+    eventThreadId: "parent",
+    eventTurnId: "real-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "rpc-turn",
+    observedPrimaryTurnIds: ["real-turn"],
+  }), true);
+  assert.equal(shouldSettleObservedCodexPrimaryTurn({
+    eventThreadId: "parent",
+    eventTurnId: "old-parent-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "parent-turn",
+    observedPrimaryTurnIds: ["old-parent-turn", "parent-turn"],
+  }), false);
+  assert.equal(shouldSettleObservedCodexPrimaryTurn({
+    eventThreadId: "child",
+    eventTurnId: "child-turn",
+    primaryThreadId: "parent",
+    activeTurnId: "rpc-turn",
+    observedPrimaryTurnIds: ["child-turn"],
+  }), false);
 });

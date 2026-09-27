@@ -63,6 +63,45 @@ export function shouldSettleCodexPrimaryTurn(options: {
   return !eventTurnId || !activeTurnId || eventTurnId === activeTurnId;
 }
 
+export function extractCodexEventTurnId(params: unknown): string {
+  const record = toRecord(params);
+  if (!record) {
+    return "";
+  }
+  const direct = String(record.turnId || record.turn_id || "").trim();
+  if (direct) {
+    return direct;
+  }
+  const turn = toRecord(record.turn);
+  return String(turn?.id || "").trim();
+}
+
+export function shouldSettleObservedCodexPrimaryTurn(options: {
+  eventThreadId: unknown;
+  eventTurnId: unknown;
+  primaryThreadId: unknown;
+  activeTurnId: unknown;
+  observedPrimaryTurnIds?: Iterable<string> | null;
+}): boolean {
+  if (isCodexSubagentThreadEvent(options.eventThreadId, options.primaryThreadId)) {
+    return false;
+  }
+  if (shouldSettleCodexPrimaryTurn(options)) {
+    return true;
+  }
+  const eventTurnId = String(options.eventTurnId || "").trim();
+  const activeTurnId = String(options.activeTurnId || "").trim();
+  if (!eventTurnId || !activeTurnId) {
+    return false;
+  }
+  const observed = new Set(
+    Array.from(options.observedPrimaryTurnIds ?? [])
+      .map((turnId) => String(turnId || "").trim())
+      .filter(Boolean),
+  );
+  return observed.has(eventTurnId) && !observed.has(activeTurnId);
+}
+
 function normalizeCodexCompactionItemType(type: unknown): string {
   return String(type || "").trim().replace(/[_-]/g, "").toLowerCase();
 }

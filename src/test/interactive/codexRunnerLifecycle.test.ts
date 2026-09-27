@@ -1031,3 +1031,165 @@ test("Codex runner streams reasoning summary deltas and strips leaked final_answ
     crossSpawn.spawn = originalSpawn;
   }
 });
+
+
+test("Codex runner finishes when the primary turn completes before turn/start responds", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61092);
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({
+          jsonrpc: "2.0",
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "parent-thread",
+            turnId: "real-turn",
+            itemId: "final-message",
+            delta: "[final_answer] done",
+          },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: {
+            threadId: "parent-thread",
+            turn: { id: "real-turn", status: "completed" },
+          },
+        });
+      }
+    }
+  });
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    const chunks: string[] = [];
+    try {
+      await runner.runStreamed("prompt", {
+        ...createHandlers(),
+        onAssistantDelta: (chunk) => chunks.push(chunk),
+      });
+      assert.deepEqual(chunks, ["[final_answer] done"]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex runner finishes a streamed turn whose id differs from the turn/start response", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61093);
+  let input = "";
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      if (message.method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (message.method === "thread/start" || message.method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "parent-thread" } } });
+        continue;
+      }
+      if (message.method === "turn/start") {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "rpc-turn", status: "inProgress" } } });
+        queueMicrotask(() => {
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "old-turn", status: "completed" },
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "item/agentMessage/delta",
+            params: {
+              threadId: "parent-thread",
+              turnId: "real-turn",
+              itemId: "final-message",
+              delta: "[final_answer] tungsten",
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: {
+              threadId: "parent-thread",
+              turn: { id: "real-turn", status: "completed" },
+            },
+          });
+        });
+      }
+    }
+  });
+  crossSpawn.spawn = (): unknown => child;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    let completed = 0;
+    try {
+      await runner.runStreamed("prompt", {
+        ...createHandlers(),
+        onTurnCompleted: () => {
+          completed += 1;
+        },
+      });
+      assert.equal(completed, 1);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});

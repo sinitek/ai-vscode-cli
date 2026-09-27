@@ -2325,3 +2325,34 @@
 ### 验证方式
 - `node --test dist/test/interactive/codexRunnerReuse.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
 
+## 最终回复已经出现，但 Codex 任务仍停在运行中
+
+- 状态：已规避，需随 Codex app-server `turn/start` 与 `turn/completed` 时序复核
+- 首次发现：2026-09-27
+- 适用范围：Codex app-server 长连接、Grok 等代理模型、hidden retry 与界面运行状态
+
+### 现象
+- 2026-09-27 会话 `01a0dcad-17b3-7010-9b55-7735d3fbd7e3` 使用 `grok-4.7-kedaya`。界面已经写出带 `[final_answer]` 的 assistant 回复，rollout 在 `2026-09-26T16:16:45.237Z` 记录 `task_complete`，app-server 也发出 `turn/completed targeted_connections=1`。插件消息停在这条最终回复，没有“任务已完成”，界面仍是运行中，不是压缩上下文。
+
+### 触发条件与根因
+- 长连接下回合结束不退出进程，运行状态只随当前 operation 结束。`runStreamedOnce` 先等待 `turn/start` 响应，再等待 `turn/completed`。
+- 本次 hidden retry 的 `turn/start`（提示为“继续”）发生时，同一 thread 的真实 turn 已经在跑。服务端把这次输入并进正在运行的 turn，`turn/start` 响应没有在 turn 完成后返回。
+- 真实 `turn/completed` 的 turn id 与 `turn/start` 响应里的 id 也可能不一致。旧逻辑只在 id 完全一致时收口，于是 operation 一直不结束，最终回复已经显示，任务状态仍是运行中。
+
+### 长期规避
+- 主线程 `turn/completed` 到达时，如果 `turn/start` 还没返回，立即结束这次运行，不能继续空等 RPC。
+- 如果响应里的 turn id 从未出现在本回合流式事件里，而完成通知对应的 turn 已经流过 assistant 输出，仍按该完成通知收口。
+- 已经在本回合流式事件里出现过的当前 turn，不能被另一个也出现过的旧 turn 完成通知提前结束。子线程完成通知仍然不得结束父任务。
+- `turn.completed` 仍然只表示回合结束。最终气泡继续只认 `final_answer` phase、`[final_answer]` 正文，或符合条件的 phase-null 提升。
+
+### 验证方式
+- `turn/start` 不返回、但主线程先收到 assistant delta 和匹配的 `turn/completed` 时，`runStreamed` 必须返回。
+- `turn/start` 返回的 id 与随后流式事件 / `turn/completed` 的 id 不同，且旧 turn 的完成通知先到时，只在真实 turn 完成后返回一次。
+- 子线程 turn id 即使被记入观察集合，也不能收口父任务。
+
+### 关联资料
+- `src/interactive/codexRunner.ts`
+- `src/interactive/codexAppServerEvents.ts`
+- `src/test/interactive/codexRunnerLifecycle.test.ts`
+- `src/test/interactive/codexAppServerEvents.test.ts`
+
