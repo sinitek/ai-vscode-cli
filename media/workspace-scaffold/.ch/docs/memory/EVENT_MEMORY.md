@@ -27,6 +27,7 @@ related_paths: []
 - 普通任务流水账
 - 没有明确结果或原因的临时观察
 - 已经完全转化为 runbook、skill 或设计文档且不再需要事件索引的重复内容
+- 与 `ROLLING_SUMMARY.md` 相同的任务回复、prompt 或阶段流水账
 
 ## 维护规则
 

@@ -247,6 +247,11 @@ export type OpenCodePromptRunPorts = {
     runtimeSessionId: string | null;
   }) => void;
   parseOpenCodeRunOutput: typeof import("../cli/commandRunner").parseOpenCodeRunOutput;
+  recoverOpenCodeMissingAssistantOutput: (input: {
+    stdout: string;
+    stderr: string;
+    cwd?: string;
+  }) => Promise<OpenCodePromptRunOutput>;
   appendParsedOutput: (output: OpenCodePromptRunOutput) => ChatMessage[];
   maybeHandleNaturalLanguageHumanInteraction: (
     targetMessages: ChatMessage[],
@@ -465,7 +470,14 @@ export async function runOpenCodePromptTemplate(
         attemptPrompt,
         runtimeSessionId,
       });
-      const openCodeOutput = ports.parseOpenCodeRunOutput(stream.rawStdout, stream.rawStderr);
+      let openCodeOutput = ports.parseOpenCodeRunOutput(stream.rawStdout, stream.rawStderr);
+      if (!openCodeOutput.hasStructuredFinalAnswer) {
+        openCodeOutput = await ports.recoverOpenCodeMissingAssistantOutput({
+          stdout: stream.rawStdout,
+          stderr: stream.rawStderr,
+          cwd,
+        });
+      }
       const finalMessageTarget = ports.appendParsedOutput(openCodeOutput);
       const humanInteractionResult = await ports.maybeHandleNaturalLanguageHumanInteraction(
         finalMessageTarget,

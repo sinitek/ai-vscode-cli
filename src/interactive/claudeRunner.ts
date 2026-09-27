@@ -13,6 +13,85 @@ import {
   hasClaudeTodoWriteResultShape,
 } from "./claudeTaskList";
 
+const CLAUDE_SUCCESSFUL_RESULT_SUBTYPES = new Set(["", "success"]);
+
+function normalizeClaudeStopReason(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+export function readClaudeAssistantStopReason(event: unknown): string {
+  if (!event || typeof event !== "object") {
+    return "";
+  }
+  const record = event as Record<string, unknown>;
+  if (record.type === "assistant") {
+    const message = record.message;
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+    const messageRecord = message as Record<string, unknown>;
+    return normalizeClaudeStopReason(messageRecord.stop_reason ?? messageRecord.stopReason);
+  }
+  if (record.type !== "stream_event" || !record.event || typeof record.event !== "object") {
+    return "";
+  }
+  const streamEvent = record.event as Record<string, unknown>;
+  const eventType = typeof streamEvent.type === "string" ? streamEvent.type : "";
+  if (eventType !== "message_delta" && eventType !== "message_stop") {
+    return "";
+  }
+  const delta = streamEvent.delta;
+  if (delta && typeof delta === "object") {
+    const deltaRecord = delta as Record<string, unknown>;
+    const deltaReason = normalizeClaudeStopReason(deltaRecord.stop_reason ?? deltaRecord.stopReason);
+    if (deltaReason) {
+      return deltaReason;
+    }
+  }
+  return normalizeClaudeStopReason(streamEvent.stop_reason ?? streamEvent.stopReason);
+}
+
+export function isClaudeEndTurnStop(event: unknown): boolean {
+  return readClaudeAssistantStopReason(event) === "end_turn";
+}
+
+export function isClaudeToolUseStop(event: unknown): boolean {
+  return readClaudeAssistantStopReason(event) === "tool_use";
+}
+
+export function isClaudeSuccessfulFinalResult(event: unknown): boolean {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+  const record = event as Record<string, unknown>;
+  if (record.type !== "result") {
+    return false;
+  }
+  if (record.is_error === true) {
+    return false;
+  }
+  const subtype = typeof record.subtype === "string" ? record.subtype.trim().toLowerCase() : "";
+  if (subtype.startsWith("error")) {
+    return false;
+  }
+  return CLAUDE_SUCCESSFUL_RESULT_SUBTYPES.has(subtype);
+}
+
+export function isClaudeFailedFinalResult(event: unknown): boolean {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+  const record = event as Record<string, unknown>;
+  if (record.type !== "result") {
+    return false;
+  }
+  if (record.is_error === true) {
+    return true;
+  }
+  const subtype = typeof record.subtype === "string" ? record.subtype.trim().toLowerCase() : "";
+  return subtype.startsWith("error");
+}
+
 export type ClaudeTraceKind = "thinking" | "normal" | "tool-use";
 
 export type ClaudeTraceMeta = {

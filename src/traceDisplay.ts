@@ -1,3 +1,4 @@
+import { isOpenCodeInternalLogLine } from "./cli/opencodewatchdog";
 import { CliName, isOpenCodeCli } from "./cli/types";
 
 export type TraceMessageKind = "thinking" | "normal" | "tool-use";
@@ -288,6 +289,9 @@ export function shouldIgnoreTraceLine(
   }
   if (trimmed === "codex") {
     state.skipCodexBlock = true;
+    return true;
+  }
+  if (cli === "opencode" && isOpenCodeInternalLogLine(trimmed)) {
     return true;
   }
   const ignoredPrefixes = [

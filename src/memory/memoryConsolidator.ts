@@ -1,4 +1,4 @@
-import { appendMemoryEntry, appendPitfallRecord, ensureMemoryWorkspaceScaffold } from "./memoryFiles";
+import { appendMemoryEntryIfAbsent, appendPitfallRecord, ensureMemoryWorkspaceScaffold } from "./memoryFiles";
 import { buildWorkspaceMemoryIndex, writeWorkspaceMemoryIndex } from "./memoryIndexer";
 import type { WorkspaceMemoryPaths } from "./memoryPaths";
 
@@ -33,11 +33,24 @@ function shorten(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
-function shouldRecordEvent(input: PromptRunMemoryCaptureInput, response: string): boolean {
-  if (input.taskRole || input.loopTaskId) {
-    return true;
+const EVENT_LINE_PATTERN = /(?:失败原因|根因|成功方案|可复用方案|关键决策|决定改为|明确决定|迁移|回滚|事故|root cause|successful approach|key decision|decided to|rollback|incident|migration)/iu;
+
+function buildLoopContextLines(input: PromptRunMemoryCaptureInput): string[] {
+  const lines: string[] = [];
+  if (input.loopTaskId) {
+    lines.push(`Loop task: ${input.loopTaskId}`);
   }
-  return /(?:decision|risk|blocked|resolved|migrat|rollback|incident|结论|风险|阻塞|决定|迁移|回滚|事故)/iu.test(response);
+  if (typeof input.loopRound === "number") {
+    lines.push(`Loop round: ${input.loopRound}`);
+  }
+  if (input.loopSubtaskId) {
+    lines.push(`Loop subtask: ${input.loopSubtaskId}`);
+  }
+  return lines;
+}
+
+function extractEventLines(response: string): string[] {
+  return pickRelevantLines(response, EVENT_LINE_PATTERN, 2);
 }
 
 const PITFALL_EXPLICIT_PATTERN = /(?:pitfall|gotcha|踩坑|坑点|避坑)/iu;
@@ -144,37 +157,20 @@ export function persistPromptRunSummary(
   const updatedFiles: string[] = [];
 
   if (status === "end") {
-    updatedFiles.push(appendMemoryEntry(paths, "rollingSummary", {
-      title,
-      occurredAt: capturedAt,
-      lines: [
-        `CLI: ${input.cli}`,
-        `Prompt: ${shorten(prompt, 220)}`,
-        `Answer: ${shorten(assistantResponse, 480)}`,
-      ],
-    }));
-
-    if (shouldRecordEvent(input, assistantResponse)) {
-      const eventLines = [
-        `CLI: ${input.cli}`,
-        `Summary: ${shorten(assistantResponse, 480)}`,
-      ];
-      if (input.loopTaskId) {
-        eventLines.push(`Loop task: ${input.loopTaskId}`);
+    const eventLines = extractEventLines(assistantResponse);
+    if (eventLines.length) {
+      const eventPath = appendMemoryEntryIfAbsent(paths, "eventMemory", {
+        title,
+        occurredAt: capturedAt,
+        lines: [
+          `CLI: ${input.cli}`,
+          ...eventLines.map((line) => `Event: ${line}`),
+          ...buildLoopContextLines(input),
+        ],
+      });
+      if (eventPath) {
+        updatedFiles.push(eventPath);
       }
-      if (typeof input.loopRound === "number") {
-        eventLines.push(`Loop round: ${input.loopRound}`);
-      }
-      if (input.loopSubtaskId) {
-        eventLines.push(`Loop subtask: ${input.loopSubtaskId}`);
-      }
-      updatedFiles.push(
-        appendMemoryEntry(paths, "eventMemory", {
-          title,
-          occurredAt: capturedAt,
-          lines: eventLines,
-        }),
-      );
     }
   }
 

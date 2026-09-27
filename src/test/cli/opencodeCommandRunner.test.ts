@@ -17,6 +17,10 @@ const {
   parseOpenCodeVisibleStreamEvents,
   parseOpenCodeSessionId,
   parseOpenCodeRunOutput,
+  extractOpenCodePrintLogErrorText,
+  extractOpenCodeRuntimeSessionId,
+  parseOpenCodeExportStdout,
+  recoverOpenCodeMissingAssistantOutput,
   runCliStream,
   startOpenCodeServer,
 } = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
@@ -121,7 +125,7 @@ test("builds OpenCode run args with provider/model selection", () => {
       model: "packyapi/claude-sonnet-5",
       openCodeConfigContent: packyConfig,
     }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "packyapi/claude-sonnet-5", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "packyapi/claude-sonnet-5", "hello"],
   );
   assert.deepEqual(
     buildCliArgs("opencode", {
@@ -129,7 +133,7 @@ test("builds OpenCode run args with provider/model selection", () => {
       sessionId: "session-1",
       openCodeConfigContent: packyConfig,
     }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "packyapi/claude-sonnet-5", "--session", "session-1", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "packyapi/claude-sonnet-5", "--session", "session-1", "hello"],
   );
 });
 
@@ -155,14 +159,14 @@ test("never passes an extension-local session id to OpenCode resume", () => {
     buildCliArgs("opencode", {
       sessionId: resolveCliSessionIdForResume("opencode", "local_1783675937696_75aeb62a8eb548"),
     }, "hello"),
-    ["run", "--auto", "--format", "json", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "hello"],
   );
 });
 
 test("adds one OpenCode auto flag for one-shot and terminal launches", () => {
   assert.deepEqual(
     buildCliArgs("opencode", {}, "hello"),
-    ["run", "--auto", "--format", "json", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "hello"],
   );
   assert.deepEqual(buildCliArgs("opencode", {}), ["--auto"]);
 });
@@ -170,7 +174,7 @@ test("adds one OpenCode auto flag for one-shot and terminal launches", () => {
 test("attaches OpenCode run to the managed subagent monitoring server", () => {
   assert.deepEqual(
     buildCliArgs("opencode", { openCodeServerUrl: "http://127.0.0.1:41873/" }, "hello"),
-    ["run", "--auto", "--format", "json", "--attach", "http://127.0.0.1:41873", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--attach", "http://127.0.0.1:41873", "hello"],
   );
 });
 
@@ -194,7 +198,7 @@ test("replaces a configured OpenCode run port with the managed attach endpoint",
   try {
     assert.deepEqual(
       buildCliArgs("opencode", { openCodeServerUrl: "http://127.0.0.1:41873" }, "hello"),
-      ["run", "--auto", "--format", "json", "--attach", "http://127.0.0.1:41873", "hello"],
+      ["run", "--auto", "--format", "json", "--print-logs", "--attach", "http://127.0.0.1:41873", "hello"],
     );
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
@@ -284,7 +288,7 @@ test("deduplicates an explicit OpenCode auto flag", () => {
   });
   try {
     const args = buildCliArgs("opencode", {}, "hello");
-    assert.deepEqual(args, ["run", "--auto", "--format", "json", "hello"]);
+    assert.deepEqual(args, ["run", "--auto", "--format", "json", "--print-logs", "hello"]);
     assert.equal(args.filter((arg) => arg === "--auto").length, 1);
   } finally {
     vscode.workspace.getConfiguration = originalGetConfiguration;
@@ -298,7 +302,7 @@ test("adds only a valid non-default OpenCode variant", () => {
       openCodeVariant: "high",
       openCodeConfigContent: myApiConfig,
     }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "myAPI/model", "--variant", "high", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "myAPI/model", "--variant", "high", "hello"],
   );
   assert.deepEqual(
     buildCliArgs("opencode", {
@@ -306,7 +310,7 @@ test("adds only a valid non-default OpenCode variant", () => {
       openCodeVariant: null,
       openCodeConfigContent: myApiConfig,
     }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "myAPI/model", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "myAPI/model", "hello"],
   );
 });
 
@@ -344,7 +348,7 @@ test("ignores fixed OpenCode thinking args while preserving Codex behavior", () 
   try {
     assert.deepEqual(
       buildCliArgs("opencode", { thinkingMode: "high" }, "hello"),
-      ["run", "--auto", "--format", "json", "hello"],
+      ["run", "--auto", "--format", "json", "--print-logs", "hello"],
     );
     assert.deepEqual(
       buildCliArgs("codex", { thinkingMode: "high" }, "hello"),
@@ -362,7 +366,7 @@ test("rejects bare OpenCode model ids instead of guessing a provider", () => {
   );
   assert.deepEqual(
     buildCliArgs("opencode", { model: "myAPI/gpt-5.5", openCodeConfigContent: myApiConfig }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "myAPI/gpt-5.5", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "myAPI/gpt-5.5", "hello"],
   );
   assert.throws(
     () => buildCliArgs("opencode", { model: "glm-5.2", openCodeConfigContent: myApiConfig }, "hello"),
@@ -373,14 +377,14 @@ test("rejects bare OpenCode model ids instead of guessing a provider", () => {
 test("preserves explicit OpenCode output format args", () => {
   assert.deepEqual(
     buildCliArgs("opencode", {}, "hello"),
-    ["run", "--auto", "--format", "json", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "hello"],
   );
   assert.deepEqual(
     buildCliArgs("opencode", {
       model: "packyapi/claude-sonnet-5",
       openCodeConfigContent: packyConfig,
     }, "hello"),
-    ["run", "--auto", "--format", "json", "--model", "packyapi/claude-sonnet-5", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--model", "packyapi/claude-sonnet-5", "hello"],
   );
 });
 
@@ -400,7 +404,7 @@ test("adds the CLI-specific instruction isolation flags for Loop subtasks", () =
   );
   assert.deepEqual(
     buildCliArgs("opencode", { isolateProjectInstructions: true }, "hello"),
-    ["run", "--auto", "--format", "json", "--pure", "hello"],
+    ["run", "--auto", "--format", "json", "--print-logs", "--pure", "hello"],
   );
 });
 
@@ -621,6 +625,60 @@ test("does not treat OpenCode stop events without message ids as structured fina
 
   assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
     finalText: "Unscoped reply.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+});
+
+test("accepts a completed OpenCode text part when no tool call follows", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      part: {
+        type: "text",
+        text: "Hi! I'm here to help.",
+        messageID: "msg_hi",
+        time: { start: 10, end: 12 },
+      },
+    }),
+  ].join("\n");
+  const stderr = [
+    'timestamp=2026-09-27T00:20:59.995Z level=INFO run=7359597e message="creating instance" directory=/',
+    "timestamp=2026-09-27T00:21:04.102Z level=INFO run=7359597e message=\"exiting loop\" session.id=ses_hi",
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, stderr), {
+    finalText: "Hi! I'm here to help.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: true,
+  });
+});
+
+test("does not treat a completed OpenCode text part followed by tool calls as final", () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      part: {
+        type: "text",
+        text: "I will inspect the files.",
+        messageID: "msg_tool",
+        time: { start: 10, end: 12 },
+      },
+    }),
+    JSON.stringify({
+      type: "tool_use",
+      part: { type: "tool", tool: "bash", state: { status: "completed" }, messageID: "msg_tool" },
+    }),
+    JSON.stringify({
+      type: "step_finish",
+      part: { type: "step-finish", reason: "tool-calls", messageID: "msg_tool" },
+    }),
+  ].join("\n");
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, ""), {
+    finalText: "I will inspect the files.",
     errorText: null,
     statusText: null,
     hasStructuredFinalAnswer: false,
@@ -1267,4 +1325,249 @@ test("falls back to plain stdout when OpenCode emits non-JSON text", () => {
     statusText: null,
     hasStructuredFinalAnswer: false,
   });
+});
+
+test("treats OpenCode 1.18 print-logs stderr as startup progress, not an error", () => {
+  const { isOpenCodeInternalLogLine } = require("../../cli/opencodewatchdog") as typeof import("../../cli/opencodewatchdog");
+  const { createTraceLineFilterState, shouldIgnoreTraceLine } = require("../../traceDisplay") as typeof import("../../traceDisplay");
+  const logLine = 'timestamp=2026-09-26T16:30:33.088Z level=INFO run=74f5210b message="creating instance"';
+  assert.equal(isOpenCodeInternalLogLine(logLine), true);
+  const tracker = createOpenCodeStreamActivityTracker();
+  assert.deepEqual(tracker.updateStderr(`${logLine}\n`), {
+    hasAssistantAnswer: false,
+    hasError: false,
+    hasStatus: false,
+    hasProgress: true,
+  });
+  assert.equal(resolveOpenCodeOneShotWatchdogTimeoutMs(true), null);
+  const filter = createTraceLineFilterState();
+  assert.equal(shouldIgnoreTraceLine(filter, logLine, false, "opencode"), true);
+  assert.equal(shouldIgnoreTraceLine(filter, "> build · claude-sonnet-5", false, "opencode"), false);
+  assert.equal(parseOpenCodeRunOutput("", `${logLine}\nprovider failed\n`).errorText, "provider failed");
+});
+
+test("surfaces OpenCode print-log provider errors when stdout has no assistant text", () => {
+  const stderr = [
+    'timestamp=2026-09-27T00:45:16.091Z level=INFO run=a8424c77 message=created id=ses_f1fad3a44ffe9G9DZKov9paQ75',
+    'timestamp=2026-09-27T00:45:22.834Z level=ERROR run=a8424c77 message="stream error" session.id=ses_f1fad3a44ffe9G9DZKov9paQ75 small=true agent=title error.error="AI_APICallError: Upstream access forbidden, please contact administrator"',
+    'timestamp=2026-09-27T00:45:23.473Z level=ERROR run=a8424c77 message="stream error" session.id=ses_f1fad3a44ffe9G9DZKov9paQ75 small=false agent=build error.error="AI_APICallError: Upstream access forbidden, please contact administrator"',
+  ].join("\n");
+
+  assert.equal(
+    extractOpenCodeRuntimeSessionId(stderr),
+    "ses_f1fad3a44ffe9G9DZKov9paQ75",
+  );
+  assert.equal(
+    extractOpenCodePrintLogErrorText(stderr),
+    "AI_APICallError: Upstream access forbidden, please contact administrator",
+  );
+  assert.deepEqual(parseOpenCodeRunOutput("", stderr), {
+    finalText: null,
+    errorText: "AI_APICallError: Upstream access forbidden, please contact administrator",
+    statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+});
+
+test("does not let OpenCode print-log errors replace a completed assistant reply", () => {
+  const stdout = JSON.stringify({
+    type: "text",
+    part: {
+      type: "text",
+      text: "Hi! I'm here to help.",
+      messageID: "msg_hi",
+      time: { start: 10, end: 12 },
+    },
+  });
+  const stderr = 'timestamp=2026-09-27T00:45:22.834Z level=ERROR run=a8424c77 message="stream error" session.id=ses_hi error.error="AI_APICallError: Upstream access forbidden, please contact administrator"';
+
+  assert.deepEqual(parseOpenCodeRunOutput(stdout, stderr), {
+    finalText: "Hi! I'm here to help.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: true,
+  });
+});
+
+test("recovers a short OpenCode reply from export when stdout is empty", async () => {
+  const stderr = 'timestamp=2026-09-27T00:45:40.182Z level=INFO run=a8424c77 message=loop session.id=ses_exporthi';
+  const exportStdout = JSON.stringify({
+    info: { id: "ses_exporthi" },
+    messages: [
+      {
+        info: { role: "user", id: "msg_user", sessionID: "ses_exporthi" },
+        parts: [{ type: "text", text: "hi", messageID: "msg_user" }],
+      },
+      {
+        info: {
+          role: "assistant",
+          id: "msg_hi",
+          sessionID: "ses_exporthi",
+          finish: "stop",
+        },
+        parts: [
+          { type: "step-start", messageID: "msg_hi" },
+          {
+            type: "text",
+            text: "Hello! I'm OpenCode, your AI coding assistant.",
+            messageID: "msg_hi",
+            time: { start: 1, end: 2 },
+          },
+          { type: "step-finish", reason: "stop", messageID: "msg_hi" },
+        ],
+      },
+    ],
+  });
+  const calls: string[] = [];
+  const recovered = await recoverOpenCodeMissingAssistantOutput({
+    stdout: "",
+    stderr,
+    exportSession: async (sessionId) => {
+      calls.push(sessionId);
+      return { stdout: `Exporting session: ${sessionId}\n${exportStdout}`, stderr: "", exitCode: 0 };
+    },
+  });
+
+  assert.deepEqual(calls, ["ses_exporthi"]);
+  assert.equal(recovered.finalText, "Hello! I'm OpenCode, your AI coding assistant.");
+  assert.equal(recovered.errorText, null);
+  assert.equal(recovered.hasStructuredFinalAnswer, true);
+  assert.equal(parseOpenCodeExportStdout("not-json"), null);
+  assert.equal(parseOpenCodeExportStdout("{"), null);
+});
+
+test("does not export an OpenCode session when stdout already has the assistant reply", async () => {
+  let calls = 0;
+  const stdout = JSON.stringify({
+    type: "text",
+    part: {
+      type: "text",
+      text: "Hi! I'm here to help.",
+      messageID: "msg_hi",
+      time: { start: 10, end: 12 },
+    },
+  });
+  const recovered = await recoverOpenCodeMissingAssistantOutput({
+    stdout,
+    stderr: "timestamp=2026-09-27T00:45:40.182Z level=INFO run=a8424c77 message=loop session.id=ses_exporthi",
+    exportSession: async () => {
+      calls += 1;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    },
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(recovered.finalText, "Hi! I'm here to help.");
+});
+
+test("keeps the OpenCode print-log error when export does not return assistant text", async () => {
+  const stderr = 'timestamp=2026-09-27T00:45:23.473Z level=ERROR run=a8424c77 message="stream error" session.id=ses_exporthi error.error="AI_APICallError: Upstream access forbidden, please contact administrator"';
+  const recovered = await recoverOpenCodeMissingAssistantOutput({
+    stdout: "",
+    stderr,
+    exportSession: async () => ({ stdout: "{", stderr: "", exitCode: 0 }),
+  });
+
+  assert.equal(recovered.finalText, null);
+  assert.equal(recovered.errorText, "AI_APICallError: Upstream access forbidden, please contact administrator");
+  assert.equal(recovered.hasStructuredFinalAnswer, false);
+});
+
+test("recovers only the OpenCode assistant message id from the current run", async () => {
+  const exportStdout = JSON.stringify({
+    messages: [
+      {
+        info: { role: "assistant", id: "msg_old", sessionID: "ses_exporthi", finish: "stop" },
+        parts: [
+          { type: "text", text: "Old reply", messageID: "msg_old", time: { start: 1, end: 2 } },
+          { type: "step-finish", reason: "stop", messageID: "msg_old" },
+        ],
+      },
+      {
+        info: { role: "assistant", id: "msg_new", sessionID: "ses_exporthi", finish: "stop" },
+        parts: [
+          { type: "text", text: "New short reply", messageID: "msg_new", time: { start: 3, end: 4 } },
+          { type: "step-finish", reason: "stop", messageID: "msg_new" },
+        ],
+      },
+    ],
+  });
+  const recovered = await recoverOpenCodeMissingAssistantOutput({
+    stdout: "",
+    stderr: "timestamp=2026-09-27T00:45:16.667Z level=INFO run=a8424c77 message=process session.id=ses_exporthi messageID=msg_new",
+    exportSession: async () => ({ stdout: exportStdout, stderr: "", exitCode: 0 }),
+  });
+  const ambiguous = await recoverOpenCodeMissingAssistantOutput({
+    stdout: "",
+    stderr: "timestamp=2026-09-27T00:45:16.667Z level=INFO run=a8424c77 message=loop session.id=ses_exporthi",
+    exportSession: async () => ({ stdout: exportStdout, stderr: "", exitCode: 0 }),
+  });
+
+  assert.equal(recovered.finalText, "New short reply");
+  assert.equal(recovered.hasStructuredFinalAnswer, true);
+  assert.equal(ambiguous.finalText, null);
+});
+
+test("recovers a later OpenCode stop when stdout only finished tool calls", async () => {
+  const stdout = [
+    JSON.stringify({
+      type: "text",
+      sessionID: "ses_exporthi",
+      part: {
+        type: "text",
+        text: "I need to look around first.",
+        messageID: "msg_tool",
+        time: { start: 1, end: 2 },
+      },
+    }),
+    JSON.stringify({
+      type: "step_finish",
+      sessionID: "ses_exporthi",
+      part: { type: "step-finish", reason: "tool-calls", messageID: "msg_tool" },
+    }),
+  ].join("\n");
+  const exportStdout = JSON.stringify({
+    messages: [
+      {
+        info: { role: "assistant", id: "msg_tool", sessionID: "ses_exporthi", finish: "tool-calls" },
+        parts: [
+          { type: "text", text: "I need to look around first.", messageID: "msg_tool" },
+          { type: "step-finish", reason: "tool-calls", messageID: "msg_tool" },
+        ],
+      },
+      {
+        info: { role: "assistant", id: "msg_stop", sessionID: "ses_exporthi", finish: "stop" },
+        parts: [
+          { type: "text", text: "Hi! I'm OpenCode.", messageID: "msg_stop", time: { start: 3, end: 4 } },
+          { type: "step-finish", reason: "stop", messageID: "msg_stop" },
+        ],
+      },
+    ],
+  });
+  let calls = 0;
+  const recovered = await recoverOpenCodeMissingAssistantOutput({
+    stdout,
+    stderr: "",
+    exportSession: async (sessionId) => {
+      calls += 1;
+      assert.equal(sessionId, "ses_exporthi");
+      return { stdout: exportStdout, stderr: "", exitCode: 0 };
+    },
+  });
+  const unfinished = await recoverOpenCodeMissingAssistantOutput({
+    stdout,
+    stderr: "",
+    exportSession: async () => ({
+      stdout: JSON.stringify({ messages: [JSON.parse(exportStdout).messages[0]] }),
+      stderr: "",
+      exitCode: 0,
+    }),
+  });
+
+  assert.equal(calls, 1);
+  assert.equal(recovered.finalText, "Hi! I'm OpenCode.");
+  assert.equal(recovered.hasStructuredFinalAnswer, true);
+  assert.equal(recovered.errorText, null);
+  assert.equal(unfinished.finalText, "I need to look around first.");
+  assert.equal(unfinished.hasStructuredFinalAnswer, false);
 });

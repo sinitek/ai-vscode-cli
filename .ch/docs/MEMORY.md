@@ -143,6 +143,8 @@ related_paths:
 
 如果事件已经沉淀成稳定规则，应继续迁入 `PROJECT_CONTEXT.md`、`USER_PREFERENCES.md`、`runbooks/` 或 `skills/`，避免 L2 长期堆积。
 
+自动落盘不写 `ROLLING_SUMMARY.md`。只有可复用的失败原因、成功方案、迁移、回滚、事故或关键决策才自动进入 `EVENT_MEMORY.md`。
+
 ## 3. 上提触发条件
 
 满足下面任一条件，就不该继续只留在 working 层：

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { persistPromptRunSummary } from "../../memory/memoryConsolidator";
+import { persistPromptRunSummary, type PromptRunMemoryCaptureInput } from "../../memory/memoryConsolidator";
 import {
   appendMemoryEntry,
   ensureMemoryWorkspaceScaffold,
@@ -171,7 +171,7 @@ test("records pitfall summaries as structured workspace-local memory", () => {
   });
 });
 
-test("persists successful prompt summaries back into workspace-local memory files", () => {
+test("does not auto-write routine prompt summaries into rolling or event memory", () => {
   withTempWorkspace((workspaceRoot, runtimeDataDir) => {
     const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
     assert.ok(paths);
@@ -185,13 +185,48 @@ test("persists successful prompt summaries back into workspace-local memory file
       loopRound: 2,
     });
 
-    assert.equal(result.skipped, false);
-    assert.ok(result.updatedFiles.length >= 2);
+    assert.equal(result.skipped, true);
+    assert.deepEqual(result.updatedFiles, []);
+    assert.equal(result.reason, "no-memory-capture-signals");
 
-    const rollingSummaryPath = getMemoryHotFilePath(paths, "rollingSummary");
-    const eventMemoryPath = getMemoryHotFilePath(paths, "eventMemory");
-    assert.match(fs.readFileSync(rollingSummaryPath, "utf8"), /Implement workspace local harness scaffold memory/);
-    assert.match(fs.readFileSync(eventMemoryPath, "utf8"), /loop-123/);
+    const rollingSummary = fs.readFileSync(getMemoryHotFilePath(paths, "rollingSummary"), "utf8");
+    const eventMemory = fs.readFileSync(getMemoryHotFilePath(paths, "eventMemory"), "utf8");
+    assert.doesNotMatch(rollingSummary, /Implement workspace local harness scaffold memory/);
+    assert.doesNotMatch(rollingSummary, /loop-123/);
+    assert.doesNotMatch(eventMemory, /loop-123/);
+    assert.doesNotMatch(eventMemory, /Updated the memory modules/);
+  });
+});
+
+test("stores reusable decisions only in event memory", () => {
+  withTempWorkspace((workspaceRoot, runtimeDataDir) => {
+    const paths = resolveWorkspaceMemoryPaths(workspaceRoot, { runtimeDataDir });
+    assert.ok(paths);
+
+    const input: PromptRunMemoryCaptureInput = {
+      cli: "codex",
+      prompt: "Split harness rolling summary and event memory.",
+      assistantResponse: "关键决策：后续只把可复用事件写入事件记忆，滚动摘要不自动写入。\n普通完成结果不落盘。",
+      loopTaskId: "loop-456",
+    };
+    const result = persistPromptRunSummary(paths, input);
+
+    assert.equal(result.skipped, false);
+    assert.equal(result.updatedFiles.length, 1);
+    assert.ok(result.updatedFiles[0].endsWith("EVENT_MEMORY.md"));
+
+    const rollingSummary = fs.readFileSync(getMemoryHotFilePath(paths, "rollingSummary"), "utf8");
+    const eventMemory = fs.readFileSync(getMemoryHotFilePath(paths, "eventMemory"), "utf8");
+    assert.doesNotMatch(rollingSummary, /Split harness rolling summary and event memory/);
+    assert.doesNotMatch(rollingSummary, /关键决策/);
+    assert.match(eventMemory, /Event: 关键决策：后续只把可复用事件写入事件记忆，滚动摘要不自动写入。/);
+    assert.match(eventMemory, /loop-456/);
+    assert.doesNotMatch(eventMemory, /Split harness rolling summary and event memory/);
+    assert.doesNotMatch(eventMemory, /普通完成结果不落盘/);
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "manifest.json")));
+
+    const duplicate = persistPromptRunSummary(paths, input);
+    assert.equal(duplicate.skipped, true);
+    assert.equal(fs.readFileSync(getMemoryHotFilePath(paths, "eventMemory"), "utf8"), eventMemory);
   });
 });

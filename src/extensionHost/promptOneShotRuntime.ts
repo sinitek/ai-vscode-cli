@@ -4,8 +4,10 @@ import {
   buildProcessLabel,
   createOpenCodeStreamActivityTracker,
   isOpenCodePlaceholderText,
+  extractOpenCodeRuntimeSessionId,
   parseOpenCodeRunOutput,
   parseOpenCodeVisibleStreamEvents,
+  recoverOpenCodeMissingAssistantOutput,
   runCliStream,
   type OpenCodeVisibleStreamEvent,
   type RunProcess,
@@ -942,6 +944,19 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         flushTraceBuffer();
       },
       parseOpenCodeRunOutput,
+      recoverOpenCodeMissingAssistantOutput: async (input) => {
+        const recovered = await recoverOpenCodeMissingAssistantOutput(input);
+        if (recovered.finalText?.trim()) {
+          void logInfo("runPrompt-opencode-export-recovered", {
+            cli: runCli,
+            runId,
+            sessionId: extractOpenCodeRuntimeSessionId(`${input.stdout}\n${input.stderr}`),
+            stdoutLength: input.stdout.length,
+            stderrLength: input.stderr.length,
+          });
+        }
+        return recovered;
+      },
       appendParsedOutput: (openCodeOutput) => {
         let finalMessageTarget = activeMessageTarget ?? messageTarget;
         if (openCodeOutput.finalText) {

@@ -20,6 +20,7 @@ import {
   isOpenCodeTaskListTool,
   type OpenCodeTaskListItem,
 } from "./openCodeTaskList";
+import { isOpenCodeInternalLogLine } from "./opencodewatchdog";
 
 export { resolveCliCommand } from "./commandResolution";
 export type { ResolvedCliCommand } from "./commandResolution";
@@ -216,6 +217,7 @@ function cleanOpenCodeStatusOutput(value: string): string {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !OPENCODE_STATUS_LINE_PATTERN.test(line))
+    .filter((line) => !isOpenCodeInternalLogLine(line))
     .join("\n")
     .trim();
 }
@@ -387,7 +389,7 @@ function readOpenCodeMessageId(record: Record<string, unknown>): string | null {
     ?? readStringProperty(record, ["messageID", "messageId", "message_id"]);
 }
 
-function isOpenCodeStructuredFinalEvent(record: Record<string, unknown>): boolean {
+function readOpenCodeStepFinishReason(record: Record<string, unknown>): string | null {
   const part = getOpenCodeJsonPart(record);
   const source = part ?? record;
   const eventType = normalizeOpenCodeJsonType(record.type);
@@ -398,12 +400,29 @@ function isOpenCodeStructuredFinalEvent(record: Record<string, unknown>): boolea
     && partType !== "step_finish"
     && partType !== "step-finish"
   ) {
-    return false;
+    return null;
   }
 
   const reason = readStringProperty(source, ["reason"])
     ?? readStringProperty(record, ["reason"]);
-  return reason?.trim().toLowerCase() === "stop";
+  const normalized = reason?.trim().toLowerCase() ?? "";
+  return normalized || null;
+}
+
+function isOpenCodeStructuredFinalEvent(record: Record<string, unknown>): boolean {
+  return readOpenCodeStepFinishReason(record) === "stop";
+}
+
+function hasOpenCodeCompletedTextTime(record: Record<string, unknown>): boolean {
+  const part = getOpenCodeJsonPart(record) ?? record;
+  const time = part.time;
+  if (!time || typeof time !== "object" || Array.isArray(time)) {
+    return false;
+  }
+  const end = (time as Record<string, unknown>).end;
+  return typeof end === "number"
+    ? Number.isFinite(end)
+    : typeof end === "string" && end.trim().length > 0;
 }
 
 function formatOpenCodeToolUseEvent(record: Record<string, unknown>): OpenCodeVisibleStreamEvent | null {
@@ -526,6 +545,10 @@ function parseOpenCodeJsonOutput(stdout: string): {
   const chunks: string[] = [];
   const assistantTextMessageIds = new Set<string>();
   const structuredFinalMessageIds = new Set<string>();
+  const completedTextMessageIds = new Set<string>();
+  let sawCompletedTextWithoutMessageId = false;
+  let sawTool = false;
+  let sawToolCallFinish = false;
   for (const line of stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{")) {
@@ -542,11 +565,23 @@ function parseOpenCodeJsonOutput(stdout: string): {
         if (messageId) {
           assistantTextMessageIds.add(messageId);
         }
-      }
-      if (isOpenCodeStructuredFinalEvent(record)) {
-        if (messageId) {
-          structuredFinalMessageIds.add(messageId);
+        if (hasOpenCodeCompletedTextTime(record)) {
+          if (messageId) {
+            completedTextMessageIds.add(messageId);
+          } else {
+            sawCompletedTextWithoutMessageId = true;
+          }
         }
+      }
+      if (formatOpenCodeToolUseEvent(record)) {
+        sawTool = true;
+      }
+      const stepFinishReason = readOpenCodeStepFinishReason(record);
+      if (stepFinishReason === "tool-calls") {
+        sawToolCallFinish = true;
+      }
+      if (stepFinishReason === "stop" && messageId) {
+        structuredFinalMessageIds.add(messageId);
       }
     } catch {
       // Ignore non-JSON progress lines in default output.
@@ -555,9 +590,14 @@ function parseOpenCodeJsonOutput(stdout: string): {
   const finalText = extractAssistantTextWithoutThinkingBlocks(chunks.join("")).trim();
   const hasScopedStructuredFinalAnswer = Array.from(structuredFinalMessageIds)
     .some((messageId) => assistantTextMessageIds.has(messageId));
+  const hasConflictingStop = Array.from(structuredFinalMessageIds)
+    .some((messageId) => !completedTextMessageIds.has(messageId));
+  const hasCompletedTextFinalAnswer = (
+    completedTextMessageIds.size > 0 || sawCompletedTextWithoutMessageId
+  ) && !sawTool && !sawToolCallFinish && !hasConflictingStop;
   return {
     finalText: finalText || null,
-    hasStructuredFinalAnswer: hasScopedStructuredFinalAnswer,
+    hasStructuredFinalAnswer: hasScopedStructuredFinalAnswer || hasCompletedTextFinalAnswer,
   };
 }
 
@@ -684,6 +724,10 @@ function collectOpenCodeStderrActivityLine(line: string, activity: OpenCodeStrea
   }
   if (getUtf8ByteLength(cleanedLine) > OPENCODE_ACTIVITY_PENDING_LINE_MAX_BYTES) {
     activity.hasError = true;
+    return;
+  }
+  if (isOpenCodeInternalLogLine(cleanedLine)) {
+    activity.hasProgress = true;
     return;
   }
   if (OPENCODE_STATUS_LINE_PATTERN.test(cleanedLine)) {
@@ -817,10 +861,306 @@ function collectOpenCodeJsonErrors(stdout: string): string | null {
   return errors.join("\n").trim() || null;
 }
 
+const OPENCODE_RUNTIME_SESSION_ID_PATTERN = /(?:\bsession\.id=|\bcreated id=|\bsessionID(?:"\s*:\s*"|=))(ses_[A-Za-z0-9]+)/gu;
+const OPENCODE_RUNTIME_MESSAGE_ID_PATTERN = /\bmessageID=(msg_[A-Za-z0-9]+)/gu;
+const OPENCODE_PRINT_LOG_ERROR_VALUE_PATTERN = /(?:^|\s)error\.error="([^"]*)"/u;
+export const OPENCODE_EXPORT_RECOVERY_TIMEOUT_MS = 15 * 1000;
+
+export function extractOpenCodeRuntimeSessionId(output: string): string | null {
+  let sessionId: string | null = null;
+  for (const match of output.matchAll(OPENCODE_RUNTIME_SESSION_ID_PATTERN)) {
+    if (match[1]) {
+      sessionId = match[1];
+    }
+  }
+  return sessionId ?? parseOpenCodeSessionId(output);
+}
+
+function pushOpenCodeRuntimeMessageId(messageIds: string[], messageId: string | null | undefined): void {
+  if (!messageId || !/^msg_[A-Za-z0-9]+$/u.test(messageId) || messageIds.includes(messageId)) {
+    return;
+  }
+  messageIds.push(messageId);
+}
+
+export function extractOpenCodeRuntimeMessageIds(output: string): string[] {
+  const messageIds: string[] = [];
+  for (const match of output.matchAll(OPENCODE_RUNTIME_MESSAGE_ID_PATTERN)) {
+    pushOpenCodeRuntimeMessageId(messageIds, match[1]);
+  }
+  for (const line of output.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      pushOpenCodeRuntimeMessageId(messageIds, readOpenCodeMessageId(JSON.parse(trimmed) as Record<string, unknown>));
+    } catch {
+      // Ignore partial JSONL while collecting message ids for export recovery.
+    }
+  }
+  return messageIds;
+}
+
+export function extractOpenCodePrintLogErrorText(stderr: string): string | null {
+  const errors: string[] = [];
+  for (const line of stripAnsi(stderr).split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!isOpenCodeInternalLogLine(trimmed) || !/\blevel=ERROR\b/u.test(trimmed)) {
+      continue;
+    }
+    const matched = trimmed.match(OPENCODE_PRINT_LOG_ERROR_VALUE_PATTERN);
+    pushUniqueText(errors, matched?.[1]);
+  }
+  return errors.join("\n").trim() || null;
+}
+
+function parseOpenCodeExportDocument(stdout: string): Record<string, unknown> | null {
+  const start = stdout.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(stdout.slice(start)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const document = parsed as Record<string, unknown>;
+    return Array.isArray(document.messages) ? document : null;
+  } catch {
+    return null;
+  }
+}
+
+function readOpenCodeExportInfo(message: unknown): Record<string, unknown> | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    return null;
+  }
+  const info = (message as Record<string, unknown>).info;
+  return info && typeof info === "object" && !Array.isArray(info)
+    ? info as Record<string, unknown>
+    : null;
+}
+
+function readOpenCodeExportMessageId(message: unknown): string | null {
+  return readStringProperty(readOpenCodeExportInfo(message) ?? {}, ["id", "messageID", "messageId"]);
+}
+
+function isOpenCodeExportAssistantMessage(message: unknown): boolean {
+  return (readStringProperty(readOpenCodeExportInfo(message) ?? {}, ["role"]) ?? "").toLowerCase() === "assistant";
+}
+
+function openCodeExportAssistantHasStop(message: unknown): boolean {
+  const info = readOpenCodeExportInfo(message);
+  if (!info) {
+    return false;
+  }
+  if ((readStringProperty(info, ["finish"]) ?? "").toLowerCase() === "stop") {
+    return true;
+  }
+  const parts = Array.isArray((message as Record<string, unknown>).parts)
+    ? (message as Record<string, unknown>).parts as unknown[]
+    : [];
+  return parts.some((part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) {
+      return false;
+    }
+    const partRecord = part as Record<string, unknown>;
+    const partType = normalizeOpenCodeJsonType(partRecord.type);
+    return (partType === "step-finish" || partType === "step_finish")
+      && (readStringProperty(partRecord, ["reason"]) ?? "").toLowerCase() === "stop";
+  });
+}
+
+function openCodeExportAssistantVisibleText(message: unknown): string {
+  const parts = Array.isArray((message as Record<string, unknown>).parts)
+    ? (message as Record<string, unknown>).parts as unknown[]
+    : [];
+  return parts.flatMap((part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) {
+      return [];
+    }
+    const partRecord = part as Record<string, unknown>;
+    if (normalizeOpenCodeJsonType(partRecord.type) !== "text") {
+      return [];
+    }
+    const text = readStringProperty(partRecord, ["text"]);
+    return text ? [text] : [];
+  }).join("");
+}
+
+function isOpenCodeExportStopAnswer(message: unknown): boolean {
+  return openCodeExportAssistantHasStop(message) && openCodeExportAssistantVisibleText(message).trim().length > 0;
+}
+
+function selectOpenCodeExportAssistantMessages(
+  messages: readonly unknown[],
+  messageIds: readonly string[],
+): unknown[] {
+  const assistantMessages = messages.filter((message) => isOpenCodeExportAssistantMessage(message));
+  if (messageIds.length === 0) {
+    return assistantMessages.length === 1 ? assistantMessages : [];
+  }
+  const knownMessageIds = new Set(messageIds);
+  const indexById = new Map<string, number>();
+  assistantMessages.forEach((message, index) => {
+    const messageId = readOpenCodeExportMessageId(message);
+    if (messageId) {
+      indexById.set(messageId, index);
+    }
+  });
+  let lastKnownIndex = -1;
+  for (const messageId of messageIds) {
+    const index = indexById.get(messageId);
+    if (index !== undefined && index > lastKnownIndex) {
+      lastKnownIndex = index;
+    }
+  }
+  if (lastKnownIndex < 0) {
+    return assistantMessages.length === 1 ? assistantMessages : [];
+  }
+  const knownStopAnswers = assistantMessages.filter((message) => {
+    const messageId = readOpenCodeExportMessageId(message);
+    return Boolean(messageId && knownMessageIds.has(messageId) && isOpenCodeExportStopAnswer(message));
+  });
+  if (knownStopAnswers.length > 0) {
+    return [knownStopAnswers[knownStopAnswers.length - 1]];
+  }
+  const laterStopAnswer = assistantMessages.slice(lastKnownIndex + 1).find((message) => isOpenCodeExportStopAnswer(message));
+  return laterStopAnswer ? [laterStopAnswer] : [];
+}
+
+function openCodeExportDocumentToJsonl(
+  document: Record<string, unknown>,
+  messageIds: readonly string[] = [],
+): string {
+  const messages = Array.isArray(document.messages) ? document.messages : [];
+  const selectedMessages = selectOpenCodeExportAssistantMessages(messages, messageIds);
+  const lines: string[] = [];
+  for (const message of selectedMessages) {
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const record = message as Record<string, unknown>;
+    const info = record.info && typeof record.info === "object" && !Array.isArray(record.info)
+      ? record.info as Record<string, unknown>
+      : {};
+    if ((readStringProperty(info, ["role"]) ?? "").toLowerCase() !== "assistant") {
+      continue;
+    }
+    const messageId = readStringProperty(info, ["id", "messageID", "messageId"]);
+    const sessionId = readStringProperty(info, ["sessionID", "sessionId"]);
+    const parts = Array.isArray(record.parts) ? record.parts : [];
+    let sawStop = false;
+    for (const part of parts) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) {
+        continue;
+      }
+      const partRecord = part as Record<string, unknown>;
+      const normalizedType = normalizeOpenCodeJsonType(partRecord.type);
+      let eventType = "";
+      if (normalizedType === "text") {
+        eventType = "text";
+      } else if (normalizedType === "reasoning") {
+        eventType = "reasoning";
+      } else if (normalizedType === "step-start" || normalizedType === "step_start") {
+        eventType = "step_start";
+      } else if (normalizedType === "step-finish" || normalizedType === "step_finish") {
+        eventType = "step_finish";
+      } else if (normalizedType === "tool" || normalizedType === "tool-use" || normalizedType === "tool_use") {
+        eventType = "tool_use";
+      } else {
+        continue;
+      }
+      const partMessageId = readStringProperty(partRecord, ["messageID", "messageId"]) ?? messageId;
+      const partSessionId = readStringProperty(partRecord, ["sessionID", "sessionId"]) ?? sessionId;
+      if (eventType === "step_finish" && (readStringProperty(partRecord, ["reason"]) ?? "").toLowerCase() === "stop") {
+        sawStop = true;
+      }
+      lines.push(JSON.stringify({
+        type: eventType,
+        sessionID: partSessionId,
+        part: {
+          ...partRecord,
+          messageID: partMessageId,
+          sessionID: partSessionId,
+        },
+      }));
+    }
+    if (!sawStop && (readStringProperty(info, ["finish"]) ?? "").toLowerCase() === "stop" && messageId) {
+      lines.push(JSON.stringify({
+        type: "step_finish",
+        sessionID: sessionId,
+        part: {
+          type: "step-finish",
+          reason: "stop",
+          messageID: messageId,
+          sessionID: sessionId,
+        },
+      }));
+    }
+  }
+  return lines.join("\n");
+}
+
+export function parseOpenCodeExportStdout(
+  stdout: string,
+  messageIds: readonly string[] = [],
+): OpenCodeRunOutput | null {
+  const document = parseOpenCodeExportDocument(stdout);
+  if (!document) {
+    return null;
+  }
+  return parseOpenCodeRunOutput(openCodeExportDocumentToJsonl(document, messageIds), "");
+}
+
+export async function recoverOpenCodeMissingAssistantOutput(options: {
+  stdout: string;
+  stderr: string;
+  cwd?: string;
+  exportSession?: (sessionId: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
+}): Promise<OpenCodeRunOutput> {
+  const parsed = parseOpenCodeRunOutput(options.stdout, options.stderr);
+  if (parsed.hasStructuredFinalAnswer && parsed.finalText?.trim()) {
+    return parsed;
+  }
+  const sessionId = extractOpenCodeRuntimeSessionId(`${options.stdout}\n${options.stderr}`);
+  if (!sessionId || !/^ses_[A-Za-z0-9]+$/u.test(sessionId)) {
+    return parsed;
+  }
+  try {
+    const exported = options.exportSession
+      ? await options.exportSession(sessionId)
+      : await captureCliOutput(getCliCommand("opencode"), ["export", sessionId], {
+          cwd: options.cwd,
+          timeoutMs: OPENCODE_EXPORT_RECOVERY_TIMEOUT_MS,
+        });
+    if (exported.exitCode !== 0) {
+      return parsed;
+    }
+    const recovered = parseOpenCodeExportStdout(
+      exported.stdout,
+      extractOpenCodeRuntimeMessageIds(`${options.stdout}\n${options.stderr}`),
+    );
+    if (!recovered?.hasStructuredFinalAnswer || !recovered.finalText?.trim()) {
+      return parsed;
+    }
+    return {
+      finalText: recovered.finalText,
+      errorText: null,
+      statusText: parsed.statusText,
+      hasStructuredFinalAnswer: true,
+    };
+  } catch {
+    return parsed;
+  }
+}
+
 export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCodeRunOutput {
   const jsonOutput = parseOpenCodeJsonOutput(stdout);
   const finalText = jsonOutput.finalText ?? parseOpenCodePlainOutput(stdout);
   const stderrErrorText = cleanOpenCodeStatusOutput(stderr);
+  const printLogErrorText = finalText ? null : extractOpenCodePrintLogErrorText(stderr);
   const jsonErrorText = collectOpenCodeJsonErrors(stdout);
   const statusText = stripAnsi(stderr)
     .split(/\r?\n/u)
@@ -831,7 +1171,7 @@ export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCode
 
   return {
     finalText,
-    errorText: combineOpenCodeErrorText(jsonErrorText, stderrErrorText),
+    errorText: combineOpenCodeErrorText(jsonErrorText, stderrErrorText, printLogErrorText),
     statusText: statusText || null,
     hasStructuredFinalAnswer: jsonOutput.hasStructuredFinalAnswer,
   };
@@ -964,6 +1304,13 @@ function buildOpenCodeRunArgs(
   let runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
   if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
     runArgs.splice(2, 0, "--format", "json");
+  }
+  if (!runArgs.includes("--print-logs")) {
+    const formatIndex = runArgs.findIndex((arg) => arg === "--format" || arg.startsWith("--format="));
+    const insertAt = formatIndex >= 0
+      ? formatIndex + (runArgs[formatIndex] === "--format" ? 2 : 1)
+      : Math.min(2, runArgs.length);
+    runArgs.splice(insertAt, 0, "--print-logs");
   }
   const hasAttach = runArgs.some((arg) => arg === "--attach" || arg.startsWith("--attach="));
   const normalizedServerUrl = typeof serverUrl === "string" ? serverUrl.trim().replace(/\/+$/u, "") : "";

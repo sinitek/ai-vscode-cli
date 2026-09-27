@@ -174,6 +174,12 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
       statusText: null,
       hasStructuredFinalAnswer: true,
     }),
+    recoverOpenCodeMissingAssistantOutput: async () => call("recoverOpenCodeMissingAssistantOutput", {
+      finalText: null,
+      errorText: null,
+      statusText: null,
+      hasStructuredFinalAnswer: false,
+    }),
     appendParsedOutput: () => call("appendParsedOutput", []),
     maybeHandleNaturalLanguageHumanInteraction: async () => call("maybeHandleNaturalLanguageHumanInteraction", false as const),
     hasAssistantFinalConclusionAfterMessage: () => call("hasAssistantFinalConclusionAfterMessage", true),
@@ -213,6 +219,36 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
   };
   return { events, ...ports, ...overrides };
 }
+
+test("recovers an empty OpenCode stdout before judging the final answer", async () => {
+  const events: string[] = [];
+  const ports = createRecordingPorts(events, {
+    parseOpenCodeRunOutput: () => {
+      events.push("parseOpenCodeRunOutput");
+      return {
+        finalText: null,
+        errorText: null,
+        statusText: null,
+        hasStructuredFinalAnswer: false,
+      };
+    },
+    recoverOpenCodeMissingAssistantOutput: async () => {
+      events.push("recoverOpenCodeMissingAssistantOutput");
+      return {
+        finalText: "Hello",
+        errorText: null,
+        statusText: null,
+        hasStructuredFinalAnswer: true,
+      };
+    },
+  });
+
+  await runOpenCodePromptTemplate(createInput(), createTarget(), { cwd: "/workspace" }, ports);
+
+  assert.ok(events.indexOf("parseOpenCodeRunOutput") < events.indexOf("recoverOpenCodeMissingAssistantOutput"));
+  assert.ok(events.indexOf("recoverOpenCodeMissingAssistantOutput") < events.indexOf("appendParsedOutput"));
+  assert.ok(events.includes("finalizeSuccessfulExit"));
+});
 
 function createInput(overrides: Partial<PromptRunInput> = {}): PromptRunInput {
   return {

@@ -1,4 +1,8 @@
-import type { RunProcess } from "../cli/commandRunner";
+import {
+  extractOpenCodeRuntimeSessionId,
+  recoverOpenCodeMissingAssistantOutput,
+  type RunProcess,
+} from "../cli/commandRunner";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { CliName, ThinkingMode } from "../cli/types";
@@ -871,6 +875,20 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       },
       beginSuccessfulExit: () => {},
       parseOpenCodeRunOutput,
+      recoverOpenCodeMissingAssistantOutput: async (input) => {
+        const recovered = await recoverOpenCodeMissingAssistantOutput(input);
+        if (recovered.finalText?.trim()) {
+          void logInfo("runPrompt-opencode-export-recovered", {
+            cli: runCli,
+            runId,
+            tabId: target.tabId,
+            sessionId: extractOpenCodeRuntimeSessionId(`${input.stdout}\n${input.stderr}`),
+            stdoutLength: input.stdout.length,
+            stderrLength: input.stderr.length,
+          });
+        }
+        return recovered;
+      },
       appendParsedOutput: (openCodeOutput) => {
         const currentMessageTarget = resolveParallelMessageTarget();
         if (openCodeOutput.finalText) {

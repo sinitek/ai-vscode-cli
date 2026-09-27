@@ -144,3 +144,5 @@ related_paths: []
 5. 是否出现新的复发问题或固定规避动作，应进入 L4 `LESSONS_LEARNED.md` 或必要 skill。
 6. 是否有内容应标记为 `<private>` 或 `<no-memory>`。
 7. 执行计划是否记录了实际验证命令、结果和未覆盖风险。
+
+自动记录不得写入 `ROLLING_SUMMARY.md`。只有出现可复用的失败原因、成功方案、迁移、回滚、事故或关键决策时，才自动写入 `EVENT_MEMORY.md`。

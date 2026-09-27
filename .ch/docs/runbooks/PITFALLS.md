@@ -1181,12 +1181,14 @@
 ### 长期规避
 - 只保留 60 秒启动 watchdog，用于识别进程启动后完全没有 assistant / error / status / progress 的配置或启动异常。
 - 首个有效事件到达后立即解除外层 watchdog；后续生命周期只由 CLI exit/error、用户停止和扩展进程管理收口，不再根据父 JSONL 静默时长自动杀进程。
-- 不通过读取 OpenCode 私有数据库或日志来补造心跳，避免绑定外部 CLI 的内部存储实现。
+- 不通过读取 OpenCode 私有数据库或日志文件来补造心跳。OpenCode 1.18.32 在 provider 返回前没有 stdout JSON，插件只追加官方 `--print-logs`，把 CLI 写到 stderr 的 `timestamp=... level=` 行当作启动活动，并且不把它显示成 trace。
 
 ### 验证方式
 - `resolveOpenCodeOneShotWatchdogTimeoutMs(false)` 返回 60 秒，传入已检测到的 `step_start`/progress 活动后返回 `null`。
 - 回放包含首个 JSONL 活动、随后超过 5 分钟父流静默的分组任务时，不应再出现 `runPrompt-one-shot-idle-timeout`，任务应继续等待 OpenCode 自身退出或用户停止。
 - 启动后 60 秒完全没有 stdout/stderr 的场景仍应进入 hidden retry，并保留可见 system 错误消息与日志。
+- OpenCode 1.18.32 的真实任务可能在 60 秒后才写出第一条 stdout JSON。`--print-logs` 日志必须算 progress 并解除 watchdog，不能把这种静默误判成启动失败；最终 provider 错误仍以 stdout JSON `error` 为准。
+
 
 ### 关联资料
 - `src/cli/opencodewatchdog.ts`
@@ -2356,3 +2358,37 @@
 - `src/test/interactive/codexRunnerLifecycle.test.ts`
 - `src/test/interactive/codexAppServerEvents.test.ts`
 
+
+## 短问候被严格最终答复判定拒绝
+
+- 状态：已规避
+- 首次发现：2026-09-27
+- 适用范围：OpenCode `run --format json --print-logs`、Claude 交互式分组、普通非 Loop 任务
+
+### 现象
+- `hi` 这类短回复已经出现在助手气泡里，任务仍报“正文未包含 `[final_answer]`”或“没有产生最终结论气泡”。复杂任务因为模型自己写了 `[final_answer]` 所以能过。
+- OpenCode 1.18.25 用当前 `default/claude-sonnet-5` 实跑短提示时，stdout 是同一 `messageID` 的 `text`（带 `time.end`）和 `step_finish reason=stop`；`--print-logs` 的 stderr 是 `timestamp=... level=`，不是 provider 失败。
+- 插件解析的是 `~/.npm-global/bin/opencode` 1.18.25。短 `hi` 在上游先返回 `AI_APICallError: Upstream access forbidden` 后仍可能成功落库，但父进程 stdout 为空；`opencode export` 里已有 `Hello! I'm OpenCode...` 和 `step-finish reason=stop`。这时界面报“已成功退出，但没有返回助手回答”。
+
+### 根因
+- 严格收口只把显式 `[final_answer]` 或同一消息的 `step_finish reason=stop` 当成终态。短回复经常不写标记；如果最后一块 `step_finish` 没进 stdout，完成正文也被拒绝。
+- `--print-logs` 整段 stderr 被 `cleanOpenCodeStatusOutput` 留成 `errorText`，会盖住真实助手答复。
+- Claude Code 2.1.283 的短回合可以只有 assistant `stop_reason=end_turn` 和 `system subtype=turn_duration`，不再输出 `result`。成功 `result` 也没有 Codex 那种 phase 提升。
+
+### 长期规避
+- OpenCode：同一消息的非 thinking 正文加 `stop` 继续通过；没有后续 tool / `tool-calls`、也没有其他 message 的 `stop` 时，`time.end` 完成正文也算结构化终态。
+- `tool-calls`、跨 message、无正文 `stop`、纯 thinking 仍然拒绝。用户 prompt 里的 `[final_answer]` 不是助手终态。
+- `--print-logs` 的 INFO/WARN/DEBUG 只算 progress，不进 trace，也不进 provider error。没有助手正文时，`level=ERROR` 的 `error.error` 要进入 `errorText`，不能再被内部日志过滤吞掉。
+- 原生完成信号优先，`[final_answer]` 只是替补：OpenCode 认同一消息的非 thinking 正文加 `stop`（或无后续 tool 的 `time.end`）；Claude 认成功 `result`（subtype 为空或 success，且 is_error 不为真），或 assistant `stop_reason=end_turn`；两者都还要求本轮已有非 thinking 正文，且该正文之后没有工具。查询正常返回或进程退出本身不算完成。Codex 认 `phase="final_answer"`，或主 turn `turn.completed` 后把最后一条无工具的 `phase:null` 正文提升为终态。都没有这些信号时，才用助手正文里的 `[final_answer]`。
+- 进程 `code=0` 但 stdout 没有上述 OpenCode 原生终态时，即使已经有 `tool-calls` 过程正文，也只调用一次官方 `opencode export <sessionID>`。会话 ID 来自 stdout `sessionID` 或 stderr `session.id`。已知 message 本身是 `finish=stop` 就用它；否则只用它之后的下一条 `finish=stop` 助手正文，不把更早的历史回复当成这次答案。没有 messageID 且有多条 assistant 时不猜测。`tool-calls` 导出不能收口。不读私有数据库，也不轮询。
+- Claude 错误 `result`、只停在工具上的回合仍然不收口。Loop 仍不靠进程退出收口。
+
+### 验证方式
+- 回放带 `step_finish reason=stop` 的短回复 JSON，确认 `hasStructuredFinalAnswer=true`，且不要求正文包含 `[final_answer]`。
+- stdout 只有 `tool-calls` 时必须再 export 一次，并采用已知 message 之后的 `finish=stop` 正文；导出仍是 `tool-calls` 时保持未收口。空 stdout 且没有 messageID、导出里有多条 assistant 时不猜测。已有原生 `stop` 时不得再 export。
+- `node --test dist/test/cli/opencodeCommandRunner.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js`
+
+### 关联资料
+- `src/cli/commandRunner.ts`
+- `src/extensionHost/promptInteractiveRuntime.ts`
+- `src/interactive/claudeRunner.ts`

@@ -12,7 +12,12 @@ import {
 
 const {
   ClaudeInteractiveRunner,
+  isClaudeEndTurnStop,
+  isClaudeFailedFinalResult,
+  isClaudeSuccessfulFinalResult,
+  isClaudeToolUseStop,
   mapClaudeThinkingEffort,
+  readClaudeAssistantStopReason,
 } = require("../../interactive/claudeRunner") as typeof import("../../interactive/claudeRunner");
 const dynamicImportModule = require("../../interactive/dynamicImport") as typeof import("../../interactive/dynamicImport");
 
@@ -208,4 +213,28 @@ test("keeps the current Claude AbortController when an older run finishes", asyn
   runner.stopAndRebuild();
   assert.equal(secondController.signal.aborted, true);
   await assert.rejects(secondRun, { name: "AbortError" });
+});
+
+test("reads Claude native completion signals from assistant and result events", () => {
+  const endTurn = {
+    type: "assistant",
+    message: { stop_reason: "end_turn", content: [{ type: "text", text: "Hi" }] },
+  };
+  const streamedEndTurn = {
+    type: "stream_event",
+    event: { type: "message_delta", delta: { stop_reason: "end_turn" } },
+  };
+  const toolUse = {
+    type: "stream_event",
+    event: { type: "message_delta", delta: { stop_reason: "tool_use" } },
+  };
+  assert.equal(readClaudeAssistantStopReason(endTurn), "end_turn");
+  assert.equal(isClaudeEndTurnStop(streamedEndTurn), true);
+  assert.equal(isClaudeToolUseStop(toolUse), true);
+  assert.equal(isClaudeEndTurnStop({ type: "assistant", message: { stop_reason: "max_tokens" } }), false);
+  assert.equal(readClaudeAssistantStopReason({ type: "system", subtype: "turn_duration" }), "");
+  assert.equal(isClaudeSuccessfulFinalResult({ type: "result", subtype: "success", is_error: false }), true);
+  assert.equal(isClaudeSuccessfulFinalResult({ type: "result", subtype: "", is_error: false }), true);
+  assert.equal(isClaudeSuccessfulFinalResult({ type: "result", subtype: "error_during_execution", is_error: true }), false);
+  assert.equal(isClaudeFailedFinalResult({ type: "result", subtype: "error_during_execution", is_error: true }), true);
 });

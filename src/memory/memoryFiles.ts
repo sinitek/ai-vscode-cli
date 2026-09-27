@@ -226,6 +226,10 @@ function normalizeEntryLine(line: string): string | null {
   return normalized ? normalized : null;
 }
 
+function memoryEntryAlreadyPresent(content: string, lines: readonly string[]): boolean {
+  return lines.every((line) => content.includes(`- ${line}`));
+}
+
 export function appendMemoryEntry(
   paths: WorkspaceMemoryPaths,
   fileId: MemoryHotFileId,
@@ -250,6 +254,23 @@ export function appendMemoryEntry(
   ].join("\n");
   fs.writeFileSync(filePath, `${existing}${block}`, "utf8");
   return filePath;
+}
+
+export function appendMemoryEntryIfAbsent(
+  paths: WorkspaceMemoryPaths,
+  fileId: MemoryHotFileId,
+  input: MemoryEntryInput,
+): string | null {
+  ensureMemoryWorkspaceScaffold(paths);
+  const filePath = getMemoryHotFilePath(paths, fileId);
+  const existing = readFileSafe(filePath);
+  const lines = input.lines
+    .map((line) => normalizeEntryLine(line))
+    .filter((line): line is string => Boolean(line));
+  if (!lines.length || memoryEntryAlreadyPresent(existing, lines)) {
+    return null;
+  }
+  return appendMemoryEntry(paths, fileId, input);
 }
 
 function normalizeRecordLines(lines?: string[]): string[] {

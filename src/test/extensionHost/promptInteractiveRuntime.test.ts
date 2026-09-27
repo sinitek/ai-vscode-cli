@@ -649,6 +649,169 @@ test("interactive runtime host converts explicit natural clarification replies i
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
 });
 
+test("interactive runtime host accepts a Claude greeting when the result succeeds", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-hi");
+      handlers.onSessionId("claude-hi");
+      handlers.onAssistantDelta("你好！我是 Kiro，你的 AI 开发助手。");
+      handlers.onEvent?.({ type: "result", subtype: "success", is_error: false, result: "你好！我是 Kiro，你的 AI 开发助手。" });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-hi", sessionId: "session-claude-hi" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-claude-hi") ?? [];
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.ok(messages.some((message) => message.role === "assistant" && String(message.content).includes("你好")));
+});
+
+test("interactive runtime host accepts a finished Claude greeting without a result event", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-hi-no-result");
+      handlers.onSessionId("claude-hi-no-result");
+      handlers.onAssistantDelta("你好！我准备好帮你了。");
+      handlers.onEvent?.({
+        type: "assistant",
+        message: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "你好！我准备好帮你了。" }],
+        },
+      });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-no-result", sessionId: "session-claude-no-result" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-claude-no-result") ?? [];
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.ok(messages.some((message) => message.role === "assistant" && String(message.content).includes("你好")));
+});
+
+test("interactive runtime host does not treat a bare Claude greeting as complete", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-hi-no-signal");
+      handlers.onSessionId("claude-hi-no-signal");
+      handlers.onAssistantDelta("你好！");
+      handlers.onEvent?.({ type: "system", subtype: "turn_duration" });
+    },
+  });
+
+  const runPromise = harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-no-signal", sessionId: "session-claude-no-signal" }),
+  );
+  await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-claude-no-signal") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-claude-no-signal")?.stop();
+  await runPromise;
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
+});
+
+test("interactive runtime host accepts a Claude marker when no native completion signal arrives", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-marker");
+      handlers.onSessionId("claude-marker");
+      handlers.onAssistantDelta("[final_answer] 你好！");
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-marker", sessionId: "session-claude-marker" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-claude-marker") ?? [];
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+});
+
+test("interactive runtime host accepts a Codex phase-null reply after it is promoted", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      harness.setCodexThreadId("thread-phase-null");
+      handlers.onThreadId("thread-phase-null");
+      handlers.onAssistantDelta("Hi! I am ready.");
+      handlers.onAssistantDelta("", { codexFinalAnswer: true });
+      handlers.onTurnCompleted?.({
+        threadId: "thread-phase-null",
+        turnId: "turn-phase-null",
+        status: "completed",
+      });
+    },
+  });
+
+  await harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ tabId: "tab-phase-null", sessionId: "session-phase-null" }),
+  );
+
+  const messages = harness.messagesBySession.get("session-phase-null") ?? [];
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+  assert.equal(messages.some((message) => String(message.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.ok(messages.some((message) => message.role === "assistant" && message.codexFinalAnswer === true));
+});
+
+test("interactive runtime host retries a Claude error result even when assistant text exists", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-error-result");
+      handlers.onSessionId("claude-error-result");
+      handlers.onAssistantDelta("模型暂时不可用。");
+      handlers.onEvent?.({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["upstream failed"] });
+    },
+  });
+
+  const runPromise = harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-error", sessionId: "session-claude-error" }),
+  );
+  await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-claude-error") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-claude-error")?.stop();
+  await runPromise;
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
+});
+
+test("interactive runtime host does not accept a Claude result that ends on a tool call", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    claudeRunBehavior: async (_prompt, handlers) => {
+      harness.setClaudeSessionId("claude-tool");
+      handlers.onSessionId("claude-tool");
+      handlers.onAssistantDelta("我先查一下。");
+      handlers.onTrace("tool: WebSearch", "tool-use");
+      handlers.onEvent?.({ type: "result", subtype: "success", is_error: false });
+    },
+  });
+
+  const runPromise = harness.host.runPromptInteractive(
+    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createTarget({ cli: "claude", tabId: "tab-claude-tool", sessionId: "session-claude-tool" }),
+  );
+  await waitForSessionMessage(
+    () => harness.messagesBySession.get("session-claude-tool") ?? [],
+    (message) => String(message.content).includes("run.missingFinalConclusionRetryReason"),
+  );
+  harness.activeRunsByTabId.get("tab-claude-tool")?.stop();
+  await runPromise;
+  assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false);
+});
+
 test("interactive runtime host converts Claude natural clarification replies into human interaction forms", async () => {
   let runCount = 0;
   const harness = createInteractiveRuntimeHarness({

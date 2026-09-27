@@ -26,6 +26,8 @@ related_paths: []
 - 已经沉淀到 `PROJECT_CONTEXT.md`、`USER_PREFERENCES.md`、`EVENT_MEMORY.md`、`LESSONS_LEARNED.md`、`ARCHITECTURE.md` 或规格文档的重复内容
 - 单次任务内的完整过程流水账
 - 没有来源、无法追溯的推断
+- 插件自动任务记录；本文件只在人工或任务收尾时按需维护
+- 已经抽取到 `EVENT_MEMORY.md` 的失败原因、成功方案或关键决策原文；这里只留短状态和指向
 
 ## 维护规则
 

@@ -493,7 +493,7 @@ test("preserves existing project-isolation flags for every CLI", () => {
     "args.opencode": ["run", "--pure"],
   });
   try {
-    assert.deepEqual(buildCliArgs("opencode", { isolateProjectInstructions: true }, "prompt"), ["run", "--auto", "--format", "json", "--pure", "prompt"]);
+    assert.deepEqual(buildCliArgs("opencode", { isolateProjectInstructions: true }, "prompt"), ["run", "--auto", "--format", "json", "--print-logs", "--pure", "prompt"]);
   } finally {
     restoreConfiguration();
   }

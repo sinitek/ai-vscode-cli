@@ -15,7 +15,13 @@ import {
   type HumanInteractionRequest,
   type HumanInteractionSubmission,
 } from "../humanInteraction";
-import { ClaudeInteractiveRunner } from "../interactive/claudeRunner";
+import {
+  ClaudeInteractiveRunner,
+  isClaudeEndTurnStop,
+  isClaudeFailedFinalResult,
+  isClaudeSuccessfulFinalResult,
+  isClaudeToolUseStop,
+} from "../interactive/claudeRunner";
 import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
 import { CodexInteractiveRunner } from "../interactive/codexRunner";
 import {
@@ -308,6 +314,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let hiddenRetryCount = 0;
     let observedCodexFinalAnswer = false;
     let observedCodexPrimaryTurnCompleted = false;
+    let observedClaudeFinalAnswer = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -921,7 +928,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         return { action: "stopped" };
       }
       if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
-        observedFinalAnswer: source === "codex" && observedCodexFinalAnswer,
+        observedFinalAnswer: (source === "codex" && observedCodexFinalAnswer)
+          || (source === "claude" && observedClaudeFinalAnswer),
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
@@ -996,9 +1004,15 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         ?? (hiddenRetryCount === 0 ? thinkingPrompt : hiddenRetryPrompt);
       pendingHumanInteractionContinuationPrompt = null;
       let attemptHadNormalReply = false;
+      let claudeSawAssistantText = false;
+      let claudeToolAfterAssistantText = false;
+      let claudeResultFailed = false;
+      let claudeSawSuccessfulResult = false;
+      let claudeSawEndTurn = false;
       if (cli === "codex") {
         observedCodexPrimaryTurnCompleted = false;
       }
+      observedClaudeFinalAnswer = false;
 
       if (hiddenRetryCount > 0) {
         const retryNumber = hiddenRetryCount;
@@ -1242,6 +1256,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               }
               if (chunk.trim().length > 0) {
                 attemptHadNormalReply = true;
+                claudeSawAssistantText = true;
+                claudeToolAfterAssistantText = false;
               }
               appendAssistantChunkForTab(chunk);
               appendDebugStdout(chunk);
@@ -1249,6 +1265,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
               if (!isCurrentRunActive()) {
                 return;
+              }
+              if (kind === "tool-use") {
+                claudeToolAfterAssistantText = true;
+                claudeSawEndTurn = false;
               }
               if (content.trim().length > 0 && kind !== "thinking") {
                 attemptHadNormalReply = true;
@@ -1262,6 +1282,19 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             onEvent: (event: unknown) => {
               if (!isCurrentRunActive()) {
                 return;
+              }
+              if (isClaudeFailedFinalResult(event)) {
+                claudeResultFailed = true;
+              }
+              if (isClaudeSuccessfulFinalResult(event)) {
+                claudeSawSuccessfulResult = true;
+              }
+              if (isClaudeEndTurnStop(event)) {
+                claudeSawEndTurn = true;
+              }
+              if (isClaudeToolUseStop(event)) {
+                claudeToolAfterAssistantText = true;
+                claudeSawEndTurn = false;
               }
               sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
               appendDebugEvent(event);
@@ -1316,10 +1349,23 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               });
               stopCurrentTurn = () => runner.stopAndRebuild();
               syncInteractiveRunEntry(stopFn);
+              claudeSawAssistantText = false;
+              claudeToolAfterAssistantText = false;
+              claudeResultFailed = false;
+              claudeSawSuccessfulResult = false;
+              claudeSawEndTurn = false;
               await runner.runStreamed(attemptPrompt, runStreamHandlers);
             } else {
               throw error;
             }
+          }
+          if (
+            !claudeResultFailed
+            && claudeSawAssistantText
+            && !claudeToolAfterAssistantText
+            && (claudeSawSuccessfulResult || claudeSawEndTurn)
+          ) {
+            observedClaudeFinalAnswer = true;
           }
           if (await maybeHandleNaturalLanguageHumanInteraction()) {
             continue;
