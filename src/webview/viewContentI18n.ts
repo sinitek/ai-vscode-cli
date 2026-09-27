@@ -224,10 +224,10 @@ export const WEBVIEW_I18N = {
       "This workspace already has a .ch directory, so the Harness scaffold is installed and cannot be turned off here.",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
-      "Workspace setting. Installs the local CodeGraph CLI, registers MCP so AI can interact with it, and initializes this workspace index.",
+      "Workspace setting. Runs only missing CodeGraph steps: install the CLI and register MCP when needed, or initialize this workspace index when they are already ready.",
     toolSettingsInstallCodeGraphToggle: "On",
     toolSettingsInstallCodeGraphHint:
-      "Off by default. Turn it on to install CodeGraph, register MCP interaction, and initialize the current workspace index in a visible terminal.",
+      "Off by default. Turning it on runs only missing steps in a visible terminal: full CLI install, MCP registration, and index initialization when CodeGraph is not installed; only codegraph init when the CLI and MCP are already ready.",
     toolSettingsInstallCodeGraphInstallingHint:
       "CodeGraph setup is running in a terminal. This checkbox will turn on automatically when the CLI, MCP interaction, and workspace index are ready.",
     toolSettingsInstallCodeGraphInstalledHint:
@@ -678,10 +678,10 @@ export const WEBVIEW_I18N = {
       "当前工作区已存在 .ch 目录，Harness 骨架已安装，无法在此关闭。",
     toolSettingsInstallCodeGraphLabel: "CodeGraph",
     toolSettingsInstallCodeGraphTitle:
-      "工作区设置。安装本机 CodeGraph CLI，注册 MCP 以便 AI 交互，并初始化当前工作区索引。",
+      "工作区设置。只补齐缺失的 CodeGraph 步骤：需要时安装 CLI 并注册 MCP；CLI 和 MCP 已就绪时只初始化当前工作区索引。",
     toolSettingsInstallCodeGraphToggle: "开启",
     toolSettingsInstallCodeGraphHint:
-      "默认关闭。开启后会在可见终端中安装 CodeGraph、注册 MCP 交互，并初始化当前工作区索引。",
+      "默认关闭。开启后在可见终端只补齐缺失步骤：未安装 CLI 时执行完整安装、MCP 注册和索引初始化；CLI 与 MCP 已就绪但工作区未初始化时，只执行 codegraph init。",
     toolSettingsInstallCodeGraphInstallingHint:
       "正在终端中安装 CodeGraph。CLI、MCP 交互和工作区索引就绪后，此开关会自动勾选。",
     toolSettingsInstallCodeGraphInstalledHint:

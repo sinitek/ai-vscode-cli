@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { createHash } from "crypto";
 import { getCliArgs, getCliCommand, getThinkingMode } from "../cli/config";
 import { inspectCodeGraphStatus } from "../cli/codegraphStatus";
-import { getCodeGraphInstallCommand } from "../cli/installer";
+import { getCodeGraphInstallCommand, getCodeGraphInstallSteps, type CodeGraphInstallStep } from "../cli/installer";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
 import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, LOOP_PLUS_INTERACTIVE_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
 import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput, type ParsedOpenCodeConfigModels } from "../cli/opencodeconfigmodels";
@@ -694,21 +694,68 @@ function createCodeGraphTerminal(name: string, cwd: string): vscode.Terminal {
   return vscode.window.createTerminal(terminalOptions);
 }
 
+function describeCodeGraphInstallPrompt(
+  steps: CodeGraphInstallStep[],
+  workspaceRoot: string | undefined,
+  command: string,
+): { actionLabel: string; confirmMessage: string } {
+  const hasInit = steps.includes("initWorkspace");
+  const hasInstall = steps.includes("installCli");
+  const hasRegister = steps.includes("registerMcp");
+  if (hasInstall && hasInit) {
+    return {
+      actionLabel: t("codegraph.installAction"),
+      confirmMessage: t("codegraph.installConfirm", { workspace: workspaceRoot ?? "", command }),
+    };
+  }
+  if (hasInstall) {
+    return {
+      actionLabel: t("codegraph.installAction"),
+      confirmMessage: t("codegraph.installConfirmNoWorkspace", { command }),
+    };
+  }
+  if (hasRegister && hasInit) {
+    return {
+      actionLabel: t("codegraph.registerAction"),
+      confirmMessage: t("codegraph.registerAndInitConfirm", { workspace: workspaceRoot ?? "", command }),
+    };
+  }
+  if (hasRegister) {
+    return {
+      actionLabel: t("codegraph.registerAction"),
+      confirmMessage: t("codegraph.registerConfirm", { command }),
+    };
+  }
+  return {
+    actionLabel: t("codegraph.initAction"),
+    confirmMessage: t("codegraph.initConfirm", { workspace: workspaceRoot ?? "", command }),
+  };
+}
+
 async function installCodeGraphForWorkspace(): Promise<void> {
   if (codeGraphInstalling) {
     return;
   }
-  if (inspectActiveCodeGraphStatus().ready) {
+  const status = inspectActiveCodeGraphStatus();
+  if (status.ready) {
     await postPanelState();
     return;
   }
   const workspaceRoot = resolveWorkspaceCwd();
-  const initializeWorkspace = Boolean(workspaceRoot);
-  const installCommand = getCodeGraphInstallCommand({ initializeWorkspace });
-  const confirmLabel = t("codegraph.installAction");
-  const confirmMessage = workspaceRoot
-    ? t("codegraph.installConfirm", { workspace: workspaceRoot, command: installCommand })
-    : t("codegraph.installConfirmNoWorkspace", { command: installCommand });
+  const initializeWorkspace = Boolean(workspaceRoot) && !status.workspaceIndexed;
+  const commandOptions = {
+    cliInstalled: status.cliInstalled,
+    mcpConfigured: status.mcpConfigured,
+    initializeWorkspace,
+  };
+  const steps = getCodeGraphInstallSteps(commandOptions);
+  const installCommand = getCodeGraphInstallCommand(commandOptions);
+  if (!installCommand) {
+    void vscode.window.showInformationMessage(t("codegraph.installNeedsWorkspace"));
+    await postPanelState();
+    return;
+  }
+  const { actionLabel: confirmLabel, confirmMessage } = describeCodeGraphInstallPrompt(steps, workspaceRoot, installCommand);
   const selection = await vscode.window.showWarningMessage(
     confirmMessage,
     { modal: true },
@@ -729,6 +776,9 @@ async function installCodeGraphForWorkspace(): Promise<void> {
     workspace: workspaceRoot ?? null,
     command: installCommand,
     initializeWorkspace,
+    cliInstalled: status.cliInstalled,
+    mcpConfigured: status.mcpConfigured,
+    steps,
     platform: process.platform,
   });
   void vscode.window.showInformationMessage(
