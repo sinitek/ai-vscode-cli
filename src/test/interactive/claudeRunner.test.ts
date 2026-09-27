@@ -135,48 +135,70 @@ test("passes AbortController to Claude SDK query and aborts active runs", async 
   await assert.rejects(runPromise, { name: "AbortError" });
 });
 
-test("keeps the current Claude AbortController when an older run finishes", async (t) => {
+test("reuses one Claude query across turns, interrupts without aborting, and closes once", async (t) => {
   const originalDynamicImport = dynamicImportModule.dynamicImport;
-  type MockRun = {
-    prompt: string;
-    abortController: AbortController;
-    finish: () => void;
+  const prompts: string[] = [];
+  const resumeIds: Array<string | undefined> = [];
+  let queryCalls = 0;
+  let interruptCalls = 0;
+  let inputFinished = 0;
+  const captured: { abortController: AbortController | null } = { abortController: null };
+  const pendingResults: Array<Record<string, unknown>> = [];
+  const waiters: Array<() => void> = [];
+
+  const pushResult = (message: Record<string, unknown>): void => {
+    pendingResults.push(message);
+    waiters.splice(0).forEach((wake) => wake());
   };
-  const runs: MockRun[] = [];
-  const waitForRunCount = (count: number): Promise<void> => new Promise((resolve) => {
-    const check = (): void => {
-      if (runs.length >= count) {
-        resolve();
-        return;
-      }
-      setTimeout(check, 0);
-    };
-    check();
-  });
 
   dynamicImportModule.dynamicImport = async () => ({
-    query: ({ prompt, options }: { prompt: string; options: { abortController: AbortController } }) => {
-      let finish: (() => void) | null = null;
-      const finished = new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      runs.push({
-        prompt,
-        abortController: options.abortController,
-        finish: () => finish?.(),
-      });
-      return (async function* stream() {
-        yield { type: "system", subtype: "status", status: "running" };
-        await new Promise<void>((resolve, reject) => {
-          options.abortController.signal.addEventListener("abort", () => {
-            const error = new Error("mock claude aborted");
-            error.name = "AbortError";
-            reject(error);
-          }, { once: true });
-          finished.then(resolve, reject);
-        });
-        yield { type: "result", result: `done:${prompt}` };
+    query: ({ prompt, options }: { prompt: AsyncIterable<any>; options: { abortController?: AbortController; resume?: string } }) => {
+      queryCalls += 1;
+      captured.abortController = options.abortController ?? null;
+      resumeIds.push(options.resume);
+      void (async () => {
+        try {
+          for await (const message of prompt) {
+            const content = message?.message?.content;
+            const text = Array.isArray(content) ? content[0]?.text : "";
+            if (typeof text === "string") {
+              prompts.push(text);
+            }
+          }
+        } finally {
+          inputFinished += 1;
+        }
       })();
+      return {
+        interrupt: async () => {
+          interruptCalls += 1;
+          pushResult({ type: "result", subtype: "error", is_error: true, result: "interrupted" });
+        },
+        async *[Symbol.asyncIterator]() {
+          while (!options.abortController?.signal.aborted) {
+            if (!pendingResults.length) {
+              await new Promise<void>((resolve) => {
+                const abortSignal = options.abortController?.signal;
+                const onAbort = (): void => resolve();
+                if (abortSignal?.aborted) {
+                  resolve();
+                  return;
+                }
+                abortSignal?.addEventListener("abort", onAbort, { once: true });
+                waiters.push(() => {
+                  abortSignal?.removeEventListener("abort", onAbort);
+                  resolve();
+                });
+              });
+              continue;
+            }
+            const nextMessage = pendingResults.shift();
+            if (nextMessage) {
+              yield nextMessage;
+            }
+          }
+        },
+      };
     },
   }) as any;
   t.after(() => {
@@ -196,23 +218,62 @@ test("keeps the current Claude AbortController when an older run finishes", asyn
     onTaskListUpdate: () => {},
     onSessionId: () => {},
   };
+  const waitForPrompt = async (prompt: string): Promise<void> => {
+    const startedAt = Date.now();
+    while (!prompts.includes(prompt)) {
+      if (Date.now() - startedAt > 1000) {
+        throw new Error(`timed out waiting for prompt ${prompt}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  };
 
   const firstRun = runner.runStreamed("first", handlers);
-  await waitForRunCount(1);
-  const secondRun = runner.runStreamed("second", handlers);
-  await waitForRunCount(2);
-
-  const firstController = runs[0].abortController;
-  const secondController = runs[1].abortController;
-  assert.notEqual(firstController, secondController);
-
-  runs[0].finish();
+  await waitForPrompt("first");
+  assert.equal(queryCalls, 1);
+  pushResult({
+    type: "assistant",
+    session_id: "claude-session-1",
+    message: { id: "m1", content: [{ type: "text", text: "hello" }] },
+  });
+  pushResult({ type: "result", subtype: "success", session_id: "claude-session-1", result: "" });
   await firstRun;
-  assert.equal(secondController.signal.aborted, false);
+  assert.equal(runner.getSessionId(), "claude-session-1");
+  assert.equal(captured.abortController?.signal.aborted, false);
 
+  const secondRun = runner.runStreamed("second", handlers);
+  await waitForPrompt("second");
+  assert.equal(queryCalls, 1);
   runner.stopAndRebuild();
-  assert.equal(secondController.signal.aborted, true);
+  assert.equal(interruptCalls, 1);
+  assert.equal(captured.abortController?.signal.aborted, false);
   await assert.rejects(secondRun, { name: "AbortError" });
+
+  const thirdRun = runner.runStreamed("third", handlers);
+  await waitForPrompt("third");
+  assert.equal(queryCalls, 1);
+  pushResult({ type: "result", subtype: "error_max_turns", session_id: "claude-session-1", result: "cap" });
+  await thirdRun;
+  assert.equal(captured.abortController?.signal.aborted, true);
+
+  const fourthRun = runner.runStreamed("fourth", handlers);
+  await waitForPrompt("fourth");
+  assert.equal(queryCalls, 2);
+  assert.deepEqual(resumeIds[1], "claude-session-1");
+  pushResult({ type: "result", subtype: "success", session_id: "claude-session-1", result: "done" });
+  await fourthRun;
+
+  runner.dispose();
+  runner.dispose();
+  assert.equal(runner.isDisposed(), true);
+  const finishedAt = Date.now();
+  while (inputFinished < 2) {
+    if (Date.now() - finishedAt > 1000) {
+      throw new Error(`expected both Claude inputs to close once, closed ${inputFinished}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.equal(inputFinished, 2);
 });
 
 test("reads Claude native completion signals from assistant and result events", () => {

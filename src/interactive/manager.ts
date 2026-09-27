@@ -28,6 +28,11 @@ type RunnerEntry =
       thinkingMode: ThinkingMode;
       interactiveMode: InteractiveMode;
       model: string | null;
+      command: string;
+      args: string[];
+      cwd?: string;
+      entrypoint?: string;
+      isolateProjectInstructions: boolean;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
     };
@@ -77,6 +82,8 @@ export class InteractiveRunnerManager {
       command?: string;
       args?: string[];
       cwd?: string;
+      entrypoint?: string;
+      isolateProjectInstructions?: boolean;
     } = {}
   ): void {
     const key = this.buildKey(cli, sessionId);
@@ -97,6 +104,21 @@ export class InteractiveRunnerManager {
         existing.cwd = options.cwd;
       } else {
         existing.model = model;
+        if (typeof options.command === "string") {
+          existing.command = options.command;
+        }
+        if (options.args) {
+          existing.args = [...options.args];
+        }
+        if (options.cwd !== undefined) {
+          existing.cwd = options.cwd;
+        }
+        if (options.entrypoint !== undefined) {
+          existing.entrypoint = options.entrypoint;
+        }
+        if (options.isolateProjectInstructions !== undefined) {
+          existing.isolateProjectInstructions = options.isolateProjectInstructions;
+        }
       }
       this.touch(existing);
       return;
@@ -121,7 +143,21 @@ export class InteractiveRunnerManager {
             idleTimer: null,
             lastUsedAt: Date.now(),
           }
-        : { cli, sessionId, runner: runner as ClaudeInteractiveRunner, thinkingMode, interactiveMode, model, idleTimer: null, lastUsedAt: Date.now() };
+        : {
+            cli,
+            sessionId,
+            runner: runner as ClaudeInteractiveRunner,
+            thinkingMode,
+            interactiveMode,
+            model,
+            command: options.command ?? "",
+            args: [...(options.args ?? [])],
+            cwd: options.cwd,
+            entrypoint: options.entrypoint,
+            isolateProjectInstructions: options.isolateProjectInstructions === true,
+            idleTimer: null,
+            lastUsedAt: Date.now(),
+          };
     this.entries.set(key, entry);
     this.touch(entry);
   }
@@ -204,6 +240,11 @@ export class InteractiveRunnerManager {
     return Boolean(entry && entry.cli === "codex" && entry.runner === runner);
   }
 
+  public hasClaudeRunner(sessionId: string | null, runner: ClaudeInteractiveRunner): boolean {
+    const entry = this.getEntry("claude", sessionId);
+    return Boolean(entry && entry.cli === "claude" && entry.runner === runner && !entry.runner.isDisposed());
+  }
+
   public getCodexRunnerSelection(sessionId: string | null): CodexRunSelection | null {
     const entry = this.getEntry("codex", sessionId);
     if (!entry || entry.cli !== "codex") {
@@ -230,21 +271,27 @@ export class InteractiveRunnerManager {
     const key = this.buildKey("claude", options.sessionId);
     const existing = this.entries.get(key);
     if (existing && existing.cli === "claude") {
-      if (
-        existing.thinkingMode === options.thinkingMode
-        && existing.interactiveMode === options.interactiveMode
-        && existing.model === options.model
-        && options.isolateProjectInstructions !== true
-      ) {
+      if (existing.runner.isDisposed()) {
+        this.disposeEntry(key);
+      } else if (this.canReuseClaudeRunner(existing, options)) {
         const runnerSessionId = existing.runner.getSessionId();
         const expectedSessionId = runnerSessionId || options.mappedSessionId;
         if (expectedSessionId && runnerSessionId !== expectedSessionId) {
           existing.runner.updateSessionId(expectedSessionId);
         }
+        existing.thinkingMode = options.thinkingMode;
+        existing.interactiveMode = options.interactiveMode;
+        existing.model = options.model;
+        existing.command = options.command;
+        existing.args = [...options.args];
+        existing.cwd = options.cwd;
+        existing.entrypoint = options.entrypoint;
+        existing.isolateProjectInstructions = options.isolateProjectInstructions === true;
         this.touch(existing);
         return existing.runner;
+      } else {
+        this.disposeEntry(key);
       }
-      this.disposeEntry(key);
     }
     const runner = new ClaudeInteractiveRunner({
       command: options.command,
@@ -264,6 +311,11 @@ export class InteractiveRunnerManager {
       thinkingMode: options.thinkingMode,
       interactiveMode: options.interactiveMode,
       model: options.model,
+      command: options.command,
+      args: [...options.args],
+      cwd: options.cwd,
+      entrypoint: options.entrypoint,
+      isolateProjectInstructions: options.isolateProjectInstructions === true,
       idleTimer: null,
       lastUsedAt: Date.now(),
     };
@@ -319,6 +371,32 @@ export class InteractiveRunnerManager {
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
     return cli === "codex" || cli === "claude";
+  }
+
+  private canReuseClaudeRunner(
+    existing: Extract<RunnerEntry, { cli: "claude" }>,
+    options: {
+      command: string;
+      cwd?: string;
+      entrypoint?: string;
+      thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
+      model: string | null;
+      isolateProjectInstructions?: boolean;
+    },
+  ): boolean {
+    const isolateProjectInstructions = options.isolateProjectInstructions === true;
+    return existing.thinkingMode === options.thinkingMode
+      && existing.interactiveMode === options.interactiveMode
+      && existing.model === options.model
+      && existing.isolateProjectInstructions === isolateProjectInstructions
+      && this.sameOrUnspecified(existing.command, options.command)
+      && this.sameOrUnspecified(existing.cwd, options.cwd)
+      && this.sameOrUnspecified(existing.entrypoint, options.entrypoint);
+  }
+
+  private sameOrUnspecified(existingValue: string | undefined, nextValue: string | undefined): boolean {
+    return existingValue === nextValue || existingValue === undefined || existingValue === "";
   }
 
   private disposeEntry(key: string): void {

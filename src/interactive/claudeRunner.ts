@@ -374,12 +374,111 @@ async function loadClaudeSettings(): Promise<Record<string, string>> {
   return {};
 }
 
+type ClaudeSdkUserMessage = {
+  type: "user";
+  session_id: string;
+  message: {
+    role: "user";
+    content: Array<{ type: "text"; text: string }>;
+  };
+  parent_tool_use_id: null;
+};
+
+type ClaudeQuery = AsyncIterable<any> & {
+  interrupt?: () => Promise<void> | void;
+};
+
+type ClaudePersistentSession = {
+  query: ClaudeQuery;
+  input: ClaudePromptInput;
+  abortController: AbortController;
+  closed: boolean;
+};
+
+type ClaudeActiveTurn = {
+  abortGeneration: number;
+  disposeGeneration: number;
+  settled: boolean;
+  handlers: ClaudeStreamHandlers;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  done: Promise<void>;
+  handle: (message: any) => boolean;
+};
+
+class ClaudePromptInput implements AsyncIterable<ClaudeSdkUserMessage> {
+  private readonly queued: ClaudeSdkUserMessage[] = [];
+  private readonly waiters: Array<(result: IteratorResult<ClaudeSdkUserMessage>) => void> = [];
+  private finished = false;
+
+  public enqueue(prompt: string): void {
+    if (this.finished) {
+      throw new Error("Claude persistent input is closed");
+    }
+    const message: ClaudeSdkUserMessage = {
+      type: "user",
+      session_id: "",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: prompt }],
+      },
+      parent_tool_use_id: null,
+    };
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter({ value: message, done: false });
+      return;
+    }
+    this.queued.push(message);
+  }
+
+  public finish(): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    while (this.waiters.length > 0) {
+      this.waiters.shift()?.({ value: undefined as unknown as ClaudeSdkUserMessage, done: true });
+    }
+  }
+
+  public [Symbol.asyncIterator](): AsyncIterator<ClaudeSdkUserMessage> {
+    return {
+      next: (): Promise<IteratorResult<ClaudeSdkUserMessage>> => {
+        const nextMessage = this.queued.shift();
+        if (nextMessage) {
+          return Promise.resolve({ value: nextMessage, done: false });
+        }
+        if (this.finished) {
+          return Promise.resolve({ value: undefined as unknown as ClaudeSdkUserMessage, done: true });
+        }
+        return new Promise((resolve) => {
+          this.waiters.push(resolve);
+        });
+      },
+    };
+  }
+}
+
+function isTerminalClaudeSessionResult(message: any): boolean {
+  if (!message || message.type !== "result") {
+    return false;
+  }
+  const subtype = typeof message.subtype === "string" ? message.subtype.trim().toLowerCase() : "";
+  return subtype === "error_max_turns" || subtype === "error_max_budget_usd";
+}
+
 export class ClaudeInteractiveRunner {
   public readonly cli: CliName = "claude";
   private disposed = false;
-  private abortController: AbortController | null = null;
   private abortGeneration = 0;
   private disposeGeneration = 0;
+  private legacyThinking = false;
+  private session: ClaudePersistentSession | null = null;
+  private activeTurn: ClaudeActiveTurn | null = null;
+  private operationTail: Promise<unknown> = Promise.resolve();
+  private turnGate: Promise<void> | null = null;
+  private releaseTurnGate: (() => void) | null = null;
 
   public constructor(
     private readonly options: {
@@ -400,20 +499,51 @@ export class ClaudeInteractiveRunner {
   }
 
   public updateSessionId(sessionId: string): void {
+    if (this.options.sessionId === sessionId) {
+      return;
+    }
     (this.options as { sessionId: string | null }).sessionId = sessionId;
+    if (this.session && !this.session.closed) {
+      this.closeSession();
+    }
+  }
+
+  public isDisposed(): boolean {
+    return this.disposed;
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
     this.disposed = true;
     this.disposeGeneration += 1;
-    this.stopAndRebuild();
+    this.settleActive(createRunnerDisposedError());
+    this.closeSession();
   }
 
   public stopAndRebuild(): void {
     this.abortGeneration += 1;
-    const abortController = this.abortController;
-    this.abortController = null;
-    abortController?.abort();
+    const session = this.session;
+    const hasActiveTurn = this.activeTurn !== null;
+    const canInterrupt = Boolean(
+      hasActiveTurn
+      && session
+      && !session.closed
+      && typeof session.query.interrupt === "function"
+    );
+    if (canInterrupt && session) {
+      this.armTurnGate();
+      void Promise.resolve(session.query.interrupt?.()).catch(() => {
+        this.closeSession();
+      });
+      this.settleActive(createAbortError());
+      return;
+    }
+    this.settleActive(createAbortError());
+    if (hasActiveTurn || !session || session.closed) {
+      this.closeSession();
+    }
   }
 
   public async runForText(prompt: string): Promise<{ sessionId: string | null; text: string }> {
@@ -465,79 +595,82 @@ export class ClaudeInteractiveRunner {
     if (this.disposed) {
       throw createRunnerDisposedError();
     }
+    const abortGeneration = this.abortGeneration;
+    const disposeGeneration = this.disposeGeneration;
+    await this.enqueue(() => this.runTurn(prompt, handlers, abortGeneration, disposeGeneration));
+  }
 
-    const runDisposeGeneration = this.disposeGeneration;
-    const runAbortGeneration = this.abortGeneration;
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const run = this.operationTail.then(operation, operation);
+    this.operationTail = run.then(() => undefined, () => undefined);
+    return run;
+  }
 
-    const mod = await dynamicImport<any>("@anthropic-ai/claude-agent-sdk");
-    const queryFn = mod?.query;
-    if (!queryFn) {
-      throw new Error("claude-agent-sdk-missing-export");
+  private async runTurn(
+    prompt: string,
+    handlers: ClaudeStreamHandlers,
+    abortGeneration: number,
+    disposeGeneration: number,
+  ): Promise<void> {
+    try {
+      await this.executeTurn(prompt, handlers, abortGeneration, disposeGeneration, false);
+    } catch (error) {
+      const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
+      if (this.legacyThinking || !thinkingEffort || !isUnsupportedEffortError(error)) {
+        throw error;
+      }
+      this.legacyThinking = true;
+      this.closeSession();
+      void logInfo("claude-effort-fallback-max-thinking-tokens", {
+        thinkingEffort,
+        maxThinkingTokens: clampThinkingTokens(this.options.thinkingMode),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await this.executeTurn(prompt, handlers, abortGeneration, disposeGeneration, true);
     }
-    if (this.abortGeneration !== runAbortGeneration) {
-      throw createAbortError();
+  }
+
+  private async executeTurn(
+    prompt: string,
+    handlers: ClaudeStreamHandlers,
+    abortGeneration: number,
+    disposeGeneration: number,
+    legacyThinking: boolean,
+  ): Promise<void> {
+    this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    await this.waitForTurnGate();
+    this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    const turn = this.beginTurn(handlers, abortGeneration, disposeGeneration);
+    try {
+      await this.ensureSession(abortGeneration, disposeGeneration, legacyThinking);
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      const session = this.session;
+      if (!session || session.closed) {
+        throw new Error("Claude persistent session is unavailable");
+      }
+      session.input.enqueue(prompt);
+      await turn.done;
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    } catch (error) {
+      if (this.activeTurn === turn) {
+        this.settleActive(error instanceof Error ? error : new Error(String(error)));
+      }
+      throw error;
     }
+  }
 
-    const abortController = new AbortController();
-    this.abortController = abortController;
-
-    const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
-    const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
-    const model = typeof this.options.model === "string" && this.options.model.trim()
-      ? this.options.model.trim()
-      : defaultModelFromArgs(this.options.args);
-    const cwd = this.options.cwd ?? os.homedir();
-
-    // 从 ~/.claude/settings.json 加载环境变量
-    const claudeSettings = await loadClaudeSettings();
-
-    void logInfo("claude-v1-query-start", {
-      model,
-      cwd,
-      thinkingEffort,
-      maxThinkingTokens,
-      interactiveMode: this.options.interactiveMode,
-      sessionId: this.options.sessionId,
-      isolateProjectInstructions: this.options.isolateProjectInstructions === true,
-      claudeSettingsKeys: Object.keys(claudeSettings),
+  private beginTurn(
+    handlers: ClaudeStreamHandlers,
+    abortGeneration: number,
+    disposeGeneration: number,
+  ): ClaudeActiveTurn {
+    let resolveTurn: (() => void) | null = null;
+    let rejectTurn: ((error: Error) => void) | null = null;
+    const done = new Promise<void>((resolve, reject) => {
+      resolveTurn = resolve;
+      rejectTurn = reject;
     });
-
-    const queryOptions: any = {
-      cwd,
-      model,
-      permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
-      // SDK 的空 settingSources 会禁用文件系统设置，包括项目 CLAUDE.md。
-      settingSources: this.options.isolateProjectInstructions ? [] : ["user", "project", "local"],
-      // 使用当前配置的 Claude 可执行入口，避免 SDK 退回内置 CLI 导致自定义网关/包装脚本失效
-      pathToClaudeCodeExecutable: this.options.entrypoint,
-      // 设置较大的 maxTurns 限制，避免复杂任务被过早中断
-      // SDK 默认值为 10，对于交互模式来说太小了
-      maxTurns: 200,
-      // 传递环境变量给 SDK
-      env: {
-        ...process.env,
-        ...claudeSettings,
-      },
-      abortController,
-    };
-
-    if (queryOptions.permissionMode === "bypassPermissions") {
-      queryOptions.allowDangerouslySkipPermissions = true;
-    }
-
-    if (thinkingEffort) {
-      queryOptions.extraArgs = {
-        ...queryOptions.extraArgs,
-        effort: thinkingEffort,
-      };
-    } else if (typeof maxThinkingTokens === "number") {
-      queryOptions.maxThinkingTokens = maxThinkingTokens;
-    }
-
-    if (this.options.sessionId) {
-      queryOptions.resume = this.options.sessionId;
-    }
-
+    done.catch(() => undefined);
     let lastAssistantText = "";
     const seenToolUseTraceIds = new Set<string>();
     const seenToolResultTraceIds = new Set<string>();
@@ -649,13 +782,11 @@ export class ClaudeInteractiveRunner {
     ): void => {
       blocks.forEach((block, blockIndex) => {
         emitThinkingTrace(source, messageId, block, blockIndex);
-
         const toolUse = extractToolUseEvent(block);
         if (toolUse) {
           emitToolUseTrace(toolUse);
           return;
         }
-
         const toolResult = extractToolResultEvent(block);
         if (toolResult) {
           emitToolResultTrace(toolResult);
@@ -663,43 +794,16 @@ export class ClaudeInteractiveRunner {
       });
     };
 
-    const buildLegacyThinkingOptions = (): any => {
-      const legacyOptions = {
-        ...queryOptions,
-        extraArgs: { ...(queryOptions.extraArgs ?? {}) },
-      };
-      delete legacyOptions.extraArgs.effort;
-      if (!Object.keys(legacyOptions.extraArgs).length) {
-        delete legacyOptions.extraArgs;
-      }
-      if (typeof maxThinkingTokens === "number") {
-        legacyOptions.maxThinkingTokens = maxThinkingTokens;
-      }
-      return legacyOptions;
-    };
-
-    const executeQuery = async (options: any): Promise<void> => {
-      if (this.abortGeneration !== runAbortGeneration) {
-        throw createAbortError();
-      }
-      const queryResult = queryFn({ prompt, options });
-
-      for await (const msg of queryResult as AsyncGenerator<any>) {
-        if (this.disposeGeneration !== runDisposeGeneration) {
-          throw createRunnerDisposedError();
-        }
-        if (this.abortGeneration !== runAbortGeneration) {
-          throw createAbortError();
-        }
+    const turn: ClaudeActiveTurn = {
+      abortGeneration,
+      disposeGeneration,
+      settled: false,
+      handlers,
+      resolve: () => resolveTurn?.(),
+      reject: (error) => rejectTurn?.(error),
+      done,
+      handle: (msg: any): boolean => {
         handlers.onEvent?.(msg);
-
-        // 更新 session_id
-        if (msg?.session_id && typeof msg.session_id === "string" && msg.session_id !== this.options.sessionId) {
-          this.options.sessionId = msg.session_id;
-          handlers.onSessionId(msg.session_id);
-        }
-
-        // 流式事件
         if (msg?.type === "stream_event" && msg.event) {
           const event = msg.event as any;
           const deltaText = extractDeltaTextFromStreamEvent(event);
@@ -716,10 +820,9 @@ export class ClaudeInteractiveRunner {
                   : undefined;
             processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
           }
-          continue;
+          return false;
         }
 
-        // 助手消息
         if (msg?.type === "assistant" && msg.message) {
           const fullText = extractTextFromMessage(msg.message);
           if (fullText) {
@@ -731,16 +834,14 @@ export class ClaudeInteractiveRunner {
             }
             lastAssistantText = fullText;
           }
-
           const blocks = getMessageContentBlocks(msg.message);
           if (blocks.length) {
             const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
             processMessageBlocks(blocks, "assistant", messageId);
           }
-          continue;
+          return false;
         }
 
-        // 用户事件里也会带 tool_result（例如 AskUserQuestion/ExitPlanMode 的结果）
         if (msg?.type === "user" && msg.message) {
           const blocks = getMessageContentBlocks(msg.message);
           if (blocks.length) {
@@ -763,15 +864,13 @@ export class ClaudeInteractiveRunner {
               }
             }
           }
-          continue;
+          return false;
         }
 
-        // 工具进度
         if (msg?.type === "tool_progress") {
-          continue;
+          return false;
         }
 
-        // 系统消息 - Hook 响应
         if (msg?.type === "system" && msg.subtype === "hook_response") {
           const stdout = typeof msg.stdout === "string" ? msg.stdout : "";
           const stderr = typeof msg.stderr === "string" ? msg.stderr : "";
@@ -785,18 +884,16 @@ export class ClaudeInteractiveRunner {
           if (content.trim()) {
             handlers.onTrace(content);
           }
-          continue;
+          return false;
         }
 
-        // 系统消息 - 状态
         if (msg?.type === "system" && msg.subtype === "status") {
           if (msg.status) {
             handlers.onTrace(`status: ${String(msg.status)}`);
           }
-          continue;
+          return false;
         }
 
-        // 结果消息
         if (msg?.type === "result") {
           const sessionNotFound = extractSessionNotFoundErrorMessage(msg);
           if (sessionNotFound) {
@@ -808,42 +905,231 @@ export class ClaudeInteractiveRunner {
           if (resultText && !lastAssistantText) {
             handlers.onAssistantDelta(resultText);
           }
-          break;
+          return true;
         }
-      }
+        return false;
+      },
     };
+    this.activeTurn = turn;
+    return turn;
+  }
 
-    let runError: unknown = null;
+  private async ensureSession(
+    abortGeneration: number,
+    disposeGeneration: number,
+    legacyThinking: boolean,
+  ): Promise<void> {
+    if (this.session && !this.session.closed) {
+      return;
+    }
+    const mod = await dynamicImport<any>("@anthropic-ai/claude-agent-sdk");
+    this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    const queryFn = mod?.query;
+    if (typeof queryFn !== "function") {
+      throw new Error("claude-agent-sdk-missing-export");
+    }
+
+    const thinkingEffort = mapClaudeThinkingEffort(this.options.thinkingMode);
+    const maxThinkingTokens = clampThinkingTokens(this.options.thinkingMode);
+    const model = typeof this.options.model === "string" && this.options.model.trim()
+      ? this.options.model.trim()
+      : defaultModelFromArgs(this.options.args);
+    const cwd = this.options.cwd ?? os.homedir();
+    const claudeSettings = await loadClaudeSettings();
+    this.throwIfSuperseded(abortGeneration, disposeGeneration);
+
+    const abortController = new AbortController();
+    const queryOptions: any = {
+      cwd,
+      model,
+      permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
+      settingSources: this.options.isolateProjectInstructions ? [] : ["user", "project", "local"],
+      pathToClaudeCodeExecutable: this.options.entrypoint,
+      maxTurns: 200,
+      env: {
+        ...process.env,
+        ...claudeSettings,
+      },
+      abortController,
+    };
+    if (queryOptions.permissionMode === "bypassPermissions") {
+      queryOptions.allowDangerouslySkipPermissions = true;
+    }
+    if (!legacyThinking && thinkingEffort) {
+      queryOptions.extraArgs = { effort: thinkingEffort };
+    } else if (typeof maxThinkingTokens === "number") {
+      queryOptions.maxThinkingTokens = maxThinkingTokens;
+    }
+    if (this.options.sessionId) {
+      queryOptions.resume = this.options.sessionId;
+    }
+
+    const input = new ClaudePromptInput();
+    void logInfo("claude-persistent-session-open", {
+      model,
+      cwd,
+      thinkingEffort: legacyThinking ? null : thinkingEffort,
+      maxThinkingTokens,
+      interactiveMode: this.options.interactiveMode,
+      sessionId: this.options.sessionId,
+      isolateProjectInstructions: this.options.isolateProjectInstructions === true,
+      resumed: Boolean(this.options.sessionId),
+    });
+    const query = queryFn({ prompt: input, options: queryOptions }) as ClaudeQuery;
+    const session: ClaudePersistentSession = {
+      query,
+      input,
+      abortController,
+      closed: false,
+    };
+    this.session = session;
+    void this.readLoop(session);
+    if (
+      this.disposed
+      || this.disposeGeneration !== disposeGeneration
+      || this.abortGeneration !== abortGeneration
+    ) {
+      this.closeSession();
+      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+    }
+  }
+
+  private async readLoop(session: ClaudePersistentSession): Promise<void> {
+    let streamError: Error | null = null;
     try {
-      try {
-        await executeQuery(queryOptions);
-      } catch (error) {
-        if (!thinkingEffort || !isUnsupportedEffortError(error)) {
-          throw error;
+      for await (const message of session.query) {
+        if (session.closed || this.session !== session) {
+          return;
         }
-        void logInfo("claude-effort-fallback-max-thinking-tokens", {
-          thinkingEffort,
-          maxThinkingTokens,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        await executeQuery(buildLegacyThinkingOptions());
+        this.dispatchMessage(message);
       }
     } catch (error) {
-      runError = error;
+      streamError = this.normalizeStreamError(error);
     } finally {
-      if (this.abortController === abortController) {
-        this.abortController = null;
+      if (this.session === session && !session.closed) {
+        this.closeSession();
+        if (this.activeTurn) {
+          this.settleActive(streamError ?? new Error("Claude persistent session ended"));
+        }
       }
+      this.openTurnGate();
     }
+  }
 
-    if (this.disposeGeneration !== runDisposeGeneration) {
+  private dispatchMessage(message: any): void {
+    this.captureSessionId(message);
+    const turn = this.activeTurn;
+    if (!turn || turn.settled) {
+      if (message?.type === "result") {
+        this.openTurnGate();
+        if (isTerminalClaudeSessionResult(message)) {
+          this.closeSession();
+        }
+      }
+      return;
+    }
+    try {
+      const completed = turn.handle(message);
+      if (!completed) {
+        return;
+      }
+      const terminal = isTerminalClaudeSessionResult(message);
+      this.finishActiveTurn(turn);
+      this.openTurnGate();
+      if (terminal) {
+        this.closeSession();
+      }
+    } catch (error) {
+      this.closeSession();
+      this.openTurnGate();
+      this.settleActive(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private captureSessionId(message: any): void {
+    if (!message?.session_id || typeof message.session_id !== "string") {
+      return;
+    }
+    if (message.session_id === this.options.sessionId) {
+      return;
+    }
+    (this.options as { sessionId: string | null }).sessionId = message.session_id;
+    this.activeTurn?.handlers.onSessionId(message.session_id);
+  }
+
+  private finishActiveTurn(turn: ClaudeActiveTurn): void {
+    if (this.activeTurn !== turn || turn.settled) {
+      return;
+    }
+    turn.settled = true;
+    this.activeTurn = null;
+    turn.resolve();
+  }
+
+  private settleActive(error: Error): void {
+    const turn = this.activeTurn;
+    if (!turn || turn.settled) {
+      return;
+    }
+    turn.settled = true;
+    this.activeTurn = null;
+    turn.reject(error);
+  }
+
+  private throwIfSuperseded(abortGeneration: number, disposeGeneration: number): void {
+    if (this.disposed || this.disposeGeneration !== disposeGeneration) {
       throw createRunnerDisposedError();
     }
-    if (this.abortGeneration !== runAbortGeneration) {
+    if (this.abortGeneration !== abortGeneration) {
       throw createAbortError();
     }
-    if (runError) {
-      throw runError;
+  }
+
+  private async waitForTurnGate(): Promise<void> {
+    const gate = this.turnGate;
+    if (gate) {
+      await gate;
     }
+  }
+
+  private armTurnGate(): void {
+    if (this.turnGate) {
+      return;
+    }
+    this.turnGate = new Promise((resolve) => {
+      this.releaseTurnGate = resolve;
+    });
+  }
+
+  private openTurnGate(): void {
+    const release = this.releaseTurnGate;
+    this.releaseTurnGate = null;
+    this.turnGate = null;
+    release?.();
+  }
+
+  private closeSession(): void {
+    const session = this.session;
+    if (!session || session.closed) {
+      this.openTurnGate();
+      return;
+    }
+    session.closed = true;
+    this.session = null;
+    session.input.finish();
+    if (!session.abortController.signal.aborted) {
+      session.abortController.abort();
+    }
+    this.openTurnGate();
+  }
+
+  private normalizeStreamError(error: unknown): Error {
+    if (this.disposed) {
+      return createRunnerDisposedError();
+    }
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "RunnerDisposedError")) {
+      return error;
+    }
+    return error instanceof Error ? error : new Error(String(error));
   }
 }

@@ -1224,6 +1224,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
         if (cli === "claude") {
           const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
+          const runnerWasManaged = Boolean(uiSessionId);
           let runner = uiSessionId
             ? interactiveRunnerManager.getOrCreateClaudeRunner({
                 sessionId: uiSessionId,
@@ -1312,13 +1313,25 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 originalSessionId: target.sessionId,
                 tabId,
               });
-              if (uiSessionId) {
-                interactiveRunnerManager.setRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel);
-              }
+              retainClaudeRunner();
               syncInteractiveRunEntry();
             },
           };
 
+          const retainClaudeRunner = (): void => {
+            if (!uiSessionId) {
+              return;
+            }
+            interactiveRunnerManager.setRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+              command: commandForRunner,
+              args,
+              cwd: cwd ?? undefined,
+              entrypoint: claudeEntrypoint,
+              isolateProjectInstructions: executionOptions.isolateProjectInstructions === true,
+            });
+          };
+
+          try {
           stopCurrentTurn = () => runner.stopAndRebuild();
           syncInteractiveRunEntry(stopFn);
           try {
@@ -1347,6 +1360,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 sessionId: null,
                 isolateProjectInstructions: executionOptions.isolateProjectInstructions,
               });
+              retainClaudeRunner();
               stopCurrentTurn = () => runner.stopAndRebuild();
               syncInteractiveRunEntry(stopFn);
               claudeSawAssistantText = false;
@@ -1383,6 +1397,18 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           }
           await cleanupAfterRun("end");
           return;
+          } finally {
+            if (!runnerWasManaged) {
+              const sessionId = runner.getSessionId();
+              const retained = Boolean(
+                sessionId
+                && interactiveRunnerManager.hasClaudeRunner?.(sessionId, runner)
+              );
+              if (!retained) {
+                runner.dispose();
+              }
+            }
+          }
         }
 
         throw new Error(`interactive-runner-unsupported:${cli}`);
