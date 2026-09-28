@@ -352,8 +352,6 @@ test("a multi-event acceptance batch is confirmed in order and includes the user
 
 test("subtask prompt limits itself to the supplied attempt report and write scope", () => {
   const prompt = buildLoopPlusSubtaskModelPrompt({
-    taskId: "task-token",
-    rootPrompt: "ROOT_REQUEST_TOKEN",
     subtask: {
       id: "sub-token",
       title: "title-token",
@@ -361,18 +359,17 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
       writeFiles: ["src/authorized-scope.ts"],
       conflictGroup: "group-token",
     },
-    attemptId: "attempt-token",
     communicationFile: "ATTEMPT_REPORT_TOKEN",
-    taskStoreFile: "TASK_RECORD_TOKEN",
   });
   assert.match(prompt, /independent Loop\+ execution attempt/);
-  assert.match(prompt, /only writes your attempt report/);
+  assert.match(prompt, /Complete only this attempt and write its report/);
   assert.match(prompt, /Authorized write scope: src\/authorized-scope\.ts/);
   assert.match(prompt, /Attempt report file: ATTEMPT_REPORT_TOKEN/);
-  assert.match(prompt, /Task record file, read only: TASK_RECORD_TOKEN/);
-  assert.match(prompt, /Do not modify scheduling state, active ids, the loopPlus snapshot, or the task record/);
+  assert.match(prompt, /Do not modify scheduling state, active ids, the loopPlus snapshot, the task record/);
   assert.match(prompt, /INSTRUCTION_TOKEN/);
-  assert.match(prompt, /group-token/);
+  assert.equal(prompt.includes("group-token"), false);
+  assert.equal(prompt.includes("ROOT_REQUEST_TOKEN"), false);
+  assert.equal(prompt.includes("TASK_RECORD_TOKEN"), false);
   assert.equal(prompt.includes("LOOP_PLUS_PROTOCOL_EXAMPLE"), false);
   assert.equal(prompt.toLowerCase().includes("round"), false);
   assert.equal(prompt.includes("roundSummaries"), false);
@@ -381,18 +378,14 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
   assert.doesNotMatch(prompt, /sinitek_cli/);
 
   const emptyPaths = buildLoopPlusSubtaskModelPrompt({
-    taskId: "task-token",
-    rootPrompt: "ROOT_REQUEST_TOKEN",
     subtask: {
       title: "title-token",
       prompt: "INSTRUCTION_TOKEN",
     },
-    attemptId: "attempt-token",
     communicationFile: "",
-    taskStoreFile: "",
   });
   assert.match(emptyPaths, /Attempt report file: \n/);
-  assert.match(emptyPaths, /Task record file, read only: \n/);
+  assert.equal(emptyPaths.includes("Task record file"), false);
   assert.match(emptyPaths, /Authorized write scope: \(not declared; follow the subtask instructions\)/);
   assert.doesNotMatch(emptyPaths, /\/Users\//);
   assert.equal(emptyPaths.toLowerCase().includes("round"), false);
@@ -420,15 +413,11 @@ test("asks the main task to judge a batch of new user messages before launching"
 test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence text", () => {
   const mainPrompt = buildLoopPlusMainModelPrompt(mainContext());
   const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
-    taskId: "task-token",
-    rootPrompt: "ROOT_REQUEST_TOKEN",
     subtask: {
       title: "title-token",
       prompt: "INSTRUCTION_TOKEN",
     },
-    attemptId: "attempt-token",
     communicationFile: "attempt-report",
-    taskStoreFile: "task-record",
   });
   assert.equal(isHiddenLoopPlusProtocolPrompt(mainPrompt), true);
   assert.match(mainPrompt, /Any earlier task list in this thread is stale/);

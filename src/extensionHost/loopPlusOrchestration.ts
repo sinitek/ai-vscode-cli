@@ -4,7 +4,7 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, type LoopPlusDecision } from "../loopPlusDecision";
+import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
 import {
   createLoopPlusScheduler,
   type LoopPlusExecutionOutcome,
@@ -158,6 +158,14 @@ type MainStep = {
   userMessageCount: number;
 };
 
+type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
+
+type LoopPlusDecisionStrategy = (
+  runtime: ParentRuntime,
+  step: MainStep,
+  decision: LoopPlusDecision,
+) => LoopPlusDecisionOutcome;
+
 type Lifecycle = {
   promise: Promise<void>;
   resolve: () => void;
@@ -213,6 +221,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   const maxConcurrency = deps.maxConcurrency ?? LOOP_PLUS_MAX_CONCURRENCY;
   const decisionSafetyLimit = deps.decisionSafetyLimit ?? DECISION_SAFETY_LIMIT;
   const protocolRetryLimit = deps.protocolRetryLimit ?? PROTOCOL_RETRY_LIMIT;
+  const decisionStrategies: { [Status in LoopPlusDecisionStatus]: LoopPlusDecisionStrategy } = {
+    dispatch: applyDispatchDecision,
+    accept: applyAcceptDecision,
+    wait: applyWaitDecision,
+    blocked: applyBlockedDecision,
+    completed: applyCompleted,
+  };
   const now = deps.now ?? (() => Date.now());
   const delay = deps.delay ?? ((ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -748,7 +763,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return { kind, eventId: null, eventIds: [], userMessageCount };
   }
 
-  function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): "continue" | "wait" | "stop" {
+  function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): LoopPlusDecisionOutcome {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
     if (step.kind === "review" && !heldBatchIntact(snapshot, step)) {
@@ -760,95 +775,128 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!decision) {
       return protocolMiss(runtime, Boolean(held));
     }
-    if (decision.status === "wait") {
-      if (held) {
-        return protocolMiss(runtime, true);
-      }
-      acknowledgeSeenUserMessages(runtime, step);
-      if (hasReview(runtime)) {
-        return "continue";
-      }
-      runtime.protocolRetries = 0;
-      resetMainFailure(runtime);
-      if (snapshot.running.length === 0 && snapshot.pending.length === 0) {
-        if (hasUserMessages(runtime)) {
-          return "continue";
-        }
-        pause(runtime, "needs-review", "loop-plus-idle-wait");
-        return "stop";
-      }
-      persist(runtime, { status: "running" });
-      deps.appendMessage(runtime.target, "loop-plus-waiting", runtime.taskId);
-      deps.log?.("loop-plus-waiting", { taskId: runtime.taskId, running: snapshot.running.length });
-      return "wait";
+    return strategyFor(decision.status)(runtime, step, decision);
+  }
+
+  function strategyFor(status: LoopPlusDecisionStatus): LoopPlusDecisionStrategy {
+    switch (status) {
+      case "dispatch":
+      case "accept":
+      case "wait":
+      case "blocked":
+      case "completed":
+        return decisionStrategies[status];
+      default:
+        return unreachableDecisionStatus(status);
     }
-    if (decision.status === "dispatch") {
-      if (held) {
-        return protocolMiss(runtime, true);
-      }
-      acknowledgeSeenUserMessages(runtime, step);
-      runtime.protocolRetries = 0;
-      resetMainFailure(runtime);
-      dispatchDecisions(runtime, decision.subtasks ?? []);
-      persistEstimatedRounds(runtime, decision);
-      if (hasReview(runtime)) {
-        return "continue";
-      }
-      const after = runtime.scheduler.snapshot();
-      if (after.running.length === 0 && after.pending.length === 0) {
-        if (hasUserMessages(runtime)) {
-          return "continue";
-        }
-        pause(runtime, "needs-review", "loop-plus-no-work");
-        return "stop";
-      }
-      return "wait";
+  }
+
+  function applyDispatchDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision,
+  ): LoopPlusDecisionOutcome {
+    if (runtime.scheduler.snapshot().currentReview) {
+      return protocolMiss(runtime, true);
     }
-    if (decision.status === "accept") {
-      if (step.kind !== "review" || !sameIds(confirmedReviewIds(decision), step.eventIds)) {
-        return protocolMiss(runtime, step.eventIds.length > 0);
-      }
-      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
-      if (!submitted.ok) {
-        persist(runtime);
-        return runtime.scheduler.snapshot().parentStopped ? "stop" : protocolMiss(runtime, true);
-      }
-      acknowledgeSeenUserMessages(runtime, step);
-      runtime.protocolRetries = 0;
-      resetMainFailure(runtime);
-      dispatchDecisions(runtime, decision.subtasks ?? []);
-      persistEstimatedRounds(runtime, decision);
-      if (hasReview(runtime)) {
-        return "continue";
-      }
-      const view = runtime.scheduler.wait().view;
-      if (view.running.length > 0 || view.pending.length > 0) {
-        persist(runtime, { status: "running" });
-        return "wait";
-      }
-      runtime.closeoutBudget = 1;
+    acknowledgeSeenUserMessages(runtime, step);
+    runtime.protocolRetries = 0;
+    resetMainFailure(runtime);
+    dispatchDecisions(runtime, decision.subtasks ?? []);
+    persistEstimatedRounds(runtime, decision);
+    if (hasReview(runtime)) {
       return "continue";
     }
-    if (decision.status === "blocked") {
-      if (runtime.scheduler.snapshot().currentReview) {
-        runtime.scheduler.requeueCurrentReview();
-      }
-      acknowledgeSeenUserMessages(runtime, step);
-      runtime.protocolRetries = 0;
+    const after = runtime.scheduler.snapshot();
+    if (after.running.length === 0 && after.pending.length === 0) {
       if (hasUserMessages(runtime)) {
         return "continue";
       }
-      pause(runtime, "needs-review", "loop-plus-blocked", decision.finalSummary);
+      pause(runtime, "needs-review", "loop-plus-no-work");
       return "stop";
     }
-    return applyCompleted(runtime, decision, step);
+    return "wait";
+  }
+
+  function applyAcceptDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision,
+  ): LoopPlusDecisionOutcome {
+    if (step.kind !== "review" || !sameIds(confirmedReviewIds(decision), step.eventIds)) {
+      return protocolMiss(runtime, step.eventIds.length > 0);
+    }
+    const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
+    if (!submitted.ok) {
+      persist(runtime);
+      return runtime.scheduler.snapshot().parentStopped ? "stop" : protocolMiss(runtime, true);
+    }
+    acknowledgeSeenUserMessages(runtime, step);
+    runtime.protocolRetries = 0;
+    resetMainFailure(runtime);
+    dispatchDecisions(runtime, decision.subtasks ?? []);
+    persistEstimatedRounds(runtime, decision);
+    if (hasReview(runtime)) {
+      return "continue";
+    }
+    const view = runtime.scheduler.wait().view;
+    if (view.running.length > 0 || view.pending.length > 0) {
+      persist(runtime, { status: "running" });
+      return "wait";
+    }
+    runtime.closeoutBudget = 1;
+    return "continue";
+  }
+
+  function applyWaitDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+  ): LoopPlusDecisionOutcome {
+    const snapshot = runtime.scheduler.snapshot();
+    if (snapshot.currentReview) {
+      return protocolMiss(runtime, true);
+    }
+    acknowledgeSeenUserMessages(runtime, step);
+    if (hasReview(runtime)) {
+      return "continue";
+    }
+    runtime.protocolRetries = 0;
+    resetMainFailure(runtime);
+    if (snapshot.running.length === 0 && snapshot.pending.length === 0) {
+      if (hasUserMessages(runtime)) {
+        return "continue";
+      }
+      pause(runtime, "needs-review", "loop-plus-idle-wait");
+      return "stop";
+    }
+    persist(runtime, { status: "running" });
+    deps.appendMessage(runtime.target, "loop-plus-waiting", runtime.taskId);
+    deps.log?.("loop-plus-waiting", { taskId: runtime.taskId, running: snapshot.running.length });
+    return "wait";
+  }
+
+  function applyBlockedDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision,
+  ): LoopPlusDecisionOutcome {
+    if (runtime.scheduler.snapshot().currentReview) {
+      runtime.scheduler.requeueCurrentReview();
+    }
+    acknowledgeSeenUserMessages(runtime, step);
+    runtime.protocolRetries = 0;
+    if (hasUserMessages(runtime)) {
+      return "continue";
+    }
+    pause(runtime, "needs-review", "loop-plus-blocked", decision.finalSummary);
+    return "stop";
   }
 
   function applyCompleted(
     runtime: ParentRuntime,
-    decision: LoopPlusDecision,
     step: MainStep,
-  ): "continue" | "wait" | "stop" {
+    decision: LoopPlusDecision,
+  ): LoopPlusDecisionOutcome {
     const confirmed = confirmedReviewIds(decision);
     if (step.eventIds.length > 0) {
       if (!sameIds(confirmed, step.eventIds)) {
@@ -1197,12 +1245,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         title: decision.title,
         prompt: decision.prompt,
         modelPrompt: buildLoopPlusSubtaskModelPrompt({
-          taskId: runtime.taskId,
-          rootPrompt: task?.rootPrompt ?? runtime.prompt.displayPrompt,
           subtask: decision,
-          attemptId: record.attemptId,
           communicationFile: communicationFile ?? "",
-          taskStoreFile: task?.taskStoreFile ?? "",
         }),
         writeFiles: record.writeFiles,
         conflictGroup: record.conflictGroup ?? undefined,
@@ -1762,6 +1806,10 @@ function confirmedReviewIds(decision: LoopPlusDecision): string[] {
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function unreachableDecisionStatus(status: never): never {
+  throw new Error(`unhandled loop-plus decision status: ${String(status)}`);
 }
 
 function invalidSnapshotReason(task: LoopTaskRecord): string | null {

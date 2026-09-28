@@ -2691,7 +2691,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             subtaskId: subtask.id,
             displayPrompt: buildLoopSubtaskDisplayPrompt(round, subtask, retryCount),
             modelPrompt: buildLoopSubtaskModelPrompt(
-              input.modelPrompt || input.displayPrompt,
               task,
               round,
               subtask,
@@ -3035,56 +3034,27 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   }
 
   function buildLoopSubtaskModelPrompt(
-    rootPrompt: string,
     task: LoopTaskRecord,
     round: number,
     subtask: LoopSubtaskRecord,
     retryCount = 0,
     communicationFile?: string
   ): string {
-    const taskId = task.id;
-    const taskFile = task.taskStoreFile;
-    const communication = getLoopCommunicationPaths(taskId);
-    const reportFile = communicationFile ?? buildLoopSubtaskCommunicationFile(taskId, subtask.id, round, retryCount);
+    const reportFile = communicationFile ?? buildLoopSubtaskCommunicationFile(task.id, subtask.id, round, retryCount);
     const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
       ? subtask.writeFiles.join("、")
       : "未声明；以当前子任务指令明确授权的文件/范围为准";
     return [
-      "你正在执行 VS Code 插件的 Loop 模式子任务。",
-      "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词和任务记录文件。",
-      "注意：同一轮可能存在其他子任务并发执行；必须严格限定在当前子任务授权范围内，发现写入范围冲突时先停止并在沟通文件中报告。",
-      `Loop 任务 ID：${taskId}`,
-      `当前轮次：${round}`,
-      `当前子任务 ID：${subtask.id}`,
-      `当前重试次数：${retryCount}`,
-      `任务记录文件：${taskFile}`,
-      `沟通目录：${communication.dir}`,
-      `本子任务沟通文件：${reportFile}`,
-      "",
-      "子任务职责：",
-      "1. 只执行当前子任务，不重新拆分主目标。",
-      "2. 可以进行当前子任务范围内必要代码/文件修改和验证，不要修改未在指令或 writeFiles 中授权的范围。",
-      "3. 完成后更新任务记录文件中对应 subTasks 项的 status、summary 和 communicationFile。",
-      "4. 子任务结束前必须把执行情况写入本子任务沟通文件，主任务唤醒后一定会读取该文件。",
-      "5. 涉及代码改动时，优先在子任务内完成必要单测/编译，并把命令与结果写入沟通文件，供主任务直接复核，不要留给主任务重复执行。",
-      "6. 沟通文件必须写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。",
-      "7. 子任务结束后不要继续生成下一个子任务；程序会自动唤醒主任务复核。",
-      "8. 在一个连续执行回合内完成当前授权范围；先实施，再只运行能直接证明本次改动的最小必要检查。不要为了可选调研、额外检查或无关重试增加轮次。",
-      "",
-      "疑问交接协议（强制）：",
-      "1. 只有当需求不明、授权不足、依赖或写入冲突，或存在必须由主任务/用户确认后才能安全继续的问题时，立即停止实施；能依据现有事实和规则自行判断的问题不得上交。",
-      "2. 在本子任务沟通文件的 `## 待主任务确认` 章节写明：待确认问题、已知事实、影响/阻塞步骤、可选方案、推荐方案；不要等待回复。",
-      "3. 合并更新任务记录中当前 subTasks 项：status=completed，summary 明确“待主任务确认”，communicationFile 指向本文件；然后结束子任务。",
-      "4. 严禁在 assistant 回复中向用户或主任务提问，也不得复述待确认问题；疑问只允许出现在沟通文件中。",
-      "5. 疑问交接场景的最终 assistant 回复必须且只能是：`子任务已结束，待主任务确认事项已写入沟通文件。`",
+      "你正在执行一个独立子任务。只完成本次指令，不需要理解或维护父任务调度。",
+      `子任务沟通文件：${reportFile}`,
+      `授权写入范围：${writeFiles}`,
+      "只修改授权范围内的文件。不要修改任务记录、调度状态、active ids、snapshot，或其他子任务的沟通文件。",
+      "结束前把执行目标、实际修改、验证命令和结果写入上面的沟通文件。",
+      "只有必须由父任务或用户确认才能安全继续时，停止实施并填写沟通文件的“待主任务确认”；能自行判断的问题不要上交。",
+      "不要在回复中提问或复述待确认问题。有待确认事项时，最终回复只能是：`子任务已结束，待主任务确认事项已写入沟通文件。`",
       "",
       "当前子任务：",
-      `标题：${subtask.title}`,
-      `授权写入文件/范围：${writeFiles}`,
-      `指令：${subtask.prompt ?? subtask.title}`,
-      "",
-      "原始目标：",
-      rootPrompt,
+      subtask.prompt ?? subtask.title,
     ].join("\n");
   }
 

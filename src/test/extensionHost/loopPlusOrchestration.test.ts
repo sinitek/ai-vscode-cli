@@ -73,6 +73,17 @@ function decisionJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function completedDecision(extra: Record<string, unknown> = {}): string {
+  return decisionJson({
+    status: "completed",
+    answerConclusion: "finished",
+    finalSummary: "everything passed",
+    acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
+    requirementCoverage: [{ name: "scope", passed: true }],
+    ...extra,
+  });
+}
+
 function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRecord {
   return {
     id,
@@ -1785,4 +1796,244 @@ test("still accepts a finished Loop+ subtask when the chat notice fails", async 
   await flush();
   assert.equal(env.logs.some((item) => item.event === "loop-plus-chat-failed"), true);
   assert.equal(env.mains.some((item) => item.request.kind === "review"), true);
+});
+
+test("retries invalid Loop+ decisions instead of dispatching them as a status strategy", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains[0]?.request.kind, "initial");
+
+  env.mains[0].resolve("not a decision");
+  await flush();
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.equal(env.mains[1]?.request.kind, "continue");
+
+  env.mains[1].resolve(decisionJson({ status: "unknown", subtasks: [] }));
+  await flush();
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 2);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.mains[2]?.request.kind, "continue");
+  assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
+
+  env.mains[2].resolve(decisionJson({
+    status: "completed",
+    answerConclusion: "finished",
+    finalSummary: "everything passed",
+  }));
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), true);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(await isSettled(run.done), true);
+});
+
+test("routes wait, dispatch, and blocked decisions through separate strategies", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "wait", estimatedRemainingRounds: 9 }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, undefined);
+  assert.equal(env.tasks.get(taskId)?.finalSummary, undefined);
+  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 1);
+  assert.equal(env.messages.includes("loop-plus-waiting"), false);
+  assert.equal(env.attempts.length, 0);
+
+  env.host.tryRun({ displayPrompt: "continue" }, env.target, {
+    resumeTaskId: taskId,
+    resumeRequested: true,
+  });
+  await flush();
+  assert.equal(env.mains[1]?.request.kind, "continue");
+  env.mains[1].resolve(decisionJson({
+    status: "dispatch",
+    estimatedRemainingRounds: 3,
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0]?.request.subtaskId, "alpha");
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 3);
+  assert.equal(env.messages.includes("loop-plus-waiting"), false);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatched").length, 1);
+
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  const held = reviews()[0];
+  assert.ok(held);
+  const eventId = held.request.reviewEventId;
+  held.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, eventId);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(reviews()[1]?.request.reviewEventId, eventId);
+
+  reviews()[1].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 1);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, eventId);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 2);
+  assert.equal(reviews()[2]?.request.reviewEventId, eventId);
+
+  reviews()[2].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.tasks.get(taskId)?.finalSummary, "need a person");
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 3);
+  assert.equal(env.messages.includes("loop-plus-blocked"), true);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview, null);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).reviewQueue.map((item) => item.eventId), [eventId]);
+  assert.equal(env.attempts.length, 1);
+});
+
+test("accepts only the captured FIFO review ids and retains a finish that arrives later", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [
+      subtask("alpha", ["src/alpha.ts"]),
+      subtask("beta", ["src/beta.ts"]),
+      subtask("gamma", ["src/gamma.ts"]),
+      subtask("delta", ["src/delta.ts"]),
+    ],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 4);
+  const attempt = (subtaskId: string) => env.attempts.find((item) => item.request.subtaskId === subtaskId);
+  const alpha = attempt("alpha");
+  const beta = attempt("beta");
+  const gamma = attempt("gamma");
+  const delta = attempt("delta");
+  assert.ok(alpha && beta && gamma && delta);
+  alpha.resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", alpha.request.attemptId);
+  assert.deepEqual(reviews()[0]?.request.reviewEventIds, [alphaEventId]);
+  beta.resolve({ outcome: "completed", detail: "beta" });
+  gamma.resolve({ outcome: "completed", detail: "gamma" });
+  await flush();
+  assert.equal(reviews().length, 1);
+  reviews()[0].resolve(decisionJson({
+    status: "accept",
+    reviewEventId: alphaEventId,
+    subtasks: [],
+  }));
+  await flush();
+  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
+  const gammaEventId = buildLoopPlusFinishEventId("gamma", gamma.request.attemptId);
+  assert.deepEqual(reviews()[1]?.request.reviewEventIds, [betaEventId, gammaEventId]);
+  reviews()[1].resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: [gammaEventId, betaEventId],
+    subtasks: [],
+  }));
+  await flush();
+  assert.equal(reviews().length, 3);
+  assert.deepEqual(reviews()[2]?.request.reviewEventIds, [betaEventId, gammaEventId]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, betaEventId);
+  delta.resolve({ outcome: "failed", detail: "delta" });
+  await flush();
+  assert.equal(reviews().length, 3);
+  const deltaEventId = buildLoopPlusFinishEventId("delta", delta.request.attemptId);
+  assert.deepEqual(
+    snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.map((item) => item.eventId),
+    [gammaEventId, deltaEventId],
+  );
+  reviews()[2].resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: [betaEventId, gammaEventId],
+    subtasks: [],
+  }));
+  await flush();
+  assert.equal(reviews()[3]?.request.reviewEventId, deltaEventId);
+  assert.deepEqual(reviews()[3]?.request.reviewEventIds, [deltaEventId]);
+  assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, deltaEventId);
+});
+
+test("does not let completed bypass running work or user messages the request did not capture", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const alpha = env.attempts.find((item) => item.request.subtaskId === "alpha");
+  const beta = env.attempts.find((item) => item.request.subtaskId === "beta");
+  assert.ok(alpha && beta);
+  alpha.resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", alpha.request.attemptId);
+  reviews()[0].resolve(completedDecision({ reviewEventId: alphaEventId }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  assert.notEqual(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).running.some((item) => item.subtaskId === "beta"), true);
+  assert.equal(reviews().length, 1);
+
+  beta.resolve({ outcome: "completed", detail: "beta" });
+  await flush();
+  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
+  assert.equal(reviews()[1]?.request.reviewEventId, betaEventId);
+  reviews()[1].resolve(decisionJson({
+    status: "accept",
+    reviewEventId: betaEventId,
+    subtasks: [],
+    estimatedRemainingRounds: 2,
+  }));
+  await flush();
+  const closeout = env.mains.find((item) => item.request.kind === "closeout");
+  assert.ok(closeout);
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 2);
+  assert.equal(env.host.submitUserMessage(taskId, "before closeout finishes"), true);
+  closeout.resolve(completedDecision());
+  await flush();
+  assert.notEqual(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.answerConclusion, undefined);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["before closeout finishes"]);
+  const users = () => env.mains.filter((item) => item.request.kind === "user");
+  assert.equal(users()[0]?.request.userMessageCount, 1);
+  assert.match(users()[0].request.prompt, /before closeout finishes/);
+
+  assert.equal(env.host.submitUserMessage(taskId, "arrived during the user decision"), true);
+  users()[0].resolve(completedDecision());
+  await flush();
+  assert.notEqual(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 2);
+  assert.equal(users().length, 2);
+  assert.equal(users()[1]?.request.userMessageCount, 1);
+  assert.match(users()[1].request.prompt, /arrived during the user decision/);
+  assert.equal(users()[1].request.prompt.includes("before closeout finishes"), false);
+
+  users()[1].resolve(completedDecision());
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.answerConclusion, "finished");
+  assert.equal(env.tasks.get(taskId)?.finalSummary, "everything passed");
+  assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 0);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).completed, true);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, []);
+  assert.equal(env.messages.includes("loop-plus-completed"), true);
 });

@@ -26,19 +26,14 @@ export type LoopPlusMainPromptContext = {
 };
 
 export type LoopPlusSubtaskPromptContext = {
-  taskId: string;
-  rootPrompt: string;
   subtask: LoopSubtaskDecision;
-  attemptId: string;
   communicationFile: string;
-  taskStoreFile: string;
 };
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
   "Implement this self-contained subtask inside its declared write scope only.",
   "Design key point: keep the public function signature stable and route the new branch through the existing validator; do not add a parallel code path.",
-  "Keep the change verifiable, record the command and result in the attempt report,",
-  "and do not edit the parent task record, active ids, or loopPlus snapshot.",
+  "Record the command and result in the attempt report.",
 ].join(" ");
 
 function formatExecution(record: LoopPlusExecutionRecord): string {
@@ -255,22 +250,13 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     ? context.subtask.writeFiles.join(", ")
     : "(not declared; follow the subtask instructions)";
   return [
-    `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Finishing this attempt only writes your attempt report. It does not accept, complete, or schedule the parent task.`,
-    `Parent task: ${context.taskId}`,
-    `Subtask: ${context.subtask.id ?? context.subtask.title}`,
-    `Attempt: ${context.attemptId}`,
-    `Title: ${context.subtask.title}`,
-    `Authorized write scope: ${files}`,
-    `Conflict group: ${context.subtask.conflictGroup ?? "(none)"}`,
+    `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Complete only this attempt and write its report.`,
     `Attempt report file: ${context.communicationFile}`,
-    `Task record file, read only: ${context.taskStoreFile}`,
-    "Write the attempt report only to the attempt report file shown above. Include what changed, the verification commands, and their results.",
-    "Create or edit files only inside the authorized write scope shown above.",
-    "Do not modify scheduling state, active ids, the loopPlus snapshot, or the task record.",
-    "Do not apply a classic batched parent decision, and do not write a parent status.",
-    "Paths in this prompt are only the values supplied above. Do not replace them with a hardcoded machine path.",
-    "Root request:",
-    context.rootPrompt,
+    `Authorized write scope: ${files}`,
+    "Edit files only inside the authorized write scope.",
+    "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
+    "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",
+    "",
     "Subtask instructions:",
     context.subtask.prompt,
   ].join("\n");

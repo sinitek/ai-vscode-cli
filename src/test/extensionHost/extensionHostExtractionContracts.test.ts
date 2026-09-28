@@ -5,7 +5,10 @@ import os = require("node:os");
 import path = require("node:path");
 import ts = require("typescript");
 
+import { installVscodeMock } from "../vscodeMock";
 import { createLoopOrchestrationHost } from "../../extensionHost/loopOrchestration";
+
+installVscodeMock();
 import {
   createDisabledOpenCodeSubagentMonitor,
   createOpenCodeSubagentRuntimePreparer,
@@ -489,7 +492,11 @@ test("Loop orchestration source contract lives in extensionHost/loopOrchestratio
   assert.match(loopOrchestrationSource, /async function runLoopDebateRound\(/);
   assert.match(loopOrchestrationSource, /async function runLoopSubtasksBatchWithRetry\(/);
   assert.match(loopOrchestrationSource, /async function runLoopSubtaskWithRetry\(/);
+  const subtaskPromptSource = loopOrchestrationSource.split("function buildLoopSubtaskModelPrompt(")[1]?.split("return {")[0] ?? "";
   assert.match(loopOrchestrationSource, /function buildLoopSubtaskModelPrompt\(/);
+  assert.match(subtaskPromptSource, /子任务沟通文件/);
+  assert.doesNotMatch(subtaskPromptSource, /rootPrompt/);
+  assert.doesNotMatch(subtaskPromptSource, /taskStoreFile/);
   assert.match(loopOrchestrationSource, /return \{[\s\S]*runClassicLoopMainDecision[\s\S]*runLoopDebateRound[\s\S]*runLoopSubtasksBatchWithRetry/);
 });
 
