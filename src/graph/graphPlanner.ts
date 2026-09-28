@@ -21,6 +21,7 @@ import {
   type GraphPlannedNodeSpec,
   type GraphRunRecord,
 } from "./types";
+import { normalizeGraphNodeInstructions } from "./graphNodeInstructions";
 import { formatGraphNodeTitleInChinese } from "./graphNodeTitles";
 import { isGraphActiveStructuralOrBlockingEdge } from "./graphEdgeSemantics";
 import {
@@ -504,6 +505,7 @@ function buildGraphNodeRecordFromPlan(node: GraphPlannedNodeSpec): GraphNodeReco
     ownerRole,
     ...(typeof node.blocking === "boolean" ? { blocking: node.blocking } : {}),
     ...(typeof node.promptRef === "string" && node.promptRef.trim() ? { promptRef: node.promptRef.trim() } : {}),
+    ...(normalizeGraphNodeInstructions(node.instructions) ? { instructions: normalizeGraphNodeInstructions(node.instructions) } : {}),
     ...(normalizeStringArray(node.writeFiles).length > 0 ? { writeFiles: normalizeStringArray(node.writeFiles) } : {}),
     ...(typeof node.conflictGroup === "string" && node.conflictGroup.trim() ? { conflictGroup: node.conflictGroup.trim() } : {}),
     maxAttempts: normalizePositiveInteger(node.maxAttempts, 1, GRAPH_PLANNER_MAX_ATTEMPTS),
@@ -688,6 +690,7 @@ function normalizeGraphPlannedNodeSpec(value: unknown): GraphPlannedNodeSpec | n
     ...(ownerRole ? { ownerRole } : {}),
     ...(typeof raw.blocking === "boolean" ? { blocking: raw.blocking } : {}),
     ...(typeof raw.promptRef === "string" && raw.promptRef.trim() ? { promptRef: raw.promptRef.trim() } : {}),
+    ...(normalizeGraphNodeInstructions(raw.instructions) ? { instructions: normalizeGraphNodeInstructions(raw.instructions) } : {}),
     ...(normalizeStringArray(raw.writeFiles).length > 0 ? { writeFiles: normalizeStringArray(raw.writeFiles) } : {}),
     ...(typeof raw.conflictGroup === "string" && raw.conflictGroup.trim() ? { conflictGroup: raw.conflictGroup.trim() } : {}),
     ...(normalizePositiveInteger(raw.maxAttempts, 0, GRAPH_PLANNER_MAX_ATTEMPTS) > 0

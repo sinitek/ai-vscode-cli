@@ -34,6 +34,7 @@ export type GraphRunPanelNode = {
   writeFiles: string[];
   conflictGroup?: string;
   promptRef?: string;
+  instructions?: string;
   artifactRef?: string;
   communicationFile?: string;
   startedAt?: number;

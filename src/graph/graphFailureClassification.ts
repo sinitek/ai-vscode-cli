@@ -16,6 +16,7 @@ import {
   type GraphPlannedNodeSpec,
   type GraphRunRecord,
 } from "./types";
+import { normalizeGraphNodeInstructions } from "./graphNodeInstructions";
 
 const TEST_FILE_PATH_PATTERN = /(?:^|[\s`"'([{<])((?:[A-Za-z0-9_.-]+\/)+(?:[A-Za-z0-9_.-]+)(?:\.test|\.spec)\.[A-Za-z0-9]+)(?=$|[\s`"',.;:)\]}>])/gu;
 const PATH_WITH_EXTENSION_PATTERN = /(?:^|[\s`"'([{<])((?:[A-Za-z0-9_.-]+\/)+(?:[A-Za-z0-9_.-]+)\.[A-Za-z0-9]+)(?=$|[\s`"',.;:)\]}>])/gu;
@@ -622,6 +623,7 @@ function normalizeGraphFailurePlannedNodeSpec(value: unknown): GraphPlannedNodeS
     kind: raw.kind,
     ...(isGraphOwnerRole(raw.ownerRole) ? { ownerRole: raw.ownerRole } : {}),
     ...(typeof raw.promptRef === "string" && raw.promptRef.trim() ? { promptRef: raw.promptRef.trim() } : {}),
+    ...(normalizeGraphNodeInstructions(raw.instructions) ? { instructions: normalizeGraphNodeInstructions(raw.instructions) } : {}),
     ...(normalizeStringArray(raw.writeFiles).length > 0 ? { writeFiles: normalizeStringArray(raw.writeFiles) } : {}),
     ...(typeof raw.conflictGroup === "string" && raw.conflictGroup.trim() ? { conflictGroup: raw.conflictGroup.trim() } : {}),
     ...(normalizePositiveInteger(raw.maxAttempts) ? { maxAttempts: normalizePositiveInteger(raw.maxAttempts) as number } : {}),

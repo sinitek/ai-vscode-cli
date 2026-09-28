@@ -65,27 +65,6 @@ Narrative:
 
 日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用
 
-## mem-c1d7e714b7 - 记忆流转规则
-
-- Type: `rule`
-- Topic: `rule`
-- Read: ~39 tokens
-- Source: `.ch/docs/MEMORY.md`
-- Source kind: `memory_doc`
-- Content hash: `c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
-- Concepts: `general`
-- Files: `.ch/docs/generated/`, `.ch/docs/ontology/`
-
-Subtitle: operational_hot_zone / memory-rules
-
-Facts:
-- 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
-- Source of truth: .ch/docs/MEMORY.md
-
-Narrative:
-
-这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
-
 ## mem-431f2548e1 - 热区记忆面
 
 - Type: `rule`
@@ -106,3 +85,24 @@ Facts:
 Narrative:
 
 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
+
+## mem-c1d7e714b7 - 记忆流转规则
+
+- Type: `rule`
+- Topic: `rule`
+- Read: ~39 tokens
+- Source: `.ch/docs/MEMORY.md`
+- Source kind: `memory_doc`
+- Content hash: `c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Concepts: `general`
+- Files: `.ch/docs/generated/`, `.ch/docs/ontology/`
+
+Subtitle: operational_hot_zone / memory-rules
+
+Facts:
+- 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**
+- Source of truth: .ch/docs/MEMORY.md
+
+Narrative:
+
+这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**

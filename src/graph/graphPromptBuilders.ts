@@ -9,6 +9,7 @@ import {
   GRAPH_AI_PLANNER_NODE_ID,
   isGraphAiReplannerNode,
 } from "./graphPlanner";
+import { GRAPH_NODE_DESIGN_BRIEF_RULE_ZH } from "../subtaskDesignBriefPolicy";
 import {
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
@@ -131,6 +132,7 @@ export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
     `- Last error：${formatValue(node.lastError)}`,
     ...formatGraphNodeReworkLines(node),
     "",
+    ...formatGraphNodeInstructionLines(node),
     "## 全图拓扑与当前位置",
     ...formatGraphTopologyLines(run, node),
     "",
@@ -603,11 +605,12 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
     "- plannedGraph.maxConcurrent 应设置为首批无冲突可执行分支数量，并且不得超过宿主默认最大并发 5；如果不确定，少报但不要把可证明独立的分支压成 1。",
     "- 如果任务很小，也至少输出一个非 planner 的 implement/test/review/summary 执行图；如果任务复杂，优先输出多根分支或 fan-out/fan-in 结构。",
     "- plannedGraph.nodes[].title 必须使用简洁中文，禁止英文整句标题；API、HTML、Graph、DAG 等技术缩写可以保留，但业务含义必须中文表达。",
+    `- ${GRAPH_NODE_DESIGN_BRIEF_RULE_ZH}`,
     replanning
       ? `- plannedGraph.nodes 不得包含任何已存在 node id；新增节点建议使用 \`${GRAPH_AI_REPLANNER_NODE_ID_PREFIX}-\` 相关后缀或带明确续跑语义的唯一 ID。`
       : "- plannedGraph.nodes 不得包含保留 ID `plan`；宿主会保留当前 planner 节点，并自动让无依赖节点依赖 `plan`。",
     replanning
-      ? `- plannedGraph 中的所有新增节点都会自动依赖当前 replanner 节点 \`${node.id}\`；不要把 failed/blocked 旧节点写成 depends_on 结构依赖，相关证据用 evidence_for 或 prompt 内容承接。`
+      ? `- plannedGraph 中的所有新增节点都会自动依赖当前 replanner 节点 \`${node.id}\`；不要把 failed/blocked 旧节点写成 depends_on 结构依赖，相关证据用 evidence_for 或新增节点 instructions 承接。`
       : "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个 summary 节点收束叶子节点。",
     replanning
       ? "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个新的续跑 summary 节点；不要复用旧 summary 节点。"
@@ -625,6 +628,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "实现 API 改动",
           kind: "implement",
           ownerRole: "subtask",
+          instructions: "在 src/api 授权范围内实现本次 API 改动。设计关键点：保持现有对外响应字段兼容，新分支必须复用既有校验器，不要另起一套并行校验。",
           writeFiles: ["src/api/**"],
           conflictGroup: "api",
           maxAttempts: 2,
@@ -635,6 +639,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "实现 UI 改动",
           kind: "implement",
           ownerRole: "subtask",
+          instructions: "在 src/webview 授权范围内实现本次 UI 改动。设计关键点：只改当前交互所需的视图状态，不要重做无关布局或硬编码颜色。",
           writeFiles: ["src/webview/**"],
           conflictGroup: "ui",
           maxAttempts: 2,
@@ -645,6 +650,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "验证 API 行为",
           kind: "test",
           ownerRole: "subtask",
+          instructions: "验证 API 行为。设计关键点：断言兼容字段仍在，并覆盖新分支通过既有校验器的路径；不要改实现节点的授权范围。",
           writeFiles: ["src/test/**"],
           dependsOn: ["implement-api"],
           acceptance: [{ name: "相关 API 测试通过，或失败原因已记录。", required: true }],
@@ -653,6 +659,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "验证 UI 行为",
           kind: "test",
           ownerRole: "subtask",
+          instructions: "验证 UI 行为。设计关键点：只断言本次交互变化，不把无关快照失败当成实现错误。",
           writeFiles: ["src/test/**", "src/webview/**"],
           dependsOn: ["implement-ui"],
           acceptance: [{ name: "相关 UI 测试通过，或失败原因已记录。", required: true }],
@@ -662,6 +669,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           kind: "test",
           ownerRole: "subtask",
           blocking: false,
+          instructions: "运行完整单测并记录结果。没有新增设计决策；失败时只记录是否命中本次改动。",
           writeFiles: ["dist/**"],
           dependsOn: ["test-api", "test-ui"],
           acceptance: [{ name: "完整单测已运行；失败时记录最小失败范围和是否命中本次改动。", required: false }],
@@ -670,6 +678,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "评审并行结果",
           kind: "review",
           ownerRole: "reviewer",
+          instructions: "评审 API 与 UI 分支。设计关键点：核对实现节点是否遵守各自 instructions 中的兼容和复用约束，而不是只看标题是否完成。",
           dependsOn: ["test-api", "test-ui"],
           acceptance: [{ name: "评审覆盖 API/UI 正确性、范围和残余风险。", required: true }],
         }],
@@ -754,6 +763,28 @@ function buildGraphAiReplannerPromptLines(run: GraphRunRecord, node: GraphNodeRe
       ? `- 当前失败/阻塞节点：${formatNodeReferences(failedNodes)}`
       : "- 当前未发现 failed/blocked 节点；请基于无可运行节点、条件不可求值或缺少收束路径来追加续跑节点。",
     `- 当前 replanner 节点 id：${node.id}`,
+  ];
+}
+
+
+function formatGraphNodeInstructionLines(node: GraphNodeRecord): string[] {
+  const instructions = node.instructions?.trim();
+  if (instructions) {
+    return [
+      "## 任务说明与设计关键点",
+      instructions,
+      "- 以上说明里的设计关键点是硬约束。不得用更粗的实现替代，也不得改写未授权的关键设计。",
+      "",
+    ];
+  }
+  if (node.kind === "plan" || node.kind === "summary" || node.kind === "sleep" || node.kind === "human_gate") {
+    return [];
+  }
+  return [
+    "## 任务说明与设计关键点",
+    "- 未声明。只能依据节点标题、Acceptance 和原始目标执行。",
+    "- 如果正确完成依赖一个本提示没有写明、且做错会直接影响正确性的设计选择，把该选择和原因写入沟通文件，不要静默换成另一套设计。",
+    "",
   ];
 }
 

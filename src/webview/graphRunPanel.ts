@@ -1540,6 +1540,7 @@ function renderNodeDetailArticle(
     ${renderPathSection(strings.unlocks, node.unlocks, strings)}
     ${renderPathSection(strings.writeFiles, node.writeFiles, strings)}
     ${node.lastError ? renderTextBlock(strings.lastError, node.lastError) : ""}
+    ${node.instructions ? renderTextBlock(strings.instructions, node.instructions) : ""}
     ${renderTextBlock(strings.acceptance, formatAcceptance(node, strings))}
     ${renderEvidencePanel(buildEvidenceForNode(node, state), strings)}
   </article>`;

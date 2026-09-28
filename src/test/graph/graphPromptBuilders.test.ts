@@ -201,6 +201,9 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /返工到 `adapt-schema-contract-tests`/u);
   assert.match(prompt, /plannedGraph\.maxConcurrent 应设置为首批无冲突可执行分支数量/u);
   assert.match(prompt, /plannedGraph\.nodes\[\]\.title 必须使用简洁中文/u);
+  assert.match(prompt, /每个执行节点的 instructions 是子节点唯一能看到的任务说明/u);
+  assert.match(prompt, /不要只写“注意设计”或指望执行节点重新发现/u);
+  assert.match(prompt, /"instructions":"在 src\/api 授权范围内实现本次 API 改动/u);
   assert.match(prompt, /"title":"实现 API 改动"/u);
   assert.match(prompt, /"title":"实现 UI 改动"/u);
   assert.match(prompt, /"title":"验证 API 行为"/u);
@@ -639,4 +642,33 @@ test("summary node prompt requires events, node artifacts, evidence, and unresol
   assert.match(prompt, /test-1｜test｜failed｜Validation/u);
   assert.match(prompt, /lastError：Tests failed/u);
   assert.match(prompt, /unresolved/u);
+});
+
+test("puts design key points into the node prompt and does not invent them when absent", () => {
+  const withBrief = createNode({
+    instructions: "设计关键点：保持对外响应字段兼容，新分支必须复用既有校验器。",
+  });
+  const withRun = createRun([withBrief]);
+  const briefPrompt = buildGraphNodePrompt({ run: withRun, node: withBrief });
+  assert.match(briefPrompt, /## 任务说明与设计关键点/u);
+  assert.match(briefPrompt, /必须复用既有校验器/u);
+  assert.match(briefPrompt, /不得用更粗的实现替代/u);
+
+  const missing = createNode({ instructions: undefined });
+  const missingPrompt = buildGraphNodePrompt({ run: createRun([missing]), node: missing });
+  assert.match(missingPrompt, /未声明。只能依据节点标题、Acceptance 和原始目标执行/u);
+  assert.match(missingPrompt, /不要静默换成另一套设计/u);
+
+  const planner = createNode({
+    id: "plan",
+    title: "规划 Graph DAG 执行",
+    kind: "plan",
+    status: "pending",
+    ownerRole: "main",
+    instructions: undefined,
+    dependsOn: [],
+    unlocks: [],
+  });
+  const plannerPrompt = buildGraphNodePrompt({ run: createRun([planner]), node: planner });
+  assert.doesNotMatch(plannerPrompt, /不要静默换成另一套设计/u);
 });

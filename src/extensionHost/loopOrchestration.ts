@@ -22,6 +22,7 @@ import type {
 } from "../loopDebate";
 import type { LoopDebateParticipantDefinition } from "../loopPromptBuilders";
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
+import { SUBTASK_DESIGN_KEY_POINT_RULE_ZH } from "../subtaskDesignBriefPolicy";
 import type {
   LoopDebateParticipantBatchRunItem,
   LoopDebateRunnerDeps,
@@ -2931,8 +2932,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "JSON 协议：",
       '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-      '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围"}]}',
-      '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令"}]}',
+      '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
+      '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
       '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
       "",
       "字段要求：",
@@ -2947,6 +2948,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- 当前没有可执行子任务、需要等待外部结果或需要人工判断时，必须返回 blocked，并在 finalSummary 说明等待对象或人工判断点。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
       "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准、必须更新任务记录文件和写入沟通文件的要求。",
+      SUBTASK_DESIGN_KEY_POINT_RULE_ZH,
       "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
       "- subtasks[*].writeFiles 可选；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突；纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
       "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
@@ -3022,7 +3024,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "主持人主智能体职责补充：",
       "- 第 1 次红蓝共识已经完成了规划审查；你应从主从执行视角拆分或复核子任务，不要重复组织蓝队/红队发言。",
-      "- 派发子任务时，必须把相关红蓝共识、红队风险、蓝队修正方案和验收证据要求写入 subtasks[*].prompt。",
+      "- 派发子任务时，必须把相关红蓝共识、红队风险、蓝队修正方案、验收证据要求，以及高难度设计关键点写入 subtasks[*].prompt；不要只派发粗粒度任务。",
       "- 子任务完成后，优先依据子任务沟通文件和主从执行群聊做验收；证据不足时继续派发验证或修复子任务。",
       "- 如果执行阶段发现首轮共识存在无法自动化解决的阻塞问题，返回 status=blocked，并在 finalSummary 说明需要人工复核的原因。",
       "",

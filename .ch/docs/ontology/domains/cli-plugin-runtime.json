@@ -508,6 +508,19 @@
         {"path": "src/cli/cliCommandRepair.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "工具设置自动修复 CLI ENOENT"}
       ]
+    },
+    {
+      "id": "plugin.rule.subtask_design_key_points",
+      "name": "子任务派发必须带上高难度设计关键点",
+      "description": "Loop、Loop+ 和 Graph 派发子任务或执行节点时，不能只给粗粒度目标。子会话看不到父规划推理。经典 Loop 与 Loop+ 必须把高难度或非显而易见的设计关键点写进子任务 prompt。Graph planner 必须把具体任务说明和这些关键点写进执行节点 instructions，宿主会放进节点提示并在运行图详情展示。没有这类关键点时不要编造。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "src/subtaskDesignBriefPolicy.ts"},
+        {"path": "src/graph/graphNodeInstructions.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+      ]
     }
   ]
 }

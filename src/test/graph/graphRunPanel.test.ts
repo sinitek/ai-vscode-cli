@@ -1238,3 +1238,26 @@ test("keeps Graph webview i18n keys aligned between English and Chinese", () => 
   assert.equal(WEBVIEW_I18N.en.interactiveModeGraph, "Graph");
   assert.equal(WEBVIEW_I18N["zh-CN"].openGraphRunAction, "打开 Graph 运行图");
 });
+
+test("shows a node task brief in the selected node details", () => {
+  const run = createRun({
+    nodes: [
+      createNode(),
+      createNode({
+        id: "implement",
+        title: "Implement panel",
+        kind: "implement",
+        status: "running",
+        ownerRole: "subtask",
+        attempts: 1,
+        maxAttempts: 2,
+        dependsOn: ["plan"],
+        unlocks: [],
+        instructions: "设计关键点：复用既有校验器，不要另起并行实现。",
+      }),
+    ],
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "implement"), "zh-CN");
+  assert.match(html, /任务说明/);
+  assert.match(html, /复用既有校验器，不要另起并行实现/);
+});

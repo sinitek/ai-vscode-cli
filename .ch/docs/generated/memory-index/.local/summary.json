@@ -1852,7 +1852,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-09-25T09:46:19+00:00",
+  "generated_at": "2026-09-27T06:12:11+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1871,7 +1871,7 @@
       ],
       "last_verified_at": "2026-07-18",
       "memory_type": "memory_rules",
-      "modified_at": "2026-08-24T05:35:11+00:00",
+      "modified_at": "2026-09-27T06:12:11+00:00",
       "path": ".ch/docs/MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -1922,7 +1922,7 @@
       ],
       "last_verified_at": "template-fill-when-adopted",
       "memory_type": "event_memory",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-09-27T02:43:33+00:00",
       "path": ".ch/docs/memory/EVENT_MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L2 event_memory",
@@ -2052,7 +2052,7 @@
       ],
       "last_verified_at": "template-fill-when-adopted",
       "memory_type": "rolling_summary",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-09-27T06:12:11+00:00",
       "path": ".ch/docs/memory/ROLLING_SUMMARY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L1 rolling_summary",
@@ -2207,33 +2207,6 @@
     },
     {
       "concepts": [
-        "general"
-      ],
-      "content_hash": "c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
-      "facts": [
-        "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
-        "Source of truth: .ch/docs/MEMORY.md"
-      ],
-      "files": [
-        ".ch/docs/generated/",
-        ".ch/docs/ontology/"
-      ],
-      "id": "mem-c1d7e714b7",
-      "modified_at": "2026-08-24T05:35:11+00:00",
-      "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
-      "private_stripped": false,
-      "read_tokens": 39,
-      "source_anchor": "记忆流转规则",
-      "source_kind": "memory_doc",
-      "source_path": ".ch/docs/MEMORY.md",
-      "source_title": "记忆流转规则",
-      "subtitle": "operational_hot_zone / memory-rules",
-      "title": "记忆流转规则",
-      "topic": "rule",
-      "type": "rule"
-    },
-    {
-      "concepts": [
         "gotcha"
       ],
       "content_hash": "431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
@@ -2258,6 +2231,33 @@
       "subtitle": "operational_hot_zone / hot-memory",
       "title": "热区记忆面",
       "topic": "gotcha",
+      "type": "rule"
+    },
+    {
+      "concepts": [
+        "general"
+      ],
+      "content_hash": "c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "facts": [
+        "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+        "Source of truth: .ch/docs/MEMORY.md"
+      ],
+      "files": [
+        ".ch/docs/generated/",
+        ".ch/docs/ontology/"
+      ],
+      "id": "mem-c1d7e714b7",
+      "modified_at": "2026-09-27T06:12:11+00:00",
+      "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+      "private_stripped": false,
+      "read_tokens": 39,
+      "source_anchor": "记忆流转规则",
+      "source_kind": "memory_doc",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_title": "记忆流转规则",
+      "subtitle": "operational_hot_zone / memory-rules",
+      "title": "记忆流转规则",
+      "topic": "rule",
       "type": "rule"
     }
   ],

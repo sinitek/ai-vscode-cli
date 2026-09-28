@@ -534,3 +534,41 @@ test("rejects invalid planner graphs instead of falling back to a fixed linear g
   assert.equal(cycleResult.changed, false);
   assert.match(cycleResult.error ?? "", /dependency cycle/u);
 });
+
+test("keeps executable design briefs when materializing planned nodes", () => {
+  const planned = normalizeGraphPlannedGraphSpec({
+    nodes: [{
+      id: "implement-api",
+      title: "实现接口",
+      kind: "implement",
+      instructions: ["  保持响应字段兼容", "", "复用既有校验器"],
+    }, {
+      id: "implement-ui",
+      title: "实现界面",
+      kind: "implement",
+      instructions: "   ",
+    }, {
+      id: "implement-long",
+      title: "实现长说明",
+      kind: "implement",
+      instructions: "关键点".repeat(5000),
+    }],
+  });
+  assert.equal(planned?.nodes.find((node) => node.id === "implement-api")?.instructions, "保持响应字段兼容\n复用既有校验器");
+  assert.equal(planned?.nodes.find((node) => node.id === "implement-ui")?.instructions, undefined);
+  assert.equal(planned?.nodes.find((node) => node.id === "implement-long")?.instructions?.length, 8000);
+
+  const result = materializeGraphPlan(createRun([passedPlanner()]), {
+    nodes: [{
+      id: "implement-api",
+      title: "实现接口",
+      kind: "implement",
+      instructions: "保持响应字段兼容，并复用既有校验器。",
+    }],
+  }, { now: () => 2 });
+  assert.equal(result.error, undefined);
+  assert.equal(
+    result.run.nodes.find((node) => node.id === "implement-api")?.instructions,
+    "保持响应字段兼容，并复用既有校验器。",
+  );
+});

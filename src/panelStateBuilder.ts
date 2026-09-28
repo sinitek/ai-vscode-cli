@@ -467,6 +467,7 @@ function buildGraphRunPanelNode(
     writeFiles: node.writeFiles ?? [],
     ...(node.conflictGroup ? { conflictGroup: node.conflictGroup } : {}),
     ...(node.promptRef ? { promptRef: node.promptRef } : {}),
+    ...(node.instructions ? { instructions: node.instructions } : {}),
     ...(node.artifactRef ? { artifactRef: node.artifactRef } : {}),
     ...(node.communicationFile ? { communicationFile: node.communicationFile } : {}),
     ...(node.startedAt ? { startedAt: node.startedAt } : {}),

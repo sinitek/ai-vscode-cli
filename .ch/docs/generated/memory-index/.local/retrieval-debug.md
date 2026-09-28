@@ -5,15 +5,15 @@
 
 ## Run Context
 
-- Generated at: 2026-09-25T09:46:19Z
-- Focus: Loop+ 子任务完成沟通文件消息
-- Focus terms: `loop`, `子任务完成沟通文件消息`, `子任`, `任务`, `务完`, `完成`, `成沟`, `沟通`
+- Generated at: 2026-09-27T06:12:11Z
+- Focus: Loop Loop+ Graph 子任务 高难度设计关键点 任务编排
+- Focus terms: `loop`, `graph`, `子任务`, `高难度设计关键点`, `高难`, `难度`, `度设`, `设计`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
-- Ranked candidate count: 1
-- Focus match count: 1
-- Focus excluded count: 4
+- Ranked candidate count: 2
+- Focus match count: 2
+- Focus excluded count: 3
 
 ## Heuristics
 
@@ -32,7 +32,8 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-538cb1444d` | `105` | `103` | loop, 完成 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
+| 1 | `mem-538cb1444d` | `105` | `103` | loop, 设计 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
+| 2 | `mem-91b4245892` | `93` | `91` | 设计 | `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | `0` |
 
 ## Score Breakdown
 
@@ -40,7 +41,7 @@
 
 - Final score: `105`
 - Base score: `103`
-- Matched terms: `loop`, `完成`
+- Matched terms: `loop`, `设计`
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 
@@ -57,23 +58,45 @@
 | `claim_bonus` | `0` |
 | `same_source_penalty` | `0` |
 
+### mem-91b4245892 - 可维护性重构
+
+- Final score: `93`
+- Base score: `91`
+- Matched terms: `设计`
+- Source: `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
+- Selected claim IDs: -
+
+| Heuristic | Contribution |
+| --- | --- |
+| `type_priority` | `68` |
+| `focus_terms` | `12` |
+| `open_loop_bonus` | `0` |
+| `read_cost_adjustment` | `2` |
+| `evidence_bonus` | `6` |
+| `concept_bonus` | `1` |
+| `topic_bonus` | `2` |
+| `source_diversity_bonus` | `2` |
+| `claim_bonus` | `0` |
+| `same_source_penalty` | `0` |
+
 ## Top Unselected Candidates
 
 - None
 
 ## Source Diversity
 
-- Unique source count: 1
-- Selected observation count: 1
+- Unique source count: 2
+- Selected observation count: 2
 - Max same-source observations: 1
 
 ### Source Path Counts
 
 - `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`: 1
+- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`: 1
 
 ### Source Kind Counts
 
-- `active_plan`: 1
+- `active_plan`: 2
 
 ## Claim Status Snapshot
 

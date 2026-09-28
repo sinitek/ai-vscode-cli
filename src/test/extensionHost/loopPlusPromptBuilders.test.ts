@@ -432,6 +432,8 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
   });
   assert.equal(isHiddenLoopPlusProtocolPrompt(mainPrompt), true);
   assert.match(mainPrompt, /Any earlier task list in this thread is stale/);
+  assert.match(mainPrompt, /do not expect the subtask to rediscover the decision/);
+  assert.match(mainPrompt, /Design key point: keep the public function signature stable/);
   assert.doesNotMatch(subtaskPrompt, /Any earlier task list in this thread is stale/);
   assert.equal(isHiddenLoopPlusProtocolPrompt(`\n${subtaskPrompt}`), true);
   assert.equal(isHiddenLoopPlusProtocolPrompt("fix the bubble"), false);

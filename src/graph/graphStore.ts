@@ -36,6 +36,7 @@ import {
   type GraphRunWorktreeRecord,
 } from "./types";
 import { normalizeGraphFailureClassification } from "./graphFailureClassification";
+import { normalizeGraphNodeInstructions } from "./graphNodeInstructions";
 import {
   ensureGraphCommunicationFiles,
   getGraphCommunicationPaths,
@@ -626,6 +627,7 @@ function normalizeGraphNodeRecord(record: unknown): GraphNodeRecord | null {
     ...(typeof raw.model === "string" && raw.model.trim() ? { model: raw.model.trim() } : {}),
     ...(typeof raw.modelFallback === "string" && raw.modelFallback.trim() ? { modelFallback: raw.modelFallback.trim() } : {}),
     ...(typeof raw.promptRef === "string" && raw.promptRef.trim() ? { promptRef: raw.promptRef } : {}),
+    ...(normalizeGraphNodeInstructions(raw.instructions) ? { instructions: normalizeGraphNodeInstructions(raw.instructions) } : {}),
     ...(typeof raw.artifactRef === "string" && raw.artifactRef.trim() ? { artifactRef: raw.artifactRef } : {}),
     ...(typeof raw.communicationFile === "string" && raw.communicationFile.trim() ? { communicationFile: raw.communicationFile } : {}),
     ...(normalizeStringArray(raw.writeFiles).length > 0 ? { writeFiles: normalizeStringArray(raw.writeFiles) } : {}),

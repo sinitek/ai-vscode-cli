@@ -218,6 +218,7 @@ export type GraphPlannedNodeSpec = {
   ownerRole?: GraphOwnerRole;
   blocking?: boolean;
   promptRef?: string;
+  instructions?: string;
   writeFiles?: string[];
   conflictGroup?: string;
   maxAttempts?: number;
@@ -279,6 +280,7 @@ export type GraphNodeRecord = {
   model?: string;
   modelFallback?: string;
   promptRef?: string;
+  instructions?: string;
   artifactRef?: string;
   communicationFile?: string;
   writeFiles?: string[];

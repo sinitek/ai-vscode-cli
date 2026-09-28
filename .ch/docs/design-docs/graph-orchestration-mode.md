@@ -222,6 +222,7 @@ type GraphNodeRecord = {
   status: GraphNodeStatus;
   ownerRole: "main" | "subtask" | "reviewer" | "moderator" | "human" | "system";
   promptRef?: string;
+  instructions?: string;
   artifactRef?: string;
   writeFiles?: string[];
   conflictGroup?: string;
@@ -241,6 +242,8 @@ type GraphNodeRecord = {
   commit?: string;
 };
 ```
+
+`instructions` 是执行节点的自包含任务说明。Planner 不能只写标题；存在高难度或非显而易见的设计关键点时，必须写成可执行约束放进该字段。节点新会话会在提示词的“任务说明与设计关键点”中原样看到它，Graph 节点详情也会展示。字段可空，空串和纯空白在归一化时丢弃，最长 8000 字符。
 
 ### GraphFailureClassification
 

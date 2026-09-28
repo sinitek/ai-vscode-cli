@@ -7,6 +7,7 @@ import {
   LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX,
 } from "../loopPlusProtocolPrompt";
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_EN } from "../loopMainTaskListPolicy";
+import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
@@ -35,6 +36,7 @@ export type LoopPlusSubtaskPromptContext = {
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
   "Implement this self-contained subtask inside its declared write scope only.",
+  "Design key point: keep the public function signature stable and route the new branch through the existing validator; do not add a parallel code path.",
   "Keep the change verifiable, record the command and result in the attempt report,",
   "and do not edit the parent task record, active ids, or loopPlus snapshot.",
 ].join(" ");
@@ -229,6 +231,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
+    "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",

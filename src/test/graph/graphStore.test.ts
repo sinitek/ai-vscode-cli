@@ -394,6 +394,7 @@ test("normalizes optional Graph node failure classifications", () => {
         title: "Adapt schema contract tests",
         kind: "test",
         writeFiles: ["apps/server/test/performance/performance-observation-schema.test.js"],
+        instructions: "  保持 schema 断言指向新 canonical source。  ",
       },
     },
   } satisfies GraphFailureClassification;
@@ -408,7 +409,7 @@ test("normalizes optional Graph node failure classifications", () => {
     updatedAt: 1,
     graphVersion: GRAPH_SCHEMA_VERSION,
     runStoreFile: "/tmp/graph-runs.json",
-    nodes: [createNode({ failure: validFailure })],
+    nodes: [createNode({ failure: validFailure, instructions: "  保持对外契约稳定。  " })],
     edges: [],
     activeNodeIds: [],
     maxConcurrent: 5,
@@ -422,6 +423,11 @@ test("normalizes optional Graph node failure classifications", () => {
   assert.equal(normalized?.nodes[0].failure?.category, "missing_write_scope");
   assert.equal(normalized?.nodes[0].failure?.recommendedRecovery?.action, "add_rework_node");
   assert.equal(normalized?.nodes[0].failure?.recommendedRecovery?.nodeDraft?.id, "adapt-schema-contract-tests");
+  assert.equal(normalized?.nodes[0].instructions, "保持对外契约稳定。");
+  assert.equal(
+    normalized?.nodes[0].failure?.recommendedRecovery?.nodeDraft?.instructions,
+    "保持 schema 断言指向新 canonical source。",
+  );
 
   const oldGraph = normalizeGraphRunRecord({
     ...base,
