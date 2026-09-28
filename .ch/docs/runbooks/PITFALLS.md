@@ -2342,7 +2342,7 @@
 - 真实 `turn/completed` 的 turn id 与 `turn/start` 响应里的 id 也可能不一致。旧逻辑只在 id 完全一致时收口，于是 operation 一直不结束，最终回复已经显示，任务状态仍是运行中。
 
 ### 长期规避
-- 主线程 `turn/completed` 到达时，如果 `turn/start` 还没返回，立即结束这次运行，不能继续空等 RPC。
+- 主线程 `turn/completed` 到达时，如果 `turn/start` 还没返回，立即结束这次运行，不能继续空等 RPC。已经被暂停打断并记为过期的 turn 除外，见下一节。
 - 如果响应里的 turn id 从未出现在本回合流式事件里，而完成通知对应的 turn 已经流过 assistant 输出，仍按该完成通知收口。
 - 已经在本回合流式事件里出现过的当前 turn，不能被另一个也出现过的旧 turn 完成通知提前结束。子线程完成通知仍然不得结束父任务。
 - `turn.completed` 仍然只表示回合结束。最终气泡继续只认 `final_answer` phase、`[final_answer]` 正文，或符合条件的 phase-null 提升。
@@ -2357,6 +2357,35 @@
 - `src/interactive/codexAppServerEvents.ts`
 - `src/test/interactive/codexRunnerLifecycle.test.ts`
 - `src/test/interactive/codexAppServerEvents.test.ts`
+
+## 暂停并发送后出现“没有最终结论”自动重试
+
+- 状态：已规避，需随 Codex app-server `turn/interrupt` 与下一条 `turn/start` 的时序复核
+- 首次发现：2026-09-28
+- 适用范围：Codex 长连接、任务执行中的“暂停并发送”
+
+### 现象
+- 当前任务还在执行时选择“暂停并发送”，对话里先出现错误气泡“任务已退出，但没有产生最终结论气泡，自动继续。”
+- 随后自动重试又能正常完成，看起来像偶发错误，但暂停动作本身不应报这条失败。
+
+### 触发条件与根因
+- 暂停会 `turn/interrupt` 当前 turn，并立刻对同一 thread 发送下一条 `turn/start`。
+- 被打断 turn 的 `turn/completed` 可能在下一条 `turn/start` 返回前到达。新 operation 这时还没有自己的 turn id。
+- 旧逻辑把“当前 turn id 仍为空”当成可以收口。新回合因此被立即结束，运行时认为没有最终结论并自动重试。
+
+### 长期规避
+- `stopAndRebuild` 记录被打断 turn 的 id。这些 id 的后续 delta、item 和 `turn/completed` 不得进入下一条回合，也不得把它收口。
+- 当前 turn 自己的完成通知仍按原规则收口：`turn/start` 还没返回时，这条 turn 的 `turn/completed` 可以结束本次运行。只有已标记过期的 turn 不能借用这条规则结束下一条提示词。
+- 当前 turn 的 `interrupted` 完成通知仍然结束这一次运行，但不产生最终结论气泡。
+
+### 验证方式
+- 已加载 turn 被暂停后，下一条 `turn/start` 收到旧 turn 的正文和 `turn/completed` 时，新回合保持 pending，直到自己的 assistant 输出和完成通知到达。
+- `node --test dist/test/interactive/codexRunnerReuse.test.js dist/test/interactive/codexAppServerEvents.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
+
+### 关联资料
+- `src/interactive/codexRunner.ts`
+- `src/interactive/codexAppServerEvents.ts`
+- `src/test/interactive/codexRunnerReuse.test.ts`
 
 
 ## 短问候被严格最终答复判定拒绝

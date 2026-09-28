@@ -306,3 +306,158 @@ test("Codex runner interrupts a loaded turn without killing the app-server", asy
     crossSpawn.spawn = originalSpawn;
   }
 });
+
+test("paused turn completion does not finish the next prompt before it answers", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const originalKill = process.kill;
+  const child = createFakeChild(62300);
+  let input = "";
+  let turnCount = 0;
+  const nextTurnGate: { release: () => void } = { release: () => undefined };
+  const nextTurnReady = new Promise<void>((resolve) => {
+    nextTurnGate.release = resolve;
+  });
+  let releaseFirstTurn: (() => void) | null = null;
+  const firstTurnStarted = new Promise<void>((resolve) => {
+    releaseFirstTurn = resolve;
+  });
+  let releaseStaleCompletion: (() => void) | null = null;
+  const staleCompletionSent = new Promise<void>((resolve) => {
+    releaseStaleCompletion = resolve;
+  });
+  const send = (message: Record<string, unknown>): void => {
+    child.stdout.write(`${JSON.stringify(message)}\n`);
+  };
+  child.stdin.on("data", (chunk: Buffer | string) => {
+    input += String(chunk);
+    const lines = input.split(/\r?\n/u);
+    input = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed) as { id?: unknown; method?: unknown; params?: Record<string, unknown> };
+      const method = String(message.method || "");
+      if (method === "initialize") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (method === "thread/start" || method === "thread/resume") {
+        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: "thread-pause" } } });
+        continue;
+      }
+      if (method === "turn/interrupt") {
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
+        continue;
+      }
+      if (method !== "turn/start") {
+        continue;
+      }
+      turnCount += 1;
+      if (turnCount === 1) {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "turn-old", status: "inProgress" } } });
+        releaseFirstTurn?.();
+        continue;
+      }
+      send({
+        jsonrpc: "2.0",
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thread-pause",
+          turnId: "turn-old",
+          itemId: "old-message",
+          delta: "old partial",
+        },
+      });
+      send({
+        jsonrpc: "2.0",
+        method: "turn/completed",
+        params: {
+          threadId: "thread-pause",
+          turn: { id: "turn-old", status: "completed" },
+        },
+      });
+      releaseStaleCompletion?.();
+      void nextTurnReady.then(() => {
+        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "turn-next", status: "inProgress" } } });
+        send({
+          jsonrpc: "2.0",
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "thread-pause",
+            turnId: "turn-next",
+            itemId: "next-message",
+            delta: "[final_answer] next",
+            phase: "final_answer",
+          },
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "turn/completed",
+          params: {
+            threadId: "thread-pause",
+            turn: { id: "turn-next", status: "completed" },
+          },
+        });
+      });
+    }
+  });
+  const killSignals: Array<NodeJS.Signals | number | undefined> = [];
+  crossSpawn.spawn = (): unknown => child;
+  process.kill = ((pid: number, signal?: NodeJS.Signals | number): true => {
+    killSignals.push(signal);
+    return true;
+  }) as typeof process.kill;
+
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: null,
+      multiAgentEnabled: true,
+    });
+    const firstRun = runner.runStreamed("stay", {
+      onAssistantDelta: () => undefined,
+      onTrace: () => undefined,
+      onTaskListUpdate: () => undefined,
+      onThreadId: () => undefined,
+    });
+    const chunks: string[] = [];
+    try {
+      await firstTurnStarted;
+      await new Promise((resolve) => setImmediate(resolve));
+      runner.stopAndRebuild();
+      const rejectedFirst = assert.rejects(firstRun, /Codex run aborted/u);
+      const secondRun = runner.runStreamed("next", {
+        onAssistantDelta: (chunk) => {
+          if (chunk) {
+            chunks.push(chunk);
+          }
+        },
+        onTrace: () => undefined,
+        onTaskListUpdate: () => undefined,
+        onThreadId: () => undefined,
+      });
+      await staleCompletionSent;
+      const settledEarly = await Promise.race([
+        secondRun.then(() => "settled", () => "settled"),
+        new Promise<string>((resolve) => setImmediate(() => resolve("pending"))),
+      ]);
+      assert.equal(settledEarly, "pending");
+      nextTurnGate.release();
+      await secondRun;
+      await rejectedFirst;
+      assert.deepEqual(chunks, ["[final_answer] next"]);
+      assert.equal(killSignals.includes("SIGTERM"), false);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    process.kill = originalKill;
+    crossSpawn.spawn = originalSpawn;
+  }
+});

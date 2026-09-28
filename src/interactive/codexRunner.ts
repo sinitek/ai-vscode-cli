@@ -177,6 +177,7 @@ export class CodexInteractiveRunner {
   private abortGeneration = 0;
   private disposeGeneration = 0;
   private disposed = false;
+  private readonly supersededTurnIds = new Set<string>();
 
   public constructor(options: CodexRunnerMutableOptions) {
     this.options = { ...options, args: [...options.args] };
@@ -212,6 +213,7 @@ export class CodexInteractiveRunner {
   }
 
   public stopAndRebuild(): void {
+    this.captureSupersededTurns();
     this.abortGeneration += 1;
     const threadId = String(this.options.threadId || "").trim();
     const hot = Boolean(
@@ -571,6 +573,29 @@ export class CodexInteractiveRunner {
     return operation;
   }
 
+  private captureSupersededTurns(): void {
+    const operation = this.activeOperation;
+    if (!operation || operation.kind !== "turn") {
+      return;
+    }
+    this.rememberSupersededTurn(operation.activeTurnId);
+    for (const turnId of operation.observedPrimaryTurnIds) {
+      this.rememberSupersededTurn(turnId);
+    }
+  }
+
+  private rememberSupersededTurn(turnId: unknown): void {
+    const normalized = String(turnId || "").trim();
+    if (normalized) {
+      this.supersededTurnIds.add(normalized);
+    }
+  }
+
+  private isSupersededTurn(turnId: unknown): boolean {
+    const normalized = String(turnId || "").trim();
+    return Boolean(normalized) && this.supersededTurnIds.has(normalized);
+  }
+
   private notePrimaryTurnId(params: Record<string, unknown>): void {
     const operation = this.activeOperation;
     if (!operation || operation.kind !== "turn") {
@@ -581,9 +606,10 @@ export class CodexInteractiveRunner {
       return;
     }
     const turnId = extractCodexEventTurnId(params);
-    if (turnId) {
-      operation.observedPrimaryTurnIds.add(turnId);
+    if (!turnId || this.isSupersededTurn(turnId)) {
+      return;
     }
+    operation.observedPrimaryTurnIds.add(turnId);
   }
 
   private adoptStartedTurnId(operation: CodexRunnerOperation, turnId: string): void {
@@ -746,7 +772,11 @@ export class CodexInteractiveRunner {
         : {};
       const eventThreadId = String(params.threadId || params.thread_id || "").trim();
       const startedTurnId = extractCodexEventTurnId(params);
-      if (startedTurnId && !isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)) {
+      if (
+        startedTurnId
+        && !this.isSupersededTurn(startedTurnId)
+        && !isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)
+      ) {
         this.adoptStartedTurnId(operation, startedTurnId);
       }
       return;
@@ -803,6 +833,10 @@ export class CodexInteractiveRunner {
         ? message.params as Record<string, unknown>
         : {};
       const eventThreadId = String(params.threadId || "").trim();
+      const eventTurnId = extractCodexEventTurnId(params);
+      if (!isCodexSubagentThreadEvent(eventThreadId, this.options.threadId) && this.isSupersededTurn(eventTurnId)) {
+        return;
+      }
       const itemId = String(params.itemId || "").trim();
       const delta = String(params.delta || "");
       const isSubagentDelta = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
@@ -895,6 +929,9 @@ export class CodexInteractiveRunner {
       const completedTurnId = extractCodexEventTurnId(params);
       const turnStatus = String(turn.status || "").trim();
       const isSubagentTurn = isCodexSubagentThreadEvent(eventThreadId, this.options.threadId);
+      if (!isSubagentTurn && this.isSupersededTurn(completedTurnId)) {
+        return;
+      }
       if (!isSubagentTurn) {
         emitPrimaryTokenUsageUpdate(params, operation.handlers, this.options.threadId);
       }
@@ -1008,6 +1045,9 @@ export class CodexInteractiveRunner {
         ? message.params as Record<string, unknown>
         : {};
       this.claimItemThreads(params.item);
+      if (this.isSupersededTurn(extractCodexEventTurnId(params))) {
+        return;
+      }
       if (!operation.observer && operation.kind === "turn") {
         return;
       }
