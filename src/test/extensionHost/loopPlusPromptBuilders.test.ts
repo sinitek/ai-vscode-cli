@@ -19,7 +19,7 @@ import type {
   LoopPlusSchedulerView,
 } from "../../loopPlusScheduler";
 
-const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "blocked", "completed"] as const;
+const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "completed"] as const;
 const PLURAL_CONFIRMATION_KEYS = ["reviewEventIds", "confirmedEventIds", "acceptedEventIds"] as const;
 
 function execution(subtaskId: string, state: LoopPlusExecutionRecord["state"]): LoopPlusExecutionRecord {
@@ -93,7 +93,7 @@ function parseExample(examples: Map<string, string>, status: string): LoopPlusDe
   return decision as LoopPlusDecision;
 }
 
-test("generated five-state examples satisfy the current parser and live event id", () => {
+test("generated protocol examples satisfy the current parser and live event id", () => {
   const current = review("event-live-42", "sub-current");
   const queued = review("event-queued-7", "sub-queued");
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
@@ -134,6 +134,14 @@ test("generated five-state examples satisfy the current parser and live event id
   const waiting = parseExample(examples, "wait");
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "reviewEventId"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "subtasks"), false);
+
+  const steer = parseExample(examples, "steer");
+  assert.equal(Object.prototype.hasOwnProperty.call(steer, "reviewEventId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(steer, "subtasks"), false);
+  assert.equal(steer.controls?.some((control) => control.action === "close"), true);
+  assert.equal(steer.controls?.some((control) => (
+    control.action === "reprompt" && (control.prompt?.length ?? 0) >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH
+  )), true);
 
   const blocked = parseExample(examples, "blocked");
   assert.equal(Object.prototype.hasOwnProperty.call(blocked, "reviewEventId"), false);

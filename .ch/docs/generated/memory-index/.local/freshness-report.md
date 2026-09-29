@@ -10,7 +10,7 @@
 | `.ch/docs/memory/LESSONS_LEARNED.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PENDING_ITEMS.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PROJECT_CONTEXT.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
-| `.ch/docs/memory/README.md` | `active` | `fresh` | 2026-08-29 | 2026-08-29T02:14:18+00:00 | ~18 | 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。 |
+| `.ch/docs/memory/README.md` | `active` | `stale` | 2026-08-29 | 2026-08-29T02:14:18+00:00 | ~18 | 这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。 |
 | `.ch/docs/memory/ROLLING_SUMMARY.md` | `active` | `starter` | template-fill-when-adopted | 2026-09-27T06:12:11+00:00 | ~22 | starter placeholder |
 | `.ch/docs/memory/USER_PREFERENCES.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
 

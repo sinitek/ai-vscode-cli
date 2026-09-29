@@ -4,10 +4,11 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
+import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
 import {
   buildLoopPlusFinishEventId,
   createLoopPlusScheduler,
+  type LoopPlusControlCommand,
   type LoopPlusExecutionOutcome,
   type LoopPlusExecutionRecord,
   type LoopPlusScheduler,
@@ -140,6 +141,11 @@ export type LoopPlusOrchestrationDeps = {
   log?: (event: string, payload?: unknown) => void;
 };
 
+type ControlPlan = {
+  commands: LoopPlusControlCommand[];
+  nextSeq: number;
+};
+
 type SubtaskMeta = {
   decision: LoopSubtaskDecision;
   communicationFile?: string;
@@ -229,6 +235,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     dispatch: applyDispatchDecision,
     accept: applyAcceptDecision,
     wait: applyWaitDecision,
+    steer: applySteerDecision,
     blocked: applyBlockedDecision,
     completed: applyCompleted,
   };
@@ -447,7 +454,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       scheduler,
       meta,
       attempts: new Map(),
-      attemptSeq: scheduler.snapshot().seq,
+      attemptSeq: nextAttemptSequence(scheduler.snapshot()),
       lastLaunchAt: null,
       launchChain: Promise.resolve(),
       consumer: null,
@@ -798,6 +805,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       case "dispatch":
       case "accept":
       case "wait":
+      case "steer":
       case "blocked":
       case "completed":
         return decisionStrategies[status];
@@ -814,12 +822,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (runtime.scheduler.snapshot().currentReview) {
       return protocolMiss(runtime, true);
     }
+    const controls = decision.controls ?? [];
+    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
+      return "stop";
+    }
+    if (controls.length > 0 && !applyLoopPlusControls(runtime, controls)) {
+      return protocolMiss(runtime, false);
+    }
     acknowledgeSeenUserMessages(runtime, step);
     runtime.protocolRetries = 0;
     resetMainFailure(runtime);
-    if (refuseDispatchPastAcceptanceLimit(runtime, decision.subtasks ?? [])) {
-      return "stop";
-    }
     dispatchDecisions(runtime, decision.subtasks ?? []);
     persistEstimatedRounds(runtime, decision);
     if (hasReview(runtime)) {
@@ -836,6 +848,42 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return "wait";
   }
 
+  function applySteerDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision,
+  ): LoopPlusDecisionOutcome {
+    if (runtime.scheduler.snapshot().currentReview) {
+      return protocolMiss(runtime, true);
+    }
+    const controls = decision.controls ?? [];
+    if (controls.length === 0) {
+      return protocolMiss(runtime, false);
+    }
+    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
+      return "stop";
+    }
+    if (!applyLoopPlusControls(runtime, controls)) {
+      return protocolMiss(runtime, false);
+    }
+    acknowledgeSeenUserMessages(runtime, step);
+    runtime.protocolRetries = 0;
+    resetMainFailure(runtime);
+    persistEstimatedRounds(runtime, decision);
+    if (hasReview(runtime)) {
+      return "continue";
+    }
+    const after = runtime.scheduler.snapshot();
+    if (after.running.length === 0 && after.pending.length === 0) {
+      if (hasUserMessages(runtime)) {
+        return "continue";
+      }
+      runtime.closeoutBudget = 1;
+      return "continue";
+    }
+    return "wait";
+  }
+
   function applyAcceptDecision(
     runtime: ParentRuntime,
     step: MainStep,
@@ -847,6 +895,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
       return "stop";
     }
+    const controls = decision.controls ?? [];
+    const controlPlan = controls.length > 0 ? planControlCommands(runtime, controls) : null;
+    if (controls.length > 0 && (!controlPlan || !previewControlPlan(runtime, controlPlan))) {
+      return protocolMiss(runtime, true);
+    }
     const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
     if (!submitted.ok) {
       persist(runtime);
@@ -855,8 +908,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     acknowledgeSeenUserMessages(runtime, step);
     runtime.protocolRetries = 0;
     resetMainFailure(runtime);
-    if (refuseDispatchPastAcceptanceLimit(runtime, decision.subtasks ?? [])) {
+    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
       return "stop";
+    }
+    if (controlPlan && !commitControlPlan(runtime, controls, controlPlan)) {
+      return protocolMiss(runtime, false);
     }
     dispatchDecisions(runtime, decision.subtasks ?? []);
     persistEstimatedRounds(runtime, decision);
@@ -1762,11 +1818,157 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return false;
   }
 
+  function plannedLaunchCount(decision: LoopPlusDecision): number {
+    const continues = (decision.controls ?? []).filter((control) => control.action === "reprompt").length;
+    return (decision.subtasks?.length ?? 0) + continues;
+  }
+
+  function applyLoopPlusControls(
+    runtime: ParentRuntime,
+    controls: readonly LoopPlusControlDecision[],
+  ): boolean {
+    const planned = planControlCommands(runtime, controls);
+    if (!planned) {
+      return false;
+    }
+    return commitControlPlan(runtime, controls, planned);
+  }
+
+  function previewControlPlan(
+    runtime: ParentRuntime,
+    planned: ControlPlan,
+  ): boolean {
+    return runtime.scheduler.applyControls(planned.commands, { dryRun: true }).ok;
+  }
+
+  function commitControlPlan(
+    runtime: ParentRuntime,
+    controls: readonly LoopPlusControlDecision[],
+    planned: ControlPlan,
+  ): boolean {
+    const result = runtime.scheduler.applyControls(planned.commands);
+    if (!result.ok) {
+      deps.log?.("loop-plus-control-rejected", {
+        taskId: runtime.taskId,
+        reason: result.reason,
+      });
+      return false;
+    }
+    runtime.attemptSeq = planned.nextSeq;
+    result.closed.forEach((closed) => {
+      retireControlledAttempt(runtime, closed);
+      const control = controls.find((item) => item.id === closed.subtaskId);
+      recordControlledSubtask(runtime, closed, control);
+    });
+    launchAll(runtime, result.started);
+    try {
+      persist(runtime, { status: runtime.scheduler.snapshot().parentStopped ? "stopped" : "running" });
+    } catch (error) {
+      deps.log?.("loop-plus-persist-failed", {
+        taskId: runtime.taskId,
+        error: errorText(error),
+      });
+    }
+    return true;
+  }
+
+  function planControlCommands(
+    runtime: ParentRuntime,
+    controls: readonly LoopPlusControlDecision[],
+  ): ControlPlan | null {
+    let seq = runtime.attemptSeq;
+    const commands: LoopPlusControlCommand[] = [];
+    for (const control of controls) {
+      if (control.action === "close") {
+        commands.push({ subtaskId: control.id, action: "close" });
+        continue;
+      }
+      const prompt = control.prompt?.trim() ?? "";
+      if (!prompt) {
+        return null;
+      }
+      seq += 1;
+      const meta = runtime.meta.get(control.id);
+      const title = control.title ?? meta?.decision.title ?? control.id;
+      const writeFiles = control.writeFiles ?? meta?.decision.writeFiles ?? [];
+      const conflictGroup = control.conflictGroup ?? meta?.decision.conflictGroup;
+      commands.push({
+        subtaskId: control.id,
+        action: "reprompt",
+        replacement: {
+          subtaskId: control.id,
+          attemptId: `lp${seq}-${control.id}`,
+          title,
+          writeFiles,
+          ...(conflictGroup ? { conflictGroup } : {}),
+        },
+      });
+    }
+    return { commands, nextSeq: seq };
+  }
+
+  function retireControlledAttempt(runtime: ParentRuntime, record: LoopPlusExecutionRecord): void {
+    nextLaunchEpoch(runtime, record.attemptId);
+    runtime.launching.delete(record.attemptId);
+    const inFlight = runtime.attempts.get(record.attemptId);
+    if (!inFlight || inFlight.settled) {
+      return;
+    }
+    inFlight.settled = true;
+    inFlight.abort();
+  }
+
+  function recordControlledSubtask(
+    runtime: ParentRuntime,
+    closed: LoopPlusExecutionRecord,
+    control: LoopPlusControlDecision | undefined,
+  ): void {
+    const previous = runtime.meta.get(closed.subtaskId);
+    const action = control?.action ?? "close";
+    const title = control?.title ?? previous?.decision.title ?? closed.title ?? closed.subtaskId;
+    const prompt = action === "reprompt"
+      ? (control?.prompt ?? previous?.decision.prompt ?? title)
+      : (previous?.decision.prompt ?? title);
+    const meta: SubtaskMeta = {
+      decision: {
+        id: closed.subtaskId,
+        title,
+        prompt,
+        conflictGroup: control?.conflictGroup ?? previous?.decision.conflictGroup,
+        writeFiles: control?.writeFiles ?? previous?.decision.writeFiles,
+      },
+      communicationFile: previous?.communicationFile,
+      summary: action === "close"
+        ? "主任务已中断并关闭该子任务。"
+        : previous?.summary,
+      executionStatus: action === "close" ? "blocked" : "pending",
+      ...(typeof previous?.lastStartedAt === "number" ? { lastStartedAt: previous.lastStartedAt } : {}),
+    };
+    runtime.meta.set(closed.subtaskId, meta);
+    notifySubtaskChat(runtime, {
+      phase: "finished",
+      subtaskId: closed.subtaskId,
+      title,
+      round: LOOP_PLUS_ATTEMPT_ROUND,
+      communicationFile: meta.communicationFile,
+      runStatus: "stopped",
+      assistantContent: action === "close"
+        ? "主任务已中断并关闭该子任务。"
+        : "主任务已中断该子任务，并改用新的提示词继续执行。",
+    });
+    deps.log?.("loop-plus-subtask-controlled", {
+      taskId: runtime.taskId,
+      subtaskId: closed.subtaskId,
+      attemptId: closed.attemptId,
+      action,
+    });
+  }
+
   function refuseDispatchPastAcceptanceLimit(
     runtime: ParentRuntime,
-    subtasks: readonly LoopSubtaskDecision[],
+    subtaskCount: number,
   ): boolean {
-    if (subtasks.length === 0 || reviewedAcceptanceCount(runtime) < acceptanceLimitFor(runtime)) {
+    if (subtaskCount <= 0 || reviewedAcceptanceCount(runtime) < acceptanceLimitFor(runtime)) {
       return false;
     }
     pauseForAcceptanceLimit(runtime);
@@ -1899,6 +2101,22 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     reportAttempt,
     submitUserMessage,
   };
+}
+
+
+function nextAttemptSequence(snapshot: LoopPlusSchedulerSnapshot): number {
+  let sequence = snapshot.seq;
+  for (const attempt of snapshot.seenAttempts) {
+    const matched = /^lp(\d+)-/.exec(attempt.attemptId);
+    if (!matched) {
+      continue;
+    }
+    const value = Number(matched[1]);
+    if (Number.isSafeInteger(value) && value > sequence) {
+      sequence = value;
+    }
+  }
+  return sequence;
 }
 
 function confirmedReviewIds(decision: LoopPlusDecision): string[] {

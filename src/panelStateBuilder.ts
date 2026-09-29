@@ -1329,15 +1329,21 @@ function loopPlusMemberStatus(
   if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
     return "pending";
   }
-  const reviewed = projection.seenAttempts.filter((item) => (
-    item.subtaskId === subtaskId && item.disposition === "reviewed"
-  ));
+  const attemptsForSubtask = projection.seenAttempts.filter((item) => item.subtaskId === subtaskId);
+  const latestAttempt = attemptsForSubtask[attemptsForSubtask.length - 1];
+  if (latestAttempt?.disposition === "closed") {
+    return "stopped";
+  }
+  const reviewed = attemptsForSubtask.filter((item) => item.disposition === "reviewed");
   const latestReviewed = reviewed[reviewed.length - 1];
   if (latestReviewed) {
     return latestReviewed.acceptance === "failed" ? "acceptance_failed" : "acceptance_passed";
   }
   if (recordedStatus === "completed") {
     return "execution_completed";
+  }
+  if (recordedStatus === "blocked" || recordedStatus === "skipped") {
+    return "stopped";
   }
   return "not_in_snapshot";
 }

@@ -2011,7 +2011,7 @@
     },
     {
       "category": "hot-memory",
-      "freshness": "fresh",
+      "freshness": "stale",
       "headings": [
         "热区记忆面",
         "文件分工",

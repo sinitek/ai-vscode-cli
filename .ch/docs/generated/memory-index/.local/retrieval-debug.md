@@ -6,14 +6,14 @@
 ## Run Context
 
 - Generated at: 2026-09-27T06:12:11Z
-- Focus: Loop Loop+ Graph 子任务 高难度设计关键点 任务编排
-- Focus terms: `loop`, `graph`, `子任务`, `高难度设计关键点`, `高难`, `难度`, `度设`, `设计`
+- Focus: Loop+ steer controls close reprompt subtask
+- Focus terms: `loop`, `steer`, `controls`, `close`, `reprompt`, `subtask`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
-- Ranked candidate count: 2
-- Focus match count: 2
-- Focus excluded count: 3
+- Ranked candidate count: 1
+- Focus match count: 1
+- Focus excluded count: 4
 
 ## Heuristics
 
@@ -32,38 +32,16 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-538cb1444d` | `105` | `103` | loop, 设计 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
-| 2 | `mem-91b4245892` | `93` | `91` | 设计 | `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | `0` |
+| 1 | `mem-538cb1444d` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
 
 ## Score Breakdown
 
 ### mem-538cb1444d - Loop+ 完成事件驱动验收
 
-- Final score: `105`
-- Base score: `103`
-- Matched terms: `loop`, `设计`
-- Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
-- Selected claim IDs: -
-
-| Heuristic | Contribution |
-| --- | --- |
-| `type_priority` | `68` |
-| `focus_terms` | `24` |
-| `open_loop_bonus` | `0` |
-| `read_cost_adjustment` | `2` |
-| `evidence_bonus` | `6` |
-| `concept_bonus` | `1` |
-| `topic_bonus` | `2` |
-| `source_diversity_bonus` | `2` |
-| `claim_bonus` | `0` |
-| `same_source_penalty` | `0` |
-
-### mem-91b4245892 - 可维护性重构
-
 - Final score: `93`
 - Base score: `91`
-- Matched terms: `设计`
-- Source: `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
+- Matched terms: `loop`
+- Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 
 | Heuristic | Contribution |
@@ -85,18 +63,17 @@
 
 ## Source Diversity
 
-- Unique source count: 2
-- Selected observation count: 2
+- Unique source count: 1
+- Selected observation count: 1
 - Max same-source observations: 1
 
 ### Source Path Counts
 
 - `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`: 1
-- `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`: 1
 
 ### Source Kind Counts
 
-- `active_plan`: 2
+- `active_plan`: 1
 
 ## Claim Status Snapshot
 
@@ -105,5 +82,5 @@
 ## Watch Items
 
 - 当前有 3 份 active plans。
-- 存在 stale memory docs：`.ch/docs/MEMORY.md`。
+- 存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。
 - 这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。

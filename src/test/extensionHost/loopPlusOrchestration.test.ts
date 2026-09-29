@@ -135,6 +135,7 @@ function harness(options: {
   const messages: string[] = [];
   const reports: AttemptReport[] = [];
   const logs: Array<{ event: string; payload?: unknown }> = [];
+  const abortedAttemptIds: string[] = [];
   let activeMains = 0;
   let maxMains = 0;
   let taskSeq = 0;
@@ -213,6 +214,7 @@ function harness(options: {
       return {
         promise: gate.promise,
         abort: () => {
+          abortedAttemptIds.push(request.attemptId);
           if (options.deferAttemptAbort) {
             return;
           }
@@ -242,6 +244,7 @@ function harness(options: {
     messages,
     reports,
     logs,
+    abortedAttemptIds,
     target,
     maxMains: () => maxMains,
     activeMains: () => activeMains,
@@ -2197,4 +2200,127 @@ test("records each Loop+ subtask's own execution start time", async () => {
   assert.equal(beta?.lastStartedAt, 4_000);
   assert.notEqual(alpha?.lastStartedAt, beta?.lastStartedAt);
   assert.equal(alpha?.updatedAt, beta?.updatedAt);
+});
+
+test("steer closes one running subtask and reprompts another without an acceptance event", async () => {
+  const notices: LoopPlusSubtaskChatNotice[] = [];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push(notice);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const alpha = env.attempts.find((item) => item.request.subtaskId === "alpha");
+  const beta = env.attempts.find((item) => item.request.subtaskId === "beta");
+  assert.ok(alpha && beta);
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "close alpha and redirect beta"), true);
+  await flush();
+  const steer = env.mains[1];
+  assert.equal(steer.request.kind, "user");
+  const nextPrompt = longPrompt("beta-next", ["src/beta-next.ts"]);
+  steer.resolve(decisionJson({
+    status: "steer",
+    controls: [
+      { id: "alpha", action: "close" },
+      { id: "beta", action: "reprompt", prompt: nextPrompt, writeFiles: ["src/beta-next.ts"] },
+    ],
+  }));
+  await flush();
+
+  const task = env.tasks.get(run.taskId ?? "");
+  const snapshot = snapshotOf(task);
+  assert.equal(snapshot.reviewQueue.length, 0);
+  assert.equal(snapshot.currentReview, null);
+  assert.equal(snapshot.seenAttempts.find((item) => item.attemptId === alpha.request.attemptId)?.disposition, "closed");
+  assert.equal(snapshot.seenAttempts.find((item) => item.attemptId === beta.request.attemptId)?.disposition, "closed");
+  assert.equal(snapshot.seenAttempts.some((item) => item.disposition === "reviewed"), false);
+  assert.equal(snapshot.running.some((item) => item.subtaskId === "alpha"), false);
+  const restarted = env.attempts.filter((item) => item.request.subtaskId === "beta");
+  assert.equal(restarted.length, 2);
+  assert.equal(restarted[1].request.prompt, nextPrompt);
+  assert.equal(restarted[1].request.title, "beta");
+  assert.deepEqual(restarted[1].request.writeFiles, ["src/beta-next.ts"]);
+  assert.equal(snapshot.running.some((item) => item.attemptId === restarted[1].request.attemptId), true);
+  assert.equal(env.reports.some((item) => item.attemptId === alpha.request.attemptId), false);
+  assert.equal(env.reports.some((item) => item.attemptId === beta.request.attemptId), false);
+  assert.deepEqual(env.abortedAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
+  assert.equal(task?.subTasks.find((item) => item.id === "alpha")?.status, "blocked");
+  assert.equal(task?.subTasks.find((item) => item.id === "beta")?.prompt, nextPrompt);
+  assert.equal(task?.subTasks.find((item) => item.id === "beta")?.status, "running");
+  assert.equal(notices.some((notice) => (
+    notice.subtaskId === "alpha" && notice.phase === "finished" && notice.runStatus === "stopped"
+  )), true);
+  assert.equal(notices.some((notice) => (
+    notice.subtaskId === "beta"
+    && notice.phase === "finished"
+    && notice.assistantContent === "主任务已中断该子任务，并改用新的提示词继续执行。"
+  )), true);
+});
+
+test("does not steer while an acceptance batch is open", async () => {
+  const env = harness();
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const review = env.mains.find((item) => item.request.kind === "review");
+  assert.ok(review);
+  const before = env.attempts.length;
+  review.resolve(decisionJson({
+    status: "steer",
+    controls: [{ id: "beta", action: "close" }],
+  }));
+  await flush();
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), true);
+  assert.equal(env.abortedAttemptIds.length, 0);
+  assert.equal(env.attempts.length, before);
+  const task = Array.from(env.tasks.values())[0];
+  assert.equal(snapshotOf(task).currentReview?.subtaskId, "alpha");
+  assert.equal(snapshotOf(task).running.some((item) => item.subtaskId === "beta"), true);
+});
+
+test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const reloaded = env.reloadHost();
+  assert.equal(reloaded.tryRun(
+    { displayPrompt: "ship the feature" },
+    env.target,
+    { resumeTaskId: taskId, schedulingMode: "event_driven" },
+  ).handled, true);
+  await flush();
+  assert.equal(reloaded.submitUserMessage(taskId, "redirect beta after reload"), true);
+  await flush();
+  const steer = env.mains.filter((item) => item.request.kind === "user").at(-1);
+  assert.ok(steer);
+  const nextPrompt = longPrompt("beta-reloaded", ["src/beta.ts"]);
+  steer.resolve(decisionJson({
+    status: "steer",
+    controls: [{ id: "beta", action: "reprompt", prompt: nextPrompt }],
+  }));
+  await flush();
+  const betaAttempts = snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.subtaskId === "beta");
+  assert.deepEqual(betaAttempts.map((item) => item.disposition), ["closed", "open"]);
+  assert.notEqual(betaAttempts[1]?.attemptId, betaAttempts[0]?.attemptId);
+  const restarted = env.attempts.filter((item) => item.request.subtaskId === "beta");
+  assert.equal(restarted.at(-1)?.request.prompt, nextPrompt);
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), false);
 });

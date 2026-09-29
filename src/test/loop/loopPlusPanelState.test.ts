@@ -597,3 +597,23 @@ test("projects a failed reviewed execution as acceptance_failed and keeps a lega
   assert.equal(legacyState.loopPlus.seenAttempts.find((item) => item.attemptId === "b-1")?.acceptance, "failed");
   assert.equal(legacyState.rounds[0]?.participants.find((item) => item.id === "B")?.status, "acceptance_failed");
 });
+
+test("shows a closed Loop+ subtask as stopped even after an older acceptance", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(scheduler.dispatch([spec("A", "a-1", "Alpha")]).started.length, 1);
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-1", outcome: "completed" }).applied, true);
+  const reviewed = scheduler.snapshot().currentReview;
+  assert.ok(reviewed);
+  assert.equal(scheduler.submitReview(reviewed.eventId).ok, true);
+  assert.equal(scheduler.dispatch([spec("A", "a-2", "Alpha")]).started.length, 1);
+  assert.equal(scheduler.applyControls([{ subtaskId: "A", action: "close" }]).ok, true);
+  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot(), {
+    subTasks: [{ id: "A", title: "Alpha", status: "blocked", updatedAt: 12 }],
+  }), deps());
+  assert.equal(state.loopPlus?.ok, true);
+  if (!state.loopPlus?.ok) {
+    return;
+  }
+  assert.equal(state.loopPlus.seenAttempts.find((item) => item.attemptId === "a-2")?.disposition, "closed");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "stopped");
+});

@@ -140,6 +140,11 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
   const acceptConfirmation = eventIds.length > 1
     ? { reviewEventIds: eventIds.slice() }
     : { reviewEventId: eventIds[0] ?? "example-review-event-id" };
+  const reprompt = [
+    "Continue this self-contained subtask inside its declared write scope only.",
+    "Design key point: keep the public function signature stable and replace the failed branch with the corrected check.",
+    "Record the command and result in the attempt report.",
+  ].join(" ");
   const examples: Array<{ status: string; value: Record<string, unknown> }> = [
     {
       status: "dispatch",
@@ -160,6 +165,16 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
       status: "wait",
       value: {
         status: "wait",
+      },
+    },
+    {
+      status: "steer",
+      value: {
+        status: "steer",
+        controls: [
+          { id: "example-running-subtask", action: "close" },
+          { id: "example-other-subtask", action: "reprompt", prompt: reprompt },
+        ],
       },
     },
     {
@@ -275,7 +290,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
-    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
+    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
+    "- steer interrupts open subtasks and confirms nothing. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
+    "- controls actions are close or reprompt. close aborts that subtask and drops it without an acceptance event or acceptance count. reprompt aborts it and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt; JSON alone does not stop a process.",
+    "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept. If it must wait for a still-running or pending execution, accept the batch with no new subtasks. A failed acceptance checklist still forbids accept. Do not use wait or dispatch while the batch is open.",
     "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. finalSummary is optional.",

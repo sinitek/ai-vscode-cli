@@ -1003,3 +1003,105 @@ test("keeps the execution outcome after review and still loads a legacy attempt 
     /Invalid Loop\+ scheduler snapshot: seenAttempts\[0\]/,
   );
 });
+
+test("close frees a concurrency slot and does not create an acceptance event", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("alpha"), spec("beta")]);
+  assert.deepEqual(attemptIds(scheduler.snapshot().running), ["alpha-1"]);
+  assert.deepEqual(attemptIds(scheduler.snapshot().pending), ["beta-1"]);
+
+  const closed = scheduler.applyControls([{ subtaskId: "alpha", action: "close" }]);
+  assert.equal(closed.ok, true);
+  assert.equal(closed.reason, "applied");
+  assert.deepEqual(attemptIds(closed.closed), ["alpha-1"]);
+  assert.deepEqual(attemptIds(closed.started), ["beta-1"]);
+  assert.deepEqual(attemptIds(scheduler.snapshot().running), ["beta-1"]);
+  assert.deepEqual(scheduler.snapshot().pending, []);
+  assert.deepEqual(scheduler.snapshot().reviewQueue, []);
+  assert.equal(scheduler.snapshot().currentReview, null);
+  const alpha = scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "alpha-1");
+  assert.equal(alpha?.disposition, "closed");
+  assert.equal(alpha?.outcome, "stopped");
+  assert.equal(scheduler.snapshot().seenAttempts.some((item) => item.disposition === "reviewed"), false);
+
+  const stale = scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  assert.equal(stale.applied, false);
+  assert.equal(stale.reason, "duplicate");
+  assert.deepEqual(scheduler.snapshot().reviewQueue, []);
+
+  const restored = createLoopPlusScheduler({ snapshot: scheduler.snapshot() });
+  assert.deepEqual(restored.snapshot(), scheduler.snapshot());
+  assert.equal(restored.finish({
+    subtaskId: "alpha",
+    attemptId: "alpha-1",
+    outcome: "stopped",
+  }).applied, false);
+});
+
+test("reprompt replaces the open attempt and a conflicting dry run leaves the snapshot unchanged", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([spec("alpha", ["src/shared.ts"]), spec("beta", ["src/beta.ts"])]);
+  const beforeConflict = scheduler.snapshot();
+  const dryRun = scheduler.applyControls([{
+    subtaskId: "beta",
+    action: "reprompt",
+    replacement: {
+      subtaskId: "beta",
+      attemptId: "beta-2",
+      title: "beta",
+      writeFiles: ["src/shared.ts"],
+    },
+  }], { dryRun: true });
+  assert.equal(dryRun.ok, false);
+  assert.equal(dryRun.reason, "conflict");
+  assert.equal(dryRun.block?.otherSubtaskId, "alpha");
+  assert.deepEqual(dryRun.closed, []);
+  assert.deepEqual(scheduler.snapshot(), beforeConflict);
+  const rejected = scheduler.applyControls([{
+    subtaskId: "beta",
+    action: "reprompt",
+    replacement: {
+      subtaskId: "beta",
+      attemptId: "beta-2",
+      title: "beta",
+      writeFiles: ["src/shared.ts"],
+    },
+  }]);
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.reason, "conflict");
+  assert.deepEqual(scheduler.snapshot(), beforeConflict);
+
+  const replaced = scheduler.applyControls([
+    { subtaskId: "alpha", action: "close" },
+    {
+      subtaskId: "beta",
+      action: "reprompt",
+      replacement: {
+        subtaskId: "beta",
+        attemptId: "beta-2",
+        title: "beta",
+        writeFiles: ["src/shared.ts"],
+      },
+    },
+  ]);
+  assert.equal(replaced.ok, true);
+  assert.deepEqual(attemptIds(replaced.closed), ["alpha-1", "beta-1"]);
+  assert.deepEqual(attemptIds(replaced.started), ["beta-2"]);
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "beta-1")?.disposition, "closed");
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "beta-2")?.disposition, "open");
+  assert.equal(scheduler.finish({
+    subtaskId: "beta",
+    attemptId: "beta-1",
+    outcome: "completed",
+  }).reason, "stale_attempt");
+  assert.deepEqual(scheduler.snapshot().reviewQueue, []);
+
+  const held = createLoopPlusScheduler({ maxConcurrency: 1 });
+  held.dispatch([spec("gamma")]);
+  held.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "completed" });
+  const beforeHeld = held.snapshot();
+  const notOpen = held.applyControls([{ subtaskId: "gamma", action: "close" }]);
+  assert.equal(notOpen.ok, false);
+  assert.equal(notOpen.reason, "not_open");
+  assert.deepEqual(held.snapshot(), beforeHeld);
+});

@@ -17,7 +17,7 @@ export type LoopPlusSchedulerPhase =
 
 export type LoopPlusExecutionOutcome = "completed" | "failed" | "stopped";
 export type LoopPlusExecutionState = "pending" | "running";
-export type LoopPlusAttemptDisposition = "open" | "finished" | "reviewed";
+export type LoopPlusAttemptDisposition = "open" | "finished" | "reviewed" | "closed";
 export type LoopPlusCompletionBlocker =
   | "running"
   | "pending"
@@ -264,8 +264,39 @@ export type LoopPlusAckUserMessagesResult = {
   view: LoopPlusSchedulerView;
 };
 
+export type LoopPlusControlAction = "close" | "reprompt";
+
+export type LoopPlusControlCommand = {
+  subtaskId: string;
+  action: LoopPlusControlAction;
+  replacement?: unknown;
+};
+
+export type LoopPlusControlReason =
+  | "applied"
+  | "invalid"
+  | "not_open"
+  | "conflict"
+  | "parent_stopped"
+  | "completed"
+  | "duplicate_subtask"
+  | "duplicate_attempt";
+
+export type LoopPlusControlResult = {
+  ok: boolean;
+  reason: LoopPlusControlReason;
+  closed: LoopPlusExecutionRecord[];
+  started: LoopPlusExecutionRecord[];
+  block: LoopPlusConflictBlock | null;
+  view: LoopPlusSchedulerView;
+};
+
 export type LoopPlusScheduler = {
   dispatch: (specs: readonly unknown[]) => LoopPlusDispatchResult;
+  applyControls: (
+    commands: readonly LoopPlusControlCommand[],
+    options?: { dryRun?: boolean },
+  ) => LoopPlusControlResult;
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
   claimNextReview: () => LoopPlusClaimResult;
   submitReview: (eventId: string) => LoopPlusSubmitReviewResult;
@@ -388,7 +419,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         continue;
       }
       const active = seenAttempts.find((item) => (
-        item.subtaskId === parsed.subtaskId && item.disposition !== "reviewed"
+        item.subtaskId === parsed.subtaskId && !isSettledLoopPlusAttempt(item.disposition)
       ));
       if (active) {
         rejected.push({ ...ids, reason: "active_subtask" });
@@ -859,8 +890,126 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     };
   }
 
+  function applyControls(
+    commands: readonly LoopPlusControlCommand[],
+    options?: { dryRun?: boolean },
+  ): LoopPlusControlResult {
+    const dryRun = options?.dryRun === true;
+    const rejected = (
+      reason: LoopPlusControlReason,
+      block: LoopPlusConflictBlock | null = null,
+    ): LoopPlusControlResult => ({
+      ok: false,
+      reason,
+      closed: [],
+      started: [],
+      block,
+      view: view(),
+    });
+    if (completed) {
+      return rejected("completed");
+    }
+    if (parentStopped) {
+      return rejected("parent_stopped");
+    }
+    if (!Array.isArray(commands) || commands.length === 0) {
+      return rejected("invalid");
+    }
+    const seenSubtasks = new Set<string>();
+    const planned: Array<{
+      attemptId: string;
+      replacement: ParsedSpec | null;
+    }> = [];
+    for (const command of commands) {
+      const subtaskId = typeof command?.subtaskId === "string" ? command.subtaskId.trim() : "";
+      if (!subtaskId || seenSubtasks.has(subtaskId)) {
+        return rejected(subtaskId ? "duplicate_subtask" : "invalid");
+      }
+      if (command.action !== "close" && command.action !== "reprompt") {
+        return rejected("invalid");
+      }
+      seenSubtasks.add(subtaskId);
+      const open = seenAttempts.find((item) => item.subtaskId === subtaskId && item.disposition === "open");
+      const record = running.concat(pending).find((item) => (
+        item.subtaskId === subtaskId && item.attemptId === open?.attemptId
+      ));
+      if (!open || !record) {
+        return rejected("not_open");
+      }
+      let replacement: ParsedSpec | null = null;
+      if (command.action === "reprompt") {
+        replacement = parseSpec(command.replacement);
+        if (!replacement || replacement.subtaskId !== subtaskId) {
+          return rejected("invalid");
+        }
+        const duplicate = seenAttempts.some((item) => item.attemptId === replacement?.attemptId)
+          || planned.some((item) => item.replacement?.attemptId === replacement?.attemptId);
+        if (duplicate) {
+          return rejected("duplicate_attempt");
+        }
+      }
+      planned.push({ attemptId: open.attemptId, replacement });
+    }
+    const removed = new Set(planned.map((item) => item.attemptId));
+    const survivors = running.concat(pending).filter((item) => !removed.has(item.attemptId));
+    const admitted: ParsedSpec[] = [];
+    for (const item of planned) {
+      if (!item.replacement) {
+        continue;
+      }
+      const candidate = createExecution(item.replacement, "pending");
+      const others = survivors.concat(admitted.map((spec) => createExecution(spec, "pending")));
+      const block = findConflict(candidate, others);
+      if (block) {
+        return rejected("conflict", block);
+      }
+      admitted.push(item.replacement);
+    }
+    if (dryRun) {
+      return {
+        ok: true,
+        reason: "applied",
+        closed: [],
+        started: [],
+        block: null,
+        view: view(),
+      };
+    }
+    const closed = running.concat(pending)
+      .filter((item) => removed.has(item.attemptId))
+      .map(copyExecution);
+    running = running.filter((item) => !removed.has(item.attemptId));
+    pending = pending.filter((item) => !removed.has(item.attemptId));
+    for (const item of planned) {
+      const seen = seenAttempts.find((entry) => entry.attemptId === item.attemptId);
+      if (seen) {
+        seen.disposition = "closed";
+        seen.outcome = "stopped";
+      }
+    }
+    for (const spec of admitted) {
+      pending.push(createExecution(spec, "pending"));
+      seenAttempts.push({
+        subtaskId: spec.subtaskId,
+        attemptId: spec.attemptId,
+        disposition: "open",
+      });
+    }
+    const started = promote();
+    commit();
+    return {
+      ok: true,
+      reason: "applied",
+      closed,
+      started,
+      block: null,
+      view: view(),
+    };
+  }
+
   return {
     dispatch,
+    applyControls,
     finish,
     claimNextReview,
     submitReview,
@@ -1196,7 +1345,7 @@ function validateAttemptGraph(input: {
     }
     seenIds.add(seen.attemptId);
     const actual = placed.get(seen.attemptId);
-    if (seen.disposition === "reviewed") {
+    if (isSettledLoopPlusAttempt(seen.disposition)) {
       if (actual) {
         invalidSnapshot("seenAttempts");
       }
@@ -1310,7 +1459,11 @@ function isOutcome(value: unknown): value is LoopPlusExecutionOutcome {
 }
 
 function isDisposition(value: unknown): value is LoopPlusAttemptDisposition {
-  return value === "open" || value === "finished" || value === "reviewed";
+  return value === "open" || value === "finished" || value === "reviewed" || value === "closed";
+}
+
+function isSettledLoopPlusAttempt(disposition: LoopPlusAttemptDisposition): boolean {
+  return disposition === "reviewed" || disposition === "closed";
 }
 
 function isPositiveInteger(value: unknown): value is number {

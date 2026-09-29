@@ -66,6 +66,10 @@
 - `dispatch`：必须有 1–6 个子任务，禁止携带 `reviewEventId` 或 `reviewEventIds`。宿主把子任务交给内核 dispatch；冲突或超额的进入 pending，不能只在新批次内部判断。
 - `accept`：确认本轮验收批次。只有一项时必须有一个 trim 后非空的 `reviewEventId`；多于一项时必须有按顺序完全相同的 `reviewEventIds`，不能只写第一项。可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。宿主必须先确认这组 id 就是本轮冻结的批次，再调用 `submitReviewBatch`；不一致时不得改确认成另一组。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
 - `wait`：不能有 `reviewEventId` 或 `reviewEventIds`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。没有验收批次的用户消息轮次里，只有仍有 running 或 pending 时才允许 `wait`；它表示先等在途子任务结束，而不是立刻派发一个占位子任务。没有在途工作时，`wait` 仍按原规则进入人工复核，不能空转。验收批次开着时不能 `wait`。
+- `steer`：中断正在执行或排队的子任务，不确认验收。不能带 `reviewEventId`、`reviewEventIds` 或 `subtasks`，且 `controls` 至少一条。验收批次开着时宿主拒绝单独的 `steer`；这时控制写在同一次 `accept` 上。
+- `controls`：可出现在 `dispatch`、`accept` 和 `steer`。每项 `id` 必须是当前 running 或 pending 的子任务，不能与同一次 `subtasks` 的 id 重复，自身也不能重复。`action` 只允许 `close` 或 `reprompt`。条数同样不超过 `loopPlusDecisionSubtaskMax`。`wait`、`blocked`、`completed` 只要出现 `controls`，整份决策拒绝。
+- `close`：宿主中止该 attempt 的进程。内核把 disposition 记为 `closed`、outcome 记为 `stopped`。不进入验收队列，不计入验收次数。
+- `reprompt`：同样中止后，用 trim 后至少 80 字的新 prompt 为同一子任务 id 开启一个新 attempt。未给出的 title、writeFiles、conflictGroup 沿用原子任务。不要使用经典 Loop 的 `continue` 表示这个动作。
 - `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId`、`reviewEventIds` 或新子任务。`finalSummary` 可选。解析器不改父状态。
 - `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。没有验收批次时省略确认字段。只有一项时可以带一个非空 `reviewEventId`；多于一项时必须带顺序完全相同的 `reviewEventIds`。字段存在但为空，或两种确认字段同时出现，则整份拒绝。不能附带子任务。解析器不完成任务。宿主在确认字段与本轮冻结批次一致时先 `submitReviewBatch` 确认整批，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一批 `accept` 并追加子任务。没有任何剩余工作时，最后一批同样合法的 `completed` 可以确认该批并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
 
@@ -104,6 +108,7 @@
 - `maxConcurrency` 是宿主必须传入的正整数策略。内核在超额度时把任务留在 pending，不另选一个产品数字。`loopParallel` 本身仍没有数字上限。
 - 一次 `dispatch` 或 `accept` 能附带的子任务数由 `loopPlusDecisionSubtaskMax` 决定。它来自工具设置“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 6，范围 1–20。宿主在解析决策和生成下一轮主任务提示时读取当前值；未配置时仍用 `LOOP_PLUS_DECISION_SUBTASK_MAX`。这个上限不替代 `maxConcurrency`，也不改变经典 Loop 的批次上限。
 - 一个 Loop+ 任务的验收次数由 `loopPlusMaxAcceptances` 决定。它同样位于“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 100，范围 1–999。每个新确认并变为 `reviewed` 的 attempt 计 1 次；同一批里的每个事件各计一次，幂等重放不计。若下一次整批确认会超过该任务上限，宿主不调用 `submitReviewBatch`，父任务进入 `needs-review`，队列保持不变。已达上限后不再 `dispatch` 新子任务。没有新验收事件时仍可 `completed`。任务记录保存当时上限；全局设置更高时只升不降。它不是经典 Loop 的 `maxRounds`，也不取代 200 次主决策安全上限。
+- 主任务中断子任务使用和派发相同的 JSON，不另做按钮。宿主先 `applyControls(..., { dryRun: true })`；失败不改快照。成功后先把旧 attempt 标为 settled，再 `abort()`，避免结束回调再次 `finish()` 进入验收队列。`close` 腾出的并发名额由 `promote()` 启动。`reprompt` 计入“达到验收上限后不得再启动”的新执行数，`close` 不计。群聊里该子任务最新 attempt 为 `closed` 时显示已停止，不用更早一次验收结果代替；被关闭且不在快照中的 blocked 或 skipped 记录同样显示已停止。
 - 主模型在 `accept` 或 `completed` 前必须逐项确认本批验收：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用的项也要明确写成不适用，不能把没跑的测试或没运行的产物写成通过。任一项失败就不得确认；能修时只允许在同一次 `accept` 里追加点名失败项的修复子任务，否则 `blocked` 且不确认本批。宿主仍只核事件 ID，不替主模型判这张清单。最终 `completed.acceptance.checks` 必须包含这 6 个名称且全部通过。
 - 错峰继续使用 `LOOP_SUBTASK_LAUNCH_INTERVAL_MS`（3 秒）。内核返回 `started` 后由宿主延迟，调度器内部不睡眠。
 - 待启动任务必须参与冲突判断。同一子任务有未验收 attempt 时，新 attempt 被拒绝。

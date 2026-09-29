@@ -12,8 +12,8 @@
 - Observation entries：5
 - Claim entries：121
 - Estimated read cost：~381 tokens
-- Fresh docs：1
-- Stale docs：1
+- Fresh docs：0
+- Stale docs：2
 - Starter docs：7
 
 ## 记忆金字塔

@@ -18,9 +18,12 @@ export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
   "accept",
   "wait",
+  "steer",
   "blocked",
   "completed",
 ] as const;
+
+export const LOOP_PLUS_CONTROL_ACTIONS = ["close", "reprompt"] as const;
 
 const ESTIMATED_REMAINING_ROUNDS_MAX = 100;
 const IMPLICIT_QUEUE_CONFIRMATION_KEYS = [
@@ -30,11 +33,23 @@ const IMPLICIT_QUEUE_CONFIRMATION_KEYS = [
 
 export type LoopPlusDecisionStatus = (typeof LOOP_PLUS_DECISION_STATUSES)[number];
 
+export type LoopPlusControlAction = (typeof LOOP_PLUS_CONTROL_ACTIONS)[number];
+
+export type LoopPlusControlDecision = {
+  id: string;
+  action: LoopPlusControlAction;
+  prompt?: string;
+  title?: string;
+  conflictGroup?: string;
+  writeFiles?: string[];
+};
+
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
   reviewEventId?: string;
   reviewEventIds?: string[];
   subtasks?: LoopSubtaskDecision[];
+  controls?: LoopPlusControlDecision[];
   answerConclusion?: string;
   finalSummary?: string;
   acceptance?: LoopAcceptance;
@@ -111,6 +126,8 @@ export function normalizeLoopPlusDecision(
       return normalizeAcceptDecision(value, estimatedRemainingRounds, subtaskMax);
     case "wait":
       return normalizeWaitDecision(value, estimatedRemainingRounds, subtaskMax);
+    case "steer":
+      return normalizeSteerDecision(value, estimatedRemainingRounds, subtaskMax);
     case "blocked":
       return normalizeBlockedDecision(value, estimatedRemainingRounds, subtaskMax);
     case "completed":
@@ -132,9 +149,14 @@ function normalizeDispatchDecision(
   if (!subtasks || subtasks.length < 1) {
     return null;
   }
+  const controls = readControls(raw, subtaskMax);
+  if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
+    return null;
+  }
   return withEstimatedRemainingRounds({
     status: "dispatch",
     subtasks,
+    ...(controls.length > 0 ? { controls } : {}),
   }, estimatedRemainingRounds);
 }
 
@@ -151,14 +173,34 @@ function normalizeAcceptDecision(
   if (!subtasks) {
     return null;
   }
+  const controls = readControls(raw, subtaskMax);
+  if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
+    return null;
+  }
   return withEstimatedRemainingRounds({
     status: "accept",
     ...reviewEvents,
     ...(subtasks.length > 0 ? { subtasks } : {}),
+    ...(controls.length > 0 ? { controls } : {}),
   }, estimatedRemainingRounds);
 }
 
 function normalizeWaitDecision(
+  raw: Record<string, unknown>,
+  estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
+): LoopPlusDecision | null {
+  if (hasReviewEventConfirmation(raw) || hasOwn(raw, "controls")) {
+    return null;
+  }
+  const subtasks = readSubtasks(raw, subtaskMax);
+  if (!subtasks || subtasks.length > 0) {
+    return null;
+  }
+  return withEstimatedRemainingRounds({ status: "wait" }, estimatedRemainingRounds);
+}
+
+function normalizeSteerDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
@@ -170,7 +212,14 @@ function normalizeWaitDecision(
   if (!subtasks || subtasks.length > 0) {
     return null;
   }
-  return withEstimatedRemainingRounds({ status: "wait" }, estimatedRemainingRounds);
+  const controls = readControls(raw, subtaskMax);
+  if (!controls || controls.length < 1) {
+    return null;
+  }
+  return withEstimatedRemainingRounds({
+    status: "steer",
+    controls,
+  }, estimatedRemainingRounds);
 }
 
 function normalizeBlockedDecision(
@@ -178,7 +227,7 @@ function normalizeBlockedDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  if (hasReviewEventConfirmation(raw)) {
+  if (hasReviewEventConfirmation(raw) || hasOwn(raw, "controls")) {
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
@@ -197,6 +246,9 @@ function normalizeCompletedDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
+  if (hasOwn(raw, "controls")) {
+    return null;
+  }
   const reviewEvents = readReviewConfirmation(raw, false);
   if (!reviewEvents) {
     return null;
@@ -243,6 +295,71 @@ function withEstimatedRemainingRounds(
     ...decision,
     estimatedRemainingRounds,
   };
+}
+
+function readControls(
+  raw: Record<string, unknown>,
+  subtaskMax: number,
+): LoopPlusControlDecision[] | null {
+  if (!hasOwn(raw, "controls")) {
+    return [];
+  }
+  if (!Array.isArray(raw.controls) || raw.controls.length > subtaskMax) {
+    return null;
+  }
+  const controls: LoopPlusControlDecision[] = [];
+  const seenIds = new Set<string>();
+  for (const item of raw.controls) {
+    const control = normalizeControl(item);
+    if (!control || seenIds.has(control.id)) {
+      return null;
+    }
+    seenIds.add(control.id);
+    controls.push(control);
+  }
+  return controls;
+}
+
+function normalizeControl(value: unknown): LoopPlusControlDecision | null {
+  if (!isRecord(value) || (value.action !== "close" && value.action !== "reprompt")) {
+    return null;
+  }
+  const id = readOptionalText(value.id);
+  if (!id) {
+    return null;
+  }
+  const title = readOptionalText(value.title);
+  const conflictGroup = readOptionalText(value.conflictGroup);
+  const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
+  if (value.action === "close") {
+    return {
+      id,
+      action: "close",
+      ...(title ? { title } : {}),
+      ...(conflictGroup ? { conflictGroup } : {}),
+      ...(writeFiles.length > 0 ? { writeFiles } : {}),
+    };
+  }
+  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
+  if (prompt.length < LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH) {
+    return null;
+  }
+  return {
+    id,
+    action: "reprompt",
+    prompt,
+    ...(title ? { title } : {}),
+    ...(conflictGroup ? { conflictGroup } : {}),
+    ...(writeFiles.length > 0 ? { writeFiles } : {}),
+  };
+}
+
+function controlsOverlapSubtasks(
+  controls: readonly LoopPlusControlDecision[],
+  subtasks: readonly LoopSubtaskDecision[],
+): boolean {
+  const ids = new Set(subtasks.map((subtask) => subtask.id).filter((id): id is string => Boolean(id)));
+  return controls.some((control) => ids.has(control.id));
 }
 
 function readSubtasks(raw: Record<string, unknown>, subtaskMax: number): LoopSubtaskDecision[] | null {

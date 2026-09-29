@@ -82,7 +82,7 @@
 - 分类：`hot-memory`
 - 金字塔层级：`operational_hot_zone`
 - 状态：`active`
-- Freshness：`fresh`
+- Freshness：`stale`
 - Read：~18 tokens
 - 摘要：这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。
 - Observation IDs：`mem-431f2548e1`

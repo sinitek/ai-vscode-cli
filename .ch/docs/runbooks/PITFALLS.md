@@ -14,6 +14,31 @@
 
 ## 当前有效条目
 
+## Loop+ 重提示的 attempt id 不能只跟调度序号
+
+- 状态：已规避
+- 首次发现：2026-09-29
+- 适用范围：Loop+ 主任务 `reprompt`，以及宿主重启后继续给已有子任务开新 attempt
+
+### 现象
+- 同一轮派发了两个及以上子任务后，重新加载任务再 `reprompt` 后一个子任务，决策被拒绝，子任务没有新 attempt。
+
+### 触发条件
+- attempt id 形如 `lp<序号>-<子任务 id>`。
+- 一次 `dispatch` 会连续占用多个序号，但调度快照的 `seq` 每次提交只加 1。
+- 宿主重建 runtime 时如果把下一个序号重置成 `snapshot.seq`，就会重新生成已经存在的 `lpN-子任务`。
+
+### 根因
+- `snapshot.seq` 记录的是调度提交次数，不是已发出的 attempt 个数。内核会以 `duplicate_attempt` 拒绝重复 id，宿主则把整份控制决策当成协议错误。
+
+### 长期规避
+- 新 attempt 序号取 `snapshot.seq` 和已有 `lp<数字>-` attempt id 中的较大值。
+- 不要改回只用 `snapshot.seq`。关闭仍走 `closed`，不要把中断后的结束回调送进验收队列。
+
+### 验证方式
+- `node --test dist/test/extensionHost/loopPlusOrchestration.test.js`
+
+
 ## 已完成的 Loop+ 不能按经典完成气泡缺失来恢复
 
 - 状态：已规避

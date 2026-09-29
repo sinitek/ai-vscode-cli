@@ -3,24 +3,21 @@
   "version": "0.3.0",
   "generated_at": "2026-09-27T06:12:11Z",
   "repo_root": ".",
-  "focus": "Loop Loop+ Graph 子任务 高难度设计关键点 任务编排",
+  "focus": "Loop+ steer controls close reprompt subtask",
   "focus_terms": [
     "loop",
-    "graph",
-    "子任务",
-    "高难度设计关键点",
-    "高难",
-    "难度",
-    "度设",
-    "设计"
+    "steer",
+    "controls",
+    "close",
+    "reprompt",
+    "subtask"
   ],
   "anchor_id": "",
   "selection_mode": "focus-filtered",
   "available_observation_count": 5,
-  "selected_observation_count": 2,
+  "selected_observation_count": 1,
   "selected_observation_ids": [
-    "mem-538cb1444d",
-    "mem-91b4245892"
+    "mem-538cb1444d"
   ],
   "generated_docs": [
     {
@@ -119,15 +116,14 @@
       "id": "mem-538cb1444d",
       "type": "plan",
       "title": "Loop+ 完成事件驱动验收",
-      "reason": "命中 focus：loop, 设计。",
-      "score": 105,
+      "reason": "命中 focus：loop。",
+      "score": 93,
       "read_tokens": 108,
       "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
       "source_kind": "active_plan",
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop",
-        "设计"
+        "loop"
       ],
       "concepts": [
         "open-loop"
@@ -152,59 +148,6 @@
         ".ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md"
       ],
       "topic": "plan",
-      "preliminary_score": 103,
-      "final_score": 105,
-      "score_breakdown": {
-        "type_priority": 68,
-        "focus_terms": 24,
-        "open_loop_bonus": 0,
-        "read_cost_adjustment": 2,
-        "evidence_bonus": 6,
-        "concept_bonus": 1,
-        "topic_bonus": 2,
-        "source_diversity_bonus": 2,
-        "claim_bonus": 0,
-        "same_source_penalty": 0
-      },
-      "selection_rank": 1,
-      "selected_claim_ids": []
-    },
-    {
-      "id": "mem-91b4245892",
-      "type": "plan",
-      "title": "可维护性重构",
-      "reason": "命中 focus：设计。",
-      "score": 93,
-      "read_tokens": 128,
-      "source_path": ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
-      "source_kind": "active_plan",
-      "modified_at": "2026-09-25T01:16:44+00:00",
-      "matched_terms": [
-        "设计"
-      ],
-      "concepts": [
-        "open-loop"
-      ],
-      "facts": [
-        "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
-        "Modified at: 2026-09-25T01:16:44+00:00"
-      ],
-      "narrative": "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在...",
-      "files": [
-        ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
-        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-        "src/config/claudeSkills.ts",
-        "src/config/codexSkills.ts",
-        "src/config/geminiSkills.ts",
-        "src/config/skillDiscovery.ts",
-        "src/extension.ts",
-        "src/extensionHost/openCodePromptRunTemplate.ts",
-        "src/extensionHost/promptOneShotRuntime.ts",
-        "src/extensionHost/promptParallelRuntime.ts",
-        "src/extensionHost/promptRunRuntime.ts",
-        "src/loopPlusDecision.ts"
-      ],
-      "topic": "plan",
       "preliminary_score": 91,
       "final_score": 93,
       "score_breakdown": {
@@ -219,53 +162,32 @@
         "claim_bonus": 0,
         "same_source_penalty": 0
       },
-      "selection_rank": 2,
+      "selection_rank": 1,
       "selected_claim_ids": []
     }
   ],
   "expanded_observation_ids": [
-    "mem-538cb1444d",
-    "mem-91b4245892"
+    "mem-538cb1444d"
   ],
   "selected_source_paths": [
-    ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
-    ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md"
+    ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md"
   ],
   "selected_source_kinds": [
     "active_plan"
   ],
   "matched_terms": [
-    "loop",
-    "设计"
+    "loop"
   ],
   "score": {
-    "max": 105,
+    "max": 93,
     "min": 93,
-    "average": 99.0,
+    "average": 93.0,
     "by_observation": [
       {
         "id": "mem-538cb1444d",
-        "score": 105,
-        "preliminary_score": 103,
-        "rank": 1,
-        "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 24,
-          "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
-          "concept_bonus": 1,
-          "topic_bonus": 2,
-          "source_diversity_bonus": 2,
-          "claim_bonus": 0,
-          "same_source_penalty": 0
-        }
-      },
-      {
-        "id": "mem-91b4245892",
         "score": 93,
         "preliminary_score": 91,
-        "rank": 2,
+        "rank": 1,
         "score_breakdown": {
           "type_priority": 68,
           "focus_terms": 12,
@@ -282,33 +204,15 @@
     ]
   },
   "score_summary": {
-    "max": 105,
+    "max": 93,
     "min": 93,
-    "average": 99.0,
+    "average": 93.0,
     "by_observation": [
       {
         "id": "mem-538cb1444d",
-        "score": 105,
-        "preliminary_score": 103,
-        "rank": 1,
-        "score_breakdown": {
-          "type_priority": 68,
-          "focus_terms": 24,
-          "open_loop_bonus": 0,
-          "read_cost_adjustment": 2,
-          "evidence_bonus": 6,
-          "concept_bonus": 1,
-          "topic_bonus": 2,
-          "source_diversity_bonus": 2,
-          "claim_bonus": 0,
-          "same_source_penalty": 0
-        }
-      },
-      {
-        "id": "mem-91b4245892",
         "score": 93,
         "preliminary_score": 91,
-        "rank": 2,
+        "rank": 1,
         "score_breakdown": {
           "type_priority": 68,
           "focus_terms": 12,
@@ -325,20 +229,19 @@
     ]
   },
   "source_diversity": {
-    "unique_source_count": 2,
-    "selected_observation_count": 2,
+    "unique_source_count": 1,
+    "selected_observation_count": 1,
     "source_path_counts": {
-      ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md": 1,
-      ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md": 1
+      ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md": 1
     },
     "source_kind_counts": {
-      "active_plan": 2
+      "active_plan": 1
     },
     "max_same_source_observations": 1
   },
   "estimated_read_tokens": {
-    "selected_total": 236,
-    "expanded_total": 236,
+    "selected_total": 108,
+    "expanded_total": 108,
     "available_total": 381
   },
   "selected_claim_ids": [],
@@ -355,9 +258,10 @@
       "kind": "stale_memory_docs",
       "severity": "high",
       "paths": [
-        ".ch/docs/MEMORY.md"
+        ".ch/docs/MEMORY.md",
+        ".ch/docs/memory/README.md"
       ],
-      "message": "存在 stale memory docs：`.ch/docs/MEMORY.md`。"
+      "message": "存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。"
     },
     {
       "kind": "starter_hot_zone",
@@ -376,15 +280,15 @@
   ],
   "watch_item_messages": [
     "当前有 3 份 active plans。",
-    "存在 stale memory docs：`.ch/docs/MEMORY.md`。",
+    "存在 stale memory docs：`.ch/docs/MEMORY.md`、`.ch/docs/memory/README.md`。",
     "这些热区文件仍是 starter 占位：`.ch/docs/memory/ACTIVE_RISKS.md`、`.ch/docs/memory/EVENT_MEMORY.md`、`.ch/docs/memory/LESSONS_LEARNED.md`、`.ch/docs/memory/PENDING_ITEMS.md`、`.ch/docs/memory/PROJECT_CONTEXT.md`。"
   ],
   "retrieval_debug": {
     "file": ".ch/docs/generated/memory-index/.local/retrieval-debug.md",
     "candidate_count": 5,
-    "ranked_candidate_count": 2,
-    "focus_match_count": 2,
-    "focus_excluded_count": 3,
+    "ranked_candidate_count": 1,
+    "focus_match_count": 1,
+    "focus_excluded_count": 4,
     "heuristics": [
       "type_priority",
       "focus_terms",
@@ -416,11 +320,9 @@
       "title": "记忆流转规则",
       "kind": "hot_zone",
       "reason": "记忆分层与流转规则入口。",
-      "score": 46,
+      "score": 42,
       "modified_at": "2026-09-27T06:12:11+00:00",
-      "matched_terms": [
-        "设计"
-      ],
+      "matched_terms": [],
       "summary": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**"
     }
   ],
@@ -430,25 +332,12 @@
       "title": "Loop+ 完成事件驱动验收",
       "kind": "active_plan",
       "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 32,
+      "score": 26,
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop",
-        "设计"
+        "loop"
       ],
       "summary": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用"
-    },
-    {
-      "path": ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
-      "title": "可维护性重构",
-      "kind": "active_plan",
-      "reason": "当前任务推进中的 working-layer 事实来源。",
-      "score": 26,
-      "modified_at": "2026-09-25T01:16:44+00:00",
-      "matched_terms": [
-        "设计"
-      ],
-      "summary": "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在..."
     },
     {
       "path": ".ch/docs/exec-plans/active/2026-09-25-loop-needs-review-tab-reopen.md",
@@ -459,33 +348,28 @@
       "modified_at": "2026-09-25T06:43:59+00:00",
       "matched_terms": [],
       "summary": "日期：2026-09-25 状态：completed 负责人：Codex / 人类 owner： claimed_at：2026-09-25 claim_ttl：本次会话"
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md",
+      "title": "可维护性重构",
+      "kind": "active_plan",
+      "reason": "当前任务推进中的 working-layer 事实来源。",
+      "score": 20,
+      "modified_at": "2026-09-25T01:16:44+00:00",
+      "matched_terms": [],
+      "summary": "日期：2026-09-25 状态：completed 负责人：Codex owner： claimed_at： claim_ttl： 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在..."
     }
   ],
   "design_docs": [
     {
-      "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
-      "title": "Graph 编排模式详细设计",
-      "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / graph / 设计。",
-      "score": 47,
-      "modified_at": "2026-09-22T08:17:21Z",
-      "matched_terms": [
-        "loop",
-        "graph",
-        "设计"
-      ],
-      "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
-    },
-    {
       "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
       "title": "Loop 红蓝辩论多智能体模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 设计。",
-      "score": 41,
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
+      "score": 25,
       "modified_at": "2026-09-25T08:43:17Z",
       "matched_terms": [
-        "loop",
-        "设计"
+        "loop"
       ],
       "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`"
     },
@@ -493,26 +377,35 @@
       "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
       "title": "Loop+ 完成事件调度",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / graph / 设计。",
-      "score": 27,
-      "modified_at": "2026-09-26T15:13:50Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
+      "score": 25,
+      "modified_at": "2026-09-29T02:06:48Z",
       "matched_terms": [
-        "loop",
-        "graph",
-        "设计"
+        "loop"
       ],
       "summary": "状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`"
+    },
+    {
+      "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
+      "title": "Graph 编排模式详细设计",
+      "kind": "design_doc",
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
+      "score": 6,
+      "modified_at": "2026-09-29T00:29:11Z",
+      "matched_terms": [
+        "loop"
+      ],
+      "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
     },
     {
       "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
       "title": "VS Code CLI 插件运行时架构",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / graph。",
-      "score": 7,
-      "modified_at": "2026-09-28T03:59:22Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
+      "score": 6,
+      "modified_at": "2026-09-29T06:21:50Z",
       "matched_terms": [
-        "loop",
-        "graph"
+        "loop"
       ],
       "summary": "状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`"
     }

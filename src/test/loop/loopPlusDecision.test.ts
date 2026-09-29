@@ -298,3 +298,71 @@ test("does not mutate the input decision", () => {
   assert.equal(parsed?.status, "accept");
   assert.equal(JSON.stringify(input), before);
 });
+
+test("parses steer and controls without treating them as acceptance", () => {
+  const steered = parseLoopPlusDecision(JSON.stringify({
+    status: "steer",
+    controls: [
+      { id: "alpha", action: "close" },
+      { id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta" },
+    ],
+  }));
+  assert.equal(steered?.status, "steer");
+  assert.equal(steered?.reviewEventId, undefined);
+  assert.equal(steered?.subtasks, undefined);
+  assert.deepEqual(steered?.controls, [
+    { id: "alpha", action: "close" },
+    { id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta" },
+  ]);
+
+  const dispatched = parseLoopPlusDecision(JSON.stringify({
+    status: "dispatch",
+    subtasks: [subtask("alpha")],
+    controls: [{ id: "beta", action: "close" }],
+  }));
+  assert.equal(dispatched?.status, "dispatch");
+  assert.equal(dispatched?.controls?.[0]?.id, "beta");
+
+  const accepted = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventId: "event-1",
+    controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT }],
+  }));
+  assert.equal(accepted?.status, "accept");
+  assert.equal(accepted?.controls?.[0]?.action, "reprompt");
+  assert.equal(accepted?.subtasks, undefined);
+});
+
+test("rejects controls that would confirm, overlap, or use a short prompt", () => {
+  const rejected = [
+    { status: "steer", controls: [{ id: "alpha", action: "reprompt", prompt: "太短" }] },
+    { status: "steer", controls: [] },
+    { status: "steer", subtasks: [subtask("alpha")], controls: [{ id: "beta", action: "close" }] },
+    { status: "steer", reviewEventId: "event-1", controls: [{ id: "alpha", action: "close" }] },
+    {
+      status: "steer",
+      controls: [
+        { id: "alpha", action: "close" },
+        { id: "alpha", action: "close" },
+      ],
+    },
+    {
+      status: "dispatch",
+      subtasks: [subtask("alpha")],
+      controls: [{ id: "alpha", action: "close" }],
+    },
+    { status: "wait", controls: [{ id: "alpha", action: "close" }] },
+    { status: "blocked", finalSummary: "需要人工决定", controls: [{ id: "alpha", action: "close" }] },
+    { ...completedFields("event-1"), controls: [{ id: "alpha", action: "close" }] },
+    {
+      status: "steer",
+      controls: Array.from({ length: LOOP_PLUS_DECISION_SUBTASK_MAX + 1 }, (_, index) => ({
+        id: `item-${index}`,
+        action: "close",
+      })),
+    },
+  ];
+  rejected.forEach((value) => {
+    assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
+  });
+});
