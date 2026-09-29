@@ -184,11 +184,20 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function clearAssistantDeltaRenderTimer(messageId) {
-        if (!messageId || !assistantDeltaRenderTimers[messageId]) {
+        if (!messageId) {
           return;
         }
-        clearTimeout(assistantDeltaRenderTimers[messageId]);
-        delete assistantDeltaRenderTimers[messageId];
+        if (assistantDeltaRenderTimers[messageId]) {
+          clearTimeout(assistantDeltaRenderTimers[messageId]);
+          delete assistantDeltaRenderTimers[messageId];
+        }
+        delete assistantFinalMarkdownPending[messageId];
+      }
+
+      function assistantMarkdownIdleDelay(messageIndex) {
+        return isFinalAssistantSummaryMessage(messageIndex)
+          ? ASSISTANT_FINAL_MARKDOWN_IDLE_MS
+          : ASSISTANT_DELTA_MARKDOWN_IDLE_MS;
       }
 
       function scheduleAssistantDeltaMarkdownRender(messageId) {
@@ -196,20 +205,29 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return;
         }
         clearAssistantDeltaRenderTimer(messageId);
+        const messageIndex = state.messages.findIndex((item) => item && item.id === messageId);
+        if (messageIndex === -1) {
+          return;
+        }
+        const delay = assistantMarkdownIdleDelay(messageIndex);
+        if (delay === ASSISTANT_FINAL_MARKDOWN_IDLE_MS) {
+          assistantFinalMarkdownPending[messageId] = true;
+        }
         assistantDeltaRenderTimers[messageId] = setTimeout(() => {
           delete assistantDeltaRenderTimers[messageId];
-          const messageIndex = state.messages.findIndex((item) => item && item.id === messageId);
-          if (messageIndex === -1) {
+          delete assistantFinalMarkdownPending[messageId];
+          const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
+          if (renderedIndex === -1) {
             return;
           }
-          const message = state.messages[messageIndex];
+          const message = state.messages[renderedIndex];
           if (!message || message.role !== "assistant") {
             return;
           }
-          if (!updateRenderedAssistantMessage(message, messageIndex)) {
+          if (!updateRenderedAssistantMessage(message, renderedIndex)) {
             renderMessages();
           }
-        }, ASSISTANT_DELTA_MARKDOWN_IDLE_MS);
+        }, delay);
       }
 
       function appendAssistantDelta(id, content, kind, options) {
@@ -239,10 +257,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (targetIndex !== -1 && !hasContent && marksCodexFinalAnswer) {
           const target = state.messages[targetIndex];
           target.codexFinalAnswer = true;
-          clearAssistantDeltaRenderTimer(target.id);
-          if (!updateRenderedAssistantMessage(target, targetIndex)) {
-            renderMessages();
-          }
+          scheduleAssistantDeltaMarkdownRender(target.id);
           return;
         }
         if (targetIndex === -1 && !hasContent && marksCodexFinalAnswer) {
@@ -274,21 +289,14 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           renderMessages();
           return;
         }
-        if (marksCodexFinalAnswer) {
-          clearAssistantDeltaRenderTimer(target.id);
-          if (!updateRenderedAssistantMessage(target, targetIndex)) {
-            renderMessages();
-          }
-          return;
-        }
         if (requiresFullRender) {
-          renderMessages();
           scheduleAssistantDeltaMarkdownRender(target.id);
+          renderMessages();
           return;
         }
         if (!updateRenderedAssistantMessageStreaming(target, targetIndex)) {
-          renderMessages();
           scheduleAssistantDeltaMarkdownRender(target.id);
+          renderMessages();
           return;
         }
         elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
@@ -407,6 +415,14 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         const content = getAssistantMessageContentForDisplay(message);
         const presentation = getTracePresentation(content);
         if (isFinalAssistantSummaryMessage(messageIndex)) {
+          if (
+            message
+            && message.id
+            && typeof assistantFinalMarkdownPending !== "undefined"
+            && assistantFinalMarkdownPending[message.id]
+          ) {
+            return '<div class="assistant-message-content assistant-message-content-streaming">' + escapeHtml(content) + '</div>';
+          }
           return '<div class="assistant-message-content assistant-message-content-final">' + renderMarkdown(content) + '</div>';
         }
         if (

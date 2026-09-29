@@ -403,10 +403,12 @@ function createFakeWindow(): any {
   const listeners: Record<string, Listener[]> = {};
   let nextTimerId = 1;
   const timers = new Map<number, Listener>();
+  const timerDelays = new Map<number, number>();
   return {
     innerHeight: 720,
     listeners,
     timers,
+    timerDelays,
     addEventListener(type: string, listener: Listener): void {
       (listeners[type] ||= []).push(listener);
     },
@@ -424,14 +426,17 @@ function createFakeWindow(): any {
     },
     clearInterval(id: number): void {
       timers.delete(id);
+      timerDelays.delete(id);
     },
-    setTimeout(listener: Listener): number {
+    setTimeout(listener: Listener, delay?: number): number {
       const id = nextTimerId++;
       timers.set(id, listener);
+      timerDelays.set(id, Number(delay) || 0);
       return id;
     },
     clearTimeout(id: number): void {
       timers.delete(id);
+      timerDelays.delete(id);
     },
     requestAnimationFrame(listener: Listener): number {
       listener();
@@ -1594,7 +1599,33 @@ test("batches assistant delta markdown rendering while streaming", () => {
     kind: "normal",
     codexFinalAnswer: true,
   });
+  assert.equal(markdownParseCount, 2);
+  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-streaming").length, 1);
+  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-final").length, 0);
+  const finalTimerId = Array.from(window.timers.keys()).at(-1);
+  assert.equal(window.timerDelays.get(finalTimerId), 3000);
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "assistant-stream",
+    content: " more",
+    kind: "normal",
+    codexFinalAnswer: true,
+  });
+  assert.equal(markdownParseCount, 2);
+  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-final").length, 0);
+  const resetTimerId = Array.from(window.timers.keys()).at(-1);
+  assert.equal(window.timerDelays.get(resetTimerId), 3000);
+
+  const finalRender = window.timers.get(resetTimerId) as (() => void) | undefined;
+  assert.equal(typeof finalRender, "function");
+  window.timers.delete(resetTimerId);
+  finalRender?.();
   assert.equal(markdownParseCount, 3);
+  const finalBubble = document.getElementById("messages").querySelector(".bubble");
+  assert.match(finalBubble?.innerHTML || "", /assistant-message-content-final/);
+  assert.doesNotMatch(finalBubble?.innerHTML || "", /assistant-message-content-streaming/);
 });
 
 test("rejects attachment selections over webview limits before reading", async () => {
