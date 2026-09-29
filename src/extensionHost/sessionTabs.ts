@@ -1,6 +1,7 @@
 import type { CliName } from "../cli/types";
 import { CLI_LIST } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
+import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord } from "../loopTaskStore";
@@ -85,20 +86,28 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       const openConversationTabId = openConversationTabSessionMap.get(
         buildConversationTabSessionLookupKey(item, record.id)
       ) ?? null;
-      const graphRunId = graphRunIdsBySessionByCli[item].get(record.id)
+      const isLoopSession = loopSessionIdsByCli[item].has(record.id);
+      const storedGraphRunId = graphRunIdsBySessionByCli[item].get(record.id) ?? null;
+      const graphRunId = storedGraphRunId
         ?? resolveSessionGraphRunIdFromMessages(item, record.id);
+      const taskRole = resolveHistorySessionTaskRole({
+        isLoopMainSession: isLoopSession,
+        isGraphMainSession: Boolean(storedGraphRunId),
+        messages: loadSessionMessages(item, record.id),
+      });
       allSessions.push({
         id: record.id,
         label: record.label,
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
-        isLoopSession: loopSessionIdsByCli[item].has(record.id),
+        isLoopSession,
         isGraphSession: Boolean(graphRunId),
         graphRunId,
         isOpenInConversationTabs: Boolean(openConversationTabId),
         openConversationTabId,
         firstPrompt,
+        taskRole,
       });
     });
   }

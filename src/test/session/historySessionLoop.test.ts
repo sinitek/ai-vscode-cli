@@ -43,10 +43,16 @@ function createElement(): any {
   };
 }
 
-function renderSessionTitleBadges(isLoopSession: boolean, isGraphSession: boolean, isOpenInConversationTabs: boolean): string[] {
+function renderSessionTitleBadges(
+  isLoopSession: boolean,
+  isGraphSession: boolean,
+  isOpenInConversationTabs: boolean,
+  taskRole?: "main" | "subtask" | null,
+): string[] {
   const renderSessionListSource = [
     "getHistorySearchQuery",
     "historySearchMatches",
+    "formatHistorySessionLabel",
     "renderSessionList",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_HISTORY_PANELS, name)).join("\n");
   const sessionList = createElement();
@@ -64,6 +70,7 @@ function renderSessionTitleBadges(isLoopSession: boolean, isGraphSession: boolea
         graphRunId: isGraphSession ? "graph-1" : null,
         isOpenInConversationTabs,
         openConversationTabId: isOpenInConversationTabs ? "tab-1" : null,
+        taskRole,
       }],
     },
   };
@@ -86,7 +93,13 @@ function renderSessionTitleBadges(isLoopSession: boolean, isGraphSession: boolea
     { sessionList },
     state,
     { createElement },
-    (key: string) => ({ sessionLoopLabel: "Loop", sessionGraphLabel: "Graph", sessionOpenInTabsLabel: "Open" } as Record<string, string>)[key] || key,
+    (key: string) => ({
+      sessionLoopLabel: "Loop",
+      sessionGraphLabel: "Graph",
+      sessionOpenInTabsLabel: "Open",
+      historySessionRoleMain: "[主]",
+      historySessionRoleSubtask: "[子]",
+    } as Record<string, string>)[key] || key,
     (value: string) => value,
     () => "time",
     () => undefined,
@@ -119,6 +132,12 @@ test("collects bound Loop session ids by CLI and ignores pending tasks", () => {
 test("renders Loop, Graph, and open badges together in history sessions", () => {
   assert.deepEqual(renderSessionTitleBadges(true, true, true), ["[codex] Build the feature", "Loop", "Graph", "Open"]);
   assert.deepEqual(renderSessionTitleBadges(false, false, false), ["[codex] Build the feature"]);
+});
+
+test("prefixes non-vibe history session titles with main and subtask markers", () => {
+  assert.deepEqual(renderSessionTitleBadges(true, false, false, "main"), ["[主] [codex] Build the feature", "Loop"]);
+  assert.deepEqual(renderSessionTitleBadges(false, true, false, "subtask"), ["[子] [codex] Build the feature", "Graph"]);
+  assert.deepEqual(renderSessionTitleBadges(false, false, false, null), ["[codex] Build the feature"]);
 });
 
 test("removes the standalone Loop group chat recovery tab", () => {

@@ -263,6 +263,18 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         return values.some((value) => String(value || "").toLocaleLowerCase().includes(query));
       }
 
+      function formatHistorySessionLabel(session, preview) {
+        const cliLabel = session && session.cli ? "[" + session.cli + "] " : "";
+        const body = cliLabel + preview;
+        if (session && session.taskRole === "main") {
+          return t("historySessionRoleMain") + " " + body;
+        }
+        if (session && session.taskRole === "subtask") {
+          return t("historySessionRoleSubtask") + " " + body;
+        }
+        return body;
+      }
+
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
         const allSessions = state.sessionState && Array.isArray(state.sessionState.sessions)
@@ -296,9 +308,8 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
 
           const label = document.createElement("div");
           label.className = "session-label";
-          const cliLabel = session.cli ? "[" + session.cli + "] " : "";
           const sessionPromptPreview = buildPromptPreview(session.firstPrompt || session.label || t("sessionDefaultLabel"));
-          label.textContent = cliLabel + sessionPromptPreview;
+          label.textContent = formatHistorySessionLabel(session, sessionPromptPreview);
           if (session.firstPrompt) {
             label.title = session.firstPrompt;
           } else {

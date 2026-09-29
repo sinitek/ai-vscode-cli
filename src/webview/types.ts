@@ -214,6 +214,7 @@ export type SessionSummary = {
   isOpenInConversationTabs: boolean;
   openConversationTabId: string | null;
   firstPrompt?: string;
+  taskRole?: "main" | "subtask" | null;
 };
 
 export type ConversationTabSummary = {
