@@ -59,7 +59,7 @@ test("keeps English and Chinese help keys aligned", () => {
   assert.equal(getWebviewStrings("zh-CN").helpTabModes, "模式说明");
 });
 
-test("renders Loop and Loop+ differences in both help locales", () => {
+test("renders concise and accurate mode descriptions in both help locales", () => {
   const english = helpModesPanel(buildHtml("en"));
   const chinese = helpModesPanel(buildHtml("zh-CN"));
 
@@ -74,30 +74,32 @@ test("renders Loop and Loop+ differences in both help locales", () => {
 
   for (const snippet of [
     "How to Choose",
-    "whole batch should finish before one combined review",
-    "reviews that batch together only after every subtask in the round has finished executing",
-    "without waiting for a shared round",
+    "round-based work",
+    "direct interaction, fast startup, and low overhead",
+    "clear batch boundaries, shared context, and one combined review",
+    "accepts completed work immediately",
     "visible queue",
-    "accepted together",
-    "waits while other tasks are still running",
-    "Speaking wakes the main task",
-    "reads the queued messages together",
-    "Vibe",
+    "queued follow-up messages or tasks",
+    "implementation, contracts, tests, artifacts, unauthorized changes",
+    "default 100, maximum 999",
+    "explicit dependencies, parallel execution, and visible evidence",
+    "defined scheduling and recovery boundaries",
   ]) {
     assert.ok(english.includes(snippet), `Missing English help snippet: ${snippet}`);
   }
 
   for (const snippet of [
     "如何选择",
-    "等整批执行结束后集中复核",
-    "再一次性集中复核",
-    "而不按统一轮次等待整批",
+    "Loop+ 按事件验收",
+    "交互直接、启动快、开销低",
+    "批次边界清楚、上下文共享、统一复核",
+    "完成即验收",
     "可见队列",
-    "一起验收",
-    "仍有任务在运行时继续等待",
-    "说话会唤醒主任务",
-    "一起查看",
-    "快速问答",
+    "追加消息或任务",
+    "实现、契约、测试、产物、未授权改动",
+    "默认 100，最大 999",
+    "明确依赖、并行执行和证据可视化",
+    "调度与恢复边界清楚",
   ]) {
     assert.ok(chinese.includes(snippet), `Missing Chinese help snippet: ${snippet}`);
   }
