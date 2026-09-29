@@ -11,7 +11,7 @@ import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfig
 import { resolveOpenCodeThinkingCapability, type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import * as configService from "../config/configService";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
-import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
@@ -896,6 +896,10 @@ function getGlobalLoopPlusDecisionSubtaskMax(): number {
   return resolveLoopPlusDecisionSubtaskMax(readToolSettings().loopPlusDecisionSubtaskMax);
 }
 
+function getGlobalLoopPlusMaxAcceptances(): number {
+  return resolveLoopPlusMaxAcceptances(readToolSettings().loopPlusMaxAcceptances);
+}
+
 function getGlobalLoopSubtaskMaxThinkingMode() {
   return getEffectiveLoopSubtaskMaxThinkingMode(readToolSettings().loopSubtaskMaxThinkingMode);
 }
@@ -1201,6 +1205,7 @@ return {
   parseLoopMaxRoundsValue: wrap(parseLoopMaxRoundsValue),
   getGlobalLoopMaxRounds: wrap(getGlobalLoopMaxRounds),
   getGlobalLoopPlusDecisionSubtaskMax: wrap(getGlobalLoopPlusDecisionSubtaskMax),
+  getGlobalLoopPlusMaxAcceptances: wrap(getGlobalLoopPlusMaxAcceptances),
   getGlobalLoopSubtaskMaxThinkingMode: wrap(getGlobalLoopSubtaskMaxThinkingMode),
   getModelStoreOptions: wrap(getModelStoreOptions),
   getWorkspaceSettingsStoreOptions: wrap(getWorkspaceSettingsStoreOptions),

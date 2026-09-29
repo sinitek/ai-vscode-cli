@@ -211,6 +211,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop+ Dispatch Limit",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
       "Global setting. Limits how many subtasks one Loop+ dispatch or accept may include. Default 6, range 1-20. It does not change how many subtasks can run at the same time.",
+    toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ Max Acceptances",
+    toolSettingsLoopPlusMaxAcceptancesTitle:
+      "Global setting. Limits how many subtask attempts one Loop+ task may accept. Default 100, range 1-999. Reaching the limit pauses automatic acceptance and new dispatch until the limit is raised.",
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop Subtask Max Thinking",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "Global setting. Loop subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
@@ -324,7 +327,7 @@ export const WEBVIEW_I18N = {
     helpModeLoopPros: "Pros: decomposes work into subtask chats, keeps group-chat context, and reviews that batch together only after every subtask in the round has finished executing.",
     helpModeLoopPlusTitle: "Loop+",
     helpModeLoopPlusBest: "Best when each subtask should be accepted as soon as its own execution ends, without waiting for a shared round.",
-    helpModeLoopPlusPros: "Pros: one execution end starts acceptance immediately; other completions that arrive during acceptance enter a visible queue. Items already waiting are accepted together, along with user messages that have already arrived. After acceptance, more tasks can be added, or the run waits while other tasks are still running. Speaking wakes the main task, or queues the message while that task is already running; it then reads the queued messages together and either starts a subtask immediately or waits for an in-flight subtask to finish.",
+    helpModeLoopPlusPros: "Pros: one execution end starts acceptance immediately; other completions that arrive during acceptance enter a visible queue. Items already waiting are accepted together, along with user messages that have already arrived. After acceptance, more tasks can be added, or the run waits while other tasks are still running. The main model confirms that the arranged work is implemented, that any interface, data structure, or file boundary matches the contract, that included tests pass, that produced artifacts run, that no unauthorized change was introduced, and that no omission, regression, or boundary error remains. Speaking wakes the main task, or queues the message while that task is already running; it then reads the queued messages together and either starts a subtask immediately or waits for an in-flight subtask to finish.",
     helpModeGraphTitle: "Graph",
     helpModeGraphBest: "Best for complex work needing explicit nodes, dependencies, parallel batches, and visible evidence.",
     helpModeGraphPros: "Pros: clearest status view, strongest task boundaries, deterministic scheduling, and better recovery controls.",
@@ -665,6 +668,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
       "全局设置。限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1–20。不改变同时运行的并发上限。",
+    toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
+    toolSettingsLoopPlusMaxAcceptancesTitle:
+      "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",
     toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop 子任务最大思考力度",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
       "全局设置。Loop 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
@@ -776,7 +782,7 @@ export const WEBVIEW_I18N = {
     helpModeLoopPros: "优点：能拆成子任务对话，保留群聊上下文；同一批子任务全部执行结束后，再一次性集中复核。",
     helpModeLoopPlusTitle: "Loop+",
     helpModeLoopPlusBest: "适合：希望每个子任务一执行结束就单独验收，而不按统一轮次等待整批。",
-    helpModeLoopPlusPros: "优点：一个子任务执行结束就立即开始验收；验收期间其它完成进入可见队列。队列里已经有多项待验收时一起验收，并带上当时已经到达的用户消息。验收后可以追加任务；没有新任务但仍有任务在运行时继续等待。说话会唤醒主任务；主任务已经在执行时消息进入队列，之后一起查看，并决定立刻发起子任务，或等某个在途子任务结束后再发起。",
+    helpModeLoopPlusPros: "优点：一个子任务执行结束就立即开始验收；验收期间其它完成进入可见队列。队列里已经有多项待验收时一起验收，并带上当时已经到达的用户消息。验收后可以追加任务；没有新任务但仍有任务在运行时继续等待。主模型验收要确认：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。说话会唤醒主任务；主任务已经在执行时消息进入队列，之后一起查看，并决定立刻发起子任务，或等某个在途子任务结束后再发起。",
     helpModeGraphTitle: "Graph",
     helpModeGraphBest: "适合：复杂任务，需要明确节点、依赖、并行批次和证据可视化时使用。",
     helpModeGraphPros: "优点：状态最清楚，任务边界最强，调度更确定，失败后的恢复控制更完整。",

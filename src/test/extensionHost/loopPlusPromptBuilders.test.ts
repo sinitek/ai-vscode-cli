@@ -221,6 +221,11 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   const limited = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 3 }));
   assert.match(limited, /1 to 3 new self-contained subtasks/);
   assert.match(limited, /0 to 3 new subtasks/);
+  assert.match(prompt, /Confirmed acceptances: 0/);
+  assert.match(prompt, /Acceptance limit: 100/);
+  const counted = buildLoopPlusMainModelPrompt(mainContext({ acceptedCount: 4, acceptanceLimit: 12 }));
+  assert.match(counted, /Confirmed acceptances: 4/);
+  assert.match(counted, /Acceptance limit: 12/);
   const clamped = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 99 }));
   assert.match(clamped, /1 to 20 new self-contained subtasks/);
   assert.match(prompt, new RegExp(String(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH)));
@@ -433,3 +438,34 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
   assert.equal(isHiddenLoopPlusProtocolPrompt(null), false);
 });
 
+
+test("requires the main reviewer to confirm the Loop+ acceptance checklist", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    currentEventId: "event-live-42",
+    view: view({
+      currentReview: review("event-live-42", "sub-current"),
+      visibleReviewCount: 1,
+    }),
+  }));
+  const names = [
+    "dispatched work",
+    "contracts",
+    "tests",
+    "artifacts",
+    "unauthorized changes",
+    "omissions and regressions",
+  ];
+  names.forEach((name) => {
+    assert.match(prompt, new RegExp(name));
+  });
+  assert.match(prompt, /interface, data structure, or file boundary/);
+  assert.match(prompt, /included tests pass/);
+  assert.match(prompt, /produced runnable artifacts run/);
+  assert.match(prompt, /authorized write scope/);
+  assert.match(prompt, /omission, regression, or boundary error/);
+  assert.match(prompt, /does not grade this checklist/);
+  assert.match(prompt, /Otherwise send blocked, which confirms nothing/);
+  const completed = parseExample(extractProtocolExamples(prompt), "completed");
+  assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), names);
+  assert.equal(completed.acceptance?.checks.every((check) => check.passed === true), true);
+});

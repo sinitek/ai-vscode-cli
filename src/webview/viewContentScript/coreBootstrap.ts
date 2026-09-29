@@ -166,6 +166,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         historyRetentionDays: 30,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
+        loopPlusMaxAcceptances: \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT},
         loopSubtaskMaxThinkingMode: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
         loopExecutionModeByCli: {
           codex: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
@@ -316,6 +317,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionEnabled: document.getElementById("humanInteractionEnabled"),
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
+        loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
         loopSubtaskMaxThinkingMode: document.getElementById("loopSubtaskMaxThinkingMode"),
         languageSelect: document.getElementById("languageSelect"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
@@ -545,6 +547,19 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return Math.min(
           Math.max(Math.floor(numeric), \${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}),
           \${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}
+        );
+      }
+
+      function normalizeLoopPlusMaxAcceptances(value) {
+        const numeric = typeof value === "number"
+          ? value
+          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
+        if (!Number.isFinite(numeric)) {
+          return \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT};
+        }
+        return Math.min(
+          Math.max(Math.floor(numeric), \${LOOP_PLUS_MAX_ACCEPTANCES_MIN}),
+          \${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}
         );
       }
 

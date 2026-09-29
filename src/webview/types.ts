@@ -327,6 +327,7 @@ export type PanelState = {
   historyRetentionDays: number;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
+  loopPlusMaxAcceptances: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;

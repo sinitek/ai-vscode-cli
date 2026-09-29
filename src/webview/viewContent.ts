@@ -12,6 +12,9 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
+  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
 import { LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT } from "../loopSubtaskThinking";
 
@@ -56,6 +59,9 @@ ${buildWebviewRuntimeScript({
     loopPlusDecisionSubtaskMaxDefault: LOOP_PLUS_DECISION_SUBTASK_MAX,
     loopPlusDecisionSubtaskMaxMin: LOOP_PLUS_DECISION_SUBTASK_MIN,
     loopPlusDecisionSubtaskMaxLimit: LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+    loopPlusMaxAcceptancesDefault: LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+    loopPlusMaxAcceptancesMin: LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+    loopPlusMaxAcceptancesLimit: LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
     loopSubtaskMaxThinkingModeDefault: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
     loopExecutionModeMainSubMultiAgent:
       LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,

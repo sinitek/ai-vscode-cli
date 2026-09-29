@@ -427,6 +427,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
         );
+        state.loopPlusMaxAcceptances = normalizeLoopPlusMaxAcceptances(
+          panelState.loopPlusMaxAcceptances
+        );
         state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
           panelState.loopSubtaskMaxThinkingMode
         );
@@ -498,6 +501,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
+        }
+        if (elements.loopPlusMaxAcceptances) {
+          elements.loopPlusMaxAcceptances.value = String(state.loopPlusMaxAcceptances);
         }
         if (elements.loopSubtaskMaxThinkingMode) {
           elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;

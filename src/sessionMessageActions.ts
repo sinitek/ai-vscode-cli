@@ -3,7 +3,7 @@ import { normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
-import { resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
 import { normalizeHistoryRetentionDays } from "./toolSettings";
 import { PanelMessage } from "./webview/types";
@@ -145,6 +145,13 @@ export async function handleUpdateSettingMessage(
   if (message.key === "loopPlusDecisionSubtaskMax") {
     deps.updateStoredToolSettings({
       loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(message.value),
+    });
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "loopPlusMaxAcceptances") {
+    deps.updateStoredToolSettings({
+      loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(message.value),
     });
     await deps.postPanelState();
     return;

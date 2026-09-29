@@ -233,6 +233,22 @@ test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {
   assert.equal(reread.schedulingMode, "event_driven");
   assert.deepEqual(reread.loopPlus, snapshot);
   assert.notEqual(path.resolve(task.taskStoreFile).startsWith(path.resolve(testHome)), false);
+
+  const bounded = writeRawTask("event-acceptance-limit", {
+    schedulingMode: "event_driven",
+    loopPlusMaxAcceptances: "120.8",
+  });
+  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 120);
+  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusMaxAcceptances: 2000 });
+  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 999);
+  const classic = writeRawTask("classic-no-acceptance-limit", {});
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      loopTaskStore.readLoopTaskStore(classic.taskStoreFile).tasks[0],
+      "loopPlusMaxAcceptances",
+    ),
+    false,
+  );
 });
 
 test("does not downgrade a damaged event-driven snapshot or classic compatibility records", () => {

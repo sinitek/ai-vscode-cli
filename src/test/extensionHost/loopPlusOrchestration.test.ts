@@ -114,6 +114,7 @@ function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRec
 function harness(options: {
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
+  acceptanceLimit?: () => number;
   decisionSafetyLimit?: number;
   launchDelayMs?: (last: number | null, now: number) => number;
   delay?: (ms: number) => Promise<void>;
@@ -141,6 +142,7 @@ function harness(options: {
   const deps: LoopPlusOrchestrationDeps = {
     maxConcurrency: options.maxConcurrency ?? 6,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
+    ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
@@ -2036,4 +2038,134 @@ test("does not let completed bypass running work or user messages the request di
   assert.equal(snapshotOf(env.tasks.get(taskId)).completed, true);
   assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, []);
   assert.equal(env.messages.includes("loop-plus-completed"), true);
+});
+
+function twoFinishedReviews(): LoopPlusSchedulerSnapshot {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([
+    { subtaskId: "alpha", attemptId: "a1", title: "alpha", writeFiles: ["src/alpha.ts"] },
+    { subtaskId: "beta", attemptId: "b1", title: "beta", writeFiles: ["src/beta.ts"] },
+  ]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "a1", outcome: "completed", detail: "alpha" });
+  scheduler.finish({ subtaskId: "beta", attemptId: "b1", outcome: "completed", detail: "beta" });
+  return scheduler.snapshot();
+}
+
+test("pauses without accepting a Loop+ batch that would pass the acceptance limit", async () => {
+  const env = harness({ acceptanceLimit: () => 1 });
+  const task = baseTask("limited-batch", twoFinishedReviews());
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id,
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  assert.equal(env.mains.length, 0);
+  assert.equal(env.messages.includes("loop-plus-acceptance-limit"), true);
+  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
+  assert.equal(env.tasks.get(task.id)?.loopPlusMaxAcceptances, 1);
+  assert.equal(env.tasks.get(task.id)?.finalSummary, "Reached the Loop+ acceptance limit. Raise loopPlusMaxAcceptances to continue.");
+  const snapshot = snapshotOf(env.tasks.get(task.id));
+  assert.equal(snapshot.currentReview, null);
+  assert.equal(snapshot.reviewQueue.length, 2);
+  assert.equal(snapshot.seenAttempts.filter((item) => item.disposition === "reviewed").length, 0);
+  assert.equal(await isSettled(run.done), true);
+});
+
+test("keeps a higher stored Loop+ acceptance limit when the global setting is lower", async () => {
+  const env = harness({ acceptanceLimit: () => 1 });
+  const task = baseTask("kept-limit", twoFinishedReviews());
+  task.loopPlusMaxAcceptances = 3;
+  env.tasks.set(task.id, task);
+  env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id,
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
+  assert.equal(env.tasks.get(task.id)?.loopPlusMaxAcceptances, 3);
+  assert.equal(env.messages.includes("loop-plus-acceptance-limit"), false);
+});
+
+test("resumes a queued Loop+ review after the acceptance limit is raised", async () => {
+  let limit = 1;
+  const env = harness({ acceptanceLimit: () => limit });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.match(env.mains[0].request.modelPrompt, /Confirmed acceptances: 0/);
+  assert.match(env.mains[0].request.modelPrompt, /Acceptance limit: 1/);
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const firstReview = env.mains.find((item) => item.request.kind === "review");
+  assert.ok(firstReview);
+  firstReview.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: firstReview.request.reviewEventId,
+    subtasks: [subtask("gamma", ["src/gamma.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.some((item) => item.request.subtaskId === "gamma"), false);
+  assert.equal(env.messages.includes("loop-plus-acceptance-limit"), true);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
+  await flush();
+  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
+  const held = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.equal(held.reviewQueue.length + (held.currentReview ? 1 : 0), 1);
+  assert.equal(held.currentReview?.subtaskId, "beta");
+  assert.equal(held.seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
+
+  limit = 2;
+  env.host.tryRun({ displayPrompt: "continue" }, env.target, {
+    resumeTaskId: run.taskId,
+    resumeRequested: true,
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusMaxAcceptances, 2);
+  const secondReview = env.mains.filter((item) => item.request.kind === "review")[1];
+  assert.ok(secondReview);
+  secondReview.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: secondReview.request.reviewEventId,
+    subtasks: [],
+  }));
+  await flush();
+  const snapshot = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.equal(snapshot.reviewQueue.length, 0);
+  assert.equal(snapshot.currentReview, null);
+  assert.equal(snapshot.seenAttempts.filter((item) => item.disposition === "reviewed").length, 2);
+});
+
+test("does not dispatch new Loop+ subtasks after the acceptance limit is reached", async () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "alpha", attemptId: "a1", title: "alpha", writeFiles: ["src/alpha.ts"] }]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "a1", outcome: "completed", detail: "alpha" });
+  assert.equal(scheduler.submitReview(buildLoopPlusFinishEventId("alpha", "a1")).ok, true);
+  const env = harness({ acceptanceLimit: () => 1 });
+  const task = baseTask("dispatch-capped", scheduler.snapshot());
+  task.loopPlusMaxAcceptances = 1;
+  env.tasks.set(task.id, task);
+  env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id,
+    resumeRequested: true,
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  assert.equal(env.mains[0]?.request.kind, "continue");
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.messages.includes("loop-plus-acceptance-limit"), true);
+  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
+  assert.equal(snapshotOf(env.tasks.get(task.id)).pending.length, 0);
+  assert.equal(snapshotOf(env.tasks.get(task.id)).running.length, 0);
 });

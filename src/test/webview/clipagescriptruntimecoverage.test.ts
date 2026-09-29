@@ -1314,6 +1314,16 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(errors, []);
 });
 
+test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {
+  const { document, posted } = createRuntimeHarness();
+  document.getElementById("loopPlusMaxAcceptances").value = "0";
+  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 1 });
+  document.getElementById("loopPlusMaxAcceptances").value = "5000";
+  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 999 });
+});
+
 test("renders prompt history favorites and filters to favorite prompts", () => {
   const harness = createRuntimeHarness();
   const { api, document, posted, window } = harness;

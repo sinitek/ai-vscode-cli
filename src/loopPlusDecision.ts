@@ -10,6 +10,9 @@ import type {
 export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
 export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
+export const LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT = 100;
+export const LOOP_PLUS_MAX_ACCEPTANCES_MIN = 1;
+export const LOOP_PLUS_MAX_ACCEPTANCES_LIMIT = 999;
 export const LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH = 80;
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
@@ -53,6 +56,19 @@ export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
   return Math.min(
     Math.max(Math.floor(numeric), LOOP_PLUS_DECISION_SUBTASK_MIN),
     LOOP_PLUS_DECISION_SUBTASK_LIMIT,
+  );
+}
+
+export function resolveLoopPlusMaxAcceptances(value?: unknown): number {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT;
+  }
+  return Math.min(
+    Math.max(Math.floor(numeric), LOOP_PLUS_MAX_ACCEPTANCES_MIN),
+    LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
   );
 }
 

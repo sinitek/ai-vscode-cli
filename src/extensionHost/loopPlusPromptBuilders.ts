@@ -1,6 +1,7 @@
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   resolveLoopPlusDecisionSubtaskMax,
+  resolveLoopPlusMaxAcceptances,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -23,6 +24,8 @@ export type LoopPlusMainPromptContext = {
   supplementalRequirements: readonly string[];
   pendingUserMessages?: readonly string[];
   subtaskMax?: number;
+  acceptedCount?: number;
+  acceptanceLimit?: number;
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -36,6 +39,33 @@ const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
   "Record the command and result in the attempt report.",
 ].join(" ");
 
+const LOOP_PLUS_ACCEPTANCE_CHECKS: Array<{ name: string; detail: string }> = [
+  {
+    name: "dispatched work",
+    detail: "Every task arranged for this batch is implemented.",
+  },
+  {
+    name: "contracts",
+    detail: "Interfaces, data structures, and file boundaries match the agreed contract, or none apply.",
+  },
+  {
+    name: "tests",
+    detail: "Included tests pass, or no tests apply.",
+  },
+  {
+    name: "artifacts",
+    detail: "Produced artifacts run, or no runnable artifact applies.",
+  },
+  {
+    name: "unauthorized changes",
+    detail: "The diff stays inside the authorized write scope.",
+  },
+  {
+    name: "omissions and regressions",
+    detail: "No omission, regression, or boundary error remains.",
+  },
+];
+
 function formatExecution(record: LoopPlusExecutionRecord): string {
   const files = record.writeFiles.length > 0 ? record.writeFiles.join(", ") : "(none)";
   const group = record.conflictGroup ? ` group=${record.conflictGroup}` : "";
@@ -44,6 +74,14 @@ function formatExecution(record: LoopPlusExecutionRecord): string {
 
 function formatReview(item: LoopPlusReviewItem, label: string): string {
   return `- ${label} eventId=${item.eventId} subtask=${item.subtaskId} attempt=${item.attemptId} outcome=${item.outcome} detail=${item.detail ?? ""}`;
+}
+
+function normalizePromptCount(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number.NaN;
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+  return Math.floor(numeric);
 }
 
 function liveReviewEventId(currentEventId: string | null): string | null {
@@ -80,13 +118,11 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
     acceptance: {
       passed: true,
       summary: "All acceptance checks passed.",
-      checks: [
-        {
-          name: "dispatched work",
-          passed: true,
-          detail: "The attempt report matches the code and the verification evidence.",
-        },
-      ],
+      checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check) => ({
+        name: check.name,
+        passed: true,
+        detail: check.detail,
+      })),
     },
     requirementCoverage: [
       {
@@ -148,6 +184,8 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
 
 export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext): string {
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
+  const acceptedCount = normalizePromptCount(context.acceptedCount);
+  const acceptanceLimit = resolveLoopPlusMaxAcceptances(context.acceptanceLimit);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
@@ -186,7 +224,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `${LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX} Loop+ has no batch barrier and no shared round gate.`,
     "Execution finishing is not review completion. The host owns scheduling state.",
     "Before deciding, read only these sources, in order: the current attempt report, the main communication file, and the latest task record.",
-    "Compare those sources with the code and the verification evidence. Review only work that was already dispatched. Do not implement that work yourself.",
+    "Compare those sources with the code and the verification evidence. Judge every event in the acceptance batch against the acceptance checklist before accept or completed. Do not implement that work yourself, and do not treat the subtask claim as proof.",
     "Do not edit scheduling state, active ids, the loopPlus snapshot, or the task record.",
     `Parent task: ${context.taskId}`,
     `Prompt kind: ${context.kind}`,
@@ -212,6 +250,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,
+    `Confirmed acceptances: ${acceptedCount}`,
+    `Acceptance limit: ${acceptanceLimit}`,
     `Snapshot phase: ${context.view.phase}`,
     `Snapshot completion blockers: ${blockers}`,
     `Snapshot says completion is allowed: ${context.view.canComplete ? "yes" : "no"}`,
@@ -228,18 +268,23 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
+    "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; the diff stays inside the authorized write scope; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
+    "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report or the code.",
+    "- Do not send accept or completed while a checklist item fails. If a new subtask can repair it, accept only together with that repair subtask and name the failed check in its prompt. Otherwise send blocked, which confirms nothing.",
+    "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
     "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
-    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept. If it must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
+    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept. If it must wait for a still-running or pending execution, accept the batch with no new subtasks. A failed acceptance checklist still forbids accept. Do not use wait or dispatch while the batch is open.",
     "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. finalSummary is optional.",
     "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks.",
     "- When the acceptance batch has one event, completed must include that reviewEventId. When it has more than one, completed must include reviewEventIds in that order and must not include reviewEventId. When the acceptance batch is (none), omit both. A completed object missing any required field, or containing a failed check, is rejected.",
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
+    "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     buildLoopPlusProtocolExamples(batchIds),
   ].join("\n");

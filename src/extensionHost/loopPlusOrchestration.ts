@@ -4,8 +4,9 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
+import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
 import {
+  buildLoopPlusFinishEventId,
   createLoopPlusScheduler,
   type LoopPlusExecutionOutcome,
   type LoopPlusExecutionRecord,
@@ -31,6 +32,7 @@ export const LOOP_PLUS_MAX_CONCURRENCY = 6;
 const DECISION_SAFETY_LIMIT = 200;
 const PROTOCOL_RETRY_LIMIT = 2;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
+const LOOP_PLUS_ACCEPTANCE_LIMIT_SUMMARY = "Reached the Loop+ acceptance limit. Raise loopPlusMaxAcceptances to continue.";
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -110,6 +112,7 @@ export type LoopPlusOrchestrationDeps = {
   protocolRetryLimit?: number;
   launchDelayMs?: (lastLaunchAt: number | null, now: number) => number;
   decisionSubtaskMax?: () => number;
+  acceptanceLimit?: () => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
   readTask: (taskId: string) => LoopTaskRecord | null;
@@ -234,6 +237,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }));
   const launchDelayMs = deps.launchDelayMs ?? (() => 0);
   const decisionSubtaskMax = () => resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
+  const configuredAcceptanceLimit = () => resolveLoopPlusMaxAcceptances(deps.acceptanceLimit?.());
 
   function tryRun(input: LoopPlusRunInput, target: LoopPlusPromptTarget, options: LoopPlusRunOptions = {}): LoopPlusRunResult {
     const resumeTaskId = normalizeId(options.resumeTaskId);
@@ -719,6 +723,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return null;
     }
     if (snapshot.currentReview || snapshot.reviewQueue.length > 0) {
+      if (acceptanceBatchWouldExceed(runtime)) {
+        if (snapshot.currentReview) {
+          runtime.scheduler.requeueCurrentReview();
+        }
+        pauseForAcceptanceLimit(runtime);
+        return null;
+      }
       return planReview(runtime);
     }
     if (!runtime.initialPromptDone) {
@@ -802,6 +813,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     acknowledgeSeenUserMessages(runtime, step);
     runtime.protocolRetries = 0;
     resetMainFailure(runtime);
+    if (refuseDispatchPastAcceptanceLimit(runtime, decision.subtasks ?? [])) {
+      return "stop";
+    }
     dispatchDecisions(runtime, decision.subtasks ?? []);
     persistEstimatedRounds(runtime, decision);
     if (hasReview(runtime)) {
@@ -826,6 +840,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (step.kind !== "review" || !sameIds(confirmedReviewIds(decision), step.eventIds)) {
       return protocolMiss(runtime, step.eventIds.length > 0);
     }
+    if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
+      return "stop";
+    }
     const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
     if (!submitted.ok) {
       persist(runtime);
@@ -834,6 +851,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     acknowledgeSeenUserMessages(runtime, step);
     runtime.protocolRetries = 0;
     resetMainFailure(runtime);
+    if (refuseDispatchPastAcceptanceLimit(runtime, decision.subtasks ?? [])) {
+      return "stop";
+    }
     dispatchDecisions(runtime, decision.subtasks ?? []);
     persistEstimatedRounds(runtime, decision);
     if (hasReview(runtime)) {
@@ -901,6 +921,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (step.eventIds.length > 0) {
       if (!sameIds(confirmed, step.eventIds)) {
         return protocolMiss(runtime, true);
+      }
+      if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
+        return "stop";
       }
       const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
       if (!submitted.ok) {
@@ -1506,6 +1529,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
       subtaskMax: decisionSubtaskMax(),
+      acceptedCount: reviewedAcceptanceCount(runtime),
+      acceptanceLimit: acceptanceLimitFor(runtime),
     });
     return {
       taskId: runtime.taskId,
@@ -1664,6 +1689,76 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       schedulingMode: "event_driven",
       updatedAt: now(),
     });
+  }
+
+  function acceptanceLimitFor(runtime: ParentRuntime): number {
+    const globalLimit = configuredAcceptanceLimit();
+    const task = deps.readTask(runtime.taskId);
+    const stored = task?.loopPlusMaxAcceptances;
+    const hasStored = typeof stored === "number" && Number.isFinite(stored);
+    const resolved = hasStored
+      ? Math.max(resolveLoopPlusMaxAcceptances(stored), globalLimit)
+      : globalLimit;
+    if (task && task.loopPlusMaxAcceptances !== resolved) {
+      deps.updateTask(runtime.taskId, {
+        loopPlusMaxAcceptances: resolved,
+        schedulingMode: "event_driven",
+        updatedAt: now(),
+      });
+    }
+    return resolved;
+  }
+
+  function reviewedAcceptanceCount(runtime: ParentRuntime): number {
+    return runtime.scheduler.snapshot().seenAttempts.filter((item) => item.disposition === "reviewed").length;
+  }
+
+  function pendingAcceptanceCount(runtime: ParentRuntime): number {
+    const snapshot = runtime.scheduler.snapshot();
+    return snapshot.reviewQueue.length + (snapshot.currentReview ? 1 : 0);
+  }
+
+  function unreviewedEventCount(runtime: ParentRuntime, eventIds: readonly string[]): number {
+    const reviewedIds = new Set(
+      runtime.scheduler.snapshot().seenAttempts
+        .filter((item) => item.disposition === "reviewed")
+        .map((item) => buildLoopPlusFinishEventId(item.subtaskId, item.attemptId)),
+    );
+    return eventIds.filter((eventId) => !reviewedIds.has(eventId)).length;
+  }
+
+  function acceptanceBatchWouldExceed(runtime: ParentRuntime): boolean {
+    const pending = pendingAcceptanceCount(runtime);
+    if (pending <= 0) {
+      return false;
+    }
+    return reviewedAcceptanceCount(runtime) + pending > acceptanceLimitFor(runtime);
+  }
+
+  function pauseForAcceptanceLimit(runtime: ParentRuntime): void {
+    pause(runtime, "needs-review", "loop-plus-acceptance-limit", LOOP_PLUS_ACCEPTANCE_LIMIT_SUMMARY);
+  }
+
+  function confirmWithinAcceptanceLimit(runtime: ParentRuntime, eventIds: readonly string[]): boolean {
+    if (reviewedAcceptanceCount(runtime) + unreviewedEventCount(runtime, eventIds) <= acceptanceLimitFor(runtime)) {
+      return true;
+    }
+    if (runtime.scheduler.snapshot().currentReview) {
+      runtime.scheduler.requeueCurrentReview();
+    }
+    pauseForAcceptanceLimit(runtime);
+    return false;
+  }
+
+  function refuseDispatchPastAcceptanceLimit(
+    runtime: ParentRuntime,
+    subtasks: readonly LoopSubtaskDecision[],
+  ): boolean {
+    if (subtasks.length === 0 || reviewedAcceptanceCount(runtime) < acceptanceLimitFor(runtime)) {
+      return false;
+    }
+    pauseForAcceptanceLimit(runtime);
+    return true;
   }
 
   function hasReview(runtime: ParentRuntime): boolean {

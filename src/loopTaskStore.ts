@@ -16,6 +16,7 @@ import {
   migrateLegacyLoopJson,
 } from "./loopLegacyMigration";
 import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
+import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import type { LoopDebateRoundRecord } from "./loopDebate";
 import { sanitizePathSegment } from "./shared/pathSegments";
@@ -121,6 +122,7 @@ export type LoopTaskRecord = {
   executionMode?: LoopExecutionMode;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
+  loopPlusMaxAcceptances?: number;
   status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -827,6 +829,9 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
+  const loopPlusMaxAcceptances = normalizeStoredLoopPlusMaxAcceptances(
+    (raw as { loopPlusMaxAcceptances?: unknown }).loopPlusMaxAcceptances,
+  );
   return {
     id: raw.id,
     cli,
@@ -837,6 +842,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     executionMode: normalizeLoopExecutionMode((raw as { executionMode?: unknown }).executionMode),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
+    ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     status,
     createdAt,
     updatedAt,
@@ -986,6 +992,19 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
   };
+}
+
+function normalizeStoredLoopPlusMaxAcceptances(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return undefined;
+  }
+  const numeric = typeof value === "number"
+    ? value
+    : (value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return undefined;
+  }
+  return resolveLoopPlusMaxAcceptances(numeric);
 }
 
 function normalizeLoopTaskKind(value: unknown): LoopTaskKind | undefined {

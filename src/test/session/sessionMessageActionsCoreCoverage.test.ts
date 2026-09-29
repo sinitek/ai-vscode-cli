@@ -348,6 +348,21 @@ test("persists the Loop+ dispatch subtask maximum as a global setting", async ()
   assert.equal(calls.postPanelState, 3);
 });
 
+test("persists the Loop+ acceptance limit as a global setting", async () => {
+  const { deps, calls } = createSettingHarness();
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: "100.2" }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: 0 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: 5000 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: "nope" }, deps);
+  assert.deepEqual(calls.toolSettings, [
+    { loopPlusMaxAcceptances: 100 },
+    { loopPlusMaxAcceptances: 1 },
+    { loopPlusMaxAcceptances: 999 },
+    { loopPlusMaxAcceptances: 100 },
+  ]);
+  assert.equal(calls.postPanelState, 4);
+});
+
 test("persists automatic-cleanup retention days as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "historyRetentionDays", value: "45.9" }, deps);

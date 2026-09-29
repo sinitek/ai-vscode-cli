@@ -453,6 +453,33 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_max_acceptances",
+      "name": "Loop+ 最多验收次数可配置",
+      "description": "工具设置 AI任务配置中的 loopPlusMaxAcceptances 限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1 到 999，保存在 ~/.sinitek_cli/settings.json。每个新变为 reviewed 的 attempt 计 1 次。整批确认若会超过任务上限则不提交，父任务进入 needs-review，验收队列保持不变；已达上限后不再 dispatch 新子任务。任务记录保存该上限，全局值更高时只升不降。它不读取经典 Loop 的 loopMaxRounds。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/toolSettings.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_acceptance_checklist",
+      "name": "Loop+ 主模型按固定清单验收",
+      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用必须明确说明。任一项失败不得确认；能修时只在同一次 accept 中追加点名失败项的修复子任务，否则 blocked 且不确认本批。宿主只核事件 ID，不替主模型判这张清单。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/webview/viewContentI18n.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.opencode_model_selection_scoped_to_config",
       "name": "OpenCode 模型选择必须绑定配置档案",
       "description": "AI 对话面板更新 OpenCode 主/子角色模型时必须携带当前 configId；扩展宿主优先按该配置 ID 校验和写入。Webview 在同一配置尚未回显有效模型引用前保留待确认选择，异步旧快照不得覆盖用户刚完成的选择。",

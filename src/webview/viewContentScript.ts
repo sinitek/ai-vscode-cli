@@ -15,6 +15,9 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
+  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
 
 export type BuildWebviewRuntimeScriptInput = {
@@ -26,6 +29,9 @@ export type BuildWebviewRuntimeScriptInput = {
   loopPlusDecisionSubtaskMaxDefault?: number;
   loopPlusDecisionSubtaskMaxMin?: number;
   loopPlusDecisionSubtaskMaxLimit?: number;
+  loopPlusMaxAcceptancesDefault?: number;
+  loopPlusMaxAcceptancesMin?: number;
+  loopPlusMaxAcceptancesLimit?: number;
   loopSubtaskMaxThinkingModeDefault: string;
   loopExecutionModeMainSubMultiAgent: string;
   loopExecutionModeDebateMultiAgent: string;
@@ -62,6 +68,9 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT}", String(input.loopPlusDecisionSubtaskMaxDefault ?? LOOP_PLUS_DECISION_SUBTASK_MAX)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}", String(input.loopPlusDecisionSubtaskMaxMin ?? LOOP_PLUS_DECISION_SUBTASK_MIN)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}", String(input.loopPlusDecisionSubtaskMaxLimit ?? LOOP_PLUS_DECISION_SUBTASK_LIMIT)],
+    ["${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT}", String(input.loopPlusMaxAcceptancesDefault ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT)],
+    ["${LOOP_PLUS_MAX_ACCEPTANCES_MIN}", String(input.loopPlusMaxAcceptancesMin ?? LOOP_PLUS_MAX_ACCEPTANCES_MIN)],
+    ["${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}", String(input.loopPlusMaxAcceptancesLimit ?? LOOP_PLUS_MAX_ACCEPTANCES_LIMIT)],
     ["${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}", input.loopSubtaskMaxThinkingModeDefault],
     ["${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.loopExecutionModeMainSubMultiAgent],
     ["${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.loopExecutionModeDebateMultiAgent],

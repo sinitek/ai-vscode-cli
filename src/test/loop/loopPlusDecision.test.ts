@@ -7,7 +7,11 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_MIN,
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
+  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
   resolveLoopPlusDecisionSubtaskMax,
+  resolveLoopPlusMaxAcceptances,
   type LoopPlusDecision,
 } from "../../loopPlusDecision";
 
@@ -146,6 +150,14 @@ test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown
     status: "dispatch",
     subtasks: [subtask("short", "太短")],
   })), null);
+});
+
+test("normalizes the Loop+ acceptance limit", () => {
+  assert.equal(resolveLoopPlusMaxAcceptances(undefined), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
+  assert.equal(resolveLoopPlusMaxAcceptances(""), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
+  assert.equal(resolveLoopPlusMaxAcceptances("100.9"), 100);
+  assert.equal(resolveLoopPlusMaxAcceptances(0), LOOP_PLUS_MAX_ACCEPTANCES_MIN);
+  assert.equal(resolveLoopPlusMaxAcceptances(5000), LOOP_PLUS_MAX_ACCEPTANCES_LIMIT);
 });
 
 test("applies a configured Loop+ dispatch subtask maximum", () => {

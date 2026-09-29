@@ -475,6 +475,20 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.loopPlusDecisionSubtaskMax.addEventListener("change", commitLoopPlusDecisionSubtaskMax);
         elements.loopPlusDecisionSubtaskMax.addEventListener("blur", commitLoopPlusDecisionSubtaskMax);
       }
+      if (elements.loopPlusMaxAcceptances) {
+        const commitLoopPlusMaxAcceptances = () => {
+          const nextValue = normalizeLoopPlusMaxAcceptances(elements.loopPlusMaxAcceptances.value);
+          state.loopPlusMaxAcceptances = nextValue;
+          elements.loopPlusMaxAcceptances.value = String(nextValue);
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "loopPlusMaxAcceptances",
+            value: nextValue,
+          });
+        };
+        elements.loopPlusMaxAcceptances.addEventListener("change", commitLoopPlusMaxAcceptances);
+        elements.loopPlusMaxAcceptances.addEventListener("blur", commitLoopPlusMaxAcceptances);
+      }
       if (elements.loopSubtaskMaxThinkingMode) {
         elements.loopSubtaskMaxThinkingMode.addEventListener("change", (event) => {
           const nextValue = normalizeLoopSubtaskMaxThinkingMode(event.target.value);

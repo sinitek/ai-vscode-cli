@@ -164,11 +164,13 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "42.9",
       loopPlusDecisionSubtaskMax: "8.2",
+      loopPlusMaxAcceptances: "100.8",
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
       loopMaxRounds: 42,
       loopPlusDecisionSubtaskMax: 8,
+      loopPlusMaxAcceptances: 100,
       loopSubtaskMaxThinkingMode: "high",
     },
   );
@@ -176,6 +178,7 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "",
       loopPlusDecisionSubtaskMax: "",
+      loopPlusMaxAcceptances: "",
       loopSubtaskMaxThinkingMode: "invalid",
     }),
     {},

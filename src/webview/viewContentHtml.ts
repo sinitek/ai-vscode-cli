@@ -2,6 +2,8 @@ import { AppLocale } from "../i18n";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
+  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
 import { WebviewI18nKey } from "./viewContentI18n";
 
@@ -532,6 +534,21 @@ ${webviewStyles}    </style>
                     step="1"
                     title="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxTitle}"
                     aria-label="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}"
+                  />
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}</div>
+                  <input
+                    type="number"
+                    id="loopPlusMaxAcceptances"
+                    class="tool-settings-number"
+                    min="${LOOP_PLUS_MAX_ACCEPTANCES_MIN}"
+                    max="${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}"
+                    step="1"
+                    title="${i18n.toolSettingsLoopPlusMaxAcceptancesTitle}"
+                    aria-label="${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}"
                   />
                 </div>
               </section>

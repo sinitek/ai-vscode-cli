@@ -52,6 +52,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   maxConcurrency?: number;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
+  acceptanceLimit?: LoopPlusOrchestrationDeps["acceptanceLimit"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   readTask: (taskId: string) => LoopTaskRecord | null;
@@ -402,6 +403,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
         decisionSubtaskMax: deps.decisionSubtaskMax,
+        acceptanceLimit: deps.acceptanceLimit,
         delay: deps.delay,
         now,
         readTask: deps.readTask,

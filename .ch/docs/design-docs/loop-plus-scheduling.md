@@ -103,6 +103,8 @@
 - 路径比较继续使用现有规范化：反斜杠转斜杠、合并重复分隔符、去掉尾部斜杠、忽略大小写，并用父目录前缀判断重叠。
 - `maxConcurrency` 是宿主必须传入的正整数策略。内核在超额度时把任务留在 pending，不另选一个产品数字。`loopParallel` 本身仍没有数字上限。
 - 一次 `dispatch` 或 `accept` 能附带的子任务数由 `loopPlusDecisionSubtaskMax` 决定。它来自工具设置“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 6，范围 1–20。宿主在解析决策和生成下一轮主任务提示时读取当前值；未配置时仍用 `LOOP_PLUS_DECISION_SUBTASK_MAX`。这个上限不替代 `maxConcurrency`，也不改变经典 Loop 的批次上限。
+- 一个 Loop+ 任务的验收次数由 `loopPlusMaxAcceptances` 决定。它同样位于“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 100，范围 1–999。每个新确认并变为 `reviewed` 的 attempt 计 1 次；同一批里的每个事件各计一次，幂等重放不计。若下一次整批确认会超过该任务上限，宿主不调用 `submitReviewBatch`，父任务进入 `needs-review`，队列保持不变。已达上限后不再 `dispatch` 新子任务。没有新验收事件时仍可 `completed`。任务记录保存当时上限；全局设置更高时只升不降。它不是经典 Loop 的 `maxRounds`，也不取代 200 次主决策安全上限。
+- 主模型在 `accept` 或 `completed` 前必须逐项确认本批验收：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用的项也要明确写成不适用，不能把没跑的测试或没运行的产物写成通过。任一项失败就不得确认；能修时只允许在同一次 `accept` 里追加点名失败项的修复子任务，否则 `blocked` 且不确认本批。宿主仍只核事件 ID，不替主模型判这张清单。最终 `completed.acceptance.checks` 必须包含这 6 个名称且全部通过。
 - 错峰继续使用 `LOOP_SUBTASK_LAUNCH_INTERVAL_MS`（3 秒）。内核返回 `started` 后由宿主延迟，调度器内部不睡眠。
 - 待启动任务必须参与冲突判断。同一子任务有未验收 attempt 时，新 attempt 被拒绝。
 
