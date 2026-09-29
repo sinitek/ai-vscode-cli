@@ -91,30 +91,27 @@ test("builds a self-contained executable Graph node prompt with scope and accept
     },
   });
 
-  assert.match(prompt, /Graph run id：run-1/u);
-  assert.match(prompt, /Node id：implement-1/u);
-  assert.match(prompt, /Title：Implement kernel adapter/u);
-  assert.match(prompt, /Kind：implement/u);
+  assert.match(prompt, /只完成本次指令，不需要理解或维护 Graph 调度/u);
+  assert.match(prompt, /当前任务：Implement kernel adapter/u);
+  assert.match(prompt, /节点类型：implement/u);
   assert.match(prompt, /Build Graph mode from the design document/u);
   assert.match(prompt, /用户补充消息/u);
   assert.match(prompt, /必须保持 Graph 并行调度语义/u);
-  assert.match(prompt, /Graph 模式默认不触发长期记忆写入/u);
-  assert.match(prompt, /只能读取已有仓库记忆或运行态 recall/u);
-  assert.match(prompt, /长期记忆沉淀只由主智能体/u);
   assert.match(prompt, /后续节点必须纳入判断和验收/u);
-  assert.match(prompt, /writeFiles：src\/graph\/graphKernel\.ts/u);
-  assert.match(prompt, /conflictGroup：graph-kernel/u);
-  assert.match(prompt, /Depends on：plan-1/u);
-  assert.match(prompt, /Prompt ref：prompts\/implement-1\.md/u);
-  assert.match(prompt, /Artifact ref：artifacts\/implement-1\.md/u);
-  assert.match(prompt, /Communication file：\/tmp\/graph\/nodes\/implement-1\.md/u);
+  assert.match(prompt, /授权写入范围：src\/graph\/graphKernel\.ts/u);
+  assert.match(prompt, /节点沟通文件：\/tmp\/graph\/nodes\/implement-1\.md/u);
   assert.match(prompt, /Kernel adapter compiles/u);
   assert.match(prompt, /运行 npm run build/u);
-  assert.match(prompt, /禁止越权/u);
+  assert.match(prompt, /不要修改 Graph 调度状态/u);
   assert.match(prompt, /"status":"passed\|failed"/u);
+  assert.match(prompt, /如果任务说明写了界面设计，按该设计实现/u);
+  assert.doesNotMatch(prompt, /Graph run id：/u);
+  assert.doesNotMatch(prompt, /conflictGroup：/u);
+  assert.doesNotMatch(prompt, /## 全图拓扑与当前位置/u);
+  assert.doesNotMatch(prompt, /长期记忆沉淀只由主智能体/u);
 });
 
-test("node prompt includes graph-level model routing and node fallback records", () => {
+test("execution node prompt omits model routing while summary keeps it", () => {
   const node = createNode({
     modelRole: "subtask",
     model: "opencode-executor",
@@ -135,15 +132,30 @@ test("node prompt includes graph-level model routing and node fallback records",
     },
   });
   const prompt = buildGraphNodePrompt({ run, node });
+  assert.doesNotMatch(prompt, /Planner model role：/u);
+  assert.doesNotMatch(prompt, /Model used：opencode-executor/u);
 
-  assert.match(prompt, /Planner model role：main/u);
-  assert.match(prompt, /Planner model used：opencode-main/u);
-  assert.match(prompt, /Execution node model role：subtask/u);
-  assert.match(prompt, /Execution node model used：opencode-executor/u);
-  assert.match(prompt, /Execution node model fallback：subtask model missing; using main model/u);
-  assert.match(prompt, /Model role：subtask/u);
-  assert.match(prompt, /Model used：opencode-executor/u);
-  assert.match(prompt, /Model fallback：subtask model missing; using main model/u);
+  const summary = createNode({
+    id: "summary-routing",
+    title: "总结模型路由",
+    kind: "summary",
+    ownerRole: "main",
+    writeFiles: [],
+    dependsOn: [],
+    unlocks: [],
+  });
+  const summaryPrompt = buildGraphNodePrompt({
+    run: createRun([summary], [], {
+      cli: "opencode",
+      modelRouting: run.modelRouting,
+    }),
+    node: summary,
+  });
+  assert.match(summaryPrompt, /Planner model role：main/u);
+  assert.match(summaryPrompt, /Planner model used：opencode-main/u);
+  assert.match(summaryPrompt, /Execution node model role：subtask/u);
+  assert.match(summaryPrompt, /Execution node model used：opencode-executor/u);
+  assert.match(summaryPrompt, /Execution node model fallback：subtask model missing; using main model/u);
 });
 
 test("derives a node communication file when the node does not declare one", () => {
@@ -157,7 +169,7 @@ test("derives a node communication file when the node does not declare one", () 
     resolveGraphNodeCommunicationFile(run, node),
     "/tmp/graph/nodes/Node_With_Spaces.md",
   );
-  assert.match(buildGraphNodePrompt({ run, node }), /Communication file：\/tmp\/graph\/nodes\/Node_With_Spaces\.md/u);
+  assert.match(buildGraphNodePrompt({ run, node }), /节点沟通文件：\/tmp\/graph\/nodes\/Node_With_Spaces\.md/u);
 });
 
 test("planner prompt requires an AI planned DAG instead of a fixed linear graph", () => {
@@ -206,6 +218,8 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /"instructions":"在 src\/api 授权范围内实现本次 API 改动/u);
   assert.match(prompt, /"title":"实现 API 改动"/u);
   assert.match(prompt, /"title":"实现 UI 改动"/u);
+  assert.match(prompt, /信息层级为标题、主操作、状态说明/u);
+  assert.match(prompt, /涉及 UI 美化、布局或交互时/u);
   assert.match(prompt, /"title":"验证 API 行为"/u);
   assert.match(prompt, /"title":"验证 UI 行为"/u);
   assert.match(prompt, /"title":"评审并行结果"/u);
@@ -263,7 +277,7 @@ test("replanner prompt requires appending continuation nodes inside the current 
   assert.match(prompt, /不要复用旧 summary 节点/u);
 });
 
-test("node prompt includes the full graph topology, current position, and downstream boundaries", () => {
+test("execution node prompt keeps rework reason and omits graph topology", () => {
   const plan = createNode({
     id: "plan-1",
     title: "规划 Graph DAG",
@@ -391,32 +405,28 @@ test("node prompt includes the full graph topology, current position, and downst
     options: { generatedAt: "2026-07-24T00:00:00.000Z" },
   });
 
-  assert.match(prompt, /## 全图拓扑与当前位置/u);
-  assert.match(prompt, /本节点不是 Loop 主智能体/u);
-  assert.match(prompt, /当前节点位置：2\/6；implement-ui（实现运行图节点态）/u);
-  assert.match(prompt, /\[当前\] implement-ui｜实现运行图节点态/u);
-  assert.match(prompt, /\[全图\] test-ui｜验证运行图节点态/u);
-  assert.match(prompt, /edge-ui-test｜implement-ui -> test-ui；kind=depends_on；active=true/u);
-  assert.match(prompt, /### 边语义/u);
-  assert.match(prompt, /review_feedback \/ if_fail 可作为返工路径/u);
-  assert.match(prompt, /evidence_for 是证据追踪边/u);
-  assert.match(prompt, /edge-test-review｜test-ui -> review-ui；kind=if_pass；active=true；label=未声明；condition=测试通过后评审；conditionExpression=type=source_status/u);
-  assert.match(prompt, /edge-review-summary｜review-ui -> summary-1；kind=evidence_for；active=true/u);
-  assert.match(prompt, /metadata=rationale=评审结论作为 summary 证据。；evidenceRef=nodes\/review-ui\.md/u);
-  assert.match(prompt, /review-feedback-ui｜review-ui -> implement-ui；kind=review_feedback/u);
-  assert.match(prompt, /reworkTargetNodeId=implement-ui/u);
-  assert.match(prompt, /Rework source：review-ui/u);
-  assert.match(prompt, /Rework reason：Review feedback rollback/u);
-  assert.match(prompt, /Rework scope：implement-ui、test-ui、review-ui/u);
-  assert.match(prompt, /同批\/并发中的其他节点：implement-docs（同步 Graph 文档｜implement｜running）/u);
-  assert.match(prompt, /图中已有后续 test 节点：test-ui（验证运行图节点态｜test｜pending）/u);
-  assert.match(prompt, /不替代这些测试节点完成完整验证/u);
-  assert.match(prompt, /图中已有后续 review 节点：review-ui/u);
-  assert.match(prompt, /图中已有后续 summary 节点：summary-1/u);
-  assert.match(prompt, /只产出本节点证据/u);
+  assert.doesNotMatch(prompt, /## 全图拓扑与当前位置/u);
+  assert.doesNotMatch(prompt, /### 边语义/u);
+  assert.doesNotMatch(prompt, /edge-ui-test/u);
+  assert.doesNotMatch(prompt, /同批\/并发中的其他节点/u);
+  assert.doesNotMatch(prompt, /图中已有后续 test 节点/u);
+  assert.match(prompt, /## 返工原因/u);
+  assert.match(prompt, /来源：review-ui/u);
+  assert.match(prompt, /原因：Review feedback rollback/u);
+  assert.match(prompt, /范围：implement-ui、test-ui、review-ui/u);
+  assert.match(prompt, /授权写入范围：src\/webview\/graphRunPanel\*\.ts/u);
+
+  const summaryPrompt = buildGraphNodePrompt({
+    run,
+    node: summary,
+    options: { generatedAt: "2026-07-24T00:00:00.000Z" },
+  });
+  assert.match(summaryPrompt, /## 全图拓扑与当前位置/u);
+  assert.match(summaryPrompt, /edge-ui-test｜implement-ui -> test-ui；kind=depends_on；active=true/u);
+  assert.match(summaryPrompt, /### 边语义/u);
 });
 
-test("node prompt ignores polluted materialized unlocks from rework edges while listing every edge", () => {
+test("execution node prompt omits edges while summary still lists them without polluted unlocks", () => {
   const plan = createNode({
     id: "plan",
     title: "规划 Graph 控制",
@@ -516,18 +526,27 @@ test("node prompt ignores polluted materialized unlocks from rework edges while 
     condition: "Inactive summary edge.",
   }]);
 
-  const prompt = buildGraphNodePrompt({
+  const childPrompt = buildGraphNodePrompt({
     run,
     node: implement,
     options: { generatedAt: "2026-08-29T00:00:00.000Z" },
   });
+  assert.doesNotMatch(childPrompt, /## 全图拓扑与当前位置/u);
+  assert.doesNotMatch(childPrompt, /edge-audit-implement/u);
+  assert.doesNotMatch(childPrompt, /unlocks=implement/u);
+
+  const prompt = buildGraphNodePrompt({
+    run,
+    node: summary,
+    options: { generatedAt: "2026-08-29T00:00:00.000Z" },
+  });
   const topologySummary = prompt.slice(0, prompt.indexOf("### 节点清单"));
 
-  assert.match(topologySummary, /直接前置节点：plan（规划 Graph 控制｜plan｜passed）/u);
-  assert.match(topologySummary, /直接后续节点：test（验证 Graph 控制｜test｜pending）/u);
-  assert.match(topologySummary, /上游链路：plan（规划 Graph 控制｜plan｜passed）/u);
-  assert.match(topologySummary, /下游链路：test（验证 Graph 控制｜test｜pending）/u);
-  assert.doesNotMatch(topologySummary, /审计证据节点|评审 Graph 控制|总结 Graph 控制/u);
+  assert.match(topologySummary, /直接前置节点：无/u);
+  assert.match(topologySummary, /直接后续节点：无/u);
+  assert.match(topologySummary, /上游链路：无/u);
+  assert.match(topologySummary, /下游链路：无/u);
+  assert.doesNotMatch(topologySummary, /审计证据节点|评审 Graph 控制|实现 Graph 控制/u);
   assert.match(prompt, /\[全图\] test｜验证 Graph 控制；kind=test；status=pending；[^\n]*unlocks=implement/u);
   assert.match(prompt, /\[全图\] review｜评审 Graph 控制；kind=review；status=failed；[^\n]*unlocks=implement/u);
   assert.match(prompt, /edge-audit-implement｜audit -> implement；kind=evidence_for；active=true/u);

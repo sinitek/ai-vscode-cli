@@ -366,6 +366,7 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
   assert.match(prompt, /Authorized write scope: src\/authorized-scope\.ts/);
   assert.match(prompt, /Attempt report file: ATTEMPT_REPORT_TOKEN/);
   assert.match(prompt, /Do not modify scheduling state, active ids, the loopPlus snapshot, the task record/);
+  assert.match(prompt, /If the subtask instructions include a UI design, implement that design/);
   assert.match(prompt, /INSTRUCTION_TOKEN/);
   assert.equal(prompt.includes("group-token"), false);
   assert.equal(prompt.includes("ROOT_REQUEST_TOKEN"), false);
@@ -412,6 +413,7 @@ test("asks the main task to judge a batch of new user messages before launching"
 
 test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence text", () => {
   const mainPrompt = buildLoopPlusMainModelPrompt(mainContext());
+  assert.match(mainPrompt, /When the task changes UI appearance, layout, or interaction/);
   const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
     subtask: {
       title: "title-token",

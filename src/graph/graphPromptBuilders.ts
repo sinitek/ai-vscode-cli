@@ -75,7 +75,72 @@ const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
   ],
 };
 
+function shouldUseGraphCoordinatorPrompt(run: GraphRunRecord, node: GraphNodeRecord): boolean {
+  return node.kind === "summary" || isAiPlannerNode(run, node) || isGraphAiReplannerNode(node);
+}
+
+function buildGraphChildNodePrompt(input: BuildGraphNodePromptInput): string {
+  const { run, node, options = {} } = input;
+  const communicationFile = resolveGraphNodeCommunicationFile(run, node);
+  const writeScope = formatWriteFiles(node.writeFiles, run);
+  const lines: string[] = [
+    "你正在执行一个独立节点任务。只完成本次指令，不需要理解或维护 Graph 调度。",
+    `节点沟通文件：${communicationFile}`,
+    writeScope === GRAPH_PROMPT_EMPTY_VALUE
+      ? "授权写入范围：未声明；默认不要修改工作区文件。"
+      : `授权写入范围：${writeScope}`,
+    "只修改授权范围内的文件。不要修改 Graph 调度状态、graph.json、events、任务记录、其他节点的沟通文件或 artifact，也不要写入 `.ch/docs/memory/`、`.ch/docs/runbooks/PITFALLS.md` 或运行态 memory-generated 目录。",
+    "结束前把执行摘要、实际修改、验证命令和结果写入节点沟通文件。",
+    "如果任务说明写了界面设计，按该设计实现，不要自行改布局、配色或交互。",
+    "",
+    `当前任务：${node.title}`,
+    `节点类型：${node.kind}`,
+    "",
+    ...formatGraphNodeInstructionLines(node),
+  ];
+  if (!node.instructions?.trim()) {
+    lines.push("## 原始目标", run.rootPrompt, "");
+  }
+  const supplemental = formatSupplementalRequirementLines(run.supplementalRequirements);
+  if (supplemental[0] !== "- 无") {
+    lines.push("## 用户补充消息", ...supplemental, "");
+  }
+  if (node.rework) {
+    lines.push(
+      "## 返工原因",
+      `- 来源：${node.rework.sourceNodeId}`,
+      `- 原因：${formatValue(node.rework.reason)}`,
+      `- 范围：${formatList(node.rework.resetScopeNodeIds)}`,
+      "",
+    );
+  }
+  lines.push(
+    "## 节点职责",
+    ...GRAPH_NODE_ROLE_GUIDANCE[node.kind].map((item) => `- ${item}`),
+    "",
+    "## Acceptance",
+    ...formatAcceptanceLines(node.acceptance),
+    "",
+    "## 验证要求",
+    ...formatValidationRequirementLines(options.validationRequirements),
+    ...formatGraphReviewScopeLines(run, node),
+    "",
+    "## 输出格式",
+    "- 回复必须包含一个 JSON 代码块：",
+    '{"status":"passed|failed","summary":"一句话结果","artifactRef":"可选 artifact 路径","acceptance":[{"name":"检查项","passed":true,"required":true,"detail":"证据"}]}',
+    ...formatExtraInstructionLines(options.extraInstructions),
+  );
+  return `${lines.join("\n")}\n`;
+}
+
 export function buildGraphNodePrompt(input: BuildGraphNodePromptInput): string {
+  if (shouldUseGraphCoordinatorPrompt(input.run, input.node)) {
+    return buildGraphCoordinatorNodePrompt(input);
+  }
+  return buildGraphChildNodePrompt(input);
+}
+
+function buildGraphCoordinatorNodePrompt(input: BuildGraphNodePromptInput): string {
   const { run, node, options = {} } = input;
   const communicationFile = resolveGraphNodeCommunicationFile(run, node);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
@@ -639,7 +704,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "实现 UI 改动",
           kind: "implement",
           ownerRole: "subtask",
-          instructions: "在 src/webview 授权范围内实现本次 UI 改动。设计关键点：只改当前交互所需的视图状态，不要重做无关布局或硬编码颜色。",
+          instructions: "在 src/webview 授权范围内实现本次 UI。界面设计：信息层级为标题、主操作、状态说明；主区域单列左对齐，间距沿用现有主题语义变量，不硬编码颜色。交互：默认展示当前状态，悬停只改变主操作，禁用时不可点击，空、错误和加载各自有明确文案。不要重做无关布局。",
           writeFiles: ["src/webview/**"],
           conflictGroup: "ui",
           maxAttempts: 2,

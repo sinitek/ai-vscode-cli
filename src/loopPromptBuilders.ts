@@ -630,7 +630,7 @@ export function buildLoopDebateConsensusModelPrompt(
     "2. 必须生成 cross-review.md、consensus.md 和 decision.json 三个文件。",
     "3. 如果任一动态参与者 artifact 缺失、存在未解决 blocking disagreement、或你无法生成合法 LoopMainDecision，则 decision.json 必须走 blocked 路径，不得派发子任务。",
     "4. 红队 artifact 的原始立场为 block 时，必须先判断阻塞项是否已被蓝队回应并能被本轮计划解决：如果能通过补充证据、前置步骤、验收标准或风险说明解决，必须写入 resolvedDisagreements，并可在 consensus 的 participantStances 中把该红队最终立场标为 agree_with_reservations；如果不能解决，必须保留 stance=block 或 openDisagreements.severity=blocking。",
-    `5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤、验收标准、任务记录和沟通文件要求。${SUBTASK_DESIGN_KEY_POINT_RULE_ZH}`,
+    `5. status=continue 时必须提供 1~6 个 subtasks；每个 subtask 的 prompt 必须自包含，且至少说明背景目标、只读/写范围、执行步骤和验收标准。不要要求子任务维护任务记录或父任务调度；沟通文件由宿主附加。${SUBTASK_DESIGN_KEY_POINT_RULE_ZH}`,
     "6. chat.md 已包含裁判主持人控场与收束标记，不允许要求继续追加辩论回合；如果红蓝攻防后仍无法形成可执行共识，必须输出 blocked。",
     "7. 不允许输出 continue 但不给 subtasks；不确定时输出 blocked。",
     "",

@@ -256,6 +256,7 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     "Edit files only inside the authorized write scope.",
     "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
     "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",
+    "If the subtask instructions include a UI design, implement that design. Do not redesign layout, color, or interaction.",
     "",
     "Subtask instructions:",
     context.subtask.prompt,
