@@ -5,6 +5,7 @@ import {
 } from "../cli/commandRunner";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
+import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import type { CliName, ThinkingMode } from "../cli/types";
 import {
   buildNaturalLanguageHumanInteractionRequest,
@@ -113,6 +114,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
     target: PromptRunTarget,
     sessionId: string | null,
     durationMs: number | null | undefined,
+    options?: LoopMainAutoCompactRequest,
   ) => Promise<void>;
   maybePersistLongTermMemoryFromRun: (options: {
     status: TaskRunStatus;

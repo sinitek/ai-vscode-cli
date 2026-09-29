@@ -3,6 +3,10 @@ import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { FinalConclusionCheckOptions } from "../finalConclusion";
 import type { I18nKey } from "../i18n";
+import {
+  shouldOverlapLoopMainContextCompaction,
+  type LoopMainAutoCompactRequest,
+} from "../loopMainAutoCompact";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
@@ -288,6 +292,7 @@ export type OpenCodePromptRunPorts = {
     target: PromptRunTarget,
     sessionId: string | null,
     durationMs: number | null | undefined,
+    options?: LoopMainAutoCompactRequest,
   ) => Promise<void>;
   evaluateFailedAttempt: (context: OpenCodePromptFailureAttempt) => OpenCodePromptFailureEvaluation;
   recordFailedAttemptRetry: (context: OpenCodePromptFailureAttempt) => void;
@@ -577,7 +582,9 @@ export async function runOpenCodePromptTemplate(
         conversationHasFinalConclusion,
       });
       if (shouldAutoCompactAfterRun) {
-        await ports.maybeAutoCompactContextAfterPromptSuccess(target, completion.sessionId, completion.durationMs);
+        await ports.maybeAutoCompactContextAfterPromptSuccess(target, completion.sessionId, completion.durationMs, {
+          overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input),
+        });
       }
       return;
     }

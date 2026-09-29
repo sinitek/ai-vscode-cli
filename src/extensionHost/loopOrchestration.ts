@@ -2781,10 +2781,17 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const activeSubtaskPatch = role === "main"
       ? { activeSubtaskId: null, activeSubtaskIds: [] }
       : buildLoopActiveSubtaskPatch(task.id, subtaskId);
+    const latestTask = readLoopTaskRecord(task.id) ?? task;
+    const subTasks = role === "subtask" && subtaskId
+      ? latestTask.subTasks.map((item) => (
+        item.id === subtaskId ? { ...item, lastStartedAt: roundStartedAt } : item
+      ))
+      : undefined;
     updateLoopTaskRecord(task.id, {
       status: "running",
       currentRound: round,
       ...activeSubtaskPatch,
+      ...(subTasks ? { subTasks } : {}),
       updatedAt: roundStartedAt,
     });
     refreshOpenLoopGroupChatPanelForTask(task.id);

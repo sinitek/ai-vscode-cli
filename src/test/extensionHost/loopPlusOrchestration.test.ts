@@ -118,6 +118,7 @@ function harness(options: {
   decisionSafetyLimit?: number;
   launchDelayMs?: (last: number | null, now: number) => number;
   delay?: (ms: number) => Promise<void>;
+  now?: () => number;
   deferMainAbort?: boolean;
   deferAttemptAbort?: boolean;
   throwOnStart?: boolean;
@@ -146,6 +147,7 @@ function harness(options: {
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
+    ...(options.now ? { now: options.now } : {}),
     prepareCommunication: options.prepareCommunication,
     appendSubtaskChat: options.appendSubtaskChat,
     readTask: (taskId) => {
@@ -2168,4 +2170,31 @@ test("does not dispatch new Loop+ subtasks after the acceptance limit is reached
   assert.equal(env.tasks.get(task.id)?.status, "needs-review");
   assert.equal(snapshotOf(env.tasks.get(task.id)).pending.length, 0);
   assert.equal(snapshotOf(env.tasks.get(task.id)).running.length, 0);
+});
+
+test("records each Loop+ subtask's own execution start time", async () => {
+  let clock = 1_000;
+  const env = harness({
+    maxConcurrency: 2,
+    now: () => clock,
+    launchDelayMs: (last, now) => last === null ? 0 : Math.max(0, 3_000 - (now - last)),
+    delay: async (ms) => {
+      clock += ms;
+    },
+  });
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  const task = Array.from(env.tasks.values())[0];
+  const alpha = task?.subTasks.find((item) => item.id === "alpha");
+  const beta = task?.subTasks.find((item) => item.id === "beta");
+  assert.equal(alpha?.lastStartedAt, 1_000);
+  assert.equal(beta?.lastStartedAt, 4_000);
+  assert.notEqual(alpha?.lastStartedAt, beta?.lastStartedAt);
+  assert.equal(alpha?.updatedAt, beta?.updatedAt);
 });

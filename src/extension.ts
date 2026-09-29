@@ -303,6 +303,12 @@ import {
   type LoopSubtaskCompletionOptions,
 } from "./loopSubtaskLifecycle";
 import {
+  LoopMainAutoCompactFlights,
+  mergeCompactTranscriptIntoLive,
+  settleAutoCompactAfterPrompt,
+  type LoopMainAutoCompactReservation,
+} from "./loopMainAutoCompact";
+import {
   buildGraphRunIdsBySessionByCli,
   listGraphRuns,
   readGraphRunRecord,
@@ -692,6 +698,7 @@ const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
 const AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS = 5 * 60 * 1000;
+const loopMainAutoCompactFlights = new LoopMainAutoCompactFlights();
 const AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS = 3 * 60 * 1000;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
@@ -4743,6 +4750,8 @@ async function runPrompt(
     return;
   }
 
+  await loopMainAutoCompactFlights.wait(target.tabId);
+
   if (isTabRunActive(target.tabId)) {
     preemptActivePromptRun(target.tabId);
   }
@@ -4967,6 +4976,23 @@ async function resolveInteractiveSessionForResume(
   return repairedSessionId;
 }
 
+function persistAutoCompactMessagesPreservingConcurrentTranscript(): void {
+  if (!activeCliForRun || !activeMessageTarget || !activeSessionId) {
+    persistActiveMessages();
+    return;
+  }
+  const live = sessionMessageCache.get(getSessionKey(activeWorkspaceKey, activeCliForRun, activeSessionId));
+  if (!live || live === activeMessageTarget) {
+    persistActiveMessages();
+    return;
+  }
+  saveSessionMessages(
+    activeCliForRun,
+    activeSessionId,
+    mergeCompactTranscriptIntoLive(live, activeMessageTarget),
+  );
+}
+
 async function runContextCompaction(options: ContextCompactionOptions = {}): Promise<boolean> {
   return runContextCompactionWithDeps({
     getCurrentCli: () => currentCli,
@@ -5008,7 +5034,9 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     },
     sendRunStatus,
     appendCompletionMessage,
-    persistActiveMessages,
+    persistActiveMessages: options.allowActiveRun === true
+      ? persistAutoCompactMessagesPreservingConcurrentTranscript
+      : persistActiveMessages,
     clearActiveRun,
     interactiveRunnerManager,
     resolveInteractiveMappedId,
@@ -5059,10 +5087,73 @@ function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boo
   return true;
 }
 
+function reserveLoopMainAutoCompactRun(
+  target: PromptRunTarget,
+  sessionId: string,
+): LoopMainAutoCompactReservation {
+  const runId = createMessageId();
+  let released = false;
+  let adoptedStop: (() => void) | null = null;
+  let stopRequested = false;
+  const placeholder = (): void => {
+    stopRequested = true;
+    adoptedStop?.();
+  };
+  activeRunId = runId;
+  activeTabIdForRun = target.tabId;
+  activeCliForRun = target.cli;
+  activeSessionId = sessionId;
+  activeInteractiveStop = placeholder;
+  return {
+    adoptStop: (stop) => {
+      adoptedStop = stop;
+      if (activeInteractiveStop === placeholder) {
+        activeInteractiveStop = stop;
+      }
+      if (stopRequested) {
+        stop();
+      }
+    },
+    release: () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      if (activeInteractiveStop === placeholder && activeRunId === runId) {
+        clearActiveRun();
+      }
+    },
+  };
+}
+
+async function runAutoCompactContextAfterPromptSuccess(
+  target: PromptRunTarget,
+  sessionId: string,
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void },
+): Promise<void> {
+  const compacted = await runContextCompaction({
+    silent: true,
+    cli: target.cli,
+    tabId: target.tabId,
+    sessionId,
+    timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
+    allowActiveRun: request.allowActiveRun,
+    onStopReady: request.onStopReady,
+  });
+  void logInfo("auto-context-compact-after-run-finished", {
+    cli: target.cli,
+    tabId: target.tabId,
+    sessionId,
+    compacted,
+    overlappedLoopDispatch: request.allowActiveRun,
+  });
+}
+
 async function maybeAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string | null,
   durationMs: number | null | undefined,
+  options: { overlapLoopDispatch?: boolean } = {},
 ): Promise<void> {
   if (!shouldAutoCompactContextAfterRunForTarget(target) || !sessionId) {
     return;
@@ -5077,18 +5168,22 @@ async function maybeAutoCompactContextAfterPromptSuccess(
     });
     return;
   }
-  const compacted = await runContextCompaction({
-    silent: true,
-    cli: target.cli,
-    tabId: target.tabId,
-    sessionId,
-    timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
-  });
-  void logInfo("auto-context-compact-after-run-finished", {
-    cli: target.cli,
-    tabId: target.tabId,
-    sessionId,
-    compacted,
+  const overlapLoopDispatch = options.overlapLoopDispatch === true;
+  if (overlapLoopDispatch) {
+    void logInfo("auto-context-compact-after-run-overlap-loop-dispatch", {
+      cli: target.cli,
+      tabId: target.tabId,
+      sessionId,
+    });
+  }
+  await settleAutoCompactAfterPrompt({
+    overlapLoopDispatch,
+    canOverlap: overlapLoopDispatch && !isPrimaryRunActive(),
+    run: (request) => runAutoCompactContextAfterPromptSuccess(target, sessionId, request),
+    reserve: () => reserveLoopMainAutoCompactRun(target, sessionId),
+    track: (flight) => {
+      loopMainAutoCompactFlights.track(target.tabId, flight);
+    },
   });
 }
 

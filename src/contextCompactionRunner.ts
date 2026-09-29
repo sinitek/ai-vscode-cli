@@ -482,6 +482,9 @@ export type ContextCompactionOptions = {
   tabId?: string | null;
   sessionId?: string | null;
   timeoutMs?: number;
+  /** Caller already reserved the primary run and still wants compaction to proceed. */
+  allowActiveRun?: boolean;
+  onStopReady?: (stop: () => void) => void;
 };
 
 export type ContextCompactionRunStatus = "end" | "error" | "stopped";
@@ -590,7 +593,7 @@ export async function runContextCompactionWithDeps(
     }
     return false;
   }
-  if (deps.hasActiveProcessOrInteractiveStop()) {
+  if (deps.hasActiveProcessOrInteractiveStop() && options.allowActiveRun !== true) {
     if (!silent) {
       deps.appendSystemMessageForCli(cli, deps.getCurrentSessionId(cli), t("rules.compactRunning"));
     }
@@ -666,6 +669,10 @@ export async function runContextCompactionWithDeps(
     deps.clearActiveRun();
   };
   deps.setActiveInteractiveStop(stopFn);
+  options.onStopReady?.(stopFn);
+  if (deps.getActiveRunId() !== runId) {
+    return false;
+  }
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = timeoutMs
     ? new Promise<never>((_resolve, reject) => {

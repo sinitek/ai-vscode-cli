@@ -1130,6 +1130,13 @@ function resolveLoopMemberLastStartedAt(
   updatedAt: number | undefined,
   subtaskId?: string,
 ): number | null {
+  if (role === "subtask") {
+    const subtask = subtaskId ? task.subTasks.find((item) => item.id === subtaskId) : undefined;
+    if (typeof subtask?.lastStartedAt === "number" && Number.isFinite(subtask.lastStartedAt)) {
+      return subtask.lastStartedAt;
+    }
+    return latestLoopMemberStartedAt(task, "subtask", subtaskId) ?? null;
+  }
   const recorded = latestLoopMemberStartedAt(task, role, subtaskId);
   if (status === "pending" || status === "skipped") {
     return recorded ?? null;

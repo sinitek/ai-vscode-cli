@@ -456,3 +456,54 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.match(legacyPassed, /验收成功/u);
   assert.doesNotMatch(legacyPassed, /子任务 1：Alpha · 验收成功/u);
 });
+
+function memberLastStartedStamp(page: string, title: string): string {
+  const match = page.match(new RegExp(
+    `class="member-name">${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?data-member-last-started="([^"]*)"`,
+  ));
+  assert.ok(match, title);
+  return match?.[1] ?? "";
+}
+
+test("shows each subtask's own last execution start instead of a shared update time", () => {
+  const sharedUpdatedAt = Date.UTC(2026, 8, 29, 12, 0, 0);
+  const alphaStartedAt = Date.UTC(2026, 8, 29, 8, 0, 0);
+  const bravoStartedAt = Date.UTC(2026, 8, 29, 9, 30, 0);
+  const deltaStartedAt = Date.UTC(2026, 8, 29, 7, 0, 0);
+  const state = build(undefined, {
+    schedulingMode: "classic",
+    updatedAt: sharedUpdatedAt,
+    subTasks: [
+      { id: "A", title: "Alpha", status: "running", updatedAt: sharedUpdatedAt, lastStartedAt: alphaStartedAt },
+      { id: "B", title: "Bravo", status: "completed", updatedAt: sharedUpdatedAt, lastStartedAt: bravoStartedAt },
+      { id: "C", title: "Charlie", status: "pending", updatedAt: sharedUpdatedAt },
+      { id: "D", title: "Delta", status: "running", updatedAt: sharedUpdatedAt },
+    ],
+    rounds: [{
+      round: 1,
+      role: "subtask",
+      subtaskId: "D",
+      status: "end",
+      startedAt: deltaStartedAt,
+      endedAt: Date.UTC(2026, 8, 29, 7, 5, 0),
+    }],
+  });
+  const execution = state.rounds.find((round) => round.kind === "execution");
+  assert.ok(execution);
+  const startedAtById = new Map(execution.participants.map((item) => [item.id, item.lastStartedAt]));
+  assert.equal(startedAtById.get("A"), alphaStartedAt);
+  assert.equal(startedAtById.get("B"), bravoStartedAt);
+  assert.equal(startedAtById.get("C"), null);
+  assert.equal(startedAtById.get("D"), deltaStartedAt);
+  const page = html(state, "zh-CN");
+  const alpha = memberLastStartedStamp(page, "子任务 1：Alpha");
+  const bravo = memberLastStartedStamp(page, "子任务 2：Bravo");
+  const charlie = memberLastStartedStamp(page, "子任务 3：Charlie");
+  const delta = memberLastStartedStamp(page, "子任务 4：Delta");
+  assert.notEqual(alpha, "");
+  assert.notEqual(bravo, "");
+  assert.notEqual(alpha, bravo);
+  assert.notEqual(delta, alpha);
+  assert.equal(charlie, "");
+  assert.match(page, /子任务 3：Charlie[\s\S]*最后启动：未启动/u);
+});

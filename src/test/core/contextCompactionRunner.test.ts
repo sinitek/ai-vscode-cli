@@ -482,3 +482,39 @@ test("OpenCode compaction reports provider failure details", async () => {
   assert.deepEqual(calls.sendRunStatuses, ["start", "error"]);
   assert.deepEqual(calls.appendCompletionStatuses, ["error"]);
 });
+
+test("owned Loop main compaction continues while the primary run reservation is held", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const blocked = createSilentCodexCompactionDeps();
+  blocked.deps.hasActiveProcessOrInteractiveStop = () => true;
+
+  const skipped = await runContextCompactionWithDeps(blocked.deps, {
+    silent: true,
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+  });
+  assert.equal(skipped, false);
+  assert.deepEqual(blocked.calls.sendRunStatuses, []);
+
+  const allowed = createSilentCodexCompactionDeps();
+  allowed.deps.hasActiveProcessOrInteractiveStop = () => true;
+  let stopReady = false;
+  const compacted = await runContextCompactionWithDeps(allowed.deps, {
+    silent: true,
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+    allowActiveRun: true,
+    onStopReady: () => {
+      stopReady = true;
+    },
+  });
+
+  assert.equal(compacted, true);
+  assert.equal(stopReady, true);
+  assert.deepEqual(allowed.calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "end", activity: undefined },
+  ]);
+});

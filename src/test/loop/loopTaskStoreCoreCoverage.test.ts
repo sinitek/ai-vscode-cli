@@ -1108,3 +1108,18 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   loopTaskStore.writeLoopTaskStore(legacy.flatTaskFile, { tasks: [retainedTask] });
   assert.equal(loopTaskStore.readLoopTaskStore(legacy.flatTaskFile).tasks[0]?.communicationDir, retainedTask.communicationDir);
 });
+
+test("persists each subtask lastStartedAt and drops invalid values", () => {
+  const task = createTask({
+    subTasks: [
+      { id: "started", title: "Started", status: "running", updatedAt: 999, lastStartedAt: 111 },
+      { id: "invalid", title: "Invalid", status: "running", updatedAt: 999, lastStartedAt: Number.NaN },
+      { id: "pending", title: "Pending", status: "pending", updatedAt: 999 },
+    ],
+  });
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const persisted = readPersistedTask(task.taskStoreFile, task.id);
+  assert.equal(persisted.subTasks.find((item) => item.id === "started")?.lastStartedAt, 111);
+  assert.equal(persisted.subTasks.find((item) => item.id === "invalid")?.lastStartedAt, undefined);
+  assert.equal("lastStartedAt" in (persisted.subTasks.find((item) => item.id === "pending") ?? {}), false);
+});

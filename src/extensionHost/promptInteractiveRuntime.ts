@@ -1,4 +1,8 @@
 import { appendBoundedUtf8Text } from "../boundedText";
+import {
+  shouldOverlapLoopMainContextCompaction,
+  type LoopMainAutoCompactRequest,
+} from "../loopMainAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
 import { getCliCommand, getDebugLogging } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
@@ -104,6 +108,7 @@ export type PromptInteractiveRuntimeHostDeps = {
     target: PromptRunTarget,
     sessionId: string | null,
     durationMs: number | null | undefined,
+    options?: LoopMainAutoCompactRequest,
   ) => Promise<void>;
   maybePersistLongTermMemoryFromRun: (options: {
     status: TaskRunStatus;
@@ -857,7 +862,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       });
       interactiveRunsByTabId.delete(tabId);
       if (status === "end" && shouldAutoCompactAfterRun) {
-        await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId, taskRecord?.durationMs ?? null);
+        await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId, taskRecord?.durationMs ?? null, {
+          overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input),
+        });
       }
     };
 

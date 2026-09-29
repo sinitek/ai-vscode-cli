@@ -20,6 +20,7 @@ import {
   type OpenCodeSubagentMonitor,
 } from "../cli/openCodeSubagentMonitor";
 import { resolveOpenCodeOneShotWatchdogTimeoutMs } from "../cli/opencodewatchdog";
+import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import type { CliName, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
@@ -113,6 +114,7 @@ type PromptOneShotRuntimeHostDeps = {
     target: PromptRunTarget,
     sessionId: string | null,
     durationMs: number | null | undefined,
+    options?: LoopMainAutoCompactRequest,
   ) => Promise<void>;
   maybePersistLongTermMemoryFromRun: (options: {
     status: TaskRunStatus;

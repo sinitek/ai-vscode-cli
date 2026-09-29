@@ -428,13 +428,15 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/extensionHost/loopPlusSubtaskChat.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/panelStateBuilder.ts"},
+        {"path": "src/loopTaskStore.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
@@ -547,6 +549,19 @@
         {"path": "src/graph/graphNodeInstructions.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
+      "name": "Loop 主任务压缩与子任务派发并行",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩只处理主任务会话，子任务派发使用独立会话，两者同时进行，不再等压缩结束后才派发。下一次使用同一主任务会话的运行会先等待这次压缩结束。子任务、普通对话和 Graph 仍在当前运行结束后再压缩。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task"],
+      "source_refs": [
+        {"path": "src/loopMainAutoCompact.ts"},
+        {"path": "src/contextCompactionRunner.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"}
       ]
     }
   ]

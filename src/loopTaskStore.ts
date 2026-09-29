@@ -59,6 +59,7 @@ export type LoopSubtaskRecord = {
   summary?: string;
   communicationFile?: string;
   updatedAt?: number;
+  lastStartedAt?: number;
 };
 
 export type LoopAcceptanceCheck = {
@@ -991,6 +992,9 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
+    ...(typeof raw.lastStartedAt === "number" && Number.isFinite(raw.lastStartedAt)
+      ? { lastStartedAt: raw.lastStartedAt }
+      : {}),
   };
 }
 

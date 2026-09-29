@@ -145,6 +145,7 @@ type SubtaskMeta = {
   communicationFile?: string;
   summary?: string;
   executionStatus?: LoopSubtaskRecord["status"];
+  lastStartedAt?: number;
 };
 
 type InFlightAttempt = {
@@ -433,6 +434,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         communicationFile: subtask.communicationFile,
         summary: subtask.summary,
         executionStatus: subtask.status,
+        ...(typeof subtask.lastStartedAt === "number" && Number.isFinite(subtask.lastStartedAt)
+          ? { lastStartedAt: subtask.lastStartedAt }
+          : {}),
       });
     });
     return {
@@ -1249,9 +1253,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         return;
       }
+      const launchedAt = runtime.lastLaunchAt;
       if (meta) {
         meta.communicationFile = communicationFile;
         meta.executionStatus = "running";
+        if (typeof launchedAt === "number" && Number.isFinite(launchedAt)) {
+          meta.lastStartedAt = launchedAt;
+        }
       }
       persist(runtime, { status: runtime.scheduler.snapshot().parentStopped ? "stopped" : "running" });
       notifySubtaskChat(runtime, {
@@ -1613,6 +1621,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         : runtime.scheduler.snapshot().pending.some((item) => item.subtaskId === subtaskId)
           ? "pending"
           : meta.executionStatus ?? previous?.status ?? "pending";
+      const lastStartedAt = typeof meta.lastStartedAt === "number" && Number.isFinite(meta.lastStartedAt)
+        ? meta.lastStartedAt
+        : previous?.lastStartedAt;
       byId.set(subtaskId, {
         id: subtaskId,
         title: meta.decision.title,
@@ -1622,6 +1633,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         status: active,
         summary: meta.summary ?? previous?.summary,
         communicationFile: meta.communicationFile ?? previous?.communicationFile,
+        ...(typeof lastStartedAt === "number" && Number.isFinite(lastStartedAt) ? { lastStartedAt } : {}),
         updatedAt: now(),
       });
     });
