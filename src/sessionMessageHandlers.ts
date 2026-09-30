@@ -71,6 +71,7 @@ export type ConversationTabRecordForPanel = {
 export type PanelMessageHandlerDeps = {
   ensureWorkspaceSessionStore: () => void;
   postPanelState: () => Promise<void>;
+  reconcileRunningConversationTabs?: () => void;
   sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   getCurrentCli: () => CliName;
   setCurrentCliValue: (cli: CliName) => void;
@@ -308,6 +309,11 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
   if (message.type === "requestState") {
     await postPanelState();
     sendSessionMessagesToPanel(currentCliRef.value, getCurrentSessionId(currentCliRef.value));
+    return;
+  }
+
+  if (message.type === "reconcileRunningConversationTabs") {
+    deps.reconcileRunningConversationTabs?.();
     return;
   }
 

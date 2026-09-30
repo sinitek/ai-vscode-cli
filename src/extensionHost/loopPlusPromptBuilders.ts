@@ -185,6 +185,29 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
       },
     },
     {
+      status: "clarify",
+      value: {
+        status: "clarify",
+        finalSummary: "The root request is ambiguous, so the user must choose the scope before dispatch.",
+        clarification: {
+          title: "Confirm the scope",
+          instruction: "This choice changes the plan. Submit the form and the main task will continue.",
+          submitLabel: "Submit",
+          cancelLabel: "Reject",
+          formFields: [{
+            id: "scope",
+            label: "Scope",
+            type: "radio",
+            required: true,
+            options: [
+              { label: "API only", value: "api" },
+              { label: "API and callers", value: "api-and-callers" },
+            ],
+          }],
+        },
+      },
+    },
+    {
       status: "completed",
       value: completed,
     },
@@ -276,7 +299,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     pendingUserText,
     "Root request:",
     context.rootPrompt,
-    "This prompt is a snapshot captured when the CLI started. More executions may finish and join the FIFO queue after that. The acceptance batch above stays fixed for this decision; later completions and user messages wait for the next one. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
+    "This prompt is a snapshot captured when the CLI started. The acceptance batch already includes every finished event waiting in the FIFO review queue; confirm that whole batch together. If another execution finishes before this decision is applied, and the larger batch still fits the acceptance limit, the host discards this answer and asks again with every queued event. User messages that arrive after this snapshot wait for the next decision. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
@@ -297,6 +320,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept. If it must wait for a still-running or pending execution, accept the batch with no new subtasks. A failed acceptance checklist still forbids accept. Do not use wait or dispatch while the batch is open.",
     "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. finalSummary is optional.",
+    "- clarify asks the user to fill a form in the group chat and confirms nothing. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
     "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks.",
     "- When the acceptance batch has one event, completed must include that reviewEventId. When it has more than one, completed must include reviewEventIds in that order and must not include reviewEventId. When the acceptance batch is (none), omit both. A completed object missing any required field, or containing a failed check, is rejected.",
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",

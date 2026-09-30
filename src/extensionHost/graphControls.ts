@@ -16,6 +16,14 @@ import {
 } from "../graph/graphRunControl";
 import { findLatestGraphRun, listGraphRuns, readGraphRunRecord, updateGraphRunRecord } from "../graph/graphStore";
 import {
+  abortOrchestratorClarification,
+  formatOrchestratorClarificationAnswer,
+  graphClarificationScope,
+  normalizeClarificationSubmission,
+  rejectOrchestratorClarification,
+  submitOrchestratorClarification,
+} from "../orchestratorClarification";
+import {
   continueModelPairFromGraphRouting,
   normalizeContinueModelSource,
   selectGraphContinueModelRouting,
@@ -95,6 +103,8 @@ export function createGraphControlsHost(deps: GraphControlsHostDeps) {
     retryNode: (graphRunId, nodeId) => retryGraphNodeFromPanel(graphRunId, nodeId),
     feedbackNode: (graphRunId, nodeId) => feedbackGraphNodeFromPanel(graphRunId, nodeId),
     stopRun: (graphRunId) => stopGraphRunFromPanel(graphRunId),
+    submitClarification: (graphRunId, interactionId, values) => submitGraphClarificationFromPanel(graphRunId, interactionId, values),
+    rejectClarification: (graphRunId, interactionId) => rejectGraphClarificationFromPanel(graphRunId, interactionId),
     showInformationMessage: deps.showInformationMessage,
     showWarningMessage: deps.showWarningMessage,
     t: deps.t,
@@ -362,6 +372,105 @@ async function feedbackGraphNodeFromPanel(
   });
 }
 
+
+async function submitGraphClarificationFromPanel(
+  graphRunId: string,
+  interactionId: string,
+  values: unknown,
+): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
+  const lookup = readGraphRunRecord(graphRunId);
+  const run = lookup.run;
+  const request = run?.pendingClarification;
+  if (!run || !request || request.interactionId !== interactionId) {
+    return {
+      ok: false,
+      changed: false,
+      message: deps.t("graphRun.clarificationUnavailable"),
+      run,
+    };
+  }
+  const normalized = normalizeClarificationSubmission(request, values);
+  if (!normalized.ok) {
+    const key = normalized.issue.code === "required"
+      ? "graphRun.clarificationRequired"
+      : "graphRun.clarificationInvalid";
+    return {
+      ok: false,
+      changed: false,
+      message: deps.t(key, { label: normalized.issue.label }),
+      run,
+    };
+  }
+  const delivered = submitOrchestratorClarification(graphClarificationScope(run.id), interactionId, normalized.values);
+  if (delivered.ok) {
+    refreshOpenGraphRunPanelForRun(run.id);
+    return { ok: true, changed: false, message: deps.t("graphRun.clarificationSubmitted"), run };
+  }
+  if (delivered.reason === "invalid" && delivered.issue) {
+    const key = delivered.issue.code === "required"
+      ? "graphRun.clarificationRequired"
+      : "graphRun.clarificationInvalid";
+    return { ok: false, changed: false, message: deps.t(key, { label: delivered.issue.label }), run };
+  }
+  const answer = formatOrchestratorClarificationAnswer({
+    interactionId,
+    status: "completed",
+    values: normalized.values,
+  }, request.formFields);
+  const nextRequirements = [...(run.supplementalRequirements ?? []), answer];
+  const timestamp = Date.now();
+  const persisted = updateGraphRunRecord(run.id, {
+    supplementalRequirements: nextRequirements,
+    pendingClarification: undefined,
+    status: run.status === "stopped" || run.status === "error" ? run.status : "running",
+    updatedAt: timestamp,
+  }) ?? run;
+  appendGraphSupplementalRequirementToCommunication(persisted, answer, timestamp);
+  refreshOpenGraphRunPanelForRun(persisted.id);
+  if (persisted.status !== "running") {
+    return { ok: true, changed: true, message: deps.t("graphRun.clarificationSubmitted"), run: persisted };
+  }
+  return continueGraphRunFromStore(persisted.id, {
+    source: "panel",
+    reason: "Graph planner clarification was submitted from the run panel.",
+  });
+}
+
+async function rejectGraphClarificationFromPanel(
+  graphRunId: string,
+  interactionId: string,
+): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
+  const lookup = readGraphRunRecord(graphRunId);
+  const run = lookup.run;
+  const request = run?.pendingClarification;
+  if (!run || !request || request.interactionId !== interactionId) {
+    return {
+      ok: false,
+      changed: false,
+      message: deps.t("graphRun.clarificationUnavailable"),
+      run,
+    };
+  }
+  if (rejectOrchestratorClarification(graphClarificationScope(run.id), interactionId)) {
+    refreshOpenGraphRunPanelForRun(run.id);
+    return { ok: true, changed: false, message: deps.t("graphRun.clarificationRejected"), run };
+  }
+  const timestamp = Date.now();
+  const persisted = updateGraphRunRecord(run.id, {
+    status: "needs-review",
+    pendingClarification: undefined,
+    updatedAt: timestamp,
+  }) ?? { ...run, status: "needs-review" as const, pendingClarification: undefined, updatedAt: timestamp };
+  appendGraphEvent(persisted.eventsFile, {
+    runId: persisted.id,
+    type: "run.updated",
+    timestamp,
+    summary: "Graph planner clarification was rejected.",
+  });
+  refreshOpenGraphRunPanelForRun(persisted.id);
+  return { ok: true, changed: true, message: deps.t("graphRun.clarificationRejected"), run: persisted };
+}
+
 async function stopGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
   const lookup = readGraphRunRecord(graphRunId);
   if (!lookup.run) {
@@ -378,6 +487,7 @@ async function stopGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean;
     return toGraphPanelControlResult(control, "stop");
   }
   const persisted = persistGraphRunControlResult(control);
+  abortOrchestratorClarification(graphClarificationScope(graphRunId));
   cancelGraphRunAutoWake(graphRunId);
   refreshOpenGraphRunPanelForRun(graphRunId);
   if (target) {

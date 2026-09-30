@@ -167,6 +167,7 @@ test("Graph runtime source contract lives in extensionHost/graphRuntime", () => 
   assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1/);
   assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES/);
   assert.match(graphRuntimeSource, /const GRAPH_EXTENSION_MAX_REPLANNING_NODES = 3/);
+  assert.match(graphRuntimeSource, /async function tickGraphRunToPause\([\s\S]*deps\.revealClarification\?\.\(run\.id\);\s*sendGraphMainRunStarted/);
   assert.match(graphRuntimeSource, /async function runGraphPrompt\(/);
   assert.match(graphRuntimeSource, /async function runGraphPromptOrchestration\(/);
   assert.match(graphRuntimeSource, /createGraphRunRecord\(\{/);

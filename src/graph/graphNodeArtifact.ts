@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { normalizeGraphFailureClassification } from "./graphFailureClassification";
 import { normalizeGraphPlannedGraphSpec } from "./graphPlanner";
+import { parseOrchestratorClarification } from "../orchestratorClarification";
 import type {
   GraphNodeExecutionResult,
   GraphNodeExecutionResultStatus,
@@ -17,6 +18,7 @@ const GRAPH_NODE_RESULT_STATUSES = new Set<GraphNodeExecutionResultStatus>([
   "failed",
   "blocked",
   "sleeping",
+  "clarify",
 ]);
 
 export function readGraphNodeExecutionResultArtifact(
@@ -59,6 +61,12 @@ function normalizeGraphNodeExecutionResult(value: unknown): GraphNodeExecutionRe
   if (!GRAPH_NODE_RESULT_STATUSES.has(raw.status as GraphNodeExecutionResultStatus)) {
     return null;
   }
+  const clarification = raw.status === "clarify"
+    ? parseOrchestratorClarification(raw, `graph-clarify-${Date.now()}`)
+    : null;
+  if (raw.status === "clarify" && !clarification) {
+    return null;
+  }
   return {
     status: raw.status as GraphNodeExecutionResultStatus,
     ...(typeof raw.summary === "string" ? { summary: raw.summary } : {}),
@@ -67,7 +75,8 @@ function normalizeGraphNodeExecutionResult(value: unknown): GraphNodeExecutionRe
     ...(normalizeAcceptance(raw.acceptance).length > 0 ? { acceptance: normalizeAcceptance(raw.acceptance) } : {}),
     ...(normalizeGraphFailureClassification(raw.failure) ? { failure: normalizeGraphFailureClassification(raw.failure) as GraphFailureClassification } : {}),
     ...(normalizeFinalAnswer(raw.finalAnswer) ? { finalAnswer: normalizeFinalAnswer(raw.finalAnswer) as GraphFinalAnswer } : {}),
-    ...(normalizeGraphPlannedGraphSpec(raw.plannedGraph) ? { plannedGraph: normalizeGraphPlannedGraphSpec(raw.plannedGraph) as NonNullable<GraphNodeExecutionResult["plannedGraph"]> } : {}),
+    ...(raw.status === "clarify" ? {} : (normalizeGraphPlannedGraphSpec(raw.plannedGraph) ? { plannedGraph: normalizeGraphPlannedGraphSpec(raw.plannedGraph) as NonNullable<GraphNodeExecutionResult["plannedGraph"]> } : {})),
+    ...(clarification ? { clarification } : {}),
     ...(typeof raw.wakeAt === "number" && Number.isFinite(raw.wakeAt) ? { wakeAt: raw.wakeAt } : {}),
   };
 }

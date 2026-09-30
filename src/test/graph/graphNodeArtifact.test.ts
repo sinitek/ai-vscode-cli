@@ -102,3 +102,44 @@ test("returns null when the JSON artifact is missing or invalid", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("reads a planner clarify form and rejects clarify without fields", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-graph-artifact-clarify-"));
+  try {
+    const file = path.join(dir, "plan.md");
+    fs.writeFileSync(file, [
+      "## JSON",
+      "```json",
+      JSON.stringify({
+        status: "clarify",
+        summary: "需要确认范围",
+        clarification: {
+          title: "需要确认需求",
+          instruction: "请选择范围",
+          formFields: [{
+            id: "scope",
+            label: "范围",
+            type: "radio",
+            required: true,
+            options: [
+              { label: "只改接口", value: "api" },
+              { label: "接口和调用方", value: "all" },
+            ],
+          }],
+        },
+      }),
+      "```",
+      "",
+    ].join("\n"), "utf8");
+    const result = readGraphNodeExecutionResultArtifact(file);
+    assert.equal(result?.status, "clarify");
+    assert.equal(result?.clarification?.formFields[0]?.id, "scope");
+    assert.equal(result?.plannedGraph, undefined);
+
+    const invalid = path.join(dir, "invalid.md");
+    fs.writeFileSync(invalid, "## JSON\n```json\n{\"status\":\"clarify\"}\n```\n", "utf8");
+    assert.equal(readGraphNodeExecutionResultArtifact(invalid), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

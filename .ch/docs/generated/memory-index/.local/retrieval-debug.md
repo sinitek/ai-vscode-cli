@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-09-27T06:12:11Z
-- Focus: Loop+ steer controls close reprompt subtask
-- Focus terms: `loop`, `steer`, `controls`, `close`, `reprompt`, `subtask`
+- Focus: Loop+ 我要提问弹窗 思考过程复用 AI对话思考气泡
+- Focus terms: `loop`, `我要提问弹窗`, `我要`, `要提`, `提问`, `问弹`, `弹窗`, `思考过程复用`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5

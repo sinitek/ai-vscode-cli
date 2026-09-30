@@ -54,11 +54,14 @@ export type LoopPlusReviewItem = {
   detail: string | null;
 };
 
+export type LoopPlusReviewAcceptance = "passed" | "failed";
+
 export type LoopPlusSeenAttempt = {
   subtaskId: string;
   attemptId: string;
   disposition: LoopPlusAttemptDisposition;
   outcome?: LoopPlusExecutionOutcome;
+  acceptance?: LoopPlusReviewAcceptance;
 };
 
 export type LoopPlusSchedulerSnapshot = {
@@ -300,7 +303,10 @@ export type LoopPlusScheduler = {
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
   claimNextReview: () => LoopPlusClaimResult;
   submitReview: (eventId: string) => LoopPlusSubmitReviewResult;
-  submitReviewBatch: (eventIds: readonly string[]) => LoopPlusSubmitReviewResult;
+  submitReviewBatch: (
+    eventIds: readonly string[],
+    acceptance?: LoopPlusReviewAcceptance,
+  ) => LoopPlusSubmitReviewResult;
   wait: () => LoopPlusWaitResult;
   complete: () => LoopPlusCompleteResult;
   stopParent: () => LoopPlusStopResult;
@@ -538,7 +544,10 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return submitReviewBatch([eventId]);
   }
 
-  function submitReviewBatch(eventIds: readonly string[]): LoopPlusSubmitReviewResult {
+  function submitReviewBatch(
+    eventIds: readonly string[],
+    acceptance?: LoopPlusReviewAcceptance,
+  ): LoopPlusSubmitReviewResult {
     if (!Array.isArray(eventIds) || eventIds.length === 0) {
       return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
     }
@@ -584,6 +593,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       const seen = seenAttempts.find((entry) => entry.attemptId === item.attemptId);
       if (seen) {
         seen.disposition = "reviewed";
+        recordReviewedAcceptance(seen, acceptance);
       }
     }
     currentReview = null;
@@ -1286,7 +1296,11 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       invalidSnapshot(`seenAttempts[${index}]`);
     }
     const outcome = readSeenOutcome(item.outcome, `seenAttempts[${index}]`);
+    const acceptance = readSeenAcceptance(item.acceptance, `seenAttempts[${index}]`);
     if (item.disposition === "open" && outcome) {
+      invalidSnapshot(`seenAttempts[${index}]`);
+    }
+    if (item.disposition !== "reviewed" && acceptance) {
       invalidSnapshot(`seenAttempts[${index}]`);
     }
     return {
@@ -1294,6 +1308,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
       disposition: item.disposition,
       ...(outcome ? { outcome } : {}),
+      ...(acceptance ? { acceptance } : {}),
     };
   });
 }
@@ -1441,7 +1456,29 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     attemptId: record.attemptId,
     disposition: record.disposition,
     ...(record.outcome ? { outcome: record.outcome } : {}),
+    ...(record.acceptance ? { acceptance: record.acceptance } : {}),
   };
+}
+
+function recordReviewedAcceptance(
+  seen: LoopPlusSeenAttempt,
+  acceptance: LoopPlusReviewAcceptance | undefined,
+): void {
+  if (acceptance !== "passed" && acceptance !== "failed") {
+    return;
+  }
+  const outcomeFailed = seen.outcome === "failed" || seen.outcome === "stopped";
+  seen.acceptance = acceptance === "failed" || outcomeFailed ? "failed" : "passed";
+}
+
+function readSeenAcceptance(value: unknown, field: string): LoopPlusReviewAcceptance | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== "passed" && value !== "failed") {
+    invalidSnapshot(field);
+  }
+  return value;
 }
 
 function readSeenOutcome(value: unknown, field: string): LoopPlusExecutionOutcome | undefined {

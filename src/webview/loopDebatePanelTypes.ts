@@ -135,14 +135,22 @@ export type LoopDebateChatPanelState = {
   rounds: LoopDebateChatPanelRound[];
   chatMarkdown: string;
   error?: string | null;
+  clarification?: import("../orchestratorClarification").OrchestratorClarification | null;
 };
 
 export type LoopDebateChatPanelMessage =
   | { type: "loopDebateChat:refresh" }
   | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
   | { type: "loopDebateChat:supplementTask"; prompt?: string }
+  | { type: "loopDebateChat:askMainModel"; prompt?: string }
+  | { type: "loopDebateChat:abortMainModelQuestion" }
+  | { type: "loopDebateChat:openAskDialog" }
+  | { type: "loopDebateChat:closeAskDialog" }
+  | { type: "loopDebateChat:dismissMainModelAnswer" }
   | { type: "loopDebateChat:stopTask" }
-  | { type: "loopDebateChat:openCommunicationFile"; requestId?: string; path?: string };
+  | { type: "loopDebateChat:openCommunicationFile"; requestId?: string; path?: string }
+  | { type: "loopDebateChat:submitClarification"; interactionId?: string; values?: Record<string, unknown> }
+  | { type: "loopDebateChat:rejectClarification"; interactionId?: string };
 
 export type LoopCommunicationFilePreviewMessage = {
   type: "loopDebateChat:communicationFile";

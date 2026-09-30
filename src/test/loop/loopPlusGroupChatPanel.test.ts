@@ -401,7 +401,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assertLoopPlusDetailCardsHidden(passedPage);
   assert.match(passedPage, /验收结果/u);
   assert.match(passedPage, /子任务 1：Alpha/u);
-  assert.match(passedPage, /验收成功/u);
+  assert.match(passedPage, /<span class="member-status-passed">验收成功<\/span>/u);
   assert.doesNotMatch(passedPage, /子任务 1：Alpha · 验收成功/u);
   assert.doesNotMatch(passedPage, /尝试|已验收尝试/u);
 
@@ -420,7 +420,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const failedPage = html(build(failedScheduler.snapshot()), "zh-CN");
   assertLoopPlusDetailCardsHidden(failedPage);
   assert.match(failedPage, /子任务 2：Bravo/u);
-  assert.match(failedPage, /验收失败/u);
+  assert.match(failedPage, /<span class="member-status-failed">验收失败<\/span>/u);
   assert.doesNotMatch(failedPage, /子任务 2：Bravo · 验收失败/u);
   assert.doesNotMatch(failedPage, /验收成功|尝试/u);
 
@@ -437,7 +437,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const stoppedPage = html(build(stoppedScheduler.snapshot()), "en");
   assertLoopPlusDetailCardsHidden(stoppedPage);
   assert.match(stoppedPage, /子任务 3：Charlie/u);
-  assert.match(stoppedPage, /Acceptance failed/u);
+  assert.match(stoppedPage, /<span class="member-status-failed">Acceptance failed<\/span>/u);
   assert.doesNotMatch(stoppedPage, /子任务 3：Charlie · Acceptance failed/u);
   assert.doesNotMatch(stoppedPage, /Accepted attempts|Attempt /u);
 
@@ -459,6 +459,22 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.match(legacyPassed, /子任务 1：Alpha/u);
   assert.match(legacyPassed, /验收成功/u);
   assert.doesNotMatch(legacyPassed, /子任务 1：Alpha · 验收成功/u);
+});
+
+test("shows a completed attempt as acceptance failed when the review starts a repair", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const current = scheduler.snapshot().currentReview;
+  assert.ok(current);
+  assert.equal(scheduler.submitReviewBatch([current.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  const page = html(build(scheduler.snapshot()), "zh-CN");
+  assert.match(page, /<span class="member-status-failed">验收失败<\/span>/u);
+  assert.doesNotMatch(page, /<span class="member-status-passed">验收成功<\/span>/u);
+  assert.match(page, /\.member-status-passed\s*\{[^}]*--vscode-charts-green/u);
+  assert.match(page, /\.member-status-failed\s*\{[^}]*--vscode-charts-orange/u);
+  assert.doesNotMatch(page, /member-status-passed[\s\S]{0,180}#[0-9a-fA-F]{3,8}/u);
+  assert.doesNotMatch(page, /member-status-failed[\s\S]{0,180}#[0-9a-fA-F]{3,8}/u);
 });
 
 function memberLastStartedStamp(page: string, title: string): string {

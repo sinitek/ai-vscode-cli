@@ -118,6 +118,7 @@ export type GraphRunPanelState = {
   events: GraphRunPanelEvent[];
   selectedEvidence: GraphRunPanelEvidenceItem[];
   error?: string | null;
+  clarification?: import("../orchestratorClarification").OrchestratorClarification | null;
 };
 
 export type GraphRunPanelMessage =
@@ -126,4 +127,6 @@ export type GraphRunPanelMessage =
 	  | { type: "graphRun:supplementRun"; prompt: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:retryNode"; nodeId: string; selectedNodeId?: string | null }
 	  | { type: "graphRun:feedbackNode"; nodeId: string; selectedNodeId?: string | null }
-	  | { type: "graphRun:stopRun"; selectedNodeId?: string | null };
+	  | { type: "graphRun:stopRun"; selectedNodeId?: string | null }
+  | { type: "graphRun:submitClarification"; interactionId?: string; values?: Record<string, unknown> }
+  | { type: "graphRun:rejectClarification"; interactionId?: string };

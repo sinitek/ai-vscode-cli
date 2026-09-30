@@ -55,7 +55,9 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
     "zh-CN",
   );
 
-  assert.match(html, />我要说话<\/button>/u);
+  assert.match(html, /data-action="supplementTask"[^>]*>补充需求<\/button>/u);
+  assert.match(html, /data-action="askMainModel"[^>]*>我要提问<\/button>/u);
+  assert.ok(html.indexOf('data-action="supplementTask"') < html.indexOf('data-action="askMainModel"'));
   assert.match(html, /class="message user-message no-avatar"/u);
   assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
   assert.match(html, /<span class="speaker">我<\/span>/u);
@@ -183,7 +185,55 @@ test("hides the continue model choice when speaking in Loop and Loop+ group chat
   assert.match(continueDialog, /setContinueModelChoiceVisible\(true\)/);
   assert.match(html, /loopDebateChat:supplementTask", prompt \}/);
   assert.doesNotMatch(html, /loopDebateChat:supplementTask", prompt, modelSource/);
+  const askDialog = html.slice(
+    html.indexOf("function openAskDialog"),
+    html.indexOf("function closeAskDialog"),
+  );
+  assert.doesNotMatch(askDialog, /setContinueModelChoiceVisible\(/);
+  assert.match(html, /loopDebateChat:askMainModel", prompt: prompt \}/);
+  assert.match(html, /id="askChatBackdrop"/);
+  assert.match(html, /loopDebateChat:abortMainModelQuestion/);
+  assert.match(html, /ask-chat-message thinking/);
   assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/);
+});
+
+test("restores the supplement dialog before a main-task refresh can mark it closed", () => {
+  const html = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    {
+      mode: "main_sub",
+      task: {
+        id: "task-dialog-refresh",
+        cli: "codex",
+        status: "running",
+        rootPrompt: "主任务刷新时不要关掉补充需求。",
+        taskStoreFile: "/tmp/loop-tasks.json",
+        mainCommunicationFile: "/tmp/main-task.md",
+        currentRound: 1,
+        updatedAt: Date.now(),
+        canSupplement: true,
+        canContinue: false,
+        canStop: true,
+      },
+      rounds: [],
+      chatMarkdown: "",
+    },
+    "zh-CN",
+  );
+
+  const saveDialog = html.slice(html.indexOf("function saveDialogState"), html.indexOf("function clearDialogState"));
+  const restoreDialog = html.slice(html.indexOf("function restoreDialogState"), html.indexOf("function submitAskDialog"));
+  const synchronousRestore = html.indexOf("restoreDialogState();");
+  const visibilityListener = html.indexOf('addEventListener("visibilitychange"');
+  const unloadListener = html.indexOf('addEventListener("beforeunload"');
+  const animationFrame = html.slice(html.lastIndexOf("window.requestAnimationFrame(() => {"), html.indexOf("startAutoRefresh"));
+
+  assert.match(saveDialog, /if \(!dialogStateRestored\)/);
+  assert.match(restoreDialog, /dialogStateRestored = true/);
+  assert.ok(synchronousRestore > html.indexOf("function restoreDialogState"));
+  assert.ok(synchronousRestore < visibilityListener);
+  assert.ok(synchronousRestore < unloadListener);
+  assert.doesNotMatch(animationFrame, /restoreDialogState\(\)/);
 });
 
 test("renders recorded and current Loop models on the continue dialog", () => {
@@ -397,7 +447,8 @@ test("covers Loop transcript fallback speakers, avatars, and template placeholde
     assert.match(html, /<span class="avatar">\?<\/span>/u);
     assert.match(html, /<span class="speaker">System<\/span>/u);
     assert.match(html, /Template Bot \{missing\}/u);
-    assert.doesNotMatch(html, />I want to speak<\/button>/u);
+    assert.doesNotMatch(html, /<button[^>]*data-action="supplementTask"/u);
+    assert.doesNotMatch(html, /<button[^>]*data-action="askMainModel"/u);
   } finally {
     (loopDebate as any).parseLoopDebateChatTranscript = originalParse;
     strings.thinking = originalThinking;
@@ -941,4 +992,101 @@ test("renders communication file paths as preview links and posts markdown previ
     ok: true,
     html: "<h1>标题</h1>",
   }]);
+});
+
+test("renders the main-task clarification form in the group chat and pauses auto refresh", () => {
+  const clarification = {
+    interactionId: "clarify-loop",
+    title: "需要确认需求",
+    instruction: "请选择本次范围",
+    submitLabel: "提交",
+    cancelLabel: "拒绝",
+    formFields: [{
+      id: "scope",
+      label: "范围",
+      type: "radio",
+      required: true,
+      options: [
+        { label: "只改接口", value: "api" },
+        { label: "接口和调用方", value: "all" },
+      ],
+    }],
+  };
+  const html = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({ clarification }),
+    "zh-CN",
+  );
+  assert.match(html, /id="clarificationDialogBackdrop"/);
+  assert.match(html, /需要确认需求/);
+  assert.match(html, /data-submit-type="loopDebateChat:submitClarification"/);
+  assert.match(html, /data-reject-type="loopDebateChat:rejectClarification"/);
+  assert.match(html, /请先填写\{label\}/);
+  assert.match(html, /clarificationDialogBackdrop/);
+  assert.match(html, /var\(--vscode-input-background\)/);
+  assert.doesNotMatch(html, /#[0-9a-fA-F]{3,8}/);
+
+  const hidden = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState(),
+    "zh-CN",
+  );
+  assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
+});
+
+test("renders a persistent ask chat with thinking bubbles and can publish updates", () => {
+  const idle = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState(),
+    "zh-CN",
+  );
+  assert.match(idle, /id="askChatBackdrop" class="dialog-backdrop ask-chat-backdrop"/u);
+  assert.match(idle, /id="askChatAbort"[^>]*hidden/u);
+  assert.doesNotMatch(idle, /id="askChatSend"[^>]*disabled/u);
+  assert.match(idle, /还没有提问/u);
+
+  const running = buildLoopDebateChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({ task: { ...createState().task, canSupplement: true } }),
+    "zh-CN",
+    {
+      version: 1,
+      dialogOpen: true,
+      running: true,
+      updatedAt: 5,
+      messages: [
+        { id: "q", role: "user", content: "可以合并吗", createdAt: 1 },
+        { id: "t", role: "thinking", content: "先看冲突", createdAt: 2, streaming: true },
+        { id: "a", role: "assistant", content: "可以合并。", createdAt: 3 },
+      ],
+    },
+  );
+  assert.match(running, /ask-chat-backdrop visible/u);
+  assert.match(running, /id="askChatInput"[^>]*disabled/u);
+  assert.match(running, /id="askChatSend"[^>]*disabled/u);
+  assert.doesNotMatch(running, /id="askChatAbort"[^>]*hidden/u);
+  assert.match(running, /可以合并吗/u);
+  assert.match(running, /先看冲突/u);
+  assert.match(running, /可以合并。/u);
+
+  const harness = createPanelHarness();
+  const panel = new LoopDebateChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
+  const thread = {
+    version: 1 as const,
+    dialogOpen: false,
+    running: false,
+    updatedAt: 8,
+    messages: [{ id: "old", role: "user" as const, content: "历史问题", createdAt: 1 }],
+  };
+  panel.setAskThread(thread);
+  panel.publishAskThread();
+  assert.deepEqual(harness.messages, []);
+  panel.show(createState());
+  assert.match(harness.panel.webview.html, /历史问题/u);
+  panel.publishAskThread();
+  assert.deepEqual(harness.messages.at(-1), {
+    type: "loopDebateChat:askThread",
+    thread,
+  });
+  assert.equal(panel.getAskThread(), thread);
 });

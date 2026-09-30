@@ -225,6 +225,9 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /"title":"评审并行结果"/u);
   assert.doesNotMatch(prompt, /"title":"Implement API changes"/u);
   assert.match(prompt, /plannedGraph\.nodes 不得包含保留 ID `plan`/u);
+  assert.match(prompt, /status=clarify/u);
+  assert.match(prompt, /clarification 表单/u);
+  assert.match(prompt, /不要猜测，也不要输出 plannedGraph/u);
 });
 
 test("replanner prompt requires appending continuation nodes inside the current graph", () => {

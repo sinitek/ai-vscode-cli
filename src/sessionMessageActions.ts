@@ -5,7 +5,7 @@ import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
-import { normalizeHistoryRetentionDays } from "./toolSettings";
+import { normalizeHistoryRetentionDays, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 import { PanelMessage } from "./webview/types";
 import {
   type PanelMessageHandlerDeps,
@@ -152,6 +152,13 @@ export async function handleUpdateSettingMessage(
   if (message.key === "loopPlusMaxAcceptances") {
     deps.updateStoredToolSettings({
       loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(message.value),
+    });
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "humanInteractionTimeoutMinutes") {
+    deps.updateStoredToolSettings({
+      humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(message.value),
     });
     await deps.postPanelState();
     return;

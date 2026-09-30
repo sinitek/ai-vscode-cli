@@ -457,3 +457,126 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
   }
 });
 
+
+test("asks the current main model session and shows the answer without supplementing the task", async () => {
+  const vscode = require("vscode");
+  const previousCreate = vscode.window.createWebviewPanel;
+  let messageHandler: ((message: unknown) => void) | undefined;
+  const webview = {
+    cspSource: "self",
+    html: "",
+    postMessage() {
+      return undefined;
+    },
+    onDidReceiveMessage(handler: (message: unknown) => void) {
+      messageHandler = handler;
+      return { dispose: () => undefined };
+    },
+  };
+  (vscode.window as { createWebviewPanel: (...args: unknown[]) => unknown }).createWebviewPanel = () => ({
+    title: "",
+    webview,
+    reveal() {
+      return undefined;
+    },
+    onDidDispose() {
+      return { dispose: () => undefined };
+    },
+  });
+  try {
+    const task = createStoppedTask();
+    task.schedulingMode = "event_driven";
+    const notices: string[] = [];
+    const questions: string[] = [];
+    const savedThreads: string[] = [];
+    let supplementalCount = 0;
+    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    const deps: CoordinatorDeps = {
+      getExtensionUri: () => ({ fsPath: "/extension" } as any),
+      panelsByTaskId: new Map(),
+      defaultDebateRound: 1,
+      normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+      normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+      appendSupplementalRequirement: (existing, nextItem) => {
+        supplementalCount += 1;
+        return [...(existing ?? []), nextItem];
+      },
+      appendSupplementalRequirementToCommunication: () => undefined,
+      readTaskRecord: (taskId) => taskId === task.id ? task : null,
+      updateTaskRecord: () => task,
+      listTaskStoreFiles: () => [],
+      readTaskStoreTasks: () => [],
+      collectRunningTaskIds: () => new Set([task.id]),
+      readTextFileIfNonEmpty: () => null,
+      fileExists: () => false,
+      writeTextFileEnsuringDir: () => true,
+      getActiveSubtaskIds: () => [],
+      buildCompletedConclusionAndSummaryMarkdown: () => "",
+      resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "codex" }),
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => true,
+      getActiveConfigIdForCli: () => "current-config",
+      getSelectedCliModel: () => "current-model",
+      runLoopPrompt: async () => undefined,
+      stopRunsForTask: () => undefined,
+      markTaskStoppedByUser: () => task,
+      postPanelState: async () => undefined,
+      getActiveConversationTaskId: () => task.id,
+      showInformationMessage: () => undefined,
+      showWarningMessage: () => undefined,
+      pickTask: async () => task,
+      notifyLoopPlusUserMessage: (_taskId, text) => {
+        notices.push(text);
+      },
+      askMainModel: async (_task, question, hooks) => {
+        questions.push(question);
+        hooks?.onProgress?.({
+          before: [],
+          current: [{
+            id: "think",
+            role: "assistant",
+            content: "thinking 先看冲突",
+            kind: "thinking",
+            createdAt: 1,
+          }],
+        });
+        return { status: "ready", answer: "可以先合并冲突文件。" };
+      },
+      readAskThread: () => ({
+        version: 1,
+        messages: [{ id: "old", role: "user", content: "上次的问题", createdAt: 1 }],
+        running: false,
+        dialogOpen: false,
+        updatedAt: 1,
+      }),
+      writeAskThread: (_task, thread) => {
+        savedThreads.push(thread.messages.map((message) => message.content).join("|"));
+      },
+      t: ((key: string) => key) as CoordinatorDeps["t"],
+    };
+    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    await coordinator.open(task.id);
+    assert.match(webview.html, /上次的问题/u);
+    messageHandler?.({ type: "loopDebateChat:askMainModel", prompt: "  可以合并吗  " });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(questions, ["可以合并吗"]);
+    assert.equal(supplementalCount, 0);
+    assert.match(webview.html, /可以合并吗/u);
+    assert.match(webview.html, /先看冲突/u);
+    assert.match(webview.html, /可以先合并冲突文件。/u);
+    const panel = deps.panelsByTaskId.get(task.id);
+    assert.equal(panel?.getAskThread().dialogOpen, true);
+    assert.equal(panel?.getAskThread().running, false);
+    assert.equal(notices.length, 0);
+    assert.ok(savedThreads.some((entry) => entry.includes("可以先合并冲突文件。")));
+
+    messageHandler?.({ type: "loopDebateChat:dismissMainModelAnswer" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(panel?.getAskThread().dialogOpen, false);
+    assert.match(panel?.getAskThread().messages.map((message) => message.content).join("\n") ?? "", /上次的问题/u);
+    assert.match(panel?.getAskThread().messages.map((message) => message.content).join("\n") ?? "", /可以先合并冲突文件。/u);
+  } finally {
+    vscode.window.createWebviewPanel = previousCreate;
+  }
+});

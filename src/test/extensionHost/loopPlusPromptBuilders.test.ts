@@ -19,7 +19,7 @@ import type {
   LoopPlusSchedulerView,
 } from "../../loopPlusScheduler";
 
-const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "completed"] as const;
+const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "clarify", "completed"] as const;
 const PLURAL_CONFIRMATION_KEYS = ["reviewEventIds", "confirmedEventIds", "acceptedEventIds"] as const;
 
 function execution(subtaskId: string, state: LoopPlusExecutionRecord["state"]): LoopPlusExecutionRecord {
@@ -148,6 +148,13 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.equal(Object.prototype.hasOwnProperty.call(blocked, "subtasks"), false);
   assert.equal(typeof blocked.finalSummary, "string");
   assert.ok((blocked.finalSummary ?? "").trim());
+
+  const clarify = parseExample(examples, "clarify");
+  assert.equal(Object.prototype.hasOwnProperty.call(clarify, "reviewEventId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(clarify, "subtasks"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(clarify, "controls"), false);
+  assert.equal(clarify.clarification?.formFields.length, 1);
+  assert.equal(clarify.clarification?.formFields[0]?.type, "radio");
 
   const completed = parseExample(examples, "completed");
   assert.equal(completed.reviewEventId, "event-live-42");

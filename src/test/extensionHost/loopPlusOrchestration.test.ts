@@ -14,6 +14,11 @@ import {
 import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
+import {
+  loopClarificationScope,
+  submitOrchestratorClarification,
+  rejectOrchestratorClarification,
+} from "../../orchestratorClarification";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -128,6 +133,7 @@ function harness(options: {
   beforeReadTask?: () => void;
   beforeUpdateTask?: (patch: Partial<LoopTaskRecord>) => void;
   adaptMain?: (request: LoopPlusMainRequest, callIndex: number) => LoopPlusMainHandle | undefined;
+  clarificationTimeoutMs?: () => number;
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -145,6 +151,7 @@ function harness(options: {
     maxConcurrency: options.maxConcurrency ?? 6,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
+    ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
@@ -320,7 +327,7 @@ test("starts one main review when A finishes while B is still running", async ()
   assert.equal(beta.request.attemptId.length > 0, true);
 });
 
-test("accepts reviews already queued, plus user messages, together in the next decision", async () => {
+test("accepts every review queued before the decision lands, including ones that finish during it", async () => {
   const env = harness({ maxConcurrency: 3 });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -336,37 +343,30 @@ test("accepts reviews already queued, plus user messages, together in the next d
   assert.equal(env.attempts.length, 3);
   env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  assert.equal(reviews().length, 1);
   env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
   env.attempts[2].resolve({ outcome: "failed", detail: "gamma" });
   assert.equal(env.host.submitUserMessage(run.taskId ?? "", "cover the new failure"), true);
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
+  assert.equal(reviews().length, 2);
   assert.equal(env.activeMains(), 1);
-  const firstReview = env.mains[1];
   const alphaEventId = buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId);
-  assert.equal(firstReview.request.reviewEventId, alphaEventId);
-  assert.deepEqual(firstReview.request.reviewEventIds, [alphaEventId]);
-  assert.match(firstReview.request.modelPrompt, /Acceptance batch count: 1/);
-  assert.match(firstReview.request.modelPrompt, /FIFO review queue count: 2/);
-  assert.equal(firstReview.request.prompt.includes("cover the new failure"), false);
-  firstReview.resolve(decisionJson({ status: "accept", reviewEventId: alphaEventId }));
-  await flush();
-  const second = env.mains.filter((item) => item.request.kind === "review")[1];
   const betaEventId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
   const gammaEventId = buildLoopPlusFinishEventId("gamma", env.attempts[2].request.attemptId);
-  assert.deepEqual(second.request.reviewEventIds, [betaEventId, gammaEventId]);
-  assert.match(second.request.modelPrompt, /Acceptance batch count: 2/);
-  assert.match(second.request.prompt, /cover the new failure/);
-  second.resolve(decisionJson({ status: "accept", reviewEventId: betaEventId }));
+  const batch = reviews()[1];
+  assert.deepEqual(batch.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
+  assert.match(batch.request.modelPrompt, /Acceptance batch count: 3/);
+  assert.match(batch.request.prompt, /cover the new failure/);
+  batch.resolve(decisionJson({ status: "accept", reviewEventId: alphaEventId }));
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 3);
-  const retried = env.mains.filter((item) => item.request.kind === "review")[2];
-  assert.deepEqual(retried.request.reviewEventIds, [betaEventId, gammaEventId]);
+  assert.equal(reviews().length, 3);
+  const retried = reviews()[2];
+  assert.deepEqual(retried.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
   assert.match(retried.request.prompt, /cover the new failure/);
   retried.resolve(decisionJson({
     status: "accept",
-    reviewEventIds: [betaEventId, gammaEventId],
+    reviewEventIds: [alphaEventId, betaEventId, gammaEventId],
     subtasks: [],
   }));
   await flush();
@@ -374,7 +374,7 @@ test("accepts reviews already queued, plus user messages, together in the next d
   assert.equal(snapshotOf(task).currentReview, null);
   assert.equal(snapshotOf(task).reviewQueue.length, 0);
   assert.deepEqual(snapshotOf(task).userMessageQueue, []);
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 3);
+  assert.equal(snapshotOf(task).seenAttempts.filter((item) => item.disposition === "reviewed").length, 3);
   assert.equal(env.maxMains(), 1);
 });
 
@@ -430,7 +430,47 @@ test("keeps conflict and concurrency limits when new work is added beside a runn
   assert.equal(snapshotOf(task).pending.length >= 1, true);
 });
 
-test("does not complete when a new finish arrives during the completion decision", async () => {
+test("records acceptance failed when accept starts repair subtasks", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const review = env.mains[1];
+  review.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: review.request.reviewEventId,
+    subtasks: [subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const alpha = snapshotOf(env.tasks.get(taskId)).seenAttempts.find((item) => item.subtaskId === "alpha");
+  assert.equal(alpha?.outcome, "completed");
+  assert.equal(alpha?.disposition, "reviewed");
+  assert.equal(alpha?.acceptance, "failed");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.find((item) => item.subtaskId === "beta")?.acceptance, undefined);
+
+  env.attempts.find((item) => item.request.subtaskId === "beta")?.resolve({ outcome: "completed", detail: "beta" });
+  await flush();
+  const repairReview = env.mains.filter((item) => item.request.kind === "review").at(-1);
+  assert.ok(repairReview);
+  repairReview.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: repairReview.request.reviewEventId,
+    subtasks: [],
+  }));
+  await flush();
+  const after = snapshotOf(env.tasks.get(taskId));
+  assert.equal(after.seenAttempts.find((item) => item.subtaskId === "alpha")?.acceptance, "failed");
+  assert.equal(after.seenAttempts.find((item) => item.subtaskId === "beta")?.acceptance, "passed");
+});
+
+test("does not complete from a stale review after another finish joins the batch", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -441,13 +481,17 @@ test("does not complete when a new finish arrives during the completion decision
   await flush();
   env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
   await flush();
-  const review = env.mains[1];
+  const stale = env.mains[1];
   env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
-  review.resolve(decisionJson({
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  assert.equal(reviews().length, 2);
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId);
+  const betaEventId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
+  assert.deepEqual(reviews()[1].request.reviewEventIds, [alphaEventId, betaEventId]);
+  stale.resolve(decisionJson({
     status: "completed",
-    reviewEventId: review.request.reviewEventId,
+    reviewEventId: alphaEventId,
     answerConclusion: "finished",
     finalSummary: "everything passed",
     acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
@@ -455,8 +499,9 @@ test("does not complete when a new finish arrives during the completion decision
   }));
   await flush();
   assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
-  const next = env.mains.filter((item) => item.request.kind === "review")[1];
-  assert.equal(next.request.reviewEventId, buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId));
+  assert.equal(reviews().length, 2);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, alphaEventId);
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.map((item) => item.eventId), [betaEventId]);
 });
 
 test("ignores duplicate and stale attempt callbacks", async () => {
@@ -1247,11 +1292,13 @@ test("pauses recoverably when persisting a finish fails and keeps the completion
 
 test("keeps the persisted finish queue when refreshing an in-flight main prompt fails", async () => {
   let failRefresh = false;
+  let armedRefreshFailure = false;
   const env = harness({
     maxConcurrency: 2,
     beforeUpdateTask: (patch) => {
       const snapshot = patch.loopPlus as LoopPlusSchedulerSnapshot | undefined;
-      if (snapshot?.reviewQueue.some((item) => item.subtaskId === "beta")) {
+      if (!armedRefreshFailure && snapshot?.reviewQueue.some((item) => item.subtaskId === "beta")) {
+        armedRefreshFailure = true;
         failRefresh = true;
       }
     },
@@ -1278,10 +1325,13 @@ test("keeps the persisted finish queue when refreshing an in-flight main prompt 
   beta.resolve({ outcome: "completed", detail: "beta done" });
   await flush();
   const task = env.tasks.get(run.taskId ?? "");
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", alpha.request.attemptId);
+  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
   assert.equal(task?.status, "running");
   assert.equal(snapshotOf(task).currentReview?.subtaskId, "alpha");
   assert.deepEqual(snapshotOf(task).reviewQueue.map((item) => item.subtaskId), ["beta"]);
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
+  const reviews = env.mains.filter((item) => item.request.kind === "review");
+  assert.deepEqual(reviews.at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId]);
   assert.equal(env.logs.some((item) => item.event === "loop-plus-refresh-failed"), true);
   assert.equal(await isSettled(run.done), false);
   assert.equal(task?.mainAiFailureCount ?? 0, 0);
@@ -1907,7 +1957,7 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   assert.equal(env.attempts.length, 1);
 });
 
-test("accepts only the captured FIFO review ids and retains a finish that arrives later", async () => {
+test("reasks with every queued finish and keeps a finish that lands after accept", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -1936,44 +1986,31 @@ test("accepts only the captured FIFO review ids and retains a finish that arrive
   beta.resolve({ outcome: "completed", detail: "beta" });
   gamma.resolve({ outcome: "completed", detail: "gamma" });
   await flush();
-  assert.equal(reviews().length, 1);
-  reviews()[0].resolve(decisionJson({
-    status: "accept",
-    reviewEventId: alphaEventId,
-    subtasks: [],
-  }));
-  await flush();
   const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
   const gammaEventId = buildLoopPlusFinishEventId("gamma", gamma.request.attemptId);
-  assert.deepEqual(reviews()[1]?.request.reviewEventIds, [betaEventId, gammaEventId]);
-  reviews()[1].resolve(decisionJson({
+  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
+  reviews().at(-1)?.resolve(decisionJson({
     status: "accept",
-    reviewEventIds: [gammaEventId, betaEventId],
+    reviewEventIds: [gammaEventId, betaEventId, alphaEventId],
     subtasks: [],
   }));
   await flush();
-  assert.equal(reviews().length, 3);
-  assert.deepEqual(reviews()[2]?.request.reviewEventIds, [betaEventId, gammaEventId]);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, betaEventId);
+  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, alphaEventId);
+  reviews().at(-1)?.resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: [alphaEventId, betaEventId, gammaEventId],
+    subtasks: [],
+  }));
+  await flush();
   delta.resolve({ outcome: "failed", detail: "delta" });
   await flush();
-  assert.equal(reviews().length, 3);
   const deltaEventId = buildLoopPlusFinishEventId("delta", delta.request.attemptId);
-  assert.deepEqual(
-    snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.map((item) => item.eventId),
-    [gammaEventId, deltaEventId],
-  );
-  reviews()[2].resolve(decisionJson({
-    status: "accept",
-    reviewEventIds: [betaEventId, gammaEventId],
-    subtasks: [],
-  }));
-  await flush();
-  assert.equal(reviews()[3]?.request.reviewEventId, deltaEventId);
-  assert.deepEqual(reviews()[3]?.request.reviewEventIds, [deltaEventId]);
+  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [deltaEventId]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, deltaEventId);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length, 0);
   assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(env.messages.includes("loop-plus-completed"), false);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, deltaEventId);
 });
 
 test("does not let completed bypass running work or user messages the request did not capture", async () => {
@@ -2323,4 +2360,126 @@ test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id
   const restarted = env.attempts.filter((item) => item.request.subtaskId === "beta");
   assert.equal(restarted.at(-1)?.request.prompt, nextPrompt);
   assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), false);
+});
+
+function clarificationDecision(): string {
+  return decisionJson({
+    status: "clarify",
+    finalSummary: "需要确认范围",
+    clarification: {
+      title: "需要确认需求",
+      instruction: "请选择范围",
+      formFields: [{
+        id: "scope",
+        label: "范围",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "只改接口", value: "api" },
+          { label: "接口和调用方", value: "all" },
+        ],
+      }],
+    },
+  });
+}
+
+test("continues Loop+ after the user submits the main-task clarification form", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  const waiting = env.tasks.get(taskId);
+  assert.equal(waiting?.status, "running");
+  assert.equal(waiting?.clarificationCount, 1);
+  assert.equal(waiting?.pendingClarification?.formFields[0]?.id, "scope");
+  assert.equal(env.mains.length, 1);
+  const delivered = submitOrchestratorClarification(
+    loopClarificationScope(taskId),
+    waiting?.pendingClarification?.interactionId ?? "",
+    { scope: "api" },
+  );
+  assert.equal(delivered.ok, true);
+  await flush();
+  const continued = env.tasks.get(taskId);
+  assert.equal(continued?.pendingClarification, undefined);
+  assert.equal(continued?.status, "running");
+  assert.match(continued?.supplementalRequirements?.join("\n") ?? "", /用户已提交主任务澄清表单/);
+  assert.match(continued?.supplementalRequirements?.join("\n") ?? "", /只改接口/);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1]?.request.kind, "continue");
+  assert.match(env.mains[1]?.request.prompt ?? "", /用户已提交主任务澄清表单/);
+});
+
+test("continues Loop+ with the best plan when clarification times out", async () => {
+  const env = harness({ clarificationTimeoutMs: () => 20 });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  env.mains[0].resolve(clarificationDecision());
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  await flush();
+  const continued = env.tasks.get(taskId);
+  assert.equal(continued?.pendingClarification, undefined);
+  assert.equal(continued?.status, "running");
+  assert.match(continued?.supplementalRequirements?.join("\n") ?? "", /未在时限内回答/);
+  assert.equal(env.messages.includes("loop-plus-clarification-rejected"), false);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1]?.request.kind, "continue");
+  assert.match(env.mains[1]?.request.prompt ?? "", /未在时限内回答/);
+});
+
+test("pauses Loop+ when the user rejects main-task clarification", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  const waiting = env.tasks.get(taskId);
+  assert.equal(rejectOrchestratorClarification(
+    loopClarificationScope(taskId),
+    waiting?.pendingClarification?.interactionId ?? "",
+  ), true);
+  await flush();
+  const paused = env.tasks.get(taskId);
+  assert.equal(paused?.status, "needs-review");
+  assert.equal(paused?.pendingClarification, undefined);
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.messages.includes("loop-plus-clarification-rejected"), true);
+});
+
+test("does not open another clarification form after the limit", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  const task = env.tasks.get(taskId);
+  assert.ok(task);
+  task.clarificationCount = 8;
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  const paused = env.tasks.get(taskId);
+  assert.equal(paused?.status, "needs-review");
+  assert.equal(paused?.pendingClarification, undefined);
+  assert.equal(paused?.clarificationCount, 8);
+  assert.equal(env.mains.length, 1);
+});
+
+test("clears a pending Loop+ clarification form when the parent stops", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  const interactionId = env.tasks.get(taskId)?.pendingClarification?.interactionId ?? "";
+  env.host.stopParent(taskId);
+  await flush();
+  const stopped = env.tasks.get(taskId);
+  assert.equal(stopped?.status, "stopped");
+  assert.equal(stopped?.pendingClarification, undefined);
+  assert.equal(submitOrchestratorClarification(loopClarificationScope(taskId), interactionId, { scope: "api" }).ok, false);
+  assert.equal(env.mains.length, 1);
 });

@@ -1004,6 +1004,64 @@ test("keeps the execution outcome after review and still loads a legacy attempt 
   );
 });
 
+test("records repair acceptance as failed and keeps a clean accept passed", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([spec("alpha"), spec("beta")]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "failed" });
+  const batch = [reviewEvent("alpha"), reviewEvent("beta")];
+  assert.equal(scheduler.submitReviewBatch(batch, "failed").ok, true);
+  const alpha = scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "alpha-1");
+  const beta = scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "beta-1");
+  assert.equal(alpha?.disposition, "reviewed");
+  assert.equal(alpha?.outcome, "completed");
+  assert.equal(alpha?.acceptance, "failed");
+  assert.equal(beta?.outcome, "failed");
+  assert.equal(beta?.acceptance, "failed");
+  assert.equal(scheduler.submitReviewBatch(batch, "passed").ok, true);
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "alpha-1")?.acceptance, "failed");
+
+  const passed = createLoopPlusScheduler({ maxConcurrency: 1 });
+  passed.dispatch([spec("gamma")]);
+  passed.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "completed" });
+  assert.equal(passed.submitReviewBatch([reviewEvent("gamma")], "passed").ok, true);
+  assert.equal(passed.snapshot().seenAttempts[0]?.acceptance, "passed");
+
+  const stopped = createLoopPlusScheduler({ maxConcurrency: 1 });
+  stopped.dispatch([spec("delta")]);
+  stopped.finish({ subtaskId: "delta", attemptId: "delta-1", outcome: "stopped" });
+  assert.equal(stopped.submitReviewBatch([reviewEvent("delta")], "passed").ok, true);
+  assert.equal(stopped.snapshot().seenAttempts[0]?.outcome, "stopped");
+  assert.equal(stopped.snapshot().seenAttempts[0]?.acceptance, "failed");
+
+  const plain = createLoopPlusScheduler({ maxConcurrency: 1 });
+  plain.dispatch([spec("epsilon")]);
+  plain.finish({ subtaskId: "epsilon", attemptId: "epsilon-1", outcome: "completed" });
+  assert.equal(plain.submitReview(reviewEvent("epsilon")).ok, true);
+  assert.equal(plain.snapshot().seenAttempts[0]?.acceptance, undefined);
+
+  const restored = createLoopPlusScheduler({
+    snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())),
+  });
+  assert.equal(restored.snapshot().seenAttempts.find((item) => item.attemptId === "alpha-1")?.acceptance, "failed");
+
+  const invalid = passed.snapshot();
+  (invalid.seenAttempts[0] as { acceptance?: string }).acceptance = "maybe";
+  assert.throws(
+    () => createLoopPlusScheduler({ snapshot: invalid }),
+    /Invalid Loop\+ scheduler snapshot: seenAttempts\[0\]/,
+  );
+
+  const open = createLoopPlusScheduler({ maxConcurrency: 1 });
+  open.dispatch([spec("zeta")]);
+  const openSnapshot = open.snapshot();
+  openSnapshot.seenAttempts[0]!.acceptance = "failed";
+  assert.throws(
+    () => createLoopPlusScheduler({ snapshot: openSnapshot }),
+    /Invalid Loop\+ scheduler snapshot: seenAttempts\[0\]/,
+  );
+});
+
 test("close frees a concurrency slot and does not create an acceptance event", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   scheduler.dispatch([spec("alpha"), spec("beta")]);

@@ -9,6 +9,7 @@ import {
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { resolveLocale, type AppLocale } from "../i18n";
 import { GRAPH_RUN_PANEL_STYLES } from "./graphRunPanelStyles";
+import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import {
   buildGraphRunPanelTitle,
   getGraphRunPanelStrings,
@@ -248,6 +249,7 @@ ${GRAPH_RUN_PANEL_STYLES}
           <button class="button" type="button" data-action="refresh">${escapeHtml(strings.refresh)}</button>
         </div>
       </header>
+      ${renderOrchestratorClarificationDialog(state.clarification, { requiredTemplate: strings.clarificationRequired }, { submit: "graphRun:submitClarification", reject: "graphRun:rejectClarification" })}
       ${renderSupplementDialog(strings)}
       ${renderContinueDialog(state, strings)}
       <main class="content graph-canvas-content">
@@ -1156,6 +1158,7 @@ ${GRAPH_RUN_PANEL_STYLES}
         setSelectedNode(initialSelected, { persist: false });
       }
       centerInitialDagViewport(serverSelected || persisted || "");
+${orchestratorClarificationDialogScript()}
     </script>
   </body>
 </html>`;

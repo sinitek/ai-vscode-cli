@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
+import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import type {
   LoopAcceptance,
   LoopAcceptanceCheck,
@@ -21,6 +22,7 @@ export const LOOP_PLUS_DECISION_STATUSES = [
   "steer",
   "blocked",
   "completed",
+  "clarify",
 ] as const;
 
 export const LOOP_PLUS_CONTROL_ACTIONS = ["close", "reprompt"] as const;
@@ -52,6 +54,7 @@ export type LoopPlusDecision = {
   controls?: LoopPlusControlDecision[];
   answerConclusion?: string;
   finalSummary?: string;
+  clarification?: OrchestratorClarification;
   acceptance?: LoopAcceptance;
   requirementCoverage?: LoopAcceptanceCheck[];
   estimatedRemainingRounds?: number;
@@ -130,6 +133,8 @@ export function normalizeLoopPlusDecision(
       return normalizeSteerDecision(value, estimatedRemainingRounds, subtaskMax);
     case "blocked":
       return normalizeBlockedDecision(value, estimatedRemainingRounds, subtaskMax);
+    case "clarify":
+      return normalizeClarifyDecision(value, estimatedRemainingRounds, subtaskMax);
     case "completed":
       return normalizeCompletedDecision(value, estimatedRemainingRounds, subtaskMax);
     default:
@@ -219,6 +224,31 @@ function normalizeSteerDecision(
   return withEstimatedRemainingRounds({
     status: "steer",
     controls,
+  }, estimatedRemainingRounds);
+}
+
+
+function normalizeClarifyDecision(
+  raw: Record<string, unknown>,
+  estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
+): LoopPlusDecision | null {
+  if (hasReviewEventConfirmation(raw) || hasOwn(raw, "controls")) {
+    return null;
+  }
+  const subtasks = readSubtasks(raw, subtaskMax);
+  if (!subtasks || subtasks.length > 0) {
+    return null;
+  }
+  const clarification = parseOrchestratorClarification(raw, `loop-plus-clarify-${Date.now()}`);
+  if (!clarification) {
+    return null;
+  }
+  const finalSummary = readOptionalText(raw.finalSummary);
+  return withEstimatedRemainingRounds({
+    status: "clarify",
+    clarification,
+    ...(finalSummary ? { finalSummary } : {}),
   }, estimatedRemainingRounds);
 }
 

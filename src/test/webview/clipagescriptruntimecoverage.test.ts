@@ -1319,6 +1319,16 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(errors, []);
 });
 
+test("normalizes the human interaction timeout from the AI task settings input", () => {
+  const { document, posted } = createRuntimeHarness();
+  document.getElementById("humanInteractionTimeoutMinutes").value = "0";
+  document.getElementById("humanInteractionTimeoutMinutes").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 1 });
+  document.getElementById("humanInteractionTimeoutMinutes").value = "999";
+  document.getElementById("humanInteractionTimeoutMinutes").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 240 });
+});
+
 test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {
   const { document, posted } = createRuntimeHarness();
   document.getElementById("loopPlusMaxAcceptances").value = "0";

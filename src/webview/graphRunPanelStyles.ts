@@ -710,4 +710,52 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
           flex-direction: column;
         }
       }
+
+      .clarification-dialog {
+        width: min(640px, 100%);
+        max-height: min(86vh, 760px);
+        display: flex;
+        flex-direction: column;
+      }
+      .clarification-dialog .dialog-body {
+        overflow: auto;
+      }
+      .clarification-field {
+        margin-bottom: 12px;
+      }
+      .clarification-description {
+        margin: -4px 0 8px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .clarification-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .clarification-option {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        color: var(--vscode-foreground);
+        font-size: 13px;
+      }
+      .clarification-option small {
+        display: block;
+        color: var(--vscode-descriptionForeground);
+      }
+      .clarification-input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 4px;
+        padding: 8px 10px;
+        color: var(--vscode-input-foreground);
+        background: var(--vscode-input-background);
+        font: inherit;
+      }
+      .clarification-input:focus {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 0;
+      }
 `;

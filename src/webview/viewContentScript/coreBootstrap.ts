@@ -163,6 +163,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoCompactContextAfterRun: true,
         multiAgentEnabled: false,
         humanInteractionEnabled: true,
+        humanInteractionTimeoutMinutes: 10,
         historyRetentionDays: 30,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
@@ -315,6 +316,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         multiAgentEnabled: document.getElementById("multiAgentEnabled"),
         humanInteractionEnabled: document.getElementById("humanInteractionEnabled"),
+        humanInteractionTimeoutMinutes: document.getElementById("humanInteractionTimeoutMinutes"),
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
@@ -524,6 +526,16 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return ["low", "medium", "high", "xhigh"].includes(value)
           ? value
           : LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT;
+      }
+
+      function normalizeHumanInteractionTimeoutMinutes(value) {
+        const numeric = typeof value === "number"
+          ? value
+          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
+        if (!Number.isFinite(numeric)) {
+          return 10;
+        }
+        return Math.min(Math.max(Math.floor(numeric), 1), 240);
       }
 
       function normalizeLoopMaxRounds(value) {

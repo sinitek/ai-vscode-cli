@@ -181,6 +181,15 @@ export async function tickGraphRun(
       } else {
         failedNodeIds.push(execution.nodeId);
       }
+    } else if (execution.result.status === "clarify") {
+      const node = getGraphKernelNode(currentRun, execution.nodeId);
+      if (currentRun.pendingClarification && node.status === "ready") {
+        completedNodeIds.push(execution.nodeId);
+      } else if (node.status === "blocked") {
+        blockedNodeIds.push(execution.nodeId);
+      } else {
+        failedNodeIds.push(execution.nodeId);
+      }
     } else {
       sleepingNodeIds.push(execution.nodeId);
     }

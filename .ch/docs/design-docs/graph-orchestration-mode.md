@@ -42,7 +42,7 @@
 已知限制同样是当前规格的一部分：
 
 - 尚无图编辑器、模板库、运行前人工调整、DAG 结构编辑、边/节点编辑或图 diff；当前节点拖拽、背景拖拽平移、12-port 连线、短边目的标签、Start/Decision/End/Step 语义 chip 和按节点类型着色的矩形卡片都仅用于调整/增强 GraphRunPanel 内当前 run 的视觉表达，不修改 DAG 结构、调度语义或节点类型体系。
-- 尚无完整人工审批工作流；新 Graph planner 不再生成 `human_gate`，运行时不再自动打开审批入口。
+- 尚无完整人工审批工作流；新 Graph planner 不再生成 `human_gate`，运行时不再自动打开审批入口。planner / replanner 可以返回 `clarify`，由 Graph 运行图弹出一次性澄清表单；这不是审批流，非 plan 节点不能使用。澄清表单使用 AI 任务配置的人工交互超时，默认 10 分钟；超时后按最佳方案继续，不进入 `needs-review`。Graph 开始或恢复执行时自动打开运行图。
 - Retry 覆盖 failed 等可恢复节点：direct 模式没有 checkpoint，只会清理目标节点的运行状态、旧 artifactRef、failure、execution/checkpoint 字段和验收 evidence，并在当前工作区状态上重跑节点，不承诺撤销该节点上一次已经写入的文件改动。节点返回 blocked 会归一为 failed，不再提供 blocked modal 跳过下游流程；历史 worktree run 若节点记录了 `baseCommit`，宿主仍可在该独立 worktree 内 `reset --hard` 到节点执行前 checkpoint 并清理未跟踪文件，然后把节点重置为 pending。验证类节点（test/review/merge/summary）failed 或历史 blocked 时，面板只在历史 worktree/baseCommit 可用时提供 Feedback rollback；direct 模式不提供 checkpoint rollback，但若失败分类推荐 `direct_rework` 且存在 active `review_feedback` / `if_fail` 显式返工边，运行时会自动重置声明返工范围并继续调度。缺少可执行返工边或分类不能安全判断时，仍进入 needs-review，由用户或后续节点在当前工作区中处理返工范围。
 - 新 Graph run 没有完成态合回步骤，完成态表示改动已直接写入当前工作区。历史 worktree run 的合回逻辑仍保留：目标工作区不相关 dirty 内容可与 Graph diff 同时存在，由 Git 原生 merge 检查决定是否能安全应用；合回不会自动提交或自动解决冲突；成功合回后会清理 Graph worktree、空的 `graph-worktrees` 父目录和对应 Graph 分支，清理失败会进入 `needs-review`。
 - Stop 至少保证 Graph run / node 状态和事件落盘为 stopped；主 Graph tab 的 AI 对话“中止”和 GraphRunPanel Stop 共享该语义。只有 active CLI run 已携带 `graphRunId` / `graphNodeId` 映射时才会发送真实 CLI 停止请求，且真实进程是否退出取决于底层 CLI 响应；缺少映射时明确提示未确认真实进程停止。该边界是实现和文档事实，不再作为 Graph UI 固定说明常驻展示。
@@ -400,7 +400,7 @@ OpenCode 仍走 one-shot / attach 机制；Codex / Claude 继续按现有交互�
 - 图视图：已使用原生 SVG 渲染边、path、marker、arrow 和边目的标签，使用 HTML button 渲染节点；每个节点显示 12 个连接点，边会按节点相对位置自动选择 `fromPort` / `toPort` 并为多边/反馈边增加轻微曲线差异；已经过边显示为主题蓝色，未经过边保持原样；旧记录缺少 `run.edges` 时可从 `dependsOn` fallback 生成 `depends_on` 边。
 - 自动布局：默认展示仍为 LR，但内部已支持 `LR` / `RL` / `TB` / `BT`；fallback 会从所有零入度 roots 入队；`review_feedback` 与上游 `if_fail` 回边不参与主 ranking；collision、端口评分和初始视口居中均按目标系统 workflow 画布经验调优。
 - 节点状态：pending、ready、running、passed、failed、blocked、sleeping、skipped。
-- 操作：只显示真实接通且当前状态允许的 Continue / “我要说话” / Retry / Feedback rollback / Stop；不可用操作直接隐藏。GraphRunPanel Stop 与主 Graph tab AI 对话“中止”必须共用同一 Graph stop 控制链。Stop 文案必须同时说明状态已落盘，以及真实 CLI 进程停止只是对已映射 active run 发起请求、未必已确认退出。
+- 操作：只显示真实接通且当前状态允许的 Continue / “我要说话” / Retry / Feedback rollback / Stop；不可用操作直接隐藏。GraphRunPanel Stop 与主 Graph tab AI 对话“中止”必须共用同一 Graph stop 控制链。Stop 文案必须同时说明状态已落盘，以及真实 CLI 进程停止只是对已映射 active run 发起请求、未必已确认退出。planner / replanner 返回 `clarify` 时，运行图弹出澄清表单；提交写入补充要求并继续该 plan 节点，拒绝进入 `needs-review`，停止则关闭表单。超时未提交不进入 `needs-review`，而是写入最佳方案继续指令后继续该 plan 节点。运行开始时自动打开运行图，已打开面板不在每个 tick 抢焦点。
 - i18n：所有新增 Webview 文案必须提供中英文；状态值内部用英文枚举，展示走现有翻译词典。
 
 ## 与 Loop 的关系
@@ -471,7 +471,7 @@ Graph 的先进性不在“名字更潮”，而在控制面升级：
 - 已支持结构化失败分类：失败节点落盘 `failure`，`node.failed` event data 写入 `failureClassification`，needs-review / idle 文案展示分类、signals、推荐恢复动作、推荐写入文件和建议返工节点草案；direct run 对存在显式反馈边的实现缺陷会推荐 `direct_rework`，worktree/旧运行仍推荐 `feedback_rollback`。
 - 已支持证据区：节点详情聚合当前节点 artifact、沟通文件、验收 evidenceRef、事件与 finalAnswer evidence 引用，但不读取外部证据文件正文。
 - 已支持 Graph auto wake：扩展激活或 workspace 变化时恢复 sleeping run 定时器，到期后 resume/tick。
-- 尚未支持从失败节点自动生成补充需求、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、完整审批表单/驳回/多人审批、证据文件正文读取、图编辑器或模板库。
+- 尚未支持从失败节点自动生成补充需求、局部返工路径编辑、复杂布尔条件编辑器、自动条件重规划、rollback 预演、完整多人审批流、证据文件正文读取、图编辑器或模板库。planner / replanner 的一次性澄清表单已支持，但它不是审批流。
 
 ### Phase 3：模板和模式库
 

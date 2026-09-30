@@ -41,7 +41,10 @@ export type HumanInteractionSubmission = {
   tabId?: string;
   status: HumanInteractionSubmissionStatus;
   values: Record<string, unknown>;
+  timedOut?: boolean;
 };
+
+export const HUMAN_INTERACTION_TIMEOUT_TEXT = "用户未在时限内回答，请自行选择最佳方案继续，不要再问同一问题。";
 
 export type CodexHumanInteractionRequest = {
   method: string;
@@ -522,6 +525,9 @@ export function formatHumanInteractionSubmittedText(
   submission: HumanInteractionSubmission,
   formFields: readonly HumanInteractionFormField[] = [],
 ): string {
+  if (submission.timedOut) {
+    return HUMAN_INTERACTION_TIMEOUT_TEXT;
+  }
   if (submission.status === "aborted") {
     return "用户已拒绝补充信息。";
   }
@@ -581,6 +587,56 @@ export function buildCodexHumanInteractionResolution(
   return {
     result: {
       answers,
+    },
+  };
+}
+
+export function buildTimedOutHumanInteractionValues(
+  formFields: readonly HumanInteractionFormField[],
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const field of formFields) {
+    const multiple = field.type === "multiselect"
+      || (field.type === "checkbox" && Boolean(field.options && field.options.length > 0));
+    values[field.id] = multiple ? [HUMAN_INTERACTION_TIMEOUT_TEXT] : HUMAN_INTERACTION_TIMEOUT_TEXT;
+  }
+  return values;
+}
+
+export function buildTimedOutHumanInteractionSubmission(
+  request: Pick<HumanInteractionRequest, "interactionId" | "tabId" | "formFields">,
+): HumanInteractionSubmission {
+  return {
+    interactionId: request.interactionId,
+    tabId: request.tabId,
+    status: "completed",
+    timedOut: true,
+    values: buildTimedOutHumanInteractionValues(request.formFields),
+  };
+}
+
+export function createInteractionTimeout(
+  timeoutMs: number,
+  onTimeout: () => void,
+): { clear: () => void } {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return { clear: () => undefined };
+  }
+  let cleared = false;
+  const timer = setTimeout(() => {
+    if (cleared) {
+      return;
+    }
+    cleared = true;
+    onTimeout();
+  }, timeoutMs);
+  return {
+    clear: () => {
+      if (cleared) {
+        return;
+      }
+      cleared = true;
+      clearTimeout(timer);
     },
   };
 }

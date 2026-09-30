@@ -326,6 +326,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           nextConversationTabs
         );
         state.conversationTabs = nextConversationTabs;
+        if (typeof releaseRunningFlowStopForActiveTasks === "function") {
+          releaseRunningFlowStopForActiveTasks();
+        }
         const nextActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
           ? state.conversationTabs.activeTabId
           : null;
@@ -423,6 +426,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
+        state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
+          panelState.humanInteractionTimeoutMinutes
+        );
         state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
         state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
@@ -489,6 +495,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.humanInteractionEnabled) {
           elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;
+        }
+        if (elements.humanInteractionTimeoutMinutes) {
+          elements.humanInteractionTimeoutMinutes.value = String(state.humanInteractionTimeoutMinutes);
         }
         state.historyRetentionDays = Number.isFinite(Number(panelState.historyRetentionDays))
           ? Math.min(Math.max(Math.floor(Number(panelState.historyRetentionDays)), 1), 3650)

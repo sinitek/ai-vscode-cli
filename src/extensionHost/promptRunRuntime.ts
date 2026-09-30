@@ -1,3 +1,9 @@
+import {
+  ORCHESTRATOR_CLARIFICATION_LIMIT,
+  abortOrchestratorClarification,
+  loopClarificationScope,
+  parseOrchestratorClarification,
+} from "../orchestratorClarification";
 import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
@@ -405,6 +411,21 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       estimatedRemainingRounds,
     };
   }
+  if (raw.status === "clarify") {
+    const clarification = parseOrchestratorClarification(raw, `loop-clarify-${Date.now()}`);
+    if (!clarification) {
+      return null;
+    }
+    const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
+      ? raw.finalSummary.trim()
+      : undefined;
+    return {
+      status: "clarify",
+      clarification,
+      ...(finalSummary ? { finalSummary } : {}),
+      estimatedRemainingRounds,
+    };
+  }
   if (raw.status !== "continue") {
     return null;
   }
@@ -576,7 +597,7 @@ function buildLoopSubtaskId(title: string): string {
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
-): { status: "completed" | "continue" | "blocked"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
+): { status: "completed" | "continue" | "blocked" | "clarify"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
   const existing = readLoopTaskRecord(taskId);
   if (!existing) {
     throw new Error(`loop-task-missing:${taskId}`);
@@ -596,6 +617,35 @@ function applyLoopMainDecision(
     appendLoopMainDecisionSummary(task, decision);
     appendLoopMainSubChatMainDecision(task, decision);
     return { status: "completed", task };
+  }
+  if (decision.status === "clarify") {
+    const count = existing.clarificationCount ?? 0;
+    if (!decision.clarification || count >= ORCHESTRATOR_CLARIFICATION_LIMIT) {
+      const task = updateLoopTaskRecord(taskId, {
+        status: "needs-review",
+        activeSubtaskId: null,
+        activeSubtaskIds: [],
+        pendingClarification: undefined,
+        finalSummary: decision.finalSummary ?? "Main task asked for clarification too many times.",
+        updatedAt: Date.now(),
+      }) ?? existing;
+      appendLoopMainDecisionSummary(task, decision);
+      appendLoopMainSubChatMainDecision(task, decision);
+      return { status: "blocked", task };
+    }
+    const task = updateLoopTaskRecord(taskId, {
+      status: "running",
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      pendingClarification: decision.clarification,
+      clarificationCount: count + 1,
+      ...(decision.finalSummary ? { finalSummary: decision.finalSummary } : {}),
+      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
+      updatedAt: Date.now(),
+    }) ?? existing;
+    appendLoopMainDecisionSummary(task, decision);
+    appendLoopMainSubChatMainDecision(task, decision);
+    return { status: "clarify", task };
   }
   if (decision.status === "blocked") {
     const task = updateLoopTaskRecord(taskId, {
@@ -983,6 +1033,7 @@ function markLoopTaskInterrupted(
   options: { source: "main" | "subtask"; failureMessage?: string | null } = { source: "main" }
 ): void {
   const existing = readLoopTaskRecord(taskId);
+  abortOrchestratorClarification(loopClarificationScope(taskId));
   if (existing?.schedulingMode === "event_driven") {
     deps.stopLoopPlusParent?.(taskId);
     const latest = readLoopTaskRecord(taskId) ?? existing;
@@ -1006,6 +1057,7 @@ function markLoopTaskInterrupted(
     status,
     activeSubtaskId: null,
     activeSubtaskIds: [],
+    pendingClarification: undefined,
     updatedAt: now,
   };
   if (options.source === "main" && status === "error") {
@@ -1096,9 +1148,11 @@ function markLoopTaskStopped(
   });
 
   if (task.schedulingMode === "event_driven") {
+    abortOrchestratorClarification(loopClarificationScope(taskId));
     const record = updateLoopTaskRecord(taskId, {
       status: "stopped",
       schedulingMode: "event_driven",
+      pendingClarification: undefined,
       ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
       updatedAt: now,
     });
@@ -1106,10 +1160,12 @@ function markLoopTaskStopped(
     return record;
   }
 
+  abortOrchestratorClarification(loopClarificationScope(taskId));
   const record = updateLoopTaskRecord(taskId, {
     status: "stopped",
     activeSubtaskId: null,
     activeSubtaskIds: [],
+    pendingClarification: undefined,
     subTasks,
     ...(debateRounds ? { debateRounds } : {}),
     ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),

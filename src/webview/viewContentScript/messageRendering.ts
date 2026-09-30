@@ -858,6 +858,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return true;
       }
 
+      const CONVERSATION_TAB_RUNNING_FLOW_CHECK_MS = 60000;
+      const runningFlowStoppedTabIds = new Set();
+      let conversationTabRunningFlowTimer = null;
+      let conversationTabRunningFlowCheckStartedAt = 0;
+
       function isTabRunning(tabId) {
         if (!tabId || typeof tabId !== "string") {
           return false;
@@ -865,17 +870,98 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return typeof runningTabStartedAtById[tabId] === "number";
       }
 
+      function isRunningFlowStopLatched(tabId) {
+        return typeof runningFlowStoppedTabIds !== "undefined"
+          && Boolean(runningFlowStoppedTabIds)
+          && typeof runningFlowStoppedTabIds.has === "function"
+          && runningFlowStoppedTabIds.has(tabId);
+      }
+
       function isConversationTabRunning(tab) {
+        if (!tab) {
+          return false;
+        }
+        if (
+          typeof runningFlowStoppedTabIds !== "undefined"
+          && runningFlowStoppedTabIds
+          && typeof runningFlowStoppedTabIds.has === "function"
+          && runningFlowStoppedTabIds.has(tab.id)
+        ) {
+          return false;
+        }
         return Boolean(
-          tab
-          && (
-            isTabRunning(tab.id)
-            || (
-              isLoopMainTab(tab)
-              && (tab.loopTaskRunning === true || tab.loopTaskStatus === "running")
-            )
+          isTabRunning(tab.id)
+          || (
+            isLoopMainTab(tab)
+            && (tab.loopTaskRunning === true || tab.loopTaskStatus === "running")
           )
         );
+      }
+
+      function hasConversationTabRunningFlow() {
+        const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs
+          : [];
+        if (tabs.some((tab) => isConversationTabRunning(tab))) {
+          return true;
+        }
+        return Object.keys(runningTabStartedAtById).some((tabId) => (
+          typeof runningTabStartedAtById[tabId] === "number" && !isRunningFlowStopLatched(tabId)
+        ));
+      }
+
+      function syncConversationTabRunningFlowWatch() {
+        if (!hasConversationTabRunningFlow()) {
+          if (conversationTabRunningFlowTimer) {
+            clearInterval(conversationTabRunningFlowTimer);
+            conversationTabRunningFlowTimer = null;
+          }
+          return;
+        }
+        if (conversationTabRunningFlowTimer) {
+          return;
+        }
+        conversationTabRunningFlowTimer = setInterval(() => {
+          if (!hasConversationTabRunningFlow()) {
+            syncConversationTabRunningFlowWatch();
+            return;
+          }
+          conversationTabRunningFlowCheckStartedAt = Date.now();
+          vscode.postMessage({ type: "reconcileRunningConversationTabs" });
+        }, CONVERSATION_TAB_RUNNING_FLOW_CHECK_MS);
+      }
+
+      function releaseRunningFlowStopForActiveTasks() {
+        const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs
+          : [];
+        tabs.forEach((tab) => {
+          if (!tab || typeof tab.id !== "string") {
+            return;
+          }
+          if (tab.loopTaskStatus === "running" || tab.loopTaskStatus === "pending") {
+            runningFlowStoppedTabIds.delete(tab.id);
+          }
+        });
+      }
+
+      function stopConversationTabRunningFlow(tabIds) {
+        const ids = Array.isArray(tabIds) ? tabIds : [];
+        const requestedAt = conversationTabRunningFlowCheckStartedAt;
+        ids.forEach((tabId) => {
+          if (!tabId || typeof tabId !== "string") {
+            return;
+          }
+          const startedAt = runningTabStartedAtById[tabId];
+          if (requestedAt > 0 && typeof startedAt === "number" && startedAt > requestedAt) {
+            return;
+          }
+          delete runningTabStartedAtById[tabId];
+          runningFlowStoppedTabIds.add(tabId);
+        });
+        renderConversationTabs();
+        syncRunningStateForActiveTab();
+        syncConversationTabRunningFlowWatch();
       }
 
       function isConversationTabBusy(tabId) {
@@ -1024,6 +1110,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function renderConversationTabs() {
+        syncConversationTabRunningFlowWatch();
         syncAutoInteractiveModeForActiveTab();
         if (!elements.conversationTabs) {
           return;

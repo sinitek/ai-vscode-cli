@@ -40,3 +40,24 @@ test("applies the cap only while dispatching Loop subtasks", () => {
   assert.match(runLoopRoundSource, /applySubtaskCap:\s*true/u);
   assert.match(runLoopRoundSource, /thinkingModeOverride,/u);
 });
+
+test("applies the same thinking cap to Loop+ subtasks but not Graph nodes", () => {
+  const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const adapterSource = fs.readFileSync(
+    path.join(process.cwd(), "src", "extensionHost", "loopPlusRuntimeAdapter.ts"),
+    "utf8",
+  );
+  const graphSource = fs.readFileSync(path.join(process.cwd(), "src", "extensionHost", "graphRuntime.ts"), "utf8");
+
+  assert.match(
+    extensionSource,
+    /resolveThinkingMode:\s*\(input,\s*cli,\s*role,\s*model\)\s*=>\s*resolvePromptRunThinkingModeForRole\([\s\S]*?applySubtaskCap:\s*role === "subtask"/u,
+  );
+  assert.match(adapterSource, /promptInput\.thinkingModeOverride = deps\.resolveThinkingMode\(/u);
+  assert.match(adapterSource, /promptForRole\(\s*request\.taskId,\s*"subtask",/u);
+  assert.match(
+    graphSource,
+    /resolvePromptRunThinkingModeForRole\(rootInput, target\.cli, modelRole, selectedModel\);/u,
+  );
+  assert.doesNotMatch(graphSource, /applySubtaskCap:\s*true/u);
+});

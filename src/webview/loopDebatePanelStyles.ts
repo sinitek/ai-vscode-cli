@@ -164,6 +164,120 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         gap: 8px;
         padding: 12px 16px 16px;
       }
+      .ask-chat-dialog {
+        width: min(760px, 100%);
+        height: min(720px, calc(100vh - 32px));
+        display: flex;
+        flex-direction: column;
+      }
+      .ask-chat-log {
+        flex: 1;
+        min-height: 220px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px 16px;
+        background: var(--vscode-editor-background);
+      }
+      .ask-chat-empty {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .ask-chat-message {
+        display: flex;
+        min-width: 0;
+      }
+      .ask-chat-message.user {
+        justify-content: flex-end;
+      }
+      .ask-chat-message.user .ask-chat-bubble {
+        max-width: 85%;
+        background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
+        color: var(--vscode-button-secondaryForeground);
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        border-radius: 16px 16px 4px 16px;
+        padding: 10px 14px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .ask-chat-message.assistant .ask-chat-bubble,
+      .ask-chat-message.system .ask-chat-bubble {
+        width: 100%;
+        background: transparent;
+        color: var(--vscode-editor-foreground);
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        border-radius: var(--radius);
+        padding: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .ask-chat-message.thinking {
+        justify-content: flex-start;
+      }
+      .ask-chat-message.thinking .ask-chat-bubble {
+        width: 100%;
+        background: transparent;
+        border: 0;
+        padding: 4px 0;
+      }
+      .ask-chat-thinking {
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 6px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .ask-chat-thinking summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 6px 10px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        user-select: none;
+      }
+      .ask-chat-thinking summary::-webkit-details-marker {
+        display: none;
+      }
+      .ask-chat-thinking summary::before {
+        content: "▸";
+        margin-right: 6px;
+      }
+      .ask-chat-thinking[open] summary::before {
+        content: "▾";
+      }
+      .ask-chat-thinking .typing-dots {
+        margin-left: 8px;
+      }
+      .ask-chat-thinking-body {
+        border-top: 1px solid var(--vscode-widget-border);
+        padding: 6px 10px 8px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: var(--vscode-editor-foreground);
+      }
+      .ask-chat-composer {
+        border-top: 1px solid var(--vscode-widget-border);
+        padding: 12px 16px 16px;
+      }
+      .ask-chat-composer .dialog-textarea {
+        min-height: 72px;
+      }
+      .dialog-answer {
+        margin: 0 0 14px;
+        max-height: min(52vh, 420px);
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 4px;
+        padding: 10px 12px;
+        color: var(--vscode-editor-foreground);
+        background: var(--vscode-editor-background);
+        font: inherit;
+        line-height: 1.5;
+      }
+      .ask-answer-backdrop {
+        z-index: 30;
+      }
       .model-choice {
         display: flex;
         flex-direction: column;
@@ -318,6 +432,12 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         color: var(--vscode-descriptionForeground);
         font-size: 11px;
         overflow-wrap: anywhere;
+      }
+      .member-status-passed {
+        color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, var(--vscode-focusBorder)));
+      }
+      .member-status-failed {
+        color: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
       }
       .timeline {
         width: 100%;
@@ -577,5 +697,53 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         .main {
           padding: 12px;
         }
+      }
+
+      .clarification-dialog {
+        width: min(640px, 100%);
+        max-height: min(86vh, 760px);
+        display: flex;
+        flex-direction: column;
+      }
+      .clarification-dialog .dialog-body {
+        overflow: auto;
+      }
+      .clarification-field {
+        margin-bottom: 12px;
+      }
+      .clarification-description {
+        margin: -4px 0 8px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .clarification-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .clarification-option {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        color: var(--vscode-foreground);
+        font-size: 13px;
+      }
+      .clarification-option small {
+        display: block;
+        color: var(--vscode-descriptionForeground);
+      }
+      .clarification-input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 4px;
+        padding: 8px 10px;
+        color: var(--vscode-input-foreground);
+        background: var(--vscode-input-background);
+        font: inherit;
+      }
+      .clarification-input:focus {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 0;
       }
 `;

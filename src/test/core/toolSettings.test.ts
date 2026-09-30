@@ -3,9 +3,11 @@ import assert = require("node:assert/strict");
 
 import {
   normalizeToolSettings,
+  readHumanInteractionTimeoutMs,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
   resolveGlobalMultiAgentEnabled,
+  resolveHumanInteractionTimeoutMinutes,
   resolveLongTermMemoryEnabled,
   normalizeHistoryRetentionDays,
   type ToolSettingsState,
@@ -165,12 +167,14 @@ test("normalizes global Loop tool settings", () => {
       loopMaxRounds: "42.9",
       loopPlusDecisionSubtaskMax: "8.2",
       loopPlusMaxAcceptances: "100.8",
+      humanInteractionTimeoutMinutes: "10.9",
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
       loopMaxRounds: 42,
       loopPlusDecisionSubtaskMax: 8,
       loopPlusMaxAcceptances: 100,
+      humanInteractionTimeoutMinutes: 10,
       loopSubtaskMaxThinkingMode: "high",
     },
   );
@@ -179,10 +183,16 @@ test("normalizes global Loop tool settings", () => {
       loopMaxRounds: "",
       loopPlusDecisionSubtaskMax: "",
       loopPlusMaxAcceptances: "",
+      humanInteractionTimeoutMinutes: "",
       loopSubtaskMaxThinkingMode: "invalid",
     }),
     {},
   );
+  assert.equal(resolveHumanInteractionTimeoutMinutes(undefined), 10);
+  assert.equal(resolveHumanInteractionTimeoutMinutes(0), 1);
+  assert.equal(resolveHumanInteractionTimeoutMinutes(999), 240);
+  assert.equal(readHumanInteractionTimeoutMs({}), 600_000);
+  assert.equal(readHumanInteractionTimeoutMs({ humanInteractionTimeoutMinutes: 2 }), 120_000);
   assert.deepEqual(
     normalizeToolSettings({ loopSubtaskMaxThinkingMode: "ultra" }),
     { loopSubtaskMaxThinkingMode: "xhigh" },

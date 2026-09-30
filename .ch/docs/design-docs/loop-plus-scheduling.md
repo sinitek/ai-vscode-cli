@@ -19,7 +19,7 @@
 - 让主任务在验收时知道当前项、仍在运行项和待验收队列。
 - 验收之后允许增量派发；没有新任务但还有在途任务时，父任务保持 `running` 并正常等待。
 - 只有运行、待启动、待验收和尚未查看的用户消息都清空，并且运行时复核过最新状态，才允许结束。
-- 群聊“我要说话”在主任务空闲时唤醒它；主任务正在执行时只入队。当前调用结束后，主任务一起查看这批消息，并决定立刻派发子任务，或等待某个仍在运行或待启动的子任务结束后再发起。
+- 群聊“补充需求”在主任务空闲时唤醒它；主任务正在执行时只入队。当前调用结束后，主任务一起查看这批消息，并决定立刻派发子任务，或等待某个仍在运行或待启动的子任务结束后再发起。群聊“我要提问”只向当前主模型所在会话提问，并在独立弹窗里显示思考气泡和最终答复；关闭后再打开会恢复这个任务的历史，仍在执行时继续更新。它不进入用户消息队列，也不唤醒调度。主模型正在执行时拒绝提问，不抢占当前回合。
 
 ## 非目标
 
@@ -71,9 +71,10 @@
 - `close`：宿主中止该 attempt 的进程。内核把 disposition 记为 `closed`、outcome 记为 `stopped`。不进入验收队列，不计入验收次数。
 - `reprompt`：同样中止后，用 trim 后至少 80 字的新 prompt 为同一子任务 id 开启一个新 attempt。未给出的 title、writeFiles、conflictGroup 沿用原子任务。不要使用经典 Loop 的 `continue` 表示这个动作。
 - `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId`、`reviewEventIds` 或新子任务。`finalSummary` 可选。解析器不改父状态。
+- `clarify`：主任务对需求有疑惑，或方案缺少必须由用户决定的关键信息。不能带 `reviewEventId`、`reviewEventIds`、`subtasks` 或 `controls`。`clarification.formFields` 必须是 1 到 8 个可展示字段，选择类字段必须有选项。宿主在群聊弹出表单并等待；提交后把答案写入补充要求，有验收则继续验收，否则强制再问一次主任务。拒绝进入 `needs-review`。若在 AI 任务配置的人工交互超时内没有提交，默认 10 分钟，不进入 `needs-review`，而是要求主任务自行选择最佳方案继续，且不要再问同一问题。同一任务最多 8 次，超过后不再弹表单。Loop+ 开始或恢复执行时自动打开群聊。停止会清掉表单并取消等待。它不进入用户消息队列，也不是“我要提问”。
 - `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。没有验收批次时省略确认字段。只有一项时可以带一个非空 `reviewEventId`；多于一项时必须带顺序完全相同的 `reviewEventIds`。字段存在但为空，或两种确认字段同时出现，则整份拒绝。不能附带子任务。解析器不完成任务。宿主在确认字段与本轮冻结批次一致时先 `submitReviewBatch` 确认整批，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一批 `accept` 并追加子任务。没有任何剩余工作时，最后一批同样合法的 `completed` 可以确认该批并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
 
-经典 `normalizeLoopMainDecision` 不变。
+经典 Loop 的 `normalizeLoopMainDecision` 同样接受 `clarify`。它不派发子任务；宿主保存 `pendingClarification` 后回到编排循环等待群聊表单，提交后把答案写入补充要求并继续下一轮主任务决策。超时与 Loop+ 相同，不把任务打成 `needs-review`。经典 Loop 开始或恢复执行时自动打开群聊。
 
 ### 集合分离
 
@@ -91,8 +92,8 @@
 - 事件 ID 是 `loop-plus-finish#` 加两段十进制长度前缀。`buildLoopPlusFinishEventId("a:b", "c")` 为 `loop-plus-finish#3:a:b1:c`，`("a", "b:c")` 为 `loop-plus-finish#1:a3:b:c`。两者不同。
 - 未发布的 `loop-plus-finish:` 冒号拼接不做迁移。恢复时 `eventId` 必须等于该条 `subtaskId` / `attemptId` 的规范编码，并且能解析回同一对；否则抛出 `Invalid Loop+ scheduler snapshot`，不能映射到另一个 tuple。
 - 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`userMessageQueue`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。旧快照没有 `userMessageQueue` 时读成空数组；字段存在但不是去空白后的非空字符串数组则拒绝。加载时不信任 `phase` 文本。
-- `seenAttempts[*].outcome` 可选，只在执行结束后写入 `completed`、`failed` 或 `stopped`，验收后保留。旧快照没有该字段时仍可加载。`open` 不能带 outcome，非法 outcome 拒绝恢复。群聊不单独渲染当前验收、待验收队列、仍在运行、待启动和验收结果卡片，数量留在 Loop+ 汇总计数。成员列表不把调度 attempt 显示成验收状态：已确认且 outcome 为 `completed` 显示验收成功，`failed` 或 `stopped` 显示验收失败；旧快照缺少 outcome 时，失败或停止的执行在子任务记录里是 `blocked`，只有这种记录显示验收失败，否则显示验收成功。尚未确认的队列仍是待验收，不提前写成验收失败。
-- `userMessageQueue` 只保存尚未被主任务查看的用户消息，不把消息本身变成验收事件。开始一轮验收时，当前项和当时已经排在 `reviewQueue` 里的完成事件一起确认；当时已经到达的用户消息也放进这一轮。没有待验收项时，积压消息仍先于下一条验收被单独查看。查看成功后只确认本轮开始时的前缀，执行期间新到的消息和完成事件留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
+- `seenAttempts[*].outcome` 可选，只在执行结束后写入 `completed`、`failed` 或 `stopped`，验收后保留。旧快照没有该字段时仍可加载。`open` 不能带 outcome，非法 outcome 拒绝恢复。群聊不单独渲染当前验收、待验收队列、仍在运行、待启动和验收结果卡片，数量留在 Loop+ 汇总计数。成员列表不把调度 attempt 显示成验收状态。`seenAttempts[*].acceptance` 可选，只在确认验收时写入 `passed` 或 `failed`，且只有 `reviewed` 可以带它；旧快照没有该字段时仍可加载，非法值或写在非 reviewed attempt 上则拒绝恢复。同一次 accept 附带新子任务时，本批记为验收失败，即使执行 outcome 是 `completed`。没有新子任务的 accept，以及 `completed` 确认，在 outcome 为 `completed` 时显示验收成功。outcome 为 `failed` 或 `stopped` 仍是验收失败。旧快照缺少 `acceptance` 和 outcome 时，失败或停止的执行在子任务记录里是 `blocked`，只有这种记录显示验收失败，否则显示验收成功。尚未确认的队列仍是待验收，不提前写成验收失败。验收成功使用主题绿色，验收失败使用主题橙色。
+- `userMessageQueue` 只保存尚未被主任务查看的用户消息，不把消息本身变成验收事件。开始一轮验收时，当前项和当时已经排在 `reviewQueue` 里的完成事件一起确认；当时已经到达的用户消息也放进这一轮。没有待验收项时，积压消息仍先于下一条验收被单独查看。若这次验收回答还没落地，又有新的完成事件入队，且并入后不超过验收上限，宿主中止这次未落地回答，并用当前项加上全部排队事件重新提问，一次验收。会超过上限的新增事件不并入当前批。回答落地之后新到的消息和完成事件留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
 - 已完成的 Loop+ 父任务不写经典回答结论和最终总结气泡。缺少这些气泡不能把它当成“完成信息不全、仍可恢复”的任务。用户之后在同一会话提交新的目标时，宿主新建一个绑定该 session 的 Loop+ 任务并启动主任务；新目标不能只追加到旧任务的 `supplementalRequirements`，也不能因为旧快照 `completed` 而被吞掉。显式继续一个已经完成的快照仍然只结算并释放控制器，不重新打开旧父任务。
 - 主任务和子任务发给模型的协议提示词仍写入会话消息，用来锚定本轮结果。展示层不渲染这些消息：trim 后以 `You are the Loop+ main reviewer.` 或 `You are one independent Loop+ execution attempt.` 开头的内容，不出现在对话气泡、历史会话、当前运行提示和提示词历史里。不要从存储删除它们，否则本轮助手结果对不上。
 - 没有当前验收且父任务未停止时，队首进入当前验收，并只在新的 wake 边沿返回 `wake: true`。已有当前验收时，新事件只追加。

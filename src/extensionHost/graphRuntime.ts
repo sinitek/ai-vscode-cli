@@ -9,9 +9,15 @@ import {
 } from "../continueModelChoice";
 import { normalizeCliModelName } from "../modelSelectionStore";
 import { resolveLoopSubtaskThinkingMode } from "../loopSubtaskThinking";
+import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import { appendGraphEvent } from "../graph/graphEvents";
 import { tickGraphRun, type GraphNodeExecutionRequest } from "../graph/graphKernel";
 import { readGraphNodeExecutionResultArtifact } from "../graph/graphNodeArtifact";
+import {
+  formatOrchestratorClarificationAnswer,
+  graphClarificationScope,
+  waitForOrchestratorClarification,
+} from "../orchestratorClarification";
 import {
   appendGraphReplanningNode,
   buildGraphPlanningRunEdges,
@@ -120,6 +126,7 @@ export type GraphRuntimeHostDeps = {
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
   errorToMessage: (error: unknown) => string;
   messages: GraphMessagesHost;
+  revealClarification?: (graphRunId: string) => void;
 };
 
 export function createGraphRuntimeHost(deps: GraphRuntimeHostDeps) {
@@ -439,6 +446,7 @@ async function tickGraphRunToPause(
   target: PromptRunTarget,
 ): Promise<{ run: GraphRunRecord; progressed: boolean }> {
   let run = initialRun;
+  deps.revealClarification?.(run.id);
   sendGraphMainRunStarted(target, run, input.displayPrompt);
   const executor = {
     execute: async (request: GraphNodeExecutionRequest) => executeGraphNodeViaRunPrompt(request, input, target),
@@ -455,6 +463,56 @@ async function tickGraphRunToPause(
       maxConcurrent: resolveGraphExtensionExecutorMaxConcurrent(run),
     });
     run = tickResult.run;
+    if (run.pendingClarification) {
+      const clarification = run.pendingClarification;
+      deps.revealClarification?.(run.id);
+      await deps.postPanelState();
+      const submission = await waitForOrchestratorClarification(graphClarificationScope(run.id), clarification, {
+        timeoutMs: readHumanInteractionTimeoutMs(),
+      });
+      const stored = readGraphRunRecord(run.id).run ?? run;
+      if (stored.status === "stopped" || stored.status === "error") {
+        return { run: stored, progressed: true };
+      }
+      if (submission.status !== "completed") {
+        const paused = updateGraphRunRecord(stored.id, {
+          status: "needs-review",
+          pendingClarification: undefined,
+          updatedAt: Date.now(),
+        }) ?? { ...stored, status: "needs-review" as const, pendingClarification: undefined };
+        appendGraphEvent(paused.eventsFile, {
+          runId: paused.id,
+          type: "run.updated",
+          summary: "Graph planner clarification was rejected.",
+        });
+        deps.scheduleGraphRunAutoWake(paused);
+        sendGraphMainRunTerminalStatus(target, paused);
+        deps.messages.appendSystemMessageForGraph(
+          target,
+          deps.messages.buildGraphRunNeedsAttentionText(paused),
+          paused.id,
+        );
+        return { run: paused, progressed: true };
+      }
+      const answer = formatOrchestratorClarificationAnswer(submission, clarification.formFields);
+      const requirements = [...(stored.supplementalRequirements ?? []), answer];
+      run = updateGraphRunRecord(stored.id, {
+        status: "running",
+        supplementalRequirements: requirements,
+        pendingClarification: undefined,
+        updatedAt: Date.now(),
+      }) ?? { ...stored, status: "running" as const, supplementalRequirements: requirements, pendingClarification: undefined };
+      appendGraphEvent(run.eventsFile, {
+        runId: run.id,
+        type: "run.updated",
+        summary: submission.timedOut
+          ? "Graph planner clarification timed out; the planner will continue with the best available plan."
+          : "Graph planner clarification was submitted.",
+      });
+      madeProgress = true;
+      await deps.postPanelState();
+      continue;
+    }
     const planMaterialization = maybeMaterializeGraphPlanAfterTick(run);
     run = planMaterialization.run;
     await deps.postPanelState();
@@ -1121,7 +1179,15 @@ async function executeGraphNodeViaRunPrompt(
   }
 
   const artifactResult = readGraphNodeExecutionResultArtifact(communicationFile);
-  const executionResult = artifactResult ?? {
+  const clarificationRejected = artifactResult?.status === "clarify" && request.node.kind !== "plan"
+    ? {
+      status: "failed" as const,
+      summary: `Graph node ${request.node.id} cannot request user clarification.`,
+      error: "Only the main planner may return status clarify.",
+      artifactRef: communicationFile,
+    }
+    : null;
+  const executionResult = clarificationRejected ?? artifactResult ?? {
     status: "failed" as const,
     summary: runPromptError
       ? `Graph node ${request.node.id} runner failed before a parseable JSON artifact was produced.`
@@ -1156,7 +1222,7 @@ async function executeGraphNodeViaRunPrompt(
         summary: `Graph node ${request.node.id} could not create a local checkpoint commit.`,
         error: deps.errorToMessage(error),
         artifactRef: result.artifactRef ?? communicationFile,
-        acceptance: result.acceptance,
+        ...("acceptance" in result && result.acceptance ? { acceptance: result.acceptance } : {}),
         executionCwd: executionContext.cwd,
         worktreeCwd: executionContext.worktreeCwd,
         baseCommit,

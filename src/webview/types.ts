@@ -24,6 +24,7 @@ export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
 
 export type PanelMessage =
   | { type: "requestState" }
+  | { type: "reconcileRunningConversationTabs" }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
   | { type: "selectCliLoopModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
@@ -325,6 +326,7 @@ export type PanelState = {
   autoCompactContextAfterRun: boolean;
   multiAgentEnabled: boolean;
   humanInteractionEnabled: boolean;
+  humanInteractionTimeoutMinutes: number;
   historyRetentionDays: number;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;

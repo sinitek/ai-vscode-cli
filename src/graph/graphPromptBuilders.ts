@@ -680,6 +680,8 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
     replanning
       ? "- 如果 plannedGraph 没有 summary 节点，宿主会自动补一个新的续跑 summary 节点；不要复用旧 summary 节点。"
       : "",
+    "- 如果原始需求有歧义，或者继续输出的 DAG 会建立在不合理或缺少用户决定的关键缺口上，不要猜测，也不要输出 plannedGraph。返回 status=clarify 和 clarification 表单。宿主会在 Graph 运行图弹出表单，用户提交后再重新调用你；用户拒绝则运行进入待复核。",
+    '{"status":"clarify","summary":"需要用户确认范围后再规划","clarification":{"title":"需要确认需求","instruction":"以下选择会改变 Graph 规划，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
     "",
     "## plannedGraph JSON Schema",
     "- Plan JSON 必须额外包含 `plannedGraph`：",

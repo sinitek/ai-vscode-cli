@@ -248,6 +248,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="toolSettingsAiTaskPanel"',
     'id="historyRetentionDays"',
     'id="codeGraphEnabled"',
+    'id="humanInteractionTimeoutMinutes"',
     'id="loopMaxRounds"',
     'id="loopPlusDecisionSubtaskMax"',
     'id="loopPlusMaxAcceptances"',

@@ -13,6 +13,9 @@ export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
 export const HISTORY_RETENTION_DAYS_MAX = 3650;
+export const HUMAN_INTERACTION_TIMEOUT_MINUTES_DEFAULT = 10;
+export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MIN = 1;
+export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MAX = 240;
 
 export type ToolSettingsState = {
   debug?: boolean;
@@ -23,6 +26,7 @@ export type ToolSettingsState = {
   loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
   loopPlusMaxAcceptances?: number;
+  humanInteractionTimeoutMinutes?: number;
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
@@ -116,6 +120,17 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       normalized.loopPlusMaxAcceptances = Math.floor(parsed);
     }
   }
+  if (
+    typeof record.humanInteractionTimeoutMinutes === "number"
+    || typeof record.humanInteractionTimeoutMinutes === "string"
+  ) {
+    const parsed = typeof record.humanInteractionTimeoutMinutes === "number"
+      ? record.humanInteractionTimeoutMinutes
+      : (record.humanInteractionTimeoutMinutes.trim() ? Number(record.humanInteractionTimeoutMinutes) : Number.NaN);
+    if (Number.isFinite(parsed)) {
+      normalized.humanInteractionTimeoutMinutes = resolveHumanInteractionTimeoutMinutes(parsed);
+    }
+  }
   const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
     record.loopSubtaskMaxThinkingMode,
   );
@@ -144,6 +159,23 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     normalized.memoryAutoExtractAfterLoopTask = record.memoryAutoExtractAfterLoopTask;
   }
   return normalized;
+}
+
+export function resolveHumanInteractionTimeoutMinutes(value: unknown): number {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  if (!Number.isFinite(numeric)) {
+    return HUMAN_INTERACTION_TIMEOUT_MINUTES_DEFAULT;
+  }
+  return Math.min(
+    Math.max(Math.floor(numeric), HUMAN_INTERACTION_TIMEOUT_MINUTES_MIN),
+    HUMAN_INTERACTION_TIMEOUT_MINUTES_MAX,
+  );
+}
+
+export function readHumanInteractionTimeoutMs(settings: Pick<ToolSettingsState, "humanInteractionTimeoutMinutes"> = readToolSettings()): number {
+  return resolveHumanInteractionTimeoutMinutes(settings.humanInteractionTimeoutMinutes) * 60_000;
 }
 
 export function normalizeHistoryRetentionDays(value: unknown): number {

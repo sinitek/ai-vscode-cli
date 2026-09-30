@@ -115,6 +115,11 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             }
             applyTraceSegment(data);
           }
+          if (data.type === "runningConversationTabsReconciled") {
+            if (typeof stopConversationTabRunningFlow === "function") {
+              stopConversationTabRunningFlow(data.stopTabIds);
+            }
+          }
           if (data.type === "runStatus") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
@@ -126,6 +131,14 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const shouldHandleActiveTabEvent = shouldHandleTabScopedEvent(data);
             let queuePausedNotice = "";
             if (data.status === "start") {
+              if (
+                typeof runningFlowStoppedTabIds !== "undefined"
+                && runningFlowStoppedTabIds
+                && typeof runningFlowStoppedTabIds.delete === "function"
+                && targetTabId
+              ) {
+                runningFlowStoppedTabIds.delete(targetTabId);
+              }
               runningTabStartedAtById[targetTabId] = typeof data.startedAt === "number" ? data.startedAt : Date.now();
               setTabErrored(targetTabId, false);
               resetRunRawStream(targetTabId, { syncOverlay: false });
@@ -171,6 +184,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               closeTaskListForRunCompletion(targetTabId);
             }
 
+            if (typeof syncConversationTabRunningFlowWatch === "function") {
+              syncConversationTabRunningFlowWatch();
+            }
             if (!shouldHandleActiveTabEvent) {
               renderConversationTabs();
               if (data.status !== "start") {
@@ -210,6 +226,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               }
             }
             syncConversationControlsForActiveTab();
+            if (typeof syncConversationTabRunningFlowWatch === "function") {
+              syncConversationTabRunningFlowWatch();
+            }
           }
           if (data.type === "contextTokenUsage") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;

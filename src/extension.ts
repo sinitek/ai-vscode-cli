@@ -1,4 +1,10 @@
 import * as vscode from "vscode";
+import {
+  formatOrchestratorClarificationAnswer,
+  loopClarificationScope,
+  waitForOrchestratorClarification,
+  abortOrchestratorClarification,
+} from "./orchestratorClarification";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -243,6 +249,18 @@ import {
   type LoopDebateRoundStatus,
 } from "./loopDebate";
 import {
+  readConversationTabRunningFlowLoopPlus,
+  selectStaleConversationTabRunningFlowIds,
+  type ConversationTabRunningFlowCheck,
+} from "./conversationTabRunningFlow";
+import {
+  createEmptyLoopAskThread,
+  loopAskThreadPath,
+  readLoopAskThreadFile,
+  writeLoopAskThreadFile,
+} from "./loopAskThread";
+import { askLoopMainModelSession } from "./loopMainQuestion";
+import {
   LOOP_DEBATE_MAX_PARTICIPANTS,
   LOOP_DEBATE_MIN_PARTICIPANTS,
   buildLoopDebateBriefMarkdown,
@@ -322,16 +340,20 @@ import {
   type GraphRunRecord,
 } from "./graph/types";
 import {
+  readHumanInteractionTimeoutMs,
   readToolSettings,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
   resolveGlobalMultiAgentEnabled,
+  resolveHumanInteractionTimeoutMinutes,
   type ToolSettingsLocale,
   type ToolSettingsState,
   writeToolSettings,
 } from "./toolSettings";
 import {
+  buildTimedOutHumanInteractionSubmission,
   createHumanInteractionRejectedError,
+  createInteractionTimeout,
   type HumanInteractionRequest,
   type HumanInteractionSubmission,
 } from "./humanInteraction";
@@ -1416,6 +1438,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   await handlePanelMessageWithDeps(message, {
     ensureWorkspaceSessionStore,
     postPanelState,
+    reconcileRunningConversationTabs,
     sendSessionMessagesToPanel,
     getCurrentCli: () => currentCli,
     setCurrentCliValue: (cli) => { currentCli = cli; },
@@ -1551,6 +1574,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getGlobalAutoCompactContextAfterRun,
     getGlobalMultiAgentEnabled,
     getGlobalHumanInteractionEnabled,
+    getGlobalHumanInteractionTimeoutMinutes,
     getGlobalHistoryRetentionDays: getHistoryRetentionDays,
     getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
@@ -1644,6 +1668,10 @@ function forgetPendingHumanInteraction(interactionId: string): PendingHumanInter
   return entry;
 }
 
+function getGlobalHumanInteractionTimeoutMinutes(): number {
+  return resolveHumanInteractionTimeoutMinutes(readToolSettings().humanInteractionTimeoutMinutes);
+}
+
 function requestHumanInteraction(request: HumanInteractionRequest): Promise<HumanInteractionSubmission> {
   if (!viewProvider) {
     return Promise.resolve({
@@ -1658,11 +1686,31 @@ function requestHumanInteraction(request: HumanInteractionRequest): Promise<Huma
     existing.reject(createHumanInteractionRejectedError());
   }
   return new Promise((resolve, reject) => {
-    rememberPendingHumanInteraction({ request, resolve, reject });
+    const timeout = createInteractionTimeout(readHumanInteractionTimeoutMs(), () => {
+      const entry = forgetPendingHumanInteraction(request.interactionId);
+      if (!entry) {
+        return;
+      }
+      viewProvider?.postMessage({
+        type: "humanInteractionCancel",
+        tabId: request.tabId,
+      });
+      entry.resolve(buildTimedOutHumanInteractionSubmission(request));
+    });
+    const resolveOnce = (submission: HumanInteractionSubmission): void => {
+      timeout.clear();
+      resolve(submission);
+    };
+    const rejectOnce = (error: Error): void => {
+      timeout.clear();
+      reject(error);
+    };
+    rememberPendingHumanInteraction({ request, resolve: resolveOnce, reject: rejectOnce });
     void logInfo("humanInteraction-request", {
       tabId: request.tabId,
       interactionId: request.interactionId,
       fields: request.formFields.length,
+      timeoutMs: readHumanInteractionTimeoutMs(),
     });
     viewProvider?.postMessage({ type: "humanInteractionRequest", request });
   });
@@ -2996,6 +3044,56 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   notifyLoopPlusUserMessage: (taskId, text) => {
     getLoopPlusOrchestrationHost().submitUserMessage(taskId, text);
   },
+  askMainModel: async (task, question, hooks) => {
+    let target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
+    if (!target && task.sessionId) {
+      target = resolveLoopMainPromptTarget(task, { createIfMissing: true });
+    }
+    return askLoopMainModelSession({
+      question,
+      modelPrompt: t("loopDebateChat.askModelPrompt", { question }),
+      target,
+      isTabRunActive,
+      readMessages: (promptTarget) => {
+        const tab = getConversationTabById(promptTarget.tabId);
+        const sessionId = tab
+          ? getConversationTabSessionIdForCli(tab, promptTarget.cli)
+          : promptTarget.sessionId;
+        if (sessionId) {
+          return loadSessionMessages(promptTarget.cli, sessionId);
+        }
+        return getPendingSessionDraft(promptTarget.tabId, promptTarget.cli).messages;
+      },
+      runPrompt,
+      onProgress: hooks?.onProgress,
+      isAborted: hooks?.isAborted,
+      unavailableMessage: t("loopDebateChat.askUnavailable"),
+      busyMessage: t("loopDebateChat.askBusy"),
+      emptyMessage: t("loopDebateChat.askEmpty"),
+      failedMessage: (detail) => t("loopDebateChat.askFailed", { detail }),
+    });
+  },
+  abortMainModelRun: (task) => {
+    const target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
+    if (!target?.tabId) {
+      return;
+    }
+    stopLoopPlusInvocationRunner(target.tabId, { includeGraph: false });
+  },
+  readAskThread: (task) => {
+    const dir = task.communicationDir.trim();
+    if (!dir) {
+      return createEmptyLoopAskThread();
+    }
+    return readLoopAskThreadFile(loopAskThreadPath(dir));
+  },
+  writeAskThread: (task, thread) => {
+    const dir = task.communicationDir.trim();
+    if (!dir) {
+      return;
+    }
+    writeLoopAskThreadFile(loopAskThreadPath(dir), thread);
+  },
   postPanelState,
   getActiveConversationTaskId: () => (
     normalizeLoopTaskId(activeTaskRun?.loopTaskId)
@@ -3084,6 +3182,7 @@ graphRuntimeHost = createGraphRuntimeHost({
   closeConversationTabAndRefreshPanel,
   errorToMessage,
   messages: graphMessagesHost,
+  revealClarification: (graphRunId) => { void openGraphRunPanel(graphRunId); },
 });
 
 function initializeGraphAutoWakeScheduler(context: vscode.ExtensionContext): void {
@@ -3479,6 +3578,46 @@ function isLoopTaskRunning(
     return false;
   }
   return resolveLoopTaskRunControlState(task, runningTaskIds).isRunning;
+}
+
+function readActiveRunForConversationTabFlow(tabId: string): { loopTaskId?: string | null } | null {
+  if (!isTabRunActive(tabId)) {
+    return null;
+  }
+  const interactiveRun = interactiveRunsByTabId.get(tabId);
+  if (interactiveRun) {
+    return { loopTaskId: interactiveRun.loopTaskId ?? null };
+  }
+  const parallelRun = parallelRunsByTabId.get(tabId);
+  if (parallelRun) {
+    return { loopTaskId: parallelRun.loopTaskId ?? null };
+  }
+  if (getPrimaryRunTabId() === tabId) {
+    return { loopTaskId: activeTaskRun?.loopTaskId ?? null };
+  }
+  return { loopTaskId: null };
+}
+
+function reconcileRunningConversationTabs(): void {
+  const checks: ConversationTabRunningFlowCheck[] = ensureConversationTabs().tabs.map((tab) => {
+    const taskId = resolveConversationTabLoopContext(tab).loopTaskId;
+    const task = taskId ? readLoopTaskRecord(taskId) : null;
+    return {
+      tabId: tab.id,
+      task: task
+        ? {
+          id: task.id,
+          status: task.status,
+          loopPlus: readConversationTabRunningFlowLoopPlus(task.loopPlus),
+        }
+        : null,
+      activeRun: readActiveRunForConversationTabFlow(tab.id),
+    };
+  });
+  sendPanelMessage({
+    type: "runningConversationTabsReconciled",
+    stopTabIds: selectStaleConversationTabRunningFlowIds(checks),
+  });
 }
 
 function resolveAutoInteractiveModeForConversationTab(
@@ -3999,6 +4138,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       log: (event, payload) => {
         void logInfo(event, payload);
       },
+      revealClarification: (taskId) => { void openLoopGroupChatPanel(taskId); },
       runPrompt: (input, options) => runPrompt(input, options),
       getMessages: (target) => getLoopMessagesForTarget(target),
       readRuns: () => readTaskStore().runs,
@@ -4287,6 +4427,48 @@ function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord |
   return graphRuntimeHost.selectGraphBlockedAttentionNode(run);
 }
 
+async function waitForLoopTaskClarification(task: LoopTaskRecord, target: PromptRunTarget): Promise<boolean> {
+  const request = task.pendingClarification;
+  if (!request) {
+    return true;
+  }
+  void openLoopGroupChatPanel(task.id);
+  const submission = await waitForOrchestratorClarification(loopClarificationScope(task.id), request, {
+    timeoutMs: readHumanInteractionTimeoutMs(),
+  });
+  const latest = readLoopTaskRecord(task.id) ?? task;
+  if (latest.status === "stopped" || latest.status === "error") {
+    return false;
+  }
+  if (submission.status !== "completed") {
+    const paused = updateLoopTaskRecord(task.id, {
+      status: "needs-review",
+      pendingClarification: undefined,
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      finalSummary: "用户拒绝了主任务澄清，任务已暂停。",
+      updatedAt: Date.now(),
+    }) ?? latest;
+    appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(paused));
+    refreshOpenLoopGroupChatPanelForTask(task.id);
+    return false;
+  }
+  const answer = formatOrchestratorClarificationAnswer(submission, request.formFields);
+  const nextRequirements = appendLoopSupplementalRequirement(latest.supplementalRequirements, answer);
+  updateLoopTaskRecord(task.id, {
+    supplementalRequirements: nextRequirements,
+    pendingClarification: undefined,
+    updatedAt: Date.now(),
+  });
+  appendLoopSupplementalRequirementToCommunication(latest, answer);
+  appendTextFileEnsuringDir(
+    buildLoopMainSubChatTranscriptFile(latest.communicationDir),
+    `\n## 用户补充澄清\n${answer}\n`,
+  );
+  refreshOpenLoopGroupChatPanelForTask(task.id);
+  return true;
+}
+
 async function runLoopPromptOrchestration(
   input: PromptRunInput,
   options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven" } = {},
@@ -4430,6 +4612,7 @@ async function runLoopPromptOrchestration(
   task = ensureLoopTaskMaxRoundsAtLeast(task, getGlobalLoopMaxRounds());
   onTaskOwnershipAcquired?.(task.id, target);
   await postPanelState();
+  void openLoopGroupChatPanel(task.id);
 
   while (round <= task.maxRounds) {
     const latestRecord: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
@@ -4441,6 +4624,13 @@ async function runLoopPromptOrchestration(
     }
     if (latest.status === "needs-review" || latest.status === "error" || latest.status === "stopped") {
       return;
+    }
+    if (latest.pendingClarification) {
+      const continued = await waitForLoopTaskClarification(latest, target);
+      if (!continued) {
+        return;
+      }
+      continue;
     }
     if (isLoopTaskCompleted(latest)) {
       if (hasCompleteLoopCompletionMessagesForTask(target, latest.id)) {
@@ -4522,6 +4712,9 @@ async function runLoopPromptOrchestration(
     if (decisionRunResult.status === "needs-review") {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
       return;
+    }
+    if (decisionRunResult.status === "awaiting-input") {
+      continue;
     }
 
     const subtasks = decisionRunResult.subtasks;

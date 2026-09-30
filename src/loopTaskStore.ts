@@ -18,6 +18,7 @@ import {
 import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
+import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import type { LoopDebateRoundRecord } from "./loopDebate";
 import { sanitizePathSegment } from "./shared/pathSegments";
 
@@ -91,7 +92,7 @@ export type LoopSubtaskDecision = {
 };
 
 export type LoopMainDecision = {
-  status: "completed" | "continue" | "blocked";
+  status: "completed" | "continue" | "blocked" | "clarify";
   answerConclusion?: string;
   finalSummary?: string;
   roundSummaries?: LoopRoundSummary[];
@@ -99,6 +100,7 @@ export type LoopMainDecision = {
   acceptance?: LoopAcceptance;
   subtask?: LoopSubtaskDecision;
   subtasks?: LoopSubtaskDecision[];
+  clarification?: OrchestratorClarification;
   parallelReason?: string;
   estimatedRemainingRounds?: number;
 };
@@ -144,6 +146,8 @@ export type LoopTaskRecord = {
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
   supplementalRequirements?: string[];
+  pendingClarification?: OrchestratorClarification;
+  clarificationCount?: number;
   modelRouting?: LoopTaskModelRouting;
   originProfile?: LoopTaskOriginProfile;
   debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
@@ -819,6 +823,14 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   const completionRequirementCoverage = normalizeLoopAcceptanceChecks(
     (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
   );
+  const pendingClarification = parseOrchestratorClarification(
+    (raw as { pendingClarification?: unknown }).pendingClarification,
+    `clarify-${raw.id}`,
+  ) ?? undefined;
+  const clarificationCountRaw = (raw as { clarificationCount?: unknown }).clarificationCount;
+  const clarificationCount = typeof clarificationCountRaw === "number" && Number.isFinite(clarificationCountRaw)
+    ? Math.max(0, Math.floor(clarificationCountRaw))
+    : 0;
   const supplementalRequirements = Array.isArray((raw as { supplementalRequirements?: unknown }).supplementalRequirements)
     ? (raw as { supplementalRequirements: unknown[] }).supplementalRequirements
       .map((item) => String(item).trim())
@@ -875,6 +887,8 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
       ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
       : undefined,
     supplementalRequirements,
+    ...(pendingClarification ? { pendingClarification } : {}),
+    ...(clarificationCount ? { clarificationCount } : {}),
     ...(modelRouting ? { modelRouting } : {}),
     ...(originProfile ? { originProfile } : {}),
     debateRounds,

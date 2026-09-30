@@ -63,6 +63,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   appendAttemptReport: (filePath: string, content: string) => void;
   log?: LoopPlusOrchestrationDeps["log"];
+  revealClarification?: (taskId: string) => void;
   runPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null }) => Promise<void>;
   getMessages: (target: LoopPlusPromptTarget) => ChatMessage[];
   readRuns: () => TaskRunRecord[];
@@ -432,6 +433,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           ].join("\n"));
         },
         log: deps.log,
+        revealClarification: deps.revealClarification,
       });
     }
     return hostInstance;
@@ -507,6 +509,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     if (result.taskId) {
       rememberLivePrompt(result.taskId, input);
       onTaskOwnershipAcquired?.(result.taskId, target);
+      deps.revealClarification?.(result.taskId);
     }
     if (result.handled) {
       await result.done;

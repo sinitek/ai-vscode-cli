@@ -95,6 +95,7 @@ import {
   resolveLoopPlusDecisionSubtaskMax,
   resolveLoopPlusMaxAcceptances,
 } from "./loopPlusDecision";
+import { resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -126,6 +127,7 @@ export type PanelStateBuilderDeps = {
   getGlobalAutoCompactContextAfterRun: () => boolean;
   getGlobalMultiAgentEnabled: () => boolean;
   getGlobalHumanInteractionEnabled: () => boolean;
+  getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
@@ -224,6 +226,9 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
+    humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
+      deps.getGlobalHumanInteractionTimeoutMinutes?.(),
+    ),
     historyRetentionDays: deps.getGlobalHistoryRetentionDays?.() ?? 30,
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
@@ -433,6 +438,7 @@ export function buildGraphRunPanelStateWithDeps(
       mainCommunicationFile: run.mainCommunicationFile,
       ...(run.finalAnswer ? { finalAnswer: run.finalAnswer } : {}),
     },
+    ...(run.pendingClarification ? { clarification: run.pendingClarification } : {}),
     runControl: {
       canContinue: Boolean(deps.controls?.continueRun) && controlState.canContinue,
       canSupplement: Boolean(deps.controls?.supplementRun) && controlState.canSupplement,
@@ -771,6 +777,7 @@ export function buildLoopDebateChatPanelStateWithDeps(
     rounds,
     chatMarkdown,
     error,
+    ...(task.pendingClarification ? { clarification: task.pendingClarification } : {}),
   };
 }
 
@@ -819,7 +826,7 @@ export function projectLoopPlusPanel(
           disposition: item.disposition,
           ...(item.outcome ? { outcome: item.outcome } : {}),
           ...(item.disposition === "reviewed"
-            ? { acceptance: loopPlusReviewedAcceptance(item.outcome, recordedStatus) }
+            ? { acceptance: loopPlusReviewedAcceptance(item.outcome, recordedStatus, item.acceptance) }
             : {}),
         };
       }),
@@ -871,11 +878,12 @@ function isLoopPlusDisplayPaused(status: string): boolean {
 function loopPlusReviewedAcceptance(
   outcome: "completed" | "failed" | "stopped" | undefined,
   recordedStatus: string | undefined,
+  recordedAcceptance?: "passed" | "failed",
 ): "passed" | "failed" {
-  if (outcome === "failed" || outcome === "stopped") {
+  if (recordedAcceptance === "failed" || outcome === "failed" || outcome === "stopped") {
     return "failed";
   }
-  if (outcome === "completed") {
+  if (recordedAcceptance === "passed" || outcome === "completed") {
     return "passed";
   }
   if (recordedStatus === "blocked") {

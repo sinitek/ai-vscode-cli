@@ -6,6 +6,7 @@ import {
   PATH_SEGMENT_REPLACEMENT_PATTERN,
   sanitizePathSegment,
 } from "../shared/pathSegments";
+import type { OrchestratorClarification } from "../orchestratorClarification";
 
 export const GRAPH_SCHEMA_VERSION = 1;
 export type GraphSchemaVersion = typeof GRAPH_SCHEMA_VERSION;
@@ -321,6 +322,8 @@ export type GraphRunRecord = {
   sessionId: string | null;
   rootPrompt: string;
   supplementalRequirements?: string[];
+  pendingClarification?: OrchestratorClarification;
+  clarificationCount?: number;
   status: GraphRunStatus;
   createdAt: number;
   updatedAt: number;

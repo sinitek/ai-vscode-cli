@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
+import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { resolveLocale, type AppLocale } from "../i18n";
+import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
 import {
@@ -42,6 +44,7 @@ type LoopDebateChatPanelHandlers = {
 export class LoopDebateChatPanel {
   private panel: vscode.WebviewPanel | undefined;
   private state: LoopDebateChatPanelState | undefined;
+  private askThread: LoopAskThread = createEmptyLoopAskThread();
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -83,7 +86,30 @@ export class LoopDebateChatPanel {
     }
     const locale = resolveLocale();
     this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings(locale));
-    this.panel.webview.html = buildLoopDebateChatPanelHtml(this.panel.webview, state, locale);
+    this.panel.webview.html = buildLoopDebateChatPanelHtml(
+      this.panel.webview,
+      state,
+      locale,
+      this.askThread,
+    );
+  }
+
+  public setAskThread(thread: LoopAskThread): void {
+    this.askThread = thread;
+  }
+
+  public getAskThread(): LoopAskThread {
+    return this.askThread;
+  }
+
+  public publishAskThread(): void {
+    if (!this.panel) {
+      return;
+    }
+    void this.panel.webview.postMessage({
+      type: "loopDebateChat:askThread",
+      thread: this.askThread,
+    });
   }
 
   public getState(): LoopDebateChatPanelState | undefined {
@@ -103,6 +129,7 @@ export function buildLoopDebateChatPanelHtml(
   webview: vscode.Webview,
   state: LoopDebateChatPanelState,
   locale: AppLocale,
+  askThread: LoopAskThread = createEmptyLoopAskThread(),
 ): string {
   const nonce = getNonce();
   const strings = getStrings(locale);
@@ -130,6 +157,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
         <div class="actions">
           ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
           ${state.task.canSupplement ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
+          ${state.task.canSupplement ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>` : ""}
           ${state.task.canContinue && !state.task.canStop ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
         </div>
       </header>
@@ -151,6 +179,25 @@ ${LOOP_DEBATE_PANEL_STYLES}
           </div>
         </div>
       </div>
+      <div id="askChatBackdrop" class="dialog-backdrop ask-chat-backdrop${askThread.dialogOpen ? " visible" : ""}" aria-hidden="${askThread.dialogOpen ? "false" : "true"}">
+        <div class="dialog ask-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="askChatTitle" aria-describedby="askChatDescription">
+          <div class="dialog-header">
+            <h2 id="askChatTitle" class="dialog-title">${escapeHtml(strings.askDialogTitle)}</h2>
+            <p id="askChatDescription" class="dialog-description">${escapeHtml(strings.askDialogDescription)}</p>
+          </div>
+          <div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div>
+          <form id="askChatForm" class="ask-chat-composer">
+            <label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label>
+            <textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea>
+            <div class="dialog-actions">
+              <button id="askChatClose" class="button" type="button">${escapeHtml(strings.askAnswerClose)}</button>
+              <button id="askChatAbort" class="button danger" type="button"${askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatAbort)}</button>
+              <button id="askChatSend" class="button primary" type="submit"${askThread.running ? " disabled" : ""}>${escapeHtml(strings.askChatSend)}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      ${renderOrchestratorClarificationDialog(state.clarification, { requiredTemplate: strings.clarificationRequired }, { submit: "loopDebateChat:submitClarification", reject: "loopDebateChat:rejectClarification" })}
       <div id="filePreviewBackdrop" class="dialog-backdrop file-preview-backdrop" aria-hidden="true">
         <div class="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
           <div class="dialog-header">
@@ -198,6 +245,13 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      const continueDialogCancel = document.getElementById("continueDialogCancel");
 	      const continueTaskButton = document.querySelector('[data-action="continueTask"]');
 	      const supplementTaskButton = document.querySelector('[data-action="supplementTask"]');
+	      const askChatBackdrop = document.getElementById("askChatBackdrop");
+	      const askChatMessages = document.getElementById("askChatMessages");
+	      const askChatForm = document.getElementById("askChatForm");
+	      const askChatInput = document.getElementById("askChatInput");
+	      const askChatSend = document.getElementById("askChatSend");
+	      const askChatAbort = document.getElementById("askChatAbort");
+	      const askChatClose = document.getElementById("askChatClose");
 	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
@@ -210,6 +264,9 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      let suppressScrollButtonUntil = 0;
 	      let continueDialogOpen = false;
 	      let continueDialogMode = undefined;
+	      let dialogStateRestored = false;
+	      let askDialogOpen = ${askThread.dialogOpen ? "true" : "false"};
+	      let askThread = ${embedJson(askThread)};
 	      let communicationPreviewOpen = false;
 	      let communicationPreviewSeq = 0;
 
@@ -228,6 +285,9 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      }
 
 	      function saveDialogState() {
+	        if (!dialogStateRestored) {
+	          return;
+	        }
 	        const existingDialog = getStoredDialogState();
 	        vscode.setState({
 	          ...getStoredState(),
@@ -452,9 +512,173 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }, 0);
 	      }
 
+	      const ASK_THINKING_LABEL = "${escapeJsString(strings.askChatThinking)}";
+	      const ASK_EMPTY_LABEL = "${escapeJsString(strings.askChatEmpty)}";
+
+	      function askEscape(value) {
+	        return String(value == null ? "" : value)
+	          .replace(/&/g, "&amp;")
+	          .replace(/</g, "&lt;")
+	          .replace(/>/g, "&gt;")
+	          .replace(/"/g, "&quot;")
+	          .replace(/'/g, "&#39;");
+	      }
+
+	      function renderAskBubble(message) {
+	        const role = message && message.role === "user"
+	          ? "user"
+	          : message && message.role === "thinking"
+	            ? "thinking"
+	            : message && message.role === "system"
+	              ? "system"
+	              : "assistant";
+	        if (role === "thinking") {
+	          const streaming = Boolean(message && message.streaming);
+	          const body = askEscape(message && message.content ? message.content : "");
+	          const dots = streaming
+	            ? '<span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>'
+	            : "";
+	          const bodyHtml = body
+	            ? '<div class="ask-chat-thinking-body">' + body + "</div>"
+	            : "";
+	          return '<article class="ask-chat-message thinking"><div class="ask-chat-bubble"><details class="ask-chat-thinking"' +
+	            (streaming ? " open" : "") +
+	            "><summary>" + askEscape(ASK_THINKING_LABEL) + dots + "</summary>" +
+	            bodyHtml +
+	            "</details></div></article>";
+	        }
+	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble">' +
+	          askEscape(message && message.content ? message.content : "") +
+	          "</div></article>";
+	      }
+
+	      function renderAskThread() {
+	        if (!askChatMessages) {
+	          return;
+	        }
+	        const messages = askThread && Array.isArray(askThread.messages) ? askThread.messages : [];
+	        const distance = askChatMessages.scrollHeight - askChatMessages.scrollTop - askChatMessages.clientHeight;
+	        const stickToBottom = distance <= 50;
+	        askChatMessages.innerHTML = messages.length
+	          ? messages.map(renderAskBubble).join("")
+	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
+	        if (stickToBottom) {
+	          askChatMessages.scrollTop = askChatMessages.scrollHeight;
+	        }
+	        const running = Boolean(askThread && askThread.running);
+	        if (askChatSend) {
+	          askChatSend.disabled = running;
+	        }
+	        if (askChatAbort) {
+	          askChatAbort.hidden = !running;
+	        }
+	        if (askChatInput) {
+	          askChatInput.disabled = running;
+	        }
+	      }
+
+	      function applyAskThread(thread) {
+	        if (!thread || typeof thread !== "object" || !Array.isArray(thread.messages)) {
+	          return;
+	        }
+	        askThread = thread;
+	        renderAskThread();
+	      }
+
+	      function getStoredAskDialogState() {
+	        const dialog = getStoredState().askDialog;
+	        return dialog && typeof dialog === "object" ? dialog : {};
+	      }
+
+	      function saveAskDialogState() {
+	        if (!dialogStateRestored) {
+	          return;
+	        }
+	        vscode.setState({
+	          ...getStoredState(),
+	          askDialog: {
+	            open: askDialogOpen,
+	            draft: askChatInput ? askChatInput.value : "",
+	          },
+	        });
+	      }
+
+	      function showAskDialog() {
+	        askDialogOpen = true;
+	        if (askChatBackdrop) {
+	          askChatBackdrop.classList.add("visible");
+	          askChatBackdrop.setAttribute("aria-hidden", "false");
+	        }
+	        renderAskThread();
+	      }
+
+	      function hideAskDialog() {
+	        askDialogOpen = false;
+	        if (askChatBackdrop) {
+	          askChatBackdrop.classList.remove("visible");
+	          askChatBackdrop.setAttribute("aria-hidden", "true");
+	        }
+	      }
+
+	      function openAskDialog() {
+	        showAskDialog();
+	        saveAskDialogState();
+	        vscode.postMessage({ type: "loopDebateChat:openAskDialog" });
+	        window.setTimeout(() => {
+	          if (askChatInput && !(askThread && askThread.running)) {
+	            askChatInput.focus();
+	          }
+	        }, 0);
+	      }
+
+	      function closeAskDialog() {
+	        hideAskDialog();
+	        saveAskDialogState();
+	        vscode.postMessage({ type: "loopDebateChat:closeAskDialog" });
+	      }
+
+	      function submitAskChat() {
+	        if (!askChatInput || (askThread && askThread.running)) {
+	          return;
+	        }
+	        const prompt = askChatInput.value.trim();
+	        if (!prompt) {
+	          askChatInput.focus();
+	          return;
+	        }
+	        askChatInput.value = "";
+	        saveAskDialogState();
+	        vscode.postMessage({ type: "loopDebateChat:askMainModel", prompt: prompt });
+	      }
+
+	      function restoreAskDialogState() {
+	        const stored = getStoredAskDialogState();
+	        if (!stored || stored.open !== true && stored.open !== false) {
+	          return;
+	        }
+	        if (stored.open) {
+	          showAskDialog();
+	          if (typeof stored.draft === "string" && askChatInput) {
+	            askChatInput.value = stored.draft;
+	          }
+	          return;
+	        }
+	        hideAskDialog();
+	      }
+
 	      function restoreDialogState() {
+	        restoreAskDialogState();
 	        const dialog = getStoredDialogState();
+	        dialogStateRestored = true;
 	        if (!dialog.open || !continueDialogInput) {
+	          return;
+	        }
+	        if (dialog.mode === "ask") {
+	          showAskDialog();
+	          if (typeof dialog.prompt === "string" && askChatInput) {
+	            askChatInput.value = dialog.prompt;
+	          }
+	          saveAskDialogState();
 	          return;
 	        }
 	        if (dialog.mode === "supplement") {
@@ -475,6 +699,9 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }
 	        saveDialogState();
 	      }
+
+	      renderAskThread();
+	      restoreDialogState();
 
 	      function getStoredCommunicationFile() {
 	        const stored = getStoredState().communicationFile;
@@ -593,7 +820,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          return;
 	        }
 	        autoRefreshTimer = window.setInterval(() => {
-	          if (document.visibilityState === "visible" && !continueDialogOpen && !communicationPreviewOpen) {
+	          if (document.visibilityState === "visible" && !continueDialogOpen && !askDialogOpen && !communicationPreviewOpen && !document.getElementById("clarificationDialogBackdrop")) {
 	            requestRefresh();
 	          }
 	        }, AUTO_REFRESH_INTERVAL_MS);
@@ -628,6 +855,11 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          openSupplementDialog();
 	          return;
 	        }
+	        if (action === "askMainModel") {
+	          saveScrollState();
+	          openAskDialog();
+	          return;
+	        }
 	        if (action === "stopTask") {
 	          saveScrollState();
 	          if (stopTaskButton) {
@@ -649,7 +881,12 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }
 	      });
 	      window.addEventListener("message", (event) => {
-	        applyCommunicationFilePreview(event.data);
+	        const message = event.data;
+	        if (message && message.type === "loopDebateChat:askThread") {
+	          applyAskThread(message.thread);
+	          return;
+	        }
+	        applyCommunicationFilePreview(message);
 	      });
 	      if (mainElement) {
 	        mainElement.addEventListener("scroll", () => {
@@ -711,7 +948,53 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	          closeCommunicationFilePreview();
 	        });
 	      }
+	      if (askChatBackdrop) {
+	        askChatBackdrop.addEventListener("click", (event) => {
+	          if (event.target === askChatBackdrop) {
+	            closeAskDialog();
+	          }
+	        });
+	      }
+	      if (askChatClose) {
+	        askChatClose.addEventListener("click", () => {
+	          closeAskDialog();
+	        });
+	      }
+	      if (askChatAbort) {
+	        askChatAbort.addEventListener("click", () => {
+	          vscode.postMessage({ type: "loopDebateChat:abortMainModelQuestion" });
+	        });
+	      }
+	      if (askChatForm) {
+	        askChatForm.addEventListener("submit", (event) => {
+	          event.preventDefault();
+	          submitAskChat();
+	        });
+	      }
+	      if (askChatInput) {
+	        askChatInput.addEventListener("input", () => {
+	          if (askDialogOpen) {
+	            saveAskDialogState();
+	          }
+	        });
+	        askChatInput.addEventListener("keydown", (event) => {
+	          if (event.key === "Escape") {
+	            event.preventDefault();
+	            closeAskDialog();
+	            return;
+	          }
+	          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+	            event.preventDefault();
+	            submitAskChat();
+	          }
+	        });
+	      }
 	      document.addEventListener("keydown", (event) => {
+	        if (event.key === "Escape" && askDialogOpen) {
+	          event.preventDefault();
+	          closeAskDialog();
+	          return;
+	        }
 	        if (event.key === "Escape" && communicationPreviewOpen) {
 	          event.preventDefault();
 	          closeCommunicationFilePreview();
@@ -723,24 +1006,25 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }, { passive: true });
 	      }
 	      document.addEventListener("visibilitychange", () => {
-	        if (document.visibilityState === "visible" && !continueDialogOpen && !communicationPreviewOpen) {
+	        if (document.visibilityState === "visible" && !continueDialogOpen && !askDialogOpen && !communicationPreviewOpen) {
 	          requestRefresh();
 	        }
 	      });
 	      window.addEventListener("beforeunload", () => {
 	        saveScrollState();
 	        saveDialogState();
+	        saveAskDialogState();
 	        if (autoRefreshTimer !== undefined) {
 	          window.clearInterval(autoRefreshTimer);
 	        }
 	      });
 	      window.requestAnimationFrame(() => {
 	        restoreScrollState();
-	        restoreDialogState();
 	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
 	      startAutoRefresh();
+${orchestratorClarificationDialogScript()}
 	    </script>
   </body>
 </html>`;
@@ -863,6 +1147,29 @@ function renderLoopPlusCount(field: string, label: string, value: number): strin
   </div>`;
 }
 
+function acceptanceStatusClass(status: string): string {
+  if (status === "acceptance_passed" || status === "reviewed") {
+    return "member-status-passed";
+  }
+  if (status === "acceptance_failed") {
+    return "member-status-failed";
+  }
+  return "";
+}
+
+function renderParticipantStatus(
+  state: LoopDebateChatPanelState,
+  status: string,
+  strings: LoopDebateChatPanelStrings,
+): string {
+  const label = escapeHtml(formatParticipantStatus(state, status, strings));
+  const statusClass = acceptanceStatusClass(status);
+  if (!statusClass) {
+    return label;
+  }
+  return `<span class="${statusClass}">${label}</span>`;
+}
+
 function formatParticipantStatus(
   state: LoopDebateChatPanelState,
   status: string,
@@ -927,7 +1234,7 @@ function renderRosterPanel(
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
-      <div class="member-meta">${escapeHtml(formatParticipantStatus(state, participant.status, strings))}${participant.stance ? ` · ${escapeHtml(participant.stance)}` : ""}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${participant.stance ? ` · ${escapeHtml(participant.stance)}` : ""}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings, locale)}
     </div>
   </div>`).join("");
@@ -1395,6 +1702,13 @@ function escapeAttribute(value: string): string {
 
 function escapeJsString(value: string): string {
   return JSON.stringify(value).slice(1, -1);
+}
+
+function embedJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 }
 
 function getNonce(): string {

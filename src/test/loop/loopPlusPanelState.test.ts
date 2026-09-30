@@ -598,6 +598,37 @@ test("projects a failed reviewed execution as acceptance_failed and keeps a lega
   assert.equal(legacyState.rounds[0]?.participants.find((item) => item.id === "B")?.status, "acceptance_failed");
 });
 
+test("projects a completed repair accept as acceptance_failed", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(scheduler.dispatch([spec("A", "a-1")]).started.length, 1);
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-1", outcome: "completed" }).applied, true);
+  const current = scheduler.snapshot().currentReview;
+  assert.ok(current);
+  assert.equal(scheduler.submitReviewBatch([current.eventId], "failed").ok, true);
+  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
+  assert.equal(state.loopPlus?.ok, true);
+  if (!state.loopPlus?.ok) {
+    return;
+  }
+  assert.equal(state.loopPlus.seenAttempts.find((item) => item.attemptId === "a-1")?.outcome, "completed");
+  assert.equal(state.loopPlus.seenAttempts.find((item) => item.attemptId === "a-1")?.acceptance, "failed");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_failed");
+
+  const passed = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(passed.dispatch([spec("A", "a-2")]).started.length, 1);
+  assert.equal(passed.finish({ subtaskId: "A", attemptId: "a-2", outcome: "completed" }).applied, true);
+  const passedCurrent = passed.snapshot().currentReview;
+  assert.ok(passedCurrent);
+  assert.equal(passed.submitReviewBatch([passedCurrent.eventId], "passed").ok, true);
+  const passedState = buildLoopDebateChatPanelStateWithDeps(task(passed.snapshot()), deps());
+  assert.equal(passedState.loopPlus?.ok, true);
+  if (!passedState.loopPlus?.ok) {
+    return;
+  }
+  assert.equal(passedState.loopPlus.seenAttempts.find((item) => item.attemptId === "a-2")?.acceptance, "passed");
+  assert.equal(passedState.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_passed");
+});
+
 test("shows a closed Loop+ subtask as stopped even after an older acceptance", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(scheduler.dispatch([spec("A", "a-1", "Alpha")]).started.length, 1);

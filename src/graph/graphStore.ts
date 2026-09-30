@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { CLI_LIST, type CliName } from "../cli/types";
+import { parseOrchestratorClarification } from "../orchestratorClarification";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
   GRAPH_MAX_CONCURRENT_NODES,
@@ -455,6 +456,14 @@ export function normalizeGraphRunRecord(
   if (!nodes || !edges) {
     return null;
   }
+  const pendingClarification = parseOrchestratorClarification(
+    (raw as { pendingClarification?: unknown }).pendingClarification,
+    `clarify-${raw.id}`,
+  ) ?? undefined;
+  const clarificationCountRaw = (raw as { clarificationCount?: unknown }).clarificationCount;
+  const clarificationCount = typeof clarificationCountRaw === "number" && Number.isFinite(clarificationCountRaw)
+    ? Math.max(0, Math.floor(clarificationCountRaw))
+    : 0;
   const createdAt = normalizeFiniteTimestamp(raw.createdAt, Date.now());
   const updatedAt = normalizeFiniteTimestamp(raw.updatedAt, createdAt);
   const worktree = normalizeGraphRunWorktree(raw.worktree);
@@ -472,6 +481,8 @@ export function normalizeGraphRunRecord(
     ...(normalizeStringArray(raw.supplementalRequirements).length > 0
       ? { supplementalRequirements: normalizeStringArray(raw.supplementalRequirements) }
       : {}),
+    ...(pendingClarification ? { pendingClarification } : {}),
+    ...(clarificationCount ? { clarificationCount } : {}),
     status: raw.status,
     createdAt,
     updatedAt,

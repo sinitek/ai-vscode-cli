@@ -500,6 +500,21 @@ ${webviewStyles}    </style>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsHumanInteractionTimeoutLabel}</div>
+                  <input
+                    type="number"
+                    id="humanInteractionTimeoutMinutes"
+                    class="tool-settings-number"
+                    min="1"
+                    max="240"
+                    step="1"
+                    title="${i18n.toolSettingsHumanInteractionTimeoutTitle}"
+                    aria-label="${i18n.toolSettingsHumanInteractionTimeoutLabel}"
+                  />
+                </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsAutoCompactAfterRunLabel}</div>
                   <label class="debug-toggle" title="${i18n.toolSettingsAutoCompactAfterRunTitle}">
                     <input type="checkbox" id="autoCompactContextAfterRun" />

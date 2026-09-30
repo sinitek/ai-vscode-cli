@@ -52,9 +52,11 @@ test("normalizes loop execution mode with legacy-compatible default", () => {
   assert.equal(normalizeLoopExecutionMode("debate_multi_agent"), "debate_multi_agent");
 });
 
-test("uses speaking action labels for Loop supplemental requirements", () => {
-  assert.equal(getStrings("zh-CN").supplementTask, "我要说话");
-  assert.equal(getStrings("en").supplementTask, "I want to speak");
+test("uses requirement and question labels for Loop group chat actions", () => {
+  assert.equal(getStrings("zh-CN").supplementTask, "补充需求");
+  assert.equal(getStrings("en").supplementTask, "Add requirement");
+  assert.equal(getStrings("zh-CN").askMainModel, "我要提问");
+  assert.equal(getStrings("en").askMainModel, "Ask a question");
 });
 
 test("parses supplemental requirements as user chat messages", () => {

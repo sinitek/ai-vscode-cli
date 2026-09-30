@@ -447,6 +447,20 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           });
         });
       }
+      if (elements.humanInteractionTimeoutMinutes) {
+        const commitHumanInteractionTimeoutMinutes = () => {
+          const nextValue = normalizeHumanInteractionTimeoutMinutes(elements.humanInteractionTimeoutMinutes.value);
+          state.humanInteractionTimeoutMinutes = nextValue;
+          elements.humanInteractionTimeoutMinutes.value = String(nextValue);
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "humanInteractionTimeoutMinutes",
+            value: nextValue,
+          });
+        };
+        elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
+        elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
+      }
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {
           const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);

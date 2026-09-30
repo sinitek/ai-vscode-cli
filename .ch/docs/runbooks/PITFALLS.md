@@ -14,6 +14,29 @@
 
 ## 当前有效条目
 
+## Loop+ 完成后会话 Tab 流水动画可能残留
+
+- 状态：已规避
+- 首次发现：2026-09-30
+- 适用范围：Loop / Loop+ 主任务会话 Tab 的运行中边框动画
+
+### 现象
+- 子任务和主任务记录都已经完成，会话 Tab 标题仍保持流水动画。
+
+### 触发条件
+- 任务记录已经是 `completed`、`stopped`、`error` 或 `needs-review`，但 Webview 没收到对应的 `runStatus` 结束，或宿主仍短暂把已完成任务算作运行中。
+
+### 根因
+- Tab 流水同时看本地 `runningTabStartedAtById` 和主任务 `loopTaskRunning` / `loopTaskStatus`。结束事件丢失后，本地运行标记不会自己过期。
+
+### 长期规避
+- 只要还有 Tab 处于流水状态，Webview 每 60 秒请求宿主复核。
+- 宿主确认任务已结束且没有新的无关运行后，清掉本地流水标记；没有任何流水后停止这轮检测。
+- 不要在任务仍是 `running` / `pending`，或当前 Tab 正在执行不带该任务 ID 的新提示时清掉流水。
+
+### 验证方式
+- `node --test dist/test/session/conversationTabRunningFlow.test.js dist/test/session/conversationTabLock.test.js`
+
 ## Loop+ 重提示的 attempt id 不能只跟调度序号
 
 - 状态：已规避
@@ -2235,15 +2258,15 @@
 - `src/test/extensionHost/opencodethinkingrefreshstate.test.ts`
 - `src/cli/openCodeModelCapabilities.ts`
 
-## Webview 的 display 规则会盖住 hidden，模型选择会在“我要说话”里露出来
+## Webview 的 display 规则会盖住 hidden，模型选择会在“补充需求”里露出来
 
 - 状态：已规避
 - 首次发现：2026-09-25
 - 适用范围：Loop / Loop+ 群聊面板、Graph 运行图面板、使用 `hidden` 切换可见性的 Webview
 
 ### 现象
-- Loop 与 Loop+ 群聊点击“我要说话”时，确认框仍然显示“继续使用的运行配置 / 主子模型”选择。
-- 该选择本应只在点击“继续”时出现。
+- Loop 与 Loop+ 群聊点击“补充需求”时，确认框仍然显示“继续使用的运行配置 / 主子模型”选择。
+- 该选择本应只在点击“继续”时出现。“我要提问”已经改成独立对话弹窗，不再进入这个确认框。
 
 ### 触发条件
 - 同一个弹窗用 `element.hidden` 隐藏 `#continueModelChoice`。
@@ -2256,7 +2279,7 @@
 ### 长期规避
 - 使用 `hidden` 控制显隐的 Webview 必须声明 `[hidden], .model-choice[hidden] { display: none !important; }`。
 - 不要给会被 `hidden` 隐藏的元素写 `display: ... !important`，除非选择器同时包含 `[hidden]` 且优先级更高。
-- “我要说话”只调用 `setContinueModelChoiceVisible(false)`；只有“继续”调用 `setContinueModelChoiceVisible(true)`。
+- “补充需求”只调用 `setContinueModelChoiceVisible(false)`；只有“继续”调用 `setContinueModelChoiceVisible(true)`。“我要提问”不再复用这个弹窗。
 
 ### 验证方式
 - `npm run build`
@@ -2268,7 +2291,42 @@
 - `src/webview/loopDebatePanel.ts`
 - `src/webview/graphRunPanelStyles.ts`
 
+## 主任务刷新会在补充需求弹窗恢复前把它写成已关闭
+
+- 状态：已规避
+- 首次发现：2026-09-30
+- 适用范围：Loop / Loop+ 群聊“补充需求”“继续执行”弹窗
+
+### 现象
+- 群聊里打开“补充需求”后，弹窗有时自己关掉，已输入内容也丢了。
+- “继续执行”仍和“补充需求”共用这套弹窗状态。“我要提问”已改成独立对话弹窗，并用自己的 `askDialog` 状态恢复草稿，不再受这段状态影响。
+
+### 触发条件
+- 弹窗还开着时，主任务、子任务或主持人状态落盘，宿主调用 `refreshOpenLoopGroupChatPanelForTask`。
+- 这次刷新会整页重写 Webview HTML。页面可见性变化或卸载也可能赶在下一帧之前发生。
+
+### 根因
+- 新页面先把 `continueDialogOpen` 设为 `false`，真正的 `restoreDialogState()` 放在 `requestAnimationFrame` 里。
+- `visibilitychange` 和 `beforeunload` 会先调用 `saveDialogState()`，把尚未恢复的关闭状态写回 `vscode.getState()`。
+- 主任务连续刷新时，下一次页面就读到 `open: false`，弹窗不再出现。
+
+### 长期规避
+- 在注册 `visibilitychange`、`beforeunload` 和自动刷新之前，同步调用 `restoreDialogState()`。
+- `dialogStateRestored` 变成 `true` 之前，`saveDialogState()` 必须直接返回，不能覆盖已保存的打开状态。
+- 不要再把弹窗恢复留到下一帧；滚动位置恢复可以继续留在 `requestAnimationFrame`。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/loop/loopDebatePanel.test.js`
+- 主任务运行中打开“补充需求”，等待群聊因主任务事件刷新后，弹窗和已输入内容仍在。
+
+### 关联资料
+- `src/webview/loopDebatePanel.ts`
+- `src/test/loop/loopDebatePanel.test.ts`
+- `src/extension.ts` 中的 `refreshOpenLoopGroupChatPanelForTask`
+
 ## 建议模板
+
 
 ```md
 ## <坑点标题>
@@ -2317,9 +2375,12 @@
 - attempt 是调度身份，不是验收结论。确认验收只表示主任务已经处理这条完成事件。
 
 ### 长期规避
-- 群聊已确认项只显示验收成功或验收失败。执行结果为 `completed` 是成功，`failed` 或 `stopped` 是失败。
-- 旧快照没有 `outcome` 时，不要发明第三种“尝试”状态；只有子任务记录为 `blocked` 才显示失败，否则显示成功。
+- 群聊已确认项只显示验收成功或验收失败。执行结果为 `failed` 或 `stopped` 是失败。`completed` 只有在确认时没有附带修复子任务时才是成功。
+- 同一次 accept 附带新子任务，表示本批验收未通过并已发起修复。即使 outcome 是 `completed`，也要把该批 `seenAttempts[*].acceptance` 记为 `failed`，成员状态显示验收失败。
+- 没有新子任务的 accept，以及 `completed` 确认，记为 `passed`；若 outcome 已是 `failed` 或 `stopped`，仍显示验收失败。
+- 旧快照没有 `outcome` 或 `acceptance` 时，不要发明第三种“尝试”状态；只有子任务记录为 `blocked` 才显示失败，否则显示成功。
 - 还在队列里、尚未确认的项继续显示待验收，不要提前写成验收失败。
+- 验收成功用主题绿色，验收失败用主题橙色，不要写死颜色。
 - 内部 attempt id 可以留在数据属性里，不写进用户可见文案。
 
 ### 验证方式
@@ -2446,3 +2507,35 @@
 - `src/cli/commandRunner.ts`
 - `src/extensionHost/promptInteractiveRuntime.ts`
 - `src/interactive/claudeRunner.ts`
+
+
+## 主任务澄清表单被当成通过或写两次
+
+- 状态：已规避
+- 首次发现：2026-09-30
+- 适用范围：经典 Loop、Loop+、Graph planner / replanner
+
+### 现象
+- Graph tick 把 `clarify` 算进完成节点后，plan 节点看起来已经通过，运行图却不再等用户。
+- 子任务或非 plan 节点返回 `clarify` 时弹出了主任务表单。
+- 群聊提交一次澄清后，补充要求里出现两份相同答案，或正在运行的主任务和冷恢复同时继续。
+
+### 根因
+- `clarify` 只表示主任务要等用户。Graph plan 节点应回到 `ready`，真正的等待信号是 `pendingClarification`，不是 `passed`。
+- Loop+ 的 `applyClarifyDecision` 只是策略表占位并返回 `stop`。真正等待发生在 consumer 解析到 `clarify` 时。
+- 进程内 waiter 还在时，面板提交只能 resolve waiter；只有 waiter 已经不在时，才把答案写入补充要求并冷恢复。
+
+### 长期规避
+- 非 plan 节点的 `clarify` 按失败处理，不保存表单。
+- 同一任务最多主动澄清 8 次。拒绝进入 `needs-review`，停止必须清表单并 abort waiter。
+- 热恢复不要再写一次答案，冷恢复不要只 resolve 一个已经不存在的 waiter。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/core/orchestratorClarification.test.js dist/test/graph/graphKernel.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
+
+### 关联资料
+- `src/orchestratorClarification.ts`
+- `src/graph/graphKernel.ts`
+- `src/graph/graphNodeLifecycle.ts`
+- `src/panelDiagnostics.ts`

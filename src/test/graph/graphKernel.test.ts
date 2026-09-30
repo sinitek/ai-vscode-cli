@@ -463,3 +463,53 @@ test("starts the first planned CLI node even when downstream if_fail rework edge
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
 });
+
+test("keeps a planner clarify request ready and fails the same status from a non-plan node", async () => {
+  const baseDir = createTempBaseDir();
+  try {
+    const clarification = {
+      interactionId: "clarify-1",
+      title: "需要确认需求",
+      instruction: "请选择范围",
+      formFields: [{
+        id: "scope",
+        label: "范围",
+        type: "radio" as const,
+        required: true,
+        options: [
+          { label: "只改接口", value: "api" },
+          { label: "接口和调用方", value: "all" },
+        ],
+      }],
+      submitLabel: "提交",
+      cancelLabel: "拒绝",
+    };
+    const planner = await tickGraphRun(createRun(baseDir, [createNode({ id: "plan", kind: "plan" })]), {
+      now: () => 1_000,
+      executor: {
+        execute: async () => ({ status: "clarify", summary: "需要确认范围", clarification }),
+      },
+    });
+    assert.deepEqual(planner.completedNodeIds, ["plan"]);
+    assert.deepEqual(planner.failedNodeIds, []);
+    assert.equal(getNode(planner.run, "plan").status, "ready");
+    assert.equal(planner.run.pendingClarification?.interactionId, "clarify-1");
+    assert.equal(planner.run.clarificationCount, 1);
+    assert.equal(planner.run.status, "running");
+
+    const implement = await tickGraphRun(createRun(baseDir, [
+      createNode({ id: "implement", kind: "implement", ownerRole: "subtask", writeFiles: ["src/api.ts"] }),
+    ]), {
+      now: () => 2_000,
+      executor: {
+        execute: async () => ({ status: "clarify", summary: "子任务不能询问", clarification }),
+      },
+    });
+    assert.deepEqual(implement.failedNodeIds, ["implement"]);
+    assert.deepEqual(implement.completedNodeIds, []);
+    assert.equal(getNode(implement.run, "implement").status, "failed");
+    assert.equal(implement.run.pendingClarification, undefined);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});

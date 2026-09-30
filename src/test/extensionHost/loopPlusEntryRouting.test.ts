@@ -145,6 +145,9 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(roundLoop >= 0, true);
   assert.equal(call < classicInit, true);
   assert.equal(call < roundLoop, true);
+  const openedGroupChat = orchestration.indexOf("void openLoopGroupChatPanel(task.id)");
+  assert.equal(openedGroupChat > classicInit, true);
+  assert.equal(openedGroupChat < roundLoop, true);
   assert.equal(orchestration.slice(call, classicInit).includes("return;"), true);
 
   const stopTab = functionBody(extensionSource, "stopRunForTab");
@@ -171,6 +174,11 @@ test("calls Loop+ before classic initialization and the round loop", () => {
 
   const adapterSource = readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts");
   assert.equal(adapterSource.includes("export function createLoopPlusRuntimeAdapter("), true);
+  const eventDrivenRun = functionBody(adapterSource, "runEventDriven");
+  const tried = eventDrivenRun.indexOf("host().tryRun(");
+  const revealed = eventDrivenRun.indexOf("deps.revealClarification?.(result.taskId)");
+  const awaited = eventDrivenRun.indexOf("await result.done");
+  assert.equal(tried >= 0 && revealed > tried && awaited > revealed, true);
   assert.equal(adapterSource.includes("withLoopPlusExecutionRoot("), true);
   assert.equal(adapterSource.includes("resolveLoopPlusAttemptOutcome("), true);
   assert.equal(adapterSource.includes("selectLoopPlusInvocationRun("), true);

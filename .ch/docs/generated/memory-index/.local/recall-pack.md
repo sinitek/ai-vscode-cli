@@ -3,7 +3,7 @@
 ## Summary
 
 - Generated at: 2026-09-27T06:12:11Z
-- Focus: Loop+ steer controls close reprompt subtask
+- Focus: Loop+ 我要提问弹窗 思考过程复用 AI对话思考气泡
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Available observation entries: 5
@@ -129,13 +129,13 @@ Narrative:
 
 ## Related Design Docs
 
+- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop, 提问, 弹窗
+  Why: 与当前 focus 相关的设计决策入口，命中：loop / 提问 / 弹窗。
+  Summary: 状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
 - `.ch/docs/design-docs/loop-debate-multi-agent-mode.md` | Loop 红蓝辩论多智能体模式详细设计 | matches=loop
   Why: 与当前 focus 相关的设计决策入口，命中：loop。
   Summary: 状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`
-
-- `.ch/docs/design-docs/loop-plus-scheduling.md` | Loop+ 完成事件调度 | matches=loop
-  Why: 与当前 focus 相关的设计决策入口，命中：loop。
-  Summary: 状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 - `.ch/docs/design-docs/graph-orchestration-mode.md` | Graph 编排模式详细设计 | matches=loop
   Why: 与当前 focus 相关的设计决策入口，命中：loop。

@@ -205,6 +205,9 @@ export const WEBVIEW_I18N = {
     toolSettingsHumanInteractionToggle: "On",
     toolSettingsHumanInteractionHint:
       "Global and on by default. Codex can use app-server/MCP structured requests, and Codex, Claude, and OpenCode Vibe tasks can convert explicit clarification questions into the same form. Rejecting the form stops the current task.",
+    toolSettingsHumanInteractionTimeoutLabel: "Human Interaction Timeout (minutes)",
+    toolSettingsHumanInteractionTimeoutTitle:
+      "Global setting. If a Vibe human-interaction dialog or a Loop, Loop+, or Graph main-task clarification form is not submitted within this limit, it times out. The AI continues with its best plan instead of treating it as a rejection or pausing for review. Default 10 minutes, range 1-240.",
     toolSettingsLoopMaxRoundsLabel: "Loop Max Rounds",
     toolSettingsLoopMaxRoundsTitle:
       "Global setting. Maximum review rounds for new Loop tasks.",
@@ -214,9 +217,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ Max Acceptances",
     toolSettingsLoopPlusMaxAcceptancesTitle:
       "Global setting. Limits how many subtask attempts one Loop+ task may accept. Default 100, range 1-999. Reaching the limit pauses automatic acceptance and new dispatch until the limit is raised.",
-    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop Subtask Max Thinking",
+    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop/Loop+ Subtask Max Thinking",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
-      "Global setting. Loop subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
+      "Global setting. Loop/Loop+ subtasks use the lower of this limit and the selected model's thinking mode; max and ultra are capped at xhigh.",
     toolSettingsLongTermMemoryLabel: "Workspace Harness Scaffold",
     toolSettingsLongTermMemoryTitle:
       "Workspace setting. Provides a repo-local AI collaboration scaffold with memory, pitfalls, handoffs, skills, and CodeGraph-assisted code navigation.",
@@ -664,6 +667,9 @@ export const WEBVIEW_I18N = {
     toolSettingsHumanInteractionToggle: "开启",
     toolSettingsHumanInteractionHint:
       "全局配置，默认开启。开启后，Codex 可使用 app-server/MCP 结构化请求；Codex、Claude 和 OpenCode Vibe 任务也可将明确澄清问题转为同一表单；拒绝表单会终止当前任务。",
+    toolSettingsHumanInteractionTimeoutLabel: "人工交互超时（分钟）",
+    toolSettingsHumanInteractionTimeoutTitle:
+      "全局设置。Vibe 人工交互弹窗，以及 Loop、Loop+、Graph 主任务澄清表单，若在此时限内没有提交，则视为超时。AI 会自行选择最佳方案继续，不记为拒绝，也不进入待复核。默认 10 分钟，范围 1–240 分钟。",
     toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建 Loop 任务时允许的最大复核轮次。",
@@ -673,9 +679,9 @@ export const WEBVIEW_I18N = {
     toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
     toolSettingsLoopPlusMaxAcceptancesTitle:
       "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",
-    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop 子任务最大思考力度",
+    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop/Loop+ 子任务最大思考力度",
     toolSettingsLoopSubtaskMaxThinkingModeTitle:
-      "全局设置。Loop 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
+      "全局设置。Loop/Loop+ 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

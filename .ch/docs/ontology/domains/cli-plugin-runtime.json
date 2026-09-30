@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-25",
+  "as_of": "2026-09-30",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -326,7 +326,7 @@
     {
       "id": "plugin.rule.codex_default_mode_user_input_feature",
       "name": "Codex Default mode 结构化人工交互需显式启用",
-      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。",
+      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 10 分钟、范围 1–240。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；模型应自行选择最佳方案继续。",
       "aliases": ["request_user_input", "default_mode_request_user_input", "experimentalApi", "人工交互"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
@@ -397,9 +397,38 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_main_model_question",
+      "name": "Loop 群聊向当前主模型会话提问",
+      "description": "Loop 与 Loop+ 群聊的“补充需求”只写入任务补充要求；Loop+ 仍按用户消息唤醒或入队。“我要提问”把问题发到当前主模型所在会话，不写入补充需求，不进入用户消息队列，也不唤醒调度。主模型正在执行时拒绝提问且不抢占该回合。回答在群聊弹窗展示。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/loopMainQuestion.ts"},
+        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.orchestrator_clarification_form",
+      "name": "主任务主动澄清表单",
+      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 10 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/orchestratorClarification.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/graphRuntime.ts"},
+        {"path": "src/webview/orchestratorClarificationDialog.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_user_message_wake",
       "name": "Loop+ 用户消息唤醒或进入主任务队列",
-      "description": "仅 event_driven 的 Loop+ 在群聊提交“我要说话”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。已完成的 Loop+ 父任务即使没有经典完成气泡，也不能被同一会话的后续普通 prompt 恢复；该 prompt 新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
+      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。已完成的 Loop+ 父任务即使没有经典完成气泡，也不能被同一会话的后续普通 prompt 恢复；该 prompt 新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -428,7 +457,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收若来自附带修复子任务的 accept，成员状态显示验收失败；没有新子任务的 accept 或 completed 确认，且执行结果不是 failed 或 stopped，显示验收成功。验收成功使用主题绿色，验收失败使用主题橙色。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [

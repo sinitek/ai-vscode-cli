@@ -593,6 +593,7 @@ export async function stopGraphRunRecord(
     updatedAt: timestamp,
     activeNodeIds: [],
     nodes,
+    pendingClarification: undefined,
   };
 
   for (const stoppedNodeId of stoppedNodeIds) {

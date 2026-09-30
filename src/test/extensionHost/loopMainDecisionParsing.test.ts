@@ -172,3 +172,39 @@ test("continues scanning after non-decision JSON objects and accepts a later Loo
   assert.equal(parsed?.status, "continue");
   assert.equal(parsed?.subtasks?.[0].title, "补充本体业务规则设计");
 });
+
+test("accepts a Loop clarify decision only when the form can be shown", () => {
+  const host = createRuntimeHost();
+  const parsed = host.parseLoopMainDecision(JSON.stringify({
+    status: "clarify",
+    estimatedRemainingRounds: 2,
+    finalSummary: "需要用户确认范围后再拆分",
+    clarification: {
+      title: "需要确认需求",
+      instruction: "请选择本次范围",
+      formFields: [{
+        id: "scope",
+        label: "范围",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "只改接口", value: "api" },
+          { label: "接口和调用方", value: "all" },
+        ],
+      }],
+    },
+  }));
+  assert.equal(parsed?.status, "clarify");
+  assert.equal(parsed?.clarification?.formFields[0]?.id, "scope");
+  assert.equal(parsed?.clarification?.formFields[0]?.options?.length, 2);
+  assert.equal(parsed?.subtasks, undefined);
+
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({
+    status: "clarify",
+    clarification: { formFields: [] },
+  })), null);
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({
+    status: "clarify",
+    formFields: [{ id: "scope", label: "范围", type: "radio", required: true }],
+  })), null);
+});

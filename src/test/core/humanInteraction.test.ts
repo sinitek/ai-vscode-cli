@@ -2,8 +2,10 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  HUMAN_INTERACTION_TIMEOUT_TEXT,
   buildNaturalLanguageHumanInteractionRequest,
   buildCodexHumanInteractionResolution,
+  buildTimedOutHumanInteractionSubmission,
   createHumanInteractionRejectedError,
   formatHumanInteractionSubmittedText,
   isHumanInteractionRejectedErrorInfo,
@@ -284,6 +286,35 @@ test("keeps MCP elicitation responses on the action-content contract", () => {
       },
     },
   );
+});
+
+test("formats an unanswered human interaction as best-effort continuation", () => {
+  const submission = buildTimedOutHumanInteractionSubmission({
+    interactionId: "ask-timeout",
+    tabId: "tab-1",
+    formFields: [
+      { id: "scope", label: "Scope", type: "radio", options: [{ label: "API", value: "api" }] },
+      { id: "note", label: "Note", type: "textarea" },
+    ],
+  });
+  assert.equal(submission.status, "completed");
+  assert.equal(submission.timedOut, true);
+  assert.equal(submission.values.scope, HUMAN_INTERACTION_TIMEOUT_TEXT);
+  assert.notEqual(submission.values.scope, "api");
+  assert.equal(formatHumanInteractionSubmittedText(submission), HUMAN_INTERACTION_TIMEOUT_TEXT);
+  assert.deepEqual(buildCodexHumanInteractionResolution("item/tool/requestUserInput", submission), {
+    result: {
+      answers: {
+        scope: { answers: [HUMAN_INTERACTION_TIMEOUT_TEXT] },
+        note: { answers: [HUMAN_INTERACTION_TIMEOUT_TEXT] },
+      },
+    },
+  });
+  assert.deepEqual(buildCodexHumanInteractionResolution("mcpServer/elicitation/request", submission).result, {
+    action: "accept",
+    content: submission.values,
+    _meta: { text: HUMAN_INTERACTION_TIMEOUT_TEXT },
+  });
 });
 
 test("identifies human interaction rejection errors", () => {

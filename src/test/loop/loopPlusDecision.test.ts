@@ -366,3 +366,40 @@ test("rejects controls that would confirm, overlap, or use a short prompt", () =
     assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
   });
 });
+
+test("parses clarify without subtasks and rejects a form that cannot be shown", () => {
+  const parsed = parseLoopPlusDecision(JSON.stringify({
+    status: "clarify",
+    finalSummary: "需要用户确认范围",
+    clarification: {
+      title: "需要确认需求",
+      instruction: "请选择范围",
+      formFields: [{
+        id: "scope",
+        label: "范围",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "只改接口", value: "api" },
+          { label: "接口和调用方", value: "all" },
+        ],
+      }],
+    },
+  }));
+  assert.equal(parsed?.status, "clarify");
+  assert.equal(parsed?.clarification?.formFields.length, 1);
+  assert.equal(parsed?.subtasks, undefined);
+  assert.equal(parsed?.controls, undefined);
+
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "clarify",
+    subtasks: [subtask("alpha")],
+    clarification: {
+      formFields: [{ id: "scope", label: "范围", type: "text" }],
+    },
+  })), null);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "clarify",
+    clarification: { formFields: [] },
+  })), null);
+});

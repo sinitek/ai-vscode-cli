@@ -1261,3 +1261,35 @@ test("shows a node task brief in the selected node details", () => {
   assert.match(html, /任务说明/);
   assert.match(html, /复用既有校验器，不要另起并行实现/);
 });
+
+test("renders a planner clarification form on the Graph run panel", () => {
+  const run = createRun({
+    pendingClarification: {
+      interactionId: "clarify-graph",
+      title: "需要确认需求",
+      instruction: "请选择本次范围",
+      submitLabel: "提交",
+      cancelLabel: "拒绝",
+      formFields: [{
+        id: "scope",
+        label: "范围",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "只改接口", value: "api" },
+          { label: "接口和调用方", value: "all" },
+        ],
+      }],
+    },
+  });
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "plan"), "zh-CN");
+  assert.match(html, /id="clarificationDialogBackdrop"/);
+  assert.match(html, /需要确认需求/);
+  assert.match(html, /data-submit-type="graphRun:submitClarification"/);
+  assert.match(html, /data-reject-type="graphRun:rejectClarification"/);
+  assert.match(html, /请先填写\{label\}/);
+  assert.match(html, /var\(--vscode-input-background\)/);
+  assert.doesNotMatch(html, /#[0-9a-fA-F]{3,8}/);
+  const hidden = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(createRun(), "plan"), "zh-CN");
+  assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
+});

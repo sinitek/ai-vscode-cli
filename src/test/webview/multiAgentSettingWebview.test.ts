@@ -142,7 +142,17 @@ test("renders default-on human interaction setting in the AI task panel and dial
   assert.match(VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH, /humanInteractionRequest/u);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.humanInteractionEnabled/u);
   assert.match(TOAST_MISC_STYLES, /\.human-interaction-modal/u);
+  assert.equal(WEBVIEW_I18N.en.toolSettingsHumanInteractionTimeoutLabel, "Human Interaction Timeout (minutes)");
+  assert.equal(WEBVIEW_I18N["zh-CN"].toolSettingsHumanInteractionTimeoutLabel, "人工交互超时（分钟）");
+  assert.match(htmlForTimeout(), /id="humanInteractionTimeoutMinutes"/u);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /humanInteractionTimeoutMinutes: 10/u);
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /key: "humanInteractionTimeoutMinutes"/u);
+  assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.humanInteractionTimeoutMinutes/u);
 });
+
+function htmlForTimeout(): string {
+  return buildStaticHtml("zh-CN");
+}
 
 test("renders human interaction option fields as radio controls", () => {
   const functionSource = [

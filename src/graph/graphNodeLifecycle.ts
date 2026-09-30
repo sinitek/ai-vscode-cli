@@ -12,11 +12,15 @@ import {
   type GraphRunRecord,
 } from "./types";
 import {
+  ORCHESTRATOR_CLARIFICATION_LIMIT,
+  type OrchestratorClarification,
+} from "../orchestratorClarification";
+import {
   classifyGraphNodeFailure,
   normalizeGraphFailureClassification,
 } from "./graphFailureClassification";
 
-export type GraphNodeExecutionResultStatus = "passed" | "failed" | "blocked" | "sleeping";
+export type GraphNodeExecutionResultStatus = "passed" | "failed" | "blocked" | "sleeping" | "clarify";
 
 export type GraphNodeExecutionResult = {
   status: GraphNodeExecutionResultStatus;
@@ -27,6 +31,7 @@ export type GraphNodeExecutionResult = {
   failure?: GraphFailureClassification;
   finalAnswer?: GraphFinalAnswer;
   plannedGraph?: GraphPlannedGraphSpec;
+  clarification?: OrchestratorClarification;
   wakeAt?: number;
   executionCwd?: string;
   worktreeCwd?: string;
@@ -350,6 +355,9 @@ export async function finalizeGraphNodeResult(
   if (result.status === "blocked") {
     return markGraphNodeFailed(run, nodeId, result.error ?? result.summary ?? "Graph node blocked.", deps, result);
   }
+  if (result.status === "clarify") {
+    return markGraphNodeAwaitingClarification(run, nodeId, result, deps);
+  }
   return markGraphNodeSleeping(
     run,
     nodeId,
@@ -357,6 +365,65 @@ export async function finalizeGraphNodeResult(
     result.summary ?? result.error ?? "Graph node is sleeping.",
     deps,
   );
+}
+
+
+async function markGraphNodeAwaitingClarification(
+  run: GraphRunRecord,
+  nodeId: string,
+  result: GraphNodeExecutionResult,
+  deps: GraphNodeLifecycleDeps,
+): Promise<GraphRunRecord> {
+  const current = run.nodes.find((node) => node.id === nodeId);
+  if (!current || current.kind !== "plan") {
+    return markGraphNodeFailed(run, nodeId, "Only the main planner may return status clarify.", deps, result);
+  }
+  const clarification = result.clarification;
+  if (!clarification) {
+    return markGraphNodeFailed(run, nodeId, "Graph planner clarify result is missing a form.", deps, result);
+  }
+  const count = run.clarificationCount ?? 0;
+  if (count >= ORCHESTRATOR_CLARIFICATION_LIMIT) {
+    const limited = await markGraphNodeFailed(
+      run,
+      nodeId,
+      "Graph planner reached the clarification limit.",
+      deps,
+      result,
+    );
+    return {
+      ...limited,
+      status: "needs-review",
+      pendingClarification: undefined,
+    };
+  }
+  const timestamp = resolveGraphLifecycleTimestamp(deps);
+  const { run: nextRun, node } = updateGraphRunNode(run, nodeId, (current) => ({
+    ...current,
+    status: "ready",
+    ...buildGraphNodeCheckpointPatch(result),
+    completedAt: undefined,
+    lastError: undefined,
+  }), {
+    status: "running",
+    updatedAt: timestamp,
+    activeNodeIds: removeGraphActiveNodeId(run.activeNodeIds, nodeId),
+    pendingClarification: clarification,
+    clarificationCount: count + 1,
+  });
+  await appendGraphLifecycleEvent(nextRun, {
+    runId: nextRun.id,
+    type: "run.updated",
+    timestamp,
+    nodeId,
+    attempt: node.attempts,
+    summary: clarification.instruction || clarification.title,
+    data: {
+      clarificationId: clarification.interactionId,
+      fieldCount: clarification.formFields.length,
+    },
+  }, deps);
+  return nextRun;
 }
 
 function buildGraphNodeCheckpointPatch(result: Partial<GraphNodeExecutionResult>): Partial<GraphNodeRecord> {

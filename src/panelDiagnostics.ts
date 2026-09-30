@@ -22,6 +22,24 @@ import {
   isSameHiddenRetryErrorTraceContent,
 } from "./hiddenRetry";
 import { resolveLocale, t } from "./i18n";
+import {
+  formatOrchestratorClarificationAnswer,
+  loopClarificationScope,
+  normalizeClarificationSubmission,
+  rejectOrchestratorClarification,
+  submitOrchestratorClarification,
+} from "./orchestratorClarification";
+import { buildLoopMainSubChatTranscriptFile } from "./loopDebate";
+import {
+  applyLoopAskThinking,
+  beginLoopAskTurn,
+  createEmptyLoopAskThread,
+  settleLoopAskTurn,
+  setLoopAskDialogOpen,
+  type LoopAskThread,
+} from "./loopAskThread";
+import type { LoopMainModelAnswerResult, LoopMainModelQuestionProgress } from "./loopMainQuestion";
+import * as fs from "fs";
 import { ChatMessage, PanelMessage, type ChatMessageAction } from "./webview/types";
 import { type ConfigItem } from "./config/types";
 import { type CliModelStore } from "./modelSelectionStore";
@@ -763,6 +781,17 @@ type LoopDebateChatPanelDeps = {
   showWarningMessage: (message: string) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
+  askMainModel?: (
+    task: LoopTaskRecord,
+    question: string,
+    hooks?: {
+      onProgress?: (progress: LoopMainModelQuestionProgress) => void;
+      isAborted?: () => boolean;
+    },
+  ) => Promise<LoopMainModelAnswerResult>;
+  abortMainModelRun?: (task: LoopTaskRecord) => void;
+  readAskThread?: (task: LoopTaskRecord) => LoopAskThread;
+  writeAskThread?: (task: LoopTaskRecord, thread: LoopAskThread) => void;
   t: typeof import("./i18n").t;
 };
 
@@ -778,6 +807,8 @@ type GraphRunPanelDeps = {
 	  retryNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
 	  feedbackNode?: (graphRunId: string, nodeId: string) => Promise<GraphRunPanelControlResult>;
 	  stopRun?: (graphRunId: string) => Promise<GraphRunPanelControlResult>;
+  submitClarification?: (graphRunId: string, interactionId: string, values: unknown) => Promise<GraphRunPanelControlResult>;
+  rejectClarification?: (graphRunId: string, interactionId: string) => Promise<GraphRunPanelControlResult>;
   showInformationMessage: (message: string) => void;
   showWarningMessage: (message: string) => void;
   t: typeof import("./i18n").t;
@@ -936,6 +967,61 @@ function buildGraphRunPanelState(
   };
 }
 
+
+async function submitGraphClarification(
+  graphRunId: string,
+  interactionId: unknown,
+  values: unknown,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  const normalizedRunId = normalizeGraphRunId(graphRunId);
+  const safeInteractionId = typeof interactionId === "string" ? interactionId.trim() : "";
+  if (!normalizedRunId || !safeInteractionId || !deps.submitClarification) {
+    deps.showWarningMessage(deps.t("graphRun.clarificationUnavailable"));
+    return;
+  }
+  const result = await deps.submitClarification(normalizedRunId, safeInteractionId, values);
+  if (!result.ok && result.message) {
+    deps.showWarningMessage(result.message);
+  }
+  await refreshGraphPanel(normalizedRunId, deps);
+}
+
+async function rejectGraphClarification(
+  graphRunId: string,
+  interactionId: unknown,
+  deps: GraphRunPanelDeps,
+): Promise<void> {
+  const normalizedRunId = normalizeGraphRunId(graphRunId);
+  const safeInteractionId = typeof interactionId === "string" ? interactionId.trim() : "";
+  if (!normalizedRunId || !safeInteractionId || !deps.rejectClarification) {
+    deps.showWarningMessage(deps.t("graphRun.clarificationUnavailable"));
+    return;
+  }
+  const result = await deps.rejectClarification(normalizedRunId, safeInteractionId);
+  if (!result.ok && result.message) {
+    deps.showWarningMessage(result.message);
+  }
+  await refreshGraphPanel(normalizedRunId, deps);
+}
+
+async function refreshGraphPanel(graphRunId: string, deps: GraphRunPanelDeps): Promise<void> {
+  const panel = deps.panelsByRunId.get(graphRunId);
+  if (!panel) {
+    return;
+  }
+  const resolved = resolveGraphRunRecord(graphRunId, deps);
+  if (!resolved.run) {
+    return;
+  }
+  panel.update(buildGraphRunPanelState(
+    resolved.run,
+    deps,
+    panel.getState()?.selectedNodeId ?? null,
+    buildGraphRunLookupWarning(resolved),
+  ));
+}
+
 export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
   const refresh = async (graphRunId: string, selectedNodeId?: string | null): Promise<void> => {
     const normalizedRunId = normalizeGraphRunId(graphRunId);
@@ -989,6 +1075,14 @@ export function createGraphRunPanelCoordinator(deps: GraphRunPanelDeps) {
 	    }
     if (message.type === "graphRun:stopRun") {
       await runGraphPanelControl(graphRunId, message.selectedNodeId, deps.stopRun, deps);
+      return;
+    }
+    if (message.type === "graphRun:submitClarification") {
+      await submitGraphClarification(graphRunId, message.interactionId, message.values, deps);
+      return;
+    }
+    if (message.type === "graphRun:rejectClarification") {
+      await rejectGraphClarification(graphRunId, message.interactionId, deps);
     }
   };
 
@@ -1198,6 +1292,59 @@ function canStopLoopTaskWithRunningTaskIds(
 }
 
 export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDeps) {
+  const askThreads = new Map<string, LoopAskThread>();
+  const askRuns = new Map<string, { aborted: boolean }>();
+  let askSerial = 0;
+
+  const syncAskThread = (
+    task: LoopTaskRecord,
+    thread: LoopAskThread,
+    mode: "remember" | "publish" | "render",
+  ): void => {
+    askThreads.set(task.id, thread);
+    try {
+      deps.writeAskThread?.(task, thread);
+    } catch {
+      // Persistence is best-effort. The in-memory thread still drives the open panel.
+    }
+    const panel = deps.panelsByTaskId.get(task.id);
+    if (!panel) {
+      return;
+    }
+    panel.setAskThread(thread);
+    if (mode === "publish") {
+      panel.publishAskThread();
+      return;
+    }
+    if (mode === "render") {
+      panel.update(buildLoopDebateChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
+    }
+  };
+
+  const ensureAskThread = (task: LoopTaskRecord): LoopAskThread => {
+    const cached = askThreads.get(task.id);
+    if (cached) {
+      return cached;
+    }
+    let loaded = deps.readAskThread?.(task) ?? createEmptyLoopAskThread();
+    if (loaded.running) {
+      loaded = settleLoopAskTurn(loaded, {
+        notice: deps.t("loopDebateChat.askStopped"),
+        now: Date.now(),
+        noticeId: `ask-stopped-${task.id}`,
+      });
+      askThreads.set(task.id, loaded);
+      try {
+        deps.writeAskThread?.(task, loaded);
+      } catch {
+        // A stale running snapshot can stay in memory if the file cannot be rewritten.
+      }
+      return loaded;
+    }
+    askThreads.set(task.id, loaded);
+    return loaded;
+  };
+
   const refresh = async (taskId: string): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId);
     if (!normalizedTaskId) {
@@ -1212,6 +1359,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
+    panel.setAskThread(ensureAskThread(task));
     panel.update(buildLoopDebateChatPanelState(task, deps));
   };
 
@@ -1368,6 +1516,94 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     await refresh(normalizedTaskId);
   };
 
+  const askMainModel = async (taskId: string, prompt?: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId)
+      ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+    if (!normalizedTaskId) {
+      deps.showInformationMessage(deps.t("loopDebateChat.noTask"));
+      return;
+    }
+    const task = deps.readTaskRecord(normalizedTaskId);
+    if (!task) {
+      deps.showWarningMessage(deps.t("loopDebateChat.taskMissing", { taskId: normalizedTaskId }));
+      return;
+    }
+    const question = deps.normalizeSupplementalRequirement(prompt);
+    const current = ensureAskThread(task);
+    if (!question || !deps.askMainModel) {
+      const error = deps.t("loopDebateChat.askUnavailable");
+      if (!deps.panelsByTaskId.get(task.id)) {
+        deps.showInformationMessage(error);
+        return;
+      }
+      syncAskThread(task, settleLoopAskTurn(setLoopAskDialogOpen(current, true, Date.now()), {
+        notice: error,
+        now: Date.now(),
+        noticeId: `ask-unavailable-${askSerial += 1}`,
+      }), "render");
+      return;
+    }
+    if (current.running) {
+      return;
+    }
+    const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
+    const run = { aborted: false };
+    askRuns.set(task.id, run);
+    const started = beginLoopAskTurn(current, question, Date.now(), turnId);
+    syncAskThread(task, started, "publish");
+    try {
+      const result = await deps.askMainModel(task, question, {
+        onProgress: (progress) => {
+          if (askRuns.get(task.id) !== run) {
+            return;
+          }
+          const thread = askThreads.get(task.id);
+          if (!thread?.running) {
+            return;
+          }
+          syncAskThread(task, applyLoopAskThinking(thread, progress.before, progress.current, Date.now()), "publish");
+        },
+        isAborted: () => run.aborted,
+      });
+      if (askRuns.get(task.id) !== run) {
+        return;
+      }
+      const thread = askThreads.get(task.id) ?? started;
+      const now = Date.now();
+      const noticeId = `${turnId}:result`;
+      const settled = result.status === "ready"
+        ? settleLoopAskTurn(thread, {
+          answer: result.answer ?? "",
+          notice: result.answer?.trim() ? null : deps.t("loopDebateChat.askEmpty"),
+          now,
+          noticeId,
+        })
+        : settleLoopAskTurn(thread, {
+          notice: result.status === "stopped"
+            ? deps.t("loopDebateChat.askStopped")
+            : (result.error || deps.t("loopDebateChat.askEmpty")),
+          now,
+          noticeId,
+        });
+      syncAskThread(task, settled, "render");
+    } catch (error) {
+      if (askRuns.get(task.id) !== run) {
+        return;
+      }
+      const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
+      const thread = askThreads.get(task.id) ?? started;
+      syncAskThread(task, settleLoopAskTurn(thread, {
+        notice: deps.t("loopDebateChat.askFailed", { detail }),
+        now: Date.now(),
+        noticeId: `${turnId}:result`,
+      }), "render");
+    } finally {
+      if (askRuns.get(task.id) === run) {
+        askRuns.delete(task.id);
+      }
+    }
+  };
+
   const stopTask = async (taskId: string): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
@@ -1394,6 +1630,108 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     await refresh(normalizedTaskId);
   };
 
+
+  const clarificationIssueMessage = (issue: { code: "required" | "invalid-option"; label: string }): string => (
+    deps.t(issue.code === "required" ? "loopDebateChat.clarificationRequired" : "loopDebateChat.clarificationInvalid", {
+      label: issue.label,
+    })
+  );
+
+  const submitClarification = async (taskId: string, interactionId: unknown, values: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId)
+      ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+    const safeInteractionId = typeof interactionId === "string" ? interactionId.trim() : "";
+    const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
+    const request = task?.pendingClarification;
+    if (!task || !request || !safeInteractionId || request.interactionId !== safeInteractionId) {
+      deps.showWarningMessage(deps.t("loopDebateChat.clarificationUnavailable"));
+      return;
+    }
+    const normalized = normalizeClarificationSubmission(request, values);
+    if (!normalized.ok) {
+      deps.showWarningMessage(clarificationIssueMessage(normalized.issue));
+      await refresh(task.id);
+      return;
+    }
+    const delivered = submitOrchestratorClarification(loopClarificationScope(task.id), safeInteractionId, normalized.values);
+    if (delivered.ok) {
+      await refresh(task.id);
+      return;
+    }
+    if (delivered.reason === "invalid" && delivered.issue) {
+      deps.showWarningMessage(clarificationIssueMessage(delivered.issue));
+      await refresh(task.id);
+      return;
+    }
+    const answer = formatOrchestratorClarificationAnswer({
+      interactionId: safeInteractionId,
+      status: "completed",
+      values: normalized.values,
+    }, request.formFields);
+    const nextRequirements = deps.appendSupplementalRequirement(task.supplementalRequirements, answer);
+    deps.updateTaskRecord(task.id, {
+      supplementalRequirements: nextRequirements,
+      pendingClarification: undefined,
+      updatedAt: Date.now(),
+    });
+    deps.appendSupplementalRequirementToCommunication(task, answer);
+    try {
+      const chatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
+      fs.mkdirSync(path.dirname(chatFile), { recursive: true });
+      fs.appendFileSync(chatFile, `\n## 用户补充澄清\n${answer}\n`, "utf8");
+    } catch {
+      // The supplemental requirement is already persisted for the next main turn.
+    }
+    const target = deps.resolveMainPromptTarget(task, { createIfMissing: true });
+    if (!target || deps.isTabRunActive(target.tabId)) {
+      await refresh(task.id);
+      deps.showInformationMessage(deps.t("loopDebateChat.clarificationSubmitted"));
+      return;
+    }
+    await deps.revealPanelView();
+    await deps.switchVisibleConversationTabForLoop(target.tabId);
+    await deps.runLoopPrompt({
+      displayPrompt: deps.t("run.hiddenContinuePrompt"),
+      modelPrompt: task.rootPrompt,
+      contextTags: [],
+      loopExecutionMode: normalizeLoopExecutionMode(task.executionMode),
+      loopContinuePrompt: deps.t("run.hiddenContinuePrompt"),
+    }, {
+      targetTabId: target.tabId,
+      resumeTaskId: task.id,
+      resumeRequested: true,
+      preserveLoopOrigin: true,
+      ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
+    });
+    await refresh(task.id);
+  };
+
+  const rejectClarification = async (taskId: string, interactionId: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId)
+      ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+    const safeInteractionId = typeof interactionId === "string" ? interactionId.trim() : "";
+    const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
+    const request = task?.pendingClarification;
+    if (!task || !request || request.interactionId !== safeInteractionId) {
+      deps.showWarningMessage(deps.t("loopDebateChat.clarificationUnavailable"));
+      return;
+    }
+    if (rejectOrchestratorClarification(loopClarificationScope(task.id), safeInteractionId)) {
+      await refresh(task.id);
+      return;
+    }
+    deps.updateTaskRecord(task.id, {
+      status: "needs-review",
+      pendingClarification: undefined,
+      activeSubtaskId: null,
+      activeSubtaskIds: [],
+      finalSummary: "用户拒绝了主任务澄清，任务已暂停。",
+      updatedAt: Date.now(),
+    });
+    await refresh(task.id);
+    deps.showInformationMessage(deps.t("loopDebateChat.clarificationRejected"));
+  };
+
   const handleMessage = async (taskId: string, message: LoopDebateChatPanelMessage): Promise<void> => {
     if (!message || typeof message.type !== "string") {
       return;
@@ -1410,8 +1748,51 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       await supplementTask(taskId, message.prompt);
       return;
     }
+    if (message.type === "loopDebateChat:askMainModel") {
+      await askMainModel(taskId, message.prompt);
+      return;
+    }
+    if (message.type === "loopDebateChat:abortMainModelQuestion") {
+      const normalizedTaskId = deps.normalizeTaskId(taskId)
+        ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+      const run = normalizedTaskId ? askRuns.get(normalizedTaskId) : undefined;
+      if (run) {
+        run.aborted = true;
+      }
+      const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
+      if (task) {
+        deps.abortMainModelRun?.(task);
+      }
+      return;
+    }
+    if (
+      message.type === "loopDebateChat:openAskDialog"
+      || message.type === "loopDebateChat:closeAskDialog"
+      || message.type === "loopDebateChat:dismissMainModelAnswer"
+    ) {
+      const normalizedTaskId = deps.normalizeTaskId(taskId)
+        ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+      const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
+      if (!task) {
+        return;
+      }
+      syncAskThread(task, setLoopAskDialogOpen(
+        ensureAskThread(task),
+        message.type === "loopDebateChat:openAskDialog",
+        Date.now(),
+      ), "remember");
+      return;
+    }
     if (message.type === "loopDebateChat:stopTask") {
       await stopTask(taskId);
+      return;
+    }
+    if (message.type === "loopDebateChat:submitClarification") {
+      await submitClarification(taskId, message.interactionId, message.values);
+      return;
+    }
+    if (message.type === "loopDebateChat:rejectClarification") {
+      await rejectClarification(taskId, message.interactionId);
       return;
     }
     if (message.type === "loopDebateChat:openCommunicationFile") {
@@ -1490,6 +1871,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       });
       deps.panelsByTaskId.set(task.id, panel);
     }
+    panel.setAskThread(ensureAskThread(task));
     panel.show(state);
   };
 

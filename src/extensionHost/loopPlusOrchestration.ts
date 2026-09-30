@@ -6,6 +6,13 @@ import {
 } from "../loopMainFailure";
 import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
 import {
+  ORCHESTRATOR_CLARIFICATION_LIMIT,
+  abortOrchestratorClarification,
+  formatOrchestratorClarificationAnswer,
+  loopClarificationScope,
+  waitForOrchestratorClarification,
+} from "../orchestratorClarification";
+import {
   buildLoopPlusFinishEventId,
   createLoopPlusScheduler,
   type LoopPlusControlCommand,
@@ -15,6 +22,7 @@ import {
   type LoopPlusSchedulerSnapshot,
 } from "../loopPlusScheduler";
 import type { ThinkingMode } from "../cli/types";
+import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import {
   resolveLoopSchedulingMode,
   type LoopSchedulingMode,
@@ -139,6 +147,8 @@ export type LoopPlusOrchestrationDeps = {
   }) => void;
   appendSubtaskChat?: (target: LoopPlusPromptTarget, notice: LoopPlusSubtaskChatNotice) => void;
   log?: (event: string, payload?: unknown) => void;
+  revealClarification?: (taskId: string) => void;
+  clarificationTimeoutMs?: () => number;
 };
 
 type ControlPlan = {
@@ -238,6 +248,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     steer: applySteerDecision,
     blocked: applyBlockedDecision,
     completed: applyCompleted,
+    clarify: applyClarifyDecision,
   };
   const now = deps.now ?? (() => Date.now());
   const delay = deps.delay ?? ((ms: number) => new Promise<void>((resolve) => {
@@ -594,7 +605,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.autoPaused = false;
     runtime.mainGeneration += 1;
     runtime.scheduler.stopParent();
-    persist(runtime, { status: "stopped", finalSummary: "Loop+ parent scheduling is stopped." });
+    persist(runtime, {
+      status: "stopped",
+      finalSummary: "Loop+ parent scheduling is stopped.",
+      pendingClarification: undefined,
+    });
+    abortOrchestratorClarification(loopClarificationScope(runtime.taskId));
     const main = runtime.currentMain;
     runtime.currentMain = null;
     runtime.currentMainRequest = null;
@@ -706,7 +722,18 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         continue;
       }
+      if (expandedAcceptanceEventIds(runtime, step.eventIds)) {
+        runtime.decisionCount -= 1;
+        continue;
+      }
       const decision = parseLoopPlusDecision(content, { subtaskMax: decisionSubtaskMax() });
+      if (decision?.status === "clarify") {
+        const outcome = await waitForLoopPlusClarification(runtime, decision);
+        if (outcome === "stop") {
+          return;
+        }
+        continue;
+      }
       const applied = applyDecision(runtime, step, decision);
       if (applied === "stop") {
         return;
@@ -808,10 +835,67 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       case "steer":
       case "blocked":
       case "completed":
+      case "clarify":
         return decisionStrategies[status];
       default:
         return unreachableDecisionStatus(status);
     }
+  }
+
+
+  async function waitForLoopPlusClarification(runtime: ParentRuntime, decision: LoopPlusDecision): Promise<LoopPlusDecisionOutcome> {
+    const request = decision.clarification;
+    const task = deps.readTask(runtime.taskId);
+    const count = task?.clarificationCount ?? 0;
+    if (!request || count >= ORCHESTRATOR_CLARIFICATION_LIMIT) {
+      pause(runtime, "needs-review", "loop-plus-clarification-limit", decision.finalSummary);
+      return "stop";
+    }
+    deps.updateTask(runtime.taskId, {
+      pendingClarification: request,
+      clarificationCount: count + 1,
+      ...(decision.finalSummary ? { finalSummary: decision.finalSummary } : {}),
+      schedulingMode: "event_driven",
+      updatedAt: now(),
+    });
+    deps.revealClarification?.(runtime.taskId);
+    const submission = await waitForOrchestratorClarification(loopClarificationScope(runtime.taskId), request, {
+      timeoutMs: deps.clarificationTimeoutMs?.() ?? readHumanInteractionTimeoutMs(),
+    });
+    if (runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.released) {
+      return "stop";
+    }
+    const latest = deps.readTask(runtime.taskId);
+    if (!latest || latest.status === "stopped" || latest.status === "error") {
+      return "stop";
+    }
+    if (submission.status !== "completed") {
+      deps.updateTask(runtime.taskId, {
+        pendingClarification: undefined,
+        updatedAt: now(),
+      });
+      pause(runtime, "needs-review", "loop-plus-clarification-rejected", "用户拒绝了主任务澄清，任务已暂停。");
+      return "stop";
+    }
+    const answer = formatOrchestratorClarificationAnswer(submission, request.formFields);
+    const requirements = [...(latest.supplementalRequirements ?? []), answer];
+    deps.updateTask(runtime.taskId, {
+      supplementalRequirements: requirements,
+      pendingClarification: undefined,
+      schedulingMode: "event_driven",
+      updatedAt: now(),
+    });
+    runtime.protocolRetries = 0;
+    resetMainFailure(runtime);
+    if (runtime.scheduler.snapshot().currentReview || runtime.scheduler.snapshot().reviewQueue.length > 0) {
+      return "continue";
+    }
+    runtime.forcePrompt = true;
+    return "continue";
+  }
+
+  function applyClarifyDecision(): LoopPlusDecisionOutcome {
+    return "stop";
   }
 
   function applyDispatchDecision(
@@ -900,7 +984,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (controls.length > 0 && (!controlPlan || !previewControlPlan(runtime, controlPlan))) {
       return protocolMiss(runtime, true);
     }
-    const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
+    const acceptance = (decision.subtasks?.length ?? 0) > 0 ? "failed" : "passed";
+    const submitted = runtime.scheduler.submitReviewBatch(step.eventIds, acceptance);
     if (!submitted.ok) {
       persist(runtime);
       return runtime.scheduler.snapshot().parentStopped ? "stop" : protocolMiss(runtime, true);
@@ -985,7 +1070,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
         return "stop";
       }
-      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds);
+      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds, "passed");
       if (!submitted.ok) {
         persist(runtime);
         return "stop";
@@ -1534,6 +1619,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (result.wake && !runtime.autoPaused && !runtime.released && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped && !runtime.scheduler.snapshot().completed) {
       pump(runtime);
     }
+    restartReviewIfBatchGrew(runtime);
   }
 
   function retainFinishFailure(runtime: ParentRuntime, message: string, finalSummary: string): void {
@@ -1801,6 +1887,57 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return false;
     }
     return reviewedAcceptanceCount(runtime) + pending > acceptanceLimitFor(runtime);
+  }
+
+  function liveAcceptanceEventIds(snapshot: LoopPlusSchedulerSnapshot): string[] {
+    const ids: string[] = [];
+    if (snapshot.currentReview) {
+      ids.push(snapshot.currentReview.eventId);
+    }
+    snapshot.reviewQueue.forEach((item) => {
+      ids.push(item.eventId);
+    });
+    return ids;
+  }
+
+  function expandedAcceptanceEventIds(runtime: ParentRuntime, eventIds: readonly string[]): string[] | null {
+    if (eventIds.length === 0) {
+      return null;
+    }
+    const live = liveAcceptanceEventIds(runtime.scheduler.snapshot());
+    if (live.length <= eventIds.length || !eventIds.every((eventId, index) => live[index] === eventId)) {
+      return null;
+    }
+    if (reviewedAcceptanceCount(runtime) + unreviewedEventCount(runtime, live) > acceptanceLimitFor(runtime)) {
+      return null;
+    }
+    return live;
+  }
+
+  function restartReviewIfBatchGrew(runtime: ParentRuntime): void {
+    const request = runtime.currentMainRequest;
+    const main = runtime.currentMain;
+    if (!request || !main || request.kind !== "review") {
+      return;
+    }
+    const eventIds = request.reviewEventIds ?? (request.reviewEventId ? [request.reviewEventId] : []);
+    const expanded = expandedAcceptanceEventIds(runtime, eventIds);
+    if (!expanded) {
+      return;
+    }
+    deps.log?.("loop-plus-review-batch-expanded", {
+      taskId: runtime.taskId,
+      from: eventIds.length,
+      to: expanded.length,
+    });
+    try {
+      main.abort();
+    } catch (error) {
+      deps.log?.("loop-plus-main-abort-failed", {
+        taskId: runtime.taskId,
+        error: errorText(error),
+      });
+    }
   }
 
   function pauseForAcceptanceLimit(runtime: ParentRuntime): void {

@@ -416,6 +416,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     if (decisionResult.status === "completed") {
       return { status: "completed", task: decisionResult.task, decision };
     }
+    if (decisionResult.status === "clarify") {
+      return { status: "awaiting-input", task: decisionResult.task, decision };
+    }
     if (decisionResult.status === "blocked" || !decisionResult.subtasks?.length) {
       return { status: "needs-review", task: decisionResult.task, decision };
     }
@@ -2331,6 +2334,14 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       bodyLines.push("### 问题回答结论");
       bodyLines.push(resolveLoopAnswerConclusion(task, decision));
     }
+    if (decision.status === "clarify" && decision.clarification) {
+      bodyLines.push("");
+      bodyLines.push("### 需要用户补充");
+      bodyLines.push(decision.clarification.instruction);
+      decision.clarification.formFields.forEach((field) => {
+        bodyLines.push(`- ${field.label}`);
+      });
+    }
     if (decision.finalSummary) {
       bodyLines.push("");
       bodyLines.push("### 总结");
@@ -2430,6 +2441,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
     | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
     | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 
   async function runLoopSubtasksBatchWithRetry(
@@ -2929,7 +2941,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       `7. 每批最多 ${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
       "8. 先做审核和验收：对照原始目标、已完成子任务 summary、沟通文件、代码/文档状态和验证结果逐项检查。",
       "9. 若子任务沟通文件已提供可核验的单测/编译命令与结果，主任务无需重复执行这些验证；优先复核逻辑正确性、改动范围和结果一致性，仅在证据缺失或结果可疑时补充验证。",
-      "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；确实必须用户或人工确认时返回 blocked，不得把该子任务误判为已验收。",
+      "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
       "11. 每次主任务复核都必须预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed；completed 时必须为 0。",
       "12. 只有验收全部通过，才能返回 completed；有可执行补齐工作时必须返回 continue。只有明确等待外部结果且当前没有可执行子任务时，才可返回 sleep。",
       "13. 主任务只负责复核整体进度、拆分/维护 subTasks、选择下一批最小子任务。",
@@ -2941,9 +2953,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
       '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
       '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
+      '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
       "",
       "字段要求：",
-      "- status 只能是 completed、continue、blocked。",
+      "- status 只能是 completed、continue、blocked、clarify。",
       "- 每次返回都必须提供 estimatedRemainingRounds；含义是从当前决策之后预计还需要多少个主任务复核轮/子任务批次才能 completed，必须是非负整数。",
       "- status=completed 时必须提供 estimatedRemainingRounds=0、acceptance.passed=true、answerConclusion、finalSummary、requirementCoverage 和 roundSummaries。",
       "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
@@ -2951,7 +2964,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
       "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
       `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}。`,
-      "- 当前没有可执行子任务、需要等待外部结果或需要人工判断时，必须返回 blocked，并在 finalSummary 说明等待对象或人工判断点。",
+      "- 当前没有可执行子任务、需要等待外部结果时，必须返回 blocked，并在 finalSummary 说明等待对象。",
+      "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
       "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准。不要把任务记录、调度状态、轮次或父任务协议写进 prompt；沟通文件和禁止修改的文件由宿主附加。",
       SUBTASK_DESIGN_KEY_POINT_RULE_ZH,
