@@ -14,6 +14,33 @@
 
 ## 当前有效条目
 
+## 我要提问不能清掉主任务 Tab 标记
+
+- 状态：已规避
+- 首次发现：2026-09-30
+- 适用范围：Loop / Loop+ 群聊「我要提问」与主任务会话 Tab
+
+### 现象
+- 使用「我要提问」后，主任务完成时主任务 Tab 的 ☀️ 标记消失，会话被当成普通 Vibe。
+
+### 触发条件
+- 提问走主模型所在会话，但写入的用户消息没有 Loop 任务身份。
+- 会话身份从最新消息回看时，把这条普通用户消息当成离开 Loop 的边界。
+- 主任务运行中的活动记录消失后，Tab 不再能从消息恢复主任务身份。
+
+### 根因
+- 「我要提问」是旁路问答，却复用了普通 `runPrompt` 用户气泡。
+- 主任务 Tab 标记、历史会话标记和 Webview 运行时标记都把无任务身份的用户消息视为 Vibe。
+
+### 长期规避
+- 提问气泡必须带 `loopAsk`，身份解析和 Tab 标记都跳过它。
+- 不要把提问补写成 `taskRole: "main"`，否则会变成主任务回合。
+- 普通用户消息仍然会去掉主任务标记；只有这条旁路提问不能影响主任务。
+
+### 验证方式
+- `node --test dist/test/session/historySessionTaskRole.test.js dist/test/session/loopAskConversationContext.test.js dist/test/session/conversationTabLock.test.js dist/test/loop/loopMainQuestion.test.js`
+
+
 ## Loop+ 完成后会话 Tab 流水动画可能残留
 
 - 状态：已规避

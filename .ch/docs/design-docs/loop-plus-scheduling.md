@@ -76,6 +76,16 @@
 
 经典 Loop 的 `normalizeLoopMainDecision` 同样接受 `clarify`。它不派发子任务；宿主保存 `pendingClarification` 后回到编排循环等待群聊表单，提交后把答案写入补充要求并继续下一轮主任务决策。超时与 Loop+ 相同，不把任务打成 `needs-review`。经典 Loop 开始或恢复执行时自动打开群聊。
 
+### 决策策略边界
+
+`dispatch`、`accept`、`wait`、`steer`、`blocked`、`completed`、`clarify` 由 `createLoopPlusDecisionStrategyRegistry` 按状态注册。策略只接收本轮步骤、已解析决策，以及宿主实现的 `LoopPlusDecisionStrategyPort`。这个端口不是 `ParentRuntime`，也不暴露 `LoopPlusOrchestrationDeps` 或 `LoopPlusScheduler`。
+
+调度状态转换的权威仍是 scheduler。策略不能直接改快照、启动子进程或写任务记录。持久化、消息、暂停、控制、`dispatch`、验收确认和完成都是端口命令，由 `createLoopPlusOrchestrationHost` 里的适配器调用现有实现。`closeoutBudget` 也只通过端口设置，它不是新的轮次门。
+
+调用策略之前，宿主保持原来的两道门禁：`review` 步骤先过 `heldBatchIntact`，当前事件必须是冻结批次的第一项，其余事件按 FIFO 对齐 `reviewQueue`；决策缺失、失败、过期、重复或不属于本批时继续走 `protocolMiss`。
+
+`clarify` 仍由 `runConsumer` 先 `await waitForLoopPlusClarification`。注册表中的 `clarify` 策略只返回 `stop`，不弹表单，也不再实现一次人工澄清。验收上限、超限后保留队列、控制 dry-run、冲突组、最大并发、用户消息确认和 `estimatedRemainingRounds` 的语义不变。`accept` 先计划并预览控制，确认批次成功后才提交控制；附带新子任务时本批记为 `failed`。`completed` 只有确认字段与冻结批次一致，且 `scheduler.complete()` 允许时，才写父任务完成。执行完成仍不等于验收完成。不引入批次屏障或共享轮次门。`event_driven` 与 classic 的分流不变。
+
 ### 集合分离
 
 内核同时区分：

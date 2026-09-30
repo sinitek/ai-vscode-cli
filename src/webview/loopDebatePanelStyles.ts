@@ -165,10 +165,73 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         padding: 12px 16px 16px;
       }
       .ask-chat-dialog {
+        position: relative;
         width: min(760px, 100%);
         height: min(720px, calc(100vh - 32px));
         display: flex;
         flex-direction: column;
+      }
+      .ask-chat-header {
+        position: relative;
+        padding-right: 44px;
+      }
+      .ask-chat-dialog .icon-button {
+        background: transparent;
+        border: none;
+        color: var(--vscode-icon-foreground);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+      }
+      .ask-chat-dialog .icon-button:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+        opacity: 1;
+      }
+      .ask-chat-dialog .icon-button[hidden] {
+        display: none;
+      }
+      .ask-chat-dialog .icon {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .ask-chat-close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1;
+      }
+      .ask-chat-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        padding-top: 10px;
+      }
+      .ask-chat-dialog .send-icon-button {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        opacity: 1;
+      }
+      .ask-chat-dialog .send-icon-button:hover {
+        background: var(--vscode-button-hoverBackground);
+      }
+      .ask-chat-dialog .send-icon-button:disabled {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        opacity: 1;
+      }
+      .ask-chat-dialog .stop-button {
+        background: var(--vscode-errorForeground);
+        color: var(--vscode-button-foreground);
+        opacity: 1;
+      }
+      .ask-chat-dialog .stop-button:hover {
+        background: var(--vscode-inputValidation-errorBackground, var(--vscode-errorForeground));
       }
       .ask-chat-log {
         flex: 1;

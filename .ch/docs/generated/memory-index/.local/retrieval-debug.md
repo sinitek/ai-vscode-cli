@@ -6,8 +6,8 @@
 ## Run Context
 
 - Generated at: 2026-09-27T06:12:11Z
-- Focus: Loop+ 我要提问弹窗 思考过程复用 AI对话思考气泡
-- Focus terms: `loop`, `我要提问弹窗`, `我要`, `要提`, `提问`, `问弹`, `弹窗`, `思考过程复用`
+- Focus: 我要提问 主任务完成后变成普通 Vibe 任务 太阳图标 tab
+- Focus terms: `我要提问`, `主任务完成后变成普通`, `主任`, `任务`, `务完`, `完成`, `成后`, `后变`
 - Anchor ID: -
 - Selection mode: focus-filtered
 - Candidate count: 5
@@ -32,7 +32,7 @@
 
 | Rank | ID | Final | Base | Matched Terms | Source | Claims |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `mem-538cb1444d` | `93` | `91` | loop | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
+| 1 | `mem-538cb1444d` | `93` | `91` | 完成 | `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md` | `0` |
 
 ## Score Breakdown
 
@@ -40,7 +40,7 @@
 
 - Final score: `93`
 - Base score: `91`
-- Matched terms: `loop`
+- Matched terms: `完成`
 - Source: `.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`
 - Selected claim IDs: -
 

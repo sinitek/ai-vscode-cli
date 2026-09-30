@@ -33,6 +33,23 @@ test("marks loop main and subtask sessions and leaves vibe sessions unmarked", (
   }), "subtask");
 });
 
+test("keeps the main marker when a later message is only a loop ask", () => {
+  assert.equal(resolveHistorySessionTaskRole({
+    isLoopMainSession: true,
+    messages: [
+      message({
+        id: "main",
+        role: "user",
+        content: "plan the work",
+        taskRole: "main",
+        loopTaskId: "loop-1",
+      }),
+      message({ id: "ask", role: "user", content: "这个方案为什么这样拆？", loopAsk: true }),
+      message({ id: "answer", role: "assistant", content: "因为文件边界不同。", loopAsk: true }),
+    ],
+  }), "main");
+});
+
 test("drops the marker after a later plain vibe user message", () => {
   assert.equal(resolveHistorySessionTaskRole({
     isLoopMainSession: true,

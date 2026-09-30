@@ -85,6 +85,7 @@ import {
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
 } from "./loopMainFailure";
+import { isLoopAskChatMessage } from "./historySessionTaskRole";
 import {
   describeLoopExecutionPlan,
   type LoopSubtaskExecutionPlan,
@@ -1492,6 +1493,7 @@ export type UserChatMessageInput = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAsk?: boolean;
 };
 
 export function buildUserChatMessage(input: UserChatMessageInput, createdAt: number, messageId: string): ChatMessage {
@@ -1506,6 +1508,7 @@ export function buildUserChatMessage(input: UserChatMessageInput, createdAt: num
     loopTaskId: input.loopTaskId,
     loopRound: input.loopRound,
     loopSubtaskId: input.loopSubtaskId,
+    ...(input.loopAsk === true ? { loopAsk: true } : {}),
   };
 }
 
@@ -1725,6 +1728,9 @@ export function resolveLoopConversationTabContextFromMessages(
 ): LoopConversationTabContext {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
+    if (isLoopAskChatMessage(message)) {
+      continue;
+    }
     const taskRole = message?.taskRole;
     const loopTaskId = normalizeLoopTaskId(message?.loopTaskId);
     if (!loopTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
@@ -1768,6 +1774,9 @@ export function resolveLoopSubtaskConversationContextFromMessages(
 ): LoopSubtaskConversationContext | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
+    if (isLoopAskChatMessage(message)) {
+      continue;
+    }
     const taskId = normalizeLoopTaskId(message?.loopTaskId);
     const subtaskId = normalizeLoopSubtaskId(message?.loopSubtaskId);
     const round = normalizeLoopRound(message?.loopRound);

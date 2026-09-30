@@ -4,7 +4,7 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision, type LoopPlusDecisionStatus } from "../loopPlusDecision";
+import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   ORCHESTRATOR_CLARIFICATION_LIMIT,
   abortOrchestratorClarification,
@@ -36,6 +36,13 @@ import {
   buildLoopPlusSubtaskModelPrompt,
 } from "./loopPlusPromptBuilders";
 import type { LoopPlusSubtaskChatNotice } from "./loopPlusSubtaskChat";
+import {
+  createLoopPlusDecisionStrategyRegistry,
+  loopPlusDecisionStrategyFor,
+  type LoopPlusDecisionControlPlan,
+  type LoopPlusDecisionOutcome,
+  type LoopPlusDecisionStrategyPort,
+} from "./loopPlusDecisionStrategies";
 
 export const LOOP_PLUS_MAX_CONCURRENCY = 6;
 const DECISION_SAFETY_LIMIT = 200;
@@ -178,14 +185,6 @@ type MainStep = {
   userMessageCount: number;
 };
 
-type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
-
-type LoopPlusDecisionStrategy = (
-  runtime: ParentRuntime,
-  step: MainStep,
-  decision: LoopPlusDecision,
-) => LoopPlusDecisionOutcome;
-
 type Lifecycle = {
   promise: Promise<void>;
   resolve: () => void;
@@ -241,15 +240,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   const maxConcurrency = deps.maxConcurrency ?? LOOP_PLUS_MAX_CONCURRENCY;
   const decisionSafetyLimit = deps.decisionSafetyLimit ?? DECISION_SAFETY_LIMIT;
   const protocolRetryLimit = deps.protocolRetryLimit ?? PROTOCOL_RETRY_LIMIT;
-  const decisionStrategies: { [Status in LoopPlusDecisionStatus]: LoopPlusDecisionStrategy } = {
-    dispatch: applyDispatchDecision,
-    accept: applyAcceptDecision,
-    wait: applyWaitDecision,
-    steer: applySteerDecision,
-    blocked: applyBlockedDecision,
-    completed: applyCompleted,
-    clarify: applyClarifyDecision,
-  };
+  const decisionStrategies = createLoopPlusDecisionStrategyRegistry();
   const now = deps.now ?? (() => Date.now());
   const delay = deps.delay ?? ((ms: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -812,6 +803,144 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return { kind, eventId: null, eventIds: [], userMessageCount };
   }
 
+  function createDecisionPort(runtime: ParentRuntime): LoopPlusDecisionStrategyPort {
+    const controlPlans = new WeakMap<LoopPlusDecisionControlPlan, ControlPlan>();
+    return {
+      queueView() {
+        const snapshot = runtime.scheduler.snapshot();
+        return {
+          hasCurrentReview: Boolean(snapshot.currentReview),
+          hasReview: Boolean(snapshot.currentReview) || snapshot.reviewQueue.length > 0,
+          hasUserMessages: snapshot.userMessageQueue.length > 0,
+          runningCount: snapshot.running.length,
+          pendingCount: snapshot.pending.length,
+          parentStopped: snapshot.parentStopped,
+        };
+      },
+      waitForInFlightWork() {
+        const waited = runtime.scheduler.wait().view;
+        return {
+          runningCount: waited.running.length,
+          pendingCount: waited.pending.length,
+        };
+      },
+      protocolMiss(held: boolean): LoopPlusDecisionOutcome {
+        return protocolMiss(runtime, held);
+      },
+      markDecisionAccepted() {
+        runtime.protocolRetries = 0;
+        resetMainFailure(runtime);
+      },
+      clearProtocolRetries() {
+        runtime.protocolRetries = 0;
+      },
+      acknowledgeUserMessages(count: number) {
+        if (count <= 0) {
+          return;
+        }
+        runtime.scheduler.ackUserMessages(count);
+      },
+      refuseDispatchPastAcceptanceLimit(plannedLaunches: number) {
+        return refuseDispatchPastAcceptanceLimit(runtime, plannedLaunches);
+      },
+      confirmReviewWithinAcceptanceLimit(eventIds: readonly string[]) {
+        return confirmWithinAcceptanceLimit(runtime, eventIds);
+      },
+      applyControls(controls: readonly LoopPlusControlDecision[]) {
+        return applyLoopPlusControls(runtime, controls);
+      },
+      planControls(controls: readonly LoopPlusControlDecision[]) {
+        const planned = planControlCommands(runtime, controls);
+        if (!planned) {
+          return null;
+        }
+        const token = {} as LoopPlusDecisionControlPlan;
+        controlPlans.set(token, planned);
+        return token;
+      },
+      previewControls(plan: LoopPlusDecisionControlPlan) {
+        const planned = controlPlans.get(plan);
+        if (!planned) {
+          return false;
+        }
+        return previewControlPlan(runtime, planned);
+      },
+      commitControls(controls: readonly LoopPlusControlDecision[], plan: LoopPlusDecisionControlPlan) {
+        const planned = controlPlans.get(plan);
+        if (!planned) {
+          return false;
+        }
+        return commitControlPlan(runtime, controls, planned);
+      },
+      dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]) {
+        dispatchDecisions(runtime, subtasks);
+      },
+      submitReviewBatch(eventIds: readonly string[], acceptance: "passed" | "failed") {
+        return {
+          ok: runtime.scheduler.submitReviewBatch(eventIds, acceptance).ok,
+        };
+      },
+      requeueCurrentReview() {
+        runtime.scheduler.requeueCurrentReview();
+      },
+      persistRunning() {
+        persist(runtime, { status: "running" });
+      },
+      persistSnapshot() {
+        persist(runtime);
+      },
+      persistEstimatedRounds(decision: LoopPlusDecision) {
+        persistEstimatedRounds(runtime, decision);
+      },
+      noteWaiting(runningCount: number) {
+        deps.appendMessage(runtime.target, "loop-plus-waiting", runtime.taskId);
+        deps.log?.("loop-plus-waiting", {
+          taskId: runtime.taskId,
+          running: runningCount,
+        });
+      },
+      pauseForReview(message: string, finalSummary?: string) {
+        pause(runtime, "needs-review", message, finalSummary);
+      },
+      armCloseout() {
+        runtime.closeoutBudget = 1;
+      },
+      tryFinishParent() {
+        return runtime.scheduler.complete().ok;
+      },
+      finishParent(decision: LoopPlusDecision): LoopPlusDecisionOutcome {
+        const patch: Partial<LoopTaskRecord> = {
+          status: "completed",
+          answerConclusion: decision.answerConclusion,
+          finalSummary: decision.finalSummary,
+          completionRequirementCoverage: decision.requirementCoverage,
+          estimatedRemainingRounds: 0,
+        };
+        try {
+          persist(runtime, patch);
+        } catch (error) {
+          runtime.completionPatch = patch;
+          deps.log?.("loop-plus-persist-failed", {
+            taskId: runtime.taskId,
+            error: errorText(error),
+          });
+          settle(runtime);
+          return "stop";
+        }
+        try {
+          deps.appendMessage(runtime.target, "loop-plus-completed", runtime.taskId);
+        } catch (error) {
+          deps.log?.("loop-plus-completion-message-failed", {
+            taskId: runtime.taskId,
+            error: errorText(error),
+          });
+        }
+        releaseCompleted(runtime);
+        return "stop";
+      },
+    };
+  }
+
   function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): LoopPlusDecisionOutcome {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
@@ -824,22 +953,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!decision) {
       return protocolMiss(runtime, Boolean(held));
     }
-    return strategyFor(decision.status)(runtime, step, decision);
-  }
-
-  function strategyFor(status: LoopPlusDecisionStatus): LoopPlusDecisionStrategy {
-    switch (status) {
-      case "dispatch":
-      case "accept":
-      case "wait":
-      case "steer":
-      case "blocked":
-      case "completed":
-      case "clarify":
-        return decisionStrategies[status];
-      default:
-        return unreachableDecisionStatus(status);
-    }
+    return loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
+      createDecisionPort(runtime),
+      step,
+      decision,
+    );
   }
 
 
@@ -892,239 +1010,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     runtime.forcePrompt = true;
     return "continue";
-  }
-
-  function applyClarifyDecision(): LoopPlusDecisionOutcome {
-    return "stop";
-  }
-
-  function applyDispatchDecision(
-    runtime: ParentRuntime,
-    step: MainStep,
-    decision: LoopPlusDecision,
-  ): LoopPlusDecisionOutcome {
-    if (runtime.scheduler.snapshot().currentReview) {
-      return protocolMiss(runtime, true);
-    }
-    const controls = decision.controls ?? [];
-    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
-      return "stop";
-    }
-    if (controls.length > 0 && !applyLoopPlusControls(runtime, controls)) {
-      return protocolMiss(runtime, false);
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    runtime.protocolRetries = 0;
-    resetMainFailure(runtime);
-    dispatchDecisions(runtime, decision.subtasks ?? []);
-    persistEstimatedRounds(runtime, decision);
-    if (hasReview(runtime)) {
-      return "continue";
-    }
-    const after = runtime.scheduler.snapshot();
-    if (after.running.length === 0 && after.pending.length === 0) {
-      if (hasUserMessages(runtime)) {
-        return "continue";
-      }
-      pause(runtime, "needs-review", "loop-plus-no-work");
-      return "stop";
-    }
-    return "wait";
-  }
-
-  function applySteerDecision(
-    runtime: ParentRuntime,
-    step: MainStep,
-    decision: LoopPlusDecision,
-  ): LoopPlusDecisionOutcome {
-    if (runtime.scheduler.snapshot().currentReview) {
-      return protocolMiss(runtime, true);
-    }
-    const controls = decision.controls ?? [];
-    if (controls.length === 0) {
-      return protocolMiss(runtime, false);
-    }
-    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
-      return "stop";
-    }
-    if (!applyLoopPlusControls(runtime, controls)) {
-      return protocolMiss(runtime, false);
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    runtime.protocolRetries = 0;
-    resetMainFailure(runtime);
-    persistEstimatedRounds(runtime, decision);
-    if (hasReview(runtime)) {
-      return "continue";
-    }
-    const after = runtime.scheduler.snapshot();
-    if (after.running.length === 0 && after.pending.length === 0) {
-      if (hasUserMessages(runtime)) {
-        return "continue";
-      }
-      runtime.closeoutBudget = 1;
-      return "continue";
-    }
-    return "wait";
-  }
-
-  function applyAcceptDecision(
-    runtime: ParentRuntime,
-    step: MainStep,
-    decision: LoopPlusDecision,
-  ): LoopPlusDecisionOutcome {
-    if (step.kind !== "review" || !sameIds(confirmedReviewIds(decision), step.eventIds)) {
-      return protocolMiss(runtime, step.eventIds.length > 0);
-    }
-    if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
-      return "stop";
-    }
-    const controls = decision.controls ?? [];
-    const controlPlan = controls.length > 0 ? planControlCommands(runtime, controls) : null;
-    if (controls.length > 0 && (!controlPlan || !previewControlPlan(runtime, controlPlan))) {
-      return protocolMiss(runtime, true);
-    }
-    const acceptance = (decision.subtasks?.length ?? 0) > 0 ? "failed" : "passed";
-    const submitted = runtime.scheduler.submitReviewBatch(step.eventIds, acceptance);
-    if (!submitted.ok) {
-      persist(runtime);
-      return runtime.scheduler.snapshot().parentStopped ? "stop" : protocolMiss(runtime, true);
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    runtime.protocolRetries = 0;
-    resetMainFailure(runtime);
-    if (refuseDispatchPastAcceptanceLimit(runtime, plannedLaunchCount(decision))) {
-      return "stop";
-    }
-    if (controlPlan && !commitControlPlan(runtime, controls, controlPlan)) {
-      return protocolMiss(runtime, false);
-    }
-    dispatchDecisions(runtime, decision.subtasks ?? []);
-    persistEstimatedRounds(runtime, decision);
-    if (hasReview(runtime)) {
-      return "continue";
-    }
-    const view = runtime.scheduler.wait().view;
-    if (view.running.length > 0 || view.pending.length > 0) {
-      persist(runtime, { status: "running" });
-      return "wait";
-    }
-    runtime.closeoutBudget = 1;
-    return "continue";
-  }
-
-  function applyWaitDecision(
-    runtime: ParentRuntime,
-    step: MainStep,
-  ): LoopPlusDecisionOutcome {
-    const snapshot = runtime.scheduler.snapshot();
-    if (snapshot.currentReview) {
-      return protocolMiss(runtime, true);
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    if (hasReview(runtime)) {
-      return "continue";
-    }
-    runtime.protocolRetries = 0;
-    resetMainFailure(runtime);
-    if (snapshot.running.length === 0 && snapshot.pending.length === 0) {
-      if (hasUserMessages(runtime)) {
-        return "continue";
-      }
-      pause(runtime, "needs-review", "loop-plus-idle-wait");
-      return "stop";
-    }
-    persist(runtime, { status: "running" });
-    deps.appendMessage(runtime.target, "loop-plus-waiting", runtime.taskId);
-    deps.log?.("loop-plus-waiting", { taskId: runtime.taskId, running: snapshot.running.length });
-    return "wait";
-  }
-
-  function applyBlockedDecision(
-    runtime: ParentRuntime,
-    step: MainStep,
-    decision: LoopPlusDecision,
-  ): LoopPlusDecisionOutcome {
-    if (runtime.scheduler.snapshot().currentReview) {
-      runtime.scheduler.requeueCurrentReview();
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    runtime.protocolRetries = 0;
-    if (hasUserMessages(runtime)) {
-      return "continue";
-    }
-    pause(runtime, "needs-review", "loop-plus-blocked", decision.finalSummary);
-    return "stop";
-  }
-
-  function applyCompleted(
-    runtime: ParentRuntime,
-    step: MainStep,
-    decision: LoopPlusDecision,
-  ): LoopPlusDecisionOutcome {
-    const confirmed = confirmedReviewIds(decision);
-    if (step.eventIds.length > 0) {
-      if (!sameIds(confirmed, step.eventIds)) {
-        return protocolMiss(runtime, true);
-      }
-      if (!confirmWithinAcceptanceLimit(runtime, step.eventIds)) {
-        return "stop";
-      }
-      const submitted = runtime.scheduler.submitReviewBatch(step.eventIds, "passed");
-      if (!submitted.ok) {
-        persist(runtime);
-        return "stop";
-      }
-    } else if (confirmed.length > 0) {
-      return protocolMiss(runtime, false);
-    }
-    acknowledgeSeenUserMessages(runtime, step);
-    if (hasReview(runtime) || hasUserMessages(runtime) || runtime.scheduler.snapshot().running.length > 0 || runtime.scheduler.snapshot().pending.length > 0) {
-      runtime.protocolRetries = 0;
-      if (hasReview(runtime) || hasUserMessages(runtime)) {
-        return "continue";
-      }
-      persist(runtime, { status: "running" });
-      return "wait";
-    }
-    const completed = runtime.scheduler.complete();
-    if (!completed.ok) {
-      if (hasReview(runtime) || hasUserMessages(runtime)) {
-        return "continue";
-      }
-      persist(runtime, { status: "running" });
-      return "wait";
-    }
-    runtime.protocolRetries = 0;
-    resetMainFailure(runtime);
-    const patch: Partial<LoopTaskRecord> = {
-      status: "completed",
-      answerConclusion: decision.answerConclusion,
-      finalSummary: decision.finalSummary,
-      completionRequirementCoverage: decision.requirementCoverage,
-      estimatedRemainingRounds: 0,
-    };
-    try {
-      persist(runtime, patch);
-    } catch (error) {
-      runtime.completionPatch = patch;
-      deps.log?.("loop-plus-persist-failed", {
-        taskId: runtime.taskId,
-        error: errorText(error),
-      });
-      settle(runtime);
-      return "stop";
-    }
-    try {
-      deps.appendMessage(runtime.target, "loop-plus-completed", runtime.taskId);
-    } catch (error) {
-      deps.log?.("loop-plus-completion-message-failed", {
-        taskId: runtime.taskId,
-        error: errorText(error),
-      });
-    }
-    releaseCompleted(runtime);
-    return "stop";
   }
 
   function protocolMiss(runtime: ParentRuntime, held: boolean): "continue" | "stop" {
@@ -1955,11 +1840,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return false;
   }
 
-  function plannedLaunchCount(decision: LoopPlusDecision): number {
-    const continues = (decision.controls ?? []).filter((control) => control.action === "reprompt").length;
-    return (decision.subtasks?.length ?? 0) + continues;
-  }
-
   function applyLoopPlusControls(
     runtime: ParentRuntime,
     controls: readonly LoopPlusControlDecision[],
@@ -2254,24 +2134,6 @@ function nextAttemptSequence(snapshot: LoopPlusSchedulerSnapshot): number {
     }
   }
   return sequence;
-}
-
-function confirmedReviewIds(decision: LoopPlusDecision): string[] {
-  if (decision.reviewEventIds && decision.reviewEventIds.length > 0) {
-    return decision.reviewEventIds;
-  }
-  if (decision.reviewEventId) {
-    return [decision.reviewEventId];
-  }
-  return [];
-}
-
-function sameIds(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((id, index) => id === right[index]);
-}
-
-function unreachableDecisionStatus(status: never): never {
-  throw new Error(`unhandled loop-plus decision status: ${String(status)}`);
 }
 
 function invalidSnapshotReason(task: LoopTaskRecord): string | null {

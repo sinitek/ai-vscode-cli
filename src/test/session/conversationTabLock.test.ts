@@ -439,3 +439,77 @@ test("does not lock Loop main tab for unrelated running tasks", () => {
 
   assert.equal(isLocked(mainTab), false);
 });
+
+function buildLoopTabIdentityRuntime(): {
+  updateFromMessage: (tabId: string, message: Record<string, unknown>) => boolean;
+  updateFromMessages: (tabId: string, messages: Record<string, unknown>[]) => boolean;
+  formatLabel: (tab: TabSummary, baseLabel: string) => string;
+} {
+  const names = [
+    "normalizeLoopTaskRole",
+    "normalizeLoopTaskId",
+    "setLoopMetaForTab",
+    "overrideLoopMetaAsCleared",
+    "updateLoopMetaForTabFromMessage",
+    "updateLoopMetaForTabFromMessages",
+    "getLoopMetaForTabSummary",
+    "formatConversationTabLabel",
+  ];
+  const sources = names
+    .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, name))
+    .join("\n");
+  return new Function(
+    "loopMetaByTabId",
+    `${sources}
+    return {
+      updateFromMessage: updateLoopMetaForTabFromMessage,
+      updateFromMessages: updateLoopMetaForTabFromMessages,
+      formatLabel: formatConversationTabLabel,
+    };`,
+  )(Object.create(null)) as {
+    updateFromMessage: (tabId: string, message: Record<string, unknown>) => boolean;
+    updateFromMessages: (tabId: string, messages: Record<string, unknown>[]) => boolean;
+    formatLabel: (tab: TabSummary, baseLabel: string) => string;
+  };
+}
+
+test("keeps the sun icon when a loop ask is added to a main task tab", () => {
+  const runtime = buildLoopTabIdentityRuntime();
+  const tab = { id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" };
+  runtime.updateFromMessages("main-tab", [{
+    id: "main",
+    role: "user",
+    content: "完成这个任务",
+    taskRole: "main",
+    loopTaskId: "task-1",
+  }]);
+  assert.equal(runtime.formatLabel(tab, "codex"), "☀️ codex");
+
+  runtime.updateFromMessage("main-tab", {
+    id: "ask",
+    role: "user",
+    content: "为什么这样拆？",
+    loopAsk: true,
+  });
+  runtime.updateFromMessages("main-tab", [
+    {
+      id: "main",
+      role: "user",
+      content: "完成这个任务",
+      taskRole: "main",
+      loopTaskId: "task-1",
+    },
+    { id: "ask", role: "user", content: "为什么这样拆？", loopAsk: true },
+    { id: "answer", role: "assistant", content: "因为写入边界不同。", loopAsk: true },
+    { id: "done", role: "system", content: "任务已完成" },
+  ]);
+
+  assert.equal(runtime.formatLabel(tab, "codex"), "☀️ codex");
+
+  runtime.updateFromMessage("main-tab", {
+    id: "vibe",
+    role: "user",
+    content: "随便聊聊",
+  });
+  assert.equal(runtime.formatLabel(tab, "codex"), "codex");
+});

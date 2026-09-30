@@ -181,18 +181,32 @@ ${LOOP_DEBATE_PANEL_STYLES}
       </div>
       <div id="askChatBackdrop" class="dialog-backdrop ask-chat-backdrop${askThread.dialogOpen ? " visible" : ""}" aria-hidden="${askThread.dialogOpen ? "false" : "true"}">
         <div class="dialog ask-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="askChatTitle" aria-describedby="askChatDescription">
-          <div class="dialog-header">
+          <div class="dialog-header ask-chat-header">
             <h2 id="askChatTitle" class="dialog-title">${escapeHtml(strings.askDialogTitle)}</h2>
             <p id="askChatDescription" class="dialog-description">${escapeHtml(strings.askDialogDescription)}</p>
+            <button id="askChatClose" class="icon-button ask-chat-close" type="button" title="${escapeAttribute(strings.askAnswerClose)}" aria-label="${escapeAttribute(strings.askAnswerClose)}">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
           </div>
           <div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div>
           <form id="askChatForm" class="ask-chat-composer">
             <label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label>
             <textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea>
-            <div class="dialog-actions">
-              <button id="askChatClose" class="button" type="button">${escapeHtml(strings.askAnswerClose)}</button>
-              <button id="askChatAbort" class="button danger" type="button"${askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatAbort)}</button>
-              <button id="askChatSend" class="button primary" type="submit"${askThread.running ? " disabled" : ""}>${escapeHtml(strings.askChatSend)}</button>
+            <div class="ask-chat-actions">
+              <button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 2L11 13" />
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+                </svg>
+              </button>
+              <button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              </button>
             </div>
           </form>
         </div>

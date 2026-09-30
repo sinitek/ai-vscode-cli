@@ -23,6 +23,7 @@ type LoopMainModelQuestionPromptInput = {
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
+  loopAsk?: boolean;
   skipLongTermMemoryPersist?: boolean;
   throwOnError?: boolean;
 };
@@ -108,6 +109,7 @@ export async function askLoopMainModelSession(options: {
       displayPrompt: question,
       modelPrompt: options.modelPrompt,
       contextTags: [],
+      loopAsk: true,
       skipLongTermMemoryPersist: true,
       throwOnError: true,
     }, {

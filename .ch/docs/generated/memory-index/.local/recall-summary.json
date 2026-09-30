@@ -3,16 +3,16 @@
   "version": "0.3.0",
   "generated_at": "2026-09-27T06:12:11Z",
   "repo_root": ".",
-  "focus": "Loop+ 我要提问弹窗 思考过程复用 AI对话思考气泡",
+  "focus": "我要提问 主任务完成后变成普通 Vibe 任务 太阳图标 tab",
   "focus_terms": [
-    "loop",
-    "我要提问弹窗",
-    "我要",
-    "要提",
-    "提问",
-    "问弹",
-    "弹窗",
-    "思考过程复用"
+    "我要提问",
+    "主任务完成后变成普通",
+    "主任",
+    "任务",
+    "务完",
+    "完成",
+    "成后",
+    "后变"
   ],
   "anchor_id": "",
   "selection_mode": "focus-filtered",
@@ -118,14 +118,14 @@
       "id": "mem-538cb1444d",
       "type": "plan",
       "title": "Loop+ 完成事件驱动验收",
-      "reason": "命中 focus：loop。",
+      "reason": "命中 focus：完成。",
       "score": 93,
       "read_tokens": 108,
       "source_path": ".ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md",
       "source_kind": "active_plan",
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop"
+        "完成"
       ],
       "concepts": [
         "open-loop"
@@ -178,7 +178,7 @@
     "active_plan"
   ],
   "matched_terms": [
-    "loop"
+    "完成"
   ],
   "score": {
     "max": 93,
@@ -322,9 +322,11 @@
       "title": "记忆流转规则",
       "kind": "hot_zone",
       "reason": "记忆分层与流转规则入口。",
-      "score": 42,
+      "score": 46,
       "modified_at": "2026-09-27T06:12:11+00:00",
-      "matched_terms": [],
+      "matched_terms": [
+        "任务"
+      ],
       "summary": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**"
     }
   ],
@@ -337,7 +339,7 @@
       "score": 26,
       "modified_at": "2026-09-25T09:46:19+00:00",
       "matched_terms": [
-        "loop"
+        "完成"
       ],
       "summary": "日期：2026-09-24 更新：2026-09-25 状态：in-progress 负责人：Codex owner：loopplus-plan-design（只维护本计划与候选设计；不代表功能已实现） claimed_at：2026-09-25 claim_ttl：保持到真实 Webview 场景被复核或本计划归档；占用不表示 Loop+ 已经可用"
     },
@@ -367,13 +369,14 @@
       "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
       "title": "Loop+ 完成事件调度",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop / 提问 / 弹窗。",
-      "score": 27,
-      "modified_at": "2026-09-30T06:48:26Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：我要提问 / 主任 / 任务 / 完成。",
+      "score": 19,
+      "modified_at": "2026-09-30T07:34:58Z",
       "matched_terms": [
-        "loop",
-        "提问",
-        "弹窗"
+        "我要提问",
+        "主任",
+        "任务",
+        "完成"
       ],
       "summary": "状态：proposed 相关计划：`.ch/docs/exec-plans/active/2026-09-24-loop-plus-mode.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md` 相关规格：尚无。落地前不要写入 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`"
     },
@@ -381,11 +384,15 @@
       "path": ".ch/docs/design-docs/loop-debate-multi-agent-mode.md",
       "title": "Loop 红蓝辩论多智能体模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
-      "score": 25,
-      "modified_at": "2026-09-30T06:12:26Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：主任 / 任务 / 务完 / 完成 / 成后。",
+      "score": 15,
+      "modified_at": "2026-09-30T07:34:50Z",
       "matched_terms": [
-        "loop"
+        "主任",
+        "任务",
+        "务完",
+        "完成",
+        "成后"
       ],
       "summary": "状态：active 相关计划：`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-chat-mode.md`、`.ch/docs/exec-plans/completed/2026-06/2026-06-16-loop-debate-session-tabs.md`"
     },
@@ -393,25 +400,31 @@
       "path": ".ch/docs/design-docs/graph-orchestration-mode.md",
       "title": "Graph 编排模式详细设计",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
-      "score": 6,
+      "reason": "与当前 focus 相关的设计决策入口，命中：主任 / 任务 / 务完 / 完成 / 成后。",
+      "score": 10,
       "modified_at": "2026-09-30T06:48:26Z",
       "matched_terms": [
-        "loop"
+        "主任",
+        "任务",
+        "务完",
+        "完成",
+        "成后"
       ],
       "summary": "状态：active（Phase 2 恢复与交互增强已落地，direct 自动返工已落地） 日期：2026-08-03 相关计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-orchestration-mode.md` 相关规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`"
     },
     {
-      "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
-      "title": "VS Code CLI 插件运行时架构",
+      "path": ".ch/docs/design-docs/core-beliefs.md",
+      "title": "核心信念",
       "kind": "design_doc",
-      "reason": "与当前 focus 相关的设计决策入口，命中：loop。",
-      "score": 6,
-      "modified_at": "2026-09-29T06:21:50Z",
+      "reason": "与当前 focus 相关的设计决策入口，命中：任务 / 务完 / 完成。",
+      "score": 8,
+      "modified_at": "2026-03-29T06:59:07Z",
       "matched_terms": [
-        "loop"
+        "任务",
+        "务完",
+        "完成"
       ],
-      "summary": "状态：accepted 相关目录：`src/`、`media/`、`docs/` 历史来源：原 `docs/支持交互.md`、`docs/VSCODE_CLI_PLUGIN_DEV_GUIDE.md`"
+      "summary": "这些信念不是宣传语，而是为了让仓库长期对代理和人类都保持可读、可维护、可演化。"
     }
   ],
   "runbooks": [
@@ -419,11 +432,12 @@
       "path": ".ch/docs/runbooks/local-development.md",
       "title": "本地开发与打包手册",
       "kind": "runbook",
-      "reason": "与当前 focus 相关的排障或规避动作入口，命中：loop。",
-      "score": 6,
+      "reason": "与当前 focus 相关的排障或规避动作入口，命中：主任 / 任务。",
+      "score": 7,
       "modified_at": "2026-09-25T09:05:52Z",
       "matched_terms": [
-        "loop"
+        "主任",
+        "任务"
       ],
       "summary": "本文档吸收了原 `docs/DEBUG.md`、`docs/DEVELOPMENT.md` 以及旧开发手册中仍有效的运行方式，作为当前仓库的本地开发 runbook。"
     }

@@ -564,6 +564,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!tabId || !message || typeof message !== "object") {
           return false;
         }
+        if (message.loopAsk === true) {
+          return false;
+        }
         const taskRole = normalizeLoopTaskRole(message.taskRole);
         const loopTaskId = normalizeLoopTaskId(message.loopTaskId);
         if (!taskRole || !loopTaskId) {
@@ -581,6 +584,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         }
         for (let index = messages.length - 1; index >= 0; index -= 1) {
           const message = messages[index];
+          if (message && message.loopAsk === true) {
+            continue;
+          }
           const role = normalizeLoopTaskRole(message && message.taskRole);
           const taskId = normalizeLoopTaskId(message && message.loopTaskId);
           if (!role || !taskId) {

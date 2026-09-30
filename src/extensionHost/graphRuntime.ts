@@ -71,6 +71,7 @@ export type PromptRunInput = {
   imagePaths?: string[];
   taskRole?: LoopTaskRole;
   loopTaskId?: string;
+  loopAsk?: boolean;
   loopRound?: number;
   loopSubtaskId?: string;
   graphRunId?: string;

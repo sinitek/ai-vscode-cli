@@ -53,6 +53,7 @@ test("asks the current main session and returns the new answer", async () => {
       ran = true;
       assert.equal(input.displayPrompt, "这个方案能合并吗");
       assert.equal(input.modelPrompt, "只回答：这个方案能合并吗");
+      assert.equal(input.loopAsk, true);
       assert.equal(input.skipLongTermMemoryPersist, true);
       assert.equal(input.throwOnError, true);
       assert.deepEqual(input.contextTags, []);

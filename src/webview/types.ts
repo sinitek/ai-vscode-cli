@@ -267,6 +267,7 @@ export type ChatMessage = {
   contextTags?: string[];
   taskRole?: "main" | "subtask";
   loopTaskId?: string;
+  loopAsk?: boolean;
   loopRound?: number;
   loopSubtaskId?: string;
   graphRunId?: string;

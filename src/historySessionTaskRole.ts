@@ -2,6 +2,10 @@ import type { ChatMessage } from "./webview/types";
 
 export type HistorySessionTaskRole = "main" | "subtask";
 
+export function isLoopAskChatMessage(message: { loopAsk?: boolean } | null | undefined): boolean {
+  return message?.loopAsk === true;
+}
+
 type HistorySessionTaskRoleInput = {
   isLoopMainSession?: boolean;
   isGraphMainSession?: boolean;
@@ -59,7 +63,7 @@ function resolveHistorySessionTaskRoleUncached(
   const messages = input.messages ?? [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (!message) {
+    if (!message || isLoopAskChatMessage(message)) {
       continue;
     }
     const loopTaskId = normalizeId(message.loopTaskId);
