@@ -1041,14 +1041,17 @@ test("renders a persistent ask chat with thinking bubbles and can publish update
     "zh-CN",
   );
   assert.match(idle, /id="askChatBackdrop" class="dialog-backdrop ask-chat-backdrop"/u);
+  assert.match(idle, /class="dialog-header ask-chat-header"[\s\S]*id="askChatClose" class="icon-button ask-chat-close"/u);
+  assert.match(idle, /id="askChatClose"[^>]*>\s*<svg class="icon"/u);
+  assert.match(idle, /class="ask-chat-actions"/u);
+  assert.match(idle, /id="askChatAbort" class="icon-button stop-button"[^>]*hidden/u);
+  assert.match(idle, /id="askChatSend" class="icon-button send-icon-button"/u);
+  assert.match(idle, /id="askChatSend"[^>]*>\s*<svg class="icon"[^>]*>[\s\S]*M22 2L11 13/u);
+  assert.doesNotMatch(idle, /id="askChatClose" class="button"/u);
+  assert.doesNotMatch(idle, /id="askChatSend" class="button/u);
+  assert.doesNotMatch(idle, /id="askChatAbort" class="button/u);
   assert.match(idle, /id="askChatAbort"[^>]*hidden/u);
   assert.doesNotMatch(idle, /id="askChatSend"[^>]*disabled/u);
-  assert.match(idle, /id="askChatClose" class="icon-button ask-chat-close"[^>]*>\s*<svg/u);
-  assert.match(idle, /id="askChatSend" class="icon-button send-icon-button"/u);
-  assert.match(idle, /id="askChatAbort" class="icon-button stop-button"/u);
-  assert.doesNotMatch(idle, /id="askChatClose"[^>]*>关闭/u);
-  assert.doesNotMatch(idle, /id="askChatSend"[^>]*>发送/u);
-  assert.doesNotMatch(idle, /id="askChatAbort"[^>]*>中止/u);
   assert.match(idle, /还没有提问/u);
 
   const running = buildLoopDebateChatPanelHtml(
