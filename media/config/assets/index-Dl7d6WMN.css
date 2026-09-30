@@ -284,11 +284,11 @@ body,
 }
 
 .config-app-sidebar {
-  flex: 0 0 360px !important;
+  flex: 0 0 306px !important;
   height: 100%;
-  width: 360px !important;
-  min-width: 360px !important;
-  max-width: 360px !important;
+  width: 306px !important;
+  min-width: 306px !important;
+  max-width: 306px !important;
 }
 
 .config-app-content {
@@ -666,46 +666,34 @@ body,
   fill: currentColor;
 }
 
-.config-list .config-activate-button,
-.config-list .config-list-item-selected .config-activate-button {
-  min-width: 45px;
-  height: 24px;
-  padding: 0 3px;
-  border-color: var(--clay-text) !important;
-  background: var(--clay-lemon) !important;
-  color: var(--clay-text) !important;
-  font-size: calc(80% + 1px);
-  line-height: 1;
-  box-shadow: -2px 2px 0 var(--clay-text) !important;
+.config-list .config-list-main {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.config-list .config-list-item .ant-btn.config-activate-button:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link),
-.config-list .config-list-item-selected .ant-btn.config-activate-button:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
-  border-color: var(--clay-text) !important;
-  background: var(--clay-lemon) !important;
-  color: var(--clay-text) !important;
-  box-shadow: -2px 2px 0 var(--clay-text) !important;
+.config-list .config-activate-radio,
+.config-list .config-list-item-selected .config-activate-radio {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--vscode-button-background, var(--clay-text));
+  cursor: pointer;
 }
 
-.config-list .config-activate-button:not(:disabled):hover,
-.config-list .config-activate-button:not(:disabled):focus-visible,
-.config-list .config-list-item-selected .config-activate-button:not(:disabled):hover,
-.config-list .config-list-item-selected .config-activate-button:not(:disabled):focus-visible {
-  border-color: var(--clay-text) !important;
-  background: var(--clay-lemon) !important;
-  color: var(--clay-text) !important;
-  transform: translateY(-1px) rotate(-1deg) !important;
-  box-shadow: -3px 4px 0 var(--clay-text) !important;
+.config-list .config-activate-radio:focus-visible,
+.config-list .config-list-item-selected .config-activate-radio:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--clay-text));
+  outline-offset: 2px;
 }
 
-.config-list .config-activate-button-active,
-.config-list .config-list-item-selected .config-activate-button-active {
-  background: var(--clay-matcha) !important;
+.config-list .config-activate-radio-active,
+.config-list .config-list-item-selected .config-activate-radio-active {
+  accent-color: var(--vscode-focusBorder, var(--clay-matcha));
 }
 
-.config-list .config-list-item .ant-btn.config-activate-button-active:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link),
-.config-list .config-list-item-selected .ant-btn.config-activate-button-active:not(.ant-btn-primary):not(.ant-btn-text):not(.ant-btn-link) {
-  background: var(--clay-matcha) !important;
+.config-list .config-activate-radio:disabled {
+  cursor: default;
 }
 
 .config-list .config-list-item-selected .ant-btn.ant-btn-text,

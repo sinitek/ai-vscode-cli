@@ -17,24 +17,29 @@ function extractSection(source: string, startMarker: string, endMarker: string):
   return source.slice(start, end);
 }
 
-test("renders a compact text-only activation button without changing config actions", () => {
+test("renders a leftmost radio group for activation without changing config actions", () => {
   const source = loadUiSource();
   const listPanel = extractSection(source, "const ConfigListPanel =", "const jv =");
-  const activationButton = listPanel.match(
-    /be\.jsx\(xn, \{\s+type: "default",\s+size: "small",\s+className: Y[\s\S]*?children: Y \? "更新配置" : "激活",\s+\}\)/,
+  const activationRadio = listPanel.match(
+    /be\.jsx\("input", \{\s+type: "radio",[\s\S]*?onChange: \(\) => \{\},\s+\}\)/,
   );
 
-  if (!activationButton) {
-    assert.fail("activation button block should exist");
+  if (!activationRadio) {
+    assert.fail("activation radio block should exist");
   }
-  const activationButtonSource = activationButton[0];
-  assert.doesNotMatch(activationButtonSource, /icon: be\.jsx\(KH/);
-  assert.match(activationButtonSource, /config-activate-button-active/);
-  assert.match(activationButtonSource, /loading: Q/);
-  assert.match(activationButtonSource, /onClick: \(ae\) => B\(ae, F\)/);
+  const activationRadioSource = activationRadio[0];
+  assert.match(listPanel, /className: "config-list-main"/);
+  assert.match(activationRadioSource, /config-activate-radio-active/);
+  assert.match(activationRadioSource, /name: `config-active-\$\{k\}`/);
+  assert.match(activationRadioSource, /checked: Y/);
+  assert.match(activationRadioSource, /disabled: Boolean\(p\)/);
+  assert.match(activationRadioSource, /if \(!Y && !p\) B\(ae, F\)/);
+  assert.match(listPanel, /role: "radiogroup"/);
+  assert.doesNotMatch(listPanel, /config-activate-button/);
+  assert.doesNotMatch(listPanel, /children: Y \? "更新配置" : "激活"/);
   assert.match(listPanel, /className: "config-list-actions",\s+size: 4/);
 
-  assert.match(listPanel, /onClick: \(\) => I\(k\),\s+children: "添加配置"/);
+  assert.match(listPanel, /onClick: \(\) => I\(k\),\s+children: "添加"/);
   assert.match(listPanel, /icon: be\.jsx\(zH, \{\}\),\s+onClick: \(ae\) => V\(ae, F\),\s+title: "复制配置"/);
   assert.match(listPanel, /icon: be\.jsx\(FH, \{\}\),\s+onClick: \(ae\) => W\(ae, F\),\s+title: "重命名"/);
   assert.match(listPanel, /icon: be\.jsx\(AH, \{\}\),\s+onClick: \(ae\) => A\(ae, F\),\s+title: "删除配置"/);

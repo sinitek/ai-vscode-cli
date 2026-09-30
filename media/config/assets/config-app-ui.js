@@ -455,12 +455,14 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             size: "small",
             icon: be.jsx(oO, {}),
             onClick: () => I(k),
-            children: "添加配置",
+            children: "添加",
           }),
           headStyle: { paddingLeft: "4px", paddingRight: "4px" },
           bodyStyle: { paddingLeft: "4px", paddingRight: "4px" },
           style: { marginBottom: "8px" },
           children: be.jsx("div", {
+            role: "radiogroup",
+            "aria-label": `${G}配置`,
             onDragOver: (F) => N(F, ""),
             onDrop: (F) => D(F, k),
             children: be.jsx(Bs, {
@@ -499,16 +501,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                     size: 4,
                     children: [
                       be.jsx(xn, {
-                        type: "default",
-                        size: "small",
-                        className: Y
-                          ? "config-activate-button config-activate-button-active"
-                          : "config-activate-button",
-                        loading: Q,
-                        onClick: (ae) => B(ae, F),
-                        children: Y ? "更新配置" : "激活",
-                      }),
-                      be.jsx(xn, {
                         type: "text",
                         size: "small",
                         icon: be.jsx(zH, {}),
@@ -533,7 +525,24 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                     ],
                   }),
                   children: be.jsxs($s, {
+                    className: "config-list-main",
                     children: [
+                      be.jsx("input", {
+                        type: "radio",
+                        className: Y
+                          ? "config-activate-radio config-activate-radio-active"
+                          : "config-activate-radio",
+                        name: `config-active-${k}`,
+                        checked: Y,
+                        disabled: Boolean(p),
+                        "aria-label": "激活",
+                        title: "激活",
+                        onClick: (ae) => {
+                          ae.stopPropagation();
+                          if (!Y && !p) B(ae, F);
+                        },
+                        onChange: () => {},
+                      }),
                       be.jsx("span", {
                         className: "config-name",
                         style: { fontWeight: K ? 600 : 500 },
@@ -7748,7 +7757,7 @@ const ConfigManagerLayout = () => {
               className: mobileNavigationOpen
                 ? "config-app-sidebar config-app-sidebar-open"
                 : "config-app-sidebar",
-              width: 500,
+              width: 306,
               style: {
                 background: "var(--bg-color-container)",
                 borderRight: "1px solid var(--border-color)",

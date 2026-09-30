@@ -592,6 +592,58 @@ test("config manager panel falls back to the editor surface when Zen Mode is una
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
     2,
   );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
+    0,
+  );
+});
+
+test("config manager panel opens at the maximum editor width and restores splits on close", async () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+
+  manager.show();
+  await delay(0);
+  await delay(0);
+
+  const openedCommands = harness.commandCalls.map((call) => call[0]);
+  assert.deepEqual(
+    openedCommands.filter((command) => command !== "reveal"),
+    [
+      "workbench.action.toggleZenMode",
+      "workbench.action.maximizeEditorHideSidebar",
+      "workbench.action.toggleCenteredLayout",
+    ],
+  );
+
+  manager.show();
+  await delay(0);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    1,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
+    2,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleCenteredLayout").length,
+    1,
+  );
+
+  harness.disposeHandler?.();
+  await delay(0);
+  await delay(0);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    2,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
+    1,
+  );
+  manager.syncActiveConfig();
 });
 
 test("config manager panel routes request actions, change notifications, and errors through response messages", async () => {
@@ -1122,7 +1174,7 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(listPanel, /locale: \{ emptyText: "暂无配置" \}/);
   assert.match(listPanel, /children: "暂无配置可导出"/);
   assert.match(listPanel, /onClick: \(\) => I\(k\)/);
-  assert.match(listPanel, /onClick: \(ae\) => B\(ae, F\)/);
+  assert.match(listPanel, /if \(!Y && !p\) B\(ae, F\)/);
 
   assert.match(editorPanel, /className: "config-empty-state"/);
   assert.match(editorPanel, /children: "请从左侧选择一个配置"/);
@@ -1174,7 +1226,7 @@ test("configuration UI asset exposes platform switching, empty/error states, and
     ".config-mobile-directory-button",
     ".config-mobile-sidebar-backdrop",
     ".config-editor-shell",
-    ".config-list .config-activate-button",
+    ".config-list .config-activate-radio",
   ]) {
     assert.ok(cssSource.includes(selector), `compact stylesheet should keep ${selector}`);
   }

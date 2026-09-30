@@ -37,6 +37,8 @@ test("configuration workspace and panels use compact desktop spacing", () => {
   assert.match(rule(css, ".config-app-close-button"), /\bborder:\s*1px solid var\(--clay-border\);/);
   assert.match(rule(css, ".config-app-close-button:hover,\n.config-app-close-button:focus-visible"), /\bbackground:\s*var\(--clay-text\);/);
   assert.match(rule(css, ".config-app-sidebar"), /\bheight:\s*100%;/);
+  assert.match(rule(css, ".config-app-sidebar"), /\bwidth:\s*306px !important;/);
+  assert.match(rule(css, ".config-app-sidebar"), /\bmax-width:\s*306px !important;/);
   assert.match(rule(css, ".config-app-content"), /\bheight:\s*100%;/);
   assert.match(rule(css, ".config-sidebar-panel"), /\bpadding:\s*8px !important;/);
   assert.match(rule(css, ".config-sidebar-panel"), /\boverflow:\s*auto;/);
@@ -96,16 +98,16 @@ test("configuration mobile overrides preserve zero workspace padding", () => {
   assert.match(rule(phone, ".config-list .config-list-item"), /\bgap:\s*4px;/);
 });
 
-test("configuration activate button has a compact text-safe minimum width", () => {
-  const activateButton = rule(
+test("configuration activate control is a compact leftmost radio", () => {
+  const activateRadio = rule(
     css,
-    ".config-list .config-activate-button,\n.config-list .config-list-item-selected .config-activate-button",
+    ".config-list .config-activate-radio,\n.config-list .config-list-item-selected .config-activate-radio",
   );
-  assert.match(activateButton, /\bmin-width:\s*45px;/);
-  assert.match(activateButton, /\bheight:\s*24px;/);
-  assert.match(activateButton, /\bpadding:\s*0 3px;/);
-  assert.match(activateButton, /\bfont-size:\s*calc\(80% \+ 1px\);/);
-  assert.doesNotMatch(activateButton, /\bmin-width:\s*76px;/);
+  assert.match(activateRadio, /\bwidth:\s*14px;/);
+  assert.match(activateRadio, /\bheight:\s*14px;/);
+  assert.match(activateRadio, /\bmargin:\s*0;/);
+  assert.match(rule(css, ".config-list .config-list-main"), /\bflex:\s*1 1 auto;/);
+  assert.doesNotMatch(css, /\.config-activate-button/);
 });
 
 test("configuration action buttons use compact square shared styling", () => {

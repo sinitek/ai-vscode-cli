@@ -21,10 +21,17 @@ type ConfigManagerHandlers = {
 };
 
 const CONFIG_ZEN_MODE_COMMAND = "workbench.action.toggleZenMode";
+const CONFIG_MAXIMIZE_EDITOR_COMMAND = "workbench.action.maximizeEditorHideSidebar";
+const CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND = "workbench.action.toggleCenteredLayout";
+const CONFIG_RESTORE_EDITOR_GROUP_COMMAND = "workbench.action.toggleMaximizeEditorGroup";
 
 export class ConfigManagerPanel {
   private panel: vscode.WebviewPanel | undefined;
   private zenModeEnteredByPanel = false;
+  private zenModeReady = false;
+  private editorGroupMaximizedByPanel = false;
+  private centeredLayoutAdjustedByPanel = false;
+  private editorWidthRequest = 0;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -95,29 +102,99 @@ export class ConfigManagerPanel {
 
   private enterZenMode(): void {
     if (this.zenModeEnteredByPanel) {
+      if (this.zenModeReady) {
+        void this.expandEditorToMaximumWidth();
+      }
       return;
     }
     this.zenModeEnteredByPanel = true;
-    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND)).catch((error: unknown) => {
-      this.zenModeEnteredByPanel = false;
-      void logInfo("config-zen-mode-unavailable", {
-        command: CONFIG_ZEN_MODE_COMMAND,
-        error: error instanceof Error ? error.message : String(error),
+    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND))
+      .then(() => {
+        this.zenModeReady = true;
+        return this.expandEditorToMaximumWidth();
+      })
+      .catch((error: unknown) => {
+        this.zenModeEnteredByPanel = false;
+        this.zenModeReady = false;
+        void logInfo("config-zen-mode-unavailable", {
+          command: CONFIG_ZEN_MODE_COMMAND,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
   }
 
   private leaveZenMode(): void {
+    const shouldRestoreEditorGroup = this.editorGroupMaximizedByPanel;
+    this.editorWidthRequest += 1;
+    this.editorGroupMaximizedByPanel = false;
+    this.centeredLayoutAdjustedByPanel = false;
+    this.zenModeReady = false;
+    const restoreEditorGroup = () => {
+      if (!shouldRestoreEditorGroup) {
+        return;
+      }
+      void Promise.resolve(vscode.commands.executeCommand(CONFIG_RESTORE_EDITOR_GROUP_COMMAND)).catch((error: unknown) => {
+        void logInfo("config-editor-width-restore-failed", {
+          command: CONFIG_RESTORE_EDITOR_GROUP_COMMAND,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    };
     if (!this.zenModeEnteredByPanel) {
+      restoreEditorGroup();
       return;
     }
     this.zenModeEnteredByPanel = false;
-    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND)).catch((error: unknown) => {
-      void logInfo("config-zen-mode-restore-failed", {
-        command: CONFIG_ZEN_MODE_COMMAND,
+    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND))
+      .catch((error: unknown) => {
+        void logInfo("config-zen-mode-restore-failed", {
+          command: CONFIG_ZEN_MODE_COMMAND,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(restoreEditorGroup);
+  }
+
+  private async expandEditorToMaximumWidth(): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+    const request = ++this.editorWidthRequest;
+    this.editorGroupMaximizedByPanel = true;
+    try {
+      await vscode.commands.executeCommand(CONFIG_MAXIMIZE_EDITOR_COMMAND);
+    } catch (error: unknown) {
+      if (request === this.editorWidthRequest) {
+        this.editorGroupMaximizedByPanel = false;
+      }
+      void logInfo("config-editor-width-expand-failed", {
+        command: CONFIG_MAXIMIZE_EDITOR_COMMAND,
         error: error instanceof Error ? error.message : String(error),
       });
-    });
+      return;
+    }
+    if (!this.panel || request !== this.editorWidthRequest || this.centeredLayoutAdjustedByPanel) {
+      return;
+    }
+    if (!this.shouldDisableZenCenteredLayout()) {
+      return;
+    }
+    try {
+      await vscode.commands.executeCommand(CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND);
+      if (!this.panel || request !== this.editorWidthRequest) {
+        return;
+      }
+      this.centeredLayoutAdjustedByPanel = true;
+    } catch (error: unknown) {
+      void logInfo("config-editor-width-expand-failed", {
+        command: CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private shouldDisableZenCenteredLayout(): boolean {
+    return vscode.workspace.getConfiguration("zenMode").get<boolean>("centerLayout", true) !== false;
   }
 
   public syncActiveConfig(): void {
