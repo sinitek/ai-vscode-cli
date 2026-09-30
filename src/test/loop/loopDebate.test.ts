@@ -30,6 +30,7 @@ import {
   normalizeLoopDebateSessionId,
   normalizeLoopDebateModeratorAction,
   normalizeLoopDebateSpeakerIds,
+  latestLoopGroupChatSubtaskStartedAt,
   parseLoopDebateChatTranscript,
   resolveLoopTaskRunControlState,
   selectDefaultLoopDebateOpeningSpeakerIds,
@@ -936,4 +937,34 @@ test("summarizes missing consensus as no consensus reached", () => {
   assert.equal(summary.title, "红蓝对抗未达成一致");
   assert.equal(summary.estimatedRemainingRounds, undefined);
   assert.match(summary.finalSummary, /Consensus has not been reached/u);
+});
+
+test("uses each subtask join time and keeps the latest restart", () => {
+  const startedAt = latestLoopGroupChatSubtaskStartedAt([
+    "# Loop 主从群聊记录",
+    "",
+    "## 子任务加入：【子任务 1：Alpha】",
+    "- 成员 ID：alpha",
+    "- 时间：2026-09-29T05:59:34.578Z",
+    "- 状态：running",
+    "",
+    "## 子任务发言：【子任务 1：Alpha】",
+    "- 成员 ID：alpha",
+    "- 时间：2026-09-29T08:00:00.000Z",
+    "",
+    "## 子任务加入：title（beta）",
+    "- 时间：2026-09-29T06:10:00.000Z",
+    "",
+    "## 子任务加入：【子任务 1：Alpha】",
+    "- 成员 ID：alpha",
+    "- 时间：2026-09-29T07:27:25.803Z",
+    "- 状态：running",
+    "",
+    "## 子任务加入：【无时间】",
+    "- 成员 ID：gamma",
+    "- 状态：running",
+  ].join("\n"));
+  assert.equal(startedAt.get("alpha"), Date.parse("2026-09-29T07:27:25.803Z"));
+  assert.equal(startedAt.get("beta"), Date.parse("2026-09-29T06:10:00.000Z"));
+  assert.equal(startedAt.has("gamma"), false);
 });

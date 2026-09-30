@@ -191,11 +191,31 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           clearTimeout(assistantDeltaRenderTimers[messageId]);
           delete assistantDeltaRenderTimers[messageId];
         }
-        delete assistantFinalMarkdownPending[messageId];
+        delete assistantStreamingMarkdownPending[messageId];
+      }
+
+      function isAssistantMarkdownRenderPending(message) {
+        return Boolean(
+          message
+          && message.id
+          && typeof assistantStreamingMarkdownPending !== "undefined"
+          && assistantStreamingMarkdownPending[message.id]
+        );
+      }
+
+      function shouldDeferAssistantMarkdownWhileStreaming(message, messageIndex) {
+        if (!message || message.role !== "assistant") {
+          return false;
+        }
+        if (isFinalAssistantSummaryMessage(messageIndex)) {
+          return true;
+        }
+        return isThinkingLikeMessage(message, getTracePresentation(message.content || ""));
       }
 
       function assistantMarkdownIdleDelay(messageIndex) {
-        return isFinalAssistantSummaryMessage(messageIndex)
+        const message = Array.isArray(state.messages) ? state.messages[messageIndex] : null;
+        return shouldDeferAssistantMarkdownWhileStreaming(message, messageIndex)
           ? ASSISTANT_FINAL_MARKDOWN_IDLE_MS
           : ASSISTANT_DELTA_MARKDOWN_IDLE_MS;
       }
@@ -210,12 +230,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return;
         }
         const delay = assistantMarkdownIdleDelay(messageIndex);
-        if (delay === ASSISTANT_FINAL_MARKDOWN_IDLE_MS) {
-          assistantFinalMarkdownPending[messageId] = true;
+        if (shouldDeferAssistantMarkdownWhileStreaming(state.messages[messageIndex], messageIndex)) {
+          assistantStreamingMarkdownPending[messageId] = true;
         }
         assistantDeltaRenderTimers[messageId] = setTimeout(() => {
           delete assistantDeltaRenderTimers[messageId];
-          delete assistantFinalMarkdownPending[messageId];
+          delete assistantStreamingMarkdownPending[messageId];
           const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
           if (renderedIndex === -1) {
             return;
@@ -411,18 +431,17 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return content;
       }
 
+      function renderAssistantStreamingPlainText(content) {
+        return '<div class="assistant-message-content assistant-message-content-streaming">' + escapeHtml(content) + '</div>';
+      }
+
       function renderAssistantMessageContent(message, messageIndex) {
         const content = getAssistantMessageContentForDisplay(message);
         const presentation = getTracePresentation(content);
+        if (isAssistantMarkdownRenderPending(message)) {
+          return renderAssistantStreamingPlainText(content);
+        }
         if (isFinalAssistantSummaryMessage(messageIndex)) {
-          if (
-            message
-            && message.id
-            && typeof assistantFinalMarkdownPending !== "undefined"
-            && assistantFinalMarkdownPending[message.id]
-          ) {
-            return '<div class="assistant-message-content assistant-message-content-streaming">' + escapeHtml(content) + '</div>';
-          }
           return '<div class="assistant-message-content assistant-message-content-final">' + renderMarkdown(content) + '</div>';
         }
         if (

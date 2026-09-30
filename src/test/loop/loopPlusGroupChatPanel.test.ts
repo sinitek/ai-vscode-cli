@@ -78,9 +78,13 @@ function task(loopPlus: unknown, overrides: Partial<LoopTaskRecord> = {}): LoopT
 }
 
 function build(loopPlus: unknown, overrides: Partial<LoopTaskRecord> = {}): PanelState {
+  return buildWithChat(loopPlus, overrides, "# Loop chat\n\nhello\n");
+}
+
+function buildWithChat(loopPlus: unknown, overrides: Partial<LoopTaskRecord>, chat: string): PanelState {
   return buildLoopDebateChatPanelStateWithDeps(task(loopPlus, overrides), {
     collectRunningLoopTaskIds: () => new Set<string>(),
-    readTextFileIfNonEmpty: () => "# Loop chat\n\nhello\n",
+    readTextFileIfNonEmpty: () => chat,
     fileExists: () => true,
     writeTextFileEnsuringDir: () => {
       throw new Error("projection must not write");
@@ -506,4 +510,63 @@ test("shows each subtask's own last execution start instead of a shared update t
   assert.notEqual(delta, alpha);
   assert.equal(charlie, "");
   assert.match(page, /子任务 3：Charlie[\s\S]*最后启动：未启动/u);
+});
+
+test("recovers distinct historical start times from subtask join events", () => {
+  const sharedUpdatedAt = Date.UTC(2026, 8, 29, 10, 58, 54);
+  const alphaStartedAt = Date.parse("2026-09-29T05:59:34.578Z");
+  const bravoRestartedAt = Date.parse("2026-09-29T07:27:25.803Z");
+  const echoRoundStartedAt = Date.parse("2026-09-29T04:15:00.000Z");
+  const deltaRecordedAt = Date.parse("2026-09-29T03:05:00.000Z");
+  const chat = [
+    "# Loop 主从群聊记录",
+    "## 子任务加入：【子任务 1：Alpha】",
+    "- 成员 ID：A",
+    "- 时间：2026-09-29T05:59:34.578Z",
+    "## 子任务加入：【子任务 2：Bravo】",
+    "- 成员 ID：B",
+    "- 时间：2026-09-29T06:10:00.000Z",
+    "## 子任务加入：【子任务 2：Bravo】",
+    "- 成员 ID：B",
+    "- 时间：2026-09-29T07:27:25.803Z",
+    "## 子任务发言：【子任务 3：Charlie】",
+    "- 成员 ID：C",
+    "- 时间：2026-09-29T08:00:00.000Z",
+    "## 子任务加入：【子任务 4：Delta】",
+    "- 成员 ID：D",
+    "- 时间：2026-09-29T09:00:00.000Z",
+  ].join("\n");
+  const subTasks = [
+    { id: "A", title: "Alpha", status: "completed" as const, updatedAt: sharedUpdatedAt },
+    { id: "B", title: "Bravo", status: "completed" as const, updatedAt: sharedUpdatedAt },
+    { id: "C", title: "Charlie", status: "completed" as const, updatedAt: sharedUpdatedAt },
+    { id: "D", title: "Delta", status: "completed" as const, updatedAt: sharedUpdatedAt, lastStartedAt: deltaRecordedAt },
+    { id: "E", title: "Echo", status: "completed" as const, updatedAt: sharedUpdatedAt },
+  ];
+  const rounds = [{
+    round: 1,
+    role: "subtask" as const,
+    subtaskId: "E",
+    status: "end" as const,
+    startedAt: echoRoundStartedAt,
+    endedAt: echoRoundStartedAt + 1_000,
+  }];
+  for (const loopPlus of [parallelSnapshot(), undefined]) {
+    const state = buildWithChat(loopPlus, {
+      ...(loopPlus ? { schedulingMode: "event_driven" as const } : { schedulingMode: "classic" as const, loopPlus: undefined }),
+      updatedAt: sharedUpdatedAt,
+      subTasks,
+      rounds,
+    }, chat);
+    const execution = state.rounds.find((round) => round.kind === "execution");
+    assert.ok(execution);
+    const startedAtById = new Map(execution.participants.map((item) => [item.id, item.lastStartedAt]));
+    assert.equal(startedAtById.get("A"), alphaStartedAt);
+    assert.equal(startedAtById.get("B"), bravoRestartedAt);
+    assert.equal(startedAtById.get("C"), null);
+    assert.equal(startedAtById.get("D"), deltaRecordedAt);
+    assert.equal(startedAtById.get("E"), echoRoundStartedAt);
+    assert.notEqual(startedAtById.get("A"), sharedUpdatedAt);
+    assert.notEqual(startedAtById.get("B"), sharedUpdatedAt);
+  }
 });

@@ -676,6 +676,31 @@ export function parseLoopDebateChatTranscript(content: string): LoopDebateChatTr
   };
 }
 
+const LOOP_GROUP_CHAT_STARTED_AT_PATTERN = /(?:^|\n)-\s*时间：\s*([^\s]+)/u;
+
+export function latestLoopGroupChatSubtaskStartedAt(content: string): ReadonlyMap<string, number> {
+  const latest = new Map<string, number>();
+  for (const segment of parseLoopDebateChatTranscript(content).segments) {
+    if (segment.kind !== "subtask-joined") {
+      continue;
+    }
+    const subtaskId = segment.actorId?.trim();
+    if (!subtaskId) {
+      continue;
+    }
+    const matched = segment.body.match(LOOP_GROUP_CHAT_STARTED_AT_PATTERN);
+    const startedAt = matched?.[1] ? Date.parse(matched[1]) : Number.NaN;
+    if (!Number.isFinite(startedAt)) {
+      continue;
+    }
+    const previous = latest.get(subtaskId);
+    if (previous === undefined || startedAt >= previous) {
+      latest.set(subtaskId, startedAt);
+    }
+  }
+  return latest;
+}
+
 function collectBlockingLoopDebateParticipantIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];

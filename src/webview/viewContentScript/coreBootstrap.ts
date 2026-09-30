@@ -444,7 +444,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       let historySessionExportPendingKey = "";
       let resizeFrame = 0;
       const assistantDeltaRenderTimers = Object.create(null);
-      const assistantFinalMarkdownPending = Object.create(null);
+      const assistantStreamingMarkdownPending = Object.create(null);
       let taskListTextUpdateTimer = null;
       const TAB_RUNTIME_DEFAULT_KEY = "__default__";
       const conversationRuntimeByTabId = Object.create(null);

@@ -1628,6 +1628,90 @@ test("batches assistant delta markdown rendering while streaming", () => {
   assert.doesNotMatch(finalBubble?.innerHTML || "", /assistant-message-content-streaming/);
 });
 
+test("keeps thinking bubbles as plain text while streaming appends", () => {
+  let markdownParseCount = 0;
+  const marked = {
+    Renderer: class {
+      html(): string {
+        return "";
+      }
+    },
+    parse(value: string): string {
+      markdownParseCount += 1;
+      return `<p>${value}</p>`;
+    },
+  };
+  const { api, document, window } = createRuntimeHarness(marked);
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.renderMessages();
+
+  const bubbleHtml = (): string => {
+    const bubble = document.getElementById("messages").querySelector(".bubble");
+    return bubble?.innerHTML || "";
+  };
+  const latestDeferredTimerId = (): number | undefined => {
+    const deferred = (Array.from(window.timerDelays.entries()) as Array<[number, number]>)
+      .filter((entry) => entry[1] === 3000);
+    return deferred.length ? deferred[deferred.length - 1][0] : undefined;
+  };
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "thinking-stream",
+    content: "hello",
+    kind: "thinking",
+  });
+  assert.equal(markdownParseCount, 0);
+  assert.match(bubbleHtml(), /assistant-message-content-streaming/);
+  assert.match(bubbleHtml(), /hello/);
+  assert.doesNotMatch(bubbleHtml(), /<p>/);
+  const firstTimerId = latestDeferredTimerId();
+  assert.equal(typeof firstTimerId, "number");
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "thinking-stream",
+    content: "\n**world**",
+    kind: "thinking",
+  });
+  assert.equal(markdownParseCount, 0);
+  const streaming = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
+  assert.ok(streaming);
+  assert.match(streaming?.textContent || "", /hello/);
+  assert.match(streaming?.textContent || "", /\*\*world\*\*/);
+  const resetTimerId = latestDeferredTimerId();
+  assert.equal(typeof resetTimerId, "number");
+  assert.notEqual(resetTimerId, firstTimerId);
+
+  api.renderMessages();
+  assert.equal(markdownParseCount, 0);
+  assert.match(bubbleHtml(), /assistant-message-content-streaming/);
+  assert.match(bubbleHtml(), /\*\*world\*\*/);
+  assert.doesNotMatch(bubbleHtml(), /<p>/);
+
+  const idleRender = window.timers.get(resetTimerId as number) as (() => void) | undefined;
+  assert.equal(typeof idleRender, "function");
+  window.timers.delete(resetTimerId as number);
+  idleRender?.();
+  assert.equal(markdownParseCount, 1);
+  assert.match(bubbleHtml(), /<p>hello/);
+  assert.doesNotMatch(bubbleHtml(), /assistant-message-content-streaming/);
+
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "thinking-stream",
+    content: " more",
+    kind: "thinking",
+  });
+  assert.equal(markdownParseCount, 1);
+  assert.ok(document.getElementById("messages").querySelector(".assistant-message-content-streaming"));
+  assert.equal(typeof latestDeferredTimerId(), "number");
+});
+
 test("rejects attachment selections over webview limits before reading", async () => {
   const { api, document, posted } = createRuntimeHarness();
   const files = Array.from({ length: 11 }, (_, index) => ({

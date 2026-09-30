@@ -65,6 +65,7 @@ import {
   formatLoopGroupChatMemberName,
   LOOP_DEBATE_MAX_DIALOGUE_TURNS,
   LOOP_MAIN_SUB_CHAT_ROUND_KEY,
+  latestLoopGroupChatSubtaskStartedAt,
   parseLoopDebateChatTranscript,
   resolveLoopTaskRunControlState,
 } from "./loopDebate";
@@ -1129,13 +1130,18 @@ function resolveLoopMemberLastStartedAt(
   status: string,
   updatedAt: number | undefined,
   subtaskId?: string,
+  chatStartedAt?: number,
 ): number | null {
   if (role === "subtask") {
     const subtask = subtaskId ? task.subTasks.find((item) => item.id === subtaskId) : undefined;
     if (typeof subtask?.lastStartedAt === "number" && Number.isFinite(subtask.lastStartedAt)) {
       return subtask.lastStartedAt;
     }
-    return latestLoopMemberStartedAt(task, "subtask", subtaskId) ?? null;
+    const recorded = latestLoopMemberStartedAt(task, "subtask", subtaskId);
+    if (typeof recorded === "number") {
+      return recorded;
+    }
+    return typeof chatStartedAt === "number" && Number.isFinite(chatStartedAt) ? chatStartedAt : null;
   }
   const recorded = latestLoopMemberStartedAt(task, role, subtaskId);
   if (status === "pending" || status === "skipped") {
@@ -1162,6 +1168,7 @@ function buildLoopMainSubChatPanelRound(
   loopPlus: LoopPlusPanelProjection | null = null,
 ): LoopDebateChatPanelRound {
   const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
+  const joinedAtBySubtaskId = readLoopSubtaskJoinedStartedAt(chatFile, deps);
   if (loopPlus) {
     const mainTitle = getLoopMainSubChatMainTitle(task);
     return {
@@ -1204,6 +1211,7 @@ function buildLoopMainSubChatPanelRound(
             loopPlusMemberStatus(loopPlus, "subtask", subtask.id, subtask.status),
             subtask.updatedAt,
             subtask.id,
+            joinedAtBySubtaskId.get(subtask.id),
           ),
         })),
       ],
@@ -1238,6 +1246,7 @@ function buildLoopMainSubChatPanelRound(
       subtask.status,
       subtask.updatedAt,
       subtask.id,
+      joinedAtBySubtaskId.get(subtask.id),
     ),
   }));
   return {
@@ -1254,6 +1263,17 @@ function buildLoopMainSubChatPanelRound(
     participants: [mainParticipant, ...subtaskParticipants],
     moderatorDecisions: [],
   };
+}
+
+function readLoopSubtaskJoinedStartedAt(
+  chatFile: string,
+  deps: LoopDebateChatPanelStateBuilderDeps,
+): ReadonlyMap<string, number> {
+  if (!chatFile || !deps.fileExists(chatFile)) {
+    return new Map();
+  }
+  const content = deps.readTextFileIfNonEmpty(chatFile);
+  return content ? latestLoopGroupChatSubtaskStartedAt(content) : new Map();
 }
 
 function buildLoopMainSubChatActiveSpeaker(

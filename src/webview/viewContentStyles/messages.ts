@@ -130,5 +130,8 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
       .message.assistant .assistant-message-content-final > :last-child {
         margin-bottom: 0;
       }
+      .message.assistant .assistant-message-content-streaming {
+        white-space: pre-wrap;
+      }
 
 `;
