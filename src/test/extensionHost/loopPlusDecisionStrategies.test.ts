@@ -24,6 +24,8 @@ import {
   type LoopPlusDecisionStrategyPort,
 } from "../../extensionHost/loopPlusDecisionStrategies";
 
+import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+
 const subtask: LoopSubtaskDecision = {
   id: "child-1",
   title: "Document the decision strategy boundary",
@@ -68,7 +70,7 @@ function decisionStep(overrides: Partial<LoopPlusDecisionStepView> = {}): LoopPl
 }
 
 function decision(status: LoopPlusDecisionStatus, extra: Partial<LoopPlusDecision> = {}): LoopPlusDecision {
-  return { status, ...extra };
+  return withLoopPlusAcceptReviews({ status, ...extra });
 }
 
 function names(calls: readonly RecordedCall[]): string[] {
@@ -522,6 +524,43 @@ test("accept preserves the queue when submit fails and distinguishes a stopped p
   assert.deepEqual(retry.calls.at(-1)?.args, [true]);
 });
 
+test("accept rejects a batch whose reviews do not label every event", () => {
+  const registry = createLoopPlusDecisionStrategyRegistry();
+  const step = decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1", "evt-2"] });
+  const missing = createPort();
+  assert.equal(registry.accept(missing.port, step, decision("accept", {
+    reviewEventIds: ["evt-1", "evt-2"],
+    reviews: [],
+  })), "continue");
+  assert.deepEqual(missing.calls, [{ name: "protocolMiss", args: [true] }]);
+
+  const reversed = createPort();
+  assert.equal(registry.accept(reversed.port, step, decision("accept", {
+    reviewEventIds: ["evt-1", "evt-2"],
+    reviews: [
+      { reviewEventId: "evt-2", acceptance: "failed" },
+      { reviewEventId: "evt-1", acceptance: "passed" },
+    ],
+  })), "continue");
+  assert.deepEqual(reversed.calls, [{ name: "protocolMiss", args: [true] }]);
+
+  const passedWithSubtask = createPort();
+  assert.equal(registry.accept(
+    passedWithSubtask.port,
+    decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1"] }),
+    decision("accept", {
+      reviewEventId: "evt-1",
+      reviews: [{ reviewEventId: "evt-1", acceptance: "passed", subtaskIds: ["child-1"] }],
+      subtasks: [subtask],
+    }),
+  ), "continue");
+  assert.deepEqual(
+    passedWithSubtask.calls.find((call) => call.name === "submitReviewBatch")?.args,
+    [["evt-1"], [{ eventId: "evt-1", acceptance: "passed" }]],
+  );
+  assert.equal(passedWithSubtask.calls.some((call) => call.name === "dispatchSubtasks"), true);
+});
+
 test("accept marks a follow-up batch failed and commits controls only after submit", () => {
   const plan = { sealed: "accept-plan" } as unknown as LoopPlusDecisionControlPlan;
   const { port, calls } = createPort({
@@ -552,7 +591,7 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "persistEstimatedRounds",
     "queueView",
   ]);
-  assert.deepEqual(calls[3].args, [["evt-1"], "failed"]);
+  assert.deepEqual(calls[3].args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
   assert.deepEqual(calls[6].args, [1]);
   assert.equal(calls.find((call) => call.name === "commitControls")?.args[1], plan);
   assert.equal(names(calls).includes("applyControls"), false);
@@ -597,7 +636,7 @@ test("accept waits on the scheduler view and arms closeout only when that view i
   });
   assert.equal(registry.accept(busy.port, step, accepted), "wait");
   assert.deepEqual(names(busy.calls).slice(-3), ["queueView", "waitForInFlightWork", "persistRunning"]);
-  assert.deepEqual(busy.calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], "passed"]);
+  assert.deepEqual(busy.calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "passed" }]]);
   assert.equal(names(busy.calls).includes("armCloseout"), false);
 
   const idle = createPort({

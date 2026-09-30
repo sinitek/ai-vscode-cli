@@ -137,9 +137,19 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
   } else if (eventIds.length > 1) {
     completed.reviewEventIds = eventIds.slice();
   }
+  const acceptEventIds = eventIds.length > 0 ? eventIds.slice() : ["example-review-event-id"];
   const acceptConfirmation = eventIds.length > 1
-    ? { reviewEventIds: eventIds.slice() }
-    : { reviewEventId: eventIds[0] ?? "example-review-event-id" };
+    ? { reviewEventIds: acceptEventIds }
+    : { reviewEventId: acceptEventIds[0] };
+  const repairExample = eventIds.length > 1;
+  const acceptReviews = acceptEventIds.map((reviewEventId, index) => {
+    const launchesRepair = repairExample && index === acceptEventIds.length - 1;
+    return {
+      reviewEventId,
+      acceptance: launchesRepair ? "failed" : "passed",
+      ...(launchesRepair ? { subtaskIds: [subtask.id] } : {}),
+    };
+  });
   const reprompt = [
     "Continue this self-contained subtask inside its declared write scope only.",
     "Design key point: keep the public function signature stable and replace the failed branch with the corrected check.",
@@ -158,7 +168,8 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
       value: {
         status: "accept",
         ...acceptConfirmation,
-        subtasks: [],
+        reviews: acceptReviews,
+        subtasks: repairExample ? [subtask] : [],
       },
     },
     {
@@ -306,9 +317,13 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
+    "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId and acceptance, which is exactly passed or failed. A missing, extra, or reordered review rejects the decision.",
+    "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
+    "- When an event launches new subtasks, list those ids in that review's subtaskIds. Every subtask id must appear in exactly one subtaskIds array. A passed event may launch follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; the diff stays inside the authorized write scope; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report or the code.",
-    "- Do not send accept or completed while a checklist item fails. If a new subtask can repair it, accept only together with that repair subtask and name the failed check in its prompt. Otherwise send blocked, which confirms nothing.",
+    "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a new subtask, send blocked, which confirms nothing.",
+    "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
@@ -318,10 +333,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- controls actions are close or reprompt. close aborts that subtask and drops it without an acceptance event or acceptance count. reprompt aborts it and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt; JSON alone does not stop a process.",
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
-    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept. If it must wait for a still-running or pending execution, accept the batch with no new subtasks. A failed acceptance checklist still forbids accept. Do not use wait or dispatch while the batch is open.",
+    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept, and list its subtask ids on the review that needs the work. Passed reviews stay passed. If the new work must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. finalSummary is optional.",
     "- clarify asks the user to fill a form in the group chat and confirms nothing. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
-    "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks.",
+    "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
     "- When the acceptance batch has one event, completed must include that reviewEventId. When it has more than one, completed must include reviewEventIds in that order and must not include reviewEventId. When the acceptance batch is (none), omit both. A completed object missing any required field, or containing a failed check, is rejected.",
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",

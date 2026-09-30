@@ -19,12 +19,14 @@ const {
   selectLoopPlusInvocationRun,
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
 
+import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+
 function longPrompt(id: string, file: string): string {
   return `Implement ${id} without editing the parent task record or scheduler snapshot. Write scope: ${file}. Report only the attempt result.`;
 }
 
 function decision(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(withLoopPlusAcceptReviews(value));
 }
 
 function subtask(id: string, file: string, conflictGroup?: string) {

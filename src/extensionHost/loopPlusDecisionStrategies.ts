@@ -53,7 +53,7 @@ export interface LoopPlusDecisionStrategyPort {
   dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]): void;
   submitReviewBatch(
     eventIds: readonly string[],
-    acceptance: "passed" | "failed",
+    acceptance: "passed" | "failed" | readonly LoopPlusDecisionReviewVerdict[],
   ): { ok: boolean };
   requeueCurrentReview(): void;
   persistRunning(): void;
@@ -88,6 +88,34 @@ export function confirmedLoopPlusReviewIds(decision: LoopPlusDecision): string[]
 
 export function sameLoopPlusReviewIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+export type LoopPlusDecisionReviewVerdict = {
+  eventId: string;
+  acceptance: "passed" | "failed";
+};
+
+export function loopPlusAcceptVerdicts(
+  decision: LoopPlusDecision,
+  eventIds: readonly string[],
+): LoopPlusDecisionReviewVerdict[] | null {
+  const reviews = decision.reviews;
+  if (!reviews || reviews.length !== eventIds.length) {
+    return null;
+  }
+  const verdicts: LoopPlusDecisionReviewVerdict[] = [];
+  for (let index = 0; index < eventIds.length; index += 1) {
+    const review = reviews[index];
+    const eventId = eventIds[index];
+    if (!review || review.reviewEventId !== eventId) {
+      return null;
+    }
+    if (review.acceptance !== "passed" && review.acceptance !== "failed") {
+      return null;
+    }
+    verdicts.push({ eventId, acceptance: review.acceptance });
+  }
+  return verdicts;
 }
 
 export function plannedLoopPlusLaunchCount(decision: LoopPlusDecision): number {
@@ -201,6 +229,10 @@ function applyAcceptDecision(
   if (step.kind !== "review" || !sameLoopPlusReviewIds(confirmedLoopPlusReviewIds(decision), step.eventIds)) {
     return port.protocolMiss(step.eventIds.length > 0);
   }
+  const verdicts = loopPlusAcceptVerdicts(decision, step.eventIds);
+  if (!verdicts) {
+    return port.protocolMiss(true);
+  }
   if (!port.confirmReviewWithinAcceptanceLimit(step.eventIds)) {
     return "stop";
   }
@@ -209,8 +241,7 @@ function applyAcceptDecision(
   if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
     return port.protocolMiss(true);
   }
-  const acceptance = (decision.subtasks?.length ?? 0) > 0 ? "failed" : "passed";
-  const submitted = port.submitReviewBatch(step.eventIds, acceptance);
+  const submitted = port.submitReviewBatch(step.eventIds, verdicts);
   if (!submitted.ok) {
     port.persistSnapshot();
     return port.queueView().parentStopped ? "stop" : port.protocolMiss(true);

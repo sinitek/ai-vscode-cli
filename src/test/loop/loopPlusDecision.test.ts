@@ -99,11 +99,13 @@ test("accepts zero-subtask review and explicit wait without confirming the curre
   const accept = parseLoopPlusDecision(JSON.stringify({
     status: "accept",
     reviewEventId: " loop-plus-finish:子任务:a:b ",
+    reviews: [{ reviewEventId: " loop-plus-finish:子任务:a:b ", acceptance: "passed" }],
     subtasks: [],
   }));
   assert.deepEqual(accept, {
     status: "accept",
     reviewEventId: "loop-plus-finish:子任务:a:b",
+    reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "passed" }],
   });
 
   const waiting = parseLoopPlusDecision([
@@ -113,6 +115,67 @@ test("accepts zero-subtask review and explicit wait without confirming the curre
   assert.deepEqual(waiting, { status: "wait" });
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "reviewEventId"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "subtasks"), false);
+});
+
+
+test("accept records each review verdict and the subtasks that review launches", () => {
+  const repair = subtask("repair-beta");
+  const followUp = subtask("follow-up-alpha");
+  const accepted = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", subtaskIds: ["follow-up-alpha"] },
+      { reviewEventId: "event-beta", acceptance: "failed", subtaskIds: ["repair-beta"] },
+    ],
+    subtasks: [repair, followUp],
+  }));
+  assert.deepEqual(accepted?.reviews, [
+    { reviewEventId: "event-alpha", acceptance: "passed", subtaskIds: ["follow-up-alpha"] },
+    { reviewEventId: "event-beta", acceptance: "failed", subtaskIds: ["repair-beta"] },
+  ]);
+  assert.deepEqual(accepted?.subtasks?.map((item) => item.id), ["repair-beta", "follow-up-alpha"]);
+
+  const rejected = [
+    {
+      status: "accept",
+      reviewEventIds: ["event-alpha", "event-beta"],
+      subtasks: [],
+    },
+    {
+      status: "accept",
+      reviewEventIds: ["event-alpha", "event-beta"],
+      reviews: [
+        { reviewEventId: "event-beta", acceptance: "failed" },
+        { reviewEventId: "event-alpha", acceptance: "passed" },
+      ],
+      subtasks: [],
+    },
+    {
+      status: "accept",
+      reviewEventId: "event-alpha",
+      reviews: [{ reviewEventId: "event-alpha", acceptance: "failed", subtaskIds: ["missing"] }],
+      subtasks: [],
+    },
+    {
+      status: "accept",
+      reviewEventId: "event-alpha",
+      reviews: [{ reviewEventId: "event-alpha", acceptance: "passed" }],
+      subtasks: [subtask("orphan")],
+    },
+    {
+      status: "accept",
+      reviewEventIds: ["event-alpha", "event-beta"],
+      reviews: [
+        { reviewEventId: "event-alpha", acceptance: "passed", subtaskIds: ["shared"] },
+        { reviewEventId: "event-beta", acceptance: "failed", subtaskIds: ["shared"] },
+      ],
+      subtasks: [subtask("shared")],
+    },
+  ];
+  rejected.forEach((value) => {
+    assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
+  });
 });
 
 test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown status", () => {
@@ -224,10 +287,16 @@ test("rejects decisions that would confirm a review implicitly or dispatch while
   const batch = parseLoopPlusDecision(JSON.stringify({
     status: "accept",
     reviewEventIds: [" event-1 ", "event-2"],
+    reviews: [
+      { reviewEventId: "event-1", acceptance: "passed" },
+      { reviewEventId: "event-2", acceptance: "passed" },
+    ],
     subtasks: [],
   }));
   assert.deepEqual(batch?.reviewEventIds, ["event-1", "event-2"]);
   assert.equal(batch?.reviewEventId, undefined);
+  assert.equal(batch?.reviews?.[0]?.acceptance, "passed");
+  assert.equal(batch?.reviews?.[1]?.acceptance, "passed");
 });
 
 test("parses blocked and completed without requiring estimated rounds", () => {
@@ -281,6 +350,7 @@ test("rejects illegal completed decisions instead of dropping failed evidence", 
     { ...completedFields(), reviewEventIds: ["event-2", "event-2"] },
     { ...completedFields(), reviewEventIds: [] },
     { ...completedFields(), reviewEventIds: ["  "] },
+    { ...completedFields("event-1"), reviews: [{ reviewEventId: "event-1", acceptance: "passed" }] },
   ];
   cases.forEach((value) => {
     assert.equal(normalizeLoopPlusDecision(value), null);
@@ -291,6 +361,7 @@ test("does not mutate the input decision", () => {
   const input = {
     status: "accept",
     reviewEventId: "event-1",
+    reviews: [{ reviewEventId: "event-1", acceptance: "passed" }],
     subtasks: [],
   };
   const before = JSON.stringify(input);
@@ -326,6 +397,7 @@ test("parses steer and controls without treating them as acceptance", () => {
   const accepted = parseLoopPlusDecision(JSON.stringify({
     status: "accept",
     reviewEventId: "event-1",
+    reviews: [{ reviewEventId: "event-1", acceptance: "passed" }],
     controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT }],
   }));
   assert.equal(accepted?.status, "accept");

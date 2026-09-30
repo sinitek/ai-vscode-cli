@@ -56,6 +56,11 @@ export type LoopPlusReviewItem = {
 
 export type LoopPlusReviewAcceptance = "passed" | "failed";
 
+export type LoopPlusReviewVerdict = {
+  eventId: string;
+  acceptance: LoopPlusReviewAcceptance;
+};
+
 export type LoopPlusSeenAttempt = {
   subtaskId: string;
   attemptId: string;
@@ -305,7 +310,7 @@ export type LoopPlusScheduler = {
   submitReview: (eventId: string) => LoopPlusSubmitReviewResult;
   submitReviewBatch: (
     eventIds: readonly string[],
-    acceptance?: LoopPlusReviewAcceptance,
+    acceptance?: LoopPlusReviewAcceptance | readonly LoopPlusReviewVerdict[],
   ) => LoopPlusSubmitReviewResult;
   wait: () => LoopPlusWaitResult;
   complete: () => LoopPlusCompleteResult;
@@ -546,7 +551,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
 
   function submitReviewBatch(
     eventIds: readonly string[],
-    acceptance?: LoopPlusReviewAcceptance,
+    acceptance?: LoopPlusReviewAcceptance | readonly LoopPlusReviewVerdict[],
   ): LoopPlusSubmitReviewResult {
     if (!Array.isArray(eventIds) || eventIds.length === 0) {
       return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
@@ -588,12 +593,16 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         return { ok: false, reason: "mismatch", followUp: followUp(), view: view() };
       }
     }
+    const verdicts = acceptanceByEvent(ids, acceptance);
+    if (verdicts === null) {
+      return { ok: false, reason: "invalid_event", followUp: followUp(), view: view() };
+    }
     const accepted = [currentReview, ...reviewQueue.slice(0, queued.length)];
     for (const item of accepted) {
       const seen = seenAttempts.find((entry) => entry.attemptId === item.attemptId);
       if (seen) {
         seen.disposition = "reviewed";
-        recordReviewedAcceptance(seen, acceptance);
+        recordReviewedAcceptance(seen, verdicts?.get(item.eventId));
       }
     }
     currentReview = null;
@@ -1458,6 +1467,34 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
   };
+}
+
+function acceptanceByEvent(
+  eventIds: readonly string[],
+  acceptance: LoopPlusReviewAcceptance | readonly LoopPlusReviewVerdict[] | undefined,
+): Map<string, LoopPlusReviewAcceptance> | undefined | null {
+  if (acceptance === undefined) {
+    return undefined;
+  }
+  if (acceptance === "passed" || acceptance === "failed") {
+    return new Map(eventIds.map((eventId) => [eventId, acceptance]));
+  }
+  if (!Array.isArray(acceptance) || acceptance.length !== eventIds.length) {
+    return null;
+  }
+  const verdicts = new Map<string, LoopPlusReviewAcceptance>();
+  for (let index = 0; index < eventIds.length; index += 1) {
+    const verdict = acceptance[index];
+    const eventId = eventIds[index];
+    if (!verdict || verdict.eventId !== eventId) {
+      return null;
+    }
+    if (verdict.acceptance !== "passed" && verdict.acceptance !== "failed") {
+      return null;
+    }
+    verdicts.set(eventId, verdict.acceptance);
+  }
+  return verdicts;
 }
 
 function recordReviewedAcceptance(

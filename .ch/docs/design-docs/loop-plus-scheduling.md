@@ -64,7 +64,7 @@
 出现 `confirmedEventIds` 或 `acceptedEventIds` 时整份决策为 `null`。`reviewEventId` 与 `reviewEventIds` 不能同时出现。解析器不能丢掉未声明的复数确认字段后假装只确认了当前项。
 
 - `dispatch`：必须有 1–6 个子任务，禁止携带 `reviewEventId` 或 `reviewEventIds`。宿主把子任务交给内核 dispatch；冲突或超额的进入 pending，不能只在新批次内部判断。
-- `accept`：确认本轮验收批次。只有一项时必须有一个 trim 后非空的 `reviewEventId`；多于一项时必须有按顺序完全相同的 `reviewEventIds`，不能只写第一项。可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。宿主必须先确认这组 id 就是本轮冻结的批次，再调用 `submitReviewBatch`；不一致时不得改确认成另一组。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
+- `accept`：确认本轮验收批次。只有一项时必须有一个 trim 后非空的 `reviewEventId`；多于一项时必须有按顺序完全相同的 `reviewEventIds`，不能只写第一项。可以带 0–6 个子任务。零个新任务时结果不带 `subtasks`。`reviews` 必填，与确认事件等长且同序；每项 `acceptance` 只能是 `passed` 或 `failed`。`subtaskIds` 标出该事件发起的子任务，所有子任务 id 必须恰好出现一次。某一条发起子任务不会把其它成功项记为失败。缺少、错序、未覆盖或重复关联的 `reviews` 整份拒绝。宿主必须先确认这组 id 就是本轮冻结的批次，再按每条 `reviews` 调用 `submitReviewBatch`；不一致时不得改确认成另一组。确认后仍有在途工作，父任务保持 `running`。追加新任务只走这条 `accept`，不走 `completed`。
 - `wait`：不能有 `reviewEventId` 或 `reviewEventIds`，也不能有新子任务。它不隐式确认当前项，不写失败总结，也不改变父状态。宿主不得把它实现成 `submitReview`，更不能因此进入 `blocked` 或 `needs-review`。没有验收批次的用户消息轮次里，只有仍有 running 或 pending 时才允许 `wait`；它表示先等在途子任务结束，而不是立刻派发一个占位子任务。没有在途工作时，`wait` 仍按原规则进入人工复核，不能空转。验收批次开着时不能 `wait`。
 - `steer`：中断正在执行或排队的子任务，不确认验收。不能带 `reviewEventId`、`reviewEventIds` 或 `subtasks`，且 `controls` 至少一条。验收批次开着时宿主拒绝单独的 `steer`；这时控制写在同一次 `accept` 上。
 - `controls`：可出现在 `dispatch`、`accept` 和 `steer`。每项 `id` 必须是当前 running 或 pending 的子任务，不能与同一次 `subtasks` 的 id 重复，自身也不能重复。`action` 只允许 `close` 或 `reprompt`。条数同样不超过 `loopPlusDecisionSubtaskMax`。`wait`、`blocked`、`completed` 只要出现 `controls`，整份决策拒绝。
@@ -72,7 +72,7 @@
 - `reprompt`：同样中止后，用 trim 后至少 80 字的新 prompt 为同一子任务 id 开启一个新 attempt。未给出的 title、writeFiles、conflictGroup 沿用原子任务。不要使用经典 Loop 的 `continue` 表示这个动作。
 - `blocked`：只表示真正无法继续，不是“还有任务在跑”。不能带 `reviewEventId`、`reviewEventIds` 或新子任务。`finalSummary` 可选。解析器不改父状态。
 - `clarify`：主任务对需求有疑惑，或方案缺少必须由用户决定的关键信息。不能带 `reviewEventId`、`reviewEventIds`、`subtasks` 或 `controls`。`clarification.formFields` 必须是 1 到 8 个可展示字段，选择类字段必须有选项。宿主在群聊弹出表单并等待；提交后把答案写入补充要求，有验收则继续验收，否则强制再问一次主任务。拒绝进入 `needs-review`。若在 AI 任务配置的人工交互超时内没有提交，默认 10 分钟，不进入 `needs-review`，而是要求主任务自行选择最佳方案继续，且不要再问同一问题。同一任务最多 8 次，超过后不再弹表单。Loop+ 开始或恢复执行时自动打开群聊。停止会清掉表单并取消等待。它不进入用户消息队列，也不是“我要提问”。
-- `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。没有验收批次时省略确认字段。只有一项时可以带一个非空 `reviewEventId`；多于一项时必须带顺序完全相同的 `reviewEventIds`。字段存在但为空，或两种确认字段同时出现，则整份拒绝。不能附带子任务。解析器不完成任务。宿主在确认字段与本轮冻结批次一致时先 `submitReviewBatch` 确认整批，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一批 `accept` 并追加子任务。没有任何剩余工作时，最后一批同样合法的 `completed` 可以确认该批并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
+- `completed`：必须同时有非空 `answerConclusion`、非空 `finalSummary`、`acceptance.passed === true`、至少一条且全部通过的 checks，以及至少一条且全部通过的 `requirementCoverage`。没有验收批次时省略确认字段。只有一项时可以带一个非空 `reviewEventId`；多于一项时必须带顺序完全相同的 `reviewEventIds`。字段存在但为空，或两种确认字段同时出现，则整份拒绝。不能附带子任务或 `reviews`。解析器不完成任务。宿主在确认字段与本轮冻结批次一致时先 `submitReviewBatch` 确认整批，再检查剩余 running、pending、当前验收和排队。剩余工作只拒绝把父记录写成 `completed`，不撤销这次确认，也不能再对同一批 `accept` 并追加子任务。没有任何剩余工作时，最后一批同样合法的 `completed` 可以确认该批并完成父任务，这不是非法完成。父任务被用户停止时仍不能完成。
 
 经典 Loop 的 `normalizeLoopMainDecision` 同样接受 `clarify`。它不派发子任务；宿主保存 `pendingClarification` 后回到编排循环等待群聊表单，提交后把答案写入补充要求并继续下一轮主任务决策。超时与 Loop+ 相同，不把任务打成 `needs-review`。经典 Loop 开始或恢复执行时自动打开群聊。
 
@@ -84,7 +84,7 @@
 
 调用策略之前，宿主保持原来的两道门禁：`review` 步骤先过 `heldBatchIntact`，当前事件必须是冻结批次的第一项，其余事件按 FIFO 对齐 `reviewQueue`；决策缺失、失败、过期、重复或不属于本批时继续走 `protocolMiss`。
 
-`clarify` 仍由 `runConsumer` 先 `await waitForLoopPlusClarification`。注册表中的 `clarify` 策略只返回 `stop`，不弹表单，也不再实现一次人工澄清。验收上限、超限后保留队列、控制 dry-run、冲突组、最大并发、用户消息确认和 `estimatedRemainingRounds` 的语义不变。`accept` 先计划并预览控制，确认批次成功后才提交控制；附带新子任务时本批记为 `failed`。`completed` 只有确认字段与冻结批次一致，且 `scheduler.complete()` 允许时，才写父任务完成。执行完成仍不等于验收完成。不引入批次屏障或共享轮次门。`event_driven` 与 classic 的分流不变。
+`clarify` 仍由 `runConsumer` 先 `await waitForLoopPlusClarification`。注册表中的 `clarify` 策略只返回 `stop`，不弹表单，也不再实现一次人工澄清。验收上限、超限后保留队列、控制 dry-run、冲突组、最大并发、用户消息确认和 `estimatedRemainingRounds` 的语义不变。`accept` 先计划并预览控制，确认批次成功后才提交控制。每条验收按自己的 `reviews[].acceptance` 记录；执行结果为 `failed` 或 `stopped` 时仍记为失败。发起子任务不再把整批记为失败。`completed` 只有确认字段与冻结批次一致，且 `scheduler.complete()` 允许时，才写父任务完成。执行完成仍不等于验收完成。不引入批次屏障或共享轮次门。`event_driven` 与 classic 的分流不变。
 
 ### 集合分离
 
@@ -102,7 +102,7 @@
 - 事件 ID 是 `loop-plus-finish#` 加两段十进制长度前缀。`buildLoopPlusFinishEventId("a:b", "c")` 为 `loop-plus-finish#3:a:b1:c`，`("a", "b:c")` 为 `loop-plus-finish#1:a3:b:c`。两者不同。
 - 未发布的 `loop-plus-finish:` 冒号拼接不做迁移。恢复时 `eventId` 必须等于该条 `subtaskId` / `attemptId` 的规范编码，并且能解析回同一对；否则抛出 `Invalid Loop+ scheduler snapshot`，不能映射到另一个 tuple。
 - 版本号仍是 1。宿主持久化整份 `snapshot()`，至少包括 `version`、`maxConcurrency`、`phase`、`parentStopped`、`completed`、`seq`、`wakeSeq`、`wakePending`、`userMessageQueue`、`running`、`pending`、`reviewQueue`、`currentReview` 和 `seenAttempts`。旧快照没有 `userMessageQueue` 时读成空数组；字段存在但不是去空白后的非空字符串数组则拒绝。加载时不信任 `phase` 文本。
-- `seenAttempts[*].outcome` 可选，只在执行结束后写入 `completed`、`failed` 或 `stopped`，验收后保留。旧快照没有该字段时仍可加载。`open` 不能带 outcome，非法 outcome 拒绝恢复。群聊不单独渲染当前验收、待验收队列、仍在运行、待启动和验收结果卡片，数量留在 Loop+ 汇总计数。成员列表不把调度 attempt 显示成验收状态。`seenAttempts[*].acceptance` 可选，只在确认验收时写入 `passed` 或 `failed`，且只有 `reviewed` 可以带它；旧快照没有该字段时仍可加载，非法值或写在非 reviewed attempt 上则拒绝恢复。同一次 accept 附带新子任务时，本批记为验收失败，即使执行 outcome 是 `completed`。没有新子任务的 accept，以及 `completed` 确认，在 outcome 为 `completed` 时显示验收成功。outcome 为 `failed` 或 `stopped` 仍是验收失败。旧快照缺少 `acceptance` 和 outcome 时，失败或停止的执行在子任务记录里是 `blocked`，只有这种记录显示验收失败，否则显示验收成功。尚未确认的队列仍是待验收，不提前写成验收失败。验收成功使用主题绿色，验收失败使用主题橙色。
+- `seenAttempts[*].outcome` 可选，只在执行结束后写入 `completed`、`failed` 或 `stopped`，验收后保留。旧快照没有该字段时仍可加载。`open` 不能带 outcome，非法 outcome 拒绝恢复。群聊不单独渲染当前验收、待验收队列、仍在运行、待启动和验收结果卡片，数量留在 Loop+ 汇总计数。成员列表不把调度 attempt 显示成验收状态。`seenAttempts[*].acceptance` 可选，只在确认验收时写入 `passed` 或 `failed`，且只有 `reviewed` 可以带它；旧快照没有该字段时仍可加载，非法值或写在非 reviewed attempt 上则拒绝恢复。`accept.reviews` 按事件记录 `passed` 或 `failed`。某一条发起修复或后续子任务时，只把 `subtaskIds` 指向它，不把同批其它成功项改成失败。`completed` 确认在 outcome 为 `completed` 时显示验收成功。outcome 为 `failed` 或 `stopped` 仍是验收失败。模型把失败或停止的执行标成 `passed` 时，宿主仍记为验收失败。旧快照缺少 `acceptance` 和 outcome 时，失败或停止的执行在子任务记录里是 `blocked`，只有这种记录显示验收失败，否则显示验收成功。尚未确认的队列仍是待验收，不提前写成验收失败。验收成功使用主题绿色，验收失败使用主题橙色。
 - `userMessageQueue` 只保存尚未被主任务查看的用户消息，不把消息本身变成验收事件。开始一轮验收时，当前项和当时已经排在 `reviewQueue` 里的完成事件一起确认；当时已经到达的用户消息也放进这一轮。没有待验收项时，积压消息仍先于下一条验收被单独查看。若这次验收回答还没落地，又有新的完成事件入队，且并入后不超过验收上限，宿主中止这次未落地回答，并用当前项加上全部排队事件重新提问，一次验收。会超过上限的新增事件不并入当前批。回答落地之后新到的消息和完成事件留到下一轮。父任务停止、完成或主任务连续失败达到上限时不自动唤醒。未见过的用户消息是完成阻断项 `user_messages`。
 - 已完成的 Loop+ 父任务不写经典回答结论和最终总结气泡。缺少这些气泡不能把它当成“完成信息不全、仍可恢复”的任务。用户之后在同一会话提交新的目标时，宿主新建一个绑定该 session 的 Loop+ 任务并启动主任务；新目标不能只追加到旧任务的 `supplementalRequirements`，也不能因为旧快照 `completed` 而被吞掉。显式继续一个已经完成的快照仍然只结算并释放控制器，不重新打开旧父任务。
 - 主任务和子任务发给模型的协议提示词仍写入会话消息，用来锚定本轮结果。展示层不渲染这些消息：trim 后以 `You are the Loop+ main reviewer.` 或 `You are one independent Loop+ execution attempt.` 开头的内容，不出现在对话气泡、历史会话、当前运行提示和提示词历史里。不要从存储删除它们，否则本轮助手结果对不上。
@@ -120,7 +120,7 @@
 - 一次 `dispatch` 或 `accept` 能附带的子任务数由 `loopPlusDecisionSubtaskMax` 决定。它来自工具设置“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 6，范围 1–20。宿主在解析决策和生成下一轮主任务提示时读取当前值；未配置时仍用 `LOOP_PLUS_DECISION_SUBTASK_MAX`。这个上限不替代 `maxConcurrency`，也不改变经典 Loop 的批次上限。
 - 一个 Loop+ 任务的验收次数由 `loopPlusMaxAcceptances` 决定。它同样位于“AI任务配置”，写入 `~/.sinitek_cli/settings.json`，默认 100，范围 1–999。每个新确认并变为 `reviewed` 的 attempt 计 1 次；同一批里的每个事件各计一次，幂等重放不计。若下一次整批确认会超过该任务上限，宿主不调用 `submitReviewBatch`，父任务进入 `needs-review`，队列保持不变。已达上限后不再 `dispatch` 新子任务。没有新验收事件时仍可 `completed`。任务记录保存当时上限；全局设置更高时只升不降。它不是经典 Loop 的 `maxRounds`，也不取代 200 次主决策安全上限。
 - 主任务中断子任务使用和派发相同的 JSON，不另做按钮。宿主先 `applyControls(..., { dryRun: true })`；失败不改快照。成功后先把旧 attempt 标为 settled，再 `abort()`，避免结束回调再次 `finish()` 进入验收队列。`close` 腾出的并发名额由 `promote()` 启动。`reprompt` 计入“达到验收上限后不得再启动”的新执行数，`close` 不计。群聊里该子任务最新 attempt 为 `closed` 时显示已停止，不用更早一次验收结果代替；被关闭且不在快照中的 blocked 或 skipped 记录同样显示已停止。
-- 主模型在 `accept` 或 `completed` 前必须逐项确认本批验收：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用的项也要明确写成不适用，不能把没跑的测试或没运行的产物写成通过。任一项失败就不得确认；能修时只允许在同一次 `accept` 里追加点名失败项的修复子任务，否则 `blocked` 且不确认本批。宿主仍只核事件 ID，不替主模型判这张清单。最终 `completed.acceptance.checks` 必须包含这 6 个名称且全部通过。
+- 主模型在 `accept` 或 `completed` 前必须逐项确认本批验收：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用的项也要明确写成不适用，不能把没跑的测试或没运行的产物写成通过。本批可以同时有成功和失败。失败且能修的事件在同一次 `accept` 里把修复子任务 id 写入该条 `subtaskIds`，并在提示词里点名失败项；成功事件保持 `passed`。失败且不能修时发送 `blocked`，不确认本批。宿主只核事件 ID 和 `reviews` 是否逐条对应，不替主模型判清单内容。最终 `completed.acceptance.checks` 必须包含这 6 个名称且全部通过。
 - 错峰继续使用 `LOOP_SUBTASK_LAUNCH_INTERVAL_MS`（3 秒）。内核返回 `started` 后由宿主延迟，调度器内部不睡眠。
 - 待启动任务必须参与冲突判断。同一子任务有未验收 attempt 时，新 attempt 被拒绝。
 

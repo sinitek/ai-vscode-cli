@@ -2402,9 +2402,9 @@
 - attempt 是调度身份，不是验收结论。确认验收只表示主任务已经处理这条完成事件。
 
 ### 长期规避
-- 群聊已确认项只显示验收成功或验收失败。执行结果为 `failed` 或 `stopped` 是失败。`completed` 只有在确认时没有附带修复子任务时才是成功。
-- 同一次 accept 附带新子任务，表示本批验收未通过并已发起修复。即使 outcome 是 `completed`，也要把该批 `seenAttempts[*].acceptance` 记为 `failed`，成员状态显示验收失败。
-- 没有新子任务的 accept，以及 `completed` 确认，记为 `passed`；若 outcome 已是 `failed` 或 `stopped`，仍显示验收失败。
+- 群聊已确认项只显示验收成功或验收失败。执行结果为 `failed` 或 `stopped` 是失败。`accept.reviews` 把该条标成 `passed`，且执行结果不是 `failed` 或 `stopped` 时才是成功。
+- 同一次 accept 可以既确认成功项，又给失败项发起子任务。`subtaskIds` 只标出那一条发起的子任务，不能把同批其它成功项的 `acceptance` 记为 `failed`。
+- `completed` 确认记为 `passed`；若 outcome 已是 `failed` 或 `stopped`，仍显示验收失败。模型把这种执行标成 `passed` 时，宿主仍记为失败。
 - 旧快照没有 `outcome` 或 `acceptance` 时，不要发明第三种“尝试”状态；只有子任务记录为 `blocked` 才显示失败，否则显示成功。
 - 还在队列里、尚未确认的项继续显示待验收，不要提前写成验收失败。
 - 验收成功用主题绿色，验收失败用主题橙色，不要写死颜色。

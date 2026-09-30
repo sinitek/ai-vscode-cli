@@ -457,7 +457,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收若来自附带修复子任务的 accept，成员状态显示验收失败；没有新子任务的 accept 或 completed 确认，且执行结果不是 failed 或 stopped，显示验收成功。验收成功使用主题绿色，验收失败使用主题橙色。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -514,7 +514,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型按固定清单验收",
-      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用必须明确说明。任一项失败不得确认；能修时只在同一次 accept 中追加点名失败项的修复子任务，否则 blocked 且不确认本批。宿主只核事件 ID，不替主模型判这张清单。",
+      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用必须明确说明。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [

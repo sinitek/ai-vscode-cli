@@ -875,7 +875,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]) {
         dispatchDecisions(runtime, subtasks);
       },
-      submitReviewBatch(eventIds: readonly string[], acceptance: "passed" | "failed") {
+      submitReviewBatch(
+        eventIds: readonly string[],
+        acceptance: "passed" | "failed" | readonly { eventId: string; acceptance: "passed" | "failed" }[],
+      ) {
         return {
           ok: runtime.scheduler.submitReviewBatch(eventIds, acceptance).ok,
         };

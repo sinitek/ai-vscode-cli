@@ -1004,6 +1004,35 @@ test("keeps the execution outcome after review and still loads a legacy attempt 
   );
 });
 
+test("records each review verdict without failing the successful siblings", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
+  scheduler.dispatch([spec("alpha"), spec("beta"), spec("gamma")]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "failed" });
+  const batch = [reviewEvent("alpha"), reviewEvent("beta"), reviewEvent("gamma")];
+  const before = scheduler.snapshot();
+  assert.equal(scheduler.submitReviewBatch(batch, [
+    { eventId: reviewEvent("beta"), acceptance: "failed" },
+    { eventId: reviewEvent("alpha"), acceptance: "passed" },
+    { eventId: reviewEvent("gamma"), acceptance: "passed" },
+  ]).reason, "invalid_event");
+  assert.deepEqual(scheduler.snapshot().seenAttempts.map((item) => item.disposition), before.seenAttempts.map((item) => item.disposition));
+
+  assert.equal(scheduler.submitReviewBatch(batch, [
+    { eventId: reviewEvent("alpha"), acceptance: "passed" },
+    { eventId: reviewEvent("beta"), acceptance: "failed" },
+    { eventId: reviewEvent("gamma"), acceptance: "passed" },
+  ]).ok, true);
+  const seen = (attemptId: string) => scheduler.snapshot().seenAttempts.find((item) => item.attemptId === attemptId);
+  assert.equal(seen("alpha-1")?.outcome, "completed");
+  assert.equal(seen("alpha-1")?.acceptance, "passed");
+  assert.equal(seen("beta-1")?.outcome, "completed");
+  assert.equal(seen("beta-1")?.acceptance, "failed");
+  assert.equal(seen("gamma-1")?.outcome, "failed");
+  assert.equal(seen("gamma-1")?.acceptance, "failed");
+});
+
 test("records repair acceptance as failed and keeps a clean accept passed", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   scheduler.dispatch([spec("alpha"), spec("beta")]);

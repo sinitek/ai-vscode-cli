@@ -46,10 +46,17 @@ export type LoopPlusControlDecision = {
   writeFiles?: string[];
 };
 
+export type LoopPlusAcceptReview = {
+  reviewEventId: string;
+  acceptance: "passed" | "failed";
+  subtaskIds?: string[];
+};
+
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
   reviewEventId?: string;
   reviewEventIds?: string[];
+  reviews?: LoopPlusAcceptReview[];
   subtasks?: LoopSubtaskDecision[];
   controls?: LoopPlusControlDecision[];
   answerConclusion?: string;
@@ -182,9 +189,17 @@ function normalizeAcceptDecision(
   if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
     return null;
   }
+  const eventIds = reviewEvents.reviewEventIds ?? (
+    reviewEvents.reviewEventId ? [reviewEvents.reviewEventId] : []
+  );
+  const reviews = readAcceptReviews(raw, eventIds, subtasks);
+  if (!reviews) {
+    return null;
+  }
   return withEstimatedRemainingRounds({
     status: "accept",
     ...reviewEvents,
+    reviews,
     ...(subtasks.length > 0 ? { subtasks } : {}),
     ...(controls.length > 0 ? { controls } : {}),
   }, estimatedRemainingRounds);
@@ -276,7 +291,7 @@ function normalizeCompletedDecision(
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
 ): LoopPlusDecision | null {
-  if (hasOwn(raw, "controls")) {
+  if (hasOwn(raw, "controls") || hasOwn(raw, "reviews")) {
     return null;
   }
   const reviewEvents = readReviewConfirmation(raw, false);
@@ -522,6 +537,74 @@ function readReviewConfirmation(
   }
   const reviewEventId = readRequiredReviewEventId(raw.reviewEventId);
   return reviewEventId ? { reviewEventId } : null;
+}
+
+function readAcceptReviews(
+  raw: Record<string, unknown>,
+  eventIds: readonly string[],
+  subtasks: readonly LoopSubtaskDecision[],
+): LoopPlusAcceptReview[] | null {
+  if (!hasOwn(raw, "reviews") || !Array.isArray(raw.reviews) || raw.reviews.length !== eventIds.length) {
+    return null;
+  }
+  const reviews: LoopPlusAcceptReview[] = [];
+  const linkedIds: string[] = [];
+  for (let index = 0; index < raw.reviews.length; index += 1) {
+    const item = raw.reviews[index];
+    if (!isRecord(item)) {
+      return null;
+    }
+    const reviewEventId = readOptionalText(item.reviewEventId);
+    if (!reviewEventId || reviewEventId !== eventIds[index]) {
+      return null;
+    }
+    if (item.acceptance !== "passed" && item.acceptance !== "failed") {
+      return null;
+    }
+    const subtaskIds = readAcceptSubtaskIds(item);
+    if (!subtaskIds) {
+      return null;
+    }
+    linkedIds.push(...subtaskIds);
+    reviews.push({
+      reviewEventId,
+      acceptance: item.acceptance,
+      ...(subtaskIds.length > 0 ? { subtaskIds } : {}),
+    });
+  }
+  const subtaskIds = subtasks.map((subtask) => subtask.id).filter((id): id is string => Boolean(id));
+  if (!sameIdSet(linkedIds, subtaskIds)) {
+    return null;
+  }
+  return reviews;
+}
+
+function readAcceptSubtaskIds(review: Record<string, unknown>): string[] | null {
+  if (!hasOwn(review, "subtaskIds")) {
+    return [];
+  }
+  if (!Array.isArray(review.subtaskIds)) {
+    return null;
+  }
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of review.subtaskIds) {
+    const id = readOptionalText(item);
+    if (!id || seen.has(id)) {
+      return null;
+    }
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function sameIdSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const seen = new Set(left);
+  return seen.size === left.length && right.every((id) => seen.has(id));
 }
 
 function readReviewEventIds(value: unknown): string[] | null {

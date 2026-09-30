@@ -14,6 +14,7 @@ import {
 import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
+import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import {
   loopClarificationScope,
   submitOrchestratorClarification,
@@ -75,7 +76,7 @@ function subtask(id: string, files: string[], conflictGroup?: string): LoopSubta
 }
 
 function decisionJson(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(withLoopPlusAcceptReviews(value));
 }
 
 function completedDecision(extra: Record<string, unknown> = {}): string {
@@ -430,44 +431,61 @@ test("keeps conflict and concurrency limits when new work is added beside a runn
   assert.equal(snapshotOf(task).pending.length >= 1, true);
 });
 
-test("records acceptance failed when accept starts repair subtasks", async () => {
+test("records each accept review without failing a successful sibling", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({
     status: "dispatch",
-    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
   }));
   await flush();
-  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  const alphaAttempt = env.attempts.find((item) => item.request.subtaskId === "alpha");
+  const betaAttempt = env.attempts.find((item) => item.request.subtaskId === "beta");
+  assert.ok(alphaAttempt && betaAttempt);
+  alphaAttempt.resolve({ outcome: "completed", detail: "alpha" });
   await flush();
-  const review = env.mains[1];
-  review.resolve(decisionJson({
+  betaAttempt.resolve({ outcome: "completed", detail: "beta" });
+  await flush();
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  const alphaEventId = buildLoopPlusFinishEventId("alpha", alphaAttempt.request.attemptId);
+  const betaEventId = buildLoopPlusFinishEventId("beta", betaAttempt.request.attemptId);
+  const batch = reviews().at(-1);
+  assert.ok(batch);
+  assert.deepEqual(batch.request.reviewEventIds, [alphaEventId, betaEventId]);
+  batch.resolve(decisionJson({
     status: "accept",
-    reviewEventId: review.request.reviewEventId,
-    subtasks: [subtask("beta", ["src/beta.ts"])],
+    reviewEventIds: [alphaEventId, betaEventId],
+    reviews: [
+      { reviewEventId: alphaEventId, acceptance: "passed", subtaskIds: ["follow-up"] },
+      { reviewEventId: betaEventId, acceptance: "failed", subtaskIds: ["repair"] },
+    ],
+    subtasks: [subtask("follow-up", ["src/follow-up.ts"]), subtask("repair", ["src/repair.ts"])],
   }));
   await flush();
   const taskId = run.taskId ?? "";
-  const alpha = snapshotOf(env.tasks.get(taskId)).seenAttempts.find((item) => item.subtaskId === "alpha");
-  assert.equal(alpha?.outcome, "completed");
-  assert.equal(alpha?.disposition, "reviewed");
-  assert.equal(alpha?.acceptance, "failed");
-  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.find((item) => item.subtaskId === "beta")?.acceptance, undefined);
+  const seen = (subtaskId: string) => snapshotOf(env.tasks.get(taskId)).seenAttempts.find((item) => item.subtaskId === subtaskId);
+  assert.equal(seen("alpha")?.outcome, "completed");
+  assert.equal(seen("alpha")?.acceptance, "passed");
+  assert.equal(seen("beta")?.outcome, "completed");
+  assert.equal(seen("beta")?.acceptance, "failed");
+  assert.equal(seen("follow-up")?.acceptance, undefined);
+  assert.equal(seen("repair")?.acceptance, undefined);
 
-  env.attempts.find((item) => item.request.subtaskId === "beta")?.resolve({ outcome: "completed", detail: "beta" });
+  env.attempts.find((item) => item.request.subtaskId === "repair")?.resolve({ outcome: "completed", detail: "repair" });
   await flush();
-  const repairReview = env.mains.filter((item) => item.request.kind === "review").at(-1);
+  const repairReview = reviews().at(-1);
   assert.ok(repairReview);
   repairReview.resolve(decisionJson({
     status: "accept",
     reviewEventId: repairReview.request.reviewEventId,
+    reviews: [{ reviewEventId: repairReview.request.reviewEventId, acceptance: "passed" }],
     subtasks: [],
   }));
   await flush();
-  const after = snapshotOf(env.tasks.get(taskId));
-  assert.equal(after.seenAttempts.find((item) => item.subtaskId === "alpha")?.acceptance, "failed");
-  assert.equal(after.seenAttempts.find((item) => item.subtaskId === "beta")?.acceptance, "passed");
+  assert.equal(seen("alpha")?.acceptance, "passed");
+  assert.equal(seen("beta")?.acceptance, "failed");
+  assert.equal(seen("repair")?.acceptance, "passed");
 });
 
 test("does not complete from a stale review after another finish joins the batch", async () => {
