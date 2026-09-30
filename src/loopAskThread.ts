@@ -107,9 +107,8 @@ export function beginLoopAskTurn(
     dialogOpen: true,
     updatedAt: now,
     messages: [
-      ...thread.messages.filter((message) => !message.streaming),
+      ...thread.messages.filter((message) => message.role !== "thinking"),
       { id, role: "user", content, createdAt: now },
-      { id: `${id}:thinking`, role: "thinking", content: "", createdAt: now, streaming: true },
     ],
   });
 }
@@ -168,13 +167,7 @@ export function settleLoopAskTurn(
     noticeId: string;
   },
 ): LoopAskThread {
-  const messages = thread.messages
-    .map((message) => (
-      message.role === "thinking"
-        ? { ...message, streaming: false }
-        : message
-    ))
-    .filter((message) => message.role !== "thinking" || message.content.trim().length > 0);
+  const messages = thread.messages.filter((message) => message.role !== "thinking");
   const answer = input.answer?.trim() ?? "";
   const notice = input.notice?.trim() ?? "";
   if (answer) {

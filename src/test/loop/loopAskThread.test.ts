@@ -21,11 +21,11 @@ function message(id: string, content: string, extra: Partial<ChatMessage> = {}):
   return { id, role: "assistant", content, ...extra };
 }
 
-test("keeps ask history, streams thinking, then settles the final answer", () => {
+test("keeps ask history and settles only the final answer", () => {
   const started = beginLoopAskTurn(createEmptyLoopAskThread(1), "  可以合并吗  ", 2, "ask-1");
   assert.equal(started.running, true);
   assert.equal(started.dialogOpen, true);
-  assert.deepEqual(started.messages.map((item) => item.role), ["user", "thinking"]);
+  assert.deepEqual(started.messages.map((item) => item.role), ["user"]);
 
   const withThinking = applyLoopAskThinking(started, [], [
     message("tool", "tool: read", { kind: "tool-use" }),
@@ -46,12 +46,21 @@ test("keeps ask history, streams thinking, then settles the final answer", () =>
   });
   assert.equal(settled.running, false);
   assert.equal(settled.dialogOpen, true);
-  assert.equal(settled.messages.at(-1)?.role, "assistant");
-  assert.equal(settled.messages.at(-1)?.content, "可以合并。");
+  assert.deepEqual(settled.messages.map((item) => [item.role, item.content]), [
+    ["user", "可以合并吗"],
+    ["assistant", "可以合并。"],
+  ]);
 
-  const next = beginLoopAskTurn(settled, "再确认一次", 5, "ask-2");
+  const next = beginLoopAskTurn({
+    ...settled,
+    messages: [
+      ...settled.messages,
+      { id: "legacy", role: "thinking", content: "旧思考", createdAt: 4 },
+    ],
+  }, "再确认一次", 5, "ask-2");
   assert.equal(next.messages[0]?.content, "可以合并吗");
-  assert.equal(next.messages.at(-2)?.content, "再确认一次");
+  assert.equal(next.messages.at(-1)?.content, "再确认一次");
+  assert.equal(next.messages.some((item) => item.role === "thinking"), false);
   assert.equal(next.running, true);
 });
 

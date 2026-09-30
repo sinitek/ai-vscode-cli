@@ -528,7 +528,7 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	        }, 0);
 	      }
 
-	      const ASK_THINKING_LABEL = "${escapeJsString(strings.askChatThinking)}";
+	      const ASK_WAITING_LABEL = "${escapeJsString(strings.askChatWaiting)}";
 	      const ASK_EMPTY_LABEL = "${escapeJsString(strings.askChatEmpty)}";
 
 	      function askEscape(value) {
@@ -541,42 +541,37 @@ ${LOOP_DEBATE_PANEL_STYLES}
 	      }
 
 	      function renderAskBubble(message) {
-	        const role = message && message.role === "user"
-	          ? "user"
-	          : message && message.role === "thinking"
-	            ? "thinking"
-	            : message && message.role === "system"
-	              ? "system"
-	              : "assistant";
-	        if (role === "thinking") {
-	          const streaming = Boolean(message && message.streaming);
-	          const body = askEscape(message && message.content ? message.content : "");
-	          const dots = streaming
-	            ? '<span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>'
-	            : "";
-	          const bodyHtml = body
-	            ? '<div class="ask-chat-thinking-body">' + body + "</div>"
-	            : "";
-	          return '<article class="ask-chat-message thinking"><div class="ask-chat-bubble"><details class="ask-chat-thinking"' +
-	            (streaming ? " open" : "") +
-	            "><summary>" + askEscape(ASK_THINKING_LABEL) + dots + "</summary>" +
-	            bodyHtml +
-	            "</details></div></article>";
+	        if (!message || message.role === "thinking") {
+	          return "";
 	        }
+	        const role = message.role === "user"
+	          ? "user"
+	          : message.role === "system"
+	            ? "system"
+	            : "assistant";
 	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble">' +
-	          askEscape(message && message.content ? message.content : "") +
+	          askEscape(message.content ? message.content : "") +
 	          "</div></article>";
+	      }
+
+	      function renderAskWaiting() {
+	        return '<article class="ask-chat-message waiting"><div class="ask-chat-bubble ask-chat-waiting" role="status" aria-label="' +
+	          askEscape(ASK_WAITING_LABEL) +
+	          '"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span></div></article>';
 	      }
 
 	      function renderAskThread() {
 	        if (!askChatMessages) {
 	          return;
 	        }
-	        const messages = askThread && Array.isArray(askThread.messages) ? askThread.messages : [];
+	        const messages = askThread && Array.isArray(askThread.messages)
+	          ? askThread.messages.filter((message) => message && message.role !== "thinking")
+	          : [];
 	        const distance = askChatMessages.scrollHeight - askChatMessages.scrollTop - askChatMessages.clientHeight;
 	        const stickToBottom = distance <= 50;
-	        askChatMessages.innerHTML = messages.length
-	          ? messages.map(renderAskBubble).join("")
+	        const waiting = askThread && askThread.running ? renderAskWaiting() : "";
+	        askChatMessages.innerHTML = messages.length || waiting
+	          ? messages.map(renderAskBubble).join("") + waiting
 	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
 	        if (stickToBottom) {
 	          askChatMessages.scrollTop = askChatMessages.scrollHeight;

@@ -212,47 +212,18 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
-      .ask-chat-message.thinking {
+      .ask-chat-message.waiting {
         justify-content: flex-start;
       }
-      .ask-chat-message.thinking .ask-chat-bubble {
-        width: 100%;
-        background: transparent;
-        border: 0;
-        padding: 4px 0;
-      }
-      .ask-chat-thinking {
-        border: 1px solid var(--vscode-widget-border);
-        border-radius: 6px;
+      .ask-chat-message.waiting .ask-chat-bubble {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 8px 12px;
+        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
+        border-radius: var(--radius);
         background: var(--vscode-editorWidget-background);
-      }
-      .ask-chat-thinking summary {
-        cursor: pointer;
-        list-style: none;
-        padding: 6px 10px;
-        font-size: 11px;
         color: var(--vscode-descriptionForeground);
-        user-select: none;
-      }
-      .ask-chat-thinking summary::-webkit-details-marker {
-        display: none;
-      }
-      .ask-chat-thinking summary::before {
-        content: "▸";
-        margin-right: 6px;
-      }
-      .ask-chat-thinking[open] summary::before {
-        content: "▾";
-      }
-      .ask-chat-thinking .typing-dots {
-        margin-left: 8px;
-      }
-      .ask-chat-thinking-body {
-        border-top: 1px solid var(--vscode-widget-border);
-        padding: 6px 10px 8px;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        color: var(--vscode-editor-foreground);
       }
       .ask-chat-composer {
         border-top: 1px solid var(--vscode-widget-border);

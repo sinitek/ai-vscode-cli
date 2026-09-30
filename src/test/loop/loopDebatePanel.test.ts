@@ -193,7 +193,9 @@ test("hides the continue model choice when speaking in Loop and Loop+ group chat
   assert.match(html, /loopDebateChat:askMainModel", prompt: prompt \}/);
   assert.match(html, /id="askChatBackdrop"/);
   assert.match(html, /loopDebateChat:abortMainModelQuestion/);
-  assert.match(html, /ask-chat-message thinking/);
+  assert.match(html, /ask-chat-message waiting/);
+  assert.match(html, /ask-chat-waiting/);
+  assert.doesNotMatch(html, /ask-chat-message thinking/);
   assert.match(html, /loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/);
 });
 
@@ -1034,7 +1036,7 @@ test("renders the main-task clarification form in the group chat and pauses auto
   assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
 });
 
-test("renders a persistent ask chat with thinking bubbles and can publish updates", () => {
+test("renders a persistent ask chat with a waiting indicator and can publish updates", () => {
   const idle = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,
     createState(),
@@ -1075,8 +1077,11 @@ test("renders a persistent ask chat with thinking bubbles and can publish update
   assert.match(running, /id="askChatSend"[^>]*disabled/u);
   assert.doesNotMatch(running, /id="askChatAbort"[^>]*hidden/u);
   assert.match(running, /可以合并吗/u);
-  assert.match(running, /先看冲突/u);
   assert.match(running, /可以合并。/u);
+  assert.match(running, /message && message\.role !== "thinking"/u);
+  assert.match(running, /ask-chat-waiting/u);
+  assert.match(running, /正在回答/u);
+  assert.doesNotMatch(running, /ask-chat-thinking/u);
 
   const harness = createPanelHarness();
   const panel = new LoopDebateChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });

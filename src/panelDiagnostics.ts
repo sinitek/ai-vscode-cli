@@ -31,7 +31,6 @@ import {
 } from "./orchestratorClarification";
 import { buildLoopMainSubChatTranscriptFile } from "./loopDebate";
 import {
-  applyLoopAskThinking,
   beginLoopAskTurn,
   createEmptyLoopAskThread,
   settleLoopAskTurn,
@@ -1553,16 +1552,6 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     syncAskThread(task, started, "publish");
     try {
       const result = await deps.askMainModel(task, question, {
-        onProgress: (progress) => {
-          if (askRuns.get(task.id) !== run) {
-            return;
-          }
-          const thread = askThreads.get(task.id);
-          if (!thread?.running) {
-            return;
-          }
-          syncAskThread(task, applyLoopAskThinking(thread, progress.before, progress.current, Date.now()), "publish");
-        },
         isAborted: () => run.aborted,
       });
       if (askRuns.get(task.id) !== run) {

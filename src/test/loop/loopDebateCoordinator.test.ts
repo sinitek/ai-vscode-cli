@@ -563,8 +563,11 @@ test("asks the current main model session and shows the answer without supplemen
     assert.deepEqual(questions, ["可以合并吗"]);
     assert.equal(supplementalCount, 0);
     assert.match(webview.html, /可以合并吗/u);
-    assert.match(webview.html, /先看冲突/u);
+    assert.doesNotMatch(webview.html, /先看冲突/u);
+    assert.match(webview.html, /ask-chat-waiting/u);
+    assert.doesNotMatch(webview.html, /ask-chat-thinking/u);
     assert.match(webview.html, /可以先合并冲突文件。/u);
+    assert.ok(savedThreads.every((entry) => !entry.includes("先看冲突")));
     const panel = deps.panelsByTaskId.get(task.id);
     assert.equal(panel?.getAskThread().dialogOpen, true);
     assert.equal(panel?.getAskThread().running, false);
