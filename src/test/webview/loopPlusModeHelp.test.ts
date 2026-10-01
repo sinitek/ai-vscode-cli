@@ -114,9 +114,11 @@ test("stops claiming Graph cannot resolve conflicts and keeps the existing help 
     assert.match(html, /id="helpTabInstall"/);
     assert.match(html, /id="helpTabModes"/);
     assert.match(html, /id="helpPanelInstall" class="help-panel active"/);
-    assert.match(html, /npm i -g @openai\/codex/);
+    assert.equal(html.split("npm i -g @openai/codex").length - 1, 1);
     assert.match(html, /npm install -g @anthropic-ai\/claude-code/);
     assert.match(html, /npm install -g opencode-ai/);
+    assert.match(html, /winget install --id Microsoft\.PowerShell --source winget/);
+    assert.doesNotMatch(html, /安装加速|Install Acceleration|registry\.npmmirror\.com|Windows 安装|macOS 安装|Windows Install|macOS Install/);
     assert.doesNotMatch(html, /help-section[^>]*style=/);
     const selects = interactiveModeSelects(html);
     assert.equal(selects.length, 2);
@@ -130,6 +132,8 @@ test("stops claiming Graph cannot resolve conflicts and keeps the existing help 
     }
   }
 
+  assert.match(englishHtml, /Windows must install PowerShell before the commands above/);
+  assert.match(chineseHtml, /Windows 必须先安装 PowerShell，再执行上面的命令/);
   assert.doesNotMatch(englishHtml, /highest setup cost and UI complexity|still no graph editor|Cons:/);
   assert.doesNotMatch(chineseHtml, /准备成本和界面复杂度最高|目前还没有图编辑器|缺点：/);
 });

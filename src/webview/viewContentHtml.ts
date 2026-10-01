@@ -91,17 +91,6 @@ ${webviewStyles}    </style>
             <path d="M8 15h8" />
           </svg>
           <span class="header-action-anchor">
-            <svg id="newSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <div id="newSessionConnectionTooltip" class="header-hover-tooltip" role="tooltip" hidden></div>
-          </span>
-          <svg id="resetSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-            <polyline points="20 4 20 10 14 10" />
-          </svg>
-          <span class="header-action-anchor">
             <svg id="chatSearchButton" class="icon icon-action" role="button" tabindex="0" aria-expanded="false" aria-controls="chatSearchBar" title="${i18n.headerChatSearch}" aria-label="${i18n.headerChatSearch}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="6.5" />
               <line x1="16.2" y1="16.2" x2="20.5" y2="20.5" />
@@ -128,6 +117,17 @@ ${webviewStyles}    </style>
               </button>
             </div>
           </span>
+          <span class="header-action-anchor">
+            <svg id="newSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerNewSession}" aria-label="${i18n.headerNewSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <div id="newSessionConnectionTooltip" class="header-hover-tooltip" role="tooltip" hidden></div>
+          </span>
+          <svg id="resetSession" class="icon icon-action" role="button" tabindex="0" title="${i18n.headerResetSession}" aria-label="${i18n.headerResetSession}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+            <polyline points="20 4 20 10 14 10" />
+          </svg>
         </div>
       </div>
 
@@ -835,7 +835,7 @@ ${webviewStyles}    </style>
           </div>
           <div id="helpPanelInstall" class="help-panel active" role="tabpanel">
             <div class="help-section">
-              <h4>${i18n.helpInstallWindows}</h4>
+              <h4>${i18n.helpInstallTitle}</h4>
               <ul>
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
@@ -843,19 +843,10 @@ ${webviewStyles}    </style>
               </ul>
             </div>
             <div class="help-section">
-              <h4>${i18n.helpInstallMac}</h4>
+              <h4>${i18n.helpInstallWindowsPowerShellTitle}</h4>
               <ul>
-                <li>Codex：<code>npm i -g @openai/codex</code></li>
-                <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
-                <li>OpenCode：<code>npm install -g opencode-ai</code></li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpInstallAccel}</h4>
-              <ul>
-                <li>${i18n.helpInstallAccelOnce}<code>npm --registry https://registry.npmmirror.com -i -g @openai/codex</code></li>
-                <li>${i18n.helpInstallAccelSet}<code>npm config set registry https://registry.npmmirror.com</code></li>
-                <li>${i18n.helpInstallAccelReset}<code>npm config set registry https://registry.npmjs.org</code></li>
+                <li>${i18n.helpInstallWindowsPowerShellNote}</li>
+                <li>${i18n.helpInstallWindowsPowerShellWinget}<code>winget install --id Microsoft.PowerShell --source winget</code></li>
               </ul>
             </div>
             <div class="help-section">

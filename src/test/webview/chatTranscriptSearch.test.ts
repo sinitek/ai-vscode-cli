@@ -516,7 +516,7 @@ test("keeps the search shell, theme tokens, and rerender hook together", () => {
     loopExecutionModeMainSubMultiAgent: "main",
     loopExecutionModeDebateMultiAgent: "debate",
   });
-  assert.match(html, /id="resetSession"[\s\S]*id="chatSearchButton"/);
+  assert.match(html, /id="chatSearchButton"[\s\S]*id="newSession"[\s\S]*id="resetSession"/);
   assert.match(html, /id="chatSearchInput"[^>]*placeholder="关键词"/);
   assert.match(html, /id="chatSearchCount"[^>]*>0\/0</);
   assert.match(HEADER_TABS_STYLES, /\.chat-search-bar \{[\s\S]*var\(--vscode-editorWidget-background/);
