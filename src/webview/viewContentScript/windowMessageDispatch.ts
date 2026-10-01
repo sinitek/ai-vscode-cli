@@ -146,8 +146,10 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               if (runtimeState) {
                 runtimeState.lastRunStatusMessage = "";
                 runtimeState.activeRunActivity = normalizeRunActivity(data.activity);
-                runtimeState.tokensInContextWindow = null;
-                runtimeState.modelContextWindow = null;
+                if (runtimeState.activeRunActivity !== "contextCompaction") {
+                  runtimeState.tokensInContextWindow = null;
+                  runtimeState.modelContextWindow = null;
+                }
               }
               resetTaskListForRunStart(targetTabId);
             } else {

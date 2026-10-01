@@ -1511,7 +1511,7 @@ test("shows Codex used context tokens to the right of the stream button while ru
 
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
   assert.equal(label.style.display, "inline-flex");
-  assert.equal(label.textContent, "Context: —");
+  assert.equal(label.textContent, "—");
   assert.equal(label.getAttribute("aria-label"), "Waiting for used context");
 
   window.dispatchMessage({
@@ -1521,7 +1521,7 @@ test("shows Codex used context tokens to the right of the stream button while ru
     modelContextWindow: 272000,
   });
   assert.equal(label.style.display, "inline-flex");
-  assert.equal(label.textContent, "Context: 12k");
+  assert.equal(label.textContent, "12k");
   assert.equal(label.getAttribute("aria-label"), "Used context 12k");
   assert.match(String(label.getAttribute("title") || label.title), /12345 \/ 272000/);
 
@@ -1531,11 +1531,55 @@ test("shows Codex used context tokens to the right of the stream button while ru
     tokensInContextWindow: 500,
     modelContextWindow: 128000,
   });
-  assert.equal(label.textContent, "Context: 12k");
+  assert.equal(label.textContent, "12k");
 
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
   assert.equal(label.style.display, "inline-flex");
-  assert.equal(label.textContent, "Context: 12k");
+  assert.equal(label.textContent, "12k");
+});
+
+test("hides the context size label while compacting and restores it afterwards", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  const label = document.getElementById("runContextTokens");
+  const status = document.getElementById("runStatusText");
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 12345,
+    modelContextWindow: 272000,
+  });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "12k");
+
+  window.dispatchMessage({
+    type: "runStatus",
+    tabId: "tab-1",
+    status: "start",
+    startedAt: 3_000,
+    activity: "contextCompaction",
+  });
+  assert.equal(status.textContent, "Compacting");
+  assert.equal(status.style.display, "inline-flex");
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 4000,
+    modelContextWindow: 272000,
+  });
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+  assert.equal(status.textContent, "");
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "4k");
 });
 
 test("does not show context tokens for non-Codex runs", () => {

@@ -752,6 +752,15 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return;
         }
         const activeRuntime = runtimeState || getActiveConversationRuntimeState({ create: false });
+        const isCompacting = Boolean(
+          state.isRunning
+          && activeRuntime
+          && activeRuntime.activeRunActivity === "contextCompaction"
+        );
+        if (isCompacting) {
+          hideContextTokenUsage();
+          return;
+        }
         const tokens = activeRuntime && Number.isFinite(activeRuntime.tokensInContextWindow)
           ? activeRuntime.tokensInContextWindow
           : null;
