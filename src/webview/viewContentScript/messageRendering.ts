@@ -382,6 +382,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           wrapper.insertBefore(nextBadge, bubble);
         }
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        if (typeof refreshChatSearchHighlights === "function") {
+          refreshChatSearchHighlights();
+        }
         return true;
       }
 
@@ -419,12 +422,16 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (actions) {
           bubble.appendChild(actions);
         }
+        if (typeof refreshChatSearchHighlights === "function") {
+          refreshChatSearchHighlights();
+        }
         return true;
       }
 
       function renderMessages() {
         try {
-          const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();
+          const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
+          const shouldAutoScroll = !chatSearchAnchored && (!elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
           captureOpenTraceCollapsibleKeys();
           elements.messages.innerHTML = "";
           const visibleMessages = getVisibleMessages();
@@ -441,6 +448,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             updateScrollToBottomButton();
           }
           updateTaskList();
+          if (typeof refreshChatSearchHighlights === "function") {
+            refreshChatSearchHighlights();
+          }
         } catch (error) {
           reportWebviewFailure("renderMessages-failed", error, {
             activeTabId: getActiveConversationTabId(),
@@ -448,6 +458,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           });
           elements.messages.innerHTML = '<div class="message system"><div class="bubble"><div class="system-line"><span class="system-text">' + escapeHtml(t("session.loadFailedMessage")) + '</span></div></div></div>';
           elements.emptyState.style.display = "none";
+          if (typeof refreshChatSearchHighlights === "function") {
+            refreshChatSearchHighlights();
+          }
         }
       }
 

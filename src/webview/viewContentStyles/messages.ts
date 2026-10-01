@@ -11,6 +11,17 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         overflow-wrap: anywhere;
         word-break: break-word;
       }
+      mark.chat-search-hit {
+        background: #fff2a8;
+        color: #000000;
+        border-radius: 2px;
+        padding: 0;
+      }
+      mark.chat-search-hit.is-active {
+        background: #fff2a8;
+        color: #000000;
+        outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+      }
       .message-actions {
         display: flex;
         flex-wrap: wrap;

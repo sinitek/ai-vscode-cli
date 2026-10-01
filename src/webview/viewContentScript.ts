@@ -1,4 +1,5 @@
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "./viewContentScript/coreBootstrap";
+import { VIEW_CONTENT_SCRIPT_CHAT_SEARCH } from "./viewContentScript/chatSearch";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "./viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "./viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "./viewContentScript/messageRendering";
@@ -40,6 +41,7 @@ export type BuildWebviewRuntimeScriptInput = {
 
 const RUNTIME_SCRIPT_PARTS = [
   VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP,
+  VIEW_CONTENT_SCRIPT_CHAT_SEARCH,
   VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE,
   VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE,
   VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,

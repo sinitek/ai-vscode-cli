@@ -101,6 +101,33 @@ ${webviewStyles}    </style>
             <path d="M20 12a8 8 0 1 1-2.34-5.66" />
             <polyline points="20 4 20 10 14 10" />
           </svg>
+          <span class="header-action-anchor">
+            <svg id="chatSearchButton" class="icon icon-action" role="button" tabindex="0" aria-expanded="false" aria-controls="chatSearchBar" title="${i18n.headerChatSearch}" aria-label="${i18n.headerChatSearch}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="6.5" />
+              <line x1="16.2" y1="16.2" x2="20.5" y2="20.5" />
+            </svg>
+            <div id="chatSearchBar" class="chat-search-bar" role="search" hidden>
+              <input id="chatSearchInput" class="chat-search-input" type="text" placeholder="${i18n.chatSearchPlaceholder}" aria-label="${i18n.chatSearchPlaceholder}" autocomplete="off" spellcheck="false" />
+              <span id="chatSearchCount" class="chat-search-count" aria-live="polite">0/0</span>
+              <span class="chat-search-divider" aria-hidden="true"></span>
+              <button id="chatSearchPrev" class="chat-search-nav" type="button" title="${i18n.chatSearchPrev}" aria-label="${i18n.chatSearchPrev}">
+                <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3.5 10 8 5.5 12.5 10" />
+                </svg>
+              </button>
+              <button id="chatSearchNext" class="chat-search-nav" type="button" title="${i18n.chatSearchNext}" aria-label="${i18n.chatSearchNext}">
+                <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3.5 6 8 10.5 12.5 6" />
+                </svg>
+              </button>
+              <button id="chatSearchClose" class="chat-search-nav" type="button" title="${i18n.chatSearchClose}" aria-label="${i18n.chatSearchClose}">
+                <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="4.5" y1="4.5" x2="11.5" y2="11.5" />
+                  <line x1="11.5" y1="4.5" x2="4.5" y2="11.5" />
+                </svg>
+              </button>
+            </div>
+          </span>
         </div>
       </div>
 

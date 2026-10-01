@@ -251,7 +251,8 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function appendAssistantDelta(id, content, kind, options) {
-        const shouldAutoScroll = !elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom();
+        const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
+        const shouldAutoScroll = !chatSearchAnchored && (!elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
