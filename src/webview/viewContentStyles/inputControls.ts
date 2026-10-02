@@ -204,6 +204,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         min-width: 92px;
         max-width: 180px;
       }
+      .input-model-row > #modelSelect {
+        flex-basis: calc(118px * 1.33);
+      }
       .input-model-row .thinking-select {
         flex: 0 0 calc(70px * 1.15);
         width: calc(70px * 1.15);

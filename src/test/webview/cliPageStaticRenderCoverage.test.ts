@@ -226,6 +226,10 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     INPUT_CONTROLS_STYLES,
     /\.codex-loop-model-row\s*\{\s*grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) calc\(70px \* 1\.15\);/,
   );
+  assert.match(
+    INPUT_CONTROLS_STYLES,
+    /\.input-model-row > #modelSelect\s*\{\s*flex-basis:\s*calc\(118px \* 1\.33\);/,
+  );
 });
 
 test("renders history, settings, run-status, queue, and help overlays", () => {
