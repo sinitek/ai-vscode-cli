@@ -9,6 +9,10 @@ import { WebviewI18nKey } from "./viewContentI18n";
 
 type WebviewHtmlStrings = Record<WebviewI18nKey, string>;
 
+export function neutralizeInlineScriptEndTags(source: string): string {
+  return source.replace(/<\/script/gi, "<\\/script");
+}
+
 function renderInteractiveModeSelect(
   i18n: WebviewHtmlStrings,
   options: { id: string; ariaLabel: string },
@@ -28,6 +32,7 @@ export type BuildWebviewStaticHtmlInput = {
   i18n: WebviewHtmlStrings;
   cliOptions: string;
   markedScript: string;
+  jsonFormatterScript?: string;
   webviewStyles: string;
   loopExecutionModeMainSubMultiAgent: string;
   loopExecutionModeDebateMultiAgent: string;
@@ -43,6 +48,7 @@ export function buildWebviewStaticHtml(
     i18n,
     cliOptions,
     markedScript,
+    jsonFormatterScript = "",
     webviewStyles,
     loopExecutionModeMainSubMultiAgent,
     loopExecutionModeDebateMultiAgent,
@@ -900,7 +906,10 @@ ${webviewStyles}    </style>
     </div>
 
     <script nonce="${nonce}">
-      ${markedScript}
+      ${neutralizeInlineScriptEndTags(markedScript)}
+    </script>
+    <script nonce="${nonce}">
+      ${neutralizeInlineScriptEndTags(jsonFormatterScript)}
     </script>
     <script nonce="${nonce}">`;
 }

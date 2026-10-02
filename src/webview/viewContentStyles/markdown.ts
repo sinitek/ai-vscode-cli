@@ -46,5 +46,51 @@ export const MARKDOWN_STYLES = `      /* Markdown Styles */
         margin: 8px 0;
         padding: 8px 12px;
       }
+      .json-tree-host {
+        max-width: 100%;
+        overflow-x: auto;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .json-tree-host .json-formatter-row,
+      .json-tree-host .json-formatter-row a,
+      .json-tree-host .json-formatter-row a:hover {
+        color: var(--vscode-editor-foreground, var(--vscode-foreground));
+        font-family: var(--vscode-editor-font-family);
+        text-decoration: none;
+      }
+      .json-tree-host .json-formatter-row .json-formatter-key {
+        color: var(--vscode-debugTokenExpression-name, var(--vscode-symbolIcon-fieldForeground, var(--vscode-foreground)));
+      }
+      .json-tree-host .json-formatter-row .json-formatter-string,
+      .json-tree-host .json-formatter-row .json-formatter-stringifiable {
+        color: var(--vscode-debugTokenExpression-string, var(--vscode-symbolIcon-stringForeground, var(--vscode-foreground)));
+        white-space: pre-wrap;
+      }
+      .json-tree-host .json-formatter-row .json-formatter-number,
+      .json-tree-host .json-formatter-row .json-formatter-bracket {
+        color: var(--vscode-debugTokenExpression-number, var(--vscode-symbolIcon-numberForeground, var(--vscode-foreground)));
+      }
+      .json-tree-host .json-formatter-row .json-formatter-boolean {
+        color: var(--vscode-debugTokenExpression-boolean, var(--vscode-symbolIcon-booleanForeground, var(--vscode-foreground)));
+      }
+      .json-tree-host .json-formatter-row .json-formatter-null,
+      .json-tree-host .json-formatter-row .json-formatter-undefined {
+        color: var(--vscode-debugTokenExpression-type, var(--vscode-descriptionForeground));
+      }
+      .json-tree-host .json-formatter-row .json-formatter-url {
+        color: var(--vscode-textLink-foreground);
+      }
+      .json-tree-host .json-formatter-row .json-formatter-children.json-formatter-empty.json-formatter-object:after {
+        content: var(--json-tree-empty-object-label);
+      }
+      .json-tree-host .json-tree-fallback {
+        margin: 0;
+        white-space: pre-wrap;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--vscode-editor-foreground, var(--vscode-foreground));
+        background: var(--vscode-textCodeBlock-background);
+      }
 
 `;

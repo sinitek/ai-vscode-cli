@@ -157,6 +157,7 @@ REQUIRED_ENTRIES=(
   "extension/node_modules/@dagrejs/dagre/package.json"
   "extension/node_modules/@dagrejs/graphlib/package.json"
   "extension/node_modules/marked/package.json"
+  "extension/node_modules/json-formatter-js/dist/json-formatter.umd.js"
 )
 
 for required_entry in "${REQUIRED_ENTRIES[@]}"; do

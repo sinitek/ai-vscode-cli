@@ -453,7 +453,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return renderMarkdown(content);
         }
         const bodyHtml = '<div class="assistant-message-content">' + renderMarkdown(content) + '</div>';
-        if (!shouldCollapseByContentLength(content)) {
+        if (parseCompleteJsonContainer(content) || !shouldCollapseByContentLength(content)) {
           return bodyHtml;
         }
         return renderCollapsibleBubbleContent(
@@ -1010,9 +1010,127 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return prefix + " " + line;
       }
 
+      function parseJsonContainerText(text) {
+        if (!text || (text[0] !== "{" && text[0] !== "[")) {
+          return null;
+        }
+        try {
+          const value = JSON.parse(text);
+          if (!value || typeof value !== "object") {
+            return null;
+          }
+          return value;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function unwrapSingleMarkdownFence(content) {
+        const trimmed = String(content || "").replace(new RegExp("^" + String.fromCharCode(65279)), "").trim();
+        const fence = String.fromCharCode(96);
+        const match = trimmed.match(new RegExp("^(" + fence + "{3,}|~{3,})[^\\\\n\\\\r]*\\\\r?\\\\n([\\\\s\\\\S]*?)\\\\r?\\\\n\\\\1[ \\\\t]*$"));
+        if (!match) {
+          return trimmed;
+        }
+        return match[2];
+      }
+
+      function parseCompleteJsonContainer(content) {
+        const trimmed = String(content || "").replace(new RegExp("^" + String.fromCharCode(65279)), "").trim();
+        if (!trimmed) {
+          return null;
+        }
+        const direct = parseJsonContainerText(trimmed);
+        if (direct) {
+          return direct;
+        }
+        const unwrapped = unwrapSingleMarkdownFence(trimmed);
+        if (unwrapped === trimmed) {
+          return null;
+        }
+        return parseJsonContainerText(String(unwrapped || "").trim());
+      }
+
+      function serializeJsonTreeSource(value) {
+        return JSON.stringify(value)
+          .replace(/</g, "\\\\u003c")
+          .replace(/>/g, "\\\\u003e")
+          .replace(/&/g, "\\\\u0026")
+          .replace(new RegExp(String.fromCharCode(8232), "g"), "\\\\u2028")
+          .replace(new RegExp(String.fromCharCode(8233), "g"), "\\\\u2029");
+      }
+
+      function renderJsonTreeHost(value) {
+        return '<div class="json-tree-host"><script type="application/json" class="json-tree-source">' +
+          serializeJsonTreeSource(value) +
+          "</script></div>";
+      }
+
+      function createJsonTreeElement(value) {
+        if (typeof JSONFormatter === "function" && typeof document !== "undefined" && document.createElement) {
+          try {
+            const formatter = new JSONFormatter(value, Number.POSITIVE_INFINITY, {
+              hoverPreviewEnabled: false,
+              hoverPreviewArrayCount: 100,
+              hoverPreviewFieldCount: 5,
+              animateOpen: true,
+              animateClose: true,
+              useToJSON: false,
+              maxArrayItems: 100,
+            });
+            return formatter.render();
+          } catch {
+          }
+        }
+        if (typeof document === "undefined" || !document.createElement) {
+          return null;
+        }
+        const fallback = document.createElement("pre");
+        fallback.className = "json-tree-fallback";
+        fallback.textContent = JSON.stringify(value, null, 2);
+        return fallback;
+      }
+
+      function mountJsonTreeHosts(root) {
+        if (!root || typeof root.querySelectorAll !== "function") {
+          return;
+        }
+        const hosts = Array.from(root.querySelectorAll(".json-tree-host"));
+        hosts.forEach((host) => {
+          if (!host || host.getAttribute("data-json-tree-mounted") === "true") {
+            return;
+          }
+          const source = typeof host.querySelector === "function"
+            ? host.querySelector(".json-tree-source")
+            : null;
+          const raw = source && typeof source.textContent === "string" ? source.textContent : "";
+          let value = null;
+          try {
+            value = raw ? JSON.parse(raw) : null;
+          } catch (error) {
+            value = null;
+          }
+          if (!value || typeof value !== "object") {
+            return;
+          }
+          host.setAttribute("data-json-tree-mounted", "true");
+          if (host.style && typeof host.style.setProperty === "function" && typeof t === "function") {
+            host.style.setProperty("--json-tree-empty-object-label", JSON.stringify(t("jsonTreeEmptyObject")));
+          }
+          const rendered = createJsonTreeElement(value);
+          if (rendered && typeof host.appendChild === "function") {
+            host.appendChild(rendered);
+          }
+        });
+      }
+
       function renderMarkdown(content) {
         if (!content) {
           return "";
+        }
+        const jsonValue = parseCompleteJsonContainer(content);
+        if (jsonValue) {
+          return renderJsonTreeHost(jsonValue);
         }
         const normalized = wrapLineNumberedBlocks(content);
         if (typeof marked === "undefined" || !marked.parse) {

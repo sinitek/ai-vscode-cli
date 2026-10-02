@@ -2,7 +2,7 @@ import { CLI_LIST } from "../cli/types";
 import { logError } from "../logger";
 import { resolveLocale } from "../i18n";
 import { getWebviewStrings } from "./viewContentI18n";
-import { buildWebviewStaticHtml } from "./viewContentHtml";
+import { buildWebviewStaticHtml, neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { readFileSync } from "fs";
 import * as path from "path";
 import { WEBVIEW_STYLES } from "./viewContentStyles";
@@ -25,6 +25,7 @@ const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
 const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 let cachedMarkedScript: string | undefined;
+let cachedJsonFormatterScript: string | undefined;
 
 export function getWebviewHtml(webview: { cspSource: string }): string {
   const nonce = getNonce();
@@ -34,6 +35,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     (cli) => `<option value="${cli}">${cli}</option>`,
   ).join("");
   const markedScript = getMarkedScript();
+  const jsonFormatterScript = getJsonFormatterScript();
 
   const staticHtml = buildWebviewStaticHtml({
     locale,
@@ -42,6 +44,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     i18n,
     cliOptions,
     markedScript,
+    jsonFormatterScript,
     webviewStyles: WEBVIEW_STYLES,
     loopExecutionModeMainSubMultiAgent:
       LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
@@ -50,7 +53,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
   });
 
   return `${staticHtml}
-${buildWebviewRuntimeScript({
+${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     i18n,
     cliList: CLI_LIST,
     loopMaxRoundsDefault: LOOP_MAX_ROUNDS_SETTING_DEFAULT,
@@ -68,7 +71,7 @@ ${buildWebviewRuntimeScript({
     loopExecutionModeDebateMultiAgent:
       LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
-  })}
+  }))}
     </script>
   </body>
 </html>`;
@@ -105,4 +108,25 @@ function getMarkedScript(): string {
   void logError("webview-marked-script-missing", { candidates });
   cachedMarkedScript = "";
   return cachedMarkedScript;
+}
+
+function getJsonFormatterScript(): string {
+  if (cachedJsonFormatterScript !== undefined) {
+    return cachedJsonFormatterScript;
+  }
+  const candidates = [
+    path.join(__dirname, "..", "..", "node_modules", "json-formatter-js", "dist", "json-formatter.umd.js"),
+    path.join(__dirname, "..", "..", "media", "json-formatter.umd.js"),
+  ];
+  for (const scriptPath of candidates) {
+    try {
+      cachedJsonFormatterScript = readFileSync(scriptPath, "utf8");
+      return cachedJsonFormatterScript;
+    } catch {
+      // Keep checking next candidate.
+    }
+  }
+  void logError("webview-json-formatter-script-missing", { candidates });
+  cachedJsonFormatterScript = "";
+  return cachedJsonFormatterScript;
 }

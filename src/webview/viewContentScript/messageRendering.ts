@@ -323,6 +323,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         const bubble = document.createElement("div");
         bubble.className = "bubble";
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        if (typeof mountJsonTreeHosts === "function") {
+          mountJsonTreeHosts(bubble);
+        }
         const actions = createMessageActionsElement(message);
         if (actions) {
           bubble.appendChild(actions);
@@ -382,6 +385,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           wrapper.insertBefore(nextBadge, bubble);
         }
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        if (typeof mountJsonTreeHosts === "function") {
+          mountJsonTreeHosts(bubble);
+        }
         if (typeof refreshChatSearchHighlights === "function") {
           refreshChatSearchHighlights();
         }

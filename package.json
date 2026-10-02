@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.23.4",
+  "version": "0.23.5",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -1068,6 +1068,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.12",
     "@dagrejs/dagre": "^3.0.0",
     "cross-spawn": "^7.0.6",
+    "json-formatter-js": "^2.5.23",
     "marked": "^15.0.12",
     "zod": "^4.3.5"
   }

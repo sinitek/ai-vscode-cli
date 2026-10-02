@@ -2103,6 +2103,7 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "getAssistantMessageContentForDisplay",
     "isToolResultLikeMessage",
     "renderToolResultLikeMessage",
+    "isAssistantMarkdownRenderPending",
     "renderAssistantMessageContent",
     "renderTraceMessageContent",
     "renderMessageContent",
@@ -2124,6 +2125,11 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "getTraceTypeDefinition",
     "isLineNumberedLine",
     "wrapLineNumberedBlocks",
+    "parseJsonContainerText",
+    "unwrapSingleMarkdownFence",
+    "parseCompleteJsonContainer",
+    "serializeJsonTreeSource",
+    "renderJsonTreeHost",
     "renderMarkdown",
   ].map((name) => extractFunctionSource(traceSource, name)).join("\n");
   const failures: any[] = [];

@@ -78,7 +78,7 @@ media/
 
 聊天面板负责：
 
-- 渲染消息、trace、任务列表、队列、历史记录
+- 渲染消息、trace、任务列表、队列、历史记录；助手 Markdown 气泡若整段是完整 JSON object 或 array，内联 `json-formatter-js` 渲染为默认全部展开、节点可折叠的 JSON 树。内联脚本在写入 HTML 前会把字面量 `</script>` 改成 `<\/script>`，避免 VS Code `document.write` 提前截断脚本
 - 采集用户输入、附件、路径选择、规则编辑动作
 - 通过 `postMessage` 向扩展发送结构化消息
 

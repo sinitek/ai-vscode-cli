@@ -14,6 +14,34 @@
 
 ## 当前有效条目
 
+## Webview 内联脚本不能包含字面量 `</script>`
+
+- 状态：已规避
+- 首次发现：2026-10-02
+- 适用范围：聊天面板 `getWebviewHtml` 内联的 marked、json-formatter 和运行时脚本
+
+### 现象
+- 侧栏 Webview 空白，控制台报 `Uncaught SyntaxError: Failed to execute 'write' on 'Document': Invalid or unexpected token`。
+- 堆栈落在 VS Code `workbench/contrib/webview/browser/pre/index.html` 的 `contentDocument.write(newDocument)`，不是业务脚本文件名。
+
+### 触发条件
+- 聊天面板把第三方库和前端运行时直接内联进 `<script>`。
+- 脚本源码里出现字面量 `</script>`，例如 JSON 树宿主 HTML 的结束标签。
+
+### 根因
+- HTML 解析器在 script data 状态遇到 `</script>` 会立刻结束当前脚本，后面的源码不再属于这段 JavaScript。
+- 被截断的字符串会变成 `Invalid or unexpected token`，并由 `document.write` 同步抛出。
+
+### 长期规避
+- 写入 Webview HTML 前用 `neutralizeInlineScriptEndTags` 把 `</script>` 替换成 `<\/script>`。
+- JavaScript 仍把 `\/` 解析成 `/`，字符串值保持 `</script>`；HTML 解析器则看不到结束标签。
+- 不要只在某一个模板字符串里手写转义，marked、json-formatter、运行时脚本和后续内联库都要走同一出口。
+
+### 验证方式
+- `npm run build` 后执行 `node --test dist/test/webview/jsonTreeMessageRender.test.js`。
+- 用例会按 HTML 规则切出三段内联脚本，并用 `vm.Script` 确认它们仍能被 `document.write` 解析。
+
+
 ## 我要提问不能清掉主任务 Tab 标记
 
 - 状态：已规避

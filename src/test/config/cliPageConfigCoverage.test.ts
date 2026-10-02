@@ -364,8 +364,8 @@ test("main webview content and provider cover success, cache, message, and fallb
 
     logger.logError = async () => undefined;
     fsModule.readFileSync = ((target: fs.PathOrFileDescriptor, ...args: any[]) => {
-      if (String(target).includes("marked.min.js")) {
-        throw new Error("marked missing by test");
+      if (String(target).includes("marked.min.js") || String(target).includes("json-formatter.umd.js")) {
+        throw new Error("vendor script missing by test");
       }
       return (originalReadFileSync as any)(target, ...args);
     }) as typeof fs.readFileSync;

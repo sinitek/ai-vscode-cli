@@ -80,7 +80,7 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
       `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeRegExp(cspSource)} https:; style-src ${escapeRegExp(cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeRegExp(nonce)}';" />`,
     ),
   );
-  assert.equal(countOccurrences(html, `<script nonce="${nonce}">`), 2);
+  assert.equal(countOccurrences(html, `<script nonce="${nonce}">`), 3);
   assert.doesNotMatch(html, /<script(?![^>]*nonce=)/);
   assert.doesNotMatch(html, /\son[a-z]+\s*=/i);
   assert.ok(html.includes(webviewStyles));

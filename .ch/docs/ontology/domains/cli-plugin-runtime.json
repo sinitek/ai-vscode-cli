@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-30",
+  "as_of": "2026-10-02",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -298,6 +298,18 @@
       "status": "active",
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [{"path": "AGENTS.md", "anchor": "开发注意事项"}]
+    },
+    {
+      "id": "plugin.rule.chat_complete_json_tree",
+      "name": "完整 JSON 气泡使用可折叠 JSON 树",
+      "description": "AI 对话助手气泡在渲染 Markdown 时，若整段正文或唯一一层 Markdown 代码围栏是完整 JSON object 或 array，则使用 json-formatter-js 渲染为默认全部展开、节点可折叠的 JSON 树。JSON 字符串、数字、布尔、null、残缺 JSON 和混有说明文字的内容仍按 Markdown 渲染；流式输出未稳定前保持纯文本。",
+      "aliases": ["json tree", "JSON 气泡"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/traceRendering.ts", "anchor": "parseCompleteJsonContainer"}
+      ]
     },
     {
       "id": "plugin.rule.cli_child_lifecycle_guarded",
