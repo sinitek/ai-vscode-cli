@@ -13,7 +13,7 @@ description: Use before implementing or reviewing tasks that involve repository 
 
 - 任务涉及 VS Code 插件能力、本地 CLI 调用、会话、配置档案、Loop、Graph、workspace scaffold、长期记忆或 harness 规则。
 - 需要确认“谁负责、谁能看/改/运行、什么状态可流转、一次请求跨哪些模块”。
-- 需要从业务名词快速定位产品规格、架构、实现路径和测试入口。
+- 需要从业务名词快速定位产品规格、架构、实现路径、测试入口和接口/数据契约。
 - 完成业务或 harness 语义变更后，需要判断 `.ch/docs/ontology/` 是否同步更新。
 
 不使用本 skill：
@@ -45,13 +45,13 @@ description: Use before implementing or reviewing tasks that involve repository 
    ```
 
 6. 查看命中的概念、关系、规则和跨域场景，并打开 `source_refs` 中最相关的原始事实来源。
-7. 如果任务需要代码调用链或最新符号，再使用 CodeGraph；如果 ontology 与事实来源冲突，以当前产品规格、架构、代码和测试为准，并把漂移列入本次维护范围。
+7. 如果任务需要代码调用链或最新符号，再使用 CodeGraph；如果 ontology 与事实来源冲突，以当前产品规格、架构、接口/数据契约、代码和测试为准，并把漂移列入本次维护范围。
 
 ## 空本体初始化流程
 
 当 `--status-report` 显示需要初始化时：
 
-1. 先阅读项目已有事实源，优先顺序为 `README.md`、`ARCHITECTURE.md`、`.ch/docs/product-specs/`、`.ch/docs/design-docs/`、`docs/`、核心源码目录和接口契约。
+1. 先阅读项目已有事实源，优先顺序为 `README.md`、`ARCHITECTURE.md`、`.ch/docs/product-specs/`、`.ch/docs/TESTING.md`、`.ch/docs/design-docs/`、`docs/`、核心源码目录和接口/数据契约。
 2. 提取 5-12 个稳定业务概念、3-10 条关键关系、2-6 条规则和 1-3 个跨域流程；只写已有事实能支撑的内容。
 3. 替换 scaffold `project.*` 占位或新增最贴近业务边界的 `domains/<domain-id>.json`，并更新 `manifest.json` 的 `domain_files` / `workflow_files`。
 4. 每条记录必须带可核对的 `source_refs`，避免复制长篇规格或写入密钥、客户数据、生产地址。

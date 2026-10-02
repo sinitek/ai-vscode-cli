@@ -290,6 +290,15 @@ related_paths: []
 
 只有在事实来源文档完成显式更新后，generated recall 面才应被刷新并反映新状态。generated 索引负责加速召回，不负责替代决策确认。
 
+## 3.8 Harness scaffold 与记忆保护
+
+`media/workspace-scaffold/` 是新工作区的业务中性模板，不是当前仓库记忆的来源。同步 harness 时遵循下面的保留边界：
+
+- 不用 scaffold 的 `memory/` 文件覆盖当前仓库已有热区正文、front matter、历史条目或来源链接。
+- 不删除、移动或重排现有 `exec-plans/active/`、`exec-plans/completed/` 计划；只同步计划规则、模板字段和归档约定。
+- 不重建或覆盖未提交的 `.ch/docs/generated/memory-index/.local/` 任务级召回文件；如需生成新召回包，应先确认当前工作面没有未提交修改。
+- scaffold 中的 `project.*` Ontology 记录是模板占位；已有真实项目业务域时，不应把占位域复制进当前仓库。
+
 ## 4. 清理与降级规则
 
 - `exec-plans/active/` 完成后，应决定哪些内容上提，哪些只归档。

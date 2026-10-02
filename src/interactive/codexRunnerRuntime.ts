@@ -707,6 +707,9 @@ export function applyCodexReasoningDelta(
     next.closed = true;
   }
   const sanitized = sanitizeCodexReasoningContent(next.raw);
+  if (!sanitized.trim()) {
+    return { state: next, delta: "" };
+  }
   if (sanitized.startsWith(next.emitted)) {
     const delta = sanitized.slice(next.emitted.length);
     next.emitted = sanitized;

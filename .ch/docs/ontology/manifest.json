@@ -4,7 +4,7 @@
   "name": "Sinitek VS Code CLI 插件 AI 开发业务本体",
   "purpose": "为仓库内 AI 开发提供插件运行时、harness 治理、规则和场景导航，不作为产品运行时 ontology。",
   "version": "1.0.0",
-  "as_of": "2026-09-04",
+  "as_of": "2026-10-02",
   "format": "sinitek-domain-ontology-v1",
   "language": "zh-CN",
   "schema_file": ".ch/docs/ontology/ontology.schema.json",
@@ -19,7 +19,7 @@
     "当前生效的产品规格与明确设计文档",
     "ARCHITECTURE.md 中的稳定架构与数据边界",
     "当前代码、测试和运行时验证",
-    "README.md、completed plans 与 runbooks 中的补充事实",
+    "README.md、memory、completed plans 与 runbooks 中的补充事实",
     "本 ontology 的压缩描述"
   ],
   "concept_kinds": [

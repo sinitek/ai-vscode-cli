@@ -1,6 +1,6 @@
 # AI 开发业务本体
 
-这里存放本仓库当前业务与工程语义的 AI 开发辅助 ontology。它把分散在产品规格、架构、代码和 harness 文档中的核心概念、关系、规则与跨域场景压缩成可检索的语义导航层。
+这里存放本仓库当前业务与工程语义的 AI 开发辅助 ontology。它把分散在产品规格、架构、代码和 harness 文档中的核心概念、关系、规则与跨域场景压缩成可检索的语义导航层。`media/workspace-scaffold` 中的 `project.*` 只属于业务中性模板占位，不是本仓库的事实来源。
 
 ## 边界
 
@@ -33,6 +33,8 @@
 | --- | --- | --- |
 | `cli-plugin-runtime` | VS Code CLI 插件运行时 | 扩展宿主、聊天面板、本地 CLI、会话、配置档案和 Loop/Graph 执行 |
 | `harness-governance` | Harness 治理 | AGENTS 规则、skills、执行计划、记忆、ontology 和 workspace scaffold |
+
+当前仓库已经有真实业务域，因此不复制 scaffold 的 `project-system` 占位域；新业务概念应进入最贴近其 bounded context 的真实 domain 文件。
 
 ## 什么时候更新
 

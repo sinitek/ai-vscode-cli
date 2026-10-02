@@ -94,6 +94,24 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return message.role === "assistant" && isFinalAssistantSummaryMessage(messageIndex);
       }
 
+      function hasRenderableMessageContent(message) {
+        if (!message) {
+          return false;
+        }
+        if (message.role === "assistant") {
+          return Boolean(getAssistantMessageContentForDisplay(message).trim())
+            || normalizeMessageActions(message).length > 0;
+        }
+        if (message.role === "trace") {
+          const presentation = getTracePresentation(message.content || "");
+          if (isThinkingLikeMessage(message, presentation)) {
+            return Boolean(String(presentation.detail || "").trim())
+              || presentation.lines.some((line) => String(line || "").trim());
+          }
+        }
+        return true;
+      }
+
       function getVisibleMessages() {
         if (!Array.isArray(state.messages) || state.messages.length === 0) {
           return [];
@@ -101,6 +119,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         return state.messages
           .map((message, index) => ({ message, index }))
           .filter(({ message, index }) => {
+            if (!hasRenderableMessageContent(message)) {
+              return false;
+            }
             if (isHiddenLoopPlusProtocolPrompt(message && message.content)) {
               return false;
             }
@@ -363,7 +384,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!message || message.role !== "assistant" || !message.id) {
           return false;
         }
-        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
+        if (
+          !hasRenderableMessageContent(message)
+          || (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message))
+        ) {
           renderMessages();
           return true;
         }
@@ -398,7 +422,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!message || message.role !== "assistant" || !message.id) {
           return false;
         }
-        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
+        if (
+          !hasRenderableMessageContent(message)
+          || (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message))
+        ) {
           renderMessages();
           return true;
         }

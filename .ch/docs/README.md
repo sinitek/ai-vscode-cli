@@ -49,6 +49,7 @@ core harness 默认入口只包含：
 - 每个目录至少保留一个清晰入口页。
 - 测试规则以 `TESTING.md` 为准；工具风险以 `TOOL_POLICY.md` 为准；执行计划以 `exec-plans/README.md` 为准；功能清单以 `product-specs/FEATURE_INVENTORY.md` 为准。
 - 新增主题前，优先判断是否应该放入已有主题目录，而不是横向再造新目录。
+- `media/workspace-scaffold/` 只提供业务中性的通用模板；同步到本仓库时，项目事实、记忆热区、generated 索引和历史计划以当前仓库为准。
 
 ## 轻量使用方式
 

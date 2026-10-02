@@ -19,7 +19,17 @@ starter 默认不保留历史计划文件；复制模板后再从真实任务开
 - 例：`2026-03-28-bootstrap-harness-foundation.md`
 - 完成后的归档路径：`completed/2026-03/2026-03-28-bootstrap-harness-foundation.md`
 
-归档月份取计划文件名或计划日期中的 `YYYY-MM`。完成计划不得平铺在 `completed/` 根目录；需要枚举历史计划时必须递归扫描 `completed/**/*.md`，并使用完整相对路径作为计划标识。
+归档月份取计划文件名或计划日期中的 `YYYY-MM`，并按 `YYYY-MM` 创建月份目录。完成计划不得平铺在 `completed/` 根目录；需要枚举历史计划时必须递归扫描 `completed/**/*.md`，并使用完整相对路径作为计划标识。
+
+目录示例：
+
+```text
+completed/
+├── 2025-06/
+│   └── 2025-06-18-example-plan.md
+└── 2026-03/
+    └── 2026-03-28-bootstrap-harness-foundation.md
+```
 
 ## 使用原则
 
@@ -27,7 +37,7 @@ starter 默认不保留历史计划文件；复制模板后再从真实任务开
 - 计划必须可延续：下一位代理或下一次会话看到它就能继续推进。
 - 计划头部状态明确标记为 `completed` 后，要归档到对应的 `completed/YYYY-MM/`，不要长期堆在 `active/`。
 - 移动计划后必须同步更新仓库内引用该计划的具体路径，并验证引用目标存在。
-- 计划内容不要停留在本目录：稳定设计进入 `design-docs/`，复发问题进入 `runbooks/`，用户可见能力进入 `product-specs/FEATURE_INVENTORY.md`，跨会话优先上下文进入 `memory/`。
+- 计划内容不要停留在本目录：稳定架构进入 `ARCHITECTURE.md`，规则进入 `AGENTS.md` 或 `.ch/docs/*.md`，复发问题进入 `runbooks/`，用户可见能力进入 `product-specs/FEATURE_INVENTORY.md`，跨会话优先上下文进入 `memory/`。
 
 ## 什么时候建计划
 
@@ -62,3 +72,4 @@ starter 默认不保留历史计划文件；复制模板后再从真实任务开
 - `owner`：当前主要负责推进的人或代理
 - `claimed_at`：开始占用该计划的时间
 - `claim_ttl`：占用预计保持多久，或何时应该重新确认
+- `handoff_to`：准备交接给谁，或下一次默认接手对象

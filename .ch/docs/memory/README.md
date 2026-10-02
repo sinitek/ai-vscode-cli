@@ -38,6 +38,8 @@ related_paths:
 - 如果一条信息只适用于单次任务，不要写进热区，优先写到当前 `exec plan`。
 - 如果一条信息已经从 L1/L2 上提到 L3/L4，应清理低层重复文本，只保留必要短链接。
 - 长期记忆文档默认应带统一 front matter，具体字段见 `.ch/docs/MEMORY.md`。
+- 同步 `media/workspace-scaffold` 时，不得用模板热区替换本仓库已有记忆；模板只补充规则入口和缺失结构。
+- `.ch/docs/generated/memory-index/` 是可重建的共享索引，`.local/` 是任务级召回工作面；两者都不能反向覆盖原始热区记忆或执行计划。
 
 ## 体积控制
 

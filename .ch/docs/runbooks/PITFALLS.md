@@ -1059,6 +1059,15 @@
 - `src/sessionStore.ts`
 - `src/test/core/codexReasoningContent.test.ts`
 
+## 空消息存档不能证明实时思考气泡有正文
+
+- 状态：已规避
+- 首次发现：2026-10-02
+- Codex rollout 可能记录只有 `encrypted_content` 且 `summary: []` 的 reasoning；这表示没有公开下发的摘要，不能猜测或解密补出思考正文。插件启动日志也不一定含 app-server 原始事件，需要交叉检查本机 rollout 与消息存档。
+- 交互宿主先发送空 `appendMessage` 占位，再发送 `assistantDelta`；纯空白也是非空字符串。Webview 若仅按消息角色/结果模式过滤，会把占位或空白渲染成空泡，而 `sanitizeMessages` 在落盘时已经删除空消息，所以重开后与实时现象可能不同。
+- 规避：Codex reasoning 在首段实际正文前仅缓存空白；Webview 按展示正文过滤空 assistant 和无正文 thinking trace，保留状态与 ID 关联、有效操作按钮，并让后续正文恢复原消息可见性。禁止直接丢弃所有空增量或删除流式占位，否则可能丢失换行或后续文字。
+- 回归：`src/test/interactive/codexRunnerRuntime.test.ts` 和 `src/test/webview/clipagescriptruntimecoverage.test.ts`；覆盖空摘要、空白前缀、思考占位、工具插入后的正文、历史空 trace、空最终标记及操作按钮。
+
 ## OpenCode 真实会话字段是 `sessionID`，不能把插件 `local_*` 当作 CLI session
 
 - 状态：已规避，需随 OpenCode JSONL 协议复核

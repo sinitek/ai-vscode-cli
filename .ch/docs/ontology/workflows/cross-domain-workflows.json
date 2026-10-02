@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-08-22",
+  "as_of": "2026-10-02",
   "collection": "cross-domain-workflows",
   "workflows": [
     {
@@ -51,11 +51,11 @@
     {
       "id": "scenario.workspace_scaffold_update_with_ontology",
       "name": "Workspace scaffold 更新与 ontology 同步",
-      "description": "更新内置 workspace scaffold 时，应同步 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架，避免新工作区缺少 harness 能力。",
+      "description": "更新内置 workspace scaffold 时，应同步通用 AGENTS、必要 skills、轻量 `.ch/docs` 和 ontology 骨架；同步到已有项目时采用保留式合并，避免覆盖项目事实和长期上下文。",
       "status": "active",
       "domains": ["cli-plugin-runtime", "harness-governance"],
       "trigger": "harness 骨架、skills 或 ontology 能力升级，需要同步到插件内置工作区模板。",
-      "outcome": "根仓库和 `media/workspace-scaffold` 均具备一致的通用 harness 能力。",
+      "outcome": "根仓库和 `media/workspace-scaffold` 具备一致的通用 harness 能力，同时保留项目专属事实、记忆、计划和 skills。",
       "source_refs": [
         {"path": "media/workspace-scaffold/AGENTS.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"},
@@ -75,6 +75,13 @@
           "action": "提供业务中性的 ontology schema、manifest、domain 和 workflow 骨架",
           "object": "harness.workspace_scaffold",
           "result": "harness.ontology"
+        },
+        {
+          "order": 3,
+          "actor": "harness.agent_rules",
+          "action": "按差异矩阵手工合并通用规则，不覆盖项目事实、记忆热区、generated 索引、执行计划和专属 skills",
+          "object": "harness.workspace_scaffold",
+          "result": "harness.execution_plan"
         }
       ]
     }

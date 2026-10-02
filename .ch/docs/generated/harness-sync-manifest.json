@@ -1,9 +1,41 @@
 {
   "schemaVersion": 2,
   "generatedBy": "codex-harness-sync",
-  "templateSource": "/Users/fangjiawei/sinitek/sinitek-zhiqiu-workspace",
-  "mode": "simplified-core-update",
-  "generatedAt": "2026-08-29T00:00:00+00:00",
+  "templateSource": "media/workspace-scaffold",
+  "mode": "merge-preserve",
+  "generatedAt": "2026-10-02T03:26:14+00:00",
+  "filesSnapshotAt": "2026-08-29T00:00:00+00:00",
+  "latestUpgrade": {
+    "templateSource": "media/workspace-scaffold",
+    "strategy": "manual-merge",
+    "completedAt": "2026-10-02T03:26:14+00:00",
+    "plan": ".ch/docs/exec-plans/completed/2026-10/2026-10-02-harness-scaffold-merge.md"
+  },
+  "preservePolicy": {
+    "strategy": "manual-merge",
+    "doNotOverwriteDirectories": [
+      ".ch/docs/memory/",
+      ".ch/docs/generated/memory-index/",
+      ".ch/docs/exec-plans/active/",
+      ".ch/docs/exec-plans/completed/",
+      ".agents/profiles/",
+      ".agents/skills/"
+    ],
+    "manualMergePaths": [
+      "AGENTS.md",
+      "ARCHITECTURE.md",
+      ".agents/skills/AGENTS.md",
+      ".agents/skills/execution-plan/SKILL.md",
+      ".agents/skills/ontology/SKILL.md",
+      ".ch/docs/README.md",
+      ".ch/docs/MEMORY.md",
+      ".ch/docs/ontology/",
+      ".ch/docs/exec-plans/README.md",
+      ".ch/docs/exec-plans/TEMPLATE.md",
+      ".ch/docs/product-specs/TEMPLATE.md"
+    ],
+    "placeholderPolicy": "已有真实业务域时，不复制 media/workspace-scaffold/.ch/docs/ontology/domains/project-system.json。"
+  },
   "files": [
     {
       "path": "AGENTS.md",

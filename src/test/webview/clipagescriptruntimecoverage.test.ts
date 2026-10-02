@@ -1682,6 +1682,80 @@ test("batches assistant delta markdown rendering while streaming", () => {
   assert.doesNotMatch(finalBubble?.innerHTML || "", /assistant-message-content-streaming/);
 });
 
+test("hides empty assistant placeholders until text arrives after a tool trace", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "thinking-placeholder", role: "assistant", kind: "thinking", content: "" },
+  });
+  assert.equal(api.state.messages.length, 1);
+  assert.equal(document.getElementById("messages").children.length, 0);
+  assert.equal(document.getElementById("emptyState").style.display, "block");
+
+  window.dispatchMessage({
+    type: "assistantDelta", tabId: "tab-1", id: "thinking-placeholder", kind: "thinking", content: " \n",
+  });
+  assert.equal(document.getElementById("messages").children.length, 0);
+  assert.equal(document.getElementById("emptyState").style.display, "block");
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "tool-between", role: "trace", content: "exec\npwd", merge: false },
+  });
+  window.dispatchMessage({
+    type: "assistantDelta", tabId: "tab-1", id: "thinking-placeholder", kind: "thinking", content: "Inspecting the renderer.",
+  });
+  assert.equal(api.state.messages.length, 2);
+  assert.equal(api.state.messages[0].id, "thinking-placeholder");
+  assert.equal(api.state.messages[0].content, " \nInspecting the renderer.");
+  assert.equal(document.getElementById("messages").children.length, 2);
+  assert.equal(document.getElementById("messages").children[0].dataset.messageId, "thinking-placeholder");
+  assert.equal(document.getElementById("emptyState").style.display, "none");
+});
+
+test("hides historical empty thinking and final markers without hiding real text or actions", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({
+    type: "setMessages",
+    tabId: "tab-1",
+    messages: [
+      { id: "blank-thinking", role: "assistant", kind: "thinking", content: " \n\t" },
+      { id: "empty-thinking-trace", role: "trace", kind: "thinking", content: "" },
+      { id: "heading-only-thinking", role: "trace", content: "thinking\n \t" },
+      { id: "empty-final", role: "assistant", content: "<FINAL> \n", codexFinalAnswer: true },
+      { id: "real-thinking", role: "assistant", kind: "thinking", content: "Inspecting the logs." },
+      { id: "real-thinking-trace", role: "trace", kind: "thinking", content: "thinking: Checking events." },
+      { id: "tool-trace", role: "trace", content: "exec\npwd" },
+      { id: "actions-only", role: "assistant", content: "", actions: [{ type: "openLoopGroupChat", taskId: "task-1", label: "Open discussion" }] },
+    ],
+  });
+  assert.deepEqual(
+    document.getElementById("messages").children.map((child: FakeElement) => child.dataset.messageId),
+    ["real-thinking", "real-thinking-trace", "tool-trace", "actions-only"],
+  );
+  assert.equal(api.state.messages.length, 8);
+  assert.ok(document.getElementById("messages").querySelector(".message-action-link"));
+});
+
+test("hides whitespace-only assistant deltas and restores visibility when text arrives", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "blank-delta", kind: "normal", content: " " });
+  assert.equal(document.getElementById("messages").children.length, 0);
+  assert.equal(document.getElementById("emptyState").style.display, "block");
+  window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "blank-delta", kind: "normal", content: "Actual reply." });
+  assert.equal(api.state.messages.length, 1);
+  assert.equal(api.state.messages[0].content, " Actual reply.");
+  assert.equal(document.getElementById("messages").children.length, 1);
+  assert.match(document.getElementById("messages").querySelector(".bubble")?.innerHTML || "", /Actual reply/);
+});
+
 test("keeps thinking bubbles as plain text while streaming appends", () => {
   let markdownParseCount = 0;
   const marked = {

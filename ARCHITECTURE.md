@@ -8,6 +8,14 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
+## 1.1 Harness 与事实来源边界
+
+- `AGENTS.md` 只承载稳定规则、任务路由和项目入口；详细流程回到 `.ch/docs/`、`.agents/skills/` 或局部 `AGENTS.md`。
+- `.ch/docs/` 按主题承载测试、安全、工具、Ontology、产品规格、记忆、执行计划和 runbook；同一事实只保留一个主要来源。
+- `media/workspace-scaffold/` 是新工作区的通用模板，不是当前仓库事实的覆盖层。同步时先做差异盘点，再手工合并通用规则；现有项目代码、记忆、生成索引和执行计划优先保留。
+- `.ch/docs/memory/` 和 `.ch/docs/exec-plans/` 的现有内容是跨会话上下文与历史记录，模板升级不得清空、替换或重排它们。
+- 生成文件只能作为可重建的导航或召回面，不能替代原始 Markdown、JSON、代码、测试和运行时验证。
+
 ## 1. 当前实际结构
 
 ```text

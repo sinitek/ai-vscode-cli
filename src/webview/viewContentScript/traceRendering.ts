@@ -305,7 +305,10 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           target.kind = "thinking";
         }
         target.content += content || "";
-        if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target)) {
+        if (
+          !hasRenderableMessageContent(target)
+          || (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target))
+        ) {
           clearAssistantDeltaRenderTimer(target.id);
           renderMessages();
           return;

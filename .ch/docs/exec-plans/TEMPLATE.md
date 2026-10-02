@@ -6,6 +6,7 @@
 - owner：
 - claimed_at：
 - claim_ttl：
+- handoff_to：
 
 ## 背景
 

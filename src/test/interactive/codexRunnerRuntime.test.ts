@@ -528,6 +528,56 @@ test("thinking deltas stay on the same reasoning item after a tool bubble", () =
   });
 });
 
+test("reasoning deltas buffer blank prefixes until visible text arrives", () => {
+  const blank = applyCodexReasoningDelta(undefined, " \n\t");
+  assert.equal(blank.delta, "");
+  assert.equal(blank.state.raw, " \n\t");
+  assert.equal(blank.state.emitted, "");
+  assert.equal(commitCodexReasoningSnapshot(blank.state, "").delta, "");
+
+  const visible = applyCodexReasoningDelta(blank.state, "Inspecting the renderer.");
+  assert.equal(visible.delta, " \n\tInspecting the renderer.");
+  const separator = applyCodexReasoningDelta(visible.state, "\n\n");
+  assert.equal(separator.delta, "\n\n");
+  assert.equal(separator.state.emitted, " \n\tInspecting the renderer.\n\n");
+});
+
+test("empty reasoning snapshots never create assistant messages", () => {
+  const reasoningBuffers = new Map();
+  const handlers = {
+    onAssistantDelta: () => assert.fail("empty reasoning must not create a bubble"),
+    onTrace: () => assert.fail("empty reasoning must not create a trace"),
+    onTaskListUpdate: () => {},
+  };
+  handleCodexReasoningNotification({
+    method: "item/reasoning/summaryPartAdded",
+    params: { threadId: "parent", itemId: "rs-empty" },
+    primaryThreadId: "parent",
+    reasoningBuffers,
+    handlers,
+  });
+  handleCodexReasoningNotification({
+    method: "item/reasoning/summaryTextDelta",
+    params: { threadId: "parent", itemId: "rs-empty", delta: " \n" },
+    primaryThreadId: "parent",
+    reasoningBuffers,
+    handlers,
+  });
+  handleCodexItemEvent({
+    eventType: "item.completed",
+    rawItem: { type: "reasoning", id: "rs-empty", summary: [], text: [] },
+    threadId: "parent",
+    primaryThreadId: "parent",
+    assistantBuffers: new Map(),
+    reasoningBuffers,
+    emittedTraceContents: new Map(),
+    handlers,
+    onVisibleError: () => assert.fail("empty reasoning is not an error"),
+    formatCollabToolFailure: () => "failed",
+  });
+  assert.equal(reasoningBuffers.size, 0);
+});
+
 test("reasoning deltas concatenate without extra newlines and ignore leaked final_answer snapshots", () => {
   const first = applyCodexReasoningDelta(undefined, "Ah! This is likely the root cause:");
   assert.equal(first.delta, "Ah! This is likely the root cause:");

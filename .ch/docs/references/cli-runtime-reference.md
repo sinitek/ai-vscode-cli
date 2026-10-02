@@ -41,6 +41,7 @@
 
 ### Codex
 
+- reasoning 的空快照（如 `summary: []`）不产生思考正文，`encrypted_content` 不视作可展示摘要。纯空白 reasoning 前缀只缓存在原 item，收到正文后连同换行完整下发；已有正文后的空白增量仍保留。Webview 在实时和历史渲染中隐藏空 assistant 占位、去掉协议标记后无正文的回复及无正文 thinking trace，但保留原消息 ID/增量关联和有效操作按钮，因此不把“暂时没收到正文”当作要删除的消息。
 - 使用当前用户安装的官方 `codex` CLI
 - 通过 `codex app-server --listen stdio://` 建立 JSON-RPC 会话。消息按 NDJSON 拆帧，只把 LF/CRLF 当边界；提示词里的 U+2028/U+2029 行分隔符留在 JSON 字符串内，写出时转义为 `\u2028` / `\u2029`，避免被 Node readline 截断成 Unterminated string
 - 优先直接 `spawn` 已解析的 Codex 可执行路径；macOS 仅在命令无法直接解析时回退到用户配置的 shell 包装

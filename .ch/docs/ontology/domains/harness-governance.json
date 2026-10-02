@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-09-04",
+  "as_of": "2026-10-02",
   "domain": {
     "id": "harness-governance",
     "name": "Harness 治理",
@@ -240,6 +240,18 @@
       "status": "active",
       "applies_to": ["harness.workspace_scaffold", "harness.ontology"],
       "source_refs": [{"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md"}]
+    },
+    {
+      "id": "harness.rule.scaffold_merge_preserves_project_state",
+      "name": "Scaffold 合并保留项目状态",
+      "description": "将 workspace scaffold 的通用规则同步到已有仓库时，采用保留式合并；不得覆盖或删除项目事实、memory 热区、generated 索引、active/completed 执行计划和项目专属 skills。",
+      "status": "active",
+      "applies_to": ["harness.workspace_scaffold", "harness.memory", "harness.execution_plan", "harness.skill"],
+      "source_refs": [
+        {"path": "AGENTS.md", "anchor": "同步 media/workspace-scaffold 时采用保留式合并"},
+        {"path": "ARCHITECTURE.md", "anchor": "Harness 与事实来源边界"},
+        {"path": ".ch/docs/MEMORY.md", "anchor": "Harness scaffold 与记忆保护"}
+      ]
     }
   ]
 }

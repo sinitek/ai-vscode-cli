@@ -1,8 +1,22 @@
 # 项目规则
 
-本项目是 VS Code 插件：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 `codex` / `claude` / `opencode`）执行对话请求并展示结果。
+本仓库是一个 VS Code 插件：在 VS Code 中提供内置 AI 对话面板，调用本地 CLI（如 `codex` / `claude` / `opencode`）执行对话请求并展示结果。
 
-根级 `AGENTS.md` 只保留稳定硬约束和导航入口；细节知识放进 `.ch/docs/`、`.agents/skills/` 或更近的局部 `AGENTS.md`。
+根级 `AGENTS.md` 只保留稳定规则与导航；详细事实知识放进 `.ch/docs/`、`.agents/skills/` 或更近的局部 `AGENTS.md`。
+
+## 仓库使命与首次进入
+
+- 通过稳定的规则、Ontology、执行计划、记忆热区和可验证的 skills，支撑长周期、跨模块的 AI 开发协作。
+- 第一次进入仓库先看 `README.md`、`ARCHITECTURE.md`、`.ch/docs/README.md`、`.ch/docs/MEMORY.md`、`.ch/docs/ontology/README.md` 和 `.ch/docs/memory/README.md`。
+- 任务范围大、上下文分散或中断恢复时，先使用 `memory-recall`，再按召回结果展开 active plans、设计文档和 runbooks。
+- 如果存在 `.codegraph/` 且 CodeGraph 可用，代码位置、调用链和影响面分析优先使用 `codegraph` skill。
+- 其余入口按任务需要读取：`.ch/docs/SECURITY.md`、`.ch/docs/TOOL_POLICY.md`、`.ch/docs/TESTING.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md` 和项目运行手册。
+
+## AI 开发业务本体（Ontology）
+
+- `.ch/docs/ontology/` 是仓库内 AI 开发的业务语义导航层，不是用户可见功能或应用运行时数据；流程以 `.agents/skills/ontology/SKILL.md` 为准，数据结构以 `.ch/docs/ontology/README.md` 和 `manifest.json` 为准。
+- 涉及业务、权限、状态机、输入输出、跨域流程、配置或 harness 规则的任务前，先运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --status-report`，再按关键词查询并打开 `source_refs` 核对当前事实来源。
+- 任务改变概念、关系、权限、状态机、输入输出、重试恢复、观测、跨域流程或事实来源路径时，同步更新 `.ch/docs/ontology/` 并运行 `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`。
 
 ## 项目硬约束
 
@@ -16,7 +30,7 @@
 - 数据库结构变化（如有）必须同步相关 SQL 配置文件，全量和增量脚本都要覆盖，建表脚本必须包含表和字段中文备注。
 - 用户可见功能、行为、权限、流程或验收变化时，同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录无需更新的理由。
 - 如修改内置/官方 skills 或其 catalog，确认 `media/official_skills_catalog.json` 中的 `description` 保持中文。
-- 做任何功能都要考虑  linux/mac 和 windows 兼容, 尤其路径。
+- 做任何功能都要考虑 Linux/macOS 和 Windows 兼容，尤其是路径。
 
 ## 项目入口
 
@@ -35,7 +49,7 @@
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
 
 - **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
+- **Shell (always works):** `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
@@ -43,11 +57,12 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 <!-- BEGIN CODEX HARNESS RULES -->
 ## Codex harness 通用规则
 
-> 以下是受管 harness 入口块。同步模板时应保持“根级只做导航，细节回到事实来源”的轻量原则。
+> 以下是受管 harness 入口块。根级只做导航，详细流程回到事实来源。
 
 ### 执行路由
 
-- 非平凡任务必须使用任务列表；任务列表固定使用 `Tasklist:` 标题和 `[pending]`、`[in_progress]`、`[completed]` 状态，任务描述用中文。
+- 非平凡任务必须使用任务列表，并保持阶段状态同步。
+- 任务列表状态更新必须使用可解析格式：`Tasklist:` 标题，逐行使用 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码保持英文，描述用简体中文，代码标识符、命令、路径、包名和用户原文术语可保留原文。
 - 需求不清时使用结构化 user-input / elicitation 机制提问，最多 3 个短问题；每个问题只解决一个决策，并优先给出 2-3 个互斥选项。
 - 大范围、跨模块、跨阶段或高风险任务使用 `execution-plan` skill，并按 `.ch/docs/exec-plans/README.md` 管理执行计划。
 - 上下文分散或中断恢复时使用 `memory-recall` skill；不要手工通读全部历史文档。
@@ -58,18 +73,21 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 ### 实施规则
 
 - 先查已有实现和事实来源，再改代码；禁止基于猜测的数据结构、配置、事件或外部接口继续开发。
+- 优先选择朴素、稳定、可搜索、可复用、可验证的实现，不复制业务规则。
 - 稳定业务逻辑变更默认补或更新相关单元测试；修复 bug 时补回归测试。
 - 用户可见功能、行为、权限、流程或验收变化时，同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 或明确记录无需更新的理由。
 - 行为、接口、架构、运维方式变化时，同步对应设计文档、运行手册或局部 `AGENTS.md`。
 - 发现真实踩坑、隐式前置条件或高复发问题时，沉淀到 `.ch/docs/runbooks/PITFALLS.md` 或对应事实来源文档。
+- 同步 `media/workspace-scaffold` 时采用保留式合并：项目事实、现有 memory 热区、generated 索引和 active/completed 执行计划不因模板更新而覆盖或删除。
 
 ### 验证与收尾
 
 - 代码改动后按 `.ch/docs/TESTING.md` 从最小相关范围开始验证，再按风险扩大范围。
-- Java 项目需编译通过；Node 项目需执行相关 `build` / `tsc`；无代码改动时可不跑单测。
+- Node 项目需执行相关 `build` / `tsc`；无代码改动时可不跑运行时单测，但应完成相关文档、结构或脚本校验。
 - 单测失败先分流为实现缺陷、测试断言过期、夹具问题、环境问题、历史失败或范围外失败，再修复或记录证据。
 - 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态时，补充最小本机真实验证，记录命令、关键输出和结论。
-- 非平凡任务收尾按 `.ch/docs/MEMORY.md` 判断是否需要更新热区记忆、runbook、skill 或 ontology。
+- 非平凡任务收尾按 `.ch/docs/MEMORY.md` 判断是否需要更新热区记忆、runbook、skill 或 ontology；自动任务记录不得写入 `ROLLING_SUMMARY.md`。
+- 只有出现可复用的失败原因、成功方案、迁移、回滚、事故或关键决策时，才将事件写入 `EVENT_MEMORY.md`。
 
 ### 仓库扩张
 
