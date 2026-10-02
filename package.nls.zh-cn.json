@@ -18,7 +18,7 @@
   "config.autoOpenPanel.description": "扩展激活时自动打开 CLI Bridge 面板。",
   "config.rememberSelectedCli.description": "将所选 CLI 持久化为默认 CLI。",
   "config.debug.description": "启用 CLI stdin/stdout/stderr 的调试日志。",
-  "config.locale.description": "扩展界面语言，自动跟随 VS Code 显示语言。",
+  "config.locale.description": "扩展界面语言，默认使用简体中文；选择“自动”后跟随 VS Code 显示语言。",
   "config.macTaskShell.description": "在 macOS 上执行 AI 对话任务使用的 shell（zsh 或 bash）。",
   "config.disableMarketplaceUpdateCheckInDev.description": "在开发模式运行此扩展时禁用 VS Code 市场更新检查。",
   "config.thinkingMode.description": "所有 CLI 的全局思考模式。扩展将 ultra 提供为产品级原始值；Codex 与 Claude 是否接受取决于已安装的 CLI，OpenCode 使用模型专属 variants。",

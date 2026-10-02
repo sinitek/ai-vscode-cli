@@ -145,7 +145,7 @@
             "zh-CN",
             "en"
           ],
-          "default": "auto",
+          "default": "zh-CN",
           "description": "%config.locale.description%"
         },
         "sinitek-cli-tools.macTaskShell": {

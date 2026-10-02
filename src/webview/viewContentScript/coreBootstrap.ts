@@ -174,7 +174,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
           opencode: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
         },
-        locale: "auto",
+        locale: "zh-CN",
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",

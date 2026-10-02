@@ -4,25 +4,30 @@ import { readToolSettings } from "./toolSettings";
 export type AppLocale = "zh-CN" | "en";
 export type LocaleSetting = "auto" | AppLocale;
 
+export const DEFAULT_LOCALE_SETTING: LocaleSetting = "zh-CN";
+
 const ZH_LOCALE_PATTERN = /^zh(?:-|$)/i;
 const CONFIG_NAMESPACE = "sinitek-cli-tools";
 const LOCALE_SETTING_KEY = "locale";
 
-function getRawLocaleSetting(): string {
+export function normalizeLocaleSetting(value: unknown): LocaleSetting {
+  if (value === "zh-CN" || value === "en" || value === "auto") {
+    return value;
+  }
+  return DEFAULT_LOCALE_SETTING;
+}
+
+function getRawLocaleSetting(): LocaleSetting {
   const stored = readToolSettings().locale;
   if (stored === "zh-CN" || stored === "en" || stored === "auto") {
     return stored;
   }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return config.get<string>(LOCALE_SETTING_KEY, "auto") ?? "auto";
+  return normalizeLocaleSetting(config.get<unknown>(LOCALE_SETTING_KEY, DEFAULT_LOCALE_SETTING));
 }
 
 export function getLocaleSetting(): LocaleSetting {
-  const raw = getRawLocaleSetting();
-  if (raw === "zh-CN" || raw === "en" || raw === "auto") {
-    return raw;
-  }
-  return "auto";
+  return normalizeLocaleSetting(getRawLocaleSetting());
 }
 
 export function resolveLocale(language?: string): AppLocale {

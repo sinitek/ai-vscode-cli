@@ -454,7 +454,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.promptContext.dismissedFileKey = "";
           state.promptContext.dismissedSelectionKey = "";
         }
-        state.locale = typeof panelState.locale === "string" ? panelState.locale : "auto";
+        state.locale = typeof panelState.locale === "string" ? panelState.locale : "zh-CN";
         state.isMac = Boolean(panelState.isMac);
         state.macTaskShell = panelState.macTaskShell === "bash" ? "bash" : "zsh";
         state.interactive = panelState.interactive || { supported: false, enabled: false };
@@ -518,7 +518,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;
         }
         if (elements.languageSelect) {
-          elements.languageSelect.value = state.locale || "auto";
+          elements.languageSelect.value = state.locale || "zh-CN";
         }
         if (elements.macTaskShellRow) {
           elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";

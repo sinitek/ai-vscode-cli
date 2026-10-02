@@ -528,7 +528,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       }
       if (elements.languageSelect) {
         elements.languageSelect.addEventListener("change", (event) => {
-          const nextValue = event.target.value || "auto";
+          const nextValue = event.target.value || "zh-CN";
           state.locale = nextValue;
           vscode.postMessage({
             type: "updateSetting",
