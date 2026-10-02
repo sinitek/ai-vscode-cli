@@ -253,7 +253,9 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   assert.match(prompt, /estimatedRemainingRounds is optional/);
   assert.match(prompt, /snapshot captured when the CLI started/);
   assert.match(prompt, /host re-reads that record and is the final gate/);
-  assert.match(prompt, /Do not implement that work yourself/);
+  assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
+  assert.match(prompt, /You may run included tests and start a produced runnable application or artifact/);
+  assert.match(prompt, /Neither is required/);
   assert.match(prompt, /loopPlus snapshot/);
 
   const examples = extractProtocolExamples(prompt);
@@ -484,6 +486,8 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
   assert.match(prompt, /authorized write scope/);
   assert.match(prompt, /omission, regression, or boundary error/);
   assert.match(prompt, /does not grade this checklist/);
+  assert.match(prompt, /You are not required to run either one/);
+  assert.doesNotMatch(prompt, /Do not implement that work yourself/);
   assert.match(prompt, /accept\.reviews is required/);
   assert.match(prompt, /Do not mark a successful event failed because another event fails or launches a subtask/);
   assert.match(prompt, /send blocked, which confirms nothing/);
