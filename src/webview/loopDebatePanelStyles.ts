@@ -1,3 +1,4 @@
+import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES } from "./modalComponents";
 export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
@@ -91,44 +92,7 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
           var(--vscode-statusBarItem-errorForeground, var(--vscode-button-foreground)) 12%
         );
       }
-      .dialog-backdrop {
-        position: fixed;
-        inset: 0;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
-        z-index: 20;
-      }
-      .dialog-backdrop.visible {
-        display: flex;
-      }
-      .dialog {
-        width: min(560px, 100%);
-        border: 1px solid var(--vscode-widget-border);
-        border-radius: var(--radius);
-        background: var(--vscode-editorWidget-background);
-        box-shadow: 0 12px 30px color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent);
-        overflow: hidden;
-      }
-      .dialog-header {
-        padding: 14px 16px 10px;
-        border-bottom: 1px solid var(--vscode-widget-border);
-      }
-      .dialog-title {
-        margin: 0;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .dialog-description {
-        margin: 6px 0 0;
-        color: var(--vscode-descriptionForeground);
-        font-size: 12px;
-      }
-      .dialog-body {
-        padding: 14px 16px 0;
-      }
+${DIALOG_SHELL_STYLES}
       .dialog-label {
         display: block;
         margin-bottom: 8px;
@@ -158,15 +122,11 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
         font-size: 12px;
       }
-      .dialog-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        padding: 12px 16px 16px;
-      }
       .ask-chat-dialog {
-        width: min(760px, 100%);
-        height: min(720px, calc(100vh - 32px));
+        width: min(760px, 90vw);
+        max-width: 90vw;
+        height: min(720px, 85vh);
+        max-height: 85vh;
         display: flex;
         flex-direction: column;
       }
@@ -316,7 +276,7 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         line-height: 1.5;
       }
       .ask-answer-backdrop {
-        z-index: 30;
+        z-index: 110;
       }
       .model-choice {
         display: flex;
@@ -633,11 +593,12 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
 	        color: var(--vscode-textLink-activeForeground);
 	      }
 	      .file-preview-backdrop {
-	        z-index: 30;
+	        z-index: 110;
 	      }
 	      .file-preview-dialog {
-	        width: min(920px, 100%);
-	        max-height: min(86vh, 900px);
+	        width: min(920px, 90vw);
+	        max-width: 90vw;
+	        max-height: 85vh;
 	        display: flex;
 	        flex-direction: column;
 	      }
@@ -739,51 +700,5 @@ export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         }
       }
 
-      .clarification-dialog {
-        width: min(640px, 100%);
-        max-height: min(86vh, 760px);
-        display: flex;
-        flex-direction: column;
-      }
-      .clarification-dialog .dialog-body {
-        overflow: auto;
-      }
-      .clarification-field {
-        margin-bottom: 12px;
-      }
-      .clarification-description {
-        margin: -4px 0 8px;
-        color: var(--vscode-descriptionForeground);
-        font-size: 12px;
-      }
-      .clarification-options {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .clarification-option {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        color: var(--vscode-foreground);
-        font-size: 13px;
-      }
-      .clarification-option small {
-        display: block;
-        color: var(--vscode-descriptionForeground);
-      }
-      .clarification-input {
-        width: 100%;
-        box-sizing: border-box;
-        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
-        border-radius: 4px;
-        padding: 8px 10px;
-        color: var(--vscode-input-foreground);
-        background: var(--vscode-input-background);
-        font: inherit;
-      }
-      .clarification-input:focus {
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: 0;
-      }
+${CLARIFICATION_DIALOG_STYLES}
 `;

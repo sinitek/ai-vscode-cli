@@ -142,7 +142,12 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         margin-bottom: 0;
       }
       .message.assistant .assistant-message-content-streaming {
+        display: block;
+        font: inherit;
+        line-height: 1.6;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
 `;

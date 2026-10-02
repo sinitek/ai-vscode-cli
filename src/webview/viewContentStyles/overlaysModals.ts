@@ -1,29 +1,7 @@
+import { DIALOG_SHELL_STYLES } from "../modalComponents";
+
 export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
-      .overlay {
-        position: fixed;
-        inset: 0;
-        background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
-        backdrop-filter: blur(2px);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 100;
-      }
-      .overlay.visible { display: flex; animation: fadeIn 0.2s; }
-
-      .modal {
-        background: var(--vscode-editorWidget-background);
-        border: 1px solid var(--vscode-widget-border);
-        box-shadow: 0 8px 32px color-mix(in srgb, var(--vscode-editor-foreground) 24%, transparent);
-        border-radius: 12px;
-        width: 500px;
-        max-width: 90vw;
-        max-height: 85vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-
+${DIALOG_SHELL_STYLES}
       .scheduled-task-modal {
         width: 560px;
       }
@@ -149,6 +127,8 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         display: flex;
         flex-direction: column;
         gap: 8px;
+        min-height: 0;
+        overflow: auto;
       }
       .run-conflict-desc {
         font-size: 12px;
@@ -167,7 +147,6 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         word-break: break-word;
       }
       .run-conflict-actions {
-        padding: 0 16px 16px;
         display: flex;
         justify-content: flex-end;
         gap: 8px;
@@ -182,6 +161,8 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-height: 0;
+        overflow: auto;
       }
       .add-model-row {
         display: flex;
@@ -212,7 +193,6 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         padding: 4px 0;
       }
       .add-model-actions {
-        padding: 0 16px 16px;
         display: flex;
         justify-content: flex-end;
         gap: 8px;
@@ -299,12 +279,14 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         display: flex;
         flex-direction: column;
         gap: 8px;
+        min-height: 0;
+        overflow: auto;
       }
       .queue-footer {
-        padding: 0 16px 16px;
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+        flex-wrap: wrap;
       }
       .queue-empty {
         font-size: 12px;
@@ -525,10 +507,12 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         width: 720px;
       }
       .config-error-body {
-        padding: 12px 16px 16px;
+        padding: 12px 16px 0;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-height: 0;
+        overflow: auto;
       }
       .config-error-detail {
         margin: 0;
@@ -551,25 +535,13 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
         flex-wrap: wrap;
       }
 
-      .modal-header {
-        padding: 16px;
-        border-bottom: 1px solid var(--vscode-widget-border);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .rules-modal .modal-header {
-        padding: 10px 16px;
-      }
-
       .help-modal {
         height: 600px;
       }
 
-      .session-list, .help-panel, .rules-modal {
-        padding: 16px;
-        overflow-y: auto;
+      .session-list, .help-panel {
+        min-height: 0;
+        overflow: auto;
       }
       .session-list {
         flex: 1 1 auto;
@@ -708,11 +680,17 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       }
 
       .rules-modal {
-        padding: 0 0 16px;
+        padding: 0;
+        gap: 0;
+        overflow: hidden;
+      }
+      .rules-modal > .modal-body {
+        display: flex;
+        flex-direction: column;
         gap: 12px;
       }
-      .rules-modal > :not(.modal-header) {
-        margin: 0 16px;
+      .rules-modal > .modal-body > * {
+        margin: 0;
       }
       .rules-scope {
         display: flex;
@@ -905,6 +883,41 @@ export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
       }
       .prompt-item.expanded .prompt-full {
         display: block;
+      }
+
+      .modal-body > .scheduled-task-body,
+      .modal-body > .run-conflict-body,
+      .modal-body > .add-model-body,
+      .modal-body > .queue-body,
+      .modal-body > .config-error-body,
+      .modal-body > .history-messages-body,
+      .modal-body > .run-prompt-body,
+      .modal-body > .run-stream-body,
+      .modal-body > .tool-settings-body,
+      .modal-body > .human-interaction-body,
+      .modal-body > .common-commands-body,
+      .modal-body > .history-tabs,
+      .modal-body > .history-search-row,
+      .modal-body > .help-tabs,
+      .modal-body > .rules-scope,
+      .modal-body > .tool-settings-tabs,
+      .modal-body .session-list,
+      .modal-body .help-panel {
+        padding-left: 0;
+        padding-right: 0;
+      }
+      .modal-body > .scheduled-task-body,
+      .modal-body > .run-conflict-body,
+      .modal-body > .add-model-body,
+      .modal-body > .queue-body,
+      .modal-body > .config-error-body,
+      .modal-body > .history-messages-body,
+      .modal-body > .run-prompt-body,
+      .modal-body > .run-stream-body,
+      .tool-settings-modal .tool-settings-body,
+      .human-interaction-modal .human-interaction-body,
+      .common-commands-modal .common-commands-body {
+        padding: 0;
       }
 
 `;

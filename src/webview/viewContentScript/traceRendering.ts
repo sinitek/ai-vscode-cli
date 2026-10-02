@@ -250,9 +250,48 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }, delay);
       }
 
+      function scheduleAssistantStreamingRender(messageId) {
+        if (!messageId || assistantStreamingRenderFrames[messageId]) {
+          return;
+        }
+        assistantStreamingRenderFrames[messageId] = true;
+        const renderFrame = () => {
+          delete assistantStreamingRenderFrames[messageId];
+          const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
+          if (renderedIndex === -1) {
+            return;
+          }
+          const message = state.messages[renderedIndex];
+          if (!message || message.role !== "assistant") {
+            return;
+          }
+          if (!updateRenderedAssistantMessageStreaming(message, renderedIndex)) {
+            scheduleAssistantDeltaMarkdownRender(message.id);
+            renderMessages();
+            return;
+          }
+          elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
+          updateRunWait();
+          updateTaskList();
+          const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
+          const shouldAutoScroll = !chatSearchAnchored
+            && (shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
+          if (shouldAutoScroll) {
+            followLatestMessages = true;
+            scrollChatToBottom("auto");
+            updateScrollToBottomButton();
+          } else {
+            updateScrollToBottomButton();
+          }
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(renderFrame);
+        } else {
+          renderFrame();
+        }
+      }
+
       function appendAssistantDelta(id, content, kind, options) {
-        const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
-        const shouldAutoScroll = !chatSearchAnchored && (!elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
         const resolvedId = assistantRedirects[id] || id;
         let targetIndex = state.messages.findIndex((item) => item.id === resolvedId);
         const last = state.messages[state.messages.length - 1];
@@ -318,19 +357,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           renderMessages();
           return;
         }
-        if (!updateRenderedAssistantMessageStreaming(target, targetIndex)) {
-          scheduleAssistantDeltaMarkdownRender(target.id);
-          renderMessages();
-          return;
-        }
-        elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
-        updateRunWait();
-        updateTaskList();
-        if (shouldAutoScroll) {
-          stickChatToBottom("auto");
-        } else {
-          updateScrollToBottomButton();
-        }
+        scheduleAssistantStreamingRender(target.id);
         scheduleAssistantDeltaMarkdownRender(target.id);
       }
 
@@ -1072,7 +1099,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       function createJsonTreeElement(value) {
         if (typeof JSONFormatter === "function" && typeof document !== "undefined" && document.createElement) {
           try {
-            const formatter = new JSONFormatter(value, Number.POSITIVE_INFINITY, {
+            const formatter = new JSONFormatter(value, 2, {
               hoverPreviewEnabled: false,
               hoverPreviewArrayCount: 100,
               hoverPreviewFieldCount: 5,

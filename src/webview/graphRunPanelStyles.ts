@@ -1,3 +1,4 @@
+import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES } from "./modalComponents";
 export const GRAPH_RUN_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
@@ -98,45 +99,7 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         color: var(--vscode-errorForeground);
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
       }
-      .dialog-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 20;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 18px;
-        background: var(--vscode-widget-shadow, var(--vscode-editor-background));
-      }
-      .dialog-backdrop.visible {
-        display: flex;
-      }
-      .dialog {
-        width: min(520px, 100%);
-        max-height: calc(100vh - 36px);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        border: 1px solid var(--vscode-widget-border);
-        border-radius: var(--radius);
-        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-        color: var(--vscode-editor-foreground);
-        box-shadow: 0 12px 32px var(--vscode-widget-shadow);
-      }
-      .dialog-header,
-      .dialog-body,
-      .dialog-actions {
-        padding: 12px;
-      }
-      .dialog-title {
-        margin: 0;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .dialog-description {
-        margin: 4px 0 0;
-        color: var(--vscode-descriptionForeground);
-      }
+${DIALOG_SHELL_STYLES}
       .dialog-label {
         display: block;
         margin-bottom: 6px;
@@ -157,12 +120,6 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         min-height: 18px;
         margin-top: 6px;
         color: var(--vscode-errorForeground);
-      }
-      .dialog-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        border-top: 1px solid var(--vscode-widget-border);
       }
       .model-choice {
         display: flex;
@@ -194,10 +151,11 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         font-size: 12px;
       }
       .node-detail-backdrop {
-        z-index: 30;
+        z-index: 110;
       }
       .node-detail-dialog {
         width: min(860px, 100%);
+        max-width: 90vw;
       }
       .node-detail-dialog-header {
         position: relative;
@@ -212,13 +170,24 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
         position: absolute;
         top: 10px;
         right: 10px;
+        box-sizing: border-box;
         width: 18px;
         height: 18px;
         padding: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         color: var(--vscode-icon-foreground, var(--vscode-foreground));
+        background: transparent;
+        border: none;
         border-radius: 4px;
         cursor: pointer;
         outline: none;
+      }
+      .node-detail-close-icon .icon {
+        width: 12px;
+        height: 12px;
+        display: block;
       }
       .node-detail-close-icon:hover {
         color: var(--vscode-toolbar-hoverForeground, var(--vscode-foreground));
@@ -227,6 +196,11 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
       .node-detail-close-icon:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 2px;
+      }
+      .node-detail-close-icon:disabled,
+      .node-detail-close-icon.is-loading {
+        cursor: not-allowed;
+        opacity: 0.55;
       }
       .node-detail-close-icon path {
         fill: none;
@@ -704,58 +678,12 @@ export const GRAPH_RUN_PANEL_STYLES = `      :root {
           justify-content: flex-end;
         }
         .node-detail-dialog {
-          max-height: calc(100vh - 24px);
+          max-height: 85vh;
         }
         .node-detail-dialog-header {
           flex-direction: column;
         }
       }
 
-      .clarification-dialog {
-        width: min(640px, 100%);
-        max-height: min(86vh, 760px);
-        display: flex;
-        flex-direction: column;
-      }
-      .clarification-dialog .dialog-body {
-        overflow: auto;
-      }
-      .clarification-field {
-        margin-bottom: 12px;
-      }
-      .clarification-description {
-        margin: -4px 0 8px;
-        color: var(--vscode-descriptionForeground);
-        font-size: 12px;
-      }
-      .clarification-options {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .clarification-option {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        color: var(--vscode-foreground);
-        font-size: 13px;
-      }
-      .clarification-option small {
-        display: block;
-        color: var(--vscode-descriptionForeground);
-      }
-      .clarification-input {
-        width: 100%;
-        box-sizing: border-box;
-        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
-        border-radius: 4px;
-        padding: 8px 10px;
-        color: var(--vscode-input-foreground);
-        background: var(--vscode-input-background);
-        font: inherit;
-      }
-      .clarification-input:focus {
-        outline: 1px solid var(--vscode-focusBorder);
-        outline-offset: 0;
-      }
+${CLARIFICATION_DIALOG_STYLES}
 `;

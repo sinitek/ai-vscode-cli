@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
+import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { resolveLocale, type AppLocale } from "../i18n";
@@ -161,74 +162,46 @@ ${LOOP_DEBATE_PANEL_STYLES}
           ${state.task.canContinue && !state.task.canStop ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
         </div>
       </header>
-      <div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
-        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="continueDialogTitle" aria-describedby="continueDialogDescription">
-          <div class="dialog-header">
-            <h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>
-            <p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>
-          </div>
-          <div class="dialog-body">
-            ${renderContinueModelChoice(state, strings)}
-            <label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label>
-            <textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea>
-            <div id="continueDialogError" class="dialog-error" aria-live="polite"></div>
-          </div>
-          <div class="dialog-actions">
-            <button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.continueCancel)}</button>
-            <button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>
-          </div>
-        </div>
-      </div>
-      <div id="askChatBackdrop" class="dialog-backdrop ask-chat-backdrop${askThread.dialogOpen ? " visible" : ""}" aria-hidden="${askThread.dialogOpen ? "false" : "true"}">
-        <div class="dialog ask-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="askChatTitle" aria-describedby="askChatDescription">
-          <div class="dialog-header ask-chat-header">
-            <div class="ask-chat-heading">
-              <h2 id="askChatTitle" class="dialog-title">${escapeHtml(strings.askDialogTitle)}</h2>
-              <p id="askChatDescription" class="dialog-description">${escapeHtml(strings.askDialogDescription)}</p>
-            </div>
-            <button id="askChatClose" class="icon-button ask-chat-close" type="button" title="${escapeAttribute(strings.askAnswerClose)}" aria-label="${escapeAttribute(strings.askAnswerClose)}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div>
-          <form id="askChatForm" class="ask-chat-composer">
-            <label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label>
-            <textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea>
-            <div class="ask-chat-actions">
-              <button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}>
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2" />
-                </svg>
-              </button>
-              <button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}>
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 2L11 13" />
-                  <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-                </svg>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+${renderPanelDialog({
+        backdropId: "continueDialogBackdrop",
+        backdropAttributes: [["aria-hidden", "true"]],
+        labelledBy: "continueDialogTitle",
+        describedBy: "continueDialogDescription",
+        titleHtml: `<h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>`,
+        descriptionHtml: `<p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>`,
+        bodyHtml: `<div class="dialog-body">${renderContinueModelChoice(state, strings)}<label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label><textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea><div id="continueDialogError" class="dialog-error" aria-live="polite"></div></div>`,
+        actionsHtml: renderModalActions("dialog-actions", `<button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.continueCancel)}</button><button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>`),
+      })}
+      ${renderPanelDialog({
+        backdropId: "askChatBackdrop",
+        backdropClassName: `dialog-backdrop ask-chat-backdrop${askThread.dialogOpen ? " visible" : ""}`,
+        backdropAttributes: [["aria-hidden", askThread.dialogOpen ? "false" : "true"]],
+        dialogClassName: "dialog ask-chat-dialog",
+        labelledBy: "askChatTitle",
+        describedBy: "askChatDescription",
+        headerClassName: "dialog-header ask-chat-header",
+        titleGroupClassName: "ask-chat-heading",
+        titleHtml: `<h2 id="askChatTitle" class="dialog-title">${escapeHtml(strings.askDialogTitle)}</h2>`,
+        descriptionHtml: `<p id="askChatDescription" class="dialog-description">${escapeHtml(strings.askDialogDescription)}</p>`,
+        closeHtml: renderModalCloseButton({
+          id: "askChatClose",
+          label: strings.askAnswerClose,
+          className: "icon-button ask-chat-close",
+        }),
+        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
+      })}
       ${renderOrchestratorClarificationDialog(state.clarification, { requiredTemplate: strings.clarificationRequired }, { submit: "loopDebateChat:submitClarification", reject: "loopDebateChat:rejectClarification" })}
-      <div id="filePreviewBackdrop" class="dialog-backdrop file-preview-backdrop" aria-hidden="true">
-        <div class="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
-          <div class="dialog-header">
-            <h2 id="filePreviewTitle" class="dialog-title">${escapeHtml(strings.communicationFileDialogTitle)}</h2>
-            <p id="filePreviewPath" class="dialog-description"></p>
-          </div>
-          <div class="dialog-body file-preview-body">
-            <div id="filePreviewError" class="dialog-error" aria-live="polite"></div>
-            <div id="filePreviewContent" class="markdown-body"></div>
-          </div>
-          <div class="dialog-actions">
-            <button id="filePreviewClose" class="button" type="button">${escapeHtml(strings.communicationFileClose)}</button>
-          </div>
-        </div>
-      </div>
+      ${renderPanelDialog({
+        backdropId: "filePreviewBackdrop",
+        backdropClassName: "dialog-backdrop file-preview-backdrop",
+        backdropAttributes: [["aria-hidden", "true"]],
+        dialogClassName: "dialog file-preview-dialog",
+        labelledBy: "filePreviewTitle",
+        titleHtml: `<h2 id="filePreviewTitle" class="dialog-title">${escapeHtml(strings.communicationFileDialogTitle)}</h2>`,
+        descriptionHtml: `<p id="filePreviewPath" class="dialog-description"></p>`,
+        bodyHtml: `<div class="dialog-body file-preview-body"><div id="filePreviewError" class="dialog-error" aria-live="polite"></div><div id="filePreviewContent" class="markdown-body"></div></div>`,
+        actionsHtml: renderModalActions("dialog-actions", `<button id="filePreviewClose" class="button" type="button">${escapeHtml(strings.communicationFileClose)}</button>`),
+      })}
       <div class="layout">
         <aside class="sidebar">
           ${renderTaskPanel(state, strings, locale)}

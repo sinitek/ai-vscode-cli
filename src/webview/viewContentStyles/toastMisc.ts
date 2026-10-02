@@ -45,6 +45,8 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       .rules-actions {
         display: flex;
         justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
       }
       .help-tab {
         background: transparent;
@@ -63,13 +65,15 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
 
       .tool-settings-modal {
-        width: min(680px, 92vw);
+        width: min(680px, 90vw);
       }
       .tool-settings-body {
         padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-height: 0;
+        overflow: auto;
       }
       .tool-settings-tabs {
         display: flex;
@@ -172,7 +176,7 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
       @media (max-width: 560px) {
         .tool-settings-modal {
-          width: 420px;
+          width: min(420px, 90vw);
         }
         .tool-settings-panel.active {
           column-count: 1;
@@ -180,13 +184,14 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
 
       .human-interaction-modal {
-        width: min(560px, 92vw);
+        width: min(560px, 90vw);
       }
       .human-interaction-body {
-        padding: 16px;
+        padding: 16px 16px 0;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-height: 0;
         overflow: auto;
       }
       .human-interaction-instruction {
@@ -266,16 +271,19 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         justify-content: flex-end;
         gap: 8px;
         flex-wrap: wrap;
+        padding: 12px 16px 16px;
       }
 
       .common-commands-modal {
-        width: 360px;
+        width: min(360px, 90vw);
       }
       .common-commands-body {
         padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        min-height: 0;
+        overflow: auto;
       }
       .common-command-list {
         display: flex;

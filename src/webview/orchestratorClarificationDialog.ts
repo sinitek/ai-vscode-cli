@@ -1,5 +1,6 @@
 import type { HumanInteractionFormField } from "../humanInteraction";
 import type { OrchestratorClarification } from "../orchestratorClarification";
+import { renderModalActions, renderPanelDialog } from "./modalComponents";
 
 export type OrchestratorClarificationDialogCopy = {
   requiredTemplate: string;
@@ -14,22 +15,27 @@ export function renderOrchestratorClarificationDialog(
     return "";
   }
   const fields = request.formFields.map((field) => renderField(field)).join("");
-  return `<div id="clarificationDialogBackdrop" class="dialog-backdrop visible" aria-hidden="false" data-submit-type="${escapeAttribute(messageTypes.submit)}" data-reject-type="${escapeAttribute(messageTypes.reject)}" data-interaction-id="${escapeAttribute(request.interactionId)}" data-required-template="${escapeAttribute(copy.requiredTemplate)}">
-    <div class="dialog clarification-dialog" role="dialog" aria-modal="true" aria-labelledby="clarificationDialogTitle" aria-describedby="clarificationDialogDescription">
-      <div class="dialog-header">
-        <h2 id="clarificationDialogTitle" class="dialog-title">${escapeHtml(request.title)}</h2>
-        <p id="clarificationDialogDescription" class="dialog-description">${escapeHtml(request.instruction)}</p>
-      </div>
-      <div class="dialog-body">
-        <form id="clarificationDialogForm">${fields}</form>
-        <div id="clarificationDialogError" class="dialog-error" aria-live="polite"></div>
-      </div>
-      <div class="dialog-actions">
-        <button id="clarificationDialogReject" class="button" type="button">${escapeHtml(request.cancelLabel)}</button>
-        <button id="clarificationDialogSubmit" class="button primary" type="button">${escapeHtml(request.submitLabel)}</button>
-      </div>
-    </div>
-  </div>`;
+  return renderPanelDialog({
+    backdropId: "clarificationDialogBackdrop",
+    backdropClassName: "dialog-backdrop visible",
+    backdropAttributes: [
+      ["aria-hidden", "false"],
+      ["data-submit-type", messageTypes.submit],
+      ["data-reject-type", messageTypes.reject],
+      ["data-interaction-id", request.interactionId],
+      ["data-required-template", copy.requiredTemplate],
+    ],
+    dialogClassName: "dialog clarification-dialog",
+    labelledBy: "clarificationDialogTitle",
+    describedBy: "clarificationDialogDescription",
+    titleHtml: `<h2 id="clarificationDialogTitle" class="dialog-title">${escapeHtml(request.title)}</h2>`,
+    descriptionHtml: `<p id="clarificationDialogDescription" class="dialog-description">${escapeHtml(request.instruction)}</p>`,
+    bodyHtml: `<div class="dialog-body"><form id="clarificationDialogForm">${fields}</form><div id="clarificationDialogError" class="dialog-error" aria-live="polite"></div></div>`,
+    actionsHtml: renderModalActions(
+      "dialog-actions",
+      `<button id="clarificationDialogReject" class="button" type="button">${escapeHtml(request.cancelLabel)}</button><button id="clarificationDialogSubmit" class="button primary" type="button">${escapeHtml(request.submitLabel)}</button>`,
+    ),
+  });
 }
 
 export function orchestratorClarificationDialogScript(): string {

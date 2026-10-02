@@ -424,9 +424,13 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 	  assert.match(html, /data-node-detail="review"/);
 	  assert.match(html, /id="nodeDetailDialogBackdrop" class="dialog-backdrop node-detail-backdrop"/);
 	  assert.match(html, /id="nodeDetailDialog" class="dialog node-detail-dialog" role="dialog" aria-modal="true"/);
-	  assert.match(html, /<svg id="nodeDetailDialogClose" class="node-detail-close-icon"[\s\S]*data-node-detail-close[\s\S]*role="button"[\s\S]*aria-label="Close Details"[\s\S]*viewBox="0 0 16 16"/);
-	  assert.match(html, /<path d="M4 4l8 8M12 4 4 12" aria-hidden="true"><\/path>/);
-	  assert.doesNotMatch(html, /<button id="nodeDetailDialogClose"/);
+	  assert.match(html, /<button id="nodeDetailDialogClose" class="node-detail-close-icon" type="button" title="Close Details" aria-label="Close Details" data-node-detail-close><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1\.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18" \/><line x1="18" y1="6" x2="6" y2="18" \/><\/svg><\/button>/);
+	  assert.doesNotMatch(html, /<svg id="nodeDetailDialogClose"/);
+	  assert.match(html, /nodeDetailClose\?\.addEventListener\("click", closeNodeDetailDialog\)/);
+	  assert.match(html, /nodeDetailClose\?\.addEventListener\("keydown", \(event\) => \{[\s\S]*event\.key === "Enter" \|\| event\.key === " "[\s\S]*event\.preventDefault\(\);[\s\S]*closeNodeDetailDialog\(\)/);
+	  assert.match(html, /nodeDetailBackdrop\?\.addEventListener\("click", \(event\) => \{[\s\S]*event\.target === nodeDetailBackdrop[\s\S]*closeNodeDetailDialog\(\)/);
+	  assert.match(html, /nodeDetailClose\?\.focus\(\)/);
+	  assert.match(html, /lastDetailTrigger\?\.isConnected[\s\S]*lastDetailTrigger\.focus\(\)/);
 	  assert.match(html, /data-action="resetLayout"[\s\S]*aria-label="Clear saved manual node positions for this Graph run"[\s\S]*>↺</);
 	  assert.doesNotMatch(html, />\s*Reset layout\s*</);
 	  assert.match(html, /graphRunLayouts/);

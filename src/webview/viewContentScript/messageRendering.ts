@@ -435,27 +435,48 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         }
         applyMessageElementClasses(wrapper, message, index);
         const oldBadge = wrapper.querySelector(".message-task-role");
-        if (oldBadge) {
-          oldBadge.remove();
-        }
         const bubble = wrapper.querySelector(".bubble");
         if (!bubble) {
           return false;
         }
         const nextBadge = createMessageTaskRoleElement(message);
         if (nextBadge) {
-          wrapper.insertBefore(nextBadge, bubble);
+          if (
+            !oldBadge
+            || oldBadge.className !== nextBadge.className
+            || oldBadge.textContent !== nextBadge.textContent
+          ) {
+            if (oldBadge) {
+              oldBadge.remove();
+            }
+            wrapper.insertBefore(nextBadge, bubble);
+          }
+        } else if (oldBadge) {
+          oldBadge.remove();
         }
-        bubble.innerHTML = "";
-        const contentNode = document.createElement("div");
-        contentNode.className = "assistant-message-content assistant-message-content-streaming";
-        contentNode.textContent = getAssistantMessageContentForDisplay(message);
-        bubble.appendChild(contentNode);
+        let contentNode = bubble.querySelector(".assistant-message-content-streaming");
+        if (!contentNode) {
+          bubble.innerHTML = "";
+          contentNode = document.createElement("div");
+          contentNode.className = "assistant-message-content assistant-message-content-streaming";
+          bubble.appendChild(contentNode);
+        }
+        const displayContent = getAssistantMessageContentForDisplay(message);
+        if (contentNode.textContent !== displayContent) {
+          contentNode.textContent = displayContent;
+        }
+        const existingActions = bubble.querySelector(".message-actions");
         const actions = createMessageActionsElement(message);
-        if (actions) {
+        if (actions && !existingActions) {
           bubble.appendChild(actions);
+        } else if (!actions && existingActions) {
+          existingActions.remove();
         }
-        if (typeof refreshChatSearchHighlights === "function") {
+        if (
+          typeof refreshChatSearchHighlights === "function"
+          && typeof isChatSearchAnchored === "function"
+          && isChatSearchAnchored()
+        ) {
           refreshChatSearchHighlights();
         }
         return true;

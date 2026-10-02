@@ -1638,7 +1638,10 @@ test("batches assistant delta markdown rendering while streaming", () => {
     kind: "normal",
   });
   assert.equal(markdownParseCount, 1);
+  const streamingNode = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
+  assert.ok(streamingNode);
   assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-streaming").length, 1);
+  assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
 
   const idleRender = Array.from(window.timers.values()).at(-1) as (() => void) | undefined;
   assert.equal(typeof idleRender, "function");
@@ -1810,6 +1813,14 @@ test("keeps thinking bubbles as plain text while streaming appends", () => {
   assert.ok(streaming);
   assert.match(streaming?.textContent || "", /hello/);
   assert.match(streaming?.textContent || "", /\*\*world\*\*/);
+  window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "thinking-stream",
+    content: " more",
+    kind: "thinking",
+  });
+  assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streaming);
   const resetTimerId = latestDeferredTimerId();
   assert.equal(typeof resetTimerId, "number");
   assert.notEqual(resetTimerId, firstTimerId);

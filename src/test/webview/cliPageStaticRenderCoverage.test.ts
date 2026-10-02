@@ -11,6 +11,8 @@ import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
 import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
 import { MARKDOWN_STYLES } from "../../webview/viewContentStyles/markdown";
 import { MESSAGE_BLOCK_STYLES } from "../../webview/viewContentStyles/messages";
+import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES, renderChatModal, renderModalActions, renderModalCloseButton, renderPanelDialog } from "../../webview/modalComponents";
+import { orchestratorClarificationDialogScript } from "../../webview/orchestratorClarificationDialog";
 import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 import { SYSTEM_TRACE_STYLES } from "../../webview/viewContentStyles/systemTrace";
 import { TASKLIST_STYLES } from "../../webview/viewContentStyles/tasklist";
@@ -424,7 +426,7 @@ test("concatenates all static style modules and keeps key selectors available", 
     ".codex-loop-model-row {",
     ".interactive-mode-select {",
     ".loop-execution-mode-select {",
-    ".overlay {",
+    ".overlay,",
     ".toast {",
     ".tasklist-panel {",
     ".tasklist-panel details[open] .tasklist-toggle-icon",
@@ -455,4 +457,76 @@ test("saves scheduled tasks with the selected Vibe/Loop/Graph mode", () => {
     VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
     /loopExecutionMode: selectedMode === "loop" \? getLoopExecutionModeForCli\(targetCli\) : undefined,/,
   );
+});
+
+test("shares one modal shell across chat overlays and panel dialogs", () => {
+  const html = buildHtml();
+  assert.match(html, /id="historyOverlay" class="overlay"/);
+  assert.match(html, /class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle"/);
+  assert.match(html, /id="closeHistory" class="secondary icon-button" type="button"[^>]*aria-label="Close"/);
+  assert.match(html, /id="toolSettingsOverlay"[\s\S]*id="closeToolSettings"/);
+  assert.match(html, /id="humanInteractionReject"[\s\S]*id="humanInteractionSubmit"/);
+  assert.match(html, /id="queuePrompt"[\s\S]*id="pauseAndSend"/);
+  assert.match(html, /id="commonCommandsOverlay"[\s\S]*id="commandCompact"/);
+  assert.ok(OVERLAYS_MODALS_STYLES.includes(DIALOG_SHELL_STYLES));
+  assert.match(DIALOG_SHELL_STYLES, /\.overlay,\s*\.dialog-backdrop\s*\{/);
+  assert.match(DIALOG_SHELL_STYLES, /\.modal,\s*\.dialog\s*\{[\s\S]*max-width:\s*90vw;[\s\S]*max-height:\s*85vh;[\s\S]*border-radius:\s*var\(--radius-lg, 12px\);/);
+  assert.match(DIALOG_SHELL_STYLES, /box-shadow:\s*0 8px 32px color-mix\(in srgb, var\(--vscode-editor-foreground\) 24%, transparent\)/);
+  assert.match(DIALOG_SHELL_STYLES, /\.modal-header,\s*\.dialog-header\s*\{[\s\S]*padding:\s*16px 16px 12px;/);
+  assert.match(DIALOG_SHELL_STYLES, /\.modal-body,\s*\.dialog-body\s*\{[\s\S]*overflow:\s*auto;/);
+  assert.match(DIALOG_SHELL_STYLES, /\.modal-actions,\s*\.dialog-actions\s*\{[\s\S]*justify-content:\s*flex-end;[\s\S]*gap:\s*8px;/);
+  assert.match(DIALOG_SHELL_STYLES, /:focus-visible[\s\S]*var\(--vscode-focusBorder\)/);
+  assert.match(DIALOG_SHELL_STYLES, /:disabled[\s\S]*cursor:\s*not-allowed/);
+  assert.match(DIALOG_SHELL_STYLES, /\.is-loading[\s\S]*cursor:\s*wait/);
+  assert.match(DIALOG_SHELL_STYLES, /\.dialog-error[\s\S]*var\(--vscode-errorForeground\)/);
+  assert.match(DIALOG_SHELL_STYLES, /\.ask-chat-empty[\s\S]*var\(--vscode-descriptionForeground\)/);
+  assert.match(DIALOG_SHELL_STYLES, /@media \(max-width:\s*560px\)/);
+  assert.doesNotMatch(DIALOG_SHELL_STYLES, /#[0-9a-fA-F]{3,8}/);
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /elements\.humanInteractionOverlay\.addEventListener\("click"/);
+  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /elements\.runConflictOverlay\.addEventListener\("click"/);
+  assert.match(orchestratorClarificationDialogScript(), /function lock\(\)/);
+  assert.match(orchestratorClarificationDialogScript(), /submitButton\.disabled = true/);
+  assert.match(orchestratorClarificationDialogScript(), /rejectButton\.disabled = true/);
+  assert.doesNotMatch(orchestratorClarificationDialogScript(), /Escape|backdrop\.addEventListener\("click"/);
+
+  const shell = renderChatModal({
+    id: "exampleOverlay",
+    className: "example-modal",
+    labelledBy: "exampleTitle",
+    describedBy: "exampleDescription",
+    titleHtml: `<div id="exampleTitle" class="title">Title</div>`,
+    close: { id: "closeExample", label: `Close "dialog"`, wrapperClassName: "session-actions" },
+    contentHtml: `<div id="exampleBody" class="example-body"></div>`,
+    actionsHtml: `<div class="example-actions"><button id="cancelExample">Cancel</button><button id="confirmExample">OK</button></div>`,
+  });
+  assert.match(shell, /id="exampleOverlay" class="overlay"/);
+  assert.match(shell, /class="modal example-modal" role="dialog" aria-modal="true" aria-labelledby="exampleTitle" aria-describedby="exampleDescription"/);
+  assert.match(shell, /class="session-actions"[\s\S]*aria-label="Close &quot;dialog&quot;"/);
+  assert.match(shell, /id="cancelExample"[\s\S]*id="confirmExample"/);
+
+  const panel = renderPanelDialog({
+    backdropId: "sampleBackdrop",
+    backdropAttributes: [["data-sample", null], ["aria-hidden", "true"]],
+    dialogId: "sampleDialog",
+    labelledBy: "sampleTitle",
+    describedBy: "sampleDescription",
+    wrapTitle: true,
+    titleHtml: `<h2 id="sampleTitle" class="dialog-title">Title</h2>`,
+    descriptionHtml: `<p id="sampleDescription" class="dialog-description">Details</p>`,
+    closeHtml: renderModalCloseButton({ id: "sampleClose", label: "Close", className: "icon-button sample-close" }),
+    bodyHtml: `<div class="dialog-body"></div>`,
+    actionsHtml: renderModalActions("dialog-actions", `<button id="sampleCancel"></button><button id="sampleConfirm"></button>`),
+  });
+  assert.match(panel, /id="sampleBackdrop" class="dialog-backdrop" data-sample aria-hidden="true"/);
+  assert.match(panel, /id="sampleDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="sampleTitle" aria-describedby="sampleDescription"/);
+  assert.match(panel, /id="sampleClose" class="icon-button sample-close"/);
+  assert.match(panel, /class="modal-heading"[\s\S]*id="sampleTitle"[\s\S]*id="sampleDescription"/);
+  assert.match(panel, /class="dialog-actions"[\s\S]*id="sampleCancel"[\s\S]*id="sampleConfirm"/);
+  assert.match(shell, /class="modal-body"[\s\S]*id="exampleBody"/);
+  assert.match(shell, /class="modal-actions example-actions"|class="example-actions"/);
+  assert.match(DIALOG_SHELL_STYLES, /max-width:\s*90vw/);
+  assert.match(DIALOG_SHELL_STYLES, /max-height:\s*85vh/);
+  assert.match(DIALOG_SHELL_STYLES, /padding:\s*16px 16px 12px/);
+  assert.match(DIALOG_SHELL_STYLES, /gap:\s*8px/);
+  assert.match(CLARIFICATION_DIALOG_STYLES, /max-height:\s*min\(85vh,\s*760px\)/);
 });

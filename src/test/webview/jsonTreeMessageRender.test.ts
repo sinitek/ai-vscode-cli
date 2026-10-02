@@ -481,7 +481,7 @@ test("renders a complete JSON object or array as an expandable JSON tree host", 
   );
 });
 
-test("mounts json-formatter-js fully expanded and lets a node collapse", () => {
+test("mounts json-formatter-js with two expanded levels and lets a node collapse", () => {
   installMiniDocument();
   const JSONFormatter = require("json-formatter-js") as new (
     value: unknown,
@@ -495,19 +495,22 @@ test("mounts json-formatter-js fully expanded and lets a node collapse", () => {
   const source = new MiniElementImpl("script");
   source.className = "json-tree-source";
   source.textContent = JSON.stringify({
-    name: "tree",
-    child: { enabled: false, url: "https://example.com" },
-    list: [1, { id: "leaf" }],
+    levelOne: {
+      levelTwo: {
+        levelThree: { enabled: false },
+      },
+    },
   });
   host.appendChild(source);
   bubble.appendChild(host);
 
   runtime.mountJsonTreeHosts(bubble);
   const renderedRows = rowsOf(host).filter((row) => row.querySelector(".json-formatter-toggler"));
-  assert.ok(renderedRows.length >= 3);
-  renderedRows.forEach((row) => {
-    assert.equal(row.classList.contains("json-formatter-open"), true);
-  });
+  assert.equal(renderedRows.length, 3);
+  assert.equal(renderedRows[0].classList.contains("json-formatter-open"), true);
+  assert.equal(renderedRows[1].classList.contains("json-formatter-open"), true);
+  assert.equal(renderedRows[2].classList.contains("json-formatter-open"), false);
+  assert.equal(renderedRows[2].querySelector("div.json-formatter-children")?.children.length || 0, 0);
   assert.equal(host.styleProps["--json-tree-empty-object-label"], JSON.stringify(WEBVIEW_I18N["zh-CN"].jsonTreeEmptyObject));
   assert.equal(host.getAttribute("data-json-tree-mounted"), "true");
 
@@ -615,4 +618,3 @@ function assertInlineScriptsCanBeDocumentWritten(html: string): void {
   assert.match(scripts[2], /vscode\.postMessage\(\{ type: "requestState" \}\)/);
   assert.ok(scripts[2].includes("<\\/script>"));
 }
-

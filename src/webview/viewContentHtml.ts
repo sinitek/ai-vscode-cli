@@ -1,3 +1,4 @@
+import { renderChatModal } from "./modalComponents";
 import { AppLocale } from "../i18n";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
@@ -307,20 +308,17 @@ ${webviewStyles}    </style>
         </div>
       </div>
 
-      <div id="historyOverlay" class="overlay">
-        <div class="modal history-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.historyTitle}</div>
-            <div class="session-actions">
-              <button id="closeHistory" class="secondary icon-button" title="${i18n.historyClose}" aria-label="${i18n.historyClose}">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="history-tabs help-tabs" role="tablist" aria-label="${i18n.historyTabsLabel}">
+${renderChatModal({
+        id: "historyOverlay",
+        className: "history-modal",
+        labelledBy: "historyTitle",
+        titleHtml: `<div id="historyTitle" class="title">${i18n.historyTitle}</div>`,
+        close: {
+          id: "closeHistory",
+          label: i18n.historyClose,
+          wrapperClassName: "session-actions",
+        },
+        contentHtml: `          <div class="history-tabs help-tabs" role="tablist" aria-label="${i18n.historyTabsLabel}">
             <button id="historyTabPrompts" class="help-tab" role="tab" aria-selected="false">${i18n.historyTabPrompts}</button>
             <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
           </div>
@@ -340,45 +338,39 @@ ${webviewStyles}    </style>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
             <div id="sessionList" class="session-list"></div>
           </div>
-        </div>
-      </div>
-      <div id="historyMessagesOverlay" class="overlay">
-        <div class="modal history-messages-modal">
-          <div class="modal-header">
-            <div class="history-messages-title">
-              <div class="title" id="historyMessagesTitle">${i18n.historySessionMessagesTitle}</div>
-              <div id="historyMessagesSubtitle" class="history-messages-subtitle"></div>
-            </div>
-            <button id="closeHistoryMessages" class="secondary icon-button" title="${i18n.historySessionMessagesClose}" aria-label="${i18n.historySessionMessagesClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="history-messages-body">
+        `,
+      })}
+${renderChatModal({
+        id: "historyMessagesOverlay",
+        className: "history-messages-modal",
+        labelledBy: "historyMessagesTitle",
+        describedBy: "historyMessagesSubtitle",
+        titleHtml: `<div class="history-messages-title"><div class="title" id="historyMessagesTitle">${i18n.historySessionMessagesTitle}</div><div id="historyMessagesSubtitle" class="history-messages-subtitle"></div></div>`,
+        close: {
+          id: "closeHistoryMessages",
+          label: i18n.historySessionMessagesClose,
+        },
+        contentHtml: `          <div class="history-messages-body">
             <div class="history-messages-toolbar">
               <div id="historyMessagesStatus" class="history-messages-status"></div>
               <button id="exportHistoryMessages" class="secondary action-button">${i18n.historySessionExportLabel}</button>
             </div>
             <div id="historyMessagesContent" class="history-messages-content history-messages-empty">${i18n.historySessionMessagesEmpty}</div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-      <div id="scheduledTaskOverlay" class="overlay">
-        <div class="modal scheduled-task-modal" role="dialog" aria-modal="true" aria-labelledby="scheduledTaskTitle">
-          <div class="modal-header">
-            <div id="scheduledTaskTitle" class="title">${i18n.scheduledTaskTitle}</div>
-            <button id="closeScheduledTask" class="secondary icon-button" title="${i18n.scheduledTaskClose}" aria-label="${i18n.scheduledTaskClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="scheduled-task-body">
+${renderChatModal({
+        id: "scheduledTaskOverlay",
+        className: "scheduled-task-modal",
+        labelledBy: "scheduledTaskTitle",
+        titleHtml: `<div id="scheduledTaskTitle" class="title">${i18n.scheduledTaskTitle}</div>`,
+        close: {
+          id: "closeScheduledTask",
+          label: i18n.scheduledTaskClose,
+        },
+        contentHtml: `          <div class="scheduled-task-body">
             <div class="scheduled-task-field">
               <label for="scheduledTaskTime">${i18n.scheduledTaskTimeLabel}</label>
               <input id="scheduledTaskTime" class="scheduled-task-input" type="datetime-local" />
@@ -403,23 +395,20 @@ ${webviewStyles}    </style>
             <div class="scheduled-task-list-heading">${i18n.scheduledTaskManageTitle}</div>
             <div id="scheduledTaskList" class="scheduled-task-list"></div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
-      <div id="rulesOverlay" class="overlay">
-        <div class="modal rules-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.rulesTitle}</div>
-            <div class="session-actions">
-              <button id="closeRules" class="secondary icon-button" title="${i18n.rulesClose}" aria-label="${i18n.rulesClose}">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="rules-scope help-tabs" role="tablist" aria-label="${i18n.rulesScopeLabel}">
+${renderChatModal({
+        id: "rulesOverlay",
+        className: "rules-modal",
+        labelledBy: "rulesTitle",
+        titleHtml: `<div id="rulesTitle" class="title">${i18n.rulesTitle}</div>`,
+        close: {
+          id: "closeRules",
+          label: i18n.rulesClose,
+          wrapperClassName: "session-actions",
+        },
+        contentHtml: `<div class="rules-scope help-tabs" role="tablist" aria-label="${i18n.rulesScopeLabel}">
             <button id="scopeGlobal" class="help-tab active" role="tab" aria-selected="true">${i18n.rulesScopeGlobal}</button>
             <button id="scopeProject" class="help-tab" role="tab" aria-selected="false">${i18n.rulesScopeProject}</button>
           </div>
@@ -441,25 +430,22 @@ ${webviewStyles}    </style>
               <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
             </div>
           </div>
-          <div class="rules-hint" id="rulesHint"></div>
-          <div class="rules-actions">
+          <div class="rules-hint" id="rulesHint"></div>`,
+        actionsHtml: `<div class="modal-actions rules-actions">
             <button id="saveRules" class="action-button">${i18n.rulesSaveButton}</button>
-          </div>
-        </div>
-      </div>
+          </div>`,
+      })}
 
-      <div id="toolSettingsOverlay" class="overlay">
-        <div class="modal tool-settings-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.toolSettingsTitle}</div>
-            <button id="closeToolSettings" class="secondary icon-button" title="${i18n.toolSettingsClose}" aria-label="${i18n.toolSettingsClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="tool-settings-tabs" role="tablist" aria-label="${i18n.toolSettingsTitle}">
+${renderChatModal({
+        id: "toolSettingsOverlay",
+        className: "tool-settings-modal",
+        labelledBy: "toolSettingsTitle",
+        titleHtml: `<div id="toolSettingsTitle" class="title">${i18n.toolSettingsTitle}</div>`,
+        close: {
+          id: "closeToolSettings",
+          label: i18n.toolSettingsClose,
+        },
+        contentHtml: `          <div class="tool-settings-tabs" role="tablist" aria-label="${i18n.toolSettingsTitle}">
             <button id="toolSettingsGeneralTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGeneralPanel">${i18n.toolSettingsGeneralTab}</button>
             <button id="toolSettingsAiTaskTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsAiTaskPanel">${i18n.toolSettingsAiTaskTab}</button>
             <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
@@ -648,44 +634,40 @@ ${webviewStyles}    </style>
               </table>
             </div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
-      <div id="humanInteractionOverlay" class="overlay">
-        <div class="modal human-interaction-modal" role="dialog" aria-modal="true" aria-labelledby="humanInteractionTitle">
-          <div class="modal-header">
-            <div id="humanInteractionTitle" class="title">${i18n.humanInteractionTitle}</div>
-            <button id="closeHumanInteraction" class="secondary icon-button" title="${i18n.humanInteractionClose}" aria-label="${i18n.humanInteractionClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="human-interaction-body">
+${renderChatModal({
+        id: "humanInteractionOverlay",
+        className: "human-interaction-modal",
+        labelledBy: "humanInteractionTitle",
+        titleHtml: `<div id="humanInteractionTitle" class="title">${i18n.humanInteractionTitle}</div>`,
+        close: {
+          id: "closeHumanInteraction",
+          label: i18n.humanInteractionClose,
+        },
+        contentHtml: `<div class="human-interaction-body">
             <div id="humanInteractionInstruction" class="human-interaction-instruction">${i18n.humanInteractionDefaultInstruction}</div>
             <div id="humanInteractionForm" class="human-interaction-form"></div>
             <div id="humanInteractionError" class="human-interaction-error" role="alert" style="display: none;"></div>
-            <div class="human-interaction-actions">
+
+          </div>`,
+        actionsHtml: `<div class="modal-actions human-interaction-actions">
               <button id="humanInteractionReject" class="secondary action-button">${i18n.humanInteractionReject}</button>
               <button id="humanInteractionSubmit" class="action-button">${i18n.humanInteractionSubmit}</button>
-            </div>
-          </div>
-        </div>
-      </div>
+            </div>`,
+      })}
 
-      <div id="commonCommandsOverlay" class="overlay">
-        <div class="modal common-commands-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.commonCommandsTitle}</div>
-            <button id="closeCommonCommands" class="secondary icon-button" title="${i18n.commonCommandsClose}" aria-label="${i18n.commonCommandsClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="common-commands-body">
+${renderChatModal({
+        id: "commonCommandsOverlay",
+        className: "common-commands-modal",
+        labelledBy: "commonCommandsTitle",
+        titleHtml: `<div id="commonCommandsTitle" class="title">${i18n.commonCommandsTitle}</div>`,
+        close: {
+          id: "closeCommonCommands",
+          label: i18n.commonCommandsClose,
+        },
+        contentHtml: `          <div class="common-commands-body">
             <div class="common-command-list">
               <button id="commandCompact" class="action-button common-command-button">
                 <span>${i18n.commonCommandCompactTitle}</span>
@@ -693,21 +675,19 @@ ${webviewStyles}    </style>
               </button>
             </div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
-      <div id="addModelOverlay" class="overlay">
-        <div class="modal add-model-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.modelAddTitle}</div>
-            <button id="closeAddModel" class="secondary icon-button" title="${i18n.rulesClose}" aria-label="${i18n.rulesClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="add-model-body">
+${renderChatModal({
+        id: "addModelOverlay",
+        className: "add-model-modal",
+        labelledBy: "addModelTitle",
+        titleHtml: `<div id="addModelTitle" class="title">${i18n.modelAddTitle}</div>`,
+        close: {
+          id: "closeAddModel",
+          label: i18n.rulesClose,
+        },
+        contentHtml: `<div class="add-model-body">
             <div id="modelManagerList" class="model-manager-list"></div>
             <div class="add-model-row">
               <label for="modelInput">${i18n.modelAddLabel}</label>
@@ -715,127 +695,111 @@ ${webviewStyles}    </style>
               <div id="modelEditHint" class="model-edit-hint" style="display: none;"></div>
             </div>
             <div id="modelAddError" class="add-model-error" style="display: none;"></div>
-          </div>
-          <div class="add-model-actions">
+          </div>`,
+        actionsHtml: `<div class="modal-actions add-model-actions">
             <button id="cancelAddModel" class="secondary action-button">${i18n.historyClose}</button>
             <button id="clearModelEdit" class="secondary action-button" style="display: none;">${i18n.modelManageCancelEdit}</button>
             <button id="confirmAddModel" class="action-button">${i18n.modelAddButton}</button>
-          </div>
-        </div>
-      </div>
+          </div>`,
+      })}
 
-      <div id="runConflictOverlay" class="overlay">
-        <div class="modal run-conflict-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.runConflictTitle}</div>
-            <button id="closeRunConflict" class="secondary icon-button" title="${i18n.runConflictClose}" aria-label="${i18n.runConflictClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="run-conflict-body">
+${renderChatModal({
+        id: "runConflictOverlay",
+        className: "run-conflict-modal",
+        labelledBy: "runConflictTitle",
+        titleHtml: `<div id="runConflictTitle" class="title">${i18n.runConflictTitle}</div>`,
+        close: {
+          id: "closeRunConflict",
+          label: i18n.runConflictClose,
+        },
+        contentHtml: `<div class="run-conflict-body">
             <div>${i18n.runConflictBody}</div>
             <div class="run-conflict-desc">${i18n.runConflictDesc}</div>
             <div id="runConflictPrompt" class="run-conflict-preview"></div>
-          </div>
-          <div class="run-conflict-actions">
+          </div>`,
+        actionsHtml: `<div class="modal-actions run-conflict-actions">
             <button id="queuePrompt" class="secondary action-button">${i18n.runConflictQueueButton}</button>
             <button id="pauseAndSend" class="action-button">${i18n.runConflictPauseButton}</button>
-          </div>
-        </div>
-      </div>
+          </div>`,
+      })}
 
-      <div id="queueOverlay" class="overlay">
-        <div class="modal queue-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.queueTitle}</div>
-            <button id="closeQueue" class="secondary icon-button" title="${i18n.queueCloseLabel}" aria-label="${i18n.queueCloseLabel}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div id="queueBody" class="queue-body"></div>
-          <div class="queue-footer">
+${renderChatModal({
+        id: "queueOverlay",
+        className: "queue-modal",
+        labelledBy: "queueTitle",
+        titleHtml: `<div id="queueTitle" class="title">${i18n.queueTitle}</div>`,
+        close: {
+          id: "closeQueue",
+          label: i18n.queueCloseLabel,
+        },
+        contentHtml: `<div id="queueBody" class="queue-body"></div>`,
+        actionsHtml: `<div class="modal-actions queue-footer">
             <button id="continueQueue" class="action-button">${i18n.queueContinueLabel}</button>
-          </div>
-        </div>
-      </div>
+          </div>`,
+      })}
 
-      <div id="runPromptOverlay" class="overlay">
-        <div class="modal run-prompt-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.runPromptTitle}</div>
-            <button id="closeRunPrompt" class="secondary icon-button" title="${i18n.runPromptClose}" aria-label="${i18n.runPromptClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="run-prompt-body">
+${renderChatModal({
+        id: "runPromptOverlay",
+        className: "run-prompt-modal",
+        labelledBy: "runPromptTitle",
+        titleHtml: `<div id="runPromptTitle" class="title">${i18n.runPromptTitle}</div>`,
+        close: {
+          id: "closeRunPrompt",
+          label: i18n.runPromptClose,
+        },
+        contentHtml: `          <div class="run-prompt-body">
             <div id="runPromptContent" class="run-prompt-preview"></div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
-      <div id="runStreamOverlay" class="overlay">
-        <div class="modal run-stream-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.runStreamTitle}</div>
-            <button id="closeRunStream" class="secondary icon-button" title="${i18n.runStreamClose}" aria-label="${i18n.runStreamClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="run-stream-body">
+${renderChatModal({
+        id: "runStreamOverlay",
+        className: "run-stream-modal",
+        labelledBy: "runStreamTitle",
+        titleHtml: `<div id="runStreamTitle" class="title">${i18n.runStreamTitle}</div>`,
+        close: {
+          id: "closeRunStream",
+          label: i18n.runStreamClose,
+        },
+        contentHtml: `          <div class="run-stream-body">
             <div class="run-stream-toolbar">
               <button id="exportRunStream" class="secondary action-button" title="${i18n.runStreamExportAria}" aria-label="${i18n.runStreamExportAria}">${i18n.runStreamExportLabel}</button>
             </div>
             <div id="runStreamContent" class="run-stream-preview run-stream-empty">${i18n.runStreamEmpty}</div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
-      <div id="configApplyErrorOverlay" class="overlay">
-        <div class="modal config-error-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.configApplyErrorTitle}</div>
-            <button id="closeConfigApplyError" class="secondary icon-button" title="${i18n.configApplyErrorClose}" aria-label="${i18n.configApplyErrorClose}">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div class="config-error-body">
+${renderChatModal({
+        id: "configApplyErrorOverlay",
+        className: "config-error-modal",
+        labelledBy: "configApplyErrorTitle",
+        titleHtml: `<div id="configApplyErrorTitle" class="title">${i18n.configApplyErrorTitle}</div>`,
+        close: {
+          id: "closeConfigApplyError",
+          label: i18n.configApplyErrorClose,
+        },
+        contentHtml: `<div class="config-error-body">
             <pre id="configApplyErrorContent" class="config-error-detail"></pre>
-            <div class="config-error-actions">
-              <button id="copyConfigApplyError" class="secondary action-button">${i18n.configApplyErrorCopy}</button>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div id="helpOverlay" class="overlay">
-        <div class="modal help-modal">
-          <div class="modal-header">
-            <div class="title">${i18n.helpTitle}</div>
-            <div class="session-actions">
-              <button id="closeHelp" class="secondary icon-button" title="${i18n.helpClose}" aria-label="${i18n.helpClose}">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
+          </div>`,
+        actionsHtml: `<div class="modal-actions config-error-actions">
+              <button id="copyConfigApplyError" class="secondary action-button">${i18n.configApplyErrorCopy}</button>
+            </div>`,
+      })}
+
+${renderChatModal({
+        id: "helpOverlay",
+        className: "help-modal",
+        labelledBy: "helpTitle",
+        titleHtml: `<div id="helpTitle" class="title">${i18n.helpTitle}</div>`,
+        close: {
+          id: "closeHelp",
+          label: i18n.helpClose,
+          wrapperClassName: "session-actions",
+        },
+        contentHtml: `          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
             <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">${i18n.helpTabInstall}</button>
             <button id="helpTabModes" class="help-tab" role="tab" aria-selected="false">${i18n.helpTabModes}</button>
           </div>
@@ -900,8 +864,8 @@ ${webviewStyles}    </style>
               </ul>
             </div>
           </div>
-        </div>
-      </div>
+        `,
+      })}
 
     </div>
 

@@ -8,6 +8,7 @@ import {
 } from "@dagrejs/dagre";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { resolveLocale, type AppLocale } from "../i18n";
+import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { GRAPH_RUN_PANEL_STYLES } from "./graphRunPanelStyles";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import {
@@ -1179,54 +1180,48 @@ function renderRunControls(state: GraphRunPanelState, strings: GraphRunPanelStri
 }
 
 function renderContinueDialog(state: GraphRunPanelState, strings: GraphRunPanelStrings): string {
-  return `<div id="continueDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="continueDialogTitle" aria-describedby="continueDialogDescription">
-      <div class="dialog-header">
-        <h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>
-        <p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>
-      </div>
-      <div class="dialog-body">
-        ${renderContinueModelChoiceHtml({
-          choice: state.continueModels,
-          strings: {
-            label: strings.continueModelChoiceLabel,
-            originalTitle: strings.continueModelOriginal,
-            originalHint: strings.continueModelOriginalHint,
-            originalUnavailable: strings.continueModelOriginalUnavailable,
-            currentTitle: strings.continueModelCurrent,
-            currentHint: strings.continueModelCurrentHint,
-            summary: strings.continueModelSummary,
-            unrecorded: strings.continueModelUnrecorded,
-          },
-          escapeHtml,
-        })}
-      </div>
-      <div class="dialog-actions">
-        <button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.supplementCancel)}</button>
-        <button id="continueDialogConfirm" class="button" type="button">${escapeHtml(strings.supplementConfirm)}</button>
-      </div>
-    </div>
-  </div>`;
+  return renderPanelDialog({
+    backdropId: "continueDialogBackdrop",
+    backdropAttributes: [["aria-hidden", "true"]],
+    labelledBy: "continueDialogTitle",
+    describedBy: "continueDialogDescription",
+    titleHtml: `<h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>`,
+    descriptionHtml: `<p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>`,
+    bodyHtml: `<div class="dialog-body">${renderContinueModelChoiceHtml({
+      choice: state.continueModels,
+      strings: {
+        label: strings.continueModelChoiceLabel,
+        originalTitle: strings.continueModelOriginal,
+        originalHint: strings.continueModelOriginalHint,
+        originalUnavailable: strings.continueModelOriginalUnavailable,
+        currentTitle: strings.continueModelCurrent,
+        currentHint: strings.continueModelCurrentHint,
+        summary: strings.continueModelSummary,
+        unrecorded: strings.continueModelUnrecorded,
+      },
+      escapeHtml,
+    })}</div>`,
+    actionsHtml: renderModalActions(
+      "dialog-actions",
+      `<button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.supplementCancel)}</button><button id="continueDialogConfirm" class="button" type="button">${escapeHtml(strings.supplementConfirm)}</button>`,
+    ),
+  });
 }
 
 function renderSupplementDialog(strings: GraphRunPanelStrings): string {
-  return `<div id="supplementDialogBackdrop" class="dialog-backdrop" aria-hidden="true">
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="supplementDialogTitle" aria-describedby="supplementDialogDescription">
-      <div class="dialog-header">
-        <h2 id="supplementDialogTitle" class="dialog-title">${escapeHtml(strings.supplementDialogTitle)}</h2>
-        <p id="supplementDialogDescription" class="dialog-description">${escapeHtml(strings.supplementDialogDescription)}</p>
-      </div>
-      <div class="dialog-body">
-        <label class="dialog-label" for="supplementDialogInput">${escapeHtml(strings.supplementPromptLabel)}</label>
-        <textarea id="supplementDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.supplementPromptDefault)}</textarea>
-        <div id="supplementDialogError" class="dialog-error" aria-live="polite"></div>
-      </div>
-      <div class="dialog-actions">
-        <button id="supplementDialogCancel" class="button" type="button">${escapeHtml(strings.supplementCancel)}</button>
-        <button id="supplementDialogConfirm" class="button" type="button">${escapeHtml(strings.supplementConfirm)}</button>
-      </div>
-    </div>
-  </div>`;
+  return renderPanelDialog({
+    backdropId: "supplementDialogBackdrop",
+    backdropAttributes: [["aria-hidden", "true"]],
+    labelledBy: "supplementDialogTitle",
+    describedBy: "supplementDialogDescription",
+    titleHtml: `<h2 id="supplementDialogTitle" class="dialog-title">${escapeHtml(strings.supplementDialogTitle)}</h2>`,
+    descriptionHtml: `<p id="supplementDialogDescription" class="dialog-description">${escapeHtml(strings.supplementDialogDescription)}</p>`,
+    bodyHtml: `<div class="dialog-body"><label class="dialog-label" for="supplementDialogInput">${escapeHtml(strings.supplementPromptLabel)}</label><textarea id="supplementDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.supplementPromptDefault)}</textarea><div id="supplementDialogError" class="dialog-error" aria-live="polite"></div></div>`,
+    actionsHtml: renderModalActions(
+      "dialog-actions",
+      `<button id="supplementDialogCancel" class="button" type="button">${escapeHtml(strings.supplementCancel)}</button><button id="supplementDialogConfirm" class="button" type="button">${escapeHtml(strings.supplementConfirm)}</button>`,
+    ),
+  });
 }
 
 function renderGraphDag(state: GraphRunPanelState, strings: GraphRunPanelStrings): string {
@@ -1481,23 +1476,28 @@ function renderNodeDetails(state: GraphRunPanelState, strings: GraphRunPanelStri
   } else {
     bodyHtml = `${errorHtml}${supplementHtml}${state.nodes.map((node) => renderNodeDetailArticle(node, state, strings)).join("")}`;
   }
-  return `<div id="nodeDetailDialogBackdrop" class="dialog-backdrop node-detail-backdrop" data-node-detail-dialog-backdrop aria-hidden="true">
-    <div id="nodeDetailDialog" class="dialog node-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="nodeDetailDialogTitle">
-      <div class="dialog-header node-detail-dialog-header">
-        <div>
-          <h2 id="nodeDetailDialogTitle" class="dialog-title">${escapeHtml(strings.details)}</h2>
-          <p class="dialog-description">${escapeHtml(strings.selectedNode)}</p>
-        </div>
-        <svg id="nodeDetailDialogClose" class="node-detail-close-icon" data-node-detail-close role="button" tabindex="0" aria-label="${escapeHtml(strings.closeDetails)}" viewBox="0 0 16 16">
-          <title>${escapeHtml(strings.closeDetails)}</title>
-          <path d="M4 4l8 8M12 4 4 12" aria-hidden="true"></path>
-        </svg>
-      </div>
-      <div class="dialog-body node-detail-dialog-body">
-        ${bodyHtml}
-      </div>
-    </div>
-  </div>`;
+  return renderPanelDialog({
+    backdropId: "nodeDetailDialogBackdrop",
+    backdropClassName: "dialog-backdrop node-detail-backdrop",
+    backdropAttributes: [
+      ["data-node-detail-dialog-backdrop", null],
+      ["aria-hidden", "true"],
+    ],
+    dialogId: "nodeDetailDialog",
+    dialogClassName: "dialog node-detail-dialog",
+    labelledBy: "nodeDetailDialogTitle",
+    headerClassName: "dialog-header node-detail-dialog-header",
+    wrapTitle: true,
+    titleHtml: `<h2 id="nodeDetailDialogTitle" class="dialog-title">${escapeHtml(strings.details)}</h2>`,
+    descriptionHtml: `<p class="dialog-description">${escapeHtml(strings.selectedNode)}</p>`,
+    closeHtml: renderModalCloseButton({
+      id: "nodeDetailDialogClose",
+      label: strings.closeDetails,
+      className: "node-detail-close-icon",
+      extraAttributes: [["data-node-detail-close", null]],
+    }),
+    bodyHtml: `<div class="dialog-body node-detail-dialog-body">${bodyHtml}</div>`,
+  });
 }
 
 function renderSupplementalRequirements(state: GraphRunPanelState, strings: GraphRunPanelStrings): string {
