@@ -509,11 +509,6 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
 
           wrapper.appendChild(header);
           wrapper.appendChild(full);
-
-          wrapper.addEventListener("click", () => {
-            togglePromptHistoryExpanded(item.id);
-          });
-
           elements.promptHistoryList.appendChild(wrapper);
         });
       }

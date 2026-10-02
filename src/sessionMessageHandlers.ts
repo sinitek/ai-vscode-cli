@@ -11,7 +11,7 @@ import { CLI_LIST, CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, Th
 import { t } from "./i18n";
 import { logDebug, logError } from "./logger";
 import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
-import { exportRunStreamRecordsToTxt, exportSessionHistoryMessagesToTxt, buildWorkspacePathItems, saveUploadedFiles } from "./webview/panelFileActions";
+import { exportRunStreamRecordsToJsonl, exportSessionHistoryMessagesToTxt, buildWorkspacePathItems, saveUploadedFiles } from "./webview/panelFileActions";
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type InteractiveSessionBinding } from "./interactive/runnerRetention";
@@ -799,7 +799,7 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
       : getActiveConversationTabId();
     const targetCli = message.cli && isCliName(message.cli) ? message.cli : currentCliRef.value;
     try {
-      const exportResult = await exportRunStreamRecordsToTxt(message.records, {
+      const exportResult = await exportRunStreamRecordsToJsonl(message.records, {
         cli: targetCli,
         tabId: targetTabId,
       });

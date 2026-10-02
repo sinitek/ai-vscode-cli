@@ -24,7 +24,7 @@
 | --- | --- | --- | --- |
 | P0 | Claude 取消控制器未传给 SDK | 停止无效，后台查询、进程和闭包可能长期存活 | 已确认缺陷 |
 | P0 | OpenCode 原始输出无界缓存，且每个 chunk 重扫全部历史 | Extension Host 堆增长，CPU 近似二次增长 | 已确认缺陷 |
-| P0 | Run Stream 无界保留并在每个 delta 全量重建 DOM | Webview 堆增长，累计渲染 O(n²) | 已确认缺陷 |
+| P0 | 回放 无界保留并在每个 delta 全量重建 DOM | Webview 堆增长，累计渲染 O(n²) | 已确认缺陷 |
 | P0 | Assistant delta 重复解析完整 Markdown | 长回答时 Webview CPU 近似二次增长 | 已确认缺陷 |
 | P0 | 附件上传无数量和字节限制 | Base64、IPC 和 Buffer 多份复制造成高内存峰值 | 已确认缺陷 |
 | P0 | 扩展停用未停止所有运行进程 | OpenCode、并行任务或临时 Runner 可能残留 | 已确认缺陷 |
@@ -42,7 +42,7 @@
 | Claude abort 接线 | 已修复并验证 | `ClaudeInteractiveRunner.runStreamed()` 将本次 `AbortController` 写入 SDK `queryOptions`，`finally` 仅清理仍归属本轮的 controller；`dispose()` / `stopAndRebuild()` 触发 abort | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/interactive/claudeRunner.test.js` |
 | 扩展停用停止所有运行 | 已修复并验证 | `deactivate()` 设置停用 guard 并调用幂等 `stopAllRuns()`，覆盖 active process、parallel runs、interactive runs 和 managed runner；停用后新 run 直接拒绝 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/extensionHost/extensionDeactivateStopAll.test.js` |
 | OpenCode 原始输出有界且避免全历史重扫 | 已修复并验证 | one-shot 改用 `createOpenCodeStreamActivityTracker()` 增量 activity tracker；`runPromptOneShot()` 不再按 chunk 调用 `detectOpenCodeStreamActivity(rawStdout, rawStderr)`；raw stdout/stderr 使用 `appendBoundedUtf8Text()`，one-shot / parallel JSONL pending line 均为 64 KiB 上限 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/cli/commandRunnerCoverage.test.js`、`dist/test/cli/opencodeCommandRunner.test.js`、`dist/test/core/openCodeTabStream.test.js` |
-| Run Stream 有界且避免全量 DOM 重建 | 已修复并验证 | 每 tab 记录数、单条字节和累计字节均有预算；超限记录写入 discard/truncation metadata；overlay 关闭时不构建完整记录 DOM，打开时同步 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/webview/clipagescriptruntimecoverage.test.js` |
+| 回放 有界且避免全量 DOM 重建 | 已修复并验证 | 每 tab 记录数、单条字节和累计字节均有预算；超限记录写入 discard/truncation metadata；overlay 关闭时不构建完整记录 DOM，打开时同步 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `dist/test/webview/clipagescriptruntimecoverage.test.js` |
 | Assistant delta 避免重复完整 Markdown parse | 已修复并验证 | 流式阶段使用轻量 text update / streaming content class，idle 或 final 阶段再完整 Markdown 渲染；测试显式覆盖小 delta 不重复解析 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 `batches assistant delta markdown rendering while streaming` |
 | 附件上传数量/字节限制 | 已修复并验证 | Webview 和 Extension Host 双端校验最多 10 个附件、单文件 20 MiB、不限制总大小；拒绝提示维护英文与中文 | `npm run build` 通过；指定 dist 单测 114/114 通过，含 Webview 预检与 file-action adapter 边界测试 |
 
@@ -141,7 +141,7 @@
 2. one-shot 路径在每个 chunk 后把截至当前的完整 stdout/stderr 传给 activity 检测。
 3. 检测函数再次按行切分、JSON.parse、清洗和收集完整输出。
 4. 最终输出还会再被 `parseOpenCodeRunOutput()` 全量解析。
-5. 可见回答、Run Stream、聊天消息和 debug 日志可能同时保存同一内容的多份副本。
+5. 可见回答、回放、聊天消息和 debug 日志可能同时保存同一内容的多份副本。
 
 复杂度：
 
@@ -162,7 +162,7 @@
 - 如需完整 debug 原始流，直接流式写入临时日志文件，不在 heap 中保存第二份完整内容。
 - 建议默认单流 tail 1-4 MiB，并对总输出、单行和未完成 frame 分别设上限。
 
-### 3.4 P0：Run Stream 无界增长，并在每个 delta 全量重建 DOM
+### 3.4 P0：回放 无界增长，并在每个 delta 全量重建 DOM
 
 证据：
 
@@ -510,7 +510,7 @@
 
 ### 4.5 标签页、提示词队列和 workspace settings 没有数量/字节上限
 
-- Webview 每个 tab 保留 messages、Run Stream、queue 和 task list。
+- Webview 每个 tab 保留 messages、回放、queue 和 task list。
 - tab 页大小 5 只是显示分页，不是数据上限。
 - `pendingPromptQueue` 没有条数和总字节限制。
 - workspace settings 会持久化全部 tab 并同步重写完整文件。
@@ -529,7 +529,7 @@
 1. 修复 Claude `abortController` 接线和并发运行归属。
 2. 实现统一 `stopAllRuns()` 并接入 deactivate/reload。
 3. 为 OpenCode stdout/stderr、JSONL/SSE frame、Codex stderr、CLI probe 增加硬字节上限。
-4. 为 Run Stream 增加记录数、单条字节和总字节预算。
+4. 为 回放 增加记录数、单条字节和总字节预算。
 5. 为附件增加 Webview/Extension Host 双端大小和数量限制。
 6. 为 OpenCode child snapshot 增加并发池、child 数和总响应预算。
 
@@ -537,7 +537,7 @@
 
 1. OpenCode 使用增量 parser，移除逐 chunk 全历史 activity 检测。
 2. Assistant delta 按帧合并，流式阶段不重复完整 Markdown parse。
-3. 消息和 Run Stream 改为 keyed incremental DOM，不再全量清空重建。
+3. 消息和 回放 改为 keyed incremental DOM，不再全量清空重建。
 4. 交互会话持久化改为异步串行队列，降低频率并避免全量同步写。
 5. Debug 日志批量 flush，维护分片 cache 和待写字节上限。
 
@@ -577,7 +577,7 @@
 - 10,000 条 raw stream delta。
 - 单条 assistant 回答 1 MiB，分别使用 100、1,000、10,000 个 delta。
 - 5,000 条历史消息，包含 Markdown、diff、trace 和 tool result。
-- 同时保留 20 个 tab，每个 tab 有消息和 Run Stream。
+- 同时保留 20 个 tab，每个 tab 有消息和 回放。
 - 上传 10 MiB、100 MiB、500 MiB 文件及多文件组合。
 
 指标：
@@ -608,7 +608,7 @@
 - 所有流式缓冲、队列和 cache 都必须能指出明确的条目/字节上限。
 - 停止或 deactivate 后，受管 CLI/SDK 进程及后代进程在限定时间内归零。
 - 同一总输出字节下，CPU 不应随 chunk 数量呈近似二次增长。
-- Run Stream overlay 关闭时不创建完整记录 DOM。
+- 回放 overlay 关闭时不创建完整记录 DOM。
 - 大会话流式保存不使用 Extension Host 同步全文件写。
 - 面板不可见时不执行 5 秒配置全量扫描。
 
@@ -625,7 +625,7 @@
 系统当前不是“已证明一定发生 OOM”，但也不能视为没有内存问题。至少以下路径缺少任何有效的总量上限：
 
 - OpenCode 原始 stdout/stderr。
-- Run Stream records 和完整 DOM。
+- 回放记录 和完整 DOM。
 - Assistant/trace/会话消息正文。
 - Session message cache。
 - Debug 日志待写队列。

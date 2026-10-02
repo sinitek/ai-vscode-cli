@@ -848,7 +848,6 @@ ${DIALOG_SHELL_STYLES}
         white-space: normal;
         overflow-wrap: anywhere;
         line-height: 1.35;
-        cursor: pointer;
       }
       .prompt-meta {
         font-size: 12px;

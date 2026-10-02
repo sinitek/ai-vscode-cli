@@ -22,7 +22,7 @@ import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type PanelFileActionsMock = Pick<typeof import("../../webview/panelFileActions"),
   "buildWorkspacePathItems"
-  | "exportRunStreamRecordsToTxt"
+  | "exportRunStreamRecordsToJsonl"
   | "exportSessionHistoryMessagesToTxt"
   | "saveUploadedFiles"
 >;
@@ -32,20 +32,20 @@ const fileActions = {
   runStreamExportError: null as Error | null,
   historyExports: [] as Parameters<PanelFileActionsMock["exportSessionHistoryMessagesToTxt"]>[0][],
   runStreamExports: [] as Array<{
-    records: Parameters<PanelFileActionsMock["exportRunStreamRecordsToTxt"]>[0];
-    options: Parameters<PanelFileActionsMock["exportRunStreamRecordsToTxt"]>[1];
+    records: Parameters<PanelFileActionsMock["exportRunStreamRecordsToJsonl"]>[0];
+    options: Parameters<PanelFileActionsMock["exportRunStreamRecordsToJsonl"]>[1];
   }>,
   uploadedFiles: [] as Parameters<PanelFileActionsMock["saveUploadedFiles"]>[0][],
 };
 
 const panelFileActionsMock: PanelFileActionsMock = {
   buildWorkspacePathItems: async () => [{ label: "src", value: "src" }],
-  exportRunStreamRecordsToTxt: async (records, options) => {
+  exportRunStreamRecordsToJsonl: async (records, options) => {
     fileActions.runStreamExports.push({ records, options });
     if (fileActions.runStreamExportError) {
       throw fileActions.runStreamExportError;
     }
-    return { path: "/virtual/run-stream.txt", fileName: "run-stream.txt" };
+    return { path: "/virtual/run-stream.jsonl", fileName: "run-stream.jsonl" };
   },
   exportSessionHistoryMessagesToTxt: async (options) => {
     fileActions.historyExports.push(options);
@@ -577,7 +577,7 @@ test("returns path and upload results through isolated file-action adapters", as
   assert.equal(harness.calls.webviewMessages[1].type, "uploadResult");
   assert.deepEqual(harness.calls.webviewMessages[1].paths, ["/virtual/note.txt"]);
   assert.deepEqual(fileActions.runStreamExports[0].options, { cli: "claude", tabId: "tab-1" });
-  assert.equal(harness.calls.webviewMessages[2].path, "/virtual/run-stream.txt");
+  assert.equal(harness.calls.webviewMessages[2].path, "/virtual/run-stream.jsonl");
   assert.equal(harness.calls.webviewMessages[3].error, "export blocked");
 });
 

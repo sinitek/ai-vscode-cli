@@ -91,7 +91,7 @@ import {
   buildTempFilePath,
   cleanupTempDir,
   ensureTempDir,
-  exportRunStreamRecordsToTxt,
+  exportRunStreamRecordsToJsonl,
   exportSessionHistoryMessagesToTxt,
   removeScheduledTaskAttachments,
   saveScheduledTaskAttachments,

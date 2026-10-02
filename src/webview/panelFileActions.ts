@@ -320,30 +320,34 @@ function normalizeRunStreamExportRecords(
   return normalized;
 }
 
-function buildRunStreamExportFileName(timestamp: number): string {
+export function buildRunStreamExportFileName(timestamp: number): string {
   const iso = new Date(timestamp).toISOString().replace(/[:.]/g, "-");
-  return `${RUN_STREAM_EXPORT_FILENAME_PREFIX}-${iso}.txt`;
+  return `${RUN_STREAM_EXPORT_FILENAME_PREFIX}-${iso}.jsonl`;
 }
 
-function formatRunStreamExportContent(
+export function formatRunStreamExportJsonl(
   records: RunStreamExportRecord[],
   options: { cli: CliName; tabId: string | null; exportedAt: number }
 ): string {
-  const lines: string[] = [
-    "# Sinitek CLI Run Stream Export",
-    `Exported At: ${new Date(options.exportedAt).toISOString()}`,
-    `CLI: ${options.cli}`,
-    `Tab ID: ${options.tabId ?? "-"}`,
-    `Record Count: ${records.length}`,
-    "",
+  const lines = [
+    JSON.stringify({
+      type: "metadata",
+      format: "sinitek.run-stream",
+      version: 1,
+      exportedAt: new Date(options.exportedAt).toISOString(),
+      cli: options.cli,
+      tabId: options.tabId,
+      recordCount: records.length,
+    }),
+    ...records.map((record) => JSON.stringify({
+      type: "record",
+      index: record.index,
+      source: record.source,
+      createdAt: record.createdAt,
+      createdAtIso: new Date(record.createdAt).toISOString(),
+      content: record.content,
+    })),
   ];
-  for (const record of records) {
-    lines.push(
-      `## Line ${record.index} | ${record.source} | ${new Date(record.createdAt).toISOString()}`
-    );
-    lines.push(record.content);
-    lines.push("");
-  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -359,7 +363,7 @@ async function resolveRunStreamExportDirectory(): Promise<string> {
   }
 }
 
-export async function exportRunStreamRecordsToTxt(
+export async function exportRunStreamRecordsToJsonl(
   records: RunStreamExportRecordPayload[],
   options: { cli: CliName; tabId: string | null }
 ): Promise<RunStreamExportResult> {
@@ -371,7 +375,7 @@ export async function exportRunStreamRecordsToTxt(
   const fileName = buildRunStreamExportFileName(exportedAt);
   const targetDir = await resolveRunStreamExportDirectory();
   const targetPath = path.join(targetDir, fileName);
-  const content = formatRunStreamExportContent(normalizedRecords, {
+  const content = formatRunStreamExportJsonl(normalizedRecords, {
     cli: options.cli,
     tabId: options.tabId,
     exportedAt,

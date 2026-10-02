@@ -325,6 +325,9 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Red/Blue Debate Multi-Agent",
     "Codex Loop/Graph main model selection",
     "Codex Loop/Graph subtask model selection",
+    "Replay",
+    "Export JSONL",
+    "Waiting for replay output...",
   ]);
   assertIncludesAll(chineseHtml, [
     '<html lang="zh-CN">',
@@ -351,6 +354,9 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "红蓝辩论多智能体",
     "Codex Loop/Graph 主模型选择",
     "Codex Loop/Graph 子模型选择",
+    "回放",
+    "导出 JSONL",
+    "等待回放内容...",
   ]);
   assert.doesNotMatch(englishHtml, /automatic conflict resolution|没有自动解冲突/);
   assert.doesNotMatch(chineseHtml, /自动解冲突|不能自动解冲突/);

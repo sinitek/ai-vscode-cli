@@ -1381,6 +1381,56 @@ test("renders prompt history favorites and filters to favorite prompts", () => {
   assert.equal(list.children[0].textContent, "No favorite prompts");
 });
 
+test("expands and collapses prompt history only from the view button", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      promptHistory: [
+        { id: "prompt-1", prompt: "line one\nline two", cli: "codex", createdAt: 1_700_000_000_001 },
+      ],
+    }),
+  });
+
+  const list = document.getElementById("promptHistoryList");
+  const findButton = (label: string): FakeElement | undefined => list.children[0]
+    .querySelectorAll("button")
+    .find((button: FakeElement) => button.textContent === label);
+
+  const collapsedPreview = list.children[0].querySelector(".prompt-preview");
+  const collapsedHeader = list.children[0].querySelector(".prompt-header");
+  assert.ok(collapsedPreview);
+  assert.ok(collapsedHeader);
+  collapsedPreview.click();
+  collapsedHeader.click();
+  list.children[0].click();
+  assert.equal(list.children[0].classList.contains("expanded"), false);
+  assert.equal(api.state.promptHistoryExpandedId, null);
+
+  const viewButton = findButton("View");
+  assert.ok(viewButton);
+  viewButton.click();
+  assert.equal(list.children[0].classList.contains("expanded"), true);
+  assert.equal(api.state.promptHistoryExpandedId, "prompt-1");
+
+  const expandedPreview = list.children[0].querySelector(".prompt-preview");
+  const expandedFull = list.children[0].querySelector(".prompt-full");
+  assert.ok(expandedPreview);
+  assert.ok(expandedFull);
+  assert.equal(expandedFull.textContent, "line one\nline two");
+  expandedPreview.click();
+  expandedFull.click();
+  list.children[0].click();
+  assert.equal(list.children[0].classList.contains("expanded"), true);
+  assert.equal(api.state.promptHistoryExpandedId, "prompt-1");
+
+  const collapseButton = findButton("Collapse");
+  assert.ok(collapseButton);
+  collapseButton.click();
+  assert.equal(list.children[0].classList.contains("expanded"), false);
+  assert.equal(api.state.promptHistoryExpandedId, null);
+});
+
 test("filters prompt and session history by the shared keyword search", () => {
   const harness = createRuntimeHarness();
   const { api, document, window } = harness;

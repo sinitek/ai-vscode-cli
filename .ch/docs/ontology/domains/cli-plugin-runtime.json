@@ -30,13 +30,15 @@
       "id": "plugin.chat_panel",
       "name": "AI 对话面板",
       "kind": "capability",
-      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈。",
+      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。",
       "status": "active",
       "aliases": ["Webview", "聊天面板", "panel", "config panel"],
-      "implementation_paths": ["src/webview", "media/config/assets"],
+      "implementation_paths": ["src/webview", "src/webview/panelFileActions.ts", "media/config/assets"],
       "source_refs": [
         {"path": "README.md", "anchor": "功能概览"},
-        {"path": "ARCHITECTURE.md", "anchor": "Webview/UI 层"}
+        {"path": "ARCHITECTURE.md", "anchor": "Webview/UI 层"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/panelFileActions.ts", "anchor": "exportRunStreamRecordsToJsonl"}
       ]
     },
     {
