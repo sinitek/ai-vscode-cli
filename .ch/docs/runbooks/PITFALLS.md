@@ -220,6 +220,7 @@
 
 ### 关联资料
 - `export_vscode_extension.sh`
+- `.vscodeignore`
 - `publish_vscode_extension.sh`
 - `.vscodeignore`
 - `.ch/docs/runbooks/local-development.md`
@@ -791,6 +792,28 @@
 - `export_vscode_extension.sh`
 - `publish_vscode_extension.sh`
 - `.ch/docs/runbooks/local-development.md`
+
+## macOS 自带 rsync 不能复制 CodeGraph Unix socket
+
+- 状态：已规避
+- 首次发现：2026-10-03
+- 适用范围：macOS 上使用 `export_vscode_extension.sh` 临时目录打包
+
+### 现象
+- 导出在复制源码到临时 staging 目录时失败，输出 `rsync: error: mkstempsock: Invalid argument`。
+- 同仓库在另一台 macOS 电脑可以打包，因为该电脑没有运行中的 CodeGraph daemon socket。
+
+### 根因
+- 仓库根目录 `.codegraph/daemon.sock` 是 Unix socket，不是扩展源码。
+- macOS 自带 `openrsync` 在复制该 socket 时失败；即使改用 tar 回退，也不应把运行时 CodeGraph 状态复制到 staging。
+
+### 长期规避
+- `export_vscode_extension.sh` 的 rsync 与 tar 源码复制路径都排除根目录 `.codegraph`。
+- 打包只使用扩展源码，不复制 CodeGraph 数据库、daemon 状态或 socket。
+
+### 验证方式
+- 在含有 `.codegraph/daemon.sock` 的 macOS 工作区执行 `./export_vscode_extension.sh`。
+- 确认 VSIX 内容检查通过，且 VSIX 不包含 `extension/.codegraph/`。
 
 ## Codex 可见 Tasklist 不能只识别括号状态
 

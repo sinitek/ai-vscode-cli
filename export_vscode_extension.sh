@@ -49,6 +49,7 @@ copy_sources_to_staging() {
       --exclude node_modules \
       --exclude dist \
       --exclude .git \
+      --exclude .codegraph \
       --exclude '*.vsix' \
       "${ROOT_DIR}/" "${staging_dir}/"
     return
@@ -58,6 +59,7 @@ copy_sources_to_staging() {
     --exclude node_modules \
     --exclude dist \
     --exclude .git \
+    --exclude .codegraph \
     -cf - . | tar -C "${staging_dir}" -xf -
 }
 
