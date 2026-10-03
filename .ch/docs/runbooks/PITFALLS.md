@@ -14,6 +14,15 @@
 
 ## 当前有效条目
 
+## 流式助手气泡不要反复切换 Markdown 与临时纯文本
+
+- 状态：已规避
+- 首次发现：2026-10-03
+- 现象：append 内容时气泡正文突然展开或改变排版，稍后又恢复，跟随底部的页面反复上下跳动。
+- 根因：普通气泡每次增量都把 Markdown 替换为整段纯文本，180ms 空闲后恢复；思考与最终回复在运行中暂停 3 秒后也会切换格式，后续增量再次替换。
+- 长期规避：普通正文保持 Markdown 并按固定窗口节流；运行中的思考与最终回复复用纯文本节点，runStatus 收尾才统一格式化。不要把持续增量处理成无限延后的防抖，也不要删除实际回复来隐藏排版问题。
+- 验证：`npm run build`；`node --test --test-name-pattern='keeps ordinary assistant|keeps running .* bubbles stable|batches assistant delta' dist/test/webview/clipagescriptruntimecoverage.test.js`；Chromium 回放持续追加与超过 3 秒的暂停，断言临时节点数量与气泡高度。
+
 ## Webview 内联脚本不能包含字面量 `</script>`
 
 - 状态：已规避

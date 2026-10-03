@@ -207,6 +207,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               preserveRunArtifacts: true,
               startedAt: isRunningOnActiveTab ? getTabRunStartedAt(activeTabId) : 0,
             });
+            if (data.status !== "start" && !isRunningOnActiveTab && typeof flushAssistantDeltaMarkdownRenders === "function") {
+              flushAssistantDeltaMarkdownRenders();
+            }
             if (data.status === "start") {
               Object.keys(assistantRedirects).forEach((key) => {
                 delete assistantRedirects[key];

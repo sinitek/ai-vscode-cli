@@ -304,7 +304,7 @@
     {
       "id": "plugin.rule.chat_complete_json_tree",
       "name": "完整 JSON 气泡使用可折叠 JSON 树",
-      "description": "AI 对话助手气泡在渲染 Markdown 时，若整段正文或唯一一层 Markdown 代码围栏是完整 JSON object 或 array，则使用 json-formatter-js 渲染为默认全部展开、节点可折叠的 JSON 树。JSON 字符串、数字、布尔、null、残缺 JSON 和混有说明文字的内容仍按 Markdown 渲染；流式输出未稳定前保持纯文本。",
+      "description": "AI 对话助手气泡在渲染 Markdown 时，若整段正文或唯一一层 Markdown 代码围栏是完整 JSON object 或 array，则使用 json-formatter-js 渲染为默认全部展开、节点可折叠的 JSON 树。JSON 字符串、数字、布尔、null、残缺 JSON 和混有说明文字的内容仍按 Markdown 渲染；普通助手增量按 180ms 窗口更新 Markdown 与 JSON 判断，思考和最终回复在 runStatus 运行期间保持纯文本，结束、错误或停止时完成格式化。",
       "aliases": ["json tree", "JSON 气泡"],
       "status": "active",
       "applies_to": ["plugin.chat_panel"],

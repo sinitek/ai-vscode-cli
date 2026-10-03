@@ -75,7 +75,10 @@ cli / interactive / config 服务层
 - 以 `src/extension.ts` 为核心
 - 负责命令注册、状态管理、消息分发、会话与标签页编排
 - 不应承载具体 CLI 协议细节和配置文件读写实现
-- 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Webview 消息路由、Graph/Loop/session/model/config host 装配和跨运行时生命周期适配
+- 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Graph/Loop/session/model/config host 装配和跨运行时生命周期适配；Webview 消息所需的 VS Code 能力在此组装为显式端口
+- `src/sessionMessageRouter.ts` 只负责类型安全的消息到处理器分派和领域 Registry 合并，不承载业务分支
+- `src/panelMessageHandlers/` 按 diagnostics、session、prompt、workspace 领域拆分消息处理器；每个处理器通过 `Pick<PanelMessageHandlerDeps, ...>` 声明最小依赖，避免接收完整组合根依赖
+- `src/sessionMessageHandlers.ts` 保留兼容的统一入口，仅负责初始化会话存储、记录调试日志并调用 Router；新增消息应进入对应领域 Registry，而不是继续堆积条件分支
 - 本次运行时抽取后，`src/extension.ts` 为 5659 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
 
 #### 扩展运行时 Host 层

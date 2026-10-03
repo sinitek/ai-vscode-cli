@@ -448,8 +448,10 @@ function createFakeWindow(): any {
   };
 }
 
-function runLatestTimer(fakeWindow: { timers: Map<number, Listener> }): void {
-  const latest = Array.from(fakeWindow.timers.entries()).at(-1);
+function runLatestTimer(fakeWindow: { timers: Map<number, Listener>; timerDelays: Map<number, number> }): void {
+  const latest = Array.from(fakeWindow.timers.entries())
+    .filter(([timerId]) => fakeWindow.timerDelays.has(timerId))
+    .at(-1);
   assert.ok(latest, "Expected a pending timer");
   fakeWindow.timers.delete(latest[0]);
   latest[1]();
@@ -497,6 +499,7 @@ function createRuntimeHarness(markedOverride?: unknown) {
     "console",
     "setTimeout",
     "clearTimeout",
+    "setInterval",
     "clearInterval",
     "requestAnimationFrame",
     "cancelAnimationFrame",
@@ -550,6 +553,7 @@ function createRuntimeHarness(markedOverride?: unknown) {
     console,
     fakeWindow.setTimeout,
     fakeWindow.clearTimeout,
+    fakeWindow.setInterval,
     fakeWindow.clearInterval,
     fakeWindow.requestAnimationFrame,
     fakeWindow.cancelAnimationFrame,
@@ -1653,6 +1657,90 @@ test("does not show context tokens for non-Codex runs", () => {
   assert.equal(label.textContent, "");
 });
 
+test("keeps ordinary assistant bubbles formatted while throttling continuous appends", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.renderMessages();
+
+  const appendContent = (content: string) => window.dispatchMessage({
+    type: "assistantDelta",
+    tabId: "tab-1",
+    id: "ordinary-stream",
+    content,
+    kind: "normal",
+  });
+  appendContent("formatted reply");
+  const bubble = document.getElementById("messages").querySelector(".bubble");
+  assert.ok(bubble);
+  const initialHtml = bubble.innerHTML;
+  const renderTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 180);
+  assert.ok(renderTimerId);
+
+  appendContent(" first addition");
+  appendContent(" second addition");
+  assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), null);
+  assert.equal(bubble.innerHTML, initialHtml);
+  assert.ok(window.timers.has(renderTimerId));
+
+  const render = window.timers.get(renderTimerId);
+  window.timers.delete(renderTimerId);
+  render?.();
+  assert.match(bubble.innerHTML, /first addition second addition/);
+  assert.doesNotMatch(bubble.innerHTML, /assistant-message-content-streaming/);
+
+  appendContent(" third addition");
+  const nextRenderTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 180);
+  assert.ok(nextRenderTimerId);
+  assert.notEqual(nextRenderTimerId, renderTimerId);
+  window.timers.get(nextRenderTimerId)?.();
+  assert.match(bubble.innerHTML, /third addition/);
+});
+
+const streamCompletionCases = (["normal", "thinking"] as const).flatMap((messageKind) =>
+  (["end", "error", "stopped"] as const).map((completionStatus) => ({ messageKind, completionStatus }))
+);
+for (const { messageKind, completionStatus } of streamCompletionCases) {
+  test(`keeps running ${messageKind === "normal" ? "final" : "thinking"} bubbles stable across output pauses until ${completionStatus}`, (testContext) => {
+    const { api, document, window } = createRuntimeHarness();
+    testContext.after(() => window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" }));
+    window.dispatchMessage({ type: "state", payload: createPanelState() });
+    api.state.onlyShowFinalResults = false;
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
+    const appendContent = (content: string) => window.dispatchMessage({
+      type: "assistantDelta",
+      tabId: "tab-1",
+      id: "stable-stream",
+      content,
+      kind: messageKind,
+      ...(messageKind === "normal" ? { codexFinalAnswer: true } : {}),
+    });
+    appendContent("hello");
+    appendContent(" **world**");
+    const streamingNode = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
+    assert.ok(streamingNode);
+
+    const idleTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 3000);
+    assert.ok(idleTimerId);
+    const idleRender = window.timers.get(idleTimerId);
+    window.timers.delete(idleTimerId);
+    idleRender?.();
+    assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
+
+    appendContent(" again");
+    assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
+    assert.match(streamingNode.textContent, /hello \*\*world\*\* again/);
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: completionStatus });
+    const bubble = document.getElementById("messages").querySelector(".bubble");
+    assert.ok(bubble);
+    assert.doesNotMatch(bubble.innerHTML, /assistant-message-content-streaming/);
+    assert.match(bubble.innerHTML, /hello \*\*world\*\* again/);
+    if (messageKind === "normal") {
+      assert.match(bubble.innerHTML, /assistant-message-content-final/);
+    }
+  });
+}
+
 test("batches assistant delta markdown rendering while streaming", () => {
   let markdownParseCount = 0;
   const marked = {
@@ -1688,15 +1776,18 @@ test("batches assistant delta markdown rendering while streaming", () => {
     kind: "normal",
   });
   assert.equal(markdownParseCount, 1);
-  const streamingNode = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
-  assert.ok(streamingNode);
-  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-streaming").length, 1);
-  assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
+  const formattedBubble = document.getElementById("messages").querySelector(".bubble");
+  assert.ok(formattedBubble);
+  assert.equal(document.getElementById("messages").querySelectorAll(".assistant-message-content-streaming").length, 0);
+  assert.match(formattedBubble.innerHTML, /<p>hello<\/p>/);
 
-  const idleRender = Array.from(window.timers.values()).at(-1) as (() => void) | undefined;
+  const idleTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 180);
+  const idleRender = window.timers.get(idleTimerId) as (() => void) | undefined;
   assert.equal(typeof idleRender, "function");
+  window.timers.delete(idleTimerId);
   idleRender?.();
   assert.equal(markdownParseCount, 2);
+  assert.match(formattedBubble.innerHTML, /hello \*\*world\*\*/);
 
   window.dispatchMessage({
     type: "assistantDelta",

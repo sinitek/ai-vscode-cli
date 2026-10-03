@@ -224,30 +224,62 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (!messageId) {
           return;
         }
-        clearAssistantDeltaRenderTimer(messageId);
         const messageIndex = state.messages.findIndex((item) => item && item.id === messageId);
         if (messageIndex === -1) {
           return;
         }
+        const deferMarkdown = shouldDeferAssistantMarkdownWhileStreaming(state.messages[messageIndex], messageIndex);
+        if (!deferMarkdown && assistantDeltaRenderTimers[messageId]) {
+          return;
+        }
+        clearAssistantDeltaRenderTimer(messageId);
         const delay = assistantMarkdownIdleDelay(messageIndex);
-        if (shouldDeferAssistantMarkdownWhileStreaming(state.messages[messageIndex], messageIndex)) {
+        if (deferMarkdown) {
           assistantStreamingMarkdownPending[messageId] = true;
         }
         assistantDeltaRenderTimers[messageId] = setTimeout(() => {
           delete assistantDeltaRenderTimers[messageId];
-          delete assistantStreamingMarkdownPending[messageId];
           const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
           if (renderedIndex === -1) {
+            delete assistantStreamingMarkdownPending[messageId];
             return;
           }
           const message = state.messages[renderedIndex];
           if (!message || message.role !== "assistant") {
+            delete assistantStreamingMarkdownPending[messageId];
             return;
           }
+          if (isTabRunning(getActiveConversationTabId()) && shouldDeferAssistantMarkdownWhileStreaming(message, renderedIndex)) {
+            return;
+          }
+          delete assistantStreamingMarkdownPending[messageId];
+          const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
+          const shouldAutoScroll = !chatSearchAnchored
+            && (shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
           if (!updateRenderedAssistantMessage(message, renderedIndex)) {
             renderMessages();
+            return;
           }
+          updateTaskList();
+          if (shouldAutoScroll) {
+            scrollChatToBottom("auto");
+          }
+          updateScrollToBottomButton();
         }, delay);
+      }
+
+      function flushAssistantDeltaMarkdownRenders() {
+        const messageIds = new Set([
+          ...Object.keys(assistantDeltaRenderTimers),
+          ...Object.keys(assistantStreamingMarkdownPending),
+        ]);
+        messageIds.forEach((messageId) => {
+          clearAssistantDeltaRenderTimer(messageId);
+          delete assistantStreamingRenderFrames[messageId];
+        });
+        if (messageIds.size > 0) {
+          renderMessages();
+        }
       }
 
       function scheduleAssistantStreamingRender(messageId) {
@@ -256,6 +288,9 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         assistantStreamingRenderFrames[messageId] = true;
         const renderFrame = () => {
+          if (!assistantStreamingRenderFrames[messageId]) {
+            return;
+          }
           delete assistantStreamingRenderFrames[messageId];
           const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
           if (renderedIndex === -1) {
@@ -352,13 +387,16 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           renderMessages();
           return;
         }
-        if (requiresFullRender) {
+        if (requiresFullRender || !findRenderedMessageElement(target.id)) {
           scheduleAssistantDeltaMarkdownRender(target.id);
           renderMessages();
           return;
         }
-        scheduleAssistantStreamingRender(target.id);
+        if (shouldDeferAssistantMarkdownWhileStreaming(target, targetIndex) && !isToolResultLikeMessage(target)) {
+          scheduleAssistantStreamingRender(target.id);
+        }
         scheduleAssistantDeltaMarkdownRender(target.id);
+        updateTaskList();
       }
 
       function applyTraceSegment(data) {

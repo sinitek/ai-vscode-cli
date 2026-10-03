@@ -10,6 +10,7 @@ import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
 import {
+  CONFIG_NAMESPACE,
   getAutoOpenPanel,
   getDefaultCli,
   getRememberSelectedCli,
@@ -453,7 +454,6 @@ import {
   writeModelStore as writeModelSelectionStore,
   type CliModelStore,
 } from "./modelSelectionStore";
-import { handleUpdateOpenCodeVariantMessage } from "./sessionMessageActions";
 import { createGraphControlsHost, type GraphControlsHost } from "./extensionHost/graphControls";
 import {
   createLoopPlusPersistedTaskRefresher,
@@ -1424,17 +1424,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
 }
 
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
-  if (message.type === "updateOpenCodeVariant") {
-    await handleUpdateOpenCodeVariantMessage(message, {
-      updateOpenCodeVariant: updateOpenCodeVariantForCurrentSelection,
-      postPanelState,
-    });
-    return;
-  }
-  if (message.type === "humanInteractionResponse") {
-    resolveHumanInteractionResponse(message);
-    return;
-  }
   await handlePanelMessageWithDeps(message, {
     ensureWorkspaceSessionStore,
     postPanelState,
@@ -1540,7 +1529,37 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     stopRunForTab,
     schedulePromptTask,
     deleteScheduledTask,
+    resolveWorkspaceDropPaths: (uris) => uris
+      .map((uri) => vscode.Uri.parse(uri))
+      .map((uri) => vscode.workspace.asRelativePath(uri, false)),
+    hasWorkspaceFolder: () => Boolean(vscode.workspace.workspaceFolders?.length),
+    pickWorkspacePaths: async () => {
+      const items = await buildWorkspacePathItems();
+      const selections = await vscode.window.showQuickPick(items, {
+        canPickMany: true,
+        matchOnDescription: true,
+        ignoreFocusOut: true,
+        placeHolder: t("pathPicker.placeholder"),
+      });
+      return selections?.map((item) => item.value);
+    },
+    persistCliCommand: persistCliCommand,
+    updateOpenCodeVariant: updateOpenCodeVariantForCurrentSelection,
+    resolveHumanInteractionResponse,
   });
+}
+
+async function persistCliCommand(cli: CliName, command: string): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const key = `commands.${cli}`;
+  await config.update(key, command, vscode.ConfigurationTarget.Global);
+  const inspected = config.inspect<string>(key);
+  if (inspected?.workspaceFolderValue !== undefined) {
+    await config.update(key, command, vscode.ConfigurationTarget.WorkspaceFolder);
+  }
+  if (inspected?.workspaceValue !== undefined) {
+    await config.update(key, command, vscode.ConfigurationTarget.Workspace);
+  }
 }
 
 async function buildPanelState(): Promise<PanelState> {

@@ -67,7 +67,14 @@ type ModuleLoader = {
 const moduleLoader = require("module") as ModuleLoader;
 const originalLoad = moduleLoader._load;
 moduleLoader._load = function mockedLoad(this: unknown, request: string, parent?: { filename?: string }, isMain?: boolean): unknown {
-  if (request === "./webview/panelFileActions" && parent?.filename?.endsWith("sessionMessageHandlers.js")) {
+  if (
+    request.endsWith("webview/panelFileActions")
+    && (
+      parent?.filename?.endsWith("sessionMessageHandlers.js")
+      || parent?.filename?.endsWith("panelMessageHandlers/session.js")
+      || parent?.filename?.endsWith("panelMessageHandlers/workspace.js")
+    )
+  ) {
     return panelFileActionsMock;
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -138,8 +145,18 @@ function resetFileActionState(): void {
 function createHarness(): HandlerHarness {
   resetFileActionState();
   const vscode = require("vscode") as {
-    window: { showWarningMessage: (...args: unknown[]) => Promise<unknown> };
-    workspace: { workspaceFolders: unknown[] | undefined };
+    window: {
+      showWarningMessage: (...args: unknown[]) => Promise<unknown>;
+      showQuickPick?: (
+        items: Array<{ label: string; value: string }>,
+        options?: Record<string, unknown>
+      ) => Promise<Array<{ label: string; value: string }> | undefined>;
+    };
+    workspace: {
+      workspaceFolders: unknown[] | undefined;
+      asRelativePath?: (uri: unknown, includeWorkspaceFolder?: boolean) => string;
+    };
+    Uri: { parse: (value: string) => unknown };
   };
   const originalWarningMessage = vscode.window.showWarningMessage;
   const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
@@ -324,6 +341,16 @@ function createHarness(): HandlerHarness {
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness: async () => state.initializedHarness,
     installCodeGraphForWorkspace: async () => { calls.codeGraphInstalls += 1; },
+    resolveWorkspaceDropPaths: (uris) => uris
+      .map((uri) => vscode.Uri.parse(uri))
+      .map((uri) => (vscode.workspace.asRelativePath ?? ((value: unknown) => String(value)))(uri, false)),
+    hasWorkspaceFolder: () => Boolean(vscode.workspace.workspaceFolders?.length),
+    pickWorkspacePaths: async () => {
+      const items = await panelFileActionsMock.buildWorkspacePathItems();
+      const selections = await vscode.window.showQuickPick?.(items, {});
+      return selections?.map((item) => item.value);
+    },
+    persistCliCommand: async () => undefined,
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,
@@ -815,6 +842,42 @@ test("routes optional panel fields through their empty and fallback contracts", 
   assert.ok(harness.calls.webviewMessages.some((message) => message.type === "historySessionMessages" && message.error === undefined));
   assert.ok(harness.calls.webviewMessages.some((message) => message.type === "rulesContent" && message.error));
   assert.ok(harness.calls.webviewMessages.some((message) => message.type === "rulesSaved" && message.error));
+});
+
+test("routes special panel messages through the unified router", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const variants: Array<{ role: "primary" | "small"; value: string | null }> = [];
+  const interactions: PanelMessage[] = [];
+  harness.deps.updateOpenCodeVariant = (role, value) => {
+    variants.push({ role, value });
+  };
+  harness.deps.resolveHumanInteractionResponse = (message) => {
+    interactions.push(message);
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "updateOpenCodeVariant",
+    role: "small",
+    value: "  high  ",
+  }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "humanInteractionResponse",
+    interactionId: "interaction-1",
+    tabId: "tab-codex",
+    status: "completed",
+    values: { answer: "yes" },
+  }, harness.deps);
+
+  assert.deepEqual(variants, [{ role: "small", value: "high" }]);
+  assert.deepEqual(interactions, [{
+    type: "humanInteractionResponse",
+    interactionId: "interaction-1",
+    tabId: "tab-codex",
+    status: "completed",
+    values: { answer: "yes" },
+  }]);
+  assert.equal(harness.calls.panelStates, 1);
 });
 
 test("reports the live Codex long-connection count without changing sessions", async (t) => {
