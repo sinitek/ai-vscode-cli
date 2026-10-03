@@ -8,6 +8,7 @@ import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentS
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
 import { TASKLIST_STYLES } from "../../webview/viewContentStyles/tasklist";
+import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
 
 function extractFunctionSource(source: string, functionName: string): string {
   const signature = `function ${functionName}`;
@@ -210,13 +211,27 @@ test("renders OpenCode task updates in the active task-list overlay", () => {
   assert.equal(taskListDetails.open, false);
 });
 
-test("caps the expanded task list at about five rows", () => {
-  assert.match(TASKLIST_STYLES, /--tasklist-visible-count:\s*5;/);
+test("caps the expanded task list at four rows with half the task item spacing", () => {
+  assert.match(TASKLIST_STYLES, /--tasklist-visible-count:\s*4;/);
   assert.match(TASKLIST_STYLES, /--tasklist-row-height:\s*20px;/);
+  assert.match(TASKLIST_STYLES, /--tasklist-row-gap:\s*3px;/);
   assert.match(
     TASKLIST_STYLES,
     /\.tasklist-items\s*\{[\s\S]*max-height:\s*calc\([\s\S]*var\(--tasklist-visible-count\)[\s\S]*overflow-y:\s*auto;/,
   );
+});
+
+test("reduces task-list title and item font sizes without changing item padding", () => {
+  assert.match(TASKLIST_STYLES, /\.tasklist-panel summary\s*\{[^}]*font-size:\s*13px;/);
+  assert.match(TASKLIST_STYLES, /\.tasklist-item\s*\{[^}]*font-size:\s*12px;/);
+  assert.match(TASKLIST_STYLES, /--tasklist-list-padding-top:\s*8px;/);
+  assert.match(TASKLIST_STYLES, /\.tasklist-panel details\s*\{[^}]*padding:\s*8px 12px;/);
+  assert.match(TASKLIST_STYLES, /\.tasklist-items\s*\{[^}]*padding:\s*var\(--tasklist-list-padding-top\) 0 0;/);
+});
+
+test("halves the gap between the task-list card and the input form", () => {
+  assert.match(TASKLIST_STYLES, /\.tasklist-panel\s*\{[^}]*padding:\s*8px 16px 2px;/);
+  assert.match(INPUT_CONTROLS_STYLES, /\.input-area\s*\{[^}]*padding:\s*8px var\(--panel-content-padding\);/);
 });
 
 test("renders a visible collapse icon in the task-list summary", () => {

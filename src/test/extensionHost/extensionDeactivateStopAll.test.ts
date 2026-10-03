@@ -44,10 +44,10 @@ test("stopAllRuns covers active, parallel, interactive, and managed runners", ()
   assert.match(stopAllRunsSource, /Array\.from\(parallelRunsByTabId\.entries\(\)\)/u);
   assert.match(stopAllRunsSource, /stopParallelRunForTab\(tabId, t\("run\.stoppedByUser"\)\);/u);
   assert.match(stopAllRunsSource, /run\.process\.kill\(\);/u);
-  assert.match(stopAllRunsSource, /const activeStop = activeInteractiveStop;/u);
+  assert.match(stopAllRunsSource, /const activeStop = primaryPromptRunController\.activeInteractiveStop;/u);
   assert.match(stopAllRunsSource, /activeStop\(\);/u);
-  assert.match(stopAllRunsSource, /if \(activeProcess\) \{[\s\S]*stopActiveRun\(\);/u);
-  assert.match(stopAllRunsSource, /activeProcess\.kill\(\);/u);
+  assert.match(stopAllRunsSource, /if \(primaryPromptRunController\.activeProcess\) \{[\s\S]*stopActiveRun\(\);/u);
+  assert.match(stopAllRunsSource, /primaryPromptRunController\.activeProcess\?\.kill\(\);/u);
   assert.match(stopAllRunsSource, /clearActiveRun\(\);/u);
   assert.match(stopAllRunsSource, /interactiveRunnerManager\?\.disposeAll\(\);/u);
 });

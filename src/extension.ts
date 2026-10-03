@@ -490,6 +490,7 @@ import {
   type PromptRunInput,
   type PromptRunTarget,
 } from "./extensionHost/graphRuntime";
+import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptRunController";
 import {
   loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
   saveWorkspaceSettings as saveWorkspaceSettingsToStore,
@@ -652,22 +653,9 @@ let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
 let viewProvider: CliBridgeViewProvider | undefined;
-let activeProcess: RunProcess | undefined;
 let interactiveRunnerManager: InteractiveRunnerManager;
-let activeInteractiveStop: (() => void) | null = null;
-let activeAssistantMessageId: string | undefined;
-let activeTraceMessageId: string | undefined;
-let activeTraceBuffer = "";
-let activeTraceSegmentLines: string[] = [];
 const activeTraceLineFilterState = createTraceLineFilterState();
-let activeCompletionSent = false;
-let activeRunId: string | undefined;
-let activeTaskRun: TaskRunDraft | null = null;
-let activeMessageTarget: ChatMessage[] | null = null;
-let activeMessageIndex: number | null = null;
-let activeSessionId: string | null = null;
-let activeCliForRun: CliName | null = null;
-let activeTabIdForRun: string | null = null;
+const primaryPromptRunController = createPrimaryPromptRunController();
 let activeProcessTitleRunId: string | null = null;
 let activeProcessTitleBase: string | null = null;
 let extensionContext: vscode.ExtensionContext;
@@ -897,20 +885,20 @@ function initializeSessionControllers(): void {
     shouldUseFallbackSessionLabel,
     getPrimaryRunTabId,
     getPrimaryRunSessionState: () => ({
-      cli: activeCliForRun,
-      sessionId: activeSessionId,
-      tabId: activeTabIdForRun,
-      messageTarget: activeMessageTarget,
+      cli: primaryPromptRunController.activeCliForRun,
+      sessionId: primaryPromptRunController.activeSessionId,
+      tabId: primaryPromptRunController.activeTabIdForRun,
+      messageTarget: primaryPromptRunController.activeMessageTarget,
     }),
     setPrimaryRunSessionState: (patch) => {
       if (patch.sessionId !== undefined) {
-        activeSessionId = patch.sessionId;
+        primaryPromptRunController.activeSessionId = patch.sessionId;
       }
       if (patch.messageTarget !== undefined) {
-        activeMessageTarget = patch.messageTarget;
+        primaryPromptRunController.activeMessageTarget = patch.messageTarget;
       }
       if (patch.messageIndex !== undefined) {
-        activeMessageIndex = patch.messageIndex;
+        primaryPromptRunController.activeMessageIndex = patch.messageIndex;
       }
     },
     getRuntimeSessionReferences: (tabId) => {
@@ -930,8 +918,8 @@ function initializeSessionControllers(): void {
       return references;
     },
     getProcessTitleState: (): ProcessTitleState => ({
-      activeRunId,
-      activeCliForRun,
+      activeRunId: primaryPromptRunController.activeRunId,
+      activeCliForRun: primaryPromptRunController.activeCliForRun,
       activeProcessTitleRunId,
       activeProcessTitleBase,
     }),
@@ -1096,32 +1084,32 @@ function stopAllRuns(): void {
       parallelRunsByTabId.delete(tabId);
     }
   }
-  const activeStop = activeInteractiveStop;
+  const activeStop = primaryPromptRunController.activeInteractiveStop;
   if (activeStop) {
     try {
       activeStop();
     } catch (error) {
       void logError("deactivate-stop-active-interactive-failed", {
-        cli: activeCliForRun,
-        runId: activeRunId,
+        cli: primaryPromptRunController.activeCliForRun,
+        runId: primaryPromptRunController.activeRunId,
         error: error instanceof Error ? error.message : String(error),
       });
-      if (activeInteractiveStop === activeStop) {
-        activeInteractiveStop = null;
+      if (primaryPromptRunController.activeInteractiveStop === activeStop) {
+        primaryPromptRunController.activeInteractiveStop = null;
       }
     }
   }
-  if (activeProcess) {
+  if (primaryPromptRunController.activeProcess) {
     try {
       stopActiveRun();
     } catch (error) {
       void logError("deactivate-stop-active-process-failed", {
-        cli: activeCliForRun ?? currentCli,
-        runId: activeRunId,
+        cli: primaryPromptRunController.activeCliForRun ?? currentCli,
+        runId: primaryPromptRunController.activeRunId,
         error: error instanceof Error ? error.message : String(error),
       });
       try {
-        activeProcess.kill();
+        primaryPromptRunController.activeProcess?.kill();
       } catch {
         // ignore shutdown cleanup errors
       }
@@ -1774,7 +1762,7 @@ const promptRunRuntimeHost = createPromptRunRuntimeHost({ getActiveWorkspaceKey:
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
 const modelSettingsHost = createModelSettingsHost({ getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatSnapshot, getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
 const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getWorkspaceLoopExecutionMode, setWorkspaceLoopExecutionModeForCli, buildWorkspaceLoopExecutionModeByCli, getGlobalMultiAgentEnabled, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getGlobalLoopPlusMaxAcceptances, getGlobalLoopSubtaskMaxThinkingMode, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel, selectCliLoopModel, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
-const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => activeTabIdForRun, getActiveSessionId: () => activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
+const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
 const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, normalizeChatGraphRunId, resolveGraphRunIdFromMessages, resolveSessionGraphRunIdFromMessages, resolveConversationTabGraphRunId, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, createGraphNodeRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
@@ -2024,13 +2012,13 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   createDisabledOpenCodeSubagentMonitor,
   createMessageId,
   flushTraceBuffer,
-  getActiveRunId: () => activeRunId,
-  getActiveTaskRun: () => activeTaskRun,
+  getActiveRunId: () => primaryPromptRunController.activeRunId,
+  getActiveTaskRun: () => primaryPromptRunController.activeTaskRun,
   getEffectiveThinkingMode,
   getGlobalHumanInteractionEnabled,
   getPendingSessionDraft,
   killActiveProcess: () => {
-    activeProcess?.kill();
+    primaryPromptRunController.activeProcess?.kill();
   },
   loadSessionMessages,
   logCliStartup,
@@ -2042,14 +2030,14 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   preparePendingLabel,
   requestHumanInteraction,
   resetActiveAssistantMessage: () => {
-    activeAssistantMessageId = undefined;
-    activeMessageIndex = null;
+    primaryPromptRunController.activeAssistantMessageId = undefined;
+    primaryPromptRunController.activeMessageIndex = null;
   },
   resetTraceState: () => {
-    activeTraceBuffer = "";
-    activeTraceSegmentLines = [];
+    primaryPromptRunController.activeTraceBuffer = "";
+    primaryPromptRunController.activeTraceSegmentLines = [];
     resetTraceLineFilterState(activeTraceLineFilterState);
-    activeCompletionSent = false;
+    primaryPromptRunController.activeCompletionSent = false;
   },
   resolveCliSessionIdForResume,
   resolveWorkspaceCwd,
@@ -2058,22 +2046,22 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   sendRawStreamDelta,
   sendRunStatus,
   setActiveCliForRun: (cli) => {
-    activeCliForRun = cli;
+    primaryPromptRunController.activeCliForRun = cli;
   },
   setActiveMessageTarget: (target) => {
-    activeMessageTarget = target;
+    primaryPromptRunController.activeMessageTarget = target;
   },
   setActiveProcess: (process) => {
-    activeProcess = process;
+    primaryPromptRunController.activeProcess = process;
   },
   setActiveRunId: (runId) => {
-    activeRunId = runId;
+    primaryPromptRunController.activeRunId = runId;
   },
   setActiveSessionId: (sessionId) => {
-    activeSessionId = sessionId;
+    primaryPromptRunController.activeSessionId = sessionId;
   },
   setActiveTabIdForRun: (tabId) => {
-    activeTabIdForRun = tabId;
+    primaryPromptRunController.activeTabIdForRun = tabId;
   },
   shouldAutoCompactContextAfterRunForTarget,
   shouldRequireExplicitFinalAnswerForRun,
@@ -3115,7 +3103,7 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   },
   postPanelState,
   getActiveConversationTaskId: () => (
-    normalizeLoopTaskId(activeTaskRun?.loopTaskId)
+    normalizeLoopTaskId(primaryPromptRunController.activeTaskRun?.loopTaskId)
       ?? resolveActiveConversationLoopTaskId()
   ),
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
@@ -3155,7 +3143,7 @@ const graphControlsHost: GraphControlsHost = createGraphControlsHost({
   getParallelRunsByTabId: () => parallelRunsByTabId,
   getInteractiveRunsByTabId: () => interactiveRunsByTabId,
   isPrimaryRunActive,
-  getActiveTaskRun: () => activeTaskRun,
+  getActiveTaskRun: () => primaryPromptRunController.activeTaskRun,
   stopActiveRun,
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
@@ -3377,9 +3365,9 @@ function resolvePrimaryLoopTaskId(): string | null {
   if (!isPrimaryRunActive()) {
     return null;
   }
-  return normalizeLoopTaskId(activeTaskRun?.loopTaskId)
-    ?? (Array.isArray(activeMessageTarget)
-      ? resolveLoopConversationTabContextFromMessages(activeMessageTarget).loopTaskId
+  return normalizeLoopTaskId(primaryPromptRunController.activeTaskRun?.loopTaskId)
+    ?? (Array.isArray(primaryPromptRunController.activeMessageTarget)
+      ? resolveLoopConversationTabContextFromMessages(primaryPromptRunController.activeMessageTarget).loopTaskId
       : null);
 }
 
@@ -3469,14 +3457,14 @@ function logCliStartup(payload: {
 }
 
 function isPrimaryRunActive(): boolean {
-  return Boolean(activeRunId && (activeProcess || activeInteractiveStop));
+  return Boolean(primaryPromptRunController.activeRunId && (primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop));
 }
 
 function getPrimaryRunTabId(): string | null {
   if (!isPrimaryRunActive()) {
     return null;
   }
-  return activeTabIdForRun;
+  return primaryPromptRunController.activeTabIdForRun;
 }
 
 function hasAnyTaskRunning(): boolean {
@@ -3519,8 +3507,8 @@ function resolveConversationTabLoopContextForCli(
 function resolveConversationTabLoopContext(tab: ConversationTabRecord): LoopConversationTabContext {
   const primaryTabId = getPrimaryRunTabId();
   if (primaryTabId === tab.id) {
-    const taskRole = activeTaskRun?.taskRole;
-    const loopTaskId = normalizeLoopTaskId(activeTaskRun?.loopTaskId);
+    const taskRole = primaryPromptRunController.activeTaskRun?.taskRole;
+    const loopTaskId = normalizeLoopTaskId(primaryPromptRunController.activeTaskRun?.loopTaskId);
     if ((taskRole === "main" || taskRole === "subtask") && loopTaskId) {
       return {
         taskRole,
@@ -3562,9 +3550,9 @@ function collectRunningLoopTaskIds(): Set<string> {
   loopOrchestrationOwnership.collectTaskIds().forEach(addTaskId);
 
   if (isPrimaryRunActive()) {
-    const primaryTaskId = normalizeLoopTaskId(activeTaskRun?.loopTaskId)
-      ?? (Array.isArray(activeMessageTarget)
-        ? resolveLoopConversationTabContextFromMessages(activeMessageTarget).loopTaskId
+    const primaryTaskId = normalizeLoopTaskId(primaryPromptRunController.activeTaskRun?.loopTaskId)
+      ?? (Array.isArray(primaryPromptRunController.activeMessageTarget)
+        ? resolveLoopConversationTabContextFromMessages(primaryPromptRunController.activeMessageTarget).loopTaskId
         : null);
     addTaskId(primaryTaskId);
   }
@@ -3612,7 +3600,7 @@ function readActiveRunForConversationTabFlow(tabId: string): { loopTaskId?: stri
     return { loopTaskId: parallelRun.loopTaskId ?? null };
   }
   if (getPrimaryRunTabId() === tabId) {
-    return { loopTaskId: activeTaskRun?.loopTaskId ?? null };
+    return { loopTaskId: primaryPromptRunController.activeTaskRun?.loopTaskId ?? null };
   }
   return { loopTaskId: null };
 }
@@ -3721,10 +3709,10 @@ function buildActiveInteractiveSessionKeys(): Set<string> {
       sessionId: run.sessionId,
     });
   });
-  if (activeInteractiveStop && activeCliForRun && activeSessionId) {
+  if (primaryPromptRunController.activeInteractiveStop && primaryPromptRunController.activeCliForRun && primaryPromptRunController.activeSessionId) {
     bindings.push({
-      cli: activeCliForRun,
-      sessionId: activeSessionId,
+      cli: primaryPromptRunController.activeCliForRun,
+      sessionId: primaryPromptRunController.activeSessionId,
     });
   }
   return collectInteractiveSessionKeys(bindings);
@@ -3816,7 +3804,7 @@ function sendOpenCodeTaskListUpdate(
     text: item.text,
     done: item.done,
   }));
-  const tabId = options.tabId ?? activeTabIdForRun ?? getActiveConversationTabId();
+  const tabId = options.tabId ?? primaryPromptRunController.activeTabIdForRun ?? getActiveConversationTabId();
   if (tabId) {
     latestOpenCodeTaskListByTabId.set(tabId, normalizedItems);
   }
@@ -3869,8 +3857,8 @@ function getLiveMessagesForTab(tabId: string): ChatMessage[] | null {
   if (interactiveRun?.messageTarget) {
     return interactiveRun.messageTarget;
   }
-  if (getPrimaryRunTabId() === tabId && activeMessageTarget) {
-    return activeMessageTarget;
+  if (getPrimaryRunTabId() === tabId && primaryPromptRunController.activeMessageTarget) {
+    return primaryPromptRunController.activeMessageTarget;
   }
   return null;
 }
@@ -3924,8 +3912,8 @@ function stopLoopPlusInvocationRunner(tabId: string, options: { includeGraph: bo
     return true;
   }
   if (getPrimaryRunTabId() === tabId) {
-    const graphRunId = options.includeGraph && !activeTaskRun?.graphNodeId
-      ? normalizeChatGraphRunId(activeTaskRun?.graphRunId)
+    const graphRunId = options.includeGraph && !primaryPromptRunController.activeTaskRun?.graphNodeId
+      ? normalizeChatGraphRunId(primaryPromptRunController.activeTaskRun?.graphRunId)
       : null;
     stopActiveRun();
     if (graphRunId) {
@@ -5056,13 +5044,13 @@ function appendTraceMessage(
   kind: TraceMessageKind = "normal",
   options: TraceMessageOptions = {}
 ): void {
-  if (!activeMessageTarget) {
+  if (!primaryPromptRunController.activeMessageTarget) {
     return;
   }
   if (!content.trim()) {
     return;
   }
-  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content, activeCliForRun);
+  const { content: displayContent, shouldPersist } = normalizeTraceContentForDisplay(content, primaryPromptRunController.activeCliForRun);
   if (!displayContent.trim()) {
     return;
   }
@@ -5082,7 +5070,7 @@ function appendTraceMessage(
     ...mergePayload,
   };
   if (shouldPersist && options.persist !== false) {
-    appendMessageToStore(activeMessageTarget, message);
+    appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   }
   sendPanelMessage({
     type: "traceSegment",
@@ -5097,7 +5085,7 @@ function appendTraceMessage(
 }
 
 function appendSystemMessage(content: string): void {
-  if (!activeMessageTarget) {
+  if (!primaryPromptRunController.activeMessageTarget) {
     return;
   }
   if (!content.trim()) {
@@ -5109,7 +5097,7 @@ function appendSystemMessage(content: string): void {
     content,
     createdAt: Date.now(),
   };
-  appendMessageToStore(activeMessageTarget, message);
+  appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   sendPanelMessage({ type: "appendMessage", message });
 }
 
@@ -5189,19 +5177,19 @@ async function resolveInteractiveSessionForResume(
 }
 
 function persistAutoCompactMessagesPreservingConcurrentTranscript(): void {
-  if (!activeCliForRun || !activeMessageTarget || !activeSessionId) {
+  if (!primaryPromptRunController.activeCliForRun || !primaryPromptRunController.activeMessageTarget || !primaryPromptRunController.activeSessionId) {
     persistActiveMessages();
     return;
   }
-  const live = sessionMessageCache.get(getSessionKey(activeWorkspaceKey, activeCliForRun, activeSessionId));
-  if (!live || live === activeMessageTarget) {
+  const live = sessionMessageCache.get(getSessionKey(activeWorkspaceKey, primaryPromptRunController.activeCliForRun, primaryPromptRunController.activeSessionId));
+  if (!live || live === primaryPromptRunController.activeMessageTarget) {
     persistActiveMessages();
     return;
   }
   saveSessionMessages(
-    activeCliForRun,
-    activeSessionId,
-    mergeCompactTranscriptIntoLive(live, activeMessageTarget),
+    primaryPromptRunController.activeCliForRun,
+    primaryPromptRunController.activeSessionId,
+    mergeCompactTranscriptIntoLive(live, primaryPromptRunController.activeMessageTarget),
   );
 }
 
@@ -5212,7 +5200,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     isInteractiveSupported,
     appendSystemMessageForCli,
     getCurrentSessionId,
-    hasActiveProcessOrInteractiveStop: () => Boolean(activeProcess || activeInteractiveStop),
+    hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
     getActiveConfigIdForCli,
@@ -5227,22 +5215,24 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     loadSessionMessages,
     createMessageId,
     beginActiveRunState: ({ runId, cli, sessionId, tabId, messageTarget }) => {
-      activeRunId = runId;
+      primaryPromptRunController.begin({
+        runId,
+        cli,
+        sessionId,
+        tabId,
+        messageTarget,
+      });
       applyProcessTitle(runId, cli, sessionId);
       startTaskRun(runId, cli, sessionId, t("common.compactContext"));
-      activeMessageTarget = messageTarget;
-      activeSessionId = sessionId;
-      activeCliForRun = cli;
-      activeTabIdForRun = tabId;
     },
-    getActiveRunId: () => activeRunId,
+    getActiveRunId: () => primaryPromptRunController.activeRunId,
     setActiveInteractiveStop: (stop) => {
-      activeInteractiveStop = stop;
+      primaryPromptRunController.activeInteractiveStop = stop;
     },
-    isActiveInteractiveStop: (stop) => activeInteractiveStop === stop,
+    isActiveInteractiveStop: (stop) => primaryPromptRunController.activeInteractiveStop === stop,
     appendStopMessageToStore,
     killActiveProcess: () => {
-      activeProcess?.kill();
+      primaryPromptRunController.activeProcess?.kill();
     },
     sendRunStatus,
     appendCompletionMessage,
@@ -5279,7 +5269,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
       };
     },
     setActiveProcess: (process) => {
-      activeProcess = process;
+      primaryPromptRunController.activeProcess = process;
     },
     appendAssistantChunk,
     adoptSessionId,
@@ -5311,16 +5301,16 @@ function reserveLoopMainAutoCompactRun(
     stopRequested = true;
     adoptedStop?.();
   };
-  activeRunId = runId;
-  activeTabIdForRun = target.tabId;
-  activeCliForRun = target.cli;
-  activeSessionId = sessionId;
-  activeInteractiveStop = placeholder;
+  primaryPromptRunController.activeRunId = runId;
+  primaryPromptRunController.activeTabIdForRun = target.tabId;
+  primaryPromptRunController.activeCliForRun = target.cli;
+  primaryPromptRunController.activeSessionId = sessionId;
+  primaryPromptRunController.activeInteractiveStop = placeholder;
   return {
     adoptStop: (stop) => {
       adoptedStop = stop;
-      if (activeInteractiveStop === placeholder) {
-        activeInteractiveStop = stop;
+      if (primaryPromptRunController.activeInteractiveStop === placeholder) {
+        primaryPromptRunController.activeInteractiveStop = stop;
       }
       if (stopRequested) {
         stop();
@@ -5331,7 +5321,7 @@ function reserveLoopMainAutoCompactRun(
         return;
       }
       released = true;
-      if (activeInteractiveStop === placeholder && activeRunId === runId) {
+      if (primaryPromptRunController.activeInteractiveStop === placeholder && primaryPromptRunController.activeRunId === runId) {
         clearActiveRun();
       }
     },
@@ -5439,49 +5429,36 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
 }
 
 function stopActiveRun(): void {
-  if (activeInteractiveStop) {
-    activeInteractiveStop();
+  if (primaryPromptRunController.activeInteractiveStop) {
+    primaryPromptRunController.activeInteractiveStop();
     return;
   }
-  if (!activeProcess) {
+  if (!primaryPromptRunController.activeProcess) {
     return;
   }
   const removedPlaceholder = removeActiveAssistantPlaceholder();
   appendStopMessageToStore();
-  activeProcess.kill();
+  primaryPromptRunController.activeProcess.kill();
   void logInfo("runPrompt-stopped", { cli: currentCli });
   sendRunStatus("stopped", t("run.stoppedByUser"));
   if (currentCli === "codex" || currentCli === "opencode") {
     flushTraceBuffer();
   }
   appendCompletionMessage("stopped");
-  if (removedPlaceholder && activeAssistantMessageId) {
-    sendPanelMessage({ type: "removeMessage", id: activeAssistantMessageId });
+  if (removedPlaceholder && primaryPromptRunController.activeAssistantMessageId) {
+    sendPanelMessage({ type: "removeMessage", id: primaryPromptRunController.activeAssistantMessageId });
   }
   persistActiveMessages();
   clearActiveRun();
 }
 
 function clearActiveRun(): void {
-  if (activeCliForRun === "opencode" && activeTabIdForRun) {
-    latestOpenCodeTaskListByTabId.delete(activeTabIdForRun);
+  if (primaryPromptRunController.activeCliForRun === "opencode" && primaryPromptRunController.activeTabIdForRun) {
+    latestOpenCodeTaskListByTabId.delete(primaryPromptRunController.activeTabIdForRun);
   }
   restoreProcessTitle();
-  activeProcess = undefined;
-  activeInteractiveStop = null;
-  activeAssistantMessageId = undefined;
-  activeTraceMessageId = undefined;
-  activeTraceBuffer = "";
-  activeTraceSegmentLines = [];
+  primaryPromptRunController.clear();
   resetTraceLineFilterState(activeTraceLineFilterState);
-  activeCompletionSent = false;
-  activeRunId = undefined;
-  activeTaskRun = null;
-  activeMessageTarget = null;
-  activeMessageIndex = null;
-  activeSessionId = null;
-  activeCliForRun = null;
-  activeTabIdForRun = null;
   if (pendingWorkspaceKey && !hasAnyTaskRunning()) {
     const nextKey = pendingWorkspaceKey;
     pendingWorkspaceKey = null;
@@ -5491,26 +5468,26 @@ function clearActiveRun(): void {
 }
 
 function removeActiveAssistantPlaceholder(): boolean {
-  if (!activeMessageTarget || activeMessageIndex === null) {
+  if (!primaryPromptRunController.activeMessageTarget || primaryPromptRunController.activeMessageIndex === null) {
     return false;
   }
-  const message = activeMessageTarget[activeMessageIndex];
+  const message = primaryPromptRunController.activeMessageTarget[primaryPromptRunController.activeMessageIndex];
   if (!message || message.role !== "assistant") {
     return false;
   }
   if (message.content.trim()) {
     return false;
   }
-  activeMessageTarget.splice(activeMessageIndex, 1);
-  activeMessageIndex = activeMessageTarget.length ? activeMessageTarget.length - 1 : null;
+  primaryPromptRunController.activeMessageTarget.splice(primaryPromptRunController.activeMessageIndex, 1);
+  primaryPromptRunController.activeMessageIndex = primaryPromptRunController.activeMessageTarget.length ? primaryPromptRunController.activeMessageTarget.length - 1 : null;
   return true;
 }
 
 function appendStopMessageToStore(): void {
-  if (!activeMessageTarget) {
+  if (!primaryPromptRunController.activeMessageTarget) {
     return;
   }
-  appendMessageToStore(activeMessageTarget, {
+  appendMessageToStore(primaryPromptRunController.activeMessageTarget, {
     id: createMessageId(),
     role: "system",
     content: t("run.stoppedByUser"),
@@ -5528,54 +5505,54 @@ function hasSameAssistantKind(message: ChatMessage | undefined, kind?: ChatMessa
 
 function appendAssistantChunk(chunk: string, kind?: ChatMessage["kind"]): void {
   ensureAssistantMessage(kind);
-  if (!activeAssistantMessageId) {
+  if (!primaryPromptRunController.activeAssistantMessageId) {
     return;
   }
   void logDebug("assistant-chunk", {
-    id: activeAssistantMessageId,
+    id: primaryPromptRunController.activeAssistantMessageId,
     size: chunk.length,
     kind: kind ?? "normal",
   });
   sendPanelMessage({
     type: "assistantDelta",
-    id: activeAssistantMessageId,
+    id: primaryPromptRunController.activeAssistantMessageId,
     content: chunk,
     kind,
   });
-  appendAssistantChunkToStore(activeMessageTarget, activeMessageIndex, chunk, kind);
+  appendAssistantChunkToStore(primaryPromptRunController.activeMessageTarget, primaryPromptRunController.activeMessageIndex, chunk, kind);
 }
 
 function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
-  if (!activeMessageTarget) {
+  if (!primaryPromptRunController.activeMessageTarget) {
     return;
   }
-  const last = activeMessageTarget[activeMessageTarget.length - 1];
+  const last = primaryPromptRunController.activeMessageTarget[primaryPromptRunController.activeMessageTarget.length - 1];
   if (
-    activeAssistantMessageId &&
+    primaryPromptRunController.activeAssistantMessageId &&
     last &&
     last.role === "assistant" &&
-    last.id === activeAssistantMessageId &&
+    last.id === primaryPromptRunController.activeAssistantMessageId &&
     hasSameAssistantKind(last, kind)
   ) {
     return;
   }
   const assistantId = createMessageId();
-  activeAssistantMessageId = assistantId;
+  primaryPromptRunController.activeAssistantMessageId = assistantId;
   const message: ChatMessage = {
     id: assistantId,
     role: "assistant",
     content: "",
     createdAt: Date.now(),
     ...(kind === "thinking" ? { kind: "thinking" } : {}),
-    taskRole: activeTaskRun?.taskRole,
-    loopTaskId: activeTaskRun?.loopTaskId,
-    loopRound: activeTaskRun?.loopRound,
-    loopSubtaskId: activeTaskRun?.loopSubtaskId,
-    graphRunId: activeTaskRun?.graphRunId,
-    graphNodeId: activeTaskRun?.graphNodeId,
+    taskRole: primaryPromptRunController.activeTaskRun?.taskRole,
+    loopTaskId: primaryPromptRunController.activeTaskRun?.loopTaskId,
+    loopRound: primaryPromptRunController.activeTaskRun?.loopRound,
+    loopSubtaskId: primaryPromptRunController.activeTaskRun?.loopSubtaskId,
+    graphRunId: primaryPromptRunController.activeTaskRun?.graphRunId,
+    graphNodeId: primaryPromptRunController.activeTaskRun?.graphNodeId,
   };
-  appendMessageToStore(activeMessageTarget, message);
-  activeMessageIndex = activeMessageTarget.length - 1;
+  appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
+  primaryPromptRunController.activeMessageIndex = primaryPromptRunController.activeMessageTarget.length - 1;
   sendPanelMessage({
     type: "appendMessage",
     message,
@@ -5584,63 +5561,63 @@ function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
 
 function startTraceMessage(cli: CliName): void {
   if (cli !== "codex" && cli !== "opencode") {
-    activeTraceMessageId = undefined;
+    primaryPromptRunController.activeTraceMessageId = undefined;
     return;
   }
-  activeTraceMessageId = createMessageId();
+  primaryPromptRunController.activeTraceMessageId = createMessageId();
 }
 
 function appendTraceLines(chunk: string): void {
-  if (!activeTraceMessageId) {
+  if (!primaryPromptRunController.activeTraceMessageId) {
     return;
   }
-  if (activeCompletionSent) {
+  if (primaryPromptRunController.activeCompletionSent) {
     return;
   }
   const normalized = chunk.replace(/\r\n/g, "\n");
-  const combined = activeTraceBuffer + normalized;
+  const combined = primaryPromptRunController.activeTraceBuffer + normalized;
   const lines = combined.split("\n");
-  activeTraceBuffer = lines.pop() ?? "";
+  primaryPromptRunController.activeTraceBuffer = lines.pop() ?? "";
   lines.forEach((line) => {
-    if (shouldIgnoreTraceLine(activeTraceLineFilterState, line, activeTraceSegmentLines.length > 0, activeCliForRun)) {
+    if (shouldIgnoreTraceLine(activeTraceLineFilterState, line, primaryPromptRunController.activeTraceSegmentLines.length > 0, primaryPromptRunController.activeCliForRun)) {
       return;
     }
-    if (isTraceSegmentStart(line) && activeTraceSegmentLines.length) {
+    if (isTraceSegmentStart(line) && primaryPromptRunController.activeTraceSegmentLines.length) {
       flushTraceSegment();
     }
-    activeTraceSegmentLines.push(line);
+    primaryPromptRunController.activeTraceSegmentLines.push(line);
   });
 }
 
 function flushTraceBuffer(): void {
-  if (!activeTraceMessageId) {
+  if (!primaryPromptRunController.activeTraceMessageId) {
     return;
   }
-  const line = activeTraceBuffer.trim();
-  if (line && !shouldIgnoreTraceLine(activeTraceLineFilterState, line, activeTraceSegmentLines.length > 0, activeCliForRun)) {
-    activeTraceSegmentLines.push(line);
+  const line = primaryPromptRunController.activeTraceBuffer.trim();
+  if (line && !shouldIgnoreTraceLine(activeTraceLineFilterState, line, primaryPromptRunController.activeTraceSegmentLines.length > 0, primaryPromptRunController.activeCliForRun)) {
+    primaryPromptRunController.activeTraceSegmentLines.push(line);
   }
   flushTraceSegment();
-  activeTraceBuffer = "";
+  primaryPromptRunController.activeTraceBuffer = "";
 }
 
 function flushTraceSegment(): void {
-  if (!activeTraceMessageId) {
+  if (!primaryPromptRunController.activeTraceMessageId) {
     return;
   }
-  if (!activeTraceSegmentLines.length) {
+  if (!primaryPromptRunController.activeTraceSegmentLines.length) {
     return;
   }
-  const content = activeTraceSegmentLines.join("\n");
+  const content = primaryPromptRunController.activeTraceSegmentLines.join("\n");
   const { content: execDisplayContent, shouldPersist: execShouldPersist } =
-    formatCodexExecSegmentForDisplay(content, activeCliForRun);
+    formatCodexExecSegmentForDisplay(content, primaryPromptRunController.activeCliForRun);
   const { content: displayContent, shouldPersist } = formatTraceSegmentForDisplay(
     execDisplayContent,
-    activeCliForRun
+    primaryPromptRunController.activeCliForRun
   );
   const kind = getTraceSegmentKind(displayContent);
   if (kind === "thinking") {
-    activeTraceSegmentLines = [];
+    primaryPromptRunController.activeTraceSegmentLines = [];
     appendAssistantChunk(`${displayContent}\n`, "thinking");
     return;
   }
@@ -5654,9 +5631,9 @@ function flushTraceSegment(): void {
     kind,
     ...mergePayload,
   };
-  activeTraceSegmentLines = [];
-  if (activeMessageTarget && shouldPersist && execShouldPersist) {
-    appendMessageToStore(activeMessageTarget, message);
+  primaryPromptRunController.activeTraceSegmentLines = [];
+  if (primaryPromptRunController.activeMessageTarget && shouldPersist && execShouldPersist) {
+    appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   }
   sendPanelMessage({
     type: "traceSegment",
@@ -5676,7 +5653,7 @@ function startTaskRun(
   prompt: string,
   options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string; graphRunId?: string; graphNodeId?: string } = {}
 ): void {
-  activeTaskRun = {
+  primaryPromptRunController.activeTaskRun = {
     id: runId,
     cli,
     sessionId,
@@ -5692,21 +5669,21 @@ function startTaskRun(
 }
 
 function appendCompletionMessage(status: TaskRunStatus): void {
-  if (activeCompletionSent) {
+  if (primaryPromptRunController.activeCompletionSent) {
     return;
   }
-  const taskRecord = finalizeTaskRun(activeRunId, status);
+  const taskRecord = finalizeTaskRun(primaryPromptRunController.activeRunId, status);
   const message = {
     id: createMessageId(),
     role: "system" as const,
     content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null),
     createdAt: Date.now(),
   };
-  activeCompletionSent = true;
-  if (!activeMessageTarget) {
+  primaryPromptRunController.activeCompletionSent = true;
+  if (!primaryPromptRunController.activeMessageTarget) {
     return;
   }
-  appendMessageToStore(activeMessageTarget, message);
+  appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   sendPanelMessage({ type: "appendMessage", message });
 }
 
@@ -5716,19 +5693,19 @@ function sendRunStatus(
   options: { activity?: RunActivity } = {}
 ): void {
   if (status === "start") {
-    clearTaskListForRunStart(activeTabIdForRun);
-  } else if (activeCliForRun === "opencode" && activeTabIdForRun) {
-    latestOpenCodeTaskListByTabId.delete(activeTabIdForRun);
+    clearTaskListForRunStart(primaryPromptRunController.activeTabIdForRun);
+  } else if (primaryPromptRunController.activeCliForRun === "opencode" && primaryPromptRunController.activeTabIdForRun) {
+    latestOpenCodeTaskListByTabId.delete(primaryPromptRunController.activeTabIdForRun);
   }
   sendPanelMessage({
     type: "runStatus",
     status,
     message,
-    prompt: status === "start" ? activeTaskRun?.prompt : undefined,
-    startedAt: status === "start" ? activeTaskRun?.startedAt : undefined,
+    prompt: status === "start" ? primaryPromptRunController.activeTaskRun?.prompt : undefined,
+    startedAt: status === "start" ? primaryPromptRunController.activeTaskRun?.startedAt : undefined,
     activity: status === "start" ? options.activity : undefined,
-    graphRunId: status === "start" ? activeTaskRun?.graphRunId : undefined,
-    graphNodeId: status === "start" ? activeTaskRun?.graphNodeId : undefined,
+    graphRunId: status === "start" ? primaryPromptRunController.activeTaskRun?.graphRunId : undefined,
+    graphNodeId: status === "start" ? primaryPromptRunController.activeTaskRun?.graphNodeId : undefined,
   });
 }
 
@@ -5762,22 +5739,22 @@ function sendRawStreamDelta(
 }
 
 function sendPanelMessage(payload: Record<string, unknown>): void {
-  sendPanelMessageWithActiveTab(payload, activeTabIdForRun, (message) => viewProvider?.postMessage(message));
+  sendPanelMessageWithActiveTab(payload, primaryPromptRunController.activeTabIdForRun, (message) => viewProvider?.postMessage(message));
 }
 
 function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus): TaskRunRecord | null {
-  if (!runId || !activeTaskRun || activeTaskRun.id !== runId) {
+  if (!runId || !primaryPromptRunController.activeTaskRun || primaryPromptRunController.activeTaskRun.id !== runId) {
     return null;
   }
   const endedAt = Date.now();
-  const durationMs = Math.max(0, endedAt - activeTaskRun.startedAt);
+  const durationMs = Math.max(0, endedAt - primaryPromptRunController.activeTaskRun.startedAt);
   const record: TaskRunRecord = {
-    ...activeTaskRun,
+    ...primaryPromptRunController.activeTaskRun,
     endedAt,
     durationMs,
     status,
   };
-  activeTaskRun = null;
+  primaryPromptRunController.activeTaskRun = null;
   appendTaskRun(record);
   return record;
 }
