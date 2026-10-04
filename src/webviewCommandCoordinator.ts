@@ -20,38 +20,22 @@ import {
 import { type LoopDebateParticipantDefinition } from "./loopPromptBuilders";
 import { type LoopMainDecision, type LoopSubtaskDecision, type LoopTaskRecord } from "./loopTaskStore";
 
-export type ConfigHeartbeatSnapshot = {
-  cli: CliName;
-  activeConfigId: string | null;
-  configIds: string[];
-  modelSelected: string | null;
-  managedModelOptions: string[];
-  openCodeMainModelSelected: string | null;
-  openCodeSubtaskModelSelected: string | null;
-  /** @deprecated Compatibility alias for the OpenCode main role. */
-  openCodePrimaryModelSelected?: string | null;
-  /** @deprecated Compatibility alias for the OpenCode subtask role. */
-  openCodeSmallModelSelected?: string | null;
-};
+export type { ConfigHeartbeatSnapshot } from "./configHeartbeatSnapshot";
+import {
+  buildConfigHeartbeatSnapshot,
+  shouldRefreshConfigHeartbeat,
+  type ConfigHeartbeatSnapshot,
+} from "./configHeartbeatSnapshot";
 
 export type ConfigHeartbeatCoordinatorDeps = {
   intervalMs: number;
   getCurrentCli: () => CliName;
   getWorkspaceKey: () => string;
-  getSnapshot: () => ConfigHeartbeatSnapshot | null;
-  setSnapshot: (snapshot: ConfigHeartbeatSnapshot) => void;
-  isRunning: () => boolean;
-  setRunning: (running: boolean) => void;
-  getTimer: () => NodeJS.Timeout | null;
-  setTimer: (timer: NodeJS.Timeout | null) => void;
   loadConfigState: (cli: CliName) => Promise<PanelState["configState"]>;
   getLastConfigStateLoadError: (cli: CliName) => string | null;
   readNormalizedModelStoreFromDisk: () => CliModelStore;
   setModelStore: (store: CliModelStore) => void;
   resolveModelConfigIdForCli: (cli: CliName, configState?: PanelState["configState"]) => string | null;
-  ensureCliModelStore: (store?: CliModelStore) => CliModelStore;
-  normalizeCliModelName: (value: unknown) => string | null;
-  mergeUniqueModelNames: (...groups: Array<readonly string[]>) => string[];
   buildPanelStateWithConfigState: (configState: PanelState["configState"]) => Promise<PanelState>;
   postState: (state: PanelState) => void;
   syncConfigManagerPanel: () => void;
@@ -61,99 +45,25 @@ export type ConfigHeartbeatCoordinatorDeps = {
   createDisposable: (dispose: () => void) => vscode.Disposable;
 };
 
-function areStringListsEqual(previous: readonly string[], next: readonly string[]): boolean {
-  if (previous.length !== next.length) {
-    return false;
-  }
-  for (let i = 0; i < previous.length; i += 1) {
-    if (previous[i] !== next[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function getConfigHeartbeatPayload(
-  cli: CliName,
-  configState: PanelState["configState"],
-  store: CliModelStore,
-  deps: ConfigHeartbeatCoordinatorDeps
-): ConfigHeartbeatSnapshot {
-  const activeConfigId = configState.activeConfigId;
-  const modelConfigId = deps.resolveModelConfigIdForCli(cli, configState);
-  const normalizedStore = deps.ensureCliModelStore(store);
-  const modelSelected = modelConfigId
-    ? deps.normalizeCliModelName(normalizedStore.selectedByConfigId[modelConfigId])
-    : null;
-  const managedModelOptions = modelConfigId
-    ? deps.mergeUniqueModelNames(normalizedStore.optionsByConfigId[modelConfigId] ?? [])
-    : [];
-  const openCodeRoleSelection = cli === "opencode" && modelConfigId
-    ? (normalizedStore.openCodeRoleModelsByConfigId[modelConfigId] ?? {})
-    : {};
-  const openCodeMainModelSelected = deps.normalizeCliModelName(openCodeRoleSelection.main);
-  const openCodeSubtaskModelSelected = deps.normalizeCliModelName(openCodeRoleSelection.subtask);
-  return {
-    cli,
-    activeConfigId,
-    configIds: configState.configs.map((config) => config.id),
-    modelSelected,
-    managedModelOptions,
-    openCodeMainModelSelected,
-    openCodeSubtaskModelSelected,
-    openCodePrimaryModelSelected: openCodeMainModelSelected,
-    openCodeSmallModelSelected: openCodeSubtaskModelSelected,
-  };
-}
-
-function shouldRefreshConfigState(
-  cli: CliName,
-  configState: PanelState["configState"],
-  store: CliModelStore,
-  deps: ConfigHeartbeatCoordinatorDeps
-): boolean {
-  const snapshot = deps.getSnapshot();
-  const nextPayload = getConfigHeartbeatPayload(cli, configState, store, deps);
-  if (!snapshot || snapshot.cli !== cli) {
-    return true;
-  }
-  if (snapshot.activeConfigId !== nextPayload.activeConfigId) {
-    return true;
-  }
-  if (!areStringListsEqual(snapshot.configIds, nextPayload.configIds)) {
-    return true;
-  }
-  if (snapshot.modelSelected !== nextPayload.modelSelected) {
-    return true;
-  }
-  if (!areStringListsEqual(snapshot.managedModelOptions, nextPayload.managedModelOptions)) {
-    return true;
-  }
-  if (snapshot.openCodeMainModelSelected !== nextPayload.openCodeMainModelSelected) {
-    return true;
-  }
-  if (snapshot.openCodeSubtaskModelSelected !== nextPayload.openCodeSubtaskModelSelected) {
-    return true;
-  }
-  return false;
-}
-
 export function createConfigHeartbeatCoordinator(deps: ConfigHeartbeatCoordinatorDeps) {
+  let snapshot: ConfigHeartbeatSnapshot | null = null;
+  let running = false;
+  let timer: NodeJS.Timeout | null = null;
+
   const updateSnapshot = (cli: CliName, configState: PanelState["configState"], store: CliModelStore): void => {
-    deps.setSnapshot(getConfigHeartbeatPayload(cli, configState, store, deps));
+    snapshot = buildConfigHeartbeatSnapshot(cli, configState, store, deps);
   };
 
   const poll = async (): Promise<void> => {
-    if (deps.isRunning()) {
+    if (running) {
       return;
     }
-    deps.setRunning(true);
+    running = true;
     const targetCli = deps.getCurrentCli();
     const workspaceKey = deps.getWorkspaceKey();
     try {
       const configState = await deps.loadConfigState(targetCli);
       const configStateLoadError = deps.getLastConfigStateLoadError(targetCli);
-      const snapshot = deps.getSnapshot();
       if (configStateLoadError && snapshot?.cli === targetCli) {
         deps.logError("config-heartbeat-skip-after-config-state-error", {
           workspaceKey,
@@ -167,21 +77,21 @@ export function createConfigHeartbeatCoordinator(deps: ConfigHeartbeatCoordinato
       if (targetCli !== deps.getCurrentCli()) {
         return;
       }
-      const nextPayload = getConfigHeartbeatPayload(targetCli, configState, latestModelStore, deps);
+      const nextSnapshot = buildConfigHeartbeatSnapshot(targetCli, configState, latestModelStore, deps);
       deps.logDebug("config-heartbeat-tick", {
         workspaceKey,
         cli: targetCli,
-        snapshot: deps.getSnapshot(),
-        next: nextPayload,
+        snapshot,
+        next: nextSnapshot,
       });
-      if (!shouldRefreshConfigState(targetCli, configState, latestModelStore, deps)) {
+      if (!shouldRefreshConfigHeartbeat(snapshot, nextSnapshot)) {
         return;
       }
-      updateSnapshot(targetCli, configState, latestModelStore);
+      snapshot = nextSnapshot;
       deps.logEssential("config-heartbeat-change", {
         workspaceKey,
         cli: targetCli,
-        state: nextPayload,
+        state: nextSnapshot,
       });
       const state = await deps.buildPanelStateWithConfigState(configState);
       deps.postState(state);
@@ -191,32 +101,34 @@ export function createConfigHeartbeatCoordinator(deps: ConfigHeartbeatCoordinato
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      deps.setRunning(false);
+      running = false;
     }
   };
 
   const start = (context: vscode.ExtensionContext): void => {
-    const existingTimer = deps.getTimer();
-    if (existingTimer) {
-      clearInterval(existingTimer);
-      deps.setTimer(null);
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
     }
-    const timer = setInterval(() => {
+    timer = setInterval(() => {
       void poll();
     }, deps.intervalMs);
-    deps.setTimer(timer);
     context.subscriptions.push(
       deps.createDisposable(() => {
-        const activeTimer = deps.getTimer();
-        if (activeTimer) {
-          clearInterval(activeTimer);
-          deps.setTimer(null);
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
         }
       })
     );
   };
 
-  return { updateSnapshot, poll, start };
+  return {
+    getSnapshot: (): ConfigHeartbeatSnapshot | null => snapshot,
+    updateSnapshot,
+    poll,
+    start,
+  };
 }
 
 function stableStringify(value: unknown): string {

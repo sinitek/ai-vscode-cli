@@ -22,6 +22,10 @@ const {
 const {
   createConfigHeartbeatCoordinator,
 } = require("../../webviewCommandCoordinator") as typeof import("../../webviewCommandCoordinator");
+const {
+  buildConfigHeartbeatSnapshot,
+  shouldRefreshConfigHeartbeat,
+} = require("../../configHeartbeatSnapshot") as typeof import("../../configHeartbeatSnapshot");
 
 import type { OpenCodeThinkingState } from "../../cli/types";
 import type { PanelStateBuilderDeps } from "../../panelStateBuilder";
@@ -121,27 +125,17 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {
   const configState = { configs: [{ id: "config-a", name: "A", platform: "opencode" as const }], activeConfigId: "config-a" };
   let store = ensureCliModelStore();
-  let snapshot: import("../../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null = null;
-  let running = false;
+  const resolveModelConfigIdForCli = () => "config-a";
   let posted = 0;
   const coordinator = createConfigHeartbeatCoordinator({
     intervalMs: 1000,
     getCurrentCli: () => "opencode",
     getWorkspaceKey: () => "workspace",
-    getSnapshot: () => snapshot,
-    setSnapshot: (value) => { snapshot = value; },
-    isRunning: () => running,
-    setRunning: (value) => { running = value; },
-    getTimer: () => null,
-    setTimer: () => undefined,
     loadConfigState: async () => configState,
     getLastConfigStateLoadError: () => null,
     readNormalizedModelStoreFromDisk: () => store,
     setModelStore: () => undefined,
-    resolveModelConfigIdForCli: () => "config-a",
-    ensureCliModelStore,
-    normalizeCliModelName: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
-    mergeUniqueModelNames: (...groups) => Array.from(new Set(groups.flat())),
+    resolveModelConfigIdForCli,
     buildPanelStateWithConfigState: async () => ({} as PanelState),
     postState: () => { posted += 1; },
     syncConfigManagerPanel: () => undefined,
@@ -150,12 +144,26 @@ test("refreshes heartbeat snapshots when OpenCode role overrides change", async 
     logError: () => undefined,
     createDisposable: (dispose) => ({ dispose }),
   });
+  const initialSnapshot = buildConfigHeartbeatSnapshot("opencode", configState, store, { resolveModelConfigIdForCli });
   coordinator.updateSnapshot("opencode", configState, store);
+  assert.deepEqual(coordinator.getSnapshot(), initialSnapshot);
   store = require("../../modelSelectionStore").setOpenCodeRoleModelInStore(store, "config-a", "small", "gateway/small");
   await coordinator.poll();
   assert.equal(posted, 1);
-  const finalSnapshot = snapshot as import("../../webviewCommandCoordinator").ConfigHeartbeatSnapshot | null;
-  assert.equal(finalSnapshot?.openCodeSmallModelSelected, "gateway/small");
+  assert.equal(coordinator.getSnapshot()?.openCodeSmallModelSelected, "gateway/small");
+  assert.equal(shouldRefreshConfigHeartbeat(initialSnapshot, coordinator.getSnapshot()!), true);
+});
+
+test("does not refresh heartbeat when the snapshot is unchanged", () => {
+  const configState = { configs: [{ id: "config-a", name: "A", platform: "opencode" as const }], activeConfigId: "config-a" };
+  const store = ensureCliModelStore();
+  const snapshot = buildConfigHeartbeatSnapshot("opencode", configState, store, {
+    resolveModelConfigIdForCli: () => "config-a",
+  });
+
+  assert.equal(shouldRefreshConfigHeartbeat(snapshot, { ...snapshot, configIds: [...snapshot.configIds], managedModelOptions: [...snapshot.managedModelOptions] }), false);
+  assert.equal(shouldRefreshConfigHeartbeat(null, snapshot), true);
+  assert.equal(shouldRefreshConfigHeartbeat(snapshot, { ...snapshot, activeConfigId: "config-b" }), true);
 });
 
 test("rejects stale asynchronous OpenCode capability results", () => {
