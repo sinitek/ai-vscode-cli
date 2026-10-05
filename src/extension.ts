@@ -1513,9 +1513,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     stopRunForTab,
     schedulePromptTask,
     deleteScheduledTask,
-    resolveWorkspaceDropPaths: (uris) => uris
+    resolveWorkspaceDropPaths: (uris) => Array.from(new Set(uris
       .map((uri) => vscode.Uri.parse(uri))
-      .map((uri) => vscode.workspace.asRelativePath(uri, false)),
+      .map((uri) => normalizeWorkspacePath(vscode.workspace.asRelativePath(uri, false))))),
     hasWorkspaceFolder: () => Boolean(vscode.workspace.workspaceFolders?.length),
     pickWorkspacePaths: async () => {
       const items = await buildWorkspacePathItems();

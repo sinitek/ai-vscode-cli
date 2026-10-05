@@ -80,6 +80,7 @@ media/
 
 - 渲染消息、trace、任务列表、队列、历史记录；助手 Markdown 气泡若整段是完整 JSON object 或 array，内联 `json-formatter-js` 渲染为默认全部展开、节点可折叠的 JSON 树。内联脚本在写入 HTML 前会把字面量 `</script>` 改成 `<\/script>`，避免 VS Code `document.write` 提前截断脚本
 - 采集用户输入、附件、路径选择、规则编辑动作
+- 输入框拖拽引用识别标准和 VS Code 内部 URI 列表、`ResourceURLs`、`CodeFiles` 以及纯文本绝对路径；Explorer 的目录也必须从 `CodeFiles` 或文本路径解析，不能只依赖文件资源 URI。Webview 只把路径编码成 URI 并发送 `resolveDropPaths`，扩展宿主通过 `workspace.asRelativePath` 解析、统一斜杠并去重，再回传 `dropPathsResult`；输入框按当前选择区插入 `@` 引用，含空格路径加双引号。无路径的文件继续复用附件上传，普通文本不拦截。
 - 普通助手增量只排定一个 180ms Markdown 更新窗口，不在追加时临时替换整段纯文本；思考与最终回复在 runStatus 运行期间复用纯文本节点，收尾事件通过 `flushAssistantDeltaMarkdownRenders` 完成格式化并取消未落地的流式帧，避免反复切换排版造成滚动抖动
 - 通过 `postMessage` 向扩展发送结构化消息
 

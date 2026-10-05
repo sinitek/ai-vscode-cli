@@ -1025,7 +1025,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!Array.isArray(paths) || paths.length === 0) {
           return "";
         }
-        return paths.map((item) => prefix + item).join(" ") + " ";
+        return paths.map((item) => prefix + (/\\s/.test(item) ? JSON.stringify(item) : item)).join(" ") + " ";
       }
 
       function requestWorkspacePathPick() {
@@ -1134,15 +1134,49 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!dataTransfer) {
           return [];
         }
-        const uriLines = (dataTransfer.getData("text/uri-list") || "")
-          .split(/\\r?\\n/)
-          .map((line) => line.trim())
-          .filter((line) => line && !line.startsWith("#"));
-        const uris = new Set(uriLines);
-        const textData = (dataTransfer.getData("text/plain") || "").trim();
-        if (textData.startsWith("file://")) {
-          uris.add(textData);
-        }
+        const uris = new Set();
+        const readData = (type) => {
+          try {
+            return dataTransfer.getData(type) || "";
+          } catch {
+            return "";
+          }
+        };
+        const addPathOrUri = (value, allowOtherSchemes = true) => {
+          if (typeof value !== "string") {
+            return;
+          }
+          const trimmed = value.trim();
+          const normalized = trimmed.replace(/\\\\/g, "/");
+          const isDrivePath = /^[A-Za-z]:/.test(normalized) && normalized.charAt(2) === "/";
+          if (normalized.startsWith("/") || isDrivePath) {
+            const encoded = normalized.split("/").map((segment, index) => (
+              isDrivePath && index === 0 ? segment : encodeURIComponent(segment)
+            )).join("/");
+            const prefix = normalized.startsWith("//") ? "file:" : normalized.startsWith("/") ? "file://" : "file:///";
+            uris.add(prefix + encoded);
+          } else if (trimmed.startsWith("file://") || (allowOtherSchemes && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(trimmed))) {
+            uris.add(trimmed);
+          }
+        };
+        ["text/uri-list", "application/vnd.code.uri-list"].forEach((type) => {
+          readData(type).split(/\\r?\\n/).forEach((line) => {
+            if (!line.trim().startsWith("#")) {
+              addPathOrUri(line);
+            }
+          });
+        });
+        ["ResourceURLs", "CodeFiles"].forEach((type) => {
+          try {
+            const values = JSON.parse(readData(type));
+            if (Array.isArray(values)) {
+              values.forEach((value) => addPathOrUri(value));
+            }
+          } catch {
+            return;
+          }
+        });
+        readData("text/plain").split(/\\r?\\n/).forEach((line) => addPathOrUri(line, false));
         return Array.from(uris);
       }
 

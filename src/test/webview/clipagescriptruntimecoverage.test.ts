@@ -457,7 +457,7 @@ function runLatestTimer(fakeWindow: { timers: Map<number, Listener>; timerDelays
   latest[1]();
 }
 
-function createRuntimeHarness(markedOverride?: unknown) {
+function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unknown) {
   const document = createFakeDocument();
   const fakeWindow = createFakeWindow();
   const posted: any[] = [];
@@ -548,7 +548,7 @@ function createRuntimeHarness(markedOverride?: unknown) {
     document,
     fakeWindow,
     navigator,
-    undefined,
+    fileReaderOverride,
     markedOverride,
     console,
     fakeWindow.setTimeout,
@@ -2545,6 +2545,96 @@ test("applies model, panel, and selector state without preserving invalid snapsh
   ), ["done"]);
   assert.equal(helpers.getOpenCodeModelIssueMessage({ code: "provider-disabled" }), "openCodeModelIssueProviderDisabled");
   assert.equal(helpers.getOpenCodeModelOptionLabel({ ref: "provider/model", label: "Provider (provider/model)", modelId: "model" }), "Provider");
+});
+
+test("parses Explorer file and directory drops without treating ordinary text as references", () => {
+  const getDropUris = new Function(`${extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "getDropUris")}; return getDropUris;`)();
+  const parseDrop = (data: Record<string, string>) => getDropUris({
+    dataTransfer: { getData: (type: string) => data[type] || "" },
+  });
+
+  assert.deepEqual(parseDrop({
+    ResourceURLs: JSON.stringify(["file:///workspace/src/app.ts"]),
+    CodeFiles: JSON.stringify(["/workspace/src/app.ts", "/workspace/src"]),
+    "text/plain": "/workspace/src/app.ts\n/workspace/src",
+  }), ["file:///workspace/src/app.ts", "file:///workspace/src"]);
+  assert.deepEqual(parseDrop({ CodeFiles: JSON.stringify(["C:\\workspace\\my folder", "\\\\server\\share\\项目"]) }), [
+    "file:///C:/workspace/my%20folder",
+    "file://server/share/%E9%A1%B9%E7%9B%AE",
+  ]);
+  assert.deepEqual(parseDrop({ "text/plain": "/workspace/a #1?.ts\r\n/workspace/目录" }), [
+    "file:///workspace/a%20%231%3F.ts",
+    "file:///workspace/%E7%9B%AE%E5%BD%95",
+  ]);
+  assert.deepEqual(parseDrop({
+    ResourceURLs: "invalid JSON",
+    CodeFiles: JSON.stringify({ invalid: true }),
+    "application/vnd.code.uri-list": "#comment\nfile:///workspace/src\nvscode-remote://ssh-remote+host/workspace/src",
+  }), ["file:///workspace/src", "vscode-remote://ssh-remote+host/workspace/src"]);
+  assert.deepEqual(parseDrop({ ResourceURLs: JSON.stringify([null, 1, {}, "", "relative.txt"]) }), []);
+  assert.deepEqual(parseDrop({ "text/plain": "ordinary text\nhttps://example.com" }), []);
+  assert.deepEqual(getDropUris({}), []);
+  assert.deepEqual(getDropUris({ dataTransfer: { getData: () => { throw new Error("unavailable"); } } }), []);
+});
+
+test("Explorer drops resolve workspace references and insert them at the prompt selection", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const input = document.getElementById("promptInput");
+  input.value = "请查看旧引用再修改";
+  input.selectionStart = 3;
+  input.selectionEnd = 6;
+  let prevented = false;
+  input.dispatchEvent({
+    type: "drop",
+    preventDefault: () => { prevented = true; },
+    stopPropagation: () => undefined,
+    dataTransfer: {
+      getData: (type: string) => type === "CodeFiles"
+        ? JSON.stringify(["/workspace/src", "/workspace/my folder/app.ts"])
+        : "",
+      files: [{ name: "app.ts", size: 3 }],
+    },
+  });
+  assert.equal(prevented, true);
+  assert.deepEqual(posted.at(-1), {
+    type: "resolveDropPaths",
+    uris: ["file:///workspace/src", "file:///workspace/my%20folder/app.ts"],
+  });
+  window.dispatchMessage({ type: "dropPathsResult", paths: ["src", "my folder/app.ts"] });
+  assert.equal(input.value, '请查看@src @"my folder/app.ts" 再修改');
+  assert.equal(input.selectionStart, input.value.indexOf("再修改"));
+  assert.equal(input.selectionEnd, input.selectionStart);
+});
+
+test("prompt drops keep attachment uploads and ordinary text fallback", async () => {
+  class DropFileReader {
+    result = "data:text/plain;base64,aGVsbG8=";
+    onload?: () => void;
+    readAsDataURL(): void {
+      this.onload?.();
+    }
+  }
+  const { document, posted } = createRuntimeHarness(undefined, DropFileReader);
+  const input = document.getElementById("promptInput");
+  input.value = "原有提示词";
+  let prevented = false;
+  const dispatchDrop = (data: Record<string, string>, files: unknown[]) => input.dispatchEvent({
+    type: "drop",
+    preventDefault: () => { prevented = true; },
+    dataTransfer: { getData: (type: string) => data[type] || "", files },
+  });
+
+  dispatchDrop({ "text/plain": "普通文本" }, []);
+  assert.equal(prevented, false);
+  assert.equal(input.value, "原有提示词");
+  assert.equal(posted.some((message) => message.type === "resolveDropPaths"), false);
+  dispatchDrop({ CodeFiles: "invalid JSON" }, [{ name: "hello.txt", type: "text/plain", size: 5 }]);
+  await Promise.resolve();
+  assert.equal(prevented, true);
+  assert.deepEqual(posted.at(-1), {
+    type: "uploadFiles",
+    files: [{ name: "hello.txt", type: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" }],
+  });
 });
 
 test("handles run stream, queue, attachments, history, and settings function branches in isolation", async () => {
