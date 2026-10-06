@@ -518,3 +518,388 @@ test("owned Loop main compaction continues while the primary run reservation is 
     { status: "end", activity: undefined },
   ]);
 });
+
+type StrategySelectionOptions = {
+  cli?: CliName;
+  currentSessionId?: string | null;
+  resolvedSessionId?: string | null | undefined;
+  mappedId?: string | null;
+  selectedModel?: string | null;
+  configId?: string | null;
+  compactThread?: () => Promise<{ compacted: boolean; threadId: string }>;
+  compactSession?: () => Promise<{ compacted: boolean; sessionId: string | null; previousSessionId: string | null }>;
+};
+
+function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
+  const cli = options.cli ?? "codex";
+  let activeRunId: string | undefined;
+  let activeStop: (() => void) | null = null;
+  const currentSessionId = Object.prototype.hasOwnProperty.call(options, "currentSessionId")
+    ? options.currentSessionId ?? null
+    : "session-1";
+  const mappedId = Object.prototype.hasOwnProperty.call(options, "mappedId")
+    ? options.mappedId ?? null
+    : "mapped-1";
+  const selectedModel = Object.prototype.hasOwnProperty.call(options, "selectedModel")
+    ? options.selectedModel ?? null
+    : " gpt-5 ";
+  const configId = Object.prototype.hasOwnProperty.call(options, "configId")
+    ? options.configId ?? null
+    : " config-codex ";
+  const calls = {
+    events: [] as string[],
+    codexRunnerOptions: [] as Array<Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["getOrCreateCodexRunner"]>[0]>,
+    claudeRunnerOptions: [] as Array<Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["getOrCreateClaudeRunner"]>[0]>,
+    setRunnerCalls: [] as Array<{
+      cli: CliName;
+      sessionId: string;
+      thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
+      model: string | null;
+      extra?: Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["setRunner"]>[6];
+    }>,
+    mappings: [] as Array<{
+      cli: CliName;
+      localSessionId: string;
+      mappedSessionId: string;
+      options?: Parameters<ContextCompactionRunDeps["upsertInteractiveMapping"]>[3];
+    }>,
+    systemMessages: [] as string[],
+    systemMessagesForCli: [] as string[],
+    processTitles: [] as string[],
+    runStreamPrompts: [] as string[],
+    sendRunStatuses: [] as Array<{ status: "start" | "end" | "error" | "stopped"; activity?: "contextCompaction" }>,
+    appendCompletionStatuses: [] as string[],
+    clearActiveRun: 0,
+  };
+
+  const deps: ContextCompactionRunDeps = {
+    getCurrentCli: () => cli,
+    getActiveConversationTabId: () => "tab-1",
+    isInteractiveSupported: () => true,
+    appendSystemMessageForCli: (_targetCli, _sessionId, content) => {
+      calls.systemMessagesForCli.push(content);
+    },
+    getCurrentSessionId: () => currentSessionId,
+    hasActiveProcessOrInteractiveStop: () => false,
+    resolveInteractiveSessionForResume: async () => Object.prototype.hasOwnProperty.call(options, "resolvedSessionId")
+      ? options.resolvedSessionId
+      : currentSessionId,
+    resolveWorkspaceCwd: () => "/workspace",
+    getActiveConfigIdForCli: () => configId,
+    getSelectedCliModel: () => selectedModel,
+    getEffectiveThinkingMode: () => "medium" as ThinkingMode,
+    getWorkspaceInteractiveMode: () => "coding" as InteractiveMode,
+    applyThinkingWorkspaceFiles: () => {},
+    getEffectiveCliArgs: () => [],
+    getCliCommand: () => cli,
+    resolveClaudeInteractiveEntrypoint: () => undefined,
+    logCliStartup: () => {},
+    loadSessionMessages: () => [],
+    createMessageId: () => "run-strategy",
+    beginActiveRunState: ({ runId }) => {
+      activeRunId = runId;
+    },
+    getActiveRunId: () => activeRunId,
+    setActiveInteractiveStop: (stop) => {
+      activeStop = stop;
+    },
+    isActiveInteractiveStop: (stop) => activeStop === stop,
+    appendStopMessageToStore: () => {},
+    killActiveProcess: () => {},
+    sendRunStatus: (status, _message, statusOptions) => {
+      calls.sendRunStatuses.push({ status, activity: statusOptions?.activity });
+    },
+    appendCompletionMessage: (status) => {
+      calls.appendCompletionStatuses.push(status);
+    },
+    persistActiveMessages: () => {},
+    clearActiveRun: () => {
+      calls.clearActiveRun += 1;
+      activeRunId = undefined;
+    },
+    interactiveRunnerManager: {
+      beginActiveRun: (targetCli, sessionId) => {
+        calls.events.push(`begin:${targetCli}:${sessionId}`);
+      },
+      endActiveRun: (targetCli, sessionId) => {
+        calls.events.push(`end:${targetCli}:${sessionId}`);
+      },
+      getOrCreateCodexRunner: (runnerOptions) => {
+        calls.codexRunnerOptions.push(runnerOptions);
+        return {
+          compactThread: async () => {
+            calls.events.push("compact-thread");
+            if (options.compactThread) {
+              return options.compactThread();
+            }
+            return { compacted: true, threadId: "thread-after-compact" };
+          },
+          stopAndRebuild: () => {},
+        } as never;
+      },
+      getOrCreateClaudeRunner: (runnerOptions) => {
+        calls.claudeRunnerOptions.push(runnerOptions);
+        return {
+          compactSession: async () => {
+            calls.events.push("compact-session");
+            if (options.compactSession) {
+              return options.compactSession();
+            }
+            return {
+              compacted: true,
+              sessionId: "claude-after",
+              previousSessionId: "claude-before",
+            };
+          },
+          stopAndRebuild: () => {},
+          runForText: async () => ({ sessionId: mappedId, text: "summary" }),
+          runStreamed: async () => {},
+          getSessionId: () => mappedId,
+          dispose: () => {},
+        } as never;
+      },
+      setRunner: (targetCli, sessionId, _runner, thinkingMode, interactiveMode, model, extra) => {
+        calls.events.push(`set-runner:${targetCli}:${sessionId}`);
+        calls.setRunnerCalls.push({ cli: targetCli, sessionId, thinkingMode, interactiveMode, model, extra });
+      },
+    },
+    resolveInteractiveMappedId: () => mappedId,
+    appendSystemMessage: (content) => {
+      calls.systemMessages.push(content);
+    },
+    getGlobalMultiAgentEnabled: () => false,
+    upsertInteractiveMapping: (targetCli, localSessionId, mappedSessionId, mappingOptions) => {
+      calls.events.push(`map:${targetCli}:${localSessionId}:${mappedSessionId}`);
+      calls.mappings.push({ cli: targetCli, localSessionId, mappedSessionId, options: mappingOptions });
+    },
+    sendRawStreamDelta: () => {},
+    sendPanelMessage: () => {},
+    updateProcessTitle: (targetCli, sessionId) => {
+      calls.processTitles.push(`${targetCli}:${sessionId}`);
+    },
+    appendTraceMessage: () => {},
+    prepareGeminiRunProfile: (model) => ({ runtimeModel: model }),
+    setActiveProcess: () => {},
+    appendAssistantChunk: () => {},
+    adoptSessionId: () => {},
+    runCliStream: ((_targetCli, prompt) => {
+      calls.runStreamPrompts.push(prompt);
+      return { pid: 1, resolvedCommand: cli, kill: () => true };
+    }) as NonNullable<ContextCompactionRunDeps["runCliStream"]>,
+  };
+
+  return { deps, calls };
+}
+
+test("context compaction strategy registry selects Codex and preserves selection lifecycle", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "codex" });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+  });
+
+  assert.equal(compacted, true);
+  assert.deepEqual(calls.events, [
+    "begin:codex:session-1",
+    "compact-thread",
+    "map:codex:session-1:thread-after-compact",
+    "set-runner:codex:session-1",
+    "end:codex:session-1",
+  ]);
+  assert.equal(calls.claudeRunnerOptions.length, 0);
+  assert.deepEqual(calls.runStreamPrompts, []);
+  assert.deepEqual(calls.codexRunnerOptions, [{
+    sessionId: "session-1",
+    threadId: "mapped-1",
+    command: "codex",
+    args: [],
+    cwd: "/workspace",
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: "gpt-5",
+    configId: "config-codex",
+    multiAgentEnabled: false,
+  }]);
+  assert.deepEqual(calls.mappings, [{
+    cli: "codex",
+    localSessionId: "session-1",
+    mappedSessionId: "thread-after-compact",
+    options: {
+      freezePrevious: "mapped-1",
+      codexSelection: { configId: "config-codex", model: "gpt-5" },
+    },
+  }]);
+  assert.deepEqual(calls.setRunnerCalls, [{
+    cli: "codex",
+    sessionId: "session-1",
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: "gpt-5",
+    extra: { multiAgentEnabled: false, configId: "config-codex" },
+  }]);
+  assert.deepEqual(calls.systemMessages, ["Codex 当前线程上下文压缩已完成：thread-after-compact"]);
+  assert.deepEqual(calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "end", activity: undefined },
+  ]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
+  assert.equal(calls.clearActiveRun, 1);
+});
+
+test("context compaction strategy registry selects Claude native compaction", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "claude" });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "claude",
+    tabId: "tab-claude",
+    sessionId: "session-1",
+  });
+
+  assert.equal(compacted, true);
+  assert.deepEqual(calls.events, [
+    "begin:claude:session-1",
+    "compact-session",
+    "end:claude:session-1",
+    "map:claude:session-1:claude-after",
+    "set-runner:claude:session-1",
+  ]);
+  assert.equal(calls.codexRunnerOptions.length, 0);
+  assert.deepEqual(calls.runStreamPrompts, []);
+  assert.equal(calls.claudeRunnerOptions.length, 1);
+  assert.equal(calls.claudeRunnerOptions[0]?.sessionId, "session-1");
+  assert.equal(calls.claudeRunnerOptions[0]?.mappedSessionId, "mapped-1");
+  assert.equal(calls.claudeRunnerOptions[0]?.model, " gpt-5 ");
+  assert.equal(calls.claudeRunnerOptions[0]?.entrypoint, undefined);
+  assert.deepEqual(calls.mappings, [{
+    cli: "claude",
+    localSessionId: "session-1",
+    mappedSessionId: "claude-after",
+    options: { freezePrevious: "claude-before" },
+  }]);
+  assert.deepEqual(calls.setRunnerCalls, [{
+    cli: "claude",
+    sessionId: "session-1",
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: " gpt-5 ",
+    extra: undefined,
+  }]);
+  assert.deepEqual(calls.processTitles, ["claude:claude-after"]);
+  assert.deepEqual(calls.systemMessages, ["Claude 上下文压缩已完成：claude-before -> claude-after"]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
+});
+
+test("Codex strategy returns false when the mapped thread is missing", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "codex", mappedId: null });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.events, []);
+  assert.deepEqual(calls.codexRunnerOptions, []);
+  assert.deepEqual(calls.systemMessages, ["当前会话尚未建立，无法压缩。"]);
+  assert.deepEqual(calls.systemMessagesForCli, []);
+  assert.deepEqual(calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "end", activity: undefined },
+  ]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
+  assert.equal(calls.clearActiveRun, 1);
+});
+
+test("context compaction does not select a strategy without a recoverable session", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({
+    cli: "claude",
+    resolvedSessionId: undefined,
+  });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "claude",
+    tabId: "tab-claude",
+    sessionId: "session-1",
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.events, []);
+  assert.deepEqual(calls.claudeRunnerOptions, []);
+  assert.deepEqual(calls.codexRunnerOptions, []);
+  assert.deepEqual(calls.runStreamPrompts, []);
+  assert.deepEqual(calls.systemMessages, []);
+  assert.deepEqual(calls.systemMessagesForCli, []);
+  assert.deepEqual(calls.sendRunStatuses, []);
+  assert.equal(calls.clearActiveRun, 0);
+});
+
+test("Codex strategy failure keeps orchestration error handling", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({
+    cli: "codex",
+    compactThread: async () => {
+      throw new Error("codex compact failed");
+    },
+  });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "codex",
+    tabId: "tab-1",
+    sessionId: "session-1",
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.events, [
+    "begin:codex:session-1",
+    "compact-thread",
+    "end:codex:session-1",
+  ]);
+  assert.deepEqual(calls.mappings, []);
+  assert.deepEqual(calls.setRunnerCalls, []);
+  assert.deepEqual(calls.systemMessages, ["上下文压缩失败（执行异常），未进行会话切换。"]);
+  assert.deepEqual(calls.sendRunStatuses, [
+    { status: "start", activity: "contextCompaction" },
+    { status: "error", activity: undefined },
+  ]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["error"]);
+  assert.equal(calls.clearActiveRun, 1);
+});
+
+test("OpenCode strategy selection still runs native compact without runner fallback", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createOpenCodeCompactionDeps({
+    stdout: `${JSON.stringify({ type: "assistant", sessionID: "session-after", text: "Compacted current session" })}\n`,
+  });
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "opencode",
+    tabId: "tab-opencode",
+    sessionId: "session-before",
+  });
+
+  assert.equal(compacted, true);
+  assert.equal(calls.runStreamCalls.length, 1);
+  assert.equal(calls.runStreamCalls[0]?.prompt, "/compact");
+  assert.equal(calls.runStreamCalls[0]?.sessionId, "session-before");
+  assert.equal(calls.runStreamCalls[0]?.model, "primary/model");
+  assert.deepEqual(calls.prepareProfiles, [{
+    selectedModel: "stored/model",
+    cwd: "/workspace",
+    cli: "opencode",
+  }]);
+  assert.deepEqual(calls.adoptedSessions, [{ cli: "opencode", sessionId: "session-after", tabId: "tab-opencode" }]);
+  assert.deepEqual(calls.appendSystemMessages, [
+    "OpenCode context compaction completed for current session: session-after",
+  ]);
+  assert.deepEqual(calls.sendRunStatuses, ["start", "end"]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
+  assert.deepEqual(calls.activeProcessStates, ["set", "clear"]);
+});

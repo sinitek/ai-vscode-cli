@@ -577,6 +577,301 @@ export type ContextCompactionRunDeps = {
   buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
+const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode"] as const;
+
+type ContextCompactionStrategyCli = (typeof CONTEXT_COMPACTION_STRATEGY_CLIS)[number];
+
+type ContextCompactionPreparedRun = {
+  cli: CliName;
+  tabId: string | null;
+  sessionId: string;
+  cwd: string | undefined;
+  activeConfigId: string | null;
+  selectedModel: string | null;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  args: string[];
+  command: string;
+  commandForRunner: string;
+  claudeEntrypoint: string | undefined;
+  messageTarget: ChatMessage[];
+};
+
+type ContextCompactionStrategyHooks = {
+  withCompactionTimeout: <T>(operation: Promise<T>) => Promise<T>;
+  setStopCurrentTurn: (stop: (() => void) | null) => void;
+};
+
+type ContextCompactionStrategy = {
+  readonly cli: ContextCompactionStrategyCli;
+  execute: (
+    deps: ContextCompactionRunDeps,
+    run: ContextCompactionPreparedRun,
+    hooks: ContextCompactionStrategyHooks
+  ) => Promise<boolean>;
+};
+
+type ContextCompactionStrategyRegistry = {
+  [TCli in ContextCompactionStrategyCli]: ContextCompactionStrategy & { readonly cli: TCli };
+};
+
+function isContextCompactionStrategyCli(cli: string): cli is ContextCompactionStrategyCli {
+  return (CONTEXT_COMPACTION_STRATEGY_CLIS as readonly string[]).includes(cli);
+}
+
+async function executeCodexContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks
+): Promise<boolean> {
+  const mappedThreadId = deps.resolveInteractiveMappedId(run.cli, run.sessionId);
+  if (!mappedThreadId) {
+    deps.appendSystemMessage(t("rules.compactNoSession"));
+    return false;
+  }
+
+  const codexSelection = normalizeCodexRunSelection({
+    configId: run.activeConfigId,
+    model: run.selectedModel,
+  });
+  const runner = deps.interactiveRunnerManager.getOrCreateCodexRunner({
+    sessionId: run.sessionId,
+    threadId: mappedThreadId,
+    command: run.command,
+    args: run.args,
+    cwd: run.cwd,
+    thinkingMode: run.thinkingMode,
+    interactiveMode: run.interactiveMode,
+    model: codexSelection.model,
+    configId: codexSelection.configId,
+    multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
+  });
+  hooks.setStopCurrentTurn(() => runner.stopAndRebuild());
+  deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+  try {
+    const result = await hooks.withCompactionTimeout(runner.compactThread());
+    deps.upsertInteractiveMapping(run.cli, run.sessionId, result.threadId, {
+      freezePrevious: mappedThreadId,
+      codexSelection,
+    });
+    deps.appendSystemMessage(t("compact.codexNativeCompressed", { threadId: result.threadId }));
+    void logInfo("context-compact-codex-complete", {
+      cli: run.cli,
+      sessionId: run.sessionId,
+      threadId: result.threadId,
+      compacted: result.compacted,
+    });
+    deps.interactiveRunnerManager.setRunner("codex", run.sessionId, runner, run.thinkingMode, run.interactiveMode, codexSelection.model, {
+      multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
+      configId: codexSelection.configId,
+    });
+  } finally {
+    deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+  }
+  return true;
+}
+
+async function executeClaudeContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks
+): Promise<boolean> {
+  const mappedSessionId = deps.resolveInteractiveMappedId(run.cli, run.sessionId);
+  let runner = deps.interactiveRunnerManager.getOrCreateClaudeRunner({
+    sessionId: run.sessionId,
+    mappedSessionId,
+    command: run.commandForRunner,
+    args: run.args,
+    cwd: run.cwd,
+    thinkingMode: run.thinkingMode,
+    interactiveMode: run.interactiveMode,
+    model: run.selectedModel,
+    entrypoint: run.claudeEntrypoint,
+  });
+
+  hooks.setStopCurrentTurn(() => runner.stopAndRebuild());
+
+  const runClaudeSummaryCompactionFallback = async (): Promise<void> => {
+    const summaryResult = await (async () => {
+      deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+      try {
+        return await hooks.withCompactionTimeout(runner.runForText(buildCompactionPrompt(t)));
+      } finally {
+        deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+      }
+    })();
+    const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
+    const previousSessionId = summaryResult.sessionId ?? runner.getSessionId() ?? mappedSessionId;
+    if (!compactionSummary || !previousSessionId) {
+      deps.appendSystemMessage(t("compact.failEmpty"));
+      return;
+    }
+
+    const recent = extractRecentTurns(run.messageTarget, 3);
+    const bootstrap = [
+      t("compact.resumeNotice"),
+      "",
+      compactionSummary,
+      "",
+      t("compact.systemPrompt.recentTitle"),
+      formatTurnsForBootstrap(recent),
+    ].join("\n");
+
+    runner.dispose();
+    runner = new ClaudeInteractiveRunner({
+      command: run.commandForRunner,
+      args: run.args,
+      cwd: run.cwd,
+      thinkingMode: run.thinkingMode,
+      interactiveMode: run.interactiveMode,
+      model: run.selectedModel,
+      entrypoint: run.claudeEntrypoint,
+      sessionId: null,
+    });
+
+    hooks.setStopCurrentTurn(() => runner.stopAndRebuild());
+    deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+    try {
+      await hooks.withCompactionTimeout(runner.runStreamed(bootstrap, {
+        onAssistantDelta: () => {},
+        onTrace: () => {},
+        onEvent: (event) => {
+          deps.sendRawStreamDelta(event, { stream: "event", appendNewline: true });
+        },
+        onTaskListUpdate: (items) => {
+          deps.sendPanelMessage({ type: "taskListUpdate", items });
+        },
+        onSessionId: (newSessionId) => {
+          deps.updateProcessTitle(run.cli, newSessionId);
+          deps.upsertInteractiveMapping(run.cli, run.sessionId, newSessionId, { freezePrevious: previousSessionId });
+          deps.appendSystemMessage(t("compact.summaryCompressed", { from: previousSessionId, to: newSessionId }));
+          deps.appendTraceMessage(compactionSummary);
+          void logInfo("context-compact-claude-complete", {
+            cli: run.cli,
+            sessionId: run.sessionId,
+            newSessionId,
+            previousSessionId,
+            mode: "summary-fallback",
+          });
+          deps.interactiveRunnerManager.setRunner("claude", run.sessionId, runner, run.thinkingMode, run.interactiveMode, run.selectedModel);
+        },
+      }));
+    } finally {
+      deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+    }
+  };
+
+  let nativeResult: Awaited<ReturnType<typeof runner.compactSession>> | null = null;
+  try {
+    deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+    try {
+      nativeResult = await hooks.withCompactionTimeout(runner.compactSession());
+    } finally {
+      deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+    }
+  } catch (error) {
+    if (!isClaudeNativeCompactUnsupportedError(error)) {
+      throw error;
+    }
+    void logInfo("context-compact-claude-native-fallback", {
+      cli: run.cli,
+      sessionId: run.sessionId,
+      previousSessionId: mappedSessionId,
+      reason: "unsupported-native-compact",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await runClaudeSummaryCompactionFallback();
+    return true;
+  }
+
+  if (!nativeResult) {
+    await runClaudeSummaryCompactionFallback();
+    return true;
+  }
+
+  const previousSessionId = nativeResult.previousSessionId ?? mappedSessionId;
+  const resolvedSessionId = nativeResult.sessionId ?? previousSessionId;
+  if (!nativeResult.compacted || !resolvedSessionId) {
+    void logInfo("context-compact-claude-native-fallback", {
+      cli: run.cli,
+      sessionId: run.sessionId,
+      previousSessionId,
+      nextSessionId: nativeResult.sessionId,
+      reason: "missing-native-compact-signal",
+    });
+    await runClaudeSummaryCompactionFallback();
+    return true;
+  }
+
+  deps.updateProcessTitle(run.cli, resolvedSessionId);
+  deps.upsertInteractiveMapping(
+    run.cli,
+    run.sessionId,
+    resolvedSessionId,
+    previousSessionId && previousSessionId !== resolvedSessionId
+      ? { freezePrevious: previousSessionId }
+      : {}
+  );
+  deps.appendSystemMessage(
+    previousSessionId && previousSessionId !== resolvedSessionId
+      ? t("compact.claudeNativeCompressedForked", { from: previousSessionId, to: resolvedSessionId })
+      : t("compact.claudeNativeCompressed", { sessionId: resolvedSessionId })
+  );
+  void logInfo("context-compact-claude-native-complete", {
+    cli: run.cli,
+    sessionId: run.sessionId,
+    previousSessionId,
+    resolvedSessionId,
+    compacted: nativeResult.compacted,
+  });
+  deps.interactiveRunnerManager.setRunner("claude", run.sessionId, runner, run.thinkingMode, run.interactiveMode, run.selectedModel);
+  return true;
+}
+
+async function executeOpenCodeContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks
+): Promise<boolean> {
+  const result = await hooks.withCompactionTimeout(runOpenCodeNativeContextCompactionWithDeps(deps, {
+    sessionId: run.sessionId,
+    tabId: run.tabId,
+    selectedModel: run.selectedModel,
+    cwd: run.cwd ?? null,
+  }));
+  deps.adoptSessionId(run.cli, result.sessionId, run.tabId);
+  deps.appendSystemMessage(buildOpenCodeCompactSuccessMessage(result.sessionId));
+  void logInfo("context-compact-opencode-native-complete", {
+    cli: run.cli,
+    sessionId: run.sessionId,
+    resolvedSessionId: result.sessionId,
+    compacted: result.compacted,
+  });
+  return true;
+}
+
+const contextCompactionStrategyRegistry: ContextCompactionStrategyRegistry = {
+  codex: {
+    cli: "codex",
+    execute: executeCodexContextCompaction,
+  },
+  claude: {
+    cli: "claude",
+    execute: executeClaudeContextCompaction,
+  },
+  opencode: {
+    cli: "opencode",
+    execute: executeOpenCodeContextCompaction,
+  },
+};
+
+function resolveContextCompactionStrategy(cli: CliName): ContextCompactionStrategy | undefined {
+  if (!isContextCompactionStrategyCli(cli)) {
+    return undefined;
+  }
+  return contextCompactionStrategyRegistry[cli];
+}
+
 export async function runContextCompactionWithDeps(
   deps: ContextCompactionRunDeps,
   options: ContextCompactionOptions = {}
@@ -700,234 +995,31 @@ export async function runContextCompactionWithDeps(
   };
 
   try {
-    if (cli === "codex") {
-      const mappedThreadId = deps.resolveInteractiveMappedId(cli, sessionId);
-      if (!mappedThreadId) {
-        deps.appendSystemMessage(t("rules.compactNoSession"));
-        cleanupAfterRun("end");
-        return false;
-      }
-
-      const codexSelection = normalizeCodexRunSelection({
-        configId: activeConfigId,
-        model: selectedModel,
-      });
-      const runner = deps.interactiveRunnerManager.getOrCreateCodexRunner({
-        sessionId,
-        threadId: mappedThreadId,
-        command,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: codexSelection.model,
-        configId: codexSelection.configId,
-        multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
-      });
-      stopCurrentTurn = () => runner.stopAndRebuild();
-      deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
-      try {
-        const result = await withCompactionTimeout(runner.compactThread());
-        deps.upsertInteractiveMapping(cli, sessionId, result.threadId, {
-          freezePrevious: mappedThreadId,
-          codexSelection,
-        });
-        deps.appendSystemMessage(t("compact.codexNativeCompressed", { threadId: result.threadId }));
-        void logInfo("context-compact-codex-complete", {
-          cli,
-          sessionId,
-          threadId: result.threadId,
-          compacted: result.compacted,
-        });
-        deps.interactiveRunnerManager.setRunner("codex", sessionId, runner, thinkingMode, interactiveMode, codexSelection.model, {
-          multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
-          configId: codexSelection.configId,
-        });
-      } finally {
-        deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
-      }
-      cleanupAfterRun("end");
-      return true;
-    }
-
-    if (cli === "claude") {
-      const mappedSessionId = deps.resolveInteractiveMappedId(cli, sessionId);
-      let runner = deps.interactiveRunnerManager.getOrCreateClaudeRunner({
-        sessionId,
-        mappedSessionId,
-        command: commandForRunner,
-        args,
-        cwd: cwd ?? undefined,
-        thinkingMode,
-        interactiveMode,
-        model: selectedModel,
-        entrypoint: claudeEntrypoint,
-      });
-
-      stopCurrentTurn = () => runner.stopAndRebuild();
-
-      const runClaudeSummaryCompactionFallback = async (): Promise<void> => {
-        const summaryResult = await (async () => {
-          deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
-          try {
-            return await withCompactionTimeout(runner.runForText(buildCompactionPrompt(t)));
-          } finally {
-            deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
-          }
-        })();
-        const compactionSummary = summaryResult.text.trim() ? summaryResult.text.trim() : null;
-        const previousSessionId = summaryResult.sessionId ?? runner.getSessionId() ?? mappedSessionId;
-        if (!compactionSummary || !previousSessionId) {
-          deps.appendSystemMessage(t("compact.failEmpty"));
-          return;
-        }
-
-        const recent = extractRecentTurns(messageTarget, 3);
-        const bootstrap = [
-          t("compact.resumeNotice"),
-          "",
-          compactionSummary,
-          "",
-          t("compact.systemPrompt.recentTitle"),
-          formatTurnsForBootstrap(recent),
-        ].join("\n");
-
-        runner.dispose();
-        runner = new ClaudeInteractiveRunner({
-          command: commandForRunner,
-          args,
-          cwd: cwd ?? undefined,
-          thinkingMode,
-          interactiveMode,
-          model: selectedModel,
-          entrypoint: claudeEntrypoint,
-          sessionId: null,
-        });
-
-        stopCurrentTurn = () => runner.stopAndRebuild();
-        deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
-        try {
-          await withCompactionTimeout(runner.runStreamed(bootstrap, {
-            onAssistantDelta: () => {},
-            onTrace: () => {},
-            onEvent: (event) => {
-              deps.sendRawStreamDelta(event, { stream: "event", appendNewline: true });
-            },
-            onTaskListUpdate: (items) => {
-              deps.sendPanelMessage({ type: "taskListUpdate", items });
-            },
-            onSessionId: (newSessionId) => {
-              deps.updateProcessTitle(cli, newSessionId);
-              deps.upsertInteractiveMapping(cli, sessionId, newSessionId, { freezePrevious: previousSessionId });
-              deps.appendSystemMessage(t("compact.summaryCompressed", { from: previousSessionId, to: newSessionId }));
-              deps.appendTraceMessage(compactionSummary);
-              void logInfo("context-compact-claude-complete", {
-                cli,
-                sessionId,
-                newSessionId,
-                previousSessionId,
-                mode: "summary-fallback",
-              });
-              deps.interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
-            },
-          }));
-        } finally {
-          deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
-        }
-      };
-
-      let nativeResult: Awaited<ReturnType<typeof runner.compactSession>> | null = null;
-      try {
-        deps.interactiveRunnerManager.beginActiveRun(cli, sessionId);
-        try {
-          nativeResult = await withCompactionTimeout(runner.compactSession());
-        } finally {
-          deps.interactiveRunnerManager.endActiveRun(cli, sessionId);
-        }
-      } catch (error) {
-        if (!isClaudeNativeCompactUnsupportedError(error)) {
-          throw error;
-        }
-        void logInfo("context-compact-claude-native-fallback", {
-          cli,
-          sessionId,
-          previousSessionId: mappedSessionId,
-          reason: "unsupported-native-compact",
-          error: error instanceof Error ? error.message : String(error),
-        });
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      if (!nativeResult) {
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      const previousSessionId = nativeResult.previousSessionId ?? mappedSessionId;
-      const resolvedSessionId = nativeResult.sessionId ?? previousSessionId;
-      if (!nativeResult.compacted || !resolvedSessionId) {
-        void logInfo("context-compact-claude-native-fallback", {
-          cli,
-          sessionId,
-          previousSessionId,
-          nextSessionId: nativeResult.sessionId,
-          reason: "missing-native-compact-signal",
-        });
-        await runClaudeSummaryCompactionFallback();
-        cleanupAfterRun("end");
-        return true;
-      }
-
-      deps.updateProcessTitle(cli, resolvedSessionId);
-      deps.upsertInteractiveMapping(
+    const strategy = resolveContextCompactionStrategy(cli);
+    const compacted = strategy
+      ? await strategy.execute(deps, {
         cli,
-        sessionId,
-        resolvedSessionId,
-        previousSessionId && previousSessionId !== resolvedSessionId
-          ? { freezePrevious: previousSessionId }
-          : {}
-      );
-      deps.appendSystemMessage(
-        previousSessionId && previousSessionId !== resolvedSessionId
-          ? t("compact.claudeNativeCompressedForked", { from: previousSessionId, to: resolvedSessionId })
-          : t("compact.claudeNativeCompressed", { sessionId: resolvedSessionId })
-      );
-      void logInfo("context-compact-claude-native-complete", {
-        cli,
-        sessionId,
-        previousSessionId,
-        resolvedSessionId,
-        compacted: nativeResult.compacted,
-      });
-      deps.interactiveRunnerManager.setRunner("claude", sessionId, runner, thinkingMode, interactiveMode, selectedModel);
-      cleanupAfterRun("end");
-      return true;
-    }
-
-    if (cli === "opencode") {
-      const result = await withCompactionTimeout(runOpenCodeNativeContextCompactionWithDeps(deps, {
-        sessionId,
         tabId,
-        selectedModel,
-        cwd: cwd ?? null,
-      }));
-      deps.adoptSessionId(cli, result.sessionId, tabId);
-      deps.appendSystemMessage(buildOpenCodeCompactSuccessMessage(result.sessionId));
-      void logInfo("context-compact-opencode-native-complete", {
-        cli,
         sessionId,
-        resolvedSessionId: result.sessionId,
-        compacted: result.compacted,
-      });
-      cleanupAfterRun("end");
-      return true;
-    }
-
+        cwd,
+        activeConfigId,
+        selectedModel,
+        thinkingMode,
+        interactiveMode,
+        args,
+        command,
+        commandForRunner,
+        claudeEntrypoint,
+        messageTarget,
+      }, {
+        withCompactionTimeout,
+        setStopCurrentTurn: (stop) => {
+          stopCurrentTurn = stop;
+        },
+      })
+      : true;
     cleanupAfterRun("end");
-    return true;
+    return compacted;
   } catch (error) {
     if (deps.getActiveRunId() !== runId) {
       void logInfo("context-compact-command-stale-error-ignored", {
