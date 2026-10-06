@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-02",
+  "as_of": "2026-10-06",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -30,13 +30,17 @@
       "id": "plugin.chat_panel",
       "name": "AI 对话面板",
       "kind": "capability",
-      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。",
+      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。首次加载在支持 secondarySidebar 的版本默认使用辅助栏，旧版保留 Activity Bar 入口；沿用原容器和视图 ID，既有布局由 VS Code 恢复，不强制移动。",
       "status": "active",
-      "aliases": ["Webview", "聊天面板", "panel", "config panel"],
-      "implementation_paths": ["src/webview", "src/webview/panelFileActions.ts", "media/config/assets"],
+      "aliases": ["Webview", "聊天面板", "panel", "config panel", "辅助栏", "secondarySidebar"],
+      "implementation_paths": ["package.json", "src/webview", "src/webview/panelFileActions.ts", "media/config/assets"],
       "source_refs": [
-        {"path": "README.md", "anchor": "功能概览"},
+        {"path": "README.md", "anchor": "开始使用"},
         {"path": "ARCHITECTURE.md", "anchor": "Webview/UI 层"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.1 对话入口与基础导航"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "3.1 扩展入口层"},
+        {"path": "package.json", "anchor": "contributes.viewsContainers"},
+        {"path": "src/test/webview/panelViewLocation.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
         {"path": "src/webview/panelFileActions.ts", "anchor": "exportRunStreamRecordsToJsonl"}
       ]

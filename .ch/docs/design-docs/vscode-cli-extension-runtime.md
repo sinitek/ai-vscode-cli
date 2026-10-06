@@ -56,6 +56,8 @@ media/
 - 接收 Webview 消息并分发到 CLI、运行时 host、交互 Runner、配置服务
 - 将运行结果、trace、任务列表和状态变更回推给 Webview
 
+聊天容器位置由 `package.json#contributes.viewsContainers` 声明：`secondarySidebar` 必须排在 `activitybar` 前，二者使用相同的 `sinitekCliBridgePanel` ID、标题和图标。VS Code 1.104 及以上按声明顺序注册同 ID 容器一次，默认落在辅助栏；1.85–1.103 忽略不支持的 `secondarySidebar`，由 `activitybar` 保留原入口。此处顺序属于兼容性契约，不应按键名字母排序。保持原容器和视图 ID，让 VS Code 恢复用户已有布局；不通过内部移动命令、全局侧边栏配置或每次激活迁移覆盖用户选择。`autoOpenPanel` 只控制激活时是否打开面板，现有命令、状态栏和 Webview provider 不变。
+
 这里允许持有状态，但不应该把 CLI 协议细节、配置文件读写细节或具体 Webview DOM 逻辑塞进来。2026-08-29 的后端重构后，`src/extension.ts` 为 4993 行，定位为组合根：保留 activate/deactivate 生命周期、命令与视图注册、Webview/Graph/Loop/session/model/config 路由、提示运行总入口和跨 host 的停止/清理/trace 适配。
 
 提示运行的连续状态机已经从组合根下沉：

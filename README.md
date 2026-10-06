@@ -47,7 +47,9 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 ## 开始使用
 
 1. 先在本机安装并完成鉴权或配置至少一个 CLI：Codex、Claude 或 OpenCode。
-2. 在 VS Code 的 Activity Bar、状态栏或命令面板中打开 **Sinitek CLI Assistant**。
+2. 首次加载时，**Sinitek CLI Assistant** 默认在辅助栏打开（通常在右侧），也可通过状态栏或命令面板打开。
 3. 选择要使用的 CLI，输入提示词即可开始对话或创建任务。
+
+VS Code 1.104 及以上支持默认辅助栏位置；1.85–1.103 保留 Activity Bar 入口，可右键视图标题选择移动到辅助栏。已保存的视图位置继续由 VS Code 恢复，不会在启动时强制移动；关闭 `sinitek-cli-tools.autoOpenPanel` 后也不会自动展开面板。
 
 插件调用的是本机已安装的 CLI，不提供远程托管服务，也不替代各 CLI 自身的安装、鉴权和高级配置。当前版本不再支持 Gemini CLI。

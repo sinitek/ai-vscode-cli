@@ -1041,6 +1041,13 @@
       }
     },
     "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "sinitekCliBridgePanel",
+          "title": "%view.container.title%",
+          "icon": "media/logo.svg"
+        }
+      ],
       "activitybar": [
         {
           "id": "sinitekCliBridgePanel",
