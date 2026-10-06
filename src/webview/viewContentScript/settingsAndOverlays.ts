@@ -526,17 +526,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.historyRetentionDays.addEventListener("change", commitHistoryRetentionDays);
         elements.historyRetentionDays.addEventListener("blur", commitHistoryRetentionDays);
       }
-      if (elements.languageSelect) {
-        elements.languageSelect.addEventListener("change", (event) => {
-          const nextValue = event.target.value || "zh-CN";
-          state.locale = nextValue;
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "locale",
-            value: nextValue,
-          });
-        });
-      }
       if (elements.macTaskShell) {
         elements.macTaskShell.addEventListener("change", (event) => {
           const nextValue = event.target.value === "bash" ? "bash" : "zsh";

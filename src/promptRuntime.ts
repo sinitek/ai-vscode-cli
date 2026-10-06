@@ -3,7 +3,7 @@ import * as path from "path";
 import { expandHomePath } from "./shared/userHomePaths";
 import { getThinkingPromptPrefix, getThinkingPromptSuffix } from "./cli/config";
 import type { CliName, ThinkingMode } from "./cli/types";
-import { t, type AppLocale } from "./i18n";
+import { t } from "./i18n";
 import { buildLongTermMemoryPromptBlock, injectLongTermMemoryPrompt } from "./memory/memoryPrompt";
 import type { WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { buildWorkspaceMemoryRecallPack } from "./memory/memoryRecall";
@@ -307,7 +307,6 @@ export function maybeInjectLongTermMemoryForPromptWithDeps(
   deps: {
     runtimeSettings: MemoryRuntimeGateSettings;
     memoryPaths: WorkspaceMemoryPaths | null;
-    locale: AppLocale;
     getActiveEditorPromptContext: () => ActiveEditorPromptContext | null;
     onError: (error: unknown, paths: WorkspaceMemoryPaths) => void;
   }
@@ -323,7 +322,7 @@ export function maybeInjectLongTermMemoryForPromptWithDeps(
       prompt,
       focusHints: buildLongTermMemoryFocusHints(contextTags, deps.getActiveEditorPromptContext()),
     });
-    const memoryBlock = buildLongTermMemoryPromptBlock(recallPack, deps.locale);
+    const memoryBlock = buildLongTermMemoryPromptBlock(recallPack);
     return injectLongTermMemoryPrompt(modelPrompt, memoryBlock);
   } catch (error) {
     deps.onError(error, deps.memoryPaths);

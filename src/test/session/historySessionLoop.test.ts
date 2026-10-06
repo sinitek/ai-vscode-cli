@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { buildLoopSessionIdsByCli } from "../../loopTaskStore";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 
@@ -142,10 +142,9 @@ test("prefixes non-vibe history session titles with main and subtask markers", (
 
 test("removes the standalone Loop group chat recovery tab", () => {
   const html = buildWebviewStaticHtml({
-    locale: "zh-CN",
     cspSource: "self",
     nonce: "nonce",
-    i18n: WEBVIEW_I18N["zh-CN"],
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",

@@ -190,17 +190,12 @@ function formatUploadLimitBytes(bytes: number): string {
   return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }
 
-function isChineseLocale(): boolean {
-  return /^zh(?:-|$)/i.test(vscode.env.language || "");
-}
-
-function buildUploadLimitError(en: string, zh: string): string {
-  return isChineseLocale() ? zh : en;
+function buildUploadLimitError(message: string): string {
+  return message;
 }
 
 function buildTooManyFilesError(count: number): string {
   return buildUploadLimitError(
-    `Too many attachments: ${count} selected, maximum ${UPLOAD_MAX_FILES}.`,
     `附件数量过多：已选择 ${count} 个，最多 ${UPLOAD_MAX_FILES} 个。`
   );
 }
@@ -210,7 +205,6 @@ function buildFileTooLargeError(fileName: string, size: number): string {
   const sizeLabel = formatUploadLimitBytes(size);
   const maxLabel = formatUploadLimitBytes(UPLOAD_MAX_FILE_BYTES);
   return buildUploadLimitError(
-    `Attachment "${displayName}" is ${sizeLabel}; maximum per file is ${maxLabel}.`,
     `附件“${displayName}”大小为 ${sizeLabel}，单文件最大 ${maxLabel}。`
   );
 }

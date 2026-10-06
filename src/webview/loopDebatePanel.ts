@@ -3,7 +3,6 @@ import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
-import { resolveLocale, type AppLocale } from "../i18n";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
@@ -53,8 +52,7 @@ export class LoopDebateChatPanel {
   ) {}
 
   public show(state: LoopDebateChatPanelState): void {
-    const locale = resolveLocale();
-    const strings = getStrings(locale);
+    const strings = getStrings();
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "sinitek-cli-tools.loopDebateChat",
@@ -85,12 +83,10 @@ export class LoopDebateChatPanel {
     if (!this.panel) {
       return;
     }
-    const locale = resolveLocale();
-    this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings(locale));
+    this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings());
     this.panel.webview.html = buildLoopDebateChatPanelHtml(
       this.panel.webview,
       state,
-      locale,
       this.askThread,
     );
   }
@@ -129,16 +125,15 @@ export class LoopDebateChatPanel {
 export function buildLoopDebateChatPanelHtml(
   webview: vscode.Webview,
   state: LoopDebateChatPanelState,
-  locale: AppLocale,
   askThread: LoopAskThread = createEmptyLoopAskThread(),
 ): string {
   const nonce = getNonce();
-  const strings = getStrings(locale);
+  const strings = getStrings();
   const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
   const heading = state.loopPlus ? strings.titleLoopPlus : strings.title;
 
   return `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -204,8 +199,8 @@ ${renderPanelDialog({
       })}
       <div class="layout">
         <aside class="sidebar">
-          ${renderTaskPanel(state, strings, locale)}
-          ${renderRosterPanel(state, strings, locale)}
+          ${renderTaskPanel(state, strings)}
+          ${renderRosterPanel(state, strings)}
         </aside>
         <main class="main">
           ${renderTimeline(state, transcript.segments, strings)}
@@ -1017,7 +1012,6 @@ ${orchestratorClarificationDialogScript()}
 function renderTaskPanel(
   state: LoopDebateChatPanelState,
   strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
 ): string {
   const currentRound = state.loopPlus
     ? ""
@@ -1028,7 +1022,7 @@ function renderTaskPanel(
       ${renderMetaRow(strings.status, state.task.status)}
       ${renderMetaRow(strings.cli, state.task.cli)}
       ${currentRound}
-      ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt, locale))}
+      ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt))}
     </div>
   </section>
   ${renderLoopPlusPanels(state, strings)}`;
@@ -1204,14 +1198,13 @@ function formatParticipantStatus(
 function renderRosterPanel(
   state: LoopDebateChatPanelState,
   strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
 ): string {
   if (state.rounds.length === 0) {
     return "";
   }
   const debateRound = findLatestPanelRound(state.rounds, "debate");
   const moderator = state.mode === "debate" && debateRound
-    ? renderModeratorMember(debateRound, strings, locale)
+    ? renderModeratorMember(debateRound, strings)
     : "";
   const rosterParticipants = collectRosterParticipants(state.rounds);
   const participants = rosterParticipants.map((participant) => `<div class="member">
@@ -1219,7 +1212,7 @@ function renderRosterPanel(
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
       <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${participant.stance ? ` · ${escapeHtml(participant.stance)}` : ""}</div>
-      ${renderMemberLastStarted(memberLastStartedAt(participant), strings, locale)}
+      ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
   </div>`).join("");
   const consensusRound = state.rounds.slice().reverse().find((round) => Boolean(round.consensusSummary));
@@ -1288,16 +1281,14 @@ function memberLastStartedAt(participant: LoopDebateChatPanelParticipant): numbe
 function renderMemberLastStarted(
   startedAt: number | undefined,
   strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
 ): string {
-  const formatted = formatTimestamp(startedAt, locale);
+  const formatted = formatTimestamp(startedAt);
   return `<div class="member-meta" data-member-last-started="${escapeAttribute(formatted)}">${escapeHtml(strings.lastStarted)}：${escapeHtml(formatted || strings.notStarted)}</div>`;
 }
 
 function renderModeratorMember(
   round: LoopDebateChatPanelRound,
   strings: LoopDebateChatPanelStrings,
-  locale: AppLocale,
 ): string {
   const decisionStartedAt = round.moderatorDecisions
     .slice()
@@ -1309,7 +1300,7 @@ function renderModeratorMember(
     <span class="avatar">${escapeHtml(getAvatarLabel(strings.moderator, "M"))}</span>
     <div>
       <div class="member-name">${escapeHtml(strings.moderator)}</div>
-      ${renderMemberLastStarted(startedAt, strings, locale)}
+      ${renderMemberLastStarted(startedAt, strings)}
     </div>
   </div>`;
 }
@@ -1638,11 +1629,11 @@ function getAvatarLabel(title: string, fallback: string): string {
   return first.toUpperCase();
 }
 
-function formatTimestamp(value: number | undefined, locale: AppLocale): string {
+function formatTimestamp(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return "";
   }
-  return new Date(value).toLocaleString(locale === "zh-CN" ? "zh-CN" : "en-US");
+  return new Date(value).toLocaleString("zh-CN");
 }
 
 function formatTemplate(template: string, params: Record<string, string | number>): string {

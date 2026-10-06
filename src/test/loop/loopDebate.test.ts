@@ -53,10 +53,8 @@ test("normalizes loop execution mode with legacy-compatible default", () => {
 });
 
 test("uses requirement and question labels for Loop group chat actions", () => {
-  assert.equal(getStrings("zh-CN").supplementTask, "补充需求");
-  assert.equal(getStrings("en").supplementTask, "Add requirement");
-  assert.equal(getStrings("zh-CN").askMainModel, "我要提问");
-  assert.equal(getStrings("en").askMainModel, "Ask a question");
+  assert.equal(getStrings().supplementTask, "补充需求");
+  assert.equal(getStrings().askMainModel, "我要提问");
 });
 
 test("parses supplemental requirements as user chat messages", () => {

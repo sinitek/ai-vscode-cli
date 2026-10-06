@@ -11,7 +11,7 @@ import {
   type ChatSearchDomNode,
 } from "../../webview/chatTranscriptSearch";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CHAT_SEARCH } from "../../webview/viewContentScript/chatSearch";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
@@ -502,14 +502,13 @@ test("keeps the search shell, theme tokens, and rerender hook together", () => {
     "chatSearchClose",
     "chatSearchCountAria",
   ]) {
-    assert.equal(typeof WEBVIEW_I18N.en[key as keyof typeof WEBVIEW_I18N.en], "string");
-    assert.equal(typeof WEBVIEW_I18N["zh-CN"][key as keyof typeof WEBVIEW_I18N["zh-CN"]], "string");
+    assert.equal(typeof WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS], "string");
+    assert.equal(typeof WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS], "string");
   }
   const html = buildWebviewStaticHtml({
-    locale: "zh-CN",
     cspSource: "vscode-resource://test",
     nonce: "nonce",
-    i18n: getWebviewStrings("zh-CN"),
+    i18n: getWebviewStrings(),
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { resolveLocale, t } from "../i18n";
+import { t } from "../i18n";
 
 const ASSETS_DIR = ["media", "config", "assets"];
 
@@ -249,192 +249,6 @@ body {
 }
 `;
 
-const CONFIG_TRANSLATIONS_EN: Record<string, string> = {
-  "携宁 CLI 配置": "Sinitek CLI Config",
-  "添加配置": "Add Config",
-  "更新配置": "Update Config",
-  "激活": "Activate",
-  "保存": "Save",
-  "删除配置": "Delete Config",
-  "重命名": "Rename",
-  "重命名配置": "Rename Config",
-  "确认删除": "Confirm Delete",
-  "确认": "Confirm",
-  "取消": "Cancel",
-  "导出": "Export",
-  "导入": "Import",
-  "导出配置": "Export Configs",
-  "导入配置": "Import Configs",
-  "全选": "Select All",
-  "一键导入": "Import All",
-  "一键检测健康": "Check Health",
-  "一键启用": "Enable All",
-  "一键禁用": "Disable All",
-  "删除成功": "Deleted successfully",
-  "重命名成功": "Renamed successfully",
-  "保存成功": "Saved successfully",
-  "已更新当前激活的配置": "Updated the active config",
-  "已添加": "Added",
-  "技能": "Skills",
-  "Claude 技能管理": "Claude Skills",
-  "OpenCode 技能管理": "OpenCode Skills",
-  "Codex 技能管理": "Codex Skills",
-  "健康": "Healthy",
-  "不健康": "Unhealthy",
-  "检测中": "Checking",
-  "未知": "Unknown",
-  "未安装": "Not installed",
-  "添加": "Add",
-  "打开官网": "Open Website",
-  "官网/注册": "Website / Sign Up",
-  "如未注册，请先前往官网完成注册或创建 API Key，再填写以下环境变量。": "If needed, open the official site to sign up or create an API key before filling in the environment variables below.",
-  "注册地址": "Registration URL",
-  "卸载": "Remove",
-  "复制配置": "Copy Config",
-  "复制失败，请手动复制": "Copy failed. Please copy manually.",
-  "启动命令": "Run Command",
-  "安装命令": "Install Command",
-  "MCP 市场": "MCP Marketplace",
-  "发现并添加常用的 Model Context Protocol (MCP) 服务器到您的配置中。": "Discover and add common Model Context Protocol (MCP) servers to your configs.",
-  "暂无配置": "No configs",
-  "暂无配置可导出": "No configs to export",
-  "请从左侧选择一个配置": "Select a config from the left.",
-  "请先选择一个配置": "Please select a config first.",
-  "请选择要导出的配置": "Select configs to export.",
-  "请选择导出的 JSON 文件进行导入": "Select an exported JSON file to import.",
-  "打开下载文件夹": "Open downloads folder",
-  "导出已触发下载，请检查浏览器下载目录": "Export triggered. Check your downloads folder.",
-  "没有可导入的配置": "No configs to import.",
-  "配置名称不能为空": "Config name cannot be empty.",
-  "配置名称未改变": "Config name unchanged.",
-  "添加成功": "Added successfully.",
-  "配置未填写": "Config is empty.",
-  "需配置环境变量": "Environment variables required.",
-  "健康检查": "Health Check",
-  "MCP 健康检测完成": "MCP health check completed.",
-  "环境变量配置": "Environment Variables",
-  "保存并安装": "Save and Install",
-  "请填写环境变量": "Please fill in the environment variables.",
-  "必填": "Required",
-  "可编辑默认值": "Editable default",
-  "查看错误": "View Error",
-  "健康检查详情": "Health Check Details",
-  "失败原因": "Failure Reason",
-  "关闭": "Close",
-  "关闭配置弹窗": "Close Config Panel",
-  "查看范例": "View example",
-  "请输入配置名称": "Enter config name",
-  "请输入新的配置名称": "Enter new config name",
-  "请输入JSON配置": "Enter JSON config",
-  "请输入TOML配置": "Enter TOML config",
-  "技能列表加载中...": "Loading skills list...",
-  "Skills 加载中...": "Loading Skills...",
-  "未检测到 Skills，请先安装到 ~/.claude/skills": "No skills detected. Install to ~/.claude/skills first.",
-  "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills": "No skills detected. Install to ~/.agents/skills or workspace .codex/skills first.",
-  "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills": "No skills detected. Install to ~/.opencode/skills or workspace .opencode/skills first.",
-  "获取 Claude Skills 失败": "Failed to fetch Claude skills.",
-  "获取 Codex Skills 失败": "Failed to fetch Codex skills.",
-  "获取 OpenCode Skills 失败": "Failed to fetch OpenCode skills.",
-  "获取官方 Skills 失败": "Failed to fetch bundled official packages.",
-  "更新技能失败": "Failed to update skills.",
-  "内置官方 Skills": "Bundled Official Skills",
-  "已安装 Skills": "Installed Skills",
-  "安装 Skills": "Install Skills",
-  "内置官方 GitHub 快照，可直接安装到用户 Skills 目录": "Bundled GitHub snapshot; install directly into the user skills directory.",
-  "直接安装": "Install",
-  "安装中...": "Installing...",
-  "已安装": "Installed",
-  "暂无内置官方 Skills": "No bundled official packages.",
-  "安装 Skill 失败": "Failed to install skill.",
-  "更新 Skill 失败": "Failed to update skill.",
-  "卸载 Skill 失败": "Failed to remove skill.",
-  "Skill 已存在": "Skill already exists.",
-  "官方来源": "Official Source",
-  "安装到": "Install To",
-  "更新中...": "Updating...",
-  "卸载中...": "Removing...",
-  "最新": "Up to Date",
-  "可更新": "Update Available",
-  "版本未知": "Version Unknown",
-  "当前版本": "Current Version",
-  "最新版本": "Latest Version",
-  "加载 MCP 市场数据失败": "Failed to load MCP marketplace data.",
-  "添加 MCP 失败": "Failed to add MCP.",
-  "安装 MCP 失败": "Failed to install MCP.",
-  "卸载 MCP 失败": "Failed to remove MCP.",
-  "JSON格式不正确": "Invalid JSON format.",
-  "auth.json格式不正确": "Invalid auth.json format.",
-  "当前配置不是有效的 JSON，无法自动添加 MCP": "Current config is not valid JSON; cannot auto-add MCP.",
-  "当前配置不是有效的 TOML，无法自动添加 MCP": "Current config is not valid TOML; cannot auto-add MCP.",
-  "AI与智能": "AI & Intelligence",
-  "文件与数据": "Files & Data",
-  "开发工具": "Developer Tools",
-  "基础设施": "Infrastructure",
-  "网络与浏览器": "Web & Browser",
-  "生产力工具": "Productivity",
-  "其他": "Other",
-  "已导入范例内容，请确认后保存": "Example content imported. Please review and save.",
-  "当前旧值（仅保留 JSON 源码）": "Legacy value (preserved in JSON)",
-  "复杂旧值（仅保留 TOML 源码）": "Complex legacy value (preserved in TOML)",
-  "运行与模型": "Runtime and models",
-  "模型候选仅来自当前配置；OpenCode 官方字段 model/small_model 作为底层兼容字段保存，编排使用主模型/子模型。": "Model suggestions come only from this config. OpenCode fields model/small_model are saved as lower-level compatibility fields; orchestration uses main/subtask models.",
-  "主模型 model": "Main model",
-  "子模型 small_model": "Subtask model",
-  "共享设置 share": "Sharing mode",
-  "自动更新 autoupdate": "Auto-update",
-  "日志级别 logLevel": "Log level",
-  "快照 snapshot": "Snapshot",
-  "开启": "Enabled",
-  "禁用": "Disabled",
-  "自动压缩 autoCompactEnabled": "Automatic compaction",
-  "自动记忆 autoMemoryEnabled": "Automatic memory",
-  "文件检查点 fileCheckpointingEnabled": "File checkpointing",
-  "编辑模式 editorMode": "Editor mode",
-  "视图模式 viewMode": "View mode",
-  "终端界面 tui": "Terminal UI mode",
-  "详细输出 verbose": "Verbose output",
-  "为 Codex 追加 developer instructions": "Add developer instructions for Codex",
-  "可输入或多选当前 provider/model 的思考力度；首项作为默认 reasoningEffort。": "Enter or select multiple efforts from the current provider/model; the first is the default reasoningEffort.",
-  "bypassPermissions 会跳过权限确认，仅应在受控且可信的环境中使用。": "bypassPermissions skips permission prompts; use it only in controlled, trusted environments.",
-};
-
-const CONFIG_TRANSLATION_PATTERNS_EN = [
-  { pattern: "^已导出到[:：]?\\s*(.+)$", replace: "Exported to: $1" },
-  { pattern: "^已导入\\s*(\\d+)\\s*项配置$", replace: "Imported $1 configs" },
-  { pattern: "^准备导入\\s*(\\d+)\\s*项配置$", replace: "Ready to import $1 configs" },
-  { pattern: "^导出\\s*\\((\\d+)\\)$", replace: "Export ($1)" },
-  { pattern: "^导入\\s*\\((\\d+)\\)$", replace: "Import ($1)" },
-  { pattern: "^已选择\\s*(\\d+)$", replace: "Selected $1" },
-  { pattern: "^已应用配置[:：]?\\s*(.+)$", replace: "Applied config: $1" },
-  { pattern: "^应用配置失败[:：]?\\s*(.+)$", replace: "Failed to apply config: $1" },
-  { pattern: "^已复制配置[:：]?\\s*(.+)$", replace: "Copied config: $1" },
-  { pattern: "^复制失败[:：]?\\s*(.+)$", replace: "Copy failed: $1" },
-  { pattern: "^添加失败[:：]?\\s*(.+)$", replace: "Add failed: $1" },
-  { pattern: "^删除失败[:：]?\\s*(.+)$", replace: "Delete failed: $1" },
-  { pattern: "^重命名失败[:：]?\\s*(.+)$", replace: "Rename failed: $1" },
-  { pattern: "^保存失败[:：]?\\s*(.+)$", replace: "Save failed: $1" },
-  { pattern: "^导入失败[:：]?\\s*(.+)$", replace: "Import failed: $1" },
-  { pattern: "^已添加 MCP[:：]?\\s*(.+)$", replace: "Added MCP: $1" },
-  { pattern: "^已安装 MCP[:：]?\\s*(.+)$", replace: "Installed MCP: $1" },
-  { pattern: "^已卸载 MCP[:：]?\\s*(.+)$", replace: "Removed MCP: $1" },
-  { pattern: "^请填写环境变量[:：]?\\s*(.+)$", replace: "Please fill in environment variables: $1" },
-  { pattern: "^检测 MCP 健康状态失败[:：]?\\s*(.+)$", replace: "Failed to check MCP health: $1" },
-  { pattern: "^检测命令失败[:：]?\\s*(.+)$", replace: "Health command failed: $1" },
-  { pattern: "^已启用\\s*(\\d+)\\s*/\\s*(\\d+)$", replace: "$1 enabled / $2 total" },
-  { pattern: "^官方 Skills\\s*(\\d+)$", replace: "Official Skills $1" },
-  { pattern: "^健康检查[:：]?\\s*(.+)$", replace: "Health check: $1" },
-  { pattern: "^MCP Server (.+) 已存在，将被覆盖$", replace: "MCP Server $1 already exists and will be overwritten." },
-  { pattern: "^已保存，但更新激活配置失败[:：]?\\s*(.+)$", replace: "Saved, but failed to update active config: $1" },
-  { pattern: "^配置文件路径[:：]?\\s*(.+)$", replace: "Config file path: $1" },
-  { pattern: "^已安装 Skill[:：]?\\s*(.+)$", replace: "Installed skill: $1" },
-  { pattern: "^已更新 Skill[:：]?\\s*(.+)$", replace: "Updated skill: $1" },
-  { pattern: "^已卸载 Skill[:：]?\\s*(.+)$", replace: "Removed skill: $1" },
-  { pattern: "^安装 Skill 失败[:：]?\\s*(.+)$", replace: "Failed to install skill: $1" },
-  { pattern: "^更新 Skill 失败[:：]?\\s*(.+)$", replace: "Failed to update skill: $1" },
-  { pattern: "^卸载 Skill 失败[:：]?\\s*(.+)$", replace: "Failed to remove skill: $1" },
-  { pattern: "^Skill 已存在[:：]?\\s*(.+)$", replace: "Skill already exists: $1" }
-] as const;
-
 function getNonce(): string {
   const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let text = "";
@@ -458,7 +272,6 @@ export function getConfigViewHtml(
   extensionUri: vscode.Uri
 ): string {
   const nonce = getNonce();
-  const locale = resolveLocale();
   const downloadsDir = path.join(os.homedir(), "Downloads");
   const assetsFsPath = path.join(extensionUri.fsPath, ...ASSETS_DIR);
   const jsFile = findAssetFile(assetsFsPath, ".js");
@@ -490,7 +303,7 @@ export function getConfigViewHtml(
     .toString();
 
   return `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -518,77 +331,10 @@ export function getConfigViewHtml(
       const vscode = acquireVsCodeApi();
       const configBase = ${JSON.stringify(configBaseUri)};
       const downloadsDir = ${JSON.stringify(downloadsDir)};
-      const configLocale = ${JSON.stringify(locale)};
-      const configTranslations = ${JSON.stringify(CONFIG_TRANSLATIONS_EN)};
-      const configTranslationPatterns = ${JSON.stringify(CONFIG_TRANSLATION_PATTERNS_EN)};
       try {
         history.replaceState(null, "", configBase + "/index.html");
       } catch (error) {
         // ignore
-      }
-
-      function translateConfigText(value) {
-        if (configLocale !== "en" || !value) {
-          return value;
-        }
-        const trimmed = value.trim();
-        if (!trimmed) {
-          return value;
-        }
-        if (Object.prototype.hasOwnProperty.call(configTranslations, trimmed)) {
-          const translated = configTranslations[trimmed];
-          return value.replace(trimmed, translated);
-        }
-        for (const rule of configTranslationPatterns) {
-          const regex = new RegExp(rule.pattern);
-          if (regex.test(trimmed)) {
-            const translated = trimmed.replace(regex, rule.replace);
-            return value.replace(trimmed, translated);
-          }
-        }
-        return value;
-      }
-
-      function translateConfigElement(element) {
-        const attrNames = ["title", "placeholder", "aria-label"];
-        attrNames.forEach((attr) => {
-          const current = element.getAttribute(attr);
-          if (!current) {
-            return;
-          }
-          const translated = translateConfigText(current);
-          if (translated !== current) {
-            element.setAttribute(attr, translated);
-          }
-        });
-      }
-
-      function translateConfigNode(node) {
-        if (!node) {
-          return;
-        }
-        if (node.nodeType === Node.TEXT_NODE) {
-          const current = node.nodeValue || "";
-          const translated = translateConfigText(current);
-          if (translated !== current) {
-            node.nodeValue = translated;
-          }
-          return;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return;
-        }
-        const element = node;
-        translateConfigElement(element);
-        Array.from(element.childNodes).forEach(translateConfigNode);
-      }
-
-      function applyConfigTranslations() {
-        if (configLocale !== "en") {
-          return;
-        }
-        translateConfigNode(document.body);
-        document.title = translateConfigText(document.title);
       }
 
       const pendingRequests = new Map();
@@ -763,18 +509,6 @@ export function getConfigViewHtml(
         subtree: true,
         characterData: true,
       });
-
-      if (configLocale === "en") {
-        applyConfigTranslations();
-        const i18nObserver = new MutationObserver(() => {
-          applyConfigTranslations();
-        });
-        i18nObserver.observe(document.body, {
-          childList: true,
-          subtree: true,
-          characterData: true,
-        });
-      }
 
       window.addEventListener("message", (event) => {
         const data = event.data;

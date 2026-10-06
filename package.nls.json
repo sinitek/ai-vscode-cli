@@ -19,7 +19,6 @@
   "config.autoOpenPanel.description": "Open the CLI Bridge panel automatically on activation.",
   "config.rememberSelectedCli.description": "Persist the selected CLI as the default CLI.",
   "config.debug.description": "Enable debug logging for CLI stdin/stdout/stderr.",
-  "config.locale.description": "Extension UI language. Defaults to Simplified Chinese; Auto follows the VS Code display language.",
   "config.macTaskShell.description": "macOS shell used to run AI chat tasks (zsh or bash).",
   "config.disableMarketplaceUpdateCheckInDev.description": "Disable VS Code marketplace update checks while running this extension in development mode.",
   "config.thinkingMode.description": "Global thinking mode for all CLIs. The extension exposes ultra as a product value; Codex and Claude compatibility depends on the installed CLI, while OpenCode uses dedicated model variants.",

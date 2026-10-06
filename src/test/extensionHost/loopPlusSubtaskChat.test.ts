@@ -52,22 +52,22 @@ test("Loop+ parent chat shows the communication file when a subtask starts and f
     phase: "started",
     assistantContent: null,
     runStatus: undefined,
-  }), (key, params) => t(key, params, "zh-CN"));
+  }), (key, params) => t(key, params));
   assert.match(started, /Loop 子任务已启动：实现执行群聊/u);
   assert.ok(started.includes(`沟通文件：${filePath}`));
 
-  const finished = buildLoopPlusSubtaskParentMessage(notice(), (key, params) => t(key, params, "zh-CN"));
+  const finished = buildLoopPlusSubtaskParentMessage(notice(), (key, params) => t(key, params));
   assert.match(finished, /Loop\+ 子任务已结束：实现执行群聊/u);
   assert.match(finished, /运行结果：已完成/u);
   assert.ok(finished.includes(`沟通文件：${filePath}`));
 
-  const english = buildLoopPlusSubtaskParentMessage(notice({
+  const chinese = buildLoopPlusSubtaskParentMessage(notice({
     communicationFile: "  ",
-  }), (key, params) => t(key, params, "en"));
-  assert.match(english, /Loop\+ subtask finished: 实现执行群聊/u);
-  assert.match(english, /Result: completed/u);
-  assert.equal(english.includes("Communication file"), false);
-  assert.equal(english.includes("沟通文件"), false);
+  }), (key, params) => t(key, params));
+  assert.match(chinese, /Loop\+ 子任务已结束：实现执行群聊/u);
+  assert.match(chinese, /运行结果：已完成/u);
+  assert.equal(chinese.includes("Communication file"), false);
+  assert.equal(chinese.includes("沟通文件"), false);
 });
 
 test("Loop+ join chat records the communication file before the subtask finishes", () => {

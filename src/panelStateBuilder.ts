@@ -5,7 +5,7 @@ import {
   getMacTaskShell,
 } from "./cli/config";
 import { isInteractiveSupported } from "./cli/config";
-import { getLocaleSetting, t, type AppLocale } from "./i18n";
+import { t } from "./i18n";
 import { CLI_LIST, CliName, MacTaskShell, normalizeLoopExecutionMode } from "./cli/types";
 import { type LoopTaskRole } from "./promptRunState";
 import {
@@ -136,7 +136,6 @@ export type PanelStateBuilderDeps = {
   getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
   buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
   getDebugLogging: typeof getDebugLogging;
-  getLocaleSetting: typeof getLocaleSetting;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
   openCodeThinking: PanelState["openCodeThinking"];
@@ -241,7 +240,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
     loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),
     debug: deps.getDebugLogging(),
-    locale: deps.getLocaleSetting(),
     isMac: deps.processPlatform === "darwin",
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,
     thinkingMode: deps.getEffectiveThinkingMode(deps.currentCli, selectedModel),
@@ -357,7 +355,6 @@ export function buildPromptWithAutoContext(
 export type LongTermMemoryPromptDeps = {
   runtimeSettings: MemoryRuntimeGateSettings;
   memoryPaths: WorkspaceMemoryPaths | null;
-  locale: AppLocale;
   logError: (event: string, payload?: unknown) => void;
 };
 
@@ -370,7 +367,6 @@ export function maybeInjectLongTermMemoryForPromptWithEditorContext(
   return maybeInjectLongTermMemoryForPromptWithDeps(prompt, modelPrompt, contextTags, {
     runtimeSettings: deps.runtimeSettings,
     memoryPaths: deps.memoryPaths,
-    locale: deps.locale,
     getActiveEditorPromptContext,
     onError: (error, paths) => deps.logError("long-term-memory-inject-error", {
       error: String(error),

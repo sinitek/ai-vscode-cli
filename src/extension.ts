@@ -84,7 +84,7 @@ import {
 } from "./cli/opencodeconfigmodels";
 import { isCodeGraphWorkspaceIndexed } from "./cli/codegraphStatus";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
-import { getLocaleSetting, resolveLocale, t } from "./i18n";
+import { t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import { GraphRunPanel } from "./webview/graphRunPanel";
 import {
@@ -348,7 +348,6 @@ import {
   resolveGlobalHumanInteractionEnabled,
   resolveGlobalMultiAgentEnabled,
   resolveHumanInteractionTimeoutMinutes,
-  type ToolSettingsLocale,
   type ToolSettingsState,
   writeToolSettings,
 } from "./toolSettings";
@@ -729,8 +728,7 @@ const CLI_INSTALL_TERMINAL_PREFIX = "CLI Install";
 const CODEGRAPH_INSTALL_TERMINAL_NAME = "CodeGraph Install";
 const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARCHITECTURE.md";
 const UNNAMED_SESSION_LABELS = new Set([
-  t("session.unnamed", undefined, "zh-CN"),
-  t("session.unnamed", undefined, "en"),
+  t("session.unnamed"),
 ]);
 const prepareOpenCodeSubagentRuntime = createOpenCodeSubagentRuntimePreparer({
   getOpenCodeCliArgs: () => getCliArgs("opencode"),
@@ -1368,7 +1366,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
         {
           runtimeSettings: buildLongTermMemoryRuntimeSettings(),
           memoryPaths: getActiveWorkspaceMemoryPaths(),
-          locale: resolveLocale(),
           logError: (event, payload) => { void logError(event, payload); },
         },
       );
@@ -1478,7 +1475,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     setWorkspaceLoopExecutionModeForCli,
     loadModelStore: () => { modelStore = loadModelStore(); },
     normalizeLoopMaxRounds,
-    normalizeToolSettingsLocale,
     isCliName,
     updateStoredToolSettings,
     isMacTaskShell,
@@ -1497,7 +1493,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       maybeInjectLongTermMemoryForPromptWithEditorContext(displayPrompt, modelPrompt, contextTags, {
         runtimeSettings: buildLongTermMemoryRuntimeSettings(),
         memoryPaths: getActiveWorkspaceMemoryPaths(),
-        locale: resolveLocale(),
         logError: (event, payload) => void logError(event, payload),
       })
     ),
@@ -1587,7 +1582,6 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getGlobalLoopSubtaskMaxThinkingMode,
     buildWorkspaceLoopExecutionModeByCli,
     getDebugLogging,
-    getLocaleSetting,
     getMacTaskShell,
     getEffectiveThinkingMode,
     openCodeThinking: openCodeThinkingState,
@@ -2194,10 +2188,6 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   scheduledTaskScheduler?.notifyChanged();
 }
 
-function normalizeToolSettingsLocale(value: unknown): ToolSettingsLocale | null {
-  return value === "zh-CN" || value === "en" || value === "auto" ? value : null;
-}
-
 function getExplicitGlobalConfigValue<T>(key: string): T | undefined {
   const config = vscode.workspace.getConfiguration("sinitek-cli-tools");
   const inspected = config.inspect<T>(key);
@@ -2296,12 +2286,6 @@ function migrateLegacyToolSettingsFromVsCodeConfig(): void {
     && typeof humanInteractionEnabled === "boolean"
   ) {
     next.humanInteractionEnabled = resolveGlobalHumanInteractionEnabled({ humanInteractionEnabled });
-    changed = true;
-  }
-
-  const locale = normalizeToolSettingsLocale(getExplicitGlobalConfigValue<unknown>("locale"));
-  if (!current.locale && locale) {
-    next.locale = locale;
     changed = true;
   }
 
@@ -3103,7 +3087,6 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
 
 
 const graphMessagesHost = createGraphMessagesHost({
-  resolveLocale,
   getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId),
   getLoopMessagesForTarget,
   appendSystemMessageForLoop,
@@ -4008,17 +3991,9 @@ function stopOtherRunsExceptTab(tabId: string | null): void {
 
 function buildOpenCodeMissingFinalOutputMessage(statusText?: string | null): string {
   const status = statusText && statusText.trim() ? statusText.trim() : null;
-  return resolveLocale(getLocaleSetting()).startsWith("zh")
-    ? (
-        status
-          ? `OpenCode 已成功退出，但没有返回助手回答。最后状态：${status}`
-          : "OpenCode 已成功退出，但没有返回助手回答。请检查 OpenCode provider/model 配置，或运行 `opencode run --format json` 验证。"
-      )
-    : (
-        status
-          ? `OpenCode exited successfully, but did not return an assistant answer. Last status: ${status}`
-          : "OpenCode exited successfully, but did not return an assistant answer. Check the OpenCode provider/model config or run `opencode run --format json` to verify it."
-      );
+  return status
+    ? `OpenCode 已成功退出，但没有返回助手回答。最后状态：${status}`
+    : "OpenCode 已成功退出，但没有返回助手回答。请检查 OpenCode provider/model 配置，或运行 `opencode run --format json` 验证。";
 }
 
 function buildOpenCodeMissingFinalConclusionMessage(output: ReturnType<typeof parseOpenCodeRunOutput>): string {
@@ -4026,9 +4001,7 @@ function buildOpenCodeMissingFinalConclusionMessage(output: ReturnType<typeof pa
     return output.errorText;
   }
   if (output.finalText?.trim()) {
-    return resolveLocale(getLocaleSetting()).startsWith("zh")
-      ? "OpenCode 已返回助手答复，但正文未包含 `[final_answer]`，因此未通过严格最终答复判定。"
-      : "OpenCode returned an assistant reply, but it did not contain `[final_answer]`, so strict final-reply detection rejected it.";
+    return "OpenCode 已返回助手答复，但正文未包含 `[final_answer]`，因此未通过严格最终答复判定。";
   }
   return buildOpenCodeMissingFinalOutputMessage(output.statusText);
 }

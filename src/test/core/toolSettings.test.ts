@@ -135,12 +135,10 @@ test("preserves long-term memory false when saving unrelated tool settings", () 
   });
   const saved = normalizeToolSettings({
     ...stored,
-    locale: "zh-CN",
   });
 
   assert.deepEqual(saved, {
     debug: false,
-    locale: "zh-CN",
     longTermMemoryEnabled: false,
   });
 });

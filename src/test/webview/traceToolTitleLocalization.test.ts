@@ -1,7 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 function extractFunctionSource(source: string, functionName: string): string {
@@ -23,20 +23,20 @@ function extractFunctionSource(source: string, functionName: string): string {
   throw new Error(`Unterminated ${functionName}`);
 }
 
-function buildToolTitleResolver(locale: "en" | "zh-CN") {
+function buildToolTitleResolver() {
   const functionSource = extractFunctionSource(
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
     "getLocalizedToolTitle",
   );
-  const strings = WEBVIEW_I18N[locale];
+  const strings = WEBVIEW_STRINGS;
   return new Function(
     "t",
     `${functionSource}; return getLocalizedToolTitle;`,
-  )((key: keyof typeof WEBVIEW_I18N.en) => strings[key]) as (toolName: string) => string;
+  )((key: keyof typeof WEBVIEW_STRINGS) => strings[key]) as (toolName: string) => string;
 }
 
-test("localizes common OpenCode tool bubble titles in Chinese", () => {
-  const resolveTitle = buildToolTitleResolver("zh-CN");
+test("renders common OpenCode tool bubble titles in Chinese", () => {
+  const resolveTitle = buildToolTitleResolver();
 
   assert.equal(resolveTitle("read"), "读取文件");
   assert.equal(resolveTitle("grep"), "搜索文本");
@@ -47,12 +47,12 @@ test("localizes common OpenCode tool bubble titles in Chinese", () => {
   assert.equal(resolveTitle("webfetch"), "获取网页");
 });
 
-test("uses English labels and preserves unknown tool names", () => {
-  const resolveTitle = buildToolTitleResolver("en");
+test("preserves unknown tool names", () => {
+  const resolveTitle = buildToolTitleResolver();
 
-  assert.equal(resolveTitle("TodoWrite"), "Update Task List");
+  assert.equal(resolveTitle("TodoWrite"), "更新任务列表");
   assert.equal(resolveTitle("custom_tool"), "custom_tool");
-  assert.equal(resolveTitle(""), "tool");
+  assert.equal(resolveTitle(""), "工具");
   assert.match(
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
     /title:\s*getLocalizedToolTitle\(toolName\)/,

@@ -313,11 +313,25 @@
     },
     {
       "id": "plugin.rule.i18n_required",
-      "name": "新增修改功能必须支持国际化",
-      "description": "本插件支持中英文；新增或修改用户可见功能时必须同步处理国际化文案。",
-      "status": "active",
+      "name": "旧版用户可见功能国际化规则",
+      "description": "历史规则：插件曾提供中英文界面，并要求新增或修改用户可见功能时同步处理国际化文案；当前已由固定简体中文界面规则替代。",
+      "status": "historical",
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [{"path": "AGENTS.md", "anchor": "开发注意事项"}]
+    },
+    {
+      "id": "plugin.rule.ui_fixed_simplified_chinese",
+      "name": "插件界面固定简体中文",
+      "description": "用户可见的插件界面固定使用简体中文，工具设置不提供语言切换或 locale 配置；CLI 输出、用户提示词和模型回答保持原始内容。新增或修改界面时直接维护中文文案，不新增语言运行时分支。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "README.md", "anchor": "开始使用"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.9 稳定性与可运维性"},
+        {"path": "src/webview/viewContentStrings.ts"},
+        {"path": "src/webview/configView.ts"},
+        {"path": "src/toolSettings.ts"}
+      ]
     },
     {
       "id": "plugin.rule.chat_complete_json_tree",
@@ -559,7 +573,7 @@
         {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
-        {"path": "src/webview/viewContentI18n.ts"}
+        {"path": "src/webview/viewContentStrings.ts"}
       ]
     },
     {

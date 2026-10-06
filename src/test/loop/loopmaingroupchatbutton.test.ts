@@ -2,7 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 
@@ -96,10 +96,9 @@ function buildHarness() {
 
 test("places the persistent group-chat button in the bottom status row", () => {
   const html = buildWebviewStaticHtml({
-    locale: "zh-CN",
     cspSource: "self",
     nonce: "nonce",
-    i18n: WEBVIEW_I18N["zh-CN"],
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",

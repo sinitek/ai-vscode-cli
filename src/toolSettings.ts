@@ -8,8 +8,6 @@ import {
   type LoopSubtaskMaxThinkingMode,
 } from "./loopSubtaskThinking";
 
-export type ToolSettingsLocale = "auto" | "zh-CN" | "en";
-
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
 export const HISTORY_RETENTION_DAYS_MAX = 3650;
@@ -30,7 +28,6 @@ export type ToolSettingsState = {
   loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
-  locale?: ToolSettingsLocale;
   macTaskShell?: MacTaskShell;
   /** @deprecated Long-term memory is workspace-scoped; keep only for legacy reads. */
   longTermMemoryEnabled?: boolean;
@@ -136,9 +133,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   );
   if (loopSubtaskMaxThinkingMode) {
     normalized.loopSubtaskMaxThinkingMode = loopSubtaskMaxThinkingMode;
-  }
-  if (record.locale === "auto" || record.locale === "zh-CN" || record.locale === "en") {
-    normalized.locale = record.locale;
   }
   if (record.macTaskShell === "zsh" || record.macTaskShell === "bash") {
     normalized.macTaskShell = record.macTaskShell;

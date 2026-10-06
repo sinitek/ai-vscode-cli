@@ -105,7 +105,6 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
       return true;
     },
     normalizeLoopMaxRounds: (value: unknown) => typeof value === "number" ? Math.max(1, Math.floor(value)) : 3,
-    normalizeToolSettingsLocale: (value: unknown) => value === "en" || value === "zh-CN" || value === "auto" ? value : null,
     updateStatusBar: () => { calls.statusUpdates += 1; },
     postWebviewMessage: (message: Record<string, unknown>) => { calls.webviewMessages.push(message); },
     getConfigManagerPanel: () => ({ reload: () => { calls.configReloads += 1; } }),
@@ -296,7 +295,7 @@ test("normalizes OpenCode variants and routes valid setting keys while rejecting
   assert.equal(calls.postPanelState, 10);
 });
 
-test("cleans migrated settings, reloads locale, and preserves each global setting contract", async () => {
+test("cleans migrated settings and preserves each global setting contract", async () => {
   const { deps, calls, state } = createSettingHarness("opencode");
 
   state.workspaceSettings = {
@@ -314,7 +313,6 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
   await handleUpdateSettingMessage({ type: "updateSetting", key: "debug", value: 1 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoAddEditorContextTags", value: "yes" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "longTermMemoryEnabled", value: false }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "locale", value: "unknown" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "macTaskShell", value: "zsh" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "macTaskShell", value: "fish" }, deps);
 
@@ -326,12 +324,11 @@ test("cleans migrated settings, reloads locale, and preserves each global settin
     { loopSubtaskMaxThinkingMode: "high" },
     { debug: true },
     { autoAddEditorContextTags: true },
-    { locale: "auto" },
     ...(process.platform === "darwin" ? [{ macTaskShell: "zsh" as const }] : []),
   ]);
-  assert.equal(calls.statusUpdates, 1);
-  assert.deepEqual(calls.webviewMessages, [{ type: "reload" }]);
-  assert.equal(calls.configReloads, 1);
+  assert.equal(calls.statusUpdates, 0);
+  assert.deepEqual(calls.webviewMessages, []);
+  assert.equal(calls.configReloads, 0);
   assert.equal(calls.postPanelState, 10);
 });
 

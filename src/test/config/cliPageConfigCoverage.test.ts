@@ -286,7 +286,7 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   const nonce = nonceMatch[1];
 
   assert.match(html, /^<!DOCTYPE html>/);
-  assert.match(html, /<html lang="en">/);
+  assert.match(html, /<html lang="zh-CN">/);
   assert.match(html, /default-src 'none'/);
   assert.match(html, /img-src vscode-resource:\/\/sinitek-test https: data:/);
   assert.match(html, /worker-src vscode-resource:\/\/sinitek-test blob:/);
@@ -357,10 +357,10 @@ test("main webview content and provider cover success, cache, message, and fallb
   try {
     let viewContent = requireFresh<typeof import("../../webview/viewContent")>(viewContentPath);
     const firstHtml = viewContent.getWebviewHtml({ cspSource: "vscode-resource://main-panel" });
-    assert.match(firstHtml, /Sinitek CLI Assistant/);
+    assert.match(firstHtml, /携宁 CLI 助手/);
     assert.match(firstHtml, /const CLI_NAMES = \[/);
     const cachedHtml = viewContent.getWebviewHtml({ cspSource: "vscode-resource://main-panel" });
-    assert.match(cachedHtml, /Sinitek CLI Assistant/);
+    assert.match(cachedHtml, /携宁 CLI 助手/);
 
     logger.logError = async () => undefined;
     fsModule.readFileSync = ((target: fs.PathOrFileDescriptor, ...args: any[]) => {
@@ -371,7 +371,7 @@ test("main webview content and provider cover success, cache, message, and fallb
     }) as typeof fs.readFileSync;
     viewContent = requireFresh<typeof import("../../webview/viewContent")>(viewContentPath);
     const noMarkedHtml = viewContent.getWebviewHtml({ cspSource: "vscode-resource://main-panel" });
-    assert.match(noMarkedHtml, /Sinitek CLI Assistant/);
+    assert.match(noMarkedHtml, /携宁 CLI 助手/);
 
     fsModule.readFileSync = originalReadFileSync;
     logger.logError = originalLogError;
@@ -408,7 +408,7 @@ test("main webview content and provider cover success, cache, message, and fallb
     provider.resolveWebviewView(view as any);
     assert.equal(view.webview.options.enableScripts, true);
     assert.equal(view.webview.options.localResourceRoots[0].fsPath, repoRoot);
-    assert.match(view.webview.html, /Sinitek CLI Assistant/);
+    assert.match(view.webview.html, /携宁 CLI 助手/);
     view.messageHandler({ type: "sendPrompt", prompt: "hello" });
     assert.deepEqual(messages, [{ type: "sendPrompt", prompt: "hello" }]);
     provider.postState({ currentCli: "codex" } as any);

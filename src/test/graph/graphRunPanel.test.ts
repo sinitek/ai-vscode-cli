@@ -8,12 +8,12 @@ installVscodeMock();
 
 import { buildGraphRunPanelStateWithDeps } from "../../panelStateBuilder";
 import {
-  buildGraphRunPanelDagLayoutForTest,
-  buildGraphRunPanelHtml,
+  buildGraphRunPanelDagLayoutForTest as buildGraphRunPanelDagLayoutForTestImpl,
+  buildGraphRunPanelHtml as buildGraphRunPanelHtmlImpl,
 } from "../../webview/graphRunPanel";
 import { getGraphRunPanelStrings } from "../../webview/graphRunPanelRenderer";
 import { GRAPH_RUN_PANEL_STYLES } from "../../webview/graphRunPanelStyles";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import type { GraphEventRecord, GraphNodeRecord, GraphRunRecord } from "../../graph/types";
 
 const packageJson = require("../../../package.json") as {
@@ -41,6 +41,21 @@ type DagEdgePathAttrs = Record<string, string>;
 type DagBox = { x: number; y: number; width: number; height: number };
 type DagPoint = { x: number; y: number };
 const DAG_EXPECTED_PORT_RATIOS = [0.25, 0.5, 0.75] as const;
+
+function buildGraphRunPanelHtml(
+  webview: Parameters<typeof buildGraphRunPanelHtmlImpl>[0],
+  state: Parameters<typeof buildGraphRunPanelHtmlImpl>[1],
+): string {
+  return buildGraphRunPanelHtmlImpl(webview, state);
+}
+
+function buildGraphRunPanelDagLayoutForTest(
+  state: Parameters<typeof buildGraphRunPanelDagLayoutForTestImpl>[0],
+  direction?: Parameters<typeof buildGraphRunPanelDagLayoutForTestImpl>[1],
+  engine?: Parameters<typeof buildGraphRunPanelDagLayoutForTestImpl>[2],
+): ReturnType<typeof buildGraphRunPanelDagLayoutForTestImpl> {
+  return buildGraphRunPanelDagLayoutForTestImpl(state, direction, engine);
+}
 
 function getVisibleEdgeLabels(html: string): string[] {
   return Array.from(html.matchAll(/<text class="dag-edge-label [^"]+"[^>]*>([^<]*)<\/text>/g))
@@ -273,7 +288,7 @@ function createEvent(overrides: Partial<GraphEventRecord> = {}): GraphEventRecor
 
 function buildState(run: GraphRunRecord, selectedNodeId?: string | null) {
   return buildGraphRunPanelStateWithDeps(run, [], {
-    strings: getGraphRunPanelStrings("en"),
+    strings: getGraphRunPanelStrings(),
     selectedNodeId,
   });
 }
@@ -285,10 +300,10 @@ test("builds Graph run panel state with status stats, selected node, events, edg
       createEvent({ eventId: "older", timestamp: 2_500, summary: "older" }),
       createEvent({ eventId: "newer", timestamp: 3_500, type: "node.blocked", summary: "newer" }),
     ],
-    { strings: getGraphRunPanelStrings("en") },
+    { strings: getGraphRunPanelStrings() },
   );
 
-  assert.equal(state.run.statusLabel, "Running");
+  assert.equal(state.run.statusLabel, "执行中");
   assert.equal(state.stats.total, 3);
   assert.deepEqual(state.stats.statusCounts.map((item) => [item.status, item.count]), [
     ["running", 1],
@@ -336,7 +351,7 @@ test("prefers run.edges over dependsOn fallback and honors requested node select
       }],
     }),
     [],
-    { strings: getGraphRunPanelStrings("en"), selectedNodeId: "test" },
+    { strings: getGraphRunPanelStrings(), selectedNodeId: "test" },
   );
 
   assert.equal(state.selectedNodeId, "test");
@@ -370,7 +385,7 @@ test("prefers run.edges over dependsOn fallback and honors requested node select
 
 test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria labels, and status", () => {
   const state = buildState(createSerialFiveNodeRun(), "review");
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.match(html, /class="content graph-canvas-content"/);
   assert.match(html, /class="section graph-dag"/);
@@ -384,7 +399,7 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /data-zoom-scale="0\.75"/);
   assert.match(html, /transform: scale\(0\.75\)/);
   assert.match(html, /data-dag-zoom-select/);
-  assert.match(html, /data-action="centerRunningNode"[\s\S]*title="No running Graph node is available to center"[\s\S]*aria-label="Center running node"[\s\S]*disabled/);
+  assert.match(html, /data-action="centerRunningNode"[\s\S]*title="当前没有正在运行的 Graph 节点可定位"[\s\S]*aria-label="定位运行节点"[\s\S]*disabled/);
   assert.match(html, /<svg class="dag-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">/);
   assert.match(html, /<option value="25">25%<\/option>/);
   assert.match(html, /<option value="50">50%<\/option>/);
@@ -397,7 +412,7 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
   assert.match(html, /class="dag-edge-path active edge-kind-depends_on" data-edge-id="depends_on:plan-&gt;implement" data-edge-from="plan" data-edge-to="implement" data-from-port="right-50" data-to-port="left-50"/);
   assert.match(html, /data-edge-id="depends_on:plan-&gt;implement"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
   assert.match(html, /data-edge-id="depends_on:review-&gt;summary"[\s\S]*data-edge-visited="true"[\s\S]*marker-end="url\(#graph-arrowhead-visited\)"/);
-  assert.match(html, /data-edge-label="[^"]*Depends On/);
+  assert.match(html, /data-edge-label="[^"]*依赖/);
   assert.match(html, /data-edge-id="depends_on:plan-&gt;implement"[\s\S]*data-edge-display-label=""/);
   assert.deepEqual(getVisibleEdgeLabels(html), []);
 	  assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
@@ -417,21 +432,21 @@ test("renders a true visual DAG with SVG edges, arrow marker, node buttons, aria
 		  assert.match(html, /class="dag-tone-stripe"/);
 		  assert.doesNotMatch(html, /class="dag-kind-mark"/);
 		  assert.doesNotMatch(html, /class="dag-kind-mark"[\s\S]*>R<\/span>/);
-		  assert.match(html, /class="dag-kind-chip">Review<\/span>/);
-		  assert.match(html, /class="semantic-chip semantic-normal">Step<\/span>/);
-		  assert.match(html, /aria-label="Node 评审, status Passed, kind Review/);
+		  assert.match(html, /class="dag-kind-chip">评审<\/span>/);
+		  assert.match(html, /class="semantic-chip semantic-normal">步骤<\/span>/);
+		  assert.match(html, /aria-label="节点 评审，状态 已通过，类型 评审/);
 	  assert.match(html, /data-node-id="plan"[\s\S]*data-node-id="implement"[\s\S]*data-node-id="test"[\s\S]*data-node-id="review"[\s\S]*data-node-id="summary"/);
 	  assert.match(html, /data-node-detail="review"/);
 	  assert.match(html, /id="nodeDetailDialogBackdrop" class="dialog-backdrop node-detail-backdrop"/);
 	  assert.match(html, /id="nodeDetailDialog" class="dialog node-detail-dialog" role="dialog" aria-modal="true"/);
-	  assert.match(html, /<button id="nodeDetailDialogClose" class="node-detail-close-icon" type="button" title="Close Details" aria-label="Close Details" data-node-detail-close><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1\.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18" \/><line x1="18" y1="6" x2="6" y2="18" \/><\/svg><\/button>/);
+		  assert.match(html, /<button id="nodeDetailDialogClose" class="node-detail-close-icon" type="button" title="关闭详情" aria-label="关闭详情" data-node-detail-close><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1\.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18" \/><line x1="18" y1="6" x2="6" y2="18" \/><\/svg><\/button>/);
 	  assert.doesNotMatch(html, /<svg id="nodeDetailDialogClose"/);
 	  assert.match(html, /nodeDetailClose\?\.addEventListener\("click", closeNodeDetailDialog\)/);
 	  assert.match(html, /nodeDetailClose\?\.addEventListener\("keydown", \(event\) => \{[\s\S]*event\.key === "Enter" \|\| event\.key === " "[\s\S]*event\.preventDefault\(\);[\s\S]*closeNodeDetailDialog\(\)/);
 	  assert.match(html, /nodeDetailBackdrop\?\.addEventListener\("click", \(event\) => \{[\s\S]*event\.target === nodeDetailBackdrop[\s\S]*closeNodeDetailDialog\(\)/);
 	  assert.match(html, /nodeDetailClose\?\.focus\(\)/);
 	  assert.match(html, /lastDetailTrigger\?\.isConnected[\s\S]*lastDetailTrigger\.focus\(\)/);
-	  assert.match(html, /data-action="resetLayout"[\s\S]*aria-label="Clear saved manual node positions for this Graph run"[\s\S]*>↺</);
+	  assert.match(html, /data-action="resetLayout"[\s\S]*aria-label="清除当前 Graph 运行保存的手动节点位置"[\s\S]*>↺</);
 	  assert.doesNotMatch(html, />\s*Reset layout\s*</);
 	  assert.match(html, /graphRunLayouts/);
 	  assert.match(html, /\[graphRunId\]/);
@@ -524,7 +539,7 @@ test("uses workflow-style auto layout spacing, collision handling, and dynamic n
     ],
     edges: [],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "start"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "start"));
   const nodeLayouts = getDagNodeLayoutById(html);
   const start = nodeLayouts.get("start");
   const design = nodeLayouts.get("design");
@@ -556,8 +571,8 @@ test("supports target workflow-style layout directions and tuned spacing paramet
     edges: [],
   });
   const state = buildState(run, "step");
-  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "LR");
-  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "TB");
+  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "LR");
+  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "TB");
   const lrNodes = new Map(lrLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
   const tbNodes = new Map(tbLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
   const lrStart = lrNodes.get("start");
@@ -576,7 +591,7 @@ test("supports target workflow-style layout directions and tuned spacing paramet
   assert.ok(lrStep.x - lrStart.x >= 300);
   assert.ok(tbStep.y - tbStart.y >= 190);
 
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
   assert.match(html, /data-auto-layout-direction="LR"/);
   assert.match(html, /data-auto-ranksep="124"/);
   assert.match(html, /data-auto-nodesep="88"/);
@@ -613,8 +628,8 @@ test("fallback auto layout expands all zero-indegree roots instead of drafting p
     edges: [],
   });
   const state = buildState(run, "merge");
-  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "LR", "fallback");
-  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "en", "TB", "fallback");
+  const lrLayout = buildGraphRunPanelDagLayoutForTest(state, "LR", "fallback");
+  const tbLayout = buildGraphRunPanelDagLayoutForTest(state, "TB", "fallback");
   const lrNodes = new Map(lrLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
   const tbNodes = new Map(tbLayout.nodeLayouts.map((layout) => [layout.node.id, layout]));
   const lrRootA = lrNodes.get("root-a");
@@ -646,9 +661,9 @@ test("simplifies DAG canvas header while keeping compact zoom and reset controls
   const state = buildGraphRunPanelStateWithDeps(
     createRun(),
     [],
-    { strings: getGraphRunPanelStrings("zh-CN"), selectedNodeId: "plan" },
+    { strings: getGraphRunPanelStrings(), selectedNodeId: "plan" },
   );
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.match(html, /class="graph-dag-toolbar"/);
   assert.match(html, /aria-label="运行图工具"/);
@@ -690,7 +705,7 @@ test("renders cyclic and feedback edges conservatively without hiding valid edge
       { id: "review-plan", from: "review", to: "plan", kind: "if_fail", active: false, condition: "reset plan" },
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "review"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "review"));
 
   assert.match(html, /data-layout-engine="@dagrejs\/dagre"/);
   assert.equal((html.match(/class="dag-edge-path/g) ?? []).length, 4);
@@ -734,7 +749,7 @@ test("colors visited non-dependency workflow edges by kind", () => {
       { id: "unvisited-pass", from: "pending-source", to: "pending-target", kind: "if_pass", active: true },
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "gate"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "gate"));
 
   assert.equal(getRequiredDagEdgePathAttrs(html, "visited-pass")["data-edge-visited"], "true");
   assert.equal(getRequiredDagEdgePathAttrs(html, "visited-pass")["marker-end"], "url(#graph-arrowhead-visited-if-pass)");
@@ -767,7 +782,7 @@ test("dedupes same-direction DAG edges and separates bidirectional connection po
       { id: "beta-alpha-feedback", from: "beta", to: "alpha", kind: "review_feedback", active: true, condition: "needs change" },
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "beta"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "beta"));
   const edges = getDagEdgePathAttrs(html);
   const alphaToBeta = edges.find((edge) => edge["data-edge-from"] === "alpha" && edge["data-edge-to"] === "beta");
   const betaToAlpha = edges.find((edge) => edge["data-edge-from"] === "beta" && edge["data-edge-to"] === "alpha");
@@ -825,7 +840,7 @@ test("snaps fan-out and fan-in edges to visible side ports while keeping offsets
       { id: "b-merge", from: "branch-b", to: "merge", kind: "depends_on", active: true },
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "fan"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "fan"));
   const edges = getDagEdgePathAttrs(html);
   const nodeLayouts = getDagNodeLayoutById(html);
   const fanOutEdges = edges.filter((edge) => edge["data-edge-from"] === "fan");
@@ -869,7 +884,7 @@ test("renders edge purpose labels, semantic node classes, and twelve ports per n
       { id: "decision-start", from: "decision", to: "start", kind: "if_fail", active: true, label: "Needs rework" },
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "decision"), "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "decision"));
 
   assert.match(html, /class="dag-node node-select-target status-passed kind-intake node-tone-start semantic-start"[\s\S]*data-node-id="start"[\s\S]*data-node-semantic="start"/);
   assert.match(html, /class="dag-node node-select-target selected status-ready kind-review node-tone-decision semantic-decision"[\s\S]*data-node-id="decision"[\s\S]*data-node-semantic="decision"/);
@@ -880,12 +895,12 @@ test("renders edge purpose labels, semantic node classes, and twelve ports per n
   assert.match(html, /data-node-kind-tone="start"/);
   assert.match(html, /data-node-kind-tone="decision"/);
   assert.match(html, /data-node-kind-tone="danger"/);
-  assert.match(html, />Start<\/span>/);
-  assert.match(html, />Decision<\/span>/);
-  assert.match(html, />End<\/span>/);
-  assert.match(html, /class="dag-kind-chip">Intake<\/span>/);
-  assert.match(html, /class="dag-kind-chip">Review<\/span>/);
-  assert.match(html, /class="dag-kind-chip">Summary<\/span>/);
+  assert.match(html, />开始<\/span>/);
+  assert.match(html, />判断<\/span>/);
+  assert.match(html, />结束<\/span>/);
+  assert.match(html, /class="dag-kind-chip">录入<\/span>/);
+  assert.match(html, /class="dag-kind-chip">评审<\/span>/);
+  assert.match(html, /class="dag-kind-chip">总结<\/span>/);
   assert.equal((html.match(/class="dag-port-dot/g) ?? []).length, 36);
   assert.match(html, /data-edge-id="start-decision"[\s\S]*data-edge-label="[^"]*Prepare decision"[\s\S]*data-edge-display-label=""/);
   assert.match(html, /data-edge-id="decision-end"[\s\S]*data-edge-label="[^"]*Approved path"[\s\S]*data-edge-display-label="Appr \/ path"/);
@@ -954,7 +969,7 @@ test("renders only wired and currently available Graph run and node controls", (
 	    }),
     [],
     {
-      strings: getGraphRunPanelStrings("en"),
+      strings: getGraphRunPanelStrings(),
       selectedNodeId: "fix",
       controls: {
         continueRun: true,
@@ -965,7 +980,7 @@ test("renders only wired and currently available Graph run and node controls", (
 	      },
     },
   );
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.equal(state.runControl.canContinue, true);
   assert.equal(state.runControl.canSupplement, true);
@@ -973,13 +988,13 @@ test("renders only wired and currently available Graph run and node controls", (
 	  assert.equal(state.nodes.find((node) => node.id === "fix")?.control.canRetry, true);
 	  assert.equal(state.nodes.find((node) => node.id === "failed-test")?.control.canFeedback, true);
 	  assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, false);
-  assert.match(html, /data-action="continue"[\s\S]*>Continue</);
-	  assert.match(html, /data-action="supplement"[\s\S]*>I want to speak</);
-		  assert.match(html, /data-action="stop"[\s\S]*>Stop Run</);
-		  assert.match(html, /title="Persist Graph stopped state and only attempt mapped CLI run stops"/);
+  assert.match(html, /data-action="continue"[\s\S]*>继续</);
+  assert.match(html, /data-action="supplement"[\s\S]*>我要说话</);
+  assert.match(html, /data-action="stop"[\s\S]*>中止运行</);
+  assert.match(html, /title="落盘停止 Graph 状态，并仅尝试停止已映射的 CLI 运行"/);
 		  assertOmitsStopBoundaryCopy(html);
-		  assert.match(html, /data-action="retry" data-control-node-id="fix"[\s\S]*>Retry Failed Node</);
-		  assert.match(html, /data-action="feedback" data-control-node-id="failed-test"[\s\S]*>Rollback Upstream</);
+  assert.match(html, /data-action="retry" data-control-node-id="fix"[\s\S]*>重试失败节点</);
+  assert.match(html, /data-action="feedback" data-control-node-id="failed-test"[\s\S]*>回退上游返工</);
 		  assert.doesNotMatch(html, /data-action="approve" data-control-node-id="gate"/);
   assert.match(html, /graphRun:continue/);
 	  assert.match(html, /graphRun:supplementRun/);
@@ -992,11 +1007,11 @@ test("renders only wired and currently available Graph run and node controls", (
     createRun(),
     [],
     {
-      strings: getGraphRunPanelStrings("zh-CN"),
+      strings: getGraphRunPanelStrings(),
       controls: { stopRun: true },
     },
   );
-  const zhStopHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhStopState, "zh-CN");
+  const zhStopHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhStopState);
   assert.equal(zhStopState.runControl.canStop, true);
   assert.match(zhStopHtml, /data-action="stop"[\s\S]*>中止运行</);
   assert.match(zhStopHtml, /title="落盘停止 Graph 状态，并仅尝试停止已映射的 CLI 运行"/);
@@ -1006,11 +1021,11 @@ test("renders only wired and currently available Graph run and node controls", (
 	    createRun({ supplementalRequirements: ["请优先验证并行节点。"] }),
 	    [],
     {
-      strings: getGraphRunPanelStrings("zh-CN"),
+      strings: getGraphRunPanelStrings(),
       controls: { supplementRun: true },
     },
   );
-  const zhHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhState, "zh-CN");
+  const zhHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, zhState);
 	  assert.match(zhHtml, /data-action="supplement"[\s\S]*>我要说话</);
 	  assert.match(zhHtml, /保持原主子模型/);
 	  assert.match(zhHtml, /使用新配置的主子模型/);
@@ -1023,7 +1038,7 @@ test("renders only wired and currently available Graph run and node controls", (
 	    createRun({ status: "completed" }),
     [],
     {
-      strings: getGraphRunPanelStrings("en"),
+      strings: getGraphRunPanelStrings(),
       controls: {
         continueRun: true,
 	        supplementRun: true,
@@ -1033,8 +1048,8 @@ test("renders only wired and currently available Graph run and node controls", (
       },
     },
 	  );
-	  const hiddenHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, hiddenState, "en");
-		  assert.doesNotMatch(hiddenHtml, />\s*(Continue|I want to speak|Stop Run|Retry Failed Node|Rollback Upstream|Approve Human Gate)\s*</);
+	  const hiddenHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, hiddenState);
+  assert.doesNotMatch(hiddenHtml, />\s*(继续|我要说话|中止运行|重试失败节点|回退上游返工|通过人工关卡)\s*</);
   assertOmitsStopBoundaryCopy(hiddenHtml);
 	});
 
@@ -1061,10 +1076,10 @@ test("renders historical human gates without approval controls", () => {
     }),
     [],
     {
-      strings: getGraphRunPanelStrings("zh-CN"),
+      strings: getGraphRunPanelStrings(),
     },
   );
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.equal(state.selectedNodeId, "gate");
   assert.equal(state.nodes.find((node) => node.id === "gate")?.control.canApprove, false);
@@ -1114,9 +1129,9 @@ test("renders first-class evidence for selected node and final answer sources", 
         summary: "Build log failed validation",
       }),
     ],
-    { strings: getGraphRunPanelStrings("en"), selectedNodeId: "evidence-node" },
+    { strings: getGraphRunPanelStrings(), selectedNodeId: "evidence-node" },
   );
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "en");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.deepEqual(state.selectedEvidence.map((item) => item.kind), [
     "artifactRef",
@@ -1125,12 +1140,12 @@ test("renders first-class evidence for selected node and final answer sources", 
     "event",
     "finalAnswer",
   ]);
-  assert.match(html, />Evidence</);
-  assert.match(html, /Artifact: \/tmp\/graph\/evidence-artifact\.md/);
-  assert.match(html, /Communication: \/tmp\/graph\/evidence-chat\.md/);
-  assert.match(html, /Acceptance Evidence: \/tmp\/graph\/build\.log/);
-  assert.match(html, /Event: node\.blocked - Build log failed validation/);
-  assert.match(html, /Final Answer Evidence: evidence-node:\/tmp\/graph\/evidence-artifact\.md/);
+  assert.match(html, />证据</);
+  assert.match(html, /产物: \/tmp\/graph\/evidence-artifact\.md/);
+  assert.match(html, /沟通文件: \/tmp\/graph\/evidence-chat\.md/);
+  assert.match(html, /验收证据: \/tmp\/graph\/build\.log/);
+  assert.match(html, /事件: node\.blocked - Build log failed validation/);
+  assert.match(html, /最终答复证据: evidence-node:\/tmp\/graph\/evidence-artifact\.md/);
 });
 
 test("renders no-edge state with nodes and omits SVG for empty node state", () => {
@@ -1141,8 +1156,8 @@ test("renders no-edge state with nodes and omits SVG for empty node state", () =
     ],
     edges: [],
   });
-  const isolatedHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(isolated), "en");
-  assert.match(isolatedHtml, /No active edges are recorded/);
+  const isolatedHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(isolated));
+  assert.match(isolatedHtml, /暂无活动边/);
   assert.match(isolatedHtml, /class="dag-node node-select-target/);
 
   const traceOnly = createRun({
@@ -1151,17 +1166,17 @@ test("renders no-edge state with nodes and omits SVG for empty node state", () =
       { id: "plan-test-conflict", from: "plan", to: "test", kind: "conflicts_with", active: true },
     ],
   });
-  const traceOnlyHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(traceOnly), "en");
-  assert.match(traceOnlyHtml, /No active edges are recorded/);
+  const traceOnlyHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(traceOnly));
+  assert.match(traceOnlyHtml, /暂无活动边/);
   assert.doesNotMatch(traceOnlyHtml, /edge-kind-evidence_for/);
   assert.doesNotMatch(traceOnlyHtml, /edge-kind-conflicts_with/);
 
   const emptyState = buildGraphRunPanelStateWithDeps(
     createRun({ nodes: [], finalAnswer: undefined }),
     [],
-    { strings: getGraphRunPanelStrings("zh-CN"), error: "事件读取失败" },
+    { strings: getGraphRunPanelStrings(), error: "事件读取失败" },
   );
-  const emptyHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, emptyState, "zh-CN");
+  const emptyHtml = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, emptyState);
   assert.match(emptyHtml, /<html lang="zh-CN">/);
   assert.match(emptyHtml, /Graph 运行图/);
   assert.match(emptyHtml, /事件读取失败/);
@@ -1175,9 +1190,9 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   const state = buildGraphRunPanelStateWithDeps(
     createSerialFiveNodeRun(),
     [],
-    { strings: getGraphRunPanelStrings("zh-CN"), error: "事件读取失败" },
+    { strings: getGraphRunPanelStrings(), error: "事件读取失败" },
   );
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state, "zh-CN");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, state);
 
   assert.match(html, /class="section graph-dag"/);
   assert.match(html, /<svg class="dag-edges"/);
@@ -1235,12 +1250,10 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
   assert.doesNotMatch(`${GRAPH_RUN_PANEL_STYLES}\n${html}`, /#[0-9a-fA-F]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(/);
 });
 
-test("keeps Graph webview i18n keys aligned between English and Chinese", () => {
-  const englishKeys = Object.keys(WEBVIEW_I18N.en).sort();
-  const chineseKeys = Object.keys(WEBVIEW_I18N["zh-CN"]).sort();
-  assert.deepEqual(chineseKeys, englishKeys);
-  assert.equal(WEBVIEW_I18N.en.interactiveModeGraph, "Graph");
-  assert.equal(WEBVIEW_I18N["zh-CN"].openGraphRunAction, "打开 Graph 运行图");
+test("uses fixed Chinese Graph webview strings", () => {
+  assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
+  assert.equal(WEBVIEW_STRINGS.interactiveModeGraph, "Graph");
+  assert.equal(WEBVIEW_STRINGS.openGraphRunAction, "打开 Graph 运行图");
 });
 
 test("shows a node task brief in the selected node details", () => {
@@ -1261,7 +1274,7 @@ test("shows a node task brief in the selected node details", () => {
       }),
     ],
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "implement"), "zh-CN");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "implement"));
   assert.match(html, /任务说明/);
   assert.match(html, /复用既有校验器，不要另起并行实现/);
 });
@@ -1286,7 +1299,7 @@ test("renders a planner clarification form on the Graph run panel", () => {
       }],
     },
   });
-  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "plan"), "zh-CN");
+  const html = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(run, "plan"));
   assert.match(html, /id="clarificationDialogBackdrop"/);
   assert.match(html, /需要确认需求/);
   assert.match(html, /data-submit-type="graphRun:submitClarification"/);
@@ -1294,6 +1307,6 @@ test("renders a planner clarification form on the Graph run panel", () => {
   assert.match(html, /请先填写\{label\}/);
   assert.match(html, /var\(--vscode-input-background\)/);
   assert.doesNotMatch(html, /#[0-9a-fA-F]{3,8}/);
-  const hidden = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(createRun(), "plan"), "zh-CN");
+  const hidden = buildGraphRunPanelHtml({ cspSource: "vscode-resource://graph" }, buildState(createRun(), "plan"));
   assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
 });

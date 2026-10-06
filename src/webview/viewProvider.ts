@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { logError } from "../logger";
 import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
-import { resolveLocale, t } from "../i18n";
+import { t } from "../i18n";
 import { formatHomeDisplayPath } from "../shared/userHomePaths";
 
 type ViewHandlers = {
@@ -111,9 +111,8 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
 
 function buildFallbackHtml(webview: vscode.Webview, errorMessage: string): string {
   const safeMessage = escapeHtml(errorMessage);
-  const locale = resolveLocale();
   return `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';" />

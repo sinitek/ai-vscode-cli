@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { CodexSkillItem, CodexSkillToggle } from "./types";
-import { AppLocale, resolveLocale, t } from "../i18n";
+import { t } from "../i18n";
 import { resolveAgentsHomeDir, resolveCodexHomeDir } from "../shared/userHomePaths";
 import {
   collectAncestorDirs,
@@ -17,8 +17,7 @@ export const CODEX_SKILLS_BLOCK_END = "# --- sinitek codex skills end ---";
 const WORKSPACE_CODEX_SKILLS_RELATIVE_DIR = path.join(".codex", "skills");
 const WORKSPACE_AGENTS_SKILLS_RELATIVE_DIR = path.join(".agents", "skills");
 
-const SKILL_DESC: Record<AppLocale, Record<string, string>> = {
-  "zh-CN": {
+const SKILL_DESC: Record<string, string> = {
   "algorithmic-art": "生成算法艺术与动效探索，适合创意可视化。",
   "brand-guidelines": "套用品牌色与排版规范，保持一致视觉风格。",
   "canvas-design": "生成海报/插画等视觉设计，快速输出成品。",
@@ -35,25 +34,6 @@ const SKILL_DESC: Record<AppLocale, Record<string, string>> = {
   "web-artifacts-builder": "构建复杂前端工件，适合多组件与状态管理。",
   "webapp-testing": "使用 Playwright 测试应用，覆盖常见交互流程。",
   "xlsx": "创建、编辑与分析表格，支持公式与格式。",
-  },
-  en: {
-    "algorithmic-art": "Generate algorithmic art and motion exploration for creative visualization.",
-    "brand-guidelines": "Apply brand colors and typography to keep a consistent visual style.",
-    "canvas-design": "Create posters, illustrations, and other visual designs quickly.",
-    "doc-coauthoring": "Provide co-authoring workflows and templates for structured writing.",
-    "docx": "Create and edit Word documents while preserving formatting and comments.",
-    "frontend-design": "High-quality frontend UI design and layout for product showcases.",
-    "internal-comms": "Internal comms copy and templates for common reporting scenarios.",
-    "mcp-builder": "Build MCP servers and tools to integrate external capabilities.",
-    "pdf": "Generate, parse, and edit PDFs for forms and reports.",
-    "pptx": "Create and edit presentations with layouts and notes.",
-    "skill-creator": "Create or update skill templates for reuse and extension.",
-    "slack-gif-creator": "Create Slack-optimized GIFs with size and frame control.",
-    "theme-factory": "Apply themes to outputs for consistent color and typography.",
-    "web-artifacts-builder": "Build complex frontend artifacts with multi-component state.",
-    "webapp-testing": "Use Playwright to test apps across common user flows.",
-    "xlsx": "Create, edit, and analyze spreadsheets with formulas and formatting.",
-  },
 };
 
 function escapeRegExp(value: string): string {
@@ -112,27 +92,21 @@ function ensureFeaturesSkillsEnabled(content: string): string {
   return content.replace(featuresRegex, nextBlock);
 }
 
-function toShortDescription(locale: AppLocale, name: string, description?: string): string {
+function toShortDescription(name: string, description?: string): string {
   const raw = (description ?? "").trim();
   const hasChinese = /[\u4e00-\u9fff]/.test(raw);
   if (raw) {
-    if (locale === "zh-CN") {
-      if (hasChinese) {
-        if (raw.length > 50) return raw.slice(0, 50);
-        if (raw.length < 20) return `${raw}，适合日常使用。`;
-        return raw;
-      }
-    } else if (!hasChinese) {
-      if (raw.length > 90) return raw.slice(0, 90);
-      if (raw.length < 30) return `${raw} Great for everyday use.`;
+    if (hasChinese) {
+      if (raw.length > 50) return raw.slice(0, 50);
+      if (raw.length < 20) return `${raw}，适合日常使用。`;
       return raw;
     }
   }
-  const mapped = SKILL_DESC[locale][name];
+  const mapped = SKILL_DESC[name];
   if (mapped) {
     return mapped;
   }
-  return t("skill.descriptionMissing", undefined, locale);
+  return t("skill.descriptionMissing");
 }
 
 function resolveCodexSkillRoots(workspaceRoots: string[] | undefined): string[] {
@@ -185,7 +159,6 @@ export function mergeCodexSkillsConfig(
 }
 
 export async function listCodexSkills(workspaceRoots?: string[]): Promise<CodexSkillItem[]> {
-  const locale = resolveLocale();
   const skillRoots = resolveCodexSkillRoots(workspaceRoots);
   const skillsByName = new Map<string, CodexSkillItem>();
 
@@ -201,7 +174,6 @@ export async function listCodexSkills(workspaceRoots?: string[]): Promise<CodexS
         await fs.promises.access(skillFile);
         const content = await fs.promises.readFile(skillFile, "utf-8");
         const description = toShortDescription(
-          locale,
           name,
           extractSkillDescription(content, skillDescriptionStrategies.stopAtFirstKey),
         );

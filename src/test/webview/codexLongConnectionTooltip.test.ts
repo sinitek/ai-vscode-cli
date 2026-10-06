@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 
 type Timer = {
@@ -87,7 +87,7 @@ function createController() {
     schedule: (callback: () => void, delay: number) => number;
     cancel: (timer: number) => void;
   }) => { applyCount: (data: { token?: unknown; count?: unknown }) => void };
-  const button = createButton(WEBVIEW_I18N["zh-CN"].headerNewSession);
+  const button = createButton(WEBVIEW_STRINGS.headerNewSession);
   const tooltip = { id: "newSessionConnectionTooltip", hidden: true, textContent: "" };
   const posted: Array<{ type: string; token: number }> = [];
   const timers: Timer[] = [];
@@ -97,7 +97,7 @@ function createController() {
     tooltip,
     postMessage: (payload) => posted.push(payload),
     translate: (key, params) => {
-      const template = WEBVIEW_I18N["zh-CN"][key as keyof typeof WEBVIEW_I18N["zh-CN"]] || key;
+      const template = WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS] || key;
       return template.replace("{count}", String(params?.count ?? ""));
     },
     schedule: (callback, delay) => {

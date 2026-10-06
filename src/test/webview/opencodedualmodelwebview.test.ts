@@ -5,7 +5,7 @@ import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
 
 type FakeOption = {
@@ -88,7 +88,7 @@ function createSelect(): FakeSelect {
   };
 }
 
-function buildOpenCodeModelHarness(locale: "en" | "zh-CN" = "en") {
+function buildOpenCodeModelHarness() {
   const functionNames = [
     "normalizeOpenCodeModelsPayload",
     "clearOpenCodeModelOptions",
@@ -115,7 +115,7 @@ function buildOpenCodeModelHarness(locale: "en" | "zh-CN" = "en") {
       return { value: "", textContent: "", disabled: false };
     },
   };
-  const strings = WEBVIEW_I18N[locale];
+  const strings = WEBVIEW_STRINGS;
   const t = (key: keyof typeof strings): string => strings[key];
   const runtime = new Function(
     "state",
@@ -249,10 +249,9 @@ function buildVisibilityHarness() {
 
 test("renders OpenCode selectors as labeled main and subtask model rows", () => {
   const html = buildWebviewStaticHtml({
-    locale: "en",
     cspSource: "vscode-webview:",
     nonce: "test",
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -267,8 +266,8 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
 
   assert.match(group, /<div class="open-code-model-row">/);
   assert.doesNotMatch(group, /<label class="open-code-model-row"/);
-  assert.match(group, /<label class="open-code-model-label" for="openCodePrimaryModelSelect">Main<\/label>/);
-  assert.match(group, /<label class="open-code-model-label" for="openCodeSmallModelSelect">Subtask<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="openCodePrimaryModelSelect">主模型<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="openCodeSmallModelSelect">子模型<\/label>/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);
@@ -280,9 +279,9 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
     primaryThinking,
     /<option value="xhigh">xhigh<\/option>\s*<option value="max">max<\/option>\s*<option value="ultra">ultra<\/option>/,
   );
-  assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode main model selection"[^>]*title="OpenCode main model selection"/);
-  assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode subtask model selection"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode subtask model selection"/);
-  assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode subtask model thinking mode"[^>]*title="OpenCode subtask model thinking mode"/);
+  assert.match(group, /id="openCodePrimaryModelSelect"[^>]*aria-label="OpenCode 主模型选择"[^>]*title="OpenCode 主模型选择"/);
+  assert.match(group, /id="openCodeSmallModelSelect"[^>]*aria-label="OpenCode 子模型选择"[^>]*aria-describedby="openCodeModelIssue"[^>]*title="OpenCode 子模型选择"/);
+  assert.match(group, /id="openCodeSmallThinkingMode"[^>]*aria-label="OpenCode 子模型思考模式"[^>]*title="OpenCode 子模型思考模式"/);
   assert.doesNotMatch(group, /OpenCode small model|<label class="open-code-model-label"[^>]*>Small<\/label>/);
   assert.doesNotMatch(group, /openCodeSmallModelHint|open-code-model-hint|lightweight internal tasks|reasoning effort/);
   assert.doesNotMatch(html, /loopMainModelSelect|loopSubtaskModelSelect|Loop main-task model|Loop subtask model/);
@@ -296,15 +295,11 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
 });
 
 test("keeps OpenCode user-facing copy on main and subtask wording", () => {
-  const englishCopy = Object.values(WEBVIEW_I18N.en).join("\n");
-  const chineseCopy = Object.values(WEBVIEW_I18N["zh-CN"]).join("\n");
+  const copy = Object.values(WEBVIEW_STRINGS).join("\n");
 
-  assert.match(englishCopy, /OpenCode main model selection/);
-  assert.match(englishCopy, /OpenCode subtask model selection/);
-  assert.doesNotMatch(englishCopy, /OpenCode (?:large|small) model/i);
-  assert.match(chineseCopy, /OpenCode 主模型选择/);
-  assert.match(chineseCopy, /OpenCode 子模型选择/);
-  assert.doesNotMatch(chineseCopy, /OpenCode (?:大模型|小模型)/);
+  assert.match(copy, /OpenCode 主模型选择/);
+  assert.match(copy, /OpenCode 子模型选择/);
+  assert.doesNotMatch(copy, /OpenCode (?:大模型|小模型)/);
 });
 
 test("lays out OpenCode selectors as two full-width model rows", () => {
@@ -331,7 +326,7 @@ test("lays out OpenCode selectors as two full-width model rows", () => {
 });
 
 test("rebuilds both OpenCode selects with model names and direct effective selections", () => {
-  const harness = buildOpenCodeModelHarness("en");
+  const harness = buildOpenCodeModelHarness();
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [
       { ref: "myAPI/main-chat", label: "Main Chat", providerId: "myAPI", modelId: "main-chat" },
@@ -358,7 +353,7 @@ test("rebuilds both OpenCode selects with model names and direct effective selec
   assert.equal(harness.state.openCodeModels.selectedSubtaskRef, null);
   assert.equal(harness.state.openCodeModels.selectedSmallRef, null);
   assert.equal(harness.elements.openCodeSmallModelSelect.attributes.get("aria-invalid"), "true");
-  assert.match(harness.elements.openCodeModelIssue.textContent, /not declared/);
+  assert.match(harness.elements.openCodeModelIssue.textContent, /未在对应 provider 中声明/u);
   assert.doesNotMatch(
     harness.elements.openCodePrimaryModelSelect.options.map((option) => option.textContent).join("|"),
     /manage|follow config|myAPI\//i,
@@ -366,7 +361,7 @@ test("rebuilds both OpenCode selects with model names and direct effective selec
 });
 
 test("falls back to model id without exposing a full provider ref", () => {
-  const harness = buildOpenCodeModelHarness("en");
+  const harness = buildOpenCodeModelHarness();
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [{ ref: "myAPI/fallback-id", label: "myAPI/fallback-id", providerId: "myAPI", modelId: "fallback-id" }],
     configMainRef: "myAPI/fallback-id",
@@ -378,7 +373,7 @@ test("falls back to model id without exposing a full provider ref", () => {
 });
 
 test("strips only an exact legacy ref suffix from OpenCode model labels", () => {
-  const harness = buildOpenCodeModelHarness("en");
+  const harness = buildOpenCodeModelHarness();
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [
       {
@@ -460,22 +455,19 @@ test("keeps a pending OpenCode main-model selection across an outdated snapshot"
   assert.equal(harness.state.pendingOpenCodeRoleSelection, null);
 });
 
-test("shows a localized disabled placeholder when no models are configured", () => {
-  const englishHarness = buildOpenCodeModelHarness("en");
-  englishHarness.state.openCodeModels = englishHarness.normalizeOpenCodeModelsPayload({ models: [] });
-  englishHarness.updateOpenCodeModelSelectOptions();
+test("shows a Chinese disabled placeholder when no models are configured", () => {
+  const harness = buildOpenCodeModelHarness();
+  harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({ models: [] });
+  harness.updateOpenCodeModelSelectOptions();
 
-  assert.deepEqual(optionPairs(englishHarness.elements.openCodePrimaryModelSelect), [["", "No configured model"]]);
-  assert.equal(englishHarness.elements.openCodePrimaryModelSelect.options[0].disabled, true);
-
-  const chineseHarness = buildOpenCodeModelHarness("zh-CN");
-  chineseHarness.updateOpenCodeModelSelectOptions();
-  assert.deepEqual(optionPairs(chineseHarness.elements.openCodeSmallModelSelect), [["", "未配置模型"]]);
-  assert.equal(chineseHarness.elements.openCodeSmallModelSelect.options[0].disabled, true);
+  assert.deepEqual(optionPairs(harness.elements.openCodePrimaryModelSelect), [["", "未配置模型"]]);
+  assert.deepEqual(optionPairs(harness.elements.openCodeSmallModelSelect), [["", "未配置模型"]]);
+  assert.equal(harness.elements.openCodePrimaryModelSelect.options[0].disabled, true);
+  assert.equal(harness.elements.openCodeSmallModelSelect.options[0].disabled, true);
 });
 
 test("clears stale OpenCode options and selections during config or CLI switching", () => {
-  const harness = buildOpenCodeModelHarness("zh-CN");
+  const harness = buildOpenCodeModelHarness();
   harness.state.openCodeModels = harness.normalizeOpenCodeModelsPayload({
     models: [{ ref: "myAPI/main", label: "主对话", providerId: "myAPI", modelId: "main" }],
     selectedMainRef: "myAPI/main",

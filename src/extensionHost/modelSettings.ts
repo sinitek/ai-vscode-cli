@@ -19,7 +19,7 @@ import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getManagedModelOptionsForCliFromStore, getModelOptionsForCliFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedCliModelFromStore, getSelectedLoopCliModelFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectCliLoopModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
-import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled, resolveGlobalMultiAgentEnabled, type ToolSettingsLocale } from "../toolSettings";
+import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled, resolveGlobalMultiAgentEnabled } from "../toolSettings";
 import { t } from "../i18n";
 import { logInfo } from "../logger";
 import { isTimestampWithinHistoryRetention } from "../historyRetention";
@@ -109,10 +109,6 @@ const logError = deps.logError;
 function syncFromDeps(): void { currentCli = deps.getCurrentCli(); modelStore = deps.getModelStore(); workspaceSettings = deps.getWorkspaceSettings(); promptHistoryStore = deps.getPromptHistoryStore(); openCodeThinkingState = deps.getOpenCodeThinkingState(); openCodeSmallThinkingState = deps.getOpenCodeSmallThinkingState(); openCodeModelsState = deps.getOpenCodeModelsState(); openCodeThinkingContextKey = deps.getOpenCodeThinkingContextKey(); openCodeThinkingConfigId = deps.getOpenCodeThinkingConfigId(); openCodeThinkingExactModels = deps.getOpenCodeThinkingExactModels(); openCodeThinkingRequestId = deps.getOpenCodeThinkingRequestId(); activeWorkspaceKey = deps.getActiveWorkspaceKey(); }
 function syncToDeps(): void { deps.setCurrentCli(currentCli); deps.setModelStore(modelStore); deps.setWorkspaceSettings(workspaceSettings); deps.setPromptHistoryStore(promptHistoryStore); deps.setOpenCodeThinkingState(openCodeThinkingState); deps.setOpenCodeSmallThinkingState(openCodeSmallThinkingState); deps.setOpenCodeModelsState(openCodeModelsState); deps.setOpenCodeThinkingContextKey(openCodeThinkingContextKey); deps.setOpenCodeThinkingConfigId(openCodeThinkingConfigId); deps.setOpenCodeThinkingExactModels(openCodeThinkingExactModels); deps.setOpenCodeThinkingRequestId(openCodeThinkingRequestId); }
 function wrap<T extends (...args: any[]) => any>(fn: T): T { return ((...args: Parameters<T>) => { syncFromDeps(); const result = fn(...args); if (result && typeof (result as Promise<unknown>).then === "function") { return (result as Promise<unknown>).finally(syncToDeps) as ReturnType<T>; } syncToDeps(); return result; }) as T; }
-
-function normalizeToolSettingsLocale(value: unknown): ToolSettingsLocale | null {
-  return value === "zh-CN" || value === "en" || value === "auto" ? value : null;
-}
 
 function buildDefaultOpenCodeThinkingState(
   messageKey: OpenCodeThinkingMessageKey = "follow-default",
@@ -923,7 +919,6 @@ function getWorkspaceSettingsStoreOptions() {
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
     normalizeLoopMaxRounds,
-    normalizeToolSettingsLocale,
     sanitizeConversationTabRecord: (value: unknown): ConversationTabRecordForWorkspaceSettings | null => sanitizeConversationTabRecord(value),
     logError: (event: string, payload?: unknown) => void logError(event, payload),
   };

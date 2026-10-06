@@ -38,7 +38,6 @@ export type GraphRunMergeBackMessageOutcome = {
 };
 
 export type GraphMessagesHostDeps = {
-  resolveLocale: () => string;
   getGraphNodeRunTarget: (tabId: string) => { graphRunId: string; graphNodeId: string } | undefined;
   getLoopMessagesForTarget: (target: PromptRunTarget) => ChatMessage[];
   appendSystemMessageForLoop: (
@@ -61,32 +60,19 @@ export type GraphMessagesHostDeps = {
 
 export function createGraphMessagesHost(deps: GraphMessagesHostDeps) {
 function formatGraphControlBlockedReason(reason: string | undefined, fallback: string): string {
-  const zh = deps.resolveLocale() === "zh-CN";
-  const messages: Record<string, string> = zh ? {
+  const messages: Record<string, string> = {
     already_running: "运行已在执行中",
     already_stopped: "运行已停止",
     completed_run: "已完成的运行不能继续操作",
-	    terminal_run: "终态运行不能继续操作",
-	    not_resumable: "当前状态不可继续",
-	    node_not_found: "节点不存在",
-	    node_not_retryable: "节点当前不可重试",
-	    node_not_skippable: "节点当前不可跳过",
-	    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
-	    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
-	    worktree_reset_failed: "Graph worktree 回退失败",
-	  } : {
-    already_running: "The run is already running.",
-    already_stopped: "The run is already stopped.",
-    completed_run: "Completed runs cannot be changed.",
-	    terminal_run: "Terminal runs cannot be changed.",
-	    not_resumable: "The run is not resumable from its current status.",
-	    node_not_found: "The node was not found.",
-	    node_not_retryable: "The node is not retryable from its current status.",
-	    node_not_skippable: "The node is not skippable from its current status.",
-	    feedback_not_available: "The node has no available upstream checkpoint; direct mode does not support Feedback rollback.",
-	    passed_descendants: "The node has passed descendants and needs a later cascade reset flow.",
-	    worktree_reset_failed: "The Graph worktree could not be reset.",
-	  };
+    terminal_run: "终态运行不能继续操作",
+    not_resumable: "当前状态不可继续",
+    node_not_found: "节点不存在",
+    node_not_retryable: "节点当前不可重试",
+    node_not_skippable: "节点当前不可跳过",
+    feedback_not_available: "该节点当前没有可回退的上游 checkpoint；direct 模式不支持 Feedback rollback",
+    passed_descendants: "该节点已有通过的下游节点，需要后续级联重置能力",
+    worktree_reset_failed: "Graph worktree 回退失败",
+  };
   return reason ? (messages[reason] ?? fallback) : fallback;
 }
 
@@ -95,17 +81,16 @@ function graphRuntimeMessage(
   key: GraphRuntimeMessageKey,
   params: Record<string, string | number | undefined> = {},
 ): string {
-  const zh = deps.resolveLocale() === "zh-CN";
   const graphRunId = String(params.graphRunId ?? "");
   const detail = String(params.detail ?? "");
   const count = String(params.count ?? "");
-	  const messages: Record<GraphRuntimeMessageKey, string> = zh ? {
-	    continueAccepted: "Graph 继续请求已记录。",
-	    continueStarted: `Graph 运行已继续：${graphRunId}`,
-	    controlRejected: `Graph 操作未执行：${detail}`,
-	    feedbackAccepted: "Graph 上游返工回退请求已记录。",
-	    feedbackStarted: `Graph 已回退上游节点并继续运行：${graphRunId}`,
-	    noRunnableNode: `Graph 运行没有可执行节点，已刷新面板：${graphRunId}`,
+  const messages: Record<GraphRuntimeMessageKey, string> = {
+    continueAccepted: "Graph 继续请求已记录。",
+    continueStarted: `Graph 运行已继续：${graphRunId}`,
+    controlRejected: `Graph 操作未执行：${detail}`,
+    feedbackAccepted: "Graph 上游返工回退请求已记录。",
+    feedbackStarted: `Graph 已回退上游节点并继续运行：${graphRunId}`,
+    noRunnableNode: `Graph 运行没有可执行节点，已刷新面板：${graphRunId}`,
     resumePrompt: `继续 Graph 运行：${graphRunId}`,
     retryAccepted: "节点重试请求已记录。",
     retryStarted: `Graph 节点已重试并继续运行：${graphRunId}`,
@@ -122,29 +107,6 @@ function graphRuntimeMessage(
     supplementUnavailable: "已完成或已停止的 Graph 运行不能补充消息。",
     targetBusy: `Graph 运行目标标签页当前有任务在执行：${graphRunId}`,
     targetMissing: `无法为 Graph 运行找到可用执行标签页：${graphRunId}`,
-	  } : {
-	    continueAccepted: "The Graph continue request was recorded.",
-	    continueStarted: `Graph run continued: ${graphRunId}`,
-	    controlRejected: `Graph action was not run: ${detail}`,
-	    feedbackAccepted: "The Graph upstream feedback rollback request was recorded.",
-	    feedbackStarted: `Graph upstream feedback rollback started and the run continued: ${graphRunId}`,
-	    noRunnableNode: `Graph run has no executable node; the panel was refreshed: ${graphRunId}`,
-    resumePrompt: `Continue Graph run: ${graphRunId}`,
-    retryAccepted: "The node retry request was recorded.",
-    retryStarted: `Graph node retry started and the run continued: ${graphRunId}`,
-    runMissing: `Graph run was not found: ${graphRunId}`,
-    runReadFailed: `Graph run could not be read: ${graphRunId}\n${detail}`.trim(),
-    skipAccepted: "The node skip request was recorded.",
-    skipStarted: `Graph skipped the blocked node and continued downstream: ${graphRunId}`,
-    stopAccepted: "The Graph stop request was recorded.",
-    stopRequested: "Graph run stop was requested by the user.",
-    stopStateOnly: `Graph run state was persisted as stopped: ${graphRunId}. No active CLI process mapping was found; no real CLI process stop was confirmed.`,
-    stopWithCli: `Graph run state was persisted as stopped: ${graphRunId}. Sent stop requests to ${count} mapped active CLI run(s); real process exit depends on the underlying CLI response.`,
-    supplementAccepted: "The Graph supplemental message was recorded for later nodes.",
-    supplementEmpty: "The supplemental message cannot be empty.",
-    supplementUnavailable: "Completed or stopped Graph runs cannot accept supplemental messages.",
-    targetBusy: `The Graph run target tab is currently busy: ${graphRunId}`,
-    targetMissing: `No executable tab could be found for Graph run: ${graphRunId}`,
   };
   return messages[key];
 }
@@ -159,9 +121,9 @@ function buildGraphRunFinalAnswer(run: GraphRunRecord): GraphFinalAnswer {
     .map((node) => `${node.id}:${node.status}`);
   return {
     conclusion: unresolved.length === 0
-      ? "Graph run completed its AI-planned DAG runtime path."
-      : "Graph run completed summary with unresolved node state.",
-    summary: `Graph run ${run.id} executed an AI-planned Graph DAG through the existing CLI runner path.`,
+      ? "Graph 已完成 AI 规划的 DAG 运行路径。"
+      : "Graph 已生成完成总结，但仍有节点未解决。",
+    summary: `Graph 运行 ${run.id} 已通过现有 CLI 执行路径完成 AI 规划的 DAG。`,
     evidence: completedNodes,
     unresolved,
   };

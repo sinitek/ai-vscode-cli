@@ -2,16 +2,15 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
 import { FINAL_ANSWER_TEXT_MARKER } from "../../finalAnswerProtocol";
 
-function buildStaticHtml(locale: "en" | "zh-CN"): string {
+function buildStaticHtml(): string {
   return buildWebviewStaticHtml({
-    locale,
     cspSource: "self",
     nonce: "nonce",
-    i18n: WEBVIEW_I18N[locale],
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -22,7 +21,7 @@ function buildStaticHtml(locale: "en" | "zh-CN"): string {
 
 function buildRuntimeScript(): string {
   return buildWebviewRuntimeScript({
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
     loopMaxRoundsDefault: 20,
     loopMaxRoundsMin: 1,
@@ -35,13 +34,12 @@ function buildRuntimeScript(): string {
 }
 
 test("does not render a configurable final-answer policy", () => {
-  const zhHtml = buildStaticHtml("zh-CN");
-  const enHtml = buildStaticHtml("en");
+  const html = buildStaticHtml();
 
-  assert.doesNotMatch(zhHtml, /id="finalAnswerPolicy"/);
-  assert.doesNotMatch(enHtml, /Final Reply Detection/);
-  assert.doesNotMatch(zhHtml, /最终答复判定/);
-  assert.doesNotMatch(zhHtml, /successful_reply_fallback/);
+  assert.doesNotMatch(html, /id="finalAnswerPolicy"/);
+  assert.doesNotMatch(html, /Final Reply Detection/);
+  assert.doesNotMatch(html, /最终答复判定/);
+  assert.doesNotMatch(html, /successful_reply_fallback/);
 });
 
 test("webview runtime contains no final-answer policy state or update message", () => {

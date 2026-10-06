@@ -12,7 +12,7 @@ import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewCon
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type Listener = (event?: any) => void;
 
@@ -479,7 +479,7 @@ function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unk
     },
   };
   const script = buildWebviewRuntimeScript({
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,
@@ -629,7 +629,6 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     loopMaxRounds: 99,
     loopSubtaskMaxThinkingMode: "xhigh",
     loopExecutionModeByCli: { codex: "debate_multi_agent" },
-    locale: "en",
     isMac: true,
     macTaskShell: "bash",
     interactive: { supported: true, enabled: true },
@@ -665,7 +664,7 @@ test("shows the workspace harness toggle as checked and disabled when .ch alread
   assert.equal(toggle.disabled, true);
   assert.equal(
     document.getElementById("longTermMemoryNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsLongTermMemoryInstalledHint,
+    WEBVIEW_STRINGS.toolSettingsLongTermMemoryInstalledHint,
   );
 
   window.dispatchMessage({
@@ -681,7 +680,7 @@ test("shows the workspace harness toggle as checked and disabled when .ch alread
   assert.equal(toggle.disabled, false);
   assert.equal(
     document.getElementById("longTermMemoryNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsLongTermMemoryHint,
+    WEBVIEW_STRINGS.toolSettingsLongTermMemoryHint,
   );
 });
 
@@ -701,7 +700,7 @@ test("shows the CodeGraph toggle as checked and disabled when the workspace is r
   assert.equal(toggle.disabled, true);
   assert.equal(
     document.getElementById("codeGraphNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphInstalledHint,
+    WEBVIEW_STRINGS.toolSettingsInstallCodeGraphInstalledHint,
   );
 
   window.dispatchMessage({
@@ -716,7 +715,7 @@ test("shows the CodeGraph toggle as checked and disabled when the workspace is r
   assert.equal(toggle.disabled, true);
   assert.equal(
     document.getElementById("codeGraphNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphInstallingHint,
+    WEBVIEW_STRINGS.toolSettingsInstallCodeGraphInstallingHint,
   );
 
   window.dispatchMessage({
@@ -731,7 +730,7 @@ test("shows the CodeGraph toggle as checked and disabled when the workspace is r
   assert.equal(toggle.disabled, false);
   assert.equal(
     document.getElementById("codeGraphNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphHint,
+    WEBVIEW_STRINGS.toolSettingsInstallCodeGraphHint,
   );
 });
 
@@ -767,11 +766,11 @@ test("keeps uninstalled workspace toggles clickable while a Loop main task is ru
   assert.equal(codeGraphToggle.disabled, false);
   assert.equal(
     document.getElementById("longTermMemoryNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsLongTermMemoryHint,
+    WEBVIEW_STRINGS.toolSettingsLongTermMemoryHint,
   );
   assert.equal(
     document.getElementById("codeGraphNote").textContent,
-    WEBVIEW_I18N.en.toolSettingsInstallCodeGraphHint,
+    WEBVIEW_STRINGS.toolSettingsInstallCodeGraphHint,
   );
 
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
@@ -961,11 +960,11 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, false);
   assert.equal(document.getElementById("modelSelect").style.display, "none");
   assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopMainModelSelect")), [
-    ["", "Model: Follow Config"],
+      ["", "默认"],
     ["gpt-5-main", "gpt-5-main"],
   ]);
   assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopSubtaskModelSelect")), [
-    ["", "Model: Follow Config"],
+    ["", "默认"],
     ["gpt-5-subtask", "gpt-5-subtask"],
   ]);
   assert.equal(document.getElementById("codexLoopMainModelSelect").value, "gpt-5-main");
@@ -1164,6 +1163,8 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.match(document.getElementById("toast").textContent, /tmp\/run-stream\.json/);
 
   const staleTaskList = api.getActiveConversationRuntimeState().taskList;
+  const taskListTab = api.state.conversationTabs.tabs[0];
+  taskListTab.loopTaskRole = "subtask";
   staleTaskList.items = [{ text: "stale task", done: false }];
   staleTaskList.open = true;
   staleTaskList.source = "external";
@@ -1174,7 +1175,7 @@ test("boots the runtime and dispatches state, message, stream, history, settings
     type: "assistantDelta",
     tabId: "tab-1",
     id: "tasklist-text",
-    content: "Tasklist: [completed] inspect logs；[inProgress] patch parser；[pending] run tests",
+    content: "Tasklist: [completed] inspect logs；[in_progress] patch parser；[pending] run tests",
     kind: "normal",
   });
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
@@ -1193,6 +1194,7 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
   window.dispatchMessage({ type: "taskListUpdate", tabId: "tab-1", items: [] });
   assert.equal(document.getElementById("taskListPanel").style.display, "none");
+  taskListTab.loopTaskRole = "main";
 
   api.openHistorySessionMessages({ id: "session-1", cli: "codex", firstPrompt: "inspect", createdAt: 1_700_000_000_000 });
   assert.equal(posted.at(-1).type, "loadHistorySessionMessages");
@@ -1259,10 +1261,6 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   document.getElementById("loopPlusDecisionSubtaskMax").value = "99";
   document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 20 });
-  document.getElementById("languageSelect").value = "zh-CN";
-  document.getElementById("languageSelect").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "locale", value: "zh-CN" });
-
   document.getElementById("promptInput").value = " queued work ";
   api.queuePromptForLater({ prompt: "queued work", contextOptions: { includeCurrentFile: false } });
   document.getElementById("queueIndicator").click();
@@ -1359,7 +1357,7 @@ test("renders prompt history favorites and filters to favorite prompts", () => {
 
   const list = document.getElementById("promptHistoryList");
   assert.equal(list.children.length, 2);
-  assert.equal(document.getElementById("promptHistorySummary").textContent, "1/2 favorites");
+  assert.equal(document.getElementById("promptHistorySummary").textContent, "已收藏 1/2");
 
   const favoritesOnly = document.getElementById("promptHistoryFavoritesOnly");
   favoritesOnly.checked = true;
@@ -1382,7 +1380,7 @@ test("renders prompt history favorites and filters to favorite prompts", () => {
   });
   assert.equal(api.state.promptHistory[0].favorite, false);
   assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].textContent, "No favorite prompts");
+  assert.equal(list.children[0].textContent, "暂无收藏提示词");
 });
 
 test("expands and collapses prompt history only from the view button", () => {
@@ -1411,7 +1409,7 @@ test("expands and collapses prompt history only from the view button", () => {
   assert.equal(list.children[0].classList.contains("expanded"), false);
   assert.equal(api.state.promptHistoryExpandedId, null);
 
-  const viewButton = findButton("View");
+  const viewButton = findButton("查看");
   assert.ok(viewButton);
   viewButton.click();
   assert.equal(list.children[0].classList.contains("expanded"), true);
@@ -1428,7 +1426,7 @@ test("expands and collapses prompt history only from the view button", () => {
   assert.equal(list.children[0].classList.contains("expanded"), true);
   assert.equal(api.state.promptHistoryExpandedId, "prompt-1");
 
-  const collapseButton = findButton("Collapse");
+  const collapseButton = findButton("收起");
   assert.ok(collapseButton);
   collapseButton.click();
   assert.equal(list.children[0].classList.contains("expanded"), false);
@@ -1472,7 +1470,7 @@ test("filters prompt and session history by the shared keyword search", () => {
   searchInput.value = "missing";
   searchInput.dispatchEvent({ type: "input", target: searchInput });
   assert.equal(promptList.children.length, 1);
-  assert.equal(promptList.children[0].textContent, "No prompts match your search.");
+  assert.equal(promptList.children[0].textContent, "没有匹配的历史提示词。");
 });
 
 test("keeps run stream preview bounded per conversation tab", () => {
@@ -1514,7 +1512,7 @@ test("truncates oversized run stream records within the per-record byte budget",
   const runtimeState = api.getConversationRuntimeState("tab-1");
   assert.equal(runtimeState.runStreamRecords.length, 1);
   assert.equal(runtimeState.runStreamTruncatedRecordCount, 1);
-  assert.match(runtimeState.runStreamRecords[0].content, /earlier bytes/);
+  assert.match(runtimeState.runStreamRecords[0].content, /该回放记录已丢弃前部/);
   assert.ok(new TextEncoder().encode(runtimeState.runStreamRecords[0].content).length <= 256 * 1024);
   assert.equal(JSON.parse(api.buildRunStreamExportPayload(runtimeState)[0].content).truncatedRecordCount, 1);
 });
@@ -1540,7 +1538,7 @@ test("hides stale run stream labels for Loop main tabs but keeps them for other 
   regularRuntime.runStreamRecords[0].createdAt = Date.now() - 60 * 1000;
   api.updateRunStreamButton();
   assert.equal(staleBadge.style.display, "inline-flex");
-  assert.equal(staleBadge.textContent, "Slow");
+  assert.equal(staleBadge.textContent, "慢");
 
   api.state.conversationTabs.tabs.push({
     id: "tab-3",
@@ -1555,7 +1553,7 @@ test("hides stale run stream labels for Loop main tabs but keeps them for other 
   loopSubtaskRuntime.runStreamRecords[0].createdAt = Date.now() - 4 * 60 * 1000;
   api.updateRunStreamButton();
   assert.equal(staleBadge.style.display, "inline-flex");
-  assert.equal(staleBadge.textContent, "Very Slow");
+  assert.equal(staleBadge.textContent, "极慢");
 });
 
 test("shows Codex used context tokens to the right of the stream button while running", () => {
@@ -1566,7 +1564,7 @@ test("shows Codex used context tokens to the right of the stream button while ru
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
   assert.equal(label.style.display, "inline-flex");
   assert.equal(label.textContent, "—");
-  assert.equal(label.getAttribute("aria-label"), "Waiting for used context");
+  assert.equal(label.getAttribute("aria-label"), "正在等待已用上下文");
 
   window.dispatchMessage({
     type: "contextTokenUsage",
@@ -1576,7 +1574,7 @@ test("shows Codex used context tokens to the right of the stream button while ru
   });
   assert.equal(label.style.display, "inline-flex");
   assert.equal(label.textContent, "12k");
-  assert.equal(label.getAttribute("aria-label"), "Used context 12k");
+  assert.equal(label.getAttribute("aria-label"), "已用上下文 12k");
   assert.match(String(label.getAttribute("title") || label.title), /12345 \/ 272000/);
 
   window.dispatchMessage({
@@ -1616,7 +1614,7 @@ test("hides the context size label while compacting and restores it afterwards",
     startedAt: 3_000,
     activity: "contextCompaction",
   });
-  assert.equal(status.textContent, "Compacting");
+  assert.equal(status.textContent, "压缩中");
   assert.equal(status.style.display, "inline-flex");
   assert.equal(label.style.display, "none");
   assert.equal(label.textContent, "");
@@ -2003,8 +2001,8 @@ test("rejects attachment selections over webview limits before reading", async (
   await api.handleFileSelection(files);
 
   assert.equal(posted.some((message) => message && message.type === "uploadFiles"), false);
-  assert.match(document.getElementById("toast").textContent, /Too many attachments/);
-  assert.ok(api.state.messages.some((message: any) => /Too many attachments/.test(message.content)));
+  assert.match(document.getElementById("toast").textContent, /附件数量过多/);
+  assert.ok(api.state.messages.some((message: any) => /附件数量过多/.test(message.content)));
 });
 
 test("dispatches background prompts for Graph tabs as Graph runs", () => {
@@ -2442,7 +2440,7 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
 
 test("applies model, panel, and selector state without preserving invalid snapshots", () => {
   const runtimeScript = buildWebviewRuntimeScript({
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,

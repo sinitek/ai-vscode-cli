@@ -21,7 +21,7 @@ import {
   HIDDEN_RETRY_DELAY_SEQUENCE_MS,
   isSameHiddenRetryErrorTraceContent,
 } from "./hiddenRetry";
-import { resolveLocale, t } from "./i18n";
+import { t } from "./i18n";
 import {
   formatOrchestratorClarificationAnswer,
   loopClarificationScope,
@@ -946,7 +946,7 @@ function buildGraphRunPanelState(
     error = error ? `${error}\n${eventError}` : eventError;
   }
   const state = buildGraphRunPanelStateWithDeps(run, events, {
-    strings: getGraphRunPanelStrings(resolveLocale()),
+    strings: getGraphRunPanelStrings(),
     error,
     selectedNodeId,
     controls: {
@@ -1266,21 +1266,14 @@ function graphRunPanelLocalMessage(
   key: "noLatest" | "controlUnavailable" | "partialRead",
   params: { detail?: string } = {},
 ): string {
-  const zh = resolveLocale() === "zh-CN";
   if (key === "noLatest") {
-    return zh
-      ? "当前工作区和 CLI 下没有可重新打开的 Graph 运行。"
-      : "No Graph run was found for the current workspace and CLI.";
+    return "当前工作区和 CLI 下没有可重新打开的 Graph 运行。";
   }
   if (key === "controlUnavailable") {
-    return zh
-      ? "该 Graph 操作当前不可用。"
-      : "This Graph action is not available right now.";
+    return "该 Graph 操作当前不可用。";
   }
   const detail = params.detail ?? "";
-  return zh
-    ? `部分 Graph 运行记录读取失败；已显示可读运行。\n${detail}`.trim()
-    : `Some Graph run records could not be read; showing readable runs.\n${detail}`.trim();
+  return `部分 Graph 运行记录读取失败；已显示可读运行。\n${detail}`.trim();
 }
 
 function canStopLoopTaskWithRunningTaskIds(

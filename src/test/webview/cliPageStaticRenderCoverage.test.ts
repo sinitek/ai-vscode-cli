@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { WEBVIEW_STYLES } from "../../webview/viewContentStyles";
 import { BASE_STYLES } from "../../webview/viewContentStyles/base";
@@ -39,12 +39,10 @@ function assertIncludesAll(source: string, snippets: string[]): void {
 }
 
 function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
-  const locale = overrides.locale ?? "en";
   const input: StaticHtmlInput = {
-    locale,
     cspSource: "vscode-resource://test-authority",
     nonce: "static-test-nonce",
-    i18n: getWebviewStrings(locale),
+    i18n: getWebviewStrings(),
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -74,8 +72,8 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
   });
 
   assert.ok(html.startsWith("<!DOCTYPE html>"));
-  assert.match(html, /<html lang="en">/);
-  assert.match(html, /<title>Sinitek CLI Assistant<\/title>/);
+  assert.match(html, /<html lang="zh-CN">/);
+  assert.match(html, /<title>携宁 CLI 助手<\/title>/);
   assert.match(
     html,
     new RegExp(
@@ -93,7 +91,7 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
   );
   assert.match(
     html,
-    /<option value="main-mode" selected>Main\/Sub Multi-Agent<\/option>\s*<option value="debate-mode">Red\/Blue Debate Multi-Agent<\/option>/,
+    /<option value="main-mode" selected>主从多智能体<\/option>\s*<option value="debate-mode">红蓝辩论多智能体<\/option>/,
   );
   assert.ok(html.endsWith(`    <script nonce="${nonce}">`));
 });
@@ -164,15 +162,15 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
   ]);
   assert.match(
     html,
-    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="Accept each finished subtask immediately, and queue other completions\.">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
-    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="Accept each finished subtask immediately, and queue other completions\.">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
   );
   assert.match(
     html,
-    /id="loopExecutionModeSelect"[\s\S]*?<option value="main_sub_multi_agent" selected>Main\/Sub Multi-Agent<\/option>\s*<option value="debate_multi_agent">Red\/Blue Debate Multi-Agent<\/option>/,
+    /id="loopExecutionModeSelect"[\s\S]*?<option value="main_sub_multi_agent" selected>主从多智能体<\/option>\s*<option value="debate_multi_agent">红蓝辩论多智能体<\/option>/,
   );
 });
 
@@ -191,11 +189,11 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     'for="codexLoopMainModelSelect"',
     'id="codexLoopMainModelSelect" class="model-select"',
     'id="codexLoopMainThinkingMode" class="thinking-select"',
-    'aria-label="Codex Loop/Graph main model selection"',
+    'aria-label="Codex Loop/Graph 主模型选择"',
     'for="codexLoopSubtaskModelSelect"',
     'id="codexLoopSubtaskModelSelect" class="model-select"',
     'id="codexLoopSubtaskThinkingMode" class="thinking-select"',
-    'aria-label="Codex Loop/Graph subtask model selection"',
+    'aria-label="Codex Loop/Graph 子模型选择"',
     'for="openCodePrimaryModelSelect"',
     'id="openCodePrimaryModelSelect" class="model-select"',
     'id="openCodePrimaryThinkingMode" class="thinking-select"',
@@ -203,8 +201,8 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     'id="openCodeSmallModelSelect" class="model-select"',
     'id="openCodeSmallThinkingMode" class="thinking-select"',
     'id="openCodeModelIssue"',
-    '<option value="">Model: Follow Config</option>',
-    '<option value="__manage__">Manage</option>',
+    '<option value="">默认</option>',
+    '<option value="__manage__">管理</option>',
     '<option value="off">off</option>',
     '<option value="low">low</option>',
     '<option value="medium">medium</option>',
@@ -266,7 +264,6 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="loopPlusDecisionSubtaskMax"',
     'id="loopPlusMaxAcceptances"',
     'id="loopSubtaskMaxThinkingMode"',
-    'id="languageSelect"',
     'id="commonCommandsOverlay"',
     'id="addModelOverlay"',
     'id="modelManagerList"',
@@ -286,49 +283,13 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="helpPanelModes"',
     'id="helpPanelInstall" class="help-panel active"',
   ]);
+  assert.doesNotMatch(html, /id="languageSelect"/);
   assert.doesNotMatch(html, /toolSettingsGlobal(?:Tab|Panel)|toolSettingsCleanup(?:Tab|Panel)/u);
 });
 
-test("renders English and Chinese static page copy through shared i18n strings", () => {
-  const englishStrings = getWebviewStrings("en");
-  const chineseStrings = getWebviewStrings("zh-CN");
-  const englishHtml = buildHtml({ locale: "en", i18n: WEBVIEW_I18N.en });
-  const chineseHtml = buildHtml({
-    locale: "zh-CN",
-    i18n: WEBVIEW_I18N["zh-CN"],
-  });
-
-  assert.equal(englishStrings.appTitle, "Sinitek CLI Assistant");
-  assert.equal(chineseStrings.appTitle, "携宁 CLI 助手");
-  assertIncludesAll(englishHtml, [
-    '<html lang="en">',
-    "Type your request to start chatting.",
-    "Results only",
-    "Task List",
-    "Open group chat",
-    "History",
-    "Tool Settings",
-    "CodeGraph",
-    "Rules",
-    "How to Choose",
-    "Loop+",
-    "visible queue",
-    "Accept each finished subtask immediately, and queue other completions.",
-    "Vibe",
-    "Loop",
-    "Graph",
-    "Execution mode",
-    "Pros: fastest startup",
-    "Workspace Harness Scaffold",
-    "Main/Sub Multi-Agent",
-    "Red/Blue Debate Multi-Agent",
-    "Codex Loop/Graph main model selection",
-    "Codex Loop/Graph subtask model selection",
-    "Replay",
-    "Export JSONL",
-    "Waiting for replay output...",
-  ]);
-  assertIncludesAll(chineseHtml, [
+test("只渲染固定中文静态页面文案", () => {
+  const html = buildHtml();
+  assertIncludesAll(html, [
     '<html lang="zh-CN">',
     "携宁 CLI 助手",
     "输入需求，开始对话。",
@@ -345,8 +306,9 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "Vibe",
     "Loop",
     "Graph",
+    "右键文件或目录，在菜单中单击“加入到 Sinitek CLI 引用”即可引用",
     "执行模式",
-    "优点：启动最快",
+    "优点：交互直接、启动快、开销低。",
     "工作区 Harness 骨架",
     "主从多智能体",
     "红蓝辩论多智能体",
@@ -356,12 +318,10 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "导出 JSONL",
     "等待回放内容...",
   ]);
-  assert.doesNotMatch(englishHtml, /AI Chat/u);
-  assert.doesNotMatch(chineseHtml, /AI 对话/u);
-  assert.doesNotMatch(englishHtml, /automatic conflict resolution|没有自动解冲突/);
-  assert.doesNotMatch(chineseHtml, /自动解冲突|不能自动解冲突/);
-  assert.match(englishHtml, /id="helpTabInstall"/);
-  assert.match(chineseHtml, /id="helpPanelInstall" class="help-panel active"/);
+  assert.doesNotMatch(html, /AI Chat|automatic conflict resolution|没有自动解冲突/u);
+  assert.match(html, /id="helpTabInstall"/);
+  assert.match(html, /id="helpPanelInstall" class="help-panel active"/);
+  assert.doesNotMatch(html, /按住 Shift|Shift while dragging|拖拽文件/);
 });
 
 test("keeps required anchors when optional resource inputs are empty", () => {
@@ -379,10 +339,10 @@ test("keeps required anchors when optional resource inputs are empty", () => {
     html,
     /Content-Security-Policy" content="default-src 'none'; img-src  https:; style-src  'unsafe-inline'; script-src 'nonce-';"/,
   );
-  assert.match(html, /<select id="currentCli" class="cli-select" aria-label="CLI selection"><\/select>/);
+  assert.match(html, /<select id="currentCli" class="cli-select" aria-label="CLI 选择"><\/select>/);
   assert.match(
     html,
-    /<option value="" selected>Main\/Sub Multi-Agent<\/option>\s*<option value="">Red\/Blue Debate Multi-Agent<\/option>/,
+    /<option value="" selected>主从多智能体<\/option>\s*<option value="">红蓝辩论多智能体<\/option>/,
   );
   assert.match(html, /<script nonce="">\s*<\/script>\s*<script nonce="">$/);
   assert.doesNotMatch(html, /undefined|null/);
@@ -473,7 +433,7 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
   const html = buildHtml();
   assert.match(html, /id="historyOverlay" class="overlay"/);
   assert.match(html, /class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle"/);
-  assert.match(html, /id="closeHistory" class="secondary icon-button" type="button"[^>]*aria-label="Close"/);
+  assert.match(html, /id="closeHistory" class="secondary icon-button" type="button"[^>]*aria-label="关闭"/);
   assert.match(html, /id="toolSettingsOverlay"[\s\S]*id="closeToolSettings"/);
   assert.match(html, /id="humanInteractionReject"[\s\S]*id="humanInteractionSubmit"/);
   assert.match(html, /id="queuePrompt"[\s\S]*id="pauseAndSend"/);

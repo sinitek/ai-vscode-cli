@@ -331,7 +331,6 @@ test("skips long-term-memory injection when the runtime gate is closed or paths 
     const baseDeps = {
       runtimeSettings: {} as never,
       memoryPaths: {} as never,
-      locale: "en" as never,
       getActiveEditorPromptContext: () => null,
       onError: () => undefined,
     };
@@ -361,9 +360,8 @@ test("injects mocked long-term memory and reports recall errors without changing
       recallArgs = args;
       return { entries: ["memory"] };
     };
-    memoryPrompt.buildLongTermMemoryPromptBlock = (recallPack, locale) => {
+    memoryPrompt.buildLongTermMemoryPromptBlock = (recallPack) => {
       assert.deepEqual(recallPack, { entries: ["memory"] });
-      assert.equal(locale, "en");
       return "[memory block]";
     };
     memoryPrompt.injectLongTermMemoryPrompt = (modelPrompt, memoryBlock) => {
@@ -379,7 +377,6 @@ test("injects mocked long-term memory and reports recall errors without changing
       {
         runtimeSettings: {} as never,
         memoryPaths,
-        locale: "en" as never,
         getActiveEditorPromptContext: () => ({
           fileLabel: "src/feature.ts",
           hasSelection: true,
@@ -403,7 +400,6 @@ test("injects mocked long-term memory and reports recall errors without changing
       promptRuntime.maybeInjectLongTermMemoryForPromptWithDeps("user", "unchanged", [], {
         runtimeSettings: {} as never,
         memoryPaths,
-        locale: "en" as never,
         getActiveEditorPromptContext: () => null,
         onError: (...args: unknown[]) => reportedErrors.push(args),
       }),

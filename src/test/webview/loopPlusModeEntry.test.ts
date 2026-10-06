@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
@@ -64,12 +64,11 @@ function extractBlockSource(script: string, marker: string): string {
   throw new Error(`${marker} was not terminated`);
 }
 
-function buildHtml(locale: "en" | "zh-CN"): string {
+function buildHtml(): string {
   return buildWebviewStaticHtml({
-    locale,
     cspSource: "vscode-resource://test-authority",
     nonce: "loop-plus-entry-nonce",
-    i18n: getWebviewStrings(locale),
+    i18n: getWebviewStrings(),
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -113,35 +112,28 @@ function createModeControl(): ModeControl {
 }
 
 test("renders Loop+ in both interactive mode selects without disturbing help or debate", () => {
-  assert.equal(WEBVIEW_I18N.en.interactiveModeLoopPlus, "Loop+");
-  assert.equal(WEBVIEW_I18N["zh-CN"].interactiveModeLoopPlus, "Loop+");
+  assert.equal(WEBVIEW_STRINGS.interactiveModeLoopPlus, "Loop+");
   assert.equal(
-    WEBVIEW_I18N.en.interactiveModeLoopPlusHint,
-    "Accept each finished subtask immediately, and queue other completions.",
-  );
-  assert.equal(
-    WEBVIEW_I18N["zh-CN"].interactiveModeLoopPlusHint,
+    WEBVIEW_STRINGS.interactiveModeLoopPlusHint,
     "单个子任务执行结束后立即验收，其它完成进入队列。",
   );
 
-  for (const locale of ["en", "zh-CN"] as const) {
-    const html = buildHtml(locale);
-    const selects = modeSelects(html);
-    assert.equal(selects.length, 2);
-    for (const select of selects) {
-      assert.match(select, /value="coding"/);
-      assert.match(select, /value="loop"/);
-      assert.match(select, /value="loop_plus"/);
-      assert.match(select, /value="graph"/);
-      assert.ok(select.indexOf('value="loop"') < select.indexOf('value="loop_plus"'));
-      assert.ok(select.indexOf('value="loop_plus"') < select.indexOf('value="graph"'));
-      assert.match(select, />Loop\+</);
-    }
-    assert.match(html, /value="debate_multi_agent"/);
-    assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
-    assert.match(html, locale === "en" ? /visible queue/ : /可见队列/);
-    assert.match(html, locale === "en" ? /execution end is not acceptance complete/ : /执行结束不等于验收完成/);
+  const html = buildHtml();
+  const selects = modeSelects(html);
+  assert.equal(selects.length, 2);
+  for (const select of selects) {
+    assert.match(select, /value="coding"/);
+    assert.match(select, /value="loop"/);
+    assert.match(select, /value="loop_plus"/);
+    assert.match(select, /value="graph"/);
+    assert.ok(select.indexOf('value="loop"') < select.indexOf('value="loop_plus"'));
+    assert.ok(select.indexOf('value="loop_plus"') < select.indexOf('value="graph"'));
+    assert.match(select, />Loop\+</);
   }
+  assert.match(html, /value="debate_multi_agent"/);
+  assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
+  assert.match(html, /可见队列/);
+  assert.match(html, /执行结束不等于验收完成/);
 });
 
 test("keeps loop_plus in the browser normalizer and still folds plan and lobster", () => {

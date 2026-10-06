@@ -262,7 +262,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     },
     loadModelStore: () => undefined,
     normalizeLoopMaxRounds: () => 20,
-    normalizeToolSettingsLocale: () => null,
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),

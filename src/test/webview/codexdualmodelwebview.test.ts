@@ -4,7 +4,7 @@ import assert = require("node:assert/strict");
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type FakeOption = {
   value: string;
@@ -143,7 +143,7 @@ function optionPairs(select: FakeSelect): Array<[string, string]> {
   return select.options.map((option) => [option.value, option.textContent]);
 }
 
-function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
+function buildCodexModelHarness() {
   const functionSource = [
     "normalizeModelNameList",
     "normalizeModelSelection",
@@ -208,7 +208,7 @@ function buildCodexModelHarness(locale: "en" | "zh-CN" = "en") {
       return { value: "", textContent: "", disabled: false };
     },
   };
-  const strings = WEBVIEW_I18N[locale];
+  const strings = WEBVIEW_STRINGS;
   const helpers = new Function(
     "state",
     "elements",
@@ -272,47 +272,35 @@ function buildVisibilityHarness() {
   return { state, elements, sync };
 }
 
-test("renders Codex Loop and Graph selectors as localized role model rows", () => {
-  const englishHtml = buildWebviewStaticHtml({
-    locale: "en",
+test("renders Codex Loop and Graph selectors as Chinese role model rows", () => {
+  const html = buildWebviewStaticHtml({
     cspSource: "vscode-webview:",
     nonce: "test",
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
     loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
     loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
-  const chineseHtml = buildWebviewStaticHtml({
-    locale: "zh-CN",
-    cspSource: "vscode-webview:",
-    nonce: "test",
-    i18n: WEBVIEW_I18N["zh-CN"],
-    cliOptions: "",
-    markedScript: "",
-    webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
-  });
-  const groupStart = englishHtml.indexOf('<div id="codexLoopModelGroup"');
-  const groupEnd = englishHtml.indexOf('<div id="openCodeModelGroup"', groupStart);
+  const groupStart = html.indexOf('<div id="codexLoopModelGroup"');
+  const groupEnd = html.indexOf('<div id="openCodeModelGroup"', groupStart);
   assert.notEqual(groupStart, -1);
   assert.notEqual(groupEnd, -1);
-  const group = englishHtml.slice(groupStart, groupEnd);
+  const group = html.slice(groupStart, groupEnd);
 
   assert.match(group, /class="open-code-model-group codex-loop-model-group"/);
   assert.match(group, /<div class="open-code-model-row codex-loop-model-row">/);
   assert.doesNotMatch(group, /<label class="open-code-model-row/);
-  assert.match(group, /<label class="open-code-model-label" for="codexLoopMainModelSelect">Main<\/label>/);
-  assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">Subtask<\/label>/);
-  assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Graph main model selection"/);
-  assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Graph subtask model selection"/);
+  assert.match(group, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
+  assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Graph 主模型选择"/);
+  assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Graph 子模型选择"/);
   assert.doesNotMatch(group, /openCodePrimaryThinkingMode|openCodeSmallThinkingMode|openCodeModelIssue/);
-  assert.match(chineseHtml, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
-  assert.match(chineseHtml, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
-  assert.match(chineseHtml, /aria-label="Codex Loop\/Graph 主模型选择"/);
-  assert.match(chineseHtml, /aria-label="Codex Loop\/Graph 子模型选择"/);
+  assert.match(html, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
+  assert.match(html, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
+  assert.match(html, /aria-label="Codex Loop\/Graph 主模型选择"/);
+  assert.match(html, /aria-label="Codex Loop\/Graph 子模型选择"/);
 });
 
 test("shows Codex role selectors only in Loop and Graph while preserving OpenCode dual layout", () => {
@@ -354,7 +342,7 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
 });
 
 test("replays Codex role model options and selections from panel state", () => {
-  const harness = buildCodexModelHarness("en");
+  const harness = buildCodexModelHarness();
 
   harness.applyModelState({
     optionsByCli: { codex: ["fallback-model"] },
@@ -373,12 +361,12 @@ test("replays Codex role model options and selections from panel state", () => {
   harness.updateCodexLoopModelSelectOptions();
 
   assert.deepEqual(optionPairs(harness.elements.codexLoopMainModelSelect), [
-    ["", "Model: Follow Config"],
+    ["", "默认"],
     ["main-large", "main-large"],
     ["main-balanced", "main-balanced"],
   ]);
   assert.deepEqual(optionPairs(harness.elements.codexLoopSubtaskModelSelect), [
-    ["", "Model: Follow Config"],
+    ["", "默认"],
     ["sub-small", "sub-small"],
   ]);
   assert.equal(harness.elements.codexLoopMainModelSelect.value, "main-large");
@@ -395,7 +383,7 @@ test("replays Codex role model options and selections from panel state", () => {
   }, "codex");
   harness.updateCodexLoopModelSelectOptions();
   assert.deepEqual(optionPairs(harness.elements.codexLoopMainModelSelect), [
-    ["", "Model: Follow Config"],
+    ["", "默认"],
     ["main-large", "main-large"],
     ["main-balanced", "main-balanced"],
   ]);
@@ -403,7 +391,7 @@ test("replays Codex role model options and selections from panel state", () => {
 });
 
 test("posts Codex role model and thinking changes with role, cli, and config id", () => {
-  const harness = buildCodexModelHarness("en");
+  const harness = buildCodexModelHarness();
   harness.state.selectedLoopModelsByCli.codex = { main: "main-large", subtask: "sub-small" };
 
   harness.handleCodexLoopRoleModelChange("subtask", " sub-large ");

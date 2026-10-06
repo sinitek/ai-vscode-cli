@@ -193,14 +193,6 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "locale") {
-    const resolved = deps.normalizeToolSettingsLocale(message.value) ?? "auto";
-    deps.updateStoredToolSettings({ locale: resolved });
-    deps.updateStatusBar();
-    deps.postWebviewMessage({ type: "reload" });
-    deps.getConfigManagerPanel()?.reload();
-    return;
-  }
   if (message.key === "macTaskShell") {
     if (process.platform === "darwin" && deps.isMacTaskShell(message.value)) {
       deps.updateStoredToolSettings({ macTaskShell: message.value });

@@ -4,19 +4,9 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const {
-  DEFAULT_LOCALE_SETTING,
-  normalizeLocaleSetting,
-} = require("../../i18n") as typeof import("../../i18n");
+const { t } = require("../../i18n") as typeof import("../../i18n");
 
-test("defaults an unset locale to Simplified Chinese", () => {
-  assert.equal(DEFAULT_LOCALE_SETTING, "zh-CN");
-  assert.equal(normalizeLocaleSetting(undefined), "zh-CN");
-  assert.equal(normalizeLocaleSetting(null), "zh-CN");
-});
-
-test("preserves explicit locale selections", () => {
-  assert.equal(normalizeLocaleSetting("auto"), "auto");
-  assert.equal(normalizeLocaleSetting("en"), "en");
-  assert.equal(normalizeLocaleSetting("zh-CN"), "zh-CN");
+test("returns fixed Simplified Chinese messages", () => {
+  assert.equal(t("common.save"), "保存");
+  assert.equal(t("common.currentFileWithRange", { file: "src/app.ts", range: "1-2" }), "当前文件: src/app.ts [1-2]");
 });

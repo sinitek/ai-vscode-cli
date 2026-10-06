@@ -106,6 +106,6 @@ test("webview keeps interleaved subagent deltas on their original bubble", () =>
   assert.match(VIEW_CONTENT_SCRIPT_TRACE_RENDERING, /canUpdateDetachedSubagent/u);
   assert.match(
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
-    /targetIndex === -1 \|\| \(!isLastAssistant && !canUpdateDetachedSubagent\)/u,
+    /targetIndex === -1 \|\| \(!isLastAssistant && !canUpdateDetachedSubagent && !canContinueThinking\)/u,
   );
 });

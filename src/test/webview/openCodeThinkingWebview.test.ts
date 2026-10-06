@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type ThinkingOption = {
   value: string;
@@ -77,7 +77,7 @@ function createThinkingSelect(): ThinkingSelect {
   };
 }
 
-function buildThinkingSync(locale: "en" | "zh-CN") {
+function buildThinkingSync() {
   const functionNames = [
     "normalizeThinkingModeSelection",
     "normalizeOpenCodeThinkingPayload",
@@ -128,7 +128,7 @@ function buildThinkingSync(locale: "en" | "zh-CN") {
     thinkingMode.value = nextMode;
     messages.push({ type: "updateSetting", key: "thinkingMode", value: nextMode });
   };
-  const translations = WEBVIEW_I18N[locale] as Record<string, string>;
+  const translations = WEBVIEW_STRINGS as Record<string, string>;
   const t = (key: string): string => translations[key] || key;
   const syncThinkingOptions = new Function(
     "state",
@@ -178,7 +178,7 @@ function buildThinkingChangeHandler(
 }
 
 test("rebuilds OpenCode thinking options from each exact payload", () => {
-  const harness = buildThinkingSync("en");
+  const harness = buildThinkingSync();
   harness.state.openCodeThinking = {
     selectedVariant: "turbo",
     configuredDefaultVariant: "low",
@@ -212,7 +212,7 @@ test("rebuilds OpenCode thinking options from each exact payload", () => {
 });
 
 test("shows only the configured real default variant without an explicit override", () => {
-  const harness = buildThinkingSync("zh-CN");
+  const harness = buildThinkingSync();
   harness.state.openCodeThinking = {
     selectedVariant: null,
     configuredDefaultVariant: "xhigh",
@@ -226,7 +226,7 @@ test("shows only the configured real default variant without an explicit overrid
 });
 
 test("keeps no selection when OpenCode has no mapped default variant", () => {
-  const harness = buildThinkingSync("en");
+  const harness = buildThinkingSync();
   harness.state.openCodeThinking = {
     selectedVariant: null,
     configuredDefaultVariant: "missing",
@@ -240,17 +240,17 @@ test("keeps no selection when OpenCode has no mapped default variant", () => {
 });
 
 test("uses no visible options for unavailable or disabled OpenCode variants", () => {
-  const emptyHarness = buildThinkingSync("en");
+  const emptyHarness = buildThinkingSync();
   emptyHarness.state.openCodeThinking = { selectedVariant: null, options: [] };
   emptyHarness.syncThinkingOptions();
   assert.deepEqual(optionPairs(emptyHarness.openCodePrimaryThinkingMode), []);
   assert.equal(emptyHarness.openCodePrimaryThinkingMode.disabled, true);
   assert.equal(
     emptyHarness.openCodePrimaryThinkingMode.title,
-    "Follow the OpenCode default for this model.",
+    "跟随此模型的 OpenCode 默认设置。",
   );
 
-  const disabledHarness = buildThinkingSync("en");
+  const disabledHarness = buildThinkingSync();
   disabledHarness.state.openCodeThinking = {
     selectedVariant: "high",
     options: [{ value: "high", label: "High" }],
@@ -261,67 +261,50 @@ test("uses no visible options for unavailable or disabled OpenCode variants", ()
   assert.deepEqual(optionPairs(disabledHarness.openCodePrimaryThinkingMode), []);
   assert.equal(disabledHarness.openCodePrimaryThinkingMode.value, "");
   assert.equal(disabledHarness.openCodePrimaryThinkingMode.disabled, true);
-  assert.equal(disabledHarness.openCodePrimaryThinkingMode.title, "Follow the OpenCode default for this model.");
+  assert.equal(disabledHarness.openCodePrimaryThinkingMode.title, "跟随此模型的 OpenCode 默认设置。");
 });
 
 test("localizes OpenCode status message keys and safely ignores legacy diagnostics", () => {
   const cases = [
     {
       messageKey: "follow-default",
-      en: "Follow the OpenCode default for this model.",
       zh: "跟随此模型的 OpenCode 默认设置。",
     },
     {
       messageKey: "loading",
-      en: "Reading variants declared for the selected OpenCode model.",
       zh: "正在读取所选 OpenCode 模型声明的 variants。",
     },
     {
       messageKey: "select-model",
-      en: "Select an exact OpenCode provider/model to inspect available variants.",
       zh: "请选择明确的 OpenCode provider/model 以查看可用 variants。",
     },
     {
       messageKey: "metadata-error",
-      en: "Unable to read OpenCode model metadata; following the OpenCode default.",
       zh: "无法读取 OpenCode 模型元数据，将跟随 OpenCode 默认设置。",
     },
     {
       messageKey: "no-variants",
-      en: "This model does not declare adjustable OpenCode variants.",
       zh: "此模型未声明可调的 OpenCode variants。",
     },
     {
       messageKey: "config-variants",
-      en: "Using variants declared by the active OpenCode config.",
       zh: "正在使用当前 OpenCode 配置声明的 variants。",
     },
   ];
 
-  cases.forEach(({ messageKey, en, zh }) => {
-    const englishHarness = buildThinkingSync("en");
-    englishHarness.state.openCodeThinking = {
+  cases.forEach(({ messageKey, zh }) => {
+    const harness = buildThinkingSync();
+    harness.state.openCodeThinking = {
       selectedVariant: null,
       options: [],
       disabled: true,
       messageKey,
     };
-    englishHarness.syncThinkingOptions();
-    assert.equal(englishHarness.openCodePrimaryThinkingMode.title, en);
-
-    const chineseHarness = buildThinkingSync("zh-CN");
-    chineseHarness.state.openCodeThinking = {
-      selectedVariant: null,
-      options: [],
-      disabled: true,
-      messageKey,
-    };
-    chineseHarness.syncThinkingOptions();
-    assert.equal(chineseHarness.openCodePrimaryThinkingMode.title, zh);
-    assert.notEqual(chineseHarness.openCodePrimaryThinkingMode.title, en);
+    harness.syncThinkingOptions();
+    assert.equal(harness.openCodePrimaryThinkingMode.title, zh);
   });
 
-  const fallbackHarness = buildThinkingSync("zh-CN");
+  const fallbackHarness = buildThinkingSync();
   fallbackHarness.state.openCodeThinking = {
     selectedVariant: null,
     options: [],
@@ -334,22 +317,20 @@ test("localizes OpenCode status message keys and safely ignores legacy diagnosti
   assert.doesNotMatch(fallbackHarness.openCodePrimaryThinkingMode.title, /Raw English|internal diagnostic/);
 });
 
-test("renders every standard OpenCode variant as its raw value in English and Chinese", () => {
+test("renders every standard OpenCode variant as its raw value", () => {
   const options = ["off", "none", "minimal", "low", "medium", "high", "xhigh", "ultra", "max", "thinking"]
     .map((value) => ({ value, label: "ignored" }));
-  (["en", "zh-CN"] as const).forEach((locale) => {
-    const harness = buildThinkingSync(locale);
-    harness.state.openCodeThinking = { selectedVariant: "thinking", options };
-    harness.syncThinkingOptions();
-    assert.deepEqual(
-      optionPairs(harness.openCodePrimaryThinkingMode),
-      options.map((option) => [option.value, option.value]),
-    );
-  });
+  const harness = buildThinkingSync();
+  harness.state.openCodeThinking = { selectedVariant: "thinking", options };
+  harness.syncThinkingOptions();
+  assert.deepEqual(
+    optionPairs(harness.openCodePrimaryThinkingMode),
+    options.map((option) => [option.value, option.value]),
+  );
 });
 
 test("preserves custom OpenCode dynamic value order while using raw values", () => {
-  const harness = buildThinkingSync("zh-CN");
+  const harness = buildThinkingSync();
   harness.state.openCodeThinking = {
     selectedVariant: "custom-after",
     options: [
@@ -371,7 +352,7 @@ test("preserves custom OpenCode dynamic value order while using raw values", () 
 });
 
 test("keeps fixed Codex and Claude thinking modes raw while retaining legacy max", () => {
-  const codex = buildThinkingSync("zh-CN");
+  const codex = buildThinkingSync();
   codex.state.currentCli = "codex";
   codex.state.thinkingMode = "off";
   codex.syncThinkingOptions();
@@ -388,7 +369,7 @@ test("keeps fixed Codex and Claude thinking modes raw while retaining legacy max
     { type: "updateSetting", key: "thinkingMode", value: "low" },
   ]);
 
-  const claude = buildThinkingSync("zh-CN");
+  const claude = buildThinkingSync();
   claude.state.currentCli = "claude";
   claude.state.thinkingMode = "max";
   claude.syncThinkingOptions();

@@ -79,7 +79,6 @@ function createGraphRun(overrides: Partial<GraphRunRecord> = {}): GraphRunRecord
 
 function createNoopGraphMessagesHost(): GraphMessagesHost {
   return createGraphMessagesHost({
-    resolveLocale: () => "en",
     getGraphNodeRunTarget: () => undefined,
     getLoopMessagesForTarget: () => [],
     appendSystemMessageForLoop: () => undefined,
@@ -410,7 +409,6 @@ test("Graph messages host scopes open actions to the right Graph tab", () => {
   const emitted: Array<{ content: string; actions?: ChatMessageAction[] }> = [];
   const target: PromptRunTarget = { tabId: "tab-main", cli: "codex", sessionId: "session-1" };
   const host = createGraphMessagesHost({
-    resolveLocale: () => "en",
     getGraphNodeRunTarget: () => undefined,
     getLoopMessagesForTarget: () => storedMessages,
     appendSystemMessageForLoop: (_target, content, options) => {

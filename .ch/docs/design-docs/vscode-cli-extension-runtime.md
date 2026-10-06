@@ -17,7 +17,7 @@
 - 本地执行，不引入远程中间层
 - 多 CLI 共存，但对 UI 暴露统一体验
 - 交互式会话、一次性执行、配置中心可以并存
-- 本地状态可恢复、可排障、可国际化
+- 本地状态可恢复、可排障；插件界面固定使用简体中文
 
 ## 2. 目录分层
 
@@ -35,7 +35,7 @@ src/
 ├── loopDebate.ts             # Loop 辩论记录、路径、群聊解析和共识校验纯函数
 ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 ├── logger.ts                 # 本地日志与脱敏
-├── i18n.ts                   # 扩展侧国际化
+├── i18n.ts                   # 扩展侧固定中文文案
 └── errorDisplay.ts           # 统一错误展示
 media/
 ├── marked.min.js             # 聊天面板 Markdown 运行时依赖
@@ -153,7 +153,7 @@ OpenCode 输出由 one-shot 适配层解析：成功退出时优先从 JSON 事�
 
 P0 性能与内存硬化后，OpenCode one-shot / parallel / interactive raw stdout/stderr 只在 Extension Host 中保留有界 tail；one-shot activity 使用 `createOpenCodeStreamActivityTracker()` 增量更新状态，不再把累计 `rawStdout/rawStderr` 每个 chunk 传回 `detectOpenCodeStreamActivity()`。OpenCode one-shot 与 tab stream 的 JSONL 未完成行均限制为 64 KiB。扩展停用或 reload 会先设置停用 guard，再通过幂等 stop-all 路径停止主进程、并行进程、交互运行和受管 OpenCode server，避免新 run 在停用期间进入。Webview 回放每 tab 保留记录数、单条字节和总字节预算，overlay 关闭时只更新状态和按钮，不构建完整 records DOM；回放导出为 JSONL，首行为元数据，后续每行一个回放记录对象；Assistant delta 流式阶段优先轻量文本更新，idle/final 时再做完整 Markdown 渲染；附件上传由 Webview 预检和 Extension Host decoded Buffer 复验共同限制为最多 10 个文件、单文件 20 MiB、不限制总大小。
 
-当且仅当 Loop 主任务已有可续接的远端 OpenCode session、当前空成功响应不含 provider JSON error，且同一运行尚未 rollover 时，下一次 hidden retry 以不带 `--session` 的新会话重新发送完整主任务 prompt。捕获新 `sessionID` 后，插件保留旧 session、复制 UI 会话记录到新 session、更新当前 tab 和 `LoopTaskRecord.sessionId/taskStoreFile`，再继续原状态机；不对 Loop 子任务、普通对话、已有 provider error 或第二次空响应重复切换。恢复中的中英文 system 消息只说明会话恢复，不把可恢复的旧会话空响应显示为 provider/model 配置终态。
+当且仅当 Loop 主任务已有可续接的远端 OpenCode session、当前空成功响应不含 provider JSON error，且同一运行尚未 rollover 时，下一次 hidden retry 以不带 `--session` 的新会话重新发送完整主任务 prompt。捕获新 `sessionID` 后，插件保留旧 session、复制 UI 会话记录到新 session、更新当前 tab 和 `LoopTaskRecord.sessionId/taskStoreFile`，再继续原状态机；不对 Loop 子任务、普通对话、已有 provider error 或第二次空响应重复切换。恢复中的中文 system 消息只说明会话恢复，不把可恢复的旧会话空响应显示为 provider/model 配置终态。
 
 OpenCode `text` JSONL 允许同一字符串同时包含内部思考 wrapper 与可见正文。解析层必须按顺序拆分 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` 块与 assistant 文本，最终结论只收集 assistant 段；Codex reasoning 和历史消息复用同一 wrapper 去除逻辑。该能力是定向协议清洗，不是通用 HTML sanitizer，普通尖括号标签必须原样保留。
 
@@ -236,11 +236,12 @@ Loop 主任务继续以真实工作区作为 cwd，使用项目规则完成规�
 
 ## 7. 横切能力
 
-### 7.1 国际化
+### 7.1 界面文案
 
 - 扩展侧使用 `src/i18n.ts`
-- VS Code contribution 文案走 `package.nls.json` / `package.nls.zh-cn.json`
-- Webview 内部文案由 `src/webview/viewContent.ts` 内置中英文词典提供
+- VS Code contribution 文案继续由 `package.nls.json` / `package.nls.zh-cn.json` 提供
+- Webview 内部文案由 `src/webview/viewContentStrings.ts` 提供，固定为简体中文
+- 工具设置不提供语言切换，也不读写 locale 配置；CLI 输出、用户内容和模型回答不由该 UI 文案层改写
 
 新增功能如果只改了扩展侧字符串、没补 Webview 文案，仍然算未完成。
 

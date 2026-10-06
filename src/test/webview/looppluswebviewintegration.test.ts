@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import * as vm from "node:vm";
 
-import { getWebviewStrings } from "../../webview/viewContentI18n";
+import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
@@ -537,7 +537,7 @@ function loadBrowser(activeTabId: string): {
   const posted: PostedMessage[] = [];
   const labelCalls: LabelCall[] = [];
   const runningTabIds = new Set<string>();
-  const i18n = { ...getWebviewStrings("zh-CN") };
+  const i18n = { ...getWebviewStrings() };
   const sandbox = {
     state,
     elements,
@@ -824,7 +824,7 @@ test("splits historical message labels by task identity across classic and Loop+
     ["taskRoleSubtask", null],
     ["taskRoleSubtaskWithRound", 2],
   ]);
-  Object.assign(browser.i18n, getWebviewStrings("en"));
+  Object.assign(browser.i18n, getWebviewStrings());
   api.renderMessages();
   assert.deepEqual(renderedBadges(messages), ["Subtask", "Subtask · Round 2"]);
   assert.equal(renderedBadges(messages).some((label) => label.includes("Round 1")), false);
@@ -1016,4 +1016,3 @@ test("hides Loop+ protocol prompts from message bubbles", () => {
   assert.equal(resultBubbles.some((html) => html.includes(userPrompt)), true);
   assert.equal(resultBubbles.some((html) => html.includes("MAIN_PROTOCOL_SECRET")), false);
 });
-

@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
@@ -236,10 +236,9 @@ test("halves the gap between the task-list card and the input form", () => {
 
 test("renders a visible collapse icon in the task-list summary", () => {
   const html = buildWebviewStaticHtml({
-    locale: "en",
     cspSource: "self",
     nonce: "nonce",
-    i18n: WEBVIEW_I18N.en,
+    i18n: WEBVIEW_STRINGS,
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -249,7 +248,7 @@ test("renders a visible collapse icon in the task-list summary", () => {
 
   assert.match(
     html,
-    /<summary>\s*<span class="tasklist-summary-title">\s*<span class="tasklist-toggle-icon" aria-hidden="true"><\/span>\s*<span>Task List<\/span>/,
+    /<summary>\s*<span class="tasklist-summary-title">\s*<span class="tasklist-toggle-icon" aria-hidden="true"><\/span>\s*<span>任务列表<\/span>/,
   );
   assert.match(
     TASKLIST_STYLES,

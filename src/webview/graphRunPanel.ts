@@ -7,7 +7,6 @@ import {
   type NodeLabel,
 } from "@dagrejs/dagre";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
-import { resolveLocale, type AppLocale } from "../i18n";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { GRAPH_RUN_PANEL_STYLES } from "./graphRunPanelStyles";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
@@ -174,8 +173,7 @@ export class GraphRunPanel {
   ) {}
 
   public show(state: GraphRunPanelState): void {
-    const locale = resolveLocale();
-    const strings = getGraphRunPanelStrings(locale);
+    const strings = getGraphRunPanelStrings();
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "sinitek-cli-tools.graphRun",
@@ -206,10 +204,9 @@ export class GraphRunPanel {
     if (!this.panel) {
       return;
     }
-    const locale = resolveLocale();
-    const strings = getGraphRunPanelStrings(locale);
+    const strings = getGraphRunPanelStrings();
     this.panel.title = buildGraphRunPanelTitle(state, strings);
-    this.panel.webview.html = buildGraphRunPanelHtml(this.panel.webview, state, locale);
+    this.panel.webview.html = buildGraphRunPanelHtml(this.panel.webview, state);
   }
 
   public getState(): GraphRunPanelState | undefined {
@@ -220,12 +217,11 @@ export class GraphRunPanel {
 export function buildGraphRunPanelHtml(
   webview: Pick<vscode.Webview, "cspSource">,
   state: GraphRunPanelState,
-  locale: AppLocale,
 ): string {
   const nonce = getNonce();
-  const strings = getGraphRunPanelStrings(locale);
+  const strings = getGraphRunPanelStrings();
   return `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -1655,11 +1651,10 @@ function formatEvidenceTimestamp(value: number | undefined): string {
 
 export function buildGraphRunPanelDagLayoutForTest(
   state: GraphRunPanelState,
-  locale: AppLocale = "en",
   direction: DagAutoLayoutDirection = DAG_AUTO_LAYOUT_CONFIG.direction,
   engine: "dagre" | "fallback" = "dagre",
 ): DagLayout {
-  return buildDagLayout(state, getGraphRunPanelStrings(locale), {
+  return buildDagLayout(state, getGraphRunPanelStrings(), {
     ...DAG_AUTO_LAYOUT_CONFIG,
     direction,
   }, engine);
@@ -2443,18 +2438,16 @@ function normalizeOptionalLabel(value: string | null | undefined): string | unde
 }
 
 function getShortEdgeKindLabel(edgeKind: string, strings: GraphRunPanelStrings): string {
-  const isChinese = strings.semanticStart === "开始";
-  const labelsByKind: Record<string, { en: string; zh: string }> = {
-    depends_on: { en: "Deps", zh: "依赖" },
-    if_pass: { en: "Pass", zh: "通过" },
-    if_fail: { en: "Fail", zh: "失败" },
-    review_feedback: { en: "Revw", zh: "评审" },
-    conflicts_with: { en: "Conf", zh: "冲突" },
-    evidence_for: { en: "Evid", zh: "证据" },
-    human_approved: { en: "OK", zh: "批准" },
+  const labelsByKind: Record<string, string> = {
+    depends_on: "依赖",
+    if_pass: "通过",
+    if_fail: "失败",
+    review_feedback: "评审",
+    conflicts_with: "冲突",
+    evidence_for: "证据",
+    human_approved: "批准",
   };
-  const shortLabel = labelsByKind[edgeKind];
-  return shortLabel ? (isChinese ? shortLabel.zh : shortLabel.en) : edgeKind;
+  return labelsByKind[edgeKind] ?? edgeKind;
 }
 
 function splitShortEdgeLabelSegments(label: string): string[] {

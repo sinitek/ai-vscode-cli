@@ -335,7 +335,6 @@ export type PanelState = {
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;
-  locale: string;
   isMac: boolean;
   macTaskShell: MacTaskShell;
   thinkingMode: ThinkingMode;

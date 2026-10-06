@@ -124,13 +124,13 @@ test("builds recall pack from workspace-local memory files and writes generated 
     assert.ok(pack.sections.length >= 1);
     assert.ok(pack.observationIds.length >= 1);
 
-    const block = buildLongTermMemoryPromptBlock(pack, "en");
-    assert.match(block, /\[Plugin Memory Context\]/);
-    assert.match(block, /Project Context:/);
-    assert.match(block, /Lessons Learned:/);
+    const block = buildLongTermMemoryPromptBlock(pack);
+    assert.match(block, /\[插件长期记忆上下文\]/);
+    assert.match(block, /项目上下文:/);
+    assert.match(block, /经验教训:/);
 
     const injected = injectLongTermMemoryPrompt("Answer the user question.", block);
-    assert.match(injected, /Plugin Memory Context/);
+    assert.match(injected, /插件长期记忆上下文/);
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "recall-pack.md")));
     assert.ok(fs.existsSync(path.join(paths.generatedDir, "observations.jsonl")));
     assert.equal(paths.generatedDir.startsWith(path.join(path.resolve(runtimeDataDir), "memory-generated")), true);

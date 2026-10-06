@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { Script } from "node:vm";
 
 import { installVscodeMock } from "../vscodeMock";
-import { WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 installVscodeMock();
@@ -395,7 +395,7 @@ function loadJsonTreeRuntime(options: {
   )(
     options.JSONFormatter,
     (globalThis as { document?: unknown }).document,
-    (key: string) => WEBVIEW_I18N["zh-CN"][key as keyof typeof WEBVIEW_I18N["zh-CN"]] || key,
+    (key: string) => WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS] || key,
     {
       parse: (content: string) => {
         markedCalls.push(content);
@@ -511,7 +511,7 @@ test("mounts json-formatter-js with two expanded levels and lets a node collapse
   assert.equal(renderedRows[1].classList.contains("json-formatter-open"), true);
   assert.equal(renderedRows[2].classList.contains("json-formatter-open"), false);
   assert.equal(renderedRows[2].querySelector("div.json-formatter-children")?.children.length || 0, 0);
-  assert.equal(host.styleProps["--json-tree-empty-object-label"], JSON.stringify(WEBVIEW_I18N["zh-CN"].jsonTreeEmptyObject));
+  assert.equal(host.styleProps["--json-tree-empty-object-label"], JSON.stringify(WEBVIEW_STRINGS.jsonTreeEmptyObject));
   assert.equal(host.getAttribute("data-json-tree-mounted"), "true");
 
   const root = renderedRows[0];
@@ -561,8 +561,8 @@ test("inlines the JSON formatter runtime into the chat webview", () => {
   assert.match(html, /JSONFormatter=/);
   assert.match(html, /function parseCompleteJsonContainer/);
   assertInlineScriptsCanBeDocumentWritten(html);
-  assert.equal(WEBVIEW_I18N.en.jsonTreeEmptyObject, "No properties");
-  assert.equal(WEBVIEW_I18N["zh-CN"].jsonTreeEmptyObject, "无属性");
+  assert.equal(WEBVIEW_STRINGS.jsonTreeEmptyObject, "No properties");
+  assert.equal(WEBVIEW_STRINGS.jsonTreeEmptyObject, "无属性");
 
   const fsModule = require("fs") as { readFileSync: (...args: any[]) => string };
   const originalReadFileSync = fsModule.readFileSync;

@@ -3,10 +3,7 @@ import { logDebug } from "./logger";
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type InteractiveSessionBinding } from "./interactive/runnerRetention";
-import {
-  type ToolSettingsLocale,
-  type ToolSettingsState,
-} from "./toolSettings";
+import { type ToolSettingsState } from "./toolSettings";
 import { type LoopTaskRecord } from "./loopTaskStore";
 import { createPanelMessageRouter } from "./sessionMessageRouter";
 import { createPanelMessageHandlerRegistry } from "./panelMessageHandlers";
@@ -135,7 +132,6 @@ export type PanelMessageHandlerDeps = {
   setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLoopExecutionMode>) => void;
   loadModelStore: () => void;
   normalizeLoopMaxRounds: (value: unknown) => number;
-  normalizeToolSettingsLocale: (value: unknown) => ToolSettingsLocale | null;
   isCliName: (value: string) => value is CliName;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   isMacTaskShell: (value: unknown) => value is MacTaskShell;

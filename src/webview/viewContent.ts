@@ -1,7 +1,6 @@
 import { CLI_LIST } from "../cli/types";
 import { logError } from "../logger";
-import { resolveLocale } from "../i18n";
-import { getWebviewStrings } from "./viewContentI18n";
+import { getWebviewStrings } from "./viewContentStrings";
 import { buildWebviewStaticHtml, neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { readFileSync } from "fs";
 import * as path from "path";
@@ -29,8 +28,7 @@ let cachedJsonFormatterScript: string | undefined;
 
 export function getWebviewHtml(webview: { cspSource: string }): string {
   const nonce = getNonce();
-  const locale = resolveLocale();
-  const i18n = getWebviewStrings(locale);
+  const i18n = getWebviewStrings();
   const cliOptions = CLI_LIST.map(
     (cli) => `<option value="${cli}">${cli}</option>`,
   ).join("");
@@ -38,7 +36,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
   const jsonFormatterScript = getJsonFormatterScript();
 
   const staticHtml = buildWebviewStaticHtml({
-    locale,
     cspSource: webview.cspSource,
     nonce,
     i18n,

@@ -335,7 +335,6 @@ function createHarness(): HandlerHarness {
     setWorkspaceLoopExecutionModeForCli: () => undefined,
     loadModelStore: () => undefined,
     normalizeLoopMaxRounds: () => 3,
-    normalizeToolSettingsLocale: () => null,
     isCliName,
     updateStoredToolSettings: () => true,
     isMacTaskShell,
@@ -622,7 +621,7 @@ test("rejects upload boundaries in the file-action adapter before saving", async
     dataUrl: tinyDataUrl,
   })));
   assert.deepEqual(tooMany.paths, []);
-  assert.match(String(tooMany.error), /Too many attachments/);
+  assert.match(String(tooMany.error), /附件数量过多/);
 
   const tooLarge = await saveUploadedFiles([{
     name: "large.bin",
@@ -630,7 +629,7 @@ test("rejects upload boundaries in the file-action adapter before saving", async
     dataUrl: "data:application/octet-stream;base64," + Buffer.alloc(UPLOAD_MAX_FILE_BYTES + 1).toString("base64"),
   }]);
   assert.deepEqual(tooLarge.paths, []);
-  assert.match(String(tooLarge.error), /maximum per file/);
+  assert.match(String(tooLarge.error), /单文件最大/);
 
   const nineMbDataUrl = "data:application/octet-stream;base64," + Buffer.alloc(9 * 1024 * 1024).toString("base64");
   const overOldTotal = await saveUploadedFiles([

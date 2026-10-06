@@ -2,17 +2,16 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
-import { getWebviewStrings, WEBVIEW_I18N } from "../../webview/viewContentI18n";
+import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
 const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
-function buildHtml(locale: "en" | "zh-CN"): string {
+function buildHtml(): string {
   return buildWebviewStaticHtml({
-    locale,
     cspSource: "vscode-resource://test-authority",
     nonce: "loop-plus-help-nonce",
-    i18n: getWebviewStrings(locale),
+    i18n: getWebviewStrings(),
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -48,46 +47,19 @@ function interactiveModeSelects(html: string): string[] {
   return html.match(/<select id="[^"]*" class="interactive-mode-select"[\s\S]*?<\/select>/g) ?? [];
 }
 
-test("keeps English and Chinese help keys aligned", () => {
-  assert.deepEqual(
-    Object.keys(WEBVIEW_I18N["zh-CN"]).sort(),
-    Object.keys(WEBVIEW_I18N.en).sort(),
-  );
-  assert.equal(WEBVIEW_I18N.en.helpModeLoopPlusTitle, "Loop+");
-  assert.equal(WEBVIEW_I18N["zh-CN"].helpModeLoopPlusTitle, "Loop+");
-  assert.equal(getWebviewStrings("en").helpTabModes, "Modes");
-  assert.equal(getWebviewStrings("zh-CN").helpTabModes, "模式说明");
+test("使用固定中文帮助文案", () => {
+  assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
+  assert.equal(WEBVIEW_STRINGS.helpModeLoopPlusTitle, "Loop+");
+  assert.equal(getWebviewStrings().helpTabModes, "模式说明");
 });
 
-test("renders concise and accurate mode descriptions in both help locales", () => {
-  const english = helpModesPanel(buildHtml("en"));
-  const chinese = helpModesPanel(buildHtml("zh-CN"));
+test("渲染简洁准确的中文模式说明", () => {
+  const chinese = helpModesPanel(buildHtml());
 
-  assert.ok(
-    english.indexOf(">Loop<") < english.indexOf(">Loop+<") &&
-      english.indexOf(">Loop+<") < english.indexOf(">Graph<"),
-  );
   assert.ok(
     chinese.indexOf(">Loop<") < chinese.indexOf(">Loop+<") &&
       chinese.indexOf(">Loop+<") < chinese.indexOf(">Graph<"),
   );
-
-  for (const snippet of [
-    "How to Choose",
-    "round-based work",
-    "direct interaction, fast startup, and low overhead",
-    "clear batch boundaries, shared context, and one combined review",
-    "accepts completed work immediately",
-    "visible queue",
-    "queued follow-up messages or tasks",
-    "implementation, contracts, tests, artifacts, unauthorized changes",
-    "It may run tests or start an artifact, and neither is required.",
-    "default 100, maximum 999",
-    "explicit dependencies, parallel execution, and visible evidence",
-    "defined scheduling and recovery boundaries",
-  ]) {
-    assert.ok(english.includes(snippet), `Missing English help snippet: ${snippet}`);
-  }
 
   for (const snippet of [
     "如何选择",
@@ -107,11 +79,10 @@ test("renders concise and accurate mode descriptions in both help locales", () =
   }
 });
 
-test("stops claiming Graph cannot resolve conflicts and keeps the existing help shell", () => {
-  const englishHtml = buildHtml("en");
-  const chineseHtml = buildHtml("zh-CN");
+test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
+  const chineseHtml = buildHtml();
 
-  for (const html of [englishHtml, chineseHtml]) {
+  for (const html of [chineseHtml]) {
     assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
     assert.match(html, /id="helpTabInstall"/);
     assert.match(html, /id="helpTabModes"/);
@@ -134,8 +105,6 @@ test("stops claiming Graph cannot resolve conflicts and keeps the existing help 
     }
   }
 
-  assert.match(englishHtml, /Windows must install PowerShell before the commands above/);
   assert.match(chineseHtml, /Windows 必须先安装 PowerShell，再执行上面的命令/);
-  assert.doesNotMatch(englishHtml, /highest setup cost and UI complexity|still no graph editor|Cons:/);
   assert.doesNotMatch(chineseHtml, /准备成本和界面复杂度最高|目前还没有图编辑器|缺点：/);
 });

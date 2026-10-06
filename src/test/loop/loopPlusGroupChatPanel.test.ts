@@ -95,8 +95,8 @@ function buildWithChat(loopPlus: unknown, overrides: Partial<LoopTaskRecord>, ch
   });
 }
 
-function html(state: PanelState, locale: "zh-CN" | "en"): string {
-  return buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, state, locale);
+function html(state: PanelState): string {
+  return buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, state);
 }
 
 function countValue(page: string, name: string): string {
@@ -111,7 +111,7 @@ function assertLoopPlusDetailCardsHidden(page: string): void {
   assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=|data-loop-plus-acceptance=/u);
   assert.doesNotMatch(
     page,
-    /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果|Current review|Review queue|Still running|Waiting to start|Acceptance results)<\/h2>/u,
+    /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果)<\/h2>/u,
   );
 }
 
@@ -125,13 +125,13 @@ function parallelSnapshot() {
   return scheduler.snapshot();
 }
 
-test("renders the Loop+ queue and parallel execution in zh-CN and English", () => {
+test("renders the Loop+ queue and parallel execution", () => {
   const state = build(parallelSnapshot());
   assert.equal(state.task.currentRound, 4);
-  for (const locale of ["zh-CN", "en"] as const) {
-    const page = html(state, locale);
-    assert.match(page, locale === "zh-CN" ? /<h1>Loop\+ 群聊<\/h1>/u : /<h1>Loop\+ Group Chat<\/h1>/u);
-    assert.match(page, locale === "zh-CN" ? /最后启动/u : /Last started/u);
+  {
+    const page = html(state);
+    assert.match(page, /<h1>Loop\+ 群聊<\/h1>/u);
+    assert.match(page, /最后启动/u);
     assert.match(page, /子任务 1：Alpha/u);
     assert.doesNotMatch(page, /会话：|Session：|无会话|No session/u);
     assert.equal(countValue(page, "current"), "1");
@@ -152,32 +152,21 @@ test("renders the Loop+ queue and parallel execution in zh-CN and English", () =
     assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
     assert.match(page, /typing-dots/u);
     assert.doesNotMatch(page, /data-thinking-kind="moderator"|<b>running<\/b>/u);
-    if (locale === "zh-CN") {
-      assert.match(page, /事件驱动逐项验收/u);
-      assert.match(page, /正在验收 子任务 1：Alpha。/u);
-      assert.doesNotMatch(page, /尝试|已验收尝试/u);
-      assert.doesNotMatch(page, /执行结束，尚未验收|待验收队列/u);
-      assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
-      assert.match(page, /子任务 4：Delta 思考中/u);
-      assert.match(page, /主任务 思考中/u);
-      assert.doesNotMatch(page, /已全部收口/u);
-    } else {
-      assert.match(page, /Event-driven review/u);
-      assert.match(page, /Reviewing 子任务 1：Alpha\./u);
-      assert.doesNotMatch(page, /Accepted attempts|Attempt /u);
-      assert.doesNotMatch(page, /Execution finished, not accepted|Review queue/u);
-      assert.doesNotMatch(page, /<div class="meta-label">Current round<\/div>/u);
-      assert.match(page, /子任务 4：Delta is thinking/u);
-      assert.match(page, /主任务 is thinking/u);
-      assert.doesNotMatch(page, /fully closed/u);
-    }
+    assert.match(page, /事件驱动逐项验收/u);
+    assert.match(page, /正在验收 子任务 1：Alpha。/u);
+    assert.doesNotMatch(page, /尝试|已验收尝试/u);
+    assert.doesNotMatch(page, /执行结束，尚未验收|待验收队列/u);
+    assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
+    assert.match(page, /子任务 4：Delta 思考中/u);
+    assert.match(page, /主任务 思考中/u);
+    assert.doesNotMatch(page, /已全部收口/u);
   }
 });
 
 test("renders waiting, a non-empty queue with zero running work, and a damaged snapshot", () => {
   const waitingScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(waitingScheduler.dispatch([spec("D", "d-1")]).started.length, 1);
-  const waiting = html(build(waitingScheduler.snapshot()), "zh-CN");
+  const waiting = html(build(waitingScheduler.snapshot()));
   assert.match(waiting, /data-loop-plus-status="waiting"/u);
   assert.match(waiting, /等待执行结束。主任务没有在生成。/u);
   assert.equal(countValue(waiting, "running"), "1");
@@ -194,28 +183,28 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   const current = queuedScheduler.snapshot().currentReview;
   assert.ok(current);
   assert.equal(queuedScheduler.submitReview(current.eventId).ok, true);
-  const queued = html(build(queuedScheduler.snapshot()), "en");
+  const queued = html(build(queuedScheduler.snapshot()));
   assert.match(queued, /data-loop-plus-phase="review_ready"/u);
   assert.match(queued, /data-loop-plus-status="review_pending"/u);
   assert.equal(countValue(queued, "running"), "0");
   assert.equal(countValue(queued, "queue"), "2");
   assert.equal(countValue(queued, "visible"), "2");
   assertLoopPlusDetailCardsHidden(queued);
-  assert.match(queued, /This task is not complete\./u);
-  assert.doesNotMatch(queued, /fully closed|Reviewing /u);
+  assert.match(queued, /已有子任务排队等待验收，当前验收尚未开始。任务不能视为已完成。/u);
+  assert.doesNotMatch(queued, /已全部收口|正在验收/u);
 
-  const missing = html(build(undefined), "zh-CN");
+  const missing = html(build(undefined));
   assert.match(missing, /data-loop-plus-status="invalid"/u);
   assert.match(missing, /快照缺失或损坏（missing）/u);
   assert.match(missing, /不能把该任务显示成空队列或已完成/u);
   assert.doesNotMatch(missing, /data-loop-plus-count=/u);
   assert.doesNotMatch(missing, /没有排队等待验收的项|已全部收口|正在验收/u);
 
-  const damaged = html(build({ version: 1 }), "en");
+  const damaged = html(build({ version: 1 }));
   assert.match(damaged, /data-loop-plus-status="invalid"/u);
-  assert.match(damaged, /missing or damaged \(Invalid Loop\+ scheduler snapshot:/u);
-  assert.match(damaged, /cannot be shown as an empty queue or complete/u);
-  assert.doesNotMatch(damaged, /data-loop-plus-count=|fully closed|Reviewing /u);
+  assert.match(damaged, /快照缺失或损坏/u);
+  assert.match(damaged, /不能把该任务显示成空队列或已完成/u);
+  assert.doesNotMatch(damaged, /data-loop-plus-count=|已全部收口|正在验收/u);
 });
 
 test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
@@ -223,7 +212,7 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   dispatchAndFinish(scheduler, "A", "a-1");
   dispatchAndFinish(scheduler, "B", "b-1");
   assert.equal(scheduler.stopParent().reason, "stopped");
-  const stoppedPage = html(build(scheduler.snapshot(), { status: "stopped" }), "zh-CN");
+  const stoppedPage = html(build(scheduler.snapshot(), { status: "stopped" }));
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /不会自动验收/u);
   assertLoopPlusDetailCardsHidden(stoppedPage);
@@ -234,13 +223,13 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
 
   const resumedResult = scheduler.resumeParent();
   assert.equal(resumedResult.reason, "resumed");
-  const resumedPage = html(build(scheduler.snapshot()), "en");
+  const resumedPage = html(build(scheduler.snapshot()));
   assert.match(resumedPage, /data-loop-plus-phase="review_ready"/u);
   assert.match(resumedPage, /data-loop-plus-status="review_pending"/u);
-  assert.match(resumedPage, /data-loop-plus-field="wake"[\s\S]*?<div class="meta-value">Yes<\/div>/u);
+  assert.match(resumedPage, /data-loop-plus-field="wake"[\s\S]*?<div class="meta-value">是<\/div>/u);
   assertLoopPlusDetailCardsHidden(resumedPage);
-  assert.match(resumedPage, /not complete/u);
-  assert.doesNotMatch(resumedPage, /Reviewing |fully closed|is thinking/u);
+  assert.match(resumedPage, /已有子任务排队等待验收，当前验收尚未开始。任务不能视为已完成。/u);
+  assert.doesNotMatch(resumedPage, /正在验收|已全部收口|思考中/u);
 });
 
 test("shows the Loop+ main reviewer animation without reusing a debate active speaker", () => {
@@ -268,14 +257,14 @@ test("shows the Loop+ main reviewer animation without reusing a debate active sp
     buildLoopCompletedConclusionAndSummaryMarkdown: () => "done",
     t: (key: string) => key,
   });
-  const page = html(state, "en");
+  const page = html(state);
   assert.equal(state.mode, "debate");
-  assert.match(page, /<h1>Loop\+ Group Chat<\/h1>/u);
+  assert.match(page, /<h1>Loop\+ 群聊<\/h1>/u);
   assertLoopPlusDetailCardsHidden(page);
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
-  assert.match(page, /主持人主智能体 is thinking/u);
-  assert.doesNotMatch(page, /data-thinking-kind="moderator"|Judge is thinking|Red\/Blue debate group chat/u);
-  assert.match(page, /Event-driven review/u);
+  assert.match(page, /主持人主智能体 思考中/u);
+  assert.doesNotMatch(page, /data-thinking-kind="moderator"|裁判主持人 思考中|红蓝辩论群聊/u);
+  assert.match(page, /事件驱动逐项验收/u);
 });
 
 test("renders a paused Loop+ review separately from active review and restores it after continue", () => {
@@ -294,7 +283,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   }
   assert.equal(held.loopPlus.activity, "paused");
   assert.equal(held.loopPlus.phase, "reviewing");
-  const heldPage = html(held, "zh-CN");
+  const heldPage = html(held);
   assert.match(heldPage, /data-loop-plus-status="paused"/u);
   assert.match(heldPage, /data-loop-plus-phase="reviewing"/u);
   assert.match(heldPage, /自动验收已暂停，需要继续后才会恢复/u);
@@ -311,7 +300,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(heldPage, /<button[^>]*data-action="continueTask"/u);
   assert.doesNotMatch(heldPage, /<button[^>]*data-action="stopTask"/u);
 
-  const resumedPage = html(build(snapshot, { status: "running", activeSubtaskIds: [] }), "zh-CN");
+  const resumedPage = html(build(snapshot, { status: "running", activeSubtaskIds: [] }));
   assert.equal(JSON.stringify(snapshot), before);
   assert.match(resumedPage, /data-loop-plus-status="reviewing"/u);
   assert.match(resumedPage, /data-loop-plus-phase="reviewing"/u);
@@ -332,27 +321,27 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(queueScheduler.submitReview(current.eventId).ok, true);
   const queueSnapshot = queueScheduler.snapshot();
   const queueBefore = JSON.stringify(queueSnapshot);
-  const queuedPage = html(build(queueSnapshot, { status: "error", activeSubtaskIds: [] }), "en");
+  const queuedPage = html(build(queueSnapshot, { status: "error", activeSubtaskIds: [] }));
   assert.equal(JSON.stringify(queueSnapshot), queueBefore);
   assert.match(queuedPage, /data-loop-plus-status="paused"/u);
   assert.match(queuedPage, /data-loop-plus-phase="review_ready"/u);
-  assert.match(queuedPage, /Automatic review is paused until you continue/u);
+  assert.match(queuedPage, /自动验收已暂停，需要继续后才会恢复/u);
   assert.equal(countValue(queuedPage, "current"), "0");
   assert.equal(countValue(queuedPage, "queue"), "1");
   assert.equal(countValue(queuedPage, "visible"), "1");
   assertLoopPlusDetailCardsHidden(queuedPage);
-  assert.doesNotMatch(queuedPage, /Reviewing |is thinking|fully closed/u);
+  assert.doesNotMatch(queuedPage, /正在验收|思考中|已全部收口/u);
   assert.match(queuedPage, /<button[^>]*data-action="continueTask"/u);
 
-  const queueResumedPage = html(build(queueSnapshot, { status: "running", activeSubtaskIds: [] }), "en");
+  const queueResumedPage = html(build(queueSnapshot, { status: "running", activeSubtaskIds: [] }));
   assert.equal(JSON.stringify(queueSnapshot), queueBefore);
   assert.match(queueResumedPage, /data-loop-plus-status="review_pending"/u);
   assert.match(queueResumedPage, /data-loop-plus-phase="review_ready"/u);
-  assert.match(queueResumedPage, /has not started/u);
-  assert.doesNotMatch(queueResumedPage, /Automatic review is paused|Reviewing |is thinking/u);
+  assert.match(queueResumedPage, /已有子任务排队等待验收，当前验收尚未开始。任务不能视为已完成。/u);
+  assert.doesNotMatch(queueResumedPage, /自动验收已暂停|正在验收|思考中/u);
 
   assert.equal(scheduler.stopParent().reason, "stopped");
-  const stoppedPage = html(build(scheduler.snapshot(), { status: "needs-review" }), "zh-CN");
+  const stoppedPage = html(build(scheduler.snapshot(), { status: "needs-review" }));
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /data-loop-plus-phase="stopped"/u);
   assertLoopPlusDetailCardsHidden(stoppedPage);
@@ -362,12 +351,12 @@ test("renders a paused Loop+ review separately from active review and restores i
 
   const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(completedScheduler.complete().ok, true);
-  const completedPage = html(build(completedScheduler.snapshot(), { status: "error" }), "en");
+  const completedPage = html(build(completedScheduler.snapshot(), { status: "error" }));
   assert.match(completedPage, /data-loop-plus-status="completed"/u);
-  assert.match(completedPage, /fully closed/u);
-  assert.doesNotMatch(completedPage, /Automatic review is paused|Reviewing /u);
+  assert.match(completedPage, /Loop\+ 已全部收口。/u);
+  assert.doesNotMatch(completedPage, /自动验收已暂停|正在验收/u);
 
-  const missingPage = html(build(undefined, { status: "needs-review" }), "zh-CN");
+  const missingPage = html(build(undefined, { status: "needs-review" }));
   assert.match(missingPage, /data-loop-plus-status="invalid"/u);
   assert.match(missingPage, /快照缺失或损坏（missing）/u);
   assert.doesNotMatch(missingPage, /自动验收已暂停|正在验收|data-loop-plus-count=/u);
@@ -378,7 +367,7 @@ test("shows one execution animation for every running Loop+ subtask without pret
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   const dispatched = scheduler.dispatch([spec("D", "d-1"), spec("E", "e-1")]);
   assert.deepEqual(dispatched.started.map((item) => item.subtaskId), ["D", "E"]);
-  const page = html(build(scheduler.snapshot()), "zh-CN");
+  const page = html(build(scheduler.snapshot()));
   assert.match(page, /data-loop-plus-status="waiting"/u);
   assert.match(page, /等待执行结束。主任务没有在生成。/u);
   const delta = page.indexOf('data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"');
@@ -387,7 +376,7 @@ test("shows one execution animation for every running Loop+ subtask without pret
   assert.match(page, /子任务 4：Delta 思考中/u);
   assert.match(page, /子任务 5：Echo 思考中/u);
   assert.equal(page.match(/data-thinking-kind="subtask"/gu)?.length, 2);
-  assert.equal(page.match(/class="typing-dots"/gu)?.length, 2);
+  assert.equal(page.match(/data-thinking-kind="subtask"[^>]*>[\s\S]*?<span class="typing-dots"/gu)?.length, 2);
   assert.doesNotMatch(page, /data-thinking-kind="main"|主任务 思考中|正在验收/u);
 });
 
@@ -397,7 +386,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const passedCurrent = passedScheduler.snapshot().currentReview;
   assert.ok(passedCurrent);
   assert.equal(passedScheduler.submitReview(passedCurrent.eventId).ok, true);
-  const passedPage = html(build(passedScheduler.snapshot()), "zh-CN");
+  const passedPage = html(build(passedScheduler.snapshot()));
   assertLoopPlusDetailCardsHidden(passedPage);
   assert.match(passedPage, /验收结果/u);
   assert.match(passedPage, /子任务 1：Alpha/u);
@@ -417,7 +406,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const failedCurrent = failedScheduler.snapshot().currentReview;
   assert.ok(failedCurrent);
   assert.equal(failedScheduler.submitReview(failedCurrent.eventId).ok, true);
-  const failedPage = html(build(failedScheduler.snapshot()), "zh-CN");
+  const failedPage = html(build(failedScheduler.snapshot()));
   assertLoopPlusDetailCardsHidden(failedPage);
   assert.match(failedPage, /子任务 2：Bravo/u);
   assert.match(failedPage, /<span class="member-status-failed">验收失败<\/span>/u);
@@ -434,12 +423,12 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   const stoppedCurrent = stoppedScheduler.snapshot().currentReview;
   assert.ok(stoppedCurrent);
   assert.equal(stoppedScheduler.submitReview(stoppedCurrent.eventId).ok, true);
-  const stoppedPage = html(build(stoppedScheduler.snapshot()), "en");
+  const stoppedPage = html(build(stoppedScheduler.snapshot()));
   assertLoopPlusDetailCardsHidden(stoppedPage);
   assert.match(stoppedPage, /子任务 3：Charlie/u);
-  assert.match(stoppedPage, /<span class="member-status-failed">Acceptance failed<\/span>/u);
-  assert.doesNotMatch(stoppedPage, /子任务 3：Charlie · Acceptance failed/u);
-  assert.doesNotMatch(stoppedPage, /Accepted attempts|Attempt /u);
+  assert.match(stoppedPage, /<span class="member-status-failed">验收失败<\/span>/u);
+  assert.doesNotMatch(stoppedPage, /子任务 3：Charlie · 验收失败/u);
+  assert.doesNotMatch(stoppedPage, /尝试|已验收尝试/u);
 
   const legacy = passedScheduler.snapshot();
   const seen = legacy.seenAttempts.find((item) => item.attemptId === "a-1");
@@ -447,14 +436,14 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   delete seen.outcome;
   const legacyFailed = html(build(legacy, {
     subTasks: [{ id: "A", title: "Alpha", status: "blocked", updatedAt: 11 }],
-  }), "zh-CN");
+  }));
   assertLoopPlusDetailCardsHidden(legacyFailed);
   assert.match(legacyFailed, /子任务 1：Alpha/u);
   assert.match(legacyFailed, /验收失败/u);
   assert.doesNotMatch(legacyFailed, /验收成功|子任务 1：Alpha · 验收失败/u);
   const legacyPassed = html(build(legacy, {
     subTasks: [{ id: "A", title: "Alpha", status: "completed", updatedAt: 11 }],
-  }), "zh-CN");
+  }));
   assertLoopPlusDetailCardsHidden(legacyPassed);
   assert.match(legacyPassed, /子任务 1：Alpha/u);
   assert.match(legacyPassed, /验收成功/u);
@@ -468,7 +457,7 @@ test("shows a completed attempt as acceptance failed when the review starts a re
   assert.ok(current);
   assert.equal(scheduler.submitReviewBatch([current.eventId], "failed").ok, true);
   assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
-  const page = html(build(scheduler.snapshot()), "zh-CN");
+  const page = html(build(scheduler.snapshot()));
   assert.match(page, /<span class="member-status-failed">验收失败<\/span>/u);
   assert.doesNotMatch(page, /<span class="member-status-passed">验收成功<\/span>/u);
   assert.match(page, /\.member-status-passed\s*\{[^}]*--vscode-charts-green/u);
@@ -515,7 +504,7 @@ test("shows each subtask's own last execution start instead of a shared update t
   assert.equal(startedAtById.get("B"), bravoStartedAt);
   assert.equal(startedAtById.get("C"), null);
   assert.equal(startedAtById.get("D"), deltaStartedAt);
-  const page = html(state, "zh-CN");
+  const page = html(state);
   const alpha = memberLastStartedStamp(page, "子任务 1：Alpha");
   const bravo = memberLastStartedStamp(page, "子任务 2：Bravo");
   const charlie = memberLastStartedStamp(page, "子任务 3：Charlie");

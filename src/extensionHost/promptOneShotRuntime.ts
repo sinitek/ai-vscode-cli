@@ -24,7 +24,7 @@ import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import type { CliName, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
-import { getLocaleSetting, resolveLocale, type I18nKey } from "../i18n";
+import { type I18nKey } from "../i18n";
 import {
   buildNaturalLanguageHumanInteractionRequest,
   formatHumanInteractionSubmittedText,
@@ -186,9 +186,7 @@ export type PromptOneShotRuntimeHost = {
 
 function buildOpenCodeOneShotStartupTimeoutMessage(timeoutMs: number): string {
   const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-  return resolveLocale(getLocaleSetting()).startsWith("zh")
-    ? `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`
-    : `OpenCode run --format json started, but returned no assistant answer, error, or status output within ${seconds} seconds. The extension stopped this attempt and finalized it as an error; check the OpenCode provider/model/key config or run \`opencode run --format json '<your task>'\` in a terminal.`;
+  return `OpenCode run --format json 已启动，但 ${seconds} 秒内没有返回助手回答、错误或状态输出。插件已终止本次尝试并进入错误收口；请检查 OpenCode provider/model/key 配置，或在终端运行 \`opencode run --format json '<你的任务>'\` 验证真实任务。`;
 }
 
 export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDeps): PromptOneShotRuntimeHost {

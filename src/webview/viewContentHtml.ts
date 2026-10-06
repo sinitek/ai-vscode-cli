@@ -1,14 +1,13 @@
 import { renderChatModal } from "./modalComponents";
-import { AppLocale } from "../i18n";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
   LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
-import { WebviewI18nKey } from "./viewContentI18n";
+import { WebviewStringKey } from "./viewContentStrings";
 
-type WebviewHtmlStrings = Record<WebviewI18nKey, string>;
+type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
 export function neutralizeInlineScriptEndTags(source: string): string {
   return source.replace(/<\/script/gi, "<\\/script");
@@ -27,7 +26,6 @@ function renderInteractiveModeSelect(
 }
 
 export type BuildWebviewStaticHtmlInput = {
-  locale: AppLocale;
   cspSource: string;
   nonce: string;
   i18n: WebviewHtmlStrings;
@@ -43,7 +41,6 @@ export function buildWebviewStaticHtml(
   input: BuildWebviewStaticHtmlInput,
 ): string {
   const {
-    locale,
     cspSource,
     nonce,
     i18n,
@@ -60,7 +57,7 @@ export function buildWebviewStaticHtml(
     loopExecutionModeDebateMultiAgent;
 
   return `<!DOCTYPE html>
-<html lang="${locale}">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -468,16 +465,6 @@ ${renderChatModal({
                     <input type="checkbox" id="autoAddEditorContextTags" />
                     <span>${i18n.toolSettingsAutoContextToggle}</span>
                   </label>
-                </div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLanguageLabel}</div>
-                  <select id="languageSelect" class="thinking-select" aria-label="${i18n.toolSettingsLanguageAria}">
-                    <option value="auto">${i18n.toolSettingsLanguageAuto}</option>
-                    <option value="zh-CN">${i18n.toolSettingsLanguageZh}</option>
-                    <option value="en">${i18n.toolSettingsLanguageEn}</option>
-                  </select>
                 </div>
               </section>
               <section id="macTaskShellRow" class="tool-settings-card tool-settings-row" style="display: none;">
