@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.23.6",
+  "version": "0.23.7",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -21,6 +21,7 @@
     "onCommand:sinitek-cli-tools.runCliThinkingOn",
     "onCommand:sinitek-cli-tools.runCliThinkingOff",
     "onCommand:sinitek-cli-tools.openPanel",
+    "onCommand:sinitek-cli-tools.addToCliReference",
     "onCommand:sinitek-cli-tools.openLoopGroupChat",
     "onView:sinitek-cli-tools.panelView",
     "onStartupFinished"
@@ -49,10 +50,29 @@
         "title": "%command.openPanel%"
       },
       {
+        "command": "sinitek-cli-tools.addToCliReference",
+        "title": "%command.addToCliReference%"
+      },
+      {
         "command": "sinitek-cli-tools.openLoopGroupChat",
         "title": "%command.openLoopGroupChat%"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "sinitek-cli-tools.addToCliReference",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote",
+          "group": "navigation@10"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "sinitek-cli-tools.addToCliReference",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "%config.title%",
       "properties": {

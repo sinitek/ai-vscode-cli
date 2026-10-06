@@ -286,6 +286,20 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.explorer_prompt_references",
+      "name": "资源管理器引用经宿主解析后写入就绪输入框",
+      "description": "文件和目录右键加入携宁 CLI 引用支持单选和多选。扩展宿主只处理所属工作区中的本地或远程资源，按所属根目录生成相对路径、统一斜杠并去重，根目录引用为 @.。打开面板后通过 insertPromptPaths 写入当前选区，含空格路径加引号、保留选区外提示词并聚焦输入框，不自动发送。首次打开或重载时缓存引用，收到 Webview requestState 后再发送；视图销毁后忽略旧视图消息。",
+      "aliases": ["Explorer 引用", "右键引用", "insertPromptPaths"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Webview/UI 层"},
+        {"path": "src/commandRegistry.ts", "anchor": "addToCliReference"},
+        {"path": "src/webview/panelFileActions.ts", "anchor": "buildExplorerReferencePaths"},
+        {"path": "src/webview/viewProvider.ts", "anchor": "insertPromptPaths"}
+      ]
+    },
+    {
       "id": "plugin.rule.webview_no_direct_fs",
       "name": "Webview 不直接访问文件系统或 CLI",
       "description": "Webview/UI 层只负责渲染和协议消息，不直接拼接文件系统或 CLI 调用逻辑。",

@@ -66,6 +66,30 @@ function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
+export function buildExplorerReferencePaths(
+  resourceUri?: vscode.Uri,
+  selectedUris?: readonly vscode.Uri[]
+): string[] {
+  const uris = selectedUris?.length ? selectedUris : resourceUri ? [resourceUri] : [];
+  const paths = new Set<string>();
+  for (const uri of uris) {
+    if (uri.scheme !== "file" && uri.scheme !== "vscode-remote") {
+      continue;
+    }
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!folder) {
+      continue;
+    }
+    const relativePath = uri.toString() === folder.uri.toString()
+      ? "."
+      : normalizeWorkspacePath(vscode.workspace.asRelativePath(uri, false));
+    if (relativePath) {
+      paths.add(relativePath);
+    }
+  }
+  return Array.from(paths);
+}
+
 export function collectDirectoryPaths(filePath: string, dirSet: Set<string>): void {
   const normalized = normalizeWorkspacePath(filePath);
   const parts = normalized.split("/");

@@ -1001,6 +1001,7 @@ export function activate(context: vscode.ExtensionContext): void {
     revealPanelView,
     postPanelState,
     openLoopGroupChatPanel,
+    insertPromptPaths: (paths) => viewProvider?.insertPromptPaths(paths),
   });
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {

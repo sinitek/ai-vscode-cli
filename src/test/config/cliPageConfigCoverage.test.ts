@@ -380,6 +380,7 @@ test("main webview content and provider cover success, cache, message, and fallb
     const messages: unknown[] = [];
     const posted: unknown[] = [];
     const view: AnyRecord = {
+      onDidDispose: () => ({ dispose: () => undefined }),
       webview: {
         cspSource: "vscode-resource://provider",
         options: undefined,
@@ -425,6 +426,7 @@ test("main webview content and provider cover success, cache, message, and fallb
     provider.reload();
     assert.match(view.webview.html, /&lt;broken &amp; &quot;quoted&quot; &#39;panel&#39;&gt;/);
     const errorFallbackView: AnyRecord = {
+      onDidDispose: () => ({ dispose: () => undefined }),
       webview: { ...view.webview, html: "" },
       show: () => undefined,
     };
@@ -440,6 +442,7 @@ test("main webview content and provider cover success, cache, message, and fallb
     provider.reload();
     assert.match(view.webview.html, /string render failure/);
     const fallbackView: AnyRecord = {
+      onDidDispose: () => ({ dispose: () => undefined }),
       webview: { ...view.webview, html: "" },
       show: () => undefined,
     };

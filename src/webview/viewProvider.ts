@@ -12,6 +12,8 @@ type ViewHandlers = {
 export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "sinitek-cli-tools.panelView";
   private view: vscode.WebviewView | undefined;
+  private webviewReady = false;
+  private pendingPromptPaths: string[] = [];
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -20,6 +22,13 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    this.webviewReady = false;
+    webviewView.onDidDispose(() => {
+      if (this.view === webviewView) {
+        this.view = undefined;
+        this.webviewReady = false;
+      }
+    });
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.extensionUri],
@@ -36,8 +45,29 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
     }
 
     webviewView.webview.onDidReceiveMessage((message: PanelMessage) => {
+      if (this.view !== webviewView) {
+        return;
+      }
       this.handlers.onMessage(message);
+      if (message.type === "requestState") {
+        this.webviewReady = true;
+        this.flushPromptPaths();
+      }
     });
+  }
+
+  public insertPromptPaths(paths: string[]): void {
+    this.pendingPromptPaths.push(...paths);
+    this.flushPromptPaths();
+  }
+
+  private flushPromptPaths(): void {
+    if (!this.view || !this.webviewReady || !this.pendingPromptPaths.length) {
+      return;
+    }
+    const paths = this.pendingPromptPaths;
+    this.pendingPromptPaths = [];
+    void this.view.webview.postMessage({ type: "insertPromptPaths", paths });
   }
 
   public postState(state: PanelState): void {
@@ -58,6 +88,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
+    this.webviewReady = false;
     try {
       this.view.webview.html = getWebviewHtml(this.view.webview);
     } catch (error) {

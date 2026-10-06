@@ -2606,6 +2606,43 @@ test("Explorer drops resolve workspace references and insert them at the prompt 
   assert.equal(input.selectionEnd, input.selectionStart);
 });
 
+test("Explorer context references insert files and directories at the prompt selection", () => {
+  const { document, window } = createRuntimeHarness();
+  const input = document.getElementById("promptInput");
+  input.value = "请查看旧引用再修改";
+  input.selectionStart = 3;
+  input.selectionEnd = 6;
+  window.dispatchMessage({ type: "insertPromptPaths", paths: ["src/app.ts", "my folder/项目", "."] });
+  assert.equal(input.value, '请查看@src/app.ts @"my folder/项目" @. 再修改');
+  assert.equal(input.selectionStart, input.value.indexOf("再修改"));
+  assert.equal(input.selectionEnd, input.selectionStart);
+});
+
+test("Explorer context references append to multiline prompts without changing other content", () => {
+  const { document, window } = createRuntimeHarness();
+  const input = document.getElementById("promptInput");
+  input.value = "保留第一行\n请检查 ";
+  input.selectionStart = input.value.length;
+  input.selectionEnd = input.value.length;
+  window.dispatchMessage({ type: "insertPromptPaths", paths: ["src"] });
+  assert.equal(input.value, "保留第一行\n请检查 @src ");
+  assert.equal(input.selectionStart, input.value.length);
+  assert.equal(input.selectionEnd, input.value.length);
+});
+
+test("empty Explorer context reference messages do not overwrite selected text", () => {
+  const { document, window } = createRuntimeHarness();
+  const input = document.getElementById("promptInput");
+  input.value = "保留提示词";
+  input.selectionStart = 0;
+  input.selectionEnd = input.value.length;
+  window.dispatchMessage({ type: "insertPromptPaths", paths: [] });
+  window.dispatchMessage({ type: "insertPromptPaths" });
+  assert.equal(input.value, "保留提示词");
+  assert.equal(input.selectionStart, 0);
+  assert.equal(input.selectionEnd, input.value.length);
+});
+
 test("prompt drops keep attachment uploads and ordinary text fallback", async () => {
   class DropFileReader {
     result = "data:text/plain;base64,aGVsbG8=";

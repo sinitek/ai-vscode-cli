@@ -300,7 +300,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               setScheduledTaskError("");
             }
           }
-          if (data.type === "dropPathsResult") {
+          if (data.type === "insertPromptPaths" || data.type === "dropPathsResult") {
             const insertText = buildInsertText(data.paths);
             if (insertText) {
               insertPromptText(insertText);

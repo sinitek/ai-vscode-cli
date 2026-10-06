@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { CLI_LIST, CliName } from "./cli/types";
 import { t } from "./i18n";
+import { buildExplorerReferencePaths } from "./webview/panelFileActions";
 import {
   LEGACY_LOOP_GROUP_CHAT_COMMAND_ID,
   LOOP_GROUP_CHAT_COMMAND_ID,
@@ -13,6 +14,7 @@ export type ExtensionCommandRegistryDeps = {
   runCli: (cli: CliName, options?: { thinkingMode?: "on" | "off" }) => Promise<void>;
   revealPanelView: () => Promise<void>;
   postPanelState: () => Promise<void>;
+  insertPromptPaths: (paths: string[]) => void;
   openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
   showInformationMessage?: typeof vscode.window.showInformationMessage;
 };
@@ -74,6 +76,18 @@ export function registerExtensionCommands(
     await deps.openLoopGroupChatPanel(arg);
   };
   context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "sinitek-cli-tools.addToCliReference",
+      async (resourceUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+        const paths = buildExplorerReferencePaths(resourceUri, selectedUris);
+        if (!paths.length) {
+          return;
+        }
+        await deps.revealPanelView();
+        await deps.postPanelState();
+        deps.insertPromptPaths(paths);
+      }
+    ),
     vscode.commands.registerCommand(LOOP_GROUP_CHAT_COMMAND_ID, openLoopGroupChat),
     vscode.commands.registerCommand(LEGACY_LOOP_GROUP_CHAT_COMMAND_ID, openLoopGroupChat),
   );
