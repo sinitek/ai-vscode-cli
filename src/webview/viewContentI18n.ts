@@ -529,7 +529,7 @@ export const WEBVIEW_I18N = {
     openCurrentGraphRunAria: "打开当前 Graph 运行图面板",
     openConfigButton: "配置",
     promptPlaceholder:
-      "Shift + Enter 换行，输入 @ 选择文件/目录，按住 Shift 拖拽文件可引用，支持附件黏贴...",
+      "Shift + Enter 换行，输入 @ 选择文件/目录，右键文件目录可点击引用，支持附件黏贴...",
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",

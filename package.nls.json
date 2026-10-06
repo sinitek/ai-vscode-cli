@@ -6,7 +6,7 @@
   "command.runCliThinkingOn": "CLI Bridge: Run Current CLI (Thinking On)",
   "command.runCliThinkingOff": "CLI Bridge: Run Current CLI (Thinking Off)",
   "command.openPanel": "CLI Bridge: Open Panel",
-  "command.addToCliReference": "Add to Sinitek CLI References",
+  "command.addToCliReference": "加入到 Sinitek CLI 引用",
   "command.openLoopGroupChat": "CLI Bridge: Open Loop Group Chat",
   "config.title": "CLI Bridge",
   "config.defaultCli.description": "Default CLI to run when the extension activates.",

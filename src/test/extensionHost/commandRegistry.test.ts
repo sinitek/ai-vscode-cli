@@ -77,7 +77,7 @@ test("Explorer reference command does not insert into an unrevealed panel on fai
   assert.deepEqual(calls, []);
 });
 
-test("Explorer reference manifest enables files and directories with localized menu text", () => {
+test("Explorer reference manifest enables files and directories with a Chinese menu title", () => {
   const readJson = (file: string) => JSON.parse(fs.readFileSync(path.join(process.cwd(), file), "utf8"));
   const manifest = readJson("package.json");
   const commandId = "sinitek-cli-tools.addToCliReference";
@@ -90,6 +90,7 @@ test("Explorer reference manifest enables files and directories with localized m
   assert.equal(menu.when, "resourceScheme == file || resourceScheme == vscode-remote");
   assert.equal(menu.when.includes("explorerResourceIsFolder"), false);
   assert.equal(manifest.contributes.menus.commandPalette.find((item: any) => item.command === commandId).when, "false");
-  assert.equal(readJson("package.nls.zh-cn.json")["command.addToCliReference"], "加入到携宁 CLI 引用");
-  assert.equal(readJson("package.nls.json")["command.addToCliReference"], "Add to Sinitek CLI References");
+  for (const fileName of ["package.nls.json", "package.nls.zh-cn.json"]) {
+    assert.equal(readJson(fileName)["command.addToCliReference"], "加入到 Sinitek CLI 引用");
+  }
 });
