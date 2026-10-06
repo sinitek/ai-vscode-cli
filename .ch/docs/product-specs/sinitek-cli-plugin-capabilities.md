@@ -40,11 +40,11 @@
 
 用户可以通过以下方式进入插件：
 
-- 辅助栏聊天面板（默认通常在右侧；VS Code 1.85–1.103 回退到 Activity Bar）
+- 辅助栏聊天面板（VS Code 1.104 及以上）
 - 状态栏入口
 - 命令面板命令
 
-VS Code 1.104 及以上首次加载默认将聊天容器放在辅助栏，既有视图布局仍由 VS Code 恢复，不强制迁移。`sinitek-cli-tools.autoOpenPanel` 默认开启，关闭后不自动展开；默认位置不修改主侧边栏位置，也不移动其他扩展。旧版仍可通过视图标题右键菜单手动移到辅助栏。
+首次加载默认将聊天容器放在辅助栏；既有视图布局仍由 VS Code 恢复，不强制迁移。`sinitek-cli-tools.autoOpenPanel` 默认开启，关闭后不自动展开；启动或 `run_dev.sh` 重载不会把当前面板强制移动到主侧栏，也不移动其他扩展。扩展最低兼容版本为 VS Code `1.104`。
 
 当前命令包括：
 
@@ -92,6 +92,7 @@ VS Code 1.104 及以上首次加载默认将聊天容器放在辅助栏，既有
 - OpenCode 对话面板同样提供 coding / Loop / Graph 模式入口。Loop 复用既有主任务、子任务、多轮复核、群聊和 active config effective main/subtask 运行链路，每次主任务或子任务请求仍通过非交互式 one-shot `opencode run --auto` 执行。并行/Loop 子任务会把 stdout JSONL 的 `text`、`reasoning` / `step_start`、`tool_use` 分别实时写入对应 conversation tab 的 assistant、thinking、trace 气泡，同时保留回放诊断；退出时只补齐未展示的最终文本，不重复整段答复。Loop 多智能体执行模式下拉统一放在输入区底部操作图标左侧，Codex / Claude / OpenCode 三个 CLI 保持一致，模型行只展示对应 CLI 的模型与思考控件。
 - OpenCode 支持 Loop 编排不等于支持插件交互式 runner：`isInteractiveSupported(opencode)` 继续为 `false`，只表示不存在 Codex/Claude interactive runner 与 common command，不得再用该标记隐藏 OpenCode 的 Loop 模式入口，也不得为开放入口把它改成 `true`。
 - Loop 主任务 Tab 的运行态跟随持久化任务生命周期：任务记录为 `running` 时，即使当前没有主任务、子任务、裁判主持人或参与者 AI/CLI 进程，主 Tab 仍显示运行态并保持不可关闭；任务进入 `completed`、`needs-review`、`error` 或 `stopped` 后解除，其中三种中断终态优先于尚在异步释放的旧编排所有权，不再同时显示“任务已中断”和执行中。轮次与子任务重试在派发前重新检查终态，主动停止后不得把任务复活为 `running`。普通对话 Tab 与 Loop 子任务 Tab 仍按各自实际执行进程显示运行态。
+- 经典 Loop、Loop+ 和 Graph 任务完成后，主任务对话都会追加独立的 assistant 最终完成总结气泡：Loop/Loop+ 使用主任务的回答结论与整体任务总结，Graph 使用 `summary` 节点的结论、任务总结、验证证据和未完成事项；这些消息带专用元数据，不会与普通 assistant 流合并，群聊与 GraphRunPanel 原有完成状态展示保持不变。
 - 支持停止当前任务、查看运行中 prompt、查看回放
 - Codex 任务执行时，底部运行条在“消息”按钮右侧以与“提示词”同高度的徽章显示“上下文：”前缀和当前已用上下文。数值来自 app-server `thread/tokenUsage/updated`（以及 `turn/completed` 快照）的 `last`，按官方 `tokens_in_context_window() = totalTokens - reasoningOutputTokens` 计算，单位为 `k`；开跑后先显示占位，有读数后保留到下次开跑前。子线程用量不计入。Claude / OpenCode 不展示该读数。
 - 工具设置中的全局项（debug、自动文件标签、执行后自动压缩上下文、隐式子代理、人工交互、Loop 最大轮次、Loop+ 单次派发上限、Loop/Loop+ 子任务最大思考力度、语言、macOS task shell）保存在 `~/.sinitek_cli/settings.json`；最终答复协议和子任务 tab 自动关闭不是可配置项。旧文件中的 `finalAnswerPolicy`、`codexFinalAnswerPolicy` 和历史兼容值会被忽略，不能改变运行时行为；项目级工具设置保存在 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`
@@ -191,6 +192,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 最终成功回复使用强调卡片样式，Markdown 外层带主题强调边框
 - trace 分段展示
 - thinking 与 tool-use 事件区分渲染
+- Loop 主任务和子任务 conversation tab 的流水动画以实际运行进程为准；Webview 每 60 秒请求一次运行态校准，宿主同时返回需要启动和停止流水动画的 Tab，补偿遗漏的实时 `runStatus:start`，且不为普通 CLI、Graph 或已结束任务误加动画
 - Codex app-server 的 reasoning/thinking 会消费 `item/reasoning/summaryTextDelta`、`item/reasoning/textDelta` 与 `item/reasoning/summaryPartAdded` 实时写入 thinking 气泡；同一 reasoning item 在工具气泡插入后仍续写原思考气泡。思考气泡与最终结论气泡一样，在实际 runStatus 运行期间保持纯文本，结束、错误或停止时完整渲染 Markdown；未处于运行态时才使用连续 3 秒无新文字后的格式化，避免不断 append 时反复切换排版。所有模型的 `thread/start` 与 `thread/resume` 都请求 `model_reasoning_summary=detailed`，不再按模型名包含 `grok` 特殊处理。插件不按 200 字裁切思考正文；GPT 摘要在日志里是完整短标题，Grok/kedaya 仍可能由上游在约 200 字处结束并带上 `...`，`detailed` 不能补回未下发的文本。`item.completed` 只补尚未展示的续写，不得用更短摘要覆盖已流式思考。摘要会精准移除独占一行的空 HTML 注释 `<!-- -->` 及其水平空白变体，并截掉思考正文中泄漏的 `[final_answer]` 草稿；不会改写普通 assistant/user 消息、行内空注释或非空 HTML 注释。历史 Codex thinking 消息在加载时使用同一规则清洗并回写会话存档。
 - 任务列表提取与展示；Claude 交互式运行除兼容 `TodoWrite` 外，也会根据 `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskStop` 工具事件实时刷新任务列表；普通 Codex prompt 要求 Tasklist 描述默认用中文表达，状态码仍保持 `[pending]` / `[in_progress]` / `[completed]` 英文解析协议，代码符号、命令、路径、包名和用户原文术语可保留原文；Codex app-server assistant 消息会从实际日志中的 `Tasklist:` / `Tasklist update:` / `Tasklist 更新：` 段落解析 `[completed]`、`[in_progress]`、`[pending]`、`[x]`、`[ ]` 与中文状态词，兼容多行列表和同行分号分隔。已解析的纯任务列表 assistant 气泡从对话中隐藏；普通说明混合 Tasklist 时，仅在展示文本中剥离任务列表片段并保留说明正文。每次新 AI run 启动会先按目标 conversation tab 清空旧任务列表并重置解析起点。OpenCode 会从 JSONL `tool_use` 的 `todowrite` 事件读取 `state.input.todos`，并兼容 metadata/output 结果，把 `content/status` 归一化为 `{ text, done }` 后实时刷新当前或并行对话 tab 的任务列表，显式空列表会清空本轮任务。任务列表标题提供收起/展开箭头；收起后仅保留标题、进度数量和箭头，进度显示为已完成/总数（例如 `2/4`），展开状态按 conversation tab 的运行时状态保留。展开后的任务项按单行高度最多显示 4 行，不足 4 行时随内容收缩，更多时在列表内部滚动；标题字号为 13px，任务项字号为 12px，任务项上下间距为 3px，任务项 padding 不变；浮层卡片与下方输入表单的外部空隙由 20px 减至 10px（面板底部 2px + 输入区域顶部 8px），输入区域内部布局保持不变。OpenCode 同时通过专用 `taskListUpdate` 和对应 tool trace 元数据驱动浮层，运行中的会话消息刷新会保留 external 列表，Webview 状态重建后会重放仍在执行的列表。Loop 与 Loop+ 主任务 Tab 例外：不展示任务列表浮层，消息刷新也不保留旧 external 列表；子任务 Tab 仍按当前 run 展示
 - OpenCode one-shot 与并行运行共用 visible-event 语义：`text` 实时形成普通 assistant 气泡，`reasoning` / `step_start` 形成 thinking 气泡，`tool_use` 形成独立 trace 气泡；回放面板只用于诊断，不能替代对话消息。并行/Loop 子任务消息按 `tabId` 定向并带上任务元数据，进程退出时对完整 final text 去重；Loop 运行时还会把子任务可见 assistant 快照同步到主任务的独立进度气泡。

@@ -30,7 +30,7 @@
       "id": "plugin.chat_panel",
       "name": "AI 对话面板",
       "kind": "capability",
-      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。首次加载在支持 secondarySidebar 的版本默认使用辅助栏，旧版保留 Activity Bar 入口；沿用原容器和视图 ID，既有布局由 VS Code 恢复，不强制移动。",
+      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。首次加载使用 VS Code 1.104+ 的 secondarySidebar 辅助栏；不再重复声明同 ID 的 Activity Bar 容器，避免开发宿主重载时复用主侧栏；沿用原容器和视图 ID，既有布局由 VS Code 恢复，不强制移动。",
       "status": "active",
       "aliases": ["Webview", "聊天面板", "panel", "config panel", "辅助栏", "secondarySidebar"],
       "implementation_paths": ["package.json", "src/webview", "src/webview/panelFileActions.ts", "media/config/assets"],
@@ -460,7 +460,7 @@
     {
       "id": "plugin.rule.loop_plus_user_message_wake",
       "name": "Loop+ 用户消息唤醒或进入主任务队列",
-      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。已完成的 Loop+ 父任务即使没有经典完成气泡，也不能被同一会话的后续普通 prompt 恢复；该 prompt 新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
+      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。Loop+ 父任务正常完成并成功持久化后，主任务对话追加回答结论和最终总结 assistant 气泡；同一会话的后续普通 prompt 仍新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -470,7 +470,9 @@
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
         {"path": "src/panelDiagnostics.ts"},
-        {"path": "src/extensionHost/promptRunRuntime.ts"}
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
+        {"path": "src/extension.ts"}
       ]
     },
     {
@@ -489,12 +491,16 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务结束、失败或停止时，群聊追加子任务发言；成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；activity 为 reviewing 时再显示主任务思考中气泡。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 主任务和子任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/extensionHost/loopPlusSubtaskChat.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/conversationTabRunningFlow.ts"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
         {"path": "src/webview/loopDebatePanel.ts"},
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/loopTaskStore.ts"},

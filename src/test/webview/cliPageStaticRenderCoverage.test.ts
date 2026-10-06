@@ -302,7 +302,6 @@ test("renders English and Chinese static page copy through shared i18n strings",
   assert.equal(chineseStrings.appTitle, "携宁 CLI 助手");
   assertIncludesAll(englishHtml, [
     '<html lang="en">',
-    "AI Chat",
     "Type your request to start chatting.",
     "Results only",
     "Task List",
@@ -332,7 +331,6 @@ test("renders English and Chinese static page copy through shared i18n strings",
   assertIncludesAll(chineseHtml, [
     '<html lang="zh-CN">',
     "携宁 CLI 助手",
-    "AI 对话",
     "输入需求，开始对话。",
     "仅看结果",
     "任务列表",
@@ -358,6 +356,8 @@ test("renders English and Chinese static page copy through shared i18n strings",
     "导出 JSONL",
     "等待回放内容...",
   ]);
+  assert.doesNotMatch(englishHtml, /AI Chat/u);
+  assert.doesNotMatch(chineseHtml, /AI 对话/u);
   assert.doesNotMatch(englishHtml, /automatic conflict resolution|没有自动解冲突/);
   assert.doesNotMatch(chineseHtml, /自动解冲突|不能自动解冲突/);
   assert.match(englishHtml, /id="helpTabInstall"/);

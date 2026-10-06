@@ -10,7 +10,7 @@
   },
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.104.0"
   },
   "categories": [
     "Other"
@@ -1042,13 +1042,6 @@
     },
     "viewsContainers": {
       "secondarySidebar": [
-        {
-          "id": "sinitekCliBridgePanel",
-          "title": "%view.container.title%",
-          "icon": "media/logo.svg"
-        }
-      ],
-      "activitybar": [
         {
           "id": "sinitekCliBridgePanel",
           "title": "%view.container.title%",

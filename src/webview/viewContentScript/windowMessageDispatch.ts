@@ -116,6 +116,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             applyTraceSegment(data);
           }
           if (data.type === "runningConversationTabsReconciled") {
+            if (typeof startConversationTabRunningFlow === "function") {
+              startConversationTabRunningFlow(data.startTabIds);
+            }
             if (typeof stopConversationTabRunningFlow === "function") {
               stopConversationTabRunningFlow(data.stopTabIds);
             }

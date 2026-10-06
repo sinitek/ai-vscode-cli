@@ -94,6 +94,31 @@ export function shouldClearConversationTabRunningFlow(
   return runTaskId === check.task.id;
 }
 
+function hasActiveLoopTaskRun(check: ConversationTabRunningFlowCheck): boolean {
+  const loopTaskId = typeof check.activeRun?.loopTaskId === "string"
+    ? check.activeRun.loopTaskId.trim()
+    : "";
+  return loopTaskId.length > 0;
+}
+
+export function shouldStartConversationTabRunningFlow(
+  check: ConversationTabRunningFlowCheck,
+): boolean {
+  const tabId = check.tabId.trim();
+  if (!tabId || !hasActiveLoopTaskRun(check)) {
+    return false;
+  }
+  return !shouldClearConversationTabRunningFlow(check);
+}
+
+export function selectActiveConversationTabRunningFlowIds(
+  checks: readonly ConversationTabRunningFlowCheck[],
+): string[] {
+  return checks
+    .filter((check) => shouldStartConversationTabRunningFlow(check))
+    .map((check) => check.tabId);
+}
+
 export function selectStaleConversationTabRunningFlowIds(
   checks: readonly ConversationTabRunningFlowCheck[],
 ): string[] {

@@ -251,6 +251,7 @@ import {
 } from "./loopDebate";
 import {
   readConversationTabRunningFlowLoopPlus,
+  selectActiveConversationTabRunningFlowIds,
   selectStaleConversationTabRunningFlowIds,
   type ConversationTabRunningFlowCheck,
 } from "./conversationTabRunningFlow";
@@ -3611,6 +3612,7 @@ function reconcileRunningConversationTabs(): void {
   });
   sendPanelMessage({
     type: "runningConversationTabsReconciled",
+    startTabIds: selectActiveConversationTabRunningFlowIds(checks),
     stopTabIds: selectStaleConversationTabRunningFlowIds(checks),
   });
 }
@@ -4122,6 +4124,10 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           merge: false,
           actions: [buildLoopDebateChatMessageAction(taskId)],
         });
+      },
+      appendCompletionMessages: (target, task) => {
+        appendLoopAnswerConclusionMessage(target, task);
+        appendLoopFinalSummaryMessage(target, task);
       },
       appendSubtaskChat: (target, notice) => {
         appendLoopPlusSubtaskChat(target, notice);

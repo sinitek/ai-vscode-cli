@@ -39,6 +39,7 @@ export type LoopPlusRuntimeFixture = {
   adapter: LoopPlusRuntimeAdapter;
   refreshes: Array<{ taskId: string; snapshot: LoopPlusSchedulerSnapshot | undefined }>;
   hostMessages: string[];
+  completionMessages: Array<{ target: LoopPlusPromptTarget; task: LoopTaskRecord }>;
   refusals: string[];
   mainCalls: PromptRunInput[];
   attemptCalls: PromptRunInput[];
@@ -91,6 +92,7 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
   const runs: TaskRunRecord[] = [];
   const refreshes: LoopPlusRuntimeFixture["refreshes"] = [];
   const hostMessages: string[] = [];
+  const completionMessages: LoopPlusRuntimeFixture["completionMessages"] = [];
   const refusals: string[] = [];
   const mainCalls: PromptRunInput[] = [];
   const attemptCalls: PromptRunInput[] = [];
@@ -297,6 +299,9 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
     appendHostMessage: (_target, message) => {
       hostMessages.push(message);
     },
+    appendCompletionMessages: (promptTarget, task) => {
+      completionMessages.push({ target: promptTarget, task });
+    },
     prepareCommunication: (task, subtask, round) => {
       const filePath = path.join(task.communicationDir, `round-${round}-${subtask.id}.md`);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -419,6 +424,7 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
     adapter,
     refreshes,
     hostMessages,
+    completionMessages,
     refusals,
     mainCalls,
     attemptCalls,

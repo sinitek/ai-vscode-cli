@@ -971,11 +971,20 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         );
       }
 
-      function hasConversationTabRunningFlow() {
+      function isConversationTabRunningFlowWatchTarget(tab) {
+        if (!tab || !tab.id || isRunningFlowStopLatched(tab.id)) {
+          return false;
+        }
+        return tab.loopTaskRole === "main"
+          || tab.loopTaskRole === "subtask"
+          || (typeof tab.loopTaskId === "string" && tab.loopTaskId.trim().length > 0);
+      }
+
+      function hasConversationTabRunningFlowWatchTarget() {
         const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs
           : [];
-        if (tabs.some((tab) => isConversationTabRunning(tab))) {
+        if (tabs.some((tab) => isConversationTabRunningFlowWatchTarget(tab))) {
           return true;
         }
         return Object.keys(runningTabStartedAtById).some((tabId) => (
@@ -984,7 +993,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       }
 
       function syncConversationTabRunningFlowWatch() {
-        if (!hasConversationTabRunningFlow()) {
+        if (!hasConversationTabRunningFlowWatchTarget()) {
           if (conversationTabRunningFlowTimer) {
             clearInterval(conversationTabRunningFlowTimer);
             conversationTabRunningFlowTimer = null;
@@ -995,7 +1004,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           return;
         }
         conversationTabRunningFlowTimer = setInterval(() => {
-          if (!hasConversationTabRunningFlow()) {
+          if (!hasConversationTabRunningFlowWatchTarget()) {
             syncConversationTabRunningFlowWatch();
             return;
           }
@@ -1016,6 +1025,30 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             runningFlowStoppedTabIds.delete(tab.id);
           }
         });
+      }
+
+      function startConversationTabRunningFlow(tabIds) {
+        const ids = Array.isArray(tabIds) ? tabIds : [];
+        let changed = false;
+        ids.forEach((tabId) => {
+          if (!tabId || typeof tabId !== "string" || !getConversationTabSummary(tabId)) {
+            return;
+          }
+          if (runningFlowStoppedTabIds.delete(tabId)) {
+            changed = true;
+          }
+          if (typeof runningTabStartedAtById[tabId] !== "number") {
+            runningTabStartedAtById[tabId] = Date.now();
+            changed = true;
+          }
+        });
+        if (!changed) {
+          syncConversationTabRunningFlowWatch();
+          return;
+        }
+        renderConversationTabs();
+        syncRunningStateForActiveTab();
+        syncConversationTabRunningFlowWatch();
       }
 
       function stopConversationTabRunningFlow(tabIds) {

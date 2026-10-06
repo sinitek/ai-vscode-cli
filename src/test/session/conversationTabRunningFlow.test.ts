@@ -7,7 +7,9 @@ import {
   CONVERSATION_TAB_RUNNING_FLOW_CHECK_INTERVAL_MS,
   isLoopTaskFinishedForRunningFlow,
   readConversationTabRunningFlowLoopPlus,
+  selectActiveConversationTabRunningFlowIds,
   selectStaleConversationTabRunningFlowIds,
+  shouldStartConversationTabRunningFlow,
   shouldClearConversationTabRunningFlow,
   type ConversationTabRunningFlowTask,
 } from "../../conversationTabRunningFlow";
@@ -16,7 +18,10 @@ import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewCon
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
 
 const extensionSource = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
-const handlerSource = fs.readFileSync(path.join(process.cwd(), "src", "sessionMessageHandlers.ts"), "utf8");
+const diagnosticsHandlerSource = fs.readFileSync(
+  path.join(process.cwd(), "src", "panelMessageHandlers", "diagnostics.ts"),
+  "utf8",
+);
 
 function finishedLoopPlusTask(status = "completed"): ConversationTabRunningFlowTask {
   return {
@@ -83,6 +88,47 @@ test("keeps the tab flow while Loop+ work or a new run is still active", () => {
   }), false);
 });
 
+test("selects only active Loop runs for flow recovery", () => {
+  const completed = finishedLoopPlusTask();
+  assert.equal(shouldStartConversationTabRunningFlow({
+    tabId: "missing-flow",
+    task: { id: "loop-task", status: "running" },
+    activeRun: { loopTaskId: "loop-task" },
+  }), true);
+  assert.equal(shouldStartConversationTabRunningFlow({
+    tabId: "completed",
+    task: completed,
+    activeRun: { loopTaskId: "loop-task" },
+  }), false);
+  assert.equal(shouldStartConversationTabRunningFlow({
+    tabId: "ordinary-run",
+    task: null,
+    activeRun: { loopTaskId: null },
+  }), false);
+  assert.deepEqual(selectActiveConversationTabRunningFlowIds([
+    {
+      tabId: "missing-flow",
+      task: { id: "loop-task", status: "running" },
+      activeRun: { loopTaskId: "loop-task" },
+    },
+    {
+      tabId: "completed",
+      task: completed,
+      activeRun: { loopTaskId: "loop-task" },
+    },
+    {
+      tabId: "new-loop-run",
+      task: completed,
+      activeRun: { loopTaskId: "new-loop-task" },
+    },
+    {
+      tabId: "ordinary-run",
+      task: null,
+      activeRun: { loopTaskId: null },
+    },
+  ]), ["missing-flow", "new-loop-run"]);
+});
+
 test("selects only stale tabs and ignores malformed Loop+ snapshots", () => {
   assert.deepEqual(readConversationTabRunningFlowLoopPlus(null), null);
   assert.deepEqual(readConversationTabRunningFlowLoopPlus({
@@ -116,12 +162,16 @@ test("webview starts a one-minute flow check and stops it after the task is fini
     VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,
     /if \(conversationTabRunningFlowTimer\) \{\s*clearInterval\(conversationTabRunningFlowTimer\);\s*conversationTabRunningFlowTimer = null;/,
   );
+  assert.match(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, /function hasConversationTabRunningFlowWatchTarget\(\)/);
+  assert.match(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, /function startConversationTabRunningFlow\(tabIds\)/);
   assert.match(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, /function renderConversationTabs\(\) \{\s*syncConversationTabRunningFlowWatch\(\);/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /releaseRunningFlowStopForActiveTasks\(\)/);
   assert.match(VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH, /data\.type === "runningConversationTabsReconciled"/);
+  assert.match(VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH, /startConversationTabRunningFlow\(data\.startTabIds\)/);
   assert.match(VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH, /runningFlowStoppedTabIds\.delete\(targetTabId\)/);
   assert.match(extensionSource, /reconcileRunningConversationTabs,/);
   assert.match(extensionSource, /type: "runningConversationTabsReconciled"/);
-  assert.match(handlerSource, /message\.type === "reconcileRunningConversationTabs"/);
-  assert.match(handlerSource, /deps\.reconcileRunningConversationTabs\?\.\(\)/);
+  assert.match(extensionSource, /startTabIds: selectActiveConversationTabRunningFlowIds\(checks\)/);
+  assert.match(diagnosticsHandlerSource, /reconcileRunningConversationTabs/);
+  assert.match(diagnosticsHandlerSource, /deps\.reconcileRunningConversationTabs\?\.\(\)/);
 });

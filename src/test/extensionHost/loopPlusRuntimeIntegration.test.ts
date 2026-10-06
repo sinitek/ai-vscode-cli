@@ -296,6 +296,36 @@ test("adapter keeps a late sibling finish from turning the parent completed", as
   }
 });
 
+test("adapter appends main-task completion messages only after Loop+ is persisted completed", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: decision({
+          status: "completed",
+          answerConclusion: "主任务已完成。",
+          finalSummary: "已完成实现并通过验收。",
+          acceptance: { passed: true, checks: [{ name: "范围", passed: true }] },
+          requirementCoverage: [{ name: "范围", passed: true }],
+        }),
+      });
+    });
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.completionMessages.length === 1, "main-task completion message");
+    const completion = fixture.completionMessages[0];
+    assert.ok(completion);
+    assert.equal(completion.target.tabId, fixture.target.tabId);
+    assert.equal(completion.task.status, "completed");
+    assert.equal(completion.task.answerConclusion, "主任务已完成。");
+    assert.equal(completion.task.finalSummary, "已完成实现并通过验收。");
+    assert.equal(fixture.hostMessages.filter((message) => message === "loop-plus-completed").length, 1);
+    await running;
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("adapter stop keeps resume state, blocks continue while cancellation is live, then reviews explicitly", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {

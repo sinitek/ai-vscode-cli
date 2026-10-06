@@ -141,6 +141,7 @@ export type LoopPlusOrchestrationDeps = {
   }) => LoopTaskRecord;
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   appendMessage: (target: LoopPlusPromptTarget, message: string, taskId: string) => void;
+  appendCompletionMessages?: (target: LoopPlusPromptTarget, task: LoopTaskRecord) => void;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
   startAttempt: (request: LoopPlusAttemptRequest) => LoopPlusAttemptHandle;
   prepareCommunication?: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, round: number) => string | null;
@@ -283,6 +284,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
               error: errorText(error),
             });
           }
+          appendCompletionMessages(runtime);
         }
         const done = runtime.lifecycle.promise;
         releaseCompleted(runtime);
@@ -938,10 +940,29 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             error: errorText(error),
           });
         }
+        appendCompletionMessages(runtime);
         releaseCompleted(runtime);
         return "stop";
       },
     };
+  }
+
+  function appendCompletionMessages(runtime: ParentRuntime): void {
+    if (!deps.appendCompletionMessages) {
+      return;
+    }
+    const task = deps.readTask(runtime.taskId);
+    if (!task || task.status !== "completed") {
+      return;
+    }
+    try {
+      deps.appendCompletionMessages(runtime.target, task);
+    } catch (error) {
+      deps.log?.("loop-plus-completion-summary-message-failed", {
+        taskId: runtime.taskId,
+        error: errorText(error),
+      });
+    }
   }
 
   function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): LoopPlusDecisionOutcome {

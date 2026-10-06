@@ -26,4 +26,4 @@ cd "$workspace_dir"
 install_workspace_node_modules
 npm run build
 
-"$code_cmd" --extensionDevelopmentPath="$workspace_dir"
+"$code_cmd" --new-window --extensionDevelopmentPath="$workspace_dir"

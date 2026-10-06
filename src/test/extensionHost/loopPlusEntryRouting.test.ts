@@ -190,6 +190,9 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(wiring.includes("runPrompt: (input, options) => runPrompt(input, options)"), true);
   assert.equal(wiring.includes("persistLoopPlusTaskUpdate(taskId, patch)"), true);
   assert.equal(wiring.includes("updateLoopTaskRecord(taskId, patch),"), false);
+  assert.equal(wiring.includes("appendCompletionMessages: (target, task) => {"), true);
+  assert.equal(wiring.includes("appendLoopAnswerConclusionMessage(target, task);"), true);
+  assert.equal(wiring.includes("appendLoopFinalSummaryMessage(target, task);"), true);
   assert.equal(wiring.includes("cancelInvocation: (tabId) => {"), true);
   assert.equal(wiring.includes("cancelLoopPlusInvocation(tabId)"), true);
   assert.equal(wiring.includes("closeSubtaskTab: (tabId) => closeConversationTabAndRefreshPanel(tabId)"), true);

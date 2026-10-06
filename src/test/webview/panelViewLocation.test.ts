@@ -7,17 +7,17 @@ function readJson(fileName: string) {
   return JSON.parse(fs.readFileSync(path.join(process.cwd(), fileName), "utf8"));
 }
 
-test("chat container defaults to the secondary sidebar before the legacy activity bar fallback", () => {
+test("chat container is registered only in the secondary sidebar", () => {
   const manifest = readJson("package.json");
   const containers = manifest.contributes.viewsContainers;
-  assert.deepEqual(Object.keys(containers), ["secondarySidebar", "activitybar"]);
+  assert.deepEqual(Object.keys(containers), ["secondarySidebar"]);
   assert.deepEqual(containers.secondarySidebar, [{
     id: "sinitekCliBridgePanel",
     title: "%view.container.title%",
     icon: "media/logo.svg",
   }]);
-  assert.deepEqual(containers.activitybar, containers.secondarySidebar);
-  assert.equal(manifest.engines.vscode, "^1.85.0");
+  assert.equal(containers.activitybar, undefined);
+  assert.equal(manifest.engines.vscode, "^1.104.0");
   assert.equal(readJson("package-lock.json").packages[""].engines.vscode, manifest.engines.vscode);
 });
 
@@ -35,7 +35,7 @@ test("chat view identity and startup opening preference remain unchanged", () =>
   assert.equal(autoOpenPanel.type, "boolean");
 });
 
-test("both sidebar locations reuse the existing localized view labels", () => {
+test("chat container and view reuse the existing localized labels", () => {
   for (const fileName of ["package.nls.json", "package.nls.zh-cn.json"]) {
     const strings = readJson(fileName);
     assert.equal(typeof strings["view.container.title"], "string");

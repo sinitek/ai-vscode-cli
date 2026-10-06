@@ -2,7 +2,7 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       .header {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         padding: 8px 16px;
         border-bottom: 1px solid var(--vscode-widget-border);
         background: var(--vscode-editor-background);

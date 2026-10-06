@@ -72,7 +72,6 @@ ${webviewStyles}    </style>
   <body>
     <div class="app">
       <div class="header">
-        <div class="title">${i18n.panelTitle}</div>
         <div class="header-actions">
           <label class="chat-filter-toggle" for="resultOnlyToggle" title="${i18n.resultOnlyAria}">
             <input id="resultOnlyToggle" type="checkbox" aria-label="${i18n.resultOnlyAria}" />

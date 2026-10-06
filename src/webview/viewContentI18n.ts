@@ -6,7 +6,6 @@ const SINITEK_RUNTIME_HINT = formatHomeDisplayPath(".sinitek_cli");
 export const WEBVIEW_I18N = {
   en: {
     appTitle: "Sinitek CLI Assistant",
-    panelTitle: "AI Chat",
     headerHelp: "Help",
     headerToolSettings: "Tool Settings",
     headerRules: "Rules",
@@ -480,7 +479,6 @@ export const WEBVIEW_I18N = {
   },
   "zh-CN": {
     appTitle: "携宁 CLI 助手",
-    panelTitle: "AI 对话",
     headerHelp: "使用说明",
     headerToolSettings: "工具设置",
     headerRules: "规则配置",
