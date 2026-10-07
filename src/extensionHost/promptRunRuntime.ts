@@ -1,19 +1,27 @@
 import {
-  ORCHESTRATOR_CLARIFICATION_LIMIT,
   abortOrchestratorClarification,
   loopClarificationScope,
   parseOrchestratorClarification,
 } from "../orchestratorClarification";
 import * as fs from "fs";
 import * as path from "path";
-import { createHash } from "crypto";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { ChatMessage, ChatMessageAction } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
 import { normalizeLoopWriteFiles } from "../loopParallel";
-import { buildNextLoopMainAiFailureState, isLoopMainAiFailureLimitReached, LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
+import { buildNextLoopMainAiFailureState } from "../loopMainFailure";
+import {
+  buildLoopSubtaskId,
+  getActiveLoopSubtaskIds,
+  getLoopDecisionSubtasks,
+  loopInterruptFailureLimitPatch,
+  transitionLoopMainDecision,
+  transitionLoopTaskInterrupt,
+  transitionLoopTaskStop,
+  upsertLoopTransitionSubtask,
+} from "./loopTaskStateMachine";
 import { resolveLoopAnswerConclusion } from "../loopDebate";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopDebateFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
@@ -590,10 +598,6 @@ function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
     .filter((item): item is LoopAcceptanceCheck => Boolean(item));
 }
 
-function buildLoopSubtaskId(title: string): string {
-  return `subtask_${createHash("sha1").update(title).digest("hex").slice(0, 10)}`;
-}
-
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
@@ -602,97 +606,21 @@ function applyLoopMainDecision(
   if (!existing) {
     throw new Error(`loop-task-missing:${taskId}`);
   }
-  if (decision.status === "completed") {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "completed",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      answerConclusion: resolveLoopAnswerConclusion(existing, decision),
-      finalSummary: decision.finalSummary,
-      estimatedRemainingRounds: 0,
-      completionRoundSummaries: decision.roundSummaries ?? existing.completionRoundSummaries,
-      completionRequirementCoverage: decision.requirementCoverage ?? existing.completionRequirementCoverage,
-      updatedAt: Date.now(),
-    }) ?? existing;
+  const transition = transitionLoopMainDecision({
+    task: existing,
+    decision,
+    now: Date.now(),
+  });
+  const task = updateLoopTaskRecord(taskId, transition.patch) ?? existing;
+  if (transition.appendDecisionMessages) {
     appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "completed", task };
+    appendLoopMainSubChatMainDecision(task, decision, transition.subtasks);
   }
-  if (decision.status === "clarify") {
-    const count = existing.clarificationCount ?? 0;
-    if (!decision.clarification || count >= ORCHESTRATOR_CLARIFICATION_LIMIT) {
-      const task = updateLoopTaskRecord(taskId, {
-        status: "needs-review",
-        activeSubtaskId: null,
-        activeSubtaskIds: [],
-        pendingClarification: undefined,
-        finalSummary: decision.finalSummary ?? "Main task asked for clarification too many times.",
-        updatedAt: Date.now(),
-      }) ?? existing;
-      appendLoopMainDecisionSummary(task, decision);
-      appendLoopMainSubChatMainDecision(task, decision);
-      return { status: "blocked", task };
-    }
-    const task = updateLoopTaskRecord(taskId, {
-      status: "running",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      pendingClarification: decision.clarification,
-      clarificationCount: count + 1,
-      ...(decision.finalSummary ? { finalSummary: decision.finalSummary } : {}),
-      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      updatedAt: Date.now(),
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "clarify", task };
-  }
-  if (decision.status === "blocked") {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "needs-review",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      finalSummary: decision.finalSummary ?? "Main task reported blocked.",
-      ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-      updatedAt: Date.now(),
-    }) ?? existing;
-    appendLoopMainDecisionSummary(task, decision);
-    appendLoopMainSubChatMainDecision(task, decision);
-    return { status: "blocked", task };
-  }
-
-  const decisionSubtasks = getLoopDecisionSubtasks(decision);
-  if (decisionSubtasks.length === 0) {
-    const task = updateLoopTaskRecord(taskId, {
-      status: "needs-review",
-      activeSubtaskId: null,
-      activeSubtaskIds: [],
-      finalSummary: "Main task returned continue without subtasks.",
-      updatedAt: Date.now(),
-    }) ?? existing;
-    return { status: "blocked", task };
-  }
-
-  const subtaskBatch = upsertLoopSubtasks(existing, decisionSubtasks);
-  const activeSubtaskIds = subtaskBatch.records.map((item) => item.id);
-  const task = updateLoopTaskRecord(taskId, {
-    status: "running",
-    activeSubtaskId: activeSubtaskIds[0] ?? null,
-    activeSubtaskIds,
-    subTasks: subtaskBatch.nextSubtasks,
-    ...(typeof decision.estimatedRemainingRounds === "number" ? { estimatedRemainingRounds: decision.estimatedRemainingRounds } : {}),
-    updatedAt: Date.now(),
-  }) ?? existing;
-  appendLoopMainDecisionSummary(task, decision);
-  appendLoopMainSubChatMainDecision(task, decision, subtaskBatch.records);
-  return { status: "continue", task, subtasks: subtaskBatch.records };
-}
-
-function getLoopDecisionSubtasks(decision: LoopMainDecision): LoopSubtaskDecision[] {
-  if (Array.isArray(decision.subtasks) && decision.subtasks.length > 0) {
-    return decision.subtasks;
-  }
-  return decision.subtask ? [decision.subtask] : [];
+  return {
+    status: transition.status,
+    task,
+    ...(transition.subtasks ? { subtasks: transition.subtasks } : {}),
+  };
 }
 
 function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainDecision): void {
@@ -844,31 +772,7 @@ function upsertLoopSubtask(
   task: LoopTaskRecord,
   subtask: NonNullable<LoopMainDecision["subtask"]>,
 ): { record: LoopSubtaskRecord; nextSubtasks: LoopSubtaskRecord[] } {
-  const now = Date.now();
-  const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
-  const nextSubtasks = [...task.subTasks];
-  const existingIndex = nextSubtasks.findIndex((item) => item.id === id);
-  const record: LoopSubtaskRecord = {
-    id,
-    title: subtask.title,
-    prompt: subtask.prompt,
-    conflictGroup: subtask.conflictGroup,
-    writeFiles: subtask.writeFiles,
-    status: "running",
-    updatedAt: now,
-  };
-  if (existingIndex >= 0) {
-    const { skillIds: _skillIds, skillGuidance: _skillGuidance, ...existingRecord } = nextSubtasks[existingIndex];
-    const nextRecord: LoopSubtaskRecord = {
-      ...existingRecord,
-      ...record,
-      status: existingRecord.status === "completed" ? "completed" : "running",
-    };
-    nextSubtasks[existingIndex] = nextRecord;
-    return { record: nextRecord, nextSubtasks };
-  }
-  nextSubtasks.push(record);
-  return { record, nextSubtasks };
+  return upsertLoopTransitionSubtask(task, subtask, Date.now());
 }
 
 function upsertLoopSubtasks(
@@ -878,7 +782,6 @@ function upsertLoopSubtasks(
   let nextSubtasks = [...task.subTasks];
   const records: LoopSubtaskRecord[] = [];
   subtasks.forEach((subtask) => {
-    const id = subtask.id && subtask.id.trim() ? subtask.id.trim() : buildLoopSubtaskId(subtask.title);
     const result = upsertLoopSubtask(
       { ...task, subTasks: nextSubtasks },
       subtask,
@@ -887,15 +790,6 @@ function upsertLoopSubtasks(
     records.push(result.record);
   });
   return { records, nextSubtasks };
-}
-
-function getActiveLoopSubtaskIds(task: LoopTaskRecord): string[] {
-  const ids = Array.isArray(task.activeSubtaskIds) ? task.activeSubtaskIds : [];
-  const normalized = ids.filter((id) => typeof id === "string" && id.trim());
-  if (task.activeSubtaskId && !normalized.includes(task.activeSubtaskId)) {
-    normalized.unshift(task.activeSubtaskId);
-  }
-  return Array.from(new Set(normalized));
 }
 
 function markLoopSubtaskRunFinished(
@@ -1037,47 +931,43 @@ function markLoopTaskInterrupted(
   if (existing?.schedulingMode === "event_driven") {
     deps.stopLoopPlusParent?.(taskId);
     const latest = readLoopTaskRecord(taskId) ?? existing;
-    if (latest.status !== "running") {
+    const transition = transitionLoopTaskInterrupt("event_driven", {
+      task: latest,
+      status,
+      source: options.source,
+      failureMessage: options.failureMessage,
+      now: Date.now(),
+    });
+    if (transition.idempotent) {
       return;
     }
-    const record = updateLoopTaskRecord(taskId, {
-      status: "error",
-      schedulingMode: "event_driven",
-      finalSummary: options.failureMessage?.trim() || "Loop+ orchestration stopped after an error. The scheduling snapshot was not cleared or downgraded.",
-      updatedAt: Date.now(),
-    }) ?? latest;
-    appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
-    return;
-  }
-  if (existing && existing.status !== "running") {
+    const record = updateLoopTaskRecord(taskId, transition.patch) ?? latest;
+    if (transition.appendNeedsReviewMessage) {
+      appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
+    }
     return;
   }
   const now = Date.now();
-  const patch: Partial<LoopTaskRecord> = {
+  const transition = transitionLoopTaskInterrupt("classic", {
+    task: existing,
     status,
-    activeSubtaskId: null,
-    activeSubtaskIds: [],
-    pendingClarification: undefined,
-    updatedAt: now,
-  };
-  if (options.source === "main" && status === "error") {
-    Object.assign(patch, buildNextLoopMainAiFailureState(existing ?? {}, {
+    source: options.source,
+    failureMessage: options.failureMessage,
+    now,
+  });
+  if (transition.idempotent) {
+    return;
+  }
+  const patch: Partial<LoopTaskRecord> = { ...transition.patch };
+  if (transition.applyMainAiFailureCount) {
+    const failureState = buildNextLoopMainAiFailureState(existing ?? {}, {
       now,
       failureMessage: options.failureMessage,
-    }));
-    if (isLoopMainAiFailureLimitReached({
-      mainAiFailureCount: patch.mainAiFailureCount,
-      mainAiFailureLimitReached: patch.mainAiFailureLimitReached,
-    })) {
-      patch.status = "needs-review";
-      patch.finalSummary = [
-        `主任务 AI 调用已连续失败 ${patch.mainAiFailureCount}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`,
-        options.failureMessage ? `最近一次失败：${options.failureMessage}` : "",
-      ].filter(Boolean).join("\n");
-    }
+    });
+    Object.assign(patch, failureState, loopInterruptFailureLimitPatch(failureState, options.failureMessage));
   }
   const record = updateLoopTaskRecord(taskId, patch) ?? existing;
-  if (record) {
+  if (record && transition.appendNeedsReviewMessage) {
     appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(record));
   }
 }
@@ -1099,79 +989,23 @@ function markLoopTaskStopped(
   if (!task || isLoopTaskCompleted(task)) {
     return task;
   }
-
-  const now = Date.now();
-  const activeSubtaskIds = new Set(getActiveLoopSubtaskIds(task));
-  const subTasks = task.subTasks.map((subtask) => {
-    const shouldStopSubtask = activeSubtaskIds.has(subtask.id)
-      || subtask.status === "running"
-      || subtask.status === "pending";
-    if (!shouldStopSubtask) {
-      return subtask;
-    }
-    return {
-      ...subtask,
-      status: "blocked" as const,
-      ...(subtask.summary || options.subtaskSummary
-        ? { summary: subtask.summary || options.subtaskSummary }
-        : {}),
-      updatedAt: now,
-    };
+  const transition = transitionLoopTaskStop(task.schedulingMode, {
+    task,
+    now: Date.now(),
+    finalSummary: options.finalSummary,
+    subtaskSummary: options.subtaskSummary,
+    participantSummary: options.participantSummary,
   });
-  const debateRounds = task.debateRounds?.map((round) => {
-    const participants = round.participants.map((participant) => {
-      if (participant.status !== "running" && participant.status !== "pending") {
-        return participant;
-      }
-      return {
-        ...participant,
-        status: "stopped" as const,
-        ...(participant.summary || options.participantSummary
-          ? { summary: participant.summary || options.participantSummary }
-          : {}),
-        updatedAt: now,
-      };
-    });
-    const shouldStopRound = round.status === "running"
-      || Boolean(round.activeSpeaker)
-      || round.participants.some((participant) => participant.status === "running" || participant.status === "pending");
-    if (!shouldStopRound) {
-      return { ...round, participants };
-    }
-    return {
-      ...round,
-      status: "stopped" as const,
-      completedAt: round.completedAt ?? now,
-      activeSpeaker: undefined,
-      participants,
-    };
-  });
-
-  if (task.schedulingMode === "event_driven") {
-    abortOrchestratorClarification(loopClarificationScope(taskId));
-    const record = updateLoopTaskRecord(taskId, {
-      status: "stopped",
-      schedulingMode: "event_driven",
-      pendingClarification: undefined,
-      ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
-      updatedAt: now,
-    });
-    refreshOpenLoopGroupChatPanelForTask(taskId);
-    return record;
+  if (transition.idempotent) {
+    return task;
   }
-
-  abortOrchestratorClarification(loopClarificationScope(taskId));
-  const record = updateLoopTaskRecord(taskId, {
-    status: "stopped",
-    activeSubtaskId: null,
-    activeSubtaskIds: [],
-    pendingClarification: undefined,
-    subTasks,
-    ...(debateRounds ? { debateRounds } : {}),
-    ...(options.finalSummary ? { finalSummary: options.finalSummary } : {}),
-    updatedAt: now,
-  });
-  refreshOpenLoopGroupChatPanelForTask(taskId);
+  if (transition.abortClarification) {
+    abortOrchestratorClarification(loopClarificationScope(taskId));
+  }
+  const record = updateLoopTaskRecord(taskId, transition.patch);
+  if (transition.refreshGroupChat) {
+    refreshOpenLoopGroupChatPanelForTask(taskId);
+  }
   return record;
 }
 

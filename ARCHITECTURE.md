@@ -92,7 +92,17 @@ cli / interactive / config 服务层
 - `openCodeSubagentRuntime.ts` 承载 OpenCode 子代理 server attach / managed startup / ready wait / Basic auth env override / unavailable fallback 和 disabled monitor；当前 201 行
 - `primaryPromptRunController.ts` 集中维护主 Prompt 的运行身份、进程、停止回调、会话目标、消息目标、trace 和任务状态；`extension.ts` 只负责组合根副作用与显式接线，避免 One-shot、上下文压缩、停止和 deactivate 分散读写同一组模块级状态
 - `promptExecutionShared.ts` 只保存提示运行 host 共享的窄类型；当前 59 行
+- `loopTaskStateMachine.ts` 只计算 Loop 主决策、停止和运行中断的下一次状态；`promptRunRuntime.ts` 消费该结果并执行原有副作用。它不是 UI，也不是 `loopTaskStore` 持久化层
 - 依赖方向固定为 `extension.ts` 导入 host 并注入显式回调，host 可以依赖 `cli/`、`interactive/`、`promptRunState` 等服务与类型，但不能反向依赖 `extension.ts`
+
+#### Loop 生命周期状态转移
+
+- 这是维护性重构：不新增用户可见能力，不改变 Loop/Loop+ 决策协议，也不改变 `LoopTaskRecord` 持久化 schema。已核对 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，终端可见的任务、群聊、澄清和停止行为没有变化，因此不更新功能清单。
+- `loopTaskTransitionStrategies` 按主决策 `completed` / `clarify` / `blocked` / `continue` 注册；停止和运行中断只按 `classic` 与 `event_driven` 注册。未知主决策回落到 `continue`。只有 `schedulingMode === "event_driven"` 走 Loop+ 策略，未设置时仍走 classic。不引入 DI 容器、继承层级或新的 mode 旗标。
+- 策略返回下一状态、`LoopTaskRecord` patch、子任务或辩论成员更新，以及 host 可执行标志。模块不导入 VS Code、文件系统、日志或面板 API，也不调用 `buildNextLoopMainAiFailureState`。
+- host 边界留在 `promptRunRuntime.ts`：`applyLoopMainDecision` 写任务存储，并仅在 `appendDecisionMessages` 时追加沟通文件和子会话消息；`markLoopTaskInterrupted` 先中止澄清，event_driven 再停止 Loop+ 父任务，classic 主任务 error 才由 host 计算失败次数并合并 `loopInterruptFailureLimitPatch`；`markLoopTaskStopped` 在缺失或已完成时直接返回，否则写 patch，并按标志中止澄清、刷新已打开群聊。`createPromptRunRuntimeHost` 的公开方法名不变。
+- 兼容不变量：`completed`、`blocked` 和超限 `clarify` 清空活动子任务；未超限 `clarify` 保持 `running` 并递增 `clarificationCount`；无子任务的 `continue` 进入 `needs-review` 且不追加决策消息；有子任务的 `continue` 保留 `activeSubtaskIds`。classic 停止把活动、running 或 pending 子任务写入 `blocked`，把仍活跃的辩论轮次和参与者写入 `stopped`，并清空活动子任务；event_driven 停止和中断不把活动子任务或辩论快照写入 patch。已完成任务再次停止幂等。策略不拼接路径，Windows、macOS 和 Linux 的既有副作用顺序不变。
+- 回归入口：`src/test/extensionHost/loopTaskStateMachine.test.ts`、`src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`；失败计数算法仍由 `src/test/loop/loopMainFailure.test.ts` 覆盖。先 `npm run build`，再 `node --test dist/test/extensionHost/loopTaskStateMachine.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js`。详细事实来源见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md`。
 
 #### CLI / Interactive / Config 服务层
 
@@ -134,6 +144,7 @@ cli / interactive / config 服务层
 5. 需要打通整条链路时，在 `src/extension.ts` 接线；若是提示运行的连续状态机，优先放到 `src/extensionHost/*Runtime.ts` 并由 `extension.ts` 注入依赖
 6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/loopDebate.ts`，不要反向依赖 VS Code API 或 Webview
 7. 只是 Graph 边/调度/节点控制语义：放 `src/graph/` 内的专门模块；跨 scheduler 和 prompt builder 的边语义优先集中到 `graphEdgeSemantics.ts`
+8. Loop 主决策、停止和运行中断的状态计算放 `src/extensionHost/loopTaskStateMachine.ts`；任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数留在 `src/extensionHost/promptRunRuntime.ts`。不要把状态转移模块写成 UI 或数据库层
 
 ### 新增文档时怎么放
 
@@ -149,6 +160,7 @@ cli / interactive / config 服务层
 - 在多个模块重复维护同一份本地状态格式
 - 将配置中心实现和聊天面板 DOM 逻辑直接耦合
 - 在未批准时改动技术栈或替换核心依赖
+- 把 `loopTaskStateMachine.ts` 写成 Webview/UI 或 `loopTaskStore` 持久化层，或在策略模块里直接写存储、消息、面板和日志
 
 ## 5. 维护要求
 

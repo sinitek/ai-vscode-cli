@@ -757,6 +757,20 @@ export function createLoopPlusExtensionStopHarness(options: {
       graphNodeId?: string | null;
     } | null,
     activeMessageTarget: null as unknown[] | null,
+    primaryPromptRunController: {
+      get activeTaskRun() {
+        return sandbox.activeTaskRun;
+      },
+      set activeTaskRun(value) {
+        sandbox.activeTaskRun = value;
+      },
+      get activeMessageTarget() {
+        return sandbox.activeMessageTarget;
+      },
+      set activeMessageTarget(value) {
+        sandbox.activeMessageTarget = value;
+      },
+    },
     loopOrchestrationOwnership: {
       collectTaskIds: (): string[] => [],
     },

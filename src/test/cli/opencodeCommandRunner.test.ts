@@ -1094,7 +1094,7 @@ test("forwards parsed OpenCode visible events to the matching conversation tab",
   );
   assert.match(
     extensionSource,
-    /function sendRunStatus\([\s\S]*status === "start"[\s\S]*clearTaskListForRunStart\(activeTabIdForRun\)[\s\S]*type: "runStatus"/,
+    /function sendRunStatus\([\s\S]*status === "start"[\s\S]*clearTaskListForRunStart\(primaryPromptRunController\.activeTabIdForRun\)[\s\S]*type: "runStatus"/,
   );
   assert.match(
     extensionSource,
@@ -1109,7 +1109,7 @@ test("one-shot OpenCode activity detection uses incremental tracker state", () =
   assert.ok(oneShotStart >= 0 && oneShotEnd > oneShotStart);
   const oneShotSource = promptOneShotRuntimeSource.slice(oneShotStart, oneShotEnd);
 
-  assert.match(oneShotSource, /const openCodeActivityTracker = createOpenCodeStreamActivityTracker\(\)/);
+  assert.match(oneShotSource, /openCodeActivityTracker\s*=\s*createOpenCodeStreamActivityTracker\(\)/);
   assert.match(oneShotSource, /openCodeActivityTracker\.snapshot\(\)/);
   assert.match(oneShotSource, /openCodeActivityTracker\.updateStdout\(chunk\)/);
   assert.match(oneShotSource, /openCodeActivityTracker\.updateStderr\(chunk\)/);
@@ -1121,6 +1121,7 @@ test("OpenCode host raw stdout and stderr caches remain bounded in all run modes
   const promptOneShotRuntimeSource = readSource("src", "extensionHost", "promptOneShotRuntime.ts");
   const promptParallelRuntimeSource = readSource("src", "extensionHost", "promptParallelRuntime.ts");
   const promptInteractiveRuntimeSource = readSource("src", "extensionHost", "promptInteractiveRuntime.ts");
+  const openCodePromptTemplateSource = readSource("src", "extensionHost", "openCodePromptRunTemplate.ts");
   const parallelStart = promptParallelRuntimeSource.indexOf("async function runPromptParallel");
   const oneShotStart = promptOneShotRuntimeSource.indexOf("async function runPromptOneShot");
   const interactiveStart = promptInteractiveRuntimeSource.indexOf("async function runPromptInteractive");
@@ -1132,11 +1133,10 @@ test("OpenCode host raw stdout and stderr caches remain bounded in all run modes
   const oneShotSource = promptOneShotRuntimeSource.slice(oneShotStart);
   const interactiveSource = promptInteractiveRuntimeSource.slice(interactiveStart);
 
-  for (const source of [parallelSource, oneShotSource, interactiveSource]) {
-    assert.match(source, /rawStdout = appendBoundedUtf8Text\(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
-  }
-  assert.match(parallelSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
-  assert.match(oneShotSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
+  assert.match(openCodePromptTemplateSource, /stream\.rawStdout = ports\.appendBoundedUtf8Text\(stream\.rawStdout, chunk, ports\.maxRawOutputBytes\)\.text/);
+  assert.match(openCodePromptTemplateSource, /stream\.rawStderr = ports\.appendBoundedUtf8Text\(stream\.rawStderr, chunk, ports\.maxRawOutputBytes\)\.text/);
+  assert.equal((`${oneShotSource}\n${parallelSource}`.match(/maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES/g) ?? []).length, 2);
+  assert.match(interactiveSource, /rawStdout = appendBoundedUtf8Text\(rawStdout, chunk, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
   assert.match(interactiveSource, /rawStderr = appendBoundedUtf8Text\(rawStderr, normalized, AI_TASK_RAW_OUTPUT_MAX_BYTES\)\.text/);
   assert.match(promptOneShotRuntimeSource, /const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 \* 1024/);
 });
@@ -1146,16 +1146,17 @@ test("wires subagent event monitoring and 60-second polling into both OpenCode r
   const subagentRuntimeSource = readSource("src", "extensionHost", "openCodeSubagentRuntime.ts");
   const promptOneShotRuntimeSource = readSource("src", "extensionHost", "promptOneShotRuntime.ts");
   const promptParallelRuntimeSource = readSource("src", "extensionHost", "promptParallelRuntime.ts");
+  const openCodePromptTemplateSource = readSource("src", "extensionHost", "openCodePromptRunTemplate.ts");
   const combinedOpenCodeRunSources = `${promptOneShotRuntimeSource}\n${promptParallelRuntimeSource}`;
   const connectionFactories = subagentRuntimeSource.match(/deps\.resolveConnection\(deps\.getOpenCodeCliArgs\(\)/g) ?? [];
   const monitorFactories = combinedOpenCodeRunSources.match(/createOpenCodeSubagentMonitor\(\{/g) ?? [];
-  const serverUrls = combinedOpenCodeRunSources.match(/openCodeServerUrl: subagentRuntime\.connection\?\.serverUrl/g) ?? [];
-  const progressUpdates = combinedOpenCodeRunSources.match(/subagentProgress\.update\(update\)/g) ?? [];
+  const serverUrls = openCodePromptTemplateSource.match(/openCodeServerUrl: subagentRuntime\.connection\?\.serverUrl/g) ?? [];
+  const progressUpdates = combinedOpenCodeRunSources.match(/subagentProgress\?\.update\(update\)/g) ?? [];
   const localizedMessages = combinedOpenCodeRunSources.match(/t\("run\.openCodeSubagentPollEmpty"\)/g) ?? [];
 
   assert.equal(connectionFactories.length, 1);
   assert.equal(monitorFactories.length, 2);
-  assert.equal(serverUrls.length, 2);
+  assert.equal(serverUrls.length, 1);
   assert.equal(progressUpdates.length, 2);
   assert.equal(localizedMessages.length, 2);
   assert.match(extensionSource, /createOpenCodeSubagentRuntimePreparer\(\{/);
@@ -1184,15 +1185,17 @@ test("uses structured OpenCode final events in both successful completion paths"
     readSource("src", "extensionHost", "promptOneShotRuntime.ts"),
     readSource("src", "extensionHost", "promptParallelRuntime.ts"),
   ].join("\n");
-  const structuredFinalChecks = combinedOpenCodeRunSources.match(
+  const openCodePromptTemplateSource = readSource("src", "extensionHost", "openCodePromptRunTemplate.ts");
+  const structuredFinalChecks = openCodePromptTemplateSource.match(
     /observedFinalAnswer:\s*openCodeOutput\.hasStructuredFinalAnswer/g,
   ) ?? [];
-  const successfulExitOutcomeChecks = combinedOpenCodeRunSources.match(
+  const successfulExitOutcomeChecks = openCodePromptTemplateSource.match(
     /resolveOpenCodeSuccessfulExitOutcome\(\{/g,
   ) ?? [];
 
-  assert.equal(structuredFinalChecks.length, 2);
-  assert.equal(successfulExitOutcomeChecks.length, 2);
+  assert.equal(structuredFinalChecks.length, 1);
+  assert.equal(successfulExitOutcomeChecks.length, 1);
+  assert.equal((combinedOpenCodeRunSources.match(/runOpenCodePromptTemplate\(/g) ?? []).length, 2);
 });
 
 test("wires one fresh-session recovery into both Loop OpenCode run paths", () => {
@@ -1200,8 +1203,9 @@ test("wires one fresh-session recovery into both Loop OpenCode run paths", () =>
     readSource("src", "extensionHost", "promptOneShotRuntime.ts"),
     readSource("src", "extensionHost", "promptParallelRuntime.ts"),
   ].join("\n");
+  const openCodePromptTemplateSource = readSource("src", "extensionHost", "openCodePromptRunTemplate.ts");
   const sessionTabsSource = readSource("src", "extensionHost", "sessionTabs.ts");
-  const recoverySelectors = combinedOpenCodeRunSources.match(
+  const recoverySelectors = openCodePromptTemplateSource.match(
     /shouldRecoverOpenCodeLoopMainSessionInFreshSession\(\{/g,
   ) ?? [];
   const queuedRecoveryMessages = combinedOpenCodeRunSources.match(
@@ -1210,14 +1214,14 @@ test("wires one fresh-session recovery into both Loop OpenCode run paths", () =>
   const recoveryAdoptions = combinedOpenCodeRunSources.match(
     /adoptFreshOpenCodeLoopRecoverySession\(\{/g,
   ) ?? [];
-  const freshSessionArguments = combinedOpenCodeRunSources.match(
+  const freshSessionArguments = openCodePromptTemplateSource.match(
     /isFreshSessionRecoveryAttempt\s*\?\s*null/g,
   ) ?? [];
 
-  assert.equal(recoverySelectors.length, 2);
+  assert.equal(recoverySelectors.length, 1);
   assert.equal(queuedRecoveryMessages.length, 2);
   assert.equal(recoveryAdoptions.length, 2);
-  assert.equal(freshSessionArguments.length, 2);
+  assert.equal(freshSessionArguments.length, 1);
   assert.match(sessionTabsSource, /function adoptFreshOpenCodeLoopRecoverySession\([\s\S]*bindLoopTaskToSession\(options\.loopTaskId, sessionId\)/);
 });
 

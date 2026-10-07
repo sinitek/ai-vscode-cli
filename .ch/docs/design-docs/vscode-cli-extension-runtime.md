@@ -68,8 +68,48 @@ media/
 - `src/extensionHost/openCodeSubagentRuntime.ts`：OpenCode 子代理 runtime preparer，当前 201 行。它负责 configured attach、managed server 启动、Basic auth env override、server readiness race、unavailable fallback 和 disabled monitor，向 one-shot / parallel host 返回 `PreparedOpenCodeSubagentRuntime`。
 - `src/extensionHost/promptExecutionShared.ts`：共享窄类型，当前 59 行。只放 `PromptRunExecutionOptions`、`InteractiveTabRun` 和 OpenCode runtime preparation 类型，避免提示运行 host 通过宽泛对象耦合。
 - `src/extensionHost/loopOrchestration.ts`：Loop 编排 host，当前 3043 行。它承载主从多智能体与红蓝辩论编排，host 依赖类型必须按 prompt run、task store、debate、prompt builder、runner、文案和进度等边界显式声明，不能回退为宽泛 `Record<string, any>`。
+- `src/extensionHost/loopTaskStateMachine.ts`：Loop 生命周期状态转移策略。它不是 Webview/UI，也不是 `loopTaskStore` 持久化层；注册表、副作用边界和兼容不变量见 3.1.1。
+- `src/extensionHost/promptRunRuntime.ts`：Loop 生命周期的 host 适配层。`applyLoopMainDecision`、`markLoopTaskInterrupted` 和 `markLoopTaskStopped` 消费策略结果，并保留任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数。
 
 依赖方向是单向的：`extension.ts` 导入 `createPromptOneShotRuntimeHost` / `createPromptInteractiveRuntimeHost` / `createOpenCodeSubagentRuntimePreparer` 并注入显式依赖；runtime host 可以依赖 `cli/`、`interactive/`、`promptRuntime`、`promptRunState` 等服务或类型，但不能反向依赖 `extension.ts`。`runPrompt` 仍留在 `extension.ts`，负责选择 interactive、parallel 或 one-shot 路径，并把 Loop 子任务临时执行根作为执行选项传入 host。
+
+#### 3.1.1 Loop 生命周期状态转移
+
+`src/extensionHost/loopTaskStateMachine.ts` 从 `promptRunRuntime.ts` 抽出 Loop 主任务生命周期的状态计算。这是维护性重构，不新增用户可见能力，不改变 Loop/Loop+ 决策协议，也不改变 `LoopTaskRecord` 持久化 schema。模块只返回下一次转移结果；读写 `~/.sinitek_cli/loop-tasks/`、追加沟通文件、发送聊天消息、刷新群聊面板和写日志都不是它的职责。
+
+`loopTaskTransitionStrategies` 是显式注册表，不使用类继承、DI 容器或新的 mode 旗标：
+
+- `mainDecision` 注册 `completed`、`clarify`、`blocked`、`continue`。未知 `LoopMainDecision.status` 回落到 `continue`，不增加协议状态。
+- `stop` 与 `interrupt` 只注册 `classic` 和 `event_driven`。`transitionLoopTaskStop` / `transitionLoopTaskInterrupt` 仅在 `schedulingMode === "event_driven"` 时选择 Loop+ 策略，未设置或其他值仍走 classic。classic Loop 与 Loop+ 协议继续分开。
+- `transitionLoopMainDecision`、`transitionLoopTaskStop` 和 `transitionLoopTaskInterrupt` 是主决策、停止和运行中断的状态转移入口。`buildLoopSubtaskId`、`getLoopDecisionSubtasks`、`getActiveLoopSubtaskIds` 与 `upsertLoopTransitionSubtask` 只是无副作用的记录辅助函数，host 可以复用，但不在这些函数里写存储。`loopInterruptFailureLimitPatch` 只描述达到上限后的 `needs-review` patch；连续失败计数仍由 host 调用 `src/loopMainFailure.ts` 的 `buildNextLoopMainAiFailureState`，策略模块不复制该算法。
+
+策略可以读取传入的 `LoopTaskRecord` 和决策，并返回下一状态、`LoopTaskRecord` patch、子任务或辩论成员更新，以及 `appendDecisionMessages`、`abortClarification`、`refreshGroupChat`、`applyMainAiFailureCount`、`appendNeedsReviewMessage`、`idempotent` 等 host 标志。它不导入 VS Code、文件系统、日志或面板 API。
+
+host 副作用边界固定在 `src/extensionHost/promptRunRuntime.ts`，公开方法名保持不变：
+
+- `applyLoopMainDecision` 先读任务记录，再 `updateLoopTaskRecord(transition.patch)`。只有 `appendDecisionMessages` 为 true 时才追加主任务沟通文件和子会话决策消息。
+- `markLoopTaskInterrupted` 先 `abortOrchestratorClarification`。event_driven 路径随后 `stopLoopPlusParent`、重读记录并应用中断 patch；classic 路径仅在 `applyMainAiFailureCount` 时计算失败次数，并把 `loopInterruptFailureLimitPatch` 合并进同一 patch。幂等转移不写存储；需要复核时才追加系统消息。
+- `markLoopTaskStopped` 在记录缺失或 `isLoopTaskCompleted` 时直接返回。否则应用停止 patch；`abortClarification` 时中止澄清，写存储后再按 `refreshGroupChat` 刷新该任务已打开的群聊。`markLoopTaskStoppedByUser` 只是带中止文案调用同一入口。
+
+兼容不变量：
+
+- `completed`、`blocked`，以及缺少澄清内容或 `clarificationCount` 已达 `ORCHESTRATOR_CLARIFICATION_LIMIT` 的 `clarify`，都清空 `activeSubtaskId` 和 `activeSubtaskIds`。超限 clarify 的任务状态是 `needs-review`。
+- 未超限 `clarify` 保持 `running`，写入 `pendingClarification`，并把 `clarificationCount` 加 1。
+- `continue` 没有合法子任务时进入 `needs-review`，`appendDecisionMessages` 为 false。有子任务时保持 `running`，写入 `activeSubtaskIds`；重复 id 原地更新，已完成子任务不改回 `running`，合并时去掉旧的 `skillIds` 和 `skillGuidance`。
+- classic 停止把活动、`running` 或 `pending` 子任务标为 `blocked`，把 `running` / `pending` 辩论参与者和仍活跃的轮次标为 `stopped`，清空活动子任务，并把这些成员更新放进 patch。event_driven 停止和中断不把活动子任务或辩论快照写入 patch，因此不清除、也不降级调度快照；中断固定写成 `status: "error"`，`finalSummary` 使用失败文本或 `LOOP_EVENT_DRIVEN_INTERRUPT_SUMMARY`。
+- 已完成任务的停止策略返回空 patch 且幂等。classic 中断在任务存在且状态不是 `running` 时幂等；event_driven 中断在任务缺失或状态不是 `running` 时幂等。classic 主任务 `error` 仍可能由失败上限 patch 覆盖为 `needs-review`。
+- 策略模块不拼接路径。沟通文件、任务存储和群聊刷新继续沿用 host 原顺序，Windows、macOS 和 Linux 的路径行为不因本次拆分改变。
+
+已核对 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。清单里的 Loop/Loop+ 条目描述终端用户可见的任务执行、群聊、主动澄清、停止和恢复行为；本次没有新增能力，也没有改变权限、流程、协议、持久化 schema 或这些条目的验收口径，所以不更新功能清单。
+
+测试入口：
+
+- 纯策略回归：`src/test/extensionHost/loopTaskStateMachine.test.ts`。
+- 主决策解析与 host 适配：`src/test/extensionHost/loopMainDecisionParsing.test.ts`。
+- 公开 host 方法与抽取契约：`src/test/extensionHost/extensionHostExtractionContracts.test.ts`。
+- 主任务连续失败计数算法不在本模块，入口仍是 `src/test/loop/loopMainFailure.test.ts`。
+
+最小验证先运行 `npm run build`，再运行 `node --test dist/test/extensionHost/loopTaskStateMachine.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js`。
 
 ### 3.2 聊天面板层：`src/webview/*`
 
@@ -290,6 +330,7 @@ cli / interactive / config 服务层
 - 不要让 `configService` 反向依赖 Webview DOM 或消息渲染
 - 不要把 Codex / Claude / OpenCode 的协议分支散落到多个 UI 文件
 - 不要在多个模块重复维护同一份本地状态格式
+- 不要把 `src/extensionHost/loopTaskStateMachine.ts` 写成 Webview/UI 或 `loopTaskStore` 持久化层，也不要在策略模块里直接写任务存储、沟通文件、聊天消息、面板刷新或日志
 
 ## 9. 扩展规则
 
@@ -302,6 +343,7 @@ cli / interactive / config 服务层
 3. 如果涉及本地配置、Skills、MCP 或外部目录管理，放到 `src/config/`
 4. 如果只是展示或交互优化，放到 `src/webview/`
 5. 如果需要全链路编排，再回到 `src/extension.ts` 做总线接入；如果是提示运行的连续执行状态机，优先放到 `src/extensionHost/*Runtime.ts`，由 `extension.ts` 注入生命周期、消息和持久化依赖
+6. Loop 主决策、停止和运行中断的状态计算放 `src/extensionHost/loopTaskStateMachine.ts`；任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数留在 `src/extensionHost/promptRunRuntime.ts`。不要把该模块写成 UI 或数据库层
 
 ### 新增 UI 时
 

@@ -1240,6 +1240,12 @@ test("keeps DAG visible when events read fails and keeps CSS on VS Code theme va
 		  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.semantic-(?:start|end)[\s\S]*border-radius:\s*999px/);
 	  assert.doesNotMatch(GRAPH_RUN_PANEL_STYLES, /dag-node-meta/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill[\s\S]*flex:\s*0 0 auto/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-pending,\s*\.dag-node \.status-pill\.status-ready/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-pending[\s\S]*color:\s*var\(--vscode-editor-foreground\)[\s\S]*background:\s*var\(--vscode-editorWidget-background/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-running[\s\S]*color:\s*var\(--vscode-button-foreground[\s\S]*background:\s*var\(--vscode-button-background/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-passed[\s\S]*color:\s*var\(--vscode-button-foreground[\s\S]*background:\s*var\(--vscode-testing-iconPassed/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-failed,\s*\.dag-node \.status-pill\.status-error/);
+  assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node \.status-pill\.status-failed[\s\S]*color:\s*var\(--vscode-button-foreground[\s\S]*background:\s*var\(--vscode-testing-iconFailed/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-color:\s*var\(--vscode-errorForeground/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-blocked\s*\{[\s\S]*border-width:\s*2px/);
   assert.match(GRAPH_RUN_PANEL_STYLES, /\.dag-node\.status-running\s*\{[\s\S]*border-color:\s*var\(--node-tone\)/);

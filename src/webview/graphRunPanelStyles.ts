@@ -307,6 +307,28 @@ ${DIALOG_SHELL_STYLES}
       .status-ready {
         border-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
       }
+      .dag-node .status-pill.status-pending,
+      .dag-node .status-pill.status-ready {
+        color: var(--vscode-editor-foreground);
+        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        border-color: var(--vscode-widget-border);
+      }
+      .dag-node .status-pill.status-running {
+        color: var(--vscode-button-foreground, var(--vscode-editor-background));
+        background: var(--vscode-button-background, var(--vscode-focusBorder));
+        border-color: var(--vscode-button-background, var(--vscode-focusBorder));
+      }
+      .dag-node .status-pill.status-passed {
+        color: var(--vscode-button-foreground, var(--vscode-editor-background));
+        background: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-button-background)));
+        border-color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-button-background)));
+      }
+      .dag-node .status-pill.status-failed,
+      .dag-node .status-pill.status-error {
+        color: var(--vscode-button-foreground, var(--vscode-editor-background));
+        background: var(--vscode-testing-iconFailed, var(--vscode-statusBarItem-errorBackground, var(--vscode-errorForeground)));
+        border-color: var(--vscode-testing-iconFailed, var(--vscode-statusBarItem-errorBackground, var(--vscode-errorForeground)));
+      }
       .detail-card,
       .empty-card,
       .error-card {

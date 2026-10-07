@@ -41,6 +41,11 @@ type FakeChild = EventEmitter & {
 
 type VscodeConfiguration = {
   get: <T>(key: string, fallback?: T) => T | undefined;
+  inspect: <T>(key: string) => {
+    workspaceFolderValue?: T;
+    workspaceValue?: T;
+    globalValue?: T;
+  } | undefined;
 };
 
 function createFakeStream(): FakeStream {
@@ -76,6 +81,7 @@ function installConfiguration(values: Record<string, unknown>): () => void {
     get: <T>(key: string, fallback?: T): T | undefined => (
       Object.prototype.hasOwnProperty.call(values, key) ? values[key] as T : fallback
     ),
+    inspect: () => undefined,
   });
   return () => {
     vscode.workspace.getConfiguration = originalGetConfiguration;
