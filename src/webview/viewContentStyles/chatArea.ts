@@ -2,13 +2,13 @@ export const CHAT_AREA_STYLES = `      /* Chat Area */
       .chat-area {
         flex: 1;
         overflow-y: auto;
-        padding: 20px 16px;
-        margin: 0 var(--panel-content-padding);
+        padding: 20px var(--panel-content-padding);
+        margin: 0;
         background: var(--vscode-editor-background);
         min-height: 0;
         box-sizing: border-box;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
-        border-radius: 10px;
+        border: none;
+        border-radius: 0;
         position: relative;
       }
       .chat-filter-toggle {

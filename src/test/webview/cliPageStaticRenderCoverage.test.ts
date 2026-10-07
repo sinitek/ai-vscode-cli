@@ -356,6 +356,17 @@ test("keeps required anchors when optional resource inputs are empty", () => {
   ]);
 });
 
+test("aligns chat messages with the input form without an extra chat frame", () => {
+  assert.match(
+    CHAT_AREA_STYLES,
+    /\.chat-area\s*\{[^}]*padding:\s*20px var\(--panel-content-padding\);[^}]*margin:\s*0;[^}]*border:\s*none;[^}]*border-radius:\s*0;/,
+  );
+  assert.match(
+    INPUT_CONTROLS_STYLES,
+    /\.input-area\s*\{[^}]*padding:\s*8px var\(--panel-content-padding\);/,
+  );
+});
+
 test("concatenates all static style modules and keeps key selectors available", () => {
   const expectedStyles = [
     BASE_STYLES,
