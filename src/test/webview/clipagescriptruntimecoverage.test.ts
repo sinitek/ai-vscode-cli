@@ -1699,8 +1699,18 @@ const streamCompletionCases = (["normal", "thinking"] as const).flatMap((message
   (["end", "error", "stopped"] as const).map((completionStatus) => ({ messageKind, completionStatus }))
 );
 for (const { messageKind, completionStatus } of streamCompletionCases) {
-  test(`keeps running ${messageKind === "normal" ? "final" : "thinking"} bubbles stable across output pauses until ${completionStatus}`, (testContext) => {
-    const { api, document, window } = createRuntimeHarness();
+  test(`formats running ${messageKind === "normal" ? "final" : "thinking"} bubbles after an idle pause before ${completionStatus}`, (testContext) => {
+    const marked = {
+      Renderer: class {
+        html(): string {
+          return "";
+        }
+      },
+      parse(value: string): string {
+        return `<p>${value.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")}</p>`;
+      },
+    };
+    const { api, document, window } = createRuntimeHarness(marked);
     testContext.after(() => window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" }));
     window.dispatchMessage({ type: "state", payload: createPanelState() });
     api.state.onlyShowFinalResults = false;
@@ -1723,16 +1733,21 @@ for (const { messageKind, completionStatus } of streamCompletionCases) {
     const idleRender = window.timers.get(idleTimerId);
     window.timers.delete(idleTimerId);
     idleRender?.();
-    assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
+    const formattedBubble = document.getElementById("messages").querySelector(".bubble");
+    assert.ok(formattedBubble);
+    assert.equal(formattedBubble.querySelector(".assistant-message-content-streaming"), null);
+    assert.match(formattedBubble.innerHTML, /<strong>world<\/strong>/);
 
     appendContent(" again");
-    assert.equal(document.getElementById("messages").querySelector(".assistant-message-content-streaming"), streamingNode);
-    assert.match(streamingNode.textContent, /hello \*\*world\*\* again/);
+    const resumedStreamingNode = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
+    assert.ok(resumedStreamingNode);
+    assert.notEqual(resumedStreamingNode, streamingNode);
+    assert.match(resumedStreamingNode.textContent, /hello \*\*world\*\* again/);
     window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: completionStatus });
     const bubble = document.getElementById("messages").querySelector(".bubble");
     assert.ok(bubble);
     assert.doesNotMatch(bubble.innerHTML, /assistant-message-content-streaming/);
-    assert.match(bubble.innerHTML, /hello \*\*world\*\* again/);
+    assert.match(bubble.innerHTML, /<strong>world<\/strong> again/);
     if (messageKind === "normal") {
       assert.match(bubble.innerHTML, /assistant-message-content-final/);
     }

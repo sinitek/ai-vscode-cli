@@ -229,6 +229,14 @@ test("reduces task-list title and item font sizes without changing item padding"
   assert.match(TASKLIST_STYLES, /\.tasklist-items\s*\{[^}]*padding:\s*var\(--tasklist-list-padding-top\) 0 0;/);
 });
 
+test("keeps wrapped task rows from shrinking inside the scroll container", () => {
+  assert.match(TASKLIST_STYLES, /\.tasklist-item\s*\{[^}]*flex:\s*0 0 auto;/);
+  assert.match(
+    TASKLIST_STYLES,
+    /\.tasklist-item > span\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/,
+  );
+});
+
 test("halves the gap between the task-list card and the input form", () => {
   assert.match(TASKLIST_STYLES, /\.tasklist-panel\s*\{[^}]*padding:\s*8px 16px 2px;/);
   assert.match(INPUT_CONTROLS_STYLES, /\.input-area\s*\{[^}]*padding:\s*8px var\(--panel-content-padding\);/);

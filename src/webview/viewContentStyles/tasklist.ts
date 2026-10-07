@@ -69,11 +69,17 @@ export const TASKLIST_STYLES = `      /* Tasklist Panel */
       }
       .tasklist-item {
         display: flex;
+        flex: 0 0 auto;
         align-items: flex-start;
         gap: 8px;
         min-height: var(--tasklist-row-height);
         font-size: 12px;
         line-height: var(--tasklist-row-height);
+      }
+      .tasklist-item > span {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .tasklist-checkbox {
         margin-top: 6px;

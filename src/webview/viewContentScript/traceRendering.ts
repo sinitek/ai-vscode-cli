@@ -249,9 +249,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             delete assistantStreamingMarkdownPending[messageId];
             return;
           }
-          if (isTabRunning(getActiveConversationTabId()) && shouldDeferAssistantMarkdownWhileStreaming(message, renderedIndex)) {
-            return;
-          }
           delete assistantStreamingMarkdownPending[messageId];
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
           const shouldAutoScroll = !chatSearchAnchored
