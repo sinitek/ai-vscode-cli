@@ -383,6 +383,7 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageTaskRoleElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyMessageElementClasses"],
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "hasRenderableMessageContent"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "shouldShowMessageInResultOnlyMode"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getVisibleMessages"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "captureOpenTraceCollapsibleKeys"],
@@ -439,6 +440,7 @@ function browserScript(): string {
     "  return formatTemplate(i18n[key] || key, params);",
     "}",
     "function isTabRunning(tabId) { return runningTabIds.has(tabId); }",
+    "function syncConversationTabRunningFlowWatch() {}",
     "function getLoopExecutionModeForCli(cli) {",
     "  var targetCli = cli || state.currentCli;",
     "  var value = state.loopExecutionModeByCli && state.loopExecutionModeByCli[targetCli];",
@@ -454,6 +456,9 @@ function browserScript(): string {
     "function reportWebviewFailure(message, error) { throw error || new Error(message); }",
     "function shouldHideParsedTaskListMessage() { return false; }",
     "function getTracePresentation() { return {}; }",
+    "function getAssistantMessageContentForDisplay(message) { return String(message && message.content || \"\"); }",
+    "function normalizeMessageActions() { return []; }",
+    "function isThinkingLikeMessage() { return false; }",
     "function safelyRenderMessageContent(message) { return String(message && message.content || \"\"); }",
     "function formatDateTime() { return \"\"; }",
     "function isFinalAssistantSummaryMessage() { return false; }",
@@ -826,8 +831,8 @@ test("splits historical message labels by task identity across classic and Loop+
   ]);
   Object.assign(browser.i18n, getWebviewStrings());
   api.renderMessages();
-  assert.deepEqual(renderedBadges(messages), ["Subtask", "Subtask · Round 2"]);
-  assert.equal(renderedBadges(messages).some((label) => label.includes("Round 1")), false);
+  assert.deepEqual(renderedBadges(messages), ["子任务", "子任务·第2轮"]);
+  assert.equal(renderedBadges(messages).some((label) => label.includes("第1轮")), false);
 });
 
 test("keeps Loop+ busy-send payload while classic debate, Graph priority, and Vibe stay unchanged", () => {

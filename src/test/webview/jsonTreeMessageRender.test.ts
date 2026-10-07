@@ -561,7 +561,6 @@ test("inlines the JSON formatter runtime into the chat webview", () => {
   assert.match(html, /JSONFormatter=/);
   assert.match(html, /function parseCompleteJsonContainer/);
   assertInlineScriptsCanBeDocumentWritten(html);
-  assert.equal(WEBVIEW_STRINGS.jsonTreeEmptyObject, "No properties");
   assert.equal(WEBVIEW_STRINGS.jsonTreeEmptyObject, "无属性");
 
   const fsModule = require("fs") as { readFileSync: (...args: any[]) => string };

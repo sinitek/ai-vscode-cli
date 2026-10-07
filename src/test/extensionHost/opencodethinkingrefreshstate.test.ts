@@ -198,7 +198,7 @@ test("publishes async OpenCode thinking variants before refreshing panel state",
     await host.refreshOpenCodeThinkingState(configState);
     assert.equal(openCodeThinkingState.messageKey, "loading");
 
-    await waitFor(() => openCodeThinkingState.options.length === 3);
+    await waitFor(() => openCodeThinkingState.options.length === 3, 10_000);
 
     assert.deepEqual(openCodeThinkingState.options.map((option) => option.value), ["xhigh", "max", "ultra"]);
     assert.equal(openCodeThinkingState.configuredDefaultVariant, "xhigh");

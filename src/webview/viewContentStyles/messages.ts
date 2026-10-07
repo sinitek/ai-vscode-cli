@@ -123,6 +123,7 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
       }
       .message.assistant.message-final-summary .bubble {
         background: var(--vscode-editorWidget-background, transparent);
+        padding: 0;
       }
       .message.assistant .assistant-message-content-final {
         border: 1px solid var(--assistant-final-accent);

@@ -133,7 +133,7 @@ test("renders Loop+ in both interactive mode selects without disturbing help or 
   assert.match(html, /value="debate_multi_agent"/);
   assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
   assert.match(html, /可见队列/);
-  assert.match(html, /执行结束不等于验收完成/);
+  assert.match(html, /单个子任务执行结束后立即验收，其它完成进入队列。/);
 });
 
 test("keeps loop_plus in the browser normalizer and still folds plan and lobster", () => {
@@ -346,6 +346,7 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     "getConversationTabSummary",
     [
       "var lastAutoInteractiveModeTabKey = \"\";",
+      "function syncConversationTabRunningFlowWatch() {}",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
@@ -461,6 +462,7 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       "getConversationTabSummary",
       [
         "var lastAutoInteractiveModeTabKey = \"\";",
+        "function syncConversationTabRunningFlowWatch() {}",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),

@@ -367,6 +367,13 @@ test("aligns chat messages with the input form without an extra chat frame", () 
   );
 });
 
+test("removes outer padding around the final assistant answer border", () => {
+  assert.match(
+    MESSAGE_BLOCK_STYLES,
+    /\.message\.assistant\.message-final-summary \.bubble\s*\{[^}]*padding:\s*0;/,
+  );
+});
+
 test("concatenates all static style modules and keeps key selectors available", () => {
   const expectedStyles = [
     BASE_STYLES,
