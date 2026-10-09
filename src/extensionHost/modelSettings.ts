@@ -8,7 +8,8 @@ import { getCodeGraphInstallCommand, getCodeGraphInstallSteps, type CodeGraphIns
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
 import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, LOOP_PLUS_INTERACTIVE_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
 import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput, type ParsedOpenCodeConfigModels } from "../cli/opencodeconfigmodels";
-import { resolveOpenCodeThinkingCapability, type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
+import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
+import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
@@ -29,7 +30,7 @@ import type { ConfigHeartbeatSnapshot } from "../webviewCommandCoordinator";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
-import { isCliName, isOpenCodeThinkingRequestCurrent } from "../panelStateBuilder";
+import { isCliName } from "../panelStateBuilder";
 
 export type ModelSettingsHostDeps = {
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void;
@@ -174,9 +175,8 @@ function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRoleInput, 
     return;
   }
   const currentState = getOpenCodeThinkingStateForRole(normalizedRole);
-  const nextVariant = value && currentState.options.some((option) => option.value === value)
-    ? value
-    : null;
+  const trimmedValue = typeof value === "string" ? value.trim() : "";
+  const nextVariant = isOpenCodeThinkingEffort(trimmedValue) ? trimmedValue : null;
   persistOpenCodeVariant(openCodeThinkingConfigId, exactModel, normalizedRole, nextVariant);
   setOpenCodeThinkingStateForRole(normalizedRole, {
     ...currentState,
@@ -302,6 +302,32 @@ function resolveOpenCodeRoleModelsForConfig(
   return { main, subtask, fallback };
 }
 
+const OPENCODE_STANDARD_THINKING_OPTIONS = OPENCODE_THINKING_EFFORTS.map((value) => ({
+  value,
+  label: value,
+  source: "resolved-cli" as const,
+}));
+
+function buildStandardOpenCodeThinkingState(
+  exactModel: string | null,
+  selectedVariant: string | null,
+): OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant"> {
+  const separatorIndex = exactModel?.indexOf("/") ?? -1;
+  const normalizedSelection = isOpenCodeThinkingEffort(selectedVariant) ? selectedVariant.trim() : null;
+  return {
+    providerId: separatorIndex > 0 ? exactModel!.slice(0, separatorIndex) : null,
+    modelId: separatorIndex > 0 ? exactModel!.slice(separatorIndex + 1) : null,
+    reasoning: "unknown",
+    options: exactModel ? [...OPENCODE_STANDARD_THINKING_OPTIONS] : [],
+    configuredDefaultVariant: null,
+    selectedVariant: normalizedSelection,
+    status: exactModel ? "ready" : "unknown",
+    source: "fallback",
+    disabled: !exactModel,
+    messageKey: exactModel ? undefined : "select-model",
+  };
+}
+
 async function refreshOpenCodeThinkingState(configState: PanelState["configState"]): Promise<void> {
   if (currentCli !== "opencode") {
     openCodeThinkingRequestId += 1;
@@ -339,58 +365,21 @@ async function refreshOpenCodeThinkingState(configState: PanelState["configState
     main: roleModels.main,
     subtask: roleModels.subtask,
   };
-  const requestId = ++openCodeThinkingRequestId;
+  openCodeThinkingRequestId += 1;
   const refreshRoleThinking = (role: OpenCodeCanonicalModelRole, exactModel: string | null): void => {
-    setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
-      exactModel ? "loading" : "select-model",
-      exactModel
-    ));
-    if (!exactModel) {
-      return;
+    const persistedVariant = exactModel
+      ? getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role)
+      : null;
+    const selectedVariant = isOpenCodeThinkingEffort(persistedVariant) ? persistedVariant.trim() : null;
+    if (exactModel && persistedVariant && !selectedVariant) {
+      persistOpenCodeVariant(configId, exactModel, role, null);
     }
-
-    const persistedVariant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, role);
-    void resolveOpenCodeThinkingCapability({
-      command,
-      configIdentity: `${configId ?? "current"}:${configHash}:${role}`,
-      configContent,
-      model: exactModel,
-      selectedVariant: persistedVariant,
-    }).then((capability) => {
-      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-        return;
-      }
-      const selectedVariant = persistedVariant
-        && capability.options.some((option) => option.value === persistedVariant)
-        ? persistedVariant
-        : null;
-      if (persistedVariant && !selectedVariant) {
-        persistOpenCodeVariant(configId, exactModel, role, null);
-      }
-      setOpenCodeThinkingStateForRole(role, {
-        ...capability,
-        selectedVariant,
-        disabled: capability.options.length === 0,
-      });
-      syncToDeps();
-      void postPanelState();
-    }).catch(() => {
-      if (!isOpenCodeThinkingRequestCurrent(requestId, contextKey, openCodeThinkingRequestId, openCodeThinkingContextKey)) {
-        return;
-      }
-      if (persistedVariant) {
-        persistOpenCodeVariant(configId, exactModel, role, null);
-      }
-      setOpenCodeThinkingStateForRole(role, buildDefaultOpenCodeThinkingState(
-        "metadata-error",
-        exactModel
-      ));
-      syncToDeps();
-      void postPanelState();
-    });
+    setOpenCodeThinkingStateForRole(role, buildStandardOpenCodeThinkingState(exactModel, selectedVariant));
   };
   refreshRoleThinking("main", roleModels.main);
   refreshRoleThinking("subtask", roleModels.subtask);
+  syncToDeps();
+  void postPanelState();
 }
 
 function getOpenCodeVariantForRun(
@@ -401,19 +390,18 @@ function getOpenCodeVariantForRun(
   role: OpenCodeModelRoleInput = "main"
 ): string | null {
   const normalizedRole = normalizeOpenCodeModelRole(role);
-  if (cli !== "opencode" || !configId) {
+  if (cli !== "opencode") {
     return null;
   }
   const resolution = resolveOpenCodeModelForConfig(model, configContent);
   const exactModel = resolution.error ? null : resolution.model;
-  if (!exactModel || exactModel !== openCodeThinkingExactModels[normalizedRole] || configId !== openCodeThinkingConfigId) {
+  if (!exactModel) {
     return null;
   }
-  const state = getOpenCodeThinkingStateForRole(normalizedRole);
-  const variant = getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, normalizedRole);
-  return variant && state.options.some((option) => option.value === variant)
-    ? variant
+  const storedVariant = configId
+    ? getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, normalizedRole)
     : null;
+  return normalizeOpenCodeThinkingEffort(storedVariant);
 }
 
 function resolvePromptRunTargetSessionId(target: PromptRunTarget): string | null {

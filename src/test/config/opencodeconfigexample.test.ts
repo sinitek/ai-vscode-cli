@@ -8,8 +8,8 @@ type ExampleModel = {
   name: string;
   reasoning: boolean;
   limit: { context: number };
-  options: Record<string, unknown>;
-  variants: Record<string, Record<string, unknown>>;
+  options?: Record<string, unknown>;
+  variants?: Record<string, Record<string, unknown>>;
 };
 
 type OpenCodeExample = {
@@ -63,14 +63,13 @@ test("OpenCode config page exposes a parseable myAPI dual-model example", async 
   assert.equal(provider.options.baseURL, "{env:MY_API_BASE_URL}");
   assert.equal(provider.options.apiKey, "{env:MY_API_KEY}");
   assert.deepEqual(Object.keys(provider.models).sort(), ["main-chat-model", "small-task-model"]);
-  assert.equal(mainModel.options.reasoningEffort, "medium");
   assert.equal(mainModel.limit.context, 128000);
-  assert.equal(mainModel.variants.low.reasoningEffort, "low");
-  assert.equal(mainModel.variants.high.reasoningEffort, "high");
-  assert.equal(smallModel.options.reasoningEffort, "low");
+  assert.equal(mainModel.options, undefined);
+  assert.equal(mainModel.variants, undefined);
   assert.equal(smallModel.limit.context, 32768);
-  assert.equal(smallModel.variants.low.reasoningEffort, "low");
-  assert.equal(smallModel.variants.high.reasoningEffort, "high");
+  assert.equal(smallModel.options, undefined);
+  assert.equal(smallModel.variants, undefined);
+  assert.doesNotMatch(exampleText, /reasoningEffort|variants/);
   assert.equal(Object.prototype.hasOwnProperty.call(example, "mcp"), false);
   assert.doesNotMatch(exampleText, /PackyAPI/i);
   assert.doesNotMatch(exampleText, /\.env/i);

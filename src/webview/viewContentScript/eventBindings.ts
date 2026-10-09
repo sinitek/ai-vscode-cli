@@ -233,13 +233,15 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
 
       function handleOpenCodeThinkingModeChange(role, rawValue) {
         const thinkingState = role === "subtask" ? state.openCodeSmallThinking : state.openCodeThinking;
-        const selectedVariant = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
-        const configuredDefaultVariant = thinkingState
-          ? thinkingState.configuredDefaultVariant
+        const selectedVariant = typeof rawValue === "string" ? rawValue.trim() : "";
+        const value = selectedVariant === "low"
+          || selectedVariant === "medium"
+          || selectedVariant === "high"
+          || selectedVariant === "xhigh"
+          || selectedVariant === "max"
+          || selectedVariant === "ultra"
+          ? selectedVariant
           : null;
-        const value = selectedVariant && selectedVariant === configuredDefaultVariant
-          ? null
-          : selectedVariant;
         if (thinkingState) {
           thinkingState.selectedVariant = value;
         }
@@ -301,8 +303,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               selectedVariant: null,
               configuredDefaultVariant: null,
               options: [],
-              disabled: true,
-              messageKey: "loading",
+              disabled: false,
             };
           } else {
             state.openCodeModels.selectedMainRef = effectiveRef;
@@ -311,8 +312,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               selectedVariant: null,
               configuredDefaultVariant: null,
               options: [],
-              disabled: true,
-              messageKey: "loading",
+              disabled: false,
             };
           }
           syncThinkingOptions();

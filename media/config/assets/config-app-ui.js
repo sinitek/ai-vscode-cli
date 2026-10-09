@@ -2940,67 +2940,6 @@ const openCodeVisualValidateEnum = (value, allowedValues, sourceValue, label) =>
   return `${label} 必须是 ${allowedValues.join("、")} 之一`;
 };
 
-const openCodeVisualNormalizeEfforts = (value) => {
-  const values = Array.isArray(value) ? value : String(value || "").split(","),
-    seen = new Set(),
-    normalized = [];
-  values.forEach((item) => {
-    const effort = typeof item === "string" ? item.trim() : "";
-    if (effort && !seen.has(effort)) {
-      seen.add(effort), normalized.push(effort);
-    }
-  });
-  return normalized;
-};
-
-const openCodeVisualReadEfforts = (model) => {
-  const efforts = [],
-    options = openCodeVisualIsRecord(model?.options) ? model.options : {},
-    variants = openCodeVisualIsRecord(model?.variants) ? model.variants : {};
-  typeof options.reasoningEffort === "string" && efforts.push(options.reasoningEffort);
-  Object.values(variants).forEach((variant) => {
-    openCodeVisualIsRecord(variant) &&
-      typeof variant.reasoningEffort === "string" &&
-      efforts.push(variant.reasoningEffort);
-  });
-  return openCodeVisualNormalizeEfforts(efforts).join(", ");
-};
-
-const openCodeVisualApplyEfforts = (model, value) => {
-  const result = openCodeVisualClone(model) || {},
-    efforts = openCodeVisualNormalizeEfforts(value),
-    options = openCodeVisualIsRecord(result.options) ? { ...result.options } : {},
-    variants = openCodeVisualIsRecord(result.variants) ? result.variants : {},
-    preservedVariants = {};
-  delete options.reasoningEffort;
-  Object.entries(variants).forEach(([variantId, variant]) => {
-    if (!openCodeVisualIsRecord(variant)) {
-      preservedVariants[variantId] = openCodeVisualClone(variant);
-      return;
-    }
-    const variantKeys = Object.keys(variant),
-      isManagedSimpleVariant =
-        variantKeys.length === 1 &&
-        typeof variant.reasoningEffort === "string" &&
-        variant.reasoningEffort === variantId;
-    isManagedSimpleVariant || (preservedVariants[variantId] = openCodeVisualClone(variant));
-  });
-  if (efforts.length > 0) {
-    options.reasoningEffort = efforts[0];
-    efforts.forEach((effort) => {
-      const existing = openCodeVisualIsRecord(preservedVariants[effort])
-        ? preservedVariants[effort]
-        : {};
-      preservedVariants[effort] = { ...existing, reasoningEffort: effort };
-    });
-  }
-  Object.keys(options).length > 0 ? (result.options = options) : delete result.options;
-  Object.keys(preservedVariants).length > 0
-    ? (result.variants = preservedVariants)
-    : delete result.variants;
-  return result;
-};
-
 const openCodeVisualCreateState = (config) => {
   const source = openCodeVisualIsRecord(config) ? openCodeVisualClone(config) : {},
     providerSource = openCodeVisualIsRecord(source.provider) ? source.provider : {},
@@ -3016,8 +2955,6 @@ const openCodeVisualCreateState = (config) => {
             name: typeof model.name === "string" ? model.name : "",
             reasoning: model.reasoning === !0,
             context: openCodeVisualReadOptionalNumber(limit.context),
-            efforts: openCodeVisualReadEfforts(model),
-            sourceEfforts: openCodeVisualReadEfforts(model),
             source: openCodeVisualClone(model),
           };
         });
@@ -3110,12 +3047,6 @@ const openCodeVisualNpmSuggestions = (state) =>
     ...(state?.providers || []).map((provider) => provider?.npm),
   ]);
 
-const openCodeVisualEffortSuggestions = (model) =>
-  openCodeVisualUniqueStrings([
-    ...openCodeVisualNormalizeEfforts(model?.efforts || model?.sourceEfforts),
-    "ultra",
-  ]);
-
 const openCodeVisualValidateState = (state) => {
   const errors = [],
     providerIds = new Set(),
@@ -3199,10 +3130,7 @@ const openCodeVisualSerializeState = (state) => {
       ? (providerValue.options = providerOptions)
       : delete providerValue.options;
     (provider.models || []).forEach((model) => {
-      const modelValue =
-        model.efforts === model.sourceEfforts
-          ? openCodeVisualClone(model.source) || {}
-          : openCodeVisualApplyEfforts(model.source, model.efforts);
+      const modelValue = openCodeVisualClone(model.source) || {};
       model.name.trim() ? (modelValue.name = model.name.trim()) : delete modelValue.name;
       modelValue.reasoning = model.reasoning === !0;
       if (openCodeVisualIsRecord(modelValue.limit)) {
@@ -3288,7 +3216,7 @@ const openCodeVisualAddModel = (state, providerId) => {
   const provider = state.providers.find((item) => item.id === providerId);
   if (!provider) return state;
   const id = openCodeVisualUniqueId(provider.models, "model"),
-    model = { id, name: "新模型", reasoning: !1, context: "", efforts: "", source: {} };
+    model = { id, name: "新模型", reasoning: !1, context: "", source: {} };
   return {
     ...state,
     providers: state.providers.map((item) =>
@@ -3350,12 +3278,8 @@ const OpenCodeConfigVisualEditorUtils = Object.freeze({
     const limit = openCodeVisualIsRecord(model?.limit) ? model.limit : {};
     return openCodeVisualReadOptionalNumber(limit.context);
   },
-  normalizeEfforts: openCodeVisualNormalizeEfforts,
-  readEfforts: openCodeVisualReadEfforts,
-  applyEfforts: openCodeVisualApplyEfforts,
   modelSuggestions: openCodeVisualModelSuggestions,
   npmSuggestions: openCodeVisualNpmSuggestions,
-  effortSuggestions: openCodeVisualEffortSuggestions,
   createState: openCodeVisualCreateState,
   parseContent: openCodeVisualParseContent,
   validateState: openCodeVisualValidateState,
@@ -4152,17 +4076,6 @@ requires_openai_auth = true`,
           "reasoning": true,
           "limit": {
             "context": 128000
-          },
-          "options": {
-            "reasoningEffort": "medium"
-          },
-          "variants": {
-            "low": {
-              "reasoningEffort": "low"
-            },
-            "high": {
-              "reasoningEffort": "high"
-            }
           }
         },
         "small-task-model": {
@@ -4170,17 +4083,6 @@ requires_openai_auth = true`,
           "reasoning": true,
           "limit": {
             "context": 32768
-          },
-          "options": {
-            "reasoningEffort": "low"
-          },
-          "variants": {
-            "low": {
-              "reasoningEffort": "low"
-            },
-            "high": {
-              "reasoningEffort": "high"
-            }
           }
         }
       }
@@ -4196,7 +4098,7 @@ const Nk = {
       content: ps.claude.settings,
     },
 	    "opencode-settings": {
-	      title: "OpenCode 模型配置 config.json（myAPI 双模型与思考力度范例）",
+	      title: "OpenCode 模型配置 config.json（myAPI 双模型范例）",
 	      content: ps.opencode.settings,
 	    },
     "codex-config": { title: "Codex config.toml", content: ps.codex.config },
@@ -5142,7 +5044,6 @@ const ConfigEditorPanel = () => {
         "Log level": "OpenCode CLI logging level.",
         "快照 snapshot": "是否启用快照。未设置时继承 CLI 默认值。",
         "Snapshot": "Whether snapshots are enabled. When unset, the CLI default applies.",
-        思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。",
         model: "Codex CLI 默认模型名称。",
         model_provider: "Codex 使用的默认模型供应商。",
         approval_policy: "控制命令执行前的审批策略。复杂 granular table 仅在 TOML 源码中保留。",
@@ -5756,42 +5657,6 @@ const ConfigEditorPanel = () => {
             : L;
         return renderConfigSelect(W, H, k, T, U);
       },
-      renderOpenCodeMultiSelect = (W, H, k, L, U = {}) => {
-        const T = openCodeVisualNormalizeEfforts(H),
-          Z = new Set(L.map((Q) => Q.value)),
-          ee = [...L, ...T.filter((Q) => !Z.has(Q)).map((Q) => ({ value: Q, label: Q }))];
-        return be.jsxs("div", {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: 3,
-            minWidth: 0,
-            width: "100%",
-            gridColumn: "1 / -1",
-          },
-          children: [
-            renderConfigFieldLabel(
-              W,
-              formatConfigEnumHelp(getConfigFieldHelp(W, U.help), ee.map((Q) => Q.value)),
-            ),
-            be.jsx($l, {
-              className: "opencode-effort-multiselect",
-              mode: "tags",
-              value: T,
-              onChange: (Q) => k(openCodeVisualNormalizeEfforts(Q).join(", ")),
-              options: ee,
-              allowClear: !0,
-              showSearch: !0,
-              optionFilterProp: "label",
-              tokenSeparators: [","],
-              maxTagCount: "responsive",
-              getPopupContainer: (Q) => Q.parentElement || document.body,
-              placeholder: U.placeholder,
-              style: { width: "100%" },
-            }),
-          ],
-        });
-      },
       renderOpenCodeVisualEditor = () => {
         if (!openCodeVisualState)
           return be.jsx("div", {
@@ -6123,15 +5988,6 @@ const ConfigEditorPanel = () => {
                                         ),
                                       },
                                     ),
-                                    renderOpenCodeMultiSelect(
-                                      "思考力度",
-                                      H.efforts,
-                                      (L) => updateSelectedOpenCodeModel({ efforts: L }),
-                                      openCodeVisualEffortSuggestions(H).map((L) => ({ value: L, label: L })),
-                                      {
-                                        placeholder: claudeText("选择一个或多个思考力度", "Select one or more efforts"),
-                                      },
-                                    ),
                                   ],
                                 }),
                                 be.jsxs("div", {
@@ -6154,17 +6010,6 @@ const ConfigEditorPanel = () => {
                                       ],
                                     }),
                                   ],
-                                }),
-                                be.jsx("div", {
-                                  style: {
-                                    marginTop: "10px",
-                                    color: "var(--text-color-secondary)",
-                                    fontSize: "12px",
-                                  },
-                                  children: claudeText(
-                                    "可输入或多选当前 provider/model 的思考力度；首项作为默认 reasoningEffort。",
-                                    "Enter or select multiple efforts from the current provider/model; the first is the default reasoningEffort.",
-                                  ),
                                 }),
                               ]
                             : [

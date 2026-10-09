@@ -343,7 +343,7 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   assert.match(uiScript, /\$\{XDG_CONFIG_HOME:-~\/\.config\}\/opencode\/opencode\.json/);
   assert.match(uiScript, /模型\/Provider 配置/);
   assert.match(uiScript, /全局 MCP 配置/);
-  assert.match(uiScript, /myAPI 双模型与思考力度范例/);
+  assert.match(uiScript, /myAPI 双模型范例/);
   assert.match(uiScript, /myAPI\/main-chat-model/);
   assert.doesNotMatch(uiScript, /opencode-env|插件辅助档案/);
   assert.doesNotMatch(uiScript, /PackyAPI|packyapi|PACKYAPI/);

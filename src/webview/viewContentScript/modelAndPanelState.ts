@@ -572,21 +572,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         selectElement.appendChild(option);
       }
 
-      function getOpenCodeThinkingOptionLabel(option) {
-        return option.value;
-      }
-
-      function getOpenCodeThinkingMessage(messageKey) {
-        const messageKeys = {
-          "follow-default": "openCodeThinkingMessageFollowDefault",
-          loading: "openCodeThinkingMessageLoading",
-          "select-model": "openCodeThinkingMessageSelectModel",
-          "metadata-error": "openCodeThinkingMessageMetadataError",
-          "no-variants": "openCodeThinkingMessageNoVariants",
-          "config-variants": "openCodeThinkingMessageConfigVariants",
-        };
-        const translationKey = messageKeys[messageKey];
-        return translationKey ? t(translationKey) : "";
+      function isOpenCodeThinkingEffort(value) {
+        return value === "low"
+          || value === "medium"
+          || value === "high"
+          || value === "xhigh"
+          || value === "max"
+          || value === "ultra";
       }
 
       function syncOpenCodeThinkingSelect(selectElement, payload, titleFallback) {
@@ -595,23 +587,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         const normalizedPayload = normalizeOpenCodeThinkingPayload(payload);
         selectElement.innerHTML = "";
-        const options = normalizedPayload.disabled ? [] : normalizedPayload.options;
-        const availableValues = new Set();
-        options.forEach((option) => {
-          availableValues.add(option.value);
-          appendThinkingOption(selectElement, option.value, getOpenCodeThinkingOptionLabel(option));
-        });
-        const displayVariant = normalizedPayload.selectedVariant && availableValues.has(normalizedPayload.selectedVariant)
-          ? normalizedPayload.selectedVariant
-          : normalizedPayload.configuredDefaultVariant && availableValues.has(normalizedPayload.configuredDefaultVariant)
-            ? normalizedPayload.configuredDefaultVariant
-            : "";
-        selectElement.value = displayVariant;
-        const unavailable = normalizedPayload.disabled || options.length === 0;
-        selectElement.disabled = unavailable;
-        const localizedMessage = getOpenCodeThinkingMessage(normalizedPayload.messageKey);
-        selectElement.title = localizedMessage
-          || (unavailable ? t("openCodeThinkingMessageFollowDefault") : titleFallback);
+        appendCodexThinkingOptions(selectElement);
+        const selectedVariant = typeof normalizedPayload.selectedVariant === "string"
+          ? normalizedPayload.selectedVariant.trim()
+          : "";
+        selectElement.value = isOpenCodeThinkingEffort(selectedVariant) ? selectedVariant : "medium";
+        selectElement.disabled = false;
+        selectElement.title = titleFallback;
         return normalizedPayload;
       }
 

@@ -191,7 +191,7 @@
     {
       "id": "plugin.relation.config_governs_cli",
       "name": "配置档案约束 CLI 执行",
-      "description": "CLI 命令、参数、模型、思考力度、Skills、MCP 候选和全局工具开关由配置档案与工具设置共同约束；Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider，Vibe 人工交互开关会约束 Codex app-server 是否启用 default-mode request_user_input。",
+      "description": "CLI 命令、参数、模型、Skills、MCP 候选和全局工具开关由配置档案与工具设置共同约束。OpenCode 思考力度与 Codex 一样由对话下拉选择后通过 --variant 传递，模型配置里的 variants 不是可用档位白名单。Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider，Vibe 人工交互开关会约束 Codex app-server 是否启用 default-mode request_user_input。",
       "status": "active",
       "from": "plugin.config_profile",
       "type": "governs",

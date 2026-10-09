@@ -114,14 +114,13 @@
 - Claude、OpenCode、Codex 三组配置可视化参数的 label 右侧提供问号 tooltip；tooltip 说明字段含义、写入目标和注意事项，枚举字段同时列出可选值。三组“查看范例”入口统一放在配置文件名右侧，并与 OpenCode 现有交互风格保持一致。
 - 用户控制台若出现 `AugmentExtensionSidecar` 访问 `https://d17.api.augmentcode.com/find-missing` 或 `/record-session-events` 返回 403，应按 Augment 扩展侧鉴权/网络问题记录；本插件 Claude 配置页空白仍优先排查 Webview 渲染、配置 JSON/TOML 解析和初始化数据链路，不应仅凭该 403 判定根因。
 
-#### OpenCode 动态 variants 与运行参数
+#### OpenCode 思考力度与运行参数
 
-- OpenCode 主模型的基础推理力度来自该模型 `options`，运行时档位来自该模型 `variants`，并由 `opencode run --variant <name>` 选择；`--thinking` 只控制 thinking blocks 是否展示，不能作为推理力度参数。
-- 可选档位按以下优先级解析：当前命令/version 下 `opencode models <provider> --verbose` 返回的精确 `provider/model` metadata → 当前激活配置 `provider.<id>.models.<model>.variants` 中未禁用的显式声明 → Default-only。不得按 provider `npm`、provider 名或模型名猜测档位；`@ai-sdk/openai-compatible` 仅代表协议 adapter。
-- `small_model` 作为 OpenCode CLI 兼容字段可在对应模型定义中同时声明 `options` 与 `variants`，但 OpenCode 内部 `small: true` 请求会跳过 variants，实际只使用子模型自身 `options`；只有该模型被当作普通主模型运行时，其 variants 才可由 `--variant` 选择。
-- PanelState 每次携带完整 `openCodeThinking` 快照。配置 ID、配置内容 hash、命令、CLI version、provider 或 model 变化时会形成新的能力身份；解析中、失败或未知模型时立即保守显示 `Default / Follow OpenCode`，旧异步结果不得覆盖新模型状态。
-- variant 选择按 active config id + 精确 `provider/model` 隔离持久化。空选择表示 Default 并删除持久值；保存值不再存在于当前 options 时会回退 Default 并清理，切换 CLI、配置或模型不会沿用旧 options。
-- 运行时只在持久值仍属于当前精确模型 options 时追加 `--variant <name>`；Default 不传。若 `sinitek-cli-tools.args.opencode` 已显式包含 `--variant value` 或 `--variant=value`，显式参数优先，插件不重复覆盖。
+- OpenCode 聊天区思考力度与 Codex 使用同一组下拉值：`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。不需要在模型配置里声明 variants，也不读取 `opencode models --verbose` 来决定可选项。未保存选择时下拉和运行参数都回退到 `medium`。
+- 官方 Models 文档中的自定义 `variants` 是在内置档位上覆盖或追加，`disabled: true` 才会移除某一个内置档位；配置过的档位不是白名单。因此插件不把已有 `variants` 或 `options.reasoningEffort` 当作下拉限制。
+- 选中的思考力度通过 `opencode run --variant <effort>` 传递。`--thinking` 只控制 thinking blocks 是否展示，不能作为推理力度参数。若 `sinitek-cli-tools.args.opencode` 已显式包含 `--variant value` 或 `--variant=value`，显式参数优先，插件不重复覆盖。
+- `small_model` 仍是 OpenCode CLI 兼容字段。OpenCode 内部 `small: true` 请求会跳过 variants，实际使用该模型 `options`。Loop/Graph 子模型除了记录自己的 `--variant` 外，还会在本次 runtime config overlay 中把所选力度写入对应模型的 `options.reasoningEffort`，不改用户原始配置。Vibe 只使用主模型力度。
+- 思考力度按 active config id + 精确 `provider/model` + role 保存。非上述六档的旧值会在刷新时清除。切换 CLI、配置或模型不会沿用另一模型的选择。
 - 固定的 `thinkingModeOpencode` 和 `thinkingArgs.opencode.*` 设置已移除；Codex / Claude 的固定 ThinkingMode 和参数映射保持原行为。
 
 ### Gemini

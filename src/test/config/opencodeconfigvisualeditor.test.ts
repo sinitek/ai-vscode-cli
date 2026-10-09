@@ -46,17 +46,18 @@ test("visual parser loads current myAPI example and roles", () => {
   assert.equal(provider.id, "myAPI");
   assert.equal(provider.npm, "@ai-sdk/openai-compatible");
   assert.deepEqual(
-    Array.from(provider.models, (model: any) => [model.id, model.name, model.efforts]),
+    Array.from(provider.models, (model: any) => [model.id, model.name, model.reasoning, model.context]),
     [
-      ["main-chat-model", "Main Chat Model", "medium, low, high"],
-      ["small-task-model", "Small Task Model", "low, high"],
+      ["main-chat-model", "Main Chat Model", true, "128000"],
+      ["small-task-model", "Small Task Model", true, "32768"],
     ],
   );
+  assert.equal(provider.models[0].efforts, undefined);
   assert.equal(parsed.state.primaryModel, "myAPI/main-chat-model");
   assert.equal(parsed.state.smallModel, "myAPI/small-task-model");
 });
 
-test("visual editor exposes official provider npm suggestions while effort candidates stay dynamic", () => {
+test("visual editor exposes official provider npm suggestions without thinking effort controls", () => {
   const utils = loadVisualUtils();
   assert.deepEqual(
     Array.from(utils.providerNpmOptions, (option: any) => option.value),
@@ -87,7 +88,9 @@ test("visual editor exposes official provider npm suggestions while effort candi
       "venice-ai-sdk-provider",
     ],
   );
-  assert.deepEqual(Array.from(utils.effortSuggestions({ efforts: "none, custom" })), ["none", "custom", "ultra"]);
+  assert.equal(utils.effortSuggestions, undefined);
+  assert.equal(utils.readEfforts, undefined);
+  assert.equal(utils.applyEfforts, undefined);
 
   const source = loadUiSource();
   const npmStart = source.indexOf('renderOpenCodeSelect(\n                              "npm"');
@@ -102,15 +105,9 @@ test("visual editor exposes official provider npm suggestions while effort candi
   assert.match(source, /renderOpenCodeSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
   assert.match(source, /renderCodexSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
   assert.doesNotMatch(source, /renderOpenCodeCombobox|be\.jsx\("datalist"|be\.jsx\("select"/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?mode: "tags"/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?tokenSeparators: \[","\]/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?return be\.jsxs\("div"/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?width: "100%",[\s\S]*?gridColumn: "1 \/ -1"/);
-  assert.match(source, /renderOpenCodeMultiSelect = \([\s\S]*?className: "opencode-effort-multiselect"/);
-  assert.match(
-    source,
-    /renderOpenCodeMultiSelect = \([\s\S]*?getPopupContainer: \(Q\) => Q\.parentElement \|\| document\.body/,
-  );
+  assert.doesNotMatch(source, /renderOpenCodeMultiSelect/);
+  assert.doesNotMatch(source, /opencode-effort-multiselect/);
+  assert.doesNotMatch(source, /思考力度/);
   assert.doesNotMatch(source, /source: "opencode-efforts"/);
   assert.doesNotMatch(source, /OPEN_CODE_REASONING_EFFORT_OPTIONS/);
   assert.match(source, /Google \(@ai-sdk\/google\)/);
@@ -159,64 +156,37 @@ test("provider and model id renames synchronize exact role references", () => {
   assert.equal(state.smallModel, "renamed/small");
 });
 
-test("comma efforts deduplicate and generate options plus variants", () => {
+test("visual save preserves legacy reasoning options and variants without editing them", () => {
   const utils = loadVisualUtils();
-  const model = utils.applyEfforts(
-    {
-      options: { temperature: 0.2, reasoningEffort: "old" },
-      variants: {
-        old: { reasoningEffort: "old" },
-        custom: { reasoningEffort: "legacy", temperature: 0.4 },
-        untouched: { label: "keep" },
-      },
-    },
-    " low, medium, low, high,  ",
-  );
-  assert.equal(model.options.reasoningEffort, "low");
-  assert.equal(model.options.temperature, 0.2);
-  assert.deepEqual(Object.keys(model.variants), ["custom", "untouched", "low", "medium", "high"]);
-  assert.equal(model.variants.low.reasoningEffort, "low");
-  assert.equal(model.variants.medium.reasoningEffort, "medium");
-  assert.equal(model.variants.high.reasoningEffort, "high");
-  assert.equal(model.variants.custom.temperature, 0.4);
-  assert.equal(model.variants.custom.reasoningEffort, "legacy");
-  assert.equal(model.variants.untouched.label, "keep");
-
-  const cleared = utils.applyEfforts(model, "");
-  assert.equal(cleared.options.reasoningEffort, undefined);
-  assert.equal(cleared.options.temperature, 0.2);
-  assert.deepEqual(Object.keys(cleared.variants), ["custom", "untouched"]);
-  assert.equal(cleared.variants.custom.reasoningEffort, "legacy");
-});
-
-test("OpenCode visual configuration serializes ultra without replacing provider-specific efforts", () => {
-  const utils = loadVisualUtils();
-  let state = utils.createState({
+  const source = {
     provider: {
       custom: {
         models: {
           alpha: {
+            name: "Alpha",
             options: { reasoningEffort: "legacy", temperature: 0.2 },
             variants: {
+              low: { reasoningEffort: "low" },
               providerOnly: { reasoningEffort: "provider-custom", temperature: 0.8 },
+              special: { labels: ["keep"] },
             },
           },
         },
       },
     },
-  });
-
-  state = utils.updateModel(state, "custom", "alpha", { efforts: "ultra, provider-added" });
+  };
+  let state = utils.parseContent(JSON.stringify(source)).state;
+  state = utils.updateModel(state, "custom", "alpha", { name: "Renamed Alpha" });
   const serialized = utils.serializeState(state);
-
   assert.equal(serialized.ok, true);
   const model = serialized.config.provider.custom.models.alpha;
-  assert.equal(model.options.reasoningEffort, "ultra");
+  assert.equal(model.name, "Renamed Alpha");
+  assert.equal(model.options.reasoningEffort, "legacy");
   assert.equal(model.options.temperature, 0.2);
-  assert.equal(model.variants.ultra.reasoningEffort, "ultra");
-  assert.equal(model.variants["provider-added"].reasoningEffort, "provider-added");
+  assert.equal(model.variants.low.reasoningEffort, "low");
   assert.equal(model.variants.providerOnly.reasoningEffort, "provider-custom");
   assert.equal(model.variants.providerOnly.temperature, 0.8);
+  assert.deepEqual(JSON.parse(JSON.stringify(model.variants.special.labels)), ["keep"]);
 });
 
 test("OpenCode visual model context size round-trips through limit.context", () => {
@@ -306,7 +276,7 @@ test("serialization preserves unknown top provider and model fields", () => {
   };
   let state = utils.createState(original);
   state = utils.updateProvider(state, "custom", { baseURL: "new" });
-  state = utils.updateModel(state, "custom", "alpha", { efforts: "high, low" });
+  state = utils.updateModel(state, "custom", "alpha", { name: "Renamed Alpha" });
   const serialized = utils.serializeState(state);
   assert.equal(serialized.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(serialized.config.permission)), original.permission);
@@ -317,7 +287,8 @@ test("serialization preserves unknown top provider and model fields", () => {
   assert.equal(provider.options.baseURL, "new");
   assert.equal(provider.models.alpha.customModelField, "keep");
   assert.equal(provider.models.alpha.options.temperature, 0.7);
-  assert.equal(provider.models.alpha.options.reasoningEffort, "high");
+  assert.equal(provider.models.alpha.name, "Renamed Alpha");
+  assert.equal(provider.models.alpha.options.reasoningEffort, "medium");
 });
 
 test("OpenCode visual state manages stable top-level fields with inherit and legacy preservation", () => {
@@ -456,7 +427,6 @@ test("JSON and visual state round-trip while save flow calls save then apply", a
   assert.equal(parsed.ok, true);
   let state = utils.updateModel(parsed.state, "myAPI", "main-chat-model", {
     name: "Renamed Main",
-    efforts: "high, medium, high",
   });
   state = utils.setRole(state, "myAPI", "main-chat-model", "small", true);
   const serialized = utils.serializeState(state);
@@ -464,7 +434,7 @@ test("JSON and visual state round-trip while save flow calls save then apply", a
   const reparsed = utils.parseContent(serialized.content);
   assert.equal(reparsed.ok, true);
   assert.equal(reparsed.state.providers[0].models[0].name, "Renamed Main");
-  assert.equal(reparsed.state.providers[0].models[0].efforts, "high, medium");
+  assert.equal(reparsed.state.providers[0].models[0].efforts, undefined);
   assert.equal(reparsed.state.smallModel, "myAPI/main-chat-model");
 
   const calls: string[] = [];
@@ -521,7 +491,7 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   );
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
-  assert.match(source, /思考力度: "该模型当前配置中的 reasoning effort，可输入或多选；首项作为默认值。"/);
+  assert.doesNotMatch(source, /思考力度/);
   assert.match(source, /上下文大小 limit\.context/);
   assert.match(openCodeVisualSource, /provider\.models\.<id>\.limit\.context/);
   assert.match(

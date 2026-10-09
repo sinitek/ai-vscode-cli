@@ -12,7 +12,7 @@ Loop 开发级 Workflow Skills 的运行字段与降级、内置快照来源与�
 
 新增或修改用户可见能力时，需要同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。长期记忆能力的设计口径见 `docs/long_term_memory_design.md`。
 
-OpenCode 主模型/子模型与思考力度的实现事实以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 为准：两个角色的候选只从 active config 的 `provider.<id>.models` 加载；主模型通过 `--model` / `--variant` 运行，子模型通过 runtime config overlay 写入 OpenCode CLI 兼容字段 `small_model`，内部 `small: true` 请求只使用该角色模型自身 `options` 并忽略 `variants`。
+OpenCode 主模型/子模型与思考力度的实现事实以 `.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/design-docs/vscode-cli-extension-runtime.md` 为准：两个角色的候选只从 active config 的 `provider.<id>.models` 加载；思考力度不需要在配置中声明，对话下拉与 Codex 一样使用 `low/medium/high/xhigh/max/ultra` 并通过 `--variant` 传递；子模型通过 runtime config overlay 写入 OpenCode CLI 兼容字段 `small_model`，内部 `small: true` 请求只使用该角色模型自身 `options`，因此 overlay 同时写入所选 `options.reasoningEffort`。
 
 Loop / Graph 模型选择按 CLI 能力区分：Claude 不显示插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 或 Graph 时显示“主模型 / 子模型”；OpenCode 同样使用主模型 / 子模型口径，底层 `model` / `small_model` 只作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核和续跑使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。
 

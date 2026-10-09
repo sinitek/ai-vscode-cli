@@ -30,17 +30,6 @@ function createDefaultOpenCodeThinkingState(messageKey: OpenCodeThinkingState["m
   };
 }
 
-async function waitFor(assertion: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (assertion()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  assert.equal(assertion(), true);
-}
-
 function writeFakeOpenCodeCommand(tempHome: string): string {
   const binDir = path.join(tempHome, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -84,7 +73,7 @@ function writeOpenCodeConfig(tempHome: string, configId: string, content: string
   fs.writeFileSync(path.join(tempHome, ".opencode", "config.json"), content, "utf8");
 }
 
-test("publishes async OpenCode thinking variants before refreshing panel state", async () => {
+test("publishes fixed OpenCode thinking efforts without using configured variants", async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-thinking-refresh-"));
   const originalHome = process.env.HOME;
   const originalPath = process.env.PATH;
@@ -196,14 +185,38 @@ test("publishes async OpenCode thinking variants before refreshing panel state",
     });
 
     await host.refreshOpenCodeThinkingState(configState);
-    assert.equal(openCodeThinkingState.messageKey, "loading");
 
-    await waitFor(() => openCodeThinkingState.options.length === 3, 10_000);
-
-    assert.deepEqual(openCodeThinkingState.options.map((option) => option.value), ["xhigh", "max", "ultra"]);
-    assert.equal(openCodeThinkingState.configuredDefaultVariant, "xhigh");
+    assert.deepEqual(openCodeThinkingState.options.map((option) => option.value), [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ]);
+    assert.equal(openCodeThinkingState.configuredDefaultVariant, null);
+    assert.equal(openCodeThinkingState.selectedVariant, null);
     assert.equal(openCodeThinkingState.disabled, false);
+    assert.deepEqual(openCodeSmallThinkingState.options.map((option) => option.value), [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ]);
     assert.equal(openCodeThinkingExactModels.main, "myAPI/gpt-5.6-sol");
+    assert.equal(openCodeThinkingExactModels.subtask, "myAPI/gpt-5.6-luna");
+    assert.equal(
+      host.getOpenCodeVariantForRun("opencode", "myAPI/gpt-5.6-sol", configId, configContent, "main"),
+      "medium",
+    );
+    host.updateOpenCodeVariantForCurrentSelection("main", "high");
+    assert.equal(
+      host.getOpenCodeVariantForRun("opencode", "myAPI/gpt-5.6-sol", configId, configContent, "main"),
+      "high",
+    );
+    assert.equal(openCodeThinkingState.selectedVariant, "high");
     assert.ok(postCount > 0);
   } finally {
     if (originalHome === undefined) {
