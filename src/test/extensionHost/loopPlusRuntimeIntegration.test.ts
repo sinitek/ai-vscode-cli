@@ -850,6 +850,51 @@ test("closes a Loop+ subtask tab only after a completed attempt", async () => {
   }
 });
 
+test("closes a Loop+ subtask tab when the main task aborts that attempt", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    const request = {
+      taskId: "task-abort-tab",
+      subtaskId: "abort-me",
+      title: "abort-me",
+      prompt: longPrompt("abort-me", "src/abort.ts"),
+      modelPrompt: "model",
+      writeFiles: ["src/abort.ts"],
+      round: 1,
+      targetCli: "codex" as const,
+    };
+
+    const controlled = fixture.adapter.startAttempt({ ...request, attemptId: "controlled-stop" });
+    await waitForLoopPlus(() => fixture.parkedAttempts().length === 1, "controlled attempt parked");
+    const controlledTabId = fixture.parkedAttempts()[0]?.tabId ?? "";
+    controlled.abort({ closeTab: true });
+    const controlledResult = await controlled.promise;
+    assert.equal(controlledResult.outcome, "stopped");
+    assert.deepEqual(fixture.closedSubtaskTabs, [controlledTabId]);
+    assert.deepEqual(fixture.cancelledTabs, [controlledTabId]);
+
+    const manual = fixture.adapter.startAttempt({ ...request, attemptId: "manual-stop" });
+    await waitForLoopPlus(() => fixture.parkedAttempts().length === 1, "manual attempt parked");
+    const manualTabId = fixture.parkedAttempts()[0]?.tabId ?? "";
+    manual.abort();
+    const manualResult = await manual.promise;
+    assert.equal(manualResult.outcome, "stopped");
+    assert.notEqual(manualTabId, controlledTabId);
+    assert.deepEqual(fixture.closedSubtaskTabs, [controlledTabId]);
+
+    fixture.setCloseSubtaskTabError("panel refresh failed");
+    const failedClose = fixture.adapter.startAttempt({ ...request, attemptId: "close-error" });
+    await waitForLoopPlus(() => fixture.parkedAttempts().length === 1, "close error attempt parked");
+    const failedCloseTabId = fixture.parkedAttempts()[0]?.tabId ?? "";
+    failedClose.abort({ closeTab: true });
+    const failedCloseResult = await failedClose.promise;
+    assert.equal(failedCloseResult.outcome, "stopped");
+    assert.deepEqual(fixture.closedSubtaskTabs, [controlledTabId, failedCloseTabId]);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("continuation detail uses only the assistant inside the qualifying run", () => {
   const query = {
     taskId: "task-main",

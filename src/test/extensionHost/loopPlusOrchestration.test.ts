@@ -143,6 +143,7 @@ function harness(options: {
   const reports: AttemptReport[] = [];
   const logs: Array<{ event: string; payload?: unknown }> = [];
   const abortedAttemptIds: string[] = [];
+  const closeTabAttemptIds: string[] = [];
   let activeMains = 0;
   let maxMains = 0;
   let taskSeq = 0;
@@ -221,8 +222,11 @@ function harness(options: {
       attempts.push({ request, resolve: gate.resolve });
       return {
         promise: gate.promise,
-        abort: () => {
+        abort: (abortOptions) => {
           abortedAttemptIds.push(request.attemptId);
+          if (abortOptions?.closeTab === true) {
+            closeTabAttemptIds.push(request.attemptId);
+          }
           if (options.deferAttemptAbort) {
             return;
           }
@@ -253,6 +257,7 @@ function harness(options: {
     reports,
     logs,
     abortedAttemptIds,
+    closeTabAttemptIds,
     target,
     maxMains: () => maxMains,
     activeMains: () => activeMains,
@@ -579,6 +584,7 @@ test("stops the parent gate before cancelling attempts and resumes without reviv
   const beforeStop = env.attempts.map((item) => item.request.attemptId);
   env.host.stopParent(run.taskId ?? "");
   await flush();
+  assert.deepEqual(env.closeTabAttemptIds, []);
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).parentStopped, true);
   assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 0);
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "stopped");
@@ -2305,6 +2311,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
   assert.equal(env.reports.some((item) => item.attemptId === alpha.request.attemptId), false);
   assert.equal(env.reports.some((item) => item.attemptId === beta.request.attemptId), false);
   assert.deepEqual(env.abortedAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
+  assert.deepEqual(env.closeTabAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
   assert.equal(task?.subTasks.find((item) => item.id === "alpha")?.status, "blocked");
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.prompt, nextPrompt);
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.status, "running");

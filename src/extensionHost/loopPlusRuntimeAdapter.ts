@@ -322,7 +322,32 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
   function startAttempt(request: LoopPlusAttemptRequest): LoopPlusAttemptHandle {
     const subtaskTarget = deps.createSubtaskTarget(request.targetCli);
     let aborted = false;
+    let closeTabAfterAbort = false;
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
+      const result = await runStartedAttempt();
+      if (result.outcome === "completed" || closeTabAfterAbort) {
+        await closeLoopPlusSubtaskTab(
+          deps,
+          request,
+          subtaskTarget.tabId,
+          result.outcome === "completed" ? "completed" : "main-abort",
+        );
+      }
+      return result;
+    })();
+    return {
+      promise,
+      abort: (options) => {
+        if (aborted) {
+          return;
+        }
+        aborted = true;
+        closeTabAfterAbort = options?.closeTab === true;
+        deps.cancelInvocation(subtaskTarget.tabId);
+      },
+    };
+
+    async function runStartedAttempt(): Promise<LoopPlusAttemptResult> {
       deps.appendSubtaskPrompt({
         target: subtaskTarget,
         content: request.prompt,
@@ -370,9 +395,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         run: invocation.run,
       });
       if (outcome === "completed") {
-        const detail = invocation.content;
-        await closeCompletedLoopPlusSubtaskTab(deps, request, rootResult.value.target.tabId);
-        return { outcome, detail };
+        return { outcome, detail: invocation.content };
       }
       if (outcome === "stopped") {
         return {
@@ -386,17 +409,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           ? errorDetail(rootResult.value.error)
           : (invocation.content ?? "failed"),
       };
-    })();
-    return {
-      promise,
-      abort: () => {
-        if (aborted) {
-          return;
-        }
-        aborted = true;
-        deps.cancelInvocation(subtaskTarget.tabId);
-      },
-    };
+    }
   }
 
   function host(): ReturnType<typeof createLoopPlusOrchestrationHost> {
@@ -529,10 +542,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
   };
 }
 
-async function closeCompletedLoopPlusSubtaskTab(
+async function closeLoopPlusSubtaskTab(
   deps: LoopPlusRuntimeAdapterDeps,
   request: Pick<LoopPlusAttemptRequest, "taskId" | "round" | "subtaskId" | "attemptId">,
   tabId: string,
+  reason: "completed" | "main-abort",
 ): Promise<void> {
   try {
     await deps.closeSubtaskTab(tabId);
@@ -542,6 +556,7 @@ async function closeCompletedLoopPlusSubtaskTab(
       subtaskId: request.subtaskId,
       attemptId: request.attemptId,
       tabId,
+      reason,
     });
   } catch (error) {
     deps.log?.("loop-plus-subtask-tab-auto-close-error", {
@@ -550,6 +565,7 @@ async function closeCompletedLoopPlusSubtaskTab(
       subtaskId: request.subtaskId,
       attemptId: request.attemptId,
       tabId,
+      reason,
       error: error instanceof Error ? error.message : String(error),
     });
   }

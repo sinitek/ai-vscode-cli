@@ -117,9 +117,13 @@ export type LoopPlusAttemptResult = {
   detail: string | null;
 };
 
+export type LoopPlusAttemptAbortOptions = {
+  closeTab?: boolean;
+};
+
 export type LoopPlusAttemptHandle = {
   promise: Promise<LoopPlusAttemptResult>;
-  abort: () => void;
+  abort: (options?: LoopPlusAttemptAbortOptions) => void;
 };
 
 export type LoopPlusOrchestrationDeps = {
@@ -175,7 +179,7 @@ type SubtaskMeta = {
 type InFlightAttempt = {
   subtaskId: string;
   attemptId: string;
-  abort: () => void;
+  abort: (options?: LoopPlusAttemptAbortOptions) => void;
   settled: boolean;
 };
 
@@ -1956,7 +1960,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return;
     }
     inFlight.settled = true;
-    inFlight.abort();
+    inFlight.abort({ closeTab: true });
   }
 
   function recordControlledSubtask(

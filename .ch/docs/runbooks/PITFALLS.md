@@ -14,6 +14,32 @@
 
 ## 当前有效条目
 
+## Loop+ 主任务中止子任务要关闭该 attempt 的 Tab
+
+- 状态：已规避
+- 首次发现：2026-10-09
+- 适用范围：Loop+ `controls` 的 `close` / `reprompt`，子任务对话 Tab
+
+### 现象
+- 主任务用 JSON 中止正在运行的子任务后，进程停了，但该次 attempt 的子任务 Tab 仍留在对话面板。
+
+### 根因
+- 成功结束才会自动关 Tab。主任务中止把 attempt 标成 stopped，原先这条路径不关 Tab。
+
+### 长期规避
+- 只有主任务 `close` 或 `reprompt` 中止已启动的 attempt 时，在进程结束后关闭该 attempt 的 Tab。`reprompt` 的新 attempt 另开 Tab。
+- 用户手动停止、父任务停止、失败，以及尚未创建 Tab 的排队子任务，都不关闭 Tab。
+- 不要把经典 Loop “仅 `end` 才关 Tab”套到这条 Loop+ 中止路径上，也不要反过来让用户停止时关 Tab。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
+
+### 关联资料
+- `src/extensionHost/loopPlusRuntimeAdapter.ts`
+- `src/extensionHost/loopPlusOrchestration.ts`
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md`
+
 ## 流式助手气泡不要反复切换 Markdown 与临时纯文本
 
 - 状态：已规避
@@ -1785,7 +1811,7 @@
 
 ### 长期规避
 - 自动重试和手动恢复成功都必须调用同一个子任务完成生命周期函数；先更新子任务记录和沟通记录，再固定关闭成功结束的子任务 Tab。
-- 只在 `TaskRunStatus === "end"` 且存在目标 Tab 时关闭子任务 Tab；错误、停止或未找到目标 Tab 时不得关闭。
+- 只在 `TaskRunStatus === "end"` 且存在目标 Tab 时关闭子任务 Tab；错误、停止或未找到目标 Tab 时不得关闭。这条规则只覆盖经典 Loop 的 `finalizeLoopSubtaskRun`，不覆盖 Loop+ 主任务中止已启动 attempt 后关闭该 Tab。
 - 主任务是否继续仍由既有可恢复状态和主任务连续 AI 失败上限决定；Tab 收尾不得绕过或放宽这些守卫。
 
 ### 验证方式

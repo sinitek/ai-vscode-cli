@@ -552,7 +552,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_control",
       "name": "Loop+ 主任务用 JSON 中断子任务",
-      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭，不进入验收队列，不计验收次数。reprompt 中止后用至少 80 字的新提示词为同一子任务开启新 attempt。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
+      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词为同一子任务开启新 attempt 和新 tab。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -560,7 +560,8 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/loopPlusScheduler.ts"},
-        {"path": "src/extensionHost/loopPlusOrchestration.ts"}
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"}
       ]
     },
     {
