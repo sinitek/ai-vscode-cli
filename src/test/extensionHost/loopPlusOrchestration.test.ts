@@ -303,6 +303,22 @@ test("uses the configured Loop+ dispatch subtask maximum", async () => {
   assert.equal(raised.attempts.length, 7);
 });
 
+test("keeps the main task decomposing until the initial Loop+ decision is accepted", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains[0]?.request.kind, "initial");
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusMainPhase, "decomposing");
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusMainPhase, undefined);
+  assert.notEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).phase, "idle");
+});
+
 test("starts one main review when A finishes while B is still running", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

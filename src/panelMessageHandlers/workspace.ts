@@ -5,6 +5,7 @@ import {
   buildRepairedCliCommand,
   inspectUnresolvedCliCommands,
   locateCliExecutableForRepair,
+  waitForCliCommandAutoRepair,
 } from "../cli/cliCommandRepair";
 import { t } from "../i18n";
 import { logDebug, logError } from "../logger";
@@ -201,8 +202,9 @@ export function createWorkspacePanelMessageHandlers(
       await deps.installCodeGraphForWorkspace();
     },
 
-    inspectCliRepairs: (message) => {
+    inspectCliRepairs: async (message) => {
       void message;
+      await waitForCliCommandAutoRepair();
       deps.postWebviewMessage({
         type: "cliRepairIssues",
         issues: inspectUnresolvedCliCommands({
@@ -214,6 +216,7 @@ export function createWorkspacePanelMessageHandlers(
     },
 
     repairCliCommand: async (message) => {
+      await waitForCliCommandAutoRepair();
       if (!deps.isCliName(message.cli)) {
         deps.postWebviewMessage({
           type: "cliRepairResult",

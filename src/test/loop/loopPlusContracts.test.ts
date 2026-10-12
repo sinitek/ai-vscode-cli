@@ -241,6 +241,35 @@ test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {
   assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 120);
   loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusMaxAcceptances: 2000 });
   assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 999);
+  const decomposing = writeRawTask("event-decomposing", {
+    schedulingMode: "event_driven",
+    status: "running",
+    loopPlusMainPhase: "decomposing",
+  });
+  assert.equal(
+    loopTaskStore.readLoopTaskStore(decomposing.taskStoreFile).tasks[0].loopPlusMainPhase,
+    "decomposing",
+  );
+  loopTaskStore.updateLoopTaskRecord(decomposing.id, { loopPlusMainPhase: undefined });
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      loopTaskStore.readLoopTaskStore(decomposing.taskStoreFile).tasks[0],
+      "loopPlusMainPhase",
+    ),
+    false,
+  );
+  const unknownPhase = writeRawTask("event-decomposing-unknown", {
+    schedulingMode: "event_driven",
+    loopPlusMainPhase: "idle",
+  });
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      loopTaskStore.readLoopTaskStore(unknownPhase.taskStoreFile).tasks[0],
+      "loopPlusMainPhase",
+    ),
+    false,
+  );
+
   const classic = writeRawTask("classic-no-acceptance-limit", {});
   assert.equal(
     Object.prototype.hasOwnProperty.call(

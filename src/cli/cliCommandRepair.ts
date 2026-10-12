@@ -50,6 +50,85 @@ export function buildRepairedCliCommand(
   return [quoteCliCommandToken(executablePath), ...parts.slice(1)].join(" ");
 }
 
+export type PlannedCliCommandRepair = {
+  cli: CliName;
+  previousCommand: string;
+  nextCommand: string | null;
+  status: "repaired" | "not-found";
+};
+
+export function shouldAwaitCliCommandAutoRepair(
+  cli: CliName,
+  commands: Partial<Record<CliName, string>>,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return inspectUnresolvedCliCommands(commands, platform).some((issue) => (
+    issue.cli === cli && isBareCommandToken(issue.command)
+  ));
+}
+
+export async function planUnresolvedCliCommandRepairs(
+  commands: Partial<Record<CliName, string>>,
+  deps: CliCommandRepairDependencies & { onlyBareCommands?: boolean } = {},
+): Promise<PlannedCliCommandRepair[]> {
+  const platform = deps.platform ?? process.platform;
+  const onlyBareCommands = deps.onlyBareCommands === true;
+  const issues = inspectUnresolvedCliCommands(commands, platform).filter((issue) => (
+    !onlyBareCommands || isBareCommandToken(issue.command)
+  ));
+  if (issues.length === 0) {
+    return [];
+  }
+
+  let registryPath = "";
+  if (platform === "win32") {
+    try {
+      registryPath = await (deps.readRegistryPath ?? readWindowsRegistryPathValue)();
+    } catch {
+      registryPath = "";
+    }
+  }
+  const repairDeps: CliCommandRepairDependencies = {
+    platform,
+    env: deps.env,
+    homeDir: deps.homeDir,
+    readRegistryPath: async () => registryPath,
+  };
+  const plans: PlannedCliCommandRepair[] = [];
+  for (const issue of issues) {
+    const previousCommand = String(commands[issue.cli] ?? issue.cli).trim() || issue.cli;
+    try {
+      const executablePath = await locateCliExecutableForRepair(previousCommand, issue.cli, repairDeps);
+      if (!executablePath) {
+        plans.push({ cli: issue.cli, previousCommand, nextCommand: null, status: "not-found" });
+        continue;
+      }
+      const nextCommand = buildRepairedCliCommand(previousCommand, issue.cli, executablePath);
+      if (nextCommand === previousCommand) {
+        continue;
+      }
+      plans.push({ cli: issue.cli, previousCommand, nextCommand, status: "repaired" });
+    } catch {
+      plans.push({ cli: issue.cli, previousCommand, nextCommand: null, status: "not-found" });
+    }
+  }
+  return plans;
+}
+
+let cliCommandAutoRepairTask: Promise<void> = Promise.resolve();
+
+export function beginCliCommandAutoRepair(task: Promise<void>): void {
+  cliCommandAutoRepairTask = task.then(() => undefined, () => undefined);
+}
+
+export function waitForCliCommandAutoRepair(): Promise<void> {
+  return cliCommandAutoRepairTask;
+}
+
+export function resetCliCommandAutoRepairForTests(): void {
+  cliCommandAutoRepairTask = Promise.resolve();
+}
+
 export async function locateCliExecutableForRepair(
   configuredCommand: string,
   fallbackCommand: string,
@@ -97,6 +176,10 @@ export async function readWindowsRegistryPathValue(): Promise<string> {
       resolve([userPath.trim(), machinePath.trim()].filter(Boolean).join(";"));
     });
   });
+}
+
+function isBareCommandToken(command: string): boolean {
+  return !/[\\/]/.test(command);
 }
 
 function cliRepairSearchNames(configuredCommand: string, fallbackCommand: string): string[] {

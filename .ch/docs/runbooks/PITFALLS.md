@@ -353,7 +353,7 @@
 - 命令若只存在于注册表里更新后的用户 PATH、`.bun\bin`、fnm 或其他非默认目录，进程环境和固定安装目录都找不到它。
 
 ### 长期规避
-- 工具设置“自动修复”列出当前找不到的 Codex/Claude/OpenCode，一键修复读取 Windows 用户和系统 PATH，跳过 `WindowsApps` 空桩，并把绝对路径写入 `sinitek-cli-tools.commands.<cli>`。
+- 插件初始化会对找不到的 Codex/Claude/OpenCode 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复；已写成绝对路径的命令不会被初始化改写。工具设置“自动修复”仍列出没修好的项，一键修复读取 Windows 用户和系统 PATH，跳过 `WindowsApps` 空桩，并把绝对路径写入 `sinitek-cli-tools.commands.<cli>`。
 - 只存在于 WSL 或 shell profile 的命令不能自动修复；需要安装 Windows CLI 或手填绝对路径。
 
 ### 验证方式

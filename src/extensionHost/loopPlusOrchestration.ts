@@ -224,6 +224,7 @@ type ParentRuntime = {
   mainGeneration: number;
   pumpRequested: boolean;
   released: boolean;
+  decomposing: boolean;
   completionPatch: Partial<LoopTaskRecord> | null;
   lifecycle: Lifecycle;
 };
@@ -406,7 +407,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       prompt: input,
     });
     const runtime = buildRuntime(task, target, input, scheduler);
+    runtime.decomposing = true;
     runtimes.set(task.id, runtime);
+    persist(runtime);
     deps.appendMessage(target, "loop-plus-started", task.id);
     deps.log?.("loop-plus-started", { taskId: task.id });
     return runtime;
@@ -426,7 +429,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       || scheduler.snapshot().pending.length > 0
       || scheduler.snapshot().reviewQueue.length > 0
       || scheduler.snapshot().currentReview !== null;
+    runtime.decomposing = !runtime.initialPromptDone
+      && task.status === "running"
+      && !runtime.autoPaused
+      && !runtime.stopRequested
+      && !scheduler.snapshot().completed
+      && !scheduler.snapshot().parentStopped;
     runtimes.set(task.id, runtime);
+    if ((task.loopPlusMainPhase === "decomposing") !== runtime.decomposing) {
+      persist(runtime);
+    }
     return runtime;
   }
 
@@ -482,6 +494,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       mainGeneration: 0,
       pumpRequested: false,
       released: false,
+      decomposing: false,
       completionPatch: null,
       lifecycle: createLifecycle(),
     };
@@ -600,6 +613,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.stopping = true;
     runtime.stopRequested = true;
     runtime.autoPaused = false;
+    runtime.decomposing = false;
     runtime.mainGeneration += 1;
     runtime.scheduler.stopParent();
     persist(runtime, {
@@ -835,6 +849,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       },
       markDecisionAccepted() {
         runtime.protocolRetries = 0;
+        runtime.decomposing = false;
         resetMainFailure(runtime);
       },
       clearProtocolRetries() {
@@ -1538,6 +1553,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function retainFinishFailure(runtime: ParentRuntime, message: string, finalSummary: string): void {
     runtime.autoPaused = true;
     runtime.pauseStatus = "error";
+    runtime.decomposing = false;
     releaseLaunchingReservations(runtime);
     runtime.mainGeneration += 1;
     const main = runtime.currentMain;
@@ -1617,6 +1633,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       status,
       schedulingMode: "event_driven",
       loopPlus: snapshot,
+      loopPlusMainPhase: runtime.decomposing ? "decomposing" : undefined,
       activeSubtaskId: runningIds[0] ?? null,
       activeSubtaskIds: runningIds,
       subTasks: mergeSubtasks(runtime, task?.subTasks ?? []),
@@ -1712,6 +1729,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   ): void {
     runtime.autoPaused = true;
     runtime.pauseStatus = status;
+    runtime.decomposing = false;
     releaseLaunchingReservations(runtime);
     try {
       persist(runtime, {

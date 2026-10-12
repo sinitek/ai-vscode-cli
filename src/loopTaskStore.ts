@@ -43,6 +43,7 @@ export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" 
 export type LoopRunStatus = "end" | "error" | "stopped";
 export type LoopTaskKind = "development" | "non_development";
 export type LoopSchedulingMode = "classic" | "event_driven";
+export type LoopPlusMainPhase = "decomposing";
 
 export function resolveLoopSchedulingMode(value: unknown): LoopSchedulingMode {
   return typeof value === "string" && value.trim() === "event_driven" ? "event_driven" : "classic";
@@ -126,6 +127,7 @@ export type LoopTaskRecord = {
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
   loopPlusMaxAcceptances?: number;
+  loopPlusMainPhase?: LoopPlusMainPhase;
   status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -845,6 +847,9 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   const loopPlusMaxAcceptances = normalizeStoredLoopPlusMaxAcceptances(
     (raw as { loopPlusMaxAcceptances?: unknown }).loopPlusMaxAcceptances,
   );
+  const loopPlusMainPhase = normalizeLoopPlusMainPhase(
+    (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
+  );
   return {
     id: raw.id,
     cli,
@@ -856,6 +861,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
+    ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     status,
     createdAt,
     updatedAt,
@@ -1010,6 +1016,10 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
       ? { lastStartedAt: raw.lastStartedAt }
       : {}),
   };
+}
+
+function normalizeLoopPlusMainPhase(value: unknown): LoopPlusMainPhase | undefined {
+  return value === "decomposing" ? "decomposing" : undefined;
 }
 
 function normalizeStoredLoopPlusMaxAcceptances(value: unknown): number | undefined {

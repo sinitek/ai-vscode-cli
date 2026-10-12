@@ -575,3 +575,36 @@ test("recovers distinct historical start times from subtask join events", () => 
     assert.notEqual(startedAtById.get("B"), sharedUpdatedAt);
   }
 });
+
+test("shows the main task as decomposing subtasks while Loop+ is just starting", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const snapshot = scheduler.snapshot();
+  const before = JSON.stringify(snapshot);
+  const starting = html(build(snapshot, {
+    subTasks: [],
+    activeSubtaskIds: [],
+    currentRound: 0,
+    loopPlusMainPhase: "decomposing",
+  }));
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.match(starting, /data-loop-plus-status="decomposing"/u);
+  assert.match(starting, /data-loop-plus-phase="idle"/u);
+  assert.match(starting, /主任务正在分解子任务。/u);
+  assert.match(starting, /<div class="member-name">主任务<\/div>\s*<div class="member-meta">分解子任务<\/div>/u);
+  assert.doesNotMatch(starting, /空闲/u);
+  assert.match(starting, /data-thinking-kind="main" data-thinking-id="main"/u);
+  assert.match(starting, /主任务 思考中/u);
+
+  const idle = html(build(snapshot, {
+    subTasks: [],
+    activeSubtaskIds: [],
+    currentRound: 0,
+  }));
+  assert.match(idle, /data-loop-plus-status="idle"/u);
+  assert.match(idle, /<div class="member-name">主任务<\/div>\s*<div class="member-meta">空闲<\/div>/u);
+  assert.doesNotMatch(idle, /分解子任务|data-thinking-kind="main"|主任务 思考中/u);
+
+  const stale = html(build(snapshot, { loopPlusMainPhase: "decomposing" }));
+  assert.match(stale, /data-loop-plus-status="idle"/u);
+  assert.doesNotMatch(stale, /分解子任务|data-thinking-kind="main"/u);
+});

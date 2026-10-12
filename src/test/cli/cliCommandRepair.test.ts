@@ -5,9 +5,14 @@ import * as os from "os";
 import * as path from "path";
 
 import {
+  beginCliCommandAutoRepair,
   buildRepairedCliCommand,
   inspectUnresolvedCliCommands,
   locateCliExecutableForRepair,
+  planUnresolvedCliCommandRepairs,
+  resetCliCommandAutoRepairForTests,
+  shouldAwaitCliCommandAutoRepair,
+  waitForCliCommandAutoRepair,
 } from "../../cli/cliCommandRepair";
 
 type CommandRepairEnvironment = {
@@ -167,6 +172,114 @@ test("repairs codex from a user bin directory that the normal resolver does not 
       readRegistryPath: async () => "",
     });
     assert.equal(located, bunPath);
+  } finally {
+    restorePlatform();
+    restoreEnv();
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("plans one startup repair for bare commands and skips explicit paths", async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-repair-plan-"));
+  const restoreEnv = setCommandRepairEnvironment(homeDir);
+  const restorePlatform = setPlatform("win32");
+  try {
+    const realDir = path.join(homeDir, "tools", "codex");
+    const codexPath = path.join(realDir, "codex.exe");
+    await writeCommand(codexPath);
+    const missingAbsolute = path.join(homeDir, "missing", "claude.exe");
+    let registryReads = 0;
+    const plans = await planUnresolvedCliCommandRepairs({
+      codex: "codex --profile work",
+      claude: `"${missingAbsolute}"`,
+      opencode: "opencode",
+    }, {
+      platform: "win32",
+      env: process.env,
+      homeDir,
+      onlyBareCommands: true,
+      readRegistryPath: async () => {
+        registryReads += 1;
+        return realDir;
+      },
+    });
+    assert.equal(registryReads, 1);
+    assert.deepEqual(plans.map((plan) => plan.cli), ["codex", "opencode"]);
+    assert.equal(plans[0]?.status, "repaired");
+    assert.equal(plans[0]?.nextCommand, `${codexPath} --profile work`);
+    assert.equal(plans[1]?.status, "not-found");
+    assert.equal(plans[1]?.nextCommand, null);
+  } finally {
+    restorePlatform();
+    restoreEnv();
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("startup repair reads the registry once and keeps going when lookup fails", async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-repair-plan-fail-"));
+  const restoreEnv = setCommandRepairEnvironment(homeDir);
+  const restorePlatform = setPlatform("win32");
+  try {
+    const plans = await planUnresolvedCliCommandRepairs({
+      codex: "codex",
+      claude: "claude",
+      opencode: "opencode",
+    }, {
+      platform: "win32",
+      env: process.env,
+      homeDir,
+      onlyBareCommands: true,
+      readRegistryPath: async () => {
+        throw new Error("registry unavailable");
+      },
+    });
+    assert.deepEqual(plans.map((plan) => plan.status), ["not-found", "not-found", "not-found"]);
+  } finally {
+    restorePlatform();
+    restoreEnv();
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("startup repair gate waits once and does not stay blocked after failure", async () => {
+  resetCliCommandAutoRepairForTests();
+  let release = (): void => undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  beginCliCommandAutoRepair(pending);
+  let finished = false;
+  const waiting = waitForCliCommandAutoRepair().then(() => {
+    finished = true;
+  });
+  await Promise.resolve();
+  assert.equal(finished, false);
+  release();
+  await waiting;
+  assert.equal(finished, true);
+
+  beginCliCommandAutoRepair(Promise.reject(new Error("registry failed")));
+  await waitForCliCommandAutoRepair();
+  resetCliCommandAutoRepairForTests();
+});
+
+test("only waits for startup repair when the selected bare command is unresolved", async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-repair-wait-"));
+  const restoreEnv = setCommandRepairEnvironment(homeDir);
+  const restorePlatform = setPlatform("win32");
+  try {
+    await writeCommand(path.join(homeDir, "Local", "Programs", "OpenAI", "Codex", "bin", "codex.exe"));
+    const commands = {
+      codex: "codex",
+      claude: "claude",
+      opencode: "opencode",
+    };
+    assert.equal(shouldAwaitCliCommandAutoRepair("codex", commands, "win32"), false);
+    assert.equal(shouldAwaitCliCommandAutoRepair("claude", commands, "win32"), true);
+    assert.equal(shouldAwaitCliCommandAutoRepair("codex", {
+      codex: path.join(homeDir, "missing", "codex.exe"),
+    }, "win32"), false);
   } finally {
     restorePlatform();
     restoreEnv();

@@ -1091,6 +1091,8 @@ function loopPlusActivityText(
       return strings.loopPlusActivityCompleted;
     case "idle":
       return strings.loopPlusActivityIdle;
+    case "decomposing":
+      return strings.loopPlusActivityDecomposing;
     case "paused":
       return strings.loopPlusActivityPaused;
   }
@@ -1180,6 +1182,8 @@ function formatParticipantStatus(
       return strings.loopPlusStatusCompleted;
     case "idle":
       return strings.loopPlusStatusIdle;
+    case "decomposing":
+      return strings.loopPlusStatusDecomposing;
     case "paused":
       return strings.loopPlusStatusPaused;
     case "invalid":
@@ -1411,7 +1415,7 @@ function getLoopPlusRuntimeSpeakers(state: LoopDebateChatPanelState): RuntimeThi
       ...(attemptId ? { attemptId } : {}),
     });
   }
-  if (projection.activity === "reviewing") {
+  if (projection.activity === "reviewing" || projection.activity === "decomposing") {
     speakers.push({
       kind: "main",
       id: "main",

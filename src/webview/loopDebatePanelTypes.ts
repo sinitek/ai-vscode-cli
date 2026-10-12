@@ -79,6 +79,7 @@ export type LoopPlusPanelActivity =
   | "paused"
   | "stopped"
   | "completed"
+  | "decomposing"
   | "idle"
   | "invalid";
 

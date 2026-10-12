@@ -37,6 +37,12 @@ import {
   isCliCommandAvailable,
   type RunProcess,
 } from "./cli/commandRunner";
+import {
+  beginCliCommandAutoRepair,
+  planUnresolvedCliCommandRepairs,
+  shouldAwaitCliCommandAutoRepair,
+  waitForCliCommandAutoRepair,
+} from "./cli/cliCommandRepair";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "./cli/modelArgs";
 import {
   CliName,
@@ -940,6 +946,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
   migrateLegacyToolSettingsFromVsCodeConfig();
+  beginCliCommandAutoRepair(autoRepairUnresolvedCliCommands());
   initializeSessionControllers();
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
@@ -1528,6 +1535,36 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     updateOpenCodeVariant: updateOpenCodeVariantForCurrentSelection,
     resolveHumanInteractionResponse,
   });
+}
+
+async function autoRepairUnresolvedCliCommands(): Promise<void> {
+  try {
+    const plans = await planUnresolvedCliCommandRepairs({
+      codex: getCliCommand("codex"),
+      claude: getCliCommand("claude"),
+      opencode: getCliCommand("opencode"),
+    }, { onlyBareCommands: true });
+    let repairedCount = 0;
+    for (const plan of plans) {
+      if (plan.status !== "repaired" || !plan.nextCommand) {
+        continue;
+      }
+      await persistCliCommand(plan.cli, plan.nextCommand);
+      repairedCount += 1;
+      void logInfo("cli-command-auto-repair", {
+        cli: plan.cli,
+        command: plan.nextCommand,
+      });
+    }
+    if (repairedCount > 0) {
+      void refreshCliInstallStatuses();
+      void postPanelState();
+    }
+  } catch (error) {
+    void logError("cli-command-auto-repair-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function persistCliCommand(cli: CliName, command: string): Promise<void> {
@@ -4072,6 +4109,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         task = persistLoopPlusTaskUpdate(task.id, {
           schedulingMode: "event_driven",
           loopPlus: snapshot,
+          loopPlusMainPhase: "decomposing",
           loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
           ...(modelRouting ? { modelRouting } : {}),
           ...(originProfile ? { originProfile } : {}),
@@ -4080,6 +4118,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           ...task,
           schedulingMode: "event_driven",
           loopPlus: snapshot,
+          loopPlusMainPhase: "decomposing",
           loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
           ...(modelRouting ? { modelRouting } : {}),
           ...(originProfile ? { originProfile } : {}),
@@ -4915,6 +4954,14 @@ async function runPrompt(
   const target = resolvePromptRunTarget(options.targetTabId ?? getActiveConversationTabId());
   if (!target) {
     return;
+  }
+  if (shouldAwaitCliCommandAutoRepair(target.cli, {
+    [target.cli]: getCliCommand(target.cli),
+  })) {
+    await waitForCliCommandAutoRepair();
+    if (isExtensionDeactivating) {
+      return;
+    }
   }
 
   await loopMainAutoCompactFlights.wait(target.tabId);

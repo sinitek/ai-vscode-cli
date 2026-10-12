@@ -779,7 +779,7 @@ export function buildLoopDebateChatPanelStateWithDeps(
 }
 
 export function projectLoopPlusPanel(
-  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status"> & {
+  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "loopPlusMainPhase"> & {
     subTasks?: LoopTaskRecord["subTasks"];
   },
 ): LoopPlusPanelProjection | null {
@@ -800,10 +800,11 @@ export function projectLoopPlusPanel(
     if (view.visibleReviewCount !== currentReviewCount + reviewQueueCount) {
       return invalidLoopPlusProjection("visibleReviewCount");
     }
+    const activity = loopPlusActivityForPhase(view.phase, task.status);
     return {
       ok: true,
       schedulingMode: "event_driven",
-      activity: loopPlusActivityForPhase(view.phase, task.status),
+      activity: isLoopPlusDecomposing(task, activity, view, snapshot) ? "decomposing" : activity,
       phase: view.phase,
       wakePending: snapshot.wakePending,
       currentReview,
@@ -866,6 +867,22 @@ function loopPlusActivityForPhase(
       throw new Error(`Unexpected Loop+ phase: ${unexpected}`);
     }
   }
+}
+
+function isLoopPlusDecomposing(
+  task: { status: string; loopPlusMainPhase?: string; subTasks?: readonly unknown[] },
+  activity: string,
+  view: { running: readonly unknown[]; pending: readonly unknown[]; visibleReviewCount: number },
+  snapshot: { seenAttempts: readonly unknown[] },
+): boolean {
+  return task.loopPlusMainPhase === "decomposing"
+    && task.status === "running"
+    && activity === "idle"
+    && view.running.length === 0
+    && view.pending.length === 0
+    && view.visibleReviewCount === 0
+    && snapshot.seenAttempts.length === 0
+    && (task.subTasks?.length ?? 0) === 0;
 }
 
 function isLoopPlusDisplayPaused(status: string): boolean {
@@ -1340,6 +1357,8 @@ function loopPlusMemberStatus(
         return "completed";
       case "idle":
         return "idle";
+      case "decomposing":
+        return "decomposing";
     }
   }
   if (projection.currentReview?.subtaskId === subtaskId) {

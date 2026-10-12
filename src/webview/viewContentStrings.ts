@@ -160,7 +160,7 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAiTaskTab: "AI任务配置",
     toolSettingsWorkspaceTab: "工作区",
     toolSettingsRepairTab: "自动修复",
-    toolSettingsCliRepairHint: "列出扩展宿主当前无法启动的 CLI。一键修复会读取 Windows 当前的用户和系统 PATH，并把命令的绝对路径写入设置。",
+    toolSettingsCliRepairHint: "插件启动时会自动修复一次找不到的 codex、claude、opencode 裸命令。这里仍列出没修好的项；一键修复会重新读取 Windows 当前的用户和系统 PATH，并把命令的绝对路径写入设置。",
     toolSettingsCliRepairSummaryHeader: "报错摘要",
     toolSettingsCliRepairActionHeader: "操作",
     toolSettingsCliRepairButton: "一键修复",
