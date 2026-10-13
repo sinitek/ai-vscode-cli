@@ -130,7 +130,7 @@ test("renders the Loop+ queue and parallel execution", () => {
   assert.equal(state.task.currentRound, 4);
   {
     const page = html(state);
-    assert.match(page, /<h1>Loop\+ 群聊<\/h1>/u);
+    assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
     assert.match(page, /最后启动/u);
     assert.match(page, /子任务 1：Alpha/u);
     assert.doesNotMatch(page, /会话：|Session：|无会话|No session/u);
@@ -259,7 +259,7 @@ test("shows the Loop+ main reviewer animation without reusing a debate active sp
   });
   const page = html(state);
   assert.equal(state.mode, "debate");
-  assert.match(page, /<h1>Loop\+ 群聊<\/h1>/u);
+  assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
   assertLoopPlusDetailCardsHidden(page);
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
   assert.match(page, /主持人主智能体 思考中/u);

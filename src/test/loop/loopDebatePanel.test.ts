@@ -233,6 +233,11 @@ test("restores the supplement dialog before a main-task refresh can mark it clos
 
   assert.match(saveDialog, /if \(!dialogStateRestored\)/);
   assert.match(restoreDialog, /dialogStateRestored = true/);
+  assert.match(restoreDialog, /openSupplementDialog\(preservedPrompt\)/);
+  const patcher = html.slice(html.indexOf("function applyContentPatch"), html.indexOf("function startAutoRefresh"));
+  assert.doesNotMatch(patcher, /continueDialogInput\.value/);
+  assert.match(patcher, /timelineSlot/);
+  assert.match(html, /loopDebateChat:domReady/);
   assert.ok(synchronousRestore > html.indexOf("function restoreDialogState"));
   assert.ok(synchronousRestore < visibilityListener);
   assert.ok(synchronousRestore < unloadListener);
@@ -491,11 +496,22 @@ test("covers Loop debate panel lifecycle, title, roster, active speaker, and tra
   harness.messageHandler({ type: "loopDebateChat:refresh" });
   assert.deepEqual(received, [{ type: "loopDebateChat:refresh" }]);
 
+  const installedHtml = harness.panel.webview.html;
   panel.show({ ...state, task: { ...state.task, id: "task-2", canStop: true, canContinue: true } });
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.reveal.preserveFocus, true);
-  assert.match(harness.panel.webview.html, new RegExp(`>${escapeRegExp(activeStrings.stopTask)}</button>`));
-  assert.doesNotMatch(harness.panel.webview.html, new RegExp(`>${escapeRegExp(activeStrings.continueTask)}</button>`));
+  assert.equal(harness.panel.webview.html, installedHtml);
+  assert.match(installedHtml, new RegExp(`>${escapeRegExp(activeStrings.continueTask)}</button>`));
+  assert.doesNotMatch(installedHtml, new RegExp(`>${escapeRegExp(activeStrings.stopTask)}</button>`));
+
+  harness.messageHandler({ type: "loopDebateChat:domReady", generation: 1 });
+  const patch = harness.messages.at(-2);
+  assert.equal(patch?.type, "loopDebateChat:contentPatch");
+  assert.match(patch.actionsHtml, new RegExp(`>${escapeRegExp(activeStrings.stopTask)}</button>`));
+  assert.doesNotMatch(patch.actionsHtml, new RegExp(`>${escapeRegExp(activeStrings.continueTask)}</button>`));
+  assert.match(patch.subtitleText, /task-2/u);
+  assert.equal(harness.messages.at(-1)?.type, "loopDebateChat:askThread");
+  assert.equal(harness.panel.webview.html, installedHtml);
 
   harness.disposeHandler();
   assert.equal(disposed, 1);
@@ -756,7 +772,7 @@ test("keeps classic main/sub and debate panels on the round rhythm", () => {
       chatMarkdown: "# Loop 主从群聊记录\n",
     }),
   );
-  assert.match(mainHtml, /<h1>Loop 群聊<\/h1>/u);
+  assert.match(mainHtml, /<h1 id="panelHeading">Loop 群聊<\/h1>/u);
   assert.match(mainHtml, /主从群聊/u);
   assert.match(mainHtml, /<div class="meta-label">当前轮次<\/div>/u);
   assert.match(mainHtml, /主任务 思考中|Main task 思考中/u);
@@ -766,7 +782,7 @@ test("keeps classic main/sub and debate panels on the round rhythm", () => {
     { cspSource: "self" } as any,
     createState(),
   );
-  assert.match(debateHtml, /<h1>Loop 群聊<\/h1>/u);
+  assert.match(debateHtml, /<h1 id="panelHeading">Loop 群聊<\/h1>/u);
   assert.match(debateHtml, /红蓝辩论群聊/u);
   assert.match(debateHtml, /<div class="meta-label">当前轮次<\/div>/u);
   assert.match(debateHtml, /正在整理最终立场/u);
@@ -838,7 +854,7 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
         chatMarkdown: "# Loop chat\n",
       }),
     );
-    assert.match(page, /<h1>Loop\+ 群聊<\/h1>/u);
+    assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
     assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=/u);
     assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果)<\/h2>/u);
     assert.doesNotMatch(page, /<i>report<\/i>|&lt;i&gt;report&lt;\/i&gt;/u);

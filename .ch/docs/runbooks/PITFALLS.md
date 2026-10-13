@@ -14,6 +14,33 @@
 
 ## 当前有效条目
 
+
+## Loop 群聊刷新不能整页重载
+
+- 状态：已规避
+- 首次发现：2026-10-13
+- 适用范围：Loop 与 Loop+ 群聊面板，补充需求、继续执行、我要提问和澄清表单
+
+### 现象
+- 群聊内容一刷新，正在输入的补充需求被清空。
+
+### 根因
+- 已打开面板每次 `update()` 都重写 `webview.html`。文档重载会重建弹窗 DOM；即使随后用 `getState()` 恢复，连续刷新或输入法组字仍可能把草稿写成空字符串。
+
+### 长期规避
+- 首次打开才写入 HTML。之后用 `loopDebateChat:contentPatch` 只替换顶栏、侧栏、时间线和模型选择。
+- 不要在补丁里改补充需求、继续执行或我要提问的输入框。同一 `interactionId` 的澄清表单保持原 DOM。
+- 整页重载仍要在写入默认空文案之前恢复已保存草稿。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/loop/loopDebatePanel.test.js dist/test/loop/loopDebateCoordinator.test.js`
+
+### 关联资料
+- `src/webview/loopDebatePanel.ts`
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md`
+
+
 ## Loop+ 主任务中止子任务要关闭该 attempt 的 Tab
 
 - 状态：已规避

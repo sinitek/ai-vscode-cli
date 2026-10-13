@@ -1310,6 +1310,7 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
     if (mode === "render") {
       panel.update(buildLoopDebateChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
+      panel.publishAskThread();
     }
   };
 

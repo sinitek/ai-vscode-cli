@@ -40,7 +40,7 @@ export function renderOrchestratorClarificationDialog(
 
 export function orchestratorClarificationDialogScript(): string {
   return `
-      function bindOrchestratorClarificationDialog() {
+      function bindOrchestratorClarificationDialog(options) {
         const backdrop = document.getElementById("clarificationDialogBackdrop");
         const form = document.getElementById("clarificationDialogForm");
         if (!backdrop || !form) {
@@ -147,7 +147,8 @@ export function orchestratorClarificationDialogScript(): string {
           });
         }
         const first = form.querySelector("[data-clarify-field]");
-        if (first && typeof first.focus === "function") {
+        const shouldFocus = !options || options.focus !== false;
+        if (shouldFocus && first && typeof first.focus === "function") {
           first.focus();
         }
       }

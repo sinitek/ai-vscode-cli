@@ -45,6 +45,9 @@ export class LoopDebateChatPanel {
   private panel: vscode.WebviewPanel | undefined;
   private state: LoopDebateChatPanelState | undefined;
   private askThread: LoopAskThread = createEmptyLoopAskThread();
+  private domReady = false;
+  private htmlInstalled = false;
+  private renderGeneration = 0;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -65,11 +68,18 @@ export class LoopDebateChatPanel {
         },
       );
       this.panel.webview.onDidReceiveMessage((message: LoopDebateChatPanelMessage) => {
+        if (message?.type === "loopDebateChat:domReady") {
+          this.handleDomReady(typeof message.generation === "number" ? message.generation : 0);
+          return;
+        }
         this.handlers.onMessage(message);
       });
       this.panel.onDidDispose(() => {
         this.panel = undefined;
         this.state = undefined;
+        this.domReady = false;
+        this.htmlInstalled = false;
+        this.renderGeneration = 0;
         this.handlers.onDispose?.();
       });
     } else {
@@ -84,10 +94,40 @@ export class LoopDebateChatPanel {
       return;
     }
     this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings());
-    this.panel.webview.html = buildLoopDebateChatPanelHtml(
-      this.panel.webview,
-      state,
-      this.askThread,
+    this.renderGeneration += 1;
+    if (!this.htmlInstalled) {
+      this.htmlInstalled = true;
+      this.panel.webview.html = buildLoopDebateChatPanelHtml(
+        this.panel.webview,
+        state,
+        this.askThread,
+        this.renderGeneration,
+      );
+      return;
+    }
+    if (!this.domReady) {
+      return;
+    }
+    this.postContentPatch();
+  }
+
+  private handleDomReady(generation: number): void {
+    if (!this.panel) {
+      return;
+    }
+    this.domReady = true;
+    if (this.renderGeneration !== generation) {
+      this.postContentPatch();
+    }
+    this.publishAskThread();
+  }
+
+  private postContentPatch(): void {
+    if (!this.panel || !this.state) {
+      return;
+    }
+    void this.panel.webview.postMessage(
+      buildLoopDebateChatPanelContentPatch(this.state, this.renderGeneration),
     );
   }
 
@@ -122,15 +162,55 @@ export class LoopDebateChatPanel {
   }
 }
 
+export type LoopDebateChatPanelContentPatch = {
+  type: "loopDebateChat:contentPatch";
+  generation: number;
+  headingText: string;
+  subtitleText: string;
+  actionsHtml: string;
+  taskPanelHtml: string;
+  rosterPanelHtml: string;
+  timelineHtml: string;
+  clarificationHtml: string;
+  clarificationInteractionId: string;
+  continueModelChoiceHtml: string;
+};
+
+export function buildLoopDebateChatPanelContentPatch(
+  state: LoopDebateChatPanelState,
+  generation: number,
+): LoopDebateChatPanelContentPatch {
+  const strings = getStrings();
+  const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
+  return {
+    type: "loopDebateChat:contentPatch",
+    generation,
+    headingText: state.loopPlus ? strings.titleLoopPlus : strings.title,
+    subtitleText: `${getPanelSubtitle(state, strings)} · ${state.task.id}`,
+    actionsHtml: renderPanelActions(state, strings),
+    taskPanelHtml: renderTaskPanel(state, strings),
+    rosterPanelHtml: renderRosterPanel(state, strings),
+    timelineHtml: renderTimeline(state, transcript.segments, strings),
+    clarificationHtml: renderOrchestratorClarificationDialog(
+      state.clarification,
+      { requiredTemplate: strings.clarificationRequired },
+      { submit: "loopDebateChat:submitClarification", reject: "loopDebateChat:rejectClarification" },
+    ),
+    clarificationInteractionId: state.clarification?.interactionId ?? "",
+    continueModelChoiceHtml: renderContinueModelChoice(state, strings),
+  };
+}
+
 export function buildLoopDebateChatPanelHtml(
   webview: vscode.Webview,
   state: LoopDebateChatPanelState,
   askThread: LoopAskThread = createEmptyLoopAskThread(),
+  generation = 0,
 ): string {
   const nonce = getNonce();
   const strings = getStrings();
-  const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
-  const heading = state.loopPlus ? strings.titleLoopPlus : strings.title;
+  const patch = buildLoopDebateChatPanelContentPatch(state, generation);
+  const heading = patch.headingText;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -147,14 +227,11 @@ ${LOOP_DEBATE_PANEL_STYLES}
     <div class="shell">
       <header class="topbar">
         <div class="title">
-          <h1>${escapeHtml(heading)}</h1>
-          <p>${escapeHtml(getPanelSubtitle(state, strings))} · ${escapeHtml(state.task.id)}</p>
+          <h1 id="panelHeading">${escapeHtml(patch.headingText)}</h1>
+          <p id="panelSubtitle">${escapeHtml(patch.subtitleText)}</p>
         </div>
-        <div class="actions">
-          ${state.task.canStop ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>` : ""}
-          ${state.task.canSupplement ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>` : ""}
-          ${state.task.canSupplement ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>` : ""}
-          ${state.task.canContinue && !state.task.canStop ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>` : ""}
+        <div class="actions" id="panelActions">
+          ${patch.actionsHtml}
         </div>
       </header>
 ${renderPanelDialog({
@@ -185,7 +262,7 @@ ${renderPanelDialog({
         }),
         afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
-      ${renderOrchestratorClarificationDialog(state.clarification, { requiredTemplate: strings.clarificationRequired }, { submit: "loopDebateChat:submitClarification", reject: "loopDebateChat:rejectClarification" })}
+      <div id="clarificationSlot">${patch.clarificationHtml}</div>
       ${renderPanelDialog({
         backdropId: "filePreviewBackdrop",
         backdropClassName: "dialog-backdrop file-preview-backdrop",
@@ -199,11 +276,11 @@ ${renderPanelDialog({
       })}
       <div class="layout">
         <aside class="sidebar">
-          ${renderTaskPanel(state, strings)}
-          ${renderRosterPanel(state, strings)}
+          <div id="taskPanelSlot">${patch.taskPanelHtml}</div>
+          <div id="rosterPanelSlot">${patch.rosterPanelHtml}</div>
         </aside>
         <main class="main">
-          ${renderTimeline(state, transcript.segments, strings)}
+          <div id="timelineSlot">${patch.timelineHtml}</div>
 	          <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
 	            <button id="scrollToBottomButton" class="scroll-to-bottom-button" type="button" data-action="scrollToBottom" aria-label="${escapeAttribute(strings.scrollToBottomAria)}" title="${escapeAttribute(strings.scrollToBottomAria)}" aria-hidden="true">
 	              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -217,6 +294,7 @@ ${renderPanelDialog({
 	    </div>
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
+	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
 	      const SCROLL_BUTTON_SUPPRESS_MS = 400;
@@ -227,8 +305,10 @@ ${renderPanelDialog({
 	      const continueDialogError = document.getElementById("continueDialogError");
 	      const continueDialogConfirm = document.getElementById("continueDialogConfirm");
 	      const continueDialogCancel = document.getElementById("continueDialogCancel");
-	      const continueTaskButton = document.querySelector('[data-action="continueTask"]');
-	      const supplementTaskButton = document.querySelector('[data-action="supplementTask"]');
+	      let appliedPatchGeneration = PANEL_GENERATION;
+	      function actionButton(action) {
+	        return document.querySelector('[data-action="' + action + '"]');
+	      }
 	      const askChatBackdrop = document.getElementById("askChatBackdrop");
 	      const askChatMessages = document.getElementById("askChatMessages");
 	      const askChatForm = document.getElementById("askChatForm");
@@ -236,7 +316,6 @@ ${renderPanelDialog({
 	      const askChatSend = document.getElementById("askChatSend");
 	      const askChatAbort = document.getElementById("askChatAbort");
 	      const askChatClose = document.getElementById("askChatClose");
-	      const stopTaskButton = document.querySelector('[data-action="stopTask"]');
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
 	      const scrollToBottomButton = document.getElementById("scrollToBottomButton");
 	      const filePreviewBackdrop = document.getElementById("filePreviewBackdrop");
@@ -400,14 +479,14 @@ ${renderPanelDialog({
 	        continueDialogError.textContent = message || "";
 	      }
 
-	      function openContinueDialog() {
+	      function openContinueDialog(preservedPrompt) {
 	        if (!continueDialogBackdrop || !continueDialogInput) {
 	          return;
 	        }
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
 	        continueDialogMode = "continue";
-	        continueDialogInput.value = "${escapeJsString(strings.continuePromptDefault)}";
+	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.continuePromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
@@ -442,8 +521,9 @@ ${renderPanelDialog({
 	          return;
 	        }
 	        closeContinueDialog();
-	        if (continueTaskButton) {
-	          continueTaskButton.disabled = true;
+	        const liveContinueButton = actionButton("continueTask");
+	        if (liveContinueButton) {
+	          liveContinueButton.disabled = true;
 	        }
 	        vscode.postMessage({ type: "loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource() });
 	      }
@@ -459,13 +539,14 @@ ${renderPanelDialog({
 	          return;
 	        }
 	        closeContinueDialog();
-	        if (supplementTaskButton) {
-	          supplementTaskButton.disabled = true;
+	        const liveSupplementButton = actionButton("supplementTask");
+	        if (liveSupplementButton) {
+	          liveSupplementButton.disabled = true;
 	        }
 	        vscode.postMessage({ type: "loopDebateChat:supplementTask", prompt });
 	      }
 
-	      function openSupplementDialog() {
+	      function openSupplementDialog(preservedPrompt) {
 	        if (!continueDialogBackdrop || !continueDialogInput) {
 	          return;
 	        }
@@ -484,7 +565,7 @@ ${renderPanelDialog({
 	        if (labelElement) {
 	          labelElement.textContent = "${escapeJsString(strings.supplementPromptLabel)}";
 	        }
-	        continueDialogInput.value = "${escapeJsString(strings.supplementPromptDefault)}";
+	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.supplementPromptDefault)}";
 	        setContinueModelChoiceVisible(false);
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
@@ -660,15 +741,13 @@ ${renderPanelDialog({
 	          saveAskDialogState();
 	          return;
 	        }
+	        const preservedPrompt = typeof dialog.prompt === "string" ? dialog.prompt : undefined;
 	        if (dialog.mode === "supplement") {
-	          openSupplementDialog();
+	          openSupplementDialog(preservedPrompt);
 	        } else if (dialog.mode === "continue") {
-	          openContinueDialog();
+	          openContinueDialog(preservedPrompt);
 	        } else {
 	          return;
-	        }
-	        if (typeof dialog.prompt === "string") {
-	          continueDialogInput.value = dialog.prompt;
 	        }
 	        if (dialog.modelSource === "original" || dialog.modelSource === "current") {
 	          const radio = document.querySelector('input[name="continueModelSource"][value="' + dialog.modelSource + '"]');
@@ -794,12 +873,90 @@ ${renderPanelDialog({
 	        rememberCommunicationFilePreview(message.path || stored.path, stored.requestId, html);
 	      }
 
+	      function shouldAutoRefresh() {
+	        return document.visibilityState === "visible" && !document.getElementById("clarificationDialogBackdrop");
+	      }
+
+	      function replaceHtml(slot, html) {
+	        if (!slot || typeof html !== "string") {
+	          return;
+	        }
+	        slot.innerHTML = html;
+	      }
+
+	      function replaceContinueModelChoice(html) {
+	        if (continueDialogMode === "continue" || typeof html !== "string" || !html) {
+	          return;
+	        }
+	        const current = document.getElementById("continueModelChoice");
+	        if (!current) {
+	          return;
+	        }
+	        const holder = document.createElement("div");
+	        holder.innerHTML = html;
+	        const next = holder.firstElementChild;
+	        if (next) {
+	          current.replaceWith(next);
+	        }
+	      }
+
+	      function applyClarificationPatch(html, interactionId) {
+	        const slot = document.getElementById("clarificationSlot");
+	        if (!slot || typeof html !== "string") {
+	          return;
+	        }
+	        const existing = slot.querySelector("#clarificationDialogBackdrop");
+	        const existingId = existing ? existing.getAttribute("data-interaction-id") || "" : "";
+	        const nextId = interactionId || "";
+	        if (existing && existingId && existingId === nextId) {
+	          return;
+	        }
+	        slot.innerHTML = html;
+	        if (typeof bindOrchestratorClarificationDialog === "function") {
+	          bindOrchestratorClarificationDialog({
+	            focus: !continueDialogOpen && !askDialogOpen && !communicationPreviewOpen,
+	          });
+	        }
+	      }
+
+	      function applyContentPatch(message) {
+	        if (!message || message.type !== "loopDebateChat:contentPatch") {
+	          return false;
+	        }
+	        const generation = typeof message.generation === "number" ? message.generation : 0;
+	        if (generation < appliedPatchGeneration) {
+	          return true;
+	        }
+	        appliedPatchGeneration = generation;
+	        const heading = document.getElementById("panelHeading");
+	        if (heading && typeof message.headingText === "string") {
+	          heading.textContent = message.headingText;
+	        }
+	        const subtitle = document.getElementById("panelSubtitle");
+	        if (subtitle && typeof message.subtitleText === "string") {
+	          subtitle.textContent = message.subtitleText;
+	        }
+	        replaceHtml(document.getElementById("panelActions"), message.actionsHtml);
+	        replaceHtml(document.getElementById("taskPanelSlot"), message.taskPanelHtml);
+	        replaceHtml(document.getElementById("rosterPanelSlot"), message.rosterPanelHtml);
+	        const shouldStick = isNearBottom();
+	        const previousTop = mainElement ? mainElement.scrollTop : 0;
+	        replaceHtml(document.getElementById("timelineSlot"), message.timelineHtml);
+	        if (mainElement) {
+	          mainElement.scrollTop = shouldStick ? mainElement.scrollHeight : previousTop;
+	          updateScrollToBottomButton();
+	        }
+	        applyClarificationPatch(message.clarificationHtml, message.clarificationInteractionId);
+	        replaceContinueModelChoice(message.continueModelChoiceHtml);
+	        return true;
+	      }
+
 	      function startAutoRefresh() {
 	        if (autoRefreshTimer !== undefined) {
 	          return;
 	        }
 	        autoRefreshTimer = window.setInterval(() => {
-	          if (document.visibilityState === "visible" && !continueDialogOpen && !askDialogOpen && !communicationPreviewOpen && !document.getElementById("clarificationDialogBackdrop")) {
+	          if (shouldAutoRefresh()) {
 	            requestRefresh();
 	          }
 	        }, AUTO_REFRESH_INTERVAL_MS);
@@ -841,8 +998,9 @@ ${renderPanelDialog({
 	        }
 	        if (action === "stopTask") {
 	          saveScrollState();
-	          if (stopTaskButton) {
-	            stopTaskButton.disabled = true;
+	          const liveStopButton = actionButton("stopTask");
+	          if (liveStopButton) {
+	            liveStopButton.disabled = true;
 	          }
 	          vscode.postMessage({ type: "loopDebateChat:stopTask" });
 	          return;
@@ -861,6 +1019,9 @@ ${renderPanelDialog({
 	      });
 	      window.addEventListener("message", (event) => {
 	        const message = event.data;
+	        if (applyContentPatch(message)) {
+	          return;
+	        }
 	        if (message && message.type === "loopDebateChat:askThread") {
 	          applyAskThread(message.thread);
 	          return;
@@ -896,6 +1057,11 @@ ${renderPanelDialog({
 	      }
 	      if (continueDialogInput) {
 	        continueDialogInput.addEventListener("input", () => {
+	          if (continueDialogOpen) {
+	            saveDialogState();
+	          }
+	        });
+	        continueDialogInput.addEventListener("compositionend", () => {
 	          if (continueDialogOpen) {
 	            saveDialogState();
 	          }
@@ -985,7 +1151,7 @@ ${renderPanelDialog({
 	        }, { passive: true });
 	      }
 	      document.addEventListener("visibilitychange", () => {
-	        if (document.visibilityState === "visible" && !continueDialogOpen && !askDialogOpen && !communicationPreviewOpen) {
+	        if (shouldAutoRefresh()) {
 	          requestRefresh();
 	        }
 	      });
@@ -1004,9 +1170,30 @@ ${renderPanelDialog({
 	      });
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
+	      vscode.postMessage({ type: "loopDebateChat:domReady", generation: PANEL_GENERATION });
 	    </script>
   </body>
 </html>`;
+}
+
+function renderPanelActions(
+  state: LoopDebateChatPanelState,
+  strings: LoopDebateChatPanelStrings,
+): string {
+  return [
+    state.task.canStop
+      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>`
+      : "",
+    state.task.canSupplement
+      ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>`
+      : "",
+    state.task.canSupplement
+      ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>`
+      : "",
+    state.task.canContinue && !state.task.canStop
+      ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
+      : "",
+  ].join("");
 }
 
 function renderTaskPanel(

@@ -141,6 +141,7 @@ export type LoopDebateChatPanelState = {
 
 export type LoopDebateChatPanelMessage =
   | { type: "loopDebateChat:refresh" }
+  | { type: "loopDebateChat:domReady"; generation?: number }
   | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
   | { type: "loopDebateChat:supplementTask"; prompt?: string }
   | { type: "loopDebateChat:askMainModel"; prompt?: string }

@@ -462,10 +462,12 @@ test("asks the current main model session and shows the answer without supplemen
   const vscode = require("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
+  const posted: Array<{ type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }> = [];
   const webview = {
     cspSource: "self",
     html: "",
-    postMessage() {
+    postMessage(message: { type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }) {
+      posted.push(message);
       return undefined;
     },
     onDidReceiveMessage(handler: (message: unknown) => void) {
@@ -557,16 +559,22 @@ test("asks the current main model session and shows the answer without supplemen
     };
     const coordinator = createLoopDebateChatPanelCoordinator(deps);
     await coordinator.open(task.id);
-    assert.match(webview.html, /上次的问题/u);
+    const installedHtml = webview.html;
+    assert.match(installedHtml, /上次的问题/u);
+    messageHandler?.({ type: "loopDebateChat:domReady", generation: 1 });
     messageHandler?.({ type: "loopDebateChat:askMainModel", prompt: "  可以合并吗  " });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(questions, ["可以合并吗"]);
     assert.equal(supplementalCount, 0);
-    assert.match(webview.html, /可以合并吗/u);
-    assert.doesNotMatch(webview.html, /先看冲突/u);
-    assert.match(webview.html, /ask-chat-waiting/u);
-    assert.doesNotMatch(webview.html, /ask-chat-thinking/u);
-    assert.match(webview.html, /可以先合并冲突文件。/u);
+    assert.equal(webview.html, installedHtml);
+    const askThreads = posted.filter((message) => message.type === "loopDebateChat:askThread");
+    const latestAsk = askThreads.at(-1)?.thread;
+    const askText = latestAsk?.messages?.map((message) => message.content ?? "").join("\n") ?? "";
+    assert.match(askText, /可以合并吗/u);
+    assert.doesNotMatch(askText, /先看冲突/u);
+    assert.equal(latestAsk?.running, false);
+    assert.match(askText, /可以先合并冲突文件。/u);
+    assert.doesNotMatch(installedHtml, /ask-chat-thinking/u);
     assert.ok(savedThreads.every((entry) => !entry.includes("先看冲突")));
     const panel = deps.panelsByTaskId.get(task.id);
     assert.equal(panel?.getAskThread().dialogOpen, true);
