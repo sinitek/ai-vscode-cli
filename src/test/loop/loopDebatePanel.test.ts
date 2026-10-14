@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as vm from "node:vm";
 
 import { installVscodeMock } from "../vscodeMock";
 
@@ -278,6 +279,92 @@ test("renders recorded and current Loop models on the continue dialog", () => {
   assert.match(html, /value="original" checked/u);
   assert.doesNotMatch(html, /value="original" disabled/u);
 });
+
+test("refreshes the current runtime configuration immediately when the continue dialog opens", () => {
+  const html = buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, createState());
+  const openDialog = html.slice(html.indexOf("function openContinueDialog"), html.indexOf("function closeContinueDialog"));
+  const calls: string[] = [];
+  const input = { value: "", focus: () => undefined, select: () => undefined };
+  const context = {
+    continueDialogBackdrop: { classList: { add: () => undefined }, setAttribute: () => undefined },
+    continueDialogInput: input,
+    continueDialogConfirm: { dataset: {} },
+    continueDialogOpen: false,
+    continueDialogMode: undefined,
+    setContinueDialogError: () => undefined,
+    setContinueModelChoiceVisible: () => undefined,
+    saveDialogState: () => calls.push("save"),
+    requestRefresh: () => calls.push("refresh"),
+    window: { setTimeout: () => undefined },
+  };
+
+  vm.runInNewContext(`${openDialog}\nopenContinueDialog("保留继续说明");`, context);
+
+  assert.deepEqual(calls, ["save", "refresh"]);
+  assert.equal(input.value, "保留继续说明");
+  assert.equal(context.continueDialogOpen, true);
+  assert.equal(context.continueDialogMode, "continue");
+});
+
+for (const scenario of [
+  { name: "current selection and focus", source: "current", hidden: false, focused: true, originalAvailable: true, empty: false, expected: "current" },
+  { name: "original selection", source: "original", hidden: false, focused: false, originalAvailable: true, empty: false, expected: "original" },
+  { name: "unavailable original fallback", source: "original", hidden: false, focused: true, originalAvailable: false, empty: false, expected: "current" },
+  { name: "hidden supplement controls", source: "current", hidden: true, focused: false, originalAvailable: true, empty: false, expected: "current" },
+  { name: "empty patch", source: "current", hidden: false, focused: false, originalAvailable: true, empty: true, expected: "current" },
+]) {
+  test(`updates continue configuration while the dialog is open and preserves ${scenario.name}`, () => {
+    const html = buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, createState());
+    const readSource = html.slice(html.indexOf("function readContinueModelSource"), html.indexOf("function setContinueModelChoiceVisible"));
+    const replaceChoice = html.slice(html.indexOf("function replaceContinueModelChoice"), html.indexOf("function applyClarificationPatch"));
+    let focusedSource: string | undefined;
+    type ModelChoiceHarness = {
+      hidden: boolean;
+      querySelector: (selector: string) => { value: string; disabled: boolean; checked?: boolean; focus: () => void };
+      contains: () => boolean;
+      replaceWith: (next: ModelChoiceHarness) => void;
+    };
+    const createChoice = (selectedSource: string, originalAvailable: boolean): ModelChoiceHarness => ({
+      hidden: false,
+      querySelector: (selector: string) => {
+        const value = selector.includes(":checked") ? selectedSource : selector.includes('value="original"') ? "original" : "current";
+        return {
+          value,
+          disabled: value === "original" && !originalAvailable,
+          set checked(checked: boolean) {
+            if (checked) {
+              selectedSource = value;
+            }
+          },
+          focus: () => { focusedSource = value; },
+        };
+      },
+      contains: () => scenario.focused,
+      replaceWith: (next) => { current = next; },
+    });
+    let current = createChoice(scenario.source, true);
+    const original = current;
+    current.hidden = scenario.hidden;
+    const next = createChoice(scenario.originalAvailable ? "original" : "current", scenario.originalAvailable);
+    const document = {
+      activeElement: {},
+      getElementById: () => current,
+      querySelector: (selector: string) => current.querySelector(selector),
+      createElement: () => ({ innerHTML: "", firstElementChild: next }),
+    };
+
+    vm.runInNewContext(`${readSource}\n${replaceChoice}\nreplaceContinueModelChoice(incomingHtml);`, {
+      document,
+      continueDialogMode: "continue",
+      incomingHtml: scenario.empty ? "" : "<div>更新后的配置</div>",
+    });
+
+    assert.equal(current, scenario.empty ? original : next);
+    assert.equal(current.hidden, scenario.hidden);
+    assert.equal(current.querySelector(":checked").value, scenario.expected);
+    assert.equal(focusedSource, scenario.focused ? scenario.expected : undefined);
+  });
+}
 
 function createPanelHarness() {
   const vscode = require("vscode") as any;

@@ -2463,11 +2463,13 @@
 - 在注册 `visibilitychange`、`beforeunload` 和自动刷新之前，同步调用 `restoreDialogState()`。
 - `dialogStateRestored` 变成 `true` 之前，`saveDialogState()` 必须直接返回，不能覆盖已保存的打开状态。
 - 不要再把弹窗恢复留到下一帧；滚动位置恢复可以继续留在 `requestAnimationFrame`。
+- 2026-10-13 补充：继续弹窗打开时必须主动请求刷新；不能因 `continueDialogMode === "continue"` 跳过运行配置区域的局部补丁，否则修改主子模型后弹窗一直显示旧值。替换区域时保留原/新配置选择、单选焦点和 `hidden`，避免定时刷新把选择重置，或让模型区域在补充需求弹窗重新露出。
 
 ### 验证方式
 - `npm run build`
 - `node --test dist/test/loop/loopDebatePanel.test.js`
 - 主任务运行中打开“补充需求”，等待群聊因主任务事件刷新后，弹窗和已输入内容仍在。
+- 在继续弹窗打开期间更改当前主子模型，确认配置摘要更新且说明、选择和焦点保留；原配置不可用时回退新配置。
 
 ### 关联资料
 - `src/webview/loopDebatePanel.ts`

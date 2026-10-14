@@ -492,6 +492,7 @@ ${renderPanelDialog({
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
 	        setContinueModelChoiceVisible(true);
 	        saveDialogState();
+	        requestRefresh();
 	        window.setTimeout(() => {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
@@ -885,18 +886,28 @@ ${renderPanelDialog({
 	      }
 
 	      function replaceContinueModelChoice(html) {
-	        if (continueDialogMode === "continue" || typeof html !== "string" || !html) {
+	        if (typeof html !== "string" || !html) {
 	          return;
 	        }
 	        const current = document.getElementById("continueModelChoice");
 	        if (!current) {
 	          return;
 	        }
+	        const selectedSource = readContinueModelSource();
+	        const hadFocus = current.contains(document.activeElement);
 	        const holder = document.createElement("div");
 	        holder.innerHTML = html;
 	        const next = holder.firstElementChild;
 	        if (next) {
+	          next.hidden = current.hidden;
+	          const selected = next.querySelector('input[name="continueModelSource"][value="' + selectedSource + '"]');
+	          if (selected && !selected.disabled) {
+	            selected.checked = true;
+	          }
 	          current.replaceWith(next);
+	          if (hadFocus) {
+	            next.querySelector('input[name="continueModelSource"]:checked')?.focus();
+	          }
 	        }
 	      }
 
