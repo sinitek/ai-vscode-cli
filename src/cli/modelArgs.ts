@@ -8,12 +8,14 @@ const MODEL_ARG_KEYS: Record<string, string[]> = {
   codex: ["--model", "-m"],
   claude: ["--model"],
   opencode: ["--model", "-m"],
+  grok: ["--model", "-m"],
 };
 
 const PREFERRED_MODEL_ARG: Record<string, string> = {
   codex: "--model",
   claude: "--model",
   opencode: "--model",
+  grok: "--model",
 };
 
 export type ApplyModelArgOptions = {
@@ -26,7 +28,7 @@ export type OpenCodeModelResolution = {
 };
 
 export function supportsCliManagedModelSelection(cli: CliName): boolean {
-  return cli === "codex" || isOpenCodeCli(cli);
+  return cli === "codex" || cli === "grok" || isOpenCodeCli(cli);
 }
 
 export function resolveOpenCodeModelForConfig(
@@ -100,7 +102,7 @@ export function applyModelArg(
   options: ApplyModelArgOptions = {},
 ): string[] {
   const normalizedModel = typeof model === "string" ? model.trim() : "";
-  if (!normalizedModel || (cli !== "codex" && !isOpenCodeCli(cli))) {
+  if (!normalizedModel || (cli !== "codex" && cli !== "grok" && !isOpenCodeCli(cli))) {
     return [...args];
   }
   const resolvedModel = isOpenCodeCli(cli)

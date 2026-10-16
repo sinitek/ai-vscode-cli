@@ -473,8 +473,8 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.match(html, /openCodeSkills: config\.openCodeSkills \?\? config\.geminiSkills \?\? \[\]/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = config/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = payload/);
-  assert.match(html, /platform === "opencode" \? Promise\.resolve\(\[\]\) : requestConfig\("getOfficialSkillsCatalog"/);
-  assert.match(html, /const platforms = \["claude", "codex", "opencode"\]/);
+  assert.match(html, /platform === "opencode" \|\| platform === "grok" \? Promise\.resolve\(\[\]\) : requestConfig\("getOfficialSkillsCatalog"/);
+  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok"\]/);
   assert.match(html, /event: "syncActive:empty"/);
   assert.match(html, /event: "syncActive:error"/);
   assert.match(html, /localStorage\.removeItem\(ACTIVE_CONFIG_KEY_PREFIX \+ platform\)/);
@@ -1120,7 +1120,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
 test("config store asset keeps platform order, duplicate names, empty states, and error fallbacks isolated", () => {
   const { utils, storage } = loadStoreUtilities();
 
-  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [] });
+  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [] });
   assert.equal(utils.createCopyName("Gateway", []), "Gateway_副本");
   assert.equal(
     utils.createCopyName("Gateway", ["Gateway_副本", "Gateway_副本2"]),
@@ -1148,14 +1148,14 @@ test("config store asset keeps platform order, duplicate names, empty states, an
       ],
       { claude: [], codex: ["codex-one"], opencode: [] },
     )),
-    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"] },
+    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [] },
   );
 
   utils.storeJson("valid", { ok: true });
   assert.equal(storage.get("valid"), "{\"ok\":true}");
   storage.set("broken", "{not-json");
   assert.deepEqual(toPlain(utils.readJson("broken", { fallback: true })), { fallback: true });
-  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [] });
+  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [] });
 
   const storeSource = readProjectFile("media/config/assets/config-app-store.js");
   assert.match(storeSource, /selectedConfigPlatform: null/);
@@ -1196,13 +1196,13 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /const renderFixedEditorModeTabs =/);
   assert.equal(
     (editorPanel.match(/className: "config-editor-fixed-actions"/g) || []).length,
-    3,
+    4,
     "each config editor should render a fixed action area",
   );
   assert.match(editorPanel, /const renderConfigEditorCardTitle =/);
   assert.equal(
     (editorPanel.match(/title: renderConfigEditorCardTitle\(/g) || []).length,
-    3,
+    4,
     "each config editor should render mode tabs under the card title",
   );
   assert.equal(

@@ -1,4 +1,4 @@
-export const CLI_LIST = ["codex", "claude", "opencode"] as const;
+export const CLI_LIST = ["codex", "claude", "opencode", "grok"] as const;
 
 export type PublicCliName = (typeof CLI_LIST)[number];
 
@@ -58,3 +58,51 @@ export type ThinkingWorkspaceFile = {
   path: string;
   content: string;
 };
+
+export const GROK_CLI = "grok" as const;
+
+export type GrokCliName = typeof GROK_CLI;
+
+export const GROK_REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type GrokReasoningEffort = (typeof GROK_REASONING_EFFORTS)[number];
+
+export function mapThinkingModeToGrokEffort(mode: unknown): GrokReasoningEffort | null {
+  if (typeof mode !== "string") {
+    return null;
+  }
+  const normalized = mode.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "off") {
+    return "none";
+  }
+  if (normalized === "on") {
+    return "medium";
+  }
+  if (normalized === "ultra") {
+    return "max";
+  }
+  if ((GROK_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
+    return normalized as GrokReasoningEffort;
+  }
+  return null;
+}
+
+
+export function createCliRecord<T>(create: (cli: CliName) => T): Record<CliName, T> {
+  const record = {} as Record<CliName, T>;
+  for (const cli of CLI_LIST) {
+    record[cli] = create(cli);
+  }
+  return record;
+}

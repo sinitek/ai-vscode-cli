@@ -36,6 +36,8 @@ import {
 } from "./configPaths";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
+import { resolveGrokConfigPath } from "../shared/userHomePaths";
+import { commitGrokText, validateGrokDocument } from "./grokConfig";
 export {
   getOfficialSkillsCatalog,
   installOfficialSkill,
@@ -147,6 +149,24 @@ export async function readCodexConfig(): Promise<{ config: string; auth: string 
     fs.readFile(CONFIG_PATHS.codex.auth, "utf-8"),
   ]);
   return { config, auth };
+}
+
+export async function readGrokConfigText(): Promise<string> {
+  const configPath = resolveGrokConfigPath();
+  try {
+    return await fs.readFile(configPath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+}
+
+export async function writeGrokConfigText(content: string): Promise<void> {
+  const configPath = resolveGrokConfigPath();
+  await ensureDir(path.dirname(configPath));
+  await writeFileAtomically(configPath, content);
 }
 
 export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
@@ -332,11 +352,26 @@ export async function backupOpenCodeConfig(): Promise<string[]> {
   return [configBackupPath];
 }
 
+export async function backupGrokConfig(): Promise<string[]> {
+  await ensureDir(BACKUP_DIR);
+  const config = await readGrokConfigText();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const configBackupPath = path.join(BACKUP_DIR, `grok_config_${timestamp}.toml`);
+  await fs.writeFile(configBackupPath, config, "utf-8");
+  return [configBackupPath];
+}
+
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
   const files = await fs.readdir(BACKUP_DIR);
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  const prefix = normalizedPlatform === "claude" ? "claude_" : normalizedPlatform === "codex" ? "codex_" : "opencode_";
+  const prefix = normalizedPlatform === "claude"
+    ? "claude_"
+    : normalizedPlatform === "codex"
+      ? "codex_"
+      : normalizedPlatform === "grok"
+        ? "grok_"
+        : "opencode_";
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
@@ -400,6 +435,9 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
       if (normalizedConfig.platform === "codex") {
         normalizeCodexConfigFields(normalizedConfig);
       }
+      if (normalizedConfig.platform === "grok") {
+        normalizeGrokConfigFields(normalizedConfig);
+      }
       configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
@@ -421,13 +459,14 @@ export async function getConfigList(platform: LegacyConfigPlatformInput): Promis
 
 type LegacyConfigOrder = ConfigOrder & { gemini?: string[] };
 
-const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [] };
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [] };
 
 function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
   return {
     claude: Array.isArray(order.claude) ? [...order.claude] : [],
     codex: Array.isArray(order.codex) ? [...order.codex] : [],
     opencode: Array.isArray(order.opencode) ? [...order.opencode] : Array.isArray(order.gemini) ? [...order.gemini] : [],
+    grok: Array.isArray(order.grok) ? [...order.grok] : [],
   };
 }
 
@@ -479,6 +518,15 @@ function normalizeCodexConfigFields(config: ConfigItem): void {
   delete config.envContent;
   config.authContent = config.authContent ?? "{}";
   config.codexSkills = config.codexSkills ?? [];
+}
+
+function normalizeGrokConfigFields(config: ConfigItem): void {
+  const content = config.configContent ?? config.content ?? "";
+  config.content = content;
+  config.configContent = content;
+  delete config.authContent;
+  delete config.mcpContent;
+  delete config.envContent;
 }
 
 function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
@@ -789,6 +837,14 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
       claudeSkills: source.platform === "claude" ? [...(source.claudeSkills ?? [])] : [],
     };
   }
+  if (targetPlatform === "grok") {
+    const content = source.platform === "grok" ? source.configContent ?? source.content ?? "" : "";
+    return {
+      ...base,
+      content,
+      configContent: content,
+    };
+  }
   return {
     ...base,
     content: source.platform === "codex" ? getCodexTomlContent(source) : "",
@@ -822,7 +878,10 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.platform === "codex") {
     normalizeCodexConfigFields(configToSave);
   }
-  if (configToSave.content && configToSave.platform !== "codex") {
+  if (configToSave.platform === "grok") {
+    normalizeGrokConfigFields(configToSave);
+  }
+  if (configToSave.content && configToSave.platform !== "codex" && configToSave.platform !== "grok") {
     configToSave.content = formatJSONString(configToSave.content);
   }
   if (configToSave.mcpContent) {
@@ -944,6 +1003,10 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
       defaultConfig.configContent = config;
       defaultConfig.authContent = auth;
       defaultConfig.codexSkills = [];
+    } else if (normalizedPlatform === "grok") {
+      const config = await readGrokConfigText();
+      defaultConfig.content = config;
+      defaultConfig.configContent = config;
     } else {
       const { config } = await readOpenCodeConfig();
       defaultConfig.content = config;
@@ -957,6 +1020,9 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
     } else if (normalizedPlatform === "opencode") {
       defaultConfig.content = "{}";
       defaultConfig.openCodeSkills = [];
+    } else if (normalizedPlatform === "grok") {
+      defaultConfig.content = "";
+      defaultConfig.configContent = "";
     } else {
       defaultConfig.content = "";
       defaultConfig.configContent = "";
@@ -978,6 +1044,10 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
   if (normalizedPlatform === "codex") {
     const { config, auth } = await readCodexConfig();
     return { content: config, configContent: config, authContent: auth };
+  }
+  if (normalizedPlatform === "grok") {
+    const config = await readGrokConfigText();
+    return { content: config, configContent: config };
   }
   const { config } = await readOpenCodeConfig();
   return { content: config };
@@ -1009,6 +1079,23 @@ export async function applyConfig(platform: LegacyConfigPlatformInput, payload: 
     await writeCodexConfig(nextConfig, payload.authContent ?? current?.auth ?? "{}");
     return;
   }
+  if (normalizedPlatform === "grok") {
+    const nextContent = payload.content ?? payload.configContent ?? "";
+    if (!nextContent.trim()) {
+      throw new Error(t("grok.invalidConfig"));
+    }
+    const current = await readGrokConfigText();
+    const committed = commitGrokText(current, nextContent);
+    if (!committed.ok) {
+      throw new Error(committed.error || t("grok.invalidConfig"));
+    }
+    const fieldError = validateGrokDocument(committed.document);
+    if (fieldError) {
+      throw new Error(fieldError);
+    }
+    await writeGrokConfigText(committed.content);
+    return;
+  }
   const legacyPayload = payload as ApplyPayload & { geminiSkills?: ApplyPayload["openCodeSkills"] };
   const openCodeSkills = payload.openCodeSkills ?? legacyPayload.geminiSkills;
   const nextSettings =
@@ -1025,6 +1112,9 @@ export async function backupConfig(platform: LegacyConfigPlatformInput): Promise
   }
   if (normalizedPlatform === "codex") {
     return backupCodexConfig();
+  }
+  if (normalizedPlatform === "grok") {
+    return backupGrokConfig();
   }
   return backupOpenCodeConfig();
 }

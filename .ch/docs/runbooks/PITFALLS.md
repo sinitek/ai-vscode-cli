@@ -337,6 +337,106 @@
 - `node --test dist/test/core/codexReasoningContent.test.js dist/test/interactive/codexAppServerProtocol.test.js dist/test/interactive/codexRunnerRuntime.test.js dist/test/interactive/codexRunnerLifecycle.test.js`
 
 
+
+## Grok 要走 yolo，不能把终端能力声明给宿主
+
+- 状态：已规避
+- 首次发现：2026-10-16
+- 适用范围：Grok Build ACP、`GrokInteractiveRunner`
+
+### 现象
+- 插件里让 Grok 查天气或执行命令时，工具结果是 `Method not found: terminal/create`，或 `failed to deserialize response`。
+- 直接在终端运行 grok 可以执行同一条 curl。
+
+### 触发条件与根因
+- Grok 的 yolo 对应 OpenCode 的 `--auto`：命令行是 `--always-approve`（别名 `--yolo`），会话还要 `_meta.yoloMode: true`。只加命令行参数不够。
+- `initialize` 如果声明 `clientCapabilities.terminal: true`，grok 1.0.60 不自己跑命令，而是向客户端发 `terminal/create`。宿主不实现或返回形状不对时，curl 不会执行。
+
+### 长期规避
+- `session/new` 和 `session/load` 带 `_meta.yoloMode: true`。
+- `terminal`、`fs.readTextFile`、`fs.writeTextFile` 都设为 false，让 yolo 会话使用 grok 自己的终端和文件工具。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokAppServerProtocol.test.js dist/test/interactive/grokRunner.test.js`
+- 本机 `grok --no-auto-update agent --always-approve stdio`，`terminal: false` 且 `yoloMode: true` 时，curl Open-Meteo 能返回上海气温。
+
+## Grok ACP initialize 必须带 clientInfo.version，密钥在 config.toml 的 api_key
+
+- 状态：已规避
+- 首次发现：2026-10-16
+- 适用范围：Grok Build `grok agent stdio`、`~/.grok/config.toml`
+
+### 现象
+- 选择 grok 后任务马上失败，日志是 `Invalid params`，执行时间接近 00:00。
+- 配置页能看到模型和接口地址，但看不到密钥写在哪里。
+
+### 触发条件与根因
+- grok 1.0.60 的 `initialize.clientInfo.version` 是必填。只有 `name` 时返回 JSON-RPC `-32602`，data 为 missing field `version`。
+- 自定义模型的 URL、模型和密钥都在 `[model.<id>]`：`base_url`、`model`、`api_key`。`env_key` 只是环境变量名，不是密钥。
+- Codex 的同一模型把 URL 放在 `model_providers.*.base_url`，密钥放在 `~/.codex/auth.json` 的 `OPENAI_API_KEY`，不在 `config.toml`。不知道密钥时 Grok 的 `api_key` 留空，不能从 auth.json 抄。
+
+### 长期规避
+- `buildGrokInitializeParams` 始终写入非空 `clientInfo.version`。
+- 可视化编辑器在接口地址后提供 API Key，映射 `[model.<id>].api_key`，空字符串也保留。
+- 默认模型的 `api_key` 或可用 `env_key` 非空时，不调用 `authenticate`。否则只从当次 `authMethods` 里选。密钥不进入 RPC。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokAppServerProtocol.test.js dist/test/interactive/grokRunner.test.js dist/test/config/grokConfigMapping.test.js dist/test/config/grokConfigPage.test.js`
+- 本机 `grok --no-auto-update agent --always-approve stdio` 的 `initialize` 不再返回 `missing field version`。
+
+
+
+## Grok 自定义模型密钥不能走 grok.com 认证
+
+- 状态：已规避
+- 首次发现：2026-10-16
+- 适用范围：Grok Build `grok agent stdio`、`[model.<id>].api_key`
+
+### 现象
+- 终端直接运行 grok 正常，插件选择 grok 后任务失败。
+- 日志是 `error sending request for url (https://auth.x.ai/.well-known/openid-configuration)`。
+
+### 触发条件与根因
+- 自定义模型的密钥在 `config.toml` 的 `api_key`，不是进程环境变量 `XAI_API_KEY`。
+- grok 1.0.60 仍会广告 `grok.com`。插件只看到没有 `XAI_API_KEY` 时会调用 `authenticate`，`methodId` 为 `grok.com`，从而去拉 `auth.x.ai` 的 OpenID 配置。
+- 官方 ACP 生命周期是 `initialize` 后直接 `session/new`。模型请求按 per-model `api_key` / `env_key` 取密钥，不需要这次账号认证。
+
+### 长期规避
+- 当前默认模型的 `api_key` 非空，或 `env_key` 指向的环境变量非空时，跳过 `authenticate`。
+- 没有这份密钥时仍按 `xai.api_key`、`cached_token`、`grok.com` 的原顺序认证。密钥不写入 JSON-RPC。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokRunner.test.js dist/test/interactive/grokAppServerProtocol.test.js dist/test/config/grokConfigMapping.test.js`
+- 本机用同一 ACP 命令直接 `session/new` 和 `session/prompt`，`stopReason` 为 `end_turn`，正文来自 `agent_message_chunk.content.text`。
+
+
+
+## Grok 回合结束和续聊不能使用 local_ 会话号
+
+- 状态：已规避
+- 首次发现：2026-10-16
+- 适用范围：Grok Build ACP、`GrokInteractiveRunner`
+
+### 现象
+- Grok 已经写出正文，任务仍不结束，或结束后不能在同一会话继续。
+
+### 触发条件与根因
+- 普通对话要求显式 `[final_answer]`。Grok 的 `end_turn` 没有像 Claude 的成功结果那样被记为完成。
+- `local_` 是插件临时会话号。把它传给 `session/load` 会得到 `Path not found`，冷启动时每次都新建会话。
+- grok 1.0.60 的 `session/load` 成功时不回顶层 `sessionId`，id 在 `_meta.sessionId`。只读顶层字段会把成功续接当成请求失败。
+
+### 长期规避
+- 有 assistant 正文且 `stopReason` 为 `end_turn`、`end`、`stop` 或空时记为正常完成。`cancelled` 和 `refusal` 除外。
+- 只把非 `local_` 的 ACP session id 交给 `session/load`。新建会话后用该 id 接管原 `local_` 会话。进程还在时，后续 prompt 复用同一个 runner。
+- `session/load` 的会话 id 依次读取顶层 `sessionId`、`session.sessionId`、`_meta.sessionId`、`_meta["x.ai/sessionDetail"].sessionId`。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokRunner.test.js dist/test/interactive/grokAppServerProtocol.test.js dist/test/extensionHost/grokCliHostWire.test.js`
+
 ## Windows 不能把 ~/.codex 当作真实路径
 
 - 状态：已规避，需随 CLI 安装路径 / CODEX_HOME 变化复核

@@ -1,6 +1,6 @@
 export const LEGACY_GEMINI_CONFIG_PLATFORM = "gemini" as const;
 
-export type CurrentConfigPlatform = "claude" | "codex" | "opencode";
+export type CurrentConfigPlatform = "claude" | "codex" | "opencode" | "grok";
 export type LegacyConfigPlatform = typeof LEGACY_GEMINI_CONFIG_PLATFORM;
 export type ConfigPlatform = CurrentConfigPlatform | LegacyConfigPlatform;
 
@@ -56,7 +56,7 @@ export type OpenCodeSkillToggle = OpenCodeSkillItem & {
   enabled: boolean;
 };
 
-export type OfficialSkillPlatform = CurrentConfigPlatform;
+export type OfficialSkillPlatform = Exclude<CurrentConfigPlatform, "grok">;
 
 export type OfficialSkillCatalogPlatformMeta = {
   repo: string;

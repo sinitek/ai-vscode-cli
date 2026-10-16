@@ -4,7 +4,7 @@ import {
   type LoopMainAutoCompactRequest,
 } from "../loopMainAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
-import { getCliCommand, getDebugLogging } from "../cli/config";
+import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getGrokAgentArgs, getGrokCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -28,6 +28,8 @@ import {
 } from "../interactive/claudeRunner";
 import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
 import { CodexInteractiveRunner } from "../interactive/codexRunner";
+import { isGrokCompletedStopReason, resolveGrokResumeSessionId } from "../interactive/grokAppServerProtocol";
+import { GrokInteractiveRunner } from "../interactive/grokRunner";
 import {
   isCodexRetryProgressTraceKind,
   resolveCodexAssistantMessageContinuation,
@@ -259,7 +261,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       includeFinalAnswerInstruction,
     });
     const debugLogging = getDebugLogging();
-    const args = cli === "codex" || executionOptions.isolateProjectInstructions
+    const grokAgentArgs = cli === "grok" ? getGrokAgentArgs() : [];
+    const args = cli === "grok"
+      ? buildGrokAgentStdioArgs(grokAgentArgs, selectedModel)
+      : cli === "codex" || executionOptions.isolateProjectInstructions
       ? buildCliArgs(cli, {
           thinkingMode,
           model: selectedModel,
@@ -267,7 +272,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
         })
       : getEffectiveCliArgs(cli, selectedModel);
-    const command = getCliCommand(cli);
+    const command = cli === "grok" ? getGrokCommand() : getCliCommand(cli);
     const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
     const commandForRunner = cli === "claude"
       ? (resolvedCommand?.command ?? "claude")
@@ -320,6 +325,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let observedCodexFinalAnswer = false;
     let observedCodexPrimaryTurnCompleted = false;
     let observedClaudeFinalAnswer = false;
+    let observedGrokFinalAnswer = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -936,7 +942,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
         observedFinalAnswer: (source === "codex" && observedCodexFinalAnswer)
-          || (source === "claude" && observedClaudeFinalAnswer),
+          || (source === "claude" && observedClaudeFinalAnswer)
+          || (source === "grok" && observedGrokFinalAnswer),
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
@@ -1410,6 +1417,111 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               const retained = Boolean(
                 sessionId
                 && interactiveRunnerManager.hasClaudeRunner?.(sessionId, runner)
+              );
+              if (!retained) {
+                runner.dispose();
+              }
+            }
+          }
+        }
+
+        if (cli === "grok") {
+          const grokCwd = cwd ?? process.cwd();
+          const runnerWasManaged = Boolean(uiSessionId);
+          const previousSessionId = uiSessionId;
+          const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
+          const resumeSessionId = resolveGrokResumeSessionId(uiSessionId, mappedSessionId);
+          observedGrokFinalAnswer = false;
+          const runner = uiSessionId
+            ? interactiveRunnerManager.getOrCreateGrokRunner({
+                sessionId: uiSessionId,
+                command: commandForRunner,
+                agentArgs: grokAgentArgs,
+                cwd: grokCwd,
+                thinkingMode,
+                interactiveMode,
+                model: selectedModel,
+                localSessionId: resumeSessionId,
+              })
+            : new GrokInteractiveRunner({
+                command: commandForRunner,
+                agentArgs: grokAgentArgs,
+                cwd: grokCwd,
+                thinkingMode,
+                model: selectedModel,
+                localSessionId: null,
+              });
+
+          try {
+          stopCurrentTurn = () => runner.cancelTurn();
+          syncInteractiveRunEntry(stopFn);
+          const started = await runner.start();
+          updateSessionForNewRun(started.acpSessionId);
+          if (previousSessionId && previousSessionId !== uiSessionId) {
+            interactiveRunnerManager.detachRunner("grok", previousSessionId, runner);
+          }
+          if (uiSessionId) {
+            interactiveRunnerManager.setRunner("grok", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
+              command: commandForRunner,
+              args: grokAgentArgs,
+              cwd: grokCwd,
+            });
+          }
+          syncInteractiveRunEntry(stopFn);
+          let grokStopReason: string | null = null;
+          await runner.prompt(attemptPrompt, {
+            onAssistantDelta: (chunk) => {
+              if (!isCurrentRunActive() || !chunk.trim()) {
+                return;
+              }
+              attemptHadNormalReply = true;
+              appendAssistantChunkForTab(chunk);
+              appendDebugStdout(chunk);
+            },
+            onTrace: (content, kind) => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal");
+              appendTraceLog(content);
+            },
+            onEvent: (event) => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+            },
+            onComplete: ({ stopReason }) => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              grokStopReason = stopReason;
+            },
+          });
+          if (attemptHadNormalReply && isGrokCompletedStopReason(grokStopReason)) {
+            observedGrokFinalAnswer = true;
+          }
+          if (await maybeHandleNaturalLanguageHumanInteraction()) {
+            continue;
+          }
+          const finalConclusionState = handleMissingFinalConclusionForTab("grok");
+          if (finalConclusionState.action === "stopped") {
+            return;
+          }
+          if (finalConclusionState.action === "retry") {
+            continue;
+          }
+          if (finalConclusionState.action === "error") {
+            await cleanupAfterRun("error", finalConclusionState.message);
+            return;
+          }
+          await cleanupAfterRun("end");
+          return;
+          } finally {
+            if (!runnerWasManaged) {
+              const retained = Boolean(
+                uiSessionId
+                && interactiveRunnerManager.hasGrokRunner(uiSessionId, runner)
               );
               if (!retained) {
                 runner.dispose();

@@ -51,13 +51,14 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         align-self: flex-start;
         display: inline-flex;
         align-items: center;
-        border: 1px solid var(--vscode-badge-background, var(--vscode-widget-border));
-        background: var(--vscode-badge-background, var(--vscode-editorWidget-background));
-        color: var(--vscode-badge-foreground, var(--vscode-foreground));
-        border-radius: 999px;
-        padding: 1px 8px;
+        border: 0;
+        background: transparent;
+        color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+        border-radius: 0;
+        padding: 0;
         font-size: 11px;
         line-height: 18px;
+        font-weight: 600;
       }
       .message.user .message-task-role {
         align-self: flex-end;

@@ -397,12 +397,16 @@ export function loadModelStore(
   return normalized;
 }
 
+function supportsConfigScopedCliModel(cli: CliName): boolean {
+  return cli === "codex" || cli === "grok";
+}
+
 export function getSelectedCliModelFromStore(
   store: CliModelStore,
   cli: CliName,
   configId: string | null
 ): string | null {
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsConfigScopedCliModel(cli)) {
     return null;
   }
   return normalizeCliModelName(store?.selectedByConfigId?.[configId]);
@@ -570,7 +574,7 @@ export function getManagedModelOptionsForCliFromStore(
   cli: CliName,
   configId: string | null
 ): string[] {
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsConfigScopedCliModel(cli)) {
     return [];
   }
   const storedOptions = Array.isArray(store?.optionsByConfigId?.[configId])
@@ -605,7 +609,7 @@ export function getModelOptionsForCliFromStore(
   cli: CliName,
   configId: string | null
 ): string[] {
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsConfigScopedCliModel(cli)) {
     return [];
   }
   const storedOptions = Array.isArray(store?.optionsByConfigId?.[configId])
@@ -731,7 +735,7 @@ export function selectCliModelInStore(
   model: string | null,
   configId: string | null,
 ): CliModelStore {
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsConfigScopedCliModel(cli)) {
     return ensureCliModelStore(store);
   }
   const normalized = normalizeCliModelName(model);
@@ -841,7 +845,7 @@ export function renameCliModelInStore(
 ): { store: CliModelStore; renamedModel: string | null } {
   const previousNormalized = normalizeCliModelName(previousModel);
   const nextNormalized = normalizeCliModelName(nextModel);
-  if (!previousNormalized || !nextNormalized || !configId || cli !== "codex") {
+  if (!previousNormalized || !nextNormalized || !configId || !supportsConfigScopedCliModel(cli)) {
     return { store: ensureCliModelStore(store), renamedModel: null };
   }
   const previousKey = previousNormalized.toLowerCase();
@@ -880,51 +884,53 @@ export function renameCliModelInStore(
     }
   }
 
-  const rolesByModel = nextStore.loopRolesByConfigId[configId];
-  if (rolesByModel) {
-    const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
-    if (matchedRoleKey) {
-      const nextRolesByModel = { ...rolesByModel };
-      nextRolesByModel[nextNormalized] = normalizeLoopModelRoleFlags(nextRolesByModel[matchedRoleKey]);
-      delete nextRolesByModel[matchedRoleKey];
-      nextStore.loopRolesByConfigId[configId] = nextRolesByModel;
+  if (cli === "codex") {
+    const rolesByModel = nextStore.loopRolesByConfigId[configId];
+    if (rolesByModel) {
+      const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
+      if (matchedRoleKey) {
+        const nextRolesByModel = { ...rolesByModel };
+        nextRolesByModel[nextNormalized] = normalizeLoopModelRoleFlags(nextRolesByModel[matchedRoleKey]);
+        delete nextRolesByModel[matchedRoleKey];
+        nextStore.loopRolesByConfigId[configId] = nextRolesByModel;
+      }
     }
-  }
-  const selectedByRole = nextStore.selectedLoopByConfigId[configId];
-  if (selectedByRole) {
-    const nextSelectedByRole: Partial<Record<LoopTaskRoleForModelSelection, string>> = { ...selectedByRole };
-    let changed = false;
-    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
-      const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
-      if (roleModel && roleModel.toLowerCase() === previousKey) {
-        nextSelectedByRole[role] = nextNormalized;
+    const selectedByRole = nextStore.selectedLoopByConfigId[configId];
+    if (selectedByRole) {
+      const nextSelectedByRole: Partial<Record<LoopTaskRoleForModelSelection, string>> = { ...selectedByRole };
+      let changed = false;
+      (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
+        const roleModel = normalizeCliModelName(nextSelectedByRole[role]);
+        if (roleModel && roleModel.toLowerCase() === previousKey) {
+          nextSelectedByRole[role] = nextNormalized;
+          changed = true;
+        }
+      });
+      if (changed) {
+        nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
+      }
+    }
+    const loopThinkingByRole = nextStore.loopThinkingByConfigId[configId];
+    if (loopThinkingByRole) {
+      const nextLoopThinkingByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = {
+        ...loopThinkingByRole,
+      };
+      let changed = false;
+      (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
+        const thinkingByModel = nextLoopThinkingByRole[role];
+        const matchedThinkingKey = findCaseInsensitiveRecordKey(thinkingByModel, previousNormalized);
+        if (!thinkingByModel || !matchedThinkingKey) {
+          return;
+        }
+        const nextThinkingByModel = { ...thinkingByModel };
+        nextThinkingByModel[nextNormalized] = nextThinkingByModel[matchedThinkingKey];
+        delete nextThinkingByModel[matchedThinkingKey];
+        nextLoopThinkingByRole[role] = nextThinkingByModel;
         changed = true;
+      });
+      if (changed) {
+        nextStore.loopThinkingByConfigId[configId] = nextLoopThinkingByRole;
       }
-    });
-    if (changed) {
-      nextStore.selectedLoopByConfigId[configId] = nextSelectedByRole;
-    }
-  }
-  const loopThinkingByRole = nextStore.loopThinkingByConfigId[configId];
-  if (loopThinkingByRole) {
-    const nextLoopThinkingByRole: Partial<Record<LoopTaskRoleForModelSelection, Record<string, ThinkingMode>>> = {
-      ...loopThinkingByRole,
-    };
-    let changed = false;
-    (["main", "subtask"] as LoopTaskRoleForModelSelection[]).forEach((role) => {
-      const thinkingByModel = nextLoopThinkingByRole[role];
-      const matchedThinkingKey = findCaseInsensitiveRecordKey(thinkingByModel, previousNormalized);
-      if (!thinkingByModel || !matchedThinkingKey) {
-        return;
-      }
-      const nextThinkingByModel = { ...thinkingByModel };
-      nextThinkingByModel[nextNormalized] = nextThinkingByModel[matchedThinkingKey];
-      delete nextThinkingByModel[matchedThinkingKey];
-      nextLoopThinkingByRole[role] = nextThinkingByModel;
-      changed = true;
-    });
-    if (changed) {
-      nextStore.loopThinkingByConfigId[configId] = nextLoopThinkingByRole;
     }
   }
 
@@ -938,7 +944,7 @@ export function deleteCliModelFromStore(
   configId: string | null
 ): CliModelStore {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || cli !== "codex") {
+  if (!normalized || !configId || !supportsConfigScopedCliModel(cli)) {
     return ensureCliModelStore(store);
   }
   const targetKey = normalized.toLowerCase();
@@ -951,6 +957,10 @@ export function deleteCliModelFromStore(
 
   if (normalizeCliModelName(nextStore.selectedByConfigId[configId])?.toLowerCase() === targetKey) {
     delete nextStore.selectedByConfigId[configId];
+  }
+
+  if (cli !== "codex") {
+    return ensureCliModelStore(nextStore);
   }
 
   const rolesByModel = nextStore.loopRolesByConfigId[configId];
@@ -1022,7 +1032,7 @@ export function moveCliModelInStore(
   configId: string | null
 ): { store: CliModelStore; movedModel: string | null } {
   const normalized = normalizeCliModelName(model);
-  if (!normalized || !configId || cli !== "codex") {
+  if (!normalized || !configId || !supportsConfigScopedCliModel(cli)) {
     return { store: ensureCliModelStore(store), movedModel: null };
   }
   const targetKey = normalized.toLowerCase();

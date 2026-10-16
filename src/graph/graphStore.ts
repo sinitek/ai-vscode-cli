@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import { CLI_LIST, type CliName } from "../cli/types";
+import { CLI_LIST, createCliRecord, type CliName } from "../cli/types";
 import { parseOrchestratorClarification } from "../orchestratorClarification";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
@@ -255,11 +255,7 @@ export function readGraphRunRecord(
 export function buildGraphRunIdsBySessionByCli(
   runs: readonly GraphRunSessionBinding[],
 ): Record<CliName, Map<string, string>> {
-  const selected: Record<CliName, Map<string, { id: string; timestamp: number }>> = {
-    codex: new Map(),
-    claude: new Map(),
-    opencode: new Map(),
-  };
+  const selected = createCliRecord(() => new Map<string, { id: string; timestamp: number }>());
 
   runs.forEach((run) => {
     const sessionId = typeof run.sessionId === "string" ? run.sessionId.trim() : "";
@@ -276,11 +272,9 @@ export function buildGraphRunIdsBySessionByCli(
     }
   });
 
-  return {
-    codex: new Map(Array.from(selected.codex.entries()).map(([sessionId, run]) => [sessionId, run.id])),
-    claude: new Map(Array.from(selected.claude.entries()).map(([sessionId, run]) => [sessionId, run.id])),
-    opencode: new Map(Array.from(selected.opencode.entries()).map(([sessionId, run]) => [sessionId, run.id])),
-  };
+  return createCliRecord((cli) => new Map(
+    Array.from(selected[cli].entries()).map(([sessionId, run]) => [sessionId, run.id]),
+  ));
 }
 
 export function findLatestGraphRun(

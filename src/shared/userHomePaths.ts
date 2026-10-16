@@ -7,6 +7,8 @@ export const OPENCODE_HOME_DIRECTORY_NAME = ".opencode";
 export const SINITEK_RUNTIME_DIR_NAME = ".sinitek_cli";
 export const AGENTS_HOME_DIRECTORY_NAME = ".agents";
 export const CODEX_HOME_DIR_ENV_KEY = "CODEX_HOME_DIR";
+export const GROK_HOME_DIRECTORY_NAME = ".grok";
+export const GROK_HOME_ENV_KEY = "GROK_HOME";
 
 const WINDOWS_ENV_VAR_PATTERN = /%([^%]+)%/g;
 
@@ -107,4 +109,21 @@ export function formatHomeDisplayPath(
     return path.join(os.homedir(), ...posixSegments);
   }
   return posixSegments.length === 0 ? "~" : `~/${posixSegments.join("/")}`;
+}
+
+export function resolveGrokHomeDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const configured = expandHomePath(env[GROK_HOME_ENV_KEY], { homeDir, env, platform });
+  return configured || path.join(homeDir, GROK_HOME_DIRECTORY_NAME);
+}
+
+export function resolveGrokConfigPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveGrokHomeDir(env, homeDir, platform), "config.toml");
 }

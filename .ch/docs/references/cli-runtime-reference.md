@@ -11,6 +11,7 @@
 | Codex | 交互式 + 一次性 | 支持 | `src/interactive/codexRunner.ts`、`src/cli/commandRunner.ts` |
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
 | OpenCode | one-shot / 并行 `opencode run --auto [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
+| Grok Build | 长驻 ACP `grok --no-auto-update agent stdio` | `loadSession` 为真时按 `sessionId/cwd/mcpServers` 续接，否则新建 ACP 会话并保留插件本地记录 | `src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/config/grokConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
 ## 2. 命令来源
@@ -20,12 +21,14 @@
 - `sinitek-cli-tools.commands.codex`
 - `sinitek-cli-tools.commands.claude`
 - `sinitek-cli-tools.commands.opencode`
+- `sinitek-cli-tools.commands.grok`
 
 参数来源：
 
 - `sinitek-cli-tools.args.codex`
 - `sinitek-cli-tools.args.claude`
 - `sinitek-cli-tools.args.opencode`
+- `sinitek-cli-tools.args.grok`
 
 命令拆分与解析边界集中在 `src/cli/commandResolution.ts`，执行路径由 `src/cli/commandRunner.ts` 复用：
 
@@ -35,6 +38,7 @@
 - Unix/macOS 下会优先尝试常见用户级 npm/pnpm bin 目录（如 `~/.npm-global/bin`、`PNPM_HOME`），降低用户级 CLI 命令被系统路径中旧版本抢占的概率
 - Windows 下额外尝试 npm 全局安装目录、官方 Codex 安装目录 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`、`%USERPROFILE%\.local\bin`、scoop shims、Volta bin 和 WinGet Links
 - Codex 用户级目录遵循 `CODEX_HOME` / `CODEX_HOME_DIR`，未设置时为当前用户目录下的 `.codex`（Windows 即 `%USERPROFILE%\.codex`）
+- Grok Build 用户配置是 `$GROK_HOME/config.toml`；未设置 `GROK_HOME` 时为 `~/.grok/config.toml`，Windows 为 `%USERPROFILE%\.grok\config.toml`。`~/.grok/settings.json` 与 `user-settings.json` 不是该 schema，插件不读取、迁移或删除其中的密钥。
 - macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
 
 ## 3. 交互模式真实行为
@@ -123,6 +127,18 @@
 - 思考力度按 active config id + 精确 `provider/model` + role 保存。非上述六档的旧值会在刷新时清除。切换 CLI、配置或模型不会沿用另一模型的选择。
 - 固定的 `thinkingModeOpencode` 和 `thinkingArgs.opencode.*` 设置已移除；Codex / Claude 的固定 ThinkingMode 和参数映射保持原行为。
 
+### Grok Build
+
+- 命令名是 `grok`。聊天区下拉和 `CLI_LIST` 都把 `grok` 追加在 Codex、Claude、OpenCode 之后，顺序固定为 `codex`、`claude`、`opencode`、`grok`。OpenCode 内部 id 仍是 `opencode`，可见名称保持不变，Gemini 仍保持移除。会话、模型存储、命令修复、面板状态、工作区设置、graph 和命令面板沿用这一份 `CLI_LIST`，不再维护排除 grok 的平行名单。宿主在 cli 为 grok 时启动已有 `GrokInteractiveRunner`。
+- 面板主路径对齐 Codex app-server：长驻进程，stdin/stdout 一行一条 JSON-RPC 2.0。复用 NDJSON 拆帧，保留字符串内的 U+2028/U+2029。不刮 TUI，也不把 `grok -p` 当聊天主路径。
+- 启动参数固定为 `grok --no-auto-update --permission-mode bypassPermissions agent <剩余净化参数> stdio`。`--no-auto-update` 在最前。`--permission-mode bypassPermissions` 是根命令标志，与 `--always-approve` / `--yolo` 同义，只保留一次，并且位于 `agent` 之前。`sinitek-cli-tools.args.grok` 里如果仍有 `--always-approve`、`--yolo` 或 `--permission-mode`，从 agent 参数剥离，不叠两个审批开关。其它用户 agent 参数仍放在 `agent` 与 `stdio` 之间。禁止把 `--dangerously-bypass-approvals-and-sandbox` 或 `--dangerously-skip-permissions` 传给 grok。`stdio` 是最后一个 positional。选中模型时在 `agent` 之后、`stdio` 之前追加 `--model <id>`；空模型省略 `--model`。模型不写入 `args.grok` 或 `~/.grok/config.toml`。
+- `initialize` 使用 `protocolVersion: 1`，并且 `clientInfo` 必须同时带 `name` 和 `version`；缺 `version` 时 grok 1.0.60 返回 `Invalid params` / `missing field version`。若 `$GROK_HOME/config.toml`（默认 `~/.grok/config.toml`）里当前默认模型的 `api_key` 非空，或 `env_key` 指向的环境变量非空，则不调用 `authenticate`，直接 `session/new`。官方自定义模型用这份密钥访问 `base_url`，不走 `grok.com`。否则只从当次 `authMethods` 里选择：存在非空 `XAI_API_KEY` 且提供 `xai.api_key` 时用它，否则用 `cached_token`，再否则用 `grok.com`；都没有则失败并提示 `grok login` 或设置 `XAI_API_KEY`。`authenticate` 只传 `methodId` 和 `_meta.headless`，密钥不进入 RPC，也不从 Codex `auth.json` 复制。
+- 随后 `session/new` 传 `cwd` 与空 `mcpServers`。只有 `agentCapabilities.loadSession` 为真，且已有会话 id 不是 `local_` 前缀时，才用映射到的 ACP session id 调用 `session/load`，参数仅 `sessionId`、`cwd`、`mcpServers`。`session/new` 或 `session/load` 返回的 ACP session id 会接管原来的 `local_` 会话，下一轮继续这个 id。`session/load` 的 id 可能只在 `_meta.sessionId`，不能只看顶层 `sessionId`。同一进程里的后续 prompt 复用已有 runner，不再重新 `initialize`。用户正文走 `session/prompt`，`prompt` 为 `[{type:text,text}]`。有正文且 `session/prompt` 的 `stopReason` 为 `end_turn`、`end`、`stop` 或空时，按正常完成结束，不要求正文里再写 `[final_answer]`。`cancelled` 和 `refusal` 不当成完成。这些 `session/update` 进入现有 Codex 气泡通道，不新增气泡组件。`agent_message_chunk` 的 `content.text` 走 assistant 正文气泡，同一条回复的连续 chunk 合并到同一个气泡。`agent_thought_chunk` 走 `onTrace` kind `thinking`，由 `message.kind==="thinking"` 的现有思考气泡渲染。`tool_call` 与 `tool_call_update` 写成以 `tool` 开头且包含 `status` 的既有 tool trace，供现有工具气泡识别。思考和工具不混入正文气泡。空 chunk 不产生空气泡。每条 `session/update` 和 `session/prompt` 的结果另外通过与 Codex 相同的 `rawStreamDelta` 回放：`stream` 为 `event`，带当前 `tabId`，正文做 `normalizeRawStreamContent`，末尾没有换行则补一个。解析失败、其它请求配对和客户端应答不回放。`session/prompt` 的 result 仍只是完成元数据，不能变成正文。
+- Grok 的 yolo 模式对应 OpenCode 的 `--auto`。命令行使用根标志 `--permission-mode bypassPermissions`（与 `--always-approve` / `--yolo` 同义），并且 `session/new` 与 `session/load` 都带 `_meta.yoloMode: true`。`initialize.clientCapabilities.terminal` 和 `fs.readTextFile/writeTextFile` 必须为 false。声明 `terminal: true` 时，grok 1.0.60 不在本机执行命令，而是向客户端发 `terminal/create`；宿主答不了或应答形状不对时，curl 这类工具失败。关掉这两项能力后，yolo 会话由 grok 自己执行终端和文件工具。
+- 回合停止发送文档中的 `session/cancel`。进程停止、spawn 失败和释放仍先关 stdin，再 `SIGTERM`，最后 `SIGKILL`，并清理进程组；Windows 走现有等价清理。命令解析、`~` / `%USERPROFILE%` 展开和用户级 bin 目录复用 `commandResolution`。
+- 聊天区 `#thinkingMode` 在 grok 下的选项顺序是 `off`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。已保存的 `max` 或 `ultra` 保持原值，不改写成 `high`。下发值只使用 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。插件的 `off` 映射为 `none`，`on` 映射为 `medium`，`ultra` 映射为 `max`，`xhigh` 仍是 `xhigh`，`max` 仍是 `max`，不把 `on` / `off` / `ultra` 原样传给 grok。只有广告了 `reasoning_effort` 且映射后的值在允许列表中时才调用 `session/set_config_option`；不在允许列表或未广告时不发送、不自动降级、不加 `--reasoning-effort`。`initialize` 上的同名字段只作为旧响应的兼容回退。
+- 配置页在 Claude、Codex、OpenCode 之后追加 Grok 卡片，不调整前三个平台的顺序，也不恢复 Gemini。空配置顺序是 `[]`，空 active id 是 `null`；读取缺少 `grok` 键的旧存档时补空，并保留原来三个平台的顺序。文本模式编辑完整 `config.toml`，非法 TOML 或空文本不覆盖上一份有效内容。可视化复用 Codex 配置页的行、label、问号 tooltip、对齐和主题语义色，只映射 `models.default`、`models.default_reasoning_effort` 和 `model.<id>` 的 `model`、`name`、`base_url`、`api_backend`（仅 `chat_completions`、`responses`、`messages`）、`api_key`、`env_key`、`context_window`、`reasoning_summary`（仅 `none`、`auto`、`concise`、`detailed`）、`compaction_at_tokens`。未展示字段保留。不写 `service_tier`、`disable_response_storage`、`wire_api` 或 `requires_openai_auth`。`api_key` 是 `[model.<id>]` 的密钥本身，不知道时写空字符串，不从 Codex `auth.json` 复制；`env_key` 只表示环境变量名。内容为空、加载中、解析错误或字段无效时保存按钮禁用。
+
 ### Gemini
 
 - Gemini 已从当前 AI 对话和配置中心支持范围移除
@@ -150,6 +166,7 @@
 - Codex：映射到 reasoning effort / 相关参数，支持 `low`、`medium`、`high`、`xhigh`、`max`
 - Claude：优先映射到 Claude Code `--effort`；旧版本兼容回退到 `maxThinkingTokens` 和 SDK 选项
 - OpenCode：按插件通用 CLI 参数拼装接入；当前通过 `opencode run` one-shot / 并行路径执行，不声明交互 Runner 支持
+- Grok Build：只发送官方档位 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`；`off -> none`、`on -> medium`、`ultra -> max`
 
 ### interactive mode
 

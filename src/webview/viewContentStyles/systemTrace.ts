@@ -230,11 +230,11 @@ export const SYSTEM_TRACE_STYLES = `      /* System & Trace Messages */
         font-size: 11px;
         font-weight: 600;
         letter-spacing: 0.3px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: var(--trace-title-bg, var(--vscode-badge-background));
-        color: var(--trace-title-fg, var(--vscode-badge-foreground));
-        border: 1px solid var(--trace-title-border, transparent);
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--trace-title-fg, var(--vscode-foreground));
+        border: 0;
         text-transform: uppercase;
       }
       .trace-command-tag {

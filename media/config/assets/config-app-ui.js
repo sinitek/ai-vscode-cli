@@ -6,12 +6,14 @@ const DEFAULT_RUN_COMMANDS = {
     claude: "claude --dangerously-skip-permissions",
     codex: "codex --dangerously-bypass-approvals-and-sandbox",
     opencode: "opencode --auto",
+    grok: "grok --no-auto-update agent --always-approve stdio",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
     claude: "npm install -g @anthropic-ai/claude-code",
     codex: "npm i -g @openai/codex",
     opencode: "npm install -g opencode-ai",
+    grok: "curl -fsSL https://x.ai/cli/install.sh | bash",
   };
 
 const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS = 500;
@@ -56,6 +58,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       $ = c.useMemo(() => e.filter((k) => k.platform === "claude"), [e]),
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
       O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
+      grokConfigs = c.useMemo(() => e.filter((k) => k.platform === "grok"), [e]),
       exportSelectedCount = c.useMemo(
         () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
@@ -64,7 +67,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       exportAnySelected = exportSelectedCount > 0,
       I = (k) => {
         const L =
-          k === "claude" ? "Claude" : k === "codex" ? "Codex" : "OpenCode";
+          k === "claude" ? "Claude" : k === "codex" ? "Codex" : k === "grok" ? "Grok" : "OpenCode";
         xr.confirm({
           title: `添加${L}配置`,
           content: be.jsx(zi, {
@@ -94,6 +97,13 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	                      content: "{}",
 	                      openCodeSkills: [],
 	                    }))
+                  : k === "grok"
+                    ? (T = await l({
+                        name: U,
+                        platform: k,
+                        content: "",
+                        configContent: "",
+                      }))
                   : (T = await l({
                       name: U,
                       platform: k,
@@ -126,7 +136,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           Kt.error("复制失败，请手动复制");
         }
       },
-      P = (k) => (k === "claude" ? $ : k === "codex" ? w : O),
+      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : O),
       _ = (k) => {
         x(k);
       },
@@ -179,6 +189,11 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	                    content: L.content,
 	                    openCodeSkills: L.openCodeSkills ?? [],
 	                  })
+                : L.platform === "grok"
+                  ? await applyConfigItem(L.platform, {
+                      content: L.configContent || L.content || "",
+                      configContent: L.configContent || L.content || "",
+                    })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
                     authContent: L.authContent,
@@ -212,7 +227,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       V = async (k, L) => {
         k.stopPropagation();
         const G = [
-          { label: L.platform === "claude" ? "Claude" : L.platform === "codex" ? "Codex" : "OpenCode", value: L.platform },
+          { label: L.platform === "claude" ? "Claude" : L.platform === "codex" ? "Codex" : L.platform === "grok" ? "Grok" : "OpenCode", value: L.platform },
         ];
         const Y = G[0].label;
         let copyTargetPlatform = L.platform;
@@ -311,7 +326,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	            platform: G.platform,
 	            content: G.content,
 	            mcpContent: G.mcpContent,
-            envContent: G.platform === "codex" || G.platform === "opencode" ? void 0 : G.envContent,
+            envContent: G.platform === "codex" || G.platform === "opencode" || G.platform === "grok" ? void 0 : G.envContent,
 	            configContent: G.configContent,
 	            authContent: G.authContent,
 	          })),
@@ -376,6 +391,15 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             authContent: k.authContent ?? "{}",
           };
         }
+        if (L === "grok") {
+          const grokContent = k.configContent ?? k.content ?? "";
+          return {
+            name: G,
+            platform: L,
+            content: grokContent,
+            configContent: grokContent,
+          };
+        }
         return null;
       },
       handleImportFile = async (k) => {
@@ -421,7 +445,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       },
       H = (k, L) => {
         const G =
-            k === "claude" ? "Claude" : k === "codex" ? "Codex" : "OpenCode",
+            k === "claude" ? "Claude" : k === "codex" ? "Codex" : k === "grok" ? "Grok" : "OpenCode",
           U = DEFAULT_RUN_COMMANDS[k],
           T = DEFAULT_INSTALL_COMMANDS[k];
         return be.jsx(aa, {
@@ -593,6 +617,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         H("claude", $),
         H("codex", w),
         H("opencode", O),
+        H("grok", grokConfigs),
         be.jsx(xr, {
           title: "导出配置",
           open: exportOpen,
@@ -689,7 +714,9 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                                           ? "Claude"
                                           : k.platform === "codex"
                                             ? "Codex"
-                                            : "OpenCode",
+                                            : k.platform === "grok"
+                                              ? "Grok"
+                                              : "OpenCode",
                                     }),
                                   ],
                                 }),
@@ -842,7 +869,9 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                                       ? "Claude"
                                       : k.platform === "codex"
                                         ? "Codex"
-                                        : "OpenCode",
+                                        : k.platform === "grok"
+                                          ? "Grok"
+                                          : "OpenCode",
                                 }),
                               ],
                             },
@@ -4000,6 +4029,319 @@ const CodexConfigVisualEditorUtils = Object.freeze({
 // CODEX_VISUAL_EDITOR_UTILS_END
 
 const { TextArea: Qa } = zi;
+const GROK_VISUAL_FIELD_IDS = Object.freeze([
+  "models.default",
+  "models.default_reasoning_effort",
+  "model.model",
+  "model.name",
+  "model.base_url",
+  "model.api_key",
+  "model.api_backend",
+  "model.env_key",
+  "model.context_window",
+  "model.reasoning_summary",
+  "model.compaction_at_tokens",
+]);
+const GROK_VISUAL_REASONING_EFFORTS = Object.freeze([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+const GROK_VISUAL_API_BACKENDS = Object.freeze([
+  "chat_completions",
+  "responses",
+  "messages",
+]);
+const GROK_VISUAL_REASONING_SUMMARIES = Object.freeze([
+  "none",
+  "auto",
+  "concise",
+  "detailed",
+]);
+const GROK_VISUAL_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const GROK_EMPTY_TEXT_ERROR = "空文本不会覆盖上一份有效内容。";
+
+const grokVisualIsTable = (value) =>
+  !!value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+
+const grokVisualClone = (value) => {
+  if (Array.isArray(value)) return value.map(grokVisualClone);
+  if (!grokVisualIsTable(value)) return value;
+  const next = {};
+  Object.keys(value).forEach((key) => {
+    next[key] = grokVisualClone(value[key]);
+  });
+  return next;
+};
+
+const grokVisualModelIds = (source) => {
+  const table = grokVisualIsTable(source?.model) ? source.model : {};
+  return Object.keys(table).filter((id) => grokVisualIsTable(table[id]));
+};
+
+const grokVisualPickModelId = (source) => {
+  const ids = grokVisualModelIds(source);
+  const preferred =
+    grokVisualIsTable(source?.models) && typeof source.models.default === "string"
+      ? source.models.default
+      : "";
+  if (preferred && ids.includes(preferred)) return preferred;
+  return ids[0] || preferred || "";
+};
+
+const grokVisualReadString = (value) => (typeof value === "string" ? value : "");
+
+const grokVisualReadInteger = (value) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? String(value) : "";
+
+const grokVisualReadModelFields = (source, modelId) => {
+  const table = grokVisualIsTable(source?.model) ? source.model : {};
+  const model = grokVisualIsTable(table[modelId]) ? table[modelId] : {};
+  return {
+    model: grokVisualReadString(model.model),
+    name: grokVisualReadString(model.name),
+    baseUrl: grokVisualReadString(model.base_url),
+    apiKey: grokVisualReadString(model.api_key),
+    apiBackend: grokVisualReadString(model.api_backend),
+    envKey: grokVisualReadString(model.env_key),
+    contextWindow: grokVisualReadInteger(model.context_window),
+    reasoningSummary: grokVisualReadString(model.reasoning_summary),
+    compactionAtTokens: grokVisualReadInteger(model.compaction_at_tokens),
+  };
+};
+
+const grokVisualValidateSource = (source) => {
+  if (!grokVisualIsTable(source)) return "Grok 配置不可用。";
+  const models = source.models;
+  if (models !== void 0 && !grokVisualIsTable(models)) return "models 必须是表。";
+  if (grokVisualIsTable(models)) {
+    const effort = models.default_reasoning_effort;
+    if (
+      effort !== void 0 &&
+      (typeof effort !== "string" || !GROK_VISUAL_REASONING_EFFORTS.includes(effort))
+    ) {
+      return "default_reasoning_effort 无效。";
+    }
+  }
+  const modelTable = source.model;
+  if (modelTable !== void 0 && !grokVisualIsTable(modelTable)) return "model 必须是表。";
+  if (!grokVisualIsTable(modelTable)) return "";
+  for (const value of Object.values(modelTable)) {
+    if (!grokVisualIsTable(value)) continue;
+    if (
+      value.api_backend !== void 0 &&
+      (typeof value.api_backend !== "string" || !GROK_VISUAL_API_BACKENDS.includes(value.api_backend))
+    ) {
+      return "api_backend 无效。";
+    }
+    if (
+      value.reasoning_summary !== void 0 &&
+      (typeof value.reasoning_summary !== "string" ||
+        !GROK_VISUAL_REASONING_SUMMARIES.includes(value.reasoning_summary))
+    ) {
+      return "reasoning_summary 无效。";
+    }
+    if (value.api_key !== void 0 && typeof value.api_key !== "string") {
+      return "api_key 必须是字符串。";
+    }
+    if (
+      value.env_key !== void 0 &&
+      (typeof value.env_key !== "string" || !GROK_VISUAL_ENV_KEY_PATTERN.test(value.env_key))
+    ) {
+      return "env_key 只能是环境变量名。";
+    }
+    if (
+      value.context_window !== void 0 &&
+      !(typeof value.context_window === "number" && Number.isInteger(value.context_window) && value.context_window >= 0)
+    ) {
+      return "context_window 必须是非负整数。";
+    }
+    if (
+      value.compaction_at_tokens !== void 0 &&
+      !(
+        typeof value.compaction_at_tokens === "number" &&
+        Number.isInteger(value.compaction_at_tokens) &&
+        value.compaction_at_tokens >= 0
+      )
+    ) {
+      return "compaction_at_tokens 必须是非负整数。";
+    }
+  }
+  return "";
+};
+
+const grokVisualCreateState = (content) => {
+  const parsed = grokVisualParseContent(content);
+  return parsed.ok ? parsed.state : null;
+};
+
+const grokVisualParseContent = (content) => {
+  if (!String(content || "").trim()) {
+    return { ok: false, empty: true, error: GROK_EMPTY_TEXT_ERROR, state: null };
+  }
+  try {
+    const source = g1(String(content));
+    const selectedModelId = grokVisualPickModelId(source);
+    const models = grokVisualIsTable(source.models) ? source.models : {};
+    return {
+      ok: true,
+      state: {
+        source,
+        selectedModelId,
+        defaultModel: grokVisualReadString(models.default),
+        defaultReasoningEffort: grokVisualReadString(models.default_reasoning_effort),
+        ...grokVisualReadModelFields(source, selectedModelId),
+        fieldError: grokVisualValidateSource(source),
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      empty: false,
+      error: error instanceof Error ? error.message : "非法 TOML。",
+      state: null,
+    };
+  }
+};
+
+const grokVisualWriteOptionalString = (target, key, value) => {
+  if (!String(value || "").trim()) {
+    delete target[key];
+    return;
+  }
+  target[key] = String(value).trim();
+};
+
+const grokVisualWriteOptionalInteger = (target, key, value) => {
+  if (!String(value || "").trim()) {
+    delete target[key];
+    return "";
+  }
+  if (!/^\d+$/.test(String(value).trim())) return `${key} 必须是非负整数。`;
+  target[key] = Number(String(value).trim());
+  return "";
+};
+
+const grokVisualUpdateState = (state, patch) => {
+  if (!state || !grokVisualIsTable(state.source)) return state;
+  const source = grokVisualClone(state.source);
+  const models = grokVisualIsTable(source.models) ? { ...source.models } : {};
+  if (Object.prototype.hasOwnProperty.call(patch, "defaultModel")) {
+    grokVisualWriteOptionalString(models, "default", patch.defaultModel);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "defaultReasoningEffort")) {
+    grokVisualWriteOptionalString(models, "default_reasoning_effort", patch.defaultReasoningEffort);
+  }
+  if (Object.keys(models).length) source.models = models;
+  else delete source.models;
+  let selectedModelId = Object.prototype.hasOwnProperty.call(patch, "selectedModelId")
+    ? String(patch.selectedModelId || "")
+    : state.selectedModelId || "";
+  const modelPatchKeys = [
+    "model",
+    "name",
+    "baseUrl",
+    "apiKey",
+    "apiBackend",
+    "envKey",
+    "contextWindow",
+    "reasoningSummary",
+    "compactionAtTokens",
+  ];
+  const editsModel = modelPatchKeys.some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+  if (!selectedModelId && editsModel) {
+    selectedModelId = grokVisualReadString(models.default) || grokVisualReadString(patch.model);
+  }
+  if (editsModel || Object.prototype.hasOwnProperty.call(patch, "selectedModelId")) {
+    const modelTable = grokVisualIsTable(source.model) ? { ...source.model } : {};
+    if (selectedModelId) {
+      const current = grokVisualIsTable(modelTable[selectedModelId])
+        ? { ...modelTable[selectedModelId] }
+        : {};
+      const hadApiKey = Object.prototype.hasOwnProperty.call(current, "api_key");
+      const nextFields = {
+        ...grokVisualReadModelFields(source, selectedModelId),
+        ...patch,
+      };
+      grokVisualWriteOptionalString(current, "model", nextFields.model);
+      grokVisualWriteOptionalString(current, "name", nextFields.name);
+      grokVisualWriteOptionalString(current, "base_url", nextFields.baseUrl);
+      if (hadApiKey || Object.prototype.hasOwnProperty.call(patch, "apiKey")) {
+        current.api_key = String(nextFields.apiKey ?? "").trim();
+      }
+      grokVisualWriteOptionalString(current, "api_backend", nextFields.apiBackend);
+      grokVisualWriteOptionalString(current, "env_key", nextFields.envKey);
+      grokVisualWriteOptionalString(current, "reasoning_summary", nextFields.reasoningSummary);
+      const contextError = grokVisualWriteOptionalInteger(current, "context_window", nextFields.contextWindow);
+      const compactionError = grokVisualWriteOptionalInteger(
+        current,
+        "compaction_at_tokens",
+        nextFields.compactionAtTokens,
+      );
+      if (Object.keys(current).length) modelTable[selectedModelId] = current;
+      else delete modelTable[selectedModelId];
+      if (Object.keys(modelTable).length) source.model = modelTable;
+      else delete source.model;
+      const fieldError = contextError || compactionError || grokVisualValidateSource(source);
+      const readback = grokVisualReadModelFields(source, selectedModelId);
+      return {
+        source,
+        selectedModelId,
+        defaultModel: grokVisualReadString(grokVisualIsTable(source.models) ? source.models.default : ""),
+        defaultReasoningEffort: grokVisualReadString(
+          grokVisualIsTable(source.models) ? source.models.default_reasoning_effort : "",
+        ),
+        ...readback,
+        contextWindow: contextError ? String(nextFields.contextWindow || "") : readback.contextWindow,
+        compactionAtTokens: compactionError
+          ? String(nextFields.compactionAtTokens || "")
+          : readback.compactionAtTokens,
+        fieldError,
+      };
+    }
+  }
+  const readback = grokVisualReadModelFields(source, selectedModelId);
+  return {
+    source,
+    selectedModelId,
+    defaultModel: grokVisualReadString(grokVisualIsTable(source.models) ? source.models.default : ""),
+    defaultReasoningEffort: grokVisualReadString(
+      grokVisualIsTable(source.models) ? source.models.default_reasoning_effort : "",
+    ),
+    ...readback,
+    fieldError: grokVisualValidateSource(source),
+  };
+};
+
+const grokVisualSerializeState = (state) => {
+  if (!state || !grokVisualIsTable(state.source)) {
+    return { ok: false, error: "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。" };
+  }
+  if (state.fieldError) return { ok: false, error: state.fieldError };
+  const fieldError = grokVisualValidateSource(state.source);
+  if (fieldError) return { ok: false, error: fieldError };
+  try {
+    const content = Ik(state.source);
+    if (!String(content || "").trim()) return { ok: false, error: GROK_EMPTY_TEXT_ERROR };
+    return { ok: true, content };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "无法序列化 TOML。" };
+  }
+};
+
+const GrokConfigVisualEditorUtils = Object.freeze({
+  fieldIds: GROK_VISUAL_FIELD_IDS,
+  parseContent: grokVisualParseContent,
+  createState: grokVisualCreateState,
+  updateState: grokVisualUpdateState,
+  serializeState: grokVisualSerializeState,
+  validateSource: grokVisualValidateSource,
+});
+
 const ps = {
     claude: {
       settings: `{
@@ -4090,6 +4432,23 @@ requires_openai_auth = true`,
   }
 }`,
 	    },
+    grok: {
+      config: `[models]
+default = "grok-4.7-kedaya"
+default_reasoning_effort = "xhigh"
+
+[model."grok-4.7-kedaya"]
+model = "grok-4.7-kedaya"
+name = "grok-4.7-kedaya"
+base_url = "http://127.0.0.1:33391/v1"
+api_key = ""
+api_backend = "responses"
+env_key = "XAI_API_KEY"
+context_window = 500000
+reasoning_summary = "auto"
+compaction_at_tokens = 450000
+`,
+    },
 	  };
 
 const Nk = {
@@ -4103,6 +4462,7 @@ const Nk = {
 	    },
     "codex-config": { title: "Codex config.toml", content: ps.codex.config },
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
+    "grok-config": { title: "Grok config.toml", content: ps.grok.config },
   };
 
 // Config editor panel
@@ -4113,6 +4473,7 @@ const ConfigEditorPanel = () => {
         getConfigById: n,
         updateConfig: r,
         getActiveConfigId: o,
+        isLoading: configListLoading,
       } = useConfigStore(),
       [l, s] = c.useState(""),
       [u, f] = c.useState(""),
@@ -4152,6 +4513,11 @@ const ConfigEditorPanel = () => {
         codexVisualCreateState(""),
       ),
       [codexVisualError, setCodexVisualError] = c.useState(""),
+      [grokEditorMode, setGrokEditorMode] = c.useState("toml"),
+      [grokTextDraft, setGrokTextDraft] = c.useState(""),
+      [grokValidContent, setGrokValidContent] = c.useState(""),
+      [grokVisualState, setGrokVisualState] = c.useState(null),
+      [grokVisualError, setGrokVisualError] = c.useState(""),
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
       O = e ? n(e, t || void 0) : null,
@@ -4363,7 +4729,12 @@ const ConfigEditorPanel = () => {
           setOpenCodeVisualError(""),
           setCodexEditorMode("toml"),
           setCodexVisualState(codexVisualCreateState("")),
-          setCodexVisualError(""));
+          setCodexVisualError(""),
+          setGrokEditorMode("toml"),
+          setGrokTextDraft(""),
+          setGrokValidContent(""),
+          setGrokVisualState(null),
+          setGrokVisualError(""));
         return;
       }
       if (O.platform === "claude") {
@@ -4380,6 +4751,13 @@ const ConfigEditorPanel = () => {
         H.ok
           ? (setOpenCodeVisualState(H.state), setOpenCodeVisualError(""))
           : (setOpenCodeVisualState(null), setOpenCodeVisualError(H.error));
+      } else if (O.platform === "grok") {
+        const W = O.configContent || O.content || "";
+        const H = grokVisualParseContent(W);
+        setGrokTextDraft(W), setGrokEditorMode("toml"), s(""), v(""), h("");
+        H.ok && !H.state.fieldError
+          ? (setGrokVisualState(H.state), setGrokValidContent(W), setGrokVisualError(""))
+          : (setGrokVisualState(H.state), setGrokValidContent(""), setGrokVisualError(H.ok ? H.state.fieldError : H.error));
       } else {
         const W = O.configContent || "",
           H = codexVisualParseContent(W);
@@ -4406,6 +4784,19 @@ const ConfigEditorPanel = () => {
         ? (v(W.content), setCodexVisualError(""))
         : setCodexVisualError(W.error);
     }, [codexEditorMode, codexVisualState]);
+    c.useEffect(() => {
+      if (grokEditorMode !== "visual" || !grokVisualState) return;
+      if (grokVisualState.fieldError) {
+        setGrokVisualError(grokVisualState.fieldError);
+        return;
+      }
+      const W = grokVisualSerializeState(grokVisualState);
+      if (!W.ok || !String(W.content || "").trim()) {
+        setGrokVisualError(W.ok ? GROK_EMPTY_TEXT_ERROR : W.error);
+        return;
+      }
+      setGrokTextDraft(W.content), setGrokValidContent(W.content), setGrokVisualError("");
+    }, [grokEditorMode, grokVisualState]);
     c.useEffect(() => {
         setMcpHealthItems([]),
         setMcpHealthLoading(!1),
@@ -4643,6 +5034,63 @@ const ConfigEditorPanel = () => {
         }
         v(H.content), setCodexVisualError(""), setCodexEditorMode("toml");
       },
+      syncGrokVisualContent = (W, H = "visual", k = !1) => {
+        if (!String(W || "").trim()) {
+          setGrokVisualError(GROK_EMPTY_TEXT_ERROR), k && Kt.error(GROK_EMPTY_TEXT_ERROR);
+          return !1;
+        }
+        const L = grokVisualParseContent(W);
+        if (!L.ok || L.state.fieldError) {
+          const U = L.ok ? L.state.fieldError : L.error;
+          setGrokVisualError(U), k && Kt.error(U);
+          return !1;
+        }
+        return (
+          setGrokTextDraft(W),
+          setGrokValidContent(W),
+          setGrokVisualState(L.state),
+          setGrokVisualError(""),
+          setGrokEditorMode(H),
+          !0
+        );
+      },
+      onGrokTextChange = (W) => {
+        setGrokTextDraft(W);
+        if (!String(W || "").trim()) {
+          setGrokVisualError(GROK_EMPTY_TEXT_ERROR);
+          return;
+        }
+        const H = grokVisualParseContent(W);
+        if (!H.ok) {
+          setGrokVisualError(H.error);
+          return;
+        }
+        setGrokVisualState(H.state);
+        if (H.state.fieldError) {
+          setGrokVisualError(H.state.fieldError);
+          return;
+        }
+        setGrokValidContent(W), setGrokVisualError("");
+      },
+      switchGrokEditorMode = (W) => {
+        if (W === grokEditorMode) return;
+        if (W === "visual") {
+          syncGrokVisualContent(grokTextDraft, "visual", !0);
+          return;
+        }
+        if (!grokVisualState || grokVisualState.fieldError) {
+          const H = grokVisualState?.fieldError || grokVisualError || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。";
+          setGrokVisualError(H), Kt.error(H);
+          return;
+        }
+        const H = grokVisualSerializeState(grokVisualState);
+        if (!H.ok || !String(H.content || "").trim()) {
+          const k = H.ok ? GROK_EMPTY_TEXT_ERROR : H.error;
+          setGrokVisualError(k), Kt.error(k);
+          return;
+        }
+        setGrokTextDraft(H.content), setGrokValidContent(H.content), setGrokVisualError(""), setGrokEditorMode("toml");
+      },
       N = (W) => y(W),
       z = () => y(null),
       D = () => {
@@ -4659,6 +5107,9 @@ const ConfigEditorPanel = () => {
               break;
             case "codex-auth":
               h(I.content);
+              break;
+            case "grok-config":
+              syncGrokVisualContent(I.content, "visual", !0);
               break;
           }
           (Kt.success("已导入范例内容，请确认后保存"), z());
@@ -4849,6 +5300,41 @@ const ConfigEditorPanel = () => {
           h(W);
           Kt.success("保存成功");
           await A({ configContent: m, authContent: W, codexSkills: C });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      grokSaveDisabled =
+        configListLoading ||
+        !String(grokTextDraft || "").trim() ||
+        Boolean(grokVisualError) ||
+        (grokEditorMode === "visual" && (!grokVisualState || Boolean(grokVisualState.fieldError))),
+      saveGrokConfigCard = async () => {
+        if (!O || O.platform !== "grok") {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        if (grokSaveDisabled) return;
+        try {
+          let W = grokValidContent;
+          if (grokEditorMode === "visual") {
+            const H = grokVisualSerializeState(grokVisualState);
+            if (!H.ok || !String(H.content || "").trim()) {
+              const k = H.ok ? GROK_EMPTY_TEXT_ERROR : H.error;
+              setGrokVisualError(k), Kt.error(k);
+              return;
+            }
+            W = H.content;
+          } else if (!String(grokTextDraft || "").trim() || grokTextDraft !== grokValidContent) {
+            setGrokVisualError(grokVisualError || GROK_EMPTY_TEXT_ERROR);
+            return;
+          }
+          await r(O.id, { content: W, configContent: W });
+          setGrokTextDraft(W), setGrokValidContent(W);
+          const H = grokVisualParseContent(W);
+          H.ok && !H.state.fieldError && setGrokVisualState(H.state);
+          Kt.success("保存成功");
+          await A({ content: W, configContent: W });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -6131,6 +6617,140 @@ const ConfigEditorPanel = () => {
             k,
           ],
         }),
+      renderGrokVisualEditor = () => {
+        const grokVisualFieldIds = GROK_VISUAL_FIELD_IDS;
+        if (!grokVisualState)
+          return be.jsx("div", {
+            "data-grok-fields": grokVisualFieldIds.join(" "),
+            style: {
+              padding: "8px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              color: "var(--error-color)",
+            },
+            children: grokVisualError || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。",
+          });
+        const modelIds = grokVisualModelIds(grokVisualState.source),
+          selectedId = grokVisualState.selectedModelId || "",
+          gridStyle = {
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+            gap: "5px",
+          },
+          blankOption = { value: "", label: "跟随默认" };
+        return be.jsxs("div", {
+          "data-grok-fields": grokVisualFieldIds.join(" "),
+          style: { display: "flex", flexDirection: "column", gap: "6px", minHeight: 420 },
+          children: [
+            renderCodexSection(
+              "模型",
+              "编辑 config.toml 中已有字段；未展示的 TOML 字段会保留。",
+              be.jsxs("div", {
+                style: gridStyle,
+                children: [
+                  renderCodexField(
+                    "默认模型",
+                    grokVisualState.defaultModel,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultModel: W }) : H)),
+                    "grok-4.7-kedaya",
+                    { help: "写入 [models].default。" },
+                  ),
+                  renderCodexSelect(
+                    "默认思考档",
+                    grokVisualState.defaultReasoningEffort,
+                    (W) =>
+                      setGrokVisualState((H) =>
+                        H ? grokVisualUpdateState(H, { defaultReasoningEffort: W }) : H,
+                      ),
+                    [blankOption, ...GROK_VISUAL_REASONING_EFFORTS.map((W) => ({ value: W, label: W }))],
+                    { help: "只允许 none、minimal、low、medium、high、xhigh、max。" },
+                  ),
+                  renderCodexSelect(
+                    "当前模型",
+                    selectedId,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { selectedModelId: W }) : H)),
+                    [
+                      blankOption,
+                      ...Array.from(new Set([...modelIds, selectedId].filter(Boolean))).map((W) => ({
+                        value: W,
+                        label: W,
+                      })),
+                    ],
+                    { help: "选择要编辑的 [model.<id>]，其他模型原样保留。" },
+                  ),
+                  renderCodexField(
+                    "模型 ID",
+                    grokVisualState.model,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { model: W }) : H)),
+                    "model",
+                    { help: "写入 [model.<id>].model。" },
+                  ),
+                  renderCodexField(
+                    "显示名称",
+                    grokVisualState.name,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { name: W }) : H)),
+                    "name",
+                    { help: "写入 [model.<id>].name。" },
+                  ),
+                  renderCodexField(
+                    "接口地址",
+                    grokVisualState.baseUrl,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { baseUrl: W }) : H)),
+                    "https://api.example.com/v1",
+                    { help: "写入 [model.<id>].base_url。" },
+                  ),
+                  renderCodexField(
+                    "API Key",
+                    grokVisualState.apiKey,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiKey: W }) : H)),
+                    "留空",
+                    { help: "写入 [model.<id>].api_key。这是密钥本身；不知道时留空，不从 Codex auth.json 复制。" },
+                  ),
+                  renderCodexSelect(
+                    "接口协议",
+                    grokVisualState.apiBackend,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiBackend: W }) : H)),
+                    [blankOption, ...GROK_VISUAL_API_BACKENDS.map((W) => ({ value: W, label: W }))],
+                    { help: "只允许 chat_completions、responses、messages。" },
+                  ),
+                  renderCodexField(
+                    "环境变量名",
+                    grokVisualState.envKey,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { envKey: W }) : H)),
+                    "XAI_API_KEY",
+                    { help: "只写环境变量名，不写密钥值。" },
+                  ),
+                  renderCodexField(
+                    "上下文窗口",
+                    grokVisualState.contextWindow,
+                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { contextWindow: W }) : H)),
+                    "500000",
+                    { help: "非负整数 token 上限。" },
+                  ),
+                  renderCodexSelect(
+                    "思考摘要",
+                    grokVisualState.reasoningSummary,
+                    (W) =>
+                      setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { reasoningSummary: W }) : H)),
+                    [blankOption, ...GROK_VISUAL_REASONING_SUMMARIES.map((W) => ({ value: W, label: W }))],
+                    { help: "只允许 none、auto、concise、detailed。" },
+                  ),
+                  renderCodexField(
+                    "压缩阈值",
+                    grokVisualState.compactionAtTokens,
+                    (W) =>
+                      setGrokVisualState((H) =>
+                        H ? grokVisualUpdateState(H, { compactionAtTokens: W }) : H,
+                      ),
+                    "450000",
+                    { help: "非负整数 token 阈值。" },
+                  ),
+                ],
+              }),
+            ),
+          ],
+        });
+      },
       renderCodexVisualEditor = () => {
         if (!codexVisualState)
           return be.jsx("div", {
@@ -7084,6 +7704,127 @@ const ConfigEditorPanel = () => {
                 B(),
               ],
             })
+          : O.platform === "grok"
+            ? be.jsxs("div", {
+                className: "config-editor-shell config-editor-grok",
+                style: {
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: "8px",
+                  minHeight: 0,
+                },
+                children: [
+                  be.jsx(aa, {
+                    title: renderConfigEditorCardTitle(`编辑配置: ${O.name}`, [
+                      {
+                        value: "visual",
+                        label: "可视化",
+                        active: grokEditorMode === "visual",
+                        onClick: () => switchGrokEditorMode("visual"),
+                      },
+                      {
+                        value: "toml",
+                        label: "TOML 源码",
+                        active: grokEditorMode === "toml",
+                        onClick: () => switchGrokEditorMode("toml"),
+                      },
+                    ]),
+                    extra: be.jsx("div", {
+                      className: "config-editor-fixed-actions",
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: "4px",
+                      },
+                      children: be.jsx("div", {
+                        className: "config-editor-fixed-action-row",
+                        style: {
+                          display: "flex",
+                          gap: "4px",
+                          flexWrap: "wrap",
+                          justifyContent: "flex-end",
+                        },
+                        children: be.jsx(xn, {
+                          className: "config-standard-action-button",
+                          type: "primary",
+                          size: "small",
+                          icon: be.jsx(Pv, {}),
+                          disabled: grokSaveDisabled,
+                          onClick: saveGrokConfigCard,
+                          children: "保存",
+                        }),
+                      }),
+                    }),
+                    style: {
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: 0,
+                    },
+                    bodyStyle: {
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      padding: "8px",
+                      gap: "8px",
+                      overflow: "auto",
+                      minHeight: 0,
+                    },
+                    children: be.jsxs("div", {
+                      style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
+                      children: [
+                        be.jsxs("div", {
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          children: [
+                            be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
+                            be.jsx(xn, {
+                              size: "small",
+                              onClick: () => N("grok-config"),
+                              children: "查看范例",
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "4px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: "配置文件路径: ~/.grok/config.toml",
+                        }),
+                        grokVisualError
+                          ? be.jsx("div", {
+                              style: {
+                                padding: "8px",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: "6px",
+                                color: "var(--error-color)",
+                              },
+                              children: grokVisualError,
+                            })
+                          : null,
+                        grokEditorMode === "visual"
+                          ? renderGrokVisualEditor()
+                          : be.jsx(Qa, {
+                              value: grokTextDraft,
+                              onChange: (W) => onGrokTextChange(W.target.value),
+                              placeholder: "请输入TOML配置",
+                              rows: 18,
+                              style: {
+                                flex: 1,
+                                minHeight: 420,
+                                fontFamily: "monospace",
+                                fontSize: "13px",
+                              },
+                            }),
+                      ],
+                    }),
+                  }),
+                  B(),
+                ],
+              })
           : be.jsxs("div", {
               className: "config-editor-shell config-editor-codex",
               style: {

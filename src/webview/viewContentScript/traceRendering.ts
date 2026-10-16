@@ -724,7 +724,8 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return { type: "", title: "", detail: "", lines: normalizedLines, commandTag: null };
         }
         const firstLine = normalizedLines[firstIndex].trim();
-        const definition = getTraceTypeDefinition(firstLine);
+        const followingText = normalizedLines.slice(firstIndex + 1).join("\\n");
+        const definition = getTraceTypeDefinition(firstLine, followingText);
         if (!definition) {
           return { type: "", title: "", detail: "", lines: normalizedLines, commandTag: null };
         }
@@ -880,8 +881,101 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return titleKey ? t(titleKey) : rawName;
       }
 
-      function getTraceTypeDefinition(line) {
-        const trimmed = line.trim();
+      function getTraceTypeDefinition(line, followingText) {
+        function isUuidText(value) {
+          const parts = String(value || "").split("-");
+          if (parts.length !== 5) {
+            return false;
+          }
+          const lengths = [8, 4, 4, 4, 12];
+          for (let index = 0; index < lengths.length; index += 1) {
+            const part = parts[index];
+            if (!part || part.length !== lengths[index] || !/^[0-9a-f]+$/i.test(part)) {
+              return false;
+            }
+          }
+          return true;
+        }
+
+        function isOpaqueToolResultName(value) {
+          const text = String(value || "").trim();
+          if (!text || text.toLowerCase() === "tool") {
+            return true;
+          }
+          if (text.toLowerCase().indexOf("call-") === 0) {
+            return true;
+          }
+          return isUuidText(text);
+        }
+
+        function isToolTypeIdentifier(value) {
+          const text = String(value || "").trim();
+          if (!text || isOpaqueToolResultName(text)) {
+            return false;
+          }
+          const blocked = {
+            text: true,
+            image: true,
+            audio: true,
+            resource: true,
+            json: true,
+          };
+          if (blocked[text.toLowerCase()]) {
+            return false;
+          }
+          return /^[A-Za-z_][A-Za-z0-9_]*$/.test(text);
+        }
+
+        function readToolTypeFromTraceBody(body) {
+          const source = String(body || "");
+          const pattern = /"type"\\s*:\\s*"([^"]*)"/g;
+          let match = pattern.exec(source);
+          while (match) {
+            const value = match[1] ? String(match[1]).trim() : "";
+            if (isToolTypeIdentifier(value)) {
+              return value;
+            }
+            match = pattern.exec(source);
+          }
+          return "";
+        }
+
+        function resolveToolResultDisplayName(rawName, body) {
+          const name = String(rawName || "").trim();
+          if (!isOpaqueToolResultName(name)) {
+            return name;
+          }
+          const found = readToolTypeFromTraceBody(body);
+          if (found) {
+            return found;
+          }
+          return name && name.toLowerCase() === "tool" ? name : "tool";
+        }
+
+        const trimmed = String(line || "").trim();
+        const toolResultMatch = trimmed.match(/^(?:tool\\s*result\\b|工具结果(?=$|[\\s:：]))[:：]?\\s*(.*)$/i);
+        if (toolResultMatch) {
+          const rawName = toolResultMatch[1] ? toolResultMatch[1].trim() : "";
+          const resolvedName = resolveToolResultDisplayName(rawName, followingText);
+          const title = getLocalizedToolTitle(resolvedName);
+          const legacyToolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\\s*(.*)$/i);
+          if (legacyToolMatch) {
+            const legacyName = legacyToolMatch[1] ? legacyToolMatch[1].trim() : "";
+            const bucket = getToolStyleBucket(legacyName);
+            return {
+              type: "tool-use-" + bucket,
+              title: title,
+              match: /^(?:tool|调用工具)[:：]?\\s*(.+)?$/i,
+              detail: () => "",
+            };
+          }
+          return {
+            type: "tool-result",
+            title: title,
+            match: /^(?:tool\\s*result\\b|工具结果(?=$|[\\s:：]))/i,
+            detail: (value) => value.replace(/^(?:tool\\s*result\\b|工具结果(?=$|[\\s:：]))[:：]?\\s*/i, "").trim(),
+          };
+        }
         const toolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\\s*(.+)?$/i);
         if (toolMatch) {
           const toolName = toolMatch[1] ? toolMatch[1].trim() : "";
@@ -917,12 +1011,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             title: t("traceApplyPatch"),
             match: /^apply_patch\\b/i,
             detail: (value) => value.replace(/^apply_patch\\b[:：]?\\s*/i, "").trim(),
-          },
-          {
-            type: "tool-result",
-            title: t("traceToolResult"),
-            match: /^(?:tool\\s*result|工具结果)\\b/i,
-            detail: (value) => value.replace(/^(?:tool\\s*result|工具结果)[:：]?\\s*/i, "").trim(),
           },
           {
             type: "warning",

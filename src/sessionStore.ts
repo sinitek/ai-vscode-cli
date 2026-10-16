@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { CliName } from "./cli/types";
+import { CliName, createCliRecord } from "./cli/types";
 import { sanitizeCodexReasoningContent } from "./codexReasoningContent";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { stripThinkingWrapperTags } from "./thinkingMarkup";
@@ -49,11 +49,7 @@ export function ensureSessionStore(
   }
 ): SessionStore {
   const now = Date.now();
-  const result = {
-    codex: { currentId: null, sessions: [] },
-    claude: { currentId: null, sessions: [] },
-    opencode: { currentId: null, sessions: [] },
-  } as SessionStore;
+  const result = createCliRecord(() => ({ currentId: null as string | null, sessions: [] as SessionRecord[] }));
 
   if (!store) {
     return result;
@@ -130,11 +126,7 @@ export function collectStaleSessionIds(
   retainedStore: SessionStore,
   cliList: readonly CliName[]
 ): Record<CliName, string[]> {
-  const removed: Record<CliName, string[]> = {
-    codex: [],
-    claude: [],
-    opencode: [],
-  };
+  const removed = createCliRecord(() => [] as string[]);
 
   if (!sourceStore) {
     return removed;

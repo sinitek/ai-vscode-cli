@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-13",
+  "as_of": "2026-10-16",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -49,40 +49,46 @@
       "id": "plugin.local_cli",
       "name": "本地 AI CLI",
       "kind": "resource",
-      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude 和 OpenCode；命令、参数、会话和输出解析由服务层处理。",
+      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode 和官方 Grok Build；命令、参数、会话和输出解析由服务层处理。Grok 是 CLI_LIST 的最后一项，顺序为 codex、claude、opencode、grok，并由已有 GrokInteractiveRunner 走长驻 ACP stdio。默认模型的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证，密钥不进入 RPC。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
-      "aliases": ["codex", "claude", "opencode", "opcode", "local CLI"],
+      "aliases": ["codex", "claude", "opencode", "opcode", "grok", "local CLI"],
       "implementation_paths": ["src/cli", "src/interactive"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
-        {"path": "docs/cli-reference.md"}
+        {"path": "docs/cli-reference.md"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/interactive/grokAppServerProtocol.ts"},
+        {"path": "src/interactive/grokAcpClient.ts"}
       ]
     },
     {
       "id": "plugin.cli_session",
       "name": "CLI 会话状态",
       "kind": "aggregate",
-      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。",
+      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。Grok 仅在 initialize 声明 loadSession 且会话 id 不是 local_ 前缀时，按 sessionId、cwd、mcpServers 续接；新建后用 ACP session id 接管原 local_ 会话。同一进程的后续 prompt 复用 runner。",
       "status": "active",
       "aliases": ["session", "thread", "tab", "会话续接"],
       "implementation_paths": ["src/sessionTabs.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"},
-        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"}
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": "src/interactive/grokAppServerProtocol.ts"}
       ]
     },
     {
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode 等本地配置、Skills、MCP 和模型/思考力度设置的编辑与持久化边界。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、Skills、MCP 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、name、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
       "implementation_paths": ["src/config", "media/config/assets"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"}
+        {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
+        {"path": "src/config/grokConfig.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"}
       ]
     },
     {
@@ -191,13 +197,16 @@
     {
       "id": "plugin.relation.config_governs_cli",
       "name": "配置档案约束 CLI 执行",
-      "description": "CLI 命令、参数、模型、Skills、MCP 候选和全局工具开关由配置档案与工具设置共同约束。OpenCode 思考力度与 Codex 一样由对话下拉选择后通过 --variant 传递，模型配置里的 variants 不是可用档位白名单。Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider，Vibe 人工交互开关会约束 Codex app-server 是否启用 default-mode request_user_input。",
+      "description": "CLI 命令、参数、模型、Skills、MCP 候选和全局工具开关由配置档案与工具设置共同约束。OpenCode 思考力度与 Codex 一样由对话下拉选择后通过 --variant 传递，模型配置里的 variants 不是可用档位白名单。Codex 当前配置的根级 model_provider 还约束 app-server thread start/resume 的 provider，Vibe 人工交互开关会约束 Codex app-server 是否启用 default-mode request_user_input。Grok 的 commands.grok 是可执行文件。args.grok 中的审批开关不进入 agent 参数；根命令固定一次 --permission-mode bypassPermissions，其它 agent 参数仍在 agent 与 stdio 之间，选中模型用 --model。",
       "status": "active",
       "from": "plugin.config_profile",
       "type": "governs",
       "to": "plugin.local_cli",
       "cardinality": "N:N",
-      "source_refs": [{"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}]
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/cli/config.ts"}
+      ]
     },
     {
       "id": "plugin.relation.retention_settings_govern_local_history",
@@ -348,12 +357,13 @@
     {
       "id": "plugin.rule.cli_child_lifecycle_guarded",
       "name": "CLI 子进程必须完整跟踪并清理",
-      "description": "本地 CLI 运行时必须跟踪所有活跃子进程；Codex app-server 等会派生后代进程的运行应使用独立进程组并在停止、取消、扩展停用和 spawn error 时收口 promise、pipe 和进程组，避免残留资源导致 EAGAIN。",
+      "description": "本地 CLI 运行时必须跟踪所有活跃子进程；Codex app-server 与 Grok Build ACP 等会派生后代进程的运行应使用独立进程组并在停止、取消、扩展停用和 spawn error 时收口 promise、pipe 和进程组，避免残留资源导致 EAGAIN。Grok 回合停止优先发送 session/cancel，进程退出仍先关 stdin，再 SIGTERM，最后 SIGKILL。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.loop_task", "plugin.graph_run"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
-        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN"}
+        {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN"},
+        {"path": "src/interactive/grokRunner.ts"}
       ]
     },
     {

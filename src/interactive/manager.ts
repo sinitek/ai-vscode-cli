@@ -2,6 +2,7 @@ import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { CodexRunSelection, normalizeCodexRunSelection } from "./codexThreadSelection";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
+import { GrokInteractiveRunner } from "./grokRunner";
 
 const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -35,9 +36,22 @@ type RunnerEntry =
       isolateProjectInstructions: boolean;
       idleTimer: NodeJS.Timeout | null;
       lastUsedAt: number;
+    }
+  | {
+      cli: "grok";
+      sessionId: string;
+      runner: GrokInteractiveRunner;
+      thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
+      model: string | null;
+      command: string;
+      args: string[];
+      cwd?: string;
+      idleTimer: NodeJS.Timeout | null;
+      lastUsedAt: number;
     };
 
-type InteractiveRunnerCli = "codex" | "claude";
+type InteractiveRunnerCli = "codex" | "claude" | "grok";
 
 export class InteractiveRunnerManager {
   private readonly entries = new Map<string, RunnerEntry>();
@@ -72,7 +86,7 @@ export class InteractiveRunnerManager {
   public setRunner(
     cli: InteractiveRunnerCli,
     sessionId: string,
-    runner: CodexInteractiveRunner | ClaudeInteractiveRunner,
+    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
@@ -102,7 +116,7 @@ export class InteractiveRunnerManager {
         existing.command = options.command;
         existing.args = [...(options.args ?? [])];
         existing.cwd = options.cwd;
-      } else {
+      } else if (existing.cli === "claude") {
         existing.model = model;
         if (typeof options.command === "string") {
           existing.command = options.command;
@@ -118,6 +132,17 @@ export class InteractiveRunnerManager {
         }
         if (options.isolateProjectInstructions !== undefined) {
           existing.isolateProjectInstructions = options.isolateProjectInstructions;
+        }
+      } else {
+        existing.model = model;
+        if (typeof options.command === "string") {
+          existing.command = options.command;
+        }
+        if (options.args) {
+          existing.args = [...options.args];
+        }
+        if (options.cwd !== undefined) {
+          existing.cwd = options.cwd;
         }
       }
       this.touch(existing);
@@ -143,7 +168,8 @@ export class InteractiveRunnerManager {
             idleTimer: null,
             lastUsedAt: Date.now(),
           }
-        : {
+        : cli === "claude"
+          ? {
             cli,
             sessionId,
             runner: runner as ClaudeInteractiveRunner,
@@ -155,6 +181,19 @@ export class InteractiveRunnerManager {
             cwd: options.cwd,
             entrypoint: options.entrypoint,
             isolateProjectInstructions: options.isolateProjectInstructions === true,
+            idleTimer: null,
+            lastUsedAt: Date.now(),
+          }
+          : {
+            cli,
+            sessionId,
+            runner: runner as GrokInteractiveRunner,
+            thinkingMode,
+            interactiveMode,
+            model,
+            command: options.command ?? "",
+            args: [...(options.args ?? [])],
+            cwd: options.cwd,
             idleTimer: null,
             lastUsedAt: Date.now(),
           };
@@ -324,12 +363,93 @@ export class InteractiveRunnerManager {
     return runner;
   }
 
+  public hasGrokRunner(sessionId: string | null, runner: GrokInteractiveRunner): boolean {
+    const entry = this.getEntry("grok", sessionId);
+    return Boolean(entry && entry.cli === "grok" && entry.runner === runner);
+  }
+
+  public getOrCreateGrokRunner(options: {
+    sessionId: string;
+    command: string;
+    agentArgs: string[];
+    cwd: string;
+    thinkingMode: ThinkingMode;
+    interactiveMode: InteractiveMode;
+    model: string | null;
+    localSessionId?: string | null;
+  }): GrokInteractiveRunner {
+    const sessionId = options.sessionId.trim();
+    if (!sessionId) {
+      throw Object.assign(new Error("empty grok session"), { reason: "empty" });
+    }
+    const key = this.buildKey("grok", sessionId);
+    const existing = this.entries.get(key);
+    if (existing && existing.cli === "grok") {
+      if (existing.runner.isReusable() && this.canReuseGrokRunner(existing, options)) {
+        existing.thinkingMode = options.thinkingMode;
+        existing.interactiveMode = options.interactiveMode;
+        existing.model = options.model;
+        existing.command = options.command;
+        existing.args = [...options.agentArgs];
+        existing.cwd = options.cwd;
+        this.touch(existing);
+        return existing.runner;
+      }
+      this.disposeEntry(key);
+    }
+    const runner = new GrokInteractiveRunner({
+      command: options.command,
+      agentArgs: options.agentArgs,
+      cwd: options.cwd,
+      thinkingMode: options.thinkingMode,
+      model: options.model,
+      localSessionId: options.localSessionId ?? null,
+    });
+    const entry: RunnerEntry = {
+      cli: "grok",
+      sessionId,
+      runner,
+      thinkingMode: options.thinkingMode,
+      interactiveMode: options.interactiveMode,
+      model: options.model,
+      command: options.command,
+      args: [...options.agentArgs],
+      cwd: options.cwd,
+      idleTimer: null,
+      lastUsedAt: Date.now(),
+    };
+    this.entries.set(key, entry);
+    this.touch(entry);
+    return runner;
+  }
+
+  public detachRunner(
+    cli: InteractiveRunnerCli,
+    sessionId: string | null,
+    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner,
+  ): void {
+    const key = this.buildKeyForCli(cli, sessionId);
+    if (!key) {
+      return;
+    }
+    const entry = this.entries.get(key);
+    if (!entry || entry.runner !== runner) {
+      return;
+    }
+    this.clearIdleTimer(entry);
+    this.entries.delete(key);
+  }
+
   public stopTurnAndRebuild(cli: CliName, sessionId: string | null): void {
     const entry = this.getEntry(cli, sessionId);
     if (!entry) {
       return;
     }
-    entry.runner.stopAndRebuild();
+    if (entry.cli === "grok") {
+      entry.runner.cancelTurn();
+    } else {
+      entry.runner.stopAndRebuild();
+    }
     this.touch(entry);
   }
 
@@ -370,7 +490,24 @@ export class InteractiveRunnerManager {
   }
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
-    return cli === "codex" || cli === "claude";
+    return cli === "codex" || cli === "claude" || cli === "grok";
+  }
+
+  private canReuseGrokRunner(
+    existing: Extract<RunnerEntry, { cli: "grok" }>,
+    options: {
+      command: string;
+      cwd: string;
+      thinkingMode: ThinkingMode;
+      interactiveMode: InteractiveMode;
+      model: string | null;
+    },
+  ): boolean {
+    return existing.thinkingMode === options.thinkingMode
+      && existing.interactiveMode === options.interactiveMode
+      && existing.model === options.model
+      && existing.command === options.command
+      && existing.cwd === options.cwd;
   }
 
   private canReuseClaudeRunner(

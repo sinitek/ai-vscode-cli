@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   CLI_LIST,
+  createCliRecord,
   type CliName,
   type LoopExecutionMode,
   type ThinkingMode,
@@ -182,11 +183,7 @@ export type LoopTaskStore = {
 export function buildLoopSessionIdsByCli(
   tasks: readonly Pick<LoopTaskRecord, "cli" | "sessionId">[]
 ): Record<CliName, Set<string>> {
-  const sessionIdsByCli: Record<CliName, Set<string>> = {
-    codex: new Set<string>(),
-    claude: new Set<string>(),
-    opencode: new Set<string>(),
-  };
+  const sessionIdsByCli = createCliRecord(() => new Set<string>());
   tasks.forEach((task) => {
     const sessionId = typeof task.sessionId === "string" ? task.sessionId.trim() : "";
     if (sessionId) {

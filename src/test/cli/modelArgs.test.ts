@@ -17,6 +17,19 @@ const openCodeConfigContent = JSON.stringify({
   },
 });
 
+test("Grok appends a trimmed model id without OpenCode validation", () => {
+  assert.equal(supportsCliManagedModelSelection("grok"), true);
+  const original = ["--extra", "--model", "old", "-m", "short", "--model=inline", "-m=also"];
+  assert.deepEqual(
+    applyModelArg("grok", original, "  grok-4.7  "),
+    ["--extra", "--model", "grok-4.7"],
+  );
+  const empty = applyModelArg("grok", original, "  ");
+  assert.notEqual(empty, original);
+  assert.deepEqual(empty, original);
+  assert.doesNotThrow(() => applyModelArg("grok", ["agent"], "not-a-provider/model"));
+});
+
 test("Claude keeps configured args unchanged even when the webview passes a selected model", () => {
   assert.equal(supportsCliManagedModelSelection("claude"), false);
   assert.deepEqual(

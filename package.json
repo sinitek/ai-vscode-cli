@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.24.5",
+  "version": "0.25.0",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -81,7 +81,8 @@
           "enum": [
             "codex",
             "claude",
-            "opencode"
+            "opencode",
+            "grok"
           ],
           "default": "codex",
           "description": "%config.defaultCli.description%"
@@ -132,6 +133,21 @@
           },
           "default": [],
           "description": "%config.args.opencode.description%"
+        },
+        "sinitek-cli-tools.commands.grok": {
+          "type": "string",
+          "default": "grok",
+          "description": "%config.commands.grok.description%"
+        },
+        "sinitek-cli-tools.args.grok": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--always-approve"
+          ],
+          "description": "%config.args.grok.description%"
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",

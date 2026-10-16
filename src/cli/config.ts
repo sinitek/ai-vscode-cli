@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
 
@@ -93,7 +94,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude";
+  return cli === "codex" || cli === "claude" || cli === "grok";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
@@ -106,10 +107,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "codex" && cli !== "claude" && globalMode === "max") {
+    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && globalMode === "max") {
       return "high";
     }
-    if (!usesCodexLikeThinking && cli !== "claude" && globalMode === "xhigh") {
+    if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && globalMode === "xhigh") {
       return "high";
     }
     if (usesCodexLikeThinking && globalMode === "off") {
@@ -120,10 +121,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "codex" && cli !== "claude" && mode === "max") {
+  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && mode === "max") {
     return "high";
   }
-  if (!usesCodexLikeThinking && cli !== "claude" && mode === "xhigh") {
+  if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && mode === "xhigh") {
     return "high";
   }
   if (usesCodexLikeThinking && mode === "off") {
@@ -148,4 +149,76 @@ export function getThinkingWorkspaceFiles(
 ): ThinkingWorkspaceFile[] {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<ThinkingWorkspaceFile[]>(`thinkingWorkspaceFiles.${cli}.${mode}`, []);
+}
+
+export const GROK_FORBIDDEN_AGENT_ARGS = [
+  "--dangerously-bypass-approvals-and-sandbox",
+  "--dangerously-skip-permissions",
+] as const;
+
+const GROK_APPROVAL_SWITCHES = new Set(["--always-approve", "--yolo"]);
+
+export function sanitizeGrokAgentArgs(args: readonly unknown[]): string[] {
+  const sanitized: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (typeof arg !== "string" || arg.trim().length === 0) {
+      continue;
+    }
+    const normalized = arg.trim();
+    if (
+      isForbiddenGrokAgentArg(normalized)
+      || GROK_APPROVAL_SWITCHES.has(normalized)
+      || normalized.startsWith("--always-approve=")
+      || normalized.startsWith("--yolo=")
+      || normalized.startsWith("--permission-mode=")
+    ) {
+      continue;
+    }
+    if (normalized === "--permission-mode") {
+      const next = args[index + 1];
+      if (typeof next === "string" && next.trim().length > 0 && !next.trim().startsWith("-")) {
+        index += 1;
+      }
+      continue;
+    }
+    sanitized.push(arg);
+  }
+  return sanitized;
+}
+
+export function buildGrokAgentStdioArgs(agentArgs: readonly unknown[], model?: string | null): string[] {
+  const sanitized = stripModelArgs("grok", sanitizeGrokAgentArgs(agentArgs));
+  const withModel = applyModelArg("grok", sanitized, model);
+  return [
+    "--no-auto-update",
+    "--permission-mode",
+    "bypassPermissions",
+    "agent",
+    ...withModel,
+    "stdio",
+  ];
+}
+
+export function getGrokCommand(): string {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<string>("commands.grok");
+  const command = typeof configured === "string" ? configured.trim() : "";
+  return command || "grok";
+}
+
+export function getGrokAgentArgs(): string[] {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<unknown>("args.grok");
+  if (!Array.isArray(configured)) {
+    return [];
+  }
+  return sanitizeGrokAgentArgs(configured);
+}
+
+function isForbiddenGrokAgentArg(arg: string): boolean {
+  const normalized = arg.trim();
+  return GROK_FORBIDDEN_AGENT_ARGS.some((forbidden) => (
+    normalized === forbidden || normalized.startsWith(`${forbidden}=`)
+  ));
 }

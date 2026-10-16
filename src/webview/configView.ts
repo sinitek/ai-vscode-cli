@@ -414,17 +414,17 @@ export function getConfigViewHtml(
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
           getOpenCodeSkillsList: () => requestConfig("getOpenCodeSkillsList", {}),
           getOfficialSkillsCatalog: (platform) =>
-            platform === "opencode" ? Promise.resolve([]) : requestConfig("getOfficialSkillsCatalog", { platform }),
+            platform === "opencode" || platform === "grok" ? Promise.resolve([]) : requestConfig("getOfficialSkillsCatalog", { platform }),
           installOfficialSkill: (platform, skillId) =>
-            platform === "opencode"
+            platform === "opencode" || platform === "grok"
               ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
               : requestConfig("installOfficialSkill", { platform, skillId }),
           updateOfficialSkill: (platform, skillId) =>
-            platform === "opencode"
+            platform === "opencode" || platform === "grok"
               ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
               : requestConfig("updateOfficialSkill", { platform, skillId }),
           uninstallOfficialSkill: (platform, skillId) =>
-            platform === "opencode"
+            platform === "opencode" || platform === "grok"
               ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
               : requestConfig("uninstallOfficialSkill", { platform, skillId }),
           getMcpInstalledServerIds: (platform) => requestConfig("getMcpInstalledServerIds", { platform }),
@@ -849,6 +849,12 @@ export function getConfigViewHtml(
             : normalizeJson(normalizedConfigContent) === normalizeJson(normalizedCurrentContent);
           return contentMatch;
         }
+        if (platform === "grok") {
+          return areLinesSubset(
+            normalizeConfigLines(config.configContent || config.content),
+            normalizeConfigLines(current.configContent || current.content)
+          );
+        }
         return (
           areLinesSubset(
             normalizeConfigLines(config.configContent),
@@ -859,7 +865,7 @@ export function getConfigViewHtml(
       }
 
       async function syncActiveConfigIds() {
-        const platforms = ["claude", "codex", "opencode"];
+        const platforms = ["claude", "codex", "opencode", "grok"];
         let updated = false;
         postConfigDebug({
           event: "syncActive:start",

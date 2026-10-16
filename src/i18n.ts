@@ -258,6 +258,16 @@ const MESSAGES = {
     "codex.collabToolFailed": "Codex 子任务工具 {tool} 失败：{detail}",
     "codex.hiddenContinuePrompt": "继续",
     "codex.interruptedRetryLimitReached": "Codex 任务已按阶梯间隔自动隐式重试 {attempts} 次后仍被中断，请检查日志或手动继续。",
+    "grok.authRequired": "Grok 未登录。请先运行 grok login，或设置环境变量 XAI_API_KEY。",
+    "grok.emptyCommand": "Grok 命令为空。",
+    "grok.emptyPrompt": "Grok 提示词为空。",
+    "grok.stdinUnavailable": "Grok Build 标准输入不可用。",
+    "grok.stdioUnavailable": "Grok Build 进程没有标准输出。",
+    "grok.parseFailed": "解析 Grok Build 消息失败：{error}",
+    "grok.requestFailed": "Grok Build 请求失败。",
+    "grok.invalidConfig": "Grok 配置不是合法 TOML，已保留上一份有效内容。",
+    "grok.commandNotFound": "没有找到 {command}。请安装 Grok Build，或把 sinitek-cli-tools.commands.grok 设成绝对路径。",
+    "grok.exited": "Grok Build 异常退出（{detail}）：{stderr}",
 } as const;
 
 export type I18nKey = keyof typeof MESSAGES;

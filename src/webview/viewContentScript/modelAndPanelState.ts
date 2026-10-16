@@ -661,6 +661,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       function syncGenericThinkingOptions() {
         const isCodex = state.currentCli === "codex";
         const isClaude = state.currentCli === "claude";
+        const isGrok = state.currentCli === "grok";
+        const keepsExtendedThinking = isCodex || isClaude || isGrok;
         elements.thinkingMode.innerHTML = "";
         elements.thinkingMode.disabled = false;
         elements.thinkingMode.title = t("thinkingModeAria");
@@ -670,22 +672,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         appendThinkingOption(elements.thinkingMode, "low", "low");
         appendThinkingOption(elements.thinkingMode, "medium", "medium");
         appendThinkingOption(elements.thinkingMode, "high", "high");
-        if (isCodex || isClaude) {
+        if (keepsExtendedThinking) {
           appendThinkingOption(elements.thinkingMode, "xhigh", "xhigh");
-        }
-        if (isCodex || isClaude) {
           appendThinkingOption(elements.thinkingMode, "max", "max");
-        }
-        if (isCodex || isClaude) {
           appendThinkingOption(elements.thinkingMode, "ultra", "ultra");
         }
         if (isCodex && state.thinkingMode === "off") {
           updateThinkingMode("low");
         }
-        if (!isCodex && !isClaude && state.thinkingMode === "xhigh") {
+        if (!keepsExtendedThinking && state.thinkingMode === "xhigh") {
           updateThinkingMode("high");
         }
-        if (!isCodex && !isClaude && state.thinkingMode === "max") {
+        if (!keepsExtendedThinking && state.thinkingMode === "max") {
           updateThinkingMode("high");
         }
         elements.thinkingMode.value = state.thinkingMode;

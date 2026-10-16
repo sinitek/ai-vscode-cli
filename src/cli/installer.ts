@@ -6,12 +6,14 @@ const CLI_INSTALL_COMMANDS: Record<CliName, string> = {
   codex: "npm install -g @openai/codex",
   claude: "npm install -g @anthropic-ai/claude-code",
   opencode: "npm install -g opencode-ai",
+  grok: "",
 };
 
 const CLI_DISPLAY_NAMES: Record<CliName, string> = {
   codex: "Codex",
   claude: "Claude",
   opencode: "OpenCode",
+  grok: "Grok",
 };
 
 const CODEGRAPH_INSTALL_STEP_COMMANDS = {

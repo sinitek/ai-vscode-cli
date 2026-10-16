@@ -4,6 +4,7 @@ import type { CliName } from "../cli/types";
 import {
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
+  resolveGrokHomeDir,
   resolveOpenCodeHomeDir,
 } from "../shared/userHomePaths";
 import {
@@ -34,6 +35,10 @@ export type ConfigPathMap = {
     config: string;
     configDir: string;
   };
+  grok: {
+    config: string;
+    configDir: string;
+  };
 };
 
 export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
@@ -45,6 +50,9 @@ export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): Co
   }
   if (platform === "opencode" || platform === LEGACY_GEMINI_CONFIG_PLATFORM) {
     return "opencode";
+  }
+  if (platform === "grok") {
+    return "grok";
   }
   throw new Error(`Unsupported config platform: ${String(platform)}`);
 }
@@ -71,6 +79,10 @@ export function createConfigPaths(
       config: path.join(openCodeRuntimeDir, "config.json"),
       configDir: path.join(openCodeRuntimeDir, CONFIG_DIR_NAME),
     },
+    grok: {
+      config: path.join(resolveGrokHomeDir(env, homeDir), "config.toml"),
+      configDir: path.join(resolveGrokHomeDir(env, homeDir), CONFIG_DIR_NAME),
+    },
   };
 }
 
@@ -80,7 +92,11 @@ export function getConfigDir(
   platform: LegacyConfigPlatformInput,
   paths: ConfigPathMap = CONFIG_PATHS,
 ): string {
-  return paths[normalizeConfigPlatform(platform)].configDir;
+  const normalized = normalizeConfigPlatform(platform);
+  if (normalized === "grok" && paths === CONFIG_PATHS) {
+    return path.join(resolveGrokHomeDir(), CONFIG_DIR_NAME);
+  }
+  return paths[normalized].configDir;
 }
 
 export function getConfigOrderPath(

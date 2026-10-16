@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, CliName } from "./types";
-import { getConfiguredCliCommandParts, resolveCliCommand } from "./commandResolution";
+import { getConfiguredCliCommandParts, resolveCliCommand, type ResolvedCliCommand } from "./commandResolution";
 import { expandHomePath } from "../shared/userHomePaths";
 
 const REGISTRY_PATH_SEPARATOR = "---SINITEK-PATH---";
@@ -338,4 +338,20 @@ function quoteCliCommandToken(value: string): string {
     return value;
   }
   return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+export function inspectGrokCommandResolution(
+  command: string,
+): { ok: true; command: string; resolvedFrom: ResolvedCliCommand["resolvedFrom"] }
+  | { ok: false; reason: "empty" | "enoent"; summary: string } {
+  if (!command.trim()) {
+    return { ok: false, reason: "empty", summary: "spawn grok ENOENT" };
+  }
+  const executable = getConfiguredCliCommandParts(command, "grok")[0] ?? "grok";
+  const resolved = resolveCliCommand(executable);
+  if (!resolved) {
+    const leaf = path.basename(executable).trim() || "grok";
+    return { ok: false, reason: "enoent", summary: `spawn ${leaf} ENOENT` };
+  }
+  return { ok: true, command: resolved.command, resolvedFrom: resolved.resolvedFrom };
 }

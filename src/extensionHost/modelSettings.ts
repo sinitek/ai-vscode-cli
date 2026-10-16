@@ -423,6 +423,9 @@ function isLoopTaskBlockedByMainAiFailureLimit(task: Pick<LoopTaskRecord, "mainA
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
+  if (cli === "grok") {
+    return mode;
+  }
   if (cli !== "codex" && cli !== "claude" && mode === "max") {
     return "high";
   }

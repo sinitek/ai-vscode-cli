@@ -61,6 +61,7 @@ function createEmptyStore(): SessionStore {
     codex: { currentId: null, sessions: [] },
     claude: { currentId: null, sessions: [] },
     opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
   };
 }
 
@@ -632,6 +633,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       codex: { currentId: staleId, sessions: [{ ...createRecord(staleId), lastUsedAt: 1 }] },
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: { codex: { [staleId]: { threadId: "thread-1", frozenThreadIds: [], updatedAt: 1 } } },
@@ -666,6 +668,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       codex: { currentId: null, sessions: [] },
       claude: { currentId: "stale-claude", sessions: [{ ...createRecord("stale-claude"), lastUsedAt: 1 }] },
       opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -722,6 +725,7 @@ test("writes pruned session metadata when retained mappings remain", async () =>
       codex: { currentId: "stale-codex", sessions: [{ ...createRecord("stale-codex"), lastUsedAt: 1 }] },
       claude: { currentId: "kept-claude", sessions: [{ ...createRecord("kept-claude"), lastUsedAt: 999 }] },
       opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -747,6 +751,7 @@ test("contains session file write errors during retained workspace cleanup", asy
       codex: { currentId: "kept", sessions: [createRecord("kept")] },
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
     } as SessionStore);
 
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
@@ -890,6 +895,7 @@ test("covers retained stores, deletion, no-op drafts, local promotion, and fallb
       codex: { currentId: "kept", sessions: [createRecord("kept")] },
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
+      grok: { currentId: null, sessions: [] },
     } as SessionStore);
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
     assert.ok(harness.state.globalState.get("session-store:retained-workspace"));

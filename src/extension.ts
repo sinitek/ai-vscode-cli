@@ -209,6 +209,7 @@ import {
 import {
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
+  resolveGrokHomeDir,
   resolveOpenCodeHomeDir,
 } from "./shared/userHomePaths";
 import {
@@ -764,11 +765,13 @@ const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   codex: path.join(resolveCodexHomeDir(), "AGENTS.md"),
   claude: path.join(resolveClaudeHomeDir(), "CLAUDE.md"),
   opencode: path.join(resolveOpenCodeHomeDir(), "AGENTS.md"),
+  grok: path.join(resolveGrokHomeDir(), "AGENTS.md"),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
   claude: "CLAUDE.md",
   opencode: "AGENTS.md",
+  grok: "AGENTS.md",
 };
 const PROMPT_HISTORY_LIMIT = 200;
 const CONTEXT_COMPACT_TURN_THRESHOLD = 30;
@@ -803,6 +806,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   codex: null,
   claude: null,
   opencode: null,
+  grok: null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
@@ -1539,11 +1543,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
 async function autoRepairUnresolvedCliCommands(): Promise<void> {
   try {
-    const plans = await planUnresolvedCliCommandRepairs({
-      codex: getCliCommand("codex"),
-      claude: getCliCommand("claude"),
-      opencode: getCliCommand("opencode"),
-    }, { onlyBareCommands: true });
+    const plans = await planUnresolvedCliCommandRepairs(
+      Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliCommand(cli)])),
+      { onlyBareCommands: true },
+    );
     let repairedCount = 0;
     for (const plan of plans) {
       if (plan.status !== "repaired" || !plan.nextCommand) {
@@ -2362,12 +2365,14 @@ function getProjectRulePaths(): Record<CliName, string | null> {
       codex: null,
       claude: null,
       opencode: null,
+      grok: null,
     };
   }
   return {
     codex: path.join(root, CLI_RULE_FILENAMES_PROJECT.codex),
     claude: path.join(root, CLI_RULE_FILENAMES_PROJECT.claude),
     opencode: path.join(root, CLI_RULE_FILENAMES_PROJECT.opencode),
+    grok: path.join(root, CLI_RULE_FILENAMES_PROJECT.grok),
   };
 }
 
@@ -5211,7 +5216,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   return runContextCompactionWithDeps({
     getCurrentCli: () => currentCli,
     getActiveConversationTabId,
-    isInteractiveSupported,
+    isInteractiveSupported: (cli) => cli !== "grok" && isInteractiveSupported(cli),
     appendSystemMessageForCli,
     getCurrentSessionId,
     hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),
@@ -5422,6 +5427,13 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
   );
   if (selection === installLabel) {
     const installCommand = getCliInstallCommand(cli);
+    if (!installCommand.trim()) {
+      void vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        `sinitek-cli-tools.commands.${cli}`
+      );
+      return;
+    }
     const terminal = vscode.window.createTerminal({
       name: `${CLI_INSTALL_TERMINAL_PREFIX}: ${cli}`,
     });

@@ -26,8 +26,9 @@ import {
 } from "../../sessionStore";
 import type { SessionRecord, SessionStore } from "../../sessionStore";
 import type { ChatMessage } from "../../webview/types";
+import { CLI_LIST } from "../../cli/types";
 
-const cliList = ["codex", "claude", "opencode"] as const;
+const cliList = CLI_LIST;
 
 type TemporaryPaths = {
   root: string;
@@ -59,8 +60,9 @@ function createStore(overrides: Partial<SessionStore> = {}): SessionStore {
     codex: { currentId: null, sessions: [] },
     claude: { currentId: null, sessions: [] },
     opencode: { currentId: null, sessions: [] },
+    grok: { currentId: null, sessions: [] },
     ...overrides,
-  };
+  } as SessionStore;
 }
 
 function createSession(id: string, lastUsedAt: number, extra: Partial<SessionRecord> = {}): SessionRecord {
@@ -122,11 +124,13 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
     codex: [],
     claude: [],
     opencode: [],
+    grok: [],
   });
   assert.deepEqual(collectStaleSessionIds(source, retained, cliList), {
     codex: ["expired"],
     claude: [],
     opencode: [],
+    grok: [],
   });
 
   const fallbackOnly = ensureSessionStore({
@@ -166,7 +170,7 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
   assert.ok(Number.isFinite(fallbackOnly.codex.sessions[1]?.lastUsedAt));
   assert.deepEqual(
     collectStaleSessionIds(source, { codex: retained.codex } as SessionStore, cliList),
-    { codex: ["expired"], claude: [], opencode: [] },
+    { codex: ["expired"], claude: [], opencode: [], grok: [] },
   );
 });
 
