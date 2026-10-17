@@ -12,6 +12,7 @@ import {
 import { requestChildShutdown } from "./codexRunnerProcess";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
 import { GrokAcpClient, GrokAcpClientError } from "./grokAcpClient";
+import { GrokReplayStream } from "./grokReplayStream";
 import {
   buildGrokAuthenticateParams,
   buildGrokInitializeParams,
@@ -101,6 +102,7 @@ export class GrokInteractiveRunner {
   private closed = false;
   private failed: Error | null = null;
   private activeHandlers: GrokStreamHandlers | null = null;
+  private activeReplay: GrokReplayStream | null = null;
   private readonly stderrChunks: Buffer[] = [];
   private readonly acpClient: GrokAcpClient;
 
@@ -191,19 +193,24 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.activeHandlers = handlers;
+    const replay = handlers.onEvent ? new GrokReplayStream(handlers.onEvent) : null;
+    this.activeReplay = replay;
     try {
       const result = await this.request("session/prompt", buildGrokSessionPromptParams(this.sessionId, text));
       const stopReason = readGrokPromptStopReason({ result });
       handlers.onComplete?.({ stopReason });
       return { stopReason };
     } finally {
+      replay?.flush();
       if (this.activeHandlers === handlers) {
         this.activeHandlers = null;
+        this.activeReplay = null;
       }
     }
   }
 
   public cancelTurn(): void {
+    this.activeReplay?.flush();
     if (!this.sessionId || !this.canWrite()) {
       this.fail(new Error(t("grok.requestFailed")));
       return;
@@ -302,22 +309,23 @@ export class GrokInteractiveRunner {
         return;
       }
       this.pending.delete(Number(message.id));
+      if (pending.method === "session/prompt") {
+        this.activeReplay?.append(message);
+      }
       if (message.error) {
         pending.reject(new Error(String(message.error.message || t("grok.requestFailed"))));
         return;
-      }
-      if (pending.method === "session/prompt") {
-        this.activeHandlers?.onEvent?.(message);
       }
       pending.resolve(message.result);
       return;
     }
     if (message.id !== undefined && message.id !== null && message.method) {
+      this.activeReplay?.flush();
       void this.answerClientRequest(message);
       return;
     }
     if (message.method === "session/update") {
-      this.activeHandlers?.onEvent?.(message);
+      this.activeReplay?.append(message);
     }
     const event = classifyGrokSessionMessage(message);
     if (event.type === "assistant_text") {

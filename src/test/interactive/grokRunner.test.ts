@@ -489,6 +489,112 @@ test("host sends session updates through rawStreamDelta without changing bubbles
   assert.equal(stored.some((message) => String(message.content).includes("session/update")), false);
 });
 
+test("filters replay metadata and merges fragments without delaying assistant or tool handlers", async () => {
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  await runner.start();
+  const original = fake.respond.bind(fake);
+  let promptId: unknown;
+  fake.respond = (message) => {
+    if (message.method === "session/prompt") {
+      promptId = message.id;
+    } else {
+      original(message);
+    }
+  };
+  const events: Array<Record<string, unknown>> = [];
+  const deltas: string[] = [];
+  const traces: string[] = [];
+  const turn = runner.prompt("hello", {
+    onEvent: (message) => events.push(message),
+    onAssistantDelta: (text) => deltas.push(text),
+    onTrace: (text) => traces.push(text),
+  });
+  const sendUpdate = (update: Record<string, unknown>) => fake.send({ method: "session/update", params: { sessionId: "grok-session", update } });
+  sendUpdate({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "help" }] });
+  sendUpdate({ sessionUpdate: "session_info_update", title: "hello" });
+  sendUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hello" } });
+  sendUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " world" } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(deltas, ["hello", " world"]);
+  assert.equal(events.length, 0);
+  const tool = { sessionUpdate: "tool_call", toolCallId: "tool-1", title: "bash", status: "pending", rawInput: { command: "pwd" } };
+  sendUpdate(tool);
+  sendUpdate(tool);
+  sendUpdate({ ...tool, sessionUpdate: "tool_call_update", status: "completed", rawOutput: "ok" });
+  fake.send({ id: promptId, result: { stopReason: "end_turn" } });
+  await turn;
+  assert.equal(events.length, 4);
+  assert.equal(((events[0].params as { update: { content: { text: string } } }).update.content.text), "hello world");
+  assert.equal(traces.length, 3);
+  assert.equal(events[3].id, promptId);
+  runner.dispose();
+});
+
+test("flushes partial replay before prompt errors and isolates reused turns", async () => {
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  await runner.start();
+  fake.respond = (message) => {
+    if (message.method !== "session/prompt") {
+      return;
+    }
+    fake.send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "partial" } } } });
+    fake.send({ id: message.id, error: { code: -32603, message: "prompt failed" } });
+  };
+  const firstEvents: Array<Record<string, unknown>> = [];
+  await assert.rejects(runner.prompt("first", { onEvent: (message) => firstEvents.push(message) }), /prompt failed/);
+  assert.equal(firstEvents.length, 2);
+  assert.equal(firstEvents[0].method, "session/update");
+  assert.deepEqual(firstEvents[1].error, { code: -32603, message: "prompt failed" });
+  const secondEvents: Array<Record<string, unknown>> = [];
+  await assert.rejects(runner.prompt("second", { onEvent: (message) => secondEvents.push(message) }), /prompt failed/);
+  assert.deepEqual(firstEvents.map((message) => message.method), secondEvents.map((message) => message.method));
+  assert.equal(firstEvents.length, 2);
+  runner.dispose();
+});
+
+test("flushes replay on cancel and process failure without leaking it into later turns", async () => {
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  await runner.start();
+  fake.respond = (message) => {
+    if (message.method === "session/prompt") {
+      fake.send({ method: "session/update", params: { update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "partial thinking" } } } });
+    }
+  };
+  const events: Array<Record<string, unknown>> = [];
+  const turn = runner.prompt("first", { onEvent: (message) => events.push(message) });
+  const rejection = assert.rejects(turn, /test exit/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(events.length, 0);
+  runner.cancelTurn();
+  assert.equal(events.length, 1);
+  fake.send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "partial body" } } } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  fake.emit("error", new Error("test exit"));
+  await rejection;
+  assert.equal(events.length, 2);
+  assert.equal(runner.isReusable(), false);
+  runner.dispose();
+  assert.equal(events.length, 2);
+});
+
 async function readReasoningParams(
   mode: string,
   options: { reasoningOptions?: string[] | null; advertiseReasoning?: boolean },

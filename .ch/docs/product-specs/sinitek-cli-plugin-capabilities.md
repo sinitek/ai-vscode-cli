@@ -204,6 +204,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - GraphRunPanel 自动布局默认展示仍为 LR，但内部已支持 `LR` / `RL` / `TB` / `BT` 方向；fallback 会从所有零入度 roots 入队，`review_feedback` 和指向上游/更早节点的 `if_fail` 回边不参与主 ranking，collision、端口评分与 selected/running/sleeping/blocked/failed 初始居中均按目标系统 workflow 画布经验调优；工具栏可手动定位当前 `running` 节点到可见画布中间。
 - tool-use 气泡保留原始工具详情，但标题会按界面语言本地化常见稳定工具名；中文界面下 `read`、`glob`、`grep`、`bash`、`apply_patch`、`todowrite`、`webfetch` 等分别显示为中文语义标题，未知工具名原样回退
 - 回放记录导出为 JSONL 文件；文件首行为导出元数据，后续每行一个回放记录对象。运行中的普通任务和 Loop 子任务可根据回放记录空闲时间显示“慢”/“极慢”提示，Loop 主任务不显示这两类提示；历史会话消息仍可按 TXT 日志导出
+- Grok 回放过滤命令目录、会话标题通知及无附加元数据的空文本；相邻同源正文/思考分片按固定 1 秒或 32 KiB 合并，保留完整文字与空白，不延迟聊天气泡。相邻完全相同且有稳定调用 id 的工具快照及相同计划只保留一次，工具变化、计划变化、未知与非文本事件、完成和错误结果仍保留；取消、异常、工具和回合结束及时刷新。回放与 JSONL 导出均使用这些降噪记录，不再逐 token 保存 JSON。
 - 错误详情查看 / 复制
 
 ### 3.7 模型、思考模式与规则
