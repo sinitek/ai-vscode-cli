@@ -98,8 +98,8 @@ function readReplayText(message: GrokJsonRpcMessage, updateType: string): Replay
   }
   if (!sourceContent.text && (
     Object.keys(sourceContent).some((key) => key !== "type" && key !== "text")
-    || Object.keys(update ?? {}).some((key) => key !== "sessionUpdate" && key !== "content" && (!nestedUpdate && key !== "sessionId" || Boolean(nestedUpdate)))
-    || Boolean(nestedUpdate) && Object.keys(params ?? {}).some((key) => key !== "sessionId" && key !== "update")
+    || Object.keys(update ?? {}).some((key) => key !== "sessionUpdate" && key !== "content" && (nestedUpdate !== null || key !== "sessionId"))
+    || nestedUpdate !== null && Object.keys(params ?? {}).some((key) => key !== "sessionId" && key !== "update")
     || Object.keys(message).some((key) => key !== "jsonrpc" && key !== "method" && key !== "params")
   )) {
     return null;
