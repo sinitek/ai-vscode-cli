@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.25.0",
+  "version": "1.0.0",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
