@@ -45,6 +45,7 @@ starter 默认不预置功能项。复制模板后，请从第一个真实能力
 
 ## 后端实现边界备注
 
+- 2026-10-17 Grok 思考力度遵循 ACP 标量参数：`session/set_config_option` 使用 `value: "high"`，不再发送嵌套 value。执行时先检查实际所选模型的 config.toml，当前自定义模型缺少 `reasoning_efforts` 时自动补齐插件标准档位后再启动 Grok，无需手工维护；已有列表、空列表和显式禁用保持不变。保留其它模型、默认值、密钥、接口、文件权限和符号链接；非法配置或写入失败停止启动并提示，补齐后仍缺能力或不支持所选档位才提示一次，不自动降级。验证入口为 `src/test/config/grokReasoningConfig.test.ts`、`src/test/interactive/grokAppServerProtocol.test.ts`、`src/test/interactive/grokRunner.test.ts`，真实 Grok 1.0.62 握手和设置回读已验证。
 - 2026-08-29 后端重构没有新增用户入口或下线能力；下表现有 Graph、OpenCode、配置中心和 MCP 能力状态保持不变。
 - Graph 相关能力的当前实现边界包含 `src/graph/graphEdgeSemantics.ts`：scheduler、prompt topology 和 review scope 复用同一 active structural/blocking edge 口径；Retry 与 direct rework 都会清理旧 artifact / failure / execution / acceptance evidence。
 - CLI / 配置相关能力的当前实现边界包含 `src/cli/commandResolution.ts`、`src/config/configPaths.ts`、`src/shared/userHomePaths.ts`、`src/shared/atomicWrite.ts` 和 `src/shared/jsonObject.ts`：配置化 CLI command string 统一拆分，用户级 `~` / `%VAR%` 路径在进入文件系统前展开为当前平台原生路径，Codex 配置读取 `CODEX_HOME`，Windows 额外发现官方 Codex bin、`%USERPROFILE%\.local\bin`、scoop shims、Volta 和 WinGet Links，配置原子写在 Windows 上可覆盖已有文件，strict/jsonc JSON object 解析统一复用。

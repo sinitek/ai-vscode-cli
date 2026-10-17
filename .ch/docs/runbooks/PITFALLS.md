@@ -14,6 +14,17 @@
 
 ## 当前有效条目
 
+## Grok 文档示例与实际 ACP 配置参数不一致
+
+- 状态：有效
+- 首次发现：2026-10-17
+- 适用范围：Grok Build 1.0.62 / 思考力度与其他 ACP select 配置
+- 现象：未声明模型能力时选择思考档位无效果；补齐能力后，嵌套 value 返回 `-32602 Invalid params` / `SessionConfigOptionValue`。
+- 根因：自定义模型没有广告 reasoning_effort；Grok 自带 `15-agent-mode.md` 仍展示 `value: { value: "high" }`，但实际协议需要 ACP 规范的字符串 value。
+- 长期规避：参数使用 `value: "high"`；用户要求启用思考档后，spawn 前预检实际模型配置，仅补齐当前自定义模型缺失的 reasoning_efforts，保留已有列表、空列表和显式禁用。不要只显示手工配置提示，也不要覆盖用户已配置的能力限制；配置预检失败明确停止，不能继续表现为已使用思考档。最终只根据 session/new 或 session/load 的支持列表下发。
+- 验证方式：`npm run build`；`node --test dist/test/config/grokReasoningConfig.test.js dist/test/interactive/grokAppServerProtocol.test.js dist/test/interactive/grokRunner.test.js`；临时 GROK_HOME 只定义模型但不声明思考档，经真实 GrokInteractiveRunner 启动后检查配置已补齐，session/set_config_option 回读 currentValue 与所选档一致，不发送 session/prompt。
+- 事实来源：`.ch/docs/references/cli-runtime-reference.md` 的 Grok Build 节。
+
 ## LobeHub Skills 市场列表接口需要登录
 
 - 状态：已规避

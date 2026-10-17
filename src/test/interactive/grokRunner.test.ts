@@ -1,6 +1,7 @@
 import assert = require("node:assert/strict");
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { PassThrough } from "node:stream";
@@ -13,6 +14,7 @@ import type { ChatMessage } from "../../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
 import type { PromptInteractiveRuntimeHostDeps } from "../../extensionHost/promptInteractiveRuntime";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
+import { parseGrokToml } from "../../config/grokToml";
 
 installVscodeMock();
 
@@ -30,6 +32,7 @@ class FakeGrok extends EventEmitter {
   public loadSession = false;
   public failLoad = false;
   public advertiseReasoning = true;
+  public reasoningInInitialize = false;
   public reasoningOptions: string[] | null = ["none", "low", "medium", "high", "xhigh", "max"];
 
   public constructor() {
@@ -55,14 +58,22 @@ class FakeGrok extends EventEmitter {
   public respond(message: Record<string, unknown>): void {
     const method = String(message.method ?? "");
     const id = message.id;
+    const configOptions = this.advertiseReasoning ? [{
+      id: "reasoning_effort",
+      name: "Reasoning Effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "medium",
+      options: this.reasoningOptions?.map((value) => ({ value, name: value })),
+    }] : [];
     if (method === "initialize") {
       const result: Record<string, unknown> = {
         protocolVersion: 1,
         agentCapabilities: { loadSession: this.loadSession },
         authMethods: this.authMethods,
       };
-      if (this.advertiseReasoning) {
-        result.configOptions = [{ id: "reasoning_effort", options: this.reasoningOptions }];
+      if (this.reasoningInInitialize) {
+        result.configOptions = configOptions;
       }
       this.send({ jsonrpc: "2.0", id, result });
       return;
@@ -76,14 +87,18 @@ class FakeGrok extends EventEmitter {
         this.send({ jsonrpc: "2.0", id, error: { code: -32603, message: "Path not found." } });
         return;
       }
-      this.send({ jsonrpc: "2.0", id, result: { sessionId: "loaded-session" } });
+      this.send({ jsonrpc: "2.0", id, result: { sessionId: "loaded-session", configOptions: this.reasoningInInitialize ? undefined : configOptions } });
       return;
     }
     if (method === "session/new") {
-      this.send({ jsonrpc: "2.0", id, result: { sessionId: "grok-session" } });
+      this.send({ jsonrpc: "2.0", id, result: { sessionId: "grok-session", configOptions: this.reasoningInInitialize ? undefined : configOptions } });
       return;
     }
     if (method === "session/set_config_option") {
+      if (typeof (message.params as { value?: unknown } | undefined)?.value !== "string") {
+        this.send({ jsonrpc: "2.0", id, error: { code: -32602, message: "Invalid params: expected a scalar config value" } });
+        return;
+      }
       this.send({ jsonrpc: "2.0", id, result: {} });
       return;
     }
@@ -177,7 +192,7 @@ test("runs Grok ACP over stdio without treating prompt completion as text", asyn
   assert.deepEqual(reasoning?.params, {
     sessionId: "grok-session",
     configId: "reasoning_effort",
-    value: { value: "max" },
+    value: "max",
   });
   const deltas: string[] = [];
   const traces: Array<{ text: string; kind?: string }> = [];
@@ -295,11 +310,19 @@ test("loads a saved Grok session and falls back to a new session when it is gone
     command: process.execPath,
     env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
     localSessionId: "01a1450f-97a8-7882-a51c-b39c6d30a180",
+    thinkingMode: "high",
     spawnImpl: () => loaded as unknown as GrokChild,
   });
   const loadedInfo = await loadedRunner.start();
   assert.equal(loadedInfo.acpSessionId, "loaded-session");
   assert.equal(loadedInfo.resumed, true);
+  const loadedReasoning = loaded.lines.map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((line) => line.method === "session/set_config_option");
+  assert.deepEqual(loadedReasoning?.params, {
+    sessionId: "loaded-session",
+    configId: "reasoning_effort",
+    value: "high",
+  });
   loadedRunner.dispose();
 
   const missing = new FakeGrok();
@@ -376,15 +399,121 @@ test("answers Grok terminal/create instead of returning method not found", async
 
 test("sends xhigh and max when advertised, and skips an effort that is not allowed", async () => {
   const allowed = await readReasoningParams("xhigh", {});
-  assert.deepEqual(allowed, { sessionId: "grok-session", configId: "reasoning_effort", value: { value: "xhigh" } });
+  assert.deepEqual(allowed, { sessionId: "grok-session", configId: "reasoning_effort", value: "xhigh" });
   const max = await readReasoningParams("max", {});
-  assert.deepEqual((max as { value?: { value?: string } }).value, { value: "max" });
+  assert.equal((max as { value?: string }).value, "max");
   const ultra = await readReasoningParams("ultra", {});
-  assert.deepEqual((ultra as { value?: { value?: string } }).value, { value: "max" });
+  assert.equal((ultra as { value?: string }).value, "max");
   const blocked = await readReasoningParams("ultra", { reasoningOptions: ["low", "medium", "high"] });
   assert.equal(blocked, null);
   const missing = await readReasoningParams("xhigh", { advertiseReasoning: false });
   assert.equal(missing, null);
+  const legacy = await readReasoningParams("high", { reasoningInInitialize: true });
+  assert.deepEqual(legacy, { sessionId: "grok-session", configId: "reasoning_effort", value: "high" });
+});
+
+test("fills missing reasoning configuration before spawning and sends the selected effort", async () => {
+  const home = await emptyGrokHome();
+  const configPath = path.join(home, "config.toml");
+  await fs.writeFile(configPath, `[models]\ndefault = "default"\n[model.default]\nmodel = "default"\n[model.chosen]\nmodel = "chosen"\n`);
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    model: "chosen",
+    thinkingMode: "ultra",
+    spawnImpl: () => {
+      const parsed = parseGrokToml(readFileSync(configPath, "utf8"));
+      assert.equal(parsed.ok, true);
+      if (parsed.ok) {
+        const models = parsed.value.model as Record<string, { reasoning_efforts?: Array<{ value: string }> }>;
+        assert.equal(models.default.reasoning_efforts, undefined);
+        fake.reasoningOptions = models.chosen.reasoning_efforts!.map((option) => option.value);
+        assert.ok(fake.reasoningOptions.includes("max"));
+      }
+      return fake as unknown as GrokChild;
+    },
+  });
+  try {
+    await runner.start();
+    const request = fake.lines.map((line) => JSON.parse(line)).find((message) => message.method === "session/set_config_option");
+    assert.deepEqual(request.params, { sessionId: "grok-session", configId: "reasoning_effort", value: "max" });
+    const notices: string[] = [];
+    await runner.prompt("test", { onTrace: (text, kind) => { if (kind === "normal") notices.push(text); } });
+    assert.deepEqual(notices, []);
+  } finally {
+    runner.dispose();
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("rejects invalid reasoning configuration before spawning without changing the file", async () => {
+  const home = await emptyGrokHome();
+  const configPath = path.join(home, "config.toml");
+  const content = '[model."broken"';
+  await fs.writeFile(configPath, content);
+  let spawned = false;
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, GROK_HOME: home },
+    thinkingMode: "high",
+    spawnImpl: () => { spawned = true; throw new Error("should not spawn"); },
+  });
+  try {
+    await assert.rejects(runner.start(), /无法检查或补齐 Grok 思考档配置/);
+    assert.equal(spawned, false);
+    assert.equal(await fs.readFile(configPath, "utf8"), content);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("does not spawn if disposed while the reasoning preflight is pending", async () => {
+  const home = await emptyGrokHome();
+  let spawned = false;
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, GROK_HOME: home },
+    thinkingMode: "high",
+    spawnImpl: () => { spawned = true; throw new Error("should not spawn"); },
+  });
+  try {
+    const starting = runner.start();
+    runner.dispose();
+    await assert.rejects(starting, /closed/);
+    assert.equal(spawned, false);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("explains missing or unsupported reasoning capabilities without blocking prompts", async () => {
+  for (const advertiseReasoning of [false, true]) {
+    const fake = new FakeGrok();
+    fake.advertiseReasoning = advertiseReasoning;
+    fake.reasoningOptions = ["low", "high"];
+    const runner = new GrokInteractiveRunner({
+      cwd: process.cwd(),
+      command: process.execPath,
+      env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+      thinkingMode: "xhigh",
+      spawnImpl: () => fake as unknown as GrokChild,
+    });
+    try {
+      await runner.start();
+      const notices: string[] = [];
+      await runner.prompt("first", { onTrace: (text, kind) => { if (kind === "normal") notices.push(text); } });
+      await runner.prompt("second", { onTrace: (text, kind) => { if (kind === "normal") notices.push(text); } });
+      assert.equal(notices.length, 1);
+      assert.match(notices[0], advertiseReasoning ? /xhigh.*low, high/ : /已完成 Grok 思考档配置预检.*当前会话仍未提供/);
+      assert.equal(fake.lines.some((line) => JSON.parse(line).method === "session/set_config_option"), false);
+    } finally {
+      runner.dispose();
+    }
+  }
 });
 
 test("does not replay parse failures, request pairing, or client requests", async () => {
@@ -597,7 +726,7 @@ test("flushes replay on cancel and process failure without leaking it into later
 
 async function readReasoningParams(
   mode: string,
-  options: { reasoningOptions?: string[] | null; advertiseReasoning?: boolean },
+  options: { reasoningOptions?: string[] | null; advertiseReasoning?: boolean; reasoningInInitialize?: boolean },
 ): Promise<unknown> {
   const fake = new FakeGrok();
   if (options.reasoningOptions !== undefined) {
@@ -606,6 +735,7 @@ async function readReasoningParams(
   if (options.advertiseReasoning !== undefined) {
     fake.advertiseReasoning = options.advertiseReasoning;
   }
+  fake.reasoningInInitialize = options.reasoningInInitialize ?? false;
   const runner = new GrokInteractiveRunner({
     cwd: process.cwd(),
     command: process.execPath,

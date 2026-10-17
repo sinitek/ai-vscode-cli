@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-16",
+  "as_of": "2026-10-17",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -303,6 +303,22 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.grok_reasoning_config_value",
+      "name": "Grok 思考力度使用 ACP 标量并检查模型能力",
+      "description": "Grok session/set_config_option 使用 configId reasoning_effort 和字符串 value，不发送嵌套 value 对象。有效思考档请求在启动 Grok 进程前检查 config.toml，显式模型优先默认模型，支持配置键或 model 字段匹配；当前自定义模型缺少 reasoning_efforts 时自动补齐插件标准档位列表。已有列表（包括空列表）和 supports_reasoning_effort=false 不覆盖；不改变其它模型、默认值、密钥或接口，串行原子写入并保留权限和符号链接。非法配置或读写失败停止启动并提示。session/new 或 session/load 广告支持档位后才下发，initialize 仅兼容回退；预检后仍缺少能力或所选档位不在允许列表时提示一次，不自动降级。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/interactive/grokAppServerProtocol.ts", "anchor": "buildGrokReasoningConfigParams"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/config/grokReasoningConfig.ts"},
+        {"path": "src/test/config/grokReasoningConfig.test.ts"},
+        {"path": "src/test/interactive/grokAppServerProtocol.test.ts"},
+        {"path": "src/test/interactive/grokRunner.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"}
+      ]
+    },
     {
       "id": "plugin.rule.explorer_prompt_references",
       "name": "资源管理器引用经宿主解析后写入就绪输入框",

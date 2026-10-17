@@ -2,7 +2,9 @@ import type { ChildProcess } from "child_process";
 import type { Readable } from "stream";
 import { spawn } from "cross-spawn";
 import { buildGrokAgentStdioArgs, getGrokAgentArgs, getGrokCommand } from "../cli/config";
+import { mapThinkingModeToGrokEffort } from "../cli/types";
 import { readGrokActiveModelHasOwnCredential } from "../config/grokConfig";
+import { ensureGrokReasoningConfig } from "../config/grokReasoningConfig";
 import { t } from "../i18n";
 import {
   createCodexAppServerNdjsonReader,
@@ -103,6 +105,7 @@ export class GrokInteractiveRunner {
   private failed: Error | null = null;
   private activeHandlers: GrokStreamHandlers | null = null;
   private activeReplay: GrokReplayStream | null = null;
+  private reasoningNotice: string | null = null;
   private readonly stderrChunks: Buffer[] = [];
   private readonly acpClient: GrokAcpClient;
 
@@ -138,6 +141,18 @@ export class GrokInteractiveRunner {
       resolved = resolveSpawnCommand(command, launchArgs);
     } catch (error) {
       throw error instanceof Error ? error : new Error(String(error));
+    }
+    try {
+      await ensureGrokReasoningConfig({
+        env: this.options.env,
+        model: this.options.model,
+        thinkingMode: this.options.thinkingMode,
+      });
+    } catch {
+      throw new Error(t("grok.reasoningConfigFailed"));
+    }
+    if (this.closed) {
+      throw new Error(t("grok.exited", { detail: "closed", stderr: "" }));
     }
     const spawnImpl = this.options.spawnImpl ?? defaultGrokSpawn;
     let child: GrokChild;
@@ -196,6 +211,10 @@ export class GrokInteractiveRunner {
     const replay = handlers.onEvent ? new GrokReplayStream(handlers.onEvent) : null;
     this.activeReplay = replay;
     try {
+      if (this.reasoningNotice && handlers.onTrace) {
+        handlers.onTrace(this.reasoningNotice, "normal");
+        this.reasoningNotice = null;
+      }
       const result = await this.request("session/prompt", buildGrokSessionPromptParams(this.sessionId, text));
       const stopReason = readGrokPromptStopReason({ result });
       handlers.onComplete?.({ stopReason });
@@ -260,15 +279,20 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.sessionId = acpSessionId;
-    const effort = resolveGrokReasoningEffort(
-      this.options.thinkingMode,
-      findGrokReasoningOption(created) ?? findGrokReasoningOption(initialized),
-    );
+    const option = findGrokReasoningOption(created) ?? findGrokReasoningOption(initialized);
+    const effort = resolveGrokReasoningEffort(this.options.thinkingMode, option);
     if (effort) {
       await this.request(
         "session/set_config_option",
         buildGrokReasoningConfigParams(acpSessionId, effort),
       );
+    } else if (mapThinkingModeToGrokEffort(this.options.thinkingMode)) {
+      this.reasoningNotice = option
+        ? t("grok.reasoningNotAllowed", {
+          effort: String(this.options.thinkingMode),
+          allowed: option.allowed?.join(", ") ?? "",
+        })
+        : t("grok.reasoningUnavailable");
     }
     return {
       acpSessionId,

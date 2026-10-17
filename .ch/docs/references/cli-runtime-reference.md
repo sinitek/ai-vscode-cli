@@ -129,6 +129,16 @@
 
 ### Grok Build
 
+- 思考力度的 ACP 参数使用标量：`session/set_config_option` 的 params 为 `{ "sessionId": "…", "configId": "reasoning_effort", "value": "high" }`，不是 `value: { value: "high" }`。2026-10-17 核对 [ACP Session Config Options](https://agentclientprotocol.com/protocol/session-config-options) 并用真实 Grok 1.0.62 验证：嵌套写法返回 `-32602 Invalid params` / `SessionConfigOptionValue`，字符串写法成功，返回列表中的 `currentValue` 为 `high`。Grok 自带 `15-agent-mode.md` 的嵌套示例与该版本实现不一致，不能只照示例改测试夹具。
+- 自定义模型没有 `reasoning_effort` 能力选项时，仅设置 `[models].default_reasoning_effort` 不会启用此能力。按 [Grok 配置参考](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/26-config-reference.md) 在 `[model.<id>]` 中声明 `reasoning_efforts`，或由接口 `/v1/models` 提供支持档位。用户选择有效思考档后，插件在启动 Grok 进程前自动检查 `$GROK_HOME/config.toml`，无需手工补字段：显式所选模型优先于默认模型，先按配置键匹配，再按 `model` 字段匹配；只为缺少 `reasoning_efforts` 的当前自定义模型补齐 `GROK_REASONING_EFFORTS`（none、minimal、low、medium、high、xhigh、max）的 `{ value, label }` 列表。已有列表（含空列表）和 `supports_reasoning_effort=false` 保持不变。文本配置示例：
+
+  ```toml
+  [model."your-model-id"]
+  reasoning_efforts = [{ value = "low", label = "Low" }, { value = "medium", label = "Medium" }, { value = "high", label = "High" }]
+  ```
+
+- 预检使用 `src/config/grokReasoningConfig.ts`：同一扩展进程内串行读改写，原子落盘并保留权限和符号链接目标；常规 TOML 表只在文件末尾追加缺失的数组表，保留原文、注释和换行；模型以 inline table 定义时复用现有序列化器规范化写回，保留字段但不保留注释。无有效思考档、无配置文件或没有对应自定义模型时不创建/改写配置。非法配置或文件读写失败时停止启动，显示配置预检错误，不再静默忽略所选档位。
+- 自动补齐后仍以 ACP 广告列表为准。能力未广告或所选档位不在已有允许列表时，仍不发送设置、不自动降级，但在首次有 trace 回调的 prompt 显示一次原因；不阻断正常聊天。未配置或不可识别的 thinkingMode 不显示提示。配置预检不更改默认模型、默认思考档、密钥、接口或其它模型。
 - 命令名是 `grok`。聊天区下拉和 `CLI_LIST` 都把 `grok` 追加在 Codex、Claude、OpenCode 之后，顺序固定为 `codex`、`claude`、`opencode`、`grok`。OpenCode 内部 id 仍是 `opencode`，可见名称保持不变，Gemini 仍保持移除。会话、模型存储、命令修复、面板状态、工作区设置、graph 和命令面板沿用这一份 `CLI_LIST`，不再维护排除 grok 的平行名单。宿主在 cli 为 grok 时启动已有 `GrokInteractiveRunner`。
 - 面板主路径对齐 Codex app-server：长驻进程，stdin/stdout 一行一条 JSON-RPC 2.0。复用 NDJSON 拆帧，保留字符串内的 U+2028/U+2029。不刮 TUI，也不把 `grok -p` 当聊天主路径。
 - Grok 回放在 runner 出口降噪，不影响正文、思考和工具气泡实时更新：过滤无执行信息的 `available_commands_update`、`session_info_update` 和无附加元数据的空文本；相邻同会话、同类型且非文本字段完全一致的正文/思考分片合并，保留所有空白与重复词。按固定 1 秒窗口或累计 32 KiB UTF-8 正文刷新，单条原始超大事件不额外裁切；工具、计划、非文本、未知事件、客户端请求、回合结果、取消与异常边界先清空文本缓冲。仅跳过连续完全一致且带稳定 `toolCallId` 的工具快照及连续相同计划；工具状态、输入输出、计划变化、未知事件和成功/错误结果继续保留，复用 runner 时不跨回合合并。回放与 JSONL 导出消费同一批降噪后记录，不再代表逐 token 的原始传输日志。实现与回归入口为 `src/interactive/grokReplayStream.ts`、`src/test/interactive/grokReplayStream.test.ts`、`src/test/interactive/grokRunner.test.ts`。

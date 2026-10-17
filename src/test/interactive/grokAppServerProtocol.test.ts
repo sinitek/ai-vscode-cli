@@ -120,9 +120,30 @@ test("fails closed for invalid JSON, missing auth methods, and unlisted reasonin
   assert.deepEqual(params, {
     sessionId: "session-1",
     configId: "reasoning_effort",
-    value: { value: "max" },
+    value: "max",
   });
-  assert.notEqual(params.value.value, "ultra");
+  assert.notEqual(params.value, "ultra");
+});
+
+test("reads official session config options and sends a scalar reasoning value", () => {
+  const option = findGrokReasoningOption({
+    configOptions: [{
+      id: "reasoning_effort",
+      name: "Reasoning Effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "low",
+      options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }],
+    }],
+  });
+  assert.deepEqual(option, { id: "reasoning_effort", allowed: ["low", "high"] });
+  assert.equal(resolveGrokReasoningEffort("high", option), "high");
+  assert.equal(resolveGrokReasoningEffort("xhigh", option), null);
+  assert.deepEqual(buildGrokReasoningConfigParams("session-1", "high"), {
+    sessionId: "session-1",
+    configId: "reasoning_effort",
+    value: "high",
+  });
 });
 
 

@@ -136,11 +136,11 @@ export function buildGrokSessionCancelParams(sessionId: string): { sessionId: st
 export function buildGrokReasoningConfigParams(
   sessionId: string,
   effort: GrokReasoningEffort,
-): { sessionId: string; configId: "reasoning_effort"; value: { value: GrokReasoningEffort } } {
+): { sessionId: string; configId: "reasoning_effort"; value: GrokReasoningEffort } {
   return {
     sessionId,
     configId: "reasoning_effort",
-    value: { value: effort },
+    value: effort,
   };
 }
 
