@@ -90,6 +90,8 @@ test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
     assert.equal(html.split("npm i -g @openai/codex").length - 1, 1);
     assert.match(html, /npm install -g @anthropic-ai\/claude-code/);
     assert.match(html, /npm install -g opencode-ai/);
+    assert.match(html, /Grok：macOS \/ Linux <code>curl -fsSL https:\/\/x\.ai\/cli\/install\.sh \| bash<\/code>/);
+    assert.match(html, /Windows PowerShell <code>irm https:\/\/x\.ai\/cli\/install\.ps1 \| iex<\/code>/);
     assert.match(html, /winget install --id Microsoft\.PowerShell --source winget/);
     assert.doesNotMatch(html, /安装加速|Install Acceleration|registry\.npmmirror\.com|Windows 安装|macOS 安装|Windows Install|macOS Install/);
     assert.doesNotMatch(html, /help-section[^>]*style=/);
@@ -105,6 +107,6 @@ test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
     }
   }
 
-  assert.match(chineseHtml, /Windows 必须先安装 PowerShell，再执行上面的命令/);
+  assert.match(chineseHtml, /Windows 必须先安装 PowerShell，再执行上面的 npm 命令/);
   assert.doesNotMatch(chineseHtml, /准备成本和界面复杂度最高|目前还没有图编辑器|缺点：/);
 });

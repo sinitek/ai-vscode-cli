@@ -320,7 +320,7 @@ export const WEBVIEW_STRINGS = {
     helpModeGraphPros: "优点：依赖和进度直观，调度与恢复边界清楚。",
     helpInstallTitle: "安装",
     helpInstallWindowsPowerShellTitle: "Windows 先安装 PowerShell",
-    helpInstallWindowsPowerShellNote: "Windows 必须先安装 PowerShell，再执行上面的命令。macOS 使用相同命令，不需要这一步。",
+    helpInstallWindowsPowerShellNote: "Windows 必须先安装 PowerShell，再执行上面的 npm 命令。macOS 不需要这一步。Grok 请使用对应系统列出的安装命令。",
     helpInstallWindowsPowerShellWinget: "使用 winget 安装：",
     helpRemoveEnvTitle: "移除系统环境变量配置",
     helpRemoveEnvItem1:

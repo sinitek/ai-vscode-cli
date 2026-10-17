@@ -798,6 +798,7 @@ ${renderChatModal({
                 <li>Codex：<code>npm i -g @openai/codex</code></li>
                 <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
                 <li>OpenCode：<code>npm install -g opencode-ai</code></li>
+                <li>Grok：macOS / Linux <code>curl -fsSL https://x.ai/cli/install.sh | bash</code>；Windows PowerShell <code>irm https://x.ai/cli/install.ps1 | iex</code></li>
               </ul>
             </div>
             <div class="help-section">
