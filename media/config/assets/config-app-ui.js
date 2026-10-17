@@ -6,7 +6,7 @@ const DEFAULT_RUN_COMMANDS = {
     claude: "claude --dangerously-skip-permissions",
     codex: "codex --dangerously-bypass-approvals-and-sandbox",
     opencode: "opencode --auto",
-    grok: "grok --no-auto-update agent --always-approve stdio",
+    grok: "grok --always-approve",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
