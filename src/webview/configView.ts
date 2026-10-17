@@ -409,40 +409,11 @@ export function getConfigViewHtml(
           getBackups: (platform) => requestConfig("getBackups", { platform }),
           initDefault: (platform) =>
             requestConfig("initDefault", { platform }).then((config) => mapConfigFromHost(config, platform)),
-          getMcpMarketplaceList: () => requestConfig("getMcpMarketplaceList", {}),
-          getClaudeSkillsList: () => requestConfig("getClaudeSkillsList", {}),
-          getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
-          getOpenCodeSkillsList: () => requestConfig("getOpenCodeSkillsList", {}),
-          getGrokSkillsList: () => requestConfig("getGrokSkillsList", {}),
-          getGrokOfficialSkills: () => requestConfig("getGrokOfficialSkills", {}),
-          getOfficialSkillsCatalog: (platform) =>
-            platform === "opencode" || platform === "grok" ? Promise.resolve([]) : requestConfig("getOfficialSkillsCatalog", { platform }),
-          installOfficialSkill: (platform, skillId) =>
-            platform === "grok"
-              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
-              : platform === "opencode"
-                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-                : requestConfig("installOfficialSkill", { platform, skillId }),
-          updateOfficialSkill: (platform, skillId) =>
-            platform === "grok"
-              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
-              : platform === "opencode"
-                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-                : requestConfig("updateOfficialSkill", { platform, skillId }),
-          uninstallOfficialSkill: (platform, skillId) =>
-            platform === "grok"
-              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
-              : platform === "opencode"
-                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-                : requestConfig("uninstallOfficialSkill", { platform, skillId }),
-          getMcpInstalledServerIds: (platform) => requestConfig("getMcpInstalledServerIds", { platform }),
-          getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
-          getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),
-          getMcpHealth: (platform) => requestConfig("getMcpHealth", { platform }),
-          installMcp: (platform, mcpId, envOverrides) =>
-            requestConfig("installMcp", { platform, mcpId, envOverrides }),
-          installCodexMcp: (mcpId) => requestConfig("installCodexMcp", { mcpId }),
-          uninstallMcp: (platform, mcpId) => requestConfig("uninstallMcp", { platform, mcpId }),
+          getCliSkillsList: (platform) => requestConfig("getCliSkillsList", { platform }),
+          openCliSkillsDirectory: (platform) => requestConfig("openCliSkillsDirectory", { platform }),
+          deleteCliSkill: (platform, name) => requestConfig("deleteCliSkill", { platform, name }),
+          copyCliSkill: (platform, name, targetPlatform) =>
+            requestConfig("copyCliSkill", { platform, name, targetPlatform }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };

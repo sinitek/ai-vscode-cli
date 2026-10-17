@@ -6,6 +6,7 @@ import {
   resolveCodexHomeDir,
   resolveGrokHomeDir,
   resolveOpenCodeHomeDir,
+  resolveXdgConfigHome,
 } from "../shared/userHomePaths";
 import {
   LEGACY_GEMINI_CONFIG_PLATFORM,
@@ -124,4 +125,17 @@ export function getCodexRuntimePaths(paths: ConfigPathMap = CONFIG_PATHS): { con
   return {
     config: paths.codex.config,
   };
+}
+
+export type OpenCodeGlobalConfigPathOptions = {
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+};
+
+export function resolveOpenCodeGlobalConfigPath(
+  options: OpenCodeGlobalConfigPathOptions = {},
+): string {
+  const env = options.env ?? process.env;
+  const homeDir = options.homeDir ?? os.homedir();
+  return path.join(resolveXdgConfigHome(env, homeDir), "opencode", "opencode.json");
 }

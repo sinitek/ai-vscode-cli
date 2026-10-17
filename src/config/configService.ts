@@ -8,14 +8,11 @@ import {
   LEGACY_GEMINI_CONFIG_PLATFORM,
   CopyConfigPayload,
   CurrentConfig,
-  ClaudeSkillItem,
-  CodexSkillItem,
-  OpenCodeSkillItem,
 } from "./types";
-import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
-import { listGrokOfficialSkills, listGrokSkills, mergeGrokSkillsConfig } from "./grokSkills";
-import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
-import { listOpenCodeSkills, mergeOpenCodeSkillsConfig } from "./geminiSkills";
+import { mergeCodexSkillsConfig } from "./codexSkills";
+import { mergeGrokSkillsConfig } from "./grokSkills";
+import { mergeClaudeSkillsConfig } from "./claudeSkills";
+import { mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { t } from "../i18n";
 import {
   OpenCodeConfigModelIssueCode,
@@ -39,12 +36,6 @@ import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
 import { commitGrokText, validateGrokDocument } from "./grokConfig";
-export {
-  getOfficialSkillsCatalog,
-  installOfficialSkill,
-  updateOfficialSkill,
-  uninstallOfficialSkill,
-} from "./officialSkillService";
 
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
 const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
@@ -222,100 +213,6 @@ export async function writeCodexConfig(config: string, auth?: string): Promise<v
 export async function writeOpenCodeConfig(config: string, _env?: string): Promise<void> {
   await ensureDir(path.dirname(CONFIG_PATHS.opencode.config));
   await fs.writeFile(CONFIG_PATHS.opencode.config, config, "utf-8");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function removeMcpServerFromJsonText(
-  content: string,
-  serverId: string,
-): { content: string; changed: boolean } {
-  const parsed = JSON.parse(content);
-  if (!isPlainObject(parsed)) {
-    return { content, changed: false };
-  }
-
-  let changed = false;
-  for (const key of ["mcp", "mcpServers", "mcp_servers"] as const) {
-    const section = parsed[key];
-    if (!isPlainObject(section) || !(serverId in section)) {
-      continue;
-    }
-    const nextSection = { ...section };
-    delete nextSection[serverId];
-    parsed[key] = nextSection;
-    changed = true;
-  }
-
-  return {
-    content: changed ? `${JSON.stringify(parsed, null, 2)}\n` : content,
-    changed,
-  };
-}
-
-function removeCodexMcpServerBlock(
-  content: string,
-  serverId: string,
-): { content: string; changed: boolean } {
-  const lines = content.split(/\r?\n/);
-  const headerPattern = new RegExp(`^\s*\[mcp_servers\.${escapeRegExp(serverId)}\]\s*$`);
-  const nextSectionPattern = /^\s*\[[^\]]+\]\s*$/;
-  const result: string[] = [];
-  let changed = false;
-  let skipping = false;
-
-  for (const line of lines) {
-    if (!skipping && headerPattern.test(line)) {
-      skipping = true;
-      changed = true;
-      continue;
-    }
-    if (skipping && nextSectionPattern.test(line)) {
-      skipping = false;
-    }
-    if (!skipping) {
-      result.push(line);
-    }
-  }
-
-  const nextContent = result.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
-  return {
-    content: nextContent.length > 0 ? `${nextContent}\n` : "",
-    changed,
-  };
-}
-
-async function cleanupClaudeMcpDocument(serverId: string): Promise<boolean> {
-  const currentContent = await readClaudeMcpConfig();
-  const next = removeMcpServerFromJsonText(currentContent, serverId);
-  if (!next.changed) {
-    return false;
-  }
-  await ensureDir(path.dirname(CONFIG_PATHS.claude.mcp));
-  await fs.writeFile(CONFIG_PATHS.claude.mcp, next.content, "utf-8");
-  return true;
-}
-
-async function cleanupOpenCodeMcpDocument(serverId: string): Promise<boolean> {
-  const { config } = await readOpenCodeConfig();
-  const next = removeMcpServerFromJsonText(config, serverId);
-  if (!next.changed) {
-    return false;
-  }
-  await writeOpenCodeConfig(next.content);
-  return true;
-}
-
-async function cleanupCodexMcpDocument(serverId: string): Promise<boolean> {
-  const { config, auth } = await readCodexConfig();
-  const next = removeCodexMcpServerBlock(config, serverId);
-  if (!next.changed) {
-    return false;
-  }
-  await writeCodexConfig(next.content, auth);
-  return true;
 }
 
 export async function backupClaudeConfig(): Promise<string[]> {
@@ -1136,32 +1033,9 @@ export async function backupConfig(platform: LegacyConfigPlatformInput): Promise
 }
 
 export {
-  getMcpInstalledServerIds,
-  getCodexMcpServerIds,
-  getCodexMcpHealth,
-  getMcpHealth,
-  installCodexMcpServer,
-  installMcpServer,
-  uninstallMcpServer,
-  getMcpMarketplaceList,
-} from "./mcpService";
+  getCliSkillsList,
+  openCliSkillsDirectory,
+  deleteCliSkill,
+  copyCliSkill,
+} from "./cliGlobalSkills";
 
-export async function getClaudeSkillsList(): Promise<ClaudeSkillItem[]> {
-  return listClaudeSkills();
-}
-
-export async function getCodexSkillsList(workspaceRoots?: string[]): Promise<CodexSkillItem[]> {
-  return listCodexSkills(workspaceRoots);
-}
-
-export async function getOpenCodeSkillsList(workspaceRoots?: string[]): Promise<OpenCodeSkillItem[]> {
-  return listOpenCodeSkills(workspaceRoots);
-}
-
-export async function getGrokSkillsList(workspaceRoots?: string[]) {
-  return listGrokSkills(workspaceRoots);
-}
-
-export async function getGrokOfficialSkills() {
-  return listGrokOfficialSkills();
-}

@@ -39,51 +39,21 @@ const detectConfigApiMode = () =>
     backup: (e) => requestConfigApi(`/backup/${e}`, { method: "POST" }),
     getBackups: async (e) => (await requestConfigApi(`/backups/${e}`)).backups,
     initDefault: (e) => requestConfigApi(`/init/${e}`, { method: "POST" }),
-    getMcpMarketplaceList: () =>
-      fetch(`${CONFIG_API_BASE}/config/mcp/marketplace`).then(async (e) => {
-        if (!e.ok) throw new Error(`获取 MCP 市场失败(${e.status})`);
-        const t = await e.json();
-        if (t?.success === !1)
-          throw new Error(t.message ?? "获取 MCP 市场失败");
-        return t?.data ?? [];
+    getCliSkillsList: (platform) =>
+      requestConfigApi(`/skills/${encodeURIComponent(platform)}`),
+    openCliSkillsDirectory: (platform) =>
+      requestConfigApi(`/skills/${encodeURIComponent(platform)}/open`, { method: "POST" }),
+    deleteCliSkill: (platform, name) =>
+      requestConfigApi(`/skills/${encodeURIComponent(platform)}/delete`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
       }),
-    getClaudeSkillsList: () => requestConfigApi("/claude/skills"),
-    getCodexSkillsList: () => requestConfigApi("/codex/skills"),
-    getOpenCodeSkillsList: () => requestConfigApi("/opencode/skills"),
-    getOfficialSkillsCatalog: async () => {
-      throw new Error("当前模式不支持读取内置官方 Skills");
-    },
-    installOfficialSkill: async () => {
-      throw new Error("当前模式不支持安装内置官方 Skills");
-    },
-    updateOfficialSkill: async () => {
-      throw new Error("当前模式不支持更新内置官方 Skills");
-    },
-    uninstallOfficialSkill: async () => {
-      throw new Error("当前模式不支持卸载内置官方 Skills");
-    },
-    getMcpInstalledServerIds: async () => {
-      throw new Error("当前模式不支持读取 MCP 安装状态");
-    },
-    getCodexMcpServerIds: async () => {
-      throw new Error("当前模式不支持读取 Codex MCP");
-    },
-    getCodexMcpHealth: async () => {
-      throw new Error("当前模式不支持检测 Codex MCP 健康状态");
-    },
-    getMcpHealth: async () => {
-      throw new Error("当前模式不支持检测 MCP 健康状态");
-    },
-    installMcp: async () => {
-      throw new Error("当前模式不支持安装 MCP");
-    },
-    installCodexMcp: async () => {
-      throw new Error("当前模式不支持安装 Codex MCP");
-    },
-    uninstallMcp: async () => {
-      throw new Error("当前模式不支持卸载 MCP");
-    },
-    exportConfigs: async () => {
+    copyCliSkill: (platform, name, targetPlatform) =>
+      requestConfigApi(`/skills/${encodeURIComponent(platform)}/copy`, {
+        method: "POST",
+        body: JSON.stringify({ name, targetPlatform }),
+      }),
+        exportConfigs: async () => {
       throw new Error("当前模式不支持导出文件");
     },
   },
@@ -93,126 +63,39 @@ const detectConfigApiMode = () =>
   },
   configApiMode = detectConfigApiMode(),
   configApi = configApiMode === "ipc" ? getIpcConfigApi() : httpConfigApi,
-  fetchMcpMarketplaceList = async () => {
+  fetchCliSkillsList = async (platform) => {
+    if (!configApi.getCliSkillsList) throw new Error("当前模式不支持读取 Skills");
     try {
-      return configApi.getMcpMarketplaceList();
-    } catch (e) {
-      throw (console.error("获取 MCP 市场列表失败:", e), e);
+      return configApi.getCliSkillsList(platform);
+    } catch (error) {
+      throw (console.error("获取 Skills 失败:", error), error);
     }
   },
-  fetchClaudeSkillsList = async () => {
+  openCliSkillsDirectory = async (platform) => {
+    if (!configApi.openCliSkillsDirectory) throw new Error("当前模式不支持打开 Skills 目录");
     try {
-      return configApi.getClaudeSkillsList();
-    } catch (e) {
-      throw (console.error("获取 Claude Skills 失败:", e), e);
+      return configApi.openCliSkillsDirectory(platform);
+    } catch (error) {
+      throw (console.error("打开 Skills 目录失败:", error), error);
     }
   },
-  fetchCodexSkillsList = async () => {
+  deleteCliSkill = async (platform, name) => {
+    if (!configApi.deleteCliSkill) throw new Error("当前模式不支持删除 Skills");
     try {
-      return configApi.getCodexSkillsList();
-    } catch (e) {
-      throw (console.error("获取 Codex Skills 失败:", e), e);
+      return configApi.deleteCliSkill(platform, name);
+    } catch (error) {
+      throw (console.error("删除 Skill 失败:", error), error);
     }
   },
-  fetchOpenCodeSkillsList = async () => {
+  copyCliSkill = async (platform, name, targetPlatform) => {
+    if (!configApi.copyCliSkill) throw new Error("当前模式不支持复制 Skills");
     try {
-      const e = configApi.getOpenCodeSkillsList ?? configApi[`get${"Gem"}${"ini"}SkillsList`];
-      if (!e) throw new Error("当前模式不支持读取 OpenCode Skills");
-      return e.call(configApi);
-    } catch (e) {
-      throw (console.error("获取 OpenCode Skills 失败:", e), e);
+      return configApi.copyCliSkill(platform, name, targetPlatform);
+    } catch (error) {
+      throw (console.error("复制 Skill 失败:", error), error);
     }
   },
-  fetchOfficialSkillsCatalog = async (e) => {
-    if (!configApi.getOfficialSkillsCatalog) return [];
-    try {
-      return configApi.getOfficialSkillsCatalog(e);
-    } catch (t) {
-      throw (console.error("获取官方 Skills 失败:", t), t);
-    }
-  },
-  installOfficialSkillById = async (e, t) => {
-    if (!configApi.installOfficialSkill) throw new Error("当前模式不支持安装内置官方 Skills");
-    try {
-      return configApi.installOfficialSkill(e, t);
-    } catch (n) {
-      throw (console.error("安装 Skill 失败:", n), n);
-    }
-  },
-  updateOfficialSkillById = async (e, t) => {
-    if (!configApi.updateOfficialSkill) throw new Error("当前模式不支持更新内置官方 Skills");
-    try {
-      return configApi.updateOfficialSkill(e, t);
-    } catch (n) {
-      throw (console.error("更新 Skill 失败:", n), n);
-    }
-  },
-  uninstallOfficialSkillById = async (e, t) => {
-    if (!configApi.uninstallOfficialSkill) throw new Error("当前模式不支持卸载内置官方 Skills");
-    try {
-      return configApi.uninstallOfficialSkill(e, t);
-    } catch (n) {
-      throw (console.error("卸载 Skill 失败:", n), n);
-    }
-  },
-  fetchMcpInstalledServerIds = async (e) => {
-    if (!configApi.getMcpInstalledServerIds) return [];
-    try {
-      return configApi.getMcpInstalledServerIds(e);
-    } catch (t) {
-      throw (console.error("获取 MCP 安装状态失败:", t), t);
-    }
-  },
-  fetchCodexMcpServerIds = async () => {
-    if (!configApi.getCodexMcpServerIds) return [];
-    try {
-      return configApi.getCodexMcpServerIds();
-    } catch (e) {
-      throw (console.error("获取 Codex MCP 列表失败:", e), e);
-    }
-  },
-  fetchCodexMcpHealth = async () => {
-    if (!configApi.getCodexMcpHealth) return [];
-    try {
-      return configApi.getCodexMcpHealth();
-    } catch (e) {
-      throw (console.error("获取 Codex MCP 健康状态失败:", e), e);
-    }
-  },
-  fetchMcpHealth = async (e) => {
-    if (!configApi.getMcpHealth) return [];
-    try {
-      return configApi.getMcpHealth(e);
-    } catch (t) {
-      throw (console.error("获取 MCP 健康状态失败:", t), t);
-    }
-  },
-  installMcpById = async (e, t, n) => {
-    if (!configApi.installMcp) throw new Error("当前模式不支持安装 MCP");
-    try {
-      return configApi.installMcp(e, t, n);
-    } catch (r) {
-      throw (console.error("安装 MCP 失败:", r), r);
-    }
-  },
-  installCodexMcpById = async (e) => {
-    if (!configApi.installCodexMcp)
-      throw new Error("当前模式不支持安装 Codex MCP");
-    try {
-      return configApi.installCodexMcp(e);
-    } catch (t) {
-      throw (console.error("安装 Codex MCP 失败:", t), t);
-    }
-  },
-  uninstallMcpById = async (e, t) => {
-    if (!configApi.uninstallMcp) throw new Error("当前模式不支持卸载 MCP");
-    try {
-      return configApi.uninstallMcp(e, t);
-    } catch (n) {
-      throw (console.error("卸载 MCP 失败:", n), n);
-    }
-  },
-  fetchConfigList = async (e) => {
+    fetchConfigList = async (e) => {
     try {
       return configApi.getList(e);
     } catch (t) {

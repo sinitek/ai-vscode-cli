@@ -30,7 +30,7 @@
 │   ├── cli/                  # CLI 设置读取、命令解析、进程执行
 │   ├── interactive/          # Codex / Claude 交互 Runner 与会话映射
 │   ├── webview/              # 聊天面板、配置中心、前后端协议
-│   ├── config/               # 本地配置档案、Skills、MCP 管理
+│   ├── config/               # 本地配置档案；配置中心 Skills 只管理四个全局目录，不再提供 MCP 管理
 │   ├── graph/                # Graph 运行图、调度、边语义与节点控制
 │   ├── shared/               # 跨 CLI/config/Graph 复用的纯工具
 │   ├── trace/                # trace/tool 输出格式化
@@ -41,9 +41,7 @@
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
 ├── media/
-│   ├── config/assets/        # 配置中心静态资源
-│   ├── official_skills_catalog.json
-│   └── mcp_marketplace.json
+│   └── config/assets/        # 配置中心静态资源
 ├── docs/                     # 兼容入口文档，详细内容已迁移到 .ch/docs/
 └── .ch/docs/                 # 事实来源文档体系
 ```
@@ -108,7 +106,7 @@ cli / interactive / config 服务层
 
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
 - `src/interactive/`：会话型运行与底层续接 ID 映射
-- `src/config/`：外部 CLI 配置、Skills、MCP、本地配置档案管理；用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`
+- `src/config/`：外部 CLI 配置、全局 Skills 目录和本地配置档案管理；配置中心不再把 MCP 市场作为用户功能。用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`
 - `src/shared/`：跨服务层复用、无 VS Code 依赖的纯工具；当前包含 strict/jsonc JSON object 解析等后端共用逻辑
 - 这一层负责和本地 CLI、SDK、home 目录配置打交道，但不负责 UI 渲染
 
@@ -139,7 +137,7 @@ cli / interactive / config 服务层
 
 1. 只是设置读取、命令拼装、执行捕获：放 `src/cli/`
 2. 需要会话复用、thread/session 恢复：放 `src/interactive/`
-3. 需要管理外部 CLI 配置、Skills、MCP：放 `src/config/`
+3. 需要管理外部 CLI 配置或全局 Skills：放 `src/config/`
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，在 `src/extension.ts` 接线；若是提示运行的连续状态机，优先放到 `src/extensionHost/*Runtime.ts` 并由 `extension.ts` 注入依赖
 6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/loopDebate.ts`，不要反向依赖 VS Code API 或 Webview

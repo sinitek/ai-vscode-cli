@@ -126,7 +126,7 @@ globalThis.__api = {
   httpConfigApi,
   requestConfigApi,
   fetchConfigList,
-  fetchOpenCodeSkillsList,
+  fetchCliSkillsList,
 };`,
     sandbox,
   );
@@ -473,7 +473,6 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.match(html, /openCodeSkills: config\.openCodeSkills \?\? config\.geminiSkills \?\? \[\]/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = config/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = payload/);
-  assert.match(html, /platform === "opencode" \|\| platform === "grok" \? Promise\.resolve\(\[\]\) : requestConfig\("getOfficialSkillsCatalog"/);
   assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok"\]/);
   assert.match(html, /event: "syncActive:empty"/);
   assert.match(html, /event: "syncActive:error"/);
@@ -794,21 +793,10 @@ test("config manager panel routes remaining request actions and export branches"
     "backupConfig",
     "getBackupList",
     "initDefaultConfig",
-    "getMcpMarketplaceList",
-    "getClaudeSkillsList",
-    "getCodexSkillsList",
-    "getOpenCodeSkillsList",
-    "getOfficialSkillsCatalog",
-    "installOfficialSkill",
-    "updateOfficialSkill",
-    "uninstallOfficialSkill",
-    "getMcpInstalledServerIds",
-    "getCodexMcpServerIds",
-    "getCodexMcpHealth",
-    "getMcpHealth",
-    "installMcpServer",
-    "installCodexMcpServer",
-    "uninstallMcpServer",
+    "getCliSkillsList",
+    "openCliSkillsDirectory",
+    "deleteCliSkill",
+    "copyCliSkill",
   ];
   for (const name of serviceNames) {
     originals.set(name, Object.getOwnPropertyDescriptor(configService, name));
@@ -857,65 +845,21 @@ test("config manager panel routes remaining request actions and export branches"
       calls.push(["initDefaultConfig", platform]);
       return { id: `${platform}-default`, platform };
     };
-    configService.getMcpMarketplaceList = async () => {
-      calls.push(["getMcpMarketplaceList"]);
-      return [];
+    configService.getCliSkillsList = async (platform: string) => {
+      calls.push(["getCliSkillsList", platform]);
+      return { directory: `/skills/${platform}`, displayDirectory: `~/${platform}/skills`, skills: [] };
     };
-    configService.getClaudeSkillsList = async () => {
-      calls.push(["getClaudeSkillsList"]);
-      return [];
+    configService.openCliSkillsDirectory = async (platform: string) => {
+      calls.push(["openCliSkillsDirectory", platform]);
+      return `/skills/${platform}`;
     };
-    configService.getCodexSkillsList = async (roots: string[]) => {
-      calls.push(["getCodexSkillsList", roots]);
-      return roots;
+    configService.deleteCliSkill = async (platform: string, name: string) => {
+      calls.push(["deleteCliSkill", platform, name]);
+      return { directory: `/skills/${platform}`, displayDirectory: `~/${platform}/skills`, skills: [] };
     };
-    configService.getOpenCodeSkillsList = async (roots: string[]) => {
-      calls.push(["getOpenCodeSkillsList", roots]);
-      return roots;
-    };
-    configService.getOfficialSkillsCatalog = async (platform: string) => {
-      calls.push(["getOfficialSkillsCatalog", platform]);
-      return { platform };
-    };
-    configService.installOfficialSkill = async (platform: string, skillId: string) => {
-      calls.push(["installOfficialSkill", platform, skillId]);
-      return { platform, skillId, action: "install" };
-    };
-    configService.updateOfficialSkill = async (platform: string, skillId: string) => {
-      calls.push(["updateOfficialSkill", platform, skillId]);
-      return { platform, skillId, action: "update" };
-    };
-    configService.uninstallOfficialSkill = async (platform: string, skillId: string) => {
-      calls.push(["uninstallOfficialSkill", platform, skillId]);
-      return { platform, skillId, action: "uninstall" };
-    };
-    configService.getMcpInstalledServerIds = async (platform: string) => {
-      calls.push(["getMcpInstalledServerIds", platform]);
-      return [`${platform}-mcp`];
-    };
-    configService.getCodexMcpServerIds = async () => {
-      calls.push(["getCodexMcpServerIds"]);
-      return ["codex-mcp"];
-    };
-    configService.getCodexMcpHealth = async () => {
-      calls.push(["getCodexMcpHealth"]);
-      return {};
-    };
-    configService.getMcpHealth = async (platform: string) => {
-      calls.push(["getMcpHealth", platform]);
-      return { platform };
-    };
-    configService.installMcpServer = async (platform: string, mcpId: string, envOverrides?: Record<string, string>) => {
-      calls.push(["installMcpServer", platform, mcpId, envOverrides]);
-      return { platform, mcpId };
-    };
-    configService.installCodexMcpServer = async (mcpId: string) => {
-      calls.push(["installCodexMcpServer", mcpId]);
-      return { mcpId };
-    };
-    configService.uninstallMcpServer = async (platform: string, mcpId: string) => {
-      calls.push(["uninstallMcpServer", platform, mcpId]);
-      return { platform, mcpId };
+    configService.copyCliSkill = async (platform: string, name: string, targetPlatform: string) => {
+      calls.push(["copyCliSkill", platform, name, targetPlatform]);
+      return { directory: `/skills/${platform}`, displayDirectory: `~/${platform}/skills`, skills: [{ name }] };
     };
     fs.promises.mkdir = (async (target: fs.PathLike) => {
       calls.push(["mkdir", String(target)]);
@@ -951,21 +895,10 @@ test("config manager panel routes remaining request actions and export branches"
       { requestId: "backup", action: "backup", platform: "claude" },
       { requestId: "backups", action: "getBackups", platform: "claude" },
       { requestId: "init", action: "initDefault", platform: "codex" },
-      { requestId: "market", action: "getMcpMarketplaceList" },
-      { requestId: "claude-skills", action: "getClaudeSkillsList" },
-      { requestId: "codex-skills", action: "getCodexSkillsList" },
-      { requestId: "opencode-skills", action: "getOpenCodeSkillsList" },
-      { requestId: "catalog", action: "getOfficialSkillsCatalog", platform: "codex" },
-      { requestId: "install-skill", action: "installOfficialSkill", platform: "codex", skillId: "skill-a" },
-      { requestId: "update-skill", action: "updateOfficialSkill", platform: "claude", skillId: "skill-b" },
-      { requestId: "remove-skill", action: "uninstallOfficialSkill", platform: "opencode", skillId: "skill-c" },
-      { requestId: "installed-mcp", action: "getMcpInstalledServerIds", platform: "claude" },
-      { requestId: "codex-mcp-ids", action: "getCodexMcpServerIds" },
-      { requestId: "codex-mcp-health", action: "getCodexMcpHealth" },
-      { requestId: "mcp-health", action: "getMcpHealth", platform: "opencode" },
-      { requestId: "install-mcp", action: "installMcp", platform: "claude", mcpId: "mcp-a", envOverrides: { KEY: "VALUE" } },
-      { requestId: "install-codex-mcp", action: "installCodexMcp", mcpId: "mcp-b" },
-      { requestId: "uninstall-mcp", action: "uninstallMcp", platform: "codex", mcpId: "mcp-c" },
+      { requestId: "skills-list", action: "getCliSkillsList", platform: "codex" },
+      { requestId: "skills-open", action: "openCliSkillsDirectory", platform: "claude" },
+      { requestId: "skills-delete", action: "deleteCliSkill", platform: "opencode", name: "skill-a" },
+      { requestId: "skills-copy", action: "copyCliSkill", platform: "grok", name: "skill-b", targetPlatform: "codex" },
       { requestId: "export-invalid", action: "exportConfigs", payload: { fileName: "ignored.json" } },
       { requestId: "export-default", action: "exportConfigs", payload: { content: "{\"ok\":true}" } },
       { requestId: "export-sanitized", action: "exportConfigs", payload: { fileName: "bad:name", content: "{}" } },
@@ -990,22 +923,7 @@ test("config manager panel routes remaining request actions and export branches"
     assert.equal(written.length, 3);
     assert.ok(written.some(([target]) => String(target).endsWith("bad_name.json")));
     assert.ok(written.some(([target]) => String(target).endsWith("ready.json")));
-    assert.ok((calls.find((call) => call[0] === "getCodexSkillsList")?.[1] as string[]).includes("/workspace/project-a"));
-
-    const vscode = require("vscode") as AnyRecord;
-    vscode.workspace.workspaceFolders = undefined;
-    const emptyRootsCodex = await dispatchPanelMessage(harness, {
-      type: "config:request",
-      requestId: "codex-skills-empty-roots",
-      action: "getCodexSkillsList",
-    });
-    const emptyRootsOpenCode = await dispatchPanelMessage(harness, {
-      type: "config:request",
-      requestId: "opencode-skills-empty-roots",
-      action: "getOpenCodeSkillsList",
-    });
-    assert.deepEqual(emptyRootsCodex.data, []);
-    assert.deepEqual(emptyRootsOpenCode.data, []);
+    assert.deepEqual(calls.find((call) => call[0] === "getCliSkillsList"), ["getCliSkillsList", "codex"]);
   } finally {
     for (const [name, descriptor] of originals) {
       if (descriptor) {
@@ -1038,23 +956,10 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "backup",
     "getBackups",
     "initDefault",
-    "getMcpMarketplaceList",
-    "getClaudeSkillsList",
-    "getCodexSkillsList",
-    "getOpenCodeSkillsList",
-    "getGrokSkillsList",
-    "getGrokOfficialSkills",
-    "getOfficialSkillsCatalog",
-    "installOfficialSkill",
-    "updateOfficialSkill",
-    "uninstallOfficialSkill",
-    "getMcpInstalledServerIds",
-    "getCodexMcpServerIds",
-    "getCodexMcpHealth",
-    "getMcpHealth",
-    "installMcp",
-    "installCodexMcp",
-    "uninstallMcp",
+    "getCliSkillsList",
+    "openCliSkillsDirectory",
+    "deleteCliSkill",
+    "copyCliSkill",
     "exportConfigs",
   ]);
 
@@ -1064,7 +969,7 @@ test("config protocol declarations stay aligned with panel switch cases and brid
   }
 
   assert.match(apiSource, /detectConfigApiMode = \(\) =>[\s\S]*window\.electronAPI\?\.config \? "ipc" : "http"/);
-  assert.match(apiSource, /getOpenCodeSkillsList: \(\) => requestConfigApi\("\/opencode\/skills"\)/);
+  assert.match(apiSource, /getCliSkillsList: \(platform\) =>\s*requestConfigApi\(`\/skills\/\$\{encodeURIComponent\(platform\)\}`\)/);
   assert.match(apiSource, /configApiMode === "ipc" \? getIpcConfigApi\(\) : httpConfigApi/);
   assert.match(viewSource, /close: \(\) => \{[\s\S]*?vscode\.postMessage\(\{ type: "config:close" \}\)/);
   assert.match(panelSource, /message\.type === "config:close"[\s\S]*?this\.panel\?\.dispose\(\)/);
@@ -1076,7 +981,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
       electronAPI: {
         config: {
           getList: async (platform: string) => [`ipc:${platform}`],
-          getOpenCodeSkillsList: async () => ["opencode-skill"],
+          getCliSkillsList: async (platform: string) => [{ platform, name: "opencode-skill" }],
         },
       },
     },
@@ -1087,7 +992,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
   assert.equal(ipcApi.detectConfigApiMode(), "ipc");
   assert.equal(ipcApi.configApiMode, "ipc");
   assert.deepEqual(toPlain(await ipcApi.fetchConfigList("codex")), ["ipc:codex"]);
-  assert.deepEqual(toPlain(await ipcApi.fetchOpenCodeSkillsList()), ["opencode-skill"]);
+  assert.deepEqual(toPlain(await ipcApi.fetchCliSkillsList("opencode")), [{ platform: "opencode", name: "opencode-skill" }]);
 
   const fetchCalls: { url: string; init?: AnyRecord }[] = [];
   const httpApi = loadApiUtilities({}, async (url: string, init?: AnyRecord) => {
@@ -1169,7 +1074,7 @@ test("config store asset keeps platform order, duplicate names, empty states, an
 test("configuration UI asset exposes platform switching, empty/error states, and compact selectors", () => {
   const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
   const cssSource = readProjectFile(`media/config/assets/${findAsset(".css")}`);
-  const listPanel = extractBetween(uiSource, "// Config list panel", "const jv =");
+  const listPanel = extractBetween(uiSource, "// Config list panel", "const CLI_GLOBAL_SKILL_TARGETS =");
   const editorPanel = extractBetween(uiSource, "const ConfigEditorPanel =", "const { Header: jk");
   const layout = extractBetween(uiSource, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const readConfigVscodeColor =");
 
@@ -1285,19 +1190,28 @@ test("configuration UI resolves Ant Design tokens from the current VS Code theme
   assert.equal(theme.components.List.itemPaddingLG, "12px 16px");
 });
 
-test("skills manager renders installed skills as a compact multiselect table", () => {
+test("skills manager lists global skills with copy and delete actions", () => {
   const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
   const cssSource = readProjectFile(`media/config/assets/${findAsset(".css")}`);
-  const skillRows = extractBetween(uiSource, "const renderSkillRows =", "const renderOfficialSkillRows =");
+  const skillRows = extractBetween(uiSource, "const renderSkillRows =", "const SkillsManagerModal =");
 
   assert.match(skillRows, /be\.jsxs\("table", \{\s+className: "skills-manager-table"/);
-  assert.match(skillRows, /className: "skills-manager-table-check"[\s\S]*type: "checkbox"/);
-  assert.match(skillRows, /ref: \(p\) => \{[\s\S]*p\.indeterminate = m/);
+  assert.doesNotMatch(skillRows, /type: "checkbox"/);
   assert.match(skillRows, /className: "skills-manager-skill-line"/);
   assert.match(skillRows, /className: "skills-manager-skill-description"/);
-  assert.match(skillRows, /children: p\.description/);
+  assert.match(skillRows, /children: skill\.description/);
+  assert.match(skillRows, /children: "复制到"/);
+  assert.match(skillRows, /children: "删除"/);
   assert.doesNotMatch(skillRows, /className: "skills-manager-item"/);
-  assert.match(uiSource, /renderSkillRows\(r, s, f, h, p, b, u\)/);
+  assert.match(uiSource, /renderSkillRows\(r, f, setCopySkill, p\)/);
+  assert.match(uiSource, /children: "打开目录"/);
+  assert.match(uiSource, /children: "该目录还没有 Skills"/);
+  assert.match(uiSource, /Skills 加载中\.\.\./);
+  assert.match(uiSource, /width: 760/);
+  assert.match(uiSource, /rootClassName: "skills-manager-modal"/);
+  assert.doesNotMatch(uiSource, /MCP\(全局\)/);
+  assert.doesNotMatch(uiSource, /title: "MCP 市场"/);
+  assert.doesNotMatch(uiSource, /claudeSkills: C/);
 
   assert.match(cssSource, /\.skills-manager-table \{[\s\S]*table-layout: fixed;/);
   assert.match(cssSource, /\.skills-manager-table-check \{[\s\S]*width: 36px;/);

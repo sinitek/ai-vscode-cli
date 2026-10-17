@@ -1,96 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 
 import { parseGrokToml } from "../../config/grokToml";
-import { listGrokOfficialSkills, listGrokSkills, mergeGrokSkillsConfig } from "../../config/grokSkills";
-
-async function writeSkill(root: string, name: string, description: string): Promise<string> {
-  const skillDir = path.join(root, name);
-  await fs.promises.mkdir(skillDir, { recursive: true });
-  await fs.promises.writeFile(
-    path.join(skillDir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description}\n---\n# ${name}\n`,
-    "utf8",
-  );
-  return skillDir;
-}
-
-async function withGrokHome<T>(run: (grokHome: string, workspace: string) => Promise<T>): Promise<T> {
-  const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "sinitek-grok-skills-"));
-  const grokHome = path.join(temp, "grok-home");
-  const workspace = path.join(temp, "workspace");
-  await fs.promises.mkdir(grokHome, { recursive: true });
-  await fs.promises.mkdir(workspace, { recursive: true });
-  const previous = process.env.GROK_HOME;
-  process.env.GROK_HOME = grokHome;
-  try {
-    return await run(grokHome, workspace);
-  } finally {
-    if (previous === undefined) {
-      delete process.env.GROK_HOME;
-    } else {
-      process.env.GROK_HOME = previous;
-    }
-    await fs.promises.rm(temp, { recursive: true, force: true });
-  }
-}
+import { mergeGrokSkillsConfig } from "../../config/grokSkills";
 
 test.describe("grok skills", { concurrency: false }, () => {
-  test("returns an empty list when skill directories are missing or empty", async () => {
-    await withGrokHome(async (grokHome, workspace) => {
-      assert.deepEqual(await listGrokSkills([workspace]), []);
-      assert.deepEqual(await listGrokSkills(undefined), []);
-      await fs.promises.mkdir(path.join(workspace, ".grok", "skills"), { recursive: true });
-      await fs.promises.mkdir(path.join(grokHome, "skills"), { recursive: true });
-      await fs.promises.mkdir(path.join(workspace, ".grok", "skills", "notes-only"), { recursive: true });
-      await fs.promises.writeFile(path.join(workspace, ".grok", "skills", "notes-only", "README.md"), "no skill", "utf8");
-      assert.deepEqual(await listGrokSkills([workspace]), []);
-      assert.deepEqual(await listGrokOfficialSkills(), []);
-    });
-  });
-
-  test("project skills override same-named user skills and bundled skills stay labeled", async () => {
-    await withGrokHome(async (grokHome, workspace) => {
-      const projectDir = await writeSkill(path.join(workspace, ".grok", "skills"), "shared", "from project");
-      await writeSkill(path.join(grokHome, "skills"), "shared", "from user");
-      await writeSkill(path.join(grokHome, "skills"), "user-only", "from user only");
-      const bundledDir = await writeSkill(path.join(grokHome, "bundled", "skills"), "shared", "from bundled");
-      await writeSkill(path.join(grokHome, "bundled", "skills"), "bundled-only", "from bundled only");
-
-      const skills = await listGrokSkills([workspace]);
-      const shared = skills.find((skill) => skill.name === "shared");
-      const userOnly = skills.find((skill) => skill.name === "user-only");
-      const bundledOnly = skills.find((skill) => skill.name === "bundled-only");
-      assert.equal(shared?.path, projectDir);
-      assert.equal(shared?.source, undefined);
-      assert.equal(userOnly?.path, path.join(grokHome, "skills", "user-only"));
-      assert.equal(bundledOnly?.path, path.join(grokHome, "bundled", "skills", "bundled-only"));
-      assert.equal(bundledOnly?.source, "bundled");
-      assert.equal(skills.some((skill) => skill.path === bundledDir), false);
-
-      const official = await listGrokOfficialSkills();
-      assert.deepEqual(
-        official.map((skill) => skill.name),
-        ["bundled-only", "shared"],
-      );
-      official.forEach((skill) => {
-        assert.equal(skill.source, "bundled");
-        assert.equal(skill.canInstall, false);
-        assert.equal(skill.canUpdate, false);
-        assert.equal(skill.canUninstall, false);
-      });
-    });
-  });
-
-  test("official list is empty when the bundled directory is missing", async () => {
-    await withGrokHome(async () => {
-      assert.deepEqual(await listGrokOfficialSkills(), []);
-    });
-  });
-
   test("merge adds and removes disabled while keeping api_key, marketplace, ui, and other tables", () => {
     const original = [
       "[model.demo]",

@@ -66,7 +66,7 @@
 
 - Codex / Claude：支持交互式会话续接
 - Grok：ACP 仍是 `grok agent stdio`，不是 `grok -p`。能回答 initialize 的无审核启动是 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。`--permission-mode bypassPermissions` 只放在根命令、`agent` 之前，与 `--always-approve` / `--yolo` 同义，且只保留一次。`args.grok` 中的 `--always-approve`、`--yolo`、`--permission-mode` 从 agent 参数剥离；其它用户 agent 参数仍在 `agent` 与 `stdio` 之间；`--dangerously-bypass-approvals-and-sandbox` 和 `--dangerously-skip-permissions` 继续剔除。选中模型用 `--model <id>`，位于 `agent` 之后、`stdio` 之前；空模型省略 `--model`，不写入 `args.grok` 或 `~/.grok/config.toml`。coding、loop、graph、loop_plus 都使用现有单模型选择和原管理浮层。思考下拉为 `off`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`；已保存的 `max` / `ultra` 保持原值。只有 ACP 广告且允许 `reasoning_effort` 时才发送 `session/set_config_option`，`xhigh` 下发 `xhigh`，`max` 下发 `max`，`ultra` 下发 `max`；不允许时不发送、不自动降级、不加 `--reasoning-effort`。`session/update` 与 `session/prompt` 结果通过 `rawStreamDelta`（`stream: "event"`，带当前 tabId）回放，气泡分类不变。
-- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动。OpenCode 明确分成两个配置文件：模型/Provider 配置中心只维护 `~/.opencode/config.json`，全局 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不再要求或生成 `~/.opencode/.env`；聊天面板在 Loop / Graph 模式按“主模型 / 子模型”两行展示各自模型与思考力度，Vibe（coding）模式仅展示并使用主模型，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配，模型候选来自 active config 的 `provider.<id>.models` 且没有模型管理入口，正常 option 显示模型 `name`（缺失时回退 model id）；思考力度使用与 Codex 相同的 `low / medium / high / xhigh / max / ultra` 下拉，不依赖模型 variants 配置；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
+- OpenCode：作为 Codex、Claude 之外的新支持目标，按插件通用 CLI 配置、统一 UI、会话存档、配置中心和模型/规则能力接入；当前 one-shot / 并行任务通过 `opencode run --auto [message..]` 启动。OpenCode 明确分成两个配置文件：模型/Provider 配置中心只维护 `~/.opencode/config.json`，配置中心不再提供 MCP 市场，也不再维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不再要求或生成 `~/.opencode/.env`；聊天面板在 Loop / Graph 模式按“主模型 / 子模型”两行展示各自模型与思考力度，Vibe（coding）模式仅展示并使用主模型，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配，模型候选来自 active config 的 `provider.<id>.models` 且没有模型管理入口，正常 option 显示模型 `name`（缺失时回退 model id）；思考力度使用与 Codex 相同的 `low / medium / high / xhigh / max / ultra` 下拉，不依赖模型 variants 配置；选择配置默认 ref 会清除角色临时覆盖，选择其他项使用 exact `provider/model` ref
 - OpenCode 普通任务、并行任务和 Loop 主任务都以当前 VS Code 工作区作为权威执行目录。插件除设置 child process 的 spawn cwd 外，还同步覆盖 child env `PWD`，避免 OpenCode `run` 的内部请求继承 extension host 的旧目录并把新会话错误创建到 `/`；因此新会话的模型、文件搜索与工具调用直接面向当前项目，不需要用户再次选择同名仓库。Loop 子任务例外：它们在链接到同一工作区内容的临时隔离根运行，以屏蔽项目规则自动发现。修复前已经绑定 `/` 的历史 OpenCode 会话不会改写原始 CLI 数据，升级后需要新建一次对话会话。
 - OpenCode one-shot 与并行任务在进程 `code=0` 但当前尝试没有非 thinking assistant 正文时，不会把成功退出误当成完成，而是进入既有 hidden retry；重试耗尽后才显示并持久化明确错误。Loop 后续主任务轮次会复用最初用户消息作为会话锚点，但完成判定只认当前进程尝试的正文，历史轮次的 `LoopMainDecision` JSON 不能替当前空响应通过判定。
 - Loop 主任务在已有远端 OpenCode session 的首次无 provider-error 空成功响应后，会在下一次 hidden retry 启动新 session 并重新发送完整主任务 prompt；捕获新 `sessionID` 后保留旧会话历史、同步 tab 和任务记录到新 session。该恢复不会用于普通任务、Loop 子任务、含 provider JSON error 的响应，也不会在同一运行内重复 rollover。
@@ -232,18 +232,14 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - Codex 配置卡片管理用户级 `~/.codex/config.toml` 与既有 `~/.codex/auth.json` 入口。`config.toml` 是 Codex 主配置文件，必须按 TOML 解析与保存，不得按 JSON 处理；卡片保留可视化编辑和 TOML 源码编辑。视觉模式新增/升级 `model_verbosity`、顶层 `web_search`、`approval_policy`、`model_reasoning_effort` 与 Provider `wire_api` 单选，`developer_instructions` 多行文本，以及既有布尔字段；Provider 可视化只保留 id、name、base_url、wire_api 和 requires_openai_auth，不提供 `env_key` 输入。`model_reasoning_effort` 的新建 raw-value 候选为 `minimal / low / medium / high / xhigh / max / ultra`，其中 `max` 紧跟 `xhigh`。`wire_api` 新建值仅建议 `responses`，而旧 `chat`、未知值、granular `approval_policy`、`[tools].web_search` object 与其他复杂 TOML 保留到源码模式，不能因保存其他字段被静默重写。配置中心不展示、读取、写入、备份或导入导出 `~/.codex/.env`，也不删除用户已有文件；历史档案中的 `envContent` 会被忽略。
 - Claude 配置卡片默认提供可视化编辑器，并可切换高级 JSON 模式；页面视觉样式、卡片背景和表单密度与 OpenCode 配置卡片对齐。可视化模式覆盖用户级 `~/.claude/settings.json` 的常用模型、自由文本/列表、权限与网关字段，并新增/升级 `permissions.defaultMode` 单选、`autoCompactEnabled`、`autoMemoryEnabled`、`fileCheckpointingEnabled`、`verbose` 三态布尔，以及 `editorMode`、`viewMode`、`tui` 单选。`effortLevel` 的新建 raw-value 候选为 `low / medium / high / xhigh / ultra`；存量 `max` 仅作为兼容值插在 `ultra` 前，未知值也保留。`includeCoAuthoredBy` 不再作为新表单字段；`attribution`、hooks、复杂 permissions、MCP、企业策略、额外环境变量和未展示字段通过原始 JSON 定向合并保留，无效 JSON 不覆盖最后一次有效可视化状态。第三方网关或云平台仍可独立配置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL` 三档默认模型名称。
 - Claude、OpenCode、Codex 三组配置卡片的可视化参数 label 右侧都应提供问号提示；鼠标 hover 展示该参数用途、写入位置和注意事项，枚举型参数必须在提示中列出可选值。三组“查看范例”入口统一放在配置文件名右侧，视觉位置和交互风格对齐 OpenCode，避免 Claude / Codex 与 OpenCode 出现不同布局；三组及配置复制入口的单值下拉统一使用与主模型 `model` 一致的可搜索、可清除 Ant Design `Select`。
-- OpenCode 配置页为模型/Provider 单文件保存，只维护 `~/.opencode/config.json`；OpenCode 全局 MCP 另由 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。配置中心不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 主/子模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model` 和 `provider.myAPI.models` 定义，不再示例化思考力度 `options` / `variants`，其中 `small_model` 作为 OpenCode CLI 兼容字段对应插件子模型；可视化编辑器不提供该字段的配置入口，但会保留并随配置保存；不再内嵌 MCP 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。顶层 `share`、`autoupdate`、`logLevel`、`snapshot` 使用继承语义的受控单选/三态；`model` 使用与其他字段一致的可搜索单选下拉并跨越可视化表单整行，候选仅来自当前配置的 Provider/模型列表；Provider `npm` 使用同一 Select 的可搜索单值模式，打开即可看到 OpenCode 官方 `BUNDLED_PROVIDERS` 的 24 个 npm loader 建议（含 `@ai-sdk/*`、`@openrouter/ai-sdk-provider`、`gitlab-ai-provider`、`@ai-sdk/github-copilot`、`venice-ai-sdk-provider`），同时允许输入和保存任意自定义 npm 包名。可视化编辑器不再提供思考力度入口，示例也不再生成 `options.reasoningEffort` 或 `variants`。已有 `options`、`variants` 和其他未知字段在可视化保存时原样保留，不把它们解释成可用思考力度白名单。页面仍说明 `npm` 的建议按 API 协议选择；建议列表只是官方 bundled loader 提示，不构成封闭校验，也不能根据模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断。完整官方 URL、访问日期和 JSONC/runtime discovery 等延期边界见 [CLI 配置可视化执行计划](../exec-plans/active/2026-07-12-cli-config-visualization.md)。
+- OpenCode 配置页为模型/Provider 单文件保存，只维护 `~/.opencode/config.json`；配置中心不再通过 MCP 市场维护官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。配置中心不展示或生成 `~/.opencode/.env`，避免把环境变量档案误解为 OpenCode 第二配置文件。配置卡片示例是可解析的 `myAPI` 主/子模型严格 JSON，包含 `$schema`、顶层 `model` / `small_model` 和 `provider.myAPI.models` 定义，不再示例化思考力度 `options` / `variants`，其中 `small_model` 作为 OpenCode CLI 兼容字段对应插件子模型；可视化编辑器不提供该字段的配置入口，但会保留并随配置保存；不再内嵌 MCP 示例；`baseURL` 与 `apiKey` 使用官方 `{env:VARIABLE_NAME}` 语法。顶层 `share`、`autoupdate`、`logLevel`、`snapshot` 使用继承语义的受控单选/三态；`model` 使用与其他字段一致的可搜索单选下拉并跨越可视化表单整行，候选仅来自当前配置的 Provider/模型列表；Provider `npm` 使用同一 Select 的可搜索单值模式，打开即可看到 OpenCode 官方 `BUNDLED_PROVIDERS` 的 24 个 npm loader 建议（含 `@ai-sdk/*`、`@openrouter/ai-sdk-provider`、`gitlab-ai-provider`、`@ai-sdk/github-copilot`、`venice-ai-sdk-provider`），同时允许输入和保存任意自定义 npm 包名。可视化编辑器不再提供思考力度入口，示例也不再生成 `options.reasoningEffort` 或 `variants`。已有 `options`、`variants` 和其他未知字段在可视化保存时原样保留，不把它们解释成可用思考力度白名单。页面仍说明 `npm` 的建议按 API 协议选择；建议列表只是官方 bundled loader 提示，不构成封闭校验，也不能根据模型名称或推理档位自动换包。兼容网关缺少 `options.baseURL` 会在保存/运行前阻断。完整官方 URL、访问日期和 JSONC/runtime discovery 等延期边界见 [CLI 配置可视化执行计划](../exec-plans/active/2026-07-12-cli-config-visualization.md)。
 - 对话面板里的配置档案下拉按 CLI 维度维护 `activeConfigIdByCli`：用户先看到待切换配置，但在宿主完成 `applyConfig` 并回写工作区 active config 之前，提示词发送与队列出队都会等待该配置应用完成；应用失败时会回滚到当前 active config，并展示错误提示，不会出现“下拉已切过去但实际运行仍使用旧配置”的状态。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
-- 技能管理
-  - 官方 Claude / Codex / OpenCode skills 列表内置仓库快照；具体条目数量以当前 catalog 为准
-  - 官方 catalog 为每个条目记录 `version`、`versionSource`、`contentHash`、`sourceCommit`
-  - 配置页官方条目会显示“当前版本 / 最新版本”；未安装时显示最新版本，已安装时同时显示当前版本和最新版本
-  - 官方最新判断优先基于每个条目的 `contentHash`，缺失时才回退到 `sourceRef`
-  - OpenCode 条目的版本展示以当前官方 catalog 元数据为准；Claude / Codex / OpenCode 在上游缺少显式版本号时显示稳定短 `contentHash`
-  - Gemini catalog 条目、内置 ZIP 快照及 legacy 同步入口均已移除；历史信息仅保留在 Git 历史和归档计划中，不属于当前配置页官方 Skills 支持口径
-- MCP 市场、安装、卸载、健康检查
+- 技能管理只打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录；不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
+- OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/) 和 [Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)。
+- Skills 表格的操作按钮保持同行；“复制到”按钮打开弹窗，可多选当前 CLI 以外的目标。复制期间禁用重复提交，部分失败保留失败目标重试，成功目标不会重复复制；不覆盖同名技能。
+- 配置中心不再提供 MCP 市场、安装、卸载或健康检查
 
 ### 3.9 稳定性与可运维性
 
@@ -275,7 +271,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 配置中心不读写 `~/.codex/.env`；用户已有文件保持不变
 - `~/.codex/auth.json`：Codex 鉴权文件，仅按既有受控入口处理，不作为主配置格式
 - `~/.opencode/config.json`：OpenCode 模型/Provider 配置中心
-- `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`：OpenCode 官方全局 MCP 配置，插件只维护顶层 `mcp`
+- `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`：OpenCode 官方全局 MCP 配置。配置中心不再维护顶层 `mcp`，也不会从配置页改写该文件
 - OpenCode 配置中心不再读写 `~/.opencode/.env`；历史多文件配置只作为迁移参考
 - 旧 `~/.gemini/*` 仅作历史迁移参考；当前配置中心不再作为 Gemini 配置管理入口
 
@@ -296,15 +292,11 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - variant 选择按 active config id + 精确 `provider/model` + role 保存，main 兼容旧的 primary/config/model 存储；只保留上述六档，其他旧值在刷新时清理。运行时始终传当前选择或默认 `medium`，并尊重用户显式 `--variant` 参数。
 - `--variant` 负责推理力度，`--thinking` 只负责 thinking blocks 展示。固定 OpenCode ThinkingMode 和 `thinkingArgs.opencode.*` 已退出运行链路，Codex / Claude 行为不变。
 
-## 4.7 OpenCode 全局 MCP 管理
+## 4.7 OpenCode 全局 MCP
 
-- MCP 市场可为 OpenCode 安装、覆盖和卸载 local 与 remote 全局 MCP。
-- 插件直接管理 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`：local 写入 `type=local`、命令数组、`environment` 和 `enabled`；remote 写入 `type=remote`、URL、`headers` 和 `enabled`。
-- 安装只合并目标 `mcp[id]`，保留其他顶层配置和已有 MCP；卸载只删除目标键且支持幂等调用，不执行 OpenCode 不支持的 `mcp remove`。
-- 配置读取支持 JSON/JSONC；无效配置不会被覆盖，成功修改后通过同目录临时文件原子替换。
-- MCP 市场打开时只做快速安装状态判断，不做健康探测：Claude 读取 `~/.claude.json` 的 `mcp` / `mcpServers` / `mcp_servers`，Codex 读取 `~/.codex/config.toml` 的 `[mcp_servers.<id>]`，OpenCode 读取 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。健康状态只由“一键检测健康”按钮触发；OpenCode 健康检测仍可用 `opencode mcp list --pure` 映射连接状态，已列出但连接失败的条目显示为已安装且 `unhealthy`，未配置的市场条目显示未安装。
-- 内置 `media/mcp_marketplace.json` 已刷新为 16 个官方或权威 MCP 候选：GitHub、Microsoft Learn、Playwright、Docker MCP Gateway、Cloudflare Docs/Browser、Stripe、Sentry、MongoDB、Grafana、Elasticsearch、Slack、Notion、Linear、Brave Search、Atlassian。所有 description 保持中文，凭据只使用环境变量占位；涉及支付、生产错误、数据库、协作写入或浏览器自动化的条目在描述中提示 OAuth、只读、最小权限或人工确认。
-- `npm run validate:mcp-marketplace` 读取真实市场 JSON 并校验顶层数组、唯一 id、必填字段、中文 description、官方/权威 homepage、local/remote config、env/headers 类型、占位密钥，以及禁止旧 `github.com/modelcontextprotocol/servers/tree/main/src/` 和旧 `@modelcontextprotocol/server-*` 来源回流。
+- 配置中心不再提供 MCP 市场、安装、卸载或健康检测，也不会改写用户磁盘上已有的 MCP 配置。
+- 内置 `media/mcp_marketplace.json` 和 `npm run validate:mcp-marketplace` 已删除。
+- 插件不再安装或卸载 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。CodeGraph 状态检测仍只读取该文件以及 Claude / Codex 已有 MCP 配置，判断 `codegraph` 是否已注册。
 
 ## 5. 验收视角
 
@@ -312,7 +304,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 - 用户能在 VS Code 内完成多 CLI 切换与对话
 - 会话、历史、模型和规则在重开面板后仍可恢复
-- 配置中心能对本地配置、Skills、MCP 做最小可用管理
+- 配置中心能管理本地配置；Skills 只打开、删除和复制四个全局目录；配置中心不再提供 MCP 管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
 OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。

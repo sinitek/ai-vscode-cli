@@ -265,72 +265,21 @@ export class ConfigManagerPanel {
           response.data = await configService.initDefaultConfig(message.platform);
           this.handlers.onConfigChanged?.();
           break;
-        case "getMcpMarketplaceList":
-          response.data = await configService.getMcpMarketplaceList();
+        case "getCliSkillsList":
+          response.data = await configService.getCliSkillsList(message.platform);
           break;
-        case "getClaudeSkillsList":
-          response.data = await configService.getClaudeSkillsList();
+        case "openCliSkillsDirectory":
+          response.data = await configService.openCliSkillsDirectory(message.platform);
           break;
-        case "getCodexSkillsList": {
-          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
-            .map((folder) => folder.uri.fsPath)
-            .filter((item) => typeof item === "string" && item.trim().length > 0);
-          response.data = await configService.getCodexSkillsList(workspaceRoots);
+        case "deleteCliSkill":
+          response.data = await configService.deleteCliSkill(message.platform, message.name);
           break;
-        }
-        case "getOpenCodeSkillsList": {
-          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
-            .map((folder) => folder.uri.fsPath)
-            .filter((item) => typeof item === "string" && item.trim().length > 0);
-          response.data = await configService.getOpenCodeSkillsList(workspaceRoots);
-          break;
-        }
-        case "getGrokSkillsList": {
-          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
-            .map((folder) => folder.uri.fsPath)
-            .filter((item) => typeof item === "string" && item.trim().length > 0);
-          response.data = await configService.getGrokSkillsList(workspaceRoots);
-          break;
-        }
-        case "getGrokOfficialSkills":
-          response.data = await configService.getGrokOfficialSkills();
-          break;
-        case "getOfficialSkillsCatalog":
-          response.data = await configService.getOfficialSkillsCatalog(message.platform);
-          break;
-        case "installOfficialSkill":
-          response.data = await configService.installOfficialSkill(message.platform, message.skillId);
-          break;
-        case "updateOfficialSkill":
-          response.data = await configService.updateOfficialSkill(message.platform, message.skillId);
-          break;
-        case "uninstallOfficialSkill":
-          response.data = await configService.uninstallOfficialSkill(message.platform, message.skillId);
-          break;
-        case "getMcpInstalledServerIds":
-          response.data = await configService.getMcpInstalledServerIds(message.platform);
-          break;
-        case "getCodexMcpServerIds":
-          response.data = await configService.getCodexMcpServerIds();
-          break;
-        case "getCodexMcpHealth":
-          response.data = await configService.getCodexMcpHealth();
-          break;
-        case "getMcpHealth":
-          response.data = await configService.getMcpHealth(message.platform);
-          break;
-        case "installMcp":
-          response.data = await configService.installMcpServer(
+        case "copyCliSkill":
+          response.data = await configService.copyCliSkill(
             message.platform,
-            message.mcpId,
-            message.envOverrides,
+            message.name,
+            message.targetPlatform,
           );
-          break;
-        case "installCodexMcp":
-          response.data = await configService.installCodexMcpServer(message.mcpId);
-          break;
-        case "uninstallMcp":
-          response.data = await configService.uninstallMcpServer(message.platform, message.mcpId);
           break;
         case "exportConfigs": {
           const payload = message.payload;

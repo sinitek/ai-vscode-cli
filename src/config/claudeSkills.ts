@@ -1,24 +1,5 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { ClaudeSkillItem, ClaudeSkillToggle } from "./types";
-import { t } from "../i18n";
+import { ClaudeSkillToggle } from "./types";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
-import {
-  extractSkillDescription,
-  listSkillDirNames,
-  skillDescriptionStrategies,
-} from "./skillDiscovery";
-
-const CLAUDE_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
-
-function toShortDescription(description?: string): string {
-  const normalized = (description ?? "").trim();
-  if (normalized.length > 0) {
-    return normalized;
-  }
-  return t("skill.descriptionMissing");
-}
 
 function parseClaudeSettings(content: string): Record<string, unknown> {
   const parsed = parseJsonObjectText(content, {
@@ -153,29 +134,4 @@ export function stripManagedClaudeSkillRules(
   } catch {
     return (content ?? "").trim();
   }
-}
-
-export async function listClaudeSkills(): Promise<ClaudeSkillItem[]> {
-  const dirs = await listSkillDirNames(CLAUDE_SKILLS_DIR);
-  const skills: ClaudeSkillItem[] = [];
-  for (const name of dirs) {
-    const skillPath = path.join(CLAUDE_SKILLS_DIR, name);
-    try {
-      const skillFile = path.join(skillPath, "SKILL.md");
-      await fs.promises.access(skillFile);
-      const content = await fs.promises.readFile(skillFile, "utf-8");
-      const description = toShortDescription(
-        extractSkillDescription(content, skillDescriptionStrategies.continueOnEmpty),
-      );
-      skills.push({
-        name,
-        path: skillPath,
-        description,
-      });
-    } catch {
-      // Ignore non-skill directories.
-    }
-  }
-
-  return skills.sort((left, right) => left.name.localeCompare(right.name));
 }

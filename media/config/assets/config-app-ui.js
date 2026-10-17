@@ -181,24 +181,19 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             L.platform === "claude"
               ? await applyConfigItem(L.platform, {
                   content: L.content,
-                  mcpContent: L.mcpContent,
-                  claudeSkills: L.claudeSkills ?? [],
                 })
               : L.platform === "opencode"
 	                ? await applyConfigItem(L.platform, {
 	                    content: L.content,
-	                    openCodeSkills: L.openCodeSkills ?? [],
 	                  })
                 : L.platform === "grok"
                   ? await applyConfigItem(L.platform, {
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
-                      grokSkills: L.grokSkills ?? [],
                     })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
                     authContent: L.authContent,
-                    codexSkills: L.codexSkills ?? [],
                   }),
             m(L.platform, L.id),
             Kt.success(`已应用配置: ${L.name}`));
@@ -1872,623 +1867,141 @@ function Ik(e, { maxDepth: t = 1e3, numbersAsFloat: n = !1 } = {}) {
 `
     : r;
 }
-const { Paragraph: p1, Text: _k, Title: Mk } = lc;
+const CLI_GLOBAL_SKILL_TARGETS = [
+  { id: "claude", label: "Claude" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "grok", label: "Grok" },
+  { id: "codex", label: "Codex" },
+];
 
-function p1HealthLabel(e) {
-  if (!e) return "检测中";
-  if (e.status === "healthy") return "健康";
-  if (e.status === "unhealthy") return "不健康";
-  return e.installed ? "未知" : "未安装";
+function skillsTitleByPlatform(platform) {
+  const match = CLI_GLOBAL_SKILL_TARGETS.find((item) => item.id === platform);
+  return match ? `${match.label} Skills` : "Skills";
 }
 
-function p1HealthColor(e) {
-  if (!e) return "default";
-  if (e.status === "healthy") return "success";
-  if (e.status === "unhealthy") return "error";
-  return "default";
-}
-
-const jv = ({
-    onAdd: e,
-    onRemove: t,
-    onCheckHealth: n,
-    onOpenHealthDetail: r0,
-    installedIds: r = [],
-    platform: o = "claude",
-    healthItems: l = [],
-    healthLoading: s = !1,
-    addingId: a = "",
-    removingId: u = "",
-  }) => {
-    const [f, m] = c.useState(!1),
-      [marketItems, setMarketItems] = c.useState([]),
-      extraItem = c.useMemo(
-        () => ({
-          id: "zai-mcp-server",
-          name: "Zhipu 图片识别",
-          description: "调用智谱通用图像理解能力进行图片内容识别。",
-          homepage: "https://www.zhipuai.cn/",
-          signupUrl: "https://open.bigmodel.cn/usercenter/apikeys",
-          category: "AI与智能",
-          config: {
-            command: "npx",
-            args: ["-y", "@z_ai/mcp-server"],
-            env: { Z_AI_API_KEY: "<YOUR_API_KEY>", Z_AI_MODE: "ZHIPU" },
-          },
-        }),
-        [],
-      ),
-      healthById = c.useMemo(() => new Map((Array.isArray(l) ? l : []).map((p) => [p.serverId, p])), [l]);
-    c.useEffect(() => {
-      p();
-    }, []);
-    const p = async () => {
-        m(!0);
-        try {
-          const h = await fetchMcpMarketplaceList(),
-            x = h.some((b) => b.id === extraItem.id);
-          setMarketItems(x ? h : [...h, extraItem]);
-        } catch {
-          Kt.error("加载 MCP 市场数据失败");
-        } finally {
-          m(!1);
-        }
-      },
-      h = c.useMemo(() => {
-        const x = Array.from(new Set(marketItems.map((b) => b.category || "其他"))),
-          S = [
-            "AI与智能",
-            "文件与数据",
-            "开发工具",
-            "基础设施",
-            "网络与浏览器",
-            "生产力工具",
-            "其他",
-          ];
-        return x.sort((b, y) => {
-          const W = S.indexOf(b),
-            H = S.indexOf(y);
-          return W !== -1 && H !== -1
-            ? W - H
-            : W !== -1
-              ? -1
-              : H !== -1
-                ? 1
-                : b.localeCompare(y);
-        });
-      }, [marketItems]),
-      x = c.useMemo(() => {
-        const b = {};
-        return (
-          marketItems.forEach((S) => {
-            const y = S.category || "其他";
-            (b[y] || (b[y] = []), b[y].push(S));
-          }),
-          b
-        );
-      }, [marketItems]);
-    if (f && marketItems.length === 0)
-      return be.jsx("div", {
-        style: { textAlign: "center", padding: "50px" },
-        children: be.jsx(oh, { size: "large" }),
-      });
-    const S = h.map((b) => ({
-      key: b,
-      label: b,
-      children: be.jsx(Bs, {
-        grid: { gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 },
-        dataSource: x[b],
-        renderItem: (y) => {
-          const W = r.includes(y.id),
-            H = healthById.get(y.id),
-            k = W && !!H;
-          return be.jsx(Bs.Item, {
-            children: be.jsx(aa, {
-              title: be.jsx($s, { children: y.name }),
-              extra: W
-                ? be.jsxs("div", {
-                    style: {
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "flex-end",
-                      gap: "6px",
-                      flexWrap: "wrap",
-                    },
-                    children: [
-                      be.jsx(Wg, { color: "success", children: "已添加" }),
-                      k &&
-                        be.jsx(Wg, {
-                          color: p1HealthColor(H),
-                          title: H?.details || "",
-                          style: { cursor: H?.details ? "pointer" : void 0 },
-                          onClick: () => H?.details && typeof r0 == "function" && r0(y, H),
-                          children: p1HealthLabel(H),
-                        }),
-                      be.jsx(xn, {
-                        size: "small",
-                        danger: !0,
-                        loading: u === y.id,
-                        onClick: () => typeof t == "function" && t(y),
-                        children: "卸载",
-                      }),
-                    ],
-                  })
-                : be.jsx(xn, {
-                    type: "primary",
-                    size: "small",
-                    icon: be.jsx(oO, {}),
-                    loading: a === y.id,
-                    onClick: () => e(y),
-                    children: "添加",
-                  }),
-              size: "small",
-              children: be.jsxs("div", {
-                style: {
-                  minHeight: "144px",
-                  display: "flex",
-                  flexDirection: "column",
-                },
-                children: [
-                  be.jsx(p1, {
-                    ellipsis: { rows: 2 },
-                    style: { marginBottom: "8px" },
-                    children: y.description,
-                  }),
-                  be.jsxs("div", {
-                    style: { marginTop: "auto" },
-                    children: [
-                      be.jsxs(_k, {
-                        type: "secondary",
-                        style: {
-                          fontSize: "12px",
-                          display: "block",
-                          marginBottom: "4px",
-                        },
-                        children: [
-                          be.jsx(TH, {}),
-                          " ",
-                          y.config.command
-                            ? `${y.config.command}${y.config.args?.[0] ? ` ${y.config.args[0]}` : ""}`
-                            : y.config.type && y.config.url
-                              ? `${y.config.type} ${y.config.url}`
-                              : "配置未填写",
-                        ],
-                      }),
-                      y.config.env &&
-                        be.jsx(Wg, {
-                          className: "mcp-env-tag",
-                          style: {
-                            fontSize: "10px",
-                            lineHeight: "18px",
-                            marginBottom: "4px",
-                          },
-                          children: "需配置环境变量",
-                        }),
-                      k && H?.status === "unhealthy"
-                        ? be.jsxs("div", {
-                            style: {
-                              marginTop: "4px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "8px",
-                            },
-                            children: [
-                              be.jsxs(_k, {
-                                type: "danger",
-                                style: {
-                                  fontSize: "12px",
-                                  display: "block",
-                                  margin: 0,
-                                  flex: 1,
-                                },
-                                title: H.details,
-                                children: ["健康检查：", H.details],
-                              }),
-                              be.jsx(xn, {
-                                size: "small",
-                                onClick: () => typeof r0 == "function" && r0(y, H),
-                                children: "查看错误",
-                              }),
-                            ],
-                          })
-                        : null,
-                    ],
-                  }),
-                ],
-              }),
-            }),
-          }, y.id);
-        },
-      }),
-    }));
-    return be.jsxs("div", {
-      style: { padding: "0 16px 16px 16px" },
-      children: [
-        be.jsxs("div", {
-          style: {
-            marginBottom: "16px",
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "12px",
-            flexWrap: "wrap",
-          },
-          children: [
-            be.jsxs("div", {
-              children: [
-                be.jsx(Mk, { level: 4, children: "MCP 市场" }),
-                be.jsx(p1, {
-                  type: "secondary",
-                  children:
-                    "发现并添加常用的 Model Context Protocol (MCP) 服务器到您的配置中。",
-                }),
-              ],
-            }),
-            be.jsx(xn, {
-              onClick: () => typeof n == "function" && n(),
-              loading: s,
-              disabled: typeof n != "function",
-              children: "一键检测健康",
-            }),
-          ],
-        }),
-        be.jsx(nh, { defaultActiveKey: h[0], items: S }),
-      ],
-    });
+const SkillsCopyModal = ({ skill, platform, onClose, onCopy }) => {
+  const [selectedTargets, setSelectedTargets] = c.useState([]);
+  const [copiedTargets, setCopiedTargets] = c.useState([]);
+  const [copyErrors, setCopyErrors] = c.useState([]);
+  const [copying, setCopying] = c.useState(!1);
+  const submittingRef = c.useRef(!1);
+  const targets = CLI_GLOBAL_SKILL_TARGETS.filter((item) => item.id !== platform);
+  const closeModal = () => {
+    if (!submittingRef.current) onClose();
   };
-
-function isMcpEnvPlaceholder(e) {
-  const t = String(e || "").trim();
-  return !t || /^<[^>]+>$/.test(t) || /^\$\{?YOUR_/i.test(t) || /^YOUR_/i.test(t);
-}
-
-function getMcpEnvEntries(e) {
-  const t = e?.config?.env;
-  return t && typeof t == "object"
-    ? Object.entries(t).filter(([n, r]) => !!n && typeof r == "string")
-    : [];
-}
-
-function createInitialMcpEnvDraft(e) {
-  const t = {};
-  return (
-    getMcpEnvEntries(e).forEach(([n, r]) => {
-      t[n] = isMcpEnvPlaceholder(r) ? "" : String(r || "");
-    }),
-    t
-  );
-}
-
-function getMissingMcpEnvNames(e, t) {
-  return getMcpEnvEntries(e)
-    .map(([n]) => n)
-    .filter((n) => !String(t?.[n] || "").trim());
-}
-
-const McpHealthDetailModal = ({ open: e, item: t, health: n, onClose: r }) =>
-  be.jsx(xr, {
-    title: "健康检查详情",
-    open: e,
-    onCancel: r,
-    width: 680,
-    footer: [be.jsx(xn, { onClick: r, children: "关闭" }, "close")],
-    destroyOnClose: !0,
-    children: n
-      ? be.jsxs("div", {
-          style: { display: "flex", flexDirection: "column", gap: "12px" },
-          children: [
-            be.jsxs("div", {
-              children: [
-                be.jsx("div", { style: { fontWeight: 600, marginBottom: "4px" }, children: t?.name || n.serverId }),
-                be.jsx("div", {
-                  style: { color: "var(--text-color-secondary)", fontSize: "12px" },
-                  children: `${n.platform} / ${n.serverId}`,
-                }),
-              ],
-            }),
-            be.jsxs("div", {
-              children: [
-                be.jsx("div", { style: { fontWeight: 600, marginBottom: "6px" }, children: "失败原因" }),
-                be.jsx("pre", {
-                  style: {
-                    margin: 0,
-                    padding: "12px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--border-color)",
-                    background: "var(--background-color)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontFamily: "monospace",
-                    fontSize: "12px",
-                    lineHeight: 1.6,
-                  },
-                  children: n.details || "未返回错误详情",
-                }),
-              ],
-            }),
-          ],
-        })
-      : null,
-  });
-
-const McpInstallEnvModal = ({
-  open: e,
-  item: t,
-  envValues: n,
-  onChange: r,
-  onClose: o,
-  onConfirm: l,
-  loading: s,
-}) => {
-  const u = getMcpEnvEntries(t),
-    f = t?.signupUrl || t?.homepage || "";
+  const confirmCopy = async () => {
+    if (submittingRef.current || selectedTargets.length === 0) return;
+    submittingRef.current = !0;
+    setCopying(!0);
+    setCopyErrors([]);
+    const succeeded = [];
+    const errors = [];
+    try {
+      for (const targetPlatform of selectedTargets) {
+        const target = targets.find((item) => item.id === targetPlatform);
+        try {
+          await onCopy(skill, targetPlatform);
+          succeeded.push(target);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          errors.push(`${target.label}：${message || "复制 Skill 失败"}`);
+        }
+      }
+      setCopiedTargets((previous) => [...previous, ...succeeded.map((item) => item.id)]);
+      setSelectedTargets((previous) => previous.filter((id) => !succeeded.some((item) => item.id === id)));
+      setCopyErrors(errors);
+      if (succeeded.length > 0) {
+        Kt.success(`已复制 ${skill.name} 到 ${succeeded.map((item) => item.label).join("、")}`);
+      }
+      if (errors.length === 0) onClose();
+    } finally {
+      submittingRef.current = !1;
+      setCopying(!1);
+    }
+  };
   return be.jsx(xr, {
-    title: "环境变量配置",
-    open: e,
-    onCancel: o,
-    width: 640,
-    footer: null,
-    destroyOnClose: !0,
+    title: "复制 Skill 到其他 CLI",
+    open: !0,
+    width: 440,
+    rootClassName: "skills-copy-modal",
+    onCancel: closeModal,
+    onOk: confirmCopy,
+    okText: copying ? "复制中..." : copyErrors.length > 0 ? "重试复制" : "复制",
+    cancelText: "取消",
+    confirmLoading: copying,
+    okButtonProps: { disabled: selectedTargets.length === 0 || copying },
+    cancelButtonProps: { disabled: copying },
+    closable: !copying,
+    maskClosable: !copying,
+    keyboard: !copying,
     children: be.jsxs("div", {
-      style: { display: "flex", flexDirection: "column", gap: "12px" },
+      className: "skills-copy-content",
       children: [
-        be.jsxs("div", {
-          style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
-          children: [
-            be.jsxs("div", {
-              style: { minWidth: 0, flex: "1 1 320px" },
-              children: [
-                be.jsx("div", { style: { fontWeight: 600 }, children: t?.name || "MCP" }),
-                t?.description
-                  ? be.jsx("div", {
-                      style: { color: "var(--text-color-secondary)", fontSize: "12px", marginTop: "4px" },
-                      children: t.description,
-                    })
-                  : null,
-                f
-                  ? be.jsxs("div", {
-                      style: {
-                        color: "var(--text-color-secondary)",
-                        fontSize: "12px",
-                        marginTop: "6px",
-                        wordBreak: "break-all",
-                      },
-                      children: ["注册地址: ", f],
-                    })
-                  : null,
-              ],
-            }),
-            f
-              ? be.jsx(xn, {
-                  onClick: () => window.sinitekConfigBridge?.openExternal?.(f),
-                  children: "官网/注册",
-                })
-              : null,
-          ],
-        }),
+        be.jsx("div", { className: "skills-copy-name", children: skill.name }),
         be.jsx("div", {
-          style: {
-            color: "var(--text-color-secondary)",
-            fontSize: "12px",
-            lineHeight: 1.6,
-            background: "var(--background-color)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "6px",
-            padding: "10px 12px",
-          },
-          children: "如未注册，请先前往官网完成注册或创建 API Key，再填写以下环境变量。",
+          className: "skills-manager-muted",
+          children: "可多选，复制到所选 CLI 的全局 Skills 目录；同名技能不会覆盖。",
         }),
-        u.map(([m, v]) =>
-          be.jsxs(
-            "label",
-            {
-              style: { display: "flex", flexDirection: "column", gap: "6px" },
-              children: [
-                be.jsxs("div", {
-                  style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
-                  children: [
-                    be.jsx("span", { children: m }),
-                    be.jsx("span", {
-                      style: { color: "var(--text-color-secondary)", fontSize: "12px" },
-                      children: isMcpEnvPlaceholder(v) ? "必填" : "可编辑默认值",
-                    }),
-                  ],
-                }),
-                be.jsx("input", {
-                  value: n?.[m] ?? "",
-                  onChange: (h) => r(m, h.target.value),
-                  placeholder: String(v || ""),
-                  type: /key|token|secret|password/i.test(m) ? "password" : "text",
-                  style: {
-                    width: "100%",
-                    boxSizing: "border-box",
-                    border: "1px solid var(--border-color)",
-                    background: "var(--background-color)",
-                    color: "var(--text-color)",
-                    borderRadius: "6px",
-                    padding: "8px 10px",
-                  },
-                }),
-              ],
-            },
-            m,
-          ),
-        ),
-        be.jsxs("div", {
-          style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+        be.jsxs("fieldset", {
+          className: "skills-copy-targets",
+          disabled: copying,
           children: [
-            be.jsx(xn, { onClick: o, children: "取消" }),
-            be.jsx(xn, { type: "primary", loading: s, onClick: l, children: "保存并安装" }),
+            be.jsx("legend", { children: "目标 CLI（可多选）" }),
+            ...targets.map((target) => {
+              const copied = copiedTargets.includes(target.id);
+              return be.jsxs("label", {
+                className: "skills-copy-target",
+                children: [
+                  be.jsx("input", {
+                    type: "checkbox",
+                    checked: selectedTargets.includes(target.id),
+                    disabled: copying || copied,
+                    onChange: (event) => {
+                      const checked = event.target.checked;
+                      setSelectedTargets((previous) => checked
+                        ? [...previous, target.id]
+                        : previous.filter((id) => id !== target.id));
+                    },
+                  }),
+                  be.jsx("span", { children: target.label }),
+                  copied ? be.jsx("span", { className: "skills-manager-muted", children: "已复制" }) : null,
+                ],
+              }, target.id);
+            }),
           ],
         }),
+        copyErrors.length > 0 ? be.jsx("div", {
+          className: "skills-copy-errors",
+          role: "alert",
+          children: copyErrors.join("\n"),
+        }) : null,
       ],
     }),
   });
 };
 
-function skillsEmptyTextByPlatform(e) {
-  return e === "claude"
-    ? "未检测到 Skills，请先安装到 ~/.claude/skills"
-    : e === "opencode"
-      ? "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills"
-      : e === "grok"
-        ? "未检测到 Skills，请先安装到 ~/.grok/skills或工作区 .grok/skills"
-        : "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills";
-}
-
-function skillsTitleByPlatform(e) {
-  return e === "claude"
-    ? "Claude Skills"
-    : e === "opencode"
-      ? "OpenCode Skills"
-      : e === "grok"
-        ? "Grok Skills"
-        : "Codex Skills";
-}
-
-function officialSkillInstallRootTextByPlatform(e) {
-  return e === "claude" ? "~/.claude/skills" : e === "opencode" ? "~/.opencode/skills" : "~/.codex/skills";
-}
-
-function officialPackageLabelByPlatform(e) {
-  return "Skills";
-}
-
-function officialPackageSingularByPlatform(e) {
-  return "Skill";
-}
-
-function officialPackageLoadingTextByPlatform(e) {
-  return `${officialPackageLabelByPlatform(e)} 加载中...`;
-}
-
-function officialPackageCountTextByPlatform(e, t) {
-  return `官方 ${officialPackageLabelByPlatform(e)} ${t}`;
-}
-
-function officialPackageEmptyTextByPlatform(e) {
-  return e === "opencode"
-    ? "暂无内置官方 OpenCode Skills"
-    : e === "grok"
-      ? "暂无内置官方 Grok Skills"
-      : "暂无内置官方 Skills";
-}
-
-function officialPackageInstallHintByPlatform(e) {
-  return e === "opencode"
-    ? "当前未配置内置官方 OpenCode Skills，可管理本地 ~/.opencode/skills"
-    : e === "grok"
-      ? "Grok CLI会把官方 bundled skills放在 ~/.grok/bundled/skills；当前没有可安装的官方快照。"
-      : "内置官方 GitHub 快照，可直接安装到用户 Skills 目录";
-}
-
-function officialPackageTabTextByPlatform(e) {
-  return "安装 Skills";
-}
-
-function shortOfficialSkillRef(e) {
-  if (typeof e != "string" || !e.trim()) return "未知";
-  const t = e.trim(),
-    n = t.includes(":") ? t.split(":").pop() || t : t;
-  return n.slice(0, 8);
-}
-
-function officialSkillStatusText(e) {
-  switch (e) {
-    case "installed":
-      return "最新";
-    case "update_available":
-      return "可更新";
-    case "unknown_source":
-      return "版本未知";
-    default:
-      return "未安装";
-  }
-}
-
-function officialSkillVersionValue(e, t, n, r) {
-  return typeof e == "string" && e.trim()
-    ? e.trim()
-    : typeof t == "string" && t.trim()
-      ? shortOfficialSkillRef(t)
-      : typeof n == "string" && n.trim()
-        ? shortOfficialSkillRef(n)
-        : typeof r == "string" && r.trim()
-          ? shortOfficialSkillRef(r)
-          : "版本未知";
-}
-
-function officialSkillVersionLines(e) {
-  const t = officialSkillVersionValue(
-      e.version,
-      e.contentHash,
-      e.sourceCommit,
-      e.sourceRef,
-    ),
-    n = [`最新版本：${t}`];
-  if (e.installed) {
-    const r = officialSkillVersionValue(
-      e.installedVersion,
-      e.installedContentHash,
-      e.installedSourceCommit,
-      e.installedSourceRef,
-    );
-    n.unshift(`当前版本：${r}`);
-  }
-  return n;
-}
-
-const renderSkillRows = (e, t, n, r, o, l, s) => {
-  const u = e.filter((p) => p.enabled !== !1).length,
-    f = e.length > 0 && u === e.length,
-    m = u > 0 && !f;
-  return be.jsxs("table", {
+const renderSkillRows = (skills, pendingName, onCopy, onDelete) =>
+  be.jsxs("table", {
     className: "skills-manager-table",
     children: [
       be.jsx("thead", {
         children: be.jsxs("tr", {
           className: "skills-manager-table-header",
           children: [
-            be.jsx("th", {
-              className: "skills-manager-table-check",
-              scope: "col",
-              children: be.jsx("input", {
-                type: "checkbox",
-                checked: f,
-                ref: (p) => {
-                  p && (p.indeterminate = m);
-                },
-                onChange: (p) => s && s(p.target.checked),
-                "aria-label": f ? "取消全选 Skills" : "全选 Skills",
-              }),
-            }),
             be.jsx("th", { className: "skills-manager-table-skill", scope: "col", children: "技能" }),
             be.jsx("th", { className: "skills-manager-table-path", scope: "col", children: "路径" }),
-            be.jsx("th", { className: "skills-manager-table-status", scope: "col", children: "状态" }),
             be.jsx("th", { className: "skills-manager-table-actions", scope: "col", children: "操作" }),
           ],
         }),
       }),
       be.jsx("tbody", {
-        children: e.map((p) => {
-          const h = (n || []).find((S) => S.installed && S.installedPath === p.path),
-            b = h ? officialSkillStatusText(h.installState || (h.installed ? "unknown_source" : "not_installed")) : "",
-            x = h && l && l.skillId === h.id ? l.action : "";
+        children: skills.map((skill) => {
+          const busy = pendingName === skill.name;
           return be.jsxs(
             "tr",
             {
               className: "skills-manager-table-row",
               children: [
-                be.jsx("td", {
-                  className: "skills-manager-table-check",
-                  children: be.jsx("input", {
-                    type: "checkbox",
-                    checked: p.enabled !== !1,
-                    onChange: (S) => t(p.name, S.target.checked, p.path),
-                    "aria-label": `${p.enabled === !1 ? "启用" : "停用"} ${p.name}`,
-                  }),
-                }),
                 be.jsx("td", {
                   className: "skills-manager-table-skill",
                   children: be.jsxs("div", {
@@ -2496,14 +2009,14 @@ const renderSkillRows = (e, t, n, r, o, l, s) => {
                     children: [
                       be.jsx("span", {
                         className: "skills-manager-skill-title",
-                        title: p.name,
-                        children: p.name,
+                        title: skill.name,
+                        children: skill.name,
                       }),
-                      p.description
+                      skill.description
                         ? be.jsx("span", {
                             className: "skills-manager-skill-description",
-                            title: p.description,
-                            children: p.description,
+                            title: skill.description,
+                            children: skill.description,
                           })
                         : null,
                     ],
@@ -2511,183 +2024,37 @@ const renderSkillRows = (e, t, n, r, o, l, s) => {
                 }),
                 be.jsx("td", {
                   className: "skills-manager-table-path skills-manager-muted",
-                  title: p.path,
-                  children: p.path,
-                }),
-                be.jsx("td", {
-                  className: "skills-manager-table-status",
-                  children: h
-                    ? be.jsx("span", {
-                        className: "skills-manager-badge",
-                        children: b,
-                      })
-                    : be.jsx("span", {
-                        className: "skills-manager-muted",
-                        children: "-",
-                      }),
+                  title: skill.path,
+                  children: skill.path,
                 }),
                 be.jsx("td", {
                   className: "skills-manager-table-actions",
-                  children: h
-                    ? be.jsxs(be.Fragment, {
-                        children: [
-                          h.canUpdate
-                            ? be.jsx(xn, {
-                                size: "small",
-                                type: "primary",
-                                loading: x === "update",
-                                onClick: () => r(h),
-                                children: x === "update" ? "更新中..." : "更新",
-                              })
-                            : null,
-                          h.canUninstall
-                            ? be.jsx(xn, {
-                                size: "small",
-                                loading: x === "uninstall",
-                                onClick: () => o(h),
-                                children: x === "uninstall" ? "卸载中..." : "卸载",
-                              })
-                            : null,
-                        ],
-                      })
-                    : null,
+                  children: be.jsxs("div", {
+                    className: "skills-manager-row-actions",
+                    children: [
+                      be.jsx(xn, {
+                        size: "small",
+                        "aria-label": `复制 ${skill.name} 到`,
+                        disabled: busy,
+                        onClick: () => onCopy(skill),
+                        children: "复制到",
+                      }),
+                      be.jsx(xn, {
+                        size: "small",
+                        disabled: busy,
+                        onClick: () => onDelete(skill),
+                        children: "删除",
+                      }),
+                    ],
+                  }),
                 }),
               ],
             },
-            `${p.name}:${p.path || ""}`,
+            skill.name,
           );
         }),
       }),
     ],
-  });
-};
-
-const renderOfficialSkillRows = (e, t, n, r, o) =>
-  e.map((l) => {
-    const u = n && n.skillId === l.id ? n.action : "",
-      f = l.installState || (l.installed ? "unknown_source" : "not_installed"),
-      m = officialSkillStatusText(f),
-      v = officialSkillVersionLines(l);
-    return be.jsx(
-      "div",
-      {
-        className: "skills-manager-item",
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          padding: "10px 12px",
-          borderRadius: "6px",
-          marginBottom: "8px",
-        },
-        children: [
-          be.jsxs("div", {
-            style: {
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: "8px",
-              flexWrap: "wrap",
-            },
-            children: [
-              be.jsxs("div", {
-                style: { display: "flex", flexDirection: "column", gap: "6px", flex: 1, minWidth: 0 },
-                children: [
-                  be.jsxs("div", {
-                    style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
-                    children: [
-                      be.jsx("div", { children: l.name }),
-                      l.group
-                        ? be.jsx("span", {
-                            className: "skills-manager-badge",
-                            style: {
-                              fontSize: "11px",
-                              lineHeight: 1,
-                              padding: "3px 8px",
-                              borderRadius: "999px",
-                            },
-                            children: l.group,
-                          })
-                        : null,
-                      be.jsx("span", {
-                        className: "skills-manager-badge",
-                        style: {
-                          fontSize: "11px",
-                          lineHeight: 1,
-                          padding: "3px 8px",
-                          borderRadius: "999px",
-                        },
-                        children: m,
-                      }),
-                    ],
-                  }),
-                  l.description
-                    ? be.jsx("div", {
-                        className: "skills-manager-muted",
-                        style: {
-                          fontSize: "12px",
-                        },
-                        children: l.description,
-                      })
-                    : null,
-                  be.jsx("div", {
-                    className: "skills-manager-muted",
-                    style: {
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "2px",
-                      fontSize: "12px",
-                    },
-                    children: v.map((p) =>
-                      be.jsx(
-                        "div",
-                        {
-                          style: { wordBreak: "break-all" },
-                          children: p,
-                        },
-                        p,
-                      ),
-                    ),
-                  }),
-                ],
-              }),
-              be.jsxs("div", {
-                style: { display: "flex", gap: "8px", flexWrap: "wrap" },
-                children: [
-                  l.canInstall
-                    ? be.jsx(xn, {
-                        size: "small",
-                        type: "primary",
-                        loading: u === "install",
-                        onClick: () => r(l),
-                        children: u === "install" ? "安装中..." : "直接安装",
-                      })
-                    : null,
-                  l.canUpdate
-                    ? be.jsx(xn, {
-                        size: "small",
-                        type: "primary",
-                        loading: u === "update",
-                        onClick: () => o(l),
-                        children: u === "update" ? "更新中..." : "更新",
-                      })
-                    : null,
-                  l.canUninstall
-                    ? be.jsx(xn, {
-                        size: "small",
-                        loading: u === "uninstall",
-                        onClick: () => t(l),
-                        children: u === "uninstall" ? "卸载中..." : "卸载",
-                      })
-                    : null,
-                ],
-              }),
-            ],
-          }),
-        ],
-      },
-      l.id,
-    );
   });
 
 const SkillsManagerModal = ({
@@ -2695,71 +2062,41 @@ const SkillsManagerModal = ({
   onClose: t,
   platform: n,
   skills: r,
-  enabledCount: o,
-  loading: l,
-  onToggle: s,
-  onToggleAll: u,
-  officialSkills: f,
-  officialLoading: m,
-  onInstallOfficialSkill: v,
-  onUninstallOfficialSkill: p,
-  onUpdateOfficialSkill: h,
-  pendingOfficialSkillAction: b,
+  directory: o,
+  displayDirectory: l,
+  loading: s,
+  errorText: u,
+  pendingName: f,
+  onOpenDirectory: m,
+  onCopy: v,
+  onDelete: p,
 }) => {
-  const x = skillsEmptyTextByPlatform(n),
-    [g, C0] = c.useState("installed");
-  c.useEffect(() => {
-    e && C0("installed");
-  }, [e, n]);
-  const E0 = g === "installed",
-    k0 = {
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minWidth: "120px",
-      borderRadius: "999px",
-      padding: "7px 14px",
-      fontSize: "12px",
-      fontWeight: 600,
-      cursor: "pointer",
-      transition: "background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease",
-    },
-    T0 = l ? "Skills 加载中..." : `已启用 ${o} / ${r.length}`,
-    A0 = m ? officialPackageLoadingTextByPlatform(n) : officialPackageCountTextByPlatform(n, f.length),
-    P0 = E0
-      ? r.length === 0
-        ? be.jsx("div", {
+  const [copySkill, setCopySkill] = c.useState(null);
+  c.useEffect(() => setCopySkill(null), [e, n]);
+  const countText = s ? "Skills 加载中..." : `共 ${r.length} 个`;
+  const body =
+    s && r.length === 0
+      ? be.jsx("div", {
+          className: "skills-manager-empty",
+          style: { fontSize: "12px", borderRadius: "6px", padding: "12px" },
+          children: "Skills 加载中...",
+        })
+      : !s && r.length === 0 && !u
+        ? be.jsxs("div", {
             className: "skills-manager-empty",
-            style: {
-              fontSize: "12px",
-              borderRadius: "6px",
-              padding: "12px",
-            },
-            children: x,
+            style: { fontSize: "12px", borderRadius: "6px", padding: "12px" },
+            children: [
+              be.jsx("div", { children: "该目录还没有 Skills" }),
+              be.jsx("div", {
+                style: { marginTop: "4px", wordBreak: "break-all" },
+                children: o || l || "",
+              }),
+            ],
           })
-        : renderSkillRows(r, s, f, h, p, b, u)
-      : m
-        ? be.jsx("div", {
-            className: "skills-manager-empty",
-            style: {
-              fontSize: "12px",
-              borderRadius: "6px",
-              padding: "12px",
-            },
-            children: officialPackageLoadingTextByPlatform(n),
-          })
-        : f.length === 0
-          ? be.jsx("div", {
-              className: "skills-manager-empty",
-              style: {
-                fontSize: "12px",
-                borderRadius: "6px",
-                padding: "12px",
-              },
-              children: officialPackageEmptyTextByPlatform(n),
-            })
-          : renderOfficialSkillRows(f, p, b, v, h);
-  return be.jsx(xr, {
+        : r.length > 0
+          ? renderSkillRows(r, f, setCopySkill, p)
+          : null;
+  const managerModal = be.jsx(xr, {
     title: skillsTitleByPlatform(n),
     open: e,
     onCancel: t,
@@ -2776,31 +2113,10 @@ const SkillsManagerModal = ({
         maxHeight: "70vh",
       },
       children: [
-        be.jsxs("div", {
-          className: "skills-manager-tabs",
-          style: {
-            display: "flex",
-            gap: "8px",
-            padding: "4px",
-            paddingBottom: "12px",
-            borderRadius: "10px",
-          },
-          children: [
-            be.jsx("button", {
-              type: "button",
-              className: E0 ? "skills-manager-tab skills-manager-tab-active" : "skills-manager-tab",
-              onClick: () => C0("installed"),
-              style: k0,
-              children: "已安装 Skills",
-            }),
-            be.jsx("button", {
-              type: "button",
-              className: !E0 ? "skills-manager-tab skills-manager-tab-active" : "skills-manager-tab",
-              onClick: () => C0("market"),
-              style: k0,
-              children: officialPackageTabTextByPlatform(n),
-            }),
-          ],
+        be.jsx("div", {
+          className: "skills-manager-muted",
+          style: { fontSize: "12px", wordBreak: "break-all" },
+          children: l || o || "",
         }),
         be.jsxs("div", {
           style: {
@@ -2808,71 +2124,56 @@ const SkillsManagerModal = ({
             justifyContent: "space-between",
             alignItems: "center",
             gap: "8px",
-            flexWrap: "wrap",
           },
           children: [
-            E0
-              ? be.jsx("div", {
-                  className: "skills-manager-muted",
-                  style: {
-                    fontSize: "12px",
-                  },
-                  children: T0,
-                })
-              : be.jsxs("div", {
-                  style: {
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                  },
-                  children: [
-                    be.jsx("div", {
-                      className: "skills-manager-muted",
-                      style: {
-                        fontSize: "12px",
-                      },
-                      children: A0,
-                    }),
-                    be.jsx("div", {
-                      className: "skills-manager-muted",
-                      style: {
-                        fontSize: "12px",
-                      },
-                      children: officialPackageInstallHintByPlatform(n),
-                    }),
-                  ],
-                }),
-            E0
-              ? be.jsxs("div", {
-                  style: { display: "flex", gap: "8px" },
-                  children: [
-                    be.jsx(xn, {
-                      size: "small",
-                      onClick: () => u(!0),
-                      disabled: r.length === 0,
-                      children: "一键启用",
-                    }),
-                    be.jsx(xn, {
-                      size: "small",
-                      onClick: () => u(!1),
-                      disabled: r.length === 0,
-                      children: "一键禁用",
-                    }),
-                  ],
-                })
-              : null,
+            be.jsx("div", {
+              className: "skills-manager-muted",
+              style: { fontSize: "12px" },
+              children: countText,
+            }),
+            be.jsx(xn, {
+              size: "small",
+              onClick: m,
+              children: "打开目录",
+            }),
           ],
         }),
+        u
+          ? be.jsx("div", {
+              className: "skills-manager-empty",
+              style: {
+                fontSize: "12px",
+                borderRadius: "6px",
+                padding: "12px",
+                color: "var(--error-color)",
+                border: "1px solid var(--error-color)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              },
+              children: u,
+            })
+          : null,
         be.jsx("div", {
           style: {
             overflow: "auto",
             maxHeight: "calc(70vh - 108px)",
             paddingRight: "4px",
           },
-          children: P0,
+          children: body,
         }),
       ],
     }),
+  });
+  return be.jsxs(be.Fragment, {
+    children: [
+      managerModal,
+      e && copySkill ? be.jsx(SkillsCopyModal, {
+        skill: copySkill,
+        platform: n,
+        onClose: () => setCopySkill(null),
+        onCopy: v,
+      }, `${n}:${copySkill.name}`) : null,
+    ],
   });
 };
 
@@ -4487,28 +3788,18 @@ const ConfigEditorPanel = () => {
         isLoading: configListLoading,
       } = useConfigStore(),
       [l, s] = c.useState(""),
-      [u, f] = c.useState(""),
       [m, v] = c.useState(""),
       [p, h] = c.useState(""),
-      [codexMcpServerIds, setCodexMcpServerIds] = c.useState([]),
-      [mcpHealthItems, setMcpHealthItems] = c.useState([]),
-      [mcpHealthLoading, setMcpHealthLoading] = c.useState(!1),
-      [installingMcpId, setInstallingMcpId] = c.useState(""),
-      [removingMcpId, setRemovingMcpId] = c.useState(""),
-      [installEnvModalOpen, setInstallEnvModalOpen] = c.useState(!1),
-      [pendingInstallMcpItem, setPendingInstallMcpItem] = c.useState(null),
-      [installEnvDraft, setInstallEnvDraft] = c.useState({}),
-      [healthDetailState, setHealthDetailState] = c.useState(null),
-      [mcpInstalledServerIds, setMcpInstalledServerIds] = c.useState(null),
-      [C, Z] = c.useState([]),
-      [j, q] = c.useState(!1),
-      [officialSkills, setOfficialSkills] = c.useState([]),
-      [officialSkillsLoading, setOfficialSkillsLoading] = c.useState(!1),
-      [officialSkillActionId, setOfficialSkillActionId] = c.useState(""),
-      [officialSkillActionType, setOfficialSkillActionType] = c.useState(""),
       [S, y] = c.useState(null),
-      [$, w] = c.useState(!1),
       [skillsModalOpen, setSkillsModalOpen] = c.useState(!1),
+      [cliSkills, setCliSkills] = c.useState([]),
+      [skillsDirectory, setSkillsDirectory] = c.useState(""),
+      [skillsDisplayDirectory, setSkillsDisplayDirectory] = c.useState(""),
+      [skillsLoading, setSkillsLoading] = c.useState(!1),
+      [skillsError, setSkillsError] = c.useState(""),
+      [pendingSkillName, setPendingSkillName] = c.useState(""),
+      skillsLoadGenerationRef = c.useRef(0),
+      skillsLoadTargetRef = c.useRef(""),
       [claudeEditorMode, setClaudeEditorMode] = c.useState("json"),
       [claudeVisualState, setClaudeVisualState] = c.useState(() =>
         claudeVisualCreateState({}),
@@ -4532,180 +3823,7 @@ const ConfigEditorPanel = () => {
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
       O = e ? n(e, t || void 0) : null,
-      I = S ? Nk[S] : null,
-      R = c.useMemo(() => {
-        if (Array.isArray(mcpInstalledServerIds)) return mcpInstalledServerIds;
-        if (t === "codex" && Array.isArray(codexMcpServerIds) && codexMcpServerIds.length > 0)
-          return codexMcpServerIds;
-        if (t === "codex") {
-          try {
-            const H = g1(m || "");
-            if (H && H.mcp_servers) return Object.keys(H.mcp_servers);
-          } catch {}
-          return [];
-        }
-        const H = t === "claude" ? u : l;
-        try {
-          const k = JSON.parse(H || "{}"),
-            L = k && (k.mcp || k.mcpServers || k.mcp_servers);
-          if (L) return Object.keys(L);
-        } catch {}
-        return [];
-      }, [l, u, m, t, codexMcpServerIds, mcpInstalledServerIds]),
-      refreshMcpInstalledIds = c.useCallback(async (W = t) => {
-        if (!W) return;
-        try {
-          const H = await fetchMcpInstalledServerIds(W);
-          Array.isArray(H) ? setMcpInstalledServerIds(H) : setMcpInstalledServerIds([]);
-          W === "codex" && (Array.isArray(H) ? setCodexMcpServerIds(H) : setCodexMcpServerIds([]));
-        } catch (H) {
-          console.error("刷新 MCP 安装状态失败:", H), setMcpInstalledServerIds(null);
-        }
-      }, [t]),
-      checkMcpHealth = c.useCallback(
-        async (W = t, H = !1) => {
-          if (!W) return;
-          setMcpHealthLoading(!0);
-          try {
-            const k = await fetchMcpHealth(W);
-            Array.isArray(k) ? setMcpHealthItems(k) : setMcpHealthItems([]);
-            if (W === "codex" || H) {
-              try {
-                const L = await fetchMcpInstalledServerIds("codex");
-                Array.isArray(L)
-                  ? (setMcpInstalledServerIds(L), setCodexMcpServerIds(L))
-                  : (setMcpInstalledServerIds([]), setCodexMcpServerIds([]));
-              } catch (L) {
-                console.error("刷新 Codex MCP 列表失败:", L), setCodexMcpServerIds([]);
-              }
-            }
-            Kt.success("MCP 健康检测完成");
-          } catch (k) {
-            const L = k instanceof Error ? k.message : String(k);
-            console.error("检测 MCP 健康状态失败:", k), Kt.error(`检测 MCP 健康状态失败: ${L}`);
-          } finally {
-            setMcpHealthLoading(!1);
-          }
-        },
-        [t],
-      ),
-      refreshCurrentMcpConfig = c.useCallback(async (W) => {
-        if (W === "claude") {
-          const H = await fetchCurrentConfig("claude");
-          H?.content !== void 0 && s(H.content);
-          f("");
-          return;
-        }
-	        if (W === "opencode") {
-	          const H = await fetchCurrentConfig("opencode");
-	          H?.content !== void 0 && s(H.content);
-	          return;
-        }
-        const H = await fetchCurrentConfig("codex");
-        H?.configContent !== void 0 && v(H.configContent);
-        H?.authContent !== void 0 && h(H.authContent);
-      }, []),
-      refreshMcpInstalledIdsInBackground = c.useCallback((W) => {
-        if (!W) return;
-        setTimeout(() => {
-          void refreshMcpInstalledIds(W);
-        }, 0);
-      }, [refreshMcpInstalledIds]),
-      installMcpItem = async (W, H = {}) => {
-        try {
-          if (!t) return;
-          setInstallingMcpId(W.id);
-          const U = await installMcpById(t, W.id, H);
-          const T = Array.isArray(U?.warnings) ? U.warnings : [];
-          T.forEach((k) => Kt.warning(k));
-          try {
-            await refreshCurrentMcpConfig(t);
-          } catch (k) {
-            console.error("刷新 MCP 配置失败:", k);
-          }
-          Kt.success(`已安装 MCP: ${W.name}`);
-          refreshMcpInstalledIdsInBackground(t);
-          return !0;
-        } catch (H) {
-          console.error("安装 MCP 失败:", H), Kt.error("安装 MCP 失败");
-          return !1;
-        } finally {
-          setInstallingMcpId("");
-        }
-      },
-      P = async (W) => {
-        const H = getMcpEnvEntries(W);
-        if (H.length > 0) {
-          setPendingInstallMcpItem(W), setInstallEnvDraft(createInitialMcpEnvDraft(W)), setInstallEnvModalOpen(!0);
-          return;
-        }
-        await installMcpItem(W, {});
-      },
-      U = async (W) => {
-        if (!t) return;
-        setRemovingMcpId(W.id);
-        try {
-          await uninstallMcpById(t, W.id);
-          try {
-            await refreshCurrentMcpConfig(t);
-          } catch (H) {
-            console.error("刷新 MCP 配置失败:", H);
-          }
-          Kt.success(`已卸载 MCP: ${W.name}`);
-          refreshMcpInstalledIdsInBackground(t);
-        } catch (H) {
-          console.error("卸载 MCP 失败:", H), Kt.error("卸载 MCP 失败");
-        } finally {
-          setRemovingMcpId("");
-        }
-      },
-      V0 = (W, H) => {
-        setInstallEnvDraft((k) => ({ ...k, [W]: H }));
-      },
-      openHealthDetail = (W, H) => {
-        setHealthDetailState({ item: W, health: H });
-      },
-      Q0 = async () => {
-        const W = pendingInstallMcpItem;
-        if (!W) return;
-        const H = getMissingMcpEnvNames(W, installEnvDraft);
-        if (H.length > 0) {
-          Kt.error(`请填写环境变量: ${H.join(", ")}`);
-          return;
-        }
-        const k = await installMcpItem(W, installEnvDraft);
-        k && (setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({}));
-      },
-      te = async (W, H) => {
-        if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "opencode")) return;
-        const k0 = officialPackageSingularByPlatform(O.platform);
-        setOfficialSkillActionId(W.id), setOfficialSkillActionType(H);
-        try {
-          const k =
-            H === "install"
-              ? await installOfficialSkillById(O.platform, W.id)
-              : H === "update"
-                ? await updateOfficialSkillById(O.platform, W.id)
-                : await uninstallOfficialSkillById(O.platform, W.id);
-          await loadSkillsState(O);
-          H === "install"
-            ? Kt.success(`已安装 ${k0}: ${k.skillName || W.name}`)
-            : H === "update"
-              ? Kt.success(`已更新 ${k0}: ${k.skillName || W.name}`)
-              : Kt.success(`已卸载 ${k0}: ${k.skillName || W.name}`);
-        } catch (k) {
-          const L = k instanceof Error ? k.message : String(k);
-          console.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} ${k0} 失败:`, k),
-            H === "install" && (L.includes("Skill 已存在") || L.includes("already exists") || L.includes("Extension already exists"))
-              ? Kt.error(`${k0} 已存在: ${W.name}`)
-              : Kt.error(`${H === "install" ? "安装" : H === "update" ? "更新" : "卸载"} ${k0} 失败: ${L}`);
-        } finally {
-          setOfficialSkillActionId(""), setOfficialSkillActionType("");
-        }
-      },
-      X0 = async (W) => te(W, "install"),
-      ee = async (W) => te(W, "update"),
-      ne = async (W) => te(W, "uninstall");
+      I = S ? Nk[S] : null;
     c.useEffect(() => {
       return () => {
         configFieldHelpTooltipTimerRef.current && clearTimeout(configFieldHelpTooltipTimerRef.current);
@@ -4714,23 +3832,14 @@ const ConfigEditorPanel = () => {
     c.useEffect(() => {
       if (!O) {
           (s(""),
-          f(""),
           v(""),
           h(""),
-          Z([]),
-          setCodexMcpServerIds([]),
-          setMcpHealthItems([]),
-          setMcpHealthLoading(!1),
-          setInstallingMcpId(""),
-          setInstallEnvModalOpen(!1),
-          setPendingInstallMcpItem(null),
-          setInstallEnvDraft({}),
-          setHealthDetailState(null),
-          setMcpInstalledServerIds(null),
-          setOfficialSkills([]),
-          setOfficialSkillsLoading(!1),
-          setOfficialSkillActionId(""),
-          setOfficialSkillActionType(""),
+          setCliSkills([]),
+          setSkillsDirectory(""),
+          setSkillsDisplayDirectory(""),
+          setSkillsLoading(!1),
+          setSkillsError(""),
+          setPendingSkillName(""),
           setSkillsModalOpen(!1),
           setClaudeEditorMode("json"),
           setClaudeVisualState(claudeVisualCreateState({})),
@@ -4751,7 +3860,7 @@ const ConfigEditorPanel = () => {
       if (O.platform === "claude") {
         const W = O.content || "{}",
           H = claudeVisualParseContent(W);
-        s(W), f(""), v(""), h(""), setClaudeEditorMode("json");
+        s(W), v(""), h(""), setClaudeEditorMode("json");
         H.ok
           ? (setClaudeVisualState(H.state), setClaudeVisualError(""))
           : (setClaudeVisualState(null), setClaudeVisualError(H.error));
@@ -4808,165 +3917,87 @@ const ConfigEditorPanel = () => {
       }
       setGrokTextDraft(W.content), setGrokValidContent(W.content), setGrokVisualError("");
     }, [grokEditorMode, grokVisualState]);
+    const applyCliSkillsResult = (result) => {
+      if (!result || typeof result !== "object") return;
+      if (typeof result.directory === "string") setSkillsDirectory(result.directory);
+      if (typeof result.displayDirectory === "string") setSkillsDisplayDirectory(result.displayDirectory);
+      if (Array.isArray(result.skills)) setCliSkills(result.skills);
+      setSkillsError("");
+    };
+    const loadCliSkills = c.useCallback(async (platform, generation) => {
+      setSkillsLoading(!0);
+      try {
+        const result = await fetchCliSkillsList(platform);
+        if (skillsLoadGenerationRef.current !== generation) return;
+        applyCliSkillsResult(result);
+      } catch (error) {
+        if (skillsLoadGenerationRef.current !== generation) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setSkillsError(message || "获取 Skills 失败");
+      } finally {
+        if (skillsLoadGenerationRef.current === generation) setSkillsLoading(!1);
+      }
+    }, []);
     c.useEffect(() => {
-        setMcpHealthItems([]),
-        setMcpHealthLoading(!1),
-        setMcpInstalledServerIds(null),
-        O?.platform !== "codex" && setCodexMcpServerIds([]),
-        O?.platform && void refreshMcpInstalledIds(O.platform);
-    }, [O, refreshMcpInstalledIds]);
-    const tt = c.useCallback((W) => {
-      const H = new Set();
-      try {
-        const k = JSON.parse(W || "{}");
-        const L = k && typeof k === "object" ? k.permissions : null;
-        const U = L && typeof L === "object" && Array.isArray(L.deny) ? L.deny : [];
-        U.forEach((T) => {
-          if (typeof T !== "string") {
-            return;
-          }
-          const F = T.trim().match(/^Skill\((.+)\)$/);
-          if (!F || !F[1]) {
-            return;
-          }
-          const Y = F[1].trim();
-          if (Y) {
-            H.add(Y);
-          }
-        });
-      } catch {
-        // ignore parse errors
-      }
-      return H;
-    }, []);
-    const nt = c.useCallback((W) => {
-      const H = new Set();
-      let k = !1;
-      try {
-        const L = JSON.parse(W || "{}");
-        const U = L && typeof L === "object" && !Array.isArray(L) ? L.skills : null;
-        if (U && typeof U === "object" && !Array.isArray(U)) {
-          U.enabled === !1 && (k = !0);
-          const T = Array.isArray(U.disabled) ? U.disabled : [];
-          T.forEach((F) => {
-            if (typeof F !== "string") {
-              return;
-            }
-            const Y = F.trim();
-            if (Y) {
-              H.add(Y);
-            }
-          });
-        }
-      } catch {
-        // ignore parse errors
-      }
-      return { disabled: H, allDisabled: k };
-    }, []);
-    const rt = c.useCallback((W) => {
-      const H = new Set();
-      try {
-        const k = g1(String(W || ""));
-        const L = k && typeof k === "object" && !Array.isArray(k) ? k.skills : null;
-        const U = L && typeof L === "object" && !Array.isArray(L) && Array.isArray(L.disabled) ? L.disabled : [];
-        U.forEach((T) => {
-          if (typeof T !== "string") {
-            return;
-          }
-          const F = T.trim();
-          if (F) {
-            H.add(F);
-          }
-        });
-      } catch {
-        // ignore parse errors
-      }
-      return H;
-    }, []);
-    const G = c.useCallback((W, H, k, L) => {
-      const U = new Map(),
-        T = new Map();
-      (Array.isArray(H) ? H : []).forEach((F) => {
-        if (!F) {
-          return;
-        }
-        F.path && T.set(F.path, F), F.name && U.set(F.name, F);
-      });
-      const F = k instanceof Set ? k : new Set(),
-        Y = L === !0;
-      return (Array.isArray(W) ? W : []).map((ie) => {
-        const Le = (ie.path && T.get(ie.path)) || U.get(ie.name);
-        return {
-          name: ie.name,
-          path: ie.path,
-          description: ie.description,
-          enabled: Le ? Le.enabled !== !1 : Y ? !1 : !F.has(ie.name),
-        };
-      });
-    }, []);
-    const loadSkillsState = c.useCallback(async (W, H = () => !1) => {
-      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "opencode" && W.platform !== "grok")) {
-        Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
+      const generation = skillsLoadGenerationRef.current + 1;
+      skillsLoadGenerationRef.current = generation;
+      if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "opencode" && O.platform !== "grok")) {
+        skillsLoadTargetRef.current = "";
+        setCliSkills([]), setSkillsDirectory(""), setSkillsDisplayDirectory(""), setSkillsError(""), setSkillsLoading(!1);
         return;
       }
-      q(!0), setOfficialSkillsLoading(!0);
-      const k = W.platform === "claude"
-          ? fetchClaudeSkillsList()
-          : W.platform === "opencode"
-            ? fetchOpenCodeSkillsList()
-            : W.platform === "grok"
-              ? configApi.getGrokSkillsList()
-              : fetchCodexSkillsList(),
-        L = W.platform === "grok" ? configApi.getGrokOfficialSkills() : fetchOfficialSkillsCatalog(W.platform),
-        [U, T] = await Promise.allSettled([k, L]);
-      if (H()) return;
-      if (U.status === "fulfilled") {
-        let F = new Set();
-        let Y = !1;
-        if (W.platform === "claude") {
-          F = tt(W.content || "{}");
-        } else if (W.platform === "opencode") {
-          const ie = nt(W.content || "{}");
-          F = ie.disabled;
-          Y = ie.allDisabled;
-        } else if (W.platform === "grok") {
-          F = rt(W.configContent || W.content || "");
+      const targetKey = `${O.platform}:${O.id}`;
+      if (skillsLoadTargetRef.current !== targetKey) {
+        skillsLoadTargetRef.current = targetKey;
+        setCliSkills([]), setSkillsDirectory(""), setSkillsDisplayDirectory(""), setSkillsError("");
+      }
+      void loadCliSkills(O.platform, generation);
+    }, [O, loadCliSkills]);
+    const openSkillsDirectory = async () => {
+      if (!O) return;
+      try {
+        const directory = await openCliSkillsDirectory(O.platform);
+        if (typeof directory === "string" && directory) {
+          window.sinitekConfigBridge?.openPath?.(directory);
         }
-        let ie = W.platform === "claude" ? W.claudeSkills : W.platform === "opencode" ? W.openCodeSkills : W.platform === "grok" ? W.grokSkills : W.codexSkills;
-        if (W.platform === "grok") {
-          const Le = Array.isArray(ie) ? ie : [];
-          ie = Le.map((Ne) => (Ne && F.has(Ne.name) ? { ...Ne, enabled: !1 } : Ne));
-        }
-        Z(G(U.value, ie, F, Y));
-      } else {
-        const F =
-          W.platform === "claude"
-            ? "获取 Claude Skills 失败"
-            : W.platform === "opencode"
-              ? "获取 OpenCode Skills 失败"
-              : W.platform === "grok"
-                ? "获取 Grok Skills 失败"
-                : "获取 Codex Skills 失败";
-        console.error(F + ":", U.reason), Kt.error(F), Z([]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSkillsError(message || "打开 Skills 目录失败");
       }
-      if (T.status === "fulfilled") {
-        setOfficialSkills(Array.isArray(T.value) ? T.value : []);
-      } else {
-        console.error("获取官方 Skills 失败:", T.reason), Kt.error("获取官方 Skills 失败"), setOfficialSkills([]);
+    };
+    const copyCliSkillTo = async (skill, targetPlatform) => {
+      if (!O || !skill) return;
+      const sourceKey = `${O.platform}:${O.id}`;
+      setPendingSkillName(skill.name);
+      try {
+        const result = await copyCliSkill(O.platform, skill.name, targetPlatform);
+        if (skillsLoadTargetRef.current === sourceKey) applyCliSkillsResult(result);
+      } finally {
+        setPendingSkillName("");
       }
-      q(!1), setOfficialSkillsLoading(!1);
-    }, [G, tt, nt, rt]);
-    c.useEffect(() => {
-      let W = !1;
-      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "opencode" && O.platform !== "grok")) {
-        Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
-        return;
-      }
-      loadSkillsState(O, () => W);
-      return () => {
-        W = !0;
-      };
-    }, [O, loadSkillsState]);
+    };
+    const confirmDeleteCliSkill = (skill) => {
+      if (!O || !skill) return;
+      uk({
+        title: `删除 ${skill.name}`,
+        content: `只删除该 CLI 全局目录中的这个技能文件夹：${skill.name}`,
+        okText: "删除",
+        cancelText: "取消",
+        onOk: async () => {
+          setPendingSkillName(skill.name);
+          try {
+            const result = await deleteCliSkill(O.platform, skill.name);
+            applyCliSkillsResult(result);
+            Kt.success(`已删除 ${skill.name}`);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setSkillsError(message || "删除 Skill 失败");
+          } finally {
+            setPendingSkillName("");
+          }
+        },
+      });
+    };
     const _ = (W) => {
         try {
           return (JSON.parse(W), !0);
@@ -5234,9 +4265,8 @@ const ConfigEditorPanel = () => {
             const H = claudeVisualParseContent(W);
             H.ok && setClaudeVisualState(H.state);
           }
-          f("");
           Kt.success("保存成功");
-          await A({ content: W, claudeSkills: C });
+          await A({ content: W });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -5278,7 +4308,7 @@ const ConfigEditorPanel = () => {
                 k.ok && setOpenCodeVisualState(k.state);
               }
             },
-            applyActiveConfig: (H) => A({ content: H, openCodeSkills: C }),
+            applyActiveConfig: (H) => A({ content: H }),
           });
         } catch (H) {
           Kt.error("保存失败: " + H);
@@ -5321,7 +4351,7 @@ const ConfigEditorPanel = () => {
           const L = codexVisualParseContent(W);
           L.ok && setCodexVisualState(L.state);
           Kt.success("保存成功");
-          await A({ configContent: W, authContent: k, codexSkills: C });
+          await A({ configContent: W, authContent: k });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -5340,7 +4370,7 @@ const ConfigEditorPanel = () => {
           await r(O.id, { content: m, configContent: m, authContent: W });
           h(W);
           Kt.success("保存成功");
-          await A({ configContent: m, authContent: W, codexSkills: C });
+          await A({ configContent: m, authContent: W });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
@@ -5375,160 +4405,11 @@ const ConfigEditorPanel = () => {
           const H = grokVisualParseContent(W);
           H.ok && !H.state.fieldError && setGrokVisualState(H.state);
           Kt.success("保存成功");
-          await A({ content: W, configContent: W, grokSkills: C });
+          await A({ content: W, configContent: W });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
       };
-    const applyActiveGrokSkills = async (W) => {
-      const H = grokEditorMode === "toml" ? grokTextDraft : grokValidContent;
-      await applyConfigItem("grok", {
-        content: H,
-        configContent: H,
-        grokSkills: W,
-      });
-      const k = await fetchCurrentConfig("grok");
-      const L = k?.configContent ?? k?.content;
-      if (typeof L !== "string") {
-        return;
-      }
-      setGrokTextDraft(L);
-      setGrokValidContent(L);
-      const U = grokVisualParseContent(L);
-      if (U.ok) {
-        setGrokVisualState(U.state);
-        setGrokVisualError(U.state.fieldError || "");
-      }
-    };
-    const J = async (W, H, k) => {
-        const L = C.map((U) => (U.name === W && (k ? U.path === k : !0) ? { ...U, enabled: H } : U));
-        Z(L);
-        try {
-          if (O) {
-            const U =
-              O.platform === "claude"
-                ? { claudeSkills: L }
-                : O.platform === "opencode"
-                  ? { openCodeSkills: L }
-                  : O.platform === "grok"
-                    ? { grokSkills: L }
-                    : { codexSkills: L };
-            await r(O.id, U);
-            if (o(O.platform) === O.id) {
-              if (O.platform === "claude") {
-                if (!_(l)) {
-                  Kt.error("JSON格式不正确");
-                  return;
-                }
-                const T = M(l);
-                await applyConfigItem("claude", {
-                  content: T,
-                  claudeSkills: L,
-                });
-                const Y = await fetchCurrentConfig("claude");
-                Y?.content !== void 0 && s(Y.content);
-                f("");
-              } else if (O.platform === "opencode") {
-                if (!_(l)) {
-                  Kt.error("JSON格式不正确");
-                  return;
-                }
-	                const T = M(l);
-	                await applyConfigItem("opencode", {
-	                  content: T,
-	                  openCodeSkills: L,
-	                });
-	                const F = await fetchCurrentConfig("opencode");
-	                F?.content !== void 0 && s(F.content);
-	              } else if (O.platform === "grok") {
-                await applyActiveGrokSkills(L);
-              } else {
-                if (!_(p)) {
-                  Kt.error("auth.json格式不正确");
-                  return;
-                }
-                const T = M(p);
-                await applyConfigItem("codex", {
-                  configContent: m,
-                  authContent: T,
-                  codexSkills: L,
-                });
-                const F = await fetchCurrentConfig("codex");
-                F?.configContent !== void 0 && v(F.configContent);
-                F?.authContent !== void 0 && h(F.authContent);
-              }
-              Kt.success("已更新当前激活的配置");
-            }
-          }
-        } catch (U) {
-          Kt.error("更新技能失败: " + U);
-        }
-      },
-      K = async (W) => {
-        const H = C.map((k) => ({ ...k, enabled: W }));
-        Z(H);
-        try {
-          if (O) {
-            const k =
-              O.platform === "claude"
-                ? { claudeSkills: H }
-                : O.platform === "opencode"
-                  ? { openCodeSkills: H }
-                  : O.platform === "grok"
-                    ? { grokSkills: H }
-                    : { codexSkills: H };
-            await r(O.id, k);
-            if (o(O.platform) === O.id) {
-              if (O.platform === "claude") {
-                if (!_(l)) {
-                  Kt.error("JSON格式不正确");
-                  return;
-                }
-                const L = M(l);
-                await applyConfigItem("claude", {
-                  content: L,
-                  claudeSkills: H,
-                });
-                const T = await fetchCurrentConfig("claude");
-                T?.content !== void 0 && s(T.content);
-                f("");
-              } else if (O.platform === "opencode") {
-                if (!_(l)) {
-                  Kt.error("JSON格式不正确");
-                  return;
-                }
-	                const L = M(l);
-	                await applyConfigItem("opencode", {
-	                  content: L,
-	                  openCodeSkills: H,
-	                });
-	                const U = await fetchCurrentConfig("opencode");
-	                U?.content !== void 0 && s(U.content);
-	              } else if (O.platform === "grok") {
-                await applyActiveGrokSkills(H);
-              } else {
-                if (!_(p)) {
-                  Kt.error("auth.json格式不正确");
-                  return;
-                }
-                const L = M(p);
-                await applyConfigItem("codex", {
-                  configContent: m,
-                  authContent: L,
-                  codexSkills: H,
-                });
-                const U = await fetchCurrentConfig("codex");
-                U?.configContent !== void 0 && v(U.configContent);
-                U?.authContent !== void 0 && h(U.authContent);
-              }
-              Kt.success("已更新当前激活的配置");
-            }
-          }
-        } catch (k) {
-          Kt.error("更新技能失败: " + k);
-        }
-      },
-      Q = c.useMemo(() => C.filter((W) => W.enabled !== !1).length, [C]);
     const configAppUsesChinese =
         typeof navigator === "undefined" ||
         !navigator.language ||
@@ -7129,13 +6010,7 @@ const ConfigEditorPanel = () => {
                         justifyContent: "flex-end",
                       },
                       children: [
-                        be.jsx(xn, {
-                          className: "config-standard-action-button",
-                          size: "small",
-                          onClick: () => w(!0),
-                          children: "MCP(全局)",
-                        }),
-                        be.jsx(xn, {
+                                                be.jsx(xn, {
                           className: "config-standard-action-button",
                           size: "small",
                           onClick: () => setSkillsModalOpen(!0),
@@ -7254,182 +6129,23 @@ const ConfigEditorPanel = () => {
                             }),
                       ],
                     }),
-                    !1 && be.jsxs("div", {
-                      style: {
-                        display: "flex",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "4px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " Skills"],
-                            }),
-                            be.jsxs("div", {
-                              style: { display: "flex", gap: "4px" },
-                              children: [
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!0),
-                                  disabled: C.length === 0,
-                                  children: "一键启用",
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!1),
-                                  disabled: C.length === 0,
-                                  children: "一键禁用",
-                                }),
-                              ],
-                            }),
-                          ],
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            marginBottom: "4px",
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: j
-                            ? "技能列表加载中..."
-                            : `已启用 ${Q} / ${C.length}`,
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "6px",
-                            padding: "4px",
-                            background: "var(--background-color-secondary)",
-                          },
-                          children:
-                            C.length === 0
-                              ? be.jsx("div", {
-                                  style: {
-                                    color: "var(--text-color-secondary)",
-                                    fontSize: "12px",
-                                  },
-                                  children: "未检测到 Skills，请先安装到 ~/.claude/skills",
-                                })
-                              : C.map((W) =>
-                                  be.jsx(
-                                    "label",
-                                    {
-                                      style: {
-                                        display: "flex",
-                                        gap: "5px",
-                                        padding: "4px",
-                                        borderRadius: "6px",
-                                        background: "var(--background-color)",
-                                        border: "1px solid var(--border-color)",
-                                        marginBottom: "4px",
-                                      },
-                                      children: be.jsxs("div", {
-                                        style: { display: "flex", gap: "4px", width: "100%" },
-                                        children: [
-                                          be.jsx("input", {
-                                            type: "checkbox",
-                                            checked: W.enabled !== !1,
-                                            onChange: (H) => J(W.name, H.target.checked, W.path),
-                                          }),
-                                          be.jsxs("div", {
-                                            style: {
-                                              display: "flex",
-                                              flexDirection: "column",
-                                              gap: "1px",
-                                              flex: 1,
-                                            },
-                                            children: [
-                                              be.jsx("div", { children: W.name }),
-                                              be.jsx("div", {
-                                                style: {
-                                                  color: "var(--text-color-secondary)",
-                                                  fontSize: "12px",
-                                                },
-                                                children: W.path,
-                                              }),
-                                              W.description &&
-                                                be.jsx("div", {
-                                                  style: {
-                                                    color: "var(--text-color-secondary)",
-                                                    fontSize: "12px",
-                                                  },
-                                                  children: W.description,
-                                                }),
-                                            ],
-                                          }),
-                                        ],
-                                      }),
-                                    },
-                                    W.name,
-                                  ),
-                                ),
-                        }),
-                      ],
-                    }),
-                  ],
+                                      ],
                 }),
               }),
-              be.jsx(xr, {
-                title: "MCP 市场",
-                open: $,
-                onCancel: () => w(!1),
-                width: 1e3,
-                footer: null,
-                destroyOnClose: !0,
-                children: be.jsx(jv, {
-                  onAdd: P,
-                  onRemove: U,
-                  onCheckHealth: () => checkMcpHealth(t),
-                  onOpenHealthDetail: openHealthDetail,
-                  installedIds: R,
-                  platform: t,
-                  healthItems: mcpHealthItems,
-                  healthLoading: mcpHealthLoading,
-                  addingId: installingMcpId,
-                  removingId: removingMcpId,
-                }),
-              }),
-              be.jsx(McpInstallEnvModal, {
-                open: installEnvModalOpen,
-                item: pendingInstallMcpItem,
-                envValues: installEnvDraft,
-                onChange: V0,
-                onClose: () => {
-                  setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
-                },
-                onConfirm: Q0,
-                loading: !!installingMcpId,
-              }),
-              be.jsx(McpHealthDetailModal, {
-                open: !!healthDetailState,
-                item: healthDetailState?.item || null,
-                health: healthDetailState?.health || null,
-                onClose: () => setHealthDetailState(null),
-              }),
-              be.jsx(SkillsManagerModal, {
-                open: skillsModalOpen,
-                onClose: () => setSkillsModalOpen(!1),
-                platform: O.platform,
-                skills: C,
-                enabledCount: Q,
-                loading: j,
-                onToggle: J,
-                onToggleAll: K,
-                officialSkills,
-                officialLoading: officialSkillsLoading,
-                onInstallOfficialSkill: X0,
-                onUninstallOfficialSkill: ne,
-                onUpdateOfficialSkill: ee,
-                pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
-              }),
+                                                        be.jsx(SkillsManagerModal, {
+                                                          open: skillsModalOpen,
+                                                          onClose: () => setSkillsModalOpen(!1),
+                                                          platform: O.platform,
+                                                          skills: cliSkills,
+                                                          directory: skillsDirectory,
+                                                          displayDirectory: skillsDisplayDirectory,
+                                                          loading: skillsLoading,
+                                                          errorText: skillsError,
+                                                          pendingName: pendingSkillName,
+                                                          onOpenDirectory: openSkillsDirectory,
+                                                          onCopy: copyCliSkillTo,
+                                                          onDelete: confirmDeleteCliSkill,
+                                                        }),
               B(),
             ],
           })
@@ -7477,13 +6193,7 @@ const ConfigEditorPanel = () => {
                           justifyContent: "flex-end",
                         },
                         children: [
-                          be.jsx(xn, {
-                            className: "config-standard-action-button",
-                            size: "small",
-                            onClick: () => w(!0),
-                            children: "MCP(全局)",
-                          }),
-                          be.jsx(xn, {
+                                                    be.jsx(xn, {
                             className: "config-standard-action-button",
                             size: "small",
                             onClick: () => setSkillsModalOpen(!0),
@@ -7594,182 +6304,22 @@ const ConfigEditorPanel = () => {
                             }),
                       ],
                     }),
-                    !1 && be.jsxs("div", {
-                      style: {
-                        display: "flex",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "4px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " Skills"],
-                            }),
-                            be.jsxs("div", {
-                              style: { display: "flex", gap: "4px" },
-                              children: [
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!0),
-                                  disabled: C.length === 0,
-                                  children: "一键启用",
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!1),
-                                  disabled: C.length === 0,
-                                  children: "一键禁用",
-                                }),
-                              ],
-                            }),
-                          ],
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            marginBottom: "4px",
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: j
-                            ? "技能列表加载中..."
-                            : `已启用 ${Q} / ${C.length}`,
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "6px",
-                            padding: "4px",
-                            background: "var(--background-color-secondary)",
-                          },
-                          children:
-                            C.length === 0
-                              ? be.jsx("div", {
-                                  style: {
-                                    color: "var(--text-color-secondary)",
-                                    fontSize: "12px",
-                                  },
-                                  children: "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills",
-                                })
-                              : C.map((W) =>
-                                  be.jsx(
-                                    "label",
-                                    {
-                                      style: {
-                                        display: "flex",
-                                        gap: "5px",
-                                        padding: "4px",
-                                        borderRadius: "6px",
-                                        background: "var(--background-color)",
-                                        border: "1px solid var(--border-color)",
-                                        marginBottom: "4px",
-                                      },
-                                      children: be.jsxs("div", {
-                                        style: { display: "flex", gap: "4px", width: "100%" },
-                                        children: [
-                                          be.jsx("input", {
-                                            type: "checkbox",
-                                            checked: W.enabled !== !1,
-                                            onChange: (H) => J(W.name, H.target.checked, W.path),
-                                          }),
-                                          be.jsxs("div", {
-                                            style: {
-                                              display: "flex",
-                                              flexDirection: "column",
-                                              gap: "1px",
-                                              flex: 1,
-                                            },
-                                            children: [
-                                              be.jsx("div", { children: W.name }),
-                                              be.jsx("div", {
-                                                style: {
-                                                  fontSize: "11px",
-                                                  color: "var(--text-color-secondary)",
-                                                  wordBreak: "break-all",
-                                                },
-                                                children: W.path,
-                                              }),
-                                              W.description
-                                                ? be.jsx("div", {
-                                                    style: {
-                                                      fontSize: "11px",
-                                                      color: "var(--text-color-secondary)",
-                                                    },
-                                                    children: W.description,
-                                                  })
-                                                : null,
-                                            ],
-                                          }),
-                                        ],
-                                      }),
-                                    },
-                                    W.name,
-                                  ),
-                                ),
-                        }),
-                      ],
-                    }),
-                  ],
+                                      ],
                 }),
-                be.jsx(xr, {
-                  title: "MCP 市场",
-                  open: $,
-                  onCancel: () => w(!1),
-                  width: 1e3,
-                  footer: null,
-                  destroyOnClose: !0,
-                  children: be.jsx(jv, {
-                    onAdd: P,
-                    onRemove: U,
-                    onCheckHealth: () => checkMcpHealth(t),
-                    installedIds: R,
-                    platform: t,
-                    healthItems: mcpHealthItems,
-                    healthLoading: mcpHealthLoading,
-                    addingId: installingMcpId,
-                    removingId: removingMcpId,
-                  }),
-                }),
-                be.jsx(McpInstallEnvModal, {
-                  open: installEnvModalOpen,
-                  item: pendingInstallMcpItem,
-                  envValues: installEnvDraft,
-                  onChange: V0,
-                  onClose: () => {
-                    setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
-                  },
-                  onConfirm: Q0,
-                  loading: !!installingMcpId,
-                }),
-                be.jsx(McpHealthDetailModal, {
-                open: !!healthDetailState,
-                item: healthDetailState?.item || null,
-                health: healthDetailState?.health || null,
-                onClose: () => setHealthDetailState(null),
-              }),
-              be.jsx(SkillsManagerModal, {
-                  open: skillsModalOpen,
-                  onClose: () => setSkillsModalOpen(!1),
-                  platform: O.platform,
-                  skills: C,
-                  enabledCount: Q,
-                  loading: j,
-                  onToggle: J,
-                  onToggleAll: K,
-                  officialSkills,
-                  officialLoading: officialSkillsLoading,
-                  onInstallOfficialSkill: X0,
-                  onUninstallOfficialSkill: ne,
-                  onUpdateOfficialSkill: ee,
-                  pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
-                }),
+                                                              be.jsx(SkillsManagerModal, {
+                                                                open: skillsModalOpen,
+                                                                onClose: () => setSkillsModalOpen(!1),
+                                                                platform: O.platform,
+                                                                skills: cliSkills,
+                                                                directory: skillsDirectory,
+                                                                displayDirectory: skillsDisplayDirectory,
+                                                                loading: skillsLoading,
+                                                                errorText: skillsError,
+                                                                pendingName: pendingSkillName,
+                                                                onOpenDirectory: openSkillsDirectory,
+                                                                onCopy: copyCliSkillTo,
+                                                                onDelete: confirmDeleteCliSkill,
+                                                              }),
                 B(),
               ],
             })
@@ -7902,18 +6452,16 @@ const ConfigEditorPanel = () => {
                   be.jsx(SkillsManagerModal, {
                     open: skillsModalOpen,
                     onClose: () => setSkillsModalOpen(!1),
-                    platform: "grok",
-                    skills: C,
-                    enabledCount: Q,
-                    loading: j,
-                    onToggle: J,
-                    onToggleAll: K,
-                    officialSkills,
-                    officialLoading: officialSkillsLoading,
-                    onInstallOfficialSkill: X0,
-                    onUninstallOfficialSkill: ne,
-                    onUpdateOfficialSkill: ee,
-                    pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
+                    platform: O.platform,
+                    skills: cliSkills,
+                    directory: skillsDirectory,
+                    displayDirectory: skillsDisplayDirectory,
+                    loading: skillsLoading,
+                    errorText: skillsError,
+                    pendingName: pendingSkillName,
+                    onOpenDirectory: openSkillsDirectory,
+                    onCopy: copyCliSkillTo,
+                    onDelete: confirmDeleteCliSkill,
                   }),
                   B(),
                 ],
@@ -7961,13 +6509,7 @@ const ConfigEditorPanel = () => {
                           justifyContent: "flex-end",
                         },
                         children: [
-                          be.jsx(xn, {
-                            className: "config-standard-action-button",
-                            size: "small",
-                            onClick: () => w(!0),
-                            children: "MCP(全局)",
-                          }),
-                          be.jsx(xn, {
+                                                    be.jsx(xn, {
                             className: "config-standard-action-button",
                             size: "small",
                             onClick: () => setSkillsModalOpen(!0),
@@ -8155,180 +6697,22 @@ const ConfigEditorPanel = () => {
                         }),
                       ],
                     }),
-                    !1 && be.jsxs("div", {
-                      style: {
-                        display: "flex",
-                        flexDirection: "column",
-                      },
-                      children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "4px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("span", {
-                              children: [be.jsx(Ya, {}), " Skills"],
-                            }),
-                            be.jsxs("div", {
-                              style: { display: "flex", gap: "4px" },
-                              children: [
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!0),
-                                  disabled: C.length === 0,
-                                  children: "一键启用",
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => K(!1),
-                                  disabled: C.length === 0,
-                                  children: "一键禁用",
-                                }),
-                              ],
-                            }),
-                          ],
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            marginBottom: "4px",
-                            color: "var(--text-color-secondary)",
-                            fontSize: "12px",
-                          },
-                          children: j
-                            ? "技能列表加载中..."
-                            : `已启用 ${Q} / ${C.length}`,
-                        }),
-                        be.jsx("div", {
-                          style: {
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "6px",
-                            padding: "4px",
-                            background: "var(--background-color-secondary)",
-                          },
-                          children:
-                            C.length === 0
-                              ? be.jsx("div", {
-                                  style: {
-                                    color: "var(--text-color-secondary)",
-                                    fontSize: "12px",
-                                  },
-                                  children: "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills",
-                                })
-                              : C.map((W) =>
-                                  be.jsx(
-                                    "label",
-                                    {
-                                      style: {
-                                        display: "flex",
-                                        gap: "5px",
-                                        padding: "4px",
-                                        borderRadius: "6px",
-                                        background: "var(--background-color)",
-                                        border: "1px solid var(--border-color)",
-                                        marginBottom: "4px",
-                                      },
-                                      children: be.jsxs("div", {
-                                        style: { display: "flex", gap: "4px", width: "100%" },
-                                        children: [
-                                          be.jsx("input", {
-                                            type: "checkbox",
-                                            checked: W.enabled !== !1,
-                                            onChange: (H) => J(W.name, H.target.checked, W.path),
-                                          }),
-                                          be.jsxs("div", {
-                                            style: {
-                                              display: "flex",
-                                              flexDirection: "column",
-                                              gap: "1px",
-                                              flex: 1,
-                                            },
-                                            children: [
-                                              be.jsx("div", { children: W.name }),
-                                              be.jsx("div", {
-                                                style: {
-                                                  color: "var(--text-color-secondary)",
-                                                  fontSize: "12px",
-                                                },
-                                                children: W.path,
-                                              }),
-                                              W.description &&
-                                                be.jsx("div", {
-                                                  style: {
-                                                    color: "var(--text-color-secondary)",
-                                                    fontSize: "12px",
-                                                  },
-                                                  children: W.description,
-                                                }),
-                                            ],
-                                          }),
-                                        ],
-                                      }),
-                                    },
-                                    W.name,
-                                  ),
-                                ),
-                        }),
-                      ],
-                    }),
-                  ],
+                                      ],
                 }),
-                be.jsx(xr, {
-                  title: "MCP 市场",
-                  open: $,
-                  onCancel: () => w(!1),
-                  width: 1e3,
-                  footer: null,
-                  destroyOnClose: !0,
-                  children: be.jsx(jv, {
-                    onAdd: P,
-                    onRemove: U,
-                    onCheckHealth: () => checkMcpHealth(t),
-                    installedIds: R,
-                    platform: t,
-                    healthItems: mcpHealthItems,
-                    healthLoading: mcpHealthLoading,
-                    addingId: installingMcpId,
-                    removingId: removingMcpId,
-                  }),
-                }),
-                be.jsx(McpInstallEnvModal, {
-                  open: installEnvModalOpen,
-                  item: pendingInstallMcpItem,
-                  envValues: installEnvDraft,
-                  onChange: V0,
-                  onClose: () => {
-                    setInstallEnvModalOpen(!1), setPendingInstallMcpItem(null), setInstallEnvDraft({});
-                  },
-                  onConfirm: Q0,
-                  loading: !!installingMcpId,
-                }),
-                be.jsx(McpHealthDetailModal, {
-                open: !!healthDetailState,
-                item: healthDetailState?.item || null,
-                health: healthDetailState?.health || null,
-                onClose: () => setHealthDetailState(null),
-              }),
-              be.jsx(SkillsManagerModal, {
-                  open: skillsModalOpen,
-                  onClose: () => setSkillsModalOpen(!1),
-                  platform: O.platform,
-                  skills: C,
-                  enabledCount: Q,
-                  loading: j,
-                  onToggle: J,
-                  onToggleAll: K,
-                  officialSkills,
-                  officialLoading: officialSkillsLoading,
-                  onInstallOfficialSkill: X0,
-                  onUninstallOfficialSkill: ne,
-                  onUpdateOfficialSkill: ee,
-                  pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
-                }),
+                                                              be.jsx(SkillsManagerModal, {
+                                                                open: skillsModalOpen,
+                                                                onClose: () => setSkillsModalOpen(!1),
+                                                                platform: O.platform,
+                                                                skills: cliSkills,
+                                                                directory: skillsDirectory,
+                                                                displayDirectory: skillsDisplayDirectory,
+                                                                loading: skillsLoading,
+                                                                errorText: skillsError,
+                                                                pendingName: pendingSkillName,
+                                                                onOpenDirectory: openSkillsDirectory,
+                                                                onCopy: copyCliSkillTo,
+                                                                onDelete: confirmDeleteCliSkill,
+                                                              }),
                 B(),
               ],
             })

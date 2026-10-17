@@ -1078,9 +1078,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run build",
     "stats:loc": "node scripts/count_effective_loc.js",
-    "validate:whitespace": "node scripts/check_trailing_whitespace.js",
-    "validate:mcp-marketplace": "node scripts/validate_mcp_marketplace.js",
-    "sync:official-skills": "python3 scripts/sync_official_skills.py"
+    "validate:whitespace": "node scripts/check_trailing_whitespace.js"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",

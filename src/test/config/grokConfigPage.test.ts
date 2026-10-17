@@ -44,7 +44,7 @@ function loadGrokVisualUtils(): {
 } {
   const source = read(uiPath);
   const parserStart = source.indexOf("function fk(");
-  const parserEnd = source.indexOf("const { Paragraph: p1, Text: _k, Title: Mk } = lc;");
+  const parserEnd = source.indexOf("const CLI_GLOBAL_SKILL_TARGETS =");
   const grokStart = source.indexOf("const GROK_VISUAL_FIELD_IDS");
   const grokEnd = source.indexOf("const ps = {");
   assert.ok(parserStart >= 0 && parserEnd > parserStart && grokStart > parserEnd && grokEnd > grokStart);
@@ -59,7 +59,7 @@ function loadGrokVisualUtils(): {
 test("config page bundle keeps Grok after OpenCode and preserves old order archives", () => {
   const uiSource = read(uiPath);
   const storeSource = read(storePath);
-  const listPanel = uiSource.slice(uiSource.indexOf("// Config list panel"), uiSource.indexOf("const jv ="));
+  const listPanel = uiSource.slice(uiSource.indexOf("// Config list panel"), uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="));
   const claudeCard = listPanel.indexOf('H("claude", $)');
   const codexCard = listPanel.indexOf('H("codex", w)');
   const openCodeCard = listPanel.indexOf('H("opencode", O)');

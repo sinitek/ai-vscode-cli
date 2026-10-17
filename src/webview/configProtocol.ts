@@ -4,7 +4,6 @@ import type {
   ConfigOrder,
   ConfigPlatform,
   CopyConfigPayload,
-  OfficialSkillPlatform,
 } from "../config/types";
 
 export const CONFIG_ACTIONS = [
@@ -20,23 +19,10 @@ export const CONFIG_ACTIONS = [
   "backup",
   "getBackups",
   "initDefault",
-  "getMcpMarketplaceList",
-  "getClaudeSkillsList",
-  "getCodexSkillsList",
-  "getOpenCodeSkillsList",
-  "getGrokSkillsList",
-  "getGrokOfficialSkills",
-  "getOfficialSkillsCatalog",
-  "installOfficialSkill",
-  "updateOfficialSkill",
-  "uninstallOfficialSkill",
-  "getMcpInstalledServerIds",
-  "getCodexMcpServerIds",
-  "getCodexMcpHealth",
-  "getMcpHealth",
-  "installMcp",
-  "installCodexMcp",
-  "uninstallMcp",
+  "getCliSkillsList",
+  "openCliSkillsDirectory",
+  "deleteCliSkill",
+  "copyCliSkill",
   "exportConfigs",
 ] as const;
 
@@ -55,28 +41,10 @@ export type ConfigRequestPayload =
   | { action: "backup"; platform: ConfigPlatform }
   | { action: "getBackups"; platform: ConfigPlatform }
   | { action: "initDefault"; platform: ConfigPlatform }
-  | { action: "getMcpMarketplaceList" }
-  | { action: "getClaudeSkillsList" }
-  | { action: "getCodexSkillsList" }
-  | { action: "getOpenCodeSkillsList" }
-  | { action: "getGrokSkillsList" }
-  | { action: "getGrokOfficialSkills" }
-  | { action: "getOfficialSkillsCatalog"; platform: OfficialSkillPlatform }
-  | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
-  | { action: "updateOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
-  | { action: "uninstallOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
-  | { action: "getMcpInstalledServerIds"; platform: ConfigPlatform }
-  | { action: "getCodexMcpServerIds" }
-  | { action: "getCodexMcpHealth" }
-  | { action: "getMcpHealth"; platform: ConfigPlatform }
-  | {
-      action: "installMcp";
-      platform: ConfigPlatform;
-      mcpId: string;
-      envOverrides?: Record<string, string>;
-    }
-  | { action: "installCodexMcp"; mcpId: string }
-  | { action: "uninstallMcp"; platform: ConfigPlatform; mcpId: string }
+  | { action: "getCliSkillsList"; platform: string }
+  | { action: "openCliSkillsDirectory"; platform: string }
+  | { action: "deleteCliSkill"; platform: string; name: string }
+  | { action: "copyCliSkill"; platform: string; name: string; targetPlatform: string }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
 
 export type ConfigRequestMessage = {

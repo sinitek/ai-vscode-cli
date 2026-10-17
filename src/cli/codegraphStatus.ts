@@ -3,8 +3,7 @@ import * as os from "os";
 import * as path from "path";
 
 import { resolveCliCommand } from "./commandResolution";
-import { createConfigPaths } from "../config/configPaths";
-import { resolveOpenCodeGlobalConfigPath } from "../config/openCodeMcpConfig";
+import { createConfigPaths, resolveOpenCodeGlobalConfigPath } from "../config/configPaths";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
 export const CODEGRAPH_CLI_COMMAND = "codegraph";

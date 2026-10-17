@@ -1197,13 +1197,67 @@ input[type="file"]::file-selector-button {
 }
 
 .skills-manager-table-actions {
-  width: 124px;
+  width: 160px;
   text-align: right !important;
   white-space: nowrap;
 }
 
-.skills-manager-table-actions .ant-btn + .ant-btn {
-  margin-left: 6px;
+.skills-manager-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.skills-manager-row-actions .ant-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.skills-copy-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skills-copy-name {
+  overflow-wrap: anywhere;
+}
+
+.skills-copy-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.skills-copy-targets legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.skills-copy-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-copy-target input {
+  accent-color: var(--clay-blueberry);
+}
+
+.skills-copy-target:has(input:disabled) {
+  color: var(--clay-text-muted);
+}
+
+.skills-copy-errors {
+  color: var(--clay-error-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .skills-manager-table-path,

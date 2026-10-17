@@ -32,11 +32,10 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 - 支持执行后自动压缩上下文、历史记录保留和人工交互开关。
 - 提供配置备份、导出、日志查看和 CLI 找不到时的诊断与修复入口。
 
-### Skills 与 MCP
+### Skills
 
-- 浏览和管理官方 Skills，为 AI 添加项目开发、分析和自动化能力。
-- 通过 MCP 市场安装、卸载和检测 MCP 服务。
-- 支持本地 MCP 与远程 MCP，并保留已有 CLI 配置和其他服务。
+- 配置中心只打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录。
+- 配置中心不再提供 MCP 市场，也不会改写本机已有的 MCP 配置。
 
 ### 本地记忆与可靠运行
 

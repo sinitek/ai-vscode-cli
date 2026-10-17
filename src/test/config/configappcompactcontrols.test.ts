@@ -19,7 +19,7 @@ function extractSection(source: string, startMarker: string, endMarker: string):
 
 test("renders a leftmost radio group for activation without changing config actions", () => {
   const source = loadUiSource();
-  const listPanel = extractSection(source, "const ConfigListPanel =", "const jv =");
+  const listPanel = extractSection(source, "const ConfigListPanel =", "const CLI_GLOBAL_SKILL_TARGETS =");
   const activationRadio = listPanel.match(
     /be\.jsx\("input", \{\s+type: "radio",[\s\S]*?onChange: \(\) => \{\},\s+\}\)/,
   );
@@ -47,7 +47,7 @@ test("renders a leftmost radio group for activation without changing config acti
 
 test("halves core inline spacing across the config list and editor cards", () => {
   const source = loadUiSource();
-  const listPanel = extractSection(source, "const ConfigListPanel =", "const jv =");
+  const listPanel = extractSection(source, "const ConfigListPanel =", "const CLI_GLOBAL_SKILL_TARGETS =");
   const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
   const managerLayout = extractSection(source, "const ConfigManagerLayout =", "const readConfigVscodeColor =");
 
@@ -86,25 +86,19 @@ test("opens the configuration list initially when the config page starts narrow"
   assert.match(managerLayout, /onClick: closeMobileNavigation/);
 });
 
-test("MCP install and uninstall refresh installation status without health probing", () => {
-  const source = loadUiSource();
-  const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
-  const mcpActions = extractSection(editorPanel, "refreshMcpInstalledIdsInBackground =", "V0 =");
-
-  assert.match(mcpActions, /refreshMcpInstalledIdsInBackground = c\.useCallback/);
-  assert.match(mcpActions, /setTimeout\(\(\) => \{\s+void refreshMcpInstalledIds\(W\);/);
-  assert.doesNotMatch(mcpActions, /await checkMcpHealth/);
-  assert.doesNotMatch(mcpActions, /void checkMcpHealth/);
-  assert.match(mcpActions, /Kt\.success\(`已安装 MCP: \$\{W\.name\}`\);\s+refreshMcpInstalledIdsInBackground\(t\);/);
-  assert.match(mcpActions, /Kt\.success\(`已卸载 MCP: \$\{W\.name\}`\);\s+refreshMcpInstalledIdsInBackground\(t\);/);
-});
-
-test("MCP marketplace loads installation status separately from health status", () => {
+test("config skills actions open, copy, and delete without MCP management", () => {
   const source = loadUiSource();
   const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
 
-  assert.match(editorPanel, /fetchMcpInstalledServerIds\(W\)/);
-  assert.match(editorPanel, /O\?\.platform && void refreshMcpInstalledIds\(O\.platform\)/);
-  assert.match(editorPanel, /if \(Array\.isArray\(mcpInstalledServerIds\)\) return mcpInstalledServerIds;/);
-  assert.match(editorPanel, /setMcpHealthItems\(\[\]\)/);
+  assert.match(editorPanel, /const openSkillsDirectory = async \(\) =>/);
+  assert.match(editorPanel, /const directory = await openCliSkillsDirectory\(O\.platform\)/);
+  assert.match(editorPanel, /window\.sinitekConfigBridge\?\.openPath\?\.\(directory\)/);
+  assert.match(editorPanel, /const result = await copyCliSkill\(O\.platform, skill\.name, targetPlatform\)/);
+  assert.match(editorPanel, /const result = await deleteCliSkill\(O\.platform, skill\.name\)/);
+  assert.match(editorPanel, /只删除该 CLI 全局目录中的这个技能文件夹/);
+  assert.doesNotMatch(editorPanel, /refreshMcpInstalledIds/);
+  assert.doesNotMatch(editorPanel, /fetchMcpInstalledServerIds/);
+  assert.doesNotMatch(editorPanel, /setMcpHealthItems/);
+  assert.doesNotMatch(editorPanel, /children: "MCP\(全局\)"/);
+  assert.doesNotMatch(source, /await A\(\{ content: W, claudeSkills: C \}\)/);
 });

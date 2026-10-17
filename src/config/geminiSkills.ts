@@ -1,20 +1,5 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { OpenCodeSkillItem, OpenCodeSkillToggle } from "./types";
-import { t } from "../i18n";
+import { OpenCodeSkillToggle } from "./types";
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
-import {
-  collectAncestorDirs,
-  extractSkillDescription,
-  listSkillDirNames,
-  normalizeWorkspaceRoots,
-  skillDescriptionStrategies,
-} from "./skillDiscovery";
-
-const HOME_OPENCODE_SKILLS_DIR = path.join(os.homedir(), ".opencode", "skills");
-const SYSTEM_OPENCODE_SKILLS_DIR = path.join(path.sep, "etc", "opencode", "skills");
-const WORKSPACE_OPENCODE_SKILLS_RELATIVE_DIR = path.join(".opencode", "skills");
 
 function parseOpenCodeConfig(content: string): Record<string, unknown> {
   const parsed = parseJsonObjectText(content, {
@@ -26,44 +11,6 @@ function parseOpenCodeConfig(content: string): Record<string, unknown> {
 
 function normalizeSkillName(name: string): string {
   return String(name ?? "").trim();
-}
-
-function resolveOpenCodeSkillRoots(workspaceRoots: string[] | undefined): string[] {
-  const roots: string[] = [];
-  const seen = new Set<string>();
-
-  const append = (candidate: string | undefined): void => {
-    if (!candidate) {
-      return;
-    }
-    const normalized = path.resolve(candidate);
-    if (seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    roots.push(normalized);
-  };
-
-  normalizeWorkspaceRoots(workspaceRoots).forEach((workspaceRoot) => {
-    collectAncestorDirs(workspaceRoot).forEach((ancestor) => {
-      append(path.join(ancestor, WORKSPACE_OPENCODE_SKILLS_RELATIVE_DIR));
-    });
-  });
-
-  append(HOME_OPENCODE_SKILLS_DIR);
-  if (process.platform !== "win32") {
-    append(SYSTEM_OPENCODE_SKILLS_DIR);
-  }
-
-  return roots;
-}
-
-function toShortDescription(description?: string): string {
-  const normalized = (description ?? "").trim();
-  if (normalized.length > 0) {
-    return normalized;
-  }
-  return t("skill.descriptionMissing");
 }
 
 function normalizeDisabledSkills(value: unknown): string[] {
@@ -195,33 +142,4 @@ export function stripManagedOpenCodeSkillRules(
   } catch {
     return (content ?? "").trim();
   }
-}
-
-export async function listOpenCodeSkills(workspaceRoots?: string[]): Promise<OpenCodeSkillItem[]> {
-  const skillRoots = resolveOpenCodeSkillRoots(workspaceRoots);
-  const skillsByName = new Map<string, OpenCodeSkillItem>();
-
-  for (const skillRoot of skillRoots) {
-    const dirs = await listSkillDirNames(skillRoot);
-    for (const name of dirs) {
-      if (skillsByName.has(name)) {
-        continue;
-      }
-      const skillPath = path.join(skillRoot, name);
-      try {
-        const skillFile = path.join(skillPath, "SKILL.md");
-        await fs.promises.access(skillFile);
-        const content = await fs.promises.readFile(skillFile, "utf-8");
-        const description = toShortDescription(
-          extractSkillDescription(content, skillDescriptionStrategies.continueOnEmpty),
-        );
-        skillsByName.set(name, { name, path: skillPath, description });
-      } catch {
-        // Ignore non-skill directories.
-      }
-    }
-  }
-
-  const skills = [...skillsByName.values()];
-  return skills.sort((left, right) => left.name.localeCompare(right.name));
 }
