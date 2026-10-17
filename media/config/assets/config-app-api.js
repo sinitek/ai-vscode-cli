@@ -53,6 +53,16 @@ const detectConfigApiMode = () =>
         method: "POST",
         body: JSON.stringify({ name, targetPlatform }),
       }),
+    searchLobehubSkills: (payload) =>
+      requestConfigApi("/skills/market/search", {
+        method: "POST",
+        body: JSON.stringify(payload ?? {}),
+      }),
+    installLobehubSkill: (payload) =>
+      requestConfigApi("/skills/market/install", {
+        method: "POST",
+        body: JSON.stringify(payload ?? {}),
+      }),
         exportConfigs: async () => {
       throw new Error("当前模式不支持导出文件");
     },
@@ -93,6 +103,22 @@ const detectConfigApiMode = () =>
       return configApi.copyCliSkill(platform, name, targetPlatform);
     } catch (error) {
       throw (console.error("复制 Skill 失败:", error), error);
+    }
+  },
+  searchLobehubSkills = async (payload) => {
+    if (!configApi.searchLobehubSkills) throw new Error("当前模式不支持 Skills 市场");
+    try {
+      return configApi.searchLobehubSkills(payload);
+    } catch (error) {
+      throw (console.error("搜索 Skills 市场失败:", error), error);
+    }
+  },
+  installLobehubSkill = async (payload) => {
+    if (!configApi.installLobehubSkill) throw new Error("当前模式不支持安装 Skills");
+    try {
+      return configApi.installLobehubSkill(payload);
+    } catch (error) {
+      throw (console.error("安装 Skill 失败:", error), error);
     }
   },
     fetchConfigList = async (e) => {

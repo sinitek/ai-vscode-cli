@@ -281,6 +281,12 @@ export class ConfigManagerPanel {
             message.targetPlatform,
           );
           break;
+        case "searchLobehubSkills":
+          response.data = await configService.searchLobehubSkills(message.payload);
+          break;
+        case "installLobehubSkill":
+          response.data = await configService.installLobehubSkill(message.payload);
+          break;
         case "exportConfigs": {
           const payload = message.payload;
           if (!payload || typeof payload.content !== "string") {

@@ -18,6 +18,8 @@ node_modules/**/.cache/**
 !node_modules/shebang-command/**
 !node_modules/shebang-regex/**
 !node_modules/which/**
+!node_modules/yauzl/**
+!node_modules/pend/**
 !node_modules/zod/**
 *.vsix
 *.pyc

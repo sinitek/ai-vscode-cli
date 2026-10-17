@@ -224,3 +224,81 @@ export async function copyCliSkill(
   }
   throw new Error(t("skill.global.targetExists", { name: skillName }));
 }
+
+async function assertNoSymlinks(directory: string): Promise<void> {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      throw new Error(t("skill.market.symlinkRejected"));
+    }
+    if (entry.isDirectory()) {
+      await assertNoSymlinks(path.join(directory, entry.name));
+    }
+  }
+}
+
+async function removeExistingSkillTarget(targetPath: string): Promise<void> {
+  let stat;
+  try {
+    stat = await fs.lstat(targetPath);
+  } catch (error) {
+    if (isEnoent(error)) {
+      return;
+    }
+    throw error;
+  }
+  if (stat.isSymbolicLink()) {
+    await fs.unlink(targetPath);
+    return;
+  }
+  await fs.rm(targetPath, { recursive: true, force: false });
+}
+
+export async function installCliSkillDirectory(
+  platform: unknown,
+  name: unknown,
+  sourceDirectory: unknown,
+): Promise<"installed"> {
+  const destinationPlatform = assertPlatform(platform);
+  const skillName = assertSkillName(name);
+  if (typeof sourceDirectory !== "string" || sourceDirectory.trim().length === 0) {
+    throw new Error(t("skill.market.installFailed", { error: t("skill.global.invalidName") }));
+  }
+  const sourcePath = path.resolve(sourceDirectory);
+  let sourceStat;
+  try {
+    sourceStat = await fs.lstat(sourcePath);
+  } catch (error) {
+    throw new Error(t("skill.market.installFailed", { error: errorMessage(error) }));
+  }
+  if (!sourceStat.isDirectory()) {
+    throw new Error(t("skill.market.installFailed", { error: t("skill.global.invalidName") }));
+  }
+  const skillFile = path.join(sourcePath, "SKILL.md");
+  let skillStat;
+  try {
+    skillStat = await fs.lstat(skillFile);
+  } catch (error) {
+    throw new Error(t("skill.market.installFailed", { error: errorMessage(error) }));
+  }
+  if (!skillStat.isFile()) {
+    throw new Error(t("skill.global.notFound", { name: skillName }));
+  }
+  await assertNoSymlinks(sourcePath);
+  const targetDirectory = path.resolve(resolveCliGlobalSkillsDirectory(destinationPlatform));
+  await fs.mkdir(targetDirectory, { recursive: true });
+  const targetPath = path.resolve(targetDirectory, skillName);
+  assertInsideDirectory(targetDirectory, targetPath);
+  try {
+    await removeExistingSkillTarget(targetPath);
+    await fs.cp(sourcePath, targetPath, {
+      recursive: true,
+      dereference: false,
+      errorOnExist: true,
+      force: false,
+    });
+  } catch (error) {
+    throw new Error(t("skill.market.installFailed", { error: errorMessage(error) }));
+  }
+  return "installed";
+}

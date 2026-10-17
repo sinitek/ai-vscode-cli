@@ -23,6 +23,8 @@ export const CONFIG_ACTIONS = [
   "openCliSkillsDirectory",
   "deleteCliSkill",
   "copyCliSkill",
+  "searchLobehubSkills",
+  "installLobehubSkill",
   "exportConfigs",
 ] as const;
 
@@ -45,6 +47,8 @@ export type ConfigRequestPayload =
   | { action: "openCliSkillsDirectory"; platform: string }
   | { action: "deleteCliSkill"; platform: string; name: string }
   | { action: "copyCliSkill"; platform: string; name: string; targetPlatform: string }
+  | { action: "searchLobehubSkills"; payload?: { query?: string; page?: number } }
+  | { action: "installLobehubSkill"; payload?: { identifier?: string; platforms?: string[] } }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
 
 export type ConfigRequestMessage = {

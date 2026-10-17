@@ -1037,5 +1037,11 @@ export {
   openCliSkillsDirectory,
   deleteCliSkill,
   copyCliSkill,
+  installCliSkillDirectory,
 } from "./cliGlobalSkills";
+
+export {
+  searchLobehubSkills,
+  installLobehubSkill,
+} from "./lobehubSkillMarket";
 

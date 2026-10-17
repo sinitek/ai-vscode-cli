@@ -960,6 +960,8 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "openCliSkillsDirectory",
     "deleteCliSkill",
     "copyCliSkill",
+    "searchLobehubSkills",
+    "installLobehubSkill",
     "exportConfigs",
   ]);
 

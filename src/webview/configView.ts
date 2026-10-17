@@ -414,6 +414,8 @@ export function getConfigViewHtml(
           deleteCliSkill: (platform, name) => requestConfig("deleteCliSkill", { platform, name }),
           copyCliSkill: (platform, name, targetPlatform) =>
             requestConfig("copyCliSkill", { platform, name, targetPlatform }),
+          searchLobehubSkills: (payload) => requestConfig("searchLobehubSkills", { payload }),
+          installLobehubSkill: (payload) => requestConfig("installLobehubSkill", { payload }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
         },
       };

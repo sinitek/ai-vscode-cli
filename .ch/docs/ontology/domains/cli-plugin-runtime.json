@@ -83,16 +83,17 @@
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、name、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。Skills 只打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录；OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、name、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex 四个全局 skills 目录，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
-      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts"],
+      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/config/cliGlobalSkills.ts"},
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": "src/config/grokConfig.ts"},
-        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"}
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md"}
       ]
     },
     {

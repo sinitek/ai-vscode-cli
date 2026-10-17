@@ -14,6 +14,56 @@
 
 ## 当前有效条目
 
+## LobeHub Skills 市场列表接口需要登录
+
+- 状态：已规避
+- 首次发现：2026-10-17
+- 适用范围：配置页 Skills 市场搜索与下载
+
+### 现象
+- 请求 `https://market.lobehub.com/api/v1/skills` 返回 401，配置页无法列出技能。
+
+### 根因
+- 该列表接口需要 bearer token。公开搜索在 `https://lobehub.com/api/discover/skills`；下载仍使用 `https://market.lobehub.com/api/v1/skills/<identifier>/download`。
+
+### 长期规避
+- 搜索只请求 discover 接口，不接受页面传入的任意下载地址。
+- 下载地址只能由已校验的 identifier 拼出，重定向最多 3 跳，且只允许对应官方主机。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/config/lobehubSkillMarket.test.js`
+
+### 关联资料
+- `src/config/lobehubSkillMarket.ts`
+
+## LobeHub Skills 市场安装会替换同名目录
+
+- 状态：有效
+- 首次发现：2026-10-17
+- 适用范围：配置页 Skills 市场下载安装
+
+### 现象
+- 再次安装同名技能后，目标 CLI 全局目录里的旧技能内容消失。
+- 如果把同名路径做成指向外部目录的符号链接，错误地递归删除会连带删除链接目标。
+
+### 根因
+- 市场安装按产品要求先删除已有同名目录，再写入新技能。
+- `fs.rm` 直接作用于符号链接时，可能跟随链接删除目标；安装前必须先 `lstat`，链接只 `unlink`。
+
+### 长期规避
+- 只在 `installCliSkillDirectory` 中替换同名技能。CLI 之间的 `copyCliSkill` 仍然拒绝覆盖。
+- 删除已有目标时，符号链接只删除链接本身，不删除链接指向的外部目录或文件。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/config/lobehubSkillMarket.test.js dist/test/config/cliGlobalSkills.test.js`
+
+### 关联资料
+- `src/config/cliGlobalSkills.ts`
+- `src/test/config/lobehubSkillMarket.test.ts`
+
+
 
 ## Loop 群聊刷新不能整页重载
 

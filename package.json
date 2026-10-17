@@ -1094,6 +1094,7 @@
     "cross-spawn": "^7.0.6",
     "json-formatter-js": "^2.5.23",
     "marked": "^15.0.12",
+    "yauzl": "^3.4.0",
     "zod": "^4.3.5"
   }
 }

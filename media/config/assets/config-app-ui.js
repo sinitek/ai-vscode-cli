@@ -55,6 +55,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       [importItems, setImportItems] = c.useState(null),
       [importError, setImportError] = c.useState(""),
       [isImporting, setIsImporting] = c.useState(!1),
+      [skillsMarketOpen, setSkillsMarketOpen] = c.useState(!1),
       $ = c.useMemo(() => e.filter((k) => k.platform === "claude"), [e]),
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
       O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
@@ -608,8 +609,10 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             }),
             be.jsx(xn, { size: "small", onClick: openExportModal, children: "导出" }),
             be.jsx(xn, { size: "small", onClick: openImportModal, children: "导入" }),
+            be.jsx(xn, { size: "small", onClick: () => setSkillsMarketOpen(!0), children: "Skills 市场" }),
           ],
         }),
+        skillsMarketOpen ? be.jsx(SkillsMarketModal, { onClose: () => setSkillsMarketOpen(!1) }) : null,
         H("claude", $),
         H("codex", w),
         H("opencode", O),
@@ -1974,6 +1977,255 @@ const SkillsCopyModal = ({ skill, platform, onClose, onCopy }) => {
           className: "skills-copy-errors",
           role: "alert",
           children: copyErrors.join("\n"),
+        }) : null,
+      ],
+    }),
+  });
+};
+
+
+const SkillsMarketModal = ({ onClose }) => {
+  const [query, setQuery] = c.useState("");
+  const [submittedQuery, setSubmittedQuery] = c.useState("");
+  const [page, setPage] = c.useState(1);
+  const [pageInfo, setPageInfo] = c.useState(null);
+  const [loading, setLoading] = c.useState(!0);
+  const [errorText, setErrorText] = c.useState("");
+  const [selectedId, setSelectedId] = c.useState("");
+  const [selectedTargets, setSelectedTargets] = c.useState([]);
+  const [installing, setInstalling] = c.useState(!1);
+  const [installErrors, setInstallErrors] = c.useState([]);
+  const requestRef = c.useRef(0);
+  const installingRef = c.useRef(!1);
+  const loadPage = async (nextQuery, nextPage) => {
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    setLoading(!0);
+    setErrorText("");
+    try {
+      const result = await searchLobehubSkills({ query: nextQuery, page: nextPage });
+      if (requestRef.current !== requestId) return;
+      setPageInfo(result);
+      setSubmittedQuery(nextQuery);
+      setPage(result?.currentPage || nextPage);
+    } catch (error) {
+      if (requestRef.current !== requestId) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setPageInfo(null);
+      setErrorText(message || "搜索 Skills 失败");
+    } finally {
+      if (requestRef.current === requestId) setLoading(!1);
+    }
+  };
+  c.useEffect(() => {
+    void loadPage("", 1);
+  }, []);
+  const items = Array.isArray(pageInfo?.items) ? pageInfo.items : [];
+  const selected = items.find((item) => item.identifier === selectedId) || null;
+  const totalPages = pageInfo?.totalPages || 0;
+  const closeModal = () => {
+    if (!installingRef.current) onClose();
+  };
+  const confirmInstall = async () => {
+    if (installingRef.current || !selected || selectedTargets.length === 0) return;
+    installingRef.current = !0;
+    setInstalling(!0);
+    setInstallErrors([]);
+    try {
+      const result = await installLobehubSkill({
+        identifier: selected.identifier,
+        platforms: selectedTargets,
+      });
+      const targets = Array.isArray(result?.targets) ? result.targets : [];
+      const installed = targets.filter((item) => item.status === "installed");
+      const problems = targets.filter((item) => item.status !== "installed");
+      if (installed.length > 0) {
+        const names = [...new Set(installed.map((item) => item.name))];
+        Kt.success(`已安装 ${names.join("、")}`);
+        window.dispatchEvent(new CustomEvent("sinitek-cli-skills-installed", {
+          detail: { platforms: [...new Set(installed.map((item) => item.platform))] },
+        }));
+      }
+      if (problems.length === 0) {
+        onClose();
+        return;
+      }
+      if (installed.length === 0) Kt.warning("没有安装新技能");
+      setInstallErrors(problems.map((item) => {
+        const label = CLI_GLOBAL_SKILL_TARGETS.find((target) => target.id === item.platform)?.label || item.platform;
+        return `${label} / ${item.name}：${item.message || "安装失败"}`;
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setInstallErrors([message || "安装失败"]);
+    } finally {
+      installingRef.current = !1;
+      setInstalling(!1);
+    }
+  };
+  return be.jsx(xr, {
+    title: "Skills 市场",
+    open: !0,
+    width: 760,
+    rootClassName: "skills-market-modal",
+    onCancel: closeModal,
+    footer: null,
+    closable: !installing,
+    maskClosable: !installing,
+    keyboard: !installing,
+    children: be.jsxs("div", {
+      className: "skills-market-content",
+      children: [
+        be.jsx("div", {
+          className: "skills-manager-muted",
+          children: "来自 LobeHub Skills 市场。下载后自动解压，安装到所选 CLI 的全局 Skills 目录；同名技能会先删除已有目录再安装。",
+        }),
+        be.jsxs("div", {
+          className: "skills-market-search",
+          children: [
+            be.jsx("input", {
+              className: "skills-market-search-input",
+              value: query,
+              placeholder: "搜索技能名称或描述",
+              disabled: installing,
+              onChange: (event) => setQuery(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key !== "Enter" || loading || installing) return;
+                event.preventDefault();
+                setSelectedId("");
+                setSelectedTargets([]);
+                setInstallErrors([]);
+                void loadPage(query.trim(), 1);
+              },
+            }),
+            be.jsx(xn, {
+              size: "small",
+              disabled: loading || installing,
+              onClick: () => {
+                setSelectedId("");
+                setSelectedTargets([]);
+                setInstallErrors([]);
+                void loadPage(query.trim(), 1);
+              },
+              children: "搜索",
+            }),
+          ],
+        }),
+        be.jsxs("div", {
+          className: "skills-market-toolbar",
+          children: [
+            be.jsx("div", {
+              className: "skills-manager-muted",
+              children: loading ? "正在搜索..." : `共 ${pageInfo?.totalCount || items.length} 个`,
+            }),
+            be.jsxs("div", {
+              className: "skills-market-search",
+              children: [
+                be.jsx(xn, {
+                  size: "small",
+                  disabled: loading || installing || page <= 1,
+                  onClick: () => void loadPage(submittedQuery, page - 1),
+                  children: "上一页",
+                }),
+                be.jsx("span", {
+                  className: "skills-manager-muted",
+                  children: totalPages > 0 ? `${page} / ${totalPages}` : "",
+                }),
+                be.jsx(xn, {
+                  size: "small",
+                  disabled: loading || installing || totalPages === 0 || page >= totalPages,
+                  onClick: () => void loadPage(submittedQuery, page + 1),
+                  children: "下一页",
+                }),
+              ],
+            }),
+          ],
+        }),
+        errorText ? be.jsx("div", {
+          className: "skills-copy-errors",
+          role: "alert",
+          children: errorText,
+        }) : null,
+        be.jsx("div", {
+          className: "skills-market-list",
+          children: items.length === 0 && !loading
+            ? be.jsx("div", { className: "skills-manager-muted", children: "没有匹配的 Skills" })
+            : items.map((item) => be.jsxs("div", {
+                className: "skills-market-item",
+                children: [
+                  be.jsxs("div", {
+                    className: "skills-market-item-main",
+                    children: [
+                      be.jsxs("div", {
+                        className: "skills-market-item-title",
+                        children: [
+                          be.jsx("span", { children: item.name }),
+                          item.version ? be.jsx("span", { className: "skills-manager-muted", children: item.version }) : null,
+                        ],
+                      }),
+                      be.jsx("div", {
+                        className: "skills-market-item-description",
+                        children: item.description || "无描述",
+                      }),
+                      be.jsx("div", {
+                        className: "skills-manager-muted",
+                        children: `${item.author || "未知作者"}${typeof item.installCount === "number" ? ` · 安装 ${item.installCount}` : ""}`,
+                      }),
+                    ],
+                  }),
+                  be.jsx(xn, {
+                    size: "small",
+                    disabled: installing,
+                    onClick: () => {
+                      setSelectedId(item.identifier);
+                      setSelectedTargets([]);
+                      setInstallErrors([]);
+                    },
+                    children: selectedId === item.identifier ? "已选择" : "下载",
+                  }),
+                ],
+              }, item.identifier)),
+        }),
+        selected ? be.jsxs("div", {
+          className: "skills-copy-content",
+          children: [
+            be.jsx("div", { className: "skills-copy-name", children: selected.name }),
+            be.jsxs("fieldset", {
+              className: "skills-copy-targets",
+              disabled: installing,
+              children: [
+                be.jsx("legend", { children: "安装到 CLI（可多选）" }),
+                ...CLI_GLOBAL_SKILL_TARGETS.map((target) => be.jsxs("label", {
+                  className: "skills-copy-target",
+                  children: [
+                    be.jsx("input", {
+                      type: "checkbox",
+                      checked: selectedTargets.includes(target.id),
+                      disabled: installing,
+                      onChange: (event) => {
+                        const checked = event.target.checked;
+                        setSelectedTargets((previous) => checked
+                          ? [...previous, target.id]
+                          : previous.filter((id) => id !== target.id));
+                      },
+                    }),
+                    be.jsx("span", { children: target.label }),
+                  ],
+                }, target.id)),
+              ],
+            }),
+            installErrors.length > 0 ? be.jsx("div", {
+              className: "skills-copy-errors",
+              role: "alert",
+              children: installErrors.join("\n"),
+            }) : null,
+            be.jsx(xn, {
+              type: "primary",
+              disabled: installing || selectedTargets.length === 0,
+              onClick: () => void confirmInstall(),
+              children: installing ? "安装中..." : "安装",
+            }),
+          ],
         }) : null,
       ],
     }),
@@ -3952,6 +4204,17 @@ const ConfigEditorPanel = () => {
         setCliSkills([]), setSkillsDirectory(""), setSkillsDisplayDirectory(""), setSkillsError("");
       }
       void loadCliSkills(O.platform, generation);
+    }, [O, loadCliSkills]);
+    c.useEffect(() => {
+      const onInstalled = (event) => {
+        const platforms = event?.detail?.platforms;
+        if (!O || !Array.isArray(platforms) || !platforms.includes(O.platform)) return;
+        const generation = skillsLoadGenerationRef.current + 1;
+        skillsLoadGenerationRef.current = generation;
+        void loadCliSkills(O.platform, generation);
+      };
+      window.addEventListener("sinitek-cli-skills-installed", onInstalled);
+      return () => window.removeEventListener("sinitek-cli-skills-installed", onInstalled);
     }, [O, loadCliSkills]);
     const openSkillsDirectory = async () => {
       if (!O) return;
