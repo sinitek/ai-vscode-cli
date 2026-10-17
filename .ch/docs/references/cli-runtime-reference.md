@@ -102,7 +102,7 @@
 - OpenCode `text` 事件可能把内部思考 wrapper 与最终正文放在同一个字符串中。运行时只识别 `<thinking>`、`<think>`、`<analysis>`、`<reasoning>` 四类 wrapper，按原顺序拆成 thinking / assistant 事件，并从最终正文中排除思考块；reasoning 与历史消息只去除 wrapper 标签，不能使用通用尖括号或 HTML 清洗破坏普通内容。
 - OpenCode 当前不进入 `src/interactive/manager.ts` 管理的 Codex / Claude 交互 Runner；普通 AI 任务只读取 active config 内容，并为每次 `opencode run` 生成独立 runtime overlay，不会为对话运行改写用户真实 `~/.opencode/config.json`。
 - OpenCode 配置中心只维护模型/Provider 配置 `~/.opencode/config.json`，不再要求或生成 `~/.opencode/.env`；运行时以该单文件配置作为 OpenCode 当前模型配置来源，不从官方全局 MCP 文件回退读取。
-- OpenCode 全局 MCP 使用第二个明确配置文件：官方 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，由 MCP 市场安装/卸载路径维护。
+- OpenCode 官方全局配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 不再由配置中心维护或回写；CodeGraph 只读取用户磁盘上已有配置。
 - 配置示例使用严格 OpenCode JSON 口径：`$schema=https://opencode.ai/config.json`、`model=provider/model`、`small_model=provider/model`、`provider`。配置页展示 `myAPI` OpenAI-compatible 主/子模型范例，其中 `model` 对应插件主模型，`small_model` 是 OpenCode CLI 兼容字段并对应插件子模型；provider 凭据使用官方 `{env:VARIABLE_NAME}` 语法，不要求或生成 `.env` 文件，且不再内嵌 MCP 示例以免混淆两个配置文件。
 - `provider.<id>.npm` 选择的是 API 协议适配器，不是模型品牌。直接使用 OpenCode 内置 Anthropic / Google / OpenAI provider 时，通常通过 `/connect` 鉴权并使用 `anthropic/...`、`google/...`、`openai/...`，无需自定义 `npm`；需要手写自定义直连 provider 时，对应适配器分别是 `@ai-sdk/anthropic`、`@ai-sdk/google`、`@ai-sdk/openai`。只有请求实际 OpenAI-compatible endpoint 的自定义网关使用 `@ai-sdk/openai-compatible`；即使该网关承载 Claude、Gemini、DeepSeek 等模型，也仍按网关协议使用该适配器。
 - OpenAI-compatible 自定义 provider 必须配置 `options.baseURL` 并指向实际兼容 API endpoint；缺少 `baseURL` 会在保存/运行前阻断，未以常见 `/v1` 结尾会继续给出校验提示。`model` / `small_model` 仍应使用 `provider/真实模型 id`；`models.<id>.name` 仅作为展示元数据，不能依赖它把占位 alias 改写成真实模型名。
@@ -178,7 +178,7 @@ Loop 独立子任务由扩展创建独立 CLI 会话，不等同于 provider 内
 当前 AI 对话面板暴露 `coding / loop / graph` 三种顶层模式；旧 workspace 配置中的 `plan` 会按 `coding` 兼容归一化。底层 runner 仍保留历史 `plan` 分支用于类型和旧数据兼容，但 Webview 不再产生该值。前台发送新提示且没有显式 `interactiveMode` 时，当前 UI 模式优先于 tab 元数据；Graph tab 的 `graphRunId` / `openGraphRun` 只保留图入口、状态展示和恢复线索，不会把用户切换后的 Vibe/coding 或 Loop 前台发送重新路由成 Graph。后台派发和 Graph 续跑仍可按 Graph tab 元数据自动使用 `graph`：
 - `loop`：扩展侧编排的多轮主子任务模式；底层 CLI 权限按内部 coding（即 Vibe）模式执行，并按会话隔离写入 `~/.sinitek_cli/loop-tasks/<workspaceKey>/<cli>/<sessionId>/loop-tasks.json` 记录任务概要（首次主任务尚未拿到真实会话 ID 时先写入 pending 路径，拿到会话 ID 后自动迁移），同时通过 `~/.sinitek_cli/loop-communications/<taskId>/` 组织沟通文件、activeSubtaskId、activeSubtaskIds、主任务 JSON 决策、acceptance 验收结果、预计剩余轮次和轮次状态，供扩展解析并以独立新会话启动子任务；工具设置支持配置 Loop 任务最大主任务复核轮次（默认 20，范围 1-100，新建任务写入当前值；已有任务在恢复、继续或下一轮运行前会随全局设置上调而提升记录上限，但不会因全局设置降低而下调）；子任务成功完成后固定自动关闭对应 AI 对话标签页；主任务每次复核应返回 `estimatedRemainingRounds` 预判剩余主任务复核轮次；`status=continue` 可返回旧 `subtask` 或新 `subtasks` 批次，扩展内部统一按批次处理；主任务按“并发优先、文件冲突兜底串行”判断子任务是否冲突，只有能确认 `writeFiles` / `conflictGroup` 互不重叠时才把多个子任务放入同一 `subtasks` 批次，同一批次最多 6 个；扩展会按声明的写入文件/冲突组自动规划组内并发、组间串行；单子任务时 UI 自动切换到子任务标签展示气泡和流式消息，多子任务批次会创建多个子任务标签并并发执行，只有批次内所有子任务都正常完成后才切回并唤醒主任务；参与者和主持人完成后固定自动关闭临时 tab，后续复用记录里的 sessionId 续接同一角色会话；每次主任务返回 `status=continue` 时，扩展会把该轮 JSON 协议气泡原位替换成 Markdown 子任务派发摘要，并把摘要追加到 `main-task.md`；轮次按主任务复核轮计数，同一轮可包含一个或多个并发子任务；第 1 轮要求主任务先做总体阶段规划，再优先派发首批互不冲突子任务，不再默认只派发 1 个；Loop 模型选择按 CLI 能力处理：Claude 无插件侧模型选择；Codex 普通 Coding 使用单模型，切到 Loop 时使用主模型/子模型；OpenCode 同样使用主模型/子模型口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配；Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；主任务必须读取沟通文件并把 subtasks[*].prompt 写成自包含详细指令，且在完成时返回 `answerConclusion`（直接回答用户原始问题）、整体总结、各轮子任务摘要与用户需求覆盖清单（全部 passed=true），扩展会写入 `main-task.md` 和任务记录，并移除最终主任务 JSON 协议气泡，在 AI 对话主消息流中先追加 `loopAnswerConclusion=true` 的 assistant Markdown 问题回答结论气泡，再追加 `loopFinalSummary=true` 的 assistant Markdown 最终总结气泡；最终总结气泡会同时展示问题回答结论和 Loop 任务整体总结；只有主任务显式返回 `status=completed`（且 `acceptance.passed=true`）才结束；主任务中断后支持在同一标签输入“继续/continue/resume”等短提示词，或直接输入任意补充说明，恢复同一任务并从当前轮次继续；子任务完成前必须写入自己的沟通文件；子任务执行出错会等待 1 分钟后重试，最多重试 5 次，主动停止不重试；子任务中断后在子任务标签手动继续时会强制按内部 coding（即 Vibe）任务执行，不允许再次启动 Loop 任务；`loop-tasks` 与 `loop-communications` 产物同样按全局 `historyRetentionDays` 保留策略清理
 - Loop 子任务的停止和失败是局部生命周期事件：停止或重试耗尽时，父任务保持 `running`，并继续在 `activeSubtaskIds` 中持有尚未完成的子任务，直到该子任务在自身 Tab 手动续跑成功。只有所有活动子任务均完成，且父任务未因自身 AI 连续失败达到上限，才会恢复主任务下一轮复核。串行批次的未派发后续子任务会写为 `skipped`、从活动集合移除，并由主任务下一轮重新决定是否派发；Loop 群聊的全任务“中止”仍统一把父任务和活动子任务标记为 `stopped`
-- 任何由宿主解析本 JSON 决策协议的 Loop 任务都可在需要等待外部结果时返回 `status=sleep`、10 到 31536000 范围内的整数 `wakeAfterSeconds` 和非空 `sleepReason`；普通自由文本回复不会触发自动睡眠。宿主将其持久化为 `status=sleeping` 与绝对 `autoWakeAt`，释放当前 CLI 调用；内存定时器按绝对时间分段调度，到期后复用原任务/session 和当前 Loop 轮次执行已有恢复链路。Extension Host 重启会重建定时器并立即处理过期任务，VS Code 完全退出期间不启动外部守护进程。合法睡眠任务不参与普通历史淘汰；人工继续、完成或中止会取消陈旧唤醒。AI 对话使用可读 assistant 睡眠气泡，Loop 群聊显示实时倒计时、计划唤醒时间、原因和提前继续/取消动作。
+- Loop 可解析任务决策的自动睡眠与定时唤醒已下线：主任务/主持人不得返回 `status=sleep`、`wakeAfterSeconds` 或 `sleepReason`。需要等待外部结果、授权或人工判断且当前没有可执行子任务时，必须返回 `status=blocked` 并在 `finalSummary` 说明等待对象或人工判断点。旧任务 Store 中的 `sleeping` 状态在读取时降级为 `needs-review`，并丢弃 `autoSleepStartedAt`、`autoWakeAt`、`autoSleepReason`；扩展不再创建 Loop 自动唤醒定时器，也不再在 AI 对话或 Loop 群聊展示自动睡眠气泡、倒计时或计划唤醒时间。
 - Codex 普通 Coding 统一读取 `PromptRunInput.model`；Loop / Graph 会同时传递 `loopMainModel` / `loopSubtaskModel` 与 `loopMainThinkingMode` / `loopSubtaskThinkingMode`。Loop 主任务、主持/复核、续跑和唤醒使用 main 角色模型与思考力度，Loop 与 Loop+ 子任务使用 subtask 角色模型与思考力度并继续受全局子任务思考力度上限约束；Graph planner 和最终 `summary` 节点使用 main 角色，其他执行节点使用 subtask 角色。旧主/子模型持久化字段仅兼容读取和迁移。
 - `loopSubtaskMaxThinkingMode` 是“工具设置 - AI任务配置”中的 Loop/Loop+ 子任务思考力度上限，默认 `xhigh`，可降低到 `low`、`medium` 或 `high`。每次 Loop/Loop+ 子任务派发时，运行时取该上限与当前所选模型力度中的较低值；因此用户选择 `max` 或 `ultra` 时子任务最多以 `xhigh` 运行，较低的用户选择不会被抬高。该覆写不影响 Loop/Loop+ 主任务、Graph 节点、普通任务或模型级持久化选择。
 - Loop 群聊显式继续以主任务 Tab 当前 CLI 分组为权威：即使 Tab 已切换分组，也通过任务原 CLI 的消息/session 绑定定位同一 Tab，再按群聊继续框中的选择，保持任务已记录的主/子模型，或读取目标 CLI 当前 Loop 主/子模型配置。主任务 Tab 直接输入继续仍使用当前配置和模型。跨 CLI 恢复保留同一 `taskId`，并在运行前把任务的 CLI/session Store 归属迁移到目标分组；主任务 Tab 在同一 Loop 任务处于 `needs-review`、`error`、`stopped` 或无本实例所有权的 `running` 可恢复状态时，提交任意新 Loop 输入都等价于群聊“继续执行”，必须复用同一 `taskId` 而不是新建任务；这些中断终态优先结束主 Tab 运行态，旧编排轮次和重试在派发前必须检查终态，不能在主动停止后重新写成 `running`；缺失或未知的持久化 `status` 不具备运行所有权，读盘时按 `stopped` 收敛。
@@ -196,44 +196,7 @@ Loop 内部执行方式事实：
 
 ### 已移除：Loop 开发级 Workflow Skills（历史记录）
 
-该能力已于 2026-07-15 移除；下面仅保留旧任务记录和历史版本的兼容说明，现版本不会加载 `media/loop-workflow-skills/`、构建 catalog、注入 guidance 或提供该能力的开关。现行行为见“Loop 子任务项目规则隔离”与 `src/loopSubtaskExecutionRoot.ts`：主任务使用真实工作区规则，子任务在隐藏根规则和项目 Skills 目录的临时根中执行，并使用 Codex `--ignore-rules`、Claude SDK `settingSources: []`、OpenCode `--pure`。
-
-#### 兼容字段
-
-| 字段 | 写入方与语义 | 兼容行为 |
-| --- | --- | --- |
-| `LoopTaskRecord.taskKind?: "development" \| "non_development"` | 新建 Loop 根任务时由宿主分类并持久化；`development` 才允许加载 compact catalog | 分类为 `unknown` 时省略；旧记录缺字段时保持 legacy，不重新猜测迁移 |
-| `LoopSubtaskDecision.skillIds?: string[]` | 主模型唯一允许返回的 Skill 字段，只能包含 catalog 中的稳定 ID | 可省略；解析层只保留字符串，可信性仍由共享中央校验决定 |
-| `LoopSubtaskRecord.skillIds?: string[]` | 中央校验通过后由宿主保存的最终 ID 快照，最多 3 个 | 旧子任务无字段可继续读取、恢复、重试和完成 |
-| `LoopSubtaskRecord.skillGuidance?: string` | 宿主从已校验资源生成并保存的执行要求快照，模型没有写入入口 | 非空且不超过 32,000 字符时才从 Store 恢复；无字段时不注入 |
-
-Store 边界会丢弃非法类型、重复/非法/超量 ID、超长 guidance 以及模型伪造的路径、hash、CLI、model、command 等未知字段；这不会改变旧 decision 或旧任务记录的读取语义。
-
-#### 可信分类与目录传递
-
-- 根任务分类只使用原始 `displayPrompt`、原始 `contextTags`，以及宿主读取的真实 workspace/active-editor 路径；不使用 `modelPrompt`、模型输出、长期记忆或 Skill 正文。开发和非开发证据同时出现时归为 `unknown`，显式非开发归为 `non_development`，缺少足够开发证据时也归为 `unknown`。
-- 子任务精分类使用 `title`、`prompt`、`writeFiles`、`conflictGroup` 推断 phase 与 task kind。根任务和子任务都必须是 `development` 才可能生成 guidance。
-- 每个主任务轮次在普通/红蓝分流前创建一次显式 runtime context；只有 `taskKind=development` 才从 `extensionUri.fsPath/media/loop-workflow-skills/` 加载并校验资源。运行时不从 cwd、workspace 同名目录、用户 Home 或开发期上游目录回退扫描。
-- 普通主从模式把同一轮的 compact metadata catalog 追加到主任务 model prompt；主模型只能为每个子任务返回 `skillIds`，不能返回路径、Markdown 正文或 `skillGuidance`。
-- 红蓝首轮把同一个 catalog section 写入 `brief.md`，并把同一 section 传给共识汇总器启用 ID-only decision 合约；红蓝后续主持人主任务复用普通主任务 prompt。复用既有 `decision.json` 时仍进入共享中央 apply，不绕过校验。
-- `non_development`、`unknown` 和 legacy 任务不加载 catalog 或 guidance，继续按原 Loop 直接安排子任务。
-
-#### 中央校验、快照与注入
-
-- 普通主从和红蓝共用 `applyLoopMainDecisionForRun`。写 Store 前，宿主对每个子任务独立校验：当前任务/轮次 context、manifest 中的 allowlist、ID 语法与去重、phase、task kind、`role="subtask"`、required capabilities、negative triggers 和预算。
-- 首版宿主没有为 Loop 子任务声明浏览器或交互能力，`availableCapabilities` 固定为空集合；需要 `chrome-devtools-mcp`、`interactive-user` 或 main-only role 的 Skill 会被拒绝，不会被替换成其他 ID。
-- catalog 最多 32 项、总长最多 12,000 字符、单项 description 最多 240 字符；每个子任务最多 3 个 Skill，单篇 guidance 最多 24,000 字符，总 guidance 最多 32,000 字符。排序按 `priority ASC, id ASC`；超限时整篇及其后续项跳过，不截断规则正文。
-- 只有中央校验后的 `skillIds` 与宿主生成的 `skillGuidance` 会写入子任务记录。子任务 model prompt 只读取这份已持久化快照，并固定插在“子任务职责”之后、“当前子任务”之前；随后再次声明系统/用户要求、根与局部 `AGENTS.md`、当前职责、`writeFiles`、验收和沟通要求优先。
-- 只注入被选 Skill 的入口 `SKILL.md` 清洗正文；`supportFiles` 用于完整性与依赖闭包校验，不自动递归拼入子任务 prompt，完整 catalog 和未选 Skill 正文也不会进入子任务 prompt。
-
-#### 恢复、重试、降级与日志边界
-
-- 恢复 Loop 任务时使用 Store 中已有的 `taskKind`；缺字段的旧记录保持 `unknown` 等价行为。development 任务进入新的主任务轮次时可重新构建当轮 transient catalog，但已保存的子任务快照不会被重写。
-- 自动重试始终复用同一 `LoopSubtaskRecord` 中已保存的 `skillIds` / `skillGuidance`，不重新加载资源、不重新选择。即使重试前资源包变化或暂时缺失，已确认 guidance 仍逐字复用。
-- pack 缺失、schema/hash/bytes/UTF-8/路径/符号链接校验失败、catalog 为空、请求 ID 非法或无合法匹配时，Skill 链路返回空 context/空快照；不会仅因 Skill 失败把任务置为 `needs-review`，而是继续原 Loop 行为。
-- Skill 正文只作为 Store 中的宿主快照和子任务 model prompt 内容，不进入 `buildLoopSubtaskDisplayPrompt`、Webview HTML 或诊断日志。`loop-skill-runtime-diagnostics` 只记录 `taskId`、`round`、`scope`、诊断 `code`，以及可选 `skillId` / `resourcePath`，不记录 guidance、完整 prompt 或秘密。
-
-实现与回归事实来源：`src/loopSkillGuidance.ts`、`src/extension.ts`、`src/loopTaskStore.ts`、`src/loopPromptBuilders.ts`、`src/loopDebateRunner.ts`、`src/test/loopSkillGuidance.test.ts`、`src/test/loopSkillIntegration.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopPromptBuilders.test.ts`。
+已移除 `media/loop-workflow-skills/`、其加载器和同步/校验脚本；不再向主任务或子任务注入任何内置 Workflow Skill，也没有对应 UI、i18n 或用户配置开关。旧任务记录中的兼容字段不触发加载。现行行为见“Loop 子任务项目规则隔离”与 `src/loopSubtaskExecutionRoot.ts`：主任务使用真实工作区规则，子任务在隐藏根规则和项目 Skills 目录的临时根中执行，并使用 Codex `--ignore-rules`、Claude SDK `settingSources: []`、OpenCode `--pure`。
 
 运行结束判定补充：普通 Codex / Claude / OpenCode 任务发给模型的首轮 prompt 和 hidden retry prompt 都会追加统一约定，要求任务完成后的最终回复以 `[final_answer]` 开头，过程更新不得使用该标记；界面和会话存档中的用户消息仍保留原始输入。Loop 主任务/子任务等内部机器协议显式关闭该注入和严格文本标记要求，继续依赖自身纯 JSON 决策、`status=completed` 与专用结论气泡，避免协议前缀破坏解析。普通任务的终结判定固定为协议/结构化终态：本轮用户消息之后的非 thinking assistant 显式终态（`codexFinalAnswer=true` / `phase:"final_answer"`）、包含 `[final_answer]` 的文本、OpenCode 同一 `messageID` 的非 thinking assistant `text` 与 `step_finish.reason="stop"`。Codex 显式 app-server `phase:"final_answer"` 会立即在消息上标记 `codexFinalAnswer=true`。主 turn 的 `turn.completed status:"completed"` 只表示 Codex 回合结束，不能单独当作最终回复气泡；若最后一条主线程 `agent_message` 是 `phase:null` / 缺省 phase 且其后没有工具活动，则把该条非 thinking assistant 正文提升为 `codexFinalAnswer=true`。reasoning/thinking-only 或 `phase:"commentary"` 后的 completed turn 必须进入 hidden retry。 Claude Code 2.1.283 的短回合可能不再输出 `result`，而是 assistant `stop_reason=end_turn` 后跟 `system subtype=turn_duration`。Claude 普通任务只在成功 `result`（`subtype` 为空或 `success`，且 `is_error` 不为真）或 assistant `stop_reason=end_turn` 时收口，并且本轮已有非 thinking assistant 正文、其后没有工具活动。查询正常返回本身不算收口。错误 result、只停在 tool 上的结果、thinking-only 和用户 prompt 里的 `[final_answer]` 不能收口。普通非空 assistant 文本、一般进程成功退出、thinking、trace、system、user、旧回合消息、子代理消息、`failed`、`interrupted` 和主动停止不能收口。OpenCode one-shot / 并行任务优先解析 `--format json` 文本事件，只把 stdout assistant 正文纳入判定，不把 `> build · model` 等 stderr 状态行当作结论；`step_start`、`tool_use`、reasoning 和 `step_finish.reason="tool-calls"` 等 JSONL 事件只算运行活动，不算最终答复；其中 `text`、`reasoning`、`step_start` 和 `tool_use` 会实时转成 assistant / thinking / tool-use 气泡，避免只在结束时显示最终答复。OpenCode 的正文与 `stop` 必须属于同一 `messageID`；没有后续 tool / `tool-calls`、也没有落到其他 message 的 `stop` 时，带 `time.end` 的非 thinking 完成正文同样是结构化终态。跨消息终态、无正文 `stop`、`tool-calls` 和纯 thinking 文本不得通过结构化判定。`--print-logs` 的 `timestamp=... level=` stderr 只解除启动 watchdog；INFO/WARN/DEBUG 不得进入 provider error。没有助手正文时，`level=ERROR` 的 `error.error` 进入错误气泡。进程 `code=0` 但 stdout 没有 OpenCode 原生终态时，即使已有 `tool-calls` 过程正文，也只调用一次官方 `opencode export <sessionID>`，用已知 message 本身或其后的 `finish=stop` 助手正文收口；没有 messageID 且有多条 assistant 时不猜测历史回复。`[final_answer]` 只在 Codex / Claude / OpenCode 都没有原生终态时作为替补。不读私有数据库。启动后 60 秒内若没有 assistant / error / status / progress / `--print-logs` stderr 日志任一活动才按启动空输出失败处理；一旦已观察到运行活动就立即解除外层 watchdog，不再以父 stdout/stderr 静默时长判断卡死，因为 OpenCode 分组/子代理可能在内部持续读文件、调用模型和执行工具而父 JSONL 长时间没有新事件。对于 `code=0` 的结束，Loop 只使用当前进程尝试内的非 thinking assistant 正文判断本轮是否可进入 JSON 决策解析，历史轮次正文不参与；当前尝试为空时与普通缺少最终气泡一样进入 hidden retry。OpenCode 非零退出、JSON error、空 assistant、启动空输出超时和重试耗尽最终都追加可见 system 错误气泡并落盘，provider/API 详情优先于通用退出码。其它缺少最终气泡的可续接 CLI 回合沿统一 hidden retry 配置隐式发送“继续”，每次重试前展示错误 trace 和排队提示，真正开始时再追加开始提示并恢复标签运行态。Loop 任务仍额外要求主任务对话同时存在 `loopAnswerConclusion=true` 的问题回答结论气泡和 `loopFinalSummary=true` 的最终总结气泡；记录已完成但任一气泡缺失时会恢复同一任务并再次唤醒主任务。
 
@@ -282,21 +245,11 @@ OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，
 
 如果日志显示 `spawn <absolute-cli-path> ENOENT`，但该 CLI 文件和 symlink 都存在，还要检查同一日志行的 `cwd` 是否存在；Node 在 `cwd` 已被清理或不可达时也会抛出同形态 ENOENT。
 
-### OpenCode 全局 MCP 配置管理
+### 已移除：OpenCode 全局 MCP 与 MCP 市场
 
-- 插件不再通过 `opencode mcp add/remove` 管理 OpenCode MCP，而是直接读写官方全局 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 的顶层 `mcp`。
-- local MCP 写为 `{ "type": "local", "command": ["command", "arg"], "environment": {}, "enabled": true }`；remote MCP 写为 `{ "type": "remote", "url": "...", "headers": {}, "enabled": true }`。
-- 安装只合并或覆盖 `mcp[id]`，保留其他顶层字段和已有 MCP；卸载只删除 `mcp[id]`，目标不存在时幂等成功。
-- 输入支持 JSON 与 JSONC；JSON object 解析复用 `src/shared/jsonObject.ts` 的 `jsonc` 模式，配置无效或顶层 `mcp` 不是对象时拒绝覆盖。发生修改后以格式化严格 JSON 原子写回，并保留原文件权限。
-- OpenCode 1.17.16 与 1.17.18 均没有 `mcp remove` 子命令；卸载不得依赖不存在的 CLI 命令，也不得误改插件配置中心使用的 `~/.opencode/config.json`。
-- OpenCode MCP 安装状态优先由官方全局配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp` 判断；配置页和市场打开时不应为了安装状态运行健康检测。`opencode mcp list --pure` 的退出码只表示列表命令执行完成，不表示每个服务连接健康；该命令仅用于用户主动触发健康检测时映射连接状态。服务显示 `failed` 时命令仍可能退出 `0`；只要目标 id 在健康检测列表中出现，插件应保持 `installed: true`，并把失败状态映射为 `unhealthy`。
-- 配置变更由 `src/config/openCodeMcpConfig.ts` 负责；用户级配置路径由 `src/config/configPaths.ts` 维护，CLI 仅保留列表与连接健康检测职责。
-
-### MCP 市场目录校验
-
-- 内置 MCP 市场事实来源为 `media/mcp_marketplace.json`，当前目录保留 16 个官方/权威候选，优先厂商官方 remote HTTP/SSE 或官方维护的 npm、uvx、Docker 运行方式。
-- 市场条目必须保留现有消费链路可识别字段：`id/name/description/homepage/category/config`，local 使用 `config.command + config.args + config.env`，remote 使用 `config.type + config.url + config.headers`。
-- `scripts/validate_mcp_marketplace.js` 是目录静态验收入口，npm script 为 `npm run validate:mcp-marketplace`；该脚本会阻止旧 `github.com/modelcontextprotocol/servers/tree/main/src/` homepage 和旧 `@modelcontextprotocol/server-*` 包名回流，并校验中文 description、官方/权威来源和密钥占位。
+- 配置中心不再提供 MCP 市场、安装、卸载或健康检测，也不会改写用户磁盘上已有的 MCP 配置。
+- 内置 `media/mcp_marketplace.json` 和 `npm run validate:mcp-marketplace` 已删除。
+- 插件不再安装或卸载 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。CodeGraph 状态检测仍只读取该文件以及 Claude / Codex 已有 MCP 配置，判断 `codegraph` 是否已注册。
 
 ## 8. 更新本文档时的原则
 

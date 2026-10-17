@@ -1704,48 +1704,9 @@
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 
-## OpenCode MCP 卸载不能依赖 CLI，且全局配置不能写错路径
+## 配置中心不再安装或卸载 OpenCode MCP
 
-- 状态：已规避，需随 OpenCode 版本复核
-- 首次发现：2026-07-10
-- 适用范围：OpenCode 1.17.16 / 1.17.18、全局 MCP 安装卸载、MCP 健康检测
-
-### 现象
-- `opencode mcp add` 可以写入配置，但当前 CLI 没有 `mcp remove` 子命令；调用 `opencode mcp remove --scope user <id>` 必然失败。
-- 旧回退逻辑误写 `~/.opencode/config.json`，且只删除 `mcpServers` / `mcp_servers`，无法删除官方全局配置中的顶层 `mcp[id]`。
-- 插件模型档案 `~/.opencode/config.json` 与官方全局 MCP 文件 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 不是同一个配置来源。
-- `opencode mcp list --pure` 即使列出的服务全部连接失败，也可能退出 `0`；只看退出码会把“不健康”误判成“健康”，只保留健康 id 又会把已安装条目误判成未安装。
-
-### 触发条件
-- 把 Claude/Codex 的 add/remove CLI 工作流直接套到 OpenCode。
-- 把配置中心维护的 OpenCode 模型档案路径误当成官方 XDG 全局配置路径。
-- 删除逻辑只兼容 Claude 的 `mcpServers` 命名。
-- 健康检测把列表命令退出码、连接成功状态和安装状态合并成一个布尔值。
-
-### 根因
-- OpenCode 当前只提供 `mcp add/list/auth/logout/debug`，没有对称的 `mcp remove`。
-- OpenCode 官方全局 MCP 使用 XDG 配置路径和顶层 `mcp`；插件自己的模型档案为了配置中心隔离保存在 `~/.opencode/config.json`。
-- `mcp list` 同时承载“已配置条目清单”和“当前连接状态”；单个条目 `failed` 不会让列表命令整体失败。
-
-### 长期规避
-- OpenCode MCP 安装和卸载直接管理 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`，不执行 add/remove CLI。
-- local MCP 固定写入 `type=local`、`command` 数组、`environment` 和 `enabled`；remote 固定写入 `type=remote`、`url`、`headers` 和 `enabled`。
-- 安装只合并 `mcp[id]`；卸载只删除 `mcp[id]` 且目标不存在时幂等成功。其他顶层字段和已有 MCP 必须保留。
-- JSON/JSONC 必须先完整解析；无效配置或非对象 `mcp` 不得覆盖。成功修改使用同目录临时文件原子替换。
-- 安装状态不要依赖健康检测列表：配置页打开时按目标 id 是否存在于对应配置文件判断，Claude 读 `~/.claude.json`，Codex 读 `~/.codex/config.toml`，OpenCode 读 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` 顶层 `mcp`。健康检测列表只在用户主动点击健康检查时用于连接状态映射；连接失败映射为 `installed: true`、`status: unhealthy`。
-
-### 验证方式
-- 对默认路径、`XDG_CONFIG_HOME` 和 `~` 展开做路径单测。
-- 在临时 XDG 配置中预置 JSONC、其他顶层字段和已有 MCP，分别安装 local/remote、覆盖同 id、卸载目标 id，确认结构与字段保留。
-- 对无效 JSON 和非对象 `mcp` 断言操作失败且原文件内容不变。
-- 对不可连接的 local/remote 服务运行真实 `opencode mcp list --pure`，确认条目显示 `failed` 时 parser 仍将其映射为已安装且不健康，并将未列出条目映射为未安装。
-
-### 关联资料
-- `src/config/mcpInstallArgs.ts`
-- `src/config/openCodeMcpConfig.ts`
-- `src/config/mcpHealth.ts`
-- `src/config/mcpService.ts`
-- `.ch/docs/references/cli-runtime-reference.md`
+- 状态：已下线。配置中心不再安装或卸载 MCP。模型档案 `~/.opencode/config.json` 不是官方全局 MCP 文件 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`。CodeGraph 只读取用户磁盘上已有的 MCP 配置，不写回。
 
 ## npx 缓存损坏会把可用 MCP 误报为健康检查超时
 
@@ -1769,16 +1730,10 @@
 ### 长期规避
 - 对 `npx -y` MCP 的单点失败先运行对应 `npx -y <package> --help` 或等价启动探针。
 - 如果看到 `ENOTEMPTY` / `rename`，删除对应 `~/.npm/_npx/<hash>` 损坏缓存目录后复测。
-- 只有 npm/PyPI/官方 Registry 或供应商官方文档确认包名/端点失效时，才从全局配置或市场清单删除。
+- 只有 npm/PyPI/官方 Registry 或供应商官方文档确认包名/端点失效时，才从用户自己的全局 MCP 配置删除。
 
 ### 验证方式
 - 清理损坏 `_npx` 目录后重新运行 `claude mcp list`，确认失败项变为 `Connected`。
-- 对仓库内 MCP 市场包名定期运行 npm/PyPI/官方 Registry 可用性检查，避免重新引入已下线包名。
-
-### 关联资料
-- `media/mcp_marketplace.json`
-- `src/config/mcpHealth.ts`
-- `src/config/mcpService.ts`
 
 ## TypeScript 构建不会自动删除已移除源码对应的 dist 产物
 
@@ -2066,113 +2021,15 @@
 
 ## 历史：已移除的 Loop Workflow Skill 根分类
 
-- 状态：已于 2026-07-15 下线；以下为历史记录
-- 首次发现：2026-07-12
-- 适用范围：Loop 新任务分类、排队 prompt、非开发任务与旧任务恢复
-
-### 现象
-- 翻译、摘要或意图不明的任务，可能仅因长期记忆或补充上下文里的开发词汇被误判为 development，继而出现 Skill 候选目录和正文注入。
-- Skill pack 缺失、损坏或没有合法 ID 时，如果把可选能力失败当成主任务失败，会错误进入 `needs-review`，中断原本可以直接安排的 Loop。
-
-### 触发条件
-- 根分类读取已经拼入长期记忆、系统补充或模型生成文本的 `modelPrompt`，或根据旧记录重新猜测任务类型。
-- `non_development`、unknown、legacy 或 Skill 校验失败路径仍尝试加载 pack、追加 catalog，或累计主任务 AI 失败。
-
-### 根因
-- `modelPrompt` 不是用户本轮原始意图，可能包含跨轮记忆、自动补充文本或模型输出；把它作为分类证据会让不可信派生内容反向开启高级能力。
-- Workflow Skill 是 development Loop 的可选增强，不是 Loop 调度成功的前置条件。
-
-### 长期规避
-- 根任务只使用原始 `displayPrompt`、原始 `contextTags` 和宿主确认的 workspace / active-editor 路径分类；不得读取 `modelPrompt`、Skill 正文或模型输出。
-- 只持久化明确的 `development` / `non_development`；unknown 保持缺字段，legacy 不做猜测迁移。
-- `non_development`、unknown 和 legacy 不加载 pack、不追加 catalog 或 guidance，继续按原 Loop 直接安排。
-- pack 或门禁校验失败只降级为“无 Skill”，不得仅因此进入 `needs-review`、累计主任务 AI 失败或改变 CLI、模型、并发与重试语义。
-
-### 验证方式
-- 用“原始 display 为翻译、modelPrompt 含实现 API”和“原始意图不明、modelPrompt 含实现测试”样例，确认分别保持 `non_development` 与 unknown。
-- 断言 non-development / legacy runtime context 不调用 loader；资源缺失时主 prompt 与无 catalog 基线一致，且不会达到主任务 AI 失败上限。
-
-### 关联资料
-- `src/loopSkillGuidance.ts`
-- `src/extension.ts`
-- `src/test/loop/loopPromptQueue.test.ts`
-- `src/test/loopSkillIntegration.test.ts`
-- `src/test/loop/loopMainFailure.test.ts`
+- 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
 
 ## 历史：已移除的 Loop Workflow Skill 选择
 
-- 状态：已于 2026-07-15 下线；以下为历史记录
-- 首次发现：2026-07-12
-- 适用范围：Skill manifest、主模型决策、宿主中央校验、子任务 prompt 与诊断日志
-
-### 现象
-- 如果接受模型返回的 path、`skillGuidance` 或 capability，模型可以绕过 manifest、角色和运行时能力门禁，注入未批准 Markdown 或声称拥有不存在的工具。
-- 如果自动展开 `supportFiles`，参考资料、其他 Skill 入口甚至不应展示的正文会被递归塞入子任务上下文；如果复用 display/log/Webview 通道，还会扩大正文暴露面。
-
-### 触发条件
-- 主模型决策字段超过 `skillIds?: string[]`，或宿主直接信任模型返回的路径、hash、正文、CLI、model、command、capability。
-- loader 从 cwd、用户 Home、workspace 同名目录或外部源回退读取，或把 `supportFiles` 当作自动注入清单。
-- 将已校验 Skill 正文拼入 `displayPrompt`、诊断日志或 Webview payload / HTML。
-
-### 根因
-- 模型输出和 Markdown 都是不可信输入；可信路径、文件完整性、角色和 capability 只能由扩展宿主与内置 manifest 确认。
-- `supportFiles` 当前只用于静态快照完整性与依赖清单，不等价于授权扩展上下文预算。
-
-### 长期规避
-- 主模型只接收有界 compact metadata，并且只允许返回稳定 Skill ID；归一化后再由中央宿主按本轮 allowlist、phase、task kind、role、负向 trigger、预算和 capability 校验。
-- `requiredCapabilities` 必须来自宿主可信能力集；当前普通 Loop 子任务显式传空集合，模型或 Skill Markdown 自报均无效。
-- 运行时只从 `extensionUri.fsPath/media/loop-workflow-skills` 加载并执行 containment、symlink、hash、bytes、UTF-8 与预算校验；禁止回退 Home、workspace、cwd 或外部源。
-- 只清洗并注入所选 Skill 的入口 `SKILL.md` 正文；`supportFiles` 必须通过完整性校验，但不得自动递归注入。
-- 正文只进入 Store 持久化快照和子任务 `modelPrompt`；`displayPrompt`、诊断日志与 Webview 不含正文，日志只记录诊断 code 及可选 `skillId/resourcePath`。
-
-### 验证方式
-- 让模型伪造 `skillGuidance`、path、command、CLI、model 和非法 ID，确认归一化只保留字符串 ID，Store 只写宿主生成的快照。
-- 分别以空 capability 和宿主声明 `chrome-devtools-mcp` 校验浏览器 Skill，确认只有后者通过。
-- 在 `supportFiles` 放入唯一标记，确认 loader 会校验该文件，但最终 guidance、display prompt 和 Webview 源码均不含该标记或正文 delimiter。
-
-### 关联资料
-- `media/loop-workflow-skills/manifest.json`
-- `src/loopSkillGuidance.ts`
-- `src/extension.ts`
-- `src/test/loopSkillGuidance.test.ts`
-- `src/test/loopSkillIntegration.test.ts`
+- 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
 
 ## 历史：已移除的 Loop Workflow Skill 红蓝共识与自动重试
 
-- 状态：已于 2026-07-15 下线；以下为历史记录
-- 首次发现：2026-07-12
-- 适用范围：普通主从、红蓝首轮 consensus、中央 apply、子任务自动重试
-
-### 现象
-- 只修改普通主任务 prompt builder 时，红蓝 brief 可能展示 Skill catalog，但真正生成 decision JSON 的 consensus 会话没有同一份 ID-only 合约。
-- 自动重试如果只保存 Skill ID 并重新读取 pack，插件升级、资源变化或文件删除会让同一子任务前后收到不同执行要求。
-
-### 触发条件
-- 把红蓝首轮共识误认为普通主任务 prompt 的调用方，遗漏 `src/loopDebateRunner.ts` 内部直接构造 consensus model prompt 的真实 seam。
-- retry 再次加载 pack、重新选择 ID 或重新生成 guidance，而不是使用任务 Store 中已经持久化的 `skillGuidance`。
-
-### 根因
-- 红蓝首轮 brief 与 consensus 经过不同调用链；后者由 runner 直接调用 consensus builder。
-- ID 只能定位某一版资源，不能冻结已执行子任务的具体正文；可重复重试需要保存宿主确认后的内容快照。
-
-### 长期规避
-- 每个主任务轮次只创建一次 Skill runtime context；红蓝 brief 与 runner consensus 必须透传同一个 `compactCatalogSection`，普通主从和红蓝 decision 再共同经过 `applyLoopMainDecisionForRun`。
-- 中央 apply 在写 Store 前生成稳定 `skillIds + skillGuidance` 快照；模型原始正文没有持久化路径。
-- 子任务正文固定注入到“子任务职责”之后、“当前子任务”之前；首跑和自动 retry 都只读取已持久化 `subtask.skillGuidance`，不得重新加载或重新选择。
-- Store 没有可用快照时保持无正文的原 Loop，不从已变化的 pack、外部目录或历史模型输出补造 guidance。
-
-### 验证方式
-- 断言红蓝 brief 与 runner consensus 使用同一 catalog，且 consensus prompt 开放的唯一新增字段仍是 `skillIds?: string[]`。
-- 先持久化宿主 guidance，再删除扩展 pack 副本，确认首跑与 retry model prompt 仍逐字包含同一快照一次，display prompt 始终不含正文。
-
-### 关联资料
-- `src/loopDebateRunner.ts`
-- `src/loopPromptBuilders.ts`
-- `src/extension.ts`
-- `src/loopTaskStore.ts`
-- `src/test/loop/loopPromptBuilders.test.ts`
-- `src/test/loopSkillIntegration.test.ts`
-- `src/test/loop/loopTaskStore.test.ts`
+- 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
 
 ## OpenCode 已解析 `todowrite` 但任务浮层仍可能被消息刷新覆盖
 
@@ -2288,47 +2145,9 @@
 - `src/test/interactive/codexRunnerRuntime.test.ts`
 - `.ch/docs/exec-plans/completed/2026-07/2026-07-14-codex-402-terminal-retry.md`
 
-## Loop 长时间自动睡眠不能只保存内存定时器或普通更新时间
+## Loop 自动睡眠与定时唤醒已下线
 
-- 状态：已规避
-- 首次发现：2026-07-17
-- 适用范围：Loop 可解析任务决策自动睡眠、Extension Host 重启、任务历史清理、Node 长延迟定时器
-
-### 现象
-- 主任务返回“稍后再看”后当前进程能定时恢复，但重载 VS Code 或 Extension Host 后永远不再唤醒。
-- 等待时间超过 Node 单个 `setTimeout` 安全范围时，定时器被截断或立即触发。
-- 睡眠时间超过普通任务历史保留期时，任务在唤醒前被 Store 规范化或清理链路删除。
-- 用户提前继续或中止后，旧定时回调仍可能再次启动同一任务。
-
-### 触发条件
-- 只把 timer handle 保存在进程内，没有把绝对唤醒时间写入任务记录。
-- 直接把很长的相对毫秒数传给单个 `setTimeout`。
-- 睡眠任务仍只按 `updatedAt` 参与普通历史淘汰。
-- 定时回调不重新读取任务状态，取消动作只清 UI、不清调度状态。
-
-### 根因
-- 相对等待时长不是重启安全的事实；只有绝对墙钟时间才能在新进程中恢复。
-- Node 定时器有单次延迟上限，进程退出也会丢失全部 timer handle。
-- 普通历史记录和仍有未来执行承诺的睡眠任务生命周期不同，不能共用同一淘汰判定。
-
-### 长期规避
-- 模型协议返回 `wakeAfterSeconds`，宿主立即计算并持久化绝对 `autoWakeAt`；任务状态使用独立 `sleeping`，同时记录开始时间和原因。
-- 调度器只把内存定时器视为缓存：长延迟按上限分段，每次触发重新读取任务状态和 `autoWakeAt`；Extension Host 激活时重新枚举并恢复。
-- 带合法 `autoWakeAt` 的睡眠任务绕过普通历史保留淘汰，直到自动唤醒、人工继续或中止改变状态。
-- 人工继续、完成和中止必须取消 timer 并清除睡眠字段；陈旧回调仍要以持久化状态复核作为最后门禁。
-- 不承诺 VS Code 完全退出时由系统后台启动任务；产品文案和文档必须明确“下次扩展激活时补唤醒”。
-
-### 验证方式
-- 使用假时钟覆盖协议上下界、长延迟分段、到期启动、目标忙重试、取消和陈旧状态丢弃。
-- 写入 `updatedAt` 已过普通保留期但 `status=sleeping + autoWakeAt` 合法的任务，确认读写后仍存在。
-- 执行 `npm run build` 和 `node --test dist/test/loopAutoWake.test.js dist/test/loop/loopTaskStoreCoreCoverage.test.js dist/test/loop/loopDebate.test.js dist/test/loop/loopDebatePanel.test.js`。
-
-### 关联资料
-- `src/loopAutoWake.ts`
-- `src/loopTaskStore.ts`
-- `src/extension.ts`
-- `src/webview/loopDebatePanel.ts`
-- `.ch/docs/exec-plans/completed/2026-07/2026-07-17-loop-auto-sleep-wake.md`
+- 状态：已下线。不得返回 `status=sleep`、`wakeAfterSeconds` 或 `sleepReason`。旧 `sleeping` 读取时降级为 `needs-review`，并丢弃自动唤醒字段。不要恢复定时器、群聊倒计时、`src/loopAutoWake.ts` 或已删除的执行计划链接。
 
 ## npm 启动的命令解析测试必须隔离 npm 前缀变量
 
