@@ -24,6 +24,8 @@ export const CONFIG_ACTIONS = [
   "getClaudeSkillsList",
   "getCodexSkillsList",
   "getOpenCodeSkillsList",
+  "getGrokSkillsList",
+  "getGrokOfficialSkills",
   "getOfficialSkillsCatalog",
   "installOfficialSkill",
   "updateOfficialSkill",
@@ -57,6 +59,8 @@ export type ConfigRequestPayload =
   | { action: "getClaudeSkillsList" }
   | { action: "getCodexSkillsList" }
   | { action: "getOpenCodeSkillsList" }
+  | { action: "getGrokSkillsList" }
+  | { action: "getGrokOfficialSkills" }
   | { action: "getOfficialSkillsCatalog"; platform: OfficialSkillPlatform }
   | { action: "installOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }
   | { action: "updateOfficialSkill"; platform: OfficialSkillPlatform; skillId: string }

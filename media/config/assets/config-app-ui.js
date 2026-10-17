@@ -193,6 +193,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                   ? await applyConfigItem(L.platform, {
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
+                      grokSkills: L.grokSkills ?? [],
                     })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
@@ -2331,7 +2332,9 @@ function skillsEmptyTextByPlatform(e) {
     ? "未检测到 Skills，请先安装到 ~/.claude/skills"
     : e === "opencode"
       ? "未检测到 Skills，请先安装到 ~/.opencode/skills 或工作区 .opencode/skills"
-      : "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills";
+      : e === "grok"
+        ? "未检测到 Skills，请先安装到 ~/.grok/skills或工作区 .grok/skills"
+        : "未检测到 Skills，请先安装到 ~/.agents/skills 或工作区 .codex/skills";
 }
 
 function skillsTitleByPlatform(e) {
@@ -2339,7 +2342,9 @@ function skillsTitleByPlatform(e) {
     ? "Claude Skills"
     : e === "opencode"
       ? "OpenCode Skills"
-      : "Codex Skills";
+      : e === "grok"
+        ? "Grok Skills"
+        : "Codex Skills";
 }
 
 function officialSkillInstallRootTextByPlatform(e) {
@@ -2363,13 +2368,19 @@ function officialPackageCountTextByPlatform(e, t) {
 }
 
 function officialPackageEmptyTextByPlatform(e) {
-  return e === "opencode" ? "暂无内置官方 OpenCode Skills" : "暂无内置官方 Skills";
+  return e === "opencode"
+    ? "暂无内置官方 OpenCode Skills"
+    : e === "grok"
+      ? "暂无内置官方 Grok Skills"
+      : "暂无内置官方 Skills";
 }
 
 function officialPackageInstallHintByPlatform(e) {
   return e === "opencode"
     ? "当前未配置内置官方 OpenCode Skills，可管理本地 ~/.opencode/skills"
-    : "内置官方 GitHub 快照，可直接安装到用户 Skills 目录";
+    : e === "grok"
+      ? "Grok CLI会把官方 bundled skills放在 ~/.grok/bundled/skills；当前没有可安装的官方快照。"
+      : "内置官方 GitHub 快照，可直接安装到用户 Skills 目录";
 }
 
 function officialPackageTabTextByPlatform(e) {
@@ -4852,6 +4863,26 @@ const ConfigEditorPanel = () => {
       }
       return { disabled: H, allDisabled: k };
     }, []);
+    const rt = c.useCallback((W) => {
+      const H = new Set();
+      try {
+        const k = g1(String(W || ""));
+        const L = k && typeof k === "object" && !Array.isArray(k) ? k.skills : null;
+        const U = L && typeof L === "object" && !Array.isArray(L) && Array.isArray(L.disabled) ? L.disabled : [];
+        U.forEach((T) => {
+          if (typeof T !== "string") {
+            return;
+          }
+          const F = T.trim();
+          if (F) {
+            H.add(F);
+          }
+        });
+      } catch {
+        // ignore parse errors
+      }
+      return H;
+    }, []);
     const G = c.useCallback((W, H, k, L) => {
       const U = new Map(),
         T = new Map();
@@ -4874,7 +4905,7 @@ const ConfigEditorPanel = () => {
       });
     }, []);
     const loadSkillsState = c.useCallback(async (W, H = () => !1) => {
-      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "opencode")) {
+      if (!W || (W.platform !== "codex" && W.platform !== "claude" && W.platform !== "opencode" && W.platform !== "grok")) {
         Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
@@ -4883,8 +4914,10 @@ const ConfigEditorPanel = () => {
           ? fetchClaudeSkillsList()
           : W.platform === "opencode"
             ? fetchOpenCodeSkillsList()
-            : fetchCodexSkillsList(),
-        L = fetchOfficialSkillsCatalog(W.platform),
+            : W.platform === "grok"
+              ? configApi.getGrokSkillsList()
+              : fetchCodexSkillsList(),
+        L = W.platform === "grok" ? configApi.getGrokOfficialSkills() : fetchOfficialSkillsCatalog(W.platform),
         [U, T] = await Promise.allSettled([k, L]);
       if (H()) return;
       if (U.status === "fulfilled") {
@@ -4896,8 +4929,14 @@ const ConfigEditorPanel = () => {
           const ie = nt(W.content || "{}");
           F = ie.disabled;
           Y = ie.allDisabled;
+        } else if (W.platform === "grok") {
+          F = rt(W.configContent || W.content || "");
         }
-        const ie = W.platform === "claude" ? W.claudeSkills : W.platform === "opencode" ? W.openCodeSkills : W.codexSkills;
+        let ie = W.platform === "claude" ? W.claudeSkills : W.platform === "opencode" ? W.openCodeSkills : W.platform === "grok" ? W.grokSkills : W.codexSkills;
+        if (W.platform === "grok") {
+          const Le = Array.isArray(ie) ? ie : [];
+          ie = Le.map((Ne) => (Ne && F.has(Ne.name) ? { ...Ne, enabled: !1 } : Ne));
+        }
         Z(G(U.value, ie, F, Y));
       } else {
         const F =
@@ -4905,7 +4944,9 @@ const ConfigEditorPanel = () => {
             ? "获取 Claude Skills 失败"
             : W.platform === "opencode"
               ? "获取 OpenCode Skills 失败"
-              : "获取 Codex Skills 失败";
+              : W.platform === "grok"
+                ? "获取 Grok Skills 失败"
+                : "获取 Codex Skills 失败";
         console.error(F + ":", U.reason), Kt.error(F), Z([]);
       }
       if (T.status === "fulfilled") {
@@ -4914,10 +4955,10 @@ const ConfigEditorPanel = () => {
         console.error("获取官方 Skills 失败:", T.reason), Kt.error("获取官方 Skills 失败"), setOfficialSkills([]);
       }
       q(!1), setOfficialSkillsLoading(!1);
-    }, [G, tt, nt]);
+    }, [G, tt, nt, rt]);
     c.useEffect(() => {
       let W = !1;
-      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "opencode")) {
+      if (!O || (O.platform !== "codex" && O.platform !== "claude" && O.platform !== "opencode" && O.platform !== "grok")) {
         Z([]), setOfficialSkills([]), setOfficialSkillsLoading(!1);
         return;
       }
@@ -5334,11 +5375,31 @@ const ConfigEditorPanel = () => {
           const H = grokVisualParseContent(W);
           H.ok && !H.state.fieldError && setGrokVisualState(H.state);
           Kt.success("保存成功");
-          await A({ content: W, configContent: W });
+          await A({ content: W, configContent: W, grokSkills: C });
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
       };
+    const applyActiveGrokSkills = async (W) => {
+      const H = grokEditorMode === "toml" ? grokTextDraft : grokValidContent;
+      await applyConfigItem("grok", {
+        content: H,
+        configContent: H,
+        grokSkills: W,
+      });
+      const k = await fetchCurrentConfig("grok");
+      const L = k?.configContent ?? k?.content;
+      if (typeof L !== "string") {
+        return;
+      }
+      setGrokTextDraft(L);
+      setGrokValidContent(L);
+      const U = grokVisualParseContent(L);
+      if (U.ok) {
+        setGrokVisualState(U.state);
+        setGrokVisualError(U.state.fieldError || "");
+      }
+    };
     const J = async (W, H, k) => {
         const L = C.map((U) => (U.name === W && (k ? U.path === k : !0) ? { ...U, enabled: H } : U));
         Z(L);
@@ -5349,7 +5410,9 @@ const ConfigEditorPanel = () => {
                 ? { claudeSkills: L }
                 : O.platform === "opencode"
                   ? { openCodeSkills: L }
-                  : { codexSkills: L };
+                  : O.platform === "grok"
+                    ? { grokSkills: L }
+                    : { codexSkills: L };
             await r(O.id, U);
             if (o(O.platform) === O.id) {
               if (O.platform === "claude") {
@@ -5377,7 +5440,9 @@ const ConfigEditorPanel = () => {
 	                });
 	                const F = await fetchCurrentConfig("opencode");
 	                F?.content !== void 0 && s(F.content);
-	              } else {
+	              } else if (O.platform === "grok") {
+                await applyActiveGrokSkills(L);
+              } else {
                 if (!_(p)) {
                   Kt.error("auth.json格式不正确");
                   return;
@@ -5409,7 +5474,9 @@ const ConfigEditorPanel = () => {
                 ? { claudeSkills: H }
                 : O.platform === "opencode"
                   ? { openCodeSkills: H }
-                  : { codexSkills: H };
+                  : O.platform === "grok"
+                    ? { grokSkills: H }
+                    : { codexSkills: H };
             await r(O.id, k);
             if (o(O.platform) === O.id) {
               if (O.platform === "claude") {
@@ -5437,7 +5504,9 @@ const ConfigEditorPanel = () => {
 	                });
 	                const U = await fetchCurrentConfig("opencode");
 	                U?.content !== void 0 && s(U.content);
-	              } else {
+	              } else if (O.platform === "grok") {
+                await applyActiveGrokSkills(H);
+              } else {
                 if (!_(p)) {
                   Kt.error("auth.json格式不正确");
                   return;
@@ -7738,7 +7807,7 @@ const ConfigEditorPanel = () => {
                         alignItems: "flex-end",
                         gap: "4px",
                       },
-                      children: be.jsx("div", {
+                      children: be.jsxs("div", {
                         className: "config-editor-fixed-action-row",
                         style: {
                           display: "flex",
@@ -7746,15 +7815,23 @@ const ConfigEditorPanel = () => {
                           flexWrap: "wrap",
                           justifyContent: "flex-end",
                         },
-                        children: be.jsx(xn, {
-                          className: "config-standard-action-button",
-                          type: "primary",
-                          size: "small",
-                          icon: be.jsx(Pv, {}),
-                          disabled: grokSaveDisabled,
-                          onClick: saveGrokConfigCard,
-                          children: "保存",
-                        }),
+                        children: [
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => setSkillsModalOpen(!0),
+                            children: "Skills",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            type: "primary",
+                            size: "small",
+                            icon: be.jsx(Pv, {}),
+                            disabled: grokSaveDisabled,
+                            onClick: saveGrokConfigCard,
+                            children: "保存",
+                          }),
+                        ],
                       }),
                     }),
                     style: {
@@ -7821,6 +7898,22 @@ const ConfigEditorPanel = () => {
                             }),
                       ],
                     }),
+                  }),
+                  be.jsx(SkillsManagerModal, {
+                    open: skillsModalOpen,
+                    onClose: () => setSkillsModalOpen(!1),
+                    platform: "grok",
+                    skills: C,
+                    enabledCount: Q,
+                    loading: j,
+                    onToggle: J,
+                    onToggleAll: K,
+                    officialSkills,
+                    officialLoading: officialSkillsLoading,
+                    onInstallOfficialSkill: X0,
+                    onUninstallOfficialSkill: ne,
+                    onUpdateOfficialSkill: ee,
+                    pendingOfficialSkillAction: officialSkillActionId ? { skillId: officialSkillActionId, action: officialSkillActionType } : null,
                   }),
                   B(),
                 ],

@@ -1042,6 +1042,8 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "getClaudeSkillsList",
     "getCodexSkillsList",
     "getOpenCodeSkillsList",
+    "getGrokSkillsList",
+    "getGrokOfficialSkills",
     "getOfficialSkillsCatalog",
     "installOfficialSkill",
     "updateOfficialSkill",

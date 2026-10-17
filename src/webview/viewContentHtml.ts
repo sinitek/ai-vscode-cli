@@ -413,6 +413,7 @@ ${renderChatModal({
               <option value="codex">codex</option>
               <option value="claude">claude</option>
               <option value="opencode">opencode</option>
+              <option value="grok">grok</option>
             </select>
             <button id="loadRules" class="secondary action-button">${i18n.rulesLoadButton}</button>
           </div>
@@ -424,6 +425,7 @@ ${renderChatModal({
               <label id="rulesSaveCodexOption"><input type="checkbox" id="rulesSaveCodex" /> <span id="rulesSaveCodexLabel">codex</span></label>
               <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> claude</label>
               <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
+              <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> grok</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>`,

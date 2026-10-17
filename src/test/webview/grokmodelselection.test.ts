@@ -93,7 +93,7 @@ function buildThinkingSync(cli: string, thinkingMode: string, interactiveMode = 
     currentCli: cli,
     thinkingMode,
     interactiveMode,
-    selectedLoopThinkingByCli: {},
+    selectedLoopThinkingByCli: {} as Record<string, { main?: string; subtask?: string }>,
     openCodeThinking: null as unknown,
     openCodeSmallThinking: null as unknown,
   };
@@ -127,7 +127,7 @@ function buildThinkingSync(cli: string, thinkingMode: string, interactiveMode = 
     "updateThinkingMode",
     `${functionSource}; return syncThinkingOptions;`,
   )(state, elements, document, t, updateThinkingMode) as () => void;
-  return { state, thinking, messages, syncThinkingOptions };
+  return { state, elements, thinking, messages, syncThinkingOptions };
 }
 
 const GROK_THINKING_OPTIONS: Array<[string, string]> = [
@@ -140,25 +140,59 @@ const GROK_THINKING_OPTIONS: Array<[string, string]> = [
   ["ultra", "ultra"],
 ];
 
-test("Grok thinking options keep xhigh, max, and ultra", () => {
-  for (const mode of ["coding", "loop", "graph", "loop_plus"]) {
+const CODEX_ROLE_THINKING_OPTIONS = GROK_THINKING_OPTIONS.slice(1);
+
+test("Grok thinking options keep xhigh, max, ultra, and saved off", () => {
+  const coding = buildThinkingSync("grok", "max", "coding");
+  coding.syncThinkingOptions();
+  assert.deepEqual(optionPairs(coding.thinking), GROK_THINKING_OPTIONS);
+  assert.equal(coding.thinking.value, "max");
+  assert.equal(coding.thinking.style.display, "");
+  assert.equal(coding.elements.codexLoopMainThinkingMode.style.display, "none");
+  assert.deepEqual(coding.messages, []);
+
+  const codingOff = buildThinkingSync("grok", "off", "coding");
+  codingOff.syncThinkingOptions();
+  assert.equal(codingOff.thinking.value, "off");
+  assert.equal(codingOff.state.thinkingMode, "off");
+  assert.deepEqual(codingOff.messages, []);
+
+  for (const mode of ["loop", "graph", "loop_plus"]) {
     const savedMax = buildThinkingSync("grok", "max", mode);
     savedMax.syncThinkingOptions();
+    assert.equal(savedMax.thinking.style.display, "none");
     assert.deepEqual(optionPairs(savedMax.thinking), GROK_THINKING_OPTIONS);
     assert.equal(savedMax.thinking.value, "max");
     assert.deepEqual(savedMax.messages, []);
-    assert.equal(savedMax.thinking.style.display, "");
+    assert.equal(savedMax.elements.codexLoopMainThinkingMode.style.display, "");
+    assert.equal(savedMax.elements.codexLoopSubtaskThinkingMode.style.display, "");
+    assert.deepEqual(optionPairs(savedMax.elements.codexLoopMainThinkingMode), GROK_THINKING_OPTIONS);
+    assert.equal(savedMax.elements.codexLoopMainThinkingMode.value, "max");
+    assert.equal(savedMax.elements.codexLoopMainThinkingMode.title, WEBVIEW_STRINGS.grokLoopMainThinkingModeAria);
+    assert.equal(savedMax.elements.codexLoopSubtaskThinkingMode.title, WEBVIEW_STRINGS.grokLoopSubtaskThinkingModeAria);
 
-    const savedUltra = buildThinkingSync("grok", "ultra", mode);
-    savedUltra.syncThinkingOptions();
-    assert.equal(savedUltra.thinking.value, "ultra");
-    assert.deepEqual(savedUltra.messages, []);
+    const savedOff = buildThinkingSync("grok", "medium", mode);
+    savedOff.state.selectedLoopThinkingByCli = { grok: { main: "off", subtask: "ultra" } };
+    savedOff.syncThinkingOptions();
+    assert.equal(savedOff.elements.codexLoopMainThinkingMode.value, "off");
+    assert.equal(savedOff.elements.codexLoopSubtaskThinkingMode.value, "ultra");
+    assert.equal(savedOff.state.thinkingMode, "medium");
+    assert.deepEqual(savedOff.messages, []);
   }
 
   const codex = buildThinkingSync("codex", "off");
   codex.syncThinkingOptions();
-  assert.deepEqual(optionPairs(codex.thinking), GROK_THINKING_OPTIONS.slice(1));
+  assert.deepEqual(optionPairs(codex.thinking), CODEX_ROLE_THINKING_OPTIONS);
   assert.equal(codex.thinking.value, "low");
+
+  const codexLoop = buildThinkingSync("codex", "off", "loop");
+  codexLoop.state.selectedLoopThinkingByCli = { codex: { main: "off", subtask: "ultra" } };
+  codexLoop.syncThinkingOptions();
+  assert.deepEqual(optionPairs(codexLoop.elements.codexLoopMainThinkingMode), CODEX_ROLE_THINKING_OPTIONS);
+  assert.equal(codexLoop.elements.codexLoopMainThinkingMode.value, "low");
+  assert.equal(codexLoop.elements.codexLoopSubtaskThinkingMode.value, "ultra");
+  assert.equal(codexLoop.elements.codexLoopMainThinkingMode.title, WEBVIEW_STRINGS.codexLoopMainThinkingModeAria);
+  assert.equal(codexLoop.state.thinkingMode, "low");
 
   const claude = buildThinkingSync("claude", "max");
   claude.syncThinkingOptions();
@@ -179,7 +213,7 @@ function styleTarget() {
   return { style: { display: "" }, disabled: false, value: "" };
 }
 
-test("Grok uses the single model select in every mode and posts the existing model messages", () => {
+test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select in coding", () => {
   const source = [
     "let hidden = false;",
     "function hideAddModelDialog() { hidden = true; }",
@@ -217,23 +251,160 @@ test("Grok uses the single model select in every mode and posts the existing mod
   assert.equal(runner.cliSupportsManagedModelSelection("grok"), true);
   assert.equal(runner.cliSupportsManagedModelSelection("codex"), true);
   assert.equal(runner.cliSupportsManagedModelSelection("claude"), false);
-  for (const mode of ["coding", "loop", "graph", "loop_plus"]) {
+  assert.equal(runner.isLoopRoleModelMode("grok", "coding"), false);
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(elements.modelSelect.style.display, "");
+  assert.equal(elements.modelSelect.disabled, false);
+  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+  assert.equal(elements.codexLoopMainThinkingMode.style.display, "none");
+
+  for (const mode of ["loop", "graph", "loop_plus"]) {
     state.interactiveMode = mode;
     runner.syncModelSelectorByInteractiveMode();
-    assert.equal(runner.isLoopRoleModelMode("grok", mode), false);
-    assert.equal(elements.modelSelect.style.display, "");
-    assert.equal(elements.modelSelect.disabled, false);
-    assert.equal(elements.codexLoopModelGroup.style.display, "none");
+    assert.equal(runner.isLoopRoleModelMode("grok", mode), true);
+    assert.equal(elements.modelSelect.style.display, "none");
+    assert.equal(elements.modelSelect.disabled, true);
+    assert.equal(elements.codexLoopModelGroup.style.display, "");
+    assert.equal(elements.codexLoopMainModelSelect.disabled, false);
+    assert.equal(elements.codexLoopSubtaskModelSelect.disabled, false);
+    assert.equal(elements.codexLoopMainThinkingMode.style.display, "");
+    assert.equal(elements.codexLoopSubtaskThinkingMode.style.display, "");
+    assert.equal(elements.codexLoopMainThinkingMode.disabled, false);
+    assert.equal(elements.codexLoopSubtaskThinkingMode.disabled, false);
   }
-  state.currentCli = "claude";
+  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
+  state.interactiveMode = "loop";
   runner.syncModelSelectorByInteractiveMode();
+  assert.equal(elements.loopExecutionModeSelect.style.display, "");
+
+  state.currentCli = "codex";
+  state.interactiveMode = "coding";
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(runner.isLoopRoleModelMode("codex", "coding"), false);
+  assert.equal(elements.modelSelect.style.display, "");
+  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+  state.interactiveMode = "graph";
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(runner.isLoopRoleModelMode("codex", "graph"), true);
+  assert.equal(elements.codexLoopModelGroup.style.display, "");
   assert.equal(elements.modelSelect.style.display, "none");
 
+  state.currentCli = "claude";
+  state.interactiveMode = "loop";
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(runner.isLoopRoleModelMode("claude", "loop"), false);
+  assert.equal(elements.modelSelect.style.display, "none");
+  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+
+  state.currentCli = "opencode";
+  state.interactiveMode = "graph";
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(runner.isLoopRoleModelMode("opencode", "graph"), false);
+  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+  assert.equal(elements.openCodeModelGroup.style.display, "");
+  assert.equal(elements.openCodePrimaryModelSelect.disabled, false);
+  assert.equal(elements.openCodeSmallModelSelect.disabled, false);
+
+  assert.equal(WEBVIEW_STRINGS.codexLoopMainModelLabel, "主模型");
+  assert.equal(WEBVIEW_STRINGS.codexLoopSubtaskModelLabel, "子模型");
+  assert.equal(WEBVIEW_STRINGS.grokLoopMainModelSelectAria, "Grok Loop/Graph 主模型选择");
+  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskModelSelectAria, "Grok Loop/Graph 子模型选择");
+  assert.equal(WEBVIEW_STRINGS.grokLoopMainThinkingModeAria, "Grok Loop/Graph 主模型思考模式");
+  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskThinkingModeAria, "Grok Loop/Graph 子模型思考模式");
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "selectCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "addCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "renameCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "deleteCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "moveCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /configId: getCurrentModelConfigId\(\)/);
+  assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /grokLoopMainModelSelectAria/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /function appendCodexThinkingOptions\(selectElement\) \{\s*appendThinkingOption\(selectElement, "low", "low"\);/);
+  assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /state\.currentCli === "grok"\) \{\s*appendThinkingOption\(selectElement, "off", "off"\);/);
+});
+
+test("Grok role thinking changes keep off and role model aria follows the CLI", () => {
+  const thinkingSource = [
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeThinkingModeSelection"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "handleCodexLoopRoleThinkingChange"),
+    "return handleCodexLoopRoleThinkingChange;",
+  ].join("\n");
+  const runThinkingChange = (cli: string, role: "main" | "subtask", value: string) => {
+    const state = {
+      currentCli: cli,
+      selectedLoopThinkingByCli: {} as Record<string, { main: string; subtask: string }>,
+    };
+    const messages: unknown[] = [];
+    const handle = new Function(
+      "state",
+      "vscode",
+      thinkingSource,
+    )(state, {
+      postMessage(message: unknown) {
+        messages.push(message);
+      },
+    }) as (nextRole: "main" | "subtask", rawValue: string) => void;
+    handle(role, value);
+    return { state, messages };
+  };
+  const grokOff = runThinkingChange("grok", "main", " off ");
+  assert.equal(grokOff.state.selectedLoopThinkingByCli.grok.main, "off");
+  assert.deepEqual(grokOff.messages, [{
+    type: "updateSetting",
+    key: "selectedLoopThinkingMode.grok.main",
+    value: "off",
+  }]);
+  const codexOff = runThinkingChange("codex", "subtask", "off");
+  assert.equal(codexOff.state.selectedLoopThinkingByCli.codex.subtask, "low");
+  assert.deepEqual(codexOff.messages, [{
+    type: "updateSetting",
+    key: "selectedLoopThinkingMode.codex.subtask",
+    value: "low",
+  }]);
+
+  const modelSource = [
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getLoopRoleModelsForCli"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getSelectedLoopRoleModelForCli"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "updateCodexLoopRoleModelSelect"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "updateCodexLoopModelSelectOptions"),
+    "return updateCodexLoopModelSelectOptions;",
+  ].join("\n");
+  const state = {
+    currentCli: "grok",
+    loopModelsByCli: {
+      grok: { main: ["grok-main"], subtask: ["grok-sub"] },
+      codex: { main: ["gpt-main"], subtask: ["gpt-sub"] },
+    },
+    selectedLoopModelsByCli: {
+      grok: { main: "grok-main", subtask: "grok-sub" },
+      codex: { main: "gpt-main", subtask: "gpt-sub" },
+    },
+    modelsByCli: {},
+  };
+  const elements = {
+    codexLoopMainModelSelect: createThinkingSelect(),
+    codexLoopSubtaskModelSelect: createThinkingSelect(),
+  };
+  const document = {
+    createElement(tagName: string): ThinkingOption {
+      assert.equal(tagName, "option");
+      return { value: "", textContent: "" };
+    },
+  };
+  const translations = WEBVIEW_STRINGS as Record<string, string>;
+  const update = new Function(
+    "state",
+    "elements",
+    "document",
+    "t",
+    `${modelSource}; return updateCodexLoopModelSelectOptions;`,
+  )(state, elements, document, (key: string) => translations[key] || key) as () => void;
+  update();
+  assert.equal(elements.codexLoopMainModelSelect.title, WEBVIEW_STRINGS.grokLoopMainModelSelectAria);
+  assert.equal(elements.codexLoopSubtaskModelSelect.title, WEBVIEW_STRINGS.grokLoopSubtaskModelSelectAria);
+  assert.equal(elements.codexLoopMainModelSelect.value, "grok-main");
+  state.currentCli = "codex";
+  update();
+  assert.equal(elements.codexLoopMainModelSelect.title, WEBVIEW_STRINGS.codexLoopMainModelSelectAria);
+  assert.equal(elements.codexLoopSubtaskModelSelect.title, WEBVIEW_STRINGS.codexLoopSubtaskModelSelectAria);
+  assert.equal(elements.codexLoopMainModelSelect.value, "gpt-main");
 });

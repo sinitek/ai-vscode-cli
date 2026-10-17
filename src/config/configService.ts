@@ -13,6 +13,7 @@ import {
   OpenCodeSkillItem,
 } from "./types";
 import { listCodexSkills, mergeCodexSkillsConfig } from "./codexSkills";
+import { listGrokOfficialSkills, listGrokSkills, mergeGrokSkillsConfig } from "./grokSkills";
 import { listClaudeSkills, mergeClaudeSkillsConfig } from "./claudeSkills";
 import { listOpenCodeSkills, mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { t } from "../i18n";
@@ -527,6 +528,7 @@ function normalizeGrokConfigFields(config: ConfigItem): void {
   delete config.authContent;
   delete config.mcpContent;
   delete config.envContent;
+  config.grokSkills = config.grokSkills ?? [];
 }
 
 function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
@@ -843,6 +845,7 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
       ...base,
       content,
       configContent: content,
+      grokSkills: source.platform === "grok" ? [...(source.grokSkills ?? [])] : [],
     };
   }
   return {
@@ -1007,6 +1010,7 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
       const config = await readGrokConfigText();
       defaultConfig.content = config;
       defaultConfig.configContent = config;
+      defaultConfig.grokSkills = [];
     } else {
       const { config } = await readOpenCodeConfig();
       defaultConfig.content = config;
@@ -1023,6 +1027,7 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
     } else if (normalizedPlatform === "grok") {
       defaultConfig.content = "";
       defaultConfig.configContent = "";
+      defaultConfig.grokSkills = [];
     } else {
       defaultConfig.content = "";
       defaultConfig.configContent = "";
@@ -1084,8 +1089,19 @@ export async function applyConfig(platform: LegacyConfigPlatformInput, payload: 
     if (!nextContent.trim()) {
       throw new Error(t("grok.invalidConfig"));
     }
+    let contentToCommit = nextContent;
+    if (payload.grokSkills !== undefined) {
+      const merged = mergeGrokSkillsConfig(nextContent, payload.grokSkills);
+      if (!merged.ok) {
+        throw new Error(merged.error);
+      }
+      contentToCommit = merged.content;
+      if (!contentToCommit.trim()) {
+        throw new Error(t("grok.invalidConfig"));
+      }
+    }
     const current = await readGrokConfigText();
-    const committed = commitGrokText(current, nextContent);
+    const committed = commitGrokText(current, contentToCommit);
     if (!committed.ok) {
       throw new Error(committed.error || t("grok.invalidConfig"));
     }
@@ -1140,4 +1156,12 @@ export async function getCodexSkillsList(workspaceRoots?: string[]): Promise<Cod
 
 export async function getOpenCodeSkillsList(workspaceRoots?: string[]): Promise<OpenCodeSkillItem[]> {
   return listOpenCodeSkills(workspaceRoots);
+}
+
+export async function getGrokSkillsList(workspaceRoots?: string[]) {
+  return listGrokSkills(workspaceRoots);
+}
+
+export async function getGrokOfficialSkills() {
+  return listGrokOfficialSkills();
 }

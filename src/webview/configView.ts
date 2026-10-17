@@ -413,20 +413,28 @@ export function getConfigViewHtml(
           getClaudeSkillsList: () => requestConfig("getClaudeSkillsList", {}),
           getCodexSkillsList: () => requestConfig("getCodexSkillsList", {}),
           getOpenCodeSkillsList: () => requestConfig("getOpenCodeSkillsList", {}),
+          getGrokSkillsList: () => requestConfig("getGrokSkillsList", {}),
+          getGrokOfficialSkills: () => requestConfig("getGrokOfficialSkills", {}),
           getOfficialSkillsCatalog: (platform) =>
             platform === "opencode" || platform === "grok" ? Promise.resolve([]) : requestConfig("getOfficialSkillsCatalog", { platform }),
           installOfficialSkill: (platform, skillId) =>
-            platform === "opencode" || platform === "grok"
-              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-              : requestConfig("installOfficialSkill", { platform, skillId }),
+            platform === "grok"
+              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
+              : platform === "opencode"
+                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+                : requestConfig("installOfficialSkill", { platform, skillId }),
           updateOfficialSkill: (platform, skillId) =>
-            platform === "opencode" || platform === "grok"
-              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-              : requestConfig("updateOfficialSkill", { platform, skillId }),
+            platform === "grok"
+              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
+              : platform === "opencode"
+                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+                : requestConfig("updateOfficialSkill", { platform, skillId }),
           uninstallOfficialSkill: (platform, skillId) =>
-            platform === "opencode" || platform === "grok"
-              ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
-              : requestConfig("uninstallOfficialSkill", { platform, skillId }),
+            platform === "grok"
+              ? Promise.reject(new Error("Grok bundled skills由 Grok CLI管理、不能从本目录安装"))
+              : platform === "opencode"
+                ? Promise.reject(new Error("OpenCode built-in official skills are not configured."))
+                : requestConfig("uninstallOfficialSkill", { platform, skillId }),
           getMcpInstalledServerIds: (platform) => requestConfig("getMcpInstalledServerIds", { platform }),
           getCodexMcpServerIds: () => requestConfig("getCodexMcpServerIds", {}),
           getCodexMcpHealth: () => requestConfig("getCodexMcpHealth", {}),

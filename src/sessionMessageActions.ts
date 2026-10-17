@@ -88,7 +88,7 @@ export async function handleUpdateSettingMessage(
     const [, cliValue, roleValue] = message.key.split(".");
     const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
     if (
-      cli === "codex"
+      (cli === "codex" || cli === "grok")
       && (roleValue === "main" || roleValue === "subtask")
     ) {
       const configId = deps.getActiveConfigIdForCli(cli);
@@ -222,7 +222,7 @@ function normalizePromptThinkingMode(
 function supportsMainSubtaskPromptModels(
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
 ): boolean {
-  return targetCli === "codex" || targetCli === "opencode";
+  return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok";
 }
 
 function resolvePromptRoleModels(
@@ -266,7 +266,7 @@ function resolvePromptRoleThinkingModes(
   options: { includeLoopModels: boolean },
   promptModels: { model?: string; loopMainModel?: string; loopSubtaskModel?: string }
 ): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode } {
-  if (targetCli !== "codex" || !options.includeLoopModels) {
+  if ((targetCli !== "codex" && targetCli !== "grok") || !options.includeLoopModels) {
     return {};
   }
   const mainModel = promptModels.loopMainModel ?? promptModels.model ?? deps.getSelectedCliModel(targetCli, configId);

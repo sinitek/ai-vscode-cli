@@ -2865,6 +2865,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
     rulesSaveCodex: { checked: true },
     rulesSaveClaude: { checked: false },
     rulesSaveOpenCode: { checked: true },
+    rulesSaveGrok: { checked: false },
   };
   const settingsHelpers = new Function(
     "state",

@@ -401,6 +401,10 @@ function supportsConfigScopedCliModel(cli: CliName): boolean {
   return cli === "codex" || cli === "grok";
 }
 
+function supportsLoopRoleModelStorage(cli: CliName): boolean {
+  return cli === "codex" || cli === "grok";
+}
+
 export function getSelectedCliModelFromStore(
   store: CliModelStore,
   cli: CliName,
@@ -590,7 +594,7 @@ export function getCliModelLoopRoleFlagsFromStore(
   configId: string | null
 ): { main: boolean; subtask: boolean } {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || cli !== "codex") {
+  if (!configId || !normalizedModel || !supportsLoopRoleModelStorage(cli)) {
     return { main: true, subtask: true };
   }
   const rolesByModel = store?.loopRolesByConfigId?.[configId];
@@ -628,7 +632,7 @@ export function getLoopModelOptionsForCliFromStore(
   role: LoopTaskRoleForModelSelection,
   configId: string | null
 ): string[] {
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsLoopRoleModelStorage(cli)) {
     return [];
   }
   const options = getModelOptionsForCliFromStore(store, cli, configId);
@@ -647,7 +651,7 @@ export function getSelectedLoopCliModelFromStore(
   if (cli === "opencode") {
     return getOpenCodeRoleModelFromStore(store, configId, role);
   }
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsLoopRoleModelStorage(cli)) {
     return null;
   }
   const optionsForRole = getLoopModelOptionsForCliFromStore(store, cli, role, configId);
@@ -680,7 +684,7 @@ export function getSelectedLoopThinkingModeFromStore(
   configId: string | null
 ): ThinkingMode | null {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || cli !== "codex" || !normalizedModel) {
+  if (!configId || !supportsLoopRoleModelStorage(cli) || !normalizedModel) {
     return null;
   }
   const roleThinking = store?.loopThinkingByConfigId?.[configId]?.[role];
@@ -701,7 +705,7 @@ export function setSelectedLoopThinkingModeInStore(
   configId: string | null
 ): CliModelStore {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || cli !== "codex" || !normalizedModel) {
+  if (!configId || !supportsLoopRoleModelStorage(cli) || !normalizedModel) {
     return ensureCliModelStore(store);
   }
   const nextStore = ensureCliModelStore(store);
@@ -759,7 +763,7 @@ export function selectCliLoopModelInStore(
   if (cli === "opencode") {
     return setOpenCodeRoleModelInStore(store, configId, role, model);
   }
-  if (!configId || cli !== "codex") {
+  if (!configId || !supportsLoopRoleModelStorage(cli)) {
     return ensureCliModelStore(store);
   }
   const nextStore = ensureCliModelStore(store);
@@ -794,7 +798,7 @@ export function setCliModelLoopRoleInStore(
   configId: string | null
 ): { store: CliModelStore; updated: boolean } {
   const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !normalizedModel || cli !== "codex") {
+  if (!configId || !normalizedModel || !supportsLoopRoleModelStorage(cli)) {
     return { store: ensureCliModelStore(store), updated: false };
   }
   const managedModels = getManagedModelOptionsForCliFromStore(store, cli, configId);
@@ -884,7 +888,7 @@ export function renameCliModelInStore(
     }
   }
 
-  if (cli === "codex") {
+  if (supportsLoopRoleModelStorage(cli)) {
     const rolesByModel = nextStore.loopRolesByConfigId[configId];
     if (rolesByModel) {
       const matchedRoleKey = Object.keys(rolesByModel).find((key) => key.toLowerCase() === previousKey);
@@ -959,7 +963,7 @@ export function deleteCliModelFromStore(
     delete nextStore.selectedByConfigId[configId];
   }
 
-  if (cli !== "codex") {
+  if (!supportsLoopRoleModelStorage(cli)) {
     return ensureCliModelStore(nextStore);
   }
 
@@ -1117,7 +1121,7 @@ export function buildModelState(
     selectedByCli[cli] = getSelectedCliModelFromStore(store, cli, activeConfigId);
     optionsByCli[cli] = getModelOptionsForCliFromStore(store, cli, activeConfigId);
     managedByCli[cli] = managedModels;
-    if (cli === "codex") {
+    if (supportsLoopRoleModelStorage(cli)) {
       const loopMainModel = getSelectedLoopCliModelFromStore(store, cli, "main", activeConfigId);
       const loopSubtaskModel = getSelectedLoopCliModelFromStore(store, cli, "subtask", activeConfigId);
       const loopMainThinkingMode = getSelectedLoopThinkingModeFromStore(store, cli, "main", loopMainModel, activeConfigId);

@@ -159,9 +159,10 @@ function resolvePromptRunThinkingModeForRole(
   const explicitThinkingMode = role === "subtask"
     ? input.loopSubtaskThinkingMode
     : input.loopMainThinkingMode;
-  const roleThinkingMode = cli === "codex" && deps.isThinkingMode(explicitThinkingMode)
+  const usesLoopRoleThinking = cli === "codex" || cli === "grok";
+  const roleThinkingMode = usesLoopRoleThinking && deps.isThinkingMode(explicitThinkingMode)
     ? deps.normalizeThinkingModeForCli(cli, explicitThinkingMode)
-    : cli === "codex"
+    : usesLoopRoleThinking
       ? deps.getSelectedLoopThinkingMode(cli, role, roleModel) ?? undefined
       : undefined;
   const resolvedThinkingMode = roleThinkingMode
@@ -299,7 +300,7 @@ function resolveGraphResumePromptModels(
   cli: CliName,
   configId: string | null,
 ): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
-  if (cli !== "codex" && cli !== "opencode") {
+  if (cli !== "codex" && cli !== "opencode" && cli !== "grok") {
     const selectedModel = deps.getSelectedCliModel(cli, configId) ?? undefined;
     return selectedModel ? { model: selectedModel } : {};
   }

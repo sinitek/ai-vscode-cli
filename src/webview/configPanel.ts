@@ -285,6 +285,16 @@ export class ConfigManagerPanel {
           response.data = await configService.getOpenCodeSkillsList(workspaceRoots);
           break;
         }
+        case "getGrokSkillsList": {
+          const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
+            .map((folder) => folder.uri.fsPath)
+            .filter((item) => typeof item === "string" && item.trim().length > 0);
+          response.data = await configService.getGrokSkillsList(workspaceRoots);
+          break;
+        }
+        case "getGrokOfficialSkills":
+          response.data = await configService.getGrokOfficialSkills();
+          break;
         case "getOfficialSkillsCatalog":
           response.data = await configService.getOfficialSkillsCatalog(message.platform);
           break;

@@ -203,7 +203,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
-        return cli === "codex";
+        return cli === "codex" || cli === "grok";
       }
 
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
@@ -266,8 +266,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
 
         selectElement.value = getSelectedLoopRoleModelForCli(state.currentCli, role);
         selectElement.title = role === "subtask"
-          ? t("codexLoopSubtaskModelSelectAria")
-          : t("codexLoopMainModelSelectAria");
+          ? t(state.currentCli === "grok" ? "grokLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria")
+          : t(state.currentCli === "grok" ? "grokLoopMainModelSelectAria" : "codexLoopMainModelSelectAria");
+        if (typeof selectElement.setAttribute === "function") {
+          selectElement.setAttribute("aria-label", selectElement.title);
+        }
       }
 
       function updateCodexLoopModelSelectOptions() {

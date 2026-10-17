@@ -1,7 +1,11 @@
 // Assistant, trace, markdown, and diff rendering helpers.
+import { joinGrokThinkingSoftBreaks } from "../../interactive/grokThinkingText";
+
 export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return "";
       }
+
+      const joinGrokThinkingSoftBreaks = ${joinGrokThinkingSoftBreaks.toString()};
 
       function getMessageCollapseThreshold() {
         return 50;
@@ -463,6 +467,9 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         let content = String(message && message.content ? message.content : "");
         if (!message || message.role !== "assistant") {
           return content;
+        }
+        if (message.kind === "thinking" && state.currentCli === "grok") {
+          content = joinGrokThinkingSoftBreaks(content);
         }
         const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
         if (marker) {

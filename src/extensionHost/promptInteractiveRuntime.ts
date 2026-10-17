@@ -1482,7 +1482,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               if (!isCurrentRunActive()) {
                 return;
               }
-              appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal");
+              if (kind === "thinking") {
+                appendAssistantChunkForTab(content, "thinking");
+                appendTraceLog(content);
+                return;
+              }
+              appendTraceMessageForTab(content, "normal");
               appendTraceLog(content);
             },
             onEvent: (event) => {

@@ -22,6 +22,7 @@ export type ConfigItem = {
   codexSkills?: CodexSkillToggle[];
   claudeSkills?: ClaudeSkillToggle[];
   openCodeSkills?: OpenCodeSkillToggle[];
+  grokSkills?: GrokSkillToggle[];
   createdAt: number;
   updatedAt: number;
 };
@@ -44,6 +45,12 @@ export type CodexSkillItem = {
 
 export type CodexSkillToggle = CodexSkillItem & {
   enabled: boolean;
+};
+
+export type GrokSkillSource = "project" | "user" | "bundled";
+
+export type GrokSkillToggle = CodexSkillToggle & {
+  source?: GrokSkillSource;
 };
 
 export type OpenCodeSkillItem = {
@@ -167,6 +174,7 @@ export type ApplyPayload = {
   codexSkills?: CodexSkillToggle[];
   claudeSkills?: ClaudeSkillToggle[];
   openCodeSkills?: OpenCodeSkillToggle[];
+  grokSkills?: GrokSkillToggle[];
 };
 
 export type CopyConfigPayload = {

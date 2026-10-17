@@ -985,6 +985,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.rulesSaveOpenCode.checked) {
           targets.push("opencode");
         }
+        if (elements.rulesSaveGrok.checked) {
+          targets.push("grok");
+        }
         return targets;
       }
 
@@ -995,9 +998,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
               { value: "codex", label: "codex" },
               { value: "claude", label: "claude" },
               { value: "opencode", label: "opencode" },
+              { value: "grok", label: "grok" },
             ]
           : [
-              { value: "codex", label: "codex/opencode" },
+              { value: "codex", label: "codex/opencode/grok" },
               { value: "claude", label: "claude" },
             ];
         elements.rulesLoadCli.innerHTML = "";
@@ -1013,13 +1017,19 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function syncRulesSaveOptions(isGlobal) {
         if (elements.rulesSaveCodexLabel) {
-          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : "codex/opencode";
+          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : "codex/opencode/grok";
         }
         if (elements.rulesSaveOpenCodeOption) {
           elements.rulesSaveOpenCodeOption.style.display = isGlobal ? "" : "none";
         }
         if (!isGlobal && elements.rulesSaveOpenCode) {
           elements.rulesSaveOpenCode.checked = false;
+        }
+        if (elements.rulesSaveGrokOption) {
+          elements.rulesSaveGrokOption.style.display = isGlobal ? "" : "none";
+        }
+        if (!isGlobal && elements.rulesSaveGrok) {
+          elements.rulesSaveGrok.checked = false;
         }
       }
 

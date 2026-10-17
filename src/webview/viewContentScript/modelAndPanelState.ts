@@ -52,17 +52,27 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       function normalizeThinkingModeSelection(value) {
         const normalized = typeof value === "string" ? value.trim() : "";
         if (normalized === "off") {
-          return "low";
+          return state.currentCli === "grok" ? "off" : "low";
         }
         return ["low", "medium", "high", "xhigh", "max", "ultra"].includes(normalized)
           ? normalized
           : "";
       }
 
-      function normalizeLoopRoleThinkingPayload(payload) {
+      function normalizeLoopRoleThinkingPayload(payload, cli) {
+        const targetCli = typeof cli === "string" && cli ? cli : state.currentCli;
+        const normalizeRole = (value) => {
+          const normalized = typeof value === "string" ? value.trim() : "";
+          if (normalized === "off") {
+            return targetCli === "grok" ? "off" : "low";
+          }
+          return ["low", "medium", "high", "xhigh", "max", "ultra"].includes(normalized)
+            ? normalized
+            : "";
+        };
         return {
-          main: normalizeThinkingModeSelection(payload && payload.main),
-          subtask: normalizeThinkingModeSelection(payload && payload.subtask),
+          main: normalizeRole(payload && payload.main),
+          subtask: normalizeRole(payload && payload.subtask),
         };
       }
 
@@ -263,8 +273,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli]);
           const incomingLoopSelection = normalizeLoopRoleSelectionPayload(modelState.selectedLoopByCli && modelState.selectedLoopByCli[cli]);
           const previousLoopSelection = normalizeLoopRoleSelectionPayload(state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[cli]);
-          const incomingLoopThinking = normalizeLoopRoleThinkingPayload(modelState.selectedLoopThinkingByCli && modelState.selectedLoopThinkingByCli[cli]);
-          const previousLoopThinking = normalizeLoopRoleThinkingPayload(state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[cli]);
+          const incomingLoopThinking = normalizeLoopRoleThinkingPayload(modelState.selectedLoopThinkingByCli && modelState.selectedLoopThinkingByCli[cli], cli);
+          const previousLoopThinking = normalizeLoopRoleThinkingPayload(state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[cli], cli);
           const preservePrevious = shouldPreserveCurrentCliModelsOnEmptySnapshot(
             cli,
             incomingModels,
@@ -624,11 +634,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         selectElement.innerHTML = "";
+        if (state.currentCli === "grok") {
+          appendThinkingOption(selectElement, "off", "off");
+        }
         appendCodexThinkingOptions(selectElement);
         selectElement.value = getVisibleLoopRoleThinkingModeForCli(state.currentCli, role);
         selectElement.title = role === "subtask"
-          ? t("codexLoopSubtaskThinkingModeAria")
-          : t("codexLoopMainThinkingModeAria");
+          ? t(state.currentCli === "grok" ? "grokLoopSubtaskThinkingModeAria" : "codexLoopSubtaskThinkingModeAria")
+          : t(state.currentCli === "grok" ? "grokLoopMainThinkingModeAria" : "codexLoopMainThinkingModeAria");
+        if (typeof selectElement.setAttribute === "function") {
+          selectElement.setAttribute("aria-label", selectElement.title);
+        }
       }
 
       function updateCodexLoopThinkingSelectOptions() {

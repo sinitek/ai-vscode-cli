@@ -378,6 +378,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulesSaveClaude: document.getElementById("rulesSaveClaude"),
         rulesSaveOpenCodeOption: document.getElementById("rulesSaveOpenCodeOption"),
         rulesSaveOpenCode: document.getElementById("rulesSaveOpenCode"),
+        rulesSaveGrokOption: document.getElementById("rulesSaveGrokOption"),
+        rulesSaveGrok: document.getElementById("rulesSaveGrok"),
         saveRules: document.getElementById("saveRules"),
         rulesHint: document.getElementById("rulesHint"),
         rulesPath: document.getElementById("rulesPath"),

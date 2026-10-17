@@ -338,6 +338,30 @@
 
 
 
+## Grok 思考片段不要按行补换行
+
+- 状态：已规避
+- 首次发现：2026-10-17
+- 适用范围：Grok Build ACP、`agent_thought_chunk`、thinking 气泡
+
+### 现象
+- 思考气泡每二十多个字符就换行，例如会话存档里的 `Closeout is permitted.\n The acceptance batch\n is empty, so reviewEventId`。
+- 助手正文没有这个问题。
+
+### 根因
+- `agent_thought_chunk` 是句子片段，后一段常以空格开头。
+- 旧路径把每个思考 trace 都 `appendAssistantChunk(content + "\\n")`。
+- 气泡 Markdown 使用 `breaks: true`，单个换行会渲染成 `<br>`。
+
+### 规避
+- Grok 思考片段直接拼进 thinking 气泡，不追加换行。
+- 展示已保存内容时，`joinGrokThinkingSoftBreaks` 合并软换行，保留空行段落和列表行。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokThinkingText.test.js`
+
+
 ## Grok 要走 yolo，不能把终端能力声明给宿主
 
 - 状态：已规避
