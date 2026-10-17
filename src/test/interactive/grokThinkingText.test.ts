@@ -27,3 +27,16 @@ test("keeps paragraph breaks and list lines in Grok thinking", () => {
     "First paragraph.\n\n- keep this\n- and this\n\nNext paragraph continues here.",
   );
 });
+
+test("serialized Grok thinking helper runs without module scope", () => {
+  const serializedJoin = new Function(
+    `return (${joinGrokThinkingSoftBreaks.toString()});`,
+  )() as typeof joinGrokThinkingSoftBreaks;
+  const stored = "First paragraph\r\n continues here.\r\n\r\n# Heading\n- first\n* second\n+ third\n1. fourth\n## Next heading";
+
+  assert.equal(
+    serializedJoin(stored),
+    "First paragraph continues here.\n\n# Heading\n- first\n* second\n+ third\n1. fourth\n## Next heading",
+  );
+  assert.equal(serializedJoin(""), "");
+});

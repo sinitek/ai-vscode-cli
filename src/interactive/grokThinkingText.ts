@@ -1,6 +1,5 @@
-const LIST_OR_HEADING_LINE = /^(?:[-*+]|\d+\.)\s|^#{1,6}\s/;
-
 export function joinGrokThinkingSoftBreaks(content: string): string {
+  const LIST_OR_HEADING_LINE = /^(?:[-*+]|\d+\.)\s|^#{1,6}\s/;
   const normalized = String(content ?? "").replace(/\r\n/g, "\n");
   const paragraphs = normalized.split(/\n{2,}/);
   const joined = paragraphs.map((paragraph) => {

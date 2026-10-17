@@ -946,6 +946,39 @@ for (const cli of ["codex", "claude", "opencode"]) {
   });
 }
 
+test("renders multiline Grok thinking in the generated webview runtime without module globals", () => {
+  const { api, document, posted, window } = createRuntimeHarness();
+  const stored = "First paragraph\n continues here.\n\n# Heading\n- first\n- second";
+  const thinkingMessage = { id: "grok-thinking", role: "assistant", kind: "thinking", content: stored };
+  api.state.currentCli = "grok";
+  api.state.onlyShowFinalResults = false;
+
+  window.dispatchMessage({ type: "setMessages", messages: [thinkingMessage] });
+
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  assert.equal(document.getElementById("messages").children.length, 1);
+  assert.equal(
+    api.getAssistantMessageContentForDisplay(thinkingMessage),
+    "First paragraph continues here.\n\n# Heading\n- first\n- second",
+  );
+  assert.equal(api.state.messages[0].content, stored);
+  assert.equal(api.getAssistantMessageContentForDisplay({ ...thinkingMessage, kind: "normal" }), stored);
+  assert.equal(api.getAssistantMessageContentForDisplay({ ...thinkingMessage, role: "user" }), stored);
+
+  window.dispatchMessage({
+    type: "appendMessage",
+    message: { id: "grok-reply", role: "assistant", content: "<FINAL> Completed." },
+  });
+
+  assert.equal(document.getElementById("messages").children.length, 2);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+
+  for (const cli of ["codex", "claude", "opencode"]) {
+    api.state.currentCli = cli;
+    assert.equal(api.getAssistantMessageContentForDisplay(thinkingMessage), stored);
+  }
+});
+
 test("boots the runtime and dispatches state, message, stream, history, settings, and queue events", () => {
   const harness = createRuntimeHarness();
   const { api, document, posted, window } = harness;

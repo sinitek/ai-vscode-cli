@@ -406,10 +406,13 @@
 ### 规避
 - Grok 思考片段直接拼进 thinking 气泡，不追加换行。
 - 展示已保存内容时，`joinGrokThinkingSoftBreaks` 合并软换行，保留空行段落和列表行。
+- 此函数通过 `toString()` 注入 Webview，依赖必须留在函数内部；模块级正则常量不会随函数注入，会触发 `LIST_OR_HEADING_LINE is not defined` 并中断整页 `renderMessages`。回归测试需执行序列化函数和生成后的 Webview 运行时，不能只调用模块导出函数。
+- 此次作用域修复仅恢复既有展示契约，不新增功能、权限或流程，因此无需修改 `FEATURE_INVENTORY.md` 或 ontology。
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/interactive/grokThinkingText.test.js`
+- `node --test dist/test/interactive/grokThinkingText.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`
+- 本机 Chromium 冒烟：生成完整 Webview HTML，加载多行 Grok thinking、追加助手消息并两次切换“仅看结果”；确认软换行合并、标题与列表保留，且没有浏览器错误或 `webviewError`。
 
 
 ## Grok 要走 yolo，不能把终端能力声明给宿主
