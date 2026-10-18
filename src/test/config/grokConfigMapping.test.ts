@@ -50,7 +50,7 @@ trust_level = "trusted"
   assert.equal(models.default, GROK_KEDAYA_PROFILE.modelId);
   assert.equal(models.default_reasoning_effort, "xhigh");
   assert.equal(model.model, GROK_KEDAYA_PROFILE.modelId);
-  assert.equal(model.name, GROK_KEDAYA_PROFILE.modelId);
+  assert.equal(model.name, undefined);
   assert.equal(model.base_url, GROK_KEDAYA_PROFILE.baseUrl);
   assert.equal(model.api_backend, "responses");
   assert.equal(model.context_window, 500000);
@@ -69,7 +69,6 @@ trust_level = "trusted"
     "models.default",
     "models.default_reasoning_effort",
     "model.model",
-    "model.name",
     "model.base_url",
     "model.api_key",
     "model.api_backend",
@@ -80,6 +79,39 @@ trust_level = "trusted"
   ]);
   assert.equal(GROK_VISUAL_FIELDS.some((field) => GROK_VISUAL_BLOCKED_KEYS.includes(field.id as never)), false);
   assert.equal(GROK_VISUAL_FIELDS.every((field) => field.label.zh && field.label.en && field.tooltip.zh && field.tooltip.en), true);
+});
+
+test("Grok model names are optional and hidden legacy names survive visual edits and profile merges", () => {
+  const parsed = parseGrokToml(`
+[models]
+default = "gpt-6.1-sol"
+[model."gpt-6.1-sol"]
+model = "gpt-6.1-sol"
+api_backend = "chat_completions"
+[model."grok-4.7-kedaya"]
+model = "grok-4.7-kedaya"
+name = "  Legacy name  "
+`);
+  assert.ok(parsed.ok);
+  if (!parsed.ok) return;
+  assert.equal(validateGrokDocument(parsed.value), null);
+  const edited = applyGrokVisualPatch(parsed.value, { model: { id: "gpt-6.1-sol", baseUrl: "https://api.example.com/v1" } });
+  assert.ok(edited.ok);
+  if (!edited.ok) return;
+  const serialized = serializeGrokDocument(edited.document);
+  assert.ok(serialized.ok);
+  if (!serialized.ok) return;
+  const merged = mergeGrokKedayaProfile(serialized.content);
+  assert.ok(merged.ok);
+  if (!merged.ok) return;
+  const result = parseGrokToml(merged.content);
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  const models = result.value.model as Record<string, Record<string, unknown>>;
+  assert.equal(models["gpt-6.1-sol"].name, undefined);
+  assert.equal(models["gpt-6.1-sol"].base_url, "https://api.example.com/v1");
+  assert.equal(models["grok-4.7-kedaya"].name, "  Legacy name  ");
+  assert.equal(GROK_VISUAL_FIELDS.some((field) => field.id === "model.name"), false);
 });
 
 test("treats empty Grok config input as an empty document", () => {
@@ -213,4 +245,14 @@ api_key = "present"
     return;
   }
   assert.equal(grokActiveModelHasOwnCredential(keyed.value, {}), true);
+  keyed.value.model = {
+    ...(keyed.value.model as Record<string, never>),
+    "gpt-6.1-sol": { model: "gpt-6.1-sol", api_key: "" },
+    authenticated: { model: "gpt-6.1-sol", env_key: "SOL_TEST_KEY" },
+  };
+  assert.equal(grokActiveModelHasOwnCredential(keyed.value, {}, "gpt-6.1-sol"), false);
+  assert.equal(grokActiveModelHasOwnCredential(keyed.value, {}, "missing"), false);
+  assert.equal(grokActiveModelHasOwnCredential(keyed.value, { SOL_TEST_KEY: "present" }, "authenticated"), true);
+  delete keyed.value.models;
+  assert.equal(grokActiveModelHasOwnCredential(keyed.value, { SOL_TEST_KEY: "present" }, "authenticated"), true);
 });

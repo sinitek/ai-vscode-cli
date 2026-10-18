@@ -1,11 +1,13 @@
 import { mapThinkingModeToGrokEffort, type GrokReasoningEffort } from "../cli/types";
 import { isLocalSessionId } from "./sessionHistoryRepair";
+import { t } from "../i18n";
 
 export const GROK_PROTOCOL_VERSION = 1;
 export const GROK_CLIENT_INFO_VERSION = "0.24.5";
 export const GROK_API_KEY_AUTH_METHOD = "xai.api_key";
 export const GROK_CACHED_TOKEN_AUTH_METHOD = "cached_token";
 export const GROK_ACCOUNT_AUTH_METHOD = "grok.com";
+export const GROK_RESPONSES_STREAM_INCOMPATIBLE = "GROK_RESPONSES_STREAM_INCOMPATIBLE";
 
 export type GrokJsonRpcMessage = {
   jsonrpc?: "2.0";
@@ -19,6 +21,33 @@ export type GrokJsonRpcMessage = {
 export type GrokLineParseResult =
   | { ok: true; message: GrokJsonRpcMessage }
   | { ok: false; reason: "empty" | "invalid"; error: string };
+
+export function buildGrokRequestError(
+  error: NonNullable<GrokJsonRpcMessage["error"]>,
+  streamFailure: string | null = null,
+  model: string | null | undefined = null,
+): Error {
+  const data = typeof error.data === "string" ? error.data : "";
+  const detail = [error.message, data, streamFailure].filter(Boolean).join("\n");
+  const unsupportedEvent = /unknown variant [`'"](response\.[a-zA-Z0-9_.]+)[`'"]/.exec(detail)?.[1];
+  if (unsupportedEvent) {
+    return Object.assign(new Error(t("grok.responsesStreamIncompatible", {
+      model: model || "models.default",
+      event: unsupportedEvent,
+    })), { code: GROK_RESPONSES_STREAM_INCOMPATIBLE });
+  }
+  return new Error(error.message || t("grok.requestFailed"));
+}
+
+export function readGrokStreamFailure(message: GrokJsonRpcMessage): string | null {
+  if (message.method !== "_x.ai/session/update" && message.method !== "session/update") {
+    return null;
+  }
+  const update = asRecord(asRecord(message.params)?.update);
+  return update?.sessionUpdate === "retry_state" && update.type === "failed" && typeof update.message === "string"
+    ? update.message
+    : null;
+}
 
 export type GrokAuthSelection =
   | { ok: true; methodId: string }

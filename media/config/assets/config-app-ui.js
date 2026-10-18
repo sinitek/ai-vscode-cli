@@ -3597,7 +3597,6 @@ const GROK_VISUAL_FIELD_IDS = Object.freeze([
   "models.default",
   "models.default_reasoning_effort",
   "model.model",
-  "model.name",
   "model.base_url",
   "model.api_key",
   "model.api_backend",
@@ -3667,7 +3666,6 @@ const grokVisualReadModelFields = (source, modelId) => {
   const model = grokVisualIsTable(table[modelId]) ? table[modelId] : {};
   return {
     model: grokVisualReadString(model.model),
-    name: grokVisualReadString(model.name),
     baseUrl: grokVisualReadString(model.base_url),
     apiKey: grokVisualReadString(model.api_key),
     apiBackend: grokVisualReadString(model.api_backend),
@@ -3807,7 +3805,6 @@ const grokVisualUpdateState = (state, patch) => {
     : state.selectedModelId || "";
   const modelPatchKeys = [
     "model",
-    "name",
     "baseUrl",
     "apiKey",
     "apiBackend",
@@ -3820,7 +3817,7 @@ const grokVisualUpdateState = (state, patch) => {
   if (!selectedModelId && editsModel) {
     selectedModelId = grokVisualReadString(models.default) || grokVisualReadString(patch.model);
   }
-  if (editsModel || Object.prototype.hasOwnProperty.call(patch, "selectedModelId")) {
+  if (editsModel) {
     const modelTable = grokVisualIsTable(source.model) ? { ...source.model } : {};
     if (selectedModelId) {
       const current = grokVisualIsTable(modelTable[selectedModelId])
@@ -3832,7 +3829,6 @@ const grokVisualUpdateState = (state, patch) => {
         ...patch,
       };
       grokVisualWriteOptionalString(current, "model", nextFields.model);
-      grokVisualWriteOptionalString(current, "name", nextFields.name);
       grokVisualWriteOptionalString(current, "base_url", nextFields.baseUrl);
       if (hadApiKey || Object.prototype.hasOwnProperty.call(patch, "apiKey")) {
         current.api_key = String(nextFields.apiKey ?? "").trim();
@@ -3897,6 +3893,45 @@ const grokVisualSerializeState = (state) => {
   }
 };
 
+const grokVisualAddModel = (state, rawId) => {
+  const modelId = String(rawId || "").trim();
+  if (!modelId || ["__proto__", "constructor", "prototype"].includes(modelId)) {
+    return { ok: false, error: "invalid-id", state };
+  }
+  if (!state || state.fieldError) return { ok: false, error: "invalid-config", state };
+  const source = grokVisualClone(state.source);
+  const modelTable = grokVisualIsTable(source.model) ? source.model : {};
+  if (Object.prototype.hasOwnProperty.call(modelTable, modelId)) {
+    return { ok: false, error: "duplicate-id", state };
+  }
+  const templateId = grokVisualModelIds(source).includes(state.selectedModelId)
+    ? state.selectedModelId
+    : grokVisualPickModelId(source);
+  const template = grokVisualIsTable(modelTable[templateId]) ? grokVisualClone(modelTable[templateId]) : {};
+  delete template.name;
+  source.model = { ...modelTable, [modelId]: { ...template, model: modelId } };
+  const models = grokVisualIsTable(source.models) ? { ...source.models } : {};
+  if (!grokVisualModelIds(source).includes(models.default)) models.default = modelId;
+  source.models = models;
+  return {
+    ok: true,
+    state: grokVisualUpdateState({ ...state, source }, { selectedModelId: modelId }),
+  };
+};
+
+const grokVisualDeleteModel = (state, modelId) => {
+  if (!state || state.fieldError || !grokVisualModelIds(state.source).includes(modelId)) return state;
+  const source = grokVisualClone(state.source);
+  delete source.model[modelId];
+  const remainingIds = grokVisualModelIds(source);
+  if (grokVisualIsTable(source.models) && source.models.default === modelId) {
+    if (remainingIds.length) source.models.default = remainingIds[0];
+    else delete source.models.default;
+  }
+  const selectedModelId = state.selectedModelId === modelId ? remainingIds[0] || "" : state.selectedModelId;
+  return grokVisualUpdateState({ ...state, source }, { selectedModelId });
+};
+
 const GrokConfigVisualEditorUtils = Object.freeze({
   fieldIds: GROK_VISUAL_FIELD_IDS,
   parseContent: grokVisualParseContent,
@@ -3904,6 +3939,8 @@ const GrokConfigVisualEditorUtils = Object.freeze({
   updateState: grokVisualUpdateState,
   serializeState: grokVisualSerializeState,
   validateSource: grokVisualValidateSource,
+  addModel: grokVisualAddModel,
+  deleteModel: grokVisualDeleteModel,
 });
 
 const ps = {
@@ -4003,7 +4040,6 @@ default_reasoning_effort = "xhigh"
 
 [model."grok-4.7-kedaya"]
 model = "grok-4.7-kedaya"
-name = "grok-4.7-kedaya"
 base_url = "http://127.0.0.1:33391/v1"
 api_key = ""
 api_backend = "responses"
@@ -4072,6 +4108,10 @@ const ConfigEditorPanel = () => {
       [grokValidContent, setGrokValidContent] = c.useState(""),
       [grokVisualState, setGrokVisualState] = c.useState(null),
       [grokVisualError, setGrokVisualError] = c.useState(""),
+      [grokAddModelOpen, setGrokAddModelOpen] = c.useState(!1),
+      [grokNewModelId, setGrokNewModelId] = c.useState(""),
+      [grokModelActionError, setGrokModelActionError] = c.useState(""),
+      grokNewModelInputRef = c.useRef(null),
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
       O = e ? n(e, t || void 0) : null,
@@ -4082,6 +4122,9 @@ const ConfigEditorPanel = () => {
       };
     }, []);
     c.useEffect(() => {
+      setGrokAddModelOpen(!1);
+      setGrokNewModelId("");
+      setGrokModelActionError("");
       if (!O) {
           (s(""),
           v(""),
@@ -4883,6 +4926,7 @@ const ConfigEditorPanel = () => {
             ),
             be.jsx($l, {
               value: value || void 0,
+              disabled: U.disabled === true,
               onChange: (Z) => k(Z || ""),
               onSearch: U.allowCustomValue ? (Z) => k(Z || "") : void 0,
               mode: U.allowCustomValue ? $l.SECRET_COMBOBOX_MODE_DO_NOT_USE : void 0,
@@ -5841,7 +5885,15 @@ const ConfigEditorPanel = () => {
               borderRadius: "6px",
               color: "var(--error-color)",
             },
-            children: grokVisualError || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。",
+            children: be.jsxs("div", {
+              children: [
+                grokVisualError || claudeText("当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。", "Fix the TOML source before editing models."),
+                !grokTextDraft.trim() ? be.jsx(xn, {
+                  onClick: () => setGrokVisualState(grokVisualUpdateState({ source: {} }, {})),
+                  children: claudeText("创建模型配置", "Create model configuration"),
+                }) : null,
+              ],
+            }),
           });
         const modelIds = grokVisualModelIds(grokVisualState.source),
           selectedId = grokVisualState.selectedModelId || "",
@@ -5850,117 +5902,243 @@ const ConfigEditorPanel = () => {
             gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
             gap: "5px",
           },
-          blankOption = { value: "", label: "跟随默认" };
+          blankOption = { value: "", label: claudeText("跟随默认", "Use default") },
+          addGrokModel = () => {
+            const result = grokVisualAddModel(grokVisualState, grokNewModelId);
+            if (!result.ok) {
+              setGrokModelActionError(result.error === "duplicate-id"
+                ? claudeText("配置名称已存在，请使用其他名称。", "This configuration name already exists.")
+                : claudeText("请输入有效且唯一的模型配置名称。", "Enter a valid, unique model configuration name."));
+              return;
+            }
+            setGrokVisualState(result.state);
+            setGrokAddModelOpen(!1);
+            setGrokNewModelId("");
+            setGrokModelActionError("");
+          };
         return be.jsxs("div", {
           "data-grok-fields": grokVisualFieldIds.join(" "),
-          style: { display: "flex", flexDirection: "column", gap: "6px", minHeight: 420 },
+          className: "grok-model-workspace",
           children: [
-            renderCodexSection(
-              "模型",
-              "编辑 config.toml 中已有字段；未展示的 TOML 字段会保留。",
-              be.jsxs("div", {
-                style: gridStyle,
+            be.jsxs("aside", {
+              className: "grok-model-sidebar",
+              "aria-label": claudeText("模型管理", "Model management"),
+              children: [
+                be.jsxs("div", {
+                  className: "grok-model-list-header",
+                  children: [
+                    be.jsx("strong", { children: claudeText("模型列表", "Models") }),
+                    be.jsx(xn, {
+                      size: "small",
+                      "data-testid": "grok-add-model",
+                      disabled: Boolean(grokVisualState.fieldError),
+                      onClick: () => {
+                        setGrokNewModelId("");
+                        setGrokModelActionError("");
+                        setGrokAddModelOpen(!0);
+                      },
+                      children: claudeText("新增", "Add"),
+                    }),
+                  ],
+                }),
+                be.jsx("div", {
+                  className: "grok-model-list",
+                  role: "group",
+                  "aria-label": claudeText("模型列表", "Models"),
+                  children: modelIds.map((modelId) => be.jsxs("div", {
+                    className: "grok-model-row",
+                    children: [
+                      be.jsx(xn, {
+                        className: "grok-model-select",
+                        type: modelId === selectedId ? "primary" : "default",
+                        "aria-pressed": modelId === selectedId,
+                        "data-grok-model-id": modelId,
+                        title: modelId,
+                        disabled: Boolean(grokVisualState.fieldError),
+                        onClick: () => setGrokVisualState((current) => grokVisualUpdateState(current, { selectedModelId: modelId })),
+                        children: modelId,
+                      }),
+                      be.jsx(xn, {
+                        className: "grok-model-delete",
+                        type: "text",
+                        size: "small",
+                        danger: true,
+                        icon: be.jsx(AH, {}),
+                        "data-grok-delete-model-id": modelId,
+                        "aria-label": claudeText(`删除模型 ${modelId}`, `Delete model ${modelId}`),
+                        title: claudeText(`删除模型 ${modelId}`, `Delete model ${modelId}`),
+                        disabled: Boolean(grokVisualState.fieldError),
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          xr.confirm({
+                            title: claudeText("删除模型配置", "Delete model configuration"),
+                            content: claudeText(`确定删除 ${modelId}？其他模型和未展示字段会保留。`, `Delete ${modelId}? Other models and hidden fields are preserved.`),
+                            okText: claudeText("删除", "Delete"),
+                            cancelText: claudeText("取消", "Cancel"),
+                            onOk: () => setGrokVisualState((previous) => grokVisualDeleteModel(previous, modelId)),
+                          });
+                        },
+                      }),
+                    ],
+                  }, modelId)),
+                }),
+                modelIds.length === 0 ? be.jsx("div", {
+                  role: "status",
+                  children: claudeText("尚无模型，请先添加。", "No models yet. Add a model to get started."),
+                }) : null,
+              ],
+            }),
+            be.jsx(xr, {
+              title: claudeText("添加模型", "Add model"),
+              open: grokAddModelOpen,
+              width: 400,
+              rootClassName: "grok-add-model-modal",
+              destroyOnClose: true,
+              afterOpenChange: (open) => { if (open) grokNewModelInputRef.current?.focus(); },
+              onCancel: () => {
+                setGrokAddModelOpen(!1);
+                setGrokNewModelId("");
+                setGrokModelActionError("");
+              },
+              onOk: addGrokModel,
+              okText: claudeText("添加", "Add"),
+              cancelText: claudeText("取消", "Cancel"),
+              okButtonProps: { disabled: !grokNewModelId.trim() || Boolean(grokVisualState.fieldError) },
+              children: be.jsxs("div", {
+                className: "grok-model-dialog-content",
                 children: [
                   renderCodexField(
-                    "默认模型",
-                    grokVisualState.defaultModel,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultModel: W }) : H)),
-                    "grok-4.7-kedaya",
-                    { help: "写入 [models].default。" },
+                    claudeText("模型名称", "Model name"),
+                    grokNewModelId,
+                    (value) => { setGrokNewModelId(value); setGrokModelActionError(""); },
+                    "gpt-6.1-sol",
+                    {
+                      ref: grokNewModelInputRef,
+                      "data-testid": "grok-new-model-id",
+                      "aria-invalid": Boolean(grokModelActionError),
+                      "aria-describedby": grokModelActionError ? "grok-model-name-error" : undefined,
+                      status: grokModelActionError ? "error" : undefined,
+                      onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) addGrokModel(); },
+                    },
                   ),
-                  renderCodexSelect(
-                    "默认思考档",
-                    grokVisualState.defaultReasoningEffort,
-                    (W) =>
-                      setGrokVisualState((H) =>
-                        H ? grokVisualUpdateState(H, { defaultReasoningEffort: W }) : H,
-                      ),
-                    [blankOption, ...GROK_VISUAL_REASONING_EFFORTS.map((W) => ({ value: W, label: W }))],
-                    { help: "只允许 none、minimal、low、medium、high、xhigh、max。" },
-                  ),
-                  renderCodexSelect(
-                    "当前模型",
-                    selectedId,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { selectedModelId: W }) : H)),
-                    [
-                      blankOption,
-                      ...Array.from(new Set([...modelIds, selectedId].filter(Boolean))).map((W) => ({
-                        value: W,
-                        label: W,
-                      })),
-                    ],
-                    { help: "选择要编辑的 [model.<id>]，其他模型原样保留。" },
-                  ),
-                  renderCodexField(
-                    "模型 ID",
-                    grokVisualState.model,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { model: W }) : H)),
-                    "model",
-                    { help: "写入 [model.<id>].model。" },
-                  ),
-                  renderCodexField(
-                    "显示名称",
-                    grokVisualState.name,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { name: W }) : H)),
-                    "name",
-                    { help: "写入 [model.<id>].name。" },
-                  ),
-                  renderCodexField(
-                    "接口地址",
-                    grokVisualState.baseUrl,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { baseUrl: W }) : H)),
-                    "https://api.example.com/v1",
-                    { help: "写入 [model.<id>].base_url。" },
-                  ),
-                  renderCodexField(
-                    "API Key",
-                    grokVisualState.apiKey,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiKey: W }) : H)),
-                    "留空",
-                    { help: "写入 [model.<id>].api_key。这是密钥本身；不知道时留空，不从 Codex auth.json 复制。" },
-                  ),
-                  renderCodexSelect(
-                    "接口协议",
-                    grokVisualState.apiBackend,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiBackend: W }) : H)),
-                    [blankOption, ...GROK_VISUAL_API_BACKENDS.map((W) => ({ value: W, label: W }))],
-                    { help: "只允许 chat_completions、responses、messages。" },
-                  ),
-                  renderCodexField(
-                    "环境变量名",
-                    grokVisualState.envKey,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { envKey: W }) : H)),
-                    "XAI_API_KEY",
-                    { help: "只写环境变量名，不写密钥值。" },
-                  ),
-                  renderCodexField(
-                    "上下文窗口",
-                    grokVisualState.contextWindow,
-                    (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { contextWindow: W }) : H)),
-                    "500000",
-                    { help: "非负整数 token 上限。" },
-                  ),
-                  renderCodexSelect(
-                    "思考摘要",
-                    grokVisualState.reasoningSummary,
-                    (W) =>
-                      setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { reasoningSummary: W }) : H)),
-                    [blankOption, ...GROK_VISUAL_REASONING_SUMMARIES.map((W) => ({ value: W, label: W }))],
-                    { help: "只允许 none、auto、concise、detailed。" },
-                  ),
-                  renderCodexField(
-                    "压缩阈值",
-                    grokVisualState.compactionAtTokens,
-                    (W) =>
-                      setGrokVisualState((H) =>
-                        H ? grokVisualUpdateState(H, { compactionAtTokens: W }) : H,
-                      ),
-                    "450000",
-                    { help: "非负整数 token 阈值。" },
-                  ),
+                  grokModelActionError ? be.jsx("div", {
+                    id: "grok-model-name-error",
+                    role: "alert",
+                    className: "grok-model-action-error",
+                    children: grokModelActionError,
+                  }) : null,
+                  be.jsx("div", {
+                    className: "grok-model-copy-hint",
+                    children: selectedId
+                      ? claudeText(`复制“${selectedId}”的其他参数，model 使用输入的名称，不生成可选的 name。`, `Copies the other settings from “${selectedId}”, using the entered name for model and omitting the optional name field.`)
+                      : claudeText("首个模型添加后，请填写接口与凭据。", "Configure the endpoint and credentials after adding the first model."),
+                  }),
                 ],
               }),
-            ),
+            }),
+            be.jsxs("div", {
+              className: "grok-model-detail",
+              children: [
+                renderCodexSection(
+                  claudeText("全局默认", "Global defaults"),
+                  "",
+                  be.jsxs("div", {
+                    style: gridStyle,
+                    children: [
+                      renderCodexSelect(
+                        claudeText("默认模型", "Default model"),
+                        grokVisualState.defaultModel,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultModel: W }) : H)),
+                        [blankOption, ...Array.from(new Set([...modelIds, grokVisualState.defaultModel].filter(Boolean))).map((value) => ({ value, label: value }))],
+                        { help: claudeText("写入 [models].default。", "Writes [models].default.") },
+                      ),
+                      renderCodexSelect(
+                        claudeText("默认思考档", "Default reasoning effort"),
+                        grokVisualState.defaultReasoningEffort,
+                        (W) =>
+                          setGrokVisualState((H) =>
+                            H ? grokVisualUpdateState(H, { defaultReasoningEffort: W }) : H,
+                          ),
+                        [blankOption, ...GROK_VISUAL_REASONING_EFFORTS.map((W) => ({ value: W, label: W }))],
+                        { help: claudeText("只允许 none、minimal、low、medium、high、xhigh、max。", "Only none, minimal, low, medium, high, xhigh, or max.") },
+                      ),
+                    ],
+                  }),
+                ),
+                selectedId ? renderCodexSection(
+                  selectedId,
+                  claudeText("编辑此模型的参数；未展示的 TOML 字段会保留。", "Edit this model's settings; hidden TOML fields are preserved."),
+                  be.jsxs("div", {
+                    style: gridStyle,
+                    children: [
+                      renderCodexField(
+                        claudeText("模型 ID", "API model ID"),
+                        grokVisualState.model,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { model: W }) : H)),
+                        "model",
+                        { help: claudeText("写入 [model.<id>].model。", "Writes [model.<id>].model.") },
+                      ),
+                      renderCodexField(
+                        claudeText("接口地址", "Base URL"),
+                        grokVisualState.baseUrl,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { baseUrl: W }) : H)),
+                        "https://api.example.com/v1",
+                        { help: claudeText("写入 [model.<id>].base_url。", "Writes [model.<id>].base_url.") },
+                      ),
+                      renderCodexField(
+                        "API Key",
+                        grokVisualState.apiKey,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiKey: W }) : H)),
+                        claudeText("留空", "Leave empty"),
+                        { help: claudeText("写入 [model.<id>].api_key。这是密钥本身；不知道时留空，不从 Codex auth.json 复制。", "Writes [model.<id>].api_key. Leave empty if unknown; never copy Codex auth.json.") },
+                      ),
+                      renderCodexSelect(
+                        claudeText("接口协议", "API backend"),
+                        grokVisualState.apiBackend,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { apiBackend: W }) : H)),
+                        [blankOption, ...GROK_VISUAL_API_BACKENDS.map((W) => ({ value: W, label: W }))],
+                        { help: claudeText("只允许 chat_completions、responses、messages。若 Grok 报 response.metadata 解析错误，请选服务支持的 chat_completions。", "Only chat_completions, responses, or messages. If Grok cannot parse response.metadata, use chat_completions when supported by your service.") },
+                      ),
+                      renderCodexField(
+                        claudeText("环境变量名", "Environment variable"),
+                        grokVisualState.envKey,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { envKey: W }) : H)),
+                        "XAI_API_KEY",
+                        { help: claudeText("只写环境变量名，不写密钥值。", "Environment variable name only, never the secret value.") },
+                      ),
+                      renderCodexField(
+                        claudeText("上下文窗口", "Context window"),
+                        grokVisualState.contextWindow,
+                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { contextWindow: W }) : H)),
+                        "500000",
+                        { help: claudeText("非负整数 token 上限。", "Non-negative integer token limit.") },
+                      ),
+                      renderCodexSelect(
+                        claudeText("思考摘要", "Reasoning summary"),
+                        grokVisualState.reasoningSummary,
+                        (W) =>
+                          setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { reasoningSummary: W }) : H)),
+                        [blankOption, ...GROK_VISUAL_REASONING_SUMMARIES.map((W) => ({ value: W, label: W }))],
+                        { help: claudeText("只允许 none、auto、concise、detailed。", "Only none, auto, concise, or detailed.") },
+                      ),
+                      renderCodexField(
+                        claudeText("压缩阈值", "Compaction threshold"),
+                        grokVisualState.compactionAtTokens,
+                        (W) =>
+                          setGrokVisualState((H) =>
+                            H ? grokVisualUpdateState(H, { compactionAtTokens: W }) : H,
+                          ),
+                        "450000",
+                        { help: claudeText("非负整数 token 阈值。", "Non-negative integer token threshold.") },
+                      ),
+                    ],
+                  }),
+                ) : be.jsx("div", {
+                  role: "status",
+                  children: claudeText("从左侧添加模型，开始配置。", "Add a model on the left to get started."),
+                }),
+              ],
+            }),
           ],
         });
       },

@@ -4,6 +4,7 @@ import test = require("node:test");
 import { createCodexAppServerNdjsonReader } from "../../interactive/codexAppServerNdjson";
 import {
   buildGrokAuthenticateParams,
+  buildGrokRequestError,
   buildGrokInitializeParams,
   buildGrokSessionNewParams,
   buildGrokReasoningConfigParams,
@@ -16,10 +17,34 @@ import {
   isGrokCompletedStopReason,
   readGrokPromptStopReason,
   readGrokSessionId,
+  readGrokStreamFailure,
+  GROK_RESPONSES_STREAM_INCOMPATIBLE,
   resolveGrokReasoningEffort,
   resolveGrokResumeSessionId,
   selectGrokAuthMethod,
 } from "../../interactive/grokAppServerProtocol";
+
+test("reports unsupported Responses events without exposing arbitrary RPC data", () => {
+  for (const streamFailure of [null, "serialization error: unknown variant `response.metadata`"] as const) {
+    const error = buildGrokRequestError({
+      code: -32603, message: "Internal error",
+      data: streamFailure ? undefined : "serialization error: unknown variant `response.metadata`",
+    }, streamFailure, "gpt-6.1-sol");
+    assert.equal((error as Error & { code: string }).code, GROK_RESPONSES_STREAM_INCOMPATIBLE);
+    assert.match(error.message, /gpt-6.1-sol.*response.metadata/);
+    assert.match(error.message, /chat_completions/);
+  }
+  assert.equal(buildGrokRequestError({ message: "Network error", data: "private diagnostic" }).message, "Network error");
+  assert.equal(buildGrokRequestError({ message: "Internal error", data: {} }).message, "Internal error");
+});
+
+test("reads only failed Grok retry-state diagnostics", () => {
+  const failure = { sessionUpdate: "retry_state", type: "failed", message: "serialization error" };
+  assert.equal(readGrokStreamFailure({ method: "_x.ai/session/update", params: { update: failure } }), "serialization error");
+  assert.equal(readGrokStreamFailure({ method: "session/update", params: { update: { ...failure, type: "retrying" } } }), null);
+  assert.equal(readGrokStreamFailure({ method: "other", params: { update: failure } }), null);
+  assert.equal(readGrokStreamFailure({ method: "session/update", params: {} }), null);
+});
 
 test("parses a Grok session update and keeps line separators inside strings", async () => {
   const stdout = new PassThrough();

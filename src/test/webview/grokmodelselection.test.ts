@@ -4,6 +4,9 @@ import assert = require("node:assert/strict");
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
+import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
+import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
+import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type ThinkingOption = { value: string; textContent: string };
@@ -66,6 +69,110 @@ function createThinkingSelect(): ThinkingSelect {
 function optionPairs(select: ThinkingSelect): Array<[string, string]> {
   return select.options.map((option) => [option.value, option.textContent]);
 }
+
+test("Grok dropdowns expose only configured models and retain Codex default/manage options", () => {
+  const modelSelect = createThinkingSelect();
+  const roleSelect = createThinkingSelect();
+  const state = {
+    currentCli: "grok",
+    selectedModel: "gpt-6.1-sol",
+    modelsByCli: { grok: ["grok", "gpt-6.1-sol"], codex: ["gpt-6.1-sol"] },
+    modelLabelsByCli: { grok: { grok: "grok-4.7-kedaya", "gpt-6.1-sol": "gpt-6.1-sol" } },
+  };
+  const source = [
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getModelsForCurrentCli"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getModelOptionLabel"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "updateModelSelectOptions"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "updateCodexLoopRoleModelSelect"),
+    "return { updateModelSelectOptions, updateCodexLoopRoleModelSelect };",
+  ].join("\n");
+  const renderer = new Function(
+    "state", "elements", "document", "t", "MODEL_MANAGE_OPTION_VALUE",
+    "getLoopRoleModelsForCli", "getSelectedLoopRoleModelForCli", source,
+  )(
+    state,
+    { modelSelect },
+    { createElement: () => ({ value: "", textContent: "" }) },
+    (key: keyof typeof WEBVIEW_STRINGS) => WEBVIEW_STRINGS[key],
+    "__manage__",
+    () => state.modelsByCli.grok,
+    () => "gpt-6.1-sol",
+  ) as { updateModelSelectOptions: () => void; updateCodexLoopRoleModelSelect: (select: ThinkingSelect, role: string) => void };
+  renderer.updateModelSelectOptions();
+  assert.deepEqual(optionPairs(modelSelect), [["grok", "grok-4.7-kedaya"], ["gpt-6.1-sol", "gpt-6.1-sol"]]);
+  assert.equal(modelSelect.value, "gpt-6.1-sol");
+  renderer.updateCodexLoopRoleModelSelect(roleSelect, "main");
+  assert.deepEqual(optionPairs(roleSelect), optionPairs(modelSelect));
+  assert.equal(roleSelect.value, "gpt-6.1-sol");
+  renderer.updateCodexLoopRoleModelSelect(roleSelect, "subtask");
+  assert.deepEqual(optionPairs(roleSelect), optionPairs(modelSelect));
+  state.modelLabelsByCli.grok.grok = "updated-model";
+  renderer.updateModelSelectOptions();
+  assert.equal(modelSelect.options[0].textContent, "updated-model");
+  state.modelLabelsByCli.grok.grok = "";
+  renderer.updateModelSelectOptions();
+  assert.equal(modelSelect.options[0].textContent, "grok");
+  state.modelsByCli.grok = [];
+  renderer.updateModelSelectOptions();
+  assert.deepEqual(optionPairs(modelSelect), [["", WEBVIEW_STRINGS.grokNoConfiguredModel]]);
+  state.currentCli = "codex";
+  renderer.updateModelSelectOptions();
+  assert.deepEqual(modelSelect.options.map((option) => option.value), ["", "gpt-6.1-sol", "__manage__"]);
+  assert.doesNotMatch(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /modelRefreshButton|grok-model-refresh-row/);
+  assert.doesNotMatch(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /modelRefreshButton/);
+  assert.doesNotMatch(buildWebviewStaticHtml.toString(), /modelRefreshButton|model-refresh-button/);
+  assert.doesNotMatch(INPUT_CONTROLS_STYLES, /model-refresh-button|grok-model-refresh-row/);
+});
+
+test("Grok label snapshots refresh with their config and clear when models are removed", () => {
+  const state = {
+    currentCli: "grok",
+    selectedConfigId: "profile",
+    configState: { activeConfigId: "profile" },
+    modelLabelsByCli: {} as Record<string, Record<string, string>>,
+  };
+  const functionNames = [
+    "normalizeModelNameList",
+    "normalizeModelSelection",
+    "normalizeLoopRoleModelsPayload",
+    "normalizeLoopRoleSelectionPayload",
+    "normalizeLoopRoleThinkingPayload",
+    "shouldPreserveCurrentCliModelsOnEmptySnapshot",
+    "applyModelState",
+  ];
+  const source = functionNames
+    .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, name))
+    .join("\n");
+  const applyModelState = new Function("state", "CLI_NAMES", `${source}\nreturn applyModelState;`)(state, ["grok"]) as
+    (snapshot: unknown, cli: string) => void;
+  const snapshot = {
+    optionsByCli: { grok: ["sol", "secondary"] },
+    labelsByCli: { grok: { sol: "gpt-6.1-sol", secondary: "gpt-6.1-sol" } },
+    selectedByCli: { grok: "secondary" },
+  };
+  applyModelState(snapshot, "grok");
+  assert.deepEqual(state.modelLabelsByCli.grok, { sol: "gpt-6.1-sol", secondary: "gpt-6.1-sol" });
+  applyModelState({ ...snapshot, labelsByCli: { grok: { sol: "updated", secondary: "gpt-6.1-sol" } } }, "grok");
+  assert.equal(state.modelLabelsByCli.grok.sol, "updated");
+  state.configState.activeConfigId = "";
+  applyModelState({ optionsByCli: { grok: [] } }, "grok");
+  assert.equal(state.modelLabelsByCli.grok.sol, "updated");
+  state.configState.activeConfigId = "profile";
+  applyModelState({ optionsByCli: { grok: [] } }, "grok");
+  assert.deepEqual(state.modelLabelsByCli.grok, {});
+  applyModelState(snapshot, "grok");
+  applyModelState({ optionsByCli: { grok: ["sol"] } }, "grok");
+  assert.deepEqual(state.modelLabelsByCli.grok, {});
+});
+
+test("Grok config keys remain case-sensitive while Codex keeps case-insensitive deduplication", () => {
+  const normalize = new Function(
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeModelNameList")
+      + "\nreturn normalizeModelNameList;",
+  )() as (models: string[], caseSensitive?: boolean) => string[];
+  assert.deepEqual(normalize(["Sol", "sol", "Sol"], true), ["Sol", "sol"]);
+  assert.deepEqual(normalize(["Sol", "sol", "Sol"]), ["Sol"]);
+});
 
 function buildThinkingSync(cli: string, thinkingMode: string, interactiveMode = "coding") {
   const functionNames = [
@@ -277,6 +384,11 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   runner.syncModelSelectorByInteractiveMode();
   assert.equal(elements.loopExecutionModeSelect.style.display, "");
 
+  state.interactiveMode = "coding";
+  runner.syncModelSelectorByInteractiveMode();
+  assert.equal(elements.modelSelect.style.display, "");
+  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+
   state.currentCli = "codex";
   state.interactiveMode = "coding";
   runner.syncModelSelectorByInteractiveMode();
@@ -362,6 +474,7 @@ test("Grok role thinking changes keep off and role model aria follows the CLI", 
   }]);
 
   const modelSource = [
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getModelOptionLabel"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getLoopRoleModelsForCli"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getSelectedLoopRoleModelForCli"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "updateCodexLoopRoleModelSelect"),

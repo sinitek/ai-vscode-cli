@@ -367,6 +367,7 @@ export type PanelState = {
   modelState: {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
+    labelsByCli?: Partial<Record<CliName, Record<string, string>>>;
       managedByCli: Record<CliName, string[]>;
       selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;
       selectedLoopThinkingByCli?: Partial<Record<CliName, { main?: ThinkingMode | null; subtask?: ThinkingMode | null }>>;

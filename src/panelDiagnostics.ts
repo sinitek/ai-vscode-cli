@@ -22,6 +22,7 @@ import {
   isSameHiddenRetryErrorTraceContent,
 } from "./hiddenRetry";
 import { t } from "./i18n";
+import { GROK_RESPONSES_STREAM_INCOMPATIBLE } from "./interactive/grokAppServerProtocol";
 import {
   formatOrchestratorClarificationAnswer,
   loopClarificationScope,
@@ -242,6 +243,9 @@ export function isNonRetryableBillingErrorInfo(info: ErrorInfo): boolean {
 }
 
 export function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
+  if (info.code === GROK_RESPONSES_STREAM_INCOMPATIBLE) {
+    return false;
+  }
   if (info.name === "AbortError" || info.code === "RUNNER_DISPOSED" || !info.message || isAbortErrorInfo(info)) {
     return false;
   }

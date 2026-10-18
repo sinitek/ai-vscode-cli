@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import * as vm from "node:vm";
 
 import { installVscodeMock } from "../vscodeMock";
+import { parseGrokConfigModels, type GrokConfigModels } from "../../cli/grokConfigModels";
 import type {
   ConfigCloseMessage,
   ConfigOpenExternalMessage,
@@ -745,6 +746,7 @@ test("config manager panel routes request actions, change notifications, and err
     } satisfies ConfigRequestMessage);
     assert.equal(applyResponse.success, false);
     assert.match(String(applyResponse.error), /apply denied by test/);
+    assert.equal(changeNotifications, 2);
 
     const applySuccessResponse = await dispatchPanelMessage(harness, {
       type: "config:request",
@@ -759,6 +761,7 @@ test("config manager panel routes request actions, change notifications, and err
       success: true,
       data: { applied: "opencode" },
     });
+    assert.equal(changeNotifications, 3);
 
     const unknownResponse = await dispatchPanelMessage(harness, {
       type: "config:request",
@@ -778,6 +781,70 @@ test("config manager panel routes request actions, change notifications, and err
     for (const [name, original] of originals) {
       configService[name] = original;
     }
+  }
+});
+
+test("Grok save applies disk config and awaits model refresh before acknowledging success", async () => {
+  const configService = require("../../config/configService") as typeof import("../../config/configService");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-grok-save-refresh-"));
+  const previousHome = process.env.GROK_HOME;
+  const initial = '[model.original]\nmodel = "original-model"\n';
+  const updated = '[models]\ndefault = "sol"\n[model.sol]\nmodel = "gpt-6.1-sol"\nname = "Not the dropdown label"\n';
+  const snapshots: GrokConfigModels[] = [];
+  let refreshBarrier: Promise<void> = Promise.resolve();
+  let refreshStarted: () => void = () => undefined;
+  let releaseRefresh: () => void = () => undefined;
+  process.env.GROK_HOME = temporaryHome;
+  try {
+    fs.writeFileSync(path.join(temporaryHome, "config.toml"), initial);
+    const harness = installConfigPanelHarness();
+    const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
+      onConfigChanged: async () => {
+        refreshStarted();
+        await refreshBarrier;
+        snapshots.push(parseGrokConfigModels(await configService.readGrokConfigText()));
+      },
+    });
+    manager.show();
+    const request = (message: ConfigRequestMessage) => (manager as AnyRecord).handleRequest(message) as Promise<void>;
+    const responses = harness.panel.webview.postedMessages as AnyRecord[];
+    await request({
+      type: "config:request", requestId: "save-grok", action: "save",
+      config: { id: "profile", name: "Grok", platform: "grok", content: updated, configContent: updated, createdAt: 1, updatedAt: 2 },
+    });
+    assert.equal(responses.at(-1)?.success, true);
+    assert.deepEqual(snapshots.map((snapshot) => snapshot.models), [["original"]]);
+    assert.equal((await configService.getConfigById("grok", "profile"))?.configContent, updated);
+
+    refreshBarrier = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const refreshEntered = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    const applying = request({
+      type: "config:request", requestId: "apply-grok", action: "apply", platform: "grok", payload: { content: updated },
+    });
+    await refreshEntered;
+    assert.equal(await configService.readGrokConfigText(), updated);
+    assert.equal(responses.some((message) => message.requestId === "apply-grok"), false);
+    assert.equal(snapshots.length, 1);
+    releaseRefresh();
+    await applying;
+    assert.equal(responses.at(-1)?.success, true);
+    assert.deepEqual(snapshots[1].models, ["sol"]);
+    assert.deepEqual(snapshots[1].labels, { sol: "gpt-6.1-sol" });
+    assert.equal(snapshots[1].defaultModel, "sol");
+
+    await request({
+      type: "config:request", requestId: "apply-invalid-grok", action: "apply", platform: "grok", payload: { content: "[[[" },
+    });
+    assert.equal(responses.at(-1)?.success, false);
+    assert.equal(snapshots.length, 2);
+    assert.equal(await configService.readGrokConfigText(), updated);
+    assert.match(readProjectFile("src/extension.ts"), /onConfigChanged: \(\) => postPanelState\(\)/);
+  } finally {
+    releaseRefresh();
+    if (previousHome === undefined) delete process.env.GROK_HOME;
+    else process.env.GROK_HOME = previousHome;
+    fs.rmSync(temporaryHome, { recursive: true, force: true });
   }
 });
 
@@ -1127,7 +1194,8 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /onChange: \(H\) => \{[\s\S]*?const k = W\.find\(\(L\) => L\.value === H\);[\s\S]*?k\?\.onClick\?\.\(\);/);
   assert.match(editorPanel, /tabBarStyle: \{ margin: 0 \}/);
   assert.match(editorPanel, /alignSelf: "flex-start"/);
-  assert.doesNotMatch(editorPanel, /"aria-pressed":/);
+  const modeTabs = extractBetween(editorPanel, "const renderFixedEditorModeTabs =", "const renderConfigEditorCardTitle =");
+  assert.doesNotMatch(modeTabs, /"aria-pressed":/);
 
   assert.match(layout, /CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY = "\(max-width: 920px\)"/);
   assert.match(layout, /className: "config-mobile-directory-button"/);

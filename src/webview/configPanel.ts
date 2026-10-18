@@ -17,7 +17,7 @@ import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 import { expandHomePath } from "../shared/userHomePaths";
 
 type ConfigManagerHandlers = {
-  onConfigChanged?: () => void;
+  onConfigChanged?: () => void | Promise<void>;
 };
 
 const CONFIG_ZEN_MODE_COMMAND = "workbench.action.toggleZenMode";
@@ -230,7 +230,7 @@ export class ConfigManagerPanel {
         case "setOrder":
           await configService.setConfigOrder(message.platform, message.order);
           response.data = true;
-          this.handlers.onConfigChanged?.();
+          await this.handlers.onConfigChanged?.();
           break;
         case "getById":
           response.data = await configService.getConfigById(message.platform, message.id);
@@ -238,22 +238,23 @@ export class ConfigManagerPanel {
         case "save":
           await configService.saveConfig(message.config);
           response.data = message.config;
-          this.handlers.onConfigChanged?.();
+          await this.handlers.onConfigChanged?.();
           break;
         case "copy":
           response.data = await configService.copyConfig(message.payload);
-          this.handlers.onConfigChanged?.();
+          await this.handlers.onConfigChanged?.();
           break;
         case "delete":
           await configService.deleteConfig(message.platform, message.id);
           response.data = true;
-          this.handlers.onConfigChanged?.();
+          await this.handlers.onConfigChanged?.();
           break;
         case "getCurrent":
           response.data = await configService.getCurrentConfig(message.platform);
           break;
         case "apply":
           response.data = await configService.applyConfig(message.platform, message.payload);
+          await this.handlers.onConfigChanged?.();
           break;
         case "backup":
           response.data = await configService.backupConfig(message.platform);
@@ -263,7 +264,7 @@ export class ConfigManagerPanel {
           break;
         case "initDefault":
           response.data = await configService.initDefaultConfig(message.platform);
-          this.handlers.onConfigChanged?.();
+          await this.handlers.onConfigChanged?.();
           break;
         case "getCliSkillsList":
           response.data = await configService.getCliSkillsList(message.platform);

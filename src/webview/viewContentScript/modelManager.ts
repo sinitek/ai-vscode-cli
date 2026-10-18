@@ -19,6 +19,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         return models;
       }
 
+      function getModelOptionLabel(cli, modelName) {
+        const labels = state.modelLabelsByCli && state.modelLabelsByCli[cli];
+        const label = labels && labels[modelName];
+        return typeof label === "string" && label.trim() ? label.trim() : modelName;
+      }
+
       function getCurrentModelConfigId() {
         return state.selectedConfigId || state.configState.activeConfigId || null;
       }
@@ -177,29 +183,34 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const availableModels = getModelsForCurrentCli();
         elements.modelSelect.innerHTML = "";
 
-        const defaultOption = document.createElement("option");
-        defaultOption.value = "";
-        defaultOption.textContent = t("modelOptionDefault");
-        elements.modelSelect.appendChild(defaultOption);
+        if (state.currentCli !== "grok" || availableModels.length === 0) {
+          const defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent = t(state.currentCli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
+          defaultOption.disabled = state.currentCli === "grok";
+          elements.modelSelect.appendChild(defaultOption);
+        }
 
         availableModels.forEach((modelName) => {
           const option = document.createElement("option");
           option.value = modelName;
-          option.textContent = modelName;
+          option.textContent = getModelOptionLabel(state.currentCli, modelName);
           elements.modelSelect.appendChild(option);
         });
 
-        const manageOption = document.createElement("option");
-        manageOption.value = MODEL_MANAGE_OPTION_VALUE;
-        manageOption.textContent = t("modelOptionManage");
-        elements.modelSelect.appendChild(manageOption);
+        if (state.currentCli !== "grok") {
+          const manageOption = document.createElement("option");
+          manageOption.value = MODEL_MANAGE_OPTION_VALUE;
+          manageOption.textContent = t("modelOptionManage");
+          elements.modelSelect.appendChild(manageOption);
+        }
 
         const nextValue = typeof state.selectedModel === "string" ? state.selectedModel : "";
         if (nextValue && availableModels.includes(nextValue)) {
           elements.modelSelect.value = nextValue;
           return;
         }
-        elements.modelSelect.value = "";
+        elements.modelSelect.value = state.currentCli === "grok" ? availableModels[0] || "" : "";
       }
 
       function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
@@ -252,15 +263,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const availableModels = getLoopRoleModelsForCli(state.currentCli, role);
         selectElement.innerHTML = "";
 
-        const defaultOption = document.createElement("option");
-        defaultOption.value = "";
-        defaultOption.textContent = t("modelOptionDefault");
-        selectElement.appendChild(defaultOption);
+        if (state.currentCli !== "grok" || availableModels.length === 0) {
+          const defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent = t(state.currentCli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
+          defaultOption.disabled = state.currentCli === "grok";
+          selectElement.appendChild(defaultOption);
+        }
 
         availableModels.forEach((modelName) => {
           const option = document.createElement("option");
           option.value = modelName;
-          option.textContent = modelName;
+          option.textContent = getModelOptionLabel(state.currentCli, modelName);
           selectElement.appendChild(option);
         });
 
@@ -443,13 +457,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.loopExecutionModeSelect.disabled = !showLoopExecutionModeSelect;
           elements.loopExecutionModeSelect.value = getLoopExecutionModeForCli();
         }
-        if (!supportsModelSelection) {
+        if (!supportsModelSelection || cli === "grok") {
           hideAddModelDialog();
         }
       }
 
       function showAddModelDialog() {
-        if (!elements.addModelOverlay || !cliSupportsManagedModelSelection()) {
+        if (!elements.addModelOverlay || !cliSupportsManagedModelSelection() || state.currentCli === "grok") {
           return;
         }
         if (elements.modelSelect) {

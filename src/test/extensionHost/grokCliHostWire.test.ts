@@ -104,6 +104,7 @@ function createHostHarness(options: {
   behavior: (prompt: string, handlers: GrokStreamHandlers) => Promise<void>;
   requireExplicitFinalAnswer?: boolean;
   acpSessionId?: string;
+  resolveGrokModelForRun?: RuntimeDeps["resolveGrokModelForRun"];
 } ) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
@@ -113,6 +114,7 @@ function createHostHarness(options: {
   const adopted: string[] = [];
   const created: string[] = [];
   const resumed: Array<string | null> = [];
+  const models: Array<string | null | undefined> = [];
   let idCounter = 0;
   const runner = {
     start: async () => ({ acpSessionId: options.acpSessionId ?? "acp-session", resumed: false, retainedLocalSessionId: null }),
@@ -122,9 +124,10 @@ function createHostHarness(options: {
     isReusable: () => true,
   };
   const manager = {
-    getOrCreateGrokRunner: (input: { sessionId: string; localSessionId?: string | null }) => {
+    getOrCreateGrokRunner: (input: { sessionId: string; localSessionId?: string | null; model?: string | null }) => {
       created.push(input.sessionId);
       resumed.push(input.localSessionId ?? null);
+      models.push(input.model);
       return runner;
     },
     hasGrokRunner: () => created.length > 0,
@@ -164,6 +167,7 @@ function createHostHarness(options: {
       return { messages: next };
     },
     getSelectedCliModel: () => "grok-4.7-kedaya",
+    resolveGrokModelForRun: options.resolveGrokModelForRun,
     getWorkspaceInteractiveMode: () => "coding",
     getInteractiveRunnerManager: () => manager,
     loadSessionMessages: (_cli: CliName, sessionId: string) => {
@@ -212,6 +216,7 @@ function createHostHarness(options: {
     adopted,
     created,
     resumed,
+    models,
     messagesBySession,
   };
 }
@@ -384,7 +389,7 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
     const patched = applyGrokVisualPatch(parsed.value, {
       defaultModel: "grok-4.7-kedaya",
       defaultReasoningEffort: "xhigh",
-      model: { id: "grok-4.7-kedaya", name: "Kedaya display" },
+      model: { id: "grok-4.7-kedaya", model: "gpt-6.1-sol" },
     });
     assert.equal(patched.ok, true);
     if (!patched.ok) {
@@ -397,7 +402,8 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
     }
     await applyConfig("grok", { content: serialized.content });
     const current = await getCurrentConfig("grok");
-    assert.match(current.content ?? "", /name = "Kedaya display"/);
+    assert.match(current.content ?? "", /model = "gpt-6.1-sol"/);
+    assert.match(current.content ?? "", /name = "grok-4\.7-kedaya"/);
     assert.match(current.content ?? "", /kept_note = "leave-me"/);
     assert.match(current.content ?? "", /\[custom\]/);
     assert.match(current.configContent ?? "", /env_key = "EXAMPLE_ENV_NAME"/);
@@ -431,6 +437,38 @@ test("invalid Grok TOML does not replace the previous valid file", async () => {
   });
 });
 
+
+test("Grok runtime rechecks configured models before creating a runner", async () => {
+  let requested: string | null = null;
+  const harness = createHostHarness({
+    resolveGrokModelForRun: async (model) => {
+      requested = model;
+      return "gpt-6.1-sol";
+    },
+    behavior: async (_prompt, handlers) => {
+      deliverGrokSessionUpdate(handlers, {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "SOL_OK" },
+      });
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive({ ...inputFor("Reply SOL_OK"), model: "removed" }, targetFor("local-session"));
+  assert.equal(requested, "removed");
+  assert.deepEqual(harness.models, ["gpt-6.1-sol"]);
+});
+
+test("Grok runtime rejects an empty or invalid model configuration before spawning", async () => {
+  const harness = createHostHarness({
+    resolveGrokModelForRun: async () => { throw new Error("No configured Grok model"); },
+    behavior: async () => { throw new Error("Must not start"); },
+  });
+  await assert.rejects(
+    () => harness.host.runPromptInteractive(inputFor("Reply SOL_OK"), targetFor("local-session")),
+    /No configured Grok model/,
+  );
+  assert.deepEqual(harness.created, []);
+});
 
 test("Grok adopts the ACP session and ends a normal reply without a final-answer marker", async () => {
   const harness = createHostHarness({

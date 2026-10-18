@@ -429,6 +429,7 @@ export const WEBVIEW_STRINGS = {
     thinkingOptionLabelMax: "max",
     thinkingOptionLabelUltra: "ultra",
     modelSelectAria: "模型选择",
+    grokNoConfiguredModel: "请在 Grok 配置文件中添加模型",
     modelOptionDefault: "默认",
     loopExecutionModeSelectAria: "Loop 执行模式",
     loopExecutionModeOptionMainSubMultiAgent: "主从多智能体",

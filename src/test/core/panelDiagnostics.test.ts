@@ -12,6 +12,13 @@ const {
   isNonRetryableBillingErrorInfo,
 } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 
+test("does not retry deterministic Grok Responses stream incompatibility", () => {
+  assert.equal(isHiddenRetryEligibleErrorInfo({
+    code: "GROK_RESPONSES_STREAM_INCOMPATIBLE", message: "Responses stream incompatible",
+  }), false);
+  assert.equal(isHiddenRetryEligibleErrorInfo({ message: "Internal error" }), true);
+});
+
 test("rejects HTTP 402 and exhausted billing errors from hidden retry", () => {
   const terminalErrors = [
     { message: "unexpected status 402 Payment Required" },

@@ -11,6 +11,7 @@ import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfig
 import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
+import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
@@ -31,6 +32,7 @@ import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
 import { isCliName } from "../panelStateBuilder";
+import { resolveGrokConfigPath } from "../shared/userHomePaths";
 
 export type ModelSettingsHostDeps = {
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void;
@@ -83,6 +85,7 @@ const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARC
 let codeGraphInstalling = false;
 let codeGraphInstallPollTimer: ReturnType<typeof setInterval> | null = null;
 let codeGraphInstallPollStartedAt = 0;
+const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
 let currentCli = deps.getCurrentCli();
 let modelStore = deps.getModelStore();
 let workspaceSettings = deps.getWorkspaceSettings();
@@ -963,7 +966,39 @@ function getActiveConfigIdForCli(cli: CliName): string | null {
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
-  return getSelectedCliModelFromStore(modelStore, cli, configId);
+  const selectedModel = getSelectedCliModelFromStore(modelStore, cli, cli === "grok" ? getGrokModelStoreConfigId(configId) : configId);
+  return cli === "grok"
+    ? resolveGrokConfigModel(grokModelsByConfigId.get(configId), selectedModel)
+    : selectedModel;
+}
+
+function getGrokModelStoreConfigId(configId: string | null): string {
+  return configId ?? `grok:${resolveGrokConfigPath()}`;
+}
+
+async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
+  if (currentCli !== "grok") {
+    return;
+  }
+  const configId = deps.resolveModelConfigIdForCli("grok", configState);
+  try {
+    grokModelsByConfigId.set(configId, parseGrokConfigModels(await configService.readGrokConfigText()));
+  } catch (error) {
+    grokModelsByConfigId.set(configId, { models: [], labels: {}, defaultModel: null, error: errorToMessage(error) });
+    void logError("grok-config-models-read-failed", { error: errorToMessage(error) });
+  }
+}
+
+async function resolveGrokModelForRun(selectedModel: string | null): Promise<string> {
+  const config = parseGrokConfigModels(await configService.readGrokConfigText());
+  if (config.error) {
+    throw new Error(t("grok.invalidConfig"));
+  }
+  const model = resolveGrokConfigModel(config, selectedModel);
+  if (!model) {
+    throw new Error(t("grok.noConfiguredModels"));
+  }
+  return model;
 }
 
 function getSelectedLoopCliModel(
@@ -971,6 +1006,13 @@ function getSelectedLoopCliModel(
   role: "main" | "subtask",
   configId: string | null = getActiveConfigIdForCli(cli),
 ): string | null {
+  if (cli === "grok") {
+    const storeConfigId = getGrokModelStoreConfigId(configId);
+    return resolveGrokConfigModel(
+      grokModelsByConfigId.get(configId),
+      modelStore.selectedLoopByConfigId?.[storeConfigId]?.[role] ?? getSelectedCliModel(cli, configId),
+    );
+  }
   return getSelectedLoopCliModelFromStore(modelStore, cli, role, configId);
 }
 
@@ -980,18 +1022,34 @@ function getSelectedLoopThinkingMode(
   model: string | null | undefined,
   configId: string | null = getActiveConfigIdForCli(cli),
 ): ThinkingMode | null {
-  return getSelectedLoopThinkingModeFromStore(modelStore, cli, role, model, configId);
+  return getSelectedLoopThinkingModeFromStore(modelStore, cli, role, model, cli === "grok" ? getGrokModelStoreConfigId(configId) : configId);
 }
 
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
+  if (cli === "grok") {
+    return [];
+  }
   return getManagedModelOptionsForCliFromStore(modelStore, cli, configId);
 }
 
 function getModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
+  if (cli === "grok") {
+    return [...(grokModelsByConfigId.get(configId)?.models ?? [])];
+  }
   return getModelOptionsForCliFromStore(modelStore, cli, configId);
 }
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
+  if (cli === "grok") {
+    model = resolveGrokConfigModel(grokModelsByConfigId.get(configId), model);
+    configId = getGrokModelStoreConfigId(configId);
+    modelStore = {
+      ...modelStore,
+      selectedByConfigId: { ...modelStore.selectedByConfigId, [configId]: model ?? "" },
+    };
+    writeModelStore(modelStore);
+    return;
+  }
   modelStore = selectCliModelInStore(modelStore, cli, model, configId);
   writeModelStore(modelStore);
 }
@@ -1002,6 +1060,22 @@ function selectCliLoopModel(
   model: string | null,
   configId: string | null = getActiveConfigIdForCli(cli),
 ): void {
+  if (cli === "grok") {
+    model = resolveGrokConfigModel(grokModelsByConfigId.get(configId), model);
+    configId = getGrokModelStoreConfigId(configId);
+    const selection = { ...modelStore.selectedLoopByConfigId[configId] };
+    if (model) {
+      selection[role] = model;
+    } else {
+      delete selection[role];
+    }
+    modelStore = {
+      ...modelStore,
+      selectedLoopByConfigId: { ...modelStore.selectedLoopByConfigId, [configId]: selection },
+    };
+    writeModelStore(modelStore);
+    return;
+  }
   modelStore = selectCliLoopModelInStore(modelStore, cli, role, model, configId);
   writeModelStore(modelStore);
 }
@@ -1014,6 +1088,9 @@ function setSelectedLoopThinkingMode(
   configId: string | null = getActiveConfigIdForCli(cli),
 ): void {
   const normalizedThinkingMode = thinkingMode ? normalizeThinkingModeForCli(cli, thinkingMode) : null;
+  if (cli === "grok") {
+    configId = getGrokModelStoreConfigId(configId);
+  }
   modelStore = setSelectedLoopThinkingModeInStore(modelStore, cli, role, model, normalizedThinkingMode, configId);
   writeModelStore(modelStore);
 }
@@ -1090,7 +1167,25 @@ function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCli
 function buildModelState(
   activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
 ): PanelState["modelState"] {
-  return buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
+  const state = buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
+  const configId = activeConfigIdByCli.grok ?? getActiveConfigIdForCli("grok");
+  const models = getModelOptionsForCli("grok", configId);
+  state.optionsByCli.grok = models;
+  state.labelsByCli = { grok: { ...(grokModelsByConfigId.get(configId)?.labels ?? {}) } };
+  state.managedByCli.grok = [];
+  state.selectedByCli.grok = getSelectedCliModel("grok", configId);
+  state.loopOptionsByCli = { ...state.loopOptionsByCli, grok: { main: models, subtask: models } };
+  const main = getSelectedLoopCliModel("grok", "main", configId);
+  const subtask = getSelectedLoopCliModel("grok", "subtask", configId);
+  state.selectedLoopByCli = { ...state.selectedLoopByCli, grok: { main, subtask } };
+  state.selectedLoopThinkingByCli = {
+    ...state.selectedLoopThinkingByCli,
+    grok: {
+      main: getSelectedLoopThinkingMode("grok", "main", main, configId),
+      subtask: getSelectedLoopThinkingMode("grok", "subtask", subtask, configId),
+    },
+  };
+  return state;
 }
 
 function loadWorkspaceSettings(): WorkspaceSettings {
@@ -1207,6 +1302,8 @@ return {
   getSelectedLoopThinkingMode: wrap(getSelectedLoopThinkingMode),
   getManagedModelOptionsForCli: wrap(getManagedModelOptionsForCli),
   getModelOptionsForCli: wrap(getModelOptionsForCli),
+  refreshGrokConfigModels: wrap(refreshGrokConfigModels),
+  resolveGrokModelForRun: wrap(resolveGrokModelForRun),
   selectCliModel: wrap(selectCliModel),
   selectCliLoopModel: wrap(selectCliLoopModel),
   setSelectedLoopThinkingMode: wrap(setSelectedLoopThinkingMode),

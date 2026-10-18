@@ -19,6 +19,7 @@ import { parseGrokToml } from "../../config/grokToml";
 installVscodeMock();
 
 const { GrokInteractiveRunner } = require("../../interactive/grokRunner") as typeof import("../../interactive/grokRunner");
+const { buildGrokRequestError } = require("../../interactive/grokAppServerProtocol") as typeof import("../../interactive/grokAppServerProtocol");
 
 class FakeGrok extends EventEmitter {
   public readonly stdin = new PassThrough();
@@ -583,6 +584,72 @@ test("does not reuse a Grok runner when the selected model changes", () => {
   } finally {
     manager.disposeAll();
   }
+});
+
+test("does not mark a partial reply as complete and discards incompatible persistent runners", async () => {
+  const home = await emptyGrokHome();
+  const fake = new FakeGrok();
+  const original = fake.respond.bind(fake);
+  fake.respond = (message) => {
+    if (message.method !== "session/prompt") {
+      original(message);
+      return;
+    }
+    fake.send({
+      method: "session/update",
+      params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "partial reply" } } },
+    });
+    fake.send({
+      method: "_x.ai/session/update",
+      params: { update: {
+        sessionUpdate: "retry_state", type: "failed",
+        message: "serialization error: unknown variant `response.metadata`",
+      } },
+    });
+    fake.send({ id: message.id, error: { code: -32603, message: "Internal error" } });
+  };
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(), command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    model: "gpt-6.1-sol", spawnImpl: () => fake as unknown as GrokChild,
+  });
+  try {
+    await runner.start();
+    const body: string[] = [];
+    let completed = false;
+    await assert.rejects(runner.prompt("first", {
+      onAssistantDelta: text => body.push(text),
+      onComplete: () => { completed = true; },
+    }), (error: Error & { code?: string }) => {
+      assert.equal(error.code, "GROK_RESPONSES_STREAM_INCOMPATIBLE");
+      assert.match(error.message, /gpt-6.1-sol.*response.metadata/);
+      return true;
+    });
+    assert.deepEqual(body, ["partial reply"]);
+    assert.equal(completed, false);
+    assert.equal(runner.isReusable(), false);
+    await assert.rejects(runner.prompt("second"));
+    assert.equal(fake.lines.map(line => JSON.parse(line)).filter(message => message.method === "session/prompt").length, 1);
+  } finally {
+    runner.dispose();
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("host stops deterministic Responses failure after a partial bubble without retrying", async () => {
+  let attempts = 0;
+  const error = buildGrokRequestError({ message: "Internal error", data: "unknown variant `response.metadata`" }, null, "gpt-6.1-sol");
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      attempts += 1;
+      handlers.onAssistantDelta?.("partial reply");
+      throw error;
+    },
+  });
+  await assert.rejects(harness.host.runPromptInteractive(inputFor("hello"), targetFor("local-session")), /response.metadata/);
+  assert.equal(attempts, 1);
+  assert.equal(harness.runStatus.includes("error"), true);
+  assert.equal(harness.runStatus.includes("end"), false);
 });
 
 test("host sends session updates through rawStreamDelta without changing bubbles", async () => {

@@ -95,6 +95,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getGlobalMultiAgentEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
+  resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   getInteractiveRunnerManager: () => InteractiveRunnerManager;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
@@ -229,7 +230,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const cli = target.cli;
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = getActiveConfigIdForCli(cli);
-    const selectedModel = input.model || getSelectedCliModel(cli, activeConfigId);
+    const requestedModel = input.model || getSelectedCliModel(cli, activeConfigId);
+    const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
+      ? await deps.resolveGrokModelForRun(requestedModel)
+      : requestedModel;
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
     const interactiveMode = getWorkspaceInteractiveMode(cli);
     applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);

@@ -17,12 +17,14 @@ import { GrokAcpClient, GrokAcpClientError } from "./grokAcpClient";
 import { GrokReplayStream } from "./grokReplayStream";
 import {
   buildGrokAuthenticateParams,
+  buildGrokRequestError,
   buildGrokInitializeParams,
   buildGrokReasoningConfigParams,
   buildGrokSessionCancelParams,
   buildGrokSessionLoadParams,
   buildGrokSessionNewParams,
   buildGrokSessionPromptParams,
+  GROK_RESPONSES_STREAM_INCOMPATIBLE,
   classifyGrokSessionMessage,
   findGrokReasoningOption,
   formatGrokToolTrace,
@@ -31,6 +33,7 @@ import {
   readGrokLoadSessionCapability,
   readGrokPromptStopReason,
   readGrokSessionId,
+  readGrokStreamFailure,
   resolveGrokReasoningEffort,
   selectGrokAuthMethod,
   type GrokJsonRpcMessage,
@@ -104,6 +107,7 @@ export class GrokInteractiveRunner {
   private closed = false;
   private failed: Error | null = null;
   private activeHandlers: GrokStreamHandlers | null = null;
+  private streamFailure: string | null = null;
   private activeReplay: GrokReplayStream | null = null;
   private reasoningNotice: string | null = null;
   private readonly stderrChunks: Buffer[] = [];
@@ -208,6 +212,7 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.activeHandlers = handlers;
+    this.streamFailure = null;
     const replay = handlers.onEvent ? new GrokReplayStream(handlers.onEvent) : null;
     this.activeReplay = replay;
     try {
@@ -219,6 +224,11 @@ export class GrokInteractiveRunner {
       const stopReason = readGrokPromptStopReason({ result });
       handlers.onComplete?.({ stopReason });
       return { stopReason };
+    } catch (error) {
+      if (error instanceof Error && (error as Error & { code?: string }).code === GROK_RESPONSES_STREAM_INCOMPATIBLE) {
+        this.fail(error);
+      }
+      throw error;
     } finally {
       replay?.flush();
       if (this.activeHandlers === handlers) {
@@ -249,7 +259,7 @@ export class GrokInteractiveRunner {
   private async handshake(): Promise<GrokSessionInfo> {
     const initialized = await this.request("initialize", buildGrokInitializeParams());
     const env = this.options.env ?? process.env;
-    const modelHasOwnCredential = await readGrokActiveModelHasOwnCredential(env);
+    const modelHasOwnCredential = await readGrokActiveModelHasOwnCredential(env, undefined, this.options.model);
     if (!modelHasOwnCredential) {
       const selected = selectGrokAuthMethod(readGrokAuthMethodIds(initialized), env);
       if (!selected.ok) {
@@ -337,7 +347,11 @@ export class GrokInteractiveRunner {
         this.activeReplay?.append(message);
       }
       if (message.error) {
-        pending.reject(new Error(String(message.error.message || t("grok.requestFailed"))));
+        pending.reject(buildGrokRequestError(
+          message.error,
+          pending.method === "session/prompt" ? this.streamFailure : null,
+          this.options.model,
+        ));
         return;
       }
       pending.resolve(message.result);
@@ -348,7 +362,11 @@ export class GrokInteractiveRunner {
       void this.answerClientRequest(message);
       return;
     }
-    if (message.method === "session/update") {
+    const streamFailure = readGrokStreamFailure(message);
+    if (streamFailure && this.activeHandlers) {
+      this.streamFailure = streamFailure;
+    }
+    if (message.method === "session/update" || streamFailure) {
       this.activeReplay?.append(message);
     }
     const event = classifyGrokSessionMessage(message);

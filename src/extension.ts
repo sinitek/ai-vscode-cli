@@ -969,9 +969,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
-    onConfigChanged: () => {
-      void postPanelState();
-    },
+    onConfigChanged: () => postPanelState(),
   });
   startTempCleanup(context);
   startHistoryArtifactRetentionCleanup(context);
@@ -1586,6 +1584,7 @@ async function persistCliCommand(cli: CliName, command: string): Promise<void> {
 async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const configState = await loadConfigState(currentCli);
+  await modelSettingsHost.refreshGrokConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   return buildPanelStateFromConfigState(configState);
 }
@@ -1594,6 +1593,7 @@ async function buildPanelStateWithConfigState(
   configState: PanelState["configState"]
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
+  await modelSettingsHost.refreshGrokConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   return buildPanelStateFromConfigState(configState);
 }
@@ -2001,6 +2001,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   getSelectedCliModel,
   getWorkspaceInteractiveMode,
   getInteractiveRunnerManager: () => interactiveRunnerManager,
+  resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
   loadSessionMessages,
   logCliStartup,
   maybeAutoCompactContextAfterPromptSuccess,

@@ -163,6 +163,7 @@ function buildCodexModelHarness() {
     + "\n"
     + [
       "getCurrentModelConfigId",
+      "getModelOptionLabel",
       "cliSupportsLoopRoleModelSelection",
       "getLoopRoleModelsForCli",
       "getSelectedLoopRoleModelForCli",

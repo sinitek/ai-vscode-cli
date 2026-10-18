@@ -14,6 +14,8 @@
 
 ## 当前有效条目
 
+- Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
+
 ## Grok 文档示例与实际 ACP 配置参数不一致
 
 - 状态：有效

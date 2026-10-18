@@ -47,7 +47,6 @@ export type GrokVisualFieldSpec = {
 export type GrokVisualModelPatch = {
   id: string;
   model?: string;
-  name?: string;
   baseUrl?: string;
   apiKey?: string;
   apiBackend?: string;
@@ -88,12 +87,6 @@ export const GROK_VISUAL_FIELDS: readonly GrokVisualFieldSpec[] = [
     section: "model",
     label: { zh: "模型 ID", en: "Model ID" },
     tooltip: { zh: "写入 [model.<id>].model。", en: "Writes [model.<id>].model." },
-  },
-  {
-    id: "model.name",
-    section: "model",
-    label: { zh: "显示名称", en: "Display name" },
-    tooltip: { zh: "写入 [model.<id>].name。", en: "Writes [model.<id>].name." },
   },
   {
     id: "model.base_url",
@@ -297,7 +290,6 @@ export function mergeGrokKedayaProfile(existingContent: string): GrokTextCommit 
     model: {
       id: GROK_KEDAYA_PROFILE.modelId,
       model: GROK_KEDAYA_PROFILE.modelId,
-      name: GROK_KEDAYA_PROFILE.modelId,
       baseUrl: GROK_KEDAYA_PROFILE.baseUrl,
       apiKey: typeof existingModel?.api_key === "string" ? existingModel.api_key : "",
       apiBackend: GROK_KEDAYA_PROFILE.apiBackend,
@@ -350,13 +342,18 @@ export async function applyGrokKedayaProfile(options: {
 }
 
 
-export function grokActiveModelHasOwnCredential(document: GrokTomlTable, env: NodeJS.ProcessEnv = process.env): boolean {
+export function grokActiveModelHasOwnCredential(
+  document: GrokTomlTable,
+  env: NodeJS.ProcessEnv = process.env,
+  selectedModel?: string | null,
+): boolean {
   const models = document.models;
   const modelTable = document.model;
-  if (!isGrokTomlTable(models) || !isGrokTomlTable(modelTable)) {
+  if (!isGrokTomlTable(modelTable)) {
     return false;
   }
-  const defaultModel = typeof models.default === "string" ? models.default.trim() : "";
+  const defaultModel = selectedModel?.trim()
+    || (isGrokTomlTable(models) && typeof models.default === "string" ? models.default.trim() : "");
   if (!defaultModel) {
     return false;
   }
@@ -373,11 +370,12 @@ export function grokActiveModelHasOwnCredential(document: GrokTomlTable, env: No
 export async function readGrokActiveModelHasOwnCredential(
   env: NodeJS.ProcessEnv = process.env,
   homeDir?: string,
+  selectedModel?: string | null,
 ): Promise<boolean> {
   try {
     const content = await fs.readFile(resolveGrokConfigPath(env, homeDir), "utf8");
     const parsed = parseGrokToml(content);
-    return parsed.ok && grokActiveModelHasOwnCredential(parsed.value, env);
+    return parsed.ok && grokActiveModelHasOwnCredential(parsed.value, env, selectedModel);
   } catch {
     return false;
   }
@@ -405,7 +403,6 @@ function applyModelPatch(document: GrokTomlTable, patch: GrokVisualModelPatch): 
   }
   const assignments: Array<[string, string | undefined]> = [
     ["model", patch.model],
-    ["name", patch.name],
     ["base_url", patch.baseUrl],
     ["api_backend", patch.apiBackend],
     ["env_key", patch.envKey],

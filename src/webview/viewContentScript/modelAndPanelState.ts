@@ -13,7 +13,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         });
       }
 
-      function normalizeModelNameList(value) {
+      function normalizeModelNameList(value, caseSensitive = false) {
         if (!Array.isArray(value)) {
           return [];
         }
@@ -21,7 +21,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const result = [];
         value.forEach((item) => {
           const modelName = typeof item === "string" ? item.trim() : "";
-          const key = modelName.toLowerCase();
+          const key = caseSensitive ? modelName : modelName.toLowerCase();
           if (!modelName || seen.has(key)) {
             return;
           }
@@ -35,10 +35,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         return typeof value === "string" ? value.trim() : "";
       }
 
-      function normalizeLoopRoleModelsPayload(payload) {
+      function normalizeLoopRoleModelsPayload(payload, caseSensitive = false) {
         return {
-          main: normalizeModelNameList(payload && payload.main),
-          subtask: normalizeModelNameList(payload && payload.subtask),
+          main: normalizeModelNameList(payload && payload.main, caseSensitive),
+          subtask: normalizeModelNameList(payload && payload.subtask, caseSensitive),
         };
       }
 
@@ -258,6 +258,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         const nextModelsByCli = {};
+        const nextModelLabelsByCli = {};
         const nextManagedModelsByCli = {};
         const nextSelectedModelsByCli = {};
         const nextLoopModelsByCli = {};
@@ -265,12 +266,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const nextSelectedLoopThinkingByCli = {};
 
         CLI_NAMES.forEach((cli) => {
-          const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli]);
+          const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli], cli === "grok");
           const incomingManagedModels = normalizeModelNameList(modelState.managedByCli && modelState.managedByCli[cli]);
-          const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli]);
+          const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli], cli === "grok");
           const previousManagedModels = normalizeModelNameList(state.managedModelsByCli && state.managedModelsByCli[cli]);
-          const incomingLoopModels = normalizeLoopRoleModelsPayload(modelState.loopOptionsByCli && modelState.loopOptionsByCli[cli]);
-          const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli]);
+          const incomingLoopModels = normalizeLoopRoleModelsPayload(modelState.loopOptionsByCli && modelState.loopOptionsByCli[cli], cli === "grok");
+          const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli], cli === "grok");
           const incomingLoopSelection = normalizeLoopRoleSelectionPayload(modelState.selectedLoopByCli && modelState.selectedLoopByCli[cli]);
           const previousLoopSelection = normalizeLoopRoleSelectionPayload(state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[cli]);
           const incomingLoopThinking = normalizeLoopRoleThinkingPayload(modelState.selectedLoopThinkingByCli && modelState.selectedLoopThinkingByCli[cli], cli);
@@ -284,6 +285,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           );
 
           nextModelsByCli[cli] = preservePrevious ? previousModels : incomingModels;
+          nextModelLabelsByCli[cli] = preservePrevious
+            ? (state.modelLabelsByCli && state.modelLabelsByCli[cli]) || {}
+            : (modelState.labelsByCli && modelState.labelsByCli[cli]) || {};
           nextManagedModelsByCli[cli] = preservePrevious ? previousManagedModels : incomingManagedModels;
           nextSelectedModelsByCli[cli] = preservePrevious
             ? normalizeModelSelection(state.selectedModelsByCli && state.selectedModelsByCli[cli])
@@ -294,6 +298,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         });
 
         state.modelsByCli = nextModelsByCli;
+        state.modelLabelsByCli = nextModelLabelsByCli;
         state.managedModelsByCli = nextManagedModelsByCli;
         state.selectedModelsByCli = nextSelectedModelsByCli;
         state.loopModelsByCli = nextLoopModelsByCli;

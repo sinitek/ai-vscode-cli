@@ -132,6 +132,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: [],
           opencode: [],
         },
+        modelLabelsByCli: {},
         loopModelsByCli: {
           codex: { main: [], subtask: [] },
           claude: { main: [], subtask: [] },
