@@ -27,7 +27,6 @@ import {
   GROK_RESPONSES_STREAM_INCOMPATIBLE,
   classifyGrokSessionMessage,
   findGrokReasoningOption,
-  formatGrokToolTrace,
   parseGrokJsonRpcLine,
   readGrokAuthMethodIds,
   readGrokCompactionEvent,
@@ -36,6 +35,7 @@ import {
   readGrokSessionId,
   readGrokStreamFailure,
   readGrokTokenUsageUpdate,
+  readGrokResponseContextTokens,
   resolveGrokReasoningEffort,
   isGrokCompletedStopReason,
   selectGrokAuthMethod,
@@ -71,12 +71,14 @@ export type GrokSpawn = (
   },
 ) => GrokChild;
 
-export type GrokTraceKind = "thinking" | "normal" | "error";
+export type GrokTraceKind = "thinking" | "normal" | "tool-use" | "error";
 
 export type GrokStreamHandlers = {
   onAssistantDelta?: (text: string) => void;
-  onTrace?: (content: string, kind?: GrokTraceKind) => void;
+  onTrace?: (content: string, kind?: GrokTraceKind, meta?: { toolCallId?: string }) => void;
   onEvent?: (message: GrokJsonRpcMessage) => void;
+  onActivity?: () => void;
+  onTaskListUpdate?: (items: { text: string; done: boolean }[]) => void;
   onComplete?: (meta: { stopReason: string | null }) => void;
   onTokenUsageUpdate?: (update: GrokTokenUsageUpdate) => void;
 };
@@ -107,6 +109,7 @@ export type GrokCompactionResult = {
 
 type PendingRequest = {
   method: string;
+  replay: GrokReplayStream | null;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
 };
@@ -232,8 +235,12 @@ export class GrokInteractiveRunner {
       this.tokenUsageHandler?.(this.latestTokenUsage);
     }
     this.streamFailure = null;
-    const replay = handlers.onEvent ? new GrokReplayStream(handlers.onEvent) : null;
+    const replay = new GrokReplayStream((message) => handlers.onEvent?.(message), {
+      onToolTrace: (trace) => handlers.onTrace?.(trace.content, "tool-use", { toolCallId: trace.toolCallId }),
+      onTaskListUpdate: (entries) => handlers.onTaskListUpdate?.(entries.map((entry) => ({ text: entry.content, done: entry.status === "completed" }))),
+    });
     this.activeReplay = replay;
+    let replayEndStatus: "failed" | "interrupted" = "interrupted";
     try {
       if (this.reasoningNotice && handlers.onTrace) {
         handlers.onTrace(this.reasoningNotice, "normal");
@@ -244,13 +251,14 @@ export class GrokInteractiveRunner {
       handlers.onComplete?.({ stopReason });
       return { stopReason };
     } catch (error) {
+      replayEndStatus = "failed";
       this.tokenUsageHandler = undefined;
       if (error instanceof Error && (error as Error & { code?: string }).code === GROK_RESPONSES_STREAM_INCOMPATIBLE) {
         this.fail(error);
       }
       throw error;
     } finally {
-      replay?.flush();
+      replay.finish(replayEndStatus);
       if (this.activeHandlers === handlers) {
         this.activeHandlers = null;
         this.activeReplay = null;
@@ -260,7 +268,7 @@ export class GrokInteractiveRunner {
 
   public cancelTurn(): void {
     this.tokenUsageHandler = undefined;
-    this.activeReplay?.flush();
+    this.activeReplay?.finish("cancelled");
     if (!this.sessionId || !this.canWrite()) {
       this.fail(new Error(t("grok.requestFailed")));
       return;
@@ -391,10 +399,21 @@ export class GrokInteractiveRunner {
   }
 
   private handleMessage(message: GrokJsonRpcMessage): void {
-    const usage = this.sessionId ? readGrokTokenUsageUpdate(message, this.sessionId) : null;
+    const snapshot = this.sessionId ? readGrokTokenUsageUpdate(message, this.sessionId) : null;
+    const responseTokens = this.sessionId && this.activeHandlers
+      ? readGrokResponseContextTokens(message, this.sessionId)
+      : null;
+    const usage = snapshot ?? (responseTokens !== null ? {
+      tokensInContextWindow: responseTokens,
+      modelContextWindow: this.latestTokenUsage?.modelContextWindow ?? null,
+    } : null);
     if (usage) {
+      const changed = usage.tokensInContextWindow !== this.latestTokenUsage?.tokensInContextWindow
+        || usage.modelContextWindow !== this.latestTokenUsage?.modelContextWindow;
       this.latestTokenUsage = usage;
-      this.tokenUsageHandler?.(usage);
+      if (changed) {
+        this.tokenUsageHandler?.(usage);
+      }
     }
     if (message.id !== undefined && message.id !== null && (message.result !== undefined || message.error)) {
       const pending = this.pending.get(Number(message.id));
@@ -403,7 +422,7 @@ export class GrokInteractiveRunner {
       }
       this.pending.delete(Number(message.id));
       if (pending.method === "session/prompt") {
-        this.activeReplay?.append(message);
+        pending.replay?.append(message);
       }
       if (message.error) {
         pending.reject(buildGrokRequestError(
@@ -421,6 +440,13 @@ export class GrokInteractiveRunner {
       void this.answerClientRequest(message);
       return;
     }
+    const params = message.params && typeof message.params === "object" ? message.params as Record<string, unknown> : null;
+    if (typeof params?.sessionId === "string" && params.sessionId !== this.sessionId) {
+      return;
+    }
+    if (message.method === "session/update" || message.method?.startsWith("_x.ai/session")) {
+      this.activeHandlers?.onActivity?.();
+    }
     const streamFailure = readGrokStreamFailure(message);
     if (streamFailure && this.activeHandlers) {
       this.streamFailure = streamFailure;
@@ -436,9 +462,6 @@ export class GrokInteractiveRunner {
     if (event.type === "thinking") {
       this.activeHandlers?.onTrace?.(event.text, "thinking");
       return;
-    }
-    if (event.type === "tool" || event.type === "tool_update") {
-      this.activeHandlers?.onTrace?.(formatGrokToolTrace(event));
     }
   }
 
@@ -465,7 +488,12 @@ export class GrokInteractiveRunner {
     const id = this.nextId;
     this.nextId += 1;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { method, resolve, reject });
+      this.pending.set(id, {
+        method,
+        replay: method === "session/prompt" ? this.activeReplay : null,
+        resolve,
+        reject,
+      });
       try {
         this.write({ jsonrpc: "2.0", id, method, params });
       } catch (error) {

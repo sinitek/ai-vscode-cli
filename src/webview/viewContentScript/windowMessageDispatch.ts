@@ -19,6 +19,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               return;
             }
             traceCollapsibleOpenKeys.clear();
+            if (typeof instructionGroupOpenKeys !== "undefined") {
+              instructionGroupOpenKeys.clear();
+            }
             syncConversationControlsForActiveTab();
             renderMessages();
           }
@@ -97,6 +100,18 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             appendAssistantDelta(data.id, data.content, data.kind, {
               codexFinalAnswer: data.codexFinalAnswer === true,
             });
+          }
+          if (data.type === "runActivity") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            if (eventTabId) {
+              const runtimeState = getConversationRuntimeState(eventTabId);
+              if (runtimeState) {
+                runtimeState.runStreamActivityAt = Date.now();
+                if (isRuntimeStateForActiveTab(eventTabId)) {
+                  updateRunStreamButton();
+                }
+              }
+            }
           }
           if (data.type === "rawStreamDelta") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;

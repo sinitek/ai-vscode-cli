@@ -1,5 +1,98 @@
 // Message rendering and conversation tab helpers.
-export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpenTraceCollapsibleKeys() {
+export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleViewStates = new Map();
+      var thinkingBubbleResizeObserver = typeof ResizeObserver === "function"
+        ? new ResizeObserver((entries) => entries.forEach((entry) => syncThinkingBubbleViewport(entry.target, false)))
+        : null;
+
+      function isScrollableThinkingMessage(message, index) {
+        if (!message || (message.role !== "assistant" && message.role !== "trace")) {
+          return false;
+        }
+        if (message.role === "assistant" && isFinalAssistantSummaryMessage(index)) {
+          return false;
+        }
+        const presentation = getTracePresentation(message.content || "");
+        return isThinkingLikeMessage(message, presentation)
+          || (message.role === "assistant" && isCodexReasoningStyleMessage(message));
+      }
+
+      function rememberThinkingBubbleViewState(bubble) {
+        const viewport = bubble.querySelector(".thinking-bubble-viewport");
+        if (!viewport) {
+          return;
+        }
+        thinkingBubbleViewStates.set(viewport.dataset.thinkingKey, {
+          expanded: viewport.parentElement.classList.contains("is-expanded"),
+          content: viewport.thinkingContent,
+          scrollTop: viewport.scrollTop,
+        });
+        if (thinkingBubbleResizeObserver) {
+          thinkingBubbleResizeObserver.unobserve(viewport);
+        }
+      }
+
+      function syncThinkingBubbleViewport(viewport, scrollToBottom) {
+        const container = viewport.parentElement;
+        const button = container.querySelector(".thinking-bubble-toggle");
+        const expanded = container.classList.contains("is-expanded");
+        const lineHeight = parseFloat(getComputedStyle(viewport).lineHeight);
+        const overflowing = viewport.scrollHeight > lineHeight * 5 + 1;
+        button.hidden = !overflowing;
+        button.title = t(expanded ? "thinkingBubbleCollapse" : "thinkingBubbleExpand");
+        button.setAttribute("aria-label", button.title);
+        button.setAttribute("aria-expanded", String(expanded));
+        if (!expanded && scrollToBottom) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      }
+
+      function mountThinkingBubble(bubble, message, index) {
+        if (!isScrollableThinkingMessage(message, index)) {
+          return;
+        }
+        const key = String(message.id || "index-" + index);
+        const previous = thinkingBubbleViewStates.get(key);
+        const container = document.createElement("div");
+        container.className = "thinking-bubble";
+        container.classList.toggle("is-expanded", Boolean(previous && previous.expanded));
+        const viewport = document.createElement("div");
+        viewport.className = "thinking-bubble-viewport";
+        viewport.id = "thinking-content-" + key;
+        viewport.dataset.thinkingKey = key;
+        viewport.thinkingContent = message.content;
+        if (!bubble.firstChild) {
+          viewport.innerHTML = bubble.innerHTML;
+        }
+        while (bubble.firstChild) {
+          viewport.appendChild(bubble.firstChild);
+        }
+        bubble.innerHTML = "";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "thinking-bubble-toggle";
+        button.hidden = true;
+        button.setAttribute("aria-controls", viewport.id);
+        button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path class="thinking-expand-icon" d="m8 8 4-4 4 4m-8 8 4 4 4-4"/><path class="thinking-collapse-icon" d="m8 4 4 4 4-4m-8 16 4-4 4 4"/></svg>';
+        button.addEventListener("click", () => {
+          container.classList.toggle("is-expanded");
+          syncThinkingBubbleViewport(viewport, true);
+        });
+        container.appendChild(viewport);
+        container.appendChild(button);
+        bubble.appendChild(container);
+        requestAnimationFrame(() => {
+          const contentChanged = !previous || previous.content !== message.content;
+          syncThinkingBubbleViewport(viewport, contentChanged);
+          if (previous && !contentChanged && !previous.expanded) {
+            viewport.scrollTop = previous.scrollTop;
+          }
+          if (thinkingBubbleResizeObserver && viewport.isConnected) {
+            thinkingBubbleResizeObserver.observe(viewport);
+          }
+        });
+      }
+
+      function captureOpenTraceCollapsibleKeys() {
         traceCollapsibleOpenKeys.clear();
         const nodes = elements.messages.querySelectorAll("details.trace-collapsible[data-trace-key]");
         nodes.forEach((node) => {
@@ -11,6 +104,197 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
             traceCollapsibleOpenKeys.add(key);
           }
         });
+      }
+
+      function isThinkingBubbleMessage(message, index) {
+        if (!message || message.role === "user") {
+          return false;
+        }
+        const kind = typeof message.kind === "string" ? message.kind.trim().toLowerCase() : "";
+        if (kind === "thinking") {
+          return true;
+        }
+        if (typeof isScrollableThinkingMessage === "function" && isScrollableThinkingMessage(message, index)) {
+          return true;
+        }
+        const presentation = typeof getTracePresentation === "function"
+          ? getTracePresentation(message.content || "")
+          : null;
+        if (presentation && presentation.type === "thinking") {
+          return true;
+        }
+        if (typeof isThinkingLikeMessage === "function" && isThinkingLikeMessage(message, presentation)) {
+          return true;
+        }
+        if (typeof isCodexReasoningStyleMessage === "function" && isCodexReasoningStyleMessage(message)) {
+          return true;
+        }
+        return false;
+      }
+
+      function messageElementIsInsideInstructionGroup(node) {
+        let current = node;
+        while (current) {
+          const className = typeof current.className === "string" ? current.className : "";
+          if (className.split(/\\s+/).indexOf("instruction-group") !== -1) {
+            return true;
+          }
+          current = current.parentNode || current.parentElement || null;
+        }
+        return false;
+      }
+
+      function isInstructionBubble(message, index) {
+        if (!message || message.role === "user") {
+          return false;
+        }
+        if (typeof isFinalAssistantSummaryMessage === "function" && isFinalAssistantSummaryMessage(index)) {
+          return false;
+        }
+        if (isThinkingBubbleMessage(message, index)) {
+          return false;
+        }
+        return true;
+      }
+
+      function instructionGroupStorageKey(entry) {
+        const message = entry && entry.message;
+        const id = message && typeof message.id === "string" ? message.id : "";
+        if (id) {
+          return id;
+        }
+        const index = entry && typeof entry.index === "number" ? entry.index : 0;
+        return "index-" + String(index);
+      }
+
+      function instructionGroupSummaryText(count, open) {
+        return t(open ? "instructionGroupExpanded" : "instructionGroupCollapsed", { count: String(count) });
+      }
+
+      function syncInstructionGroupSummary(group) {
+        if (!group) {
+          return;
+        }
+        const summary = typeof group.querySelector === "function" ? group.querySelector("summary") : null;
+        if (!summary) {
+          return;
+        }
+        const rawCount = group.dataset && group.dataset.instructionCount
+          ? group.dataset.instructionCount
+          : (typeof group.getAttribute === "function" ? group.getAttribute("data-instruction-count") : "0");
+        const count = Number(rawCount);
+        summary.textContent = instructionGroupSummaryText(Number.isFinite(count) ? count : 0, Boolean(group.open));
+      }
+
+      function captureOpenInstructionGroupKeys() {
+        instructionGroupOpenKeys.clear();
+        if (!elements.messages || typeof elements.messages.querySelectorAll !== "function") {
+          return;
+        }
+        const nodes = elements.messages.querySelectorAll("details.instruction-group");
+        if (!nodes || typeof nodes.forEach !== "function") {
+          return;
+        }
+        nodes.forEach((node) => {
+          if (!node || !node.open) {
+            return;
+          }
+          const key = typeof node.getAttribute === "function"
+            ? node.getAttribute("data-instruction-group-key")
+            : "";
+          const resolved = key || (node.dataset && node.dataset.instructionGroupKey) || "";
+          if (resolved) {
+            instructionGroupOpenKeys.add(resolved);
+          }
+        });
+      }
+
+      function bindInstructionGroupToggle(group) {
+        const summary = group.querySelector("summary");
+        if (!summary || typeof summary.addEventListener !== "function") {
+          return;
+        }
+        summary.addEventListener("click", (event) => {
+          if (event && typeof event.preventDefault === "function") {
+            event.preventDefault();
+          }
+          group.open = !group.open;
+          if (group.open) {
+            group.setAttribute("open", "");
+          } else if (typeof group.removeAttribute === "function") {
+            group.removeAttribute("open");
+          }
+          syncInstructionGroupSummary(group);
+        });
+      }
+
+      function createInstructionGroupElement(entries) {
+        const key = instructionGroupStorageKey(entries[0]);
+        const open = instructionGroupOpenKeys.has(key);
+        const group = document.createElement("details");
+        group.className = "instruction-group";
+        group.open = open;
+        group.setAttribute("data-instruction-group-key", key);
+        group.setAttribute("data-instruction-count", String(entries.length));
+        if (group.dataset) {
+          group.dataset.instructionGroupKey = key;
+          group.dataset.instructionCount = String(entries.length);
+        }
+        if (open) {
+          group.setAttribute("open", "");
+        }
+        const summary = document.createElement("summary");
+        summary.className = "instruction-group-summary";
+        group.appendChild(summary);
+        const body = document.createElement("div");
+        body.className = "instruction-group-body";
+        entries.forEach((entry) => {
+          body.appendChild(createMessageElement(entry.message, entry.index));
+        });
+        group.appendChild(body);
+        syncInstructionGroupSummary(group);
+        bindInstructionGroupToggle(group);
+        return group;
+      }
+
+      function appendVisibleMessageEntries(entries) {
+        const visibleMessages = getVisibleMessages();
+        const visibleSet = new Set(visibleMessages.map((entry) => entry.message));
+        let instructionRun = [];
+        const flushInstructionRun = () => {
+          if (!instructionRun.length) {
+            return;
+          }
+          if (instructionRun.length >= 3) {
+            elements.messages.appendChild(createInstructionGroupElement(instructionRun));
+          } else {
+            instructionRun.forEach((entry) => {
+              elements.messages.appendChild(createMessageElement(entry.message, entry.index));
+            });
+          }
+          instructionRun = [];
+        };
+        entries.forEach((entry) => {
+          const thinking = isThinkingBubbleMessage(entry.message, entry.index);
+          const shown = visibleSet.has(entry.message);
+          if (thinking) {
+            flushInstructionRun();
+            if (shown) {
+              elements.messages.appendChild(createMessageElement(entry.message, entry.index));
+            }
+            return;
+          }
+          if (!shown) {
+            return;
+          }
+          if (isInstructionBubble(entry.message, entry.index)) {
+            instructionRun.push(entry);
+            return;
+          }
+          flushInstructionRun();
+          elements.messages.appendChild(createMessageElement(entry.message, entry.index));
+        });
+        flushInstructionRun();
       }
 
       function forceCollapseToolResultBubbles() {
@@ -344,6 +628,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         const bubble = document.createElement("div");
         bubble.className = "bubble";
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        mountThinkingBubble(bubble, message, index);
         if (typeof mountJsonTreeHosts === "function") {
           mountJsonTreeHosts(bubble);
         }
@@ -370,11 +655,19 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (!messageId || !elements.messages) {
           return null;
         }
-        const children = Array.from(elements.messages.children);
-        for (let index = 0; index < children.length; index += 1) {
-          const child = children[index];
-          if (child && child.dataset && child.dataset.messageId === messageId) {
-            return child;
+        const queue = [elements.messages];
+        while (queue.length) {
+          const node = queue.shift();
+          const children = node && node.children ? Array.from(node.children) : [];
+          for (let index = 0; index < children.length; index += 1) {
+            const child = children[index];
+            if (!child) {
+              continue;
+            }
+            if (child.dataset && child.dataset.messageId === messageId) {
+              return child;
+            }
+            queue.push(child);
           }
         }
         return null;
@@ -408,7 +701,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         if (nextBadge) {
           wrapper.insertBefore(nextBadge, bubble);
         }
+        rememberThinkingBubbleViewState(bubble);
         bubble.innerHTML = safelyRenderMessageContent(message, index);
+        mountThinkingBubble(bubble, message, index);
         if (typeof mountJsonTreeHosts === "function") {
           mountJsonTreeHosts(bubble);
         }
@@ -454,16 +749,28 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
         } else if (oldBadge) {
           oldBadge.remove();
         }
-        let contentNode = bubble.querySelector(".assistant-message-content-streaming");
+        const thinkingViewport = bubble.querySelector(".thinking-bubble-viewport");
+        if (thinkingViewport && !isScrollableThinkingMessage(message, index)) {
+          return false;
+        }
+        const contentRoot = thinkingViewport || bubble;
+        let contentNode = contentRoot.querySelector(".assistant-message-content-streaming");
         if (!contentNode) {
-          bubble.innerHTML = "";
+          contentRoot.innerHTML = "";
           contentNode = document.createElement("div");
           contentNode.className = "assistant-message-content assistant-message-content-streaming";
-          bubble.appendChild(contentNode);
+          contentRoot.appendChild(contentNode);
         }
         const displayContent = getAssistantMessageContentForDisplay(message);
-        if (contentNode.textContent !== displayContent) {
+        const contentChanged = contentNode.textContent !== displayContent;
+        if (contentChanged) {
           contentNode.textContent = displayContent;
+        }
+        if (thinkingViewport) {
+          thinkingViewport.thinkingContent = message.content;
+          syncThinkingBubbleViewport(thinkingViewport, contentChanged);
+        } else {
+          mountThinkingBubble(bubble, message, index);
         }
         const existingActions = bubble.querySelector(".message-actions");
         const actions = createMessageActionsElement(message);
@@ -485,13 +792,21 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
       function renderMessages() {
         try {
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
-          const shouldAutoScroll = !chatSearchAnchored && (!elements.messages.childElementCount || shouldFollowLatestMessagesForActiveTab() || isChatNearBottom());
+          const previousScrollTop = elements.chatArea ? elements.chatArea.scrollTop : 0;
+          const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
           captureOpenTraceCollapsibleKeys();
+          captureOpenInstructionGroupKeys();
+          thinkingBubbleViewStates.clear();
+          elements.messages.querySelectorAll(".bubble").forEach(rememberThinkingBubbleViewState);
+          if (thinkingBubbleResizeObserver) {
+            thinkingBubbleResizeObserver.disconnect();
+          }
           elements.messages.innerHTML = "";
           const visibleMessages = getVisibleMessages();
-          visibleMessages.forEach(({ message, index }) => {
-            elements.messages.appendChild(createMessageElement(message, index));
-          });
+          const transcriptEntries = Array.isArray(state.messages)
+            ? state.messages.map((message, index) => ({ message, index }))
+            : visibleMessages;
+          appendVisibleMessageEntries(transcriptEntries);
 
           forceCollapseToolResultBubbles();
           elements.emptyState.style.display = visibleMessages.length === 0 ? "block" : "none";
@@ -499,6 +814,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           if (shouldAutoScroll) {
             stickChatToBottom("auto");
           } else {
+            restoreChatScrollTop(previousScrollTop);
             updateScrollToBottomButton();
           }
           updateTaskList();
@@ -844,15 +1160,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      function captureOpen
           return "🗺️ " + baseLabel;
         }
         return baseLabel;
-      }
-
-      function shouldForceFollowLatestMessagesForActiveTab() {
-        const activeTab = getConversationTabSummary(getActiveConversationTabId());
-        return isLoopMainTab(activeTab) && isLoopMainTabCloseLocked(activeTab);
-      }
-
-      function shouldFollowLatestMessagesForActiveTab() {
-        return followLatestMessages || shouldForceFollowLatestMessagesForActiveTab();
       }
 
       function resolveAutoInteractiveModeForTab(tab) {

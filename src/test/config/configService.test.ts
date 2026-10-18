@@ -374,3 +374,386 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   assert.equal(validation.issues.some((issue) => issue.code === "placeholder-model"), false);
   assert.equal(validation.issues.some((issue) => issue.code === "placeholder-base-url"), false);
 });
+
+async function withGrokHome<T>(homeDir: string, run: (grokHome: string) => Promise<T>): Promise<T> {
+  const grokHome = path.join(homeDir, "grok-home");
+  const original = process.env.GROK_HOME;
+  process.env.GROK_HOME = grokHome;
+  try {
+    return await run(grokHome);
+  } finally {
+    restoreEnvironmentVariable("GROK_HOME", original);
+  }
+}
+
+function backupStamp(filePath: string): string {
+  const match = path.basename(filePath).match(/_(\d{4}-\d{2}-\d{2}T.*)\.(json|toml)$/);
+  assert.ok(match, `backup name should include a timestamp: ${filePath}`);
+  return match[1];
+}
+
+test("legacy gemini runtime calls follow OpenCode and unknown platforms stay rejected", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const openCodeConfig = path.join(homeDir, ".opencode", "config.json");
+    const globalMcp = path.join(homeDir, ".config", "opencode", "opencode.json");
+    await fs.mkdir(path.dirname(globalMcp), { recursive: true });
+    await fs.writeFile(globalMcp, "{\"mcp\":{\"pencil\":true}}\n");
+
+    assert.deepEqual(await configService.getCurrentConfig("gemini"), { content: "{}" });
+    assert.equal(Object.prototype.hasOwnProperty.call(await configService.getCurrentConfig("gemini"), "envContent"), false);
+    await configService.applyConfig("gemini", { content: "not json" });
+    assert.equal(await fs.readFile(openCodeConfig, "utf8"), "not json");
+    assert.equal(await fs.readFile(globalMcp, "utf8"), "{\"mcp\":{\"pencil\":true}}\n");
+    await assert.rejects(
+      () => fs.stat(path.join(homeDir, ".opencode", ".env")),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+    );
+
+    await configService.applyConfig("opencode", {
+      content: "{}",
+      geminiSkills: [{ name: "legacy", path: "/tmp/legacy", enabled: false }],
+    } as Parameters<typeof configService.applyConfig>[1]);
+    assert.match(await fs.readFile(openCodeConfig, "utf8"), /legacy/);
+
+    await assert.rejects(
+      () => configService.getCurrentConfig("unknown-platform" as "claude"),
+      /Unsupported config platform: unknown-platform/,
+    );
+    await assert.rejects(
+      () => configService.applyConfig("unknown-platform" as "claude", { content: "{}" }),
+      /Unsupported config platform: unknown-platform/,
+    );
+    await assert.rejects(
+      () => configService.backupConfig("unknown-platform" as "claude"),
+      /Unsupported config platform: unknown-platform/,
+    );
+  });
+});
+
+test("Claude apply keeps MCP object checks, shallow merge, and settings-before-MCP order", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const settingsPath = path.join(homeDir, ".claude", "settings.json");
+    const mcpPath = path.join(homeDir, ".claude.json");
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(mcpPath, JSON.stringify({ keep: true, mcpServers: { a: 1 } }));
+
+    await assert.rejects(
+      () => configService.applyConfig("claude", { content: "{\"ok\":true}", mcpContent: "[]" }),
+      /MCP 配置必须是对象/,
+    );
+    assert.equal(await fs.readFile(settingsPath, "utf8"), "{\"ok\":true}");
+    assert.equal(await fs.readFile(mcpPath, "utf8"), JSON.stringify({ keep: true, mcpServers: { a: 1 } }));
+
+    await configService.applyConfig("claude", {
+      content: "{\"ok\":true}",
+      mcpContent: "",
+    });
+    assert.equal(await fs.readFile(mcpPath, "utf8"), JSON.stringify({ keep: true, mcpServers: { a: 1 } }));
+
+    await configService.applyConfig("claude", {
+      content: "{\"ok\":true}",
+      mcpContent: JSON.stringify({ mcpServers: { b: 2 } }),
+    });
+    assert.deepEqual(JSON.parse(await fs.readFile(mcpPath, "utf8")), {
+      keep: true,
+      mcpServers: { b: 2 },
+    });
+  });
+});
+
+test("Codex apply prefers content over configContent and preserves auth when omitted", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const codexDir = path.join(homeDir, ".codex");
+    await fs.mkdir(codexDir, { recursive: true });
+    await fs.writeFile(path.join(codexDir, "config.toml"), "model = \"old\"\n");
+    await fs.writeFile(path.join(codexDir, "auth.json"), "{\"token\":\"kept\"}");
+    await fs.writeFile(path.join(codexDir, ".env"), "OPENAI_API_KEY=keep\n");
+
+    await configService.applyConfig("codex", {
+      content: "",
+      configContent: "model = \"from-config-content\"\n",
+    });
+    assert.equal(await fs.readFile(path.join(codexDir, "config.toml"), "utf8"), "");
+    assert.equal(await fs.readFile(path.join(codexDir, "auth.json"), "utf8"), "{\"token\":\"kept\"}");
+
+    await configService.applyConfig("codex", {
+      configContent: "model = \"from-config-content\"\n",
+      authContent: "",
+    });
+    assert.equal(await fs.readFile(path.join(codexDir, "config.toml"), "utf8"), "model = \"from-config-content\"\n");
+    assert.equal(await fs.readFile(path.join(codexDir, "auth.json"), "utf8"), "");
+    assert.equal(await fs.readFile(path.join(codexDir, ".env"), "utf8"), "OPENAI_API_KEY=keep\n");
+
+    await assert.rejects(
+      () => configService.applyConfig("codex", {}),
+      /Codex 配置不完整/,
+    );
+    assert.equal(await fs.readFile(path.join(codexDir, "config.toml"), "utf8"), "model = \"from-config-content\"\n");
+  });
+});
+
+test("runtime backups keep prefixes, shared timestamps, content, and backup list order", async () => {
+  await withTempHome(async (homeDir) => {
+    await withGrokHome(homeDir, async (grokHome) => {
+      const configService = loadConfigService();
+      await fs.mkdir(path.join(homeDir, ".claude"), { recursive: true });
+      await fs.mkdir(path.join(homeDir, ".codex"), { recursive: true });
+      await fs.mkdir(path.join(homeDir, ".opencode"), { recursive: true });
+      await fs.writeFile(path.join(homeDir, ".claude", "settings.json"), "{\"claude\":true}");
+      await fs.writeFile(path.join(homeDir, ".claude.json"), "{\"mcp\":true}");
+      await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), "model = \"codex\"\n");
+      await fs.writeFile(path.join(homeDir, ".codex", "auth.json"), "{\"token\":\"auth\"}");
+      await fs.writeFile(path.join(homeDir, ".codex", ".env"), "SECRET=1\n");
+      await fs.writeFile(path.join(homeDir, ".opencode", "config.json"), "{\"model\":\"open\"}");
+      await fs.mkdir(grokHome, { recursive: true });
+      await fs.writeFile(path.join(grokHome, "config.toml"), "kept = true\n");
+
+      const claudeBackups = await configService.backupConfig("claude");
+      const codexBackups = await configService.backupConfig("codex");
+      const openCodeBackups = await configService.backupConfig("opencode");
+      const grokBackups = await configService.backupConfig("grok");
+      const directClaude = await configService.backupClaudeConfig();
+
+      assert.deepEqual(claudeBackups.map((filePath) => path.basename(filePath).replace(/_\d{4}-\d{2}-\d{2}T.*(?=\.(json|toml)$)/, "_STAMP")), [
+        "claude_settings_STAMP.json",
+        "claude_mcp_STAMP.json",
+      ]);
+      assert.equal(backupStamp(claudeBackups[0]), backupStamp(claudeBackups[1]));
+      assert.equal(await fs.readFile(claudeBackups[0], "utf8"), "{\"claude\":true}");
+      assert.equal(await fs.readFile(claudeBackups[1], "utf8"), "{\"mcp\":true}");
+      assert.deepEqual(codexBackups.map((filePath) => path.basename(filePath).replace(/_\d{4}-\d{2}-\d{2}T.*(?=\.(json|toml)$)/, "_STAMP")), [
+        "codex_config_STAMP.toml",
+        "codex_auth_STAMP.json",
+      ]);
+      assert.equal(backupStamp(codexBackups[0]), backupStamp(codexBackups[1]));
+      assert.equal(await fs.readFile(codexBackups[0], "utf8"), "model = \"codex\"\n");
+      assert.equal(await fs.readFile(codexBackups[1], "utf8"), "{\"token\":\"auth\"}");
+      assert.deepEqual(openCodeBackups.map((filePath) => path.basename(filePath)), [
+        `opencode_config_${backupStamp(openCodeBackups[0])}.json`,
+      ]);
+      assert.equal(await fs.readFile(openCodeBackups[0], "utf8"), "{\"model\":\"open\"}");
+      assert.deepEqual(grokBackups.map((filePath) => path.basename(filePath)), [
+        `grok_config_${backupStamp(grokBackups[0])}.toml`,
+      ]);
+      assert.equal(await fs.readFile(grokBackups[0], "utf8"), "kept = true\n");
+      assert.equal(directClaude.length, 2);
+      assert.match(path.basename(directClaude[0]), /^claude_settings_.*\.json$/);
+      assert.equal(path.dirname(claudeBackups[0]), path.join(homeDir, ".ai_cli_tools_backups"));
+
+      const backupNames = (await fs.readdir(path.join(homeDir, ".ai_cli_tools_backups"))).join("\n");
+      assert.doesNotMatch(backupNames, /\.env/);
+      assert.equal(await fs.readFile(path.join(homeDir, ".codex", ".env"), "utf8"), "SECRET=1\n");
+
+      const claudeList = await configService.getBackupList("claude");
+      assert.deepEqual(claudeList, claudeList.slice().sort().reverse());
+      assert.ok(claudeList.includes(path.basename(claudeBackups[0])));
+      assert.ok(claudeList.includes(path.basename(directClaude[1])));
+      const openCodeList = await configService.getBackupList("gemini");
+      assert.deepEqual(openCodeList, [path.basename(openCodeBackups[0])]);
+    });
+  });
+});
+
+async function useHome<T>(homeDir: string, run: () => Promise<T>): Promise<T> {
+  process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+  return run();
+}
+
+test("default profiles skip native archives, ignore hidden OpenCode migrations, and isolate read and save failures", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const claudeProfileDir = path.join(homeDir, ".claude", "__config");
+    await fs.mkdir(claudeProfileDir, { recursive: true });
+    await fs.writeFile(path.join(claudeProfileDir, "existing.json"), JSON.stringify({
+      id: "existing",
+      name: "Existing",
+      platform: "claude",
+      content: "{}",
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    await fs.mkdir(path.join(homeDir, ".claude", "settings.json"), { recursive: true });
+    assert.equal(await configService.initDefaultConfig("claude"), null);
+    assert.equal((await fs.readdir(claudeProfileDir)).filter((file) => file.endsWith(".json")).length, 1);
+
+    const claudeFallbackHome = path.join(homeDir, "claude-fallback");
+    const fallback = await useHome(claudeFallbackHome, async () => {
+      const reloaded = loadConfigService();
+      await fs.mkdir(path.join(claudeFallbackHome, ".claude", "settings.json"), { recursive: true });
+      await fs.mkdir(path.join(claudeFallbackHome, ".claude.json"), { recursive: true });
+      return reloaded.initDefaultConfig("claude");
+    });
+    assert.ok(fallback);
+    assert.equal(fallback?.content, "{}");
+    assert.equal(fallback?.mcpContent, "{}");
+    assert.deepEqual(fallback?.claudeSkills, []);
+    assert.equal(fallback?.name, "默认");
+    const savedFallback = JSON.parse(await fs.readFile(
+      path.join(claudeFallbackHome, ".claude", "__config", `${fallback?.id}.json`),
+      "utf8",
+    ));
+    assert.equal(savedFallback.content, "{}");
+    assert.equal(savedFallback.mcpContent, "{}");
+    assert.deepEqual(savedFallback.claudeSkills, []);
+    assert.equal(await useHome(claudeFallbackHome, () => loadConfigService().initDefaultConfig("claude")), null);
+
+    const codexFallback = await useHome(path.join(homeDir, "codex-fallback"), async () => {
+      const reloaded = loadConfigService();
+      const codexDir = path.join(homeDir, "codex-fallback", ".codex");
+      await fs.mkdir(path.join(codexDir, "config.toml"), { recursive: true });
+      await fs.mkdir(path.join(codexDir, "auth.json"), { recursive: true });
+      return reloaded.initDefaultConfig("codex");
+    });
+    assert.equal(codexFallback?.content, "");
+    assert.equal(codexFallback?.configContent, "");
+    assert.equal(codexFallback?.authContent, "{}");
+    assert.deepEqual(codexFallback?.codexSkills, []);
+
+    const openCodeFallback = await useHome(path.join(homeDir, "opencode-fallback"), async () => {
+      const reloaded = loadConfigService();
+      await fs.mkdir(path.join(homeDir, "opencode-fallback", ".opencode", "config.json"), { recursive: true });
+      return reloaded.initDefaultConfig("opencode");
+    });
+    assert.equal(openCodeFallback?.content, "{}");
+    assert.deepEqual(openCodeFallback?.openCodeSkills, []);
+
+    await useHome(homeDir, async () => undefined);
+    const openCodeService = loadConfigService();
+    const openCodeProfileDir = path.join(homeDir, ".opencode", "__config");
+    await fs.mkdir(openCodeProfileDir, { recursive: true });
+    await fs.writeFile(path.join(openCodeProfileDir, "opencode_migrated_old.json"), JSON.stringify({
+      id: "opencode_migrated_old",
+      name: "[Claude] hidden",
+      platform: "opencode",
+      content: "{}",
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    await fs.mkdir(path.dirname(path.join(homeDir, ".opencode", "config.json")), { recursive: true });
+    await fs.writeFile(path.join(homeDir, ".opencode", "config.json"), "{}\n");
+    const created = await openCodeService.initDefaultConfig("opencode");
+    assert.ok(created);
+    assert.equal(created?.platform, "opencode");
+    assert.deepEqual(created?.openCodeSkills, []);
+    assert.equal((await openCodeService.getConfigList("opencode")).length, 1);
+    assert.equal((await openCodeService.getConfigList("gemini")).length, 1);
+    assert.equal(await openCodeService.initDefaultConfig("gemini"), null);
+
+    const saveFailureHome = path.join(homeDir, "opencode-save-failure");
+    await useHome(saveFailureHome, async () => {
+      const saveFailureService = loadConfigService();
+      await fs.mkdir(path.join(saveFailureHome, ".opencode"), { recursive: true });
+      const invalidRuntime = "{\n  \"provider\": {\n    \"myprovider\": {}\n  }\n}\n";
+      await fs.writeFile(path.join(saveFailureHome, ".opencode", "config.json"), invalidRuntime);
+      await assert.rejects(
+        () => saveFailureService.initDefaultConfig("opencode"),
+        /placeholder provider "myprovider"/,
+      );
+      assert.equal(await fs.readFile(path.join(saveFailureHome, ".opencode", "config.json"), "utf8"), invalidRuntime);
+      const savedNames = (await fs.readdir(path.join(saveFailureHome, ".opencode", "__config")))
+        .filter((file) => file.endsWith(".json") && file !== "config-order.json");
+      assert.deepEqual(savedNames, []);
+    });
+  });
+});
+
+test("Grok runtime keeps a missing file empty and does not replace invalid content", async () => {
+  await withTempHome(async (homeDir) => {
+    await withGrokHome(homeDir, async (grokHome) => {
+      const configService = loadConfigService();
+      const configPath = path.join(grokHome, "config.toml");
+      assert.deepEqual(await configService.getCurrentConfig("grok"), {
+        content: "",
+        configContent: "",
+      });
+      await assert.rejects(
+        () => fs.stat(configPath),
+        (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+      );
+
+      const valid = "[models]\ndefault = \"grok\"\n\n[model.grok]\nmodel = \"grok-4\"\nkept_note = \"leave-me\"\n";
+      await configService.applyConfig("grok", { configContent: valid });
+      assert.equal(await fs.readFile(configPath, "utf8"), valid);
+
+      await assert.rejects(() => configService.applyConfig("grok", { content: "   ", configContent: valid }));
+      await assert.rejects(() => configService.applyConfig("grok", { content: "models = [\n" }));
+      await assert.rejects(
+        () => configService.applyConfig("grok", {
+          content: "[models]\ndefault_reasoning_effort = \"nope\"\n\n[model.grok]\nmodel = \"grok-4\"\n",
+        }),
+        /default_reasoning_effort/,
+      );
+      assert.equal(await fs.readFile(configPath, "utf8"), valid);
+
+      await fs.rm(configPath);
+      await fs.mkdir(configPath);
+      await assert.rejects(() => configService.getCurrentConfig("grok"), (error: NodeJS.ErrnoException) => error.code === "EISDIR");
+      const created = await configService.initDefaultConfig("grok");
+      assert.equal(created?.content, "");
+      assert.equal(created?.configContent, "");
+      assert.deepEqual(created?.grokSkills, []);
+      const saved = JSON.parse(await fs.readFile(
+        path.join(grokHome, "__config", `${created?.id}.json`),
+        "utf8",
+      ));
+      assert.equal(saved.content, "");
+      assert.equal(saved.configContent, "");
+      assert.deepEqual(saved.grokSkills, []);
+    });
+  });
+});
+
+test("reloading configService after HOME changes does not keep the previous runtime paths", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-config-reload-"));
+  const homeA = path.join(tempRoot, "home-a");
+  const homeB = path.join(tempRoot, "home-b");
+  const original = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    CODEX_HOME: process.env.CODEX_HOME,
+    CODEX_HOME_DIR: process.env.CODEX_HOME_DIR,
+    GROK_HOME: process.env.GROK_HOME,
+  };
+  try {
+    process.env.HOME = homeA;
+    process.env.USERPROFILE = homeA;
+    delete process.env.CODEX_HOME;
+    delete process.env.CODEX_HOME_DIR;
+    process.env.GROK_HOME = path.join(tempRoot, "grok-a");
+    const first = loadConfigService();
+    await first.getCurrentConfig("claude");
+    await fs.stat(path.join(homeA, ".claude", "settings.json"));
+
+    process.env.HOME = homeB;
+    process.env.USERPROFILE = homeB;
+    process.env.GROK_HOME = path.join(tempRoot, "grok-b");
+    const second = loadConfigService();
+    await second.getCurrentConfig("codex");
+    await fs.stat(path.join(homeB, ".codex", "config.toml"));
+    await fs.stat(path.join(homeB, ".codex", "auth.json"));
+    await assert.rejects(
+      () => fs.stat(path.join(homeA, ".codex", "config.toml")),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+    );
+    assert.deepEqual(await second.getCurrentConfig("grok"), { content: "", configContent: "" });
+    await assert.rejects(
+      () => fs.stat(path.join(tempRoot, "grok-a", "config.toml")),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+    );
+    await assert.rejects(
+      () => fs.stat(path.join(tempRoot, "grok-b", "config.toml")),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT",
+    );
+  } finally {
+    restoreEnvironmentVariable("HOME", original.HOME);
+    restoreEnvironmentVariable("USERPROFILE", original.USERPROFILE);
+    restoreEnvironmentVariable("CODEX_HOME", original.CODEX_HOME);
+    restoreEnvironmentVariable("CODEX_HOME_DIR", original.CODEX_HOME_DIR);
+    restoreEnvironmentVariable("GROK_HOME", original.GROK_HOME);
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

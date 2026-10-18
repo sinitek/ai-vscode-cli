@@ -168,6 +168,14 @@ export const VIEW_CONTENT_SCRIPT_CHAT_SEARCH = `      ${buildChatTranscriptSearc
             if (typeof current.setAttribute === "function") {
               current.setAttribute("open", "");
             }
+            if (
+              current.classList
+              && typeof current.classList.contains === "function"
+              && current.classList.contains("instruction-group")
+              && typeof syncInstructionGroupSummary === "function"
+            ) {
+              syncInstructionGroupSummary(current);
+            }
           }
           const next = current.parentElement || current.parentNode;
           if (!next || next === current) {

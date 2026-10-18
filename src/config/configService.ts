@@ -9,11 +9,8 @@ import {
   CopyConfigPayload,
   CurrentConfig,
 } from "./types";
-import { mergeCodexSkillsConfig } from "./codexSkills";
-import { mergeGrokSkillsConfig } from "./grokSkills";
-import { mergeClaudeSkillsConfig } from "./claudeSkills";
-import { mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { t } from "../i18n";
+import { createCliRuntimeConfigStrategies } from "./cliRuntimeConfigStrategies";
 import {
   OpenCodeConfigModelIssueCode,
   OpenCodeModelRole,
@@ -35,7 +32,6 @@ import {
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
-import { commitGrokText, validateGrokDocument } from "./grokConfig";
 
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
 const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
@@ -258,6 +254,31 @@ export async function backupGrokConfig(): Promise<string[]> {
   await fs.writeFile(configBackupPath, config, "utf-8");
   return [configBackupPath];
 }
+
+const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
+  claude: {
+    readClaudeConfig,
+    readClaudeMcpConfig,
+    writeClaudeConfig,
+    writeClaudeMcpConfig,
+    backupClaudeConfig,
+  },
+  codex: {
+    readCodexConfig,
+    writeCodexConfig,
+    backupCodexConfig,
+  },
+  opencode: {
+    readOpenCodeConfig,
+    writeOpenCodeConfig,
+    backupOpenCodeConfig,
+  },
+  grok: {
+    readGrokConfigText,
+    writeGrokConfigText,
+    backupGrokConfig,
+  },
+});
 
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
@@ -891,46 +912,11 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
     updatedAt: Date.now(),
   };
 
+  const strategy = cliRuntimeConfigStrategies[normalizedPlatform];
   try {
-    if (normalizedPlatform === "claude") {
-      const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
-      defaultConfig.content = content;
-      defaultConfig.mcpContent = mcpContent;
-      defaultConfig.claudeSkills = [];
-    } else if (normalizedPlatform === "codex") {
-      const { config, auth } = await readCodexConfig();
-      defaultConfig.content = config;
-      defaultConfig.configContent = config;
-      defaultConfig.authContent = auth;
-      defaultConfig.codexSkills = [];
-    } else if (normalizedPlatform === "grok") {
-      const config = await readGrokConfigText();
-      defaultConfig.content = config;
-      defaultConfig.configContent = config;
-      defaultConfig.grokSkills = [];
-    } else {
-      const { config } = await readOpenCodeConfig();
-      defaultConfig.content = config;
-      defaultConfig.openCodeSkills = [];
-    }
+    Object.assign(defaultConfig, await strategy.readInitialFields());
   } catch {
-    if (normalizedPlatform === "claude") {
-      defaultConfig.content = "{}";
-      defaultConfig.mcpContent = "{}";
-      defaultConfig.claudeSkills = [];
-    } else if (normalizedPlatform === "opencode") {
-      defaultConfig.content = "{}";
-      defaultConfig.openCodeSkills = [];
-    } else if (normalizedPlatform === "grok") {
-      defaultConfig.content = "";
-      defaultConfig.configContent = "";
-      defaultConfig.grokSkills = [];
-    } else {
-      defaultConfig.content = "";
-      defaultConfig.configContent = "";
-      defaultConfig.authContent = "{}";
-      defaultConfig.codexSkills = [];
-    }
+    Object.assign(defaultConfig, strategy.fallbackInitialFields());
   }
 
   await saveConfig(defaultConfig);
@@ -939,97 +925,17 @@ export async function initDefaultConfig(platform: LegacyConfigPlatformInput): Pr
 
 export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Promise<CurrentConfig> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  if (normalizedPlatform === "claude") {
-    const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
-    return { content, mcpContent };
-  }
-  if (normalizedPlatform === "codex") {
-    const { config, auth } = await readCodexConfig();
-    return { content: config, configContent: config, authContent: auth };
-  }
-  if (normalizedPlatform === "grok") {
-    const config = await readGrokConfigText();
-    return { content: config, configContent: config };
-  }
-  const { config } = await readOpenCodeConfig();
-  return { content: config };
+  return cliRuntimeConfigStrategies[normalizedPlatform].readCurrent();
 }
 
 export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  if (normalizedPlatform === "claude") {
-    const nextSettings =
-      payload.claudeSkills === undefined
-        ? payload.content ?? "{}"
-        : mergeClaudeSkillsConfig(payload.content ?? "{}", payload.claudeSkills);
-    await writeClaudeConfig(nextSettings);
-    if (payload.mcpContent) {
-      await writeClaudeMcpConfig(payload.mcpContent);
-    }
-    return;
-  }
-  if (normalizedPlatform === "codex") {
-    const configContent = payload.content ?? payload.configContent;
-    if (configContent === undefined) {
-      throw new Error(t("config.codexIncomplete"));
-    }
-    const current = payload.authContent === undefined ? await readCodexConfig() : undefined;
-    const nextConfig =
-      payload.codexSkills === undefined
-        ? configContent
-        : mergeCodexSkillsConfig(configContent, payload.codexSkills);
-    await writeCodexConfig(nextConfig, payload.authContent ?? current?.auth ?? "{}");
-    return;
-  }
-  if (normalizedPlatform === "grok") {
-    const nextContent = payload.content ?? payload.configContent ?? "";
-    if (!nextContent.trim()) {
-      throw new Error(t("grok.invalidConfig"));
-    }
-    let contentToCommit = nextContent;
-    if (payload.grokSkills !== undefined) {
-      const merged = mergeGrokSkillsConfig(nextContent, payload.grokSkills);
-      if (!merged.ok) {
-        throw new Error(merged.error);
-      }
-      contentToCommit = merged.content;
-      if (!contentToCommit.trim()) {
-        throw new Error(t("grok.invalidConfig"));
-      }
-    }
-    const current = await readGrokConfigText();
-    const committed = commitGrokText(current, contentToCommit);
-    if (!committed.ok) {
-      throw new Error(committed.error || t("grok.invalidConfig"));
-    }
-    const fieldError = validateGrokDocument(committed.document);
-    if (fieldError) {
-      throw new Error(fieldError);
-    }
-    await writeGrokConfigText(committed.content);
-    return;
-  }
-  const legacyPayload = payload as ApplyPayload & { geminiSkills?: ApplyPayload["openCodeSkills"] };
-  const openCodeSkills = payload.openCodeSkills ?? legacyPayload.geminiSkills;
-  const nextSettings =
-    openCodeSkills === undefined
-      ? payload.content ?? "{}"
-      : mergeOpenCodeSkillsConfig(payload.content ?? "{}", openCodeSkills);
-  await writeOpenCodeConfig(nextSettings);
+  await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
 }
 
 export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  if (normalizedPlatform === "claude") {
-    return backupClaudeConfig();
-  }
-  if (normalizedPlatform === "codex") {
-    return backupCodexConfig();
-  }
-  if (normalizedPlatform === "grok") {
-    return backupGrokConfig();
-  }
-  return backupOpenCodeConfig();
+  return cliRuntimeConfigStrategies[normalizedPlatform].backup();
 }
 
 export {

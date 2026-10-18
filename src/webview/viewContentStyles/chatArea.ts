@@ -2,6 +2,7 @@ export const CHAT_AREA_STYLES = `      /* Chat Area */
       .chat-area {
         flex: 1;
         overflow-y: auto;
+        overflow-anchor: none;
         padding: 20px var(--panel-content-padding);
         margin: 0;
         background: var(--vscode-editor-background);

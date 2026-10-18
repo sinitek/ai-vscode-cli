@@ -306,6 +306,35 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.grok_semantic_replay",
+      "name": "Grok 按调用聚合语义回放与聊天摘要",
+      "description": "Grok 当前 prompt 内以 sessionId 和 toolCallId 聚合工具，回放通常仅开始与规范化终态，主对话用同 ID 更新一个摘要，不持久化空进度、描述性结果和重复快照。已知工具字节字段只做无损 UTF-8 解码，等价别名、可验证行号包装与重复纯文本去重，保留差异、截断、多模态、错误及未知结构；缺 ID 不全局去重。原生和 todo 计划更新已有任务列表，失败 todo 仍显示错误。同会话活动独立于回放数量按 Tab 刷新；取消/失败排空未完成调用，停止后的迟到记录拒绝，历史记录不改写。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/interactive/grokToolCallStream.ts", "anchor": "GrokToolCallStream"},
+        {"path": "src/interactive/grokReplayStream.ts", "anchor": "GrokReplayStream"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/webview/viewContentScript/runStreamAndQueue.ts", "anchor": "runStreamActivityAt"},
+        {"path": "src/test/interactive/grokToolCallStream.test.ts"},
+        {"path": ".ch/docs/runbooks/grok-model-config.md", "anchor": "语义回放与工具气泡"}
+      ]
+    },
+    {
+      "id": "plugin.rule.thinking_bubble_viewport",
+      "name": "思考气泡默认五行滚动并支持展开收起",
+      "description": "thinking assistant、thinking trace 及兼容识别的 reasoning 气泡默认按实际显示行高限制为五行，超出后内部滚动。新增正文时收起状态自动滚底；SVG 按钮可展开全部正文或再次收起并定位最新内容。流式节点复用、结束后 Markdown 格式化及重绘保留展开状态，面板宽度变化重新检测溢出。最终结论、普通回复、工具结果和用户消息不受此规则限制。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "mountThinkingBubble"},
+        {"path": "src/webview/viewContentStyles/messages.ts", "anchor": ".thinking-bubble-viewport"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "thinking streams scroll internally"}
+      ]
+    },
+    {
       "id": "plugin.rule.session_health_gates_reuse",
       "name": "正常气泡决定会话可复用性",
       "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话及草稿，释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI。",
@@ -323,11 +352,12 @@
     {
       "id": "plugin.rule.grok_current_context_usage",
       "name": "Grok 分组使用原生当前上下文快照",
-      "description": "Grok initialize 声明 clientCapabilities._meta 的 x.ai/statusLine 后订阅原生 session_status，读取 context_window.context_tokens 和 context_window_size，兼容标准 ACP usage_update.used/size。仅接受同会话有效非负安全整数，不把累计 session_input_tokens、单轮 usage、费用或字符数作为当前上下文。复用 Codex 上下文标签、等待占位与 Tab 隔离，合法零值和下降直接展示。runner 保留最新快照和轻量订阅以接收 prompt RPC result 之后的最终用量；结束后的更新仅允许仍绑定原 Grok Tab、会话和 runner 且无新执行，停止或失效后不接受旧回调。",
+      "description": "Grok initialize 声明 clientCapabilities._meta 的 x.ai/statusLine 后订阅原生 session_status，读取 context_window.context_tokens 和 context_window_size，兼容标准 ACP usage_update.used/size。运行中每次同会话 response_completed 以最近响应 input_tokens、cache_read_input_tokens、cache_creation_input_tokens、output_tokens 之和刷新，符合 Grok 1.0.62 原生窗口口径，随后由原生快照校准；相同 token 与窗口去重。仅接受有效非负安全整数，不累计 session_input_tokens、turn_completed/turn_usage、费用或字符数。复用 Codex 上下文标签、等待占位与 Tab 隔离，合法零值和下降直接展示。runner 保留最新快照和轻量订阅以接收 prompt RPC result 之后的最终用量；结束后的更新仅允许仍绑定原 Grok Tab、会话和 runner 且无新执行，停止或失效后不接受旧回调。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/interactive/grokAppServerProtocol.ts", "anchor": "readGrokTokenUsageUpdate"},
+        {"path": "src/interactive/grokAppServerProtocol.ts", "anchor": "readGrokResponseContextTokens"},
         {"path": "src/interactive/grokRunner.ts"},
         {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
         {"path": "src/webview/viewContentScript/taskListAndUi.ts"},

@@ -20,6 +20,7 @@ import {
   readGrokStreamFailure,
   readGrokCompactionEvent,
   readGrokTokenUsageUpdate,
+  readGrokResponseContextTokens,
   GROK_RESPONSES_STREAM_INCOMPATIBLE,
   resolveGrokReasoningEffort,
   resolveGrokResumeSessionId,
@@ -81,6 +82,40 @@ test("accepts standard ACP context usage but rejects missing or malformed Grok c
   assert.equal(readGrokTokenUsageUpdate({ method: "session/update", params: { update: { sessionUpdate: "usage_update", used: 123 } } }, "saved-session"), null);
   assert.equal(readGrokTokenUsageUpdate({ method: "session/update", params: null }, "saved-session"), null);
   assert.equal(readGrokTokenUsageUpdate(message({ sessionUpdate: "usage_update", used: 123 }), ""), null);
+});
+
+test("reads the latest Grok response context with split cache counts and native output semantics", () => {
+  const params = {
+    sessionId: "saved-session",
+    update: {
+      sessionUpdate: "response_completed",
+      usage: { input_tokens: 13000, output_tokens: 20, cache_read_input_tokens: 3000, cache_creation_input_tokens: 200, reasoning_tokens: 10 },
+    },
+  };
+  for (const method of ["session/update", "_x.ai/session_notification", "_x.ai/session/update"]) {
+    assert.equal(readGrokResponseContextTokens({ method, params }, "saved-session"), 16220);
+  }
+  assert.equal(readGrokResponseContextTokens({ method: "session/update", params }, "other-session"), null);
+  assert.equal(readGrokResponseContextTokens({ method: "other", params }, "saved-session"), null);
+});
+
+test("rejects incomplete, invalid, cumulative or foreign Grok response usage", () => {
+  const message = (usage: Record<string, unknown>, sessionUpdate = "response_completed") => ({
+    method: "_x.ai/session_notification",
+    params: { sessionId: "saved-session", update: { sessionUpdate, usage } },
+  });
+  assert.equal(readGrokResponseContextTokens(message({ input_tokens: 0, output_tokens: 0 }), "saved-session"), 0);
+  for (const key of ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) {
+    for (const value of [null, -1, 1.5, NaN, Infinity, "123", Number.MAX_SAFE_INTEGER + 1]) {
+      assert.equal(readGrokResponseContextTokens(message({ input_tokens: 100, output_tokens: 10, [key]: value }), "saved-session"), null);
+    }
+  }
+  for (const usage of [{}, { input_tokens: 100 }, { output_tokens: 10 }, { inputTokens: 900000, outputTokens: 50000 }, { input_tokens: Number.MAX_SAFE_INTEGER, output_tokens: 1 }]) {
+    assert.equal(readGrokResponseContextTokens(message(usage), "saved-session"), null);
+  }
+  assert.equal(readGrokResponseContextTokens(message({ input_tokens: 100, output_tokens: 10 }, "turn_completed"), "saved-session"), null);
+  assert.equal(readGrokResponseContextTokens(message({ input_tokens: 100, output_tokens: 10 }, "turn_usage"), "saved-session"), null);
+  assert.equal(readGrokResponseContextTokens(message({ input_tokens: 100, output_tokens: 10 }), ""), null);
 });
 
 test("reads native Grok compaction notifications without retaining summary content", () => {

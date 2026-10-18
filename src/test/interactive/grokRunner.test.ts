@@ -805,6 +805,79 @@ test("host sends session updates through rawStreamDelta without changing bubbles
   assert.equal(stored.some((message) => String(message.content).includes("session/update")), false);
 });
 
+test("host updates a single stored tool bubble per call and preserves distinct call identities", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onTrace?.("tool: bash\nstatus: in_progress\ncommand: pwd", "tool-use", { toolCallId: "one" });
+      handlers.onTrace?.("tool: bash\nstatus: completed\ncommand: pwd\nexit_code: 0", "tool-use", { toolCallId: "one" });
+      handlers.onTrace?.("tool: bash\nstatus: failed\ncommand: pwd\noutput:\nfailed", "tool-use", { toolCallId: "two" });
+      handlers.onAssistantDelta?.("done");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("test"), targetFor("local-session"));
+  const traces = (harness.messagesBySession.get("local-session") ?? []).filter((message) => message.role === "trace");
+  assert.equal(traces.length, 2);
+  assert.match(traces[0].content, /status: completed/);
+  assert.equal(traces[0].merge, false);
+  const updates = harness.panelMessages.filter((message) => message.type === "traceSegment");
+  assert.equal(updates.length, 3);
+  assert.equal(updates[0].id, updates[1].id);
+  assert.notEqual(updates[0].id, updates[2].id);
+  assert.equal(updates[0].createdAt, updates[1].createdAt);
+});
+
+test("host drains cancelled tool presentation before detaching but rejects later callbacks", async () => {
+  let handlers: GrokStreamHandlers = {};
+  let finish: () => void = () => undefined;
+  let started: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const harness = createHostHarness({
+    behavior: async (_prompt, current) => {
+      handlers = current;
+      handlers.onTrace?.("tool: bash\nstatus: in_progress", "tool-use", { toolCallId: "one" });
+      await new Promise<void>((resolve) => { finish = resolve; started(); });
+    },
+    onCancel: () => {
+      handlers.onTrace?.("tool: bash\nstatus: cancelled", "tool-use", { toolCallId: "one" });
+      handlers.onEvent?.({ method: "session/update", params: { update: { sessionUpdate: "tool_call_update", toolCallId: "one", status: "cancelled", rawOutput: "partial" } } });
+      finish();
+    },
+  });
+  const turn = harness.host.runPromptInteractive(inputFor("test"), targetFor("local-session"));
+  await ready;
+  harness.activeRunsByTabId.get("tab-grok")?.stop();
+  await turn;
+  const count = harness.panelMessages.length;
+  handlers.onTrace?.("late", "tool-use", { toolCallId: "one" });
+  handlers.onEvent?.({ method: "late" });
+  assert.equal(harness.panelMessages.length, count);
+  const traces = (harness.messagesBySession.get("local-session") ?? []).filter((message) => message.role === "trace");
+  assert.equal(traces.length, 1);
+  assert.match(traces[0].content, /status: cancelled/);
+  assert.equal(harness.panelMessages.filter((message) => message.type === "rawStreamDelta").length, 1);
+});
+
+test("host routes filtered activity and plans without raw records and preserves whitespace deltas", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onActivity?.();
+      handlers.onActivity?.();
+      handlers.onTaskListUpdate?.([{ text: "验证", done: false }]);
+      handlers.onAssistantDelta?.("你好");
+      handlers.onAssistantDelta?.(" \n");
+      handlers.onAssistantDelta?.("世界");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("test"), targetFor("local-session"));
+  assert.equal(harness.panelMessages.filter((message) => message.type === "runActivity").length, 1);
+  assert.equal(harness.panelMessages.filter((message) => message.type === "rawStreamDelta").length, 0);
+  assert.equal(harness.panelMessages.filter((message) => message.type === "taskListUpdate").length, 1);
+  const assistant = (harness.messagesBySession.get("local-session") ?? []).filter((message) => message.role === "assistant");
+  assert.equal(assistant[0].content, "你好 \n世界");
+});
+
 test("reports current Grok context after prompt completion and stops notifying on cancel", async () => {
   const fake = new FakeGrok();
   const runner = new GrokInteractiveRunner({
@@ -849,6 +922,69 @@ test("reports current Grok context after prompt completion and stops notifying o
     sendUsage(7000);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.deepEqual(nextUsage, [4000, 6000]);
+  } finally {
+    runner.dispose();
+  }
+});
+
+test("refreshes Grok context after every model response while a multi-step prompt is running", async () => {
+  const fake = new FakeGrok();
+  fake.promptResponse = () => undefined;
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(), command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  const usage: Array<{ tokensInContextWindow: number; modelContextWindow: number | null }> = [];
+  const send = (update: Record<string, unknown>, sessionId = "grok-session") => fake.send({
+    method: "_x.ai/session_notification", params: { sessionId, update },
+  });
+  const snapshot = (tokens: number, size = 128000) => send({
+    sessionUpdate: "session_status", schema_version: 1, session_id: "grok-session",
+    context_window: { context_tokens: tokens, context_window_size: size },
+  });
+  const response = (input: number, output: number, sessionId = "grok-session") => send({
+    sessionUpdate: "response_completed",
+    usage: { input_tokens: input, output_tokens: output, cache_read_input_tokens: 3000, cache_creation_input_tokens: 200, reasoning_tokens: 10 },
+  }, sessionId);
+  const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    await runner.start();
+    const turn = runner.prompt("multi-step task", { onTokenUsageUpdate: (update) => usage.push(update) });
+    snapshot(1340);
+    snapshot(1340);
+    response(12000, 50);
+    await flush();
+    assert.deepEqual(usage, [
+      { tokensInContextWindow: 1340, modelContextWindow: 128000 },
+      { tokensInContextWindow: 15250, modelContextWindow: 128000 },
+    ]);
+    response(13000, 20);
+    response(900000, 1, "other-session");
+    send({ sessionUpdate: "turn_completed", usage: { input_tokens: 900000, output_tokens: 50000 } });
+    send({ sessionUpdate: "response_completed", usage: { input_tokens: 8000 } });
+    await flush();
+    assert.equal(usage.at(-1)?.tokensInContextWindow, 16220);
+    assert.equal(usage.length, 3);
+    const prompt = fake.lines.map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((message) => message.method === "session/prompt");
+    fake.send({ id: prompt?.id, result: { stopReason: "end_turn" } });
+    await turn;
+    response(99999, 1);
+    snapshot(2000);
+    snapshot(2000, 64000);
+    snapshot(0, 64000);
+    await flush();
+    assert.deepEqual(usage.slice(3), [
+      { tokensInContextWindow: 2000, modelContextWindow: 128000 },
+      { tokensInContextWindow: 2000, modelContextWindow: 64000 },
+      { tokensInContextWindow: 0, modelContextWindow: 64000 },
+    ]);
+    runner.cancelTurn();
+    response(5000, 100);
+    snapshot(5000);
+    await flush();
+    assert.equal(usage.length, 6);
   } finally {
     runner.dispose();
   }
@@ -925,7 +1061,7 @@ test("filters replay metadata and merges fragments without delaying assistant or
   await turn;
   assert.equal(events.length, 4);
   assert.equal(((events[0].params as { update: { content: { text: string } } }).update.content.text), "hello world");
-  assert.equal(traces.length, 3);
+  assert.equal(traces.length, 2);
   assert.equal(events[3].id, promptId);
   runner.dispose();
 });
@@ -958,6 +1094,43 @@ test("flushes partial replay before prompt errors and isolates reused turns", as
   runner.dispose();
 });
 
+test("keeps a cancelled prompt result out of the next turn replay", async () => {
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  await runner.start();
+  const promptIds: unknown[] = [];
+  fake.respond = (message) => {
+    if (message.method === "session/prompt") {
+      promptIds.push(message.id);
+    }
+  };
+  const firstEvents: Array<Record<string, unknown>> = [];
+  const first = runner.prompt("first", { onEvent: (message) => firstEvents.push(message) });
+  runner.cancelTurn();
+  const secondEvents: Array<Record<string, unknown>> = [];
+  const second = runner.prompt("second", { onEvent: (message) => secondEvents.push(message) });
+  assert.equal(promptIds.length, 2);
+  fake.send({ id: promptIds[0], result: { stopReason: "cancelled" } });
+  await first;
+  assert.equal(firstEvents.length, 0);
+  assert.equal(secondEvents.length, 0);
+  fake.send({
+    method: "session/update",
+    params: { update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "second body" } } },
+  });
+  fake.send({ id: promptIds[1], result: { stopReason: "end_turn" } });
+  await second;
+  assert.equal(secondEvents.length, 2);
+  assert.match(JSON.stringify(secondEvents[0]), /second body/);
+  assert.equal(secondEvents[1].id, promptIds[1]);
+  runner.dispose();
+});
+
 test("flushes replay on cancel and process failure without leaking it into later turns", async () => {
   const fake = new FakeGrok();
   const runner = new GrokInteractiveRunner({
@@ -983,10 +1156,10 @@ test("flushes replay on cancel and process failure without leaking it into later
   await new Promise<void>((resolve) => setImmediate(resolve));
   fake.emit("error", new Error("test exit"));
   await rejection;
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 1);
   assert.equal(runner.isReusable(), false);
   runner.dispose();
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 1);
 });
 
 async function readReasoningParams(
@@ -1018,6 +1191,7 @@ async function readReasoningParams(
 
 function createHostHarness(options: {
   behavior: (prompt: string, handlers: GrokStreamHandlers) => Promise<void>;
+  onCancel?: () => void;
 }) {
   const { createPromptInteractiveRuntimeHost } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
@@ -1031,7 +1205,7 @@ function createHostHarness(options: {
   const runner = {
     start: async () => ({ acpSessionId: "acp-session", resumed: false, retainedLocalSessionId: null }),
     prompt: options.behavior,
-    cancelTurn: () => undefined,
+    cancelTurn: () => options.onCancel?.(),
     dispose: () => undefined,
     isReusable: () => true,
   };

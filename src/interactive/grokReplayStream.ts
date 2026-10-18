@@ -1,8 +1,12 @@
 import type { GrokJsonRpcMessage } from "./grokAppServerProtocol";
+import { GrokToolCallStream, normalizeGrokPlanEntries, type GrokPlanEntry, type GrokToolTrace } from "./grokToolCallStream";
 
 const GROK_REPLAY_FLUSH_INTERVAL_MS = 1000;
 const GROK_REPLAY_MAX_TEXT_BYTES = 32 * 1024;
-const IGNORED_SESSION_UPDATES = new Set(["available_commands_update", "session_info_update"]);
+const IGNORED_SESSION_UPDATES = new Set([
+  "available_commands_update", "session_info_update", "user_message_chunk", "background_tasks",
+  "usage_update", "session_status", "response_started", "response_completed", "turn_usage",
+]);
 const SNAPSHOT_SESSION_UPDATES = new Set(["tool_call", "tool_call_update", "plan"]);
 const TEXT_SESSION_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk"]);
 const TRANSPORT_META_FIELDS = new Set(["eventId", "chunkId", "agentTimestampMs"]);
@@ -19,10 +23,33 @@ export class GrokReplayStream {
   private pendingText: ReplayText | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSnapshot: string | null = null;
+  private lastPlan: string | null = null;
+  private finished = false;
+  private readonly tools: GrokToolCallStream;
 
-  public constructor(private readonly emit: (message: GrokJsonRpcMessage) => void) {}
+  public constructor(
+    private readonly emit: (message: GrokJsonRpcMessage) => void,
+    private readonly handlers: {
+      onToolTrace?: (trace: GrokToolTrace) => void;
+      onTaskListUpdate?: (entries: GrokPlanEntry[]) => void;
+    } = {},
+  ) {
+    this.tools = new GrokToolCallStream((message) => {
+      const params = asRecord(message.params);
+      const update = asRecord(params?.update) ?? params;
+      if (update?.sessionUpdate === "plan") {
+        this.append(message);
+      } else {
+        this.flush();
+        this.emit(message);
+      }
+    }, handlers.onToolTrace);
+  }
 
   public append(message: GrokJsonRpcMessage): void {
+    if (this.finished) {
+      return;
+    }
     const params = asRecord(message.params);
     const update = asRecord(params?.update) ?? params;
     const updateType = message.method === "session/update" && typeof update?.sessionUpdate === "string"
@@ -30,6 +57,20 @@ export class GrokReplayStream {
       : "";
     if (IGNORED_SESSION_UPDATES.has(updateType)) {
       return;
+    }
+    if (this.tools.append(message)) {
+      return;
+    }
+    if (updateType === "plan") {
+      const entries = normalizeGrokPlanEntries(update?.entries);
+      if (entries) {
+        const signature = JSON.stringify([params?.sessionId ?? "", entries]);
+        if (signature === this.lastPlan) {
+          return;
+        }
+        this.lastPlan = signature;
+        this.handlers.onTaskListUpdate?.(entries);
+      }
     }
     const text = readReplayText(message, updateType);
     if (text) {
@@ -82,6 +123,15 @@ export class GrokReplayStream {
     if (pending) {
       this.emit(pending.message);
     }
+  }
+
+  public finish(status: "failed" | "cancelled" | "interrupted" = "interrupted"): void {
+    if (this.finished) {
+      return;
+    }
+    this.flush();
+    this.tools.finish(status);
+    this.finished = true;
   }
 }
 

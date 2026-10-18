@@ -181,11 +181,13 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function getLatestRunStreamRecordTimestamp(runtimeState) {
-        if (!runtimeState || !Array.isArray(runtimeState.runStreamRecords) || !runtimeState.runStreamRecords.length) {
+        if (!runtimeState) {
           return 0;
         }
-        const latestRecord = runtimeState.runStreamRecords[runtimeState.runStreamRecords.length - 1];
-        return latestRecord && typeof latestRecord.createdAt === "number" ? latestRecord.createdAt : 0;
+        const records = Array.isArray(runtimeState.runStreamRecords) ? runtimeState.runStreamRecords : [];
+        const latestRecord = records[records.length - 1];
+        const recordTimestamp = latestRecord && typeof latestRecord.createdAt === "number" ? latestRecord.createdAt : 0;
+        return Math.max(recordTimestamp, runtimeState.runStreamActivityAt || 0);
       }
 
       function resolveRunStreamButtonStaleLevel(runtimeState, now = Date.now()) {
@@ -350,6 +352,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           return;
         }
         runtimeState.runStreamRecordCounter = 0;
+        runtimeState.runStreamActivityAt = 0;
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamRetainedBytes = 0;
         runtimeState.runStreamDiscardedRecordCount = 0;

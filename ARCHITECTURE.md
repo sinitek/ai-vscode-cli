@@ -107,7 +107,10 @@ cli / interactive / config 服务层
 
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
 - `src/interactive/`：会话型运行与底层续接 ID 映射
+- Grok 的 `grokToolCallStream.ts` 在当前 prompt 内按会话与调用 ID 聚合工具，规范化已知输出后分别生成回放终态和聊天摘要；`grokReplayStream.ts` 管文本合并与通知降噪，宿主复用 traceSegment 同 ID 更新和任务列表。Webview 活动时间独立于回放条目，不将高频协议通知持久化为聊天消息。
 - `src/config/`：外部 CLI 配置、全局 Skills 目录和本地配置档案管理；配置中心不再把 MCP 市场作为用户功能。用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`
+- `src/config/cliRuntimeConfigStrategies.ts` 用显式 `Record<CurrentConfigPlatform, CliRuntimeConfigStrategy>` 注册 Claude、Codex、OpenCode、Grok。策略集中运行配置的 `readCurrent`、`apply`、`backup`，以及默认档案初始字段和读取失败回退字段。`createCliRuntimeConfigStrategies` 接收四个平台各自的窄 IO 端口，在操作时调用 `configService` 注入的原有读取、写入和备份函数。策略模块不导入 `configService` 或 VS Code，不在 import 时捕获 `HOME`、`CONFIG_PATHS` 或 `GROK_HOME`，也不引入继承层级、DI 容器或另一套配置模型
+- `configService` 保留兼容外观：既有导出名称、参数、返回形状和异常传播不变，档案 CRUD、复制、顺序、OpenCode 校验工具和 Skills 外观仍留在原模块。`getCurrentConfig`、`applyConfig`、`backupConfig` 只按 `normalizeConfigPlatform` 的结果委托策略；未知平台仍由归一化函数拒绝。`initDefaultConfig` 保留档案存在性判断、ID、名称、时间和 `saveConfig`，只把平台字段构造交给策略，并且只捕获读取或初始字段构造失败。Grok 路径仍在操作时解析 `GROK_HOME`。本次不改变用户可见配置行为，事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-runtime-config-strategies.md`
 - `src/shared/`：跨服务层复用、无 VS Code 依赖的纯工具；当前包含 strict/jsonc JSON object 解析等后端共用逻辑
 - 这一层负责和本地 CLI、SDK、home 目录配置打交道，但不负责 UI 渲染
 

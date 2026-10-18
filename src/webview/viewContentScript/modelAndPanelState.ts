@@ -796,6 +796,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         elements.chatArea.scrollTo({ top: elements.chatArea.scrollHeight, behavior });
       }
 
+      function restoreChatScrollTop(scrollTop) {
+        if (!elements.chatArea) {
+          return;
+        }
+        const maxScrollTop = Math.max(0, elements.chatArea.scrollHeight - elements.chatArea.clientHeight);
+        const nextScrollTop = Math.min(Math.max(0, Number(scrollTop) || 0), maxScrollTop);
+        if (elements.chatArea.scrollTop !== nextScrollTop) {
+          elements.chatArea.scrollTop = nextScrollTop;
+        }
+      }
+
       function stickChatToBottom(behavior = "auto") {
         followLatestMessages = true;
         suppressScrollButtonUntil = Date.now() + AUTO_SCROLL_BUTTON_SUPPRESS_MS;
@@ -814,7 +825,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (!elements.scrollToBottomButton) {
           return;
         }
-        const forceFollowLatest = shouldForceFollowLatestMessagesForActiveTab();
         const hasMessages = state.messages.length > 0;
         const hasOverflow = elements.chatArea.scrollHeight > (elements.chatArea.clientHeight + 1);
         const distanceToBottom = getChatDistanceToBottom();
@@ -829,7 +839,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           const debugPayload = {
             visible: shouldShow,
             forceHide,
-            forceFollowLatest,
             buttonSuppressed,
             followLatestMessages,
             distanceToBottom,

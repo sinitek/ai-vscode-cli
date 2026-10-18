@@ -15,6 +15,17 @@
 ## 当前有效条目
 
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
+- AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
+
+## AI 对话面板在阅读历史时被新气泡拉到底
+
+- 状态：已规避
+- 首次发现：2026-10-18
+- 适用范围：Webview 聊天区 `chatArea` 的新气泡、流式增量和平滑重绘
+- 现象：用户已经滚到上方查看历史气泡，新气泡或流式内容仍把滚动条置底。
+- 根因：自动置底除了 `CHAT_BOTTOM_THRESHOLD_PX`（50）之外，还被 `followLatestMessages` 锁存和运行中的 Loop 主会话强制跟随接管。流式帧在内容变高之后才判断距离，锁存又会在后续帧继续置底。全量重绘清空消息节点时，滚动位置也会丢失。
+- 长期规避：在改 DOM 之前读取 `scrollHeight - scrollTop - clientHeight`。只有距离小于等于 50px，且当前没有会话内搜索锚点时，才调用置底。阅读历史时恢复更新前的 `scrollTop`。跟随锁存和任务运行状态都不参与这个判断。聊天区保持 `overflow-anchor: none`，浏览器滚动锚定不会把视口拉到新气泡。
+- 验证方式：`npm run build` 后执行 `node --test dist/test/webview/clipagescriptruntimecoverage.test.js`，覆盖距离大于 50、等于 50、等于 51，以及思考流在置底之后再次滚离底部的增量。
 
 ## Grok 文档示例与实际 ACP 配置参数不一致
 

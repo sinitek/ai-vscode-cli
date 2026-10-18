@@ -71,6 +71,7 @@ import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
 
 type TraceMessageOptions = {
+  id?: string;
   merge?: boolean;
   persist?: boolean;
   forceTraceBubble?: boolean;
@@ -682,16 +683,22 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       const shouldMerge = resolveTraceMerge(displayContent, options.merge);
       const mergePayload = shouldMerge ? {} : { merge: false };
+      const existing = options.id ? messageTarget.find((message) => message.id === options.id && message.role === "trace") : undefined;
       const message: ChatMessage = {
-        id: createMessageId(),
+        id: options.id ?? createMessageId(),
         role: "trace",
         content: displayContent,
-        createdAt: Date.now(),
+        createdAt: existing?.createdAt ?? Date.now(),
+        ...(typeof existing?.sequence === "number" ? { sequence: existing.sequence } : {}),
         kind: resolvedKind,
         ...mergePayload,
       };
       if (shouldPersist && options.persist !== false) {
-        appendMessageToStore(messageTarget, message);
+        if (existing) {
+          Object.assign(existing, message);
+        } else {
+          appendMessageToStore(messageTarget, message);
+        }
         schedulePersistForInteractiveRun();
       }
       sendPanelMessage({
@@ -1456,8 +1463,20 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 localSessionId: null,
               });
 
+          let flushingGrokStop = false;
+          const canEmitGrokPresentation = (): boolean => {
+            const entry = interactiveRunsByTabId.get(tabId);
+            return Boolean(entry && entry.runId === runId && (!entry.stopped || flushingGrokStop));
+          };
           try {
-          stopCurrentTurn = () => runner.cancelTurn();
+          stopCurrentTurn = () => {
+            flushingGrokStop = true;
+            try {
+              runner.cancelTurn();
+            } finally {
+              flushingGrokStop = false;
+            }
+          };
           syncInteractiveRunEntry(stopFn);
           const started = await runner.start();
           updateSessionForNewRun(started.acpSessionId);
@@ -1474,7 +1493,24 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           syncInteractiveRunEntry(stopFn);
           let grokStopReason: string | null = null;
           let grokPromptCompleted = false;
+          let lastGrokActivityAt = 0;
+          const grokToolMessageIds = new Map<string, string>();
           await runner.prompt(attemptPrompt, {
+            onActivity: () => {
+              if (!isCurrentRunActive()) {
+                return;
+              }
+              const now = Date.now();
+              if (now - lastGrokActivityAt >= 1000) {
+                lastGrokActivityAt = now;
+                sendPanelMessage({ type: "runActivity", tabId });
+              }
+            },
+            onTaskListUpdate: (items) => {
+              if (isCurrentRunActive()) {
+                sendPanelMessage({ type: "taskListUpdate", items, tabId });
+              }
+            },
             onTokenUsageUpdate: (update) => {
               if (!isCurrentRunActive()) {
                 const currentTab = getConversationTabById(tabId);
@@ -1495,15 +1531,17 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               });
             },
             onAssistantDelta: (chunk) => {
-              if (!isCurrentRunActive() || !chunk.trim()) {
+              if (!isCurrentRunActive() || !chunk) {
                 return;
               }
-              attemptHadNormalReply = true;
+              if (chunk.trim()) {
+                attemptHadNormalReply = true;
+              }
               appendAssistantChunkForTab(chunk);
               appendDebugStdout(chunk);
             },
-            onTrace: (content, kind) => {
-              if (!isCurrentRunActive()) {
+            onTrace: (content, kind, meta) => {
+              if (!canEmitGrokPresentation()) {
                 return;
               }
               if (kind === "thinking") {
@@ -1511,14 +1549,21 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
                 appendTraceLog(content);
                 return;
               }
-              appendTraceMessageForTab(content, "normal");
+              let id: string | undefined;
+              if (meta?.toolCallId) {
+                id = grokToolMessageIds.get(meta.toolCallId) ?? createMessageId();
+                grokToolMessageIds.set(meta.toolCallId, id);
+              }
+              appendTraceMessageForTab(content, kind === "tool-use" ? "tool-use" : "normal", { id, merge: false });
               appendTraceLog(content);
             },
             onEvent: (event) => {
-              if (!isCurrentRunActive()) {
+              if (!canEmitGrokPresentation()) {
                 return;
               }
-              sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+              const content = normalizeRawStreamContent(event);
+              sendPanelMessage({ type: "rawStreamDelta", content: content + (content.endsWith("\n") ? "" : "\n"), stream: "event", tabId });
+              appendDebugEvent(event);
             },
             onComplete: ({ stopReason }) => {
               if (!isCurrentRunActive()) {

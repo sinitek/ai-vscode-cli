@@ -24,6 +24,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           tokensInContextWindow: null,
           modelContextWindow: null,
           runStreamRecordCounter: 0,
+          runStreamActivityAt: 0,
           runStreamRecords: [],
           runStreamRetainedBytes: 0,
           runStreamDiscardedRecordCount: 0,
@@ -317,6 +318,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         runtimeState.tokensInContextWindow = null;
         runtimeState.modelContextWindow = null;
         runtimeState.runStreamRecordCounter = 0;
+        runtimeState.runStreamActivityAt = 0;
         runtimeState.runStreamRecords.length = 0;
         runtimeState.runStreamRetainedBytes = 0;
         runtimeState.runStreamDiscardedRecordCount = 0;

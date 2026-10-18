@@ -60,6 +60,33 @@ export function readGrokTokenUsageUpdate(message: GrokJsonRpcMessage, sessionId:
   };
 }
 
+export function readGrokResponseContextTokens(message: GrokJsonRpcMessage, sessionId: string): number | null {
+  if (!sessionId || !["session/update", "_x.ai/session_notification", "_x.ai/session/update"].includes(message.method ?? "")) {
+    return null;
+  }
+  const params = asRecord(message.params);
+  const update = asRecord(params?.update);
+  if (params?.sessionId !== sessionId || update?.sessionUpdate !== "response_completed") {
+    return null;
+  }
+  const usage = asRecord(update.usage);
+  if (!usage) {
+    return null;
+  }
+  // Grok splits cached input from input_tokens; its native window includes output, including reasoning.
+  const counts = [
+    usage.input_tokens,
+    usage.output_tokens,
+    usage.cache_read_input_tokens === undefined ? 0 : usage.cache_read_input_tokens,
+    usage.cache_creation_input_tokens === undefined ? 0 : usage.cache_creation_input_tokens,
+  ];
+  if (!counts.every((count) => typeof count === "number" && Number.isSafeInteger(count) && count >= 0)) {
+    return null;
+  }
+  const tokens = (counts as number[]).reduce((total, count) => total + count, 0);
+  return Number.isSafeInteger(tokens) ? tokens : null;
+}
+
 export function buildGrokRequestError(
   error: NonNullable<GrokJsonRpcMessage["error"]>,
   streamFailure: string | null = null,
@@ -94,8 +121,8 @@ export type GrokAuthSelection =
 export type GrokSessionEvent =
   | { type: "assistant_text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; name: string; status: string; payload: unknown }
-  | { type: "tool_update"; name: string; status: string; payload: unknown }
+  | { type: "tool"; name: string; status: string; payload: unknown; toolCallId?: string }
+  | { type: "tool_update"; name: string; status: string; payload: unknown; toolCallId?: string }
   | { type: "ignored" };
 
 export type GrokCompactionEvent = {
@@ -359,9 +386,10 @@ export function classifyGrokSessionMessage(message: GrokJsonRpcMessage): GrokSes
   if (sessionUpdate === "tool_call" || sessionUpdate === "tool_call_update") {
     const name = readToolName(update);
     const status = typeof update?.status === "string" ? update.status : "";
+    const identity = typeof update?.toolCallId === "string" ? { toolCallId: update.toolCallId } : {};
     return sessionUpdate === "tool_call"
-      ? { type: "tool", name, status, payload: update?.rawInput ?? update?.content ?? null }
-      : { type: "tool_update", name, status, payload: update?.rawOutput ?? update?.content ?? null };
+      ? { type: "tool", name, status, payload: update?.rawInput ?? update?.content ?? null, ...identity }
+      : { type: "tool_update", name, status, payload: update?.rawOutput ?? update?.content ?? null, ...identity };
   }
   return { type: "ignored" };
 }

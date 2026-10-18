@@ -387,6 +387,16 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "shouldShowMessageInResultOnlyMode"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getVisibleMessages"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "captureOpenTraceCollapsibleKeys"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isThinkingBubbleMessage"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "messageElementIsInsideInstructionGroup"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isInstructionBubble"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "instructionGroupStorageKey"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "instructionGroupSummaryText"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "syncInstructionGroupSummary"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "captureOpenInstructionGroupKeys"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "bindInstructionGroupToggle"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createInstructionGroupElement"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "appendVisibleMessageEntries"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "forceCollapseToolResultBubbles"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderMessages"],
@@ -425,6 +435,9 @@ function browserScript(): string {
   return [
     "var lastAutoInteractiveModeTabKey = \"\";",
     "var traceCollapsibleOpenKeys = new Set();",
+    "var instructionGroupOpenKeys = new Set();",
+    "var thinkingBubbleViewStates = new Map();",
+    "var thinkingBubbleResizeObserver = null;",
     "var conversationRuntimeByTabId = Object.create(null);",
     "var loopMetaByTabId = Object.create(null);",
     "var graphMetaByTabId = Object.create(null);",
@@ -464,11 +477,13 @@ function browserScript(): string {
     "function isFinalAssistantSummaryMessage() { return false; }",
     "function updateRunWait() {}",
     "function stickChatToBottom() {}",
+    "function restoreChatScrollTop() {}",
     "function updateScrollToBottomButton() {}",
     "function updateTaskList() {}",
     "function isChatNearBottom() { return true; }",
-    "function shouldFollowLatestMessagesForActiveTab() { return false; }",
     "function createMessageActionsElement() { return null; }",
+    "function mountThinkingBubble() {}",
+    "function rememberThinkingBubbleViewState() {}",
     "function resetAutoInteractiveModeMemoryForTest() { lastAutoInteractiveModeTabKey = \"\"; }",
     ...names.map(([source, name]) => extractFunctionSource(source, name)),
     "this.api = {",
@@ -575,8 +590,21 @@ function badgeClass(messageNode: FakeElement): string {
   return badge ? badge.className : "";
 }
 
+function visibleMessageNodes(messages: FakeElement): FakeElement[] {
+  const nodes: FakeElement[] = [];
+  messages.children.forEach((node) => {
+    if (node.className.split(/\s+/).includes("instruction-group")) {
+      const body = node.children.find((child) => child.className.split(/\s+/).includes("instruction-group-body"));
+      (body ? body.children : []).forEach((child) => nodes.push(child));
+      return;
+    }
+    nodes.push(node);
+  });
+  return nodes;
+}
+
 function renderedBadges(messages: FakeElement): string[] {
-  return messages.children.map((message) => badgeText(message));
+  return visibleMessageNodes(messages).map((message) => badgeText(message));
 }
 
 function message(partial: RoleMessage): RoleMessage {
@@ -705,7 +733,8 @@ test("splits historical message labels by task identity across classic and Loop+
   assert.equal(browser.elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE);
   assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE);
   assert.deepEqual(renderedBadges(messages), ["子任务", "Loop"]);
-  assert.equal(messages.children[0] ? badgeClass(messages.children[0]) : "", "message-task-role message-task-role-subtask");
+  const plusMainNodes = visibleMessageNodes(messages);
+  assert.equal(plusMainNodes[0] ? badgeClass(plusMainNodes[0]) : "", "message-task-role message-task-role-subtask");
   assert.equal(renderedBadges(messages).some((label) => label.includes("第")), false);
 
   show("plus-sub");

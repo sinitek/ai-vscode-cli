@@ -31,7 +31,7 @@ test("filters Grok command catalogs and title notifications but preserves unknow
   replay.append(unknown);
   replay.append(usage);
   replay.flush();
-  assert.deepEqual(events, [unknown, usage]);
+  assert.deepEqual(events, [unknown]);
 });
 
 test("coalesces thousands of text fragments without changing their content or source objects", () => {
@@ -53,7 +53,7 @@ test("retains whitespace and repeated tokens while keeping thinking, tools and c
   replay.append(textUpdate("\n\n ", "session-1", "agent_thought_chunk"));
   replay.append(textUpdate("ha"));
   replay.append(textUpdate("ha"));
-  const tool = sessionUpdate({ sessionUpdate: "tool_call", toolCallId: "tool-1", rawInput: { command: "pwd" } });
+  const tool = sessionUpdate({ sessionUpdate: "tool_call", toolCallId: "tool-1", status: "in_progress", rawInput: { command: "pwd" } });
   const result = { jsonrpc: "2.0" as const, id: 4, result: { stopReason: "end_turn" } };
   replay.append(tool);
   replay.append(result);
@@ -132,7 +132,7 @@ test("keeps prompt, stream, token usage and unknown metadata changes as merge bo
   }
 });
 
-test("deduplicates identical identified tool snapshots despite changing transport metadata", () => {
+test("buffers identified progress snapshots despite changing transport metadata and flushes the last on interruption", () => {
   const { events, replay } = createReplay();
   const messages = [1, 2].map((chunkId) => {
     const message = sessionUpdate({ sessionUpdate: "tool_call_update", toolCallId: "tool-1", status: "in_progress" });
@@ -140,7 +140,11 @@ test("deduplicates identical identified tool snapshots despite changing transpor
     return message;
   });
   messages.forEach((message) => replay.append(message));
-  assert.deepEqual(events, [messages[0]]);
+  assert.equal(events.length, 0);
+  replay.finish();
+  assert.equal(events.length, 1);
+  assert.equal((events[0].params as { update: { status: string } }).update.status, "interrupted");
+  assert.equal((events[0].params as { _meta: { eventId: string } })._meta.eventId, "event-2");
 });
 
 test("supports flattened session updates without changing their ACP shape", () => {
@@ -152,7 +156,7 @@ test("supports flattened session updates without changing their ACP shape", () =
   assert.deepEqual(events, [{ method: "session/update", params: { sessionId: "session-1", sessionUpdate: "agent_message_chunk", content: { type: "text", text: "one two" } } }]);
 });
 
-test("skips only consecutive identical tool or plan snapshots and retains status and output changes", () => {
+test("aggregates identified tool snapshots and retains terminal output and plan changes", () => {
   const { events, replay } = createReplay();
   const snapshots = [
     sessionUpdate({ sessionUpdate: "tool_call", toolCallId: "tool-1", status: "pending", rawInput: { command: "pwd" } }),
@@ -168,10 +172,13 @@ test("skips only consecutive identical tool or plan snapshots and retains status
     replay.append(sessionUpdate({ sessionUpdate: "session_info_update", title: "Ignored" }));
     replay.append(message);
   });
-  assert.deepEqual(events, snapshots);
+  replay.finish();
+  assert.deepEqual(events.map((message) => (message.params as { update: { status?: string; sessionUpdate: string } }).update.sessionUpdate), ["tool_call", "tool_call_update", "tool_call_update", "plan", "plan", "tool_call_update"]);
+  assert.deepEqual(events.filter((message) => (message.params as { update: { toolCallId?: string } }).update.toolCallId === "tool-1").map((message) => (message.params as { update: { status: string } }).update.status), ["pending", "completed", "failed"]);
+  assert.equal((events[5].params as { update: { status: string } }).update.status, "interrupted");
 });
 
-test("does not deduplicate unknown events, results, or snapshots separated by text", () => {
+test("does not deduplicate unknown events or results but deduplicates unchanged plans across text", () => {
   const { events, replay } = createReplay();
   const snapshot = sessionUpdate({ sessionUpdate: "plan", entries: [] });
   const unknown = sessionUpdate({ sessionUpdate: "future_update" });
@@ -179,7 +186,7 @@ test("does not deduplicate unknown events, results, or snapshots separated by te
   const expected = [snapshot, textUpdate("body"), snapshot, unknown, unknown, result, result];
   expected.forEach((message) => replay.append(message));
   replay.flush();
-  assert.deepEqual(events, expected);
+  assert.deepEqual(events, [snapshot, textUpdate("body"), unknown, unknown, result, result]);
 });
 
 test("keeps identical tool calls without a stable call id", () => {
@@ -188,6 +195,35 @@ test("keeps identical tool calls without a stable call id", () => {
   const update = sessionUpdate({ sessionUpdate: "tool_call_update", status: "completed", rawOutput: "ok" });
   [tool, tool, update, update].forEach((message) => replay.append(message));
   assert.deepEqual(events, [tool, tool, update, update]);
+});
+
+test("filters noise without breaking text coalescing or losing significant lifecycle events", () => {
+  const { events, replay } = createReplay();
+  replay.append(textUpdate("你好"));
+  for (const sessionUpdateType of ["user_message_chunk", "background_tasks", "session_status", "usage_update", "response_started", "response_completed", "turn_usage"]) {
+    replay.append(sessionUpdate({ sessionUpdate: sessionUpdateType, internal: "not a timeline event" }));
+  }
+  replay.append(textUpdate(" 世界"));
+  const failed = sessionUpdate({ sessionUpdate: "subagent_finished", status: "failed", output: "failure" });
+  replay.append(failed);
+  replay.finish();
+  assert.deepEqual(events, [textUpdate("你好 世界"), failed]);
+});
+
+test("deduplicates native and todo-derived plans while forwarding real status changes", () => {
+  const events: GrokJsonRpcMessage[] = [];
+  const plans: Array<Array<{ content: string; status: string }>> = [];
+  const replay = new GrokReplayStream((event) => events.push(event), { onTaskListUpdate: (entries) => plans.push(entries) });
+  const entries = [{ content: "Test", status: "pending" }];
+  replay.append(sessionUpdate({ sessionUpdate: "tool_call", toolCallId: "todo-1", title: "todo_write", rawInput: { todos: entries } }));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: [{ ...entries[0], priority: "medium" }] }));
+  replay.append(textUpdate("working"));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries }));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: [{ content: "Test", status: "completed" }] }));
+  replay.finish();
+  assert.equal(plans.length, 2);
+  assert.equal(events.length, 3);
+  assert.equal(events.some((event) => (event.params as { update: { sessionUpdate: string } }).update.sessionUpdate === "tool_call"), false);
 });
 
 test("flushes on a fixed deadline even while fragments keep arriving", (context) => {

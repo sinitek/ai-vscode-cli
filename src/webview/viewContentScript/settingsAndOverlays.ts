@@ -1422,9 +1422,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       elements.chatArea.addEventListener("scroll", () => {
-        if (shouldForceFollowLatestMessagesForActiveTab()) {
-          followLatestMessages = true;
-        } else if (!isScrollButtonSuppressed()) {
+        if (!isScrollButtonSuppressed()) {
           followLatestMessages = isChatNearBottom();
         }
         updateScrollToBottomButton();

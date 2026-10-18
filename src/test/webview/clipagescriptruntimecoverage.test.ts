@@ -204,6 +204,14 @@ class FakeElement {
   parentNode: FakeElement | null = null;
   private innerHtmlValue = "";
 
+  get parentElement(): FakeElement | null {
+    return this.parentNode;
+  }
+
+  get firstChild(): FakeElement | null {
+    return this.children[0] || null;
+  }
+
   constructor(tagName = "div", id = "") {
     this.tagName = tagName.toUpperCase();
     this.id = id;
@@ -231,6 +239,7 @@ class FakeElement {
   }
 
   appendChild<T extends FakeElement>(child: T): T {
+    child.parentNode?.removeChild(child);
     child.parentNode = this;
     this.children.push(child);
     return child;
@@ -504,6 +513,7 @@ function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unk
     "clearInterval",
     "requestAnimationFrame",
     "cancelAnimationFrame",
+    "getComputedStyle",
     `${script}
       return {
         state,
@@ -559,6 +569,7 @@ function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unk
     fakeWindow.clearInterval,
     fakeWindow.requestAnimationFrame,
     fakeWindow.cancelAnimationFrame,
+    () => ({ lineHeight: "22.4px" }),
   );
   return { api, document, window: fakeWindow, posted };
 }
@@ -1552,6 +1563,27 @@ test("truncates oversized run stream records within the per-record byte budget",
   assert.equal(JSON.parse(api.buildRunStreamExportPayload(runtimeState)[0].content).truncatedRecordCount, 1);
 });
 
+test("filtered activity refreshes only its tab without adding replay records and resets with the conversation", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.state.isRunning = true;
+  api.appendRunRawStream("started", "event", "tab-2");
+  const active = api.getConversationRuntimeState("tab-2");
+  active.runStreamRecords[0].createdAt = Date.now() - 4 * 60 * 1000;
+  api.updateRunStreamButton();
+  const badge = document.getElementById("runStreamStaleBadge");
+  assert.equal(badge.style.display, "inline-flex");
+  window.dispatchMessage({ type: "runActivity", tabId: "tab-1" });
+  assert.equal(badge.style.display, "inline-flex");
+  window.dispatchMessage({ type: "runActivity", tabId: "tab-2" });
+  assert.equal(badge.style.display, "none");
+  assert.equal(active.runStreamRecords.length, 1);
+  assert.ok(active.runStreamActivityAt > 0);
+  api.resetConversationRuntimeState("tab-2");
+  assert.equal(active.runStreamActivityAt, 0);
+});
+
 test("hides stale run stream labels for Loop main tabs but keeps them for other runs", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
@@ -1810,6 +1842,198 @@ test("keeps ordinary assistant bubbles formatted while throttling continuous app
   assert.match(bubble.innerHTML, /third addition/);
 });
 
+test("auto-scrolls the chat only while the viewport is within 50px of the bottom", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const chatArea = document.getElementById("chatArea");
+  const place = (scrollHeight: number, clientHeight: number, scrollTop: number) => {
+    chatArea.scrollHeight = scrollHeight;
+    chatArea.clientHeight = clientHeight;
+    chatArea.scrollTop = scrollTop;
+  };
+  const appendDelta = (id: string, content: string, kind: "normal" | "thinking") => {
+    window.dispatchMessage({
+      type: "assistantDelta",
+      tabId: "tab-1",
+      id,
+      content,
+      kind,
+    });
+  };
+
+  place(1000, 400, 100);
+  api.state.messages.push(
+    { id: "history-user", role: "user", content: "look at history", createdAt: 1 },
+    { id: "history-assistant", role: "assistant", content: "older answer", createdAt: 2 },
+  );
+  api.renderMessages();
+  assert.equal(chatArea.scrollTop, 100);
+
+  place(1000, 400, 100);
+  appendDelta("new-bubble", "a new bubble", "normal");
+  assert.equal(chatArea.scrollTop, 100);
+
+  place(1000, 400, 550);
+  appendDelta("near-bubble", "near bottom", "normal");
+  assert.equal(chatArea.scrollTop, chatArea.scrollHeight);
+
+  place(1000, 400, 549);
+  appendDelta("far-bubble", "still reading", "normal");
+  assert.equal(chatArea.scrollTop, 549);
+
+  place(1000, 400, 100);
+  appendDelta("think-1", "thinking", "thinking");
+  assert.equal(chatArea.scrollTop, 100);
+
+  place(1000, 400, 580);
+  appendDelta("think-1", " more", "thinking");
+  assert.equal(chatArea.scrollTop, chatArea.scrollHeight);
+
+  place(1600, 400, 200);
+  appendDelta("think-1", " still", "thinking");
+  assert.equal(chatArea.scrollTop, 200);
+});
+
+test("collapses three or more consecutive instruction bubbles until toggled", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages.push(
+    { id: "user-1", role: "user", content: "start", createdAt: 1 },
+    { id: "cmd-1", role: "trace", content: "command one", createdAt: 2 },
+    { id: "cmd-2", role: "assistant", content: "command two", createdAt: 3 },
+    { id: "think-1", role: "assistant", kind: "thinking", content: "planning", createdAt: 4 },
+    { id: "cmd-3", role: "trace", content: "command three", createdAt: 5 },
+    { id: "cmd-4", role: "system", content: "command four", createdAt: 6 },
+    { id: "cmd-5", role: "assistant", content: "command five", createdAt: 7 },
+    { id: "reason-1", role: "assistant", content: "**Thinking** still reasoning", createdAt: 8 },
+    { id: "final-1", role: "assistant", content: "final answer", codexFinalAnswer: true, createdAt: 9 },
+    { id: "cmd-6", role: "trace", content: "tail one", createdAt: 10 },
+    { id: "cmd-7", role: "trace", content: "tail two", createdAt: 11 },
+  );
+  api.renderMessages();
+
+  const messages = document.getElementById("messages");
+  const messageNode = (id: string) => {
+    const queue = [messages];
+    while (queue.length) {
+      const node = queue.shift();
+      for (const child of node?.children || []) {
+        if (child.dataset && child.dataset.messageId === id) {
+          return child;
+        }
+        queue.push(child);
+      }
+    }
+    return null;
+  };
+  const groups = messages.querySelectorAll("details.instruction-group");
+  assert.equal(groups.length, 1);
+  const group = groups[0];
+  const summary = group.querySelector("summary");
+  assert.equal(summary.textContent, "已折叠(3 个)");
+  assert.equal(group.open, false);
+  assert.deepEqual(
+    group.querySelector(".instruction-group-body").children.map((node: { dataset: { messageId?: string } }) => node.dataset.messageId),
+    ["cmd-3", "cmd-4", "cmd-5"],
+  );
+  assert.equal(String(messageNode("cmd-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
+  assert.equal(String(messageNode("think-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
+  assert.equal(String(messageNode("reason-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
+  assert.ok(messageNode("think-1")?.querySelector(".thinking-bubble"));
+  assert.ok(messageNode("reason-1")?.querySelector(".thinking-bubble"));
+  assert.ok(messageNode("final-1"));
+  assert.equal(messageNode("final-1")?.className.includes("message-final-summary"), true);
+
+  summary.click();
+  assert.equal(group.open, true);
+  assert.equal(summary.textContent, "收起(3 个)");
+  api.renderMessages();
+  const reopened = messages.querySelector("details.instruction-group");
+  assert.equal(reopened.open, true);
+  assert.equal(reopened.querySelector("summary").textContent, "收起(3 个)");
+
+  reopened.querySelector("summary").click();
+  assert.equal(reopened.open, false);
+  assert.equal(reopened.querySelector("summary").textContent, "已折叠(3 个)");
+});
+
+test("restarts instruction folding after each thinking bubble", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const trace = (id: string, content: string) => ({ id, role: "trace", kind: "tool-use", content, merge: false });
+  api.state.messages.push(
+    trace("t1", "exec one"),
+    trace("t2", "exec two"),
+    trace("t3", "exec three"),
+    trace("t4", "exec four"),
+    trace("t5", "exec five"),
+    trace("t6", "exec six"),
+    trace("t7", "exec seven"),
+    trace("t8", "exec eight"),
+  );
+  api.renderMessages();
+  assert.equal(document.getElementById("messages").querySelectorAll("details.instruction-group").length, 1);
+
+  api.state.messages.splice(4, 0, { id: "think-a", role: "assistant", kind: "thinking", content: "正在分析折叠计数" });
+  api.state.messages.splice(9, 0, {
+    id: "think-b",
+    role: "assistant",
+    content: "**Figuring out the next count**\n\nThe previous fold must stay separate.",
+  });
+  api.state.messages.push(
+    trace("t9", "exec nine"),
+    trace("t10", "exec ten"),
+    { id: "think-c", role: "trace", content: "thinking: 这里再次打断" },
+    trace("t11", "exec eleven"),
+    trace("t12", "exec twelve"),
+    trace("t13", "exec thirteen"),
+  );
+  api.renderMessages();
+
+  const messages = document.getElementById("messages");
+  const messageNode = (id: string) => {
+    const queue = [messages];
+    while (queue.length) {
+      const node = queue.shift();
+      for (const child of node?.children || []) {
+        if (child.dataset && child.dataset.messageId === id) {
+          return child;
+        }
+        queue.push(child);
+      }
+    }
+    return null;
+  };
+  const groups = messages.querySelectorAll("details.instruction-group");
+  assert.deepEqual(
+    groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
+    ["已折叠(4 个)", "已折叠(4 个)", "已折叠(3 个)"],
+  );
+  assert.deepEqual(
+    groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
+    [
+      ["t1", "t2", "t3", "t4"],
+      ["t5", "t6", "t7", "t8"],
+      ["t11", "t12", "t13"],
+    ],
+  );
+  for (const id of ["think-a", "think-b", "think-c", "t9", "t10"]) {
+    const node = messageNode(id);
+    assert.ok(node);
+    assert.equal(String(node?.parentNode?.className || "").includes("instruction-group-body"), false);
+  }
+  assert.ok(messageNode("think-a")?.querySelector(".thinking-bubble"));
+  assert.ok(messageNode("think-b")?.querySelector(".thinking-bubble"));
+  assert.ok(messageNode("think-c")?.querySelector(".thinking-bubble"));
+  assert.equal(messages.querySelectorAll(".thinking-bubble").length, 3);
+  groups.forEach((group: { querySelectorAll: (selector: string) => unknown[] }) => {
+    assert.equal(group.querySelectorAll(".thinking-bubble").length, 0);
+  });
+});
+
 const streamCompletionCases = (["normal", "thinking"] as const).flatMap((messageKind) =>
   (["end", "error", "stopped"] as const).map((completionStatus) => ({ messageKind, completionStatus }))
 );
@@ -1851,7 +2075,7 @@ for (const { messageKind, completionStatus } of streamCompletionCases) {
     const formattedBubble = document.getElementById("messages").querySelector(".bubble");
     assert.ok(formattedBubble);
     assert.equal(formattedBubble.querySelector(".assistant-message-content-streaming"), null);
-    assert.match(formattedBubble.innerHTML, /<strong>world<\/strong>/);
+    assert.match((formattedBubble.querySelector(".thinking-bubble-viewport") || formattedBubble).innerHTML, /<strong>world<\/strong>/);
 
     appendContent(" again");
     const resumedStreamingNode = document.getElementById("messages").querySelector(".assistant-message-content-streaming");
@@ -1862,7 +2086,7 @@ for (const { messageKind, completionStatus } of streamCompletionCases) {
     const bubble = document.getElementById("messages").querySelector(".bubble");
     assert.ok(bubble);
     assert.doesNotMatch(bubble.innerHTML, /assistant-message-content-streaming/);
-    assert.match(bubble.innerHTML, /<strong>world<\/strong> again/);
+    assert.match((bubble.querySelector(".thinking-bubble-viewport") || bubble).innerHTML, /<strong>world<\/strong> again/);
     if (messageKind === "normal") {
       assert.match(bubble.innerHTML, /assistant-message-content-final/);
     }
@@ -2048,7 +2272,7 @@ test("keeps thinking bubbles as plain text while streaming appends", () => {
 
   const bubbleHtml = (): string => {
     const bubble = document.getElementById("messages").querySelector(".bubble");
-    return bubble?.innerHTML || "";
+    return (bubble?.querySelector(".thinking-bubble-viewport") || bubble)?.innerHTML || "";
   };
   const latestDeferredTimerId = (): number | undefined => {
     const deferred = (Array.from(window.timerDelays.entries()) as Array<[number, number]>)
@@ -3168,4 +3392,106 @@ test("thinking deltas continue the original bubble after a tool trace is inserte
   assert.equal(api.state.messages[2].kind, "thinking");
   assert.equal(api.state.messages[2].content, "next thought");
   assert.equal(api.state.messages[0].content, "partial thought continues");
+});
+
+test("thinking viewports exclude final answers, ordinary replies, users, and tool results", () => {
+  const { api, document } = createRuntimeHarness();
+  api.state.onlyShowFinalResults = false;
+  api.state.messages.push(
+    { id: "thinking", role: "assistant", kind: "thinking", content: "reasoning" },
+    { id: "legacy-thinking", role: "assistant", content: "**Thinking** through the implementation" },
+    { id: "trace-thinking", role: "trace", kind: "thinking", content: "thinking\nreasoning" },
+    { id: "user", role: "user", content: "thinking about a change" },
+    { id: "ordinary", role: "assistant", content: "An ordinary reply" },
+    { id: "tool", role: "trace", content: "exec ls" },
+    { id: "final", role: "assistant", codexFinalAnswer: true, content: "**Thinking** is complete" },
+  );
+  api.renderMessages();
+
+  const thinkingMessages = document.getElementById("messages").querySelectorAll(".message")
+    .filter((message: FakeElement) => message.querySelector(".thinking-bubble-viewport"))
+    .map((message: FakeElement) => message.dataset.messageId);
+  assert.deepEqual(thinkingMessages, ["thinking", "legacy-thinking", "trace-thinking"]);
+});
+
+test("thinking streams scroll internally and expose an accessible SVG expand/collapse button", () => {
+  const { api, document, window } = createRuntimeHarness();
+  api.state.onlyShowFinalResults = false;
+  const append = (content: string) => window.dispatchMessage({
+    type: "assistantDelta", id: "scrolling-thinking", content, kind: "thinking",
+  });
+  append("first thought");
+  const viewport = document.getElementById("messages").querySelector(".thinking-bubble-viewport");
+  assert.ok(viewport);
+  const container = viewport.parentElement;
+  const button = container.querySelector(".thinking-bubble-toggle");
+  assert.equal(button.hidden, true);
+  viewport.scrollHeight = 224;
+  viewport.clientHeight = 112;
+  viewport.scrollTop = 0;
+
+  append("\nlatest thought");
+  assert.equal(document.getElementById("messages").querySelector(".thinking-bubble-viewport"), viewport);
+  assert.equal(viewport.scrollTop, 224);
+  assert.equal(button.hidden, false);
+  assert.match(button.innerHTML, /<svg[^>]*aria-hidden="true"/);
+  assert.equal(button.getAttribute("aria-controls"), viewport.id);
+  assert.equal(button.getAttribute("aria-label"), WEBVIEW_STRINGS.thinkingBubbleExpand);
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+
+  button.click();
+  assert.equal(container.classList.contains("is-expanded"), true);
+  assert.equal(button.getAttribute("aria-label"), WEBVIEW_STRINGS.thinkingBubbleCollapse);
+  assert.equal(button.getAttribute("aria-expanded"), "true");
+  viewport.scrollTop = 12;
+  append("\nmore thought");
+  assert.equal(container.classList.contains("is-expanded"), true);
+  assert.equal(viewport.scrollTop, 12);
+
+  button.click();
+  assert.equal(container.classList.contains("is-expanded"), false);
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+  assert.equal(viewport.scrollTop, 224);
+});
+
+test("thinking expansion and manual scroll survive rerenders and Markdown formatting", () => {
+  const { api, document, window } = createRuntimeHarness();
+  api.state.onlyShowFinalResults = false;
+  api.state.messages.push({ id: "retained-thinking", role: "assistant", kind: "thinking", content: "**reasoning**" });
+  api.renderMessages();
+  const getViewport = () => document.getElementById("messages").querySelector(".thinking-bubble-viewport");
+  let viewport = getViewport();
+  viewport.scrollHeight = 224;
+  viewport.scrollTop = 32;
+  api.renderMessages();
+  viewport = getViewport();
+  assert.equal(viewport.scrollTop, 32);
+  viewport.parentElement.querySelector(".thinking-bubble-toggle").click();
+  api.renderMessages();
+  assert.equal(getViewport().parentElement.classList.contains("is-expanded"), true);
+
+  window.dispatchMessage({ type: "assistantDelta", id: "retained-thinking", content: "\nupdated", kind: "thinking" });
+  assert.equal(getViewport().parentElement.classList.contains("is-expanded"), true);
+  const idleTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 3000);
+  assert.ok(idleTimerId);
+  window.timers.get(idleTimerId)?.();
+  assert.equal(getViewport().parentElement.classList.contains("is-expanded"), true);
+  assert.equal(getViewport().querySelector(".assistant-message-content-streaming"), null);
+});
+
+test("thinking overflow control stays hidden through five lines and appears beyond them", () => {
+  const { api, document, window } = createRuntimeHarness();
+  api.state.onlyShowFinalResults = false;
+  const append = () => window.dispatchMessage({
+    type: "assistantDelta", id: "boundary-thinking", content: "line\n", kind: "thinking",
+  });
+  append();
+  const viewport = document.getElementById("messages").querySelector(".thinking-bubble-viewport");
+  const button = viewport.parentElement.querySelector(".thinking-bubble-toggle");
+  viewport.scrollHeight = 112;
+  append();
+  assert.equal(button.hidden, true);
+  viewport.scrollHeight = 134;
+  append();
+  assert.equal(button.hidden, false);
 });

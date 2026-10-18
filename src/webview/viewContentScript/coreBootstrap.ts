@@ -250,6 +250,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         },
       };
       const traceCollapsibleOpenKeys = new Set();
+      const instructionGroupOpenKeys = new Set();
       const DUPLICATE_STATUS_TRACE_WINDOW_MS = 3000;
 
       const elements = {
