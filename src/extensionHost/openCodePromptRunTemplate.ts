@@ -200,6 +200,7 @@ export type OpenCodePromptRunPorts = {
   ) => void;
   buildUserChatMessage: (input: PromptRunInput, createdAt: number, messageId: string) => ChatMessage;
   appendUserMessage: (messageTarget: ChatMessage[], message: ChatMessage) => void;
+  replaceUserMessage: (message: ChatMessage) => void;
   finishRunActivation: (
     prepared: OpenCodePromptPreparedRun,
     identity: OpenCodePromptUserIdentity,
@@ -360,8 +361,15 @@ export async function runOpenCodePromptTemplate(
   const userCreatedAt = Date.now();
   const identity = { userMessageId, userCreatedAt };
   ports.bindRunIdentityBeforeUserBubble(prepared, identity);
+  const executionModel = runtimeModel ?? null;
   if (!input.preloadedUserMessageId) {
-    ports.appendUserMessage(messageTarget, ports.buildUserChatMessage(input, userCreatedAt, userMessageId));
+    ports.appendUserMessage(messageTarget, ports.buildUserChatMessage({ ...input, executionModel }, userCreatedAt, userMessageId));
+  } else {
+    const userMessage = messageTarget.find((message) => message.id === userMessageId);
+    if (userMessage) {
+      userMessage.executionModel = executionModel;
+      ports.replaceUserMessage(userMessage);
+    }
   }
   ports.finishRunActivation(prepared, identity);
 

@@ -1,8 +1,8 @@
 {
   "name": "sinitek-cli-tools",
-  "displayName": "%extension.displayName%",
-  "description": "%extension.description%",
-  "version": "1.0.1",
+  "displayName": "携宁 CLI 助手",
+  "description": "在 VS Code 中运行 Codex、Claude、OpenCode 和 Grok CLI 的扩展。",
+  "version": "1.0.2",
   "publisher": "Sinitek",
   "repository": {
     "type": "git",
@@ -31,31 +31,31 @@
     "commands": [
       {
         "command": "sinitek-cli-tools.selectCli",
-        "title": "%command.selectCli%"
+        "title": "CLI Bridge: 选择 CLI"
       },
       {
         "command": "sinitek-cli-tools.runCli",
-        "title": "%command.runCli%"
+        "title": "CLI Bridge: 运行当前 CLI"
       },
       {
         "command": "sinitek-cli-tools.runCliThinkingOn",
-        "title": "%command.runCliThinkingOn%"
+        "title": "CLI Bridge: 运行当前 CLI（思考开启）"
       },
       {
         "command": "sinitek-cli-tools.runCliThinkingOff",
-        "title": "%command.runCliThinkingOff%"
+        "title": "CLI Bridge: 运行当前 CLI（思考关闭）"
       },
       {
         "command": "sinitek-cli-tools.openPanel",
-        "title": "%command.openPanel%"
+        "title": "CLI Bridge: 打开面板"
       },
       {
         "command": "sinitek-cli-tools.addToCliReference",
-        "title": "%command.addToCliReference%"
+        "title": "加入到 Sinitek CLI 引用"
       },
       {
         "command": "sinitek-cli-tools.openLoopGroupChat",
-        "title": "%command.openLoopGroupChat%"
+        "title": "CLI Bridge: 打开 Loop 群聊"
       }
     ],
     "menus": {
@@ -74,7 +74,7 @@
       ]
     },
     "configuration": {
-      "title": "%config.title%",
+      "title": "CLI Bridge",
       "properties": {
         "sinitek-cli-tools.defaultCli": {
           "type": "string",
@@ -85,22 +85,22 @@
             "grok"
           ],
           "default": "codex",
-          "description": "%config.defaultCli.description%"
+          "description": "扩展激活时默认运行的 CLI。"
         },
         "sinitek-cli-tools.commands.codex": {
           "type": "string",
           "default": "codex",
-          "description": "%config.commands.codex.description%"
+          "description": "用于运行 Codex CLI 的命令。"
         },
         "sinitek-cli-tools.commands.claude": {
           "type": "string",
           "default": "claude",
-          "description": "%config.commands.claude.description%"
+          "description": "用于运行 Claude CLI 的命令。"
         },
         "sinitek-cli-tools.commands.opencode": {
           "type": "string",
           "default": "opencode",
-          "description": "%config.commands.opencode.description%"
+          "description": "用于运行 OpenCode CLI 的命令。"
         },
         "sinitek-cli-tools.args.codex": {
           "type": "array",
@@ -114,7 +114,7 @@
             "--enable",
             "web_search_request"
           ],
-          "description": "%config.args.codex.description%"
+          "description": "Codex CLI 的默认参数。"
         },
         "sinitek-cli-tools.args.claude": {
           "type": "array",
@@ -124,7 +124,7 @@
           "default": [
             "--dangerously-skip-permissions"
           ],
-          "description": "%config.args.claude.description%"
+          "description": "Claude CLI 的默认参数。"
         },
         "sinitek-cli-tools.args.opencode": {
           "type": "array",
@@ -132,12 +132,12 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.args.opencode.description%"
+          "description": "OpenCode CLI 的默认参数。"
         },
         "sinitek-cli-tools.commands.grok": {
           "type": "string",
           "default": "grok",
-          "description": "%config.commands.grok.description%"
+          "description": "用于运行官方 Grok Build CLI 的命令。"
         },
         "sinitek-cli-tools.args.grok": {
           "type": "array",
@@ -147,32 +147,32 @@
           "default": [
             "--always-approve"
           ],
-          "description": "%config.args.grok.description%"
+          "description": "Grok Build 的 agent 选项，插入在 agent 与 stdio 之间；默认是 --always-approve。"
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",
           "default": true,
-          "description": "%config.autoOpenPanel.description%"
+          "description": "扩展激活时自动打开 CLI Bridge 面板。"
         },
         "sinitek-cli-tools.rememberSelectedCli": {
           "type": "boolean",
           "default": true,
-          "description": "%config.rememberSelectedCli.description%"
+          "description": "将所选 CLI 持久化为默认 CLI。"
         },
         "sinitek-cli-tools.autoAddEditorContextTags": {
           "type": "boolean",
           "default": false,
-          "description": "%config.autoAddEditorContextTags.description%"
+          "description": "控制是否在 AI 对话中自动将当前文件/选区加入输入框上下文标签。"
         },
         "sinitek-cli-tools.humanInteractionEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "%config.humanInteractionEnabled.description%"
+          "description": "启用 Codex、Claude 和 OpenCode Vibe/coding 任务中的人工交互表单，用于 AI 继续执行前需要澄清需求的场景。"
         },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
           "default": false,
-          "description": "%config.debug.description%"
+          "description": "启用 CLI stdin/stdout/stderr 的调试日志。"
         },
         "sinitek-cli-tools.macTaskShell": {
           "type": "string",
@@ -181,12 +181,12 @@
             "bash"
           ],
           "default": "zsh",
-          "description": "%config.macTaskShell.description%"
+          "description": "在 macOS 上执行 AI 对话任务使用的 shell（zsh 或 bash）。"
         },
         "sinitek-cli-tools.disableMarketplaceUpdateCheckInDev": {
           "type": "boolean",
           "default": true,
-          "description": "%config.disableMarketplaceUpdateCheckInDev.description%"
+          "description": "在开发模式运行此扩展时禁用 VS Code 市场更新检查。"
         },
         "sinitek-cli-tools.thinkingMode": {
           "type": "string",
@@ -200,7 +200,7 @@
             "ultra"
           ],
           "default": "medium",
-          "description": "%config.thinkingMode.description%"
+          "description": "所有 CLI 的全局思考模式。扩展将 ultra 提供为产品级原始值；Codex 与 Claude 是否接受取决于已安装的 CLI，OpenCode 使用模型专属 variants。"
         },
         "sinitek-cli-tools.thinkingModeCodex": {
           "type": "string",
@@ -214,7 +214,7 @@
             "ultra"
           ],
           "default": "medium",
-          "description": "%config.thinkingModeCodex.description%"
+          "description": "Codex CLI 的思考模式。"
         },
         "sinitek-cli-tools.thinkingModeClaude": {
           "type": "string",
@@ -229,7 +229,7 @@
             "ultra"
           ],
           "default": "medium",
-          "description": "%config.thinkingModeClaude.description%"
+          "description": "Claude CLI 的思考模式。扩展会在 CLI 支持时将 low、medium、high、xhigh、max、ultra 传给 --effort。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.on": {
           "type": "array",
@@ -237,7 +237,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.on.description%"
+          "description": "思考模式为 on 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.low": {
           "type": "array",
@@ -245,7 +245,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.low.description%"
+          "description": "思考模式为 low 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.medium": {
           "type": "array",
@@ -253,7 +253,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.medium.description%"
+          "description": "思考模式为 medium 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.high": {
           "type": "array",
@@ -261,7 +261,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.high.description%"
+          "description": "思考模式为 high 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.xhigh": {
           "type": "array",
@@ -269,7 +269,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.xhigh.description%"
+          "description": "思考模式为 xhigh 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.max": {
           "type": "array",
@@ -277,7 +277,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.max.description%"
+          "description": "思考模式为 max 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.codex.ultra": {
           "type": "array",
@@ -285,7 +285,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.codex.ultra.description%"
+          "description": "思考模式为 ultra 时，Codex CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.on": {
           "type": "array",
@@ -296,7 +296,7 @@
             "--effort",
             "high"
           ],
-          "description": "%config.thinkingArgs.claude.on.description%"
+          "description": "思考模式为 on 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.off": {
           "type": "array",
@@ -304,7 +304,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "%config.thinkingArgs.claude.off.description%"
+          "description": "思考模式为 off 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.low": {
           "type": "array",
@@ -315,7 +315,7 @@
             "--effort",
             "low"
           ],
-          "description": "%config.thinkingArgs.claude.low.description%"
+          "description": "思考模式为 low 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.medium": {
           "type": "array",
@@ -326,7 +326,7 @@
             "--effort",
             "medium"
           ],
-          "description": "%config.thinkingArgs.claude.medium.description%"
+          "description": "思考模式为 medium 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.high": {
           "type": "array",
@@ -337,7 +337,7 @@
             "--effort",
             "high"
           ],
-          "description": "%config.thinkingArgs.claude.high.description%"
+          "description": "思考模式为 high 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.xhigh": {
           "type": "array",
@@ -348,7 +348,7 @@
             "--effort",
             "xhigh"
           ],
-          "description": "%config.thinkingArgs.claude.xhigh.description%"
+          "description": "思考模式为 xhigh 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.max": {
           "type": "array",
@@ -359,7 +359,7 @@
             "--effort",
             "max"
           ],
-          "description": "%config.thinkingArgs.claude.max.description%"
+          "description": "思考模式为 max 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingArgs.claude.ultra": {
           "type": "array",
@@ -370,232 +370,232 @@
             "--effort",
             "ultra"
           ],
-          "description": "%config.thinkingArgs.claude.ultra.description%"
+          "description": "思考模式为 ultra 时，Claude CLI 的额外参数。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.off.description%"
+          "description": "思考模式为 off 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.on.description%"
+          "description": "思考模式为 on 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.low.description%"
+          "description": "思考模式为 low 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.medium.description%"
+          "description": "思考模式为 medium 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.high.description%"
+          "description": "思考模式为 high 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.xhigh": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.xhigh.description%"
+          "description": "思考模式为 xhigh 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.max": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.max.description%"
+          "description": "思考模式为 max 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.codex.ultra": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.codex.ultra.description%"
+          "description": "思考模式为 ultra 时，Codex CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.claude.off.description%"
+          "description": "思考模式为 off 时，Claude CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.claude.on.description%"
+          "description": "思考模式为 on 时，Claude CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.claude.low.description%"
+          "description": "思考模式为 low 时，Claude CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.claude.medium.description%"
+          "description": "思考模式为 medium 时，Claude CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.claude.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.claude.high.description%"
+          "description": "思考模式为 high 时，Claude CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.off.description%"
+          "description": "思考模式为 off 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.on.description%"
+          "description": "思考模式为 on 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.low.description%"
+          "description": "思考模式为 low 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.medium.description%"
+          "description": "思考模式为 medium 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.high.description%"
+          "description": "思考模式为 high 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.xhigh": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.xhigh.description%"
+          "description": "思考模式为 xhigh 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.max": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.max.description%"
+          "description": "思考模式为 max 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptPrefix.opencode.ultra": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptPrefix.opencode.ultra.description%"
+          "description": "思考模式为 ultra 时，OpenCode CLI 的提示前缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.off": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.off.description%"
+          "description": "思考模式为 off 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.on": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.on.description%"
+          "description": "思考模式为 on 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.low": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.low.description%"
+          "description": "思考模式为 low 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.medium": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.medium.description%"
+          "description": "思考模式为 medium 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.high": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.high.description%"
+          "description": "思考模式为 high 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.xhigh": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.xhigh.description%"
+          "description": "思考模式为 xhigh 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.max": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.max.description%"
+          "description": "思考模式为 max 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.codex.ultra": {
           "type": "string",
           "default": "Keep the final response concise. If files were modified, only list the file paths and line counts; do not include full diffs or code blocks.",
-          "description": "%config.thinkingPromptSuffix.codex.ultra.description%"
+          "description": "思考模式为 ultra 时，Codex CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.claude.off.description%"
+          "description": "思考模式为 off 时，Claude CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.claude.on.description%"
+          "description": "思考模式为 on 时，Claude CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.claude.low.description%"
+          "description": "思考模式为 low 时，Claude CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.claude.medium.description%"
+          "description": "思考模式为 medium 时，Claude CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.claude.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.claude.high.description%"
+          "description": "思考模式为 high 时，Claude CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.off": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.off.description%"
+          "description": "思考模式为 off 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.on": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.on.description%"
+          "description": "思考模式为 on 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.low": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.low.description%"
+          "description": "思考模式为 low 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.medium": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.medium.description%"
+          "description": "思考模式为 medium 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.high": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.high.description%"
+          "description": "思考模式为 high 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.xhigh": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.xhigh.description%"
+          "description": "思考模式为 xhigh 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.max": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.max.description%"
+          "description": "思考模式为 max 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingPromptSuffix.opencode.ultra": {
           "type": "string",
           "default": "",
-          "description": "%config.thinkingPromptSuffix.opencode.ultra.description%"
+          "description": "思考模式为 ultra 时，OpenCode CLI 的提示后缀。"
         },
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.off": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.off.description%",
+          "description": "思考模式为 off 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -607,17 +607,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.on": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.on.description%",
+          "description": "思考模式为 on 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -629,17 +629,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.low": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.low.description%",
+          "description": "思考模式为 low 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -651,17 +651,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.medium": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.medium.description%",
+          "description": "思考模式为 medium 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -673,17 +673,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.high": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.high.description%",
+          "description": "思考模式为 high 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -695,17 +695,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.xhigh": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.xhigh.description%",
+          "description": "思考模式为 xhigh 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -717,17 +717,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.max": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.max.description%",
+          "description": "思考模式为 max 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -739,17 +739,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.codex.ultra": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.codex.ultra.description%",
+          "description": "思考模式为 ultra 时，Codex CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -761,17 +761,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.claude.off": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.claude.off.description%",
+          "description": "思考模式为 off 时，Claude CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -783,17 +783,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.claude.on": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.claude.on.description%",
+          "description": "思考模式为 on 时，Claude CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -805,17 +805,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.claude.low": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.claude.low.description%",
+          "description": "思考模式为 low 时，Claude CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -827,17 +827,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.claude.medium": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.claude.medium.description%",
+          "description": "思考模式为 medium 时，Claude CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -849,17 +849,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.claude.high": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.claude.high.description%",
+          "description": "思考模式为 high 时，Claude CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -871,17 +871,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.off": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.off.description%",
+          "description": "思考模式为 off 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -893,17 +893,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.on": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.on.description%",
+          "description": "思考模式为 on 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -915,17 +915,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.low": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.low.description%",
+          "description": "思考模式为 low 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -937,17 +937,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.medium": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.medium.description%",
+          "description": "思考模式为 medium 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -959,17 +959,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.high": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.high.description%",
+          "description": "思考模式为 high 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -981,17 +981,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.xhigh": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.xhigh.description%",
+          "description": "思考模式为 xhigh 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -1003,17 +1003,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.max": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.max.description%",
+          "description": "思考模式为 max 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -1025,17 +1025,17 @@
         "sinitek-cli-tools.thinkingWorkspaceFiles.opencode.ultra": {
           "type": "array",
           "default": [],
-          "description": "%config.thinkingWorkspaceFiles.opencode.ultra.description%",
+          "description": "思考模式为 ultra 时，OpenCode CLI 的工作区配置文件。",
           "items": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
-                "description": "%config.workspaceFile.path.description%"
+                "description": "工作区相对路径或绝对路径。"
               },
               "content": {
                 "type": "string",
-                "description": "%config.workspaceFile.content.description%"
+                "description": "要写入的文件内容。"
               }
             },
             "required": [
@@ -1050,7 +1050,7 @@
       "secondarySidebar": [
         {
           "id": "sinitekCliBridgePanel",
-          "title": "%view.container.title%",
+          "title": "携宁 CLI 助手",
           "icon": "media/logo.svg"
         }
       ]
@@ -1059,7 +1059,7 @@
       "sinitekCliBridgePanel": [
         {
           "id": "sinitek-cli-tools.panelView",
-          "name": "%view.panel.name%",
+          "name": "携宁 CLI 助手",
           "type": "webview"
         }
       ]

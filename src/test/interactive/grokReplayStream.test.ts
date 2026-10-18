@@ -273,3 +273,20 @@ test("flushes buffered text before RPC errors and other notifications", () => {
   replay.append(notification);
   assert.deepEqual(events, [textUpdate("partial"), error, notification]);
 });
+
+test("deduplicates successful todo snapshots against native plans and keeps full-list patches", () => {
+  const plans: Array<Array<{ content: string; status: string }>> = [];
+  const replay = new GrokReplayStream(() => undefined, { onTaskListUpdate: (entries) => plans.push(entries) });
+  const todos = [{ id: "a", content: "调查", status: "pending" }, { id: "b", content: "验证", status: "pending" }];
+  replay.append(sessionUpdate({ sessionUpdate: "tool_call", toolCallId: "create", title: "todo_write", rawInput: { merge: false, todos } }));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: todos }));
+  replay.append(sessionUpdate({ sessionUpdate: "tool_call_update", toolCallId: "create", status: "completed", rawOutput: { type: "Todo", TodosUpdated: { todos } } }));
+  replay.append(sessionUpdate({ sessionUpdate: "tool_call_update", toolCallId: "patch", title: "todo_write", status: "completed", rawInput: { todos: [{ id: "a", status: "completed" }] } }));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: [{ content: "调查", status: "completed" }, { content: "验证", status: "pending" }] }));
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: [] }));
+  replay.finish();
+  replay.append(sessionUpdate({ sessionUpdate: "plan", entries: todos }));
+  assert.equal(plans.length, 3);
+  assert.deepEqual(plans[1], [{ content: "调查", status: "completed" }, { content: "验证", status: "pending" }]);
+  assert.deepEqual(plans[2], []);
+});

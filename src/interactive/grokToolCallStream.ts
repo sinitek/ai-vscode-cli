@@ -16,7 +16,10 @@ type ToolState = {
   lastEvent: string;
   lastTrace: string;
   started: boolean;
+  planApplied: boolean;
 };
+
+type GrokTodo = GrokPlanEntry & { id?: string };
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "canceled", "interrupted"]);
 const PLAN_TOOLS = new Set(["todo", "todo_write", "todowrite", "update_plan"]);
@@ -24,6 +27,7 @@ const SUMMARY_FIELDS = ["command", "path", "file_path", "absolute_path", "patter
 
 export class GrokToolCallStream {
   private readonly tools = new Map<string, ToolState>();
+  private readonly plans = new Map<string, GrokTodo[]>();
   private finished = false;
 
   public constructor(
@@ -47,7 +51,8 @@ export class GrokToolCallStream {
     const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
     const key = JSON.stringify([params?.sessionId ?? "", toolCallId]);
     const previous = toolCallId ? this.tools.get(key) : undefined;
-    if (previous?.terminal && !TERMINAL_STATUSES.has(String(update.status))) {
+    if (previous?.terminal && (!TERMINAL_STATUSES.has(String(update.status))
+      || PLAN_TOOLS.has(previous.name.toLowerCase()) && (previous.planApplied || previous.update.status !== "completed"))) {
       return true;
     }
     const state: ToolState = previous ?? {
@@ -59,6 +64,7 @@ export class GrokToolCallStream {
       lastEvent: "",
       lastTrace: "",
       started: false,
+      planApplied: false,
     };
     state.message = message;
     const previousOutput = asRecord(state.update.rawOutput);
@@ -73,25 +79,64 @@ export class GrokToolCallStream {
     if (toolCallId || typeof state.update.status === "string") {
       state.update.status = readToolStatus(state.update);
     }
-    if (["tool", "execute", "read", "search", "edit", "other", "think"].includes(state.name) && !["tool", "execute", "read", "search", "edit", "other", "think"].includes(event.name)) {
+    if (PLAN_TOOLS.has(event.name.toLowerCase())
+      || ["tool", "execute", "read", "search", "edit", "other", "think"].includes(state.name) && !["tool", "execute", "read", "search", "edit", "other", "think"].includes(event.name)) {
       state.name = event.name;
     }
     state.terminal = TERMINAL_STATUSES.has(String(state.update.status));
     if (toolCallId) {
       this.tools.set(key, state);
     }
-    if (PLAN_TOOLS.has(state.name.toLowerCase()) && state.update.status !== "failed") {
-      const output = asRecord(state.update.rawOutput);
-      const todos = asRecord(output?.TodosUpdated)?.todos ?? asRecord(state.update.rawInput)?.todos;
-      const entries = normalizeGrokPlanEntries(todos);
-      if (entries) {
-        this.emit(withUpdate(message, { sessionUpdate: "plan", entries }));
+    if (PLAN_TOOLS.has(state.name.toLowerCase())) {
+      if (state.update.status === "completed" && !state.planApplied) {
+        state.planApplied = this.emitPlan(state, String(params?.sessionId ?? ""));
       }
-      return true;
+      if (!state.terminal || state.update.status === "completed") {
+        return true;
+      }
     }
     if (!toolCallId || event.type === "tool" || state.terminal) {
       this.emitState(state);
     }
+    return true;
+  }
+
+  public observePlan(sessionId: string, value: unknown): void {
+    const entries = normalizeGrokPlanEntries(value);
+    if (this.finished || !entries) {
+      return;
+    }
+    const previous = this.plans.get(sessionId) ?? [];
+    this.plans.set(sessionId, readGrokTodos(value).map((entry) => {
+      const matches = previous.filter((todo) => todo.content === entry.content);
+      return { ...entry, ...(entry.id ? {} : matches.length === 1 && matches[0].id ? { id: matches[0].id } : {}) };
+    }));
+  }
+
+  private emitPlan(state: ToolState, sessionId: string): boolean {
+    const input = asRecord(state.update.rawInput);
+    const output = asRecord(state.update.rawOutput);
+    const result = asRecord(output?.TodosUpdated);
+    const previous = this.plans.get(sessionId) ?? [];
+    let todos: GrokTodo[] | null;
+    if (result) {
+      const entries = normalizeGrokPlanEntries(result.todos);
+      if (!entries) {
+        return false;
+      }
+      const known = [...previous, ...readGrokTodos(input?.todos)];
+      todos = readGrokTodos(result.todos).map((entry) => {
+        const ids = new Set(known.filter((todo) => todo.content === entry.content && todo.id).map((todo) => todo.id));
+        return { ...entry, ...(entry.id ? {} : ids.size === 1 ? { id: [...ids][0] } : {}) };
+      });
+    } else {
+      todos = mergeGrokTodos(previous, input);
+    }
+    if (!todos) {
+      return false;
+    }
+    this.plans.set(sessionId, todos);
+    this.emit(withUpdate(state.message, { sessionUpdate: "plan", entries: todos.map(({ content, status }) => ({ content, status })) }));
     return true;
   }
 
@@ -108,6 +153,7 @@ export class GrokToolCallStream {
       }
     }
     this.tools.clear();
+    this.plans.clear();
   }
 
   private emitState(state: ToolState): void {
@@ -204,6 +250,45 @@ export function normalizeGrokPlanEntries(value: unknown): GrokPlanEntry[] | null
     entries.push({ content, status: typeof entry?.status === "string" ? entry.status : entry?.done === true ? "completed" : "pending" });
   }
   return entries;
+}
+
+function readGrokTodos(value: unknown): GrokTodo[] {
+  const entries = normalizeGrokPlanEntries(value);
+  if (!entries || !Array.isArray(value)) {
+    return [];
+  }
+  return entries.map((entry, index) => {
+    const id = asRecord(value[index])?.id;
+    return { ...entry, ...(typeof id === "string" && id ? { id } : {}) };
+  });
+}
+
+function mergeGrokTodos(previous: GrokTodo[], input: Record<string, unknown> | null): GrokTodo[] | null {
+  if (!Array.isArray(input?.todos)) {
+    return null;
+  }
+  if (input.merge === false) {
+    return normalizeGrokPlanEntries(input.todos) ? readGrokTodos(input.todos) : null;
+  }
+  const next = previous.map((todo) => ({ ...todo }));
+  for (const value of input.todos) {
+    const patch = asRecord(value);
+    if (!patch || typeof patch.id !== "string" || !patch.id) {
+      return null;
+    }
+    const index = next.findIndex((todo) => todo.id === patch.id);
+    const entry = normalizeGrokPlanEntries([{ ...(index >= 0 ? next[index] : {}), ...patch }])?.[0];
+    if (!entry) {
+      return null;
+    }
+    const todo = { ...entry, id: patch.id };
+    if (index >= 0) {
+      next[index] = todo;
+    } else {
+      next.push(todo);
+    }
+  }
+  return next;
 }
 
 function decodeToolBytes(value: unknown): string | null {

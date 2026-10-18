@@ -5339,35 +5339,29 @@ const ConfigEditorPanel = () => {
               : H,
           );
       },
-      confirmDeleteOpenCodeProvider = () => {
-        if (!selectedOpenCodeProvider) return;
+      confirmDeleteOpenCodeProvider = (provider = selectedOpenCodeProvider) => {
+        if (!provider) return;
         xr.confirm({
           title: "删除 Provider",
-          content: `确定删除 ${selectedOpenCodeProvider.name || selectedOpenCodeProvider.id} 及其全部模型吗？`,
+          content: `确定删除 ${provider.name || provider.id} 及其全部模型吗？`,
           okText: "删除",
           cancelText: "取消",
           onOk: () =>
             setOpenCodeVisualState((W) =>
-              W ? openCodeVisualDeleteProvider(W, selectedOpenCodeProvider.id) : W,
+              W ? openCodeVisualDeleteProvider(W, provider.id) : W,
             ),
         });
       },
-      confirmDeleteOpenCodeModel = () => {
-        if (!selectedOpenCodeProvider || !selectedOpenCodeModel) return;
+      confirmDeleteOpenCodeModel = (provider = selectedOpenCodeProvider, model = selectedOpenCodeModel) => {
+        if (!provider || !model) return;
         xr.confirm({
           title: "删除模型",
-          content: `确定删除 ${selectedOpenCodeModel.name || selectedOpenCodeModel.id} 吗？`,
+          content: `确定删除 ${model.name || model.id} 吗？`,
           okText: "删除",
           cancelText: "取消",
           onOk: () =>
             setOpenCodeVisualState((W) =>
-              W
-                ? openCodeVisualDeleteModel(
-                    W,
-                    selectedOpenCodeProvider.id,
-                    selectedOpenCodeModel.id,
-                  )
-                : W,
+              W ? openCodeVisualDeleteModel(W, provider.id, model.id) : W,
             ),
         });
       },
@@ -5533,16 +5527,32 @@ const ConfigEditorPanel = () => {
                 }),
                 openCodeVisualState.providers.length > 0
                   ? openCodeVisualState.providers.map((L) =>
-                      be.jsx(
-                        xn,
-                        {
-                          type: L.id === openCodeVisualState.selectedProviderId ? "primary" : "default",
-                          onClick: () => selectOpenCodeProvider(L.id),
-                          style: { width: "100%", textAlign: "left", overflow: "hidden" },
-                          children: L.name || L.id,
-                        },
-                        L.id,
-                      ),
+                      be.jsxs("div", {
+                        style: { display: "flex", alignItems: "center", gap: "2px", minWidth: 0 },
+                        children: [
+                          be.jsx(xn, {
+                            type: L.id === openCodeVisualState.selectedProviderId ? "primary" : "default",
+                            onClick: () => selectOpenCodeProvider(L.id),
+                            title: L.name || L.id,
+                            style: { flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" },
+                            children: L.name || L.id,
+                          }),
+                          be.jsx(xn, {
+                            type: "text",
+                            size: "small",
+                            danger: !0,
+                            icon: be.jsx(AH, {}),
+                            style: { flex: "0 0 24px", width: 24, padding: 0 },
+                            "data-opencode-delete-provider-id": L.id,
+                            "aria-label": `删除 Provider ${L.name || L.id}`,
+                            title: `删除 Provider ${L.name || L.id}`,
+                            onClick: (event) => {
+                              event.stopPropagation();
+                              confirmDeleteOpenCodeProvider(L);
+                            },
+                          }),
+                        ],
+                      }, L.id),
                     )
                   : be.jsx("div", {
                       style: {
@@ -5585,7 +5595,7 @@ const ConfigEditorPanel = () => {
                             be.jsx(xn, {
                               size: "small",
                               danger: !0,
-                              onClick: confirmDeleteOpenCodeProvider,
+                              onClick: () => confirmDeleteOpenCodeProvider(),
                               children: "删除 Provider",
                             }),
                           ],
@@ -5653,20 +5663,35 @@ const ConfigEditorPanel = () => {
                             }),
                             W.models.length > 0
                               ? W.models.map((L) =>
-                                  be.jsx(
-                                    xn,
-                                    {
-                                      type: L.id === openCodeVisualState.selectedModelId ? "primary" : "default",
-                                      onClick: () =>
-                                        setOpenCodeVisualState((U) =>
-                                          U ? { ...U, selectedModelId: L.id } : U,
-                                        ),
-                                      title: L.id,
-                                      style: { width: "100%", textAlign: "left", overflow: "hidden" },
-                                      children: L.name || L.id,
-                                    },
-                                    L.id,
-                                  ),
+                                  be.jsxs("div", {
+                                    style: { display: "flex", alignItems: "center", gap: "2px", minWidth: 0 },
+                                    children: [
+                                      be.jsx(xn, {
+                                        type: L.id === openCodeVisualState.selectedModelId ? "primary" : "default",
+                                        onClick: () =>
+                                          setOpenCodeVisualState((U) =>
+                                            U ? { ...U, selectedModelId: L.id } : U,
+                                          ),
+                                        title: L.id,
+                                        style: { flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden" },
+                                        children: L.name || L.id,
+                                      }),
+                                      be.jsx(xn, {
+                                        type: "text",
+                                        size: "small",
+                                        danger: !0,
+                                        icon: be.jsx(AH, {}),
+                                        style: { flex: "0 0 24px", width: 24, padding: 0 },
+                                        "data-opencode-delete-model-id": L.id,
+                                        "aria-label": `删除模型 ${L.name || L.id}`,
+                                        title: `删除模型 ${L.name || L.id}`,
+                                        onClick: (event) => {
+                                          event.stopPropagation();
+                                          confirmDeleteOpenCodeModel(W, L);
+                                        },
+                                      }),
+                                    ],
+                                  }, L.id),
                                 )
                               : be.jsx("div", {
                                   style: {
@@ -5702,7 +5727,7 @@ const ConfigEditorPanel = () => {
                                     be.jsx(xn, {
                                       size: "small",
                                       danger: !0,
-                                      onClick: confirmDeleteOpenCodeModel,
+                                      onClick: () => confirmDeleteOpenCodeModel(),
                                       children: "删除模型",
                                     }),
                                   ],

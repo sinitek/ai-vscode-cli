@@ -71,10 +71,14 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
       id: messageId,
       role: "user" as const,
       content: input.displayPrompt,
+      executionModel: input.executionModel,
       createdAt,
     }),
     appendUserMessage: () => {
       events.push("appendUserMessage");
+    },
+    replaceUserMessage: () => {
+      events.push("replaceUserMessage");
     },
     finishRunActivation: () => {
       events.push("finishRunActivation");
@@ -433,4 +437,36 @@ test("retries a failed attempt before parsing a later successful exit", async ()
   assert.ok(retryEvents.includes("publishSystem"));
   assert.ok(retryEvents.includes("logHiddenRetry"));
   assert.equal(events.includes("finalizeFailedAttempt"), false);
+});
+
+
+test("records the effective OpenCode model and preserves each prompt snapshot", async () => {
+  const messages: import("../../webview/types").ChatMessage[] = [];
+  const ports = createRecordingPorts([], {
+    getPendingSessionDraft: () => ({ messages }),
+    appendUserMessage: (target, message) => { target.push(message); },
+  });
+  await runOpenCodePromptTemplate(createInput({ model: "requested-model" }), createTarget(), {}, ports);
+  assert.equal(messages[0]?.executionModel, "effective-model");
+  ports.prepareOpenCodeRuntime = async () => ({ ...createRuntimePreparation(), effectiveModel: "next-model" });
+  await runOpenCodePromptTemplate(createInput(), createTarget(), {}, ports);
+  assert.deepEqual(messages.map((message) => message.executionModel), ["effective-model", "next-model"]);
+});
+
+test("fills the execution model on a preloaded OpenCode prompt without duplicating it", async () => {
+  const message: import("../../webview/types").ChatMessage = {
+    id: "preloaded", role: "user", content: "ship the template", createdAt: 123,
+  };
+  const messages = [message];
+  const replacements: unknown[] = [];
+  const ports = createRecordingPorts([], {
+    getPendingSessionDraft: () => ({ messages }),
+    appendUserMessage: () => { assert.fail("preloaded message must remain unique"); },
+    replaceUserMessage: (replacement) => { replacements.push({ ...replacement }); },
+  });
+  await runOpenCodePromptTemplate(createInput({ preloadedUserMessageId: message.id }), createTarget(), {}, ports);
+  assert.equal(messages.length, 1);
+  assert.equal(message.executionModel, "effective-model");
+  assert.equal(message.createdAt, 123);
+  assert.deepEqual(replacements, [message]);
 });

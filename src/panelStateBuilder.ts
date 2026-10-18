@@ -1503,6 +1503,7 @@ export function buildLoopDebateChatMessageActionWithRoundKey(
 
 export type UserChatMessageInput = {
   displayPrompt: string;
+  executionModel?: string | null;
   contextTags: string[];
   taskRole?: ChatMessage["taskRole"];
   loopTaskId?: string;
@@ -1519,6 +1520,7 @@ export function buildUserChatMessage(input: UserChatMessageInput, createdAt: num
     createdAt,
     merge: false,
     contextTags: input.contextTags,
+    ...(input.executionModel !== undefined ? { executionModel: input.executionModel } : {}),
     taskRole: input.taskRole,
     loopTaskId: input.loopTaskId,
     loopRound: input.loopRound,

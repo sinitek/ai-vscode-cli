@@ -87,6 +87,14 @@ export const CODEX_TASK_LIST_PROMPT_INSTRUCTION = [
   "Omit the Tasklist block when there is no meaningful task-list change.",
 ].join("\n");
 
+export const GROK_TASK_LIST_PROMPT_INSTRUCTION = [
+  "Task tracking requirement for Grok multi-step tasks:",
+  "For meaningful multi-step work, use the native todo_write tool to create and maintain the task list as work progresses.",
+  "Keep stable task ids, use pending/in_progress/completed statuses, and update the list when tasks change or finish.",
+  "Write task descriptions in Simplified Chinese (中文) unless the user explicitly requests another language; preserve code identifiers, commands, paths, package names, and user-provided terms.",
+  "Simple single-step requests may omit the task list.",
+].join("\n");
+
 export const HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
   "Human interaction requirement for Vibe tasks:",
   "When you need user clarification, missing requirements, or user preferences before continuing, request structured user input through the available app-server user-input, MCP elicitation, or host-provided user-input mechanism.",
@@ -110,11 +118,13 @@ export function buildThinkingPrompt(
   const promptWithThinkingInstructions = !prefix.trim() && !suffix.trim()
     ? prompt
     : mergePromptSections(prefix, prompt, suffix);
-  const includeTaskListInstruction = cli === "codex"
+  const taskListInstruction = cli === "codex" ? CODEX_TASK_LIST_PROMPT_INSTRUCTION
+    : cli === "grok" ? GROK_TASK_LIST_PROMPT_INSTRUCTION : "";
+  const includeTaskListInstruction = Boolean(taskListInstruction)
     && options.includeTaskListInstruction !== false
     && options.includeFinalAnswerInstruction !== false;
   const promptWithTaskListInstruction = includeTaskListInstruction
-    ? mergePromptSections("", promptWithThinkingInstructions, CODEX_TASK_LIST_PROMPT_INSTRUCTION)
+    ? mergePromptSections("", promptWithThinkingInstructions, taskListInstruction)
     : promptWithThinkingInstructions;
   const includeHumanInteractionInstruction = options.includeHumanInteractionInstruction === true
     && options.includeFinalAnswerInstruction !== false;

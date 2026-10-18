@@ -10,7 +10,7 @@ function loadUiSource(): string {
   return fs.readFileSync(uiPath, "utf8");
 }
 
-function loadVisualUtils(): any {
+function loadVisualUtils(sandbox: Record<string, any> = {}): any {
   const source = loadUiSource();
   const startMarker = "// OPENCODE_VISUAL_EDITOR_UTILS_START";
   const endMarker = "// OPENCODE_VISUAL_EDITOR_UTILS_END";
@@ -18,7 +18,6 @@ function loadVisualUtils(): any {
   const end = source.indexOf(endMarker);
   assert.notEqual(start, -1, "visual utility start marker should exist");
   assert.notEqual(end, -1, "visual utility end marker should exist");
-  const sandbox: Record<string, unknown> = {};
   vm.runInNewContext(
     `${source.slice(start, end)}\n;globalThis.__utils = OpenCodeConfigVisualEditorUtils;`,
     sandbox,
@@ -543,4 +542,124 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
     /renderOpenCodeField[\s\S]*?color: "var\(--text-color-secondary\)"[\s\S]*?fontSize: "12px"/,
     "OpenCode field labels should keep compact secondary styling",
   );
+});
+
+type EditorNode = { type: unknown; props: Record<string, any> };
+
+function editorNodes(value: unknown): EditorNode[] {
+  if (Array.isArray(value)) return value.flatMap(editorNodes);
+  if (!value || typeof value !== "object" || !("props" in value)) return [];
+  const node = value as EditorNode;
+  return [node, ...editorNodes(node.props.children)];
+}
+
+function createOpenCodeListHarness() {
+  const source = loadUiSource();
+  const start = source.indexOf("selectedOpenCodeProvider =");
+  const end = source.indexOf("selectedCodexProvider =", start);
+  assert.ok(start >= 0 && end > start);
+  const confirmations: Record<string, any>[] = [];
+  const jsx = (type: unknown, props: Record<string, any>): EditorNode => ({ type, props });
+  const sandbox: Record<string, any> = {
+    be: { jsx, jsxs: jsx },
+    xn: "Button",
+    AH: "DeleteIcon",
+    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    claudeText: (chinese: string) => chinese,
+    renderConfigSelect: () => null,
+    renderConfigFieldLabel: () => null,
+    stripConfigHelpOption: (options: unknown) => options,
+    zi: "Input",
+    CONFIG_PROVIDER_CARD_WIDTH_PX: 132,
+    CONFIG_PROVIDER_CARD_MIN_WIDTH_PX: 114,
+    setOpenCodeVisualState: (update: (state: unknown) => unknown) => {
+      sandbox.openCodeVisualState = update(sandbox.openCodeVisualState);
+    },
+  };
+  const utils = loadVisualUtils(sandbox);
+  sandbox.openCodeVisualState = utils.createState({
+    model: "first/main",
+    custom: { keep: true },
+    provider: {
+      first: {
+        name: "First",
+        models: { main: { name: "Main" }, other: { name: "Other" } },
+      },
+      second: { name: "Second", models: { main: { name: "Second Main" } } },
+    },
+  });
+  const render = () => vm.runInNewContext(
+    `(() => { const ${source.slice(start, end).replace(/,\s*$/, ";")} return renderOpenCodeVisualEditor(); })()`,
+    sandbox,
+  ) as EditorNode;
+  const find = (property: string, value: unknown) => {
+    const node = editorNodes(render()).find((candidate) => candidate.props[property] === value);
+    assert.ok(node, `Missing ${property}=${value}`);
+    return node;
+  };
+  const clickDelete = (property: string, id: string) => {
+    const button = find(property, id);
+    assert.equal(button.props.icon.type, "DeleteIcon");
+    assert.ok(button.props["aria-label"]);
+    let stopped = false;
+    button.props.onClick({ stopPropagation: () => { stopped = true; } });
+    assert.equal(stopped, true, "row delete must not trigger selection");
+    return confirmations[confirmations.length - 1];
+  };
+  return { state: sandbox, utils, render, find, clickDelete };
+}
+
+test("OpenCode provider row deletes its target after confirmation and preserves the current selection", () => {
+  const harness = createOpenCodeListHarness();
+  const original = JSON.stringify(harness.state.openCodeVisualState);
+  const confirmation = harness.clickDelete("data-opencode-delete-provider-id", "second");
+  assert.equal(confirmation.title, "删除 Provider");
+  assert.match(confirmation.content, /Second 及其全部模型/);
+  assert.equal(confirmation.cancelText, "取消");
+  assert.equal(JSON.stringify(harness.state.openCodeVisualState), original, "opening or cancelling must not delete");
+  confirmation.onOk();
+  const state = harness.state.openCodeVisualState;
+  assert.deepEqual(Array.from(state.providers, (provider: any) => provider.id), ["first"]);
+  assert.equal(state.selectedProviderId, "first");
+  assert.equal(state.selectedModelId, "main");
+  const saved = harness.utils.serializeState(state);
+  assert.equal(saved.ok, true);
+  assert.equal(saved.config.provider.second, undefined);
+  assert.equal(saved.config.provider.first.models.other.name, "Other");
+  assert.equal(saved.config.custom.keep, true);
+});
+
+test("OpenCode model row deletes an unselected target and keeps other provider models", () => {
+  const harness = createOpenCodeListHarness();
+  const original = JSON.stringify(harness.state.openCodeVisualState);
+  const confirmation = harness.clickDelete("data-opencode-delete-model-id", "other");
+  assert.equal(confirmation.title, "删除模型");
+  assert.match(confirmation.content, /Other/);
+  assert.equal(JSON.stringify(harness.state.openCodeVisualState), original);
+  confirmation.onOk();
+  const state = harness.state.openCodeVisualState;
+  assert.equal(state.selectedProviderId, "first");
+  assert.equal(state.selectedModelId, "main");
+  assert.deepEqual(Array.from(state.providers[0].models, (model: any) => model.id), ["main"]);
+  assert.equal(state.providers[1].models[0].name, "Second Main");
+  const saved = harness.utils.serializeState(state);
+  assert.equal(saved.ok, true);
+  assert.equal(saved.config.provider.first.models.other, undefined);
+});
+
+test("OpenCode row deletion retains selected-item fallback, empty states, and existing detail actions", () => {
+  const harness = createOpenCodeListHarness();
+  harness.clickDelete("data-opencode-delete-model-id", "main").onOk();
+  assert.equal(harness.state.openCodeVisualState.selectedModelId, "other");
+  harness.find("children", "删除模型").props.onClick({ type: "click" });
+  harness.clickDelete("data-opencode-delete-model-id", "other").onOk();
+  assert.equal(harness.state.openCodeVisualState.selectedModelId, "");
+  harness.find("children", "暂无模型，请新增");
+  harness.find("children", "删除 Provider").props.onClick({ type: "click" });
+  harness.clickDelete("data-opencode-delete-provider-id", "first").onOk();
+  assert.equal(harness.state.openCodeVisualState.selectedProviderId, "second");
+  assert.equal(harness.state.openCodeVisualState.selectedModelId, "main");
+  harness.clickDelete("data-opencode-delete-provider-id", "second").onOk();
+  assert.equal(harness.state.openCodeVisualState.selectedProviderId, "");
+  harness.find("children", "暂无 Provider，请新增");
 });

@@ -82,6 +82,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
+  getModelDisplayName?: (cli: CliName, model: string | null) => string | null;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   getInteractiveRunnerManager: () => InteractiveRunnerManager;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
@@ -215,6 +216,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)
       : requestedModel;
+    const executionModel = deps.getModelDisplayName?.(cli, selectedModel) ?? selectedModel;
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
     const interactiveMode = getWorkspaceInteractiveMode(cli);
     applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
@@ -740,6 +742,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         id: createMessageId(),
         role: "user",
         content: formatHumanInteractionSubmittedText(submission, request.formFields),
+        executionModel,
         createdAt: Date.now(),
         merge: false,
       });
@@ -976,7 +979,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     if (!input.preloadedUserMessageId) {
-      appendMessageForTab(buildUserChatMessage(input, userCreatedAt, userMessageId));
+      appendMessageForTab(buildUserChatMessage({ ...input, executionModel }, userCreatedAt, userMessageId));
+    } else {
+      const userMessage = messageTarget.find((message) => message.id === userMessageId);
+      if (userMessage) {
+        userMessage.executionModel = executionModel;
+        sendPanelMessage({ type: "replaceMessage", message: userMessage, tabId });
+        schedulePersistForInteractiveRun();
+      }
     }
     sendRunStatusForTab(tabId, "start", {
       prompt,

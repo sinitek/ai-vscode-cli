@@ -412,6 +412,16 @@
 
 
 
+## Grok todo 输入补丁与成功计划快照的区别
+
+- 状态：已规避
+- 首次确认：2026-10-18，Grok Build 1.0.62 ACP
+- 触发：`todo_write` 默认 merge，只传 `{id,status}`；工具通用标题为 `Updating plan`、kind 为 `think`。仅解析标题或把 rawInput.todos 当完整列表，会漏工具身份、丢失正文与其他条目；在开始时应用输入还可能显示失败操作。
+- 规避：实时使用标准 `session/update` 的 `plan.entries` 完整快照，成功工具结果优先 `rawOutput.TodosUpdated.todos`，身份优先 `_meta["x.ai/tool"].name`。完整结果缺失时仅按当前回合内已知 ID 合并；失败/取消保留错误，成功派生计划与 native plan 去重，清空后拒绝旧终态回退。
+- 排查顺序：在目标会话 `updates.jsonl` 中确认是否有 plan，再按 toolCallId 核对 todo 开始/终态；没有工具调用时检查任务复杂度和 prompt 引导。`plan.json` 用于只读核验，插件运行时不轮询。不能把后台 `list_tasks` 作为 todo 查询接口。
+- 验证：隔离真实 Grok + 本地 API 同回合创建两项、ID-only 更新、全完成、非法状态与清空，四次成功各一次完整回调，失败零计划。Grok 会在回合结束时自动完成仍为 in_progress 的任务，应在同回合观察中间状态。
+- 事实来源：`.ch/docs/runbooks/grok-model-config.md#任务列表来源与排查`、`src/test/interactive/grokToolCallStream.test.ts`、`src/test/interactive/grokRunner.test.ts`。
+
 ## Grok 思考片段不要按行补换行
 
 - 状态：已规避

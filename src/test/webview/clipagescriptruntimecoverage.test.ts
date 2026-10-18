@@ -1932,7 +1932,7 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   assert.equal(groups.length, 3);
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string } }) => group.querySelector("summary").textContent),
-    ["command two(2 个)", "command five(3 个)", "tail two(2 个)"],
+    ["command two (2)", "command five (3)", "tail two (2)"],
   );
   groups.forEach((group: { open: boolean }) => assert.equal(group.open, false));
   assert.deepEqual(
@@ -1955,15 +1955,82 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   const summary = groups[1].querySelector("summary");
   summary.click();
   assert.equal(groups[1].open, true);
-  assert.equal(summary.textContent, "收起(3 个)");
+  assert.equal(summary.textContent, "收起 (3)");
   api.renderMessages();
   const reopened = messages.querySelectorAll("details.instruction-group")[1];
   assert.equal(reopened.open, true);
-  assert.equal(reopened.querySelector("summary").textContent, "收起(3 个)");
+  assert.equal(reopened.querySelector("summary").textContent, "收起 (3)");
 
   reopened.querySelector("summary").click();
   assert.equal(reopened.open, false);
-  assert.equal(reopened.querySelector("summary").textContent, "command five(3 个)");
+  assert.equal(reopened.querySelector("summary").textContent, "command five (3)");
+});
+
+test("keeps the owning conversation tab errored for error bubbles through append, update, collapse, and recovery", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      interactiveMode: "coding",
+      conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "claude" }] },
+    }),
+  });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "user-start", role: "user", content: "start conversation" },
+  });
+
+  const tab = (label: string) => document.getElementById("conversationTabs")
+    .querySelectorAll(".conversation-tab")
+    .find((item: FakeElement) => item.querySelector(".conversation-tab-label")?.textContent === label);
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "error-1", role: "trace", kind: "normal", content: "error\nfirst failure", merge: false },
+  });
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+  assert.equal(tab("claude")?.classList.contains("errored"), false);
+  assert.ok(api.state.messages.some((message: any) => message.id === "error-1"), JSON.stringify(api.state.messages));
+
+  window.dispatchMessage({
+    type: "traceSegment",
+    tabId: "tab-1",
+    id: "error-1",
+    content: "error\nupdated failure",
+    kind: "normal",
+    merge: false,
+  });
+  assert.equal(api.state.messages.find((message: any) => message.id === "error-1")?.content.includes("updated failure"), true);
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "error-2", role: "trace", kind: "normal", content: "error\nsecond failure", merge: false },
+  });
+  const errorGroup = document.getElementById("messages").querySelector("details.instruction-group");
+  assert.ok(errorGroup);
+  assert.equal(errorGroup.open, false);
+  assert.equal(errorGroup.querySelector(".instruction-group-body").children.length, 2);
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+  errorGroup.querySelector("summary").click();
+  assert.equal(errorGroup.open, true);
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+  errorGroup.querySelector("summary").click();
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+
+  window.dispatchMessage({ type: "traceSegment", tabId: "tab-2", id: "background-error", content: "error\nbackground failure", kind: "normal", merge: false });
+  assert.equal(tab("claude")?.classList.contains("errored"), true);
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+  window.dispatchMessage({ type: "rawStreamDelta", tabId: "tab-2", content: "recovered output", stream: "stdout" });
+  assert.equal(tab("claude")?.classList.contains("errored"), false);
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "error" });
+  assert.equal(tab("codex")?.classList.contains("errored"), true);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+  assert.equal(tab("codex")?.classList.contains("errored"), false);
 });
 
 test("restarts instruction folding after each thinking bubble", () => {
@@ -2017,7 +2084,7 @@ test("restarts instruction folding after each thinking bubble", () => {
   const groups = messages.querySelectorAll("details.instruction-group");
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
-    ["执行命令(4 个)", "执行命令(4 个)", "执行命令(2 个)", "执行命令(3 个)"],
+    ["执行命令 (4)", "执行命令 (4)", "执行命令 (2)", "执行命令 (3)"],
   );
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
@@ -2056,12 +2123,12 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
   const messages = document.getElementById("messages");
   const group = messages.querySelector("details.instruction-group");
   const summary = group.querySelector("summary");
-  assert.equal(summary.textContent, "读取文件(3 个)");
+  assert.equal(summary.textContent, "读取文件 (3)");
 
   summary.click();
-  assert.equal(summary.textContent, "收起(3 个)");
+  assert.equal(summary.textContent, "收起 (3)");
   summary.click();
-  assert.equal(summary.textContent, "读取文件(3 个)");
+  assert.equal(summary.textContent, "读取文件 (3)");
 
   const summaryText = () => {
     const nextGroup = document.getElementById("messages").querySelector("details.instruction-group");
@@ -2071,7 +2138,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
 
   api.state.messages[2].content = "tool: edit\ninput:\n{}\n";
   api.renderMessages();
-  assert.equal(summaryText(), "编辑文件(3 个)");
+  assert.equal(summaryText(), "编辑文件 (3)");
 
   api.state.messages.splice(0, api.state.messages.length,
     { id: "blank-1", role: "trace", content: "   " },
@@ -2079,7 +2146,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
     { id: "blank-3", role: "trace", content: "" },
   );
   api.renderMessages();
-  assert.equal(summaryText(), "已折叠(3 个)");
+  assert.equal(summaryText(), "已折叠 (3)");
 
   const longText = "这是一段没有工具标题的中间说明文字，需要在折叠摘要里被截断后继续显示";
   api.state.messages.splice(0, api.state.messages.length,
@@ -2088,7 +2155,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
     { id: "note-3", role: "assistant", content: longText },
   );
   api.renderMessages();
-  assert.equal(summaryText(), `${longText.slice(0, 32)}…(3 个)`);
+  assert.equal(summaryText(), `${longText.slice(0, 32)}… (3)`);
 });
 
 test("treats assistant narration immediately before a tool call as a thinking bubble", () => {
@@ -3386,6 +3453,7 @@ test("routes window message handler branches without a real webview", () => {
     "getConversationRuntimeState",
     "isHiddenRetryQueuedMessage",
     "setTabErrored",
+    "syncTabErrorFromMessage",
     "isHiddenRetryStartedMessage",
     "isRunStatusSummaryText",
     "appendMessage",
@@ -3438,6 +3506,7 @@ test("routes window message handler branches without a real webview", () => {
     () => ({ pendingPromptQueue: [{ prompt: "queued" }], suppressQueueFlushOnce: false, lastRunStatusMessage: "", activeRunActivity: "" }),
     (content: string) => /retry/.test(content),
     () => calls.push("errored"),
+    (_tabId: string, message: any) => calls.push(message?.role === "trace" && String(message?.content || "").startsWith("error") ? "errorMessage" : "syncMessage"),
     () => false,
     (content: string) => /Task completed|Run stopped/.test(content),
     () => calls.push("append"),
@@ -3486,6 +3555,7 @@ test("routes window message handler branches without a real webview", () => {
     { type: "assistantDelta", content: "answer" },
     { type: "rawStreamDelta", content: "raw", tabId: "tab-1" },
     { type: "traceSegment" },
+    { type: "appendMessage", tabId: "tab-1", message: { role: "trace", content: "error\nfailed" } },
     { type: "runStatus", status: "start", startedAt: 99, prompt: "run", activity: "contextCompaction" },
     { type: "runStatus", status: "end", message: "Task completed" },
     { type: "removeMessage", id: "m-1" },
@@ -3508,6 +3578,7 @@ test("routes window message handler branches without a real webview", () => {
   assert.ok(calls.includes("delta"));
   assert.ok(calls.includes("stream"));
   assert.ok(calls.includes("trace"));
+  assert.ok(calls.includes("syncMessage"));
   assert.ok(calls.includes("resetStream"));
   assert.ok(calls.includes("flush"));
   assert.ok(calls.includes("insert"));

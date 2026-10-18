@@ -424,7 +424,7 @@ interface LoopBoundaryEvent {
 | 任务记录新增字段、创建/恢复/补充需求编排 | `src/extension.ts` |
 | Webview 协议类型 | `src/webview/types.ts` |
 | 输入区边界卡片、群聊边界摘要、gate 操作 | `src/webview/viewContent.ts`、`src/webview/loopDebatePanel.ts` |
-| 国际化文案 | `src/i18n.ts` 和 Webview 内置词典 |
+| 固定中文文案 | `src/i18n.ts` 和 Webview 内置词典 |
 | 红蓝辩论共识校验扩展 | `src/loopDebate.ts` 或新增纯函数模块 |
 | 产品规格同步 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md` |
 | 运行时设计同步 | `.ch/docs/design-docs/vscode-cli-extension-runtime.md` |

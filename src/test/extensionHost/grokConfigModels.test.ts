@@ -52,6 +52,9 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   const state = host.buildModelState({ grok: "profile" });
   assert.deepEqual(state.optionsByCli.grok, ["grok", "gpt-6.1-sol"]);
   assert.deepEqual(state.labelsByCli?.grok, { grok: "grok-4.7-kedaya", "gpt-6.1-sol": "gpt-6.1-sol" });
+  assert.equal(host.getModelDisplayName("grok", "grok"), "grok-4.7-kedaya");
+  assert.equal(host.getModelDisplayName("codex", "gpt-6.1-sol"), "gpt-6.1-sol");
+  assert.equal(host.getModelDisplayName("claude", null), null);
   assert.deepEqual(state.managedByCli.grok, []);
   assert.deepEqual(state.loopOptionsByCli?.grok, { main: ["grok", "gpt-6.1-sol"], subtask: ["grok", "gpt-6.1-sol"] });
   host.selectCliLoopModel("grok", "subtask", "gpt-6.1-sol", "profile");
@@ -65,6 +68,7 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   assert.deepEqual(host.buildModelState({ grok: "profile" }).labelsByCli?.grok, { updated: "gpt-6.1-sol" });
   assert.deepEqual(host.buildModelState({ grok: "other-profile" }).labelsByCli?.grok, {});
   assert.equal(await host.resolveGrokModelForRun("gpt-6.1-sol"), "updated");
+  assert.equal(host.getModelDisplayName("grok", "updated"), "gpt-6.1-sol");
   assert.equal(host.getSelectedLoopCliModel("grok", "main", "profile"), "updated");
   assert.equal(host.getSelectedCliModel("grok", "other-profile"), null);
   await host.refreshGrokConfigModels({ configs: [], activeConfigId: null });

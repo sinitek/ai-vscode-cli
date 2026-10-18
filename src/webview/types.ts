@@ -265,6 +265,8 @@ export type ChatMessage = {
   kind?: "thinking" | "normal" | "tool-use";
   merge?: boolean;
   contextTags?: string[];
+  /** undefined: legacy/unknown; null: CLI default model. */
+  executionModel?: string | null;
   taskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopAsk?: boolean;

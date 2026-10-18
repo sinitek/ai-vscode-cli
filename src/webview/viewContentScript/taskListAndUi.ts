@@ -1109,6 +1109,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           .map(({ message, index }) => ({
             content: String(message.content || "").trim(),
             createdAt: Number.isFinite(message.createdAt) ? message.createdAt : 0,
+            executionModel: message.executionModel,
             index,
           }))
           .sort((left, right) => right.createdAt - left.createdAt || right.index - left.index);
@@ -1158,7 +1159,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
 
           const content = document.createElement("div");
           content.className = "run-prompt-item-content";
-          content.textContent = prompt.content;
+          const modelName = typeof prompt.executionModel === "string" && prompt.executionModel.trim()
+            ? prompt.executionModel.trim()
+            : prompt.executionModel === null ? t("runPromptDefaultModel") : t("runPromptUnknownModel");
+          content.textContent = "[" + modelName + "] " + prompt.content;
           item.appendChild(meta);
           item.appendChild(content);
           elements.runPromptContent.appendChild(item);

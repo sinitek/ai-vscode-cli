@@ -805,7 +805,7 @@ test("persists ultra and declares it in the VS Code thinking settings schema", a
   assert.equal(calls.postPanelState, 1);
 
   const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
-  const properties = manifest.contributes.configuration.properties as Record<string, { enum?: string[] }>;
+  const properties = manifest.contributes.configuration.properties as Record<string, { enum?: string[]; description?: string }>;
   const expectedThinkingEnums: Record<string, string[]> = {
     "sinitek-cli-tools.thinkingMode": ["off", "low", "medium", "high", "xhigh", "max", "ultra"],
     "sinitek-cli-tools.thinkingModeCodex": ["on", "low", "medium", "high", "xhigh", "max", "ultra"],
@@ -815,12 +815,9 @@ test("persists ultra and declares it in the VS Code thinking settings schema", a
     assert.deepEqual(properties[key].enum, expectedValues, `${key} should end with max then ultra`);
   });
 
-  const englishNls = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"));
-  const chineseNls = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.nls.zh-cn.json"), "utf8"));
-  assert.match(englishNls["config.thinkingModeClaude.description"], /xhigh, max, and ultra/);
-  assert.match(chineseNls["config.thinkingModeClaude.description"], /xhigh、max、ultra/);
-  assert.match(chineseNls["config.thinkingArgs.codex.ultra.description"], /ultra/);
-  assert.match(chineseNls["config.thinkingArgs.claude.ultra.description"], /ultra/);
+  assert.match(properties["sinitek-cli-tools.thinkingModeClaude"].description ?? "", /xhigh、max、ultra/);
+  assert.match(properties["sinitek-cli-tools.thinkingArgs.codex.ultra"].description ?? "", /ultra/);
+  assert.match(properties["sinitek-cli-tools.thinkingArgs.claude.ultra"].description ?? "", /ultra/);
 });
 
 test("ignores retired final-answer policy setting messages", async () => {

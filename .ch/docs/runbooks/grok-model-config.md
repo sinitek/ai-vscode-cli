@@ -26,6 +26,16 @@
 - 工具标题复用现有中英文工具标识与本地化入口，新增状态仍为既有 status/exit_code 协议字段，不引入另一套文案、主题或工具卡片。
 - 2026-10-18 验证：隔离 HOME/GROK_HOME/工作目录，真实 Grok 1.0.62 + 本地模拟 API 连续执行成功与非零退出两条命令；原生 11 条工具通知收敛为 4 条回放、2 个工具摘要，错误与最终正文保留。测试不使用真实密钥或付费模型。生产 Webview 的桌面、窄屏、失败、取消、活动及后台 Tab 由 9 个结构化 Chromium 场景验证，详见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-semantic-replay.md`。
 
+## 任务列表来源与排查
+
+- 实时事实来源是标准 ACP `session/update`：`params.update.sessionUpdate = "plan"`，`entries` 是当前完整列表，包含 `content`、`priority`、`status`。Grok 1.0.62 在普通 ACP 客户端中即可推送；当前没有确认可独立查询当前 todo 的 RPC，也无需新增 plan 能力声明。`x.ai/statusLine` 用于上下文用量，`list_tasks` / `get_task` 用于后台任务，两者都不是此列表。
+- 模型需要实际使用 `todo_write` 才会建立任务。普通 Grok 多步任务提示现在要求使用原生工具、保持稳定 ID 并逐步更新，描述默认中文；单步任务可省略，Loop 主任务继续遵守机器协议和已有隐藏规则。提示引导不能保证每个模型每次都会调用工具。
+- 工具身份优先读取 `_meta["x.ai/tool"].name`，兼容 `rawInput.variant = "TodoWrite"` 与 `rawOutput.type = "Todo"`；`kind:"think"` / `title:"Updating plan"` 只是通用展示字段。成功输出 `rawOutput.TodosUpdated.todos` 是完整合并快照，即使输入仅含 `{id,status}`，也应保留其余条目和正文。只有确认成功才转换计划；缺少完整成功输出时，按 `merge` 与 ID 合并当前回合内已知数据，无法确定的补丁不猜测。
+- `todo_write` 默认 `merge:true`，`merge:false` 替换整个列表，空数组可清空。原生 plan 与工具结果派生计划按列表内容去重；失败、取消和中断不采用输入意图，重复终态不回退已应用列表。缓存按会话和当前 prompt 隔离，完成后释放。
+- 展示复用现有 `taskListUpdate` 与任务浮层：运行中全完成仍显示，结束、停止或清空后隐藏，迟到更新拒绝；Tab 独立，Loop/Loop+ 主任务隐藏。没有新增控件或用户文案，沿用现有主题与本地化。
+- 排查时先在目标会话 `$GROK_HOME/sessions/<encoded-cwd>/<session-id>/updates.jsonl` 查找上述原生 plan，再按 `toolCallId` 核对 todo 工具的开始、成功/失败和 `TodosUpdated`。同目录 `plan.json` 是 CLI 的持久化任务数据；插件实时展示消费事件，不轮询这些文件。只读历史抽样的 30 次 TodoWrite 均有完整成功输出与 plan，未证实正常 native plan 普遍漏解析；原有缺少 Grok 原生任务引导，以及工具识别、增量和终态处理缺口分别处理。
+- 2026-10-18 验证：真实 Grok 1.0.62（1474f9cbdd91）+ 隔离 HOME/GROK_HOME/工作目录 + 本地 Chat Completions mock，在同一回合完成创建两项 → 默认 merge 的 ID-only 补丁 → 全完成 → 非法状态失败 → 清空。四次成功各一份完整 plan、各一次回调，完成序列 `[false,false] → [true,false] → [true,true] → []`；失败零计划更新且错误保留。未使用真实凭据或付费 API。此版本会在回合结束时自动完成 `in_progress` 项，验证阶段需在同一回合中观察中间状态。
+
 ## 当前上下文用量
 
 - Grok 分组与 Codex 共用输入区运行条的已用上下文标签，简写为 `k`，悬停显示精确 token 和可用窗口上限；开跑等待原生读数，结束后保留，其他 Tab 的快照不覆盖当前标签。

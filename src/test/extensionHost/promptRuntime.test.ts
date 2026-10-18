@@ -9,6 +9,7 @@ const {
   buildThinkingPrompt,
   HUMAN_INTERACTION_PROMPT_INSTRUCTION,
   CODEX_TASK_LIST_PROMPT_INSTRUCTION,
+  GROK_TASK_LIST_PROMPT_INSTRUCTION,
 } = require("../../promptRuntime") as typeof import("../../promptRuntime");
 const {
   FINAL_ANSWER_PROMPT_INSTRUCTION,
@@ -80,4 +81,16 @@ test("allows machine-protocol runs to opt out of the human final-answer marker",
   assert.doesNotMatch(prompt, /\[final_answer\]/);
   assert.doesNotMatch(prompt, /Tasklist:/);
   assert.doesNotMatch(retryPrompt, /\[final_answer\]/);
+});
+
+test("guides Grok multi-step tasks through native todo_write and honors opt-outs", () => {
+  const prompt = buildThinkingPrompt("grok", "medium", "调查并修复");
+  assert.ok(prompt.includes(GROK_TASK_LIST_PROMPT_INSTRUCTION));
+  assert.ok(prompt.indexOf(GROK_TASK_LIST_PROMPT_INSTRUCTION) < prompt.indexOf(FINAL_ANSWER_PROMPT_INSTRUCTION));
+  assert.ok(buildHiddenRetryPrompt("grok", "high").includes(GROK_TASK_LIST_PROMPT_INSTRUCTION));
+  for (const options of [{ includeTaskListInstruction: false }, { includeFinalAnswerInstruction: false }]) {
+    assert.equal(buildThinkingPrompt("grok", "medium", "协议任务", options).includes(GROK_TASK_LIST_PROMPT_INSTRUCTION), false);
+  }
+  assert.equal(buildHiddenRetryPrompt("grok", "high", { includeFinalAnswerInstruction: false }).includes(GROK_TASK_LIST_PROMPT_INSTRUCTION), false);
+  assert.doesNotMatch(prompt, /Tasklist:/);
 });

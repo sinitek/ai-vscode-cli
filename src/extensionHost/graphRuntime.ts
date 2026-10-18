@@ -59,6 +59,7 @@ export type PromptRunInput = {
   modelPrompt: string;
   contextTags: string[];
   preloadedUserMessageId?: string;
+  executionModel?: string | null;
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;

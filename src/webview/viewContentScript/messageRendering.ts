@@ -404,6 +404,19 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         );
       }
 
+      function isErrorMessage(message) {
+        if (!message || (message.role !== "trace" && message.role !== "system")) {
+          return false;
+        }
+        return getTracePresentation(message.content || "").type === "error";
+      }
+
+      function syncTabErrorFromMessage(tabId, message) {
+        if (isErrorMessage(message)) {
+          setTabErrored(tabId, true);
+        }
+      }
+
       function normalizeDuplicateMessageContent(content) {
         return typeof content === "string"
           ? content.replace(/\\r\\n/g, "\\n").trim()

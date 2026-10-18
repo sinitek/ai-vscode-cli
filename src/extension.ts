@@ -2009,6 +2009,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   getWorkspaceInteractiveMode,
   getInteractiveRunnerManager: () => interactiveRunnerManager,
   resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
+  getModelDisplayName: (cli, model) => modelSettingsHost.getModelDisplayName(cli, model),
   loadSessionMessages,
   logCliStartup,
   maybeAutoCompactContextAfterPromptSuccess,

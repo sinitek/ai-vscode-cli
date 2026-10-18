@@ -120,7 +120,6 @@ test("routes todo changes into plans instead of raw tool traces", () => {
   stream.finish("interrupted");
   assert.equal(traces.length, 0);
   assert.deepEqual(events.map((event) => updateOf(event)), [
-    { sessionUpdate: "plan", entries: todos },
     { sessionUpdate: "plan", entries: [{ content: "验证", status: "completed" }] },
   ]);
 });
@@ -147,8 +146,9 @@ test("never suppresses failed todo tools as harmless task-list updates", () => {
   const { stream, traces, events } = createStream();
   stream.append(message({ sessionUpdate: "tool_call", toolCallId: "one", title: "todo_write", rawInput: { todos: [{ content: "Test", status: "pending" }] } }));
   stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "one", status: "failed", rawOutput: { error: "cannot update plan" } }));
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 1);
   assert.equal(traces.length, 1);
+  assert.equal(updateOf(events[0]).status, "failed");
   assert.match(traces[0].content, /cannot update plan/);
 });
 
@@ -160,4 +160,48 @@ test("removes equivalent text content but preserves supplementary text and multi
   assert.equal("content" in updateOf(events[0]), false);
   assert.deepEqual(updateOf(events[1]).content, [{ type: "text", text: "supplementary warning" }]);
   assert.deepEqual(updateOf(events[2]).content, [{ type: "image", data: "test" }]);
+});
+
+test("merges successful id-only patches without replacing the rest of the plan", () => {
+  const { stream, events } = createStream();
+  const todos = [{ id: "a", content: "调查", status: "pending" }, { id: "b", content: "验证", status: "pending" }];
+  stream.append(message({ sessionUpdate: "tool_call", toolCallId: "create", kind: "think", title: "Updating plan", _meta: { "x.ai/tool": { name: "todo_write" } }, rawInput: { merge: false, todos } }));
+  assert.equal(events.length, 0);
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "create", status: "completed", rawOutput: { type: "Todo", TodosUpdated: { todos: todos.map(({ content, status }) => ({ content, status })) } } }));
+  stream.append(message({ sessionUpdate: "tool_call", toolCallId: "patch", kind: "think", rawInput: { variant: "TodoWrite", todos: [{ id: "a", status: "completed" }] } }));
+  assert.equal(events.length, 1);
+  const completed = message({ sessionUpdate: "tool_call_update", toolCallId: "patch", status: "completed" });
+  stream.append(completed);
+  stream.append(completed);
+  assert.equal(events.length, 2);
+  assert.deepEqual(updateOf(events[1]).entries, [{ content: "调查", status: "completed" }, { content: "验证", status: "pending" }]);
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "clear", title: "todo_write", status: "completed", rawInput: { merge: false, todos: [] } }));
+  assert.deepEqual(updateOf(events[2]).entries, []);
+  stream.append(completed);
+  assert.equal(events.length, 3);
+});
+
+test("prefers complete successful todo output and isolates plans by session", () => {
+  const { stream, events } = createStream();
+  const complete = [{ content: "调查", status: "completed" }, { content: "验证", status: "in_progress" }];
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "patch", kind: "think", status: "completed", _meta: { "x.ai/tool": { name: "todo_write" } }, rawInput: { todos: [{ id: "a", status: "completed" }] }, rawOutput: { type: "Todo", TodosUpdated: { todos: complete } } }));
+  assert.deepEqual(updateOf(events[0]).entries, complete);
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "foreign", title: "todo_write", status: "completed", rawInput: { todos: [{ id: "a", status: "completed" }] } }, "other-session"));
+  assert.equal(events.length, 1);
+});
+
+test("failed, cancelled, interrupted and malformed todo updates never become plans", () => {
+  for (const status of ["failed", "cancelled", "canceled", "interrupted"]) {
+    const { stream, events, traces } = createStream();
+    stream.append(message({ sessionUpdate: "tool_call", toolCallId: "one", title: "todo_write", rawInput: { todos: [{ id: "a", content: "未执行", status: "pending" }] } }));
+    stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "one", status, rawOutput: { error: "update rejected" } }));
+    assert.equal(events.length, 1);
+    assert.equal(updateOf(events[0]).sessionUpdate, "tool_call_update");
+    assert.equal(traces.length, 1);
+  }
+  const { stream, events } = createStream();
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "bad", title: "todo_write", status: "completed", rawInput: { merge: false, todos: [{ content: "意图", status: "pending" }] }, rawOutput: { type: "Todo", TodosUpdated: { todos: [{ status: "completed" }] } } }));
+  stream.append(message({ sessionUpdate: "tool_call", toolCallId: "unfinished", title: "todo_write", rawInput: { merge: false, todos: [{ content: "未执行", status: "pending" }] } }));
+  stream.finish("cancelled");
+  assert.equal(events.length, 0);
 });

@@ -261,6 +261,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
     const prompt = input.displayPrompt;
     let sessionId = target.sessionId;
     let messageTarget: ChatMessage[] = [];
+    let executionModel: string | null = null;
     let runId = "";
     let startedAt = 0;
     let userMessageId = "";
@@ -460,6 +461,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         id: createMessageId(),
         role: "user",
         content: formatHumanInteractionSubmittedText(submission, request.formFields),
+        executionModel,
         createdAt: Date.now(),
         merge: false,
       };
@@ -620,6 +622,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       getPendingSessionDraft,
       stageRunBeforeUserMessage: (prepared) => {
         messageTarget = prepared.messageTarget;
+        executionModel = prepared.runtimePreparation.effectiveModel ?? null;
         thinkingMode = prepared.thinkingMode;
         humanInteractionEnabledForVibeRun = prepared.humanInteractionEnabled;
         includeFinalAnswerInstruction = prepared.includeFinalAnswerInstruction;
@@ -630,6 +633,9 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         userCreatedAt = identity.userCreatedAt;
       },
       buildUserChatMessage,
+      replaceUserMessage: (message) => {
+        sendPanelMessage({ type: "replaceMessage", message, tabId: target.tabId });
+      },
       appendUserMessage: (targetMessages, userMessage) => {
         appendMessageToStore(targetMessages, userMessage);
         sendPanelMessage({ type: "appendMessage", message: userMessage, tabId: target.tabId });

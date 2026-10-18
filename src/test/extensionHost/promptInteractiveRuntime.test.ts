@@ -59,6 +59,7 @@ function createInteractiveRuntimeHarness(options: {
   requireExplicitFinalAnswer?: boolean;
   autoCompactAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
+  selectedModel?: string | null;
   humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
 } = {}) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
@@ -182,7 +183,7 @@ function createInteractiveRuntimeHarness(options: {
       pendingMessagesByTab.set(tabId, next);
       return { messages: next };
     },
-    getSelectedCliModel: () => "gpt-5.5",
+    getSelectedCliModel: () => options.selectedModel === undefined ? "gpt-5.5" : options.selectedModel,
     getWorkspaceInteractiveMode: () => "coding",
     getInteractiveRunnerManager: () => manager,
     loadSessionMessages: (_cli, sessionId) => getSessionMessages(sessionId),
@@ -1096,4 +1097,33 @@ test("interactive runtime host stops an active runner and persists the stopped t
   assert.equal(harness.activeRunsByTabId.size, 0);
   assert.ok(messages.some((message) => message.role === "system" && message.content === "run.stoppedByUser"));
   assert.ok(harness.persistedMessages.some((item) => item.sessionId === "session-stop" && item.messages.some((message) => message.content === "run.stoppedByUser")));
+});
+
+
+test("persists each prompt's execution model when a conversation switches models", async () => {
+  const harness = createInteractiveRuntimeHarness();
+  await harness.host.runPromptInteractive(createPromptInput({ model: "gpt-5.5" }), createTarget());
+  await harness.host.runPromptInteractive(createPromptInput({ model: "gpt-6.1-sol" }), createTarget());
+  const saved = harness.persistedMessages.at(-1)?.messages.filter((message) => message.role === "user");
+  assert.deepEqual(saved?.map((message) => message.executionModel), ["gpt-5.5", "gpt-6.1-sol"]);
+});
+
+test("updates and persists a preloaded prompt model in its target tab", async () => {
+  const harness = createInteractiveRuntimeHarness();
+  const message: ChatMessage = { id: "preloaded", role: "user", content: "run interactive task", createdAt: 123 };
+  harness.messagesBySession.set("session-1", [message]);
+  await harness.host.runPromptInteractive(createPromptInput({ preloadedUserMessageId: message.id }), createTarget());
+  const saved = harness.persistedMessages.at(-1)?.messages.filter((item) => item.role === "user");
+  assert.equal(saved?.length, 1);
+  assert.equal(saved?.[0]?.executionModel, "gpt-5.5");
+  assert.equal(saved?.[0]?.createdAt, 123);
+  assert.ok(harness.panelMessages.some((payload) => payload.type === "replaceMessage" && payload.tabId === "tab-1"
+    && (payload.message as ChatMessage).executionModel === "gpt-5.5"));
+});
+
+test("records unresolved CLI defaults explicitly and keeps the model after a failed execution", async () => {
+  const harness = createInteractiveRuntimeHarness({ selectedModel: null, codexRunBehavior: async () => { throw Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" }); } });
+  await assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget()), /ENOENT/);
+  assert.equal(harness.persistedMessages.at(-1)?.messages.find((message) => message.role === "user")?.executionModel, null);
+  assert.ok(harness.runStatusEvents.some((event) => event.status === "error"));
 });

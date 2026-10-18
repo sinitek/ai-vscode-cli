@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
+import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
@@ -38,7 +39,7 @@ function buildPromptHistory(messages: unknown[], currentRunPrompt = "") {
   )(
     () => runtimeState,
     (state: typeof runtimeState) => state.messages,
-  ) as Array<{ content: string; createdAt: number; index: number }>;
+  ) as Array<{ content: string; createdAt: number; index: number; executionModel?: string | null }>;
 }
 
 test("collects all user prompts in reverse chronological order", () => {
@@ -203,4 +204,70 @@ test("keeps history modal height stable and lists scrollable inside panels", () 
     OVERLAYS_MODALS_STYLES,
     /\.session-list\s*\{[\s\S]*flex:\s*1 1 auto[\s\S]*min-height:\s*0/,
   );
+});
+
+
+test("keeps model snapshots with their prompt, including default and legacy records", () => {
+  const prompts = buildPromptHistory([
+    { role: "user", content: "legacy", createdAt: 100 },
+    { role: "user", content: "default", createdAt: 200, executionModel: null },
+    { role: "user", content: "first model", createdAt: 300, executionModel: "gpt-5.5" },
+    { role: "user", content: "second model", createdAt: 400, executionModel: "gpt-6.1-sol" },
+  ]);
+  assert.deepEqual(prompts.map(({ content, executionModel }) => [content, executionModel]), [
+    ["second model", "gpt-6.1-sol"], ["first model", "gpt-5.5"], ["default", null], ["legacy", undefined],
+  ]);
+});
+
+
+test("prefixes each prompt body with its model while keeping the date metadata separate", () => {
+  type Element = { className: string; textContent: string; dateTime?: string; children: Element[]; appendChild: (child: Element) => void; replaceChildren: () => void };
+  const createElement = (): Element => ({
+    className: "", textContent: "", children: [],
+    appendChild(child) { this.children.push(child); },
+    replaceChildren() { this.children = []; },
+  });
+  const runPromptContent = createElement();
+  const prompts = [
+    { content: "正文\n第二行 <tag>", createdAt: 100, executionModel: " gpt-6.1-sol " },
+    { content: "默认模型正文", createdAt: 90, executionModel: null },
+    { content: "旧正文", createdAt: 80 },
+  ];
+  const renderSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "renderRunPromptHistory");
+  new Function("elements", "document", "getRunPromptHistory", "t", `${renderSource}; renderRunPromptHistory("tab-1");`)(
+    { runPromptContent }, { createElement }, () => prompts,
+    (key: string) => ({ runPromptDefaultModel: "CLI 默认模型", runPromptUnknownModel: "模型未记录", runPromptLatestLabel: "最新" })[key],
+  );
+  assert.deepEqual(runPromptContent.children.map((item) => item.children[1]?.textContent), [
+    "[gpt-6.1-sol] 正文\n第二行 <tag>", "[CLI 默认模型] 默认模型正文", "[模型未记录] 旧正文",
+  ]);
+  assert.equal(runPromptContent.children[0]?.children[0]?.children[0]?.dateTime, new Date(100).toISOString());
+  assert.equal(runPromptContent.children[0]?.children[0]?.children.length, 2);
+  assert.equal(prompts[0].content, "正文\n第二行 <tag>");
+});
+
+
+test("refreshes an open prompt after its model arrives and retains background replacements", () => {
+  const runtimeByTab: Record<string, { messages: Array<{ id: string; executionModel?: string }> }> = {
+    "tab-1": { messages: [{ id: "front" }] },
+    "tab-2": { messages: [{ id: "back" }] },
+  };
+  const calls: string[] = [];
+  let dispatch: (event: { data: unknown }) => void = () => undefined;
+  new Function("window", "vscode", "updateAppHeight", "scheduleAppHeightUpdate", "getActiveConversationTabId",
+    "syncTabErrorFromMessage", "getConversationRuntimeState", "ensureRuntimeStateMessages", "setMessagesForTab",
+    "isRuntimeStateForActiveTab", "updateRunPromptButton", "syncRunPromptOverlay", "reportWebviewFailure",
+    VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH)(
+    { addEventListener: (name: string, listener: typeof dispatch) => { if (name === "message") dispatch = listener; } },
+    { postMessage: () => undefined }, () => undefined, () => undefined, () => "tab-1", () => undefined,
+    (tabId: string) => runtimeByTab[tabId], (runtime: typeof runtimeByTab[string]) => runtime.messages,
+    (tabId: string, messages: typeof runtimeByTab[string]["messages"]) => { runtimeByTab[tabId].messages = messages; },
+    (tabId: string) => tabId === "tab-1", () => calls.push("button"), () => calls.push("overlay"),
+    (_message: string, error: Error) => { throw error; },
+  );
+  dispatch({ data: { type: "replaceMessage", tabId: "tab-1", message: { id: "front", executionModel: "gpt-6.1-sol" } } });
+  dispatch({ data: { type: "replaceMessage", tabId: "tab-2", message: { id: "back", executionModel: "background-model" } } });
+  assert.equal(runtimeByTab["tab-1"].messages[0]?.executionModel, "gpt-6.1-sol");
+  assert.equal(runtimeByTab["tab-2"].messages[0]?.executionModel, "background-model");
+  assert.deepEqual(calls, ["button", "overlay"]);
 });

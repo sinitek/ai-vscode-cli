@@ -410,3 +410,15 @@ test("names a Grok tool result from output type instead of the call id", () => {
     rawOutput: "{",
   }), "tool result: tool");
 });
+
+
+test("uses native tool metadata and TodoWrite variants before generic ACP kinds", () => {
+  for (const update of [
+    { kind: "think", title: "Updating plan", _meta: { "x.ai/tool": { name: "todo_write", kind: "think" } } },
+    { kind: "think", title: "Updating plan", rawInput: { variant: "TodoWrite", todos: [] } },
+    { kind: "think", title: "Updating plan", rawOutput: { type: "Todo", TodosUpdated: { todos: [] } } },
+  ]) {
+    assert.match(firstTraceLine({ sessionUpdate: "tool_call_update", ...update }), /^tool result: (todo_write|TodoWrite|Todo)$/);
+  }
+  assert.equal(firstTraceLine({ sessionUpdate: "tool_call", kind: "execute", title: "run_terminal_command" }), "tool: run_terminal_command");
+});

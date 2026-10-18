@@ -1322,3 +1322,46 @@ async function waitForLine(
   }
   throw new Error("timed out waiting for Grok client response");
 }
+
+test("routes complete Grok todo snapshots once and rejects foreign, failed and previous-turn plans", async (context) => {
+  const home = await emptyGrokHome();
+  context.after(() => fs.rm(home, { recursive: true, force: true }));
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(), command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  const plans: Array<Array<{ text: string; done: boolean }>> = [];
+  const send = (update: Record<string, unknown>, sessionId = "grok-session") => fake.send({ method: "session/update", params: { sessionId, update } });
+  try {
+    await runner.start();
+    fake.promptResponse = ({ id }) => {
+      send({ sessionUpdate: "plan", entries: [{ content: "外部", status: "pending" }] }, "foreign");
+      send({ sessionUpdate: "tool_call", toolCallId: "create", kind: "think", title: "Updating plan", _meta: { "x.ai/tool": { name: "todo_write" } }, rawInput: { merge: false, todos: [{ id: "a", content: "调查", status: "pending" }, { id: "b", content: "验证", status: "pending" }] } });
+      send({ sessionUpdate: "tool_call_update", toolCallId: "create", status: "completed", rawOutput: { type: "Todo", TodosUpdated: { todos: [{ content: "调查", status: "pending" }, { content: "验证", status: "pending" }] } } });
+      send({ sessionUpdate: "plan", entries: [{ content: "调查", status: "pending" }, { content: "验证", status: "pending" }] });
+      send({ sessionUpdate: "tool_call_update", toolCallId: "patch", title: "todo_write", status: "completed", rawInput: { todos: [{ id: "a", status: "completed" }] } });
+      send({ sessionUpdate: "tool_call_update", toolCallId: "failure", title: "todo_write", status: "failed", rawInput: { merge: false, todos: [] } });
+      send({ sessionUpdate: "plan", entries: [] });
+      fake.send({ id, result: { stopReason: "end_turn" } });
+    };
+    await runner.prompt("调查并验证", { onTaskListUpdate: (items) => plans.push(items) });
+    assert.deepEqual(plans, [
+      [{ text: "调查", done: false }, { text: "验证", done: false }],
+      [{ text: "调查", done: true }, { text: "验证", done: false }],
+      [],
+    ]);
+    send({ sessionUpdate: "plan", entries: [{ content: "迟到", status: "pending" }] });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(plans.length, 3);
+    fake.promptResponse = ({ id }) => {
+      send({ sessionUpdate: "tool_call_update", toolCallId: "patch", title: "todo_write", status: "completed", rawInput: { todos: [{ id: "a", status: "completed" }] } });
+      fake.send({ id, result: { stopReason: "end_turn" } });
+    };
+    await runner.prompt("下一轮", { onTaskListUpdate: (items) => plans.push(items) });
+    assert.equal(plans.length, 3);
+  } finally {
+    runner.dispose();
+  }
+});

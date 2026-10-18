@@ -461,8 +461,8 @@ function readContentText(content: unknown): string {
   }).join("");
 }
 
-const TOOL_NAME_CANDIDATE_KEYS = ["kind", "title", "rawInput", "rawOutput", "content"] as const;
-const TOOL_NAME_OBJECT_FIELDS = ["type", "kind", "tool", "name"] as const;
+const GENERIC_TOOL_KINDS = new Set(["tool", "execute", "read", "search", "edit", "other", "think"]);
+const TOOL_NAME_OBJECT_FIELDS = ["type", "kind", "tool", "name", "variant"] as const;
 const CONTENT_BLOCK_TYPES = new Set(["text", "image", "audio", "resource", "json"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -470,13 +470,25 @@ function readToolName(update: Record<string, unknown> | null): string {
   if (!update) {
     return "tool";
   }
-  for (const key of TOOL_NAME_CANDIDATE_KEYS) {
-    const name = readReadableToolName(update[key]);
+  const metadata = asRecord(asRecord(update._meta)?.["x.ai/tool"]);
+  const kind = readReadableToolName(update.kind);
+  const candidates = [
+    metadata?.name,
+    GENERIC_TOOL_KINDS.has(kind) ? null : kind,
+    asRecord(update.rawInput)?.variant,
+    asRecord(update.rawOutput)?.type === "Todo" ? "Todo" : null,
+    update.title,
+    update.rawInput,
+    update.rawOutput,
+    update.content,
+  ];
+  for (const candidate of candidates) {
+    const name = readReadableToolName(candidate);
     if (name) {
       return name;
     }
   }
-  return "tool";
+  return kind || "tool";
 }
 
 function readReadableToolName(value: unknown): string {

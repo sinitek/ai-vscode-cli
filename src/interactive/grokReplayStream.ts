@@ -64,6 +64,7 @@ export class GrokReplayStream {
     if (updateType === "plan") {
       const entries = normalizeGrokPlanEntries(update?.entries);
       if (entries) {
+        this.tools.observePlan(String(params?.sessionId ?? ""), update?.entries);
         const signature = JSON.stringify([params?.sessionId ?? "", entries]);
         if (signature === this.lastPlan) {
           return;

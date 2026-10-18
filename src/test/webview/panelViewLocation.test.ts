@@ -13,7 +13,7 @@ test("chat container is registered only in the secondary sidebar", () => {
   assert.deepEqual(Object.keys(containers), ["secondarySidebar"]);
   assert.deepEqual(containers.secondarySidebar, [{
     id: "sinitekCliBridgePanel",
-    title: "%view.container.title%",
+    title: "携宁 CLI 助手",
     icon: "media/logo.svg",
   }]);
   assert.equal(containers.activitybar, undefined);
@@ -25,7 +25,7 @@ test("chat view identity and startup opening preference remain unchanged", () =>
   const manifest = readJson("package.json");
   assert.deepEqual(manifest.contributes.views.sinitekCliBridgePanel, [{
     id: "sinitek-cli-tools.panelView",
-    name: "%view.panel.name%",
+    name: "携宁 CLI 助手",
     type: "webview",
   }]);
   assert.ok(manifest.activationEvents.includes("onView:sinitek-cli-tools.panelView"));
@@ -35,12 +35,11 @@ test("chat view identity and startup opening preference remain unchanged", () =>
   assert.equal(autoOpenPanel.type, "boolean");
 });
 
-test("chat container and view reuse the existing localized labels", () => {
-  for (const fileName of ["package.nls.json", "package.nls.zh-cn.json"]) {
-    const strings = readJson(fileName);
-    assert.equal(typeof strings["view.container.title"], "string");
-    assert.ok(strings["view.container.title"].trim());
-    assert.equal(typeof strings["view.panel.name"], "string");
-    assert.ok(strings["view.panel.name"].trim());
-  }
+test("chat container and view titles stay fixed Simplified Chinese without nls bundles", () => {
+  const manifest = readJson("package.json");
+  assert.equal(manifest.displayName, "携宁 CLI 助手");
+  assert.equal(manifest.contributes.viewsContainers.secondarySidebar[0].title, "携宁 CLI 助手");
+  assert.equal(manifest.contributes.views.sinitekCliBridgePanel[0].name, "携宁 CLI 助手");
+  assert.equal(fs.existsSync(path.join(process.cwd(), "package.nls.json")), false);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "package.nls.zh-cn.json")), false);
 });

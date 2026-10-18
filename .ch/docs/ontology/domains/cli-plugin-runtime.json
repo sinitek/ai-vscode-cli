@@ -30,7 +30,7 @@
       "id": "plugin.chat_panel",
       "name": "AI 对话面板",
       "kind": "capability",
-      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。Grok 回放过滤命令目录和会话标题通知，连续同源文本按固定 1 秒或 32 KiB 合并，保留工具变化、未知事件和完成/错误结果；JSONL 使用同一批降噪记录，聊天气泡仍实时更新。首次加载使用 VS Code 1.104+ 的 secondarySidebar 辅助栏；不再重复声明同 ID 的 Activity Bar 容器，避免开发宿主重载时复用主侧栏；沿用原容器和视图 ID，既有布局由 VS Code 恢复，不强制移动。",
+      "description": "VS Code 内的用户交互入口，展示多 CLI 对话、运行状态、配置入口和不同执行模式的可见反馈，并提供当前回放查看与 JSONL 导出。运行状态“提示词”弹窗在每条提示词正文开头以 [模型名] 正文… 展示本次执行模型快照，区分无法确认名称的 CLI 默认模型与旧记录“模型未记录”。错误 trace 气泡追加或更新时标记所属前台/后台 Tab 为错误；折叠、展开和切换 Tab 保持标记，恢复输出、成功结束或手动停止清除，警告不标错。Grok 回放过滤命令目录和会话标题通知，连续同源文本按固定 1 秒或 32 KiB 合并，保留工具变化、未知事件和完成/错误结果；JSONL 使用同一批降噪记录，聊天气泡仍实时更新。首次加载使用 VS Code 1.104+ 的 secondarySidebar 辅助栏；不再重复声明同 ID 的 Activity Bar 容器，避免开发宿主重载时复用主侧栏；沿用原容器和视图 ID，既有布局由 VS Code 恢复，不强制移动。",
       "status": "active",
       "aliases": ["Webview", "聊天面板", "panel", "config panel", "辅助栏", "secondarySidebar"],
       "implementation_paths": ["package.json", "src/webview", "src/webview/panelFileActions.ts", "src/interactive/grokReplayStream.ts", "media/config/assets"],
@@ -38,9 +38,12 @@
         {"path": "README.md", "anchor": "开始使用"},
         {"path": "ARCHITECTURE.md", "anchor": "Webview/UI 层"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.1 对话入口与基础导航"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
         {"path": "package.json", "anchor": "contributes.viewsContainers"},
         {"path": "src/test/webview/panelViewLocation.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts", "anchor": "syncTabErrorFromMessage"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps the owning conversation tab errored"},
         {"path": "src/webview/panelFileActions.ts", "anchor": "exportRunStreamRecordsToJsonl"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
         {"path": "src/interactive/grokReplayStream.ts"},
@@ -67,7 +70,7 @@
       "id": "plugin.cli_session",
       "name": "CLI 会话状态",
       "kind": "aggregate",
-      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。Grok 仅在 initialize 声明 loadSession 且会话 id 不是 local_ 前缀时，按 sessionId、cwd、mcpServers 续接；新建后用 ACP session id 接管原 local_ 会话。同一进程的后续 prompt 复用 runner。",
+      "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。Grok 仅在 initialize 声明 loadSession 且会话 id 不是 local_ 前缀时，按 sessionId、cwd、mcpServers 续接；新建后用 ACP session id 接管原 local_ 会话。同一进程的后续 prompt 复用 runner。用户消息字段 ChatMessage.executionModel?: string | null 中，字符串为执行时的模型显示名快照（Grok 使用配置的 model label），null 表示无法确认名称的 CLI 默认模型，缺失表示旧记录“模型未记录”。预载用户消息在模型解析后补齐字段，随会话持久化并在恢复时保留；同一会话切换模型时各条提示词保留各自快照，不用当前模型回填历史名称。",
       "status": "active",
       "aliases": ["session", "thread", "tab", "会话续接"],
       "implementation_paths": ["src/sessionTabs.ts", "src/sessionHealth.ts", "src/sessionLifecycle.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
@@ -306,7 +309,7 @@
     {
       "id": "plugin.rule.grok_semantic_replay",
       "name": "Grok 按调用聚合语义回放与聊天摘要",
-      "description": "Grok 当前 prompt 内以 sessionId 和 toolCallId 聚合工具，回放通常仅开始与规范化终态，主对话用同 ID 更新一个摘要，不持久化空进度、描述性结果和重复快照。已知工具字节字段只做无损 UTF-8 解码，等价别名、可验证行号包装与重复纯文本去重，保留差异、截断、多模态、错误及未知结构；缺 ID 不全局去重。原生和 todo 计划更新已有任务列表，失败 todo 仍显示错误。同会话活动独立于回放数量按 Tab 刷新；取消/失败排空未完成调用，停止后的迟到记录拒绝，历史记录不改写。",
+      "description": "Grok 当前 prompt 内以 sessionId 和 toolCallId 聚合工具，回放通常仅开始与规范化终态，主对话用同 ID 更新一个摘要，不持久化空进度、描述性结果和重复快照。已知工具字节字段只做无损 UTF-8 解码，等价别名、可验证行号包装与重复纯文本去重，保留差异、截断、多模态、错误及未知结构；缺 ID 不全局去重。原生 session/update plan 完整快照与成功 todo 完整输出更新已有任务列表并去重；工具身份优先原生元数据，缺少完整成功输出时才按当前回合内 ID 与 merge 语义合并，失败/取消不采用输入意图，重复终态不回退。普通 Grok 多步提示引导原生 todo_write，Loop 主任务保持机器协议及列表隐藏；Tab、回合与会话隔离，结束清空。失败 todo 仍显示错误。同会话活动独立于回放数量按 Tab 刷新；取消/失败排空未完成调用，停止后的迟到记录拒绝，历史记录不改写。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
@@ -316,7 +319,10 @@
         {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
         {"path": "src/webview/viewContentScript/runStreamAndQueue.ts", "anchor": "runStreamActivityAt"},
         {"path": "src/test/interactive/grokToolCallStream.test.ts"},
-        {"path": ".ch/docs/runbooks/grok-model-config.md", "anchor": "语义回放与工具气泡"}
+        {"path": "src/promptRuntime.ts", "anchor": "GROK_TASK_LIST_PROMPT_INSTRUCTION"},
+        {"path": "src/test/interactive/grokRunner.test.ts", "anchor": "routes complete Grok todo snapshots"},
+        {"path": ".ch/docs/runbooks/grok-model-config.md", "anchor": "语义回放与工具气泡"},
+        {"path": ".ch/docs/runbooks/grok-model-config.md", "anchor": "任务列表来源与排查"}
       ]
     },
     {
@@ -404,20 +410,24 @@
     {
       "id": "plugin.rule.i18n_required",
       "name": "旧版用户可见功能国际化规则",
-      "description": "历史规则：插件曾提供中英文界面，并要求新增或修改用户可见功能时同步处理国际化文案；当前已由固定简体中文界面规则替代。",
+      "description": "历史规则：插件曾提供中英文界面，并用 package.nls 语言包切换 VS Code 命令和设置文案；当前已由固定简体中文界面规则替代。",
       "status": "historical",
       "applies_to": ["plugin.chat_panel"],
-      "source_refs": [{"path": "AGENTS.md", "anchor": "开发注意事项"}]
+      "source_refs": [
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-chinese-only-ui.md", "anchor": "当前结论"},
+        {"path": "AGENTS.md", "anchor": "项目硬约束"}
+      ]
     },
     {
       "id": "plugin.rule.ui_fixed_simplified_chinese",
       "name": "插件界面固定简体中文",
-      "description": "用户可见的插件界面固定使用简体中文，工具设置不提供语言切换或 locale 配置；CLI 输出、用户提示词和模型回答保持原始内容。新增或修改界面时直接维护中文文案，不新增语言运行时分支。",
+      "description": "用户可见的插件界面固定使用简体中文。对话文案、VS Code 命令、设置说明和视图标题直接写中文，不提供语言切换、locale 配置或 package.nls 语言包。CLI 输出、用户提示词和模型回答保持原始内容。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.config_profile"],
       "source_refs": [
         {"path": "README.md", "anchor": "开始使用"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.9 稳定性与可运维性"},
+        {"path": "package.json"},
         {"path": "src/webview/viewContentStrings.ts"},
         {"path": "src/webview/configView.ts"},
         {"path": "src/toolSettings.ts"}

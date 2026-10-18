@@ -149,8 +149,6 @@ fi
 REQUIRED_ENTRIES=(
   "extension/dist/extension.js"
   "extension/package.json"
-  "extension/package.nls.json"
-  "extension/package.nls.zh-cn.json"
   "extension/media/logo.svg"
   "extension/media/marked.min.js"
   "extension/media/mcp_marketplace.json"

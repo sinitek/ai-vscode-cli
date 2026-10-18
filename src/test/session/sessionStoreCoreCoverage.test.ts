@@ -471,3 +471,21 @@ test("cleans orphaned files even when a partial retained-store bucket is absent"
     removeTemporaryPaths(paths);
   }
 });
+
+
+test("restores execution model snapshots and keeps legacy messages compatible", () => {
+  const paths = createTemporaryPaths();
+  const options = { ...paths, activeWorkspaceKey: "model-history", loadErrors: new Map<string, string>(), logError: () => undefined };
+  const messages: ChatMessage[] = [
+    { id: "legacy", role: "user", content: "old prompt", createdAt: 1 },
+    { id: "default", role: "user", content: "default prompt", createdAt: 2, executionModel: null },
+    { id: "model", role: "user", content: "model prompt", createdAt: 3, executionModel: "gpt-6.1-sol" },
+  ];
+  try {
+    writeMessageFile("codex", "models", messages, options);
+    const restored = sanitizeMessages(readMessageFile("codex", "models", options), "codex");
+    assert.deepEqual(restored.messages.map(({ sequence, ...message }) => message), messages);
+  } finally {
+    removeTemporaryPaths(paths);
+  }
+});

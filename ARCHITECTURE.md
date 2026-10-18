@@ -37,7 +37,7 @@
 │   ├── loopDebate.ts         # Loop 辩论路径、记录与共识校验纯函数
 │   ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 │   ├── loopTaskStore.ts      # Loop 任务记录持久化
-│   ├── i18n.ts               # 国际化
+│   ├── i18n.ts               # 固定简体中文文案
 │   ├── logger.ts             # 日志
 │   └── errorDisplay.ts       # 错误展示
 ├── media/
@@ -106,7 +106,8 @@ cli / interactive / config 服务层
 #### CLI / Interactive / Config 服务层
 
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
-- `src/cli/cliRunArgStrategies.ts` 用显式 `Record<CliName, CliRunArgStrategy>` 注册 Codex、Claude、OpenCode、Grok 的启动参数差异。`buildCliArgs` 仍从 `commandRunner.ts` 导出。参数顺序留在外观函数：基础参数、按 `includeThinkingArgs` 拼接 thinking、模型、隔离、`applyBeforePrompt`，空 prompt 立即返回，否则 `appendPrompt`。四个平台各自实现差异，没有类继承，也没有 DI 容器。`wc -l` 当前 `cliRunArgStrategies.ts` 为 219 行，`commandRunner.ts` 为 1532 行。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md`
+- `src/cli/cliRunArgStrategies.ts` 用显式 `Record<CliName, CliRunArgStrategy>` 注册 Codex、Claude、OpenCode、Grok 的启动参数差异。`buildCliArgs` 仍从 `commandRunner.ts` 导出。参数顺序留在外观函数：基础参数、按 `includeThinkingArgs` 拼接 thinking、模型、隔离、`applyBeforePrompt`，空 prompt 立即返回，否则 `appendPrompt`。四个平台各自实现差异，没有类继承，也没有 DI 容器。`wc -l` 当前 `cliRunArgStrategies.ts` 为 219 行，`commandRunner.ts` 为 528 行。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md`
+- `src/cli/openCodeRunOutput.ts` 承载 OpenCode 输出解释。该纯解析模块集中 JSONL、可见事件、活动跟踪、session/message id、export 文档选择、最终正文和失败文案，只依赖 `thinkingMarkup`、`boundedText`、`openCodeTaskList` 和 `opencodewatchdog`。`commandRunner.ts` 作为 Facade 保留进程、终端、runtime overlay、停止和 `recoverOpenCodeMissingAssistantOutput`；`opencode export` 的 `captureCliOutput` 副作用与 `OPENCODE_EXPORT_RECOVERY_TIMEOUT_MS` 留在该外观。公开解析符号仍从 `commandRunner.ts` 再导出。`wc -l` 当前 `openCodeRunOutput.ts` 为 1033 行，`commandRunner.ts` 为 528 行。测试入口是 `src/test/cli/openCodeRunOutput.test.ts`。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-output-parser-facade.md`
 - `src/interactive/`：会话型运行与底层续接 ID 映射
 - Grok 的 `grokToolCallStream.ts` 在当前 prompt 内按会话与调用 ID 聚合工具，规范化已知输出后分别生成回放终态和聊天摘要；`grokReplayStream.ts` 管文本合并与通知降噪，宿主复用 traceSegment 同 ID 更新和任务列表。Webview 活动时间独立于回放条目，不将高频协议通知持久化为聊天消息。
 - `src/config/`：外部 CLI 配置、全局 Skills 目录和本地配置档案管理；配置中心不再把 MCP 市场作为用户功能。用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`

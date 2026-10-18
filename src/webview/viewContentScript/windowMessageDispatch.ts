@@ -36,6 +36,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           }
           if (data.type === "appendMessage") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            syncTabErrorFromMessage(eventTabId, data.message);
             const loopMetaChanged = updateLoopMetaForTabFromMessage(eventTabId, data.message);
             const graphMetaChanged = updateGraphMetaForTabFromMessage(eventTabId, data.message);
             if (loopMetaChanged || graphMetaChanged) {
@@ -71,13 +72,13 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             }
           }
           if (data.type === "replaceMessage") {
-            if (!shouldHandleTabScopedEvent(data)) {
-              return;
-            }
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            syncTabErrorFromMessage(eventTabId, data.message);
+            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
             const replacement = data.message;
-            if (replacement && typeof replacement.id === "string") {
+            if (runtimeState && replacement && typeof replacement.id === "string") {
               let replaced = false;
-              const nextMessages = state.messages.map((message) => {
+              const nextMessages = ensureRuntimeStateMessages(runtimeState).map((message) => {
                 if (message.id !== replacement.id) {
                   return message;
                 }
@@ -85,7 +86,11 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
                 return replacement;
               });
               if (replaced) {
-                setMessagesForTab(getActiveConversationTabId(), nextMessages);
+                setMessagesForTab(eventTabId, nextMessages);
+                if (isRuntimeStateForActiveTab(eventTabId)) {
+                  updateRunPromptButton();
+                  syncRunPromptOverlay();
+                }
               }
             }
           }
@@ -125,6 +130,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             }
           }
           if (data.type === "traceSegment") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            syncTabErrorFromMessage(eventTabId, { role: "trace", content: data.content });
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }

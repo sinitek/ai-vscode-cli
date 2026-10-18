@@ -994,9 +994,17 @@ async function resolveGrokModelForRun(selectedModel: string | null): Promise<str
   if (config.error) {
     throw new Error(t("grok.invalidConfig"));
   }
+  grokModelsByConfigId.set(getActiveConfigIdForCli("grok"), config);
   const model = resolveGrokConfigModel(config, selectedModel);
   if (!model) {
     throw new Error(t("grok.noConfiguredModels"));
+  }
+  return model;
+}
+
+function getModelDisplayName(cli: CliName, model: string | null): string | null {
+  if (cli === "grok" && model) {
+    return grokModelsByConfigId.get(getActiveConfigIdForCli(cli))?.labels[model] ?? model;
   }
   return model;
 }
@@ -1304,6 +1312,7 @@ return {
   getModelOptionsForCli: wrap(getModelOptionsForCli),
   refreshGrokConfigModels: wrap(refreshGrokConfigModels),
   resolveGrokModelForRun: wrap(resolveGrokModelForRun),
+  getModelDisplayName: wrap(getModelDisplayName),
   selectCliModel: wrap(selectCliModel),
   selectCliLoopModel: wrap(selectCliLoopModel),
   setSelectedLoopThinkingMode: wrap(setSelectedLoopThinkingMode),

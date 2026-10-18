@@ -84,13 +84,10 @@ test("Explorer reference manifest enables files and directories with a Chinese m
   assert.ok(manifest.activationEvents.includes(`onCommand:${commandId}`));
   assert.deepEqual(manifest.contributes.commands.find((item: any) => item.command === commandId), {
     command: commandId,
-    title: "%command.addToCliReference%",
+    title: "加入到 Sinitek CLI 引用",
   });
   const menu = manifest.contributes.menus["explorer/context"].find((item: any) => item.command === commandId);
   assert.equal(menu.when, "resourceScheme == file || resourceScheme == vscode-remote");
   assert.equal(menu.when.includes("explorerResourceIsFolder"), false);
   assert.equal(manifest.contributes.menus.commandPalette.find((item: any) => item.command === commandId).when, "false");
-  for (const fileName of ["package.nls.json", "package.nls.zh-cn.json"]) {
-    assert.equal(readJson(fileName)["command.addToCliReference"], "加入到 Sinitek CLI 引用");
-  }
 });

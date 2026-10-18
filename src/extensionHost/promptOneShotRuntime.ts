@@ -289,6 +289,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     const prompt = input.displayPrompt;
     const activeTabId = target.tabId;
     let messageTarget: ChatMessage[] = [];
+    let executionModel: string | null = null;
     let runId = "";
     let userMessageId = "";
     let userCreatedAt = 0;
@@ -320,6 +321,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         id: createMessageId(),
         role: "user",
         content: formatHumanInteractionSubmittedText(submission, request.formFields),
+        executionModel,
         createdAt: Date.now(),
         merge: false,
       };
@@ -560,6 +562,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       getPendingSessionDraft,
       stageRunBeforeUserMessage: (prepared) => {
         messageTarget = prepared.messageTarget;
+        executionModel = prepared.runtimePreparation.effectiveModel ?? null;
         thinkingMode = prepared.thinkingMode;
         humanInteractionEnabledForVibeRun = prepared.humanInteractionEnabled;
         includeFinalAnswerInstruction = prepared.includeFinalAnswerInstruction;
@@ -630,6 +633,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         setActiveTabIdForRun(activeTabId);
       },
       buildUserChatMessage,
+      replaceUserMessage: (message) => {
+        sendPanelMessage({ type: "replaceMessage", message, tabId: activeTabId });
+      },
       appendUserMessage: (targetMessages, userMessage) => {
         appendMessageToStore(targetMessages, userMessage);
         sendPanelMessage({
