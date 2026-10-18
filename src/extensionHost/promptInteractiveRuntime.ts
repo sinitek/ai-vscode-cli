@@ -88,7 +88,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null) => string;
   createMessageId: () => string;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
-  getConversationTabById: (tabId: string) => { sessionId?: string | null } | null | undefined;
+  getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName } | null | undefined;
   getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalHumanInteractionEnabled: () => boolean;
@@ -955,7 +955,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         return { action: "ok" };
       }
       const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
-      if (hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
+      if (!input.cliCommandRepairAttempted && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
         appendMessageForTab(createHiddenRetryErrorTraceMessage(missingConclusionMessage, {
           taskRole: input.taskRole,
           loopTaskId: input.loopTaskId,
@@ -1473,7 +1473,27 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           }
           syncInteractiveRunEntry(stopFn);
           let grokStopReason: string | null = null;
+          let grokPromptCompleted = false;
           await runner.prompt(attemptPrompt, {
+            onTokenUsageUpdate: (update) => {
+              if (!isCurrentRunActive()) {
+                const currentTab = getConversationTabById(tabId);
+                if (!grokPromptCompleted
+                  || interactiveRunsByTabId.has(tabId)
+                  || currentTab?.cli !== "grok"
+                  || !uiSessionId
+                  || currentTab.sessionId !== uiSessionId
+                  || !interactiveRunnerManager.hasGrokRunner(uiSessionId, runner)) {
+                  return;
+                }
+              }
+              sendPanelMessage({
+                type: "contextTokenUsage",
+                tabId,
+                tokensInContextWindow: update.tokensInContextWindow,
+                modelContextWindow: update.modelContextWindow,
+              });
+            },
             onAssistantDelta: (chunk) => {
               if (!isCurrentRunActive() || !chunk.trim()) {
                 return;
@@ -1507,6 +1527,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
               grokStopReason = stopReason;
             },
           });
+          grokPromptCompleted = isCurrentRunActive();
           if (attemptHadNormalReply && isGrokCompletedStopReason(grokStopReason)) {
             observedGrokFinalAnswer = true;
           }
@@ -1579,6 +1600,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         const canContinueCurrentConversation = Boolean(uiSessionId);
         hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
         const shouldRetry = canContinueCurrentConversation
+          && !input.cliCommandRepairAttempted
           && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
           && isHiddenRetryEligibleErrorInfo(info);
         if (shouldRetry) {

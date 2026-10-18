@@ -8,6 +8,7 @@ import {
   beginCliCommandAutoRepair,
   buildRepairedCliCommand,
   inspectUnresolvedCliCommands,
+  isCliCommandRepairableError,
   locateCliExecutableForRepair,
   planUnresolvedCliCommandRepairs,
   resetCliCommandAutoRepairForTests,
@@ -28,6 +29,15 @@ type CommandRepairEnvironment = {
   PNPM_HOME?: string;
   SCOOP?: string;
 };
+
+test("identifies command startup ENOENT without treating ordinary file errors or cancellation as repairable", () => {
+  assert.equal(isCliCommandRepairableError(Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" })), true);
+  assert.equal(isCliCommandRepairableError(new Error("spawn C:\\Tools\\codex.exe ENOENT")), true);
+  assert.equal(isCliCommandRepairableError("spawn claude ENOENT"), true);
+  for (const error of [null, undefined, "open data.json ENOENT", new Error("ENOENT while reading configuration"), new Error("HTTP 401"), Object.assign(new Error("spawn codex ENOENT"), { name: "AbortError" })]) {
+    assert.equal(isCliCommandRepairableError(error), false);
+  }
+});
 
 function setCommandRepairEnvironment(homeDir: string): () => void {
   const original: CommandRepairEnvironment = {

@@ -18,11 +18,109 @@ import {
   readGrokPromptStopReason,
   readGrokSessionId,
   readGrokStreamFailure,
+  readGrokCompactionEvent,
+  readGrokTokenUsageUpdate,
   GROK_RESPONSES_STREAM_INCOMPATIBLE,
   resolveGrokReasoningEffort,
   resolveGrokResumeSessionId,
   selectGrokAuthMethod,
 } from "../../interactive/grokAppServerProtocol";
+
+test("reads Grok current context snapshots instead of cumulative session usage", () => {
+  const params = {
+    sessionId: "saved-session",
+    update: {
+      sessionUpdate: "session_status",
+      schema_version: 1,
+      session_id: "saved-session",
+      context_window: {
+        context_tokens: 12345,
+        context_window_size: 128000,
+        session_input_tokens: 900000,
+        session_output_tokens: 50000,
+      },
+    },
+  };
+  for (const method of ["_x.ai/session_notification", "_x.ai/session/update"]) {
+    assert.deepEqual(readGrokTokenUsageUpdate({ method, params }, "saved-session"), {
+      tokensInContextWindow: 12345,
+      modelContextWindow: 128000,
+    });
+  }
+  params.update.context_window.context_tokens = 0;
+  params.update.context_window.context_window_size = 0;
+  assert.deepEqual(readGrokTokenUsageUpdate({ method: "_x.ai/session_notification", params }, "saved-session"), {
+    tokensInContextWindow: 0,
+    modelContextWindow: null,
+  });
+  assert.equal(readGrokTokenUsageUpdate({ method: "_x.ai/session_notification", params }, "other-session"), null);
+  params.update.session_id = "other-session";
+  assert.equal(readGrokTokenUsageUpdate({ method: "_x.ai/session_notification", params }, "saved-session"), null);
+});
+
+test("accepts standard ACP context usage but rejects missing or malformed Grok counts", () => {
+  const message = (update: Record<string, unknown>) => ({ method: "session/update", params: { sessionId: "saved-session", update } });
+  assert.deepEqual(readGrokTokenUsageUpdate(message({ sessionUpdate: "usage_update", used: 12345, size: 128000, cost: { amount: 500 } }), "saved-session"), {
+    tokensInContextWindow: 12345,
+    modelContextWindow: 128000,
+  });
+  for (const used of [undefined, null, -1, 1.5, NaN, Infinity, "123", Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(readGrokTokenUsageUpdate(message({ sessionUpdate: "usage_update", used, size: 128000 }), "saved-session"), null);
+  }
+  for (const size of [-1, null, Infinity, "128000", 1.5]) {
+    assert.equal(readGrokTokenUsageUpdate(message({ sessionUpdate: "usage_update", used: 123, size }), "saved-session"), null);
+  }
+  for (const update of [
+    { sessionUpdate: "response_completed", usage: { input_tokens: 5000, output_tokens: 100 } },
+    { sessionUpdate: "session_status", schema_version: 1, session_id: "saved-session", context_window: { session_input_tokens: 900000 } },
+    { sessionUpdate: "session_status", schema_version: 2, session_id: "saved-session", context_window: { context_tokens: 5000 } },
+  ]) {
+    assert.equal(readGrokTokenUsageUpdate(message(update), "saved-session"), null);
+  }
+  assert.equal(readGrokTokenUsageUpdate({ method: "other", params: { sessionId: "saved-session", update: { sessionUpdate: "usage_update", used: 123 } } }, "saved-session"), null);
+  assert.equal(readGrokTokenUsageUpdate({ method: "session/update", params: { update: { sessionUpdate: "usage_update", used: 123 } } }, "saved-session"), null);
+  assert.equal(readGrokTokenUsageUpdate({ method: "session/update", params: null }, "saved-session"), null);
+  assert.equal(readGrokTokenUsageUpdate(message({ sessionUpdate: "usage_update", used: 123 }), ""), null);
+});
+
+test("reads native Grok compaction notifications without retaining summary content", () => {
+  for (const method of ["_x.ai/session_notification", "_x.ai/session/update", "session/update"]) {
+    const event = readGrokCompactionEvent({
+      method,
+      params: {
+        sessionId: "saved-session",
+        update: {
+          sessionUpdate: "auto_compact_completed",
+          tokens_before: 8000,
+          tokens_after: 2000,
+          summary_preview: "private conversation",
+        },
+      },
+    }, "saved-session");
+    assert.deepEqual(event, { status: "completed", tokensBefore: 8000, tokensAfter: 2000, error: null });
+  }
+});
+
+test("filters foreign or invalid Grok compaction notifications and validates token counts", () => {
+  const message = {
+    method: "_x.ai/session_notification",
+    params: { sessionId: "saved-session", update: { sessionUpdate: "auto_compact_completed" } },
+  };
+  assert.equal(readGrokCompactionEvent(message, "other-session"), null);
+  assert.equal(readGrokCompactionEvent({ ...message, method: "other" }, "saved-session"), null);
+  assert.equal(readGrokCompactionEvent({ method: "session/update", params: null }, "saved-session"), null);
+  assert.equal(readGrokCompactionEvent({ method: "session/update", params: { update: { sessionUpdate: "toString" } } }, "saved-session"), null);
+  for (const [sessionUpdate, status] of [
+    ["auto_compact_started", "started"],
+    ["auto_compact_failed", "failed"],
+    ["auto_compact_cancelled", "cancelled"],
+  ]) {
+    assert.deepEqual(readGrokCompactionEvent({
+      ...message,
+      params: { ...message.params, update: { sessionUpdate, tokens_before: -1, tokens_after: "2000", error: "provider failure" } },
+    }, "saved-session"), { status, tokensBefore: null, tokensAfter: null, error: "provider failure" });
+  }
+});
 
 test("reports unsupported Responses events without exposing arbitrary RPC data", () => {
   for (const streamFailure of [null, "serialization error: unknown variant `response.metadata`"] as const) {
@@ -90,6 +188,7 @@ test("parses a Grok session update and keeps line separators inside strings", as
   const capabilities = initialize.clientCapabilities as { terminal?: boolean; fs?: { readTextFile?: boolean } };
   assert.equal(capabilities.terminal, false);
   assert.equal(capabilities.fs?.readTextFile, false);
+  assert.deepEqual((initialize.clientCapabilities as Record<string, unknown>)._meta, { "x.ai/statusLine": true });
   assert.deepEqual(buildGrokSessionNewParams("/tmp/grok"), {
     cwd: "/tmp/grok",
     mcpServers: [],

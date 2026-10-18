@@ -602,17 +602,17 @@ test("one-shot runtime host keeps empty and unsupported prompts inside its bound
   );
 });
 
-test("one-shot runtime host finalizes non-retryable runner failures", async () => {
+test("one-shot runtime finalizes and propagates ENOENT for task-level automatic repair", async () => {
   const harness = createOneShotRuntimeHarness();
   const spawnError = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" });
 
   await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
     handlers.onError(spawnError);
   }), async () => {
-    await harness.host.runPromptOneShot(
+    await assert.rejects(harness.host.runPromptOneShot(
       { displayPrompt: "fail once", modelPrompt: "fail once", contextTags: [] },
       { tabId: "tab-fail", cli: "opencode", sessionId: null },
-    );
+    ), (error) => error === spawnError);
   });
 
   assert.deepEqual(harness.statusEvents.map((event) => event.status), ["start", "error"]);
@@ -623,4 +623,20 @@ test("one-shot runtime host finalizes non-retryable runner failures", async () =
   assert.equal(harness.shownCommandErrors.length, 1);
   assert.match(harness.shownCommandErrors[0] ?? "", /cli\.notFound\.unix\.title[\s\S]*opencode/);
   assert.ok(harness.systemMessages.some((message) => message.includes("cli.notFound.unix.title")));
+});
+
+test("one-shot automatic repair retry does not retry transient failures again", async () => {
+  const harness = createOneShotRuntimeHarness();
+  let attempts = 0;
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    attempts += 1;
+    handlers.onError(new Error("temporary provider failure"));
+  }), async () => {
+    await harness.host.runPromptOneShot(
+      { displayPrompt: "执行", modelPrompt: "执行", contextTags: [], cliCommandRepairAttempted: true },
+      { tabId: "repair-retry", cli: "opencode", sessionId: null },
+    );
+  });
+  assert.equal(attempts, 1);
+  assert.equal(harness.activeRunId, undefined);
 });

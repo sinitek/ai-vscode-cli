@@ -369,6 +369,23 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
 });
 
+test("interactive automatic repair retry does not enter the general hidden retry loop", async () => {
+  let attempts = 0;
+  const failure = new Error("temporary provider failure");
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async () => {
+      attempts += 1;
+      throw failure;
+    },
+  });
+  await assert.rejects(
+    harness.host.runPromptInteractive(createPromptInput({ cliCommandRepairAttempted: true }), createTarget()),
+    (error) => error === failure,
+  );
+  assert.equal(attempts, 1);
+  assert.equal(harness.activeRunsByTabId.has("tab-1"), false);
+});
+
 test("interactive runtime host enables Codex default-mode user input for Vibe runs", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {

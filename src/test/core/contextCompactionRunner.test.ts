@@ -103,6 +103,9 @@ function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions =
       getOrCreateClaudeRunner: () => {
         throw new Error("Claude runner should not be used in this test");
       },
+      getOrCreateGrokRunner: () => {
+        throw new Error("Grok runner should not be used in this test");
+      },
       setRunner: () => {},
     },
     resolveInteractiveMappedId: (cli: CliName) => cli === "codex" ? "thread-before-compact" : null,
@@ -264,6 +267,9 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
       },
       getOrCreateClaudeRunner: () => {
         throw new Error("Claude runner should not be used in this test");
+      },
+      getOrCreateGrokRunner: () => {
+        throw new Error("Grok runner should not be used in this test");
       },
       setRunner: () => {},
     },
@@ -528,7 +534,14 @@ type StrategySelectionOptions = {
   configId?: string | null;
   compactThread?: () => Promise<{ compacted: boolean; threadId: string }>;
   compactSession?: () => Promise<{ compacted: boolean; sessionId: string | null; previousSessionId: string | null }>;
+  grokCompactSession?: () => Promise<import("../../interactive/grokRunner").GrokCompactionResult>;
 };
+
+test("Grok participates in the same automatic compaction capability gate as Codex", () => {
+  const { isAutoContextCompactionCli } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  for (const cli of ["codex", "claude", "opencode", "grok"]) assert.equal(isAutoContextCompactionCli(cli), true);
+  for (const cli of ["", "gemini", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
+});
 
 function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
   const cli = options.cli ?? "codex";
@@ -550,6 +563,8 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
     events: [] as string[],
     codexRunnerOptions: [] as Array<Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["getOrCreateCodexRunner"]>[0]>,
     claudeRunnerOptions: [] as Array<Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["getOrCreateClaudeRunner"]>[0]>,
+    grokRunnerOptions: [] as Array<Parameters<ContextCompactionRunDeps["interactiveRunnerManager"]["getOrCreateGrokRunner"]>[0]>,
+    grokDisposed: 0,
     setRunnerCalls: [] as Array<{
       cli: CliName;
       sessionId: string;
@@ -657,6 +672,21 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
           runStreamed: async () => {},
           getSessionId: () => mappedId,
           dispose: () => {},
+        } as never;
+      },
+      getOrCreateGrokRunner: (runnerOptions) => {
+        calls.grokRunnerOptions.push(runnerOptions);
+        return {
+          compactSession: async () => {
+            calls.events.push("grok-compact-session");
+            return options.grokCompactSession?.() ?? {
+              compacted: true,
+              sessionId: runnerOptions.localSessionId,
+              tokensBefore: 8000,
+              tokensAfter: 2000,
+            };
+          },
+          dispose: () => { calls.grokDisposed += 1; },
         } as never;
       },
       setRunner: (targetCli, sessionId, _runner, thinkingMode, interactiveMode, model, extra) => {
@@ -902,4 +932,72 @@ test("OpenCode strategy selection still runs native compact without runner fallb
   assert.deepEqual(calls.sendRunStatuses, ["start", "end"]);
   assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
   assert.deepEqual(calls.activeProcessStates, ["set", "clear"]);
+});
+
+test("Grok compaction keeps the mapped session, selected model and silent status lifecycle", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "grok", selectedModel: "gpt-6.1-sol" });
+  assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+  assert.deepEqual(calls.grokRunnerOptions, [{
+    sessionId: "session-1", command: "grok", agentArgs: [], cwd: "/workspace",
+    thinkingMode: "medium", interactiveMode: "coding", model: "gpt-6.1-sol", localSessionId: "mapped-1",
+  }]);
+  assert.deepEqual(calls.events, ["begin:grok:session-1", "grok-compact-session", "map:grok:session-1:mapped-1", "end:grok:session-1"]);
+  assert.deepEqual(calls.mappings, [{ cli: "grok", localSessionId: "session-1", mappedSessionId: "mapped-1", options: undefined }]);
+  assert.deepEqual(calls.sendRunStatuses, [{ status: "start", activity: "contextCompaction" }, { status: "end", activity: undefined }]);
+  assert.deepEqual(calls.appendCompletionStatuses, []);
+  assert.deepEqual(calls.codexRunnerOptions, []);
+  assert.deepEqual(calls.claudeRunnerOptions, []);
+});
+
+test("Grok manual compaction uses a real ACP session id without requiring a mapping", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "grok", currentSessionId: "real-acp-session", mappedId: null });
+  assert.equal(await runContextCompactionWithDeps(deps), true);
+  assert.equal(calls.grokRunnerOptions[0]?.localSessionId, "real-acp-session");
+  assert.deepEqual(calls.systemMessages, ["Grok 当前会话上下文压缩已完成：real-acp-session"]);
+  assert.deepEqual(calls.appendCompletionStatuses, ["end"]);
+});
+
+test("Grok compaction refuses an unmapped local-only session", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "grok", currentSessionId: "local_unestablished", mappedId: null });
+  assert.equal(await runContextCompactionWithDeps(deps), false);
+  assert.deepEqual(calls.grokRunnerOptions, []);
+  assert.deepEqual(calls.mappings, []);
+});
+
+test("Grok compaction failures do not replace the original session mapping", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  for (const scenario of ["failed", "unconfirmed", "wrong-session"]) {
+    const { deps, calls } = createStrategySelectionDeps({
+      cli: "grok",
+      grokCompactSession: async () => {
+        if (scenario === "failed") throw new Error("native compaction failed");
+        return { compacted: scenario !== "unconfirmed", sessionId: scenario === "wrong-session" ? "new-empty-session" : "mapped-1", tokensBefore: null, tokensAfter: null };
+      },
+    });
+    assert.equal(await runContextCompactionWithDeps(deps), false);
+    assert.deepEqual(calls.mappings, []);
+    assert.equal(calls.sendRunStatuses.at(-1)?.status, "error");
+    assert.equal(calls.events.at(-1), "end:grok:session-1");
+  }
+});
+
+test("automatic Grok compaction times out, disposes its runner and ignores late completion", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  let complete!: (result: import("../../interactive/grokRunner").GrokCompactionResult) => void;
+  const { deps, calls } = createStrategySelectionDeps({
+    cli: "grok",
+    grokCompactSession: () => new Promise((resolve) => { complete = resolve; }),
+  });
+  assert.equal(await runContextCompactionWithDeps(deps, { silent: true, timeoutMs: 10 }), false);
+  complete({ compacted: true, sessionId: "mapped-1", tokensBefore: 8000, tokensAfter: 2000 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.grokDisposed, 1);
+  assert.deepEqual(calls.mappings, []);
+  assert.deepEqual(calls.systemMessages, []);
+  assert.deepEqual(calls.appendCompletionStatuses, []);
+  assert.deepEqual(calls.sendRunStatuses, [{ status: "start", activity: "contextCompaction" }, { status: "stopped", activity: undefined }]);
+  assert.equal(calls.clearActiveRun, 1);
 });

@@ -572,6 +572,7 @@
 ### 长期规避
 - 插件初始化会对找不到的 Codex/Claude/OpenCode 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复；已写成绝对路径的命令不会被初始化改写。工具设置“自动修复”仍列出没修好的项，一键修复读取 Windows 用户和系统 PATH，跳过 `WindowsApps` 空桩，并把绝对路径写入 `sinitek-cli-tools.commands.<cli>`。
 - 只存在于 WSL 或 shell profile 的命令不能自动修复；需要安装 Windows CLI 或手填绝对路径。
+- 任务执行遇到同类启动 ENOENT 会再次自动修复，成功后保留旧历史、在原任务 Tab 用新会话重发原请求一次；该次执行关闭普通 hidden retry。命令本身可解析时不能把无效 cwd 的 ENOENT 当成修复成功；找不到命令、写设置失败、第二次失败或用户停止都不继续重试。
 
 ### 验证方式
 - `npm run build`

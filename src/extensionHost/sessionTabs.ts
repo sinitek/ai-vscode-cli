@@ -534,7 +534,7 @@ function touchSession(cli: CliName, sessionId: string): void {
     existing.lastUsedAt = now;
     return;
   }
-  sessions.push({ id: sessionId, label: t("session.unnamed"), createdAt: now, lastUsedAt: now });
+  sessions.push({ id: sessionId, label: t("session.unnamed"), createdAt: now, lastUsedAt: now, health: "abnormal" });
 }
 
 async function persistSessionStore(nextStore: SessionStore): Promise<void> {

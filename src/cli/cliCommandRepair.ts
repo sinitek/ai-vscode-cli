@@ -8,6 +8,18 @@ import { expandHomePath } from "../shared/userHomePaths";
 
 const REGISTRY_PATH_SEPARATOR = "---SINITEK-PATH---";
 
+export function isCliCommandRepairableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return typeof error === "string" && /\bspawn\b[^\r\n]*\bENOENT\b/i.test(error);
+  }
+  const info = error as { code?: unknown; name?: unknown; message?: unknown };
+  if (info.name === "AbortError") {
+    return false;
+  }
+  return info.code === "ENOENT"
+    || (typeof info.message === "string" && /\bspawn\b[^\r\n]*\bENOENT\b/i.test(info.message));
+}
+
 export type CliCommandRepairIssue = {
   cli: CliName;
   command: string;

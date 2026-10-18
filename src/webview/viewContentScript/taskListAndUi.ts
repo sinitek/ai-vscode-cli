@@ -765,7 +765,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           ? activeRuntime.tokensInContextWindow
           : null;
         const hasValue = tokens !== null && tokens >= 0;
-        const pending = Boolean(state.isRunning && getActiveConversationCli() === "codex" && !hasValue);
+        const pending = Boolean(state.isRunning && ["codex", "grok"].includes(getActiveConversationCli()) && !hasValue);
         if (!hasValue && !pending) {
           hideContextTokenUsage();
           return;

@@ -7,6 +7,7 @@ import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import type { CliName, ThinkingMode } from "../cli/types";
+import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
 import {
   buildNaturalLanguageHumanInteractionRequest,
   formatHumanInteractionSubmittedText,
@@ -805,7 +806,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       buildProcessLabel,
       appendBoundedUtf8Text,
       maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
-      maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      maxHiddenRetries: input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
       onStdoutChunk: (chunk, stream) => {
         stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
         attemptSubagentMonitor?.setParentSessionId(extractSessionId(runCli, stream.sessionBuffer));
@@ -1020,7 +1021,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         );
         return {
           hiddenRetryCount: nextHiddenRetryCount,
-          shouldRetry: nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+          shouldRetry: !input.cliCommandRepairAttempted && nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
             && isHiddenRetryEligibleAttempt(context.attemptResult, lastFailureMessage),
         };
       },
@@ -1087,6 +1088,9 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         appendMessageToStore(failureMessageTarget, completionMessage);
         sendPanelMessage({ type: "appendMessage", message: completionMessage, tabId: target.tabId });
         persistMessagesForTab(runCli, sessionId, target.tabId, failureMessageTarget);
+        if (context.attemptResult.type === "error" && isCliCommandRepairableError(context.attemptResult.error)) {
+          throw context.attemptResult.error;
+        }
         if (input.throwOnError) {
           throw new Error(userMessageText);
         }

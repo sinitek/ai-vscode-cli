@@ -100,7 +100,7 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         align-items: center;
         gap: 2px;
         box-sizing: border-box;
-        width: min(420px, calc(100vw - 24px));
+        width: 50vw;
         min-height: 34px;
         padding: 4px 6px 4px 10px;
         border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border));

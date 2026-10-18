@@ -289,6 +289,34 @@ test("editor keeps visual and TOML source modes without .env editor", () => {
   assert.doesNotMatch(codexBranch, /请输入JSON配置[\s\S]*?config\.toml/);
 });
 
+test("Codex config filename and example entry appear once across editor modes", () => {
+  const source = loadUiSource();
+  const codexStart = source.indexOf('className: "config-editor-shell config-editor-codex"');
+  assert.notEqual(codexStart, -1, "Codex editor branch should exist");
+  const codexEnd = source.indexOf("be.jsx(SkillsManagerModal,", codexStart);
+  assert.notEqual(codexEnd, -1, "Codex editor branch should end before the skills modal");
+  const codexBranch = source.slice(codexStart, codexEnd);
+  const configExampleAction = 'onClick: () => N("codex-config")';
+
+  assert.equal(
+    codexBranch.split(configExampleAction).length - 1,
+    1,
+    "Codex config.toml should have only one shared example entry",
+  );
+  assert.equal(
+    (codexBranch.match(/children: \[be\.jsx\(Ya, \{\}\), " config\.toml"\]/g) || []).length,
+    1,
+    "TOML source mode should not repeat the shared config.toml heading",
+  );
+  const visualEditorStart = codexBranch.indexOf('codexEditorMode === "visual" ? renderCodexVisualEditor() : null');
+  assert.notEqual(visualEditorStart, -1, "Codex visual editor should exist");
+  assert.ok(
+    codexBranch.indexOf(configExampleAction) < visualEditorStart,
+    "The single example entry should remain outside both editor modes",
+  );
+  assert.match(codexBranch, /onClick: \(\) => N\("codex-auth"\)/);
+});
+
 test("Codex editor saves TOML and auth without envContent", () => {
   const source = loadUiSource();
 

@@ -225,6 +225,125 @@ function createRecord(id: string, label: string = "Unnamed"): SessionRecord {
   return { id, label, createdAt: 1, lastUsedAt: 2 };
 }
 
+test("replaces an error-only session before another execution for every CLI without deleting its history", () => {
+  for (const cli of ["codex", "claude", "opencode", "grok"] as const) {
+    const harness = createLifecycleHarness();
+    try {
+      const sessionId = `${cli}-failed`;
+      const tab = harness.state.tabs[0];
+      tab.cli = cli;
+      tab.sessionId = sessionId;
+      tab.sessionIdByCli = { [cli]: sessionId };
+      harness.state.store[cli] = { currentId: sessionId, sessions: [createRecord(sessionId)] };
+      const messages = [
+        createMessage("question", "user", "请完成任务"),
+        createMessage("failure", "trace", "error\nAuthentication failed"),
+        createMessage("retry", "system", "重试失败"),
+      ];
+      harness.controller.saveSessionMessages(cli, sessionId, messages);
+      harness.state.drafts.set(`tab-1:${cli}`, { label: "旧标签", firstPrompt: "旧请求", messages });
+
+      assert.equal(harness.controller.prepareSessionForPromptRun(cli, sessionId, "tab-1"), null);
+      assert.equal(tab.sessionId, null);
+      assert.equal(tab.sessionIdByCli?.[cli], undefined);
+      assert.equal(harness.state.store[cli].currentId, null);
+      assert.equal(harness.state.store[cli].sessions[0].health, "abnormal");
+      assert.deepEqual(harness.controller.loadSessionMessages(cli, sessionId).map((message) => message.id), ["question", "failure", "retry"]);
+      assert.deepEqual(harness.calls.panelMessages[harness.calls.panelMessages.length - 1], { type: "setMessages", messages: [], tabId: "tab-1" });
+      assert.equal(harness.state.drafts.get(`tab-1:${cli}`)?.label, null);
+
+      harness.state.drafts.set(`tab-1:${cli}`, {
+        label: null,
+        firstPrompt: "再次执行",
+        messages: [createMessage("new-question", "user", "再次执行")],
+      });
+      harness.controller.adoptSessionId(cli, `${cli}-fresh`, "tab-1");
+      assert.equal(tab.sessionId, `${cli}-fresh`);
+      assert.deepEqual(harness.controller.loadSessionMessages(cli, `${cli}-fresh`).map((message) => message.id), ["new-question"]);
+      const storedHistory = JSON.parse(fs.readFileSync(path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, cli, `${sessionId}.json`), "utf8"));
+      assert.equal(storedHistory.messages.length, messages.length);
+    } finally {
+      harness.cleanup();
+    }
+  }
+});
+
+test("automatic command repair forces a fresh session even when previous history is healthy", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const tab = harness.state.tabs[0];
+    tab.cli = "codex";
+    tab.sessionId = "healthy-session";
+    tab.sessionIdByCli = { codex: "healthy-session" };
+    harness.state.store.codex = { currentId: "healthy-session", sessions: [createRecord("healthy-session")] };
+    const messages = [createMessage("answer", "assistant", "已有有效答复")];
+    harness.controller.saveSessionMessages("codex", "healthy-session", messages);
+
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", "healthy-session", tab.id, { forceNewSession: true }), null);
+    assert.equal(tab.sessionId, null);
+    assert.equal(harness.state.store.codex.currentId, null);
+    assert.deepEqual(harness.controller.loadSessionMessages("codex", "healthy-session"), messages);
+    harness.state.drafts.set(`${tab.id}:codex`, { label: "旧请求", firstPrompt: "旧请求", messages });
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", null, tab.id, { forceNewSession: true }), null);
+    assert.equal(harness.state.drafts.get(`${tab.id}:codex`)?.label, null);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("backfills legacy session health and keeps normal sessions reusable after later errors", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const record = createRecord("legacy-session");
+    harness.state.store.codex.sessions.push(record);
+    harness.state.tabs[0].sessionId = record.id;
+    harness.state.tabs[0].sessionIdByCli = { codex: record.id };
+    const directory = path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, "codex");
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, `${record.id}.json`), JSON.stringify({ messages: [
+      { ...createMessage("thought", "assistant", "先检查源码"), kind: "thinking" },
+      createMessage("failure", "system", "执行失败"),
+    ] }), "utf8");
+
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", record.id, "tab-1"), record.id);
+    assert.equal(record.health, "normal");
+    assert.ok(harness.calls.persistedStores > 0);
+    harness.controller.saveSessionMessages("codex", record.id, [createMessage("failure", "system", "再次失败")]);
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", record.id, "tab-1"), record.id);
+    assert.equal(record.health, "normal");
+    assert.equal(harness.calls.persistedTabs, 0);
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", null, "tab-1"), null);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("replacing an abnormal background target leaves the active tab and other CLI bindings untouched", () => {
+  const harness = createLifecycleHarness();
+  try {
+    harness.state.store.codex.currentId = "foreground-session";
+    harness.state.store.codex.sessions.push(createRecord("failed-background"));
+    harness.state.tabs.push({
+      id: "background-tab",
+      cli: "codex",
+      sessionId: "failed-background",
+      sessionIdByCli: { codex: "failed-background", claude: "healthy-claude" },
+      createdAt: 1,
+    });
+    harness.state.drafts.set("background-tab:claude", { label: "保留", firstPrompt: null, messages: [] });
+
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", "failed-background", "background-tab"), null);
+    assert.equal(harness.state.activeTabId, "tab-1");
+    assert.equal(harness.state.store.codex.currentId, "foreground-session");
+    assert.equal(harness.state.tabs[1].sessionIdByCli?.claude, "healthy-claude");
+    assert.equal(harness.state.drafts.get("background-tab:claude")?.label, "保留");
+    assert.equal(harness.controller.prepareSessionForPromptRun("codex", "missing-session", "missing-tab"), null);
+    assert.equal(harness.state.tabs.length, 2);
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test("parses CLI-specific session ids and rejects local OpenCode resume ids", () => {
   const uuid = "123e4567-e89b-12d3-a456-426614174000";
 

@@ -14,6 +14,23 @@
 - 原实现只在 `save` 后触发不等待的回调，`apply` 完成后没有通知，可能先读到旧文件、之后长期保留旧列表。现 `onConfigChanged` 支持 Promise，变更通知等待完成，且在 `applyConfig` 成功写盘后再次通知，重新生成对话面板状态。
 - 回归应同时覆盖：保存未激活档案不改变当前模型、应用成功后的新 `model` 显示名、应答等待同步完成，以及非法配置应用失败不发布成功通知。外部手工编辑文件仍沿用已有状态更新入口与运行前校验，不新增轮询或手动刷新按钮。
 
+## 当前上下文用量
+
+- Grok 分组与 Codex 共用输入区运行条的已用上下文标签，简写为 `k`，悬停显示精确 token 和可用窗口上限；开跑等待原生读数，结束后保留，其他 Tab 的快照不覆盖当前标签。
+- Grok 1.0.62 默认不向普通 ACP 客户端发送 `usage_update`。必须在 initialize 中声明 `clientCapabilities._meta["x.ai/statusLine"] = true`，才能收到原生 `session_status`；读取 `context_window.context_tokens`，不是不断增长的 `session_input_tokens` 或本轮总消耗。标准 ACP `usage_update` 也可作为原生数据源。
+- `context_tokens` 缺失代表未知，不能当作 0；合法的 0 表示空上下文。读取精度遵循 CLI 原生快照，不按字符数、百分比或模型名称估算。不支持状态快照的旧 CLI 只显示等待占位。
+- 最后一份快照可能在 prompt RPC result 之后抵达。只把回调放在当前 prompt handlers 中会丢掉最终读数；runner 保留轻量订阅，宿主验证 Tab / 会话 / runner 仍然归属原执行，防止切换、停止或新任务后迟到通知污染分组。
+- 2026-10-18：本机真实 Grok 1.0.62 + 隔离配置 + 本地模拟 chat_completions API 验证，窗口 128000，当前读数 12652 → 12852 → 2007；会话累计输入继续增长，界面链路消费当前快照而非累计值。未使用真实密钥或付费 API，未修改用户配置。
+
+## 上下文压缩与指令入口
+
+- Grok 与 Codex 共用输入区“常用指令 → 压缩上下文”，点击后立即关闭弹窗、显示“压缩中”，禁止重复触发，允许中止；结束、失败或停止后恢复入口。菜单在 Grok 交互支持可用时展示，不提供另一个 `/compact` 专用界面。
+- 工具设置“AI任务配置 → 执行后自动压缩上下文”默认开启；Grok 与 Codex 使用同一规则：已有会话、任务成功且执行超过 5 分钟才触发，最多 3 分钟。短任务、失败或中断不触发；Loop 主任务压缩可与独立子会话派发并行。
+- 底层发送 ACP `session/prompt` 文本 `/compact`。必须收到当前会话原生 `auto_compact_completed` 并且 prompt 正常结束；普通模型文本、取消、失败和其他会话事件不能冒充成功。恢复失败不新建空会话、不改原映射；自动压缩不产生 assistant 回复或普通完成耗时气泡。
+- 排查日志：`context-compact-grok-complete` 记录原会话与压缩前后 token；`context-compact-command-failed`、`context-compact-timeout-stop-requested` 和 `auto-context-compact-after-run-finished` 区分原生异常、超时与自动触发结果，不记录摘要正文。
+- 指令入口是带 `role=button` 的 SVG，不保证具备 HTMLElement 的 `.click()`；直接调用会导致 Enter/空格报错而鼠标可用。共享键盘绑定在缺少 `.click()` 时派发鼠标事件，仍先检查 `aria-disabled`。浏览器验收必须覆盖键盘打开、运行时禁用与停止后恢复，DOM 夹具的 `.click()` 不能代替真实 SVG 验证。
+- 2026-10-18：Grok 1.0.62 + `gpt-6.1-sol` 隔离验证五轮对话后冷恢复、压缩与续聊，31432 → 10825 token，原验证口令保留。短会话的原生完成事件可能 token 不变，这是 CLI 的压缩策略，不应强行删除历史或切换会话。
+
 ## Responses 流中的未知事件
 
 - 状态：已规避，仍取决于当前 Grok CLI 和接口实现。

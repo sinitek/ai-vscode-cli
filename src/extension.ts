@@ -39,10 +39,14 @@ import {
 } from "./cli/commandRunner";
 import {
   beginCliCommandAutoRepair,
+  buildRepairedCliCommand,
+  inspectUnresolvedCliCommands,
+  locateCliExecutableForRepair,
   planUnresolvedCliCommandRepairs,
   shouldAwaitCliCommandAutoRepair,
   waitForCliCommandAutoRepair,
 } from "./cli/cliCommandRepair";
+import { createPromptAutoRepairController } from "./extensionHost/promptAutoRepair";
 import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "./cli/modelArgs";
 import {
   CliName,
@@ -376,6 +380,7 @@ import {
 import { ensureWorkspaceHarnessScaffold, isWorkspaceHarnessInstalled } from "./workspaceScaffold";
 import {
   type ContextCompactionOptions,
+  isAutoContextCompactionCli,
   runContextCompactionWithDeps,
 } from "./contextCompactionRunner";
 import {
@@ -688,6 +693,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const promptAutoRepairController = createPromptAutoRepairController();
 let isExtensionDeactivating = false;
 const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
@@ -1058,6 +1064,7 @@ export function deactivate(): void {
 }
 function stopAllRuns(): void {
   isExtensionDeactivating = true;
+  promptAutoRepairController.cancelAll();
   for (const [tabId, run] of Array.from(interactiveRunsByTabId.entries())) {
     try {
       run.stop();
@@ -3483,14 +3490,15 @@ function getPrimaryRunTabId(): string | null {
 }
 
 function hasAnyTaskRunning(): boolean {
-  return isPrimaryRunActive() || parallelRunsByTabId.size > 0 || interactiveRunsByTabId.size > 0;
+  return isPrimaryRunActive() || parallelRunsByTabId.size > 0 || interactiveRunsByTabId.size > 0
+    || promptAutoRepairController.hasRepairingRuns();
 }
 
 function isTabRunActive(tabId: string | null): boolean {
   if (!tabId) {
     return false;
   }
-  if (parallelRunsByTabId.has(tabId) || interactiveRunsByTabId.has(tabId)) {
+  if (parallelRunsByTabId.has(tabId) || interactiveRunsByTabId.has(tabId) || promptAutoRepairController.isRepairing(tabId)) {
     return true;
   }
   return getPrimaryRunTabId() === tabId;
@@ -3953,6 +3961,11 @@ function cancelLoopPlusInvocation(tabId: string | null): boolean {
 function stopRunForTab(tabId: string | null): void {
   if (!tabId) {
     return;
+  }
+  const wasRepairing = promptAutoRepairController.isRepairing(tabId);
+  promptAutoRepairController.cancel(tabId);
+  if (wasRepairing) {
+    sendRunStatusForTab(tabId, "stopped");
   }
   const parentStop = resolveLoopPlusParentStopContext(tabId);
   if (parentStop && shouldCloseLoopPlusParentGateBeforeAbort({
@@ -4830,10 +4843,6 @@ function writeTextFileEnsuringDir(...args: Parameters<LoopOrchestrationHost["wri
 
 // Loop prompt run runtime helpers moved to extensionHost/promptRunRuntime.ts.
 
-function isAutoContextCompactionCli(cli: CliName): cli is "codex" | "claude" | "opencode" {
-  return cli === "codex" || cli === "claude" || cli === "opencode";
-}
-
 function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
   if (input.preloadedUserMessageId) {
     return input;
@@ -4961,6 +4970,7 @@ async function runPrompt(
   if (!target) {
     return;
   }
+  promptAutoRepairController.cancel(target.tabId);
   if (shouldAwaitCliCommandAutoRepair(target.cli, {
     [target.cli]: getCliCommand(target.cli),
   })) {
@@ -4974,6 +4984,17 @@ async function runPrompt(
 
   if (isTabRunActive(target.tabId)) {
     preemptActivePromptRun(target.tabId);
+  }
+
+  const currentTab = getConversationTabById(target.tabId);
+  if (!currentTab) {
+    return;
+  }
+  const previousSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
+  target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
+  if (previousSessionId && target.sessionId !== previousSessionId) {
+    disposeInteractiveRunnerIfUnused({ cli: target.cli, sessionId: previousSessionId });
+    await postPanelState();
   }
 
   scheduleLogRetentionCleanup();
@@ -5009,42 +5030,80 @@ async function runPrompt(
       cwd: input.executionCwd ?? subtaskExecutionRoot?.cwd,
       isolateProjectInstructions: input.isolateProjectInstructions ?? Boolean(subtaskExecutionRoot),
     };
-    if (shouldUseInteractive) {
-      try {
-        await runPromptInteractive(promptInput, target, executionOptions);
-        return;
-      } catch (error) {
-        const info = getErrorInfo(error);
-        if (isAbortErrorInfo(info)) {
-          void logInfo("runPrompt-interactive-abort-ignored", {
-            cli: target.cli,
-            error: info.message,
-            errorName: info.name,
-            errorCode: info.code,
-            errorStack: info.stack,
-          });
+    const workspaceKey = activeWorkspaceKey;
+    const startupCommand = getCliCommand(target.cli);
+    await promptAutoRepairController.run(promptInput, target, {
+      execute: async (attemptInput, attemptTarget) => {
+        if (shouldUseInteractive) {
+          await runPromptInteractive(attemptInput, attemptTarget, executionOptions);
+        } else if (hasOtherTabRun(attemptTarget.tabId)) {
+          await runPromptParallel(attemptInput, attemptTarget, executionOptions);
+        } else {
+          await runPromptOneShot(attemptInput, attemptTarget, executionOptions);
+        }
+      },
+      isTargetCurrent: () => !isExtensionDeactivating
+        && activeWorkspaceKey === workspaceKey
+        && getConversationTabById(target.tabId)?.cli === target.cli,
+      onRepairStarted: () => {
+        const tab = getConversationTabById(target.tabId);
+        appendSystemMessageForPromptTarget({
+          ...target,
+          sessionId: tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId,
+        }, t("cliRepair.taskRepairStarted", { cli: target.cli }));
+        sendRunStatusForTab(target.tabId, "start", { prompt });
+      },
+      repairCommand: async () => {
+        await waitForCliCommandAutoRepair();
+        const command = getCliCommand(target.cli);
+        if (!inspectUnresolvedCliCommands({ [target.cli]: command }).some((issue) => issue.cli === target.cli)) {
+          return command !== startupCommand;
+        }
+        if (command !== startupCommand) {
+          return false;
+        }
+        const executablePath = await locateCliExecutableForRepair(command, target.cli);
+        if (!executablePath) {
+          return false;
+        }
+        if (getCliCommand(target.cli) !== command) {
+          return !inspectUnresolvedCliCommands({ [target.cli]: getCliCommand(target.cli) })
+            .some((issue) => issue.cli === target.cli);
+        }
+        const repairedCommand = buildRepairedCliCommand(command, target.cli, executablePath);
+        await persistCliCommand(target.cli, repairedCommand);
+        void logInfo("task-cli-command-auto-repaired", { cli: target.cli, tabId: target.tabId });
+        return true;
+      },
+      startFreshSession: async () => {
+        const tab = getConversationTabById(target.tabId);
+        if (!tab) {
           return;
         }
-        void logError("runPrompt-interactive-failed", {
-          cli: target.cli,
-          error: info.message,
-          errorName: info.name,
-          errorCode: info.code,
-          errorStack: info.stack,
-        });
-        if (promptInput.throwOnError) {
-          throw error;
+        const failedSessionId = getConversationTabSessionIdForCli(tab, target.cli);
+        sessionLifecycleController.prepareSessionForPromptRun(target.cli, failedSessionId, target.tabId, { forceNewSession: true });
+        if (failedSessionId) {
+          disposeInteractiveRunnerIfUnused({ cli: target.cli, sessionId: failedSessionId });
         }
-        return;
-      }
-    }
-
-    if (hasOtherTabRun(target.tabId)) {
-      await runPromptParallel(promptInput, target, executionOptions);
+        target.sessionId = null;
+        appendSystemMessageForPromptTarget(target, t("cliRepair.taskRetryStarted", { cli: target.cli }));
+        await postPanelState();
+      },
+      onRepairFailed: (error) => {
+        void logError("task-cli-command-auto-repair-failed", { cli: target.cli, error: getErrorInfo(error).message });
+      },
+    });
+  } catch (error) {
+    const info = getErrorInfo(error);
+    if (isAbortErrorInfo(info)) {
+      void logInfo("runPrompt-abort-ignored", { cli: target.cli, error: info.message });
       return;
     }
-
-    await runPromptOneShot(promptInput, target, executionOptions);
+    void logError("runPrompt-failed", { cli: target.cli, error: info.message, errorCode: info.code });
+    sendRunStatusForTab(target.tabId, "error", { message: info.message });
+    if (promptInput.throwOnError) {
+      throw error;
+    }
   } finally {
     subtaskExecutionRoot?.dispose();
   }
@@ -5217,7 +5276,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
   return runContextCompactionWithDeps({
     getCurrentCli: () => currentCli,
     getActiveConversationTabId,
-    isInteractiveSupported: (cli) => cli !== "grok" && isInteractiveSupported(cli),
+    isInteractiveSupported,
     appendSystemMessageForCli,
     getCurrentSessionId,
     hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),

@@ -112,6 +112,8 @@ function createDisabledSubagentMonitor() {
 
 function createParallelRuntimeHarness(options: {
   runCliStream: RunCliStream;
+  maxRetries?: number;
+  retryEligible?: boolean;
   parseOpenCodeRunOutput?: (stdout: string, stderr: string) => OpenCodeRunOutput;
 } = {
   runCliStream: createAsyncRunCliStreamStub((handlers) => handlers.onExit(0)),
@@ -127,7 +129,7 @@ function createParallelRuntimeHarness(options: {
 
   const deps: PromptParallelRuntimeDeps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024 * 1024,
-    HIDDEN_RETRY_MAX_RETRIES: 0,
+    HIDDEN_RETRY_MAX_RETRIES: options.maxRetries ?? 0,
     OPENCODE_SUBAGENT_POLL_INTERVAL_MS: 100,
     adoptDetectedSessionId: () => undefined,
     adoptFreshOpenCodeLoopRecoverySession: ({ messageTarget }) => messageTarget,
@@ -201,7 +203,7 @@ function createParallelRuntimeHarness(options: {
     getHiddenRetryDelayMs: () => 0,
     getPendingSessionDraft: () => ({ messages }),
     hasAssistantFinalConclusionAfterMessage: () => true,
-    isHiddenRetryEligibleAttempt: () => false,
+    isHiddenRetryEligibleAttempt: () => options.retryEligible ?? false,
     isLocalSessionId: () => false,
     loadSessionMessages: () => messages,
     logDebug: async () => undefined,
@@ -302,6 +304,34 @@ test("rejects unsupported parallel runtime CLIs before starting a run", async ()
 
   assert.deepEqual(harness.taskRuns, []);
   assert.deepEqual(harness.runStatusEvents, []);
+  assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
+});
+
+test("parallel runtime propagates the original ENOENT error for task-level automatic repair", async () => {
+  const failure = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" });
+  const harness = createParallelRuntimeHarness({
+    runCliStream: createAsyncRunCliStreamStub((handlers) => handlers.onError(failure)),
+  });
+  await assert.rejects(
+    harness.host.runPromptParallel(createPromptInput(), createTarget()),
+    (error) => error === failure,
+  );
+  assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "error");
+});
+
+test("parallel automatic repair retry has no further transient error retries", async () => {
+  let attempts = 0;
+  const harness = createParallelRuntimeHarness({
+    maxRetries: 3,
+    retryEligible: true,
+    runCliStream: createAsyncRunCliStreamStub((handlers) => {
+      attempts += 1;
+      handlers.onError(new Error("temporary provider failure"));
+    }),
+  });
+  await harness.host.runPromptParallel(createPromptInput({ cliCommandRepairAttempted: true }), createTarget());
+  assert.equal(attempts, 1);
   assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
 });
 

@@ -30,13 +30,18 @@ import {
   formatGrokToolTrace,
   parseGrokJsonRpcLine,
   readGrokAuthMethodIds,
+  readGrokCompactionEvent,
   readGrokLoadSessionCapability,
   readGrokPromptStopReason,
   readGrokSessionId,
   readGrokStreamFailure,
+  readGrokTokenUsageUpdate,
   resolveGrokReasoningEffort,
+  isGrokCompletedStopReason,
   selectGrokAuthMethod,
   type GrokJsonRpcMessage,
+  type GrokCompactionEvent,
+  type GrokTokenUsageUpdate,
 } from "./grokAppServerProtocol";
 
 export type GrokChild = {
@@ -73,6 +78,7 @@ export type GrokStreamHandlers = {
   onTrace?: (content: string, kind?: GrokTraceKind) => void;
   onEvent?: (message: GrokJsonRpcMessage) => void;
   onComplete?: (meta: { stopReason: string | null }) => void;
+  onTokenUsageUpdate?: (update: GrokTokenUsageUpdate) => void;
 };
 
 export type GrokRunnerOptions = {
@@ -92,6 +98,13 @@ export type GrokSessionInfo = {
   retainedLocalSessionId: string | null;
 };
 
+export type GrokCompactionResult = {
+  compacted: boolean;
+  sessionId: string;
+  tokensBefore: number | null;
+  tokensAfter: number | null;
+};
+
 type PendingRequest = {
   method: string;
   resolve: (value: unknown) => void;
@@ -107,6 +120,8 @@ export class GrokInteractiveRunner {
   private closed = false;
   private failed: Error | null = null;
   private activeHandlers: GrokStreamHandlers | null = null;
+  private tokenUsageHandler: GrokStreamHandlers["onTokenUsageUpdate"] = undefined;
+  private latestTokenUsage: GrokTokenUsageUpdate | null = null;
   private streamFailure: string | null = null;
   private activeReplay: GrokReplayStream | null = null;
   private reasoningNotice: string | null = null;
@@ -121,7 +136,7 @@ export class GrokInteractiveRunner {
     return !this.closed && !this.failed;
   }
 
-  public async start(): Promise<GrokSessionInfo> {
+  public async start(options: { requireResume?: boolean } = {}): Promise<GrokSessionInfo> {
     if (this.sessionId && this.child && this.isReusable()) {
       return {
         acpSessionId: this.sessionId,
@@ -195,7 +210,7 @@ export class GrokInteractiveRunner {
     this.reader = createCodexAppServerNdjsonReader(child.stdout);
     void this.readLoop();
     try {
-      return await this.handshake();
+      return await this.handshake(options.requireResume === true);
     } catch (error) {
       if (!this.closed) {
         this.fail(error instanceof Error ? error : new Error(String(error)));
@@ -212,6 +227,10 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.activeHandlers = handlers;
+    this.tokenUsageHandler = handlers.onTokenUsageUpdate;
+    if (this.latestTokenUsage) {
+      this.tokenUsageHandler?.(this.latestTokenUsage);
+    }
     this.streamFailure = null;
     const replay = handlers.onEvent ? new GrokReplayStream(handlers.onEvent) : null;
     this.activeReplay = replay;
@@ -225,6 +244,7 @@ export class GrokInteractiveRunner {
       handlers.onComplete?.({ stopReason });
       return { stopReason };
     } catch (error) {
+      this.tokenUsageHandler = undefined;
       if (error instanceof Error && (error as Error & { code?: string }).code === GROK_RESPONSES_STREAM_INCOMPATIBLE) {
         this.fail(error);
       }
@@ -239,6 +259,7 @@ export class GrokInteractiveRunner {
   }
 
   public cancelTurn(): void {
+    this.tokenUsageHandler = undefined;
     this.activeReplay?.flush();
     if (!this.sessionId || !this.canWrite()) {
       this.fail(new Error(t("grok.requestFailed")));
@@ -252,11 +273,41 @@ export class GrokInteractiveRunner {
     });
   }
 
+  public async compactSession(): Promise<GrokCompactionResult> {
+    if (this.activeHandlers) {
+      throw new Error(t("rules.compactRunning"));
+    }
+    const started = await this.start({ requireResume: true });
+    if (!started.resumed) {
+      throw new Error(t("rules.compactNoSession"));
+    }
+    const compaction: { event: GrokCompactionEvent | null } = { event: null };
+    const result = await this.prompt("/compact", {
+      onTokenUsageUpdate: this.tokenUsageHandler,
+      onEvent: (message) => {
+        const event = readGrokCompactionEvent(message, started.acpSessionId);
+        if (event) {
+          compaction.event = event;
+        }
+      },
+    });
+    const confirmed = compaction.event;
+    if (!isGrokCompletedStopReason(result.stopReason) || confirmed?.status !== "completed") {
+      throw new Error(confirmed?.error || t("compact.grokNativeUnconfirmed"));
+    }
+    return {
+      compacted: true,
+      sessionId: started.acpSessionId,
+      tokensBefore: confirmed.tokensBefore,
+      tokensAfter: confirmed.tokensAfter,
+    };
+  }
+
   public dispose(): void {
     this.fail(new Error(t("grok.exited", { detail: "disposed", stderr: "" })));
   }
 
-  private async handshake(): Promise<GrokSessionInfo> {
+  private async handshake(requireResume = false): Promise<GrokSessionInfo> {
     const initialized = await this.request("initialize", buildGrokInitializeParams());
     const env = this.options.env ?? process.env;
     const modelHasOwnCredential = await readGrokActiveModelHasOwnCredential(env, undefined, this.options.model);
@@ -269,6 +320,9 @@ export class GrokInteractiveRunner {
     }
     const localSessionId = String(this.options.localSessionId ?? "").trim();
     const canLoad = readGrokLoadSessionCapability(initialized);
+    if (requireResume && (!localSessionId || !canLoad)) {
+      throw new Error(t("rules.compactNoSession"));
+    }
     let resumed = false;
     let created: unknown;
     if (localSessionId && canLoad) {
@@ -276,7 +330,7 @@ export class GrokInteractiveRunner {
         created = await this.request("session/load", buildGrokSessionLoadParams(localSessionId, this.options.cwd));
         resumed = true;
       } catch (error) {
-        if (this.closed || this.failed) {
+        if (requireResume || this.closed || this.failed) {
           throw error;
         }
         created = await this.request("session/new", buildGrokSessionNewParams(this.options.cwd));
@@ -285,7 +339,7 @@ export class GrokInteractiveRunner {
       created = await this.request("session/new", buildGrokSessionNewParams(this.options.cwd));
     }
     const acpSessionId = readGrokSessionId(created);
-    if (!acpSessionId) {
+    if (!acpSessionId || (requireResume && acpSessionId !== localSessionId)) {
       throw new Error(t("grok.requestFailed"));
     }
     this.sessionId = acpSessionId;
@@ -337,6 +391,11 @@ export class GrokInteractiveRunner {
   }
 
   private handleMessage(message: GrokJsonRpcMessage): void {
+    const usage = this.sessionId ? readGrokTokenUsageUpdate(message, this.sessionId) : null;
+    if (usage) {
+      this.latestTokenUsage = usage;
+      this.tokenUsageHandler?.(usage);
+    }
     if (message.id !== undefined && message.id !== null && (message.result !== undefined || message.error)) {
       const pending = this.pending.get(Number(message.id));
       if (!pending) {
@@ -366,7 +425,7 @@ export class GrokInteractiveRunner {
     if (streamFailure && this.activeHandlers) {
       this.streamFailure = streamFailure;
     }
-    if (message.method === "session/update" || streamFailure) {
+    if (message.method === "session/update" || streamFailure || (this.sessionId && readGrokCompactionEvent(message, this.sessionId))) {
       this.activeReplay?.append(message);
     }
     const event = classifyGrokSessionMessage(message);
@@ -433,6 +492,7 @@ export class GrokInteractiveRunner {
       return;
     }
     this.failed = this.failed ?? error;
+    this.tokenUsageHandler = undefined;
     this.closed = true;
     this.acpClient.dispose();
     this.reader?.close();

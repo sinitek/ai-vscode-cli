@@ -459,6 +459,8 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
   assert.match(html, /id="humanInteractionReject"[\s\S]*id="humanInteractionSubmit"/);
   assert.match(html, /id="queuePrompt"[\s\S]*id="pauseAndSend"/);
   assert.match(html, /id="commonCommandsOverlay"[\s\S]*id="commandCompact"/);
+  assert.match(html, /适用于 Codex、Claude、OpenCode、Grok/);
+  assert.match(TOAST_MISC_STYLES, /\.common-command-button\s*\{[^}]*flex-direction:\s*column;[^}]*align-items:\s*flex-start;/);
   assert.ok(OVERLAYS_MODALS_STYLES.includes(DIALOG_SHELL_STYLES));
   assert.match(DIALOG_SHELL_STYLES, /\.overlay,\s*\.dialog-backdrop\s*\{/);
   assert.match(DIALOG_SHELL_STYLES, /\.modal,\s*\.dialog\s*\{[\s\S]*max-width:\s*90vw;[\s\S]*max-height:\s*85vh;[\s\S]*border-radius:\s*var\(--radius-lg, 12px\);/);

@@ -16,6 +16,8 @@ import {
 } from "./cli/geminiStreamJson";
 import { buildGeminiThinkingRuntimeProfile } from "./cli/geminiThinking";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
+import { resolveGrokResumeSessionId } from "./interactive/grokAppServerProtocol";
+import { getGrokAgentArgs } from "./cli/config";
 import { ClaudeInteractiveRunner } from "./interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "./interactive/manager";
 import {
@@ -491,7 +493,7 @@ export type ContextCompactionRunStatus = "end" | "error" | "stopped";
 
 export type ContextCompactionRunnerManager = Pick<
   InteractiveRunnerManager,
-  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "setRunner"
+  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "setRunner"
 >;
 
 export type ContextCompactionRunDeps = {
@@ -577,7 +579,7 @@ export type ContextCompactionRunDeps = {
   buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
-const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode"] as const;
+const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok"] as const;
 
 type ContextCompactionStrategyCli = (typeof CONTEXT_COMPACTION_STRATEGY_CLIS)[number];
 
@@ -615,8 +617,51 @@ type ContextCompactionStrategyRegistry = {
   [TCli in ContextCompactionStrategyCli]: ContextCompactionStrategy & { readonly cli: TCli };
 };
 
-function isContextCompactionStrategyCli(cli: string): cli is ContextCompactionStrategyCli {
+export function isAutoContextCompactionCli(cli: string): cli is ContextCompactionStrategyCli {
   return (CONTEXT_COMPACTION_STRATEGY_CLIS as readonly string[]).includes(cli);
+}
+
+async function executeGrokContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks
+): Promise<boolean> {
+  const mappedSessionId = deps.resolveInteractiveMappedId(run.cli, run.sessionId);
+  const resumeSessionId = resolveGrokResumeSessionId(run.sessionId, mappedSessionId);
+  if (!resumeSessionId) {
+    deps.appendSystemMessage(t("rules.compactNoSession"));
+    return false;
+  }
+  const runner = deps.interactiveRunnerManager.getOrCreateGrokRunner({
+    sessionId: run.sessionId,
+    command: run.command,
+    agentArgs: run.args,
+    cwd: run.cwd ?? process.cwd(),
+    thinkingMode: run.thinkingMode,
+    interactiveMode: run.interactiveMode,
+    model: run.selectedModel,
+    localSessionId: resumeSessionId,
+  });
+  hooks.setStopCurrentTurn(() => runner.dispose());
+  deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+  try {
+    const result = await hooks.withCompactionTimeout(runner.compactSession());
+    if (!result.compacted || result.sessionId !== resumeSessionId) {
+      throw new Error(t("compact.grokNativeUnconfirmed"));
+    }
+    deps.upsertInteractiveMapping(run.cli, run.sessionId, result.sessionId);
+    deps.appendSystemMessage(t("compact.grokNativeCompressed", { sessionId: result.sessionId }));
+    void logInfo("context-compact-grok-complete", {
+      cli: run.cli,
+      sessionId: run.sessionId,
+      acpSessionId: result.sessionId,
+      tokensBefore: result.tokensBefore,
+      tokensAfter: result.tokensAfter,
+    });
+  } finally {
+    deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+  }
+  return true;
 }
 
 async function executeCodexContextCompaction(
@@ -863,10 +908,14 @@ const contextCompactionStrategyRegistry: ContextCompactionStrategyRegistry = {
     cli: "opencode",
     execute: executeOpenCodeContextCompaction,
   },
+  grok: {
+    cli: "grok",
+    execute: executeGrokContextCompaction,
+  },
 };
 
 function resolveContextCompactionStrategy(cli: CliName): ContextCompactionStrategy | undefined {
-  if (!isContextCompactionStrategyCli(cli)) {
+  if (!isAutoContextCompactionCli(cli)) {
     return undefined;
   }
   return contextCompactionStrategyRegistry[cli];
@@ -914,7 +963,7 @@ export async function runContextCompactionWithDeps(
   const interactiveMode = deps.getWorkspaceInteractiveMode(cli);
   deps.applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
-  const args = deps.getEffectiveCliArgs(cli, selectedModel);
+  const args = cli === "grok" ? getGrokAgentArgs() : deps.getEffectiveCliArgs(cli, selectedModel);
   const command = deps.getCliCommand(cli);
   const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
   const commandForRunner = cli === "claude"

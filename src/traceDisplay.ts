@@ -38,7 +38,7 @@ export function isToolResultTrace(content: string): boolean {
   if (!firstLine) {
     return false;
   }
-  return /^(?:tool\s*result|工具结果)\b/i.test(firstLine.trim());
+  return /^(?:tool\s*result\b|工具结果(?=$|[\s:：]))/i.test(firstLine.trim());
 }
 
 export function isWarningOrErrorTrace(content: string): boolean {
@@ -46,7 +46,7 @@ export function isWarningOrErrorTrace(content: string): boolean {
   if (!firstLine) {
     return false;
   }
-  return /^(?:warning|警告|error|错误)\b/i.test(firstLine.trim());
+  return /^(?:(?:warning|error)\b|(?:警告|错误)(?=$|[\s:：]))/i.test(firstLine.trim());
 }
 
 export function isWebSearchTrace(content: string): boolean {

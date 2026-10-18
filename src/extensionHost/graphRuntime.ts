@@ -81,6 +81,7 @@ export type PromptRunInput = {
   skipLongTermMemoryPersist?: boolean;
   thinkingModeOverride?: ThinkingMode;
   throwOnError?: boolean;
+  cliCommandRepairAttempted?: boolean;
 };
 
 export type PromptRunTarget = {

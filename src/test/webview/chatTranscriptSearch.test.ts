@@ -519,6 +519,7 @@ test("keeps the search shell, theme tokens, and rerender hook together", () => {
   assert.match(html, /id="chatSearchInput"[^>]*placeholder="关键词"/);
   assert.match(html, /id="chatSearchCount"[^>]*>0\/0</);
   assert.match(HEADER_TABS_STYLES, /\.chat-search-bar \{[\s\S]*var\(--vscode-editorWidget-background/);
+  assert.match(HEADER_TABS_STYLES, /\.chat-search-bar \{[^}]*width: 50vw;/);
   assert.match(MESSAGE_BLOCK_STYLES, /mark\.chat-search-hit \{[\s\S]*background: #fff2a8;[\s\S]*color: #000000;/);
   assert.match(MESSAGE_BLOCK_STYLES, /mark\.chat-search-hit\.is-active \{[\s\S]*background: #fff2a8;[\s\S]*color: #000000;/);
   assert.doesNotMatch(HEADER_TABS_STYLES.slice(HEADER_TABS_STYLES.indexOf(".chat-search-bar")), /#[0-9a-fA-F]{3,8}/);

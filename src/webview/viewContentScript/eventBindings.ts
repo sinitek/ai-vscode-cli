@@ -20,7 +20,11 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
               return;
             }
             event.preventDefault();
-            element.click();
+            if (typeof element.click === "function") {
+              element.click();
+            } else {
+              element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            }
           });
         });
 

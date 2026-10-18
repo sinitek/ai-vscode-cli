@@ -1,4 +1,5 @@
 import { ChatMessage } from "../webview/types";
+import type { SessionHealth } from "../sessionHealth";
 
 export type SessionHistoryRecord = {
   id: string;
@@ -6,6 +7,7 @@ export type SessionHistoryRecord = {
   createdAt: number;
   lastUsedAt: number;
   firstPrompt?: string;
+  health?: SessionHealth;
 };
 
 const DEFAULT_LOCAL_PREFIX = "local_";
@@ -99,6 +101,9 @@ export function mergeSessionRecords(primary: SessionHistoryRecord, secondary: Se
     createdAt: Math.min(primary.createdAt, secondary.createdAt),
     lastUsedAt: Math.max(primary.lastUsedAt, secondary.lastUsedAt),
     ...(nextFirstPrompt ? { firstPrompt: nextFirstPrompt } : {}),
+    ...(primary.health || secondary.health ? {
+      health: primary.health === "normal" || secondary.health === "normal" ? "normal" : "abnormal",
+    } : {}),
   };
 }
 

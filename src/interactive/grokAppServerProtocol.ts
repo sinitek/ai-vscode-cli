@@ -22,6 +22,44 @@ export type GrokLineParseResult =
   | { ok: true; message: GrokJsonRpcMessage }
   | { ok: false; reason: "empty" | "invalid"; error: string };
 
+export type GrokTokenUsageUpdate = {
+  tokensInContextWindow: number;
+  modelContextWindow: number | null;
+};
+
+export function readGrokTokenUsageUpdate(message: GrokJsonRpcMessage, sessionId: string): GrokTokenUsageUpdate | null {
+  if (!sessionId || !["session/update", "_x.ai/session_notification", "_x.ai/session/update"].includes(message.method ?? "")) {
+    return null;
+  }
+  const params = asRecord(message.params);
+  if (params?.sessionId !== sessionId) {
+    return null;
+  }
+  const update = asRecord(params.update);
+  let used: unknown;
+  let size: unknown;
+  if (update?.sessionUpdate === "usage_update") {
+    used = update.used;
+    size = update.size;
+  } else if (update?.sessionUpdate === "session_status" && update.schema_version === 1 && update.session_id === sessionId) {
+    const context = asRecord(update.context_window);
+    used = context?.context_tokens;
+    size = context?.context_window_size;
+  } else {
+    return null;
+  }
+  if (typeof used !== "number" || !Number.isSafeInteger(used) || used < 0) {
+    return null;
+  }
+  if (size !== undefined && (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0)) {
+    return null;
+  }
+  return {
+    tokensInContextWindow: used,
+    modelContextWindow: typeof size === "number" && size > 0 ? size : null,
+  };
+}
+
 export function buildGrokRequestError(
   error: NonNullable<GrokJsonRpcMessage["error"]>,
   streamFailure: string | null = null,
@@ -59,6 +97,43 @@ export type GrokSessionEvent =
   | { type: "tool"; name: string; status: string; payload: unknown }
   | { type: "tool_update"; name: string; status: string; payload: unknown }
   | { type: "ignored" };
+
+export type GrokCompactionEvent = {
+  status: "started" | "completed" | "failed" | "cancelled";
+  tokensBefore: number | null;
+  tokensAfter: number | null;
+  error: string | null;
+};
+
+export function readGrokCompactionEvent(message: GrokJsonRpcMessage, sessionId: string): GrokCompactionEvent | null {
+  if (!["_x.ai/session_notification", "_x.ai/session/update", "session/update"].includes(message.method ?? "")) {
+    return null;
+  }
+  const params = asRecord(message.params);
+  if (typeof params?.sessionId === "string" && params.sessionId !== sessionId) {
+    return null;
+  }
+  const update = asRecord(params?.update);
+  const statuses = {
+    auto_compact_started: "started",
+    auto_compact_completed: "completed",
+    auto_compact_failed: "failed",
+    auto_compact_cancelled: "cancelled",
+  } as const;
+  const updateType = typeof update?.sessionUpdate === "string" ? update.sessionUpdate : "";
+  if (!Object.prototype.hasOwnProperty.call(statuses, updateType)) {
+    return null;
+  }
+  const tokenCount = (value: unknown): number | null => (
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
+  );
+  return {
+    status: statuses[updateType as keyof typeof statuses],
+    tokensBefore: tokenCount(update?.tokens_before),
+    tokensAfter: tokenCount(update?.tokens_after),
+    error: typeof update?.error === "string" ? update.error : null,
+  };
+}
 
 export type GrokReasoningOption = {
   id: "reasoning_effort";
@@ -116,6 +191,7 @@ export function buildGrokInitializeParams(clientName = "sinitek-cli-tools"): Rec
         writeTextFile: false,
       },
       terminal: false,
+      _meta: { "x.ai/statusLine": true },
     },
     clientInfo: {
       name: clientName,

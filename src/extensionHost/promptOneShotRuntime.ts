@@ -13,6 +13,7 @@ import {
   type RunProcess,
 } from "../cli/commandRunner";
 import { getCliCommand, getDebugLogging } from "../cli/config";
+import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import {
   createOpenCodeSubagentMonitor,
@@ -848,7 +849,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       buildProcessLabel,
       appendBoundedUtf8Text,
       maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
-      maxHiddenRetries: HIDDEN_RETRY_MAX_RETRIES,
+      maxHiddenRetries: input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
       onStdoutChunk: (chunk, stream) => {
         const activity = openCodeActivityTracker.updateStdout(chunk);
         if (activity.hasAssistantAnswer) {
@@ -1039,7 +1040,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         const failure = buildRetryFailureMessage(context.attemptResult, context.rawStdout, context.rawStderr);
         return {
           hiddenRetryCount: nextHiddenRetryCount,
-          shouldRetry: nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
+          shouldRetry: !input.cliCommandRepairAttempted && nextHiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
             && isHiddenRetryEligibleAttempt(context.attemptResult, failure.retryFailureMessage),
         };
       },
@@ -1114,6 +1115,9 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         appendCompletionMessage("error");
         persistActiveMessages();
         clearActiveRun();
+        if (context.attemptResult.type === "error" && isCliCommandRepairableError(context.attemptResult.error)) {
+          throw context.attemptResult.error;
+        }
         if (input.throwOnError) {
           throw new Error(userMessageForThrow);
         }

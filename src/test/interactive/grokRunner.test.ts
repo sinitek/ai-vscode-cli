@@ -32,6 +32,8 @@ class FakeGrok extends EventEmitter {
   public authMethods: Array<{ id: string }> = [{ id: "xai.api_key" }, { id: "cached_token" }];
   public loadSession = false;
   public failLoad = false;
+  public loadedSessionId = "loaded-session";
+  public promptResponse: ((message: Record<string, unknown>) => void) | null = null;
   public advertiseReasoning = true;
   public reasoningInInitialize = false;
   public reasoningOptions: string[] | null = ["none", "low", "medium", "high", "xhigh", "max"];
@@ -88,7 +90,7 @@ class FakeGrok extends EventEmitter {
         this.send({ jsonrpc: "2.0", id, error: { code: -32603, message: "Path not found." } });
         return;
       }
-      this.send({ jsonrpc: "2.0", id, result: { sessionId: "loaded-session", configOptions: this.reasoningInInitialize ? undefined : configOptions } });
+      this.send({ jsonrpc: "2.0", id, result: { sessionId: this.loadedSessionId, configOptions: this.reasoningInInitialize ? undefined : configOptions } });
       return;
     }
     if (method === "session/new") {
@@ -104,6 +106,10 @@ class FakeGrok extends EventEmitter {
       return;
     }
     if (method === "session/prompt") {
+      if (this.promptResponse) {
+        this.promptResponse(message);
+        return;
+      }
       this.send({
         jsonrpc: "2.0",
         method: "session/update",
@@ -231,6 +237,120 @@ test("runs Grok ACP over stdio without treating prompt completion as text", asyn
 async function emptyGrokHome(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "grok-empty-"));
 }
+
+async function createGrokCompactionFixture(context: test.TestContext) {
+  const home = await emptyGrokHome();
+  const fake = new FakeGrok();
+  fake.loadSession = true;
+  fake.loadedSessionId = "saved-session";
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    model: "gpt-6.1-sol",
+    localSessionId: "saved-session",
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  context.after(async () => {
+    runner.dispose();
+    await fs.rm(home, { recursive: true, force: true });
+  });
+  return { fake, runner };
+}
+
+test("compacts the existing Grok session and reuses it for the following prompt", async (context) => {
+  const { fake, runner } = await createGrokCompactionFixture(context);
+  fake.promptResponse = (message) => {
+    assert.deepEqual(message.params, { sessionId: "saved-session", prompt: [{ type: "text", text: "/compact" }] });
+    for (const sessionUpdate of ["auto_compact_started", "auto_compact_completed"]) {
+      fake.send({
+        method: "_x.ai/session_notification",
+        params: { sessionId: "saved-session", update: { sessionUpdate, tokens_before: 8000, tokens_after: 2000 } },
+      });
+    }
+    fake.send({ id: message.id, result: { stopReason: "end_turn" } });
+  };
+  assert.deepEqual(await runner.compactSession(), {
+    compacted: true, sessionId: "saved-session", tokensBefore: 8000, tokensAfter: 2000,
+  });
+  fake.promptResponse = null;
+  const text: string[] = [];
+  await runner.prompt("continue", { onAssistantDelta: (chunk) => text.push(chunk) });
+  assert.equal(text.join(""), "hello");
+  const methods = fake.lines.map((line) => JSON.parse(line).method);
+  assert.equal(methods.filter((method) => method === "initialize").length, 1);
+  assert.equal(methods.filter((method) => method === "session/load").length, 1);
+  assert.equal(methods.includes("session/new"), false);
+});
+
+test("does not treat an ordinary Grok reply as successful compaction", async (context) => {
+  const { runner } = await createGrokCompactionFixture(context);
+  await assert.rejects(runner.compactSession(), /未确认原生上下文压缩完成/);
+  assert.equal(runner.isReusable(), true);
+});
+
+test("rejects failed, cancelled and foreign-session Grok compaction confirmations", async (context) => {
+  for (const scenario of ["failed", "cancelled", "foreign", "interrupted", "rpc-error"]) {
+    await context.test(scenario, async (subcontext) => {
+      const { fake, runner } = await createGrokCompactionFixture(subcontext);
+      fake.promptResponse = (message) => {
+        fake.send({
+          method: "_x.ai/session_notification",
+          params: {
+            sessionId: scenario === "foreign" ? "other-session" : "saved-session",
+            update: {
+              sessionUpdate: scenario === "failed" || scenario === "cancelled" ? `auto_compact_${scenario}` : "auto_compact_completed",
+              error: scenario === "failed" ? "compaction provider failed" : undefined,
+            },
+          },
+        });
+        fake.send(scenario === "rpc-error"
+          ? { id: message.id, error: { code: -32603, message: "compact RPC failed" } }
+          : { id: message.id, result: { stopReason: scenario === "interrupted" ? "cancelled" : "end_turn" } });
+      };
+      await assert.rejects(runner.compactSession(), /未确认原生上下文压缩完成|compaction provider failed|compact RPC failed/);
+    });
+  }
+});
+
+test("does not create or compact an empty Grok session when resuming fails", async (context) => {
+  for (const scenario of ["missing", "unsupported", "wrong-session"]) {
+    await context.test(scenario, async (subcontext) => {
+      const { fake, runner } = await createGrokCompactionFixture(subcontext);
+      fake.failLoad = scenario === "missing";
+      fake.loadSession = scenario !== "unsupported";
+      if (scenario === "wrong-session") fake.loadedSessionId = "other-session";
+      await assert.rejects(runner.compactSession());
+      const methods = fake.lines.map((line) => JSON.parse(line).method);
+      assert.equal(methods.includes("session/new"), false);
+      assert.equal(methods.includes("session/prompt"), false);
+    });
+  }
+});
+
+test("disposal settles pending Grok compaction and active prompts block compaction", async (context) => {
+  const { fake, runner } = await createGrokCompactionFixture(context);
+  await runner.start();
+  let promptStarted!: () => void;
+  const started = new Promise<void>((resolve) => { promptStarted = resolve; });
+  fake.promptResponse = () => promptStarted();
+  const pending = runner.prompt("active prompt");
+  await started;
+  await assert.rejects(runner.compactSession(), /当前任务运行中/);
+  runner.dispose();
+  await assert.rejects(pending, /disposed/);
+});
+
+test("disposal rejects pending native Grok compaction", async (context) => {
+  const { fake, runner } = await createGrokCompactionFixture(context);
+  let promptStarted!: () => void;
+  const started = new Promise<void>((resolve) => { promptStarted = resolve; });
+  fake.promptResponse = () => promptStarted();
+  const pending = runner.compactSession();
+  await started;
+  runner.dispose();
+  await assert.rejects(pending, /disposed/);
+});
 
 test("skips account authentication when the default model has its own api key", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "grok-keyed-"));
@@ -685,6 +805,84 @@ test("host sends session updates through rawStreamDelta without changing bubbles
   assert.equal(stored.some((message) => String(message.content).includes("session/update")), false);
 });
 
+test("reports current Grok context after prompt completion and stops notifying on cancel", async () => {
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: await emptyGrokHome() },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  const usage: Array<{ tokensInContextWindow: number; modelContextWindow: number | null }> = [];
+  const events: unknown[] = [];
+  const sendUsage = (tokens: number, sessionId = "grok-session") => fake.send({
+    method: "_x.ai/session_notification",
+    params: {
+      sessionId,
+      update: {
+        sessionUpdate: "session_status",
+        schema_version: 1,
+        session_id: sessionId,
+        context_window: { context_tokens: tokens, context_window_size: 128000, session_input_tokens: 900000 },
+      },
+    },
+  });
+  try {
+    await runner.start();
+    sendUsage(0);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await runner.prompt("hello", { onTokenUsageUpdate: (update) => usage.push(update), onEvent: (event) => events.push(event) });
+    sendUsage(12345);
+    sendUsage(99999, "other-session");
+    sendUsage(4000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(usage.map((update) => update.tokensInContextWindow), [0, 12345, 4000]);
+    assert.equal(usage.every((update) => update.modelContextWindow === 128000), true);
+    assert.equal(JSON.stringify(events).includes("session_status"), false);
+    const nextUsage: number[] = [];
+    await runner.prompt("again", { onTokenUsageUpdate: (update) => nextUsage.push(update.tokensInContextWindow) });
+    sendUsage(6000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(nextUsage, [4000, 6000]);
+    assert.equal(usage.length, 3);
+    runner.cancelTurn();
+    sendUsage(7000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(nextUsage, [4000, 6000]);
+  } finally {
+    runner.dispose();
+  }
+});
+
+test("host routes Grok context to its tab and accepts late snapshots only for the retained session", async () => {
+  let handlers: GrokStreamHandlers = {};
+  const harness = createHostHarness({
+    behavior: async (_prompt, currentHandlers) => {
+      handlers = currentHandlers;
+      handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 12345, modelContextWindow: 128000 });
+      handlers.onAssistantDelta?.("[final_answer] Done.");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("hello"), targetFor("local-session"));
+  const updates = () => harness.panelMessages.filter((message) => message.type === "contextTokenUsage");
+  assert.deepEqual(updates(), [{ type: "contextTokenUsage", tabId: "tab-grok", tokensInContextWindow: 12345, modelContextWindow: 128000 }]);
+  handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 13000, modelContextWindow: 128000 });
+  assert.equal(updates().length, 2);
+  harness.tab.cli = "codex";
+  handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 1, modelContextWindow: null });
+  harness.tab.cli = "grok";
+  harness.tab.sessionId = "replacement-session";
+  handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 2, modelContextWindow: null });
+  harness.tab.sessionId = "local-session";
+  harness.runnerState.retained = false;
+  handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 3, modelContextWindow: null });
+  harness.runnerState.retained = true;
+  harness.activeRunsByTabId.set("tab-grok", { runId: "new-run" } as InteractiveTabRun);
+  handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 4, modelContextWindow: null });
+  assert.equal(updates().length, 2);
+});
+
 test("filters replay metadata and merges fragments without delaying assistant or tool handlers", async () => {
   const fake = new FakeGrok();
   const runner = new GrokInteractiveRunner({
@@ -827,6 +1025,8 @@ function createHostHarness(options: {
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
   const panelMessages: Array<Record<string, unknown>> = [];
   const runStatus: string[] = [];
+  const tab: { cli: CliName; sessionId: string | null } = { cli: "grok", sessionId: "local-session" };
+  const runnerState = { retained: true };
   let idCounter = 0;
   const runner = {
     start: async () => ({ acpSessionId: "acp-session", resumed: false, retainedLocalSessionId: null }),
@@ -837,7 +1037,7 @@ function createHostHarness(options: {
   };
   const manager = {
     getOrCreateGrokRunner: () => runner,
-    hasGrokRunner: () => true,
+    hasGrokRunner: () => runnerState.retained,
     setRunner: () => undefined,
     detachRunner: () => undefined,
   } as unknown as InteractiveRunnerManager;
@@ -857,7 +1057,7 @@ function createHostHarness(options: {
     buildTaskRunCompletionText: (status: string) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => "grok-config",
-    getConversationTabById: () => ({ sessionId: "local-session" }),
+    getConversationTabById: () => tab,
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "xhigh" as const,
     getGlobalHumanInteractionEnabled: () => false,
@@ -918,6 +1118,9 @@ function createHostHarness(options: {
     panelMessages,
     runStatus,
     messagesBySession,
+    tab,
+    runnerState,
+    activeRunsByTabId,
   };
 }
 

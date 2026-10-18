@@ -715,6 +715,7 @@ export function createLoopPlusExtensionStopHarness(options: {
     "  return null;",
     "}",
     "function postPanelState() { return Promise.resolve(); }",
+    "const promptAutoRepairController = { isRepairing: () => false, cancel: () => {} };",
     "function getLoopPlusOrchestrationHost() {",
     "  return {",
     "    stopParent(taskId) {",

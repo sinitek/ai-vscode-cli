@@ -89,8 +89,8 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
       currentId: "removed-current",
       sessions: [
         createSession("expired", 30, { firstPrompt: "   " }),
-        createSession("fallback", 120, { label: " New conversation ", firstPrompt: " Draft " }),
-        createSession("latest", 300, { label: "  Saved label  " }),
+        createSession("fallback", 120, { label: " New conversation ", firstPrompt: " Draft ", health: "abnormal" }),
+        createSession("latest", 300, { label: "  Saved label  ", health: "normal" }),
       ],
     },
     claude: {
@@ -104,8 +104,8 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
   assert.deepEqual(retained.codex, {
     currentId: "latest",
     sessions: [
-      createSession("fallback", 120, { label: "From: Draft", firstPrompt: " Draft " }),
-      createSession("latest", 300, { label: "Saved label", firstPrompt: undefined }),
+      createSession("fallback", 120, { label: "From: Draft", firstPrompt: " Draft ", health: "abnormal" }),
+      createSession("latest", 300, { label: "Saved label", firstPrompt: undefined, health: "normal" }),
     ],
   });
   assert.deepEqual(retained.claude, { currentId: null, sessions: [] });
@@ -235,7 +235,7 @@ test("reads, writes, deletes, and reports session file failures without escaping
     logError: (event: string) => errors.push(event),
   };
   const store = createStore({
-    codex: { currentId: "session-1", sessions: [createSession("session-1", 1)] },
+    codex: { currentId: "session-1", sessions: [createSession("session-1", 1, { health: "normal" })] },
   });
   try {
     assert.equal(getSessionFilePath(paths.workspaceKeyFallback, options), paths.legacySessionFile);

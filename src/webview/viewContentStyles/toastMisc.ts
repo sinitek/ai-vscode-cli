@@ -292,7 +292,10 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
       .common-command-button {
         width: 100%;
-        justify-content: space-between;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        text-align: left;
       }
       .common-command-desc {
         font-size: 11px;

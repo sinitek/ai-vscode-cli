@@ -14,6 +14,19 @@
 | Grok Build | 长驻 ACP `grok --no-auto-update agent stdio` | `loadSession` 为真时按 `sessionId/cwd/mcpServers` 续接，否则新建 ACP 会话并保留插件本地记录 | `src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/config/grokConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
+### 会话健康状态与续接前置条件
+
+- `src/sessionHealth.ts` 定义 `normal / abnormal`。任一非空助手回复（含思考、最终结论）或正常操作/思考 trace 即可使会话正常；用户消息、system、错误/警告、重连日志和空占位不算。`SessionRecord.health` 随会话存储持久化，正常状态不降级；旧记录加载消息时回填，local 到远端会话迁移时合并保留任一侧正常状态。
+- 所有任务执行在 `runPrompt` 的统一入口、OpenCode 用户消息预加载和 CLI 分流前检查当前目标 Tab 的实际会话。异常会话先保留原存档、仅解除目标 CLI 映射并清空其草稿，再以空会话 ID 启动新底层会话；未被其它 Tab/运行引用的旧交互 runner 同时释放。后台目标不切换活动 Tab，也不清理其它 CLI 的映射或草稿。
+- 不新增界面文案或健康状态徽标，现有中英文 i18n 不变；正常会话的后续失败仍可续接，现有 hidden retry 策略不变。
+
+### 任务执行时自动修复与单次重试
+
+- `src/extensionHost/promptAutoRepair.ts` 包装统一 `runPrompt` 的三条执行分支。首次收到启动命令 ENOENT 后重新检查目标 CLI 命令是否仍不可用，复用查找与 `persistCliCommand`；命令已正常解析时不把不存在的 cwd 或普通文件错误误判成可修复项。
+- 修复成功通过 `prepareSessionForPromptRun(..., { forceNewSession: true })` 在同一 Tab 清除旧会话绑定和草稿，保留旧消息文件，释放不再引用的旧 runner，再以 `sessionId=null` 重放完整输入。清除旧 `preloadedUserMessageId`，新会话重新追加用户消息；保留显式模型、思考力度、图片、执行目录和 Loop/Graph 追踪字段。
+- 重放标记 `cliCommandRepairAttempted=true`，交互及 OpenCode one-shot/parallel 不再进入 hidden retry。OpenCode 的启动 ENOENT 收口后仍抛出原始错误供统一入口识别，不转换丢失错误码。修复或第二次执行失败停止，不递归重试。
+- 修复等待期保持 Tab 可停止；停止、插件退出、目标 Tab 丢失、CLI 或工作区变化、同 Tab 新请求替代后均不重放旧请求。不自动安装 CLI，也不改变其它错误的既有策略。
+
 ## 2. 命令来源
 
 当前支持平台命令都从 VS Code 设置读取：
@@ -128,6 +141,13 @@
 - 固定的 `thinkingModeOpencode` 和 `thinkingArgs.opencode.*` 设置已移除；Codex / Claude 的固定 ThinkingMode 和参数映射保持原行为。
 
 ### Grok Build
+
+- 当前上下文用量：`initialize.clientCapabilities._meta["x.ai/statusLine"] = true` 开启原生状态订阅。本机 Grok 1.0.62 验证会发送 `_x.ai/session_notification`，其中 `update.sessionUpdate = "session_status"`、`schema_version = 1`，`context_window.context_tokens` 是当前窗口读数，`context_window_size` 是上限；不能使用其中累计的 `session_input_tokens` / `session_output_tokens`。协议适配同时兼容 ACP `usage_update.used/size`，只接受相同会话的非负安全整数，缺失读数不估算。
+- 状态快照可能晚于 `session/prompt` 的 RPC result。runner 缓存当前会话的最新用量，保留轻量用量回调至下次 prompt、取消或销毁，冷恢复后的首个 prompt 可回放最新快照。宿主在执行中校验 runId，结束后仅允许仍绑定原 Tab / Grok 会话 / runner 且没有新执行的末尾更新；不把完整状态中的路径等元数据额外加入回放。Webview 共用 `contextTokenUsage` 事件、Codex 标签、占位和悬停详情，合法零值与压缩后的下降均直接显示。
+
+- Grok 手动压缩复用 Codex 的“常用指令 → 压缩上下文”弹窗和消息通道 `runCommonCommand/compactContext`；压缩时显示“压缩中”、禁用再次触发并保留“中止”，结束/失败/停止恢复入口。Grok 同时加入全局 `autoCompactContextAfterRun`，仅成功且超过 5 分钟的已有会话触发，3 分钟超时停止，沿用 Loop 主任务并行规则。
+- 原生压缩由当前 ACP 会话的 `session/prompt` 发送 `/compact`，不生成插件摘要或切换新会话；冷启动必须成功 `session/load` 原 ID，失败不得回退新建。严格等待当前会话 `_x.ai/session_notification` 中的 `auto_compact_completed` 与 prompt 成功结果，失败、取消、异会话通知或只有普通回复均不算完成。保留原映射，停止/超时释放当前 runner，下一轮可恢复原会话。
+- 2026-10-18 在隔离 `GROK_HOME`、Grok 1.0.62、`gpt-6.1-sol`（`chat_completions`、`low`）完成五轮对话 → 释放进程 → 恢复原会话 → 原生压缩 → 续聊验证：上下文由 31432 降至 10825 token，验证口令仍可正确回忆。短会话也可能原生完成但 token 不下降，是否缩减由 CLI 决定；不据此伪造失败或删除会话历史。
 
 - Grok 1.0.62 对部分接口的 Responses SSE `response.metadata` 事件不兼容，可能在正确选择模型后仍返回 `Internal error`。已用同一连接的 `chat_completions` 为 `gpt-6.1-sol` 完成真实 ACP 回答验证；配置与诊断步骤见 `.ch/docs/runbooks/grok-model-config.md`，不要把协议兼容失败误判为模型下拉无效。
 

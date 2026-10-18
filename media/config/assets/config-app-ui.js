@@ -7039,31 +7039,6 @@ const ConfigEditorPanel = () => {
                         flexDirection: "column",
                       },
                       children: [
-                        be.jsxs("div", {
-                          style: {
-                            marginBottom: "4px",
-                            fontWeight: 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            justifyContent: "space-between",
-                          },
-                          children: [
-                            be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 4 },
-                              children: [
-                                be.jsxs("span", {
-                                  children: [be.jsx(Ya, {}), " config.toml"],
-                                }),
-                                be.jsx(xn, {
-                                  size: "small",
-                                  onClick: () => N("codex-config"),
-                                  children: "查看范例",
-                                }),
-                              ],
-	                            }),
-	                          ],
-	                        }),
                         be.jsx("div", {
                           style: {
                             marginBottom: "4px",

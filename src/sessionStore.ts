@@ -4,6 +4,7 @@ import { CliName, createCliRecord } from "./cli/types";
 import { sanitizeCodexReasoningContent } from "./codexReasoningContent";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { stripThinkingWrapperTags } from "./thinkingMarkup";
+import type { SessionHealth } from "./sessionHealth";
 import { ChatMessage } from "./webview/types";
 
 export type SessionRecord = {
@@ -12,6 +13,7 @@ export type SessionRecord = {
   createdAt: number;
   lastUsedAt: number;
   firstPrompt?: string;
+  health?: SessionHealth;
 };
 
 export type SessionStore = Record<CliName, { currentId: string | null; sessions: SessionRecord[] }>;
@@ -77,6 +79,7 @@ export function ensureSessionStore(
             createdAt: session.createdAt ?? Date.now(),
             lastUsedAt: session.lastUsedAt ?? Date.now(),
             firstPrompt,
+            ...(session.health === "normal" || session.health === "abnormal" ? { health: session.health } : {}),
           };
         })
         .filter((session) => isSessionRecordWithinRetention(session, options.isTimestampWithinHistoryRetention, now))

@@ -42,6 +42,7 @@ import {
   type PendingSessionDraft,
 } from "./sessionTabs";
 import { ChatMessage } from "./webview/types";
+import { resolveSessionHealth, type SessionHealth } from "./sessionHealth";
 
 type RuntimeSessionReference = {
   cli: CliName;
@@ -184,6 +185,7 @@ export function createSessionLifecycleController(deps: {
   repairSupersededLocalSession: (cli: CliName, sessionId: string, options?: { notifyPanel?: boolean }) => string;
   repairSupersededLocalSessions: (options?: { notifyPanel?: boolean }) => void;
   persistActiveMessages: () => void;
+  prepareSessionForPromptRun: (cli: CliName, sessionId: string | null, tabId: string, options?: { forceNewSession?: boolean }) => string | null;
   replaceConversationTabSessionReferences: (cli: CliName, fromSessionId: string, toSessionId: string) => void;
   resolveCodexInteractiveSelection: (sessionId: string) => CodexRunSelection | null;
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
@@ -336,10 +338,22 @@ export function createSessionLifecycleController(deps: {
     }
   };
 
+  const updateSessionHealth = (cli: CliName, sessionId: string, messages: ChatMessage[]): SessionHealth => {
+    const store = deps.sessionStore();
+    const record = store[cli].sessions.find((session) => session.id === sessionId);
+    const health = resolveSessionHealth(record?.health, messages);
+    if (record && record.health !== health) {
+      record.health = health;
+      deps.persistSessionStore(store);
+    }
+    return health;
+  };
+
   const loadMessages = (cli: CliName, sessionId: string): ChatMessage[] => {
     const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
     const cached = deps.sessionMessageCache.get(key);
     if (cached) {
+      updateSessionHealth(cli, sessionId, cached);
       return cached;
     }
     const messages = readMessageFile(cli, sessionId, {
@@ -360,6 +374,7 @@ export function createSessionLifecycleController(deps: {
       });
     }
     deps.sessionMessageCache.set(key, resolvedMessages);
+    updateSessionHealth(cli, sessionId, resolvedMessages);
     return resolvedMessages;
   };
 
@@ -401,6 +416,7 @@ export function createSessionLifecycleController(deps: {
   const saveMessages = (cli: CliName, sessionId: string, messages: ChatMessage[]): void => {
     const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
     const sanitized = sanitizeMessages(messages, cli);
+    updateSessionHealth(cli, sessionId, sanitized.messages);
     deps.sessionMessageCache.set(key, sanitized.messages);
     writeMessageFile(cli, sessionId, sanitized.messages, {
       activeWorkspaceKey: deps.activeWorkspaceKey(),
@@ -834,6 +850,33 @@ export function createSessionLifecycleController(deps: {
         activeProcessTitleBase: null,
         activeProcessTitleRunId: null,
       });
+    },
+    prepareSessionForPromptRun: (cli, sessionId, tabId, options = {}) => {
+      if (!sessionId) {
+        if (options.forceNewSession) {
+          deps.clearPendingSessionDraft(tabId, cli);
+          lifecycle.sendSessionMessagesToPanel(cli, null, tabId);
+        }
+        return null;
+      }
+      const messages = loadMessages(cli, sessionId);
+      if (updateSessionHealth(cli, sessionId, messages) === "normal" && !options.forceNewSession) {
+        return sessionId;
+      }
+      const tab = deps.getConversationTabById(tabId);
+      if (!tab || getConversationTabSessionIdForCli(tab, cli) !== sessionId) {
+        return null;
+      }
+      saveMessages(cli, sessionId, messages);
+      setConversationTabSessionIdForCli(tab, cli, null);
+      deps.persistConversationTabsToWorkspaceSettings();
+      deps.clearPendingSessionDraft(tabId, cli);
+      if (deps.getCurrentSessionId(cli) === sessionId) {
+        deps.setCurrentSession(cli, null, { syncConversationTab: false });
+      }
+      lifecycle.sendSessionMessagesToPanel(cli, null, tabId);
+      deps.logInfo(options.forceNewSession ? "session-replaced-after-cli-repair" : "session-abnormal-replaced-before-run", { cli, sessionId, tabId });
+      return null;
     },
     saveSessionMessages: saveMessages,
     sendSessionLoadErrorToPanel: sendLoadError,

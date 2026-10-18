@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
 import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "../../webview/viewContentScript/attachmentsAndTime";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
+import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
@@ -532,6 +533,7 @@ function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unk
         renderMessages,
         requestRunStreamExport,
         resetConversationRuntimeState,
+        updateContextTokenUsage,
         updateRunStreamButton,
         sendPrompt,
         setMessagesForTab,
@@ -1589,9 +1591,13 @@ test("hides stale run stream labels for Loop main tabs but keeps them for other 
   assert.equal(staleBadge.textContent, "极慢");
 });
 
-test("shows Codex used context tokens to the right of the stream button while running", () => {
+for (const cli of ["codex", "grok"]) {
+test(`shows ${cli} used context tokens to the right of the stream button while running`, () => {
   const { api, document, window } = createRuntimeHarness();
-  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: cli,
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli }, { id: "tab-2", cli }] },
+  }) });
   const label = document.getElementById("runContextTokens");
 
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000, prompt: "run task" });
@@ -1621,6 +1627,82 @@ test("shows Codex used context tokens to the right of the stream button while ru
   window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
   assert.equal(label.style.display, "inline-flex");
   assert.equal(label.textContent, "12k");
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.updateContextTokenUsage();
+  assert.equal(label.textContent, "0.5k");
+  api.state.conversationTabs.activeTabId = "tab-1";
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 3_000 });
+  assert.equal(label.textContent, "—");
+  window.dispatchMessage({ type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 0, modelContextWindow: null });
+  assert.equal(label.textContent, "0k");
+});
+}
+
+test("SVG common-command buttons support Enter and Space without an HTMLElement click method", () => {
+  const button = new FakeElement("svg", "commonCommandButton");
+  Object.defineProperty(button, "click", { value: undefined });
+  let clicks = 0;
+  button.addEventListener("click", () => { clicks += 1; });
+  const end = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.indexOf('      elements.currentCli.addEventListener');
+  assert.ok(end > 0);
+  const bind = new Function("elements", "MouseEvent", VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.slice(0, end));
+  bind({ commonCommandButton: button }, class {
+    public constructor(public readonly type: string) {}
+  });
+  button.dispatchEvent({ type: "keydown", key: "Enter" });
+  button.dispatchEvent({ type: "keydown", key: " " });
+  assert.equal(clicks, 2);
+  button.setAttribute("aria-disabled", "true");
+  button.dispatchEvent({ type: "keydown", key: "Enter" });
+  button.dispatchEvent({ type: "keydown", key: " " });
+  button.dispatchEvent({ type: "keydown", key: "Escape" });
+  assert.equal(clicks, 2);
+});
+
+test("Grok exposes the same common-command compaction interaction and running state as Codex", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: "grok",
+    interactive: { supported: true, enabled: true },
+    interactiveMode: "coding",
+    conversationTabs: { activeTabId: "tab-grok", tabs: [{ id: "tab-grok", cli: "grok" }] },
+  }) });
+  const button = document.getElementById("commonCommandButton");
+  const compact = document.getElementById("commandCompact");
+  const overlay = document.getElementById("commonCommandsOverlay");
+  assert.equal(button.style.display, "inline-flex");
+  assert.equal(button.getAttribute("aria-disabled"), "false");
+  assert.equal(compact.disabled, false);
+  button.click();
+  assert.equal(overlay.classList.contains("visible"), true);
+  compact.click();
+  assert.equal(overlay.classList.contains("visible"), false);
+  assert.deepEqual(posted.filter((message) => message.type === "runCommonCommand"), [{ type: "runCommonCommand", command: "compactContext" }]);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-grok", status: "start", activity: "contextCompaction", startedAt: 3000 });
+  assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
+  assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), true);
+  assert.equal(button.getAttribute("aria-disabled"), "true");
+  assert.equal(compact.disabled, true);
+  button.click();
+  assert.equal(overlay.classList.contains("visible"), false);
+  assert.equal(document.getElementById("stopRun").disabled, false);
+  document.getElementById("stopRun").click();
+  assert.equal(posted.at(-1)?.type, "stopRun");
+  for (const status of ["end", "error", "stopped"]) {
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-grok", status });
+    assert.equal(button.getAttribute("aria-disabled"), "false");
+    assert.equal(compact.disabled, false);
+    assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), false);
+  }
+});
+
+test("common commands remain hidden when Grok interactive support is unavailable", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: "grok", interactive: { supported: false, enabled: false },
+  }) });
+  assert.equal(document.getElementById("commonCommandButton").style.display, "none");
+  assert.equal(document.getElementById("commandCompact").disabled, true);
 });
 
 test("hides the context size label while compacting and restores it afterwards", () => {
@@ -1667,7 +1749,7 @@ test("hides the context size label while compacting and restores it afterwards",
   assert.equal(label.textContent, "4k");
 });
 
-test("does not show context tokens for non-Codex runs", () => {
+test("does not show context tokens for runs without native usage support", () => {
   const { document, window } = createRuntimeHarness();
   window.dispatchMessage({
     type: "state",

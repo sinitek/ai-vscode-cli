@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-17",
+  "as_of": "2026-10-18",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -71,7 +71,7 @@
       "description": "对话 Tab 与底层 CLI session/thread 的映射，承载续接、停止、恢复、消息持久化和跨运行时生命周期适配；Codex 模型或配置档案切换仍优先续接已映射 thread，并由当前配置提供 modelProvider。OpenCode 任务 tab 的用户可见 CLI 标签为 opcode，内部标识仍为 opencode。Grok 仅在 initialize 声明 loadSession 且会话 id 不是 local_ 前缀时，按 sessionId、cwd、mcpServers 续接；新建后用 ACP session id 接管原 local_ 会话。同一进程的后续 prompt 复用 runner。",
       "status": "active",
       "aliases": ["session", "thread", "tab", "会话续接"],
-      "implementation_paths": ["src/sessionTabs.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
+      "implementation_paths": ["src/sessionTabs.ts", "src/sessionHealth.ts", "src/sessionLifecycle.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"},
@@ -305,6 +305,36 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.session_health_gates_reuse",
+      "name": "正常气泡决定会话可复用性",
+      "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话及草稿，释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI。",
+      "status": "active",
+      "applies_to": ["plugin.cli_session", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/sessionHealth.ts"},
+        {"path": "src/sessionLifecycle.ts", "anchor": "prepareSessionForPromptRun"},
+        {"path": "src/extension.ts", "anchor": "runPrompt"},
+        {"path": "src/test/session/sessionHealth.test.ts"},
+        {"path": "src/test/extensionHost/promptSessionHealth.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"}
+      ]
+    },
+    {
+      "id": "plugin.rule.grok_current_context_usage",
+      "name": "Grok 分组使用原生当前上下文快照",
+      "description": "Grok initialize 声明 clientCapabilities._meta 的 x.ai/statusLine 后订阅原生 session_status，读取 context_window.context_tokens 和 context_window_size，兼容标准 ACP usage_update.used/size。仅接受同会话有效非负安全整数，不把累计 session_input_tokens、单轮 usage、费用或字符数作为当前上下文。复用 Codex 上下文标签、等待占位与 Tab 隔离，合法零值和下降直接展示。runner 保留最新快照和轻量订阅以接收 prompt RPC result 之后的最终用量；结束后的更新仅允许仍绑定原 Grok Tab、会话和 runner 且无新执行，停止或失效后不接受旧回调。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/interactive/grokAppServerProtocol.ts", "anchor": "readGrokTokenUsageUpdate"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
+        {"path": "src/test/interactive/grokRunner.test.ts"},
+        {"path": ".ch/docs/runbooks/grok-model-config.md", "anchor": "当前上下文用量"}
+      ]
+    },
     {
       "id": "plugin.rule.grok_reasoning_config_value",
       "name": "Grok 思考力度使用 ACP 标量并检查模型能力",
@@ -660,11 +690,13 @@
     {
       "id": "plugin.rule.cli_command_auto_repair",
       "name": "CLI ENOENT 自动修复写入绝对路径",
-      "description": "插件初始化时，对扩展宿主当前无法解析的 Codex/Claude/OpenCode 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”仍列出未解决项并保留一键修复。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
+      "description": "插件初始化时，对扩展宿主当前无法解析的 Codex/Claude/OpenCode 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”仍列出未解决项并保留一键修复。任务执行遇到启动命令 ENOENT 时复用修复，仅当命令不可用且找到可执行文件并成功写入设置，才在原任务 Tab 解除旧会话、保留历史后以新会话重放原输入一次；覆盖交互、OpenCode one-shot 与并行执行及当前所有 CLI。第二次执行关闭通用 hidden retry，修复或重试失败即停止；用户停止、目标消失、工作区变化或同 Tab 新请求替代时不重放。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/cli/cliCommandRepair.ts"},
+        {"path": "src/extensionHost/promptAutoRepair.ts"},
+        {"path": "src/test/extensionHost/promptAutoRepair.test.ts"},
         {"path": "src/extension.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "工具设置自动修复 CLI ENOENT"}
       ]
@@ -680,6 +712,21 @@
         {"path": "src/graph/graphNodeInstructions.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.grok_native_context_compaction",
+      "name": "Grok 原会话原生压缩与指令交互",
+      "description": "Grok 复用 Codex 常用指令的压缩上下文弹窗、压缩中运行态、重复触发禁用、中止与结束恢复，并加入默认开启的全局执行后自动压缩；成功且超过 5 分钟的已有会话触发，3 分钟超时。原 ACP session/prompt 发送 /compact，必须收到同会话原生完成通知与正常结束结果；冷启动恢复失败不得新建空会话，普通回答、失败、取消或异会话事件不能确认成功，原映射与记录保留。",
+      "status": "active",
+      "applies_to": ["plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/contextCompactionRunner.ts"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/interactive/grokAppServerProtocol.ts"},
+        {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
+        {"path": ".ch/docs/runbooks/grok-model-config.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },
     {
