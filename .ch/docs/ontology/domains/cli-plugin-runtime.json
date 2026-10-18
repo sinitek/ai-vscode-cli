@@ -326,6 +326,18 @@
       ]
     },
     {
+      "id": "plugin.rule.task_control_bubbles_stay_visible",
+      "name": "任务通知与群聊运行图入口不参与指令折叠",
+      "description": "普通消息视图中，系统通知和带有效 openLoopGroupChat / openGraphRun 操作的气泡不参与指令折叠。Loop、Loop+、Graph 任务启动、状态通知及操作入口独立显示正文、时间和按钮，并切断前后普通指令分组；历史恢复、重绘和实时追加一致。普通工具或回复仅带 loopTaskId / graphRunId 不豁免折叠，空或无效操作也不豁免。仅看结果筛选规则不变。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "isInstructionBubble"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups"}
+      ]
+    },
+    {
       "id": "plugin.rule.thinking_bubble_viewport",
       "name": "思考气泡默认五行滚动并支持展开收起",
       "description": "thinking assistant、thinking trace 及兼容识别的 reasoning 气泡默认按实际显示行高限制为五行，超出后内部滚动。新增正文时收起状态自动滚底；SVG 按钮可展开全部正文或再次收起并定位最新内容。流式节点复用、结束后 Markdown 格式化及重绘保留展开状态，面板宽度变化重新检测溢出。最终结论、普通回复、工具结果和用户消息不受此规则限制。",

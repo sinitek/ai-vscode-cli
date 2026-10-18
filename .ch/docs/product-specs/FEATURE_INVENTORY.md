@@ -39,6 +39,8 @@
 
 折叠指令组的摘要与上下相邻气泡统一保持 20px 间距；去掉原生 `details` 折叠后残留的 12px flex 空隙。展开时摘要到正文仍为 12px，组内气泡间距仍为 20px；不改变折叠交互与消息内容。规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`，样式回归入口为 `src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 
+Loop、Loop+、Graph 专属通知与操作入口不进入指令折叠：系统通知，以及带有效群聊或运行图操作的气泡直接显示，并将前后普通指令分为独立折叠组；历史恢复、重绘和实时追加保持一致。任务关联标记本身不影响普通工具/回复的折叠，“仅看结果”筛选保持不变。实现见 `src/webview/viewContentScript/messageRendering.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`，规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`。
+
 聊天气泡顶部不再显示主任务或子任务身份标签：Loop、Loop+、Graph 等模式统一移除“Loop”“子任务”及其轮次文案。首次渲染、历史恢复、Tab 切换和流式更新遵循同一规则；任务身份、轮次等元数据、用户时间戳、任务状态和气泡内操作保持不变。回归入口为 `src/test/webview/looppluswebviewintegration.test.ts` 和 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
 Graph 运行图节点状态标签视觉约定：`pending` / `ready` 使用浅灰色背景和深色文字，`running` 使用深蓝色背景和白色文字，`passed` 使用绿色背景和白色文字，`failed` / `error` 使用红色背景和白色文字。

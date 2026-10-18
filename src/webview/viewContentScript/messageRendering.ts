@@ -145,7 +145,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
       }
 
       function isInstructionBubble(message, index) {
-        if (!message || message.role === "user") {
+        if (!message || message.role === "user" || message.role === "system") {
+          return false;
+        }
+        if (normalizeMessageActions(message).length > 0) {
           return false;
         }
         if (typeof isFinalAssistantSummaryMessage === "function" && isFinalAssistantSummaryMessage(index)) {

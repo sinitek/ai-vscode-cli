@@ -1905,7 +1905,7 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
     { id: "cmd-2", role: "assistant", content: "command two", createdAt: 3 },
     { id: "think-1", role: "assistant", kind: "thinking", content: "planning", createdAt: 4 },
     { id: "cmd-3", role: "trace", content: "command three", createdAt: 5 },
-    { id: "cmd-4", role: "system", content: "command four", createdAt: 6 },
+    { id: "cmd-4", role: "trace", content: "command four", createdAt: 6 },
     { id: "cmd-5", role: "assistant", content: "command five", createdAt: 7 },
     { id: "reason-1", role: "assistant", content: "**Thinking** still reasoning", createdAt: 8 },
     { id: "final-1", role: "assistant", content: "final answer", codexFinalAnswer: true, createdAt: 9 },
@@ -1964,6 +1964,87 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   reopened.querySelector("summary").click();
   assert.equal(reopened.open, false);
   assert.equal(reopened.querySelector("summary").textContent, "command five (3)");
+});
+
+test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups", () => {
+  const scenarios = [
+    { mode: "loop", title: "Loop", action: { type: "openLoopGroupChat", taskId: "loop-task", roundKey: "1" } },
+    { mode: "loop_plus", title: "Loop+", action: { type: "openLoopGroupChat", taskId: "loop-plus-task" } },
+    { mode: "graph", title: "Graph", action: { type: "openGraphRun", graphRunId: "graph-run", nodeId: "node-1" } },
+  ];
+  for (const scenario of scenarios) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: scenario.mode }) });
+    api.state.onlyShowFinalResults = false;
+    window.dispatchMessage({
+      type: "setMessages",
+      tabId: "tab-1",
+      messages: [
+        { id: "before-1", role: "trace", content: "exec pwd", loopTaskId: "task", graphRunId: "run" },
+        { id: "before-2", role: "trace", content: "exec ls", loopTaskId: "task", graphRunId: "run" },
+        { id: "started", role: "system", content: `已开始 ${scenario.title} 任务：task\n记录文件：任务记录`, createdAt: 1_700_000_000_000, actions: [scenario.action] },
+        { id: "middle-1", role: "trace", content: "exec git status" },
+        { id: "middle-2", role: "assistant", content: "继续检查实现。" },
+        { id: "notice", role: "system", content: `${scenario.title} 子任务已派发，等待执行结果。` },
+        { id: "action-only", role: "assistant", content: "", actions: [scenario.action] },
+        { id: "after-1", role: "trace", content: "exec npm test" },
+        { id: "after-2", role: "trace", content: "exec git diff" },
+      ],
+    });
+    const messages = document.getElementById("messages");
+    const assertControlBubblesVisible = () => {
+      assert.deepEqual(
+        messages.children.map((child: FakeElement) => child.dataset.messageId || child.className),
+        ["instruction-group", "started", "instruction-group", "notice", "action-only", "instruction-group"],
+        scenario.title,
+      );
+      assert.deepEqual(
+        messages.querySelectorAll("details.instruction-group").map((group: FakeElement) => group.querySelector(".instruction-group-body")?.children.map((child) => child.dataset.messageId)),
+        [["before-1", "before-2"], ["middle-1", "middle-2"], ["after-1", "after-2"]],
+      );
+      const started = messages.children.find((child: FakeElement) => child.dataset.messageId === "started");
+      assert.match(started?.querySelector(".bubble")?.innerHTML || "", /class="system-time"/);
+      assert.ok(started?.querySelector(".message-action-link"));
+      assert.ok(messages.children.find((child: FakeElement) => child.dataset.messageId === "action-only")?.querySelector(".message-action-link"));
+    };
+    assertControlBubblesVisible();
+    messages.children.find((child: FakeElement) => child.dataset.messageId === "started")?.querySelector(".message-action-link")?.click();
+    const actionMessage = posted.find((message) => message.type === scenario.action.type);
+    assert.ok(actionMessage);
+    if ("taskId" in scenario.action) {
+      assert.equal(actionMessage.taskId, scenario.action.taskId);
+    } else {
+      assert.equal(actionMessage.graphRunId, scenario.action.graphRunId);
+      assert.equal(actionMessage.nodeId, scenario.action.nodeId);
+    }
+    api.renderMessages();
+    assertControlBubblesVisible();
+    window.dispatchMessage({
+      type: "appendMessage",
+      tabId: "tab-1",
+      message: { id: "live-notice", role: "system", content: `${scenario.title} 任务状态已更新。`, actions: [scenario.action] },
+    });
+    assert.equal(messages.children[messages.children.length - 1].dataset.messageId, "live-notice");
+    assert.ok(messages.children[messages.children.length - 1].querySelector(".message-action-link"));
+  }
+});
+
+test("does not exempt ordinary instruction bubbles with empty or invalid task actions", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages = [
+    { id: "empty-actions", role: "trace", content: "exec pwd", actions: [] },
+    { id: "invalid-actions", role: "assistant", content: "普通指令。", actions: [{ type: "openLoopGroupChat", taskId: " " }, { type: "openGraphRun", graphRunId: "" }, null] },
+  ];
+  api.renderMessages();
+  const messages = document.getElementById("messages");
+  assert.equal(messages.children.length, 1);
+  assert.equal(messages.children[0].className, "instruction-group");
+  assert.deepEqual(
+    messages.querySelector(".instruction-group-body").children.map((child: FakeElement) => child.dataset.messageId),
+    ["empty-actions", "invalid-actions"],
+  );
 });
 
 test("keeps the owning conversation tab errored for error bubbles through append, update, collapse, and recovery", () => {
@@ -2404,11 +2485,7 @@ test("hides historical empty thinking and final markers without hiding real text
   const messages = document.getElementById("messages");
   assert.deepEqual(
     messages.children.map((child: FakeElement) => child.dataset.messageId || child.className),
-    ["real-thinking", "real-thinking-trace", "instruction-group"],
-  );
-  assert.deepEqual(
-    messages.querySelector(".instruction-group-body").children.map((child: FakeElement) => child.dataset.messageId),
-    ["tool-trace", "actions-only"],
+    ["real-thinking", "real-thinking-trace", "tool-trace", "actions-only"],
   );
   assert.equal(api.state.messages.length, 8);
   assert.ok(document.getElementById("messages").querySelector(".message-action-link"));
