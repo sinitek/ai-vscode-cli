@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import { type ChildProcess } from "child_process";
 import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
-import { getCliArgs, getCliCommand, getMacTaskShell, getThinkingArgs } from "./config";
-import { applyModelArg } from "./modelArgs";
+import { getCliCommand, getMacTaskShell } from "./config";
 import { normalizeCommandInput, resolveCliCommand, splitConfiguredCliCommand } from "./commandResolution";
+import { applyOpenCodeVariantArg, buildCliArgs } from "./cliRunArgStrategies";
 import { createOpenCodeRuntimeConfigOverlay } from "./opencoderuntimeconfig";
 import {
   extractAssistantTextWithoutThinkingBlocks,
@@ -24,6 +24,7 @@ import { isOpenCodeInternalLogLine } from "./opencodewatchdog";
 
 export { resolveCliCommand } from "./commandResolution";
 export type { ResolvedCliCommand } from "./commandResolution";
+export { applyOpenCodeVariantArg, buildCliArgs };
 
 type RunCliOptions = {
   thinkingMode?: ThinkingMode;
@@ -1193,141 +1194,9 @@ export function buildOpenCodeRunFailureMessage(
     || "OpenCode exited without returning an assistant answer or a provider error. Check the OpenCode provider/model config or run `opencode run --format json` to verify it.";
 }
 
-export function buildCliArgs(
-  cli: CliName,
-  options: RunStreamOptions = {},
-  prompt?: string
-): string[] {
-  const baseArgs = getCliArgs(cli);
-  const thinkingArgs = cli !== "opencode" && options.thinkingMode
-    ? getThinkingArgs(cli, options.thinkingMode)
-    : [];
-  const sessionId = options.sessionId ?? null;
-  let sharedArgs = applyModelArg(cli, [...baseArgs, ...thinkingArgs], options.model, {
-    openCodeConfigContent: options.openCodeConfigContent,
-  });
-  if (options.isolateProjectInstructions) {
-    sharedArgs = applyProjectInstructionIsolationArgs(cli, sharedArgs);
-  }
-  if (cli === "codex" && !sharedArgs.includes("--skip-git-repo-check")) {
-    sharedArgs = [...sharedArgs, "--skip-git-repo-check"];
-  }
-  if (cli === "codex" && Array.isArray(options.imagePaths) && options.imagePaths.length) {
-    const normalizedImagePaths = options.imagePaths
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (normalizedImagePaths.length) {
-      sharedArgs = [
-        ...sharedArgs,
-        ...normalizedImagePaths.flatMap((imagePath) => ["--image", imagePath]),
-      ];
-    }
-  }
-  if (cli === "opencode") {
-    sharedArgs = applyOpenCodeVariantArg(sharedArgs, options.openCodeVariant);
-    sharedArgs = applyOpenCodeAutoArg(sharedArgs);
-  }
-
-  if (prompt === undefined || prompt === "") {
-    return sharedArgs;
-  }
-
-  if (cli === "opencode") {
-    return buildOpenCodeRunArgs(sharedArgs, sessionId, prompt, options.openCodeServerUrl);
-  }
-
-  if (sessionId) {
-    return buildSessionArgs(cli, sharedArgs, sessionId, prompt);
-  }
-
-  return buildPromptArgs(cli, sharedArgs, prompt);
-}
-
-function applyProjectInstructionIsolationArgs(cli: CliName, args: readonly string[]): string[] {
-  if (cli === "codex") {
-    return args.includes("--ignore-rules") ? [...args] : [...args, "--ignore-rules"];
-  }
-  if (cli === "claude") {
-    return args.includes("--safe-mode") ? [...args] : [...args, "--safe-mode"];
-  }
-  return args.includes("--pure") ? [...args] : [...args, "--pure"];
-}
-
-export function applyOpenCodeVariantArg(
-  args: readonly string[],
-  variant: string | null | undefined
-): string[] {
-  const normalizedVariant = typeof variant === "string" ? variant.trim() : "";
-  const hasExplicitVariant = args.some((arg) => arg === "--variant" || arg.startsWith("--variant="));
-  if (!normalizedVariant || hasExplicitVariant) {
-    return [...args];
-  }
-  return [...args, "--variant", normalizedVariant];
-}
-
-function applyOpenCodeAutoArg(args: readonly string[]): string[] {
-  const normalizedArgs = args.filter((arg) => arg !== "--auto");
-  const insertIndex = normalizedArgs[0] === "run" ? 1 : 0;
-  return [
-    ...normalizedArgs.slice(0, insertIndex),
-    "--auto",
-    ...normalizedArgs.slice(insertIndex),
-  ];
-}
-
 export function buildProcessLabel(cli: CliName, sessionId?: string | null): string {
   const suffix = sessionId ? sessionId : "new";
   return `${PROCESS_LABEL_PREFIX}-${cli}/${suffix}`;
-}
-
-function buildSessionArgs(
-  _cli: CliName,
-  sharedArgs: string[],
-  _sessionId: string,
-  prompt: string
-): string[] {
-  return [...sharedArgs, prompt];
-}
-
-function buildPromptArgs(_cli: CliName, sharedArgs: string[], prompt: string): string[] {
-  return [...sharedArgs, prompt];
-}
-
-function buildOpenCodeRunArgs(
-  sharedArgs: string[],
-  sessionId: string | null,
-  prompt: string,
-  serverUrl?: string,
-): string[] {
-  const hasRunSubcommand = sharedArgs[0] === "run";
-  let runArgs = hasRunSubcommand ? [...sharedArgs] : ["run", ...sharedArgs];
-  if (!runArgs.includes("--format") && !runArgs.some((arg) => arg.startsWith("--format="))) {
-    runArgs.splice(2, 0, "--format", "json");
-  }
-  if (!runArgs.includes("--print-logs")) {
-    const formatIndex = runArgs.findIndex((arg) => arg === "--format" || arg.startsWith("--format="));
-    const insertAt = formatIndex >= 0
-      ? formatIndex + (runArgs[formatIndex] === "--format" ? 2 : 1)
-      : Math.min(2, runArgs.length);
-    runArgs.splice(insertAt, 0, "--print-logs");
-  }
-  const hasAttach = runArgs.some((arg) => arg === "--attach" || arg.startsWith("--attach="));
-  const normalizedServerUrl = typeof serverUrl === "string" ? serverUrl.trim().replace(/\/+$/u, "") : "";
-  if (normalizedServerUrl) {
-    runArgs = runArgs.filter((arg, index, args) => (
-      arg !== "--port"
-      && !arg.startsWith("--port=")
-      && args[index - 1] !== "--port"
-    ));
-    if (!hasAttach) {
-      runArgs.push("--attach", normalizedServerUrl);
-    }
-  }
-  if (sessionId && !runArgs.includes("--session") && !runArgs.includes("-s")) {
-    return [...runArgs, "--session", sessionId, prompt];
-  }
-  return [...runArgs, prompt];
 }
 
 function buildShellCommandLine(command: string, args: string[]): string {

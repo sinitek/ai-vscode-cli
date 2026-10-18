@@ -86,7 +86,7 @@ cli / interactive / config 服务层
 - `openCodePromptRunTemplate.ts` 用显式端口 Template Method 固定 OpenCode attempt 顺序。`runOpenCodePromptTemplate` 接收 `OpenCodePromptRunPorts`，由 one-shot 与 parallel 工厂在调用点构造端口；不使用类继承、DI 容器或 `mode` 旗标。当前 705 行
 - `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDeps)`。运行身份（`getActiveRunId() === runId`）和启动空闲超时留在本 host。当前 1193 行
 - `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps)`。运行身份与 tab 流留在本 host，不补 one-shot 启动超时。当前 1078 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
-- `promptInteractiveRuntime.ts` 承载 Codex / Claude interactive turn、runner 事件映射、session adoption、停止收口、消息持久化、subagent progress、hidden retry 和 final answer 判定；当前 1426 行
+- `promptInteractiveRuntime.ts` 承载 interactive attempt 顺序、收口、session adoption、停止、消息持久化、subagent progress、hidden retry 和 final answer 判定。Codex、Claude、Grok 的 runner 生命周期和流事件映射分别在 `interactiveTurnCodex.ts`、`interactiveTurnClaude.ts`、`interactiveTurnGrok.ts`，由 `interactiveTurnStrategy.ts` 的显式注册表提供。工厂签名仍是 `createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntimeHostDeps)`。没有类继承，也没有 DI 容器。当前 1276 行
 - `loopOrchestration.ts` 承载 Loop 主从与红蓝辩论编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界；当前 3092 行
 - `openCodeSubagentRuntime.ts` 承载 OpenCode 子代理 server attach / managed startup / ready wait / Basic auth env override / unavailable fallback 和 disabled monitor；当前 201 行
 - `primaryPromptRunController.ts` 集中维护主 Prompt 的运行身份、进程、停止回调、会话目标、消息目标、trace 和任务状态；`extension.ts` 只负责组合根副作用与显式接线，避免 One-shot、上下文压缩、停止和 deactivate 分散读写同一组模块级状态
@@ -106,6 +106,7 @@ cli / interactive / config 服务层
 #### CLI / Interactive / Config 服务层
 
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
+- `src/cli/cliRunArgStrategies.ts` 用显式 `Record<CliName, CliRunArgStrategy>` 注册 Codex、Claude、OpenCode、Grok 的启动参数差异。`buildCliArgs` 仍从 `commandRunner.ts` 导出。参数顺序留在外观函数：基础参数、按 `includeThinkingArgs` 拼接 thinking、模型、隔离、`applyBeforePrompt`，空 prompt 立即返回，否则 `appendPrompt`。四个平台各自实现差异，没有类继承，也没有 DI 容器。`wc -l` 当前 `cliRunArgStrategies.ts` 为 219 行，`commandRunner.ts` 为 1532 行。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md`
 - `src/interactive/`：会话型运行与底层续接 ID 映射
 - Grok 的 `grokToolCallStream.ts` 在当前 prompt 内按会话与调用 ID 聚合工具，规范化已知输出后分别生成回放终态和聊天摘要；`grokReplayStream.ts` 管文本合并与通知降噪，宿主复用 traceSegment 同 ID 更新和任务列表。Webview 活动时间独立于回放条目，不将高频协议通知持久化为聊天消息。
 - `src/config/`：外部 CLI 配置、全局 Skills 目录和本地配置档案管理；配置中心不再把 MCP 市场作为用户功能。用户级配置路径由 `src/config/configPaths.ts` 集中维护，legacy `gemini` 配置平台仅兼容归一到 `opencode`

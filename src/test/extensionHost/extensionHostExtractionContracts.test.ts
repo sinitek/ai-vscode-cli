@@ -559,6 +559,8 @@ test("one-shot prompt runtime source contract lives in extensionHost/promptOneSh
 
 test("interactive prompt runtime source contract lives in extensionHost/promptInteractiveRuntime", () => {
   const interactiveRuntimeSource = readSource("src", "extensionHost", "promptInteractiveRuntime.ts");
+  const codexTurnSource = readSource("src", "extensionHost", "interactiveTurnCodex.ts");
+  const claudeTurnSource = readSource("src", "extensionHost", "interactiveTurnClaude.ts");
 
   assert.match(interactiveRuntimeSource, /export function createPromptInteractiveRuntimeHost\(deps: PromptInteractiveRuntimeHostDeps\)/);
   assert.match(interactiveRuntimeSource, /async function runPromptInteractive\(/);
@@ -568,14 +570,15 @@ test("interactive prompt runtime source contract lives in extensionHost/promptIn
   assert.match(interactiveRuntimeSource, /const flushPersistForInteractiveRun = \(\): void => \{[\s\S]*persistMessagesForInteractiveRun\(\);/);
   assert.match(interactiveRuntimeSource, /const stopFn = \(\): void => \{[\s\S]*sendRunStatusForTab\(tabId, "stopped"\)/);
   assert.match(interactiveRuntimeSource, /interactiveRunsByTabId\.set\(tabId, \{/);
-  assert.match(interactiveRuntimeSource, /onAssistantDelta: \(chunk, meta\) => \{[\s\S]*codexFinalAnswer: meta\?\.codexFinalAnswer === true/);
-  assert.match(interactiveRuntimeSource, /onTrace: \(content, kind, meta\) => \{[\s\S]*appendTraceMessageForTab\(content, kind === "thinking" \? "thinking" : "normal", meta\)/);
-  assert.match(interactiveRuntimeSource, /onEvent: \(event\) => \{[\s\S]*type: "rawStreamDelta"[\s\S]*extractTaskListItemsFromForwardedCodexEvent/);
-  assert.match(interactiveRuntimeSource, /onTaskListUpdate: \(items\) => \{[\s\S]*type: "taskListUpdate"/);
-  assert.match(interactiveRuntimeSource, /onTokenUsageUpdate: \(update\) => \{[\s\S]*type: "contextTokenUsage"/);
-  assert.match(interactiveRuntimeSource, /onThreadId: \(threadId\) => \{[\s\S]*updateSessionForNewRun\(threadId/);
-  assert.match(interactiveRuntimeSource, /onSessionId: \(newSessionId: string\) => \{[\s\S]*updateSessionForNewRun\(newSessionId\)/);
   assert.match(interactiveRuntimeSource, /return \{ runPromptInteractive \};/);
+  assert.match(interactiveRuntimeSource, /interactive-runner-unsupported:/);
+  assert.match(codexTurnSource, /onAssistantDelta: \(chunk, meta\) => \{[\s\S]*codexFinalAnswer: meta\?\.codexFinalAnswer === true/);
+  assert.match(codexTurnSource, /onTrace: \(content, kind, meta\) => \{[\s\S]*appendTraceMessageForTab\(content, kind === "thinking" \? "thinking" : "normal", meta\)/);
+  assert.match(codexTurnSource, /onEvent: \(event\) => \{[\s\S]*type: "rawStreamDelta"[\s\S]*extractTaskListItemsFromForwardedCodexEvent/);
+  assert.match(codexTurnSource, /onTaskListUpdate: \(items\) => \{[\s\S]*type: "taskListUpdate"/);
+  assert.match(codexTurnSource, /onTokenUsageUpdate: \(update\) => \{[\s\S]*type: "contextTokenUsage"/);
+  assert.match(codexTurnSource, /onThreadId: \(threadId\) => \{[\s\S]*updateSessionForNewRun\(threadId/);
+  assert.match(claudeTurnSource, /onSessionId: \(newSessionId: string\) => \{[\s\S]*updateSessionForNewRun\(newSessionId\)/);
 });
 
 test("conversation tab summaries carry the persisted Loop scheduling mode", () => {

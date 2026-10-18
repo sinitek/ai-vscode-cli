@@ -47,22 +47,6 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }
-      .message-task-role {
-        align-self: flex-start;
-        display: inline-flex;
-        align-items: center;
-        border: 0;
-        background: transparent;
-        color: var(--vscode-descriptionForeground, var(--vscode-foreground));
-        border-radius: 0;
-        padding: 0;
-        font-size: 11px;
-        line-height: 18px;
-        font-weight: 600;
-      }
-      .message.user .message-task-role {
-        align-self: flex-end;
-      }
       /* User Message - Distinct Bubble */
       .message.user {
         align-items: flex-end;

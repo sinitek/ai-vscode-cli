@@ -76,7 +76,6 @@ type PostedMessage = {
 };
 
 type BrowserApi = {
-  getMessageTaskRoleLabel(message: RoleMessage | null): string;
   renderMessages(): void;
   renderConversationTabs(): void;
   syncActiveMessagesFromRuntime(): void;
@@ -378,9 +377,6 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isConversationTabBusy"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLoopMainConversationTabRunning"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"],
-    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isMessageLoopTaskEventDriven"],
-    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getMessageTaskRoleLabel"],
-    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageTaskRoleElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyMessageElementClasses"],
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "hasRenderableMessageContent"],
@@ -487,7 +483,6 @@ function browserScript(): string {
     "function resetAutoInteractiveModeMemoryForTest() { lastAutoInteractiveModeTabKey = \"\"; }",
     ...names.map(([source, name]) => extractFunctionSource(source, name)),
     "this.api = {",
-    "  getMessageTaskRoleLabel: getMessageTaskRoleLabel,",
     "  renderMessages: renderMessages,",
     "  renderConversationTabs: renderConversationTabs,",
     "  syncActiveMessagesFromRuntime: syncActiveMessagesFromRuntime,",
@@ -580,16 +575,6 @@ function loadBrowser(activeTabId: string): {
   };
 }
 
-function badgeText(messageNode: FakeElement): string {
-  const badge = messageNode.children.find((child) => child.className.split(/\s+/).includes("message-task-role"));
-  return badge ? badge.textContent : "";
-}
-
-function badgeClass(messageNode: FakeElement): string {
-  const badge = messageNode.children.find((child) => child.className.split(/\s+/).includes("message-task-role"));
-  return badge ? badge.className : "";
-}
-
 function visibleMessageNodes(messages: FakeElement): FakeElement[] {
   const nodes: FakeElement[] = [];
   messages.children.forEach((node) => {
@@ -604,14 +589,16 @@ function visibleMessageNodes(messages: FakeElement): FakeElement[] {
 }
 
 function renderedBadges(messages: FakeElement): string[] {
-  return visibleMessageNodes(messages).map((message) => badgeText(message));
+  return visibleMessageNodes(messages).flatMap((message) => message.children
+    .filter((child) => child.className.split(/\s+/).includes("message-task-role"))
+    .map((child) => child.textContent));
 }
 
 function message(partial: RoleMessage): RoleMessage {
   return partial;
 }
 
-test("splits historical message labels by task identity across classic and Loop+ tab refresh", () => {
+test("omits task role labels across classic, Loop+, and Graph history and tab refresh", () => {
   const browser = loadBrowser("classic-main");
   const { api, state, messages } = browser;
   const plusSubtask = message({
@@ -713,6 +700,10 @@ test("splits historical message labels by task identity across classic and Loop+
   api.getConversationRuntimeState("plus-main").messages = [plusSubtask, plusMain];
   api.getConversationRuntimeState("plus-sub").messages = [plusSubtask];
   api.getConversationRuntimeState("classic-sub").messages = [classicSubtask];
+  api.getConversationRuntimeState("graph-main").messages = [
+    { ...plusMain, id: "graph-main-message", loopTaskId: "task-graph" },
+    { ...classicSubtask, id: "graph-subtask-message", loopTaskId: "task-graph" },
+  ];
 
   const show = (tabId: string) => {
     state.conversationTabs.activeTabId = tabId;
@@ -725,27 +716,31 @@ test("splits historical message labels by task identity across classic and Loop+
   assert.equal(browser.elements.interactiveModeSelect.value, "loop");
   assert.equal(browser.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(browser.elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE);
-  assert.deepEqual(renderedBadges(messages), ["子任务·第2轮", "子任务", "Loop"]);
+  assert.deepEqual(renderedBadges(messages), []);
+  assert.equal(visibleMessageNodes(messages).length, 3);
 
   show("plus-main");
   assert.equal(state.interactiveMode, "loop_plus");
   assert.equal(browser.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(browser.elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE);
   assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE);
-  assert.deepEqual(renderedBadges(messages), ["子任务", "Loop"]);
+  assert.deepEqual(renderedBadges(messages), []);
   const plusMainNodes = visibleMessageNodes(messages);
-  assert.equal(plusMainNodes[0] ? badgeClass(plusMainNodes[0]) : "", "message-task-role message-task-role-subtask");
-  assert.equal(renderedBadges(messages).some((label) => label.includes("第")), false);
+  assert.equal(plusMainNodes.length, 2);
+  plusMainNodes.forEach((node) => assert.deepEqual(node.children.map((child) => child.className), ["bubble"]));
 
   show("plus-sub");
   assert.equal(state.interactiveMode, "coding");
   assert.equal(browser.elements.codexLoopModelGroup.style.display, "none");
-  assert.deepEqual(renderedBadges(messages), ["子任务"]);
+  assert.deepEqual(renderedBadges(messages), []);
+  assert.equal(visibleMessageNodes(messages).length, 1);
 
   show("graph-main");
   assert.equal(state.interactiveMode, "graph");
   assert.equal(browser.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(browser.elements.codexLoopModelGroup.style.display, "");
+  assert.deepEqual(renderedBadges(messages), []);
+  assert.equal(visibleMessageNodes(messages).length, 2);
 
   show("vibe-tab");
   assert.equal(
@@ -761,7 +756,7 @@ test("splits historical message labels by task identity across classic and Loop+
   show("plus-main");
   show("classic-main");
   assert.equal(state.interactiveMode, "loop");
-  assert.deepEqual(renderedBadges(messages), ["子任务·第2轮", "子任务", "Loop"]);
+  assert.deepEqual(renderedBadges(messages), []);
 
   state.interactiveMode = "loop_plus";
   state.conversationTabs.activeTabId = "classic-main";
@@ -776,7 +771,7 @@ test("splits historical message labels by task identity across classic and Loop+
   api.renderConversationTabs();
   api.syncActiveMessagesFromRuntime();
   assert.equal(state.interactiveMode, "loop_plus");
-  assert.deepEqual(renderedBadges(messages), ["子任务", "Loop"]);
+  assert.deepEqual(renderedBadges(messages), []);
 
   state.conversationTabs = {
     activeTabId: "classic-main",
@@ -800,34 +795,9 @@ test("splits historical message labels by task identity across classic and Loop+
   ];
   api.renderMessages();
   assert.equal(state.interactiveMode, "loop");
-  assert.deepEqual(renderedBadges(messages), [
-    "子任务",
-    "子任务·第2轮",
-    "子任务·第3轮",
-    "子任务·第4轮",
-    "子任务·第1轮",
-    "子任务·第1轮",
-    "子任务",
-    "子任务·第1轮",
-    "子任务",
-    "子任务",
-    "",
-  ]);
-  browser.labelCalls.length = 0;
-  assert.equal(api.getMessageTaskRoleLabel(plusSubtask), "子任务");
-  assert.equal(browser.labelCalls.length, 1);
-  assert.equal(browser.labelCalls[0]?.key, "taskRoleSubtask");
-  assert.equal(browser.labelCalls[0]?.round, undefined);
+  assert.deepEqual(renderedBadges(messages), []);
+  assert.equal(visibleMessageNodes(messages).length, state.messages.length);
   assert.deepEqual([plusSubtask.loopRound, classicSubtask.loopRound, plusMain.loopRound], originalRounds);
-  assert.equal(api.getMessageTaskRoleLabel(null), "");
-  assert.equal(api.getMessageTaskRoleLabel({
-    id: "negative",
-    role: "assistant",
-    content: "negative",
-    taskRole: "subtask",
-    loopTaskId: "task-classic",
-    loopRound: -1,
-  }), "子任务");
 
   const refreshedTabs = createTabs().map((tab) => (
     tab.loopTaskId === "task-plus" ? { ...tab, loopSchedulingMode: undefined } : { ...tab }
@@ -839,7 +809,7 @@ test("splits historical message labels by task identity across classic and Loop+
   state.messages = [plusSubtask];
   api.renderMessages();
   assert.equal(state.interactiveMode, "loop");
-  assert.equal(renderedBadges(messages)[0], "子任务·第1轮");
+  assert.deepEqual(renderedBadges(messages), []);
   assert.equal(plusSubtask.loopRound, 1);
 
   state.conversationTabs = { activeTabId: "vibe-tab", tabs: createTabs() };
@@ -849,19 +819,15 @@ test("splits historical message labels by task identity across classic and Loop+
   state.messages = [plusSubtask, classicSubtask];
   api.renderMessages();
   assert.equal(state.interactiveMode, "loop_plus");
-  assert.deepEqual(renderedBadges(messages), ["子任务", "子任务·第2轮"]);
+  assert.deepEqual(renderedBadges(messages), []);
 
   browser.labelCalls.length = 0;
   api.renderMessages();
   const roleCalls = browser.labelCalls.filter((call) => call.key.startsWith("taskRole"));
-  assert.deepEqual(roleCalls.map((call) => [call.key, call.round ?? null]), [
-    ["taskRoleSubtask", null],
-    ["taskRoleSubtaskWithRound", 2],
-  ]);
+  assert.deepEqual(roleCalls, []);
   Object.assign(browser.i18n, getWebviewStrings());
   api.renderMessages();
-  assert.deepEqual(renderedBadges(messages), ["子任务", "子任务·第2轮"]);
-  assert.equal(renderedBadges(messages).some((label) => label.includes("第1轮")), false);
+  assert.deepEqual(renderedBadges(messages), []);
 });
 
 test("keeps Loop+ busy-send payload while classic debate, Graph priority, and Vibe stay unchanged", () => {

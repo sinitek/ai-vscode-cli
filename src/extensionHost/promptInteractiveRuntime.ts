@@ -19,22 +19,8 @@ import {
   type HumanInteractionRequest,
   type HumanInteractionSubmission,
 } from "../humanInteraction";
-import {
-  ClaudeInteractiveRunner,
-  isClaudeEndTurnStop,
-  isClaudeFailedFinalResult,
-  isClaudeSuccessfulFinalResult,
-  isClaudeToolUseStop,
-} from "../interactive/claudeRunner";
-import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
-import { CodexInteractiveRunner } from "../interactive/codexRunner";
-import { isGrokCompletedStopReason, resolveGrokResumeSessionId } from "../interactive/grokAppServerProtocol";
-import { GrokInteractiveRunner } from "../interactive/grokRunner";
-import {
-  isCodexRetryProgressTraceKind,
-  resolveCodexAssistantMessageContinuation,
-} from "../interactive/codexRunnerRuntime";
-import { decideCodexThreadForSelection, normalizeCodexRunSelection, type CodexRunSelection } from "../interactive/codexThreadSelection";
+import { resolveCodexAssistantMessageContinuation } from "../interactive/codexRunnerRuntime";
+import type { CodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
 import type { I18nKey } from "../i18n";
@@ -48,13 +34,11 @@ import {
   HIDDEN_RETRY_MAX_RETRIES,
   isHiddenRetryEligibleErrorInfo,
   waitForHiddenRetryDelay,
-  type ErrorInfo,
 } from "../panelDiagnostics";
 import { buildUserChatMessage } from "../panelStateBuilder";
 import { buildHiddenRetryPrompt, buildThinkingPrompt } from "../promptRuntime";
 import {
   appendMessageToStore,
-  normalizeRawStreamContent,
   type LoopTaskRole,
   type TaskRunRecord,
   type TaskRunStatus,
@@ -69,6 +53,7 @@ import {
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
+import { createInteractiveTurnStrategies } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
   id?: string;
@@ -163,13 +148,8 @@ export type PromptInteractiveRuntimeHost = {
   ) => Promise<void>;
 };
 
-function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
-  const combined = `${String(info.code ?? "")} ${String(info.message ?? "")}`.toLowerCase();
-  return combined.includes("claude_session_not_found")
-    || combined.includes("no conversation found with session id:");
-}
-
 export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntimeHostDeps): PromptInteractiveRuntimeHost {
+  const interactiveTurnStrategies = createInteractiveTurnStrategies();
   const {
     AI_TASK_RAW_OUTPUT_MAX_BYTES,
     activeRunsByTabId: interactiveRunsByTabId,
@@ -1023,6 +1003,25 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       graphNodeId: input.graphNodeId,
     });
 
+    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok"): Promise<"continue" | "return"> => {
+      if (await maybeHandleNaturalLanguageHumanInteraction()) {
+        return "continue";
+      }
+      const finalConclusionState = handleMissingFinalConclusionForTab(cli);
+      if (finalConclusionState.action === "stopped") {
+        return "return";
+      }
+      if (finalConclusionState.action === "retry") {
+        return "continue";
+      }
+      if (finalConclusionState.action === "error") {
+        await cleanupAfterRun("error", finalConclusionState.message);
+        return "return";
+      }
+      await cleanupAfterRun("end");
+      return "return";
+    };
+
     while (true) {
       const attemptNumber = hiddenRetryCount + 1;
       const attemptPrompt = pendingHumanInteractionContinuationPrompt
@@ -1062,550 +1061,124 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       beginInteractiveAttempt(attemptPrompt);
 
       try {
-        if (cli === "codex") {
-          const mappedThreadId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
-          const nextSelection = normalizeCodexRunSelection({
-            configId: activeConfigId,
-            model: selectedModel,
-          });
-          const threadDecision = decideCodexThreadForSelection({
-            mappedThreadId,
-            previousSelection: uiSessionId
-              ? interactiveRunnerManager.getCodexRunnerSelection(uiSessionId)
-                ?? resolveCodexInteractiveSelection(uiSessionId)
-              : null,
-            nextSelection,
-          });
-          if (threadDecision.startedFreshForSelectionChange) {
-            void logInfo("runPrompt-interactive-codex-selection-new-thread", {
-              cli,
-              sessionId: uiSessionId,
-              previousThreadId: mappedThreadId,
-              configId: nextSelection.configId,
-              model: nextSelection.model,
-              tabId,
-            });
-          }
-          const runnerWasManaged = Boolean(uiSessionId);
-          const runner = uiSessionId
-            ? interactiveRunnerManager.getOrCreateCodexRunner({
-                sessionId: uiSessionId,
-                threadId: threadDecision.threadId,
-                command,
-                args,
-                cwd: cwd ?? undefined,
-                thinkingMode,
-                interactiveMode,
-                model: nextSelection.model,
-                configId: nextSelection.configId,
-                multiAgentEnabled: getGlobalMultiAgentEnabled(),
-              })
-            : new CodexInteractiveRunner({
-                command,
-                args,
-                cwd: cwd ?? undefined,
-                thinkingMode,
-                interactiveMode,
-                model: nextSelection.model,
-                threadId: null,
-                multiAgentEnabled: getGlobalMultiAgentEnabled(),
-              });
-
-          try {
-          stopCurrentTurn = () => runner.stopAndRebuild();
-          syncInteractiveRunEntry(stopFn);
-          await runner.runStreamed(attemptPrompt, {
-            onAssistantDelta: (chunk, meta) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              if (meta?.kind === "thinking") {
-                appendAssistantChunkForTab(chunk, "thinking", {
-                  reasoningItemId: meta.reasoningItemId,
-                });
-                appendDebugStdout(chunk);
-                return;
-              }
-              if (meta?.codexFinalAnswer === true) {
-                observedCodexFinalAnswer = true;
-              }
-              if (chunk.trim().length > 0) {
-                attemptHadNormalReply = true;
-              }
-              appendAssistantChunkForTab(chunk, undefined, {
-                codexFinalAnswer: meta?.codexFinalAnswer === true,
-              });
-              appendDebugStdout(chunk);
-            },
-            onSubagentUpdate: (update) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              subagentProgress.update({
-                provider: "codex",
-                id: update.threadId,
-                agentName: update.agentName,
-                status: update.status,
-                delta: update.delta,
-                error: update.error,
-              });
-            },
-            onTrace: (content, kind, meta) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              if (content.trim().length > 0 && isCodexRetryProgressTraceKind(kind)) {
-                attemptHadNormalReply = true;
-              }
-              appendTraceMessageForTab(content, kind === "thinking" ? "thinking" : "normal", meta);
-              appendTraceLog(content);
-            },
-            onEvent: (event) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
-              const eventTaskListItems = extractTaskListItemsFromForwardedCodexEvent(event, runner.getThreadId());
-              if (eventTaskListItems.length) {
-                sendPanelMessage({ type: "taskListUpdate", items: eventTaskListItems, tabId });
-              }
-              appendDebugEvent(event);
-            },
-            onTurnCompleted: () => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              observedCodexPrimaryTurnCompleted = true;
-            },
-            onTaskListUpdate: (items) => {
-              sendPanelMessage({ type: "taskListUpdate", items, tabId });
-            },
-            onTokenUsageUpdate: (update) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              sendPanelMessage({
-                type: "contextTokenUsage",
-                tabId,
-                tokensInContextWindow: update.tokensInContextWindow,
-                modelContextWindow: update.modelContextWindow,
-              });
-            },
-            onRequest: handleCodexHumanInteractionRequest,
-            requestUserInputEnabled: canHandleStructuredHumanInteractionRequest(),
-            onThreadId: (threadId) => {
-              updateProcessTitle(cli, threadId);
-              updateSessionForNewRun(threadId, {
-                freezePrevious: threadDecision.freezePrevious,
-                codexSelection: nextSelection,
-              });
-              void logInfo("runPrompt-interactive-codex-thread", {
-                cli,
-                sessionId: uiSessionId,
-                threadId,
-                replacedThreadId: threadDecision.freezePrevious,
-                configId: nextSelection.configId,
-                model: nextSelection.model,
-                originalSessionId: target.sessionId,
-                tabId,
-              });
-              if (uiSessionId) {
-                interactiveRunnerManager.setRunner("codex", uiSessionId, runner, thinkingMode, interactiveMode, nextSelection.model, {
-                  multiAgentEnabled: getGlobalMultiAgentEnabled(),
-                  configId: nextSelection.configId,
-                  command,
-                  args,
-                  cwd: cwd ?? undefined,
-                });
-              }
-              syncInteractiveRunEntry();
-            },
-          });
-          if (await maybeHandleNaturalLanguageHumanInteraction()) {
-            continue;
-          }
-          const finalConclusionState = handleMissingFinalConclusionForTab("codex");
-          if (finalConclusionState.action === "stopped") {
-            return;
-          }
-          if (finalConclusionState.action === "retry") {
-            continue;
-          }
-          if (finalConclusionState.action === "error") {
-            await cleanupAfterRun("error", finalConclusionState.message);
-            return;
-          }
-          await cleanupAfterRun("end");
-          return;
-          } finally {
-            if (!runnerWasManaged) {
-              const threadId = runner.getThreadId();
-              if (!threadId || !interactiveRunnerManager.hasCodexRunner(threadId, runner)) {
-                runner.dispose();
-              }
-            }
-          }
+        if (cli !== "codex" && cli !== "claude" && cli !== "grok") {
+          throw new Error(`interactive-runner-unsupported:${cli}`);
         }
-
-        if (cli === "claude") {
-          const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
-          const runnerWasManaged = Boolean(uiSessionId);
-          let runner = uiSessionId
-            ? interactiveRunnerManager.getOrCreateClaudeRunner({
-                sessionId: uiSessionId,
-                mappedSessionId,
-                command: commandForRunner,
-                args,
-                cwd: cwd ?? undefined,
-                thinkingMode,
-                interactiveMode,
-                model: selectedModel,
-                entrypoint: claudeEntrypoint,
-                isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-              })
-            : new ClaudeInteractiveRunner({
-                command: commandForRunner,
-                args,
-                cwd: cwd ?? undefined,
-                thinkingMode,
-                interactiveMode,
-                model: selectedModel,
-                entrypoint: claudeEntrypoint,
-                sessionId: null,
-                isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-              });
-
-          const runStreamHandlers = {
-            onAssistantDelta: (chunk: string) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              if (chunk.trim().length > 0) {
-                attemptHadNormalReply = true;
-                claudeSawAssistantText = true;
-                claudeToolAfterAssistantText = false;
-              }
-              appendAssistantChunkForTab(chunk);
-              appendDebugStdout(chunk);
-            },
-            onTrace: (content: string, kind?: "thinking" | "normal" | "tool-use", meta?: { merge?: boolean }) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              if (kind === "tool-use") {
-                claudeToolAfterAssistantText = true;
-                claudeSawEndTurn = false;
-              }
-              if (content.trim().length > 0 && kind !== "thinking") {
-                attemptHadNormalReply = true;
-              }
-              appendTraceMessageForTab(content, kind ?? "normal", {
-                ...meta,
-                forceTraceBubble: kind === "thinking",
-              });
-              appendTraceLog(content);
-            },
-            onEvent: (event: unknown) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              if (isClaudeFailedFinalResult(event)) {
-                claudeResultFailed = true;
-              }
-              if (isClaudeSuccessfulFinalResult(event)) {
-                claudeSawSuccessfulResult = true;
-              }
-              if (isClaudeEndTurnStop(event)) {
-                claudeSawEndTurn = true;
-              }
-              if (isClaudeToolUseStop(event)) {
-                claudeToolAfterAssistantText = true;
-                claudeSawEndTurn = false;
-              }
-              sendPanelMessage({ type: "rawStreamDelta", content: normalizeRawStreamContent(event) + (String(normalizeRawStreamContent(event)).endsWith("\n") ? "" : "\n"), stream: "event", tabId });
-              appendDebugEvent(event);
-            },
-            onTaskListUpdate: (items: { text: string; done: boolean }[]) => {
-              sendPanelMessage({ type: "taskListUpdate", items, tabId });
-            },
-            onSessionId: (newSessionId: string) => {
-              updateProcessTitle(cli, newSessionId);
-              updateSessionForNewRun(newSessionId);
-              void logInfo("runPrompt-interactive-claude-session", {
-                cli,
-                sessionId: uiSessionId,
-                newSessionId,
-                originalSessionId: target.sessionId,
-                tabId,
-              });
-              retainClaudeRunner();
-              syncInteractiveRunEntry();
-            },
-          };
-
-          const retainClaudeRunner = (): void => {
-            if (!uiSessionId) {
-              return;
-            }
-            interactiveRunnerManager.setRunner("claude", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-              command: commandForRunner,
-              args,
-              cwd: cwd ?? undefined,
-              entrypoint: claudeEntrypoint,
-              isolateProjectInstructions: executionOptions.isolateProjectInstructions === true,
-            });
-          };
-
-          try {
-          stopCurrentTurn = () => runner.stopAndRebuild();
-          syncInteractiveRunEntry(stopFn);
-          try {
-            await runner.runStreamed(attemptPrompt, runStreamHandlers);
-          } catch (error) {
-            const info = getErrorInfo(error);
-            if (uiSessionId && isClaudeSessionNotFoundErrorInfo(info)) {
-              appendSystemMessageForTab(t("claude.sessionResetRetry"));
-              void logInfo("runPrompt-interactive-claude-session-reset-retry", {
-                cli,
-                sessionId: uiSessionId,
-                mappedSessionId,
-                error: info.message,
-                errorCode: info.code,
-                tabId,
-              });
-              runner.dispose();
-              runner = new ClaudeInteractiveRunner({
-                command: commandForRunner,
-                args,
-                cwd: cwd ?? undefined,
-                thinkingMode,
-                interactiveMode,
-                model: selectedModel,
-                entrypoint: claudeEntrypoint,
-                sessionId: null,
-                isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-              });
-              retainClaudeRunner();
-              stopCurrentTurn = () => runner.stopAndRebuild();
-              syncInteractiveRunEntry(stopFn);
-              claudeSawAssistantText = false;
-              claudeToolAfterAssistantText = false;
-              claudeResultFailed = false;
-              claudeSawSuccessfulResult = false;
-              claudeSawEndTurn = false;
-              await runner.runStreamed(attemptPrompt, runStreamHandlers);
-            } else {
-              throw error;
-            }
-          }
-          if (
-            !claudeResultFailed
-            && claudeSawAssistantText
-            && !claudeToolAfterAssistantText
-            && (claudeSawSuccessfulResult || claudeSawEndTurn)
-          ) {
-            observedClaudeFinalAnswer = true;
-          }
-          if (await maybeHandleNaturalLanguageHumanInteraction()) {
-            continue;
-          }
-          const finalConclusionState = handleMissingFinalConclusionForTab("claude");
-          if (finalConclusionState.action === "stopped") {
-            return;
-          }
-          if (finalConclusionState.action === "retry") {
-            continue;
-          }
-          if (finalConclusionState.action === "error") {
-            await cleanupAfterRun("error", finalConclusionState.message);
-            return;
-          }
-          await cleanupAfterRun("end");
-          return;
-          } finally {
-            if (!runnerWasManaged) {
-              const sessionId = runner.getSessionId();
-              const retained = Boolean(
-                sessionId
-                && interactiveRunnerManager.hasClaudeRunner?.(sessionId, runner)
-              );
-              if (!retained) {
-                runner.dispose();
-              }
-            }
-          }
+        const disposition = await interactiveTurnStrategies[cli].runAttempt({
+          cli,
+          tabId,
+          runId,
+          attemptPrompt,
+          command,
+          commandForRunner,
+          args,
+          grokAgentArgs,
+          cwd,
+          thinkingMode,
+          interactiveMode,
+          selectedModel,
+          activeConfigId,
+          claudeEntrypoint,
+          isolateProjectInstructions: executionOptions.isolateProjectInstructions,
+          originalSessionId: target.sessionId,
+          get uiSessionId() {
+            return uiSessionId;
+          },
+          stopFn,
+          interactiveRunnerManager,
+          interactiveRunsByTabId,
+          get attemptHadNormalReply() {
+            return attemptHadNormalReply;
+          },
+          set attemptHadNormalReply(value: boolean) {
+            attemptHadNormalReply = value;
+          },
+          get claudeSawAssistantText() {
+            return claudeSawAssistantText;
+          },
+          set claudeSawAssistantText(value: boolean) {
+            claudeSawAssistantText = value;
+          },
+          get claudeToolAfterAssistantText() {
+            return claudeToolAfterAssistantText;
+          },
+          set claudeToolAfterAssistantText(value: boolean) {
+            claudeToolAfterAssistantText = value;
+          },
+          get claudeResultFailed() {
+            return claudeResultFailed;
+          },
+          set claudeResultFailed(value: boolean) {
+            claudeResultFailed = value;
+          },
+          get claudeSawSuccessfulResult() {
+            return claudeSawSuccessfulResult;
+          },
+          set claudeSawSuccessfulResult(value: boolean) {
+            claudeSawSuccessfulResult = value;
+          },
+          get claudeSawEndTurn() {
+            return claudeSawEndTurn;
+          },
+          set claudeSawEndTurn(value: boolean) {
+            claudeSawEndTurn = value;
+          },
+          get observedCodexFinalAnswer() {
+            return observedCodexFinalAnswer;
+          },
+          set observedCodexFinalAnswer(value: boolean) {
+            observedCodexFinalAnswer = value;
+          },
+          get observedCodexPrimaryTurnCompleted() {
+            return observedCodexPrimaryTurnCompleted;
+          },
+          set observedCodexPrimaryTurnCompleted(value: boolean) {
+            observedCodexPrimaryTurnCompleted = value;
+          },
+          get observedClaudeFinalAnswer() {
+            return observedClaudeFinalAnswer;
+          },
+          set observedClaudeFinalAnswer(value: boolean) {
+            observedClaudeFinalAnswer = value;
+          },
+          get observedGrokFinalAnswer() {
+            return observedGrokFinalAnswer;
+          },
+          set observedGrokFinalAnswer(value: boolean) {
+            observedGrokFinalAnswer = value;
+          },
+          settleInteractiveAttempt,
+          appendAssistantChunkForTab,
+          appendTraceMessageForTab,
+          appendDebugStdout,
+          appendTraceLog,
+          appendDebugEvent,
+          appendSystemMessageForTab,
+          sendPanelMessage,
+          updateSessionForNewRun,
+          syncInteractiveRunEntry,
+          isCurrentRunActive,
+          setStopCurrentTurn: (stop) => {
+            stopCurrentTurn = stop;
+          },
+          updateProcessTitle,
+          updateSubagentProgress: (update) => {
+            subagentProgress.update(update);
+          },
+          handleCodexHumanInteractionRequest,
+          canHandleStructuredHumanInteractionRequest,
+          resolveInteractiveMappedId,
+          resolveCodexInteractiveSelection,
+          getGlobalMultiAgentEnabled,
+          getConversationTabById,
+          createMessageId,
+          logInfo,
+          t,
+        });
+        if (disposition === "continue") {
+          continue;
         }
-
-        if (cli === "grok") {
-          const grokCwd = cwd ?? process.cwd();
-          const runnerWasManaged = Boolean(uiSessionId);
-          const previousSessionId = uiSessionId;
-          const mappedSessionId = uiSessionId ? resolveInteractiveMappedId(cli, uiSessionId) : null;
-          const resumeSessionId = resolveGrokResumeSessionId(uiSessionId, mappedSessionId);
-          observedGrokFinalAnswer = false;
-          const runner = uiSessionId
-            ? interactiveRunnerManager.getOrCreateGrokRunner({
-                sessionId: uiSessionId,
-                command: commandForRunner,
-                agentArgs: grokAgentArgs,
-                cwd: grokCwd,
-                thinkingMode,
-                interactiveMode,
-                model: selectedModel,
-                localSessionId: resumeSessionId,
-              })
-            : new GrokInteractiveRunner({
-                command: commandForRunner,
-                agentArgs: grokAgentArgs,
-                cwd: grokCwd,
-                thinkingMode,
-                model: selectedModel,
-                localSessionId: null,
-              });
-
-          let flushingGrokStop = false;
-          const canEmitGrokPresentation = (): boolean => {
-            const entry = interactiveRunsByTabId.get(tabId);
-            return Boolean(entry && entry.runId === runId && (!entry.stopped || flushingGrokStop));
-          };
-          try {
-          stopCurrentTurn = () => {
-            flushingGrokStop = true;
-            try {
-              runner.cancelTurn();
-            } finally {
-              flushingGrokStop = false;
-            }
-          };
-          syncInteractiveRunEntry(stopFn);
-          const started = await runner.start();
-          updateSessionForNewRun(started.acpSessionId);
-          if (previousSessionId && previousSessionId !== uiSessionId) {
-            interactiveRunnerManager.detachRunner("grok", previousSessionId, runner);
-          }
-          if (uiSessionId) {
-            interactiveRunnerManager.setRunner("grok", uiSessionId, runner, thinkingMode, interactiveMode, selectedModel, {
-              command: commandForRunner,
-              args: grokAgentArgs,
-              cwd: grokCwd,
-            });
-          }
-          syncInteractiveRunEntry(stopFn);
-          let grokStopReason: string | null = null;
-          let grokPromptCompleted = false;
-          let lastGrokActivityAt = 0;
-          const grokToolMessageIds = new Map<string, string>();
-          await runner.prompt(attemptPrompt, {
-            onActivity: () => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              const now = Date.now();
-              if (now - lastGrokActivityAt >= 1000) {
-                lastGrokActivityAt = now;
-                sendPanelMessage({ type: "runActivity", tabId });
-              }
-            },
-            onTaskListUpdate: (items) => {
-              if (isCurrentRunActive()) {
-                sendPanelMessage({ type: "taskListUpdate", items, tabId });
-              }
-            },
-            onTokenUsageUpdate: (update) => {
-              if (!isCurrentRunActive()) {
-                const currentTab = getConversationTabById(tabId);
-                if (!grokPromptCompleted
-                  || interactiveRunsByTabId.has(tabId)
-                  || currentTab?.cli !== "grok"
-                  || !uiSessionId
-                  || currentTab.sessionId !== uiSessionId
-                  || !interactiveRunnerManager.hasGrokRunner(uiSessionId, runner)) {
-                  return;
-                }
-              }
-              sendPanelMessage({
-                type: "contextTokenUsage",
-                tabId,
-                tokensInContextWindow: update.tokensInContextWindow,
-                modelContextWindow: update.modelContextWindow,
-              });
-            },
-            onAssistantDelta: (chunk) => {
-              if (!isCurrentRunActive() || !chunk) {
-                return;
-              }
-              if (chunk.trim()) {
-                attemptHadNormalReply = true;
-              }
-              appendAssistantChunkForTab(chunk);
-              appendDebugStdout(chunk);
-            },
-            onTrace: (content, kind, meta) => {
-              if (!canEmitGrokPresentation()) {
-                return;
-              }
-              if (kind === "thinking") {
-                appendAssistantChunkForTab(content, "thinking");
-                appendTraceLog(content);
-                return;
-              }
-              let id: string | undefined;
-              if (meta?.toolCallId) {
-                id = grokToolMessageIds.get(meta.toolCallId) ?? createMessageId();
-                grokToolMessageIds.set(meta.toolCallId, id);
-              }
-              appendTraceMessageForTab(content, kind === "tool-use" ? "tool-use" : "normal", { id, merge: false });
-              appendTraceLog(content);
-            },
-            onEvent: (event) => {
-              if (!canEmitGrokPresentation()) {
-                return;
-              }
-              const content = normalizeRawStreamContent(event);
-              sendPanelMessage({ type: "rawStreamDelta", content: content + (content.endsWith("\n") ? "" : "\n"), stream: "event", tabId });
-              appendDebugEvent(event);
-            },
-            onComplete: ({ stopReason }) => {
-              if (!isCurrentRunActive()) {
-                return;
-              }
-              grokStopReason = stopReason;
-            },
-          });
-          grokPromptCompleted = isCurrentRunActive();
-          if (attemptHadNormalReply && isGrokCompletedStopReason(grokStopReason)) {
-            observedGrokFinalAnswer = true;
-          }
-          if (await maybeHandleNaturalLanguageHumanInteraction()) {
-            continue;
-          }
-          const finalConclusionState = handleMissingFinalConclusionForTab("grok");
-          if (finalConclusionState.action === "stopped") {
-            return;
-          }
-          if (finalConclusionState.action === "retry") {
-            continue;
-          }
-          if (finalConclusionState.action === "error") {
-            await cleanupAfterRun("error", finalConclusionState.message);
-            return;
-          }
-          await cleanupAfterRun("end");
-          return;
-          } finally {
-            if (!runnerWasManaged) {
-              const retained = Boolean(
-                uiSessionId
-                && interactiveRunnerManager.hasGrokRunner(uiSessionId, runner)
-              );
-              if (!retained) {
-                runner.dispose();
-              }
-            }
-          }
-        }
-
-        throw new Error(`interactive-runner-unsupported:${cli}`);
+        return;
       } catch (error) {
         const entry = interactiveRunsByTabId.get(tabId);
         if (!entry || entry.runId !== runId) {

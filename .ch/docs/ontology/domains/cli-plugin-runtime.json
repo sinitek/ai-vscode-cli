@@ -38,7 +38,6 @@
         {"path": "README.md", "anchor": "开始使用"},
         {"path": "ARCHITECTURE.md", "anchor": "Webview/UI 层"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.1 对话入口与基础导航"},
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "3.1 扩展入口层"},
         {"path": "package.json", "anchor": "contributes.viewsContainers"},
         {"path": "src/test/webview/panelViewLocation.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
@@ -74,7 +73,6 @@
       "implementation_paths": ["src/sessionTabs.ts", "src/sessionHealth.ts", "src/sessionLifecycle.ts", "src/interactive", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
         {"path": "src/interactive/grokAppServerProtocol.ts"}
       ]
@@ -133,7 +131,7 @@
       "aliases": ["Graph", "DAG", "运行图"],
       "implementation_paths": ["src/graph"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"},
+        {"path": "ARCHITECTURE.md", "anchor": "Graph 编排层"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
@@ -249,7 +247,7 @@
       "type": "executes",
       "to": "plugin.local_cli",
       "cardinality": "N:N",
-      "source_refs": [{"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}]
+      "source_refs": [{"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3 执行模式"}]
     },
     {
       "id": "plugin.relation.panel_creates_scheduled_task",
@@ -389,7 +387,7 @@
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Webview/UI 层"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.5 Prompt 输入增强"},
         {"path": "src/commandRegistry.ts", "anchor": "addToCliReference"},
         {"path": "src/webview/panelFileActions.ts", "anchor": "buildExplorerReferencePaths"},
         {"path": "src/webview/viewProvider.ts", "anchor": "insertPromptPaths"}
@@ -546,7 +544,6 @@
         {"path": "src/loopMainQuestion.ts"},
         {"path": "src/panelDiagnostics.ts"},
         {"path": "src/webview/loopDebatePanel.ts"},
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },
@@ -561,8 +558,7 @@
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/graphRuntime.ts"},
         {"path": "src/webview/orchestratorClarificationDialog.ts"},
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
-        {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3 执行模式"}
       ]
     },
     {
@@ -572,7 +568,6 @@
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/loopPlusScheduler.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
@@ -623,7 +618,6 @@
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/toolSettings.ts"}
@@ -636,7 +630,6 @@
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
@@ -650,7 +643,6 @@
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/loopPlusScheduler.ts"},
@@ -665,7 +657,6 @@
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
         {"path": "src/webview/viewContentStrings.ts"}
@@ -740,8 +731,7 @@
       "source_refs": [
         {"path": "src/subtaskDesignBriefPolicy.ts"},
         {"path": "src/graph/graphNodeInstructions.ts"},
-        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/design-docs/graph-orchestration-mode.md"}
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
     {
@@ -768,8 +758,7 @@
       "source_refs": [
         {"path": "src/loopMainAutoCompact.ts"},
         {"path": "src/contextCompactionRunner.ts"},
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md"}
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     }
   ]
