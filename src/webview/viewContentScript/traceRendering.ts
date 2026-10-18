@@ -42,11 +42,75 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return '<details class="trace-collapsible' + extraClass + '"' + keyAttr + openAttr + '><summary>' + escapeHtml(summaryText) + '</summary>' + bodyHtml + '</details>';
       }
 
+      function resolveRenderedMessageIndex(message, index) {
+        if (typeof index === "number" && index >= 0) {
+          return index;
+        }
+        if (!message || !Array.isArray(state.messages)) {
+          return -1;
+        }
+        if (message.id) {
+          for (let cursor = state.messages.length - 1; cursor >= 0; cursor -= 1) {
+            const item = state.messages[cursor];
+            if (item && item.id === message.id) {
+              return cursor;
+            }
+          }
+        }
+        return state.messages.indexOf(message);
+      }
+
+      function isToolActivityMessage(message) {
+        if (!message || message.role === "user" || message.role === "system") {
+          return false;
+        }
+        const kind = typeof message.kind === "string" ? message.kind.trim().toLowerCase() : "";
+        if (kind === "thinking") {
+          return false;
+        }
+        if (kind === "tool-use" || kind === "tool-result" || kind === "tool") {
+          return true;
+        }
+        const content = typeof message.content === "string" ? message.content : "";
+        if (typeof getTracePresentation !== "function") {
+          return false;
+        }
+        const presentation = getTracePresentation(content);
+        const type = presentation && presentation.type ? String(presentation.type) : "";
+        return type === "tool-result"
+          || type.indexOf("tool-use") === 0
+          || type === "exec"
+          || type === "apply-patch"
+          || type === "file-update"
+          || type === "git-update"
+          || type === "web-search";
+      }
+
+      function isPreToolAssistantNarration(message, index) {
+        if (!message || message.role !== "assistant" || message.kind === "thinking") {
+          return false;
+        }
+        if (isToolActivityMessage(message)) {
+          return false;
+        }
+        const resolved = resolveRenderedMessageIndex(message, index);
+        if (resolved < 0 || !Array.isArray(state.messages)) {
+          return false;
+        }
+        if (typeof isFinalAssistantSummaryMessage === "function" && isFinalAssistantSummaryMessage(resolved)) {
+          return false;
+        }
+        return isToolActivityMessage(state.messages[resolved + 1]);
+      }
+
       function isThinkingLikeMessage(message, presentation) {
         if (!message) {
           return false;
         }
-        return message.kind === "thinking" || (presentation && presentation.type === "thinking");
+        if (message.kind === "thinking" || (presentation && presentation.type === "thinking")) {
+          return true;
+        }
+        return isPreToolAssistantNarration(message);
       }
 
       function isCodexReasoningStyleMessage(message) {

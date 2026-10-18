@@ -225,6 +225,9 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         width: fit-content;
         max-width: 100%;
         padding: 4px 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         color: var(--vscode-descriptionForeground);
         font-size: 12px;
         line-height: 1.4;

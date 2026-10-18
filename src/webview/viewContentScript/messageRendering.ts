@@ -167,8 +167,74 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return "index-" + String(index);
       }
 
-      function instructionGroupSummaryText(count, open) {
-        return t(open ? "instructionGroupExpanded" : "instructionGroupCollapsed", { count: String(count) });
+      function instructionBubbleTitle(message) {
+        if (!message) {
+          return "";
+        }
+        const content = typeof getAssistantMessageContentForDisplay === "function"
+          ? String(getAssistantMessageContentForDisplay(message) || "")
+          : (typeof message.content === "string" ? message.content : "");
+        if (typeof getTracePresentation === "function") {
+          const presentation = getTracePresentation(content);
+          const traceTitle = presentation && typeof presentation.title === "string" ? presentation.title.trim() : "";
+          if (traceTitle) {
+            return traceTitle;
+          }
+        }
+        const normalized = content.replace(/\\s+/g, " ").trim();
+        if (!normalized) {
+          return "";
+        }
+        const limit = 32;
+        if (normalized.length <= limit) {
+          return normalized;
+        }
+        return normalized.slice(0, limit) + "…";
+      }
+
+      function findInstructionGroupElement(node) {
+        let current = node;
+        while (current) {
+          const className = typeof current.className === "string" ? current.className : "";
+          if (className.split(/\\s+/).indexOf("instruction-group") !== -1) {
+            return current;
+          }
+          current = current.parentNode || current.parentElement || null;
+        }
+        return null;
+      }
+
+      function instructionGroupLatestTitle(group) {
+        const body = group && typeof group.querySelector === "function"
+          ? group.querySelector(".instruction-group-body")
+          : null;
+        const children = body && body.children ? body.children : [];
+        const latestNode = children.length ? children[children.length - 1] : null;
+        const messageId = latestNode && latestNode.dataset && typeof latestNode.dataset.messageId === "string"
+          ? latestNode.dataset.messageId
+          : "";
+        if (!messageId || !Array.isArray(state.messages)) {
+          return "";
+        }
+        for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+          const message = state.messages[index];
+          if (message && message.id === messageId) {
+            return instructionBubbleTitle(message);
+          }
+        }
+        return "";
+      }
+
+      function instructionGroupSummaryText(count, open, title) {
+        const safeCount = String(count);
+        if (open) {
+          return t("instructionGroupExpanded", { count: safeCount });
+        }
+        const safeTitle = typeof title === "string" ? title.trim() : "";
+        return t("instructionGroupCollapsed", {
+          title: safeTitle || t("instructionGroupCollapsedUntitled"),
+          count: safeCount,
+        });
       }
 
       function syncInstructionGroupSummary(group) {
@@ -183,7 +249,25 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           ? group.dataset.instructionCount
           : (typeof group.getAttribute === "function" ? group.getAttribute("data-instruction-count") : "0");
         const count = Number(rawCount);
-        summary.textContent = instructionGroupSummaryText(Number.isFinite(count) ? count : 0, Boolean(group.open));
+        summary.textContent = instructionGroupSummaryText(
+          Number.isFinite(count) ? count : 0,
+          Boolean(group.open),
+          instructionGroupLatestTitle(group)
+        );
+      }
+
+      function refreshInstructionGroupSummaryForMessage(wrapper) {
+        const group = findInstructionGroupElement(wrapper);
+        if (!group) {
+          return;
+        }
+        const body = typeof group.querySelector === "function" ? group.querySelector(".instruction-group-body") : null;
+        const children = body && body.children ? body.children : [];
+        const latest = children.length ? children[children.length - 1] : null;
+        if (latest !== wrapper) {
+          return;
+        }
+        syncInstructionGroupSummary(group);
       }
 
       function captureOpenInstructionGroupKeys() {
@@ -710,6 +794,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         if (typeof refreshChatSearchHighlights === "function") {
           refreshChatSearchHighlights();
         }
+        refreshInstructionGroupSummaryForMessage(wrapper);
         return true;
       }
 
@@ -786,6 +871,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         ) {
           refreshChatSearchHighlights();
         }
+        refreshInstructionGroupSummaryForMessage(wrapper);
         return true;
       }
 

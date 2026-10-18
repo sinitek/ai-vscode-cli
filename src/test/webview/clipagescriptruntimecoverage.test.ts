@@ -1932,7 +1932,7 @@ test("collapses three or more consecutive instruction bubbles until toggled", ()
   assert.equal(groups.length, 1);
   const group = groups[0];
   const summary = group.querySelector("summary");
-  assert.equal(summary.textContent, "已折叠(3 个)");
+  assert.equal(summary.textContent, "command five(3 个)");
   assert.equal(group.open, false);
   assert.deepEqual(
     group.querySelector(".instruction-group-body").children.map((node: { dataset: { messageId?: string } }) => node.dataset.messageId),
@@ -1956,7 +1956,7 @@ test("collapses three or more consecutive instruction bubbles until toggled", ()
 
   reopened.querySelector("summary").click();
   assert.equal(reopened.open, false);
-  assert.equal(reopened.querySelector("summary").textContent, "已折叠(3 个)");
+  assert.equal(reopened.querySelector("summary").textContent, "command five(3 个)");
 });
 
 test("restarts instruction folding after each thinking bubble", () => {
@@ -2010,7 +2010,7 @@ test("restarts instruction folding after each thinking bubble", () => {
   const groups = messages.querySelectorAll("details.instruction-group");
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
-    ["已折叠(4 个)", "已折叠(4 个)", "已折叠(3 个)"],
+    ["执行命令(4 个)", "执行命令(4 个)", "执行命令(3 个)"],
   );
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
@@ -2032,6 +2032,102 @@ test("restarts instruction folding after each thinking bubble", () => {
   groups.forEach((group: { querySelectorAll: (selector: string) => unknown[] }) => {
     assert.equal(group.querySelectorAll(".thinking-bubble").length, 0);
   });
+});
+
+test("collapsed instruction group summary uses the latest bubble title", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages.push(
+    { id: "tool-bash", role: "trace", content: "tool: bash" },
+    { id: "tool-grep", role: "trace", content: "tool: grep" },
+    { id: "tool-read", role: "trace", content: "tool: read" },
+  );
+  api.renderMessages();
+
+  const messages = document.getElementById("messages");
+  const group = messages.querySelector("details.instruction-group");
+  const summary = group.querySelector("summary");
+  assert.equal(summary.textContent, "读取文件(3 个)");
+
+  summary.click();
+  assert.equal(summary.textContent, "收起(3 个)");
+  summary.click();
+  assert.equal(summary.textContent, "读取文件(3 个)");
+
+  const summaryText = () => {
+    const nextGroup = document.getElementById("messages").querySelector("details.instruction-group");
+    assert.ok(nextGroup);
+    return nextGroup.querySelector("summary").textContent;
+  };
+
+  api.state.messages[2].content = "tool: edit\ninput:\n{}\n";
+  api.renderMessages();
+  assert.equal(summaryText(), "编辑文件(3 个)");
+
+  api.state.messages.splice(0, api.state.messages.length,
+    { id: "blank-1", role: "trace", content: "   " },
+    { id: "blank-2", role: "trace", content: "\n" },
+    { id: "blank-3", role: "trace", content: "" },
+  );
+  api.renderMessages();
+  assert.equal(summaryText(), "已折叠(3 个)");
+
+  const longText = "这是一段没有工具标题的中间说明文字，需要在折叠摘要里被截断后继续显示";
+  api.state.messages.splice(0, api.state.messages.length,
+    { id: "note-1", role: "assistant", content: "先看上下文" },
+    { id: "note-2", role: "assistant", content: "再核对边界" },
+    { id: "note-3", role: "assistant", content: longText },
+  );
+  api.renderMessages();
+  assert.equal(summaryText(), `${longText.slice(0, 32)}…(3 个)`);
+});
+
+test("treats assistant narration immediately before a tool call as a thinking bubble", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages.push(
+    { id: "think-en", role: "assistant", kind: "thinking", content: "I have enough information to write a precise dispatch." },
+    { id: "narration", role: "assistant", content: "交互运行时是当前最值得拆的点：把三套轮次拆开，公共循环保持不动。" },
+    { id: "tool-1", role: "trace", kind: "tool-use", content: "tool: run_terminal_command\nstatus: completed" },
+    { id: "tool-2", role: "trace", kind: "tool-use", content: "tool: read_file\nstatus: completed" },
+    { id: "tool-3", role: "trace", kind: "tool-use", content: "tool: grep\nstatus: completed" },
+    { id: "final-json", role: "assistant", content: "{\"status\":\"dispatch\",\"subtasks\":[]}" },
+    { id: "user-2", role: "user", content: "继续" },
+    { id: "plain-1", role: "assistant", content: "这段说明后面没有工具，仍是普通气泡。" },
+    { id: "plain-2", role: "assistant", content: "第二段普通说明。" },
+    { id: "plain-3", role: "assistant", content: "第三段普通说明。" },
+  );
+  api.renderMessages();
+
+  const messages = document.getElementById("messages");
+  const messageNode = (id: string) => {
+    const queue = [messages];
+    while (queue.length) {
+      const node = queue.shift();
+      for (const child of node?.children || []) {
+        if (child.dataset && child.dataset.messageId === id) {
+          return child;
+        }
+        queue.push(child);
+      }
+    }
+    return null;
+  };
+  const narration = messageNode("narration");
+  assert.ok(narration?.querySelector(".thinking-bubble"));
+  assert.equal(String(narration?.parentNode?.className || "").includes("instruction-group-body"), false);
+  assert.equal(messageNode("final-json")?.querySelector(".thinking-bubble"), null);
+  const groups = messages.querySelectorAll("details.instruction-group");
+  assert.equal(groups.length, 2);
+  assert.deepEqual(
+    groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
+    [
+      ["tool-1", "tool-2", "tool-3", "final-json"],
+      ["plain-1", "plain-2", "plain-3"],
+    ],
+  );
 });
 
 const streamCompletionCases = (["normal", "thinking"] as const).flatMap((messageKind) =>
@@ -2674,6 +2770,9 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "shouldCollapseByContentLength",
     "buildBubbleCollapseSummaryText",
     "renderCollapsibleBubbleContent",
+    "resolveRenderedMessageIndex",
+    "isToolActivityMessage",
+    "isPreToolAssistantNarration",
     "isThinkingLikeMessage",
     "isCodexReasoningStyleMessage",
     "isTransparentBubbleMessage",
@@ -2725,7 +2824,8 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "isLineNumberedLine",
     "expandFileChangeTraceContent",
     "stripLeadingEmptyLines",
-    `${source}; return {
+    `var state = { messages: [] };
+    ${source}; return {
       buildBubbleCollapseSummaryText,
       classifyCommandPurposeTag,
       getAssistantMessageContentForDisplay,
@@ -3403,6 +3503,7 @@ test("thinking viewports exclude final answers, ordinary replies, users, and too
     { id: "trace-thinking", role: "trace", kind: "thinking", content: "thinking\nreasoning" },
     { id: "user", role: "user", content: "thinking about a change" },
     { id: "ordinary", role: "assistant", content: "An ordinary reply" },
+    { id: "narration", role: "assistant", content: "我先看目录再执行。" },
     { id: "tool", role: "trace", content: "exec ls" },
     { id: "final", role: "assistant", codexFinalAnswer: true, content: "**Thinking** is complete" },
   );
@@ -3411,7 +3512,7 @@ test("thinking viewports exclude final answers, ordinary replies, users, and too
   const thinkingMessages = document.getElementById("messages").querySelectorAll(".message")
     .filter((message: FakeElement) => message.querySelector(".thinking-bubble-viewport"))
     .map((message: FakeElement) => message.dataset.messageId);
-  assert.deepEqual(thinkingMessages, ["thinking", "legacy-thinking", "trace-thinking"]);
+  assert.deepEqual(thinkingMessages, ["thinking", "legacy-thinking", "trace-thinking", "narration"]);
 });
 
 test("thinking streams scroll internally and expose an accessible SVG expand/collapse button", () => {
