@@ -377,6 +377,26 @@ test("removes outer padding around the final assistant answer border", () => {
   );
 });
 
+test("keeps collapsed instruction groups free of trailing flex gaps", () => {
+  const groupRule = MESSAGE_BLOCK_STYLES.match(/\.instruction-group\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(groupRule);
+  assert.match(groupRule, /display:\s*block;/);
+  assert.doesNotMatch(groupRule, /(?:gap|margin|padding)(?:-[\w-]+)?:/);
+  assert.match(
+    MESSAGE_BLOCK_STYLES,
+    /\.instruction-group\[open\] > \.instruction-group-body\s*\{[^}]*margin-top:\s*12px;/,
+  );
+  assert.match(
+    MESSAGE_BLOCK_STYLES,
+    /\.instruction-group:not\(\[open\]\) > \.instruction-group-body\s*\{[^}]*display:\s*none;/,
+  );
+  assert.match(
+    MESSAGE_BLOCK_STYLES,
+    /\.instruction-group-body\s*\{[^}]*gap:\s*20px;/,
+  );
+});
+
 test("concatenates all static style modules and keeps key selectors available", () => {
   const expectedStyles = [
     BASE_STYLES,

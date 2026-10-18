@@ -197,9 +197,7 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         display: initial;
       }
       .instruction-group {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
+        display: block;
         min-width: 0;
         max-width: 100%;
       }
@@ -236,6 +234,9 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         flex-direction: column;
         gap: 20px;
         min-width: 0;
+      }
+      .instruction-group[open] > .instruction-group-body {
+        margin-top: 12px;
       }
       .instruction-group:not([open]) > .instruction-group-body {
         display: none;
