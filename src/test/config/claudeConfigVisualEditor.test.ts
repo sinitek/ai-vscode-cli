@@ -109,6 +109,7 @@ test("serializes visual edits without dropping unknown settings", () => {
   state = utils.updateEnv(state, "ANTHROPIC_DEFAULT_HAIKU_MODEL", "vendor-haiku");
   state = utils.updateEnv(state, "ANTHROPIC_DEFAULT_SONNET_MODEL", "vendor-sonnet");
   state = utils.updateEnv(state, "ANTHROPIC_DEFAULT_OPUS_MODEL", "vendor-opus");
+  state = utils.updateEnv(state, "CLAUDE_CODE_SUBAGENT_MODEL", "vendor-subagent");
   state = utils.updatePermissions(state, {
     defaultMode: "acceptEdits",
     allow: "Read\nEdit",
@@ -128,6 +129,7 @@ test("serializes visual edits without dropping unknown settings", () => {
   assert.equal(config.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "vendor-haiku");
   assert.equal(config.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "vendor-sonnet");
   assert.equal(config.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "vendor-opus");
+  assert.equal(config.env.CLAUDE_CODE_SUBAGENT_MODEL, "vendor-subagent");
   assert.deepEqual(config.fallbackModel, ["vendor-opus", "vendor-haiku"]);
   assert.deepEqual(config.availableModels, ["vendor-sonnet", "vendor-opus"]);
   assert.equal(config.effortLevel, "high");
@@ -301,19 +303,29 @@ test("clearing managed fields preserves unrelated environment and permission key
 });
 
 test("official example and editor expose visual plus JSON modes", () => {
-  const example = JSON.parse(extractClaudeExample());
-  assert.equal(example.model, "sonnet");
-  assert.deepEqual(example.fallbackModel, ["opus", "haiku"]);
-  assert.equal(example.effortLevel, "high");
-  assert.ok(example.env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
-  assert.ok(example.env.ANTHROPIC_DEFAULT_SONNET_MODEL);
-  assert.ok(example.env.ANTHROPIC_DEFAULT_OPUS_MODEL);
+  const exampleContent = extractClaudeExample();
+  const example = JSON.parse(exampleContent);
+  assert.deepEqual(example, {
+    model: "claude-sonnet-5",
+    effortLevel: "high",
+    language: "zh-CN",
+    env: {
+      ANTHROPIC_AUTH_TOKEN: "<请填写你的 auth token>",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:33391",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-sonnet-5",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-5",
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-5",
+    },
+  });
+  assert.doesNotMatch(exampleContent, /sk-[A-Za-z0-9]+/);
 
   const source = loadUiSource();
   assert.match(source, /claudeEditorMode === "visual"/);
   assert.match(source, /switchClaudeEditorMode\("visual"\)/);
   assert.match(source, /switchClaudeEditorMode\("json"\)/);
   assert.match(source, /renderClaudeVisualEditor\(\)/);
+  assert.match(source, /"CLAUDE_CODE_SUBAGENT_MODEL"/);
   assert.match(source, /claudeText\("可视化", "Visual"\)/);
   const claudeStart = source.indexOf('className: "config-editor-shell config-editor-claude"');
   const openCodeStart = source.indexOf('className: "config-editor-shell config-editor-opencode"');
@@ -330,7 +342,7 @@ test("official example and editor expose visual plus JSON modes", () => {
     /~\/\.claude\/settings\.json[\s\S]*?children: "查看范例"/,
     "Claude example entry should remain beside the config filename",
   );
-  assert.match(source, /Default model family mapping/);
+  assert.match(source, /Model mapping/);
   assert.match(source, /Advanced JSON mode preserves every Claude Code field/);
   assert.match(source, /\.\.\.\["low", "medium", "high", "xhigh", "ultra"\]\.map/);
   assert.doesNotMatch(source, /\.\.\.\["low", "medium", "high", "xhigh", "ultra", "max"\]\.map/);

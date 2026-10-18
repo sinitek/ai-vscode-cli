@@ -2902,6 +2902,7 @@ const claudeVisualManagedEnvKeys = Object.freeze([
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "CLAUDE_CODE_SUBAGENT_MODEL",
 ]);
 
 const CLAUDE_VISUAL_COMPATIBILITY_PREFIX = "__sinitek_claude_compatibility__:";
@@ -3946,37 +3947,16 @@ const GrokConfigVisualEditorUtils = Object.freeze({
 const ps = {
     claude: {
       settings: `{
-  "model": "sonnet",
-  "fallbackModel": [
-    "opus",
-    "haiku"
-  ],
-  "availableModels": [
-    "sonnet",
-    "opus",
-    "haiku"
-  ],
+  "model": "claude-sonnet-5",
   "effortLevel": "high",
   "language": "zh-CN",
   "env": {
-    "ANTHROPIC_AUTH_TOKEN": "<你的 auth token>",
-    "ANTHROPIC_BASE_URL": "<供应商 url>",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<供应商 Haiku 模型名称>",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "<供应商 Sonnet 模型名称>",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<供应商 Opus 模型名称>"
-  },
-  "permissions": {
-    "defaultMode": "default",
-    "allow": [
-      "Read",
-      "Edit"
-    ],
-    "ask": [
-      "Bash(git push:*)"
-    ],
-    "deny": [
-      "Read(./.env)"
-    ]
+    "ANTHROPIC_AUTH_TOKEN": "<请填写你的 auth token>",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:33391",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-sonnet-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-5"
   }
 }`,
     },
@@ -4733,6 +4713,7 @@ const ConfigEditorPanel = () => {
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "将 Claude Haiku 档映射到第三方供应商的实际模型名。",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "将 Claude Sonnet 档映射到第三方供应商的实际模型名。",
         ANTHROPIC_DEFAULT_OPUS_MODEL: "将 Claude Opus 档映射到第三方供应商的实际模型名。",
+        CLAUDE_CODE_SUBAGENT_MODEL: "设置 Claude Code 子代理使用的模型名称。",
         ANTHROPIC_BASE_URL: "Anthropic 或兼容网关的 API Base URL。",
         ANTHROPIC_API_KEY: "Anthropic 官方 API Key，敏感值仅保存在本机配置。",
         ANTHROPIC_AUTH_TOKEN: "第三方网关 Bearer Token，敏感值仅保存在本机配置。",
@@ -5097,10 +5078,10 @@ const ConfigEditorPanel = () => {
               }),
             ),
             renderClaudeSection(
-              claudeText("三档默认模型映射", "Default model family mapping"),
+              claudeText("模型映射", "Model mapping"),
               claudeText(
-                "为第三方网关或云平台分别指定 Haiku、Sonnet、Opus 实际模型名称。",
-                "Map Haiku, Sonnet, and Opus to provider-specific model names for gateways or cloud platforms.",
+                "为 Haiku、Sonnet、Opus 档及 Claude Code 子代理分别指定模型名称。",
+                "Set model names for Haiku, Sonnet, and Opus tiers, and Claude Code subagents.",
               ),
               be.jsxs("div", {
                 style: gridStyle,
@@ -5122,6 +5103,12 @@ const ConfigEditorPanel = () => {
                     claudeVisualState.env.ANTHROPIC_DEFAULT_OPUS_MODEL,
                     (W) => updateClaudeVisualEnv("ANTHROPIC_DEFAULT_OPUS_MODEL", W),
                     "provider-opus-model",
+                  ),
+                  renderClaudeField(
+                    "CLAUDE_CODE_SUBAGENT_MODEL",
+                    claudeVisualState.env.CLAUDE_CODE_SUBAGENT_MODEL,
+                    (W) => updateClaudeVisualEnv("CLAUDE_CODE_SUBAGENT_MODEL", W),
+                    "provider-subagent-model",
                   ),
                 ],
               }),
