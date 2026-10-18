@@ -377,6 +377,8 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isConversationTabBusy"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLoopMainConversationTabRunning"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getMessageTaskRoleLabel"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageTaskRoleElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyMessageElementClasses"],
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isHiddenLoopPlusProtocolPrompt"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "hasRenderableMessageContent"],

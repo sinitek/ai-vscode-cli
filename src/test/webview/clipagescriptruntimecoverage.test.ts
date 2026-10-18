@@ -1895,7 +1895,7 @@ test("auto-scrolls the chat only while the viewport is within 50px of the bottom
   assert.equal(chatArea.scrollTop, 200);
 });
 
-test("collapses three or more consecutive instruction bubbles until toggled", () => {
+test("collapses two or more consecutive instruction bubbles until toggled", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   api.state.onlyShowFinalResults = false;
@@ -1929,28 +1929,35 @@ test("collapses three or more consecutive instruction bubbles until toggled", ()
     return null;
   };
   const groups = messages.querySelectorAll("details.instruction-group");
-  assert.equal(groups.length, 1);
-  const group = groups[0];
-  const summary = group.querySelector("summary");
-  assert.equal(summary.textContent, "command five(3 个)");
-  assert.equal(group.open, false);
+  assert.equal(groups.length, 3);
   assert.deepEqual(
-    group.querySelector(".instruction-group-body").children.map((node: { dataset: { messageId?: string } }) => node.dataset.messageId),
-    ["cmd-3", "cmd-4", "cmd-5"],
+    groups.map((group: { querySelector: (selector: string) => { textContent: string } }) => group.querySelector("summary").textContent),
+    ["command two(2 个)", "command five(3 个)", "tail two(2 个)"],
   );
-  assert.equal(String(messageNode("cmd-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
+  groups.forEach((group: { open: boolean }) => assert.equal(group.open, false));
+  assert.deepEqual(
+    groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
+    [
+      ["cmd-1", "cmd-2"],
+      ["cmd-3", "cmd-4", "cmd-5"],
+      ["cmd-6", "cmd-7"],
+    ],
+  );
+  assert.equal(String(messageNode("user-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
   assert.equal(String(messageNode("think-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
   assert.equal(String(messageNode("reason-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
+  assert.equal(String(messageNode("final-1")?.parentNode?.className || "").includes("instruction-group-body"), false);
   assert.ok(messageNode("think-1")?.querySelector(".thinking-bubble"));
   assert.ok(messageNode("reason-1")?.querySelector(".thinking-bubble"));
   assert.ok(messageNode("final-1"));
   assert.equal(messageNode("final-1")?.className.includes("message-final-summary"), true);
 
+  const summary = groups[1].querySelector("summary");
   summary.click();
-  assert.equal(group.open, true);
+  assert.equal(groups[1].open, true);
   assert.equal(summary.textContent, "收起(3 个)");
   api.renderMessages();
-  const reopened = messages.querySelector("details.instruction-group");
+  const reopened = messages.querySelectorAll("details.instruction-group")[1];
   assert.equal(reopened.open, true);
   assert.equal(reopened.querySelector("summary").textContent, "收起(3 个)");
 
@@ -2010,17 +2017,18 @@ test("restarts instruction folding after each thinking bubble", () => {
   const groups = messages.querySelectorAll("details.instruction-group");
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
-    ["执行命令(4 个)", "执行命令(4 个)", "执行命令(3 个)"],
+    ["执行命令(4 个)", "执行命令(4 个)", "执行命令(2 个)", "执行命令(3 个)"],
   );
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
     [
       ["t1", "t2", "t3", "t4"],
       ["t5", "t6", "t7", "t8"],
+      ["t9", "t10"],
       ["t11", "t12", "t13"],
     ],
   );
-  for (const id of ["think-a", "think-b", "think-c", "t9", "t10"]) {
+  for (const id of ["think-a", "think-b", "think-c"]) {
     const node = messageNode(id);
     assert.ok(node);
     assert.equal(String(node?.parentNode?.className || "").includes("instruction-group-body"), false);
@@ -2326,9 +2334,14 @@ test("hides historical empty thinking and final markers without hiding real text
       { id: "actions-only", role: "assistant", content: "", actions: [{ type: "openLoopGroupChat", taskId: "task-1", label: "Open discussion" }] },
     ],
   });
+  const messages = document.getElementById("messages");
   assert.deepEqual(
-    document.getElementById("messages").children.map((child: FakeElement) => child.dataset.messageId),
-    ["real-thinking", "real-thinking-trace", "tool-trace", "actions-only"],
+    messages.children.map((child: FakeElement) => child.dataset.messageId || child.className),
+    ["real-thinking", "real-thinking-trace", "instruction-group"],
+  );
+  assert.deepEqual(
+    messages.querySelector(".instruction-group-body").children.map((child: FakeElement) => child.dataset.messageId),
+    ["tool-trace", "actions-only"],
   );
   assert.equal(api.state.messages.length, 8);
   assert.ok(document.getElementById("messages").querySelector(".message-action-link"));
@@ -2779,6 +2792,8 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "renderUserMessageContent",
     "getAssistantMessageContentForDisplay",
     "isToolResultLikeMessage",
+    "shouldShowBubbleTimestamp",
+    "appendBubbleTimestamp",
     "renderToolResultLikeMessage",
     "isAssistantMarkdownRenderPending",
     "renderAssistantMessageContent",
@@ -2892,6 +2907,18 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   assert.doesNotMatch(collapsedExec, /class="trace-detail"/);
   assert.match(collapsedExec, /sed -n '45,121p'/);
   assert.doesNotMatch(context.renderTraceContent({ id: "exec-short", role: "trace", content: "exec ls" }), /trace-collapsible/);
+  assert.doesNotMatch(
+    context.renderMessageContent({ role: "trace", content: "exec ls", createdAt: 1 }, 0),
+    /trace-time/,
+  );
+  assert.doesNotMatch(
+    context.renderMessageContent({ role: "assistant", content: "Tool result: shell\nok", createdAt: 1 }, 0),
+    /trace-time/,
+  );
+  assert.match(
+    context.renderMessageContent({ role: "trace", kind: "thinking", content: "thinking: note", createdAt: 1 }, 0),
+    /trace-time/,
+  );
   const collapsedClaudeResult = context.renderTraceContent({
     id: "claude-result",
     role: "trace",

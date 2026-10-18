@@ -349,7 +349,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           if (!instructionRun.length) {
             return;
           }
-          if (instructionRun.length >= 3) {
+          if (instructionRun.length >= 2) {
             elements.messages.appendChild(createInstructionGroupElement(instructionRun));
           } else {
             instructionRun.forEach((entry) => {
@@ -526,51 +526,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return "coding";
       }
 
-      function isMessageLoopTaskEventDriven(message) {
-        const taskId = normalizeLoopTaskId(message && message.loopTaskId);
-        if (!taskId || !state || !state.conversationTabs || !Array.isArray(state.conversationTabs.tabs)) {
-          return false;
-        }
-        let sawEventDriven = false;
-        let sawOtherExplicitMode = false;
-        const tabs = state.conversationTabs.tabs;
-        for (let index = 0; index < tabs.length; index += 1) {
-          const tab = tabs[index];
-          if (normalizeLoopTaskId(tab && tab.loopTaskId) !== taskId) {
-            continue;
-          }
-          const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
-            ? tab.loopSchedulingMode.trim()
-            : "";
-          if (!schedulingMode) {
-            continue;
-          }
-          if (schedulingMode === "event_driven") {
-            sawEventDriven = true;
-          } else {
-            sawOtherExplicitMode = true;
-          }
-        }
-        return sawEventDriven && !sawOtherExplicitMode;
-      }
-
-      function getMessageTaskRoleLabel(message) {
-        if (!message || message.taskRole !== "main" && message.taskRole !== "subtask") {
-          return "";
-        }
-        if (message.taskRole === "main") {
-          return t("taskRoleMain");
-        }
-        if (isMessageLoopTaskEventDriven(message)) {
-          return t("taskRoleSubtask");
-        }
-        const round = typeof message.loopRound === "number" && Number.isFinite(message.loopRound)
-          ? Math.floor(message.loopRound)
-          : 0;
-        if (round > 0) {
-          return t("taskRoleSubtaskWithRound", { round });
-        }
-        return t("taskRoleSubtask");
+      function getMessageTaskRoleLabel() {
+        return "";
       }
 
       function createMessageTaskRoleElement(message) {

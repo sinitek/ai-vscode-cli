@@ -557,16 +557,33 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return presentation.type === "tool-result";
       }
 
+      function shouldShowBubbleTimestamp(message) {
+        if (!message || !message.createdAt) {
+          return false;
+        }
+        const content = typeof message.content === "string" ? message.content : "";
+        const presentation = typeof getTracePresentation === "function"
+          ? getTracePresentation(content)
+          : null;
+        return isThinkingLikeMessage(message, presentation);
+      }
+
+      function appendBubbleTimestamp(message, content) {
+        if (!shouldShowBubbleTimestamp(message)) {
+          return content;
+        }
+        const time = formatDateTimeWithMs(message.createdAt);
+        if (!time) {
+          return content;
+        }
+        return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
+      }
+
       function renderToolResultLikeMessage(message) {
         const displayMessage = message && message.role === "assistant"
           ? { ...message, content: getAssistantMessageContentForDisplay(message) }
           : message;
-        const content = renderTraceContent(displayMessage);
-        const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
-        if (time) {
-          return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
-        }
-        return content;
+        return appendBubbleTimestamp(message, renderTraceContent(displayMessage));
       }
 
       function renderAssistantStreamingPlainText(content) {
@@ -602,12 +619,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       function renderTraceMessageContent(message) {
-        const content = renderTraceContent(message);
-        const time = message.createdAt ? formatDateTimeWithMs(message.createdAt) : "";
-        if (time) {
-          return content + '<div class="trace-time">' + escapeHtml(time) + "</div>";
-        }
-        return content;
+        return appendBubbleTimestamp(message, renderTraceContent(message));
       }
 
       function renderMessageContent(message, messageIndex) {
