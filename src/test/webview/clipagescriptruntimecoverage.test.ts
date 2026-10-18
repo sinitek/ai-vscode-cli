@@ -2789,6 +2789,7 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "renderTraceContent",
     "renderTraceBodyLines",
     "shouldCollapseTraceContent",
+    "traceDetailDuplicatesExpandedBody",
     "getTraceCollapseSummaryText",
     "getToolResultCollapseSummaryText",
     "hasDiffLikeLines",
@@ -2884,6 +2885,25 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   const collapsedToolResult = context.renderTraceContent({ id: "tool", role: "trace", content: "Tool result: shell\n" + "x".repeat(70) });
   assert.match(collapsedToolResult, /trace-collapsible message-collapsible-generic/);
   assert.match(collapsedToolResult, /Tool result: shell/);
+  const longCommand = "/bin/zsh -lc \"" + "sed -n '45,121p' search_ontology.py; ".repeat(4) + "\"";
+  const collapsedExec = context.renderTraceContent({ id: "exec-long", role: "trace", content: "exec " + longCommand });
+  assert.match(collapsedExec, /trace-collapsible/);
+  assert.match(collapsedExec, /trace-title/);
+  assert.doesNotMatch(collapsedExec, /class="trace-detail"/);
+  assert.match(collapsedExec, /sed -n '45,121p'/);
+  assert.doesNotMatch(context.renderTraceContent({ id: "exec-short", role: "trace", content: "exec ls" }), /trace-collapsible/);
+  const collapsedClaudeResult = context.renderTraceContent({
+    id: "claude-result",
+    role: "trace",
+    content: "工具结果: Edit\n" + "changed line\n".repeat(8),
+  });
+  assert.match(collapsedClaudeResult, /trace-collapsible/);
+  const collapsedOpenCode = context.renderTraceContent({
+    id: "opencode-tool",
+    role: "trace",
+    content: "tool bash\n" + "npm test output\n".repeat(6),
+  });
+  assert.match(collapsedOpenCode, /trace-collapsible/);
   assert.equal(context.classifyCommandPurposeTag("git status").type, "git-read");
   assert.equal(context.unwrapShellCommand("bash -lc \"npm test\""), "npm test");
   assert.equal(context.getTracePresentation("unknown").type, "");

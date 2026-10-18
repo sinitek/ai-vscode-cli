@@ -678,9 +678,14 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         const traceKey = message && typeof message.id === "string" ? message.id : "";
         const presentation = getTracePresentation(content);
         const expandedLines = getTraceExpandedLines(content, presentation);
-        const bodyHtml = renderTraceBodyLines(expandedLines);
         const shouldCollapse = shouldCollapseTraceContent(message, presentation);
-        const showDetailSummary = shouldCollapse;
+        const detailText = presentation && typeof presentation.detail === "string" ? presentation.detail : "";
+        const detailDuplicatesBody = traceDetailDuplicatesExpandedBody(content, presentation);
+        const collapsedLines = shouldCollapse && detailText && !detailDuplicatesBody && shouldCollapseByContentLength(detailText)
+          ? [detailText].concat(expandedLines)
+          : expandedLines;
+        const bodyHtml = renderTraceBodyLines(collapsedLines);
+        const showHeaderDetail = shouldCollapse && detailText && !detailDuplicatesBody && !shouldCollapseByContentLength(detailText);
         const header = presentation.title
           ? '<div class="trace-header">' +
             '<div class="trace-tag-row">' +
@@ -695,8 +700,8 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
                 "</span>"
               : "") +
             "</div>" +
-            (showDetailSummary && presentation.detail
-              ? '<span class="trace-detail">' + escapeHtml(presentation.detail) + "</span>"
+            (showHeaderDetail
+              ? '<span class="trace-detail">' + escapeHtml(detailText) + "</span>"
               : "") +
             "</div>"
           : "";
@@ -741,16 +746,17 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         const sourceContent = message && typeof message.content === "string"
           ? message.content
           : (Array.isArray(presentation.lines) ? presentation.lines.join("\\n") : "");
-        if (!shouldCollapseByContentLength(sourceContent)) {
+        return shouldCollapseByContentLength(sourceContent);
+      }
+
+      function traceDetailDuplicatesExpandedBody(sourceContent, presentation) {
+        const detailText = normalizeCollapsePreviewText(presentation && presentation.detail ? presentation.detail : "");
+        if (!detailText) {
           return false;
         }
         const expandedLines = getTraceExpandedLines(sourceContent, presentation);
         const expandedText = normalizeCollapsePreviewText(expandedLines.join("\\n"));
-        const detailText = normalizeCollapsePreviewText(presentation && presentation.detail ? presentation.detail : "");
-        if (detailText && expandedText === detailText) {
-          return false;
-        }
-        return true;
+        return expandedText === detailText;
       }
 
       function getTraceCollapseSummaryText(message, presentation) {
@@ -759,6 +765,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         if (presentation && presentation.type === "thinking") {
           return t("traceExpandThinking");
+        }
+        if (presentation && presentation.type === "exec") {
+          const command = presentation.detail && String(presentation.detail).trim()
+            ? presentation.detail
+            : (message && message.content ? message.content : "");
+          return buildBubbleCollapseSummaryText(command);
         }
         if (presentation && presentation.type === "tool-result") {
           return getToolResultCollapseSummaryText(presentation);
