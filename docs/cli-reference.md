@@ -13,7 +13,7 @@ Loop / Graph 模型语义：Claude 不接受插件侧模型选择；Codex 普通
 
 配置中心不再安装或卸载 OpenCode 全局 MCP，也不会改写用户已有的 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`。
 
-P0 性能与内存硬化运行口径：停止、扩展停用或 reload 会统一阻止新任务并尽力停止主进程、并行进程、交互运行和受管 OpenCode server。OpenCode one-shot / parallel / interactive raw stdout/stderr 只保留有界 tail，JSONL 未完成行限制为 64 KiB，activity 检测使用增量状态而不是每个 chunk 重扫完整历史。回放导出为 JSONL，按 tab 保留记录数、单条字节和总字节预算，overlay 关闭时不构建完整记录 DOM；Assistant delta 流式阶段轻量更新，idle/final 阶段再完整 Markdown 渲染。附件上传在 Webview 与 Extension Host 双端限制为最多 10 个文件、单文件 20 MiB、不限制总大小，并按语言展示超限拒绝提示。
+P0 性能与内存硬化运行口径：停止、扩展停用或 reload 会统一阻止新任务并尽力停止主进程、并行进程、交互运行和受管 OpenCode server。OpenCode one-shot / parallel / interactive raw stdout/stderr 只保留有界 tail，JSONL 未完成行限制为 64 KiB，activity 检测使用增量状态而不是每个 chunk 重扫完整历史。回放导出为 JSONL，按 tab 不限制记录条数和总字节，仍保留单条字节预算，overlay 关闭时不构建完整记录 DOM；Assistant delta 流式阶段轻量更新，idle/final 阶段再完整 Markdown 渲染。附件上传在 Webview 与 Extension Host 双端限制为最多 10 个文件、单文件 20 MiB、不限制总大小，并按语言展示超限拒绝提示。
 
 配置中心不再提供 MCP 市场，内置市场目录和 `npm run validate:mcp-marketplace` 已删除。
 

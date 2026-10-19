@@ -392,21 +392,6 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           createdAt: Date.now(),
         });
         runtimeState.runStreamRetainedBytes = (runtimeState.runStreamRetainedBytes || 0) + contentBytes;
-        while (
-          runtimeState.runStreamRecords.length > RUN_STREAM_MAX_RECORDS
-          || runtimeState.runStreamRetainedBytes > RUN_STREAM_MAX_BYTES
-        ) {
-          const removed = runtimeState.runStreamRecords.shift();
-          if (!removed) {
-            runtimeState.runStreamRetainedBytes = 0;
-            break;
-          }
-          const removedBytes = getRunStreamContentByteLength(removed.content);
-          runtimeState.runStreamRetainedBytes = Math.max(0, (runtimeState.runStreamRetainedBytes || 0) - removedBytes);
-          runtimeState.runStreamDiscardedRecordCount = (runtimeState.runStreamDiscardedRecordCount || 0) + 1;
-          runtimeState.runStreamDiscardedBytes = (runtimeState.runStreamDiscardedBytes || 0) + removedBytes;
-          runtimeState.runStreamOpenRecordIds.delete(removed.id);
-        }
         if (isRuntimeStateForActiveTab(tabId)) {
           updateRunStreamButton();
           if (runtimeState.overlays.runStream) {
@@ -534,8 +519,6 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
             discardedRecordCount,
             discardedBytes,
             truncatedRecordCount,
-            maxRecords: RUN_STREAM_MAX_RECORDS,
-            maxBytes: RUN_STREAM_MAX_BYTES,
             maxRecordBytes: RUN_STREAM_MAX_RECORD_BYTES,
           }, null, 2),
           source: "event",

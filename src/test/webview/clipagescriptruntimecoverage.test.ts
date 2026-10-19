@@ -1519,7 +1519,7 @@ test("filters prompt and session history by the shared keyword search", () => {
   assert.equal(promptList.children[0].textContent, "没有匹配的历史提示词。");
 });
 
-test("keeps run stream preview bounded per conversation tab", () => {
+test("keeps run stream records beyond the former 2000 count cap", () => {
   const { api, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
 
@@ -1528,13 +1528,30 @@ test("keeps run stream preview bounded per conversation tab", () => {
   }
 
   const runtimeState = api.getConversationRuntimeState("tab-2");
-  assert.equal(runtimeState.runStreamRecords.length, 2000);
-  assert.equal(runtimeState.runStreamRecords[0].content, "record-1");
-  assert.equal(runtimeState.runStreamDiscardedRecordCount, 1);
-  assert.ok(runtimeState.runStreamRetainedBytes > 0);
-  const exportPayload = api.buildRunStreamExportPayload(runtimeState);
-  assert.equal(exportPayload[0].id, "stream-truncation-metadata");
-  assert.equal(JSON.parse(exportPayload[0].content).discardedRecordCount, 1);
+  assert.equal(runtimeState.runStreamRecords.length, 2001);
+  assert.equal(runtimeState.runStreamRecords[0].content, "record-0");
+  assert.equal(runtimeState.runStreamRecords.at(-1).content, "record-2000");
+  assert.equal(runtimeState.runStreamDiscardedRecordCount, 0);
+  assert.equal(api.buildRunStreamExportPayload(runtimeState)[0].id, "stream-record-1");
+});
+
+test("keeps run stream records beyond the former total byte budget", () => {
+  const { api, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  const chunk = "y".repeat(250 * 1024);
+
+  for (let index = 0; index < 40; index += 1) {
+    api.appendRunRawStream(`${index}:${chunk}`, "stdout", "tab-2");
+  }
+
+  const runtimeState = api.getConversationRuntimeState("tab-2");
+  assert.equal(runtimeState.runStreamRecords.length, 40);
+  assert.equal(runtimeState.runStreamDiscardedRecordCount, 0);
+  assert.equal(runtimeState.runStreamTruncatedRecordCount, 0);
+  assert.ok(runtimeState.runStreamRetainedBytes > 8 * 1024 * 1024);
+  assert.equal(runtimeState.runStreamRecords[0].content.startsWith("0:"), true);
+  assert.equal(runtimeState.runStreamRecords.at(-1).content.startsWith("39:"), true);
+  assert.equal(api.buildRunStreamExportPayload(runtimeState)[0].id, "stream-record-1");
 });
 
 test("defers run stream DOM rendering while overlay is closed", () => {
@@ -3427,8 +3444,6 @@ test("handles run stream, queue, attachments, history, and settings function bra
   const toasts: string[] = [];
   const helpers = new Function(
     "RUN_STREAM_PREVIEW_MAX_LENGTH",
-    "RUN_STREAM_MAX_RECORDS",
-    "RUN_STREAM_MAX_BYTES",
     "RUN_STREAM_MAX_RECORD_BYTES",
     "UPLOAD_MAX_FILES",
     "UPLOAD_MAX_FILE_BYTES",
@@ -3460,8 +3475,6 @@ test("handles run stream, queue, attachments, history, and settings function bra
     };`,
   )(
     20,
-    2000,
-    8 * 1024 * 1024,
     256 * 1024,
     10,
     20 * 1024 * 1024,

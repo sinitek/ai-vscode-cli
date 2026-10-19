@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-18",
+  "as_of": "2026-10-19",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -795,6 +795,19 @@
         {"path": "src/loopMainAutoCompact.ts"},
         {"path": "src/contextCompactionRunner.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.run_stream_record_count",
+      "name": "回放不按条数或总字节丢弃",
+      "description": "每个会话 tab 的回放不再因为达到 2000 条或合计字节预算而丢弃较早记录。单条字节预算仍然生效，超限时只截断该条记录；overlay 关闭时不构建完整记录 DOM。JSONL 导出只在单条截断时写入 truncation metadata，且不声明记录条数或总字节上限。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/coreBootstrap.ts", "anchor": "RUN_STREAM_MAX_RECORD_BYTES"},
+        {"path": "src/webview/viewContentScript/runStreamAndQueue.ts", "anchor": "appendRunRawStream"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps run stream records beyond the former 2000 count cap"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "性能与内存硬化"}
       ]
     }
   ]
