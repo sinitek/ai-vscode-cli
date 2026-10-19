@@ -2047,6 +2047,85 @@ test("does not exempt ordinary instruction bubbles with empty or invalid task ac
   );
 });
 
+for (const kind of ["normal", "thinking", "tool-use"]) {
+  test(`appends the first ${kind} trace to an empty conversation without a dispatch error`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createPanelState() });
+    api.state.onlyShowFinalResults = false;
+    window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [] });
+
+    window.dispatchMessage({
+      type: "appendMessage",
+      tabId: "tab-1",
+      message: { id: "first-trace", role: "trace", kind, content: "首条执行记录" },
+    });
+
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+    assert.equal(api.state.messages.length, 1);
+    assert.equal(api.state.messages[0].id, "first-trace");
+    const contentSelector = kind === "thinking" ? ".thinking-bubble-viewport" : ".bubble";
+    assert.match(document.getElementById("messages").querySelector(contentSelector)?.innerHTML || "", /首条执行记录/);
+  });
+}
+
+test("receives trace messages and an assistant reply after retrying an initially failed conversation", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+  window.dispatchMessage({
+    type: "setMessages",
+    tabId: "tab-1",
+    messages: [
+      { id: "initial-user", role: "user", content: "执行任务" },
+      { id: "initial-error", role: "trace", content: "error\n模型启动失败" },
+    ],
+  });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "error" });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [] });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "retry-trace", role: "trace", content: "重试执行记录" },
+  });
+  window.dispatchMessage({
+    type: "appendMessage",
+    tabId: "tab-1",
+    message: { id: "retry-answer", role: "assistant", content: "重试成功", codexFinalAnswer: true },
+  });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  assert.deepEqual(api.state.messages.map((message: any) => message.id), ["retry-trace", "retry-answer"]);
+  assert.match(document.getElementById("messages").children[1].querySelector(".bubble")?.innerHTML || "", /重试成功/);
+});
+
+test("preserves trace merging rules when the conversation starts with a trace", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [] });
+
+  for (const message of [
+    { id: "trace-1", role: "trace", kind: "normal", content: "第一条执行记录" },
+    { id: "trace-2", role: "trace", kind: "normal", content: "第二条执行记录" },
+    { id: "thinking-1", role: "trace", kind: "thinking", content: "思考记录" },
+    { id: "tool-1", role: "trace", kind: "tool-use", content: "第一条工具调用" },
+    { id: "tool-2", role: "trace", kind: "tool-use", content: "第二条工具调用" },
+    { id: "separate-1", role: "trace", kind: "normal", content: "独立执行记录", merge: false },
+    { id: "separate-2", role: "trace", kind: "normal", content: "后续执行记录" },
+  ]) {
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message });
+  }
+
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  assert.deepEqual(api.state.messages.map((message: any) => message.id), [
+    "trace-1", "thinking-1", "tool-1", "tool-2", "separate-1", "separate-2",
+  ]);
+  assert.equal(api.state.messages[0].content, "第一条执行记录\n第二条执行记录");
+});
+
 test("keeps the owning conversation tab errored for error bubbles through append, update, collapse, and recovery", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({

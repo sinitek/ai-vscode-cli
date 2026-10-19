@@ -224,7 +224,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return;
         }
         const sameRole = last && last.role === message.role;
-        const sameTraceKind = message.role !== "trace" || last.kind === message.kind;
+        const sameTraceKind = message.role !== "trace" || (last && last.kind === message.kind);
         const isToolUseTrace = message.role === "trace" && message.kind === "tool-use";
         const allowMerge = message.merge !== false && (!last || last.merge !== false) && !isToolUseTrace;
         if (sameRole && sameTraceKind && allowMerge) {

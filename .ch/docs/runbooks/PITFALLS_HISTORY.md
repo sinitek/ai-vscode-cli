@@ -9,6 +9,15 @@
 - 归档条目仍需保留首次发现时间、适用版本、修复方式和关联资料，便于审计和追溯。
 - 当历史归档数量较多或单文件超过约 500 行时，再按主题拆分历史文件并从本页建立索引。
 
+## 首次模型报错后重试的首条 trace 触发空值异常
+
+- 发现时间：2026-10-19
+- 适用版本：`appendMessage` 的 `sameTraceKind` 判断直接访问 `last.kind` 的版本。
+- 现象：首次模型报错后再次执行，Webview 报 `window-message-handler-failed`，原因是 `Cannot read properties of undefined (reading 'kind')`，首条执行记录丢失。
+- 根因：异常会话重建会发送空的 `setMessages`；下一条消息为 trace 时，消息列表没有 `last`。即使合并分支另有 `sameRole` 检查，提前计算 `sameTraceKind` 仍会抛错。
+- 修正：读取 `last.kind` 前先确认 `last` 存在；保持同类 trace 合并、工具调用不合并及 `merge: false` 隔离规则。不通过关闭异常会话隔离来绕过问题。
+- 验证：`src/test/webview/clipagescriptruntimecoverage.test.ts` 覆盖空列表的 normal/thinking/tool-use、首次失败后重试及合并规则；完整生成的 Webview HTML 通过本机无头 Chromium 消息派发验证。
+
 ## 工作区安装开关被对话运行态误禁用
 
 - 发现时间：2026-09-26
