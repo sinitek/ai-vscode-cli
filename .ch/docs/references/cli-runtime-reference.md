@@ -277,6 +277,7 @@ OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，
 4. 用户级配置在 `%USERPROFILE%\.codex`，不要把 `~/.codex` 写进 Windows 环境变量后指望系统展开
 5. 插件初始化会自动修复一次仍是裸命令且扩展宿主找不到的 Codex/Claude/OpenCode，并把绝对路径写入 `sinitek-cli-tools.commands.<cli>`；修改 PATH 后重启 VS Code 会再试一次。没修好的项仍在工具设置“自动修复”里，左侧是 `spawn <cli> ENOENT`，右侧“一键修复”会重新读取当前用户/系统 PATH
 6. Loop 子任务临时根在 Windows 上对目录使用 junction、对顶层文件优先 hardlink；跨盘时写到工作区 `.sinitek-loop-tmp`
+7. Loop 临时执行根不得递归删除。宿主记录根和每个链接的设备号、inode、创建时间，清理前用 `lstatSync` 校验身份；junction 仅非递归 `rmdirSync`，其他符号链接和仍对应源文件的 hardlink 仅 `unlinkSync`，最后只删除空根。未知内容、身份变化或占用均保留并记录 `loop-subtask-execution-root-cleanup-skipped`（临时根、目标路径、错误码和错误摘要）；成功清理以调试日志 `loop-subtask-execution-root-cleaned` 记录。不自动递归清扫旧版残留 `.sinitek-loop-tmp`，不要在未拆除链接前手动强删该目录。
 
 ### macOS
 

@@ -772,6 +772,20 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_execution_root_safe_cleanup",
+      "name": "Loop 临时执行根仅按登记身份非递归拆链",
+      "description": "Loop 子任务临时根通过链接写回真实工作区，不能作为目录树递归删除。宿主登记执行根和链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。未知内容、根或链接身份变化以及占用均保留现场并记录清理跳过事件，清理失败不改变已成功的任务结果。创建失败和正常收尾共用这条约束，不自动清扫旧残留根。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task"],
+      "source_refs": [
+        {"path": "src/loopSubtaskExecutionRoot.ts"},
+        {"path": "src/test/loop/loopSubtaskExecutionRoot.test.ts"},
+        {"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3.1 Loop 子任务项目规则隔离"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Windows"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
       "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩只处理主任务会话，子任务派发使用独立会话，两者同时进行，不再等压缩结束后才派发。下一次使用同一主任务会话的运行会先等待这次压缩结束。子任务、普通对话和 Graph 仍在当前运行结束后再压缩。",
