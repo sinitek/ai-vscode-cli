@@ -246,7 +246,7 @@ function buildGraphNodeStartedText(
     `- 节点类型：${node.kind}`,
     `- 执行模式：${formatGraphRunExecutionMode(run)}`,
     `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
-    `- 授权文件：${node.writeFiles?.length ? node.writeFiles.join("、") : "未声明"}`,
+    `- 建议写入：${node.writeFiles?.length ? node.writeFiles.join("、") : "未声明"}`,
     `- 沟通文件：${communicationFile}`,
   ].join("\n");
 }

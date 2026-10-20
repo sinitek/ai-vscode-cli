@@ -432,7 +432,8 @@ test("creates subtask communication files and persists their generated path", ()
 
   const filePath = loopTaskStore.prepareLoopSubtaskCommunicationFile(task, task.subTasks[0], 4, 2);
   const content = fs.readFileSync(filePath, "utf8");
-  assert.match(content, /授权写入文件\/范围：src\/one\.ts、src\/two\.ts/u);
+  assert.match(content, /建议写入文件\/范围：src\/one\.ts、src\/two\.ts/u);
+  assert.match(content, /建议范围不是硬限制/u);
   assert.match(content, /轮次：4/u);
   assert.match(content, /重试次数：2/u);
 

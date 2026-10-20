@@ -74,7 +74,7 @@ const STRINGS = {
     attempts: "尝试次数",
     dependsOn: "依赖",
     unlocks: "解锁",
-    writeFiles: "授权文件",
+    writeFiles: "建议写入",
     conflictGroup: "冲突组",
     promptRef: "Prompt 引用",
     instructions: "任务说明",

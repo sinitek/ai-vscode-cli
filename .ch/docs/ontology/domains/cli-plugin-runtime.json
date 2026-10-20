@@ -745,7 +745,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型按固定清单验收",
-      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；没有未授权改动；没有遗漏、回归或边界错误。不适用必须明确说明。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。主模型可以自行运行相关测试或启动已有可运行产物，但都不强制，跳过本身不构成失败。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。",
+      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；建议写入范围之外的改动只在完成任务确实需要时出现，没有无关改动；没有遗漏、回归或边界错误。不适用必须明确说明。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。主模型可以自行运行相关测试或启动已有可运行产物，但都不强制，跳过本身不构成失败。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -826,6 +826,19 @@
       "source_refs": [
         {"path": "src/subtaskDesignBriefPolicy.ts"},
         {"path": "src/graph/graphNodeInstructions.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.child_write_scope_advisory",
+      "name": "子模型写入范围只是建议",
+      "description": "Loop、Loop+ 和 Graph 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、graph.json、events、其他子任务或节点的沟通文件。主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/graph/graphPromptBuilders.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },

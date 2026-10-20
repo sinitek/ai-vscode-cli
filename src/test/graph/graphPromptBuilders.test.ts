@@ -98,7 +98,8 @@ test("builds a self-contained executable Graph node prompt with scope and accept
   assert.match(prompt, /用户补充消息/u);
   assert.match(prompt, /必须保持 Graph 并行调度语义/u);
   assert.match(prompt, /后续节点必须纳入判断和验收/u);
-  assert.match(prompt, /授权写入范围：src\/graph\/graphKernel\.ts/u);
+  assert.match(prompt, /建议写入范围：src\/graph\/graphKernel\.ts/u);
+  assert.match(prompt, /不是硬限制/u);
   assert.match(prompt, /节点沟通文件：\/tmp\/graph\/nodes\/implement-1\.md/u);
   assert.match(prompt, /Kernel adapter compiles/u);
   assert.match(prompt, /运行 npm run build/u);
@@ -201,7 +202,7 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /source-contract、文本快照、路径断言、测试里的 canonical source/u);
   assert.match(prompt, /test adaptation\/契约更新节点/u);
   assert.match(prompt, /声明具体测试 writeFiles/u);
-  assert.match(prompt, /无写权限的 test 验证节点/u);
+  assert.match(prompt, /不是执行节点的硬性写入白名单/u);
   assert.match(prompt, /stale_test_contract/u);
   assert.match(prompt, /missing_write_scope/u);
   assert.match(prompt, /完整单测、全仓测试、全量 lint/u);
@@ -215,7 +216,7 @@ test("planner prompt requires an AI planned DAG instead of a fixed linear graph"
   assert.match(prompt, /plannedGraph\.nodes\[\]\.title 必须使用简洁中文/u);
   assert.match(prompt, /每个执行节点的 instructions 是子节点唯一能看到的任务说明/u);
   assert.match(prompt, /不要只写“注意设计”或指望执行节点重新发现/u);
-  assert.match(prompt, /"instructions":"在 src\/api 授权范围内实现本次 API 改动/u);
+  assert.match(prompt, /"instructions":"优先修改 src\/api 完成本次 API 改动/u);
   assert.match(prompt, /"title":"实现 API 改动"/u);
   assert.match(prompt, /"title":"实现 UI 改动"/u);
   assert.match(prompt, /信息层级为标题、主操作、状态说明/u);
@@ -417,7 +418,8 @@ test("execution node prompt keeps rework reason and omits graph topology", () =>
   assert.match(prompt, /来源：review-ui/u);
   assert.match(prompt, /原因：Review feedback rollback/u);
   assert.match(prompt, /范围：implement-ui、test-ui、review-ui/u);
-  assert.match(prompt, /授权写入范围：src\/webview\/graphRunPanel\*\.ts/u);
+  assert.match(prompt, /建议写入范围：src\/webview\/graphRunPanel\*\.ts/u);
+  assert.match(prompt, /不是硬限制/u);
 
   const summaryPrompt = buildGraphNodePrompt({
     run,

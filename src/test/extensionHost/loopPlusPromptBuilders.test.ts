@@ -377,7 +377,7 @@ test("a multi-event acceptance batch is confirmed in order and includes the user
   })), null);
 });
 
-test("subtask prompt limits itself to the supplied attempt report and write scope", () => {
+test("subtask prompt treats write scope as a suggestion and keeps the attempt report", () => {
   const prompt = buildLoopPlusSubtaskModelPrompt({
     subtask: {
       id: "sub-token",
@@ -390,7 +390,9 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
   });
   assert.match(prompt, /independent Loop\+ execution attempt/);
   assert.match(prompt, /Complete only this attempt and write its report/);
-  assert.match(prompt, /Authorized write scope: src\/authorized-scope\.ts/);
+  assert.match(prompt, /Suggested write scope: src\/authorized-scope\.ts/);
+  assert.match(prompt, /not a hard limit/);
+  assert.doesNotMatch(prompt, /Edit files only inside/);
   assert.match(prompt, /Attempt report file: ATTEMPT_REPORT_TOKEN/);
   assert.match(prompt, /Do not modify scheduling state, active ids, the loopPlus snapshot, the task record/);
   assert.match(prompt, /If the subtask instructions include a UI design, implement that design/);
@@ -414,7 +416,7 @@ test("subtask prompt limits itself to the supplied attempt report and write scop
   });
   assert.match(emptyPaths, /Attempt report file: \n/);
   assert.equal(emptyPaths.includes("Task record file"), false);
-  assert.match(emptyPaths, /Authorized write scope: \(not declared; follow the subtask instructions\)/);
+  assert.match(emptyPaths, /Suggested write scope: \(not declared; edit the workspace files this attempt requires\)/);
   assert.doesNotMatch(emptyPaths, /\/Users\//);
   assert.equal(emptyPaths.toLowerCase().includes("round"), false);
 });
@@ -483,7 +485,7 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
   assert.match(prompt, /interface, data structure, or file boundary/);
   assert.match(prompt, /included tests pass/);
   assert.match(prompt, /produced runnable artifacts run/);
-  assert.match(prompt, /authorized write scope/);
+  assert.match(prompt, /suggested write scope/);
   assert.match(prompt, /omission, regression, or boundary error/);
   assert.match(prompt, /does not grade this checklist/);
   assert.match(prompt, /You are not required to run either one/);

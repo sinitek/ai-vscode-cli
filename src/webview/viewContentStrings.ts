@@ -318,7 +318,7 @@ export const WEBVIEW_STRINGS = {
     helpModeLoopPros: "优点：批次边界清楚、上下文共享、统一复核。",
     helpModeLoopPlusTitle: "Loop+",
     helpModeLoopPlusBest: "适合：子任务相对独立、希望完成后立即验收并持续推进的任务。",
-    helpModeLoopPlusPros: "优点：完成即验收，多项可进入可见队列合并处理；支持追加消息或任务。主模型检查实现、契约、测试、产物、未授权改动及遗漏、回归和边界错误。需要时可以自行测试或启动应用，但不强制。最多验收次数可在“AI任务配置”中设置（默认 100，最大 999）。",
+    helpModeLoopPlusPros: "优点：完成即验收，多项可进入可见队列合并处理；支持追加消息或任务。主模型检查实现、契约、测试、产物、无关改动及遗漏、回归和边界错误。建议写入范围不是硬限制，完成任务需要时可以改其它文件。需要时可以自行测试或启动应用，但不强制。最多验收次数可在“AI任务配置”中设置（默认 100，最大 999）。",
     helpModeGraphTitle: "Graph",
     helpModeGraphBest: "适合：复杂任务，需要明确依赖、并行执行和证据可视化。",
     helpModeGraphPros: "优点：依赖和进度直观，调度与恢复边界清楚。",

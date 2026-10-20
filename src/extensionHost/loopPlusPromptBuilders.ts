@@ -35,7 +35,7 @@ export type LoopPlusSubtaskPromptContext = {
 };
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
-  "Implement this self-contained subtask inside its declared write scope only.",
+  "Implement this self-contained subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
   "Design key point: keep the public function signature stable and route the new branch through the existing validator; do not add a parallel code path.",
   "Record the command and result in the attempt report.",
 ].join(" ");
@@ -59,7 +59,7 @@ const LOOP_PLUS_ACCEPTANCE_CHECKS: Array<{ name: string; detail: string }> = [
   },
   {
     name: "unauthorized changes",
-    detail: "The diff stays inside the authorized write scope.",
+    detail: "Files outside the suggested write scope changed only because the task required them. Unrelated edits are absent.",
   },
   {
     name: "omissions and regressions",
@@ -152,7 +152,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
     };
   });
   const reprompt = [
-    "Continue this self-contained subtask inside its declared write scope only.",
+    "Continue this self-contained subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
     "Design key point: keep the public function signature stable and replace the failed branch with the corrected check.",
     "Record the command and result in the attempt report.",
   ].join(" ");
@@ -318,13 +318,13 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
-    "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, write scope, and verification. A shorter prompt is rejected.",
+    "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, suggested write scope, and verification. writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
     "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId and acceptance, which is exactly passed or failed. A missing, extra, or reordered review rejects the decision.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
     "- When an event launches new subtasks, list those ids in that review's subtaskIds. Every subtask id must appear in exactly one subtaskIds array. A passed event may launch follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt.",
-    "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; the diff stays inside the authorized write scope; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
+    "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report, the code, or a test or startup you chose to run. You are not required to run either one.",
     "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a new subtask, send blocked, which confirms nothing.",
     "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed. The host also records it failed.",
@@ -354,12 +354,12 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
 export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptContext): string {
   const files = context.subtask.writeFiles && context.subtask.writeFiles.length > 0
     ? context.subtask.writeFiles.join(", ")
-    : "(not declared; follow the subtask instructions)";
+    : "(not declared; edit the workspace files this attempt requires)";
   return [
     `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Complete only this attempt and write its report.`,
     `Attempt report file: ${context.communicationFile}`,
-    `Authorized write scope: ${files}`,
-    "Edit files only inside the authorized write scope.",
+    `Suggested write scope: ${files}`,
+    "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
     "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
     "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",
     "If the subtask instructions include a UI design, implement that design. Do not redesign layout, color, or interaction.",

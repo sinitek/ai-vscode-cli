@@ -2986,8 +2986,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "JSON 协议：",
       '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"直接回答用户原始问题的简短结论","finalSummary":"整体完成说明","requirementCoverage":[{"name":"用户需求A","passed":true,"detail":"覆盖说明"}],"roundSummaries":[{"round":1,"subtaskId":"stable-id","title":"子任务标题","summary":"本轮完成内容摘要"}],"acceptance":{"passed":true,"summary":"验收通过说明","checks":[{"name":"目标覆盖","passed":true,"detail":"..."}]}}',
-      '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
-      '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令，必须限定只修改 writeFiles 声明的文件或明确授权范围。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
+      '{"status":"continue","estimatedRemainingRounds":2,"acceptance":{"passed":false,"summary":"未通过原因","checks":[{"name":"缺口项","passed":false,"detail":"..."}]},"parallelReason":"这些子任务预计写入文件互不重叠、没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src-a","writeFiles":["src/a.ts","src/a.test.ts"],"prompt":"给子任务A执行的完整指令。writeFiles 是建议写入范围，不是硬限制；完成任务确实需要时可以修改其它工作区文件，并在沟通文件说明原因。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"},{"id":"stable-id-b","title":"子任务B标题","conflictGroup":"docs-b","writeFiles":["docs/b.md"],"prompt":"给子任务B执行的完整指令。writeFiles 是建议写入范围，不是硬限制；完成任务确实需要时可以修改其它工作区文件，并在沟通文件说明原因。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
+      '{"status":"continue","estimatedRemainingRounds":1,"acceptance":{"passed":false,"summary":"存在同文件或依赖冲突，必须串行","checks":[{"name":"依赖关系","passed":false,"detail":"B 依赖 A 对 src/shared.ts 的修改结果"}]},"subtasks":[{"id":"stable-id-a","title":"子任务A标题","conflictGroup":"src/shared.ts","writeFiles":["src/shared.ts"],"prompt":"给子任务A执行的完整指令。writeFiles 是建议写入范围，不是硬限制；完成任务确实需要时可以修改其它工作区文件，并在沟通文件说明原因。设计关键点：保持既有对外接口兼容，新逻辑复用现有校验，不要另起并行实现"}]}',
       '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
       '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
       "",
@@ -3003,10 +3003,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- 当前没有可执行子任务、需要等待外部结果时，必须返回 blocked，并在 finalSummary 说明等待对象。",
       "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
-      "- subtasks[*].prompt 至少包含：背景目标、具体范围、预计只读/写文件或目录、执行步骤、验收标准。不要把任务记录、调度状态、轮次或父任务协议写进 prompt；沟通文件和禁止修改的文件由宿主附加。",
+      "- subtasks[*].prompt 至少包含：背景目标、具体范围、建议写入文件或目录、执行步骤、验收标准。writeFiles 只用于判断并发冲突，不是子任务的硬性写入白名单；prompt 不要要求子任务只能修改这些文件。完成任务确实需要时，子任务可以修改其它工作区文件。不要把任务记录、调度状态、轮次或父任务协议写进 prompt；沟通文件和禁止修改的调度文件由宿主附加。",
       SUBTASK_DESIGN_KEY_POINT_RULE_ZH,
       "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
-      "- subtasks[*].writeFiles 可选；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突；纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
+      "- subtasks[*].writeFiles 可选，表示建议写入范围；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突。它不是执行时的硬性写入白名单。纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
       "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
       "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
       "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
@@ -3100,12 +3100,13 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const reportFile = communicationFile ?? buildLoopSubtaskCommunicationFile(task.id, subtask.id, round, retryCount);
     const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
       ? subtask.writeFiles.join("、")
-      : "未声明；以当前子任务指令明确授权的文件/范围为准";
+      : "未声明；按当前子任务指令修改完成任务所需的工作区文件";
     return [
       "你正在执行一个独立子任务。只完成本次指令，不需要理解或维护父任务调度。",
       `子任务沟通文件：${reportFile}`,
-      `授权写入范围：${writeFiles}`,
-      "只修改授权范围内的文件。不要修改任务记录、调度状态、active ids、snapshot，或其他子任务的沟通文件。",
+      `建议写入范围：${writeFiles}`,
+      "建议写入范围只是提示，不是硬限制。完成当前任务确实需要时，可以修改建议范围之外的工作区文件，并在沟通文件说明原因。",
+      "不要修改任务记录、调度状态、active ids、snapshot，或其他子任务的沟通文件。",
       "结束前把执行目标、实际修改、验证命令和结果写入上面的沟通文件。",
       "如果当前子任务写了界面设计，按该设计实现，不要自行改布局、配色或交互。",
       "只有必须由父任务或用户确认才能安全继续时，停止实施并填写沟通文件的“待主任务确认”；能自行判断的问题不要上交。",

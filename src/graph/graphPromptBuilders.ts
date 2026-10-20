@@ -43,19 +43,19 @@ const GRAPH_TERMINAL_NODE_STATUSES = new Set<GraphNodeRecord["status"]>([
 
 const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
   intake: [
-    "澄清目标、边界、输入资料和可验收产出；只在明确授权时才修改文件。",
+    "澄清目标、边界、输入资料和可验收产出。需要落盘结论时可以修改完成任务所需的文件，并在沟通文件说明原因。",
   ],
   plan: [
     "产出可执行计划、依赖顺序、风险和验证口径；不要直接替代后续 implement/test/review 节点完成工作。",
   ],
   implement: [
-    "在授权写入范围内完成实现改动，并保留清晰、可搜索、可复用的代码结构。",
+    "优先在建议写入范围内完成实现改动，并保留清晰、可搜索、可复用的代码结构。完成任务确实需要时可以修改其它工作区文件，并在沟通文件说明原因。",
   ],
   test: [
-    "验证目标能力，优先补或运行最小相关自动化测试；仅在授权写入范围内修改测试或必要夹具。",
+    "验证目标能力，优先补或运行最小相关自动化测试。建议写入范围只是提示；完成验证确实需要时可以修改其它测试、夹具或相关文件。",
   ],
   review: [
-    "按代码审查视角检查当前任务范围内的正确性、越权写入、遗漏验证和回归风险；只在授权时写修复。",
+    "按代码审查视角检查当前任务的正确性、遗漏验证和回归风险。需要修复时可以修改建议范围之外的相关文件，并在沟通文件说明原因。",
   ],
   debate: [
     "围绕方案、实现、验证和失败风险做结构化攻防；结论必须可追溯到证据。",
@@ -64,7 +64,7 @@ const GRAPH_NODE_ROLE_GUIDANCE: Record<GraphNodeRecord["kind"], string[]> = {
     "这是历史兼容的人工关卡节点；新 Graph 运行时不再执行人工交互关卡，应按失败或 if_fail 路径收束。",
   ],
   merge: [
-    "汇总已通过节点的改动和证据，处理授权范围内的合并冲突或收束工作。",
+    "汇总已通过节点的改动和证据，处理合并冲突或收束工作。建议写入范围只是提示；完成收束确实需要时可以修改其它相关文件。",
   ],
   sleep: [
     "这是系统等待节点；普通 CLI executor 不应执行它，到期后由宿主推进。",
@@ -87,9 +87,10 @@ function buildGraphChildNodePrompt(input: BuildGraphNodePromptInput): string {
     "你正在执行一个独立节点任务。只完成本次指令，不需要理解或维护 Graph 调度。",
     `节点沟通文件：${communicationFile}`,
     writeScope === GRAPH_PROMPT_EMPTY_VALUE
-      ? "授权写入范围：未声明；默认不要修改工作区文件。"
-      : `授权写入范围：${writeScope}`,
-    "只修改授权范围内的文件。不要修改 Graph 调度状态、graph.json、events、任务记录、其他节点的沟通文件或 artifact，也不要写入 `.ch/docs/memory/`、`.ch/docs/runbooks/PITFALLS.md` 或运行态 memory-generated 目录。",
+      ? "建议写入范围：未声明；按当前任务需要修改工作区文件。"
+      : `建议写入范围：${writeScope}`,
+    "建议写入范围只是提示，不是硬限制。完成当前任务确实需要时，可以修改建议范围之外的工作区文件，并在沟通文件说明原因。",
+    "不要修改 Graph 调度状态、graph.json、events、任务记录、其他节点的沟通文件或 artifact，也不要写入 `.ch/docs/memory/`、`.ch/docs/runbooks/PITFALLS.md` 或运行态 memory-generated 目录。",
     "结束前把执行摘要、实际修改、验证命令和结果写入节点沟通文件。",
     "如果任务说明写了界面设计，按该设计实现，不要自行改布局、配色或交互。",
     "",
@@ -149,7 +150,7 @@ function buildGraphCoordinatorNodePrompt(input: BuildGraphNodePromptInput): stri
     "",
     "你正在执行 VS Code 插件 Graph 模式中的单个节点任务。",
     "注意：这是单独新会话，不具备主任务对话上下文；只能依赖本提示词、Graph run 文件、events、节点 artifacts 和授权沟通文件。",
-    "注意：同一 Graph run 可能存在其他节点并发执行；必须严格限定在当前节点授权范围内，发现写入范围冲突或越权需求时立即停止并写入节点沟通文件。",
+    "注意：同一 Graph run 可能存在其他节点并发执行。writeFiles 只是建议范围，完成任务需要时可以修改其它工作区文件。发现与并发节点的真实路径冲突时，停止扩大冲突写入，并把原因写入节点沟通文件。",
     "",
     "## 长期记忆边界",
     "- Graph 模式默认不触发长期记忆写入；本节点不得主动生成、刷新或修改 generated recall 产物。",
@@ -207,12 +208,12 @@ function buildGraphCoordinatorNodePrompt(input: BuildGraphNodePromptInput): stri
     "## 用户补充消息",
     ...formatSupplementalRequirementLines(run.supplementalRequirements),
     "",
-    "## 授权范围",
+    "## 建议写入范围",
     `- writeFiles：${formatWriteFiles(node.writeFiles, run)}`,
     `- conflictGroup：${formatValue(node.conflictGroup)}`,
     ...formatGraphExecutionBoundaryLines(run),
-    "- 不得修改未授权文件、任务记录、Graph store、其他节点 artifact 或其他节点沟通文件。",
-    "- 如果正确完成任务必须修改未授权范围，停止实施，在本节点沟通文件写明原因，并返回 failed。",
+    "- writeFiles 是建议，不是硬限制。完成当前节点确实需要时，可以修改建议范围之外的工作区文件，并在沟通文件说明原因。",
+    "- 仍然不要修改任务记录、Graph store、graph.json、events、其他节点 artifact 或其他节点沟通文件。",
     "",
     "## 依赖与输入",
     ...formatDependencyLines(run, node),
@@ -240,7 +241,7 @@ function buildGraphCoordinatorNodePrompt(input: BuildGraphNodePromptInput): stri
     '{"status":"passed|failed","summary":"一句话结果","artifactRef":"可选 artifact 路径","acceptance":[{"name":"检查项","passed":true,"required":true,"detail":"证据"}]}',
     "",
     "## 禁止越权",
-    "- 禁止扩大技术栈、改动未授权文件、绕开 Graph 调度器、启动未指定的长期后台任务或声称未验证能力已经完成。",
+    "- 禁止扩大技术栈、绕开 Graph 调度器、启动未指定的长期后台任务或声称未验证能力已经完成。",
     "- 禁止把未通过的 acceptance、失败的测试、历史 blocked 节点或未读取的 artifact 写成成功完成。",
     ...formatExtraInstructionLines(options.extraInstructions),
   ];
@@ -408,7 +409,7 @@ function formatGraphConcurrencyLines(run: GraphRunRecord, node: GraphNodeRecord)
   return [
     activePeers.length > 0
       ? `- 同批/并发中的其他节点：${formatNodeReferences(activePeers)}`
-      : "- 当前快照未显示其他同批 active 节点；仍需按 writeFiles/conflictGroup 防止越权。",
+      : "- 当前快照未显示其他同批 active 节点；仍需留意 writeFiles/conflictGroup，避免和并发节点抢同一文件。",
     sameConflictGroup.length > 0
       ? `- 同 conflictGroup 节点：${formatNodeReferences(sameConflictGroup)}`
       : "- 未发现同 conflictGroup 节点。",
@@ -431,7 +432,7 @@ function formatGraphNodeBoundaryLines(run: GraphRunRecord, node: GraphNodeRecord
   const boundaryLines = [
     "",
     "## Graph 节点边界",
-    "- 只完成当前节点的 title、kind、acceptance 和授权写入范围；不要把下游节点的职责提前吞并。",
+    "- 只完成当前节点的 title、kind 和 acceptance。建议写入范围不是职责边界，但不要把下游节点的职责提前吞并。",
     "- 如果发现图缺少必要测试、评审或返工路径，应在本节点沟通文件写明缺口；只有该缺口使本节点无法安全完成时才返回 failed。",
     "- 条件边以 graph.json 中的 edge.kind、condition、active 和上游节点状态为准；不要自行发明未在图中声明的新路径。",
   ];
@@ -663,7 +664,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
     "- 节点粒度要按可独立执行、可验证、可回退来拆；同一文件或同一风险域的写入节点要声明相同 conflictGroup 或重叠 writeFiles，避免并发冲突。",
     "- 拆分时优先按独立文件路径、组件、API/UI/文档/测试等风险域划分；无法确认路径时必须保守声明 `writeFiles: [\"**\"]` 和 conflictGroup，让调度器自动限制并发。",
     "- 每个会写文件的 implement/test/review/merge 节点必须声明 writeFiles；如果无法精确判断路径，用 `[\"**\"]` 并设置保守 conflictGroup。",
-    "- 重构/迁移/拆模块任务必须显式检查旧测试契约：source-contract、文本快照、路径断言、测试里的 canonical source 是否仍指向旧文件；若可能受影响，必须规划独立的 test adaptation/契约更新节点，声明具体测试 writeFiles，不能把这类修复留给无写权限的 test 验证节点。",
+    "- 重构/迁移/拆模块任务必须显式检查旧测试契约：source-contract、文本快照、路径断言、测试里的 canonical source 是否仍指向旧文件；若可能受影响，必须规划独立的 test adaptation/契约更新节点，声明具体测试 writeFiles。writeFiles 只是并发冲突建议，不是执行节点的硬性写入白名单；完成任务需要时可以修改其它文件。",
     "- plannedGraph 必须把“验证节点发现旧契约失败”归类为 `stale_test_contract` 或 `missing_write_scope` 风险；返工边或前置依赖要指向测试适配/契约更新节点，不能在实现已迁移 canonical source 后只回到原实现节点。",
     "- 完整单测、全仓测试、全量 lint 这类覆盖面大且可能包含历史/范围外失败的验证节点，默认应设置 `blocking:false`，并用 `evidence_for` 连到 review/summary；只有本次相关 focused 验证节点才作为硬性 depends_on/if_pass 阻断交付收束。",
     "- `blocking:false` 只表示该节点失败不阻断结构依赖继续执行；节点本身仍必须如实返回 failed，review/summary 必须把失败命令、失败范围和后续建议写入 unresolved。",
@@ -695,7 +696,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "实现 API 改动",
           kind: "implement",
           ownerRole: "subtask",
-          instructions: "在 src/api 授权范围内实现本次 API 改动。设计关键点：保持现有对外响应字段兼容，新分支必须复用既有校验器，不要另起一套并行校验。",
+          instructions: "优先修改 src/api 完成本次 API 改动。writeFiles 是建议范围，完成任务确实需要时可以修改其它相关文件。设计关键点：保持现有对外响应字段兼容，新分支必须复用既有校验器，不要另起一套并行校验。",
           writeFiles: ["src/api/**"],
           conflictGroup: "api",
           maxAttempts: 2,
@@ -706,7 +707,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "实现 UI 改动",
           kind: "implement",
           ownerRole: "subtask",
-          instructions: "在 src/webview 授权范围内实现本次 UI。界面设计：信息层级为标题、主操作、状态说明；主区域单列左对齐，间距沿用现有主题语义变量，不硬编码颜色。交互：默认展示当前状态，悬停只改变主操作，禁用时不可点击，空、错误和加载各自有明确文案。不要重做无关布局。",
+          instructions: "优先修改 src/webview 实现本次 UI。writeFiles 是建议范围，完成任务确实需要时可以修改其它相关文件。界面设计：信息层级为标题、主操作、状态说明；主区域单列左对齐，间距沿用现有主题语义变量，不硬编码颜色。交互：默认展示当前状态，悬停只改变主操作，禁用时不可点击，空、错误和加载各自有明确文案。不要重做无关布局。",
           writeFiles: ["src/webview/**"],
           conflictGroup: "ui",
           maxAttempts: 2,
@@ -717,7 +718,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
           title: "验证 API 行为",
           kind: "test",
           ownerRole: "subtask",
-          instructions: "验证 API 行为。设计关键点：断言兼容字段仍在，并覆盖新分支通过既有校验器的路径；不要改实现节点的授权范围。",
+          instructions: "验证 API 行为。设计关键点：断言兼容字段仍在，并覆盖新分支通过既有校验器的路径。writeFiles 是建议范围，完成验证确实需要时可以修改其它相关文件。",
           writeFiles: ["src/test/**"],
           dependsOn: ["implement-api"],
           acceptance: [{ name: "相关 API 测试通过，或失败原因已记录。", required: true }],
@@ -811,7 +812,7 @@ function buildGraphAiPlannerPromptTail(run: GraphRunRecord, node: GraphNodeRecor
     "",
     "## 重构/迁移契约防护示例",
     "- 示例：`implement-schema-migration` 写 `db/schema/observability.js`，`adapt-schema-contract-tests` 是独立 test adaptation/契约更新节点，dependsOn=[\"implement-schema-migration\"]，writeFiles=[\"src/test/test-schema-definitions.test.js\"]；`test-schema-definitions` 验证节点 dependsOn=[\"adapt-schema-contract-tests\"]。",
-    "- 如果 `test-schema-definitions` 因旧 `db.js` 文本断言、source-contract 或 canonical source 路径失败，plannedGraph 要把风险写成 `stale_test_contract`；如果验证节点没有测试写入授权，写成 `missing_write_scope`，并用 if_fail/review_feedback 返工到 `adapt-schema-contract-tests`，不要只返工 `implement-schema-migration`。",
+    "- 如果 `test-schema-definitions` 因旧 `db.js` 文本断言、source-contract 或 canonical source 路径失败，plannedGraph 要把风险写成 `stale_test_contract`；如果验证节点把建议 writeFiles 当成硬限制而没有改到需要更新的测试，写成 `missing_write_scope`，并用 if_fail/review_feedback 返工到 `adapt-schema-contract-tests`，不要只返工 `implement-schema-migration`。",
   ];
 }
 
@@ -1007,12 +1008,12 @@ function formatGraphExecutionBoundaryLines(run: GraphRunRecord): string[] {
   if (run.executionMode === "direct" && run.directExecution?.cwd) {
     return [
       "- 当前 Graph run 在项目工作区直接执行，行为与 Loop 主任务一样落在当前 workspace。",
-      "- 只能在当前工作区中修改 writeFiles 明确列出的路径；如果 writeFiles 未声明，本节点默认不得修改工作区文件。",
-      "- direct 模式没有 Graph worktree 隔离、checkpoint commit、自动 merge-back 或 rollback；必须格外控制改动范围并记录验证结果。",
+      "- writeFiles 是建议写入范围。完成任务确实需要时，可以修改建议范围之外的当前工作区文件；未声明 writeFiles 时按任务需要修改文件。",
+      "- direct 模式没有 Graph worktree 隔离、checkpoint commit、自动 merge-back 或 rollback；改动会直接落在当前工作区，必须记录实际修改和验证结果。",
     ];
   }
   return [
-    "- 这是历史 worktree Graph run；只能在 Graph worktree 中修改 writeFiles 明确列出的路径。",
+    "- 这是历史 worktree Graph run。在 Graph worktree 内修改文件；writeFiles 是建议范围，完成任务需要时可以修改 worktree 中的其它文件。",
     "- 不要直接修改主工作区；宿主会在节点结束后为当前 worktree 创建本地 git checkpoint commit。",
   ];
 }

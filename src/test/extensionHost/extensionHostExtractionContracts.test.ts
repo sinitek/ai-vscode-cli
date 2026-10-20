@@ -495,7 +495,9 @@ test("Loop orchestration source contract lives in extensionHost/loopOrchestratio
   const subtaskPromptSource = loopOrchestrationSource.split("function buildLoopSubtaskModelPrompt(")[1]?.split("return {")[0] ?? "";
   assert.match(loopOrchestrationSource, /function buildLoopSubtaskModelPrompt\(/);
   assert.match(subtaskPromptSource, /子任务沟通文件/);
+  assert.match(subtaskPromptSource, /建议写入范围只是提示，不是硬限制/);
   assert.match(subtaskPromptSource, /如果当前子任务写了界面设计，按该设计实现/);
+  assert.doesNotMatch(subtaskPromptSource, /只修改授权范围内的文件/);
   assert.doesNotMatch(subtaskPromptSource, /必须更新任务记录文件/);
   assert.doesNotMatch(subtaskPromptSource, /rootPrompt/);
   assert.doesNotMatch(subtaskPromptSource, /taskStoreFile/);
