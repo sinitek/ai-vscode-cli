@@ -24,7 +24,7 @@ export const WEBVIEW_STRINGS = {
     emptyState: "输入需求，开始对话。",
     jsonTreeEmptyObject: "无属性",
     scrollToBottomAria: "跳转到最新消息",
-    instructionGroupCollapsed: "{title} ({count})",
+    instructionGroupCollapsed: "({count}) {title}",
     instructionGroupCollapsedUntitled: "已折叠",
     instructionGroupExpanded: "收起 ({count})",
     thinkingBubbleExpand: "展开全部思考内容",

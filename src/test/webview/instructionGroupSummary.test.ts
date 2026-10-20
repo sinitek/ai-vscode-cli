@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 import { getTraceInstructionSummary } from "../../webview/instructionGroupSummary";
+import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 type TracePresentation = {
@@ -55,6 +56,19 @@ function buildTracePresentation(): (content: string) => TracePresentation {
 
 const present = buildTracePresentation();
 
+function buildInstructionGroupSummaryText(): (count: number, open: boolean, title: string) => string {
+  const source = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "instructionGroupSummaryText");
+  return new Function(
+    "t",
+    `${source}; return instructionGroupSummaryText;`,
+  )(
+    (key: keyof typeof WEBVIEW_STRINGS, values: Record<string, string>) =>
+      WEBVIEW_STRINGS[key].replace(/\{(\w+)\}/gu, (_match, name: string) => values[name] ?? ""),
+  ) as (count: number, open: boolean, title: string) => string;
+}
+
+const instructionGroupSummaryText = buildInstructionGroupSummaryText();
+
 function collapsedLabel(content: string): string {
   const presentation = present(content);
   const summary = getTraceInstructionSummary(content, presentation);
@@ -63,6 +77,11 @@ function collapsedLabel(content: string): string {
   }
   return summary ? `${presentation.title}： ${summary}` : presentation.title;
 }
+
+test("collapsed instruction group keeps its count before a long title", () => {
+  const title = `执行命令： ${"非常长的命令标题 ".repeat(20).trimEnd()}`;
+  assert.equal(instructionGroupSummaryText(3, false, title), `(3) ${title}`);
+});
 
 test("collapsed exec bubbles keep the command after the title", () => {
   assert.equal(
