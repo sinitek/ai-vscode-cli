@@ -181,6 +181,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           const presentation = getTracePresentation(content);
           const traceTitle = presentation && typeof presentation.title === "string" ? presentation.title.trim() : "";
           if (traceTitle) {
+            const summary = typeof getTraceInstructionSummary === "function"
+              ? getTraceInstructionSummary(content, presentation)
+              : "";
+            if (summary) {
+              return traceTitle + "： " + summary;
+            }
             return traceTitle;
           }
         }

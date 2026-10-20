@@ -2261,7 +2261,7 @@ test("restarts instruction folding after each thinking bubble", () => {
   const groups = messages.querySelectorAll("details.instruction-group");
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
-    ["执行命令 (4)", "执行命令 (4)", "执行命令 (2)", "执行命令 (3)"],
+    ["执行命令： four (4)", "执行命令： eight (4)", "执行命令： ten (2)", "执行命令： thirteen (3)"],
   );
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),

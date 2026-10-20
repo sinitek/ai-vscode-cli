@@ -1,11 +1,14 @@
 // Assistant, trace, markdown, and diff rendering helpers.
 import { joinGrokThinkingSoftBreaks } from "../../interactive/grokThinkingText";
+import { getTraceInstructionSummary } from "../instructionGroupSummary";
 
 export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return "";
       }
 
       const joinGrokThinkingSoftBreaks = ${joinGrokThinkingSoftBreaks.toString()};
+
+      ${getTraceInstructionSummary.toString()}
 
       function getMessageCollapseThreshold() {
         return 50;
