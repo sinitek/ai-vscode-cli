@@ -37,7 +37,6 @@ export type CodexThreadOptions = {
   webSearchEnabled?: boolean;
   webSearchMode?: string;
   networkAccessEnabled?: boolean;
-  multiAgentEnabled?: boolean;
 };
 
 export type CodexAppServerArgsOptions = {
@@ -370,14 +369,12 @@ export function buildCodexThreadOptions(
   cwd: string | undefined,
   thinkingMode: ThinkingMode,
   interactiveMode: InteractiveMode,
-  modelOverride?: string | null,
-  multiAgentEnabled = false
+  modelOverride?: string | null
 ): CodexThreadOptions {
   const options: CodexThreadOptions = {
     workingDirectory: cwd,
     skipGitRepoCheck: true,
     modelReasoningEffort: mapCodexReasoningEffort(thinkingMode),
-    multiAgentEnabled,
   };
 
   const model = typeof modelOverride === "string" && modelOverride.trim()
@@ -427,7 +424,6 @@ export function buildCodexThreadOptions(
 }
 
 export function buildCodexAppServerArgs(
-  multiAgentEnabled: boolean,
   configOverrides: string[] = [],
   options: CodexAppServerArgsOptions = {}
 ): string[] {
@@ -438,9 +434,6 @@ export function buildCodexAppServerArgs(
     "--listen",
     "stdio://",
   ];
-  if (!multiAgentEnabled) {
-    args.push("--disable", "multi_agent");
-  }
   return args;
 }
 
@@ -461,11 +454,6 @@ export function buildCodexAppServerConfig(options: CodexThreadOptions): Record<s
     },
     model_reasoning_summary: "detailed",
   };
-  if (options.multiAgentEnabled !== true) {
-    config.features = {
-      multi_agent: false,
-    };
-  }
   if (typeof options.webSearchMode === "string" && options.webSearchMode) {
     config.web_search = options.webSearchMode;
   } else if (options.webSearchEnabled === true) {

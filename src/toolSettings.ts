@@ -19,7 +19,6 @@ export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
-  multiAgentEnabled?: boolean;
   humanInteractionEnabled?: boolean;
   loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
@@ -72,9 +71,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.autoCompactContextAfterRun === "boolean") {
     normalized.autoCompactContextAfterRun = record.autoCompactContextAfterRun;
-  }
-  if (typeof record.multiAgentEnabled === "boolean") {
-    normalized.multiAgentEnabled = record.multiAgentEnabled;
   }
   if (typeof record.humanInteractionEnabled === "boolean") {
     normalized.humanInteractionEnabled = record.humanInteractionEnabled;
@@ -183,22 +179,6 @@ export function normalizeHistoryRetentionDays(value: unknown): number {
     Math.max(Math.floor(numeric), HISTORY_RETENTION_DAYS_MIN),
     HISTORY_RETENTION_DAYS_MAX,
   );
-}
-
-export function resolveGlobalMultiAgentEnabled(
-  globalSettings?: Pick<ToolSettingsState, "multiAgentEnabled"> | null,
-  legacyWorkspaceSettings?: {
-    multiAgentEnabled?: boolean;
-    codexMultiAgentEnabled?: boolean;
-  } | null,
-): boolean {
-  if (typeof globalSettings?.multiAgentEnabled === "boolean") {
-    return globalSettings.multiAgentEnabled;
-  }
-  if (typeof legacyWorkspaceSettings?.multiAgentEnabled === "boolean") {
-    return legacyWorkspaceSettings.multiAgentEnabled;
-  }
-  return legacyWorkspaceSettings?.codexMultiAgentEnabled === true;
 }
 
 export function resolveGlobalAutoCompactContextAfterRun(

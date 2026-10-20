@@ -77,14 +77,12 @@ test("buildCodexThreadOptions preserves CLI behavior and plan overrides", () => 
       "/repo",
       "high",
       "coding",
-      "gpt-5",
-      false
+      "gpt-5"
     ),
     {
       workingDirectory: "/repo",
       skipGitRepoCheck: true,
       modelReasoningEffort: "high",
-      multiAgentEnabled: false,
       model: "gpt-5",
       approvalPolicy: "on-request",
       sandboxMode: "workspace-write",
@@ -107,7 +105,6 @@ test("buildCodexThreadOptions preserves CLI behavior and plan overrides", () => 
       workingDirectory: "/repo",
       skipGitRepoCheck: true,
       modelReasoningEffort: "medium",
-      multiAgentEnabled: false,
       approvalPolicy: "untrusted",
       sandboxMode: "read-only",
     }
@@ -120,19 +117,17 @@ test("app server builders produce stable config, args, input, and sandbox polici
   assert.equal(mapCodexReasoningEffort("ultra"), "ultra");
   assert.equal(mapCodexReasoningEffort("max"), "max");
   assert.deepEqual(
-    buildCodexAppServerArgs(false, ["projects.'/repo'.trust_level=\"trusted\""]),
+    buildCodexAppServerArgs(["projects.'/repo'.trust_level=\"trusted\""]),
     [
       "app-server",
       "-c",
       "projects.'/repo'.trust_level=\"trusted\"",
       "--listen",
       "stdio://",
-      "--disable",
-      "multi_agent",
     ]
   );
   assert.deepEqual(
-    buildCodexAppServerArgs(true, [], { requestUserInputEnabled: true }),
+    buildCodexAppServerArgs([], { requestUserInputEnabled: true }),
     [
       "app-server",
       "--enable",
@@ -149,11 +144,10 @@ test("app server builders produce stable config, args, input, and sandbox polici
     ]
   );
   assert.deepEqual(
-    buildCodexAppServerConfig({ multiAgentEnabled: false, webSearchEnabled: true }),
+    buildCodexAppServerConfig({ webSearchEnabled: true }),
     {
       agents: { job_max_runtime_seconds: 86400 },
       model_reasoning_summary: "detailed",
-      features: { multi_agent: false },
       web_search: "live",
     }
   );
@@ -178,6 +172,15 @@ test("app server builders produce stable config, args, input, and sandbox polici
     buildCodexAppServerSandboxPolicy({ sandboxMode: "danger-full-access" }),
     { type: "dangerFullAccess" }
   );
+});
+
+test("leaves Codex implicit-subagent capability to the target CLI configuration", () => {
+  assert.deepEqual(buildCodexAppServerArgs(), ["app-server", "--listen", "stdio://"]);
+  for (const input of [{}, { webSearchEnabled: true }, { webSearchEnabled: false }]) {
+    const config = buildCodexAppServerConfig(input);
+    assert.equal(Object.prototype.hasOwnProperty.call(config, "features"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(config, "multi_agent"), false);
+  }
 });
 
 test("request builders produce initialize, thread, and turn params", () => {
@@ -222,7 +225,6 @@ test("request builders produce initialize, thread, and turn params", () => {
     config: {
       agents: { job_max_runtime_seconds: 86400 },
       model_reasoning_summary: "detailed",
-      features: { multi_agent: false },
       web_search: "live",
     },
     experimentalRawEvents: false,
@@ -476,15 +478,15 @@ test("trace candidate helper rejects blanks and repeated item content", () => {
 
 test("Codex thread config requests a detailed reasoning summary for every model", () => {
   assert.equal(
-    buildCodexAppServerConfig({ model: "grok-4.7-kedaya", multiAgentEnabled: true }).model_reasoning_summary,
+    buildCodexAppServerConfig({ model: "grok-4.7-kedaya" }).model_reasoning_summary,
     "detailed",
   );
   assert.equal(
-    buildCodexAppServerConfig({ model: "gpt-5.6", multiAgentEnabled: true }).model_reasoning_summary,
+    buildCodexAppServerConfig({ model: "gpt-5.6" }).model_reasoning_summary,
     "detailed",
   );
   assert.equal(
-    buildCodexAppServerConfig({ multiAgentEnabled: true }).model_reasoning_summary,
+    buildCodexAppServerConfig({}).model_reasoning_summary,
     "detailed",
   );
 });

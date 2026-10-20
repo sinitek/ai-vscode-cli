@@ -32,6 +32,8 @@ test("creates a private runtime overlay and cleans it idempotently", () => {
   const parsed = JSON.parse(fs.readFileSync(overlay.configPath, "utf8")) as Record<string, unknown>;
   assert.equal(parsed.model, "provider/selected");
   assert.equal(parsed.small_model, "provider/tiny");
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "permission"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(overlay.envOverrides, "OPENCODE_CONFIG_CONTENT"), false);
   overlay.cleanup();
   overlay.cleanup();
   assert.equal(fs.existsSync(overlay.configPath), false);
@@ -68,7 +70,7 @@ test("writes independent OpenCode reasoning effort overlays for both role models
   overlay.cleanup();
 });
 
-test("preserves a unified multi-agent task denial in the temporary config", () => {
+test("preserves the target profile's explicit task denial in the temporary config", () => {
   const result = createOpenCodeRuntimeConfigOverlay({
     configContent: JSON.stringify({
       model: "provider/default",

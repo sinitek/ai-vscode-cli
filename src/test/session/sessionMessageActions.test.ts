@@ -706,12 +706,8 @@ test("persists the Loop subtask thinking cap globally and clamps ultra", async (
   assert.equal(calls.postPanelState, 1);
 });
 
-test("persists implicit subagents globally and removes legacy workspace fields", async () => {
+test("ignores retired implicit-subagents updates without persisting settings", async () => {
   const { deps, calls, state } = createSendPromptHarness();
-  state.workspaceSettings = {
-    multiAgentEnabled: true,
-    codexMultiAgentEnabled: true,
-  };
 
   await handlePanelMessageWithDeps({
     type: "updateSetting",
@@ -719,10 +715,10 @@ test("persists implicit subagents globally and removes legacy workspace fields",
     value: false,
   }, deps);
 
-  assert.deepEqual(calls.toolSettingsPatches, [{ multiAgentEnabled: false }]);
+  assert.deepEqual(calls.toolSettingsPatches, []);
   assert.deepEqual(state.workspaceSettings, {});
-  assert.deepEqual(calls.savedSettings, [{}]);
-  assert.equal(calls.postPanelState, 1);
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 0);
 });
 
 test("persists human interaction globally", async () => {
@@ -740,20 +736,20 @@ test("persists human interaction globally", async () => {
   assert.equal(calls.postPanelState, 1);
 });
 
-test("keeps legacy workspace values when the global implicit-subagents save fails", async () => {
+test("ignores legacy Codex implicit-subagents updates when persistence is unavailable", async () => {
   const { deps, calls, state } = createSendPromptHarness();
-  state.workspaceSettings = { multiAgentEnabled: true };
   deps.updateStoredToolSettings = () => false;
 
   await handlePanelMessageWithDeps({
     type: "updateSetting",
-    key: "multiAgentEnabled",
+    key: "codexMultiAgentEnabled",
     value: false,
   }, deps);
 
-  assert.deepEqual(state.workspaceSettings, { multiAgentEnabled: true });
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.toolSettingsPatches, []);
   assert.deepEqual(calls.savedSettings, []);
-  assert.equal(calls.postPanelState, 1);
+  assert.equal(calls.postPanelState, 0);
 });
 
 test("persists automatic compaction globally and removes legacy workspace fields", async () => {

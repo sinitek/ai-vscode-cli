@@ -137,7 +137,6 @@ test("Codex runner reuses one app-server connection and loaded thread", async ()
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const handlers = {
       onAssistantDelta: () => undefined,
@@ -186,7 +185,6 @@ test("Codex runners share initialize and start one thread each", async () => {
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const second = new CodexInteractiveRunner({
       command: process.execPath,
@@ -194,7 +192,6 @@ test("Codex runners share initialize and start one thread each", async () => {
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const handlers = {
       onAssistantDelta: () => undefined,
@@ -284,7 +281,6 @@ test("Codex runner interrupts a loaded turn without killing the app-server", asy
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const run = runner.runStreamed("stay", {
       onAssistantDelta: () => undefined,
@@ -418,7 +414,6 @@ test("paused turn completion does not finish the next prompt before it answers",
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const firstRun = runner.runStreamed("stay", {
       onAssistantDelta: () => undefined,

@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-19",
+  "as_of": "2026-10-20",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -306,6 +306,23 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.implicit_subagents_follow_target_config",
+      "name": "隐式子代理能力由目标分组配置决定",
+      "description": "工具设置不再提供隐式子代理开关。历史全局和工作区 multiAgentEnabled / codexMultiAgentEnabled 被忽略且不迁移；插件不注入 Codex --disable multi_agent 或 thread config features.multi_agent，也不改写 OpenCode permission.task 或环境内联 OPENCODE_CONFIG_CONTENT。目标 CLI 分组自身配置决定能力是否启用，子代理进度气泡与 Loop/Loop+ 编排保持不变。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile", "plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/toolSettings.ts"},
+        {"path": "src/workspaceSettingsStore.ts"},
+        {"path": "src/interactive/codexRunnerRuntime.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/test/cli/opencodeconfigmodels.test.ts"},
+        {"path": "src/test/interactive/codexRunnerRuntime.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"}
+      ]
+    },
     {
       "id": "plugin.rule.grok_semantic_replay",
       "name": "Grok 按调用聚合语义回放与聊天摘要",

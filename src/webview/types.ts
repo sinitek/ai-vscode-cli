@@ -335,7 +335,6 @@ export type PanelState = {
   codeGraphInstalled: boolean;
   codeGraphInstalling: boolean;
   autoCompactContextAfterRun: boolean;
-  multiAgentEnabled: boolean;
   humanInteractionEnabled: boolean;
   humanInteractionTimeoutMinutes: number;
   historyRetentionDays: number;

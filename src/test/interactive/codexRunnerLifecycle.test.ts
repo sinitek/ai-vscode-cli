@@ -428,7 +428,6 @@ test("Codex runner reports EAGAIN spawn errors without hanging", async () => {
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
 
     await assert.rejects(
@@ -472,7 +471,6 @@ test("Codex runner enables default-mode request_user_input only when requested",
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
 
     await runner.runStreamed("prompt", {
@@ -577,7 +575,6 @@ test("Codex runner sends request_user_input answers in the per-question schema",
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("prompt", {
@@ -628,7 +625,6 @@ test("Codex runner emits primary completed callback only for completed turns", a
         thinkingMode: "medium",
         interactiveMode: "coding",
         threadId: null,
-        multiAgentEnabled: true,
       });
       try {
         const run = runner.runStreamed("prompt", {
@@ -674,7 +670,6 @@ test("Codex runner stop requests shutdown for every active app-server child", as
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
 
     const firstRun = runner.runStreamed("first", createHandlers()).catch((error: Error) => error);
@@ -729,7 +724,6 @@ test("Codex runner resumes the mapped thread with the active TOML model provider
     interactiveMode: "coding",
     model: "gpt-5.6",
     threadId: "thread-before-provider-switch",
-    multiAgentEnabled: true,
   });
 
   try {
@@ -782,7 +776,6 @@ test("Codex runner promotes phase-null completed agent messages as final answers
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("hi", {
@@ -821,7 +814,6 @@ test("Codex runner does not promote commentary agent messages on completed turns
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("hi", {
@@ -854,7 +846,6 @@ test("Codex runner forwards primary thread/tokenUsage/updated as tokens_in_conte
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: "parent-thread",
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("hi", {
@@ -887,7 +878,6 @@ test("Codex runner reads tokens_in_context_window from primary turn/completed", 
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: "parent-thread",
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("hi", {
@@ -1008,7 +998,6 @@ test("Codex runner streams reasoning summary deltas and strips leaked final_answ
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     try {
       await runner.runStreamed("hi", {
@@ -1090,7 +1079,6 @@ test("Codex runner finishes when the primary turn completes before turn/start re
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     const chunks: string[] = [];
     try {
@@ -1175,7 +1163,6 @@ test("Codex runner finishes a streamed turn whose id differs from the turn/start
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: true,
     });
     let completed = 0;
     try {

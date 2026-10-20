@@ -15,7 +15,6 @@ type RunnerEntry =
       interactiveMode: InteractiveMode;
       model: string | null;
       configId: string | null;
-      multiAgentEnabled: boolean;
       command?: string;
       args: string[];
       cwd?: string;
@@ -91,7 +90,6 @@ export class InteractiveRunnerManager {
     interactiveMode: InteractiveMode,
     model: string | null,
     options: {
-      multiAgentEnabled?: boolean;
       configId?: string | null;
       command?: string;
       args?: string[];
@@ -112,7 +110,6 @@ export class InteractiveRunnerManager {
       if (existing.cli === "codex") {
         existing.model = codexSelection?.model ?? null;
         existing.configId = codexSelection?.configId ?? null;
-        existing.multiAgentEnabled = options.multiAgentEnabled === true;
         existing.command = options.command;
         existing.args = [...(options.args ?? [])];
         existing.cwd = options.cwd;
@@ -161,7 +158,6 @@ export class InteractiveRunnerManager {
             interactiveMode,
             model: codexSelection?.model ?? null,
             configId: codexSelection?.configId ?? null,
-            multiAgentEnabled: options.multiAgentEnabled === true,
             command: options.command,
             args: [...(options.args ?? [])],
             cwd: options.cwd,
@@ -211,7 +207,6 @@ export class InteractiveRunnerManager {
     interactiveMode: InteractiveMode;
     model: string | null;
     configId?: string | null;
-    multiAgentEnabled: boolean;
   }): CodexInteractiveRunner {
     const key = this.buildKey("codex", options.sessionId);
     const existing = this.entries.get(key);
@@ -220,8 +215,7 @@ export class InteractiveRunnerManager {
       model: options.model,
     });
     if (existing && existing.cli === "codex") {
-      const sameProcess = existing.multiAgentEnabled === options.multiAgentEnabled
-        && existing.command === options.command
+      const sameProcess = existing.command === options.command
         && existing.cwd === options.cwd
         && existing.configId === nextSelection.configId;
       if (sameProcess) {
@@ -237,7 +231,6 @@ export class InteractiveRunnerManager {
           interactiveMode: options.interactiveMode,
           model: nextSelection.model,
           threadId: options.threadId,
-          multiAgentEnabled: options.multiAgentEnabled,
         });
         this.touch(existing);
         return existing.runner;
@@ -252,7 +245,6 @@ export class InteractiveRunnerManager {
       interactiveMode: options.interactiveMode,
       model: nextSelection.model,
       threadId: options.threadId,
-      multiAgentEnabled: options.multiAgentEnabled,
     });
     const entry: RunnerEntry = {
       cli: "codex",
@@ -262,7 +254,6 @@ export class InteractiveRunnerManager {
       interactiveMode: options.interactiveMode,
       model: nextSelection.model,
       configId: nextSelection.configId,
-      multiAgentEnabled: options.multiAgentEnabled,
       command: options.command,
       args: [...options.args],
       cwd: options.cwd,

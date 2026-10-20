@@ -81,7 +81,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getAutoAddEditorContextTags: () => false,
     getEffectiveLongTermMemoryEnabled: () => false,
     getGlobalAutoCompactContextAfterRun: () => false,
-    getGlobalMultiAgentEnabled: () => false,
     getGlobalHumanInteractionEnabled: () => true,
     getGlobalLoopMaxRounds: () => 1,
     getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",

@@ -638,7 +638,6 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     longTermMemoryEnabled: true,
     workspaceMemoryEnabled: true,
     autoCompactContextAfterRun: true,
-    multiAgentEnabled: true,
     loopMaxRounds: 99,
     loopSubtaskMaxThinkingMode: "xhigh",
     loopExecutionModeByCli: { codex: "debate_multi_agent" },

@@ -72,7 +72,6 @@ test("InteractiveRunnerManager tracks Codex config identity separately from mode
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
     const second = manager.getOrCreateCodexRunner({
       sessionId: "ui-session",
@@ -83,7 +82,6 @@ test("InteractiveRunnerManager tracks Codex config identity separately from mode
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
     const third = manager.getOrCreateCodexRunner({
       sessionId: "ui-session",
@@ -94,7 +92,6 @@ test("InteractiveRunnerManager tracks Codex config identity separately from mode
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-b",
-      multiAgentEnabled: false,
     });
 
     assert.equal(second, first);
@@ -121,7 +118,6 @@ test("InteractiveRunnerManager does not reuse Codex runners across execution roo
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
     const second = manager.getOrCreateCodexRunner({
       sessionId: "ui-session",
@@ -133,7 +129,6 @@ test("InteractiveRunnerManager does not reuse Codex runners across execution roo
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
     const third = manager.getOrCreateCodexRunner({
       sessionId: "ui-session",
@@ -145,7 +140,6 @@ test("InteractiveRunnerManager does not reuse Codex runners across execution roo
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
 
     assert.equal(second, first);
@@ -168,7 +162,6 @@ test("InteractiveRunnerManager keeps the Codex runner when only the model or arg
       interactiveMode: "coding",
       model: "gpt-5.5",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
     const second = manager.getOrCreateCodexRunner({
       sessionId: "ui-session",
@@ -180,7 +173,6 @@ test("InteractiveRunnerManager keeps the Codex runner when only the model or arg
       interactiveMode: "plan",
       model: "gpt-5.6",
       configId: "config-a",
-      multiAgentEnabled: false,
     });
 
     assert.equal(second, first);

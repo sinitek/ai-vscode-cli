@@ -156,7 +156,6 @@ function createHostHarness(options: {
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "xhigh",
     getGlobalHumanInteractionEnabled: () => false,
-    getGlobalMultiAgentEnabled: () => false,
     getPendingSessionDraft: (tabId) => {
       const existing = pendingMessagesByTab.get(tabId);
       if (existing) {

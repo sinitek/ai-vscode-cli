@@ -173,7 +173,6 @@ function createInteractiveRuntimeHarness(options: {
     getEffectiveCliArgs: () => ["--effective"],
     getEffectiveThinkingMode: () => "medium",
     getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled !== false,
-    getGlobalMultiAgentEnabled: () => false,
     getPendingSessionDraft: (tabId) => {
       const existing = pendingMessagesByTab.get(tabId);
       if (existing) {

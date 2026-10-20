@@ -441,17 +441,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           });
         });
       }
-      if (elements.multiAgentEnabled) {
-        elements.multiAgentEnabled.addEventListener("change", (event) => {
-          const enabled = Boolean(event.target.checked);
-          state.multiAgentEnabled = enabled;
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "multiAgentEnabled",
-            value: enabled,
-          });
-        });
-      }
       if (elements.humanInteractionEnabled) {
         elements.humanInteractionEnabled.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);

@@ -83,7 +83,7 @@
   - add-dir
   - web search
   - thinking / reasoning effort
-- 面板“工具设置”支持全局统一“隐式子代理”开关 `multiAgentEnabled`，保存在 `~/.sinitek_cli/settings.json`，默认关闭。旧工作区 `multiAgentEnabled` 和 `codexMultiAgentEnabled` 仅作为迁移输入；全局值存在时优先级更高。关闭时扩展会显式禁用 Codex 官方 `multi_agent`，并为本次 OpenCode 运行的临时 `OPENCODE_CONFIG` overlay 合并顶层 `permission.task="deny"`；同时通过优先级更高的 `OPENCODE_CONFIG_CONTENT` 内联配置重申该拒绝，使项目配置不能重新放开 task 子代理。开启时不额外写入 OpenCode `permission.task`，以保留用户已有规则和 OpenCode 默认行为。该策略依据 OpenCode 官方 Agents / Config 文档（https://opencode.ai/docs/agents/、https://opencode.ai/docs/config/，2026-07-13 访问）：子代理由 `task` 权限控制，`OPENCODE_CONFIG` 和 `OPENCODE_CONFIG_CONTENT` 可提供运行时配置覆盖。两种覆盖都不写回用户配置文件，也不控制 Loop 的 `main_sub_multi_agent` / `debate_multi_agent` 编排。Codex App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。
+- 面板“工具设置”不再提供全局隐式子代理开关；历史 `multiAgentEnabled` / `codexMultiAgentEnabled` 均被忽略，不再迁移。能力是否开启由目标 CLI 分组自身配置决定，插件既不启用也不禁用：Codex app-server 启动参数不注入 `--disable multi_agent`，thread config 不覆盖 `features.multi_agent`；OpenCode overlay 保留已有 task 权限，环境中的 `OPENCODE_CONFIG_CONTENT` 原样传递。Loop 的 `main_sub_multi_agent` / `debate_multi_agent` 编排与子代理进度展示保持不变。Codex App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。
 
 ### Claude
 
@@ -123,7 +123,7 @@
 - OpenCode 模式展示“主模型（model）”与“子模型（small_model）”两个下拉；候选只从当前 active config 的 `provider.<id>.models` 固定结构加载，值始终为精确 `provider/model`，不提供新增、编辑、删除、排序等模型管理入口。
 - 普通对话、one-shot 和并行任务使用主模型；Loop 主任务、主持/复核、续跑和唤醒使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型。CLI 没有 `--small-model`，插件切换子模型时通过本次运行的 runtime config overlay 覆盖顶层 `small_model` 兼容字段。
 - main/subtask 覆盖按 active config id 隔离，空值跟随顶层配置，配置切换或候选变化会清理失效覆盖；旧 `primary` / `small` 字段仅作为兼容别名读取和迁移。
-- overlay 同时固定 effective `model` / `small_model`；“隐式子代理”开关关闭时还会定向合并顶层 `permission.task="deny"`，其余权限和未知字段保持原样，并以 `OPENCODE_CONFIG_CONTENT` 内联覆盖确保项目配置不能推翻该 task 拒绝。它使用随机临时目录、`0700` 目录权限和 `0600` 文件权限，通过 `OPENCODE_CONFIG` 注入，并在 exit/error/timeout/cancel 后清理。
+- overlay 同时固定 effective `model` / `small_model`，保留目标配置的权限和未知字段；不添加或覆盖 `permission.task`，也不注入 `OPENCODE_CONFIG_CONTENT`。它使用随机临时目录、`0700` 目录权限和 `0600` 文件权限，通过 `OPENCODE_CONFIG` 注入，并在 exit/error/timeout/cancel 后清理。
 - OpenCode 角色选择只接受 active config 候选中的精确 `provider/model`；裸模型 id、跨 provider 猜测或不在 `provider.<id>.models` 的引用会在启动前拒绝，不能自动补全。
 - OpenCode 运行前会对 effective main、effective subtask 和 overlay 后配置做 preflight：缺少有效主模型、角色引用不是当前配置候选、provider/model 已被过滤或配置仍含占位值时阻止启动；OpenAI-compatible provider 缺少 `baseURL` 等未完成配置同样阻断。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
@@ -192,8 +192,8 @@
 
 ## 3.5 工具设置存储
 
-- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`autoCompactContextAfterRun`、`multiAgentEnabled`、`locale`、`macTaskShell`、`loopMaxRounds`、`loopPlusDecisionSubtaskMax`、`loopPlusMaxAcceptances`、`loopSubtaskMaxThinkingMode`、`historyRetentionDays`）写入 `~/.sinitek_cli/settings.json`。其中 `debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`、`historyRetentionDays` 位于“常规配置”Tab，`autoCompactContextAfterRun`、`multiAgentEnabled`、`loopMaxRounds`、`loopPlusDecisionSubtaskMax`、`loopPlusMaxAcceptances`、`loopSubtaskMaxThinkingMode` 位于“AI任务配置”Tab；`loopPlusDecisionSubtaskMax` 默认 6，范围 1–20，只限制 Loop+ 一次 `dispatch` 或 `accept` 的子任务数，不改变同时运行上限；`loopPlusMaxAcceptances` 默认 100，范围 1–999，只限制 Loop+ 一个任务最多确认的子任务验收次数，不约束经典 Loop 轮次；`historyRetentionDays` 默认 30 天，范围 1–3650 天，并统一约束日志、会话、提示词历史、任务记录和 Loop 记录的保留期限；临时目录仍使用独立的 1 小时清理策略
-- 工具设置中的项目级项（如 `loopExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`。旧工作区 `autoCompactContextAfterRun` / `autoCompactContextBeforeRun` 和 `multiAgentEnabled` / `codexMultiAgentEnabled` 分别只作为全局自动压缩、全局隐式子代理开关的迁移输入；全局字段缺失时迁移当前工作区值，成功迁移或用户更新全局设置后移除对应旧字段。
+- 工具设置中的全局项（`debug`、`autoAddEditorContextTags`、`autoCompactContextAfterRun`、`locale`、`macTaskShell`、`loopMaxRounds`、`loopPlusDecisionSubtaskMax`、`loopPlusMaxAcceptances`、`loopSubtaskMaxThinkingMode`、`historyRetentionDays`）写入 `~/.sinitek_cli/settings.json`。其中 `debug`、`autoAddEditorContextTags`、`locale`、`macTaskShell`、`historyRetentionDays` 位于“常规配置”Tab，`autoCompactContextAfterRun`、`loopMaxRounds`、`loopPlusDecisionSubtaskMax`、`loopPlusMaxAcceptances`、`loopSubtaskMaxThinkingMode` 位于“AI任务配置”Tab；`loopPlusDecisionSubtaskMax` 默认 6，范围 1–20，只限制 Loop+ 一次 `dispatch` 或 `accept` 的子任务数，不改变同时运行上限；`loopPlusMaxAcceptances` 默认 100，范围 1–999，只限制 Loop+ 一个任务最多确认的子任务验收次数，不约束经典 Loop 轮次；`historyRetentionDays` 默认 30 天，范围 1–3650 天，并统一约束日志、会话、提示词历史、任务记录和 Loop 记录的保留期限；临时目录仍使用独立的 1 小时清理策略
+- 工具设置中的项目级项（如 `loopExecutionModeByCli`）写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`。旧工作区 `autoCompactContextAfterRun` / `autoCompactContextBeforeRun` 只作为全局自动压缩设置的迁移输入；全局字段缺失时迁移当前工作区值，成功迁移或用户更新全局设置后移除对应旧字段。旧 `multiAgentEnabled` / `codexMultiAgentEnabled` 已停用，读取时忽略且不迁移。
 - 工具设置“工作区”页中的 harness 骨架开关控制当前工作区基于 harness scaffold 的插件侧记忆层，默认关闭，并写入 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json` 的 `workspaceMemoryEnabled`。配置解析采用“显式 false 防误开优先”：兼容旧字段 `memoryEnabled=false`、`globalMemoryEnabled=false`、`workspaceMemoryEnabled=false` 命中对应作用域时，运行时必须关闭对应长期记忆行为。
 - 用户开启该开关时，扩展先弹窗确认；确认后才补齐当前工作区 harness scaffold：`.ch/`、`.agents/`、`ARCHITECTURE.md`、根级 `AGENTS.md` 的幂等追加模板、只引用 `AGENTS.md` 的 `CLAUDE.md`，以及忽略 `.codegraph/` 的根级 `.gitignore`；已有 `CLAUDE.md` 保持原样，已有 `.gitignore` 只补充缺失的 `.codegraph/` 条目。扩展激活、工作区切换和首次 recall / inject / 持久化不再无条件安装 scaffold。
 - 确认初始化后，扩展会在当前工作区终端启动 `codegraph install --target codex --location global && codegraph init`，用于自动安装/初始化 CodeGraph；该过程可见且不阻塞工具设置保存。
@@ -264,7 +264,7 @@ OpenCode Loop 会话恢复补充：上段“当前尝试为空时进入 hidden r
 
 映射数据通过 `src/interactive/metaStore.ts` 落盘，避免切换会话或重启 VS Code 后丢失续接能力。
 
-OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，没有 `--small-model` / `--small-variant`。插件因此把 effective subtask 对应的 `small_model` 和子模型 reasoning effort 写入随机 `OPENCODE_CONFIG` overlay；“隐式子代理”开关关闭时，同一 overlay 会合并 `permission.task="deny"`，并通过 `OPENCODE_CONFIG_CONTENT` 在项目配置之后再次拒绝 task 子代理。OpenCode 内部 `small: true` 请求仍由底层 CLI 决定并读取 `small_model`；普通对话、并行任务、Loop 主任务、Graph planner 和 summary 使用主模型，Loop 子任务和 Graph 其他执行节点使用子模型。插件日志事件 `opencode-runtime-profile`、`runPrompt-start` 和 `runPrompt-parallel-start` 会记录 main/subtask model、各自 variant 与隐式子代理开关状态，作为运行时诊断依据。
+OpenCode 1.17.18 的 `run` 命令只提供 `--model` 与主模型 `--variant`，没有 `--small-model` / `--small-variant`。插件因此把 effective subtask 对应的 `small_model` 和子模型 reasoning effort 写入随机 `OPENCODE_CONFIG` overlay；overlay 保留目标配置的 task 权限，不增加允许或拒绝，也不覆盖环境中的 `OPENCODE_CONFIG_CONTENT`。OpenCode 内部 `small: true` 请求仍由底层 CLI 决定并读取 `small_model`；普通对话、并行任务、Loop 主任务、Graph planner 和 summary 使用主模型，Loop 子任务和 Graph 其他执行节点使用子模型。插件日志事件 `opencode-runtime-profile`、`runPrompt-start` 和 `runPrompt-parallel-start` 会记录 main/subtask model、各自 variant，作为运行时诊断依据。
 
 ## 7. 当前平台注意事项
 

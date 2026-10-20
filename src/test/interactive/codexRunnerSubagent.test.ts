@@ -171,7 +171,6 @@ test("Codex runner streams child bubbles without completing or replacing the par
     thinkingMode: "medium",
     interactiveMode: "coding",
     threadId: null,
-    multiAgentEnabled: true,
   });
 
   try {
@@ -211,7 +210,6 @@ test("Codex compact uses app-server compact protocol and accepts intentional SIG
     thinkingMode: "medium",
     interactiveMode: "coding",
     threadId: "thread-before-compact",
-    multiAgentEnabled: true,
   });
 
   try {

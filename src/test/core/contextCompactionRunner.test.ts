@@ -112,7 +112,6 @@ function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions =
     appendSystemMessage: () => {
       calls.appendSystemMessage += 1;
     },
-    getGlobalMultiAgentEnabled: () => false,
     upsertInteractiveMapping: () => {},
     sendRawStreamDelta: () => {},
     sendPanelMessage: () => {},
@@ -277,7 +276,6 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
     appendSystemMessage: (content) => {
       calls.appendSystemMessages.push(content);
     },
-    getGlobalMultiAgentEnabled: () => false,
     upsertInteractiveMapping: () => {},
     sendRawStreamDelta: (content, streamOptions) => {
       calls.rawStreams.push({ stream: streamOptions?.stream, content });
@@ -698,7 +696,6 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
     appendSystemMessage: (content) => {
       calls.systemMessages.push(content);
     },
-    getGlobalMultiAgentEnabled: () => false,
     upsertInteractiveMapping: (targetCli, localSessionId, mappedSessionId, mappingOptions) => {
       calls.events.push(`map:${targetCli}:${localSessionId}:${mappedSessionId}`);
       calls.mappings.push({ cli: targetCli, localSessionId, mappedSessionId, options: mappingOptions });
@@ -752,7 +749,6 @@ test("context compaction strategy registry selects Codex and preserves selection
     interactiveMode: "coding",
     model: "gpt-5",
     configId: "config-codex",
-    multiAgentEnabled: false,
   }]);
   assert.deepEqual(calls.mappings, [{
     cli: "codex",
@@ -769,7 +765,7 @@ test("context compaction strategy registry selects Codex and preserves selection
     thinkingMode: "medium",
     interactiveMode: "coding",
     model: "gpt-5",
-    extra: { multiAgentEnabled: false, configId: "config-codex" },
+    extra: { configId: "config-codex" },
   }]);
   assert.deepEqual(calls.systemMessages, ["Codex 当前线程上下文压缩已完成：thread-after-compact"]);
   assert.deepEqual(calls.sendRunStatuses, [

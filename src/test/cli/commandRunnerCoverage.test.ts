@@ -269,7 +269,10 @@ test("starts an OpenCode server through the mock and forwards its lifecycle even
       onExit: (code) => exits.push(code),
     }, {
       cwd: "/isolated/opencode-workspace",
-      envOverrides: { SINITEK_SERVER_TEST: "enabled" },
+      envOverrides: {
+        SINITEK_SERVER_TEST: "enabled",
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
+      },
       isolateProjectInstructions: true,
       processLabel: "sinitek-unit-server",
     });
@@ -293,6 +296,7 @@ test("starts an OpenCode server through the mock and forwards its lifecycle even
       env: {
         ...process.env,
         SINITEK_SERVER_TEST: "enabled",
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
         PWD: "/isolated/opencode-workspace",
       },
       argv0: "sinitek-unit-server",

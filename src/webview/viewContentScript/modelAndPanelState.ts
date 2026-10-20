@@ -464,7 +464,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.codeGraphInstalled = panelState.codeGraphInstalled === true;
         state.codeGraphInstalling = panelState.codeGraphInstalling === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
-        state.multiAgentEnabled = Boolean(panelState.multiAgentEnabled);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
         state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
           panelState.humanInteractionTimeoutMinutes
@@ -528,9 +527,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         syncCodeGraphWorkspaceControl();
         if (elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
-        }
-        if (elements.multiAgentEnabled) {
-          elements.multiAgentEnabled.checked = state.multiAgentEnabled;
         }
         if (elements.humanInteractionEnabled) {
           elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;

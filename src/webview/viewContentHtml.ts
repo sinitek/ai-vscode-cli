@@ -504,16 +504,6 @@ ${renderChatModal({
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsImplicitSubagentsLabel}</div>
-                  <label class="debug-toggle" title="${i18n.toolSettingsImplicitSubagentsTitle}">
-                    <input type="checkbox" id="multiAgentEnabled" />
-                    <span>${i18n.toolSettingsImplicitSubagentsToggle}</span>
-                  </label>
-                </div>
-                <div class="tool-settings-note">${i18n.toolSettingsImplicitSubagentsHint}</div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsHumanInteractionLabel}</div>
                   <label class="debug-toggle" title="${i18n.toolSettingsHumanInteractionTitle}">
                     <input type="checkbox" id="humanInteractionEnabled" />

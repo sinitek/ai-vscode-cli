@@ -142,7 +142,6 @@ test("Codex runner accepts app-server messages that contain unicode line separat
       thinkingMode: "medium",
       interactiveMode: "coding",
       threadId: null,
-      multiAgentEnabled: false,
     });
     await runner.runStreamed("第一行\u2028第二行", {
       onAssistantDelta: (chunk) => deltas.push(chunk),

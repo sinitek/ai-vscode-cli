@@ -116,17 +116,6 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "multiAgentEnabled" || message.key === "codexMultiAgentEnabled") {
-    const savedGlobally = deps.updateStoredToolSettings({ multiAgentEnabled: Boolean(message.value) });
-    if (savedGlobally
-      && ("multiAgentEnabled" in workspaceSettings || "codexMultiAgentEnabled" in workspaceSettings)) {
-      delete workspaceSettings.multiAgentEnabled;
-      delete workspaceSettings.codexMultiAgentEnabled;
-      deps.saveWorkspaceSettings(workspaceSettings);
-    }
-    await deps.postPanelState();
-    return;
-  }
   if (message.key === "humanInteractionEnabled") {
     deps.updateStoredToolSettings({ humanInteractionEnabled: Boolean(message.value) });
     await deps.postPanelState();

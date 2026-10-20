@@ -78,7 +78,6 @@ export type PromptInteractiveRuntimeHostDeps = {
   getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalHumanInteractionEnabled: () => boolean;
-  getGlobalMultiAgentEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
@@ -166,7 +165,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     getEffectiveCliArgs,
     getEffectiveThinkingMode,
     getGlobalHumanInteractionEnabled,
-    getGlobalMultiAgentEnabled,
     getPendingSessionDraft,
     getSelectedCliModel,
     getWorkspaceInteractiveMode,
@@ -1179,7 +1177,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
           resolveCodexInteractiveSelection,
-          getGlobalMultiAgentEnabled,
           getConversationTabById,
           createMessageId,
           logInfo,

@@ -89,7 +89,6 @@ export type InteractiveTurnAttemptPort = {
   canHandleStructuredHumanInteractionRequest(): boolean;
   resolveInteractiveMappedId(cli: CliName, sessionId: string): string | null;
   resolveCodexInteractiveSelection(sessionId: string): CodexRunSelection | null;
-  getGlobalMultiAgentEnabled(): boolean;
   getConversationTabById(tabId: string): { sessionId?: string | null; cli?: CliName } | null | undefined;
   createMessageId(): string;
   logInfo(message: string, data?: unknown): void;

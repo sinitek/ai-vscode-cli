@@ -142,7 +142,6 @@ type CodexRunnerMutableOptions = {
   interactiveMode: InteractiveMode;
   model?: string | null;
   threadId: string | null;
-  multiAgentEnabled: boolean;
 };
 
 type CodexRunnerOperation = {
@@ -387,7 +386,6 @@ export class CodexInteractiveRunner {
       this.options.thinkingMode,
       this.options.interactiveMode,
       this.options.model,
-      this.options.multiAgentEnabled,
     );
     const imagePaths = collectArgValues(this.options.args, ["--image", "-i"])
       .map((item) => item.trim())
@@ -432,7 +430,7 @@ export class CodexInteractiveRunner {
     }
     const spawnCommand = resolveSpawnCommand(
       this.options.command,
-      buildCodexAppServerArgs(threadOptions.multiAgentEnabled !== false, configOverrides, {
+      buildCodexAppServerArgs(configOverrides, {
         requestUserInputEnabled,
       }),
     );

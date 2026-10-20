@@ -46,7 +46,6 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             interactiveMode: port.interactiveMode,
             model: nextSelection.model,
             configId: nextSelection.configId,
-            multiAgentEnabled: port.getGlobalMultiAgentEnabled(),
           })
         : new CodexInteractiveRunner({
             command: port.command,
@@ -56,7 +55,6 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             interactiveMode: port.interactiveMode,
             model: nextSelection.model,
             threadId: null,
-            multiAgentEnabled: port.getGlobalMultiAgentEnabled(),
           });
 
       try {
@@ -160,7 +158,6 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             });
             if (uiSessionId) {
               port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
-                multiAgentEnabled: port.getGlobalMultiAgentEnabled(),
                 configId: nextSelection.configId,
                 command: port.command,
                 args: port.args,

@@ -2,8 +2,6 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  applyOpenCodeRuntimeMultiAgentEnvOverrides,
-  applyOpenCodeRuntimeMultiAgentPermission,
   applyOpenCodeRuntimeModelOverlay,
   parseOpenCodeConfigModels,
   validateOpenCodeModelOverride,
@@ -262,62 +260,18 @@ test("keeps the configured subtask model when a Vibe run overrides only the main
   });
 });
 
-test("keeps OpenCode task permissions unchanged when multi-agent is enabled", () => {
-  const source = {
-    model: "one/main",
-    permission: {
-      edit: "ask",
-      task: { "review-*": "deny" },
-    },
-  };
-  const snapshot = JSON.parse(JSON.stringify(source));
-
-  const overlay = applyOpenCodeRuntimeMultiAgentPermission(source, true);
-
-  assert.deepEqual(overlay, source);
-  assert.notEqual(overlay, source);
-  assert.deepEqual(source, snapshot);
-});
-
-test("denies only OpenCode task subagents when multi-agent is disabled", () => {
-  const source = {
-    model: "one/main",
-    permission: {
-      edit: "ask",
-      task: { "review-*": "allow" },
-    },
-    custom: { preserved: true },
-  };
-  const snapshot = JSON.parse(JSON.stringify(source));
-
-  const overlay = applyOpenCodeRuntimeMultiAgentPermission(source, false);
-
-  assert.deepEqual(overlay, {
-    ...source,
-    permission: {
-      edit: "ask",
-      task: "deny",
-    },
-  });
-  assert.deepEqual(source, snapshot);
-});
-
-test("uses a higher-precedence inline OpenCode config only when multi-agent is disabled", () => {
-  const source = {
-    KEEP: "value",
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
-  };
-
-  const enabled = applyOpenCodeRuntimeMultiAgentEnvOverrides(source, true);
-  const disabled = applyOpenCodeRuntimeMultiAgentEnvOverrides(source, false);
-
-  assert.deepEqual(enabled, source);
-  assert.deepEqual(JSON.parse(disabled.OPENCODE_CONFIG_CONTENT), {
-    permission: { task: "deny" },
-  });
-  assert.equal(disabled.KEEP, "value");
-  assert.deepEqual(source, {
-    KEEP: "value",
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { task: "allow" } }),
-  });
+test("keeps configured OpenCode task permissions unchanged when applying runtime models", () => {
+  for (const permission of [undefined, "allow", "deny", { edit: "ask", task: { "review-*": "deny" } }, { task: "allow" }, { task: "deny" }]) {
+    const source = {
+      model: "one/main",
+      provider: { one: { models: { main: {} } } },
+      ...(permission === undefined ? {} : { permission }),
+    };
+    const snapshot = JSON.parse(JSON.stringify(source));
+    const overlay = applyOpenCodeRuntimeModelOverlay(source, { main: "one/main" });
+    assert.equal(overlay.ok, true);
+    assert.deepEqual(overlay.config, source);
+    assert.notEqual(overlay.config, source);
+    assert.deepEqual(source, snapshot);
+  }
 });

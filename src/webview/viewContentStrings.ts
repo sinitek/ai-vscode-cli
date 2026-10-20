@@ -189,12 +189,6 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAutoCompactAfterRunTitle:
       "Codex、Claude、OpenCode 的全局设置。任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
-    toolSettingsImplicitSubagentsLabel: "隐式子代理",
-    toolSettingsImplicitSubagentsTitle:
-      "Codex 和 OpenCode 隐式子代理能力的全局设置。",
-    toolSettingsImplicitSubagentsToggle: "开启",
-    toolSettingsImplicitSubagentsHint:
-      "全局配置，默认关闭。关闭时，扩展会禁用 Codex multi_agent，并在本次 OpenCode 运行中拒绝 task 子代理。开启后，扩展保留各 CLI 自身可用的隐式子代理能力和 OpenCode task 权限。此设置不影响 Loop 编排。",
     toolSettingsHumanInteractionLabel: "人工交互",
     toolSettingsHumanInteractionTitle:
       "Codex、Claude 和 OpenCode 的全局设置。允许 Vibe 任务在继续执行前以结构化表单询问补充信息。",

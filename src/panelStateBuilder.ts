@@ -126,7 +126,6 @@ export type PanelStateBuilderDeps = {
   getAutoAddEditorContextTags: typeof getAutoAddEditorContextTags;
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
-  getGlobalMultiAgentEnabled: () => boolean;
   getGlobalHumanInteractionEnabled: () => boolean;
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
@@ -225,7 +224,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     codeGraphInstalled: deps.codeGraphInstalled === true,
     codeGraphInstalling: deps.codeGraphInstalling === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
-    multiAgentEnabled: deps.getGlobalMultiAgentEnabled(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
     humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),

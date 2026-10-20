@@ -6,7 +6,6 @@ import {
   readHumanInteractionTimeoutMs,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
-  resolveGlobalMultiAgentEnabled,
   resolveHumanInteractionTimeoutMinutes,
   resolveLongTermMemoryEnabled,
   normalizeHistoryRetentionDays,
@@ -25,27 +24,14 @@ test("ignores retired final-answer policy fields", () => {
   );
 });
 
-test("normalizes the global implicit-subagents setting", () => {
-  assert.deepEqual(
-    normalizeToolSettings({ multiAgentEnabled: true }),
-    { multiAgentEnabled: true },
-  );
-  assert.deepEqual(
-    normalizeToolSettings({ multiAgentEnabled: "true" }),
-    {},
-  );
-});
-
-test("resolves the global implicit-subagents setting before legacy workspace values", () => {
-  assert.equal(resolveGlobalMultiAgentEnabled({}, {}), false);
-  assert.equal(resolveGlobalMultiAgentEnabled({ multiAgentEnabled: false }, {
-    multiAgentEnabled: true,
-  }), false);
-  assert.equal(resolveGlobalMultiAgentEnabled({ multiAgentEnabled: true }, {
-    multiAgentEnabled: false,
-  }), true);
-  assert.equal(resolveGlobalMultiAgentEnabled({}, { multiAgentEnabled: true }), true);
-  assert.equal(resolveGlobalMultiAgentEnabled({}, { codexMultiAgentEnabled: true }), true);
+test("ignores retired implicit-subagents settings without affecting other settings", () => {
+  for (const value of [true, false, "true", null]) {
+    assert.deepEqual(
+      normalizeToolSettings({ multiAgentEnabled: value, codexMultiAgentEnabled: value, debug: true }),
+      { debug: true },
+    );
+  }
+  assert.deepEqual(normalizeToolSettings({ multiAgentEnabled: false }), {});
 });
 
 test("normalizes the global human-interaction setting", () => {

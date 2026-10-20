@@ -299,8 +299,6 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   const { deps, calls, state } = createSettingHarness("opencode");
 
   state.workspaceSettings = {
-    multiAgentEnabled: true,
-    codexMultiAgentEnabled: true,
     autoCompactContextAfterRun: true,
     autoCompactContextBeforeRun: true,
     loopMaxRounds: 99,
@@ -318,7 +316,6 @@ test("cleans migrated settings and preserves each global setting contract", asyn
 
   assert.deepEqual(state.workspaceSettings, { workspaceMemoryEnabled: false });
   assert.deepEqual(calls.toolSettings, [
-    { multiAgentEnabled: false },
     { autoCompactContextAfterRun: true },
     { loopMaxRounds: 4 },
     { loopSubtaskMaxThinkingMode: "high" },
@@ -329,7 +326,7 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   assert.equal(calls.statusUpdates, 0);
   assert.deepEqual(calls.webviewMessages, []);
   assert.equal(calls.configReloads, 0);
-  assert.equal(calls.postPanelState, 10);
+  assert.equal(calls.postPanelState, 9);
 });
 
 test("persists the Loop+ dispatch subtask maximum as a global setting", async () => {
@@ -385,7 +382,6 @@ test("persists automatic-cleanup retention days as a global setting", async () =
 test("retains workspace setting fallbacks when global persistence rejects the update", async () => {
   const { deps, calls, state } = createSettingHarness();
   state.workspaceSettings = {
-    multiAgentEnabled: true,
     autoCompactContextAfterRun: true,
   };
   deps.updateStoredToolSettings = () => false;
@@ -394,16 +390,15 @@ test("retains workspace setting fallbacks when global persistence rejects the up
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextAfterRun", value: false }, deps);
 
   assert.deepEqual(state.workspaceSettings, {
-    multiAgentEnabled: true,
     autoCompactContextAfterRun: true,
   });
   assert.deepEqual(calls.savedSettings, []);
-  assert.equal(calls.postPanelState, 2);
+  assert.equal(calls.postPanelState, 1);
 });
 
 test("cleans legacy setting aliases when each alternate workspace key is present", async () => {
   const { deps, state } = createSettingHarness();
-  state.workspaceSettings = { codexMultiAgentEnabled: true };
+  state.workspaceSettings = {};
   await handleUpdateSettingMessage({ type: "updateSetting", key: "multiAgentEnabled", value: false }, deps);
   state.workspaceSettings = { autoCompactContextBeforeRun: true };
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextAfterRun", value: false }, deps);

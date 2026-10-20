@@ -72,28 +72,15 @@ function createFakeDocument() {
   };
 }
 
-test("renders one default-off AI task implicit-subagents setting and wires its panel state", () => {
-  {
-    const html = buildStaticHtml();
-    const aiTaskPanelIndex = html.indexOf('id="toolSettingsAiTaskPanel"');
-    const workspacePanelIndex = html.indexOf('id="toolSettingsWorkspacePanel"');
-    const settingIndex = html.indexOf('id="multiAgentEnabled"');
-    assert.match(html, /id="multiAgentEnabled"/u);
-    assert.match(html, new RegExp(WEBVIEW_STRINGS.toolSettingsImplicitSubagentsLabel, "u"));
-    assert.notEqual(aiTaskPanelIndex, -1);
-    assert.notEqual(workspacePanelIndex, -1);
-    assert.ok(aiTaskPanelIndex < settingIndex && settingIndex < workspacePanelIndex);
-    assert.doesNotMatch(html, /codexMultiAgentEnabled/u);
-  }
-
-  assert.equal(WEBVIEW_STRINGS.toolSettingsImplicitSubagentsLabel, "隐式子代理");
+test("does not render or wire the retired implicit-subagents setting", () => {
+  const html = buildStaticHtml();
+  assert.doesNotMatch(html, /multiAgentEnabled|codexMultiAgentEnabled|隐式子代理/u);
   assert.equal(WEBVIEW_STRINGS.toolSettingsGeneralTab, "常规配置");
   assert.equal(WEBVIEW_STRINGS.toolSettingsAiTaskTab, "AI任务配置");
-  assert.match(WEBVIEW_STRINGS.toolSettingsImplicitSubagentsTitle, /全局设置/u);
-
-  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /multiAgentEnabled: false/u);
-  assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /key: "multiAgentEnabled"/u);
-  assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.multiAgentEnabled/u);
+  assert.doesNotMatch(JSON.stringify(WEBVIEW_STRINGS), /toolSettingsImplicitSubagents/u);
+  for (const script of [VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE]) {
+    assert.doesNotMatch(script, /multiAgentEnabled|codexMultiAgentEnabled/u);
+  }
 });
 
 test("renders default-on automatic compaction in the AI task settings panel", () => {
@@ -203,11 +190,11 @@ test("lays out tool settings as compact masonry cards", () => {
   assert.ok(firstCardStart > generalPanelStart && firstCardStart < aiTaskPanelStart);
   assert.ok(html.indexOf('id="historyRetentionDays"') > generalPanelStart);
   assert.ok(html.indexOf('id="historyRetentionDays"') < aiTaskPanelStart);
-  assert.ok(html.indexOf('id="multiAgentEnabled"') > aiTaskPanelStart);
-  assert.ok(html.indexOf('id="multiAgentEnabled"') < workspacePanelStart);
+  assert.ok(html.indexOf('id="humanInteractionEnabled"') > aiTaskPanelStart);
+  assert.ok(html.indexOf('id="humanInteractionEnabled"') < workspacePanelStart);
   assert.match(
     html,
-    /class="tool-settings-card"[\s\S]*id="multiAgentEnabled"[\s\S]*class="tool-settings-note"/u,
+    /class="tool-settings-card"[\s\S]*id="humanInteractionEnabled"[\s\S]*class="tool-settings-note"/u,
   );
   assert.match(TOAST_MISC_STYLES, /\.tool-settings-panel\.active \{\s+display: block;\s+column-count: 2;/u);
   assert.match(TOAST_MISC_STYLES, /\.tool-settings-card \{[\s\S]*break-inside: avoid;/u);

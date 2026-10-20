@@ -37,7 +37,7 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
   };
 }
 
-test("retains the legacy Codex multi-agent candidate until host migration succeeds", () => {
+test("ignores the retired Codex multi-agent field when loading and saving workspace settings", () => {
   const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
   const options = createOptions(workspaceSettingsDir);
   const filePath = path.join(workspaceSettingsDir, "workspace.json");
@@ -46,15 +46,15 @@ test("retains the legacy Codex multi-agent candidate until host migration succee
 
     const loaded = loadWorkspaceSettings(options);
 
-    assert.deepEqual(loaded, { multiAgentEnabled: true });
+    assert.deepEqual(loaded, {});
     saveWorkspaceSettings(loaded, options);
-    assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { multiAgentEnabled: true });
+    assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), {});
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
   }
 });
 
-test("prefers the newer workspace migration candidate over the legacy Codex value", () => {
+test("ignores retired workspace implicit-subagents settings even when they disagree", () => {
   const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
   const options = createOptions(workspaceSettingsDir);
   const filePath = path.join(workspaceSettingsDir, "workspace.json");
@@ -64,7 +64,7 @@ test("prefers the newer workspace migration candidate over the legacy Codex valu
       codexMultiAgentEnabled: true,
     }), "utf8");
 
-    assert.deepEqual(loadWorkspaceSettings(options), { multiAgentEnabled: false });
+    assert.deepEqual(loadWorkspaceSettings(options), {});
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
   }
