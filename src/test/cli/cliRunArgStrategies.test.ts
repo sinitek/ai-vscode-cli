@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as path from "path";
 import { installVscodeMock } from "../vscodeMock";
+import { buildClaudePrompt } from "../../cli/claudeToolPolicy";
 
 installVscodeMock();
 
@@ -53,6 +54,17 @@ test("registers exactly the four CLI platforms", () => {
 test("keeps the public arg builders exported from commandRunner", () => {
   assert.equal(buildCliArgs, buildCliArgsFromStrategy);
   assert.equal(applyOpenCodeVariantArg, applyOpenCodeVariantArgFromStrategy);
+});
+
+test("adds Claude tool fallback instructions to one-shot prompts only", () => {
+  const args = buildCliArgs("claude", {}, "今天上海天气");
+  assert.ok(args.at(-1)?.startsWith("今天上海天气\n\n"));
+  assert.match(args.at(-1) ?? "", /不要使用 WebSearch 或 WebFetch/);
+  assert.match(args.at(-1) ?? "", /直接执行这条 curl/);
+  assert.deepEqual(buildCliArgs("claude", {}, "/compact 保留结果"), ["/compact 保留结果"]);
+  assert.deepEqual(buildCliArgs("claude", {}, ""), []);
+  assert.deepEqual(buildCliArgs("claude", {}), []);
+  assert.deepEqual(buildCliArgs("grok", {}, "原始需求"), ["原始需求"]);
 });
 
 test("keeps strategy source free of runner, extension, workspace, and grok stdio helpers", () => {
@@ -110,11 +122,11 @@ test("preserves Codex, Claude, and OpenCode argv examples", () => {
   assert.deepEqual(buildCliArgs("codex", {}, ""), ["--skip-git-repo-check"]);
   assert.deepEqual(
     buildCliArgs("claude", { sessionId: "previous-session", isolateProjectInstructions: true }, "continue"),
-    ["--safe-mode", "continue"],
+    ["--safe-mode", buildClaudePrompt("continue")],
   );
   assert.deepEqual(
     buildCliArgs("claude", { sessionId: "previous-session", imagePaths: ["/tmp/diagram.png"] }, "continue"),
-    ["continue"],
+    [buildClaudePrompt("continue")],
   );
   assert.deepEqual(buildCliArgs("opencode", {}), ["--auto"]);
   assert.deepEqual(

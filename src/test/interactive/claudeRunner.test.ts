@@ -176,6 +176,69 @@ test("keeps user Claude tools available when project instructions are isolated",
   }
 });
 
+for (const scenario of [
+  { mode: "coding", isolated: false, sessionId: null },
+  { mode: "coding", isolated: false, sessionId: "resumed-network-session" },
+  { mode: "loop", isolated: true, sessionId: null },
+  { mode: "graph", isolated: true, sessionId: null },
+  { mode: "plan", isolated: false, sessionId: null },
+] as const) {
+  test(`applies Claude network policy to every ${scenario.mode} turn (isolated=${scenario.isolated}, resumed=${Boolean(scenario.sessionId)})`, async (t) => {
+    const originalDynamicImport = dynamicImportModule.dynamicImport;
+    const requests: Array<Array<{ type: string; text: string }>> = [];
+    const queryOptions: Array<Record<string, unknown>> = [];
+    dynamicImportModule.dynamicImport = (async () => ({
+      query: ({ prompt, options }: {
+        prompt: AsyncIterable<{ message: { content: Array<{ type: string; text: string }> } }>;
+        options: Record<string, unknown>;
+      }) => {
+        queryOptions.push(options);
+        return (async function* stream() {
+          for await (const message of prompt) {
+            requests.push(message.message.content);
+            yield { type: "result", subtype: "success", result: "ok" };
+          }
+        })();
+      },
+    })) as typeof dynamicImportModule.dynamicImport;
+    t.after(() => {
+      dynamicImportModule.dynamicImport = originalDynamicImport;
+    });
+
+    const runner = new ClaudeInteractiveRunner({
+      command: "claude",
+      args: [],
+      cwd: process.cwd(),
+      thinkingMode: "off",
+      interactiveMode: scenario.mode,
+      sessionId: scenario.sessionId,
+      isolateProjectInstructions: scenario.isolated,
+    });
+    try {
+      await expectSoon(runner.runForText("今天上海天气"), "first network turn");
+      await expectSoon(runner.runForText("继续核对天气日期"), "second network turn");
+      await expectSoon(runner.runForText("/compact 保留天气结果"), "native compact input");
+      assert.equal(queryOptions.length, 1);
+      assert.deepEqual(queryOptions[0].disallowedTools, ["WebSearch", "WebFetch"]);
+      assert.equal(queryOptions[0].tools, undefined);
+      assert.equal(queryOptions[0].permissionMode, scenario.mode === "plan" ? "plan" : "bypassPermissions");
+      assert.deepEqual(queryOptions[0].settingSources, scenario.isolated ? ["user"] : ["user", "project", "local"]);
+      assert.equal(queryOptions[0].resume, scenario.sessionId ?? undefined);
+      assert.equal(requests.length, 3);
+      assert.equal(requests[0][0].text, "今天上海天气");
+      assert.equal(requests[1][0].text, "继续核对天气日期");
+      for (const content of requests.slice(0, 2)) {
+        assert.equal(content.length, 2);
+        assert.match(content[1].text, /不要使用 WebSearch/);
+        assert.match(content[1].text, /https:\/\/wttr\.in\/Shanghai\?format=j1/);
+      }
+      assert.deepEqual(requests[2], [{ type: "text", text: "/compact 保留天气结果" }]);
+    } finally {
+      runner.dispose();
+    }
+  });
+}
+
 test("reuses one Claude query across turns, interrupts without aborting, and closes once", async (t) => {
   const originalDynamicImport = dynamicImportModule.dynamicImport;
   const prompts: string[] = [];

@@ -600,6 +600,22 @@
       ]
     },
     {
+      "id": "plugin.rule.claude_tool_fallback",
+      "name": "Claude 当前接入的工具故障命令替代与完整结果核验",
+      "description": "Claude SDK 的每轮输入与 CLI 单次调用统一附加工具兼容提示，保留原始需求并透传给委派任务，原生 /compact 不追加。当前接入实测 WebSearch 空结果、WebFetch 域名检查失败，SDK 禁用二者并提示用 Bash/curl 查询公开数据；天气命令用已安装 Node 解析完整 JSON 并输出精简字段，核对日期和最低最高温，不能从截断预览猜测。Glob/Grep 未暴露时先经 ToolSearch 确认，再用 rg 或平台命令替代。已验证可用的文件、Notebook、任务、子代理工具继续优先原生调用；替代不能绕过权限、plan 或用户授权范围，不能伪造工具及子代理成功，其他未验证工具不能一概判定不可用。allowedTools 是免审规则与任务工具 opt-in，不是完整工具白名单。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "src/cli/claudeToolPolicy.ts"},
+        {"path": "src/cli/cliRunArgStrategies.ts"},
+        {"path": "src/interactive/claudeRunner.ts"},
+        {"path": "src/test/cli/claudeToolPolicy.test.ts"},
+        {"path": "src/test/interactive/claudeRunner.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
+        {"path": ".ch/docs/runbooks/PITFALLS.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
       "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 3 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。",

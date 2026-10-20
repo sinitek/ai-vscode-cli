@@ -37,7 +37,9 @@
 
 ## 当前清单
 
-Claude Loop 子任务使用 `bypassPermissions` 执行；Claude 交互请求显式启用 `TaskCreate`、`TaskUpdate`、`TaskList`、`TaskGet`、`TaskStop`，不依赖默认模型是否开放任务跟踪工具；隔离项目指令时仅屏蔽 `project/local` settings，不屏蔽用户级 MCP 与工具配置，保证用户级搜索工具仍可用。实现与回归见 `src/interactive/claudeRunner.ts`、`src/interactive/claudeTaskList.ts`、`src/test/interactive/claudeRunner.test.ts`。
+Claude Loop 子任务使用 `bypassPermissions` 执行；Claude 交互请求显式启用 `TaskCreate`、`TaskUpdate`、`TaskList`、`TaskGet`、`TaskStop`，不依赖默认模型是否开放任务跟踪工具；隔离项目指令时仅屏蔽 `project/local` settings，不屏蔽用户级 MCP 与工具配置。`allowedTools` 表示免审规则和任务工具 opt-in，不是完整工具白名单；实际工具是否可用还取决于 CLI 暴露、服务连接与网络。实现与回归见 `src/interactive/claudeRunner.ts`、`src/interactive/claudeTaskList.ts`、`src/test/interactive/claudeRunner.test.ts`。
+
+Claude 工具兼容提示通过统一构建器附加到普通、分组、Loop/Graph 子任务、续聊和单次调用的原始提示后面，原生 `/compact` 保持不变。当前接入实测 WebSearch 返回空结果、WebFetch 域名安全检查失败，因此 SDK 禁用这两个工具，提示用 Bash/curl 获取公开数据；上海天气提供 curl 与已安装 Node 的完整 JSON 解析命令，精简字段避免工具输出截断，并校验日期，禁止凭预览猜测气温。缺少 Node 时用已安装 Python 或 Read 完整结果，不自动安装依赖。Glob/Grep 在当前接入未暴露时先用 ToolSearch 确认，再用 rg 或平台原生命令替代；已经验证可用的文件、Notebook、任务和子代理工具继续优先使用原生能力。替代不能绕过权限、plan 或用户授权范围，未验证工具不一概判为不可用。Windows PowerShell 使用 `curl.exe`，内联脚本引号不兼容时改用授权临时脚本。实现与回归见 `src/cli/claudeToolPolicy.ts`、`src/cli/cliRunArgStrategies.ts`、`src/test/cli/claudeToolPolicy.test.ts`、`src/test/cli/cliRunArgStrategies.test.ts` 和 Claude Runner 测试。
 
 折叠指令组的摘要与上下相邻气泡统一保持 20px 间距；去掉原生 `details` 折叠后残留的 12px flex 空隙。展开时摘要到正文仍为 12px，组内气泡间距仍为 20px；不改变折叠交互与消息内容。规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`，样式回归入口为 `src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 

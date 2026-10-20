@@ -4,6 +4,7 @@ import * as path from "path";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
+import { buildClaudePromptContent } from "../cli/claudeToolPolicy";
 import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
@@ -421,7 +422,7 @@ class ClaudePromptInput implements AsyncIterable<ClaudeSdkUserMessage> {
       session_id: "",
       message: {
         role: "user",
-        content: [{ type: "text", text: prompt }],
+        content: buildClaudePromptContent(prompt),
       },
       parent_tool_use_id: null,
     };
@@ -977,6 +978,7 @@ export class ClaudeInteractiveRunner {
       model,
       permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
       allowedTools: [...CLAUDE_TASK_TRACKING_TOOLS],
+      disallowedTools: ["WebSearch", "WebFetch"],
       settingSources: this.options.isolateProjectInstructions ? ["user"] : ["user", "project", "local"],
       pathToClaudeCodeExecutable: this.options.entrypoint,
       maxTurns: 200,

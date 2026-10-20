@@ -92,6 +92,10 @@
 - 同步传入当前模型、工作目录和 `user/project/local` settings
 - Loop 子任务隔离项目指令时仅加载 `user` settings，继续保留用户级 MCP / 搜索工具配置，并继续使用 `bypassPermissions`；普通会话仍加载 `user/project/local`
 - 通过 SDK session 做会话续接
+- SDK 的 `allowedTools` 用于免审规则以及任务工具 opt-in，不是限制所有可用工具的白名单；不设置 `tools` 以保留 CLI 默认工具。执行模式使用 `bypassPermissions` 与 `allowDangerouslySkipPermissions: true`，plan 仍使用 `plan`；这些配置不能修复外部网络服务或让未暴露工具自动出现。
+- `src/cli/claudeToolPolicy.ts` 为 SDK 每轮输入和 CLI 单次调用统一附加兼容提示，保留原始需求；续聊、恢复和隔离子任务同样覆盖，原生 `/compact` 不追加提示。当前接入中 WebSearch 返回空结果，WebFetch 多站点域名检查失败；SDK `disallowedTools` 为 `WebSearch/WebFetch`，补充提示要求用 Bash/curl 查询公开网络，上海天气示例为 `curl -fSL --connect-timeout 10 --max-time 30 "https://wttr.in/Shanghai?format=j1"`，按 `weather[].date` 核对日期。PowerShell 用 `curl.exe`，失败须保留真实原因，不能把空结果或其他日期当成功。
+- 当前接入实测 Glob/Grep 未暴露；先用 ToolSearch 确认，再用 Bash 的 `rg --files` / `rg -n`，缺少 rg 时 Linux/macOS 使用 find/grep、PowerShell 使用 Get-ChildItem/Select-String。原生 Read/Write/Edit/Bash、任务跟踪和 Agent 经实际调用可用，继续优先使用；其他工具仅按实际失败做有授权的命令替代，不绕过权限或 plan，也不伪造子代理执行。
+- 天气示例在 curl 后接已安装 Node 的 JSON 解析，保留日期、日最低最高温、小时天气及基础现况，剔除有时区歧义的观测时间和冗余字段。原始 wttr.in 响应可能超过工具输出预算，只看到 2KB 预览时不能猜日最低最高温；缺少 Node 时用已安装 Python 或 Read 完整结果，无法核对则明确未验证。PowerShell 内联参数引号不兼容时把同一解析脚本写到授权临时 `.cjs` 再执行；不安装额外依赖。NotebookEdit 的修改读回、TaskStop 停止本次创建的后台任务也已在临时目录实测成功。
 - 面板“常用命令 -> 压缩上下文”在 Claude 下优先直接发送官方 `/compact` slash command，并通过 SDK `status=compacting` / `compact_boundary` 事件判定原生压缩完成；若当前 Claude 环境明确不支持原生 compact，则回退到旧的“生成摘要后切新会话”兼容方案
 - 面板“工具设置 - AI任务配置”开启“执行后自动压缩上下文”后，Claude 的已有会话任务会在成功结束且执行超过 5 分钟后走一次压缩（含 `/compact` 原生能力与兼容回退路径）；任务中断、报错或执行不超过 5 分钟不触发
 - Claude Code 2.1.118 的官方 CLI 帮助已提供 `--effort <level>`，取值为 `low`、`medium`、`high`、`xhigh`、`max`

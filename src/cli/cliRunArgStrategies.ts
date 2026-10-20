@@ -1,6 +1,7 @@
 import { getCliArgs, getThinkingArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import type { CliName, ThinkingMode } from "./types";
+import { buildClaudePrompt } from "./claudeToolPolicy";
 
 /**
  * Fields the platform strategies read. Spawn and overlay fields stay out of this type.
@@ -151,7 +152,7 @@ function createClaudeRunArgStrategy(): CliRunArgStrategy {
       return copyArgs(args);
     },
     appendPrompt(args, _options, prompt) {
-      return appendPromptOnly(args, prompt);
+      return appendPromptOnly(args, buildClaudePrompt(prompt));
     },
   };
 }

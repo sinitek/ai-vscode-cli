@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
 import { installVscodeMock } from "../vscodeMock";
+import { buildClaudePrompt } from "../../cli/claudeToolPolicy";
 
 installVscodeMock();
 
@@ -476,7 +477,7 @@ test("builds non-OpenCode labels and arguments without executing a command", () 
   );
   assert.deepEqual(
     buildCliArgs("claude", { sessionId: "previous-session", isolateProjectInstructions: true }, "continue"),
-    ["--safe-mode", "continue"],
+    ["--safe-mode", buildClaudePrompt("continue")],
   );
 });
 
@@ -494,7 +495,7 @@ test("preserves existing project-isolation flags for every CLI", () => {
     "args.claude": ["--safe-mode"],
   });
   try {
-    assert.deepEqual(buildCliArgs("claude", { isolateProjectInstructions: true }, "prompt"), ["--safe-mode", "prompt"]);
+    assert.deepEqual(buildCliArgs("claude", { isolateProjectInstructions: true }, "prompt"), ["--safe-mode", buildClaudePrompt("prompt")]);
   } finally {
     restoreConfiguration();
   }
