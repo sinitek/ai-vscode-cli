@@ -1413,3 +1413,75 @@ test("main and attempt reads reject text outside the run, missing text, and reus
     fixture.dispose();
   }
 });
+
+
+test("adapter manual stop waits for continuation notification before review", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+      });
+    });
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "A started");
+    const attempt = fixture.peekParked("A");
+    assert.ok(attempt);
+    const taskId = attempt.input.loopTaskId ?? "";
+    fixture.finishParked("A", { status: "stopped", content: "partial work" });
+    await waitForLoopPlus(() => fixture.readTask(taskId)?.subTasks[0]?.status === "blocked", "interrupted reservation persisted");
+    const interrupted = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot();
+    assert.equal(interrupted.running.length, 1);
+    assert.equal(interrupted.currentReview, null);
+    assert.equal(interrupted.seenAttempts[0]?.disposition, "open");
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+    assert.doesNotMatch(reportText(fixture.rootDir), /## Attempt result/);
+
+    fixture.publish(attempt.input, attempt.tabId, { status: "stopped", content: "interrupted again" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot().currentReview, null);
+
+    // The extension sends this notification only for the latest successful continuation run.
+    fixture.adapter.host().notifySubtaskContinuation(taskId, "A", "completed", "continuation done");
+    fixture.adapter.host().notifySubtaskContinuation(taskId, "A", "completed", "duplicate");
+    await running;
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    const finished = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot();
+    assert.equal(finished.seenAttempts.length, 1);
+    assert.equal(finished.seenAttempts[0]?.disposition, "reviewed");
+    assert.equal((reportText(fixture.rootDir).match(/## Attempt result/g) ?? []).length, 1);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+
+test("main control closes an already interrupted attempt tab", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    const attempt = fixture.adapter.startAttempt({
+      taskId: "interrupted-control", subtaskId: "A", attemptId: "A-1", title: "A",
+      prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"],
+      round: 1, targetCli: "codex",
+    });
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "attempt started");
+    const tabId = fixture.peekParked("A")?.tabId ?? "";
+    fixture.finishParked("A", { status: "stopped" });
+    assert.equal((await attempt.promise).outcome, "stopped");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+    attempt.abort({ closeTab: true });
+    await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(tabId), "interrupted tab closed");
+    assert.deepEqual(fixture.cancelledTabs, [tabId]);
+    attempt.abort({ closeTab: true });
+    assert.deepEqual(fixture.closedSubtaskTabs, [tabId]);
+  } finally {
+    fixture.dispose();
+  }
+});

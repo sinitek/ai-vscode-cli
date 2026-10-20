@@ -803,6 +803,12 @@ export function projectLoopPlusPanel(
       return invalidLoopPlusProjection("visibleReviewCount");
     }
     const activity = loopPlusActivityForPhase(view.phase, task.status);
+    const running = view.running.map((item) => ({
+      ...copyLoopPlusExecutionItem(item),
+      ...(task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
+        ? { interrupted: true }
+        : {}),
+    }));
     return {
       ok: true,
       schedulingMode: "event_driven",
@@ -814,9 +820,9 @@ export function projectLoopPlusPanel(
       currentReviewCount,
       reviewQueueCount,
       visibleReviewCount: view.visibleReviewCount,
-      running: view.running.map(copyLoopPlusExecutionItem),
+      running,
       pending: view.pending.map(copyLoopPlusExecutionItem),
-      runningCount: view.running.length,
+      runningCount: running.filter((item) => !item.interrupted).length,
       pendingCount: view.pending.length,
       seenAttempts: snapshot.seenAttempts.map((item) => {
         const recordedStatus = task.subTasks?.find((subtask) => subtask.id === item.subtaskId)?.status;
@@ -1369,8 +1375,9 @@ function loopPlusMemberStatus(
   if (projection.reviewQueue.some((item) => item.subtaskId === subtaskId)) {
     return "queued_review";
   }
-  if (projection.running.some((item) => item.subtaskId === subtaskId)) {
-    return "running";
+  const running = projection.running.find((item) => item.subtaskId === subtaskId);
+  if (running) {
+    return running.interrupted ? "waiting_continuation" : "running";
   }
   if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
     return "pending";

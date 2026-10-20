@@ -327,8 +327,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const subtaskTarget = deps.createSubtaskTarget(request.targetCli);
     let aborted = false;
     let closeTabAfterAbort = false;
+    let interrupted = false;
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
       const result = await runStartedAttempt();
+      interrupted = result.outcome === "stopped";
       if (result.outcome === "completed" || closeTabAfterAbort) {
         await closeLoopPlusSubtaskTab(
           deps,
@@ -348,6 +350,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         aborted = true;
         closeTabAfterAbort = options?.closeTab === true;
         deps.cancelInvocation(subtaskTarget.tabId);
+        if (interrupted && closeTabAfterAbort) {
+          void closeLoopPlusSubtaskTab(deps, request, subtaskTarget.tabId, "main-abort");
+        }
       },
     };
 

@@ -608,3 +608,31 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
   assert.match(stale, /data-loop-plus-status="idle"/u);
   assert.doesNotMatch(stale, /分解子任务|data-thinking-kind="main"/u);
 });
+
+
+test("interrupted open subtasks wait for continuation without thinking bubbles or review counts", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
+  scheduler.dispatch([spec("D", "D-1", "Delta")]);
+  const state = build(scheduler.snapshot(), {
+    subTasks: [{ id: "D", title: "Delta", status: "blocked", updatedAt: 20 }],
+  });
+  assert.ok(state.loopPlus?.ok);
+  assert.equal(state.loopPlus.running[0]?.interrupted, true);
+  assert.equal(state.loopPlus.runningCount, 0);
+  assert.equal(state.loopPlus.visibleReviewCount, 0);
+  const rendered = html(state);
+  assert.match(rendered, /已中断，等待续跑/);
+  assert.match(rendered, /等待在子任务对话中续跑并通知验收/);
+  assert.doesNotMatch(rendered, /data-thinking-id=/);
+  assert.equal(countValue(rendered, "reviewed"), "0");
+  assert.equal(countValue(rendered, "running"), "0");
+
+  scheduler.finish({ subtaskId: "D", attemptId: "D-1", outcome: "completed" });
+  scheduler.claimNextReview();
+  const resumed = html(build(scheduler.snapshot(), {
+    subTasks: [{ id: "D", title: "Delta", status: "completed", updatedAt: 21 }],
+  }));
+  assert.match(resumed, /正在验收/);
+  assert.match(resumed, /data-thinking-kind="main" data-thinking-id="main"/);
+  assert.doesNotMatch(resumed, /已中断，等待续跑/);
+});

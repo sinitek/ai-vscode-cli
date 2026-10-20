@@ -672,6 +672,82 @@ test("rejects a damaged event_driven snapshot without downgrading or clearing it
   assert.equal(env.tasks.get(missing.id)?.schedulingMode, "event_driven");
 });
 
+test("manual interruption keeps an open reservation until a successful continuation notification", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/shared.ts"]), subtask("beta", ["src/shared.ts"])],
+  }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const attemptId = env.attempts[0].request.attemptId;
+  env.attempts[0].resolve({ outcome: "stopped", detail: "stopped" });
+  await flush();
+  const interrupted = env.tasks.get(taskId);
+  assert.equal(interrupted?.subTasks.find((item) => item.id === "alpha")?.status, "blocked");
+  assert.equal(snapshotOf(interrupted).running[0]?.attemptId, attemptId);
+  assert.equal(snapshotOf(interrupted).seenAttempts[0]?.disposition, "open");
+  assert.equal(snapshotOf(interrupted).currentReview, null);
+  assert.equal(snapshotOf(interrupted).reviewQueue.length, 0);
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.reports.length, 0);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(await isSettled(run.done), false);
+
+  env.host.reportAttempt(taskId, { subtaskId: "alpha", attemptId, outcome: "stopped" });
+  env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview, null);
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.attempts.length, 1);
+
+  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "resumed successfully");
+  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "duplicate");
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.attemptId, attemptId);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.reports.length, 1);
+  assert.equal(env.reports[0].outcome, "completed");
+  assert.equal(env.attempts.length, 2);
+});
+
+test("restored interrupted reservations survive reconciliation and allow independent reviews", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
+  scheduler.dispatch([
+    { subtaskId: "alpha", attemptId: "alpha-1", writeFiles: ["src/alpha.ts"] },
+    { subtaskId: "beta", attemptId: "beta-1", writeFiles: ["src/beta.ts"] },
+  ]);
+  scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "completed" });
+  const task = baseTask("restored-interruption", scheduler.snapshot());
+  task.subTasks = [
+    { id: "alpha", title: "alpha", status: "blocked", updatedAt: 1 },
+    { id: "beta", title: "beta", status: "completed", updatedAt: 1 },
+  ];
+  env.tasks.set(task.id, task);
+  const restored = env.reloadHost();
+  restored.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.mains[0].request.reviewEventId, buildLoopPlusFinishEventId("beta", "beta-1"));
+  assert.match(env.mains[0].request.modelPrompt, /Interrupted subtasks awaiting continuation: alpha/);
+  assert.equal(snapshotOf(env.tasks.get(task.id)).running[0]?.subtaskId, "alpha");
+  env.mains[0].resolve(decisionJson({
+    status: "accept",
+    reviewEventId: buildLoopPlusFinishEventId("beta", "beta-1"),
+    subtasks: [],
+  }));
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.find((item) => item.subtaskId === "alpha")?.disposition, "open");
+  restored.notifySubtaskContinuation(task.id, "alpha", "completed", "continued after restore");
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1].request.reviewEventId, buildLoopPlusFinishEventId("alpha", "alpha-1"));
+});
+
 test("does not let a subtask continuation revive a finished attempt", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
@@ -2339,6 +2415,33 @@ test("steer closes one running subtask and reprompts another without an acceptan
     && notice.phase === "finished"
     && notice.assistantContent === "主任务已中断该子任务，并改用新的提示词继续执行。"
   )), true);
+});
+
+test("main controls can close or reprompt interrupted open subtasks", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+    subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"]),
+  ] }));
+  await flush();
+  env.attempts.forEach((attempt) => attempt.resolve({ outcome: "stopped", detail: "stopped" }));
+  await flush();
+  assert.equal(env.mains.length, 1);
+  env.host.submitUserMessage(run.taskId ?? "", "close alpha and reprompt beta");
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "steer", controls: [
+    { id: "alpha", action: "close" },
+    { id: "beta", action: "reprompt", prompt: longPrompt("beta", ["src/beta.ts"]) },
+  ] }));
+  await flush();
+  assert.deepEqual(env.closeTabAttemptIds, env.attempts.slice(0, 2).map((item) => item.request.attemptId));
+  assert.equal(env.attempts.length, 3);
+  const snapshot = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.equal(snapshot.currentReview, null);
+  assert.equal(snapshot.running.length, 1);
+  assert.equal(snapshot.running[0]?.attemptId, env.attempts[2].request.attemptId);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.subTasks.find((item) => item.id === "beta")?.status, "running");
 });
 
 test("does not steer while an acceptance batch is open", async () => {

@@ -9,6 +9,16 @@
 - 归档条目仍需保留首次发现时间、适用版本、修复方式和关联资料，便于审计和追溯。
 - 当历史归档数量较多或单文件超过约 500 行时，再按主题拆分历史文件并从本页建立索引。
 
+## Loop+ 手动中断被送入验收队列
+
+- 发现时间：2026-10-20
+- 适用版本：编排宿主把子任务任意 `stopped` 都直接传给 `scheduler.finish` 的版本。
+- 现象：子模型手动中断后继续执行，主模型已经收到结束事件并开始验收。
+- 根因：进程停止与可验收结果共用了同一完成入口；手动续跑成功通知到达时，原开放 attempt 已被移出 running。
+- 修正：局部手动中断保留开放 reservation，以子任务 `blocked` 标记等待续跑，父任务继续或宿主重建时保留占用；成功通知才提交一次完成事件。真实失败、丢失进程及父任务停止仍走原终止分支。群聊投影排除待续跑项的运行计数和思考动画；主模型控制可继续关闭中断后的旧 Tab。
+- 验证：`loopPlusOrchestration.test.ts`、`loopPlusRuntimeIntegration.test.ts`、`loopPlusGroupChatPanel.test.ts` 覆盖等待、幂等、恢复、冲突和控制；Chromium 对生产群聊与适配器消息桥执行中断、补充需求、独立验收、续跑通知和最终收口。
+- 事实来源：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`。
+
 ## 首次模型报错后重试的首条 trace 触发空值异常
 
 - 发现时间：2026-10-19

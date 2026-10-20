@@ -1276,7 +1276,9 @@ function loopPlusActivityText(
 ): string {
   switch (projection.activity) {
     case "waiting":
-      return strings.loopPlusActivityWaiting;
+      return projection.running.some((item) => item.interrupted)
+        ? strings.loopPlusActivityAwaitingContinuation
+        : strings.loopPlusActivityWaiting;
     case "review_pending":
       return strings.loopPlusActivityReviewPending;
     case "reviewing":
@@ -1376,6 +1378,8 @@ function formatParticipantStatus(
       return strings.loopPlusStatusWaiting;
     case "stopped":
       return strings.loopPlusStatusStopped;
+    case "waiting_continuation":
+      return strings.loopPlusStatusAwaitingContinuation;
     case "completed":
       return strings.loopPlusStatusCompleted;
     case "idle":
@@ -1601,6 +1605,9 @@ function getLoopPlusRuntimeSpeakers(state: LoopDebateChatPanelState): RuntimeThi
   }
   const speakers: RuntimeThinkingSpeaker[] = [];
   for (const item of projection.running) {
+    if (item.interrupted) {
+      continue;
+    }
     const id = item.subtaskId.trim();
     if (!id) {
       continue;

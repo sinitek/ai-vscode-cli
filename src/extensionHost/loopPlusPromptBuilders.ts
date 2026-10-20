@@ -21,6 +21,7 @@ export type LoopPlusMainPromptContext = {
   view: LoopPlusSchedulerView;
   currentEventId: string | null;
   acceptanceEventIds?: readonly string[];
+  interruptedSubtaskIds?: readonly string[];
   supplementalRequirements: readonly string[];
   pendingUserMessages?: readonly string[];
   subtaskMax?: number;
@@ -295,8 +296,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "FIFO review queue, oldest first:",
     queued,
     `Still running count: ${context.view.running.length}`,
-    "Still running:",
+    "Still running (open reservations, including interrupted subtasks):",
     running,
+    `Interrupted subtasks awaiting continuation: ${context.interruptedSubtaskIds?.join(", ") || "(none)"}`,
+    "An interrupted subtask stays open until its continuation reports a result. Wait for its notification before reviewing that subtask. Other events in the acceptance batch can be reviewed independently.",
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,

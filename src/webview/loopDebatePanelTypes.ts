@@ -54,6 +54,7 @@ export type LoopPlusPanelExecutionItem = {
   attemptId: string;
   title: string | null;
   state: "running" | "pending";
+  interrupted?: boolean;
 };
 
 export type LoopPlusPanelReviewItem = {

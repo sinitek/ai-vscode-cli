@@ -597,6 +597,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (inFlight && !inFlight.settled) {
         return;
       }
+      if (!parentStopping && runtime.meta.get(record.subtaskId)?.executionStatus === "blocked") {
+        return;
+      }
       if (runtime.launching.has(record.attemptId) && !parentStopping) {
         return;
       }
@@ -1482,6 +1485,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       return;
     }
+    const snapshot = runtime.scheduler.snapshot();
+    const openAttempt = snapshot.running.find((item) => item.subtaskId === input.subtaskId && item.attemptId === input.attemptId);
+    if (input.outcome === "stopped" && input.detail !== "lost-process"
+      && !runtime.stopRequested && !snapshot.parentStopped && openAttempt) {
+      // Keep the reservation until the subtask continuation reports a result.
+      const meta = runtime.meta.get(input.subtaskId);
+      if (meta) {
+        meta.executionStatus = "blocked";
+      }
+      persist(runtime);
+      deps.log?.("loop-plus-subtask-interrupted", {
+        taskId: runtime.taskId,
+        subtaskId: input.subtaskId,
+        attemptId: input.attemptId,
+      });
+      return;
+    }
     const result = runtime.scheduler.finish({
       subtaskId: input.subtaskId,
       attemptId: input.attemptId,
@@ -1629,6 +1649,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],
       acceptanceEventIds: step.eventIds,
+      interruptedSubtaskIds: runtime.scheduler.snapshot().running
+        .filter((item) => runtime.meta.get(item.subtaskId)?.executionStatus === "blocked")
+        .map((item) => item.subtaskId),
       pendingUserMessages: step.userMessageCount > 0
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
@@ -1714,7 +1737,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.meta.forEach((meta, subtaskId) => {
       const previous = byId.get(subtaskId);
       const active = runtime.scheduler.snapshot().running.some((item) => item.subtaskId === subtaskId)
-        ? "running"
+        ? meta.executionStatus === "blocked" ? "blocked" : "running"
         : runtime.scheduler.snapshot().pending.some((item) => item.subtaskId === subtaskId)
           ? "pending"
           : meta.executionStatus ?? previous?.status ?? "pending";
@@ -1999,7 +2022,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     nextLaunchEpoch(runtime, record.attemptId);
     runtime.launching.delete(record.attemptId);
     const inFlight = runtime.attempts.get(record.attemptId);
-    if (!inFlight || inFlight.settled) {
+    if (!inFlight) {
       return;
     }
     inFlight.settled = true;
