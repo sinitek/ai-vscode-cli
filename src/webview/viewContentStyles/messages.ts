@@ -143,6 +143,8 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         min-width: 0;
       }
       .thinking-bubble-viewport {
+        grid-column: 1;
+        grid-row: 1;
         min-width: 0;
         line-height: 1.6;
         max-height: 8em;
@@ -161,7 +163,8 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         max-height: none;
         overflow-y: visible;
       }
-      .thinking-bubble-toggle {
+      .thinking-bubble-toggle,
+      .thinking-bubble-collapse {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -174,18 +177,32 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         color: var(--vscode-descriptionForeground);
         cursor: pointer;
       }
-      .thinking-bubble-toggle[hidden] {
+      .thinking-bubble-toggle {
+        grid-column: 2;
+        grid-row: 1;
+        align-self: start;
+      }
+      .thinking-bubble-collapse {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: center;
+      }
+      .thinking-bubble-toggle[hidden],
+      .thinking-bubble-collapse[hidden] {
         display: none;
       }
-      .thinking-bubble-toggle:hover {
+      .thinking-bubble-toggle:hover,
+      .thinking-bubble-collapse:hover {
         background: var(--vscode-toolbar-hoverBackground);
         color: var(--vscode-foreground);
       }
-      .thinking-bubble-toggle:focus-visible {
+      .thinking-bubble-toggle:focus-visible,
+      .thinking-bubble-collapse:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }
-      .thinking-bubble-toggle svg {
+      .thinking-bubble-toggle svg,
+      .thinking-bubble-collapse svg {
         width: 16px;
         height: 16px;
       }

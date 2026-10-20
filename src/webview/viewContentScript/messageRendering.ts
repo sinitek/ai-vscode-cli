@@ -34,6 +34,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
       function syncThinkingBubbleViewport(viewport, scrollToBottom) {
         const container = viewport.parentElement;
         const button = container.querySelector(".thinking-bubble-toggle");
+        const collapseButton = container.querySelector(".thinking-bubble-collapse");
         const expanded = container.classList.contains("is-expanded");
         const lineHeight = parseFloat(getComputedStyle(viewport).lineHeight);
         const overflowing = viewport.scrollHeight > lineHeight * 5 + 1;
@@ -41,6 +42,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         button.title = t(expanded ? "thinkingBubbleCollapse" : "thinkingBubbleExpand");
         button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-expanded", String(expanded));
+        if (collapseButton) {
+          collapseButton.hidden = !expanded || !overflowing;
+          collapseButton.title = t("thinkingBubbleCollapse");
+          collapseButton.setAttribute("aria-label", collapseButton.title);
+        }
         if (!expanded && scrollToBottom) {
           viewport.scrollTop = viewport.scrollHeight;
         }
@@ -77,8 +83,25 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           container.classList.toggle("is-expanded");
           syncThinkingBubbleViewport(viewport, true);
         });
+        const collapseButton = document.createElement("button");
+        collapseButton.type = "button";
+        collapseButton.className = "thinking-bubble-collapse";
+        collapseButton.hidden = true;
+        collapseButton.setAttribute("aria-controls", viewport.id);
+        collapseButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 14 6-6 6 6"/></svg>';
+        collapseButton.addEventListener("click", () => {
+          if (!container.classList.contains("is-expanded")) {
+            return;
+          }
+          container.classList.remove("is-expanded");
+          syncThinkingBubbleViewport(viewport, true);
+          if (typeof container.scrollIntoView === "function") {
+            container.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
+        });
         container.appendChild(viewport);
         container.appendChild(button);
+        container.appendChild(collapseButton);
         bubble.appendChild(container);
         requestAnimationFrame(() => {
           const contentChanged = !previous || previous.content !== message.content;

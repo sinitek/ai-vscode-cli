@@ -3812,7 +3812,9 @@ test("thinking streams scroll internally and expose an accessible SVG expand/col
   assert.ok(viewport);
   const container = viewport.parentElement;
   const button = container.querySelector(".thinking-bubble-toggle");
+  const collapseButton = container.querySelector(".thinking-bubble-collapse");
   assert.equal(button.hidden, true);
+  assert.equal(collapseButton.hidden, true);
   viewport.scrollHeight = 224;
   viewport.clientHeight = 112;
   viewport.scrollTop = 0;
@@ -3821,6 +3823,7 @@ test("thinking streams scroll internally and expose an accessible SVG expand/col
   assert.equal(document.getElementById("messages").querySelector(".thinking-bubble-viewport"), viewport);
   assert.equal(viewport.scrollTop, 224);
   assert.equal(button.hidden, false);
+  assert.equal(collapseButton.hidden, true);
   assert.match(button.innerHTML, /<svg[^>]*aria-hidden="true"/);
   assert.equal(button.getAttribute("aria-controls"), viewport.id);
   assert.equal(button.getAttribute("aria-label"), WEBVIEW_STRINGS.thinkingBubbleExpand);
@@ -3830,15 +3833,26 @@ test("thinking streams scroll internally and expose an accessible SVG expand/col
   assert.equal(container.classList.contains("is-expanded"), true);
   assert.equal(button.getAttribute("aria-label"), WEBVIEW_STRINGS.thinkingBubbleCollapse);
   assert.equal(button.getAttribute("aria-expanded"), "true");
+  assert.equal(collapseButton.hidden, false);
+  assert.equal(collapseButton.getAttribute("aria-label"), WEBVIEW_STRINGS.thinkingBubbleCollapse);
+  assert.equal(collapseButton.getAttribute("aria-controls"), viewport.id);
+  assert.match(collapseButton.innerHTML, /<path d="m6 14 6-6 6 6"/);
   viewport.scrollTop = 12;
   append("\nmore thought");
   assert.equal(container.classList.contains("is-expanded"), true);
+  assert.equal(collapseButton.hidden, false);
   assert.equal(viewport.scrollTop, 12);
 
-  button.click();
+  collapseButton.click();
   assert.equal(container.classList.contains("is-expanded"), false);
+  assert.equal(collapseButton.hidden, true);
   assert.equal(button.getAttribute("aria-expanded"), "false");
   assert.equal(viewport.scrollTop, 224);
+
+  button.click();
+  button.click();
+  assert.equal(container.classList.contains("is-expanded"), false);
+  assert.equal(collapseButton.hidden, true);
 });
 
 test("thinking expansion and manual scroll survive rerenders and Markdown formatting", () => {
@@ -3881,4 +3895,5 @@ test("thinking overflow control stays hidden through five lines and appears beyo
   viewport.scrollHeight = 134;
   append();
   assert.equal(button.hidden, false);
+  assert.equal(viewport.parentElement.querySelector(".thinking-bubble-collapse").hidden, true);
 });
