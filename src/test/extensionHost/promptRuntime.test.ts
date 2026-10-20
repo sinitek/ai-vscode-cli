@@ -10,11 +10,37 @@ const {
   HUMAN_INTERACTION_PROMPT_INSTRUCTION,
   CODEX_TASK_LIST_PROMPT_INSTRUCTION,
   GROK_TASK_LIST_PROMPT_INSTRUCTION,
+  resolveRecordedExecutionModel,
 } = require("../../promptRuntime") as typeof import("../../promptRuntime");
 const {
   FINAL_ANSWER_PROMPT_INSTRUCTION,
   FINAL_ANSWER_TEXT_MARKER,
 } = require("../../finalAnswerProtocol") as typeof import("../../finalAnswerProtocol");
+
+test("resolves the selected model for the active Loop role", () => {
+  assert.equal(resolveRecordedExecutionModel({
+    taskRole: "main",
+    model: "default-model",
+    loopMainModel: "selected-main-model",
+    loopSubtaskModel: "selected-subtask-model",
+  }), "selected-main-model");
+  assert.equal(resolveRecordedExecutionModel({
+    taskRole: "subtask",
+    model: "default-model",
+    loopMainModel: "selected-main-model",
+    loopSubtaskModel: "selected-subtask-model",
+  }), "selected-subtask-model");
+});
+
+test("preserves explicit CLI-default snapshots and falls back when role models are absent", () => {
+  assert.equal(resolveRecordedExecutionModel({
+    taskRole: "main",
+    model: "selected-model",
+    loopMainModel: "  ",
+  }, "runtime-model"), "selected-model");
+  assert.equal(resolveRecordedExecutionModel({ model: "selected-model" }, "runtime-model"), "selected-model");
+  assert.equal(resolveRecordedExecutionModel({ model: "selected-model", executionModel: null }, "runtime-model"), null);
+});
 
 test("adds the final-answer marker instruction to every supported CLI prompt", () => {
   for (const cli of ["codex", "claude", "opencode"] as const) {

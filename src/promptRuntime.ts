@@ -50,6 +50,36 @@ export function buildRuntimeModelPrompt(input: { displayPrompt: string; modelPro
   return input.modelPrompt || input.displayPrompt;
 }
 
+export type RecordedExecutionModelInput = {
+  taskRole?: string | null;
+  model?: string | null;
+  loopMainModel?: string | null;
+  loopSubtaskModel?: string | null;
+  executionModel?: string | null;
+};
+
+function normalizeRecordedExecutionModel(value: string | null | undefined): string | null {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || null;
+}
+
+export function resolveRecordedExecutionModel(
+  input: RecordedExecutionModelInput,
+  fallbackModel?: string | null,
+): string | null {
+  if (input.executionModel === null) {
+    return null;
+  }
+  const explicitSnapshot = normalizeRecordedExecutionModel(input.executionModel);
+  if (explicitSnapshot) {
+    return explicitSnapshot;
+  }
+  const roleModel = input.taskRole === "subtask"
+    ? normalizeRecordedExecutionModel(input.loopSubtaskModel) ?? normalizeRecordedExecutionModel(input.model)
+    : normalizeRecordedExecutionModel(input.loopMainModel) ?? normalizeRecordedExecutionModel(input.model);
+  return roleModel ?? normalizeRecordedExecutionModel(fallbackModel);
+}
+
 export function hasNonEmptyAssistantText(message: ChatMessage | undefined): boolean {
   return Boolean(message && message.role === "assistant" && String(message.content ?? "").trim());
 }

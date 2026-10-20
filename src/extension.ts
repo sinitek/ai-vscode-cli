@@ -391,6 +391,7 @@ import {
   collectCodexImagePathsFromPrompt,
   normalizePromptContextTags,
   redactPromptArg,
+  resolveRecordedExecutionModel,
 } from "./promptRuntime";
 import {
   createTraceLineFilterState,
@@ -4909,13 +4910,31 @@ function writeTextFileEnsuringDir(...args: Parameters<LoopOrchestrationHost["wri
 
 // Loop prompt run runtime helpers moved to extensionHost/promptRunRuntime.ts.
 
+function resolvePreloadedExecutionModel(input: PromptRunInput, cli: CliName): string | null {
+  const loopSubtaskCli = input.taskRole === "subtask" ? parseCliName(input.loopSubtaskCli) : undefined;
+  const lookupCli = loopSubtaskCli ?? cli;
+  const explicitConfigId = input.taskRole === "subtask" && typeof input.loopSubtaskConfigId === "string"
+    ? input.loopSubtaskConfigId.trim()
+    : "";
+  const configId = explicitConfigId || getActiveConfigIdForCli(lookupCli);
+  const recorded = resolveRecordedExecutionModel(input, getSelectedCliModel(lookupCli, configId));
+  if (!recorded) {
+    return null;
+  }
+  const displayName = modelSettingsHost.getModelDisplayName(lookupCli, recorded);
+  return typeof displayName === "string" && displayName.trim() ? displayName.trim() : recorded;
+}
+
 function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
   if (input.preloadedUserMessageId) {
     return input;
   }
   const createdAt = Date.now();
   const messageId = createMessageId();
-  const message = buildUserChatMessage(input, createdAt, messageId);
+  const message = buildUserChatMessage({
+    ...input,
+    executionModel: resolvePreloadedExecutionModel(input, target.cli),
+  }, createdAt, messageId);
   const messageTarget = target.sessionId
     ? loadSessionMessages(target.cli, target.sessionId)
     : getPendingSessionDraft(target.tabId, target.cli).messages;
