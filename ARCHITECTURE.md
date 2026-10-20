@@ -137,6 +137,8 @@ cli / interactive / config 服务层
 - 子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 使用空 `settingSources`，OpenCode 使用 `--pure`。子任务只遵循主任务传入的自包含授权、沟通文件与最小必要验证要求。
 - 不再分发、加载或注入 Loop Workflow Skill 快照，也没有对应的工具设置开关。
 
+- 子任务可以绑定另一个 CLI 分组当前选中配置。路由身份在 `src/subtaskCliRoute.ts`，可选 `cli` / `configId` 扩展现有 Loop `modelRouting.subtask` 与 Graph `modelRouting.executor`。经典 Loop 用该 CLI 创建独立子 Tab；Loop+ attempt 的 `targetCli` 使用同一绑定；Graph 只让 executor 节点切换执行 CLI，plan / summary 仍走 planner。主任务 target、会话和存储归属不变。跨 CLI 不回退主模型、主配置、主会话、主思考档或 OpenCode variant。
+
 ## 3. 扩展规则
 
 ### 新增一个能力时怎么放

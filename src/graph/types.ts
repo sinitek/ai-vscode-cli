@@ -261,6 +261,8 @@ export type GraphRunDirectExecutionRecord = {
 
 export type GraphModelRouteRecord = {
   role: GraphModelRole;
+  cli?: CliName;
+  configId?: string;
   model?: string;
   fallback?: string;
 };

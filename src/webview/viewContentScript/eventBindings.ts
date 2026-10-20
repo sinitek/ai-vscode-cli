@@ -281,6 +281,11 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
       }
       if (elements.openCodeSmallThinkingMode) {
         elements.openCodeSmallThinkingMode.addEventListener("change", (event) => {
+          const route = typeof getLoopSubtaskRoute === "function" ? getLoopSubtaskRoute() : null;
+          if (route && route.subtaskCli !== "opencode" && typeof handleLoopSubtaskThinkingChange === "function") {
+            handleLoopSubtaskThinkingChange(event.target.value);
+            return;
+          }
           handleOpenCodeThinkingModeChange("subtask", event.target.value);
         });
       }
@@ -340,6 +345,11 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
 
       if (elements.openCodeSmallModelSelect) {
         elements.openCodeSmallModelSelect.addEventListener("change", (event) => {
+          const route = typeof getLoopSubtaskRoute === "function" ? getLoopSubtaskRoute() : null;
+          if (route && (route.crossCli || route.subtaskCli !== "opencode") && typeof handleLoopSubtaskModelChange === "function") {
+            handleLoopSubtaskModelChange(event.target.value);
+            return;
+          }
           handleOpenCodeRoleModelChange("subtask", event.target.value);
         });
       }

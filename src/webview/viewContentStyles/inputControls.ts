@@ -244,6 +244,34 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         width: calc(70px * 1.15);
         min-width: calc(70px * 1.15);
       }
+      .open-code-model-row.loop-subtask-route-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .open-code-model-row.loop-subtask-route-row .open-code-model-label {
+        flex: 0 0 52px;
+        min-width: 52px;
+      }
+      .open-code-model-row.loop-subtask-route-row .loop-subtask-cli-select {
+        flex: 0 0 88px;
+        width: 88px;
+        min-width: 88px;
+        max-width: 88px;
+      }
+      .open-code-model-row.loop-subtask-route-row .model-select {
+        flex: 1 1 92px;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+      }
+      .open-code-model-row.loop-subtask-route-row .thinking-select {
+        flex: 0 0 calc(70px * 1.15);
+        width: calc(70px * 1.15);
+        min-width: calc(70px * 1.15);
+      }
       .open-code-model-group .open-code-model-issue {
         align-self: flex-start;
       }

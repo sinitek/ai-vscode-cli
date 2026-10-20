@@ -6,6 +6,7 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
+import { parseCliName } from "../subtaskCliRoute";
 import type { ChatMessage, ChatMessageAction } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import { t } from "../i18n";
@@ -37,6 +38,8 @@ export type LoopPlusPromptRoleBinding = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
 };
@@ -131,11 +134,13 @@ function normalizeLoopPlusModelName(value: unknown): string | undefined {
 
 export function resolveLoopPlusPromptRoleBinding(input: {
   role: "main" | "subtask";
-  task: Pick<LoopTaskRecord, "modelRouting" | "originProfile"> | null;
+  task: Pick<LoopTaskRecord, "cli" | "modelRouting" | "originProfile"> | null;
   live?: {
     model?: string;
     loopMainModel?: string;
     loopSubtaskModel?: string;
+    loopSubtaskCli?: CliName;
+    loopSubtaskConfigId?: string;
     loopMainThinkingMode?: ThinkingMode;
     loopSubtaskThinkingMode?: ThinkingMode;
   } | null;
@@ -144,15 +149,23 @@ export function resolveLoopPlusPromptRoleBinding(input: {
   const mainModel = normalizeLoopPlusModelName(live?.loopMainModel)
     ?? normalizeLoopPlusModelName(live?.model)
     ?? normalizeLoopPlusModelName(input.task?.modelRouting?.main.model);
+  const subtaskCli = parseCliName(live?.loopSubtaskCli) ?? parseCliName(input.task?.modelRouting?.subtask.cli);
+  const crossCli = Boolean(subtaskCli && input.task?.cli && subtaskCli !== input.task.cli);
+  const subtaskConfigId = normalizeLoopPlusModelName(live?.loopSubtaskConfigId)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtask.configId);
   const subtaskModel = normalizeLoopPlusModelName(live?.loopSubtaskModel)
     ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtask.model)
-    ?? mainModel;
+    ?? (crossCli ? undefined : mainModel);
   const binding: LoopPlusPromptRoleBinding = {
     model: input.role === "subtask" ? subtaskModel : mainModel,
     loopMainModel: mainModel,
     loopSubtaskModel: subtaskModel,
+    ...(crossCli && subtaskCli ? { loopSubtaskCli: subtaskCli } : {}),
+    ...(subtaskConfigId ? { loopSubtaskConfigId: subtaskConfigId } : {}),
     loopMainThinkingMode: live?.loopMainThinkingMode ?? input.task?.originProfile?.mainThinkingMode,
-    loopSubtaskThinkingMode: live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode,
+    loopSubtaskThinkingMode: crossCli
+      ? (live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode)
+      : (live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode),
   };
   return binding;
 }
@@ -1142,6 +1155,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     model?: string;
     loopMainModel?: string;
     loopSubtaskModel?: string;
+    loopSubtaskCli?: CliName;
+    loopSubtaskConfigId?: string;
     loopMainThinkingMode?: ThinkingMode;
     loopSubtaskThinkingMode?: ThinkingMode;
   }
@@ -1203,6 +1218,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     model: options.model,
     loopMainModel: options.loopMainModel,
     loopSubtaskModel: options.loopSubtaskModel,
+    ...(options.loopSubtaskCli ? { loopSubtaskCli: options.loopSubtaskCli } : {}),
+    ...(options.loopSubtaskConfigId ? { loopSubtaskConfigId: options.loopSubtaskConfigId } : {}),
     loopMainThinkingMode: options.loopMainThinkingMode,
     loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
   }, {

@@ -586,7 +586,22 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         const loopSubtaskModel = normalizeModelValue(payload.loopSubtaskModel)
           || normalizeModelValue(payload.lobsterSubtaskModel);
         const loopMainThinkingMode = normalizeThinkingValue(payload.loopMainThinkingMode);
-        const loopSubtaskThinkingMode = normalizeThinkingValue(payload.loopSubtaskThinkingMode);
+        const loopSubtaskThinkingMode = (() => {
+          const normalized = typeof payload.loopSubtaskThinkingMode === "string"
+            ? payload.loopSubtaskThinkingMode.trim()
+            : "";
+          if (normalized === "off") {
+            return "off";
+          }
+          return normalizeThinkingValue(payload.loopSubtaskThinkingMode);
+        })();
+        const loopSubtaskCliNames = ["codex", "claude", "opencode", "grok"];
+        const loopSubtaskCli = typeof payload.loopSubtaskCli === "string" && loopSubtaskCliNames.indexOf(payload.loopSubtaskCli) >= 0
+          ? payload.loopSubtaskCli
+          : "";
+        const loopSubtaskConfigId = typeof payload.loopSubtaskConfigId === "string"
+          ? payload.loopSubtaskConfigId.trim()
+          : "";
         return {
           prompt,
           contextOptions: {
@@ -599,6 +614,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
           ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
           ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
+          ...(loopSubtaskCli ? { loopSubtaskCli } : {}),
+          ...(loopSubtaskConfigId ? { loopSubtaskConfigId } : {}),
         };
       }
 

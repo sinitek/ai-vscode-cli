@@ -18,6 +18,8 @@ export type PromptRunInputForPanel = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode?: LoopExecutionMode;
@@ -69,6 +71,8 @@ export type PanelMessageHandlerDeps = {
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => void;
   selectCliLoopModel?: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => void;
+  selectLoopSubtaskCli?: (configId: string | null, cli: CliName | null) => void;
+  refreshOpenCodeSubtaskRouteModels?: () => Promise<void>;
   updateOpenCodeRoleModel?: (
     role: "primary" | "small",
     value: string | null,
@@ -163,6 +167,8 @@ export type PanelMessageHandlerDeps = {
       model?: string;
       loopMainModel?: string;
       loopSubtaskModel?: string;
+      loopSubtaskCli?: CliName;
+      loopSubtaskConfigId?: string;
       loopMainThinkingMode?: ThinkingMode;
       loopSubtaskThinkingMode?: ThinkingMode;
     }
@@ -179,6 +185,12 @@ export type PanelMessageHandlerDeps = {
   pickWorkspacePaths: () => Promise<string[] | undefined>;
   persistCliCommand: (cli: CliName, command: string) => Promise<void>;
   updateOpenCodeVariant?: (role: "primary" | "small", value: string | null) => void;
+  updateOpenCodeVariantForConfig?: (
+    role: "primary" | "small",
+    value: string | null,
+    configId: string,
+    model: string,
+  ) => void;
   resolveHumanInteractionResponse?: (
     message: Extract<PanelMessage, { type: "humanInteractionResponse" }>
   ) => void;

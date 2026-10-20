@@ -25,6 +25,7 @@ type SessionPanelMessageDeps = Pick<
   | "getActiveConfigIdForCli"
   | "selectCliModel"
   | "selectCliLoopModel"
+  | "selectLoopSubtaskCli"
   | "updateOpenCodeRoleModel"
   | "addCliModel"
   | "renameCliModel"
@@ -87,6 +88,14 @@ export function createSessionPanelMessageHandlers(
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
       deps.selectCliLoopModel?.(message.cli, role, message.model ?? null, configId);
+      await deps.postPanelState();
+    },
+
+    selectLoopSubtaskCli: async (message) => {
+      const configId = typeof message.configId === "string" && message.configId.trim()
+        ? message.configId.trim()
+        : deps.getActiveConfigIdForCli(deps.getCurrentCli());
+      deps.selectLoopSubtaskCli?.(configId, message.cli ?? null);
       await deps.postPanelState();
     },
 

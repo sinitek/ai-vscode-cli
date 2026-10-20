@@ -286,6 +286,7 @@ test("keeps resume bindings, compatibility, and supplemental continue instructio
   ), null);
 
   const saved = {
+    cli: "codex" as const,
     modelRouting: {
       main: { model: "origin-main" },
       subtask: { model: "origin-sub" },

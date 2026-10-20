@@ -18,7 +18,7 @@ import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
 import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
-import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getManagedModelOptionsForCliFromStore, getModelOptionsForCliFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedCliModelFromStore, getSelectedLoopCliModelFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectCliLoopModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
+import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getManagedModelOptionsForCliFromStore, getModelOptionsForCliFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedCliModelFromStore, getSelectedLoopCliModelFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectCliLoopModelInStore, selectLoopSubtaskCliInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
 import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled, resolveGlobalMultiAgentEnabled } from "../toolSettings";
@@ -185,6 +185,22 @@ function updateOpenCodeVariantForCurrentSelection(role: OpenCodeModelRoleInput, 
     ...currentState,
     selectedVariant: nextVariant,
   });
+}
+
+function updateOpenCodeVariantForConfig(
+  role: OpenCodeModelRoleInput,
+  value: string | null,
+  configId: string | null,
+  model: string | null,
+): void {
+  const normalizedRole = normalizeOpenCodeModelRole(role);
+  const exactModel = normalizeCliModelName(model);
+  if (!configId || !exactModel) {
+    return;
+  }
+  const trimmedValue = typeof value === "string" ? value.trim() : "";
+  const nextVariant = isOpenCodeThinkingEffort(trimmedValue) ? trimmedValue : null;
+  persistOpenCodeVariant(configId, exactModel, normalizedRole, nextVariant);
 }
 
 type ResolvedOpenCodeRoleModels = {
@@ -977,10 +993,16 @@ function getGrokModelStoreConfigId(configId: string | null): string {
 }
 
 async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
-  if (currentCli !== "grok") {
+  const selectedSubtaskCli = getSelectedLoopSubtaskCli(getActiveConfigIdForCli(currentCli));
+  if (currentCli !== "grok" && selectedSubtaskCli !== "grok") {
     return;
   }
-  const configId = deps.resolveModelConfigIdForCli("grok", configState);
+  const configId = currentCli === "grok"
+    ? deps.resolveModelConfigIdForCli("grok", configState)
+    : getActiveConfigIdForCli("grok");
+  if (!configId) {
+    return;
+  }
   try {
     grokModelsByConfigId.set(configId, parseGrokConfigModels(await configService.readGrokConfigText()));
   } catch (error) {
@@ -1172,6 +1194,100 @@ function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCli
   return getEffectiveCliArgsFromStore(cli, model);
 }
 
+let loopSubtaskOpenCodeModelsState: PanelState["openCodeModels"];
+
+function getSelectedLoopSubtaskCli(configId: string | null | undefined): CliName | null {
+  return getSelectedLoopSubtaskCliFromStore(modelStore, configId);
+}
+
+function selectLoopSubtaskCli(configId: string | null | undefined, cli: CliName | null): void {
+  modelStore = selectLoopSubtaskCliInStore(modelStore, configId, cli);
+  writeModelStore(modelStore);
+}
+
+function openCodeModelsFromParsed(
+  parsed: ReturnType<typeof parseOpenCodeConfigModels>,
+  configId: string | null,
+): PanelState["openCodeModels"] {
+  const storedMain = getOpenCodeRoleModelFromStore(modelStore, configId, "main");
+  const storedSubtask = getOpenCodeRoleModelFromStore(modelStore, configId, "subtask");
+  const main = storedMain ?? parsed.mainModel?.ref ?? null;
+  const subtask = storedSubtask ?? parsed.subtaskModel?.ref ?? null;
+  return {
+    models: parsed.candidates.map((candidate) => ({
+      ref: candidate.ref,
+      label: candidate.label,
+      providerId: candidate.providerId,
+      modelId: candidate.modelId,
+    })),
+    configPrimaryRef: parsed.mainModelRef,
+    configSmallRef: parsed.subtaskModelRef,
+    configMainRef: parsed.mainModelRef,
+    configSubtaskRef: parsed.subtaskModelRef,
+    selectedPrimaryRef: main,
+    selectedSmallRef: subtask ?? main,
+    selectedMainRef: main,
+    selectedSubtaskRef: subtask ?? main,
+    issues: parsed.issues.map((issue) => ({
+      ...(issue.role ? { role: toOpenCodeConfigFieldRole(issue.role) } : {}),
+      code: issue.code,
+      messageKey: `opencodeModels.issue.${issue.code}`,
+    })),
+  };
+}
+
+async function refreshLoopSubtaskOpenCodeModels(): Promise<void> {
+  if (currentCli === "opencode" && openCodeModelsState) {
+    loopSubtaskOpenCodeModelsState = openCodeModelsState;
+    return;
+  }
+  const configId = getActiveConfigIdForCli("opencode");
+  if (!configId) {
+    loopSubtaskOpenCodeModelsState = {
+      models: [],
+      issues: [{ code: "missing-role-model", messageKey: "opencodeModels.issue.missing-role-model" }],
+    };
+    return;
+  }
+  try {
+    const activeConfig = await configService.getConfigById("opencode", configId);
+    if (!activeConfig) {
+      loopSubtaskOpenCodeModelsState = {
+        models: [],
+        issues: [{ code: "provider-not-found", messageKey: "opencodeModels.issue.provider-not-found" }],
+      };
+      return;
+    }
+    loopSubtaskOpenCodeModelsState = openCodeModelsFromParsed(
+      parseOpenCodeConfigModels(activeConfig.content ?? "{}"),
+      configId,
+    );
+  } catch {
+    loopSubtaskOpenCodeModelsState = {
+      models: [],
+      issues: [{ code: "metadata-unavailable", messageKey: "opencodeModels.issue.metadata-unavailable" }],
+    };
+  }
+}
+
+function getLoopSubtaskOpenCodeModels(): PanelState["openCodeModels"] {
+  const models = currentCli === "opencode" ? openCodeModelsState : loopSubtaskOpenCodeModelsState;
+  if (!models) {
+    return models;
+  }
+  const configId = currentCli === "opencode"
+    ? openCodeThinkingConfigId
+    : getActiveConfigIdForCli("opencode");
+  const modelRef = models.selectedSubtaskRef ?? models.selectedSmallRef ?? null;
+  const selectedSubtaskVariant = modelRef
+    ? getOpenCodeRoleVariantFromStore(modelStore, configId, modelRef, "subtask")
+    : null;
+  return {
+    ...models,
+    ...(selectedSubtaskVariant ? { selectedSubtaskVariant } : {}),
+  };
+}
+
 function buildModelState(
   activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
 ): PanelState["modelState"] {
@@ -1192,7 +1308,21 @@ function buildModelState(
       main: getSelectedLoopThinkingMode("grok", "main", main, configId),
       subtask: getSelectedLoopThinkingMode("grok", "subtask", subtask, configId),
     },
+    claude: {
+      main: getSelectedLoopThinkingMode("claude", "main", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
+      subtask: getSelectedLoopThinkingMode("claude", "subtask", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
+    },
   };
+  state.thinkingModeByCli = {
+    codex: getEffectiveThinkingMode("codex", state.selectedByCli.codex),
+    claude: getEffectiveThinkingMode("claude", null),
+    opencode: "off",
+    grok: getEffectiveThinkingMode("grok", state.selectedByCli.grok),
+  };
+  const grokIssue = grokModelsByConfigId.get(configId)?.error;
+  if (grokIssue) {
+    state.issuesByCli = { grok: "目标 CLI 配置读取失败，不能派发子任务。" };
+  }
   return state;
 }
 
@@ -1257,6 +1387,7 @@ return {
   setOpenCodeThinkingStateForRole: wrap(setOpenCodeThinkingStateForRole),
   persistOpenCodeVariant: wrap(persistOpenCodeVariant),
   updateOpenCodeVariantForCurrentSelection: wrap(updateOpenCodeVariantForCurrentSelection),
+  updateOpenCodeVariantForConfig: wrap(updateOpenCodeVariantForConfig),
   resolveOpenCodeRoleModelsForConfig: wrap(resolveOpenCodeRoleModelsForConfig),
   refreshOpenCodeThinkingState: wrap(refreshOpenCodeThinkingState),
   getOpenCodeVariantForRun: wrap(getOpenCodeVariantForRun),
@@ -1308,6 +1439,10 @@ return {
   getSelectedCliModel: wrap(getSelectedCliModel),
   getSelectedLoopCliModel: wrap(getSelectedLoopCliModel),
   getSelectedLoopThinkingMode: wrap(getSelectedLoopThinkingMode),
+  getSelectedLoopSubtaskCli: wrap(getSelectedLoopSubtaskCli),
+  selectLoopSubtaskCli: wrap(selectLoopSubtaskCli),
+  refreshLoopSubtaskOpenCodeModels: wrap(refreshLoopSubtaskOpenCodeModels),
+  getLoopSubtaskOpenCodeModels: wrap(getLoopSubtaskOpenCodeModels),
   getManagedModelOptionsForCli: wrap(getManagedModelOptionsForCli),
   getModelOptionsForCli: wrap(getModelOptionsForCli),
   refreshGrokConfigModels: wrap(refreshGrokConfigModels),

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { CLI_LIST, createCliRecord, type CliName } from "../cli/types";
+import { INVALID_SUBTASK_CLI_ROUTE, parseCliNameField } from "../subtaskCliRoute";
 import { parseOrchestratorClarification } from "../orchestratorClarification";
 import {
   GRAPH_DEFAULT_MAX_CONCURRENT_NODES,
@@ -746,8 +747,18 @@ function normalizeGraphModelRoute(value: unknown): GraphModelRouteRecord | null 
   if (!isGraphModelRole(raw.role)) {
     return null;
   }
+  const parsedCli = parseCliNameField(raw.cli);
+  if (!parsedCli.ok) {
+    return {
+      role: raw.role,
+      fallback: INVALID_SUBTASK_CLI_ROUTE,
+    };
+  }
+  const configId = typeof raw.configId === "string" && raw.configId.trim() ? raw.configId.trim() : undefined;
   return {
     role: raw.role,
+    ...(parsedCli.cli ? { cli: parsedCli.cli } : {}),
+    ...(configId ? { configId } : {}),
     ...(typeof raw.model === "string" && raw.model.trim() ? { model: raw.model.trim() } : {}),
     ...(typeof raw.fallback === "string" && raw.fallback.trim() ? { fallback: raw.fallback.trim() } : {}),
   };

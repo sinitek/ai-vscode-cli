@@ -43,6 +43,7 @@ export type LoopPlusRuntimeFixture = {
   refusals: string[];
   mainCalls: PromptRunInput[];
   attemptCalls: PromptRunInput[];
+  createdSubtaskTargets: LoopPlusPromptTarget[];
   rootsDisposed: number[];
   executionCwds: Array<string | undefined>;
   queueMain: (action: MainAction) => void;
@@ -96,6 +97,7 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
   const refusals: string[] = [];
   const mainCalls: PromptRunInput[] = [];
   const attemptCalls: PromptRunInput[] = [];
+  const createdSubtaskTargets: LoopPlusPromptTarget[] = [];
   const executionCwds: Array<string | undefined> = [];
   const rootsDisposed: number[] = [];
   const mainQueue: MainAction[] = [];
@@ -363,11 +365,15 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
         },
       };
     },
-    createSubtaskTarget: (cli) => ({
-      tabId: subtaskTabOverride ?? nextId("subtab"),
-      cli,
-      sessionId: null,
-    }),
+    createSubtaskTarget: (cli) => {
+      const created = {
+        tabId: subtaskTabOverride ?? nextId("subtab"),
+        cli,
+        sessionId: null,
+      };
+      createdSubtaskTargets.push(created);
+      return created;
+    },
     closeSubtaskTab: async (tabId) => {
       closedSubtaskTabs.push(tabId);
       messages.delete(tabId);
@@ -428,6 +434,7 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
     refusals,
     mainCalls,
     attemptCalls,
+    createdSubtaskTargets,
     rootsDisposed,
     executionCwds,
     queueMain: (action) => {

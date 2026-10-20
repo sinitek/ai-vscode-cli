@@ -7,6 +7,7 @@ import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
 import { normalizeHistoryRetentionDays, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 import { PanelMessage } from "./webview/types";
+import { parseCliName, parseCliNameField } from "./subtaskCliRoute";
 import {
   type PanelMessageHandlerDeps,
   type PromptRunInputForPanel,
@@ -16,6 +17,12 @@ export async function handleUpdateOpenCodeVariantMessage(
   message: Extract<PanelMessage, { type: "updateOpenCodeVariant" }>,
   deps: {
     updateOpenCodeVariant: (role: "primary" | "small", value: string | null) => void;
+    updateOpenCodeVariantForConfig?: (
+      role: "primary" | "small",
+      value: string | null,
+      configId: string,
+      model: string,
+    ) => void;
     postPanelState: () => Promise<void>;
   }
 ): Promise<void> {
@@ -23,7 +30,13 @@ export async function handleUpdateOpenCodeVariantMessage(
     ? message.value.trim()
     : null;
   const role = message.role === "small" ? "small" : "primary";
-  deps.updateOpenCodeVariant(role, value);
+  const configId = typeof message.configId === "string" ? message.configId.trim() : "";
+  const model = typeof message.model === "string" ? message.model.trim() : "";
+  if (configId && model && deps.updateOpenCodeVariantForConfig) {
+    deps.updateOpenCodeVariantForConfig(role, value, configId, model);
+  } else {
+    deps.updateOpenCodeVariant(role, value);
+  }
   await deps.postPanelState();
 }
 
@@ -88,7 +101,7 @@ export async function handleUpdateSettingMessage(
     const [, cliValue, roleValue] = message.key.split(".");
     const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
     if (
-      (cli === "codex" || cli === "grok")
+      (cli === "codex" || cli === "grok" || cli === "claude")
       && (roleValue === "main" || roleValue === "subtask")
     ) {
       const configId = deps.getActiveConfigIdForCli(cli);
@@ -231,30 +244,57 @@ function resolvePromptRoleModels(
   configId: string | null,
   deps: PanelMessageHandlerDeps,
   options: { includeLoopModels: boolean; subtaskContinuation: boolean },
-): { model?: string; loopMainModel?: string; loopSubtaskModel?: string } {
-  if (!supportsMainSubtaskPromptModels(targetCli)) {
+): {
+  model?: string;
+  loopMainModel?: string;
+  loopSubtaskModel?: string;
+  loopSubtaskCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+  loopSubtaskConfigId?: string;
+} {
+  const subtaskCli = parseCliName(message.loopSubtaskCli);
+  const crossCli = Boolean(subtaskCli && subtaskCli !== targetCli);
+  const subtaskConfigId = typeof message.loopSubtaskConfigId === "string" && message.loopSubtaskConfigId.trim()
+    ? message.loopSubtaskConfigId.trim()
+    : undefined;
+  if (!supportsMainSubtaskPromptModels(targetCli) && !crossCli && !subtaskCli) {
     return {};
   }
   const explicitModel = normalizePromptModel(message.model);
-  const selectedModel = deps.getSelectedCliModel(targetCli, configId) ?? undefined;
+  const selectedModel = supportsMainSubtaskPromptModels(targetCli)
+    ? deps.getSelectedCliModel(targetCli, configId) ?? undefined
+    : undefined;
   const fallbackModel = explicitModel ?? selectedModel;
   if (!options.includeLoopModels) {
-    return { model: explicitModel };
+    return {
+      ...(explicitModel ? { model: explicitModel } : {}),
+      ...(crossCli && subtaskCli ? { loopSubtaskCli: subtaskCli } : {}),
+      ...(subtaskConfigId ? { loopSubtaskConfigId: subtaskConfigId } : {}),
+    };
   }
 
-  const loopMainModel = normalizePromptModel(message.loopMainModel)
-    ?? normalizePromptModel(message.lobsterMainModel)
-    ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
-    ?? fallbackModel;
+  const loopMainModel = supportsMainSubtaskPromptModels(targetCli)
+    ? normalizePromptModel(message.loopMainModel)
+      ?? normalizePromptModel(message.lobsterMainModel)
+      ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
+      ?? fallbackModel
+    : normalizePromptModel(message.loopMainModel) ?? explicitModel;
+  const subtaskLookupCli = crossCli && subtaskCli ? subtaskCli : targetCli;
+  const subtaskLookupConfigId = crossCli ? (subtaskConfigId ?? null) : configId;
   const loopSubtaskModel = normalizePromptModel(message.loopSubtaskModel)
     ?? normalizePromptModel(message.lobsterSubtaskModel)
-    ?? deps.getSelectedLoopCliModel?.(targetCli, "subtask", configId)
-    ?? fallbackModel
-    ?? loopMainModel;
+    ?? (crossCli
+      ? deps.getSelectedLoopCliModel?.(subtaskLookupCli, "subtask", subtaskLookupConfigId)
+        ?? deps.getSelectedCliModel(subtaskLookupCli, subtaskLookupConfigId)
+        ?? undefined
+      : deps.getSelectedLoopCliModel?.(targetCli, "subtask", configId)
+        ?? fallbackModel
+        ?? loopMainModel);
   return {
     model: options.subtaskContinuation ? loopSubtaskModel : (loopMainModel ?? explicitModel),
-    loopMainModel,
-    loopSubtaskModel,
+    ...(loopMainModel ? { loopMainModel } : {}),
+    ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+    ...(crossCli && subtaskCli ? { loopSubtaskCli: subtaskCli } : {}),
+    ...(subtaskConfigId ? { loopSubtaskConfigId: subtaskConfigId } : {}),
   };
 }
 
@@ -264,19 +304,34 @@ function resolvePromptRoleThinkingModes(
   configId: string | null,
   deps: PanelMessageHandlerDeps,
   options: { includeLoopModels: boolean },
-  promptModels: { model?: string; loopMainModel?: string; loopSubtaskModel?: string }
+  promptModels: {
+    model?: string;
+    loopMainModel?: string;
+    loopSubtaskModel?: string;
+    loopSubtaskCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+    loopSubtaskConfigId?: string;
+  }
 ): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode } {
-  if ((targetCli !== "codex" && targetCli !== "grok") || !options.includeLoopModels) {
+  const thinkingSubtaskCli = promptModels.loopSubtaskCli ?? targetCli;
+  const includeSubtaskThinking = thinkingSubtaskCli === "codex" || thinkingSubtaskCli === "grok" || thinkingSubtaskCli === "claude";
+  if ((!supportsMainSubtaskPromptModels(targetCli) && !includeSubtaskThinking) || !options.includeLoopModels) {
     return {};
   }
   const mainModel = promptModels.loopMainModel ?? promptModels.model ?? deps.getSelectedCliModel(targetCli, configId);
-  const subtaskModel = promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
-  const loopMainThinkingMode = normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
-    ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
-    ?? undefined;
-  const loopSubtaskThinkingMode = normalizePromptThinkingMode(message.loopSubtaskThinkingMode, targetCli, deps)
-    ?? deps.getSelectedLoopThinkingMode?.(targetCli, "subtask", subtaskModel, configId)
-    ?? undefined;
+  const subtaskModel = promptModels.loopSubtaskCli
+    ? promptModels.loopSubtaskModel
+    : promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
+  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok")
+    ? normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
+      ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
+      ?? undefined
+    : undefined;
+  const subtaskThinkingConfigId = promptModels.loopSubtaskConfigId ?? (promptModels.loopSubtaskCli ? null : configId);
+  const loopSubtaskThinkingMode = includeSubtaskThinking
+    ? normalizePromptThinkingMode(message.loopSubtaskThinkingMode, thinkingSubtaskCli, deps)
+      ?? deps.getSelectedLoopThinkingMode?.(thinkingSubtaskCli, "subtask", subtaskModel, subtaskThinkingConfigId)
+      ?? undefined
+    : undefined;
   return {
     ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
     ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
@@ -289,6 +344,10 @@ export async function handleSendPromptMessage(
 ): Promise<void> {
   const trimmed = message.prompt.trim();
   if (!trimmed) {
+    return;
+  }
+  if (!parseCliNameField(message.loopSubtaskCli).ok) {
+    deps.showWebviewError("子任务路由", "子模型 CLI 分组无效，不能派发子任务。");
     return;
   }
 
@@ -314,6 +373,16 @@ export async function handleSendPromptMessage(
   const targetCli = targetTab?.cli
     ?? (deps.isCliName(message.cli ?? "") ? message.cli : currentCli)
     ?? currentCli;
+  const requestedSubtaskCli = parseCliName(message.loopSubtaskCli);
+  if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
+    const requestedSubtaskConfigId = typeof message.loopSubtaskConfigId === "string"
+      ? message.loopSubtaskConfigId.trim()
+      : "";
+    if (!requestedSubtaskConfigId) {
+      deps.showWebviewError("子任务路由", "目标 CLI 没有可用配置，不能派发子任务。");
+      return;
+    }
+  }
 
   if (!preserveActiveTab && deps.getCurrentCli() !== targetCli) {
     deps.setCurrentCliValue(targetCli);
@@ -386,6 +455,12 @@ export async function handleSendPromptMessage(
   if (promptModels.loopSubtaskModel) {
     promptInput.loopSubtaskModel = promptModels.loopSubtaskModel;
   }
+  if (promptModels.loopSubtaskCli) {
+    promptInput.loopSubtaskCli = promptModels.loopSubtaskCli;
+  }
+  if (promptModels.loopSubtaskConfigId) {
+    promptInput.loopSubtaskConfigId = promptModels.loopSubtaskConfigId;
+  }
   if (promptThinkingModes.loopMainThinkingMode) {
     promptInput.loopMainThinkingMode = promptThinkingModes.loopMainThinkingMode;
   }
@@ -454,6 +529,8 @@ export async function handleSendPromptMessage(
         model: preparedPromptInput.loopMainModel ?? preparedPromptInput.model,
         loopMainModel: preparedPromptInput.loopMainModel,
         loopSubtaskModel: preparedPromptInput.loopSubtaskModel,
+        ...(preparedPromptInput.loopSubtaskCli ? { loopSubtaskCli: preparedPromptInput.loopSubtaskCli } : {}),
+        ...(preparedPromptInput.loopSubtaskConfigId ? { loopSubtaskConfigId: preparedPromptInput.loopSubtaskConfigId } : {}),
         ...(preparedPromptInput.loopMainThinkingMode ? { loopMainThinkingMode: preparedPromptInput.loopMainThinkingMode } : {}),
         ...(preparedPromptInput.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: preparedPromptInput.loopSubtaskThinkingMode } : {}),
       };

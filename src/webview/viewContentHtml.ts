@@ -1,4 +1,5 @@
 import { renderChatModal } from "./modalComponents";
+import { CLI_LIST } from "../cli/types";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
@@ -23,6 +24,11 @@ function renderInteractiveModeSelect(
             <option value="loop_plus" title="${i18n.interactiveModeLoopPlusHint}">${i18n.interactiveModeLoopPlus}</option>
             <option value="graph">${i18n.interactiveModeGraph}</option>
           </select>`;
+}
+
+function renderLoopSubtaskCliSelect(i18n: WebviewHtmlStrings, id: string): string {
+  const options = CLI_LIST.map((cli) => `<option value="${cli}">${cli}</option>`).join("");
+  return `<select id="${id}" class="cli-select loop-subtask-cli-select" aria-label="${i18n.loopSubtaskCliSelectAria}" title="${i18n.loopSubtaskCliSelectAria}">${options}</select>`;
 }
 
 export type BuildWebviewStaticHtmlInput = {
@@ -215,8 +221,9 @@ ${webviewStyles}    </style>
                 <select id="codexLoopMainModelSelect" class="model-select" aria-label="${i18n.codexLoopMainModelSelectAria}" title="${i18n.codexLoopMainModelSelectAria}"></select>
                 <select id="codexLoopMainThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopMainThinkingModeAria}" title="${i18n.codexLoopMainThinkingModeAria}"></select>
               </div>
-              <div class="open-code-model-row codex-loop-model-row">
-                <label class="open-code-model-label" for="codexLoopSubtaskModelSelect">${i18n.codexLoopSubtaskModelLabel}</label>
+              <div class="open-code-model-row codex-loop-model-row loop-subtask-route-row">
+                <label class="open-code-model-label" for="codexLoopSubtaskCliSelect">${i18n.codexLoopSubtaskModelLabel}</label>
+                ${renderLoopSubtaskCliSelect(i18n, "codexLoopSubtaskCliSelect")}
                 <select id="codexLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}"></select>
                 <select id="codexLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopSubtaskThinkingModeAria}" title="${i18n.codexLoopSubtaskThinkingModeAria}"></select>
               </div>
@@ -235,13 +242,23 @@ ${webviewStyles}    </style>
                   <option value="ultra">${i18n.thinkingOptionUltra}</option>
                 </select>
               </div>
-              <div class="open-code-model-row">
-                <label class="open-code-model-label" for="openCodeSmallModelSelect">${i18n.openCodeSmallModelLabel}</label>
+              <div class="open-code-model-row loop-subtask-route-row">
+                <label class="open-code-model-label" for="openCodeLoopSubtaskCliSelect">${i18n.openCodeSmallModelLabel}</label>
+                ${renderLoopSubtaskCliSelect(i18n, "openCodeLoopSubtaskCliSelect")}
                 <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
                 <select id="openCodeSmallThinkingMode" class="thinking-select" aria-label="${i18n.openCodeSmallThinkingModeAria}" title="${i18n.openCodeSmallThinkingModeAria}" style="display: none;"></select>
               </div>
               <span id="openCodeModelIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             </div>
+            <div id="claudeLoopSubtaskGroup" class="open-code-model-group" style="display: none;">
+              <div class="open-code-model-row loop-subtask-route-row">
+                <label class="open-code-model-label" for="claudeLoopSubtaskCliSelect">${i18n.codexLoopSubtaskModelLabel}</label>
+                ${renderLoopSubtaskCliSelect(i18n, "claudeLoopSubtaskCliSelect")}
+                <select id="claudeLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}" style="display: none;"></select>
+                <select id="claudeLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}" title="${i18n.thinkingModeAria}" style="display: none;"></select>
+              </div>
+            </div>
+            <span id="loopSubtaskRouteIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             <select id="modelSelect" class="model-select" aria-label="${i18n.modelSelectAria}">
               <option value="">${i18n.modelOptionDefault}</option>
               <option value="__manage__">${i18n.modelOptionManage}</option>

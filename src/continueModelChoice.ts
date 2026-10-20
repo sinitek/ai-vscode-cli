@@ -1,12 +1,20 @@
 import type { CliName } from "./cli/types";
 import type { GraphRunModelRoutingRecord } from "./graph/types";
 import type { LoopTaskModelRouting } from "./loopTaskStore";
+import {
+  formatSubtaskRouteSummary,
+  parseCliName,
+  subtaskRouteIsConfigured,
+} from "./subtaskCliRoute";
 
 export type ContinueModelSource = "original" | "current";
 
 export type ContinueModelPair = {
   main: string | null;
   subtask: string | null;
+  subtaskCli?: CliName | null;
+  subtaskConfigId?: string | null;
+  unavailableReason?: string | null;
 };
 
 export type ContinueModelChoice = {
@@ -45,24 +53,39 @@ export function emptyContinueModelPair(): ContinueModelPair {
 }
 
 export function hasContinueModel(pair: ContinueModelPair): boolean {
-  return Boolean(pair.main || pair.subtask);
+  if (pair.unavailableReason) {
+    return false;
+  }
+  return Boolean(pair.main || pair.subtask || pair.subtaskCli);
 }
 
 export function continueModelPairFromLoopRouting(
   routing: LoopTaskModelRouting | null | undefined,
 ): ContinueModelPair {
+  const subtaskCli = parseCliName(routing?.subtask.cli) ?? null;
   return {
     main: normalizeContinueModelName(routing?.main.model),
     subtask: normalizeContinueModelName(routing?.subtask.model),
+    ...(subtaskCli ? { subtaskCli } : {}),
+    ...(routing?.subtask.configId ? { subtaskConfigId: routing.subtask.configId } : {}),
+    ...(routing?.subtask.fallback === "invalid-subtask-cli"
+      ? { unavailableReason: "子模型 CLI 分组无效，不能派发子任务。" }
+      : {}),
   };
 }
 
 export function continueModelPairFromGraphRouting(
   routing: GraphRunModelRoutingRecord | null | undefined,
 ): ContinueModelPair {
+  const subtaskCli = parseCliName(routing?.executor.cli) ?? null;
   return {
     main: normalizeContinueModelName(routing?.planner.model),
     subtask: normalizeContinueModelName(routing?.executor.model),
+    ...(subtaskCli ? { subtaskCli } : {}),
+    ...(routing?.executor.configId ? { subtaskConfigId: routing.executor.configId } : {}),
+    ...(routing?.executor.fallback === "invalid-subtask-cli"
+      ? { unavailableReason: "子模型 CLI 分组无效，不能派发子任务。" }
+      : {}),
   };
 }
 
@@ -71,16 +94,39 @@ export function resolveCurrentLoopModelPair(input: {
   configId?: string | null;
   getSelectedCliModel: ModelSelector;
   getSelectedLoopCliModel?: LoopModelSelector;
+  getSelectedLoopSubtaskCli?: (configId: string | null) => CliName | null;
+  getActiveConfigIdForCli?: (cli: CliName) => string | null;
 }): ContinueModelPair {
   const configId = input.configId ?? null;
   const selectedModel = normalizeContinueModelName(input.getSelectedCliModel(input.cli, configId));
   const main = normalizeContinueModelName(
     input.getSelectedLoopCliModel?.(input.cli, "main", configId),
   ) ?? selectedModel;
-  const subtask = normalizeContinueModelName(
-    input.getSelectedLoopCliModel?.(input.cli, "subtask", configId),
-  ) ?? selectedModel ?? main;
-  return { main, subtask };
+  const storedSubtaskCli = input.getSelectedLoopSubtaskCli?.(configId) ?? null;
+  const subtaskCli = storedSubtaskCli ?? input.cli;
+  const crossCli = subtaskCli !== input.cli;
+  const subtaskConfigId = crossCli
+    ? input.getActiveConfigIdForCli?.(subtaskCli) ?? null
+    : configId;
+  if (crossCli && !subtaskConfigId) {
+    return {
+      main,
+      subtask: null,
+      subtaskCli,
+      unavailableReason: "目标 CLI 没有可用配置，不能派发子任务。",
+    };
+  }
+  const subtask = crossCli
+    ? normalizeContinueModelName(input.getSelectedLoopCliModel?.(subtaskCli, "subtask", subtaskConfigId))
+      ?? normalizeContinueModelName(input.getSelectedCliModel(subtaskCli, subtaskConfigId))
+    : normalizeContinueModelName(input.getSelectedLoopCliModel?.(input.cli, "subtask", configId))
+      ?? selectedModel
+      ?? main;
+  return {
+    main,
+    subtask,
+    ...(crossCli ? { subtaskCli, ...(subtaskConfigId ? { subtaskConfigId } : {}) } : {}),
+  };
 }
 
 export function resolveLoopContinueModelPair(options: {
@@ -98,25 +144,38 @@ export function promptModelsFromContinuePair(pair: ContinueModelPair): {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
 } {
   const main = pair.main ?? pair.subtask ?? undefined;
-  const subtask = pair.subtask ?? pair.main ?? undefined;
-  if (!main && !subtask) {
+  const crossCli = Boolean(pair.subtaskCli);
+  const subtask = crossCli ? (pair.subtask ?? undefined) : (pair.subtask ?? pair.main ?? undefined);
+  if (!main && !subtask && !pair.subtaskCli) {
     return {};
   }
   return {
     ...(main ? { model: main, loopMainModel: main } : {}),
     ...(subtask ? { loopSubtaskModel: subtask } : {}),
+    ...(pair.subtaskCli ? { loopSubtaskCli: pair.subtaskCli } : {}),
+    ...(pair.subtaskConfigId ? { loopSubtaskConfigId: pair.subtaskConfigId } : {}),
   };
 }
 
 export function loopModelRoutingFromPair(pair: ContinueModelPair): LoopTaskModelRouting | null {
-  if (!hasContinueModel(pair)) {
+  if (!subtaskRouteIsConfigured({
+    cli: pair.subtaskCli ?? undefined,
+    configId: pair.subtaskConfigId ?? undefined,
+    model: pair.subtask ?? undefined,
+  }) && !pair.main) {
     return null;
   }
   return {
     main: pair.main ? { model: pair.main } : {},
-    subtask: pair.subtask ? { model: pair.subtask } : {},
+    subtask: {
+      ...(pair.subtaskCli ? { cli: pair.subtaskCli } : {}),
+      ...(pair.subtaskConfigId ? { configId: pair.subtaskConfigId } : {}),
+      ...(pair.subtask ? { model: pair.subtask } : {}),
+    },
   };
 }
 
@@ -124,14 +183,22 @@ export function loopModelRoutingFromPromptInput(input: {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName | string;
+  loopSubtaskConfigId?: string;
   loopMainModelFallback?: string;
   loopSubtaskModelFallback?: string;
-}): LoopTaskModelRouting | null {
+}, options?: { mainCli?: CliName }): LoopTaskModelRouting | null {
   const main = normalizeContinueModelName(input.loopMainModel) ?? normalizeContinueModelName(input.model);
-  const subtask = normalizeContinueModelName(input.loopSubtaskModel) ?? main;
+  const subtaskCli = parseCliName(input.loopSubtaskCli);
+  const crossCli = Boolean(subtaskCli && options?.mainCli && subtaskCli !== options.mainCli);
+  const explicitSubtask = normalizeContinueModelName(input.loopSubtaskModel);
+  const subtask = explicitSubtask ?? (crossCli ? null : main);
   const mainFallback = normalizeContinueModelName(input.loopMainModelFallback);
   const subtaskFallback = normalizeContinueModelName(input.loopSubtaskModelFallback);
-  if (!main && !subtask && !mainFallback && !subtaskFallback) {
+  const subtaskConfigId = typeof input.loopSubtaskConfigId === "string" && input.loopSubtaskConfigId.trim()
+    ? input.loopSubtaskConfigId.trim()
+    : undefined;
+  if (!main && !subtask && !mainFallback && !subtaskFallback && !subtaskCli && !subtaskConfigId) {
     return null;
   }
   return {
@@ -140,6 +207,8 @@ export function loopModelRoutingFromPromptInput(input: {
       ...(mainFallback ? { fallback: mainFallback } : {}),
     },
     subtask: {
+      ...(subtaskCli ? { cli: subtaskCli } : {}),
+      ...(subtaskConfigId ? { configId: subtaskConfigId } : {}),
       ...(subtask ? { model: subtask } : {}),
       ...(subtaskFallback ? { fallback: subtaskFallback } : {}),
     },
@@ -200,7 +269,10 @@ export function renderContinueModelChoiceHtml(options: {
 function formatContinueModelSummary(template: string, pair: ContinueModelPair, unrecorded: string): string {
   return template
     .split("{main}").join(pair.main || unrecorded)
-    .split("{subtask}").join(pair.subtask || unrecorded);
+    .split("{subtask}").join(formatSubtaskRouteSummary({
+      cli: pair.subtaskCli,
+      model: pair.subtask,
+    }, unrecorded));
 }
 
 function renderContinueModelOption(options: {

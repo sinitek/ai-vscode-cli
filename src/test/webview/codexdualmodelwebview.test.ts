@@ -294,12 +294,13 @@ test("renders Codex Loop and Graph selectors as Chinese role model rows", () => 
   assert.match(group, /<div class="open-code-model-row codex-loop-model-row">/);
   assert.doesNotMatch(group, /<label class="open-code-model-row/);
   assert.match(group, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
-  assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskCliSelect">子模型<\/label>/);
+  assert.match(group, /aria-label="子模型 CLI 分组"/);
   assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Graph 主模型选择"/);
   assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Graph 子模型选择"/);
   assert.doesNotMatch(group, /openCodePrimaryThinkingMode|openCodeSmallThinkingMode|openCodeModelIssue/);
   assert.match(html, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
-  assert.match(html, /<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">子模型<\/label>/);
+  assert.match(html, /<label class="open-code-model-label" for="codexLoopSubtaskCliSelect">子模型<\/label>/);
   assert.match(html, /aria-label="Codex Loop\/Graph 主模型选择"/);
   assert.match(html, /aria-label="Codex Loop\/Graph 子模型选择"/);
 });

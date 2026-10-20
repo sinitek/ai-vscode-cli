@@ -374,6 +374,23 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         const loopModels = state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[targetCli]
           ? state.selectedLoopModelsByCli[targetCli]
           : {};
+        const subtaskRoute = typeof getLoopSubtaskRoute === "function" ? getLoopSubtaskRoute() : null;
+        const scheduleUsesSubtaskRoute = selectedMode === "loop" || selectedMode === "graph" || selectedMode === "loop_plus";
+        if (scheduleUsesSubtaskRoute && subtaskRoute && subtaskRoute.crossCli && (subtaskRoute.unavailableReason || !subtaskRoute.subtaskConfigId)) {
+          setScheduledTaskError(subtaskRoute.unavailableReason || t("loopSubtaskRouteMissingConfig"));
+          return;
+        }
+        const crossCliRoute = scheduleUsesSubtaskRoute && subtaskRoute && subtaskRoute.crossCli ? subtaskRoute : null;
+        const scheduledSubtaskModel = crossCliRoute && typeof readLoopSubtaskModelSelection === "function"
+          ? readLoopSubtaskModelSelection(crossCliRoute)
+          : (loopModels.subtask || undefined);
+        const scheduledSubtaskThinking = crossCliRoute
+          ? (crossCliRoute.subtaskCli !== "opencode" && typeof readLoopSubtaskThinkingSelection === "function"
+            ? readLoopSubtaskThinkingSelection(crossCliRoute)
+            : undefined)
+          : (state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
+            ? state.selectedLoopThinkingByCli[targetCli].subtask || undefined
+            : undefined);
         vscode.postMessage({
           type: "scheduleTask",
           prompt,
@@ -386,13 +403,12 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
             ? state.selectedModelsByCli[targetCli]
             : undefined,
           loopMainModel: loopModels.main || undefined,
-          loopSubtaskModel: loopModels.subtask || undefined,
+          loopSubtaskModel: scheduledSubtaskModel || undefined,
           loopMainThinkingMode: state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
             ? state.selectedLoopThinkingByCli[targetCli].main || undefined
             : undefined,
-          loopSubtaskThinkingMode: state.selectedLoopThinkingByCli && state.selectedLoopThinkingByCli[targetCli]
-            ? state.selectedLoopThinkingByCli[targetCli].subtask || undefined
-            : undefined,
+          loopSubtaskThinkingMode: scheduledSubtaskThinking || undefined,
+          ...(crossCliRoute ? { loopSubtaskCli: crossCliRoute.subtaskCli, loopSubtaskConfigId: crossCliRoute.subtaskConfigId } : {}),
           loopExecutionMode: selectedMode === "loop" ? getLoopExecutionModeForCli(targetCli) : undefined,
           files: scheduledTaskFiles,
         });

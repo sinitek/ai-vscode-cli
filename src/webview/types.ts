@@ -28,6 +28,7 @@ export type PanelMessage =
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
   | { type: "selectCliLoopModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
+  | { type: "selectLoopSubtaskCli"; cli: CliName; configId?: string | null }
   | { type: "addCliModel"; cli: CliName; model: string; configId?: string | null }
   | { type: "renameCliModel"; cli: CliName; previousModel: string; nextModel: string; configId?: string | null }
   | { type: "deleteCliModel"; cli: CliName; model: string; configId?: string | null }
@@ -55,7 +56,7 @@ export type PanelMessage =
       status: HumanInteractionSubmissionStatus;
       values: Record<string, unknown>;
     }
-  | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole }
+  | { type: "updateOpenCodeVariant"; value: string | null; role?: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; configId?: string | null; model?: string | null }
   | { type: "updateOpenCodeRoleModel"; role: "primary" | "small"; modelRole?: OpenCodeWebviewModelRole; value: string | null; configId?: string | null }
   | { type: "initializeWorkspaceHarness"; enabled: boolean }
   | { type: "installCodeGraph" }
@@ -74,6 +75,8 @@ export type PanelMessage =
       loopMainThinkingMode?: ThinkingMode;
       loopSubtaskThinkingMode?: ThinkingMode;
       lobsterMainModel?: string;
+      loopSubtaskCli?: CliName;
+      loopSubtaskConfigId?: string;
       lobsterSubtaskModel?: string;
       loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
@@ -93,6 +96,8 @@ export type PanelMessage =
       loopMainThinkingMode?: ThinkingMode;
       loopSubtaskThinkingMode?: ThinkingMode;
       loopExecutionMode?: LoopExecutionMode;
+      loopSubtaskCli?: CliName;
+      loopSubtaskConfigId?: string;
       files?: UploadFilePayload[];
     }
   | { type: "deleteScheduledTask"; id: string }
@@ -166,6 +171,8 @@ export type ScheduledTaskRecord = {
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode?: LoopExecutionMode;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   attachments: ScheduledTaskAttachment[];
   executedAt?: number;
   lastError?: string;
@@ -309,6 +316,7 @@ export type OpenCodeModelsState = {
   selectedPrimaryRef?: string | null;
   /** @deprecated Compatibility alias for the subtask role. */
   selectedSmallRef?: string | null;
+  selectedSubtaskVariant?: string | null;
   issues: Array<{
     role?: OpenCodeWebviewModelRole | OpenCodeWebviewLegacyModelRole;
     code: string;
@@ -343,6 +351,7 @@ export type PanelState = {
   openCodeThinking: WebviewOpenCodeThinkingState;
   openCodeSmallThinking?: WebviewOpenCodeThinkingState;
   openCodeModels?: OpenCodeModelsState;
+  loopSubtaskOpenCodeModels?: OpenCodeModelsState;
   interactive: {
     supported: boolean;
     enabled: boolean;
@@ -374,6 +383,10 @@ export type PanelState = {
       selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;
       selectedLoopThinkingByCli?: Partial<Record<CliName, { main?: ThinkingMode | null; subtask?: ThinkingMode | null }>>;
       loopOptionsByCli?: Partial<Record<CliName, { main: string[]; subtask: string[] }>>;
+      selectedLoopSubtaskCliByConfigId?: Partial<Record<string, CliName>>;
+      activeConfigIdByCli?: Partial<Record<CliName, string | null>>;
+      issuesByCli?: Partial<Record<CliName, string>>;
+      thinkingModeByCli?: Partial<Record<CliName, ThinkingMode>>;
     };
   editorContext: EditorContextState;
 };

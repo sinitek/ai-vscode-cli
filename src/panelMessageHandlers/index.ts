@@ -21,6 +21,7 @@ export function createPanelMessageHandlerRegistry(
   if (updateOpenCodeVariant) {
     specialHandlers.updateOpenCodeVariant = (message) => handleUpdateOpenCodeVariantMessage(message, {
       updateOpenCodeVariant,
+      updateOpenCodeVariantForConfig: deps.updateOpenCodeVariantForConfig,
       postPanelState: deps.postPanelState,
     });
   }

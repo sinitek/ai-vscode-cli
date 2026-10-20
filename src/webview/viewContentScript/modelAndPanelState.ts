@@ -64,7 +64,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const normalizeRole = (value) => {
           const normalized = typeof value === "string" ? value.trim() : "";
           if (normalized === "off") {
-            return targetCli === "grok" ? "off" : "low";
+            return targetCli === "grok" || targetCli === "claude" ? "off" : "low";
           }
           return ["low", "medium", "high", "xhigh", "max", "ultra"].includes(normalized)
             ? normalized
@@ -304,6 +304,28 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopModelsByCli = nextLoopModelsByCli;
         state.selectedLoopModelsByCli = nextSelectedLoopModelsByCli;
         state.selectedLoopThinkingByCli = nextSelectedLoopThinkingByCli;
+        const incomingSubtaskCli = modelState.selectedLoopSubtaskCliByConfigId && typeof modelState.selectedLoopSubtaskCliByConfigId === "object"
+          ? { ...modelState.selectedLoopSubtaskCliByConfigId }
+          : {};
+        const pendingSubtaskCli = state.pendingLoopSubtaskCliSelection;
+        if (pendingSubtaskCli && pendingSubtaskCli.configId) {
+          const incomingCli = incomingSubtaskCli[pendingSubtaskCli.configId] || "";
+          if (incomingCli === pendingSubtaskCli.cli) {
+            state.pendingLoopSubtaskCliSelection = null;
+          } else {
+            incomingSubtaskCli[pendingSubtaskCli.configId] = pendingSubtaskCli.cli;
+          }
+        }
+        state.selectedLoopSubtaskCliByConfigId = incomingSubtaskCli;
+        state.activeConfigIdByCli = modelState.activeConfigIdByCli && typeof modelState.activeConfigIdByCli === "object"
+          ? modelState.activeConfigIdByCli
+          : {};
+        state.modelIssuesByCli = modelState.issuesByCli && typeof modelState.issuesByCli === "object"
+          ? modelState.issuesByCli
+          : {};
+        state.thinkingModeByCli = modelState.thinkingModeByCli && typeof modelState.thinkingModeByCli === "object"
+          ? modelState.thinkingModeByCli
+          : {};
         state.selectedModel = state.selectedModelsByCli[panelCurrentCli] || "";
       }
 
@@ -428,6 +450,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.openCodeModels = reconcilePendingOpenCodeRoleSelection(
             normalizeOpenCodeModelsPayload(panelState.openCodeModels)
           );
+        }
+        if (panelState.loopSubtaskOpenCodeModels) {
+          state.loopSubtaskOpenCodeModels = normalizeOpenCodeModelsPayload(panelState.loopSubtaskOpenCodeModels);
         }
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
@@ -597,7 +622,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function syncOpenCodeThinkingSelect(selectElement, payload, titleFallback) {
-        if (!selectElement) {
+        if (!selectElement || (typeof isSelectFocused === "function" && isSelectFocused(selectElement))) {
           return normalizeOpenCodeThinkingPayload(payload);
         }
         const normalizedPayload = normalizeOpenCodeThinkingPayload(payload);
@@ -635,7 +660,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function updateCodexLoopRoleThinkingSelect(selectElement, role) {
-        if (!selectElement) {
+        if (!selectElement || (typeof isSelectFocused === "function" && isSelectFocused(selectElement))) {
           return;
         }
         selectElement.innerHTML = "";

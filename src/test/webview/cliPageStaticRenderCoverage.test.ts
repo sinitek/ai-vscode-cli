@@ -190,17 +190,23 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     'id="codexLoopMainModelSelect" class="model-select"',
     'id="codexLoopMainThinkingMode" class="thinking-select"',
     'aria-label="Codex Loop/Graph 主模型选择"',
-    'for="codexLoopSubtaskModelSelect"',
+    'for="codexLoopSubtaskCliSelect"',
+    'id="codexLoopSubtaskCliSelect"',
+    'aria-label="子模型 CLI 分组"',
     'id="codexLoopSubtaskModelSelect" class="model-select"',
     'id="codexLoopSubtaskThinkingMode" class="thinking-select"',
     'aria-label="Codex Loop/Graph 子模型选择"',
     'for="openCodePrimaryModelSelect"',
     'id="openCodePrimaryModelSelect" class="model-select"',
     'id="openCodePrimaryThinkingMode" class="thinking-select"',
-    'for="openCodeSmallModelSelect"',
+    'for="openCodeLoopSubtaskCliSelect"',
     'id="openCodeSmallModelSelect" class="model-select"',
     'id="openCodeSmallThinkingMode" class="thinking-select"',
     'id="openCodeModelIssue"',
+    'id="claudeLoopSubtaskGroup"',
+    'id="claudeLoopSubtaskCliSelect"',
+    'id="claudeLoopSubtaskModelSelect"',
+    'id="loopSubtaskRouteIssue"',
     '<option value="">默认</option>',
     '<option value="__manage__">管理</option>',
     '<option value="off">off</option>',
@@ -217,7 +223,7 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
   );
   assert.match(
     html,
-    /<div class="open-code-model-row codex-loop-model-row">[\s\S]*?<label class="open-code-model-label" for="codexLoopSubtaskModelSelect">[\s\S]*?<\/label>[\s\S]*?<select id="codexLoopSubtaskModelSelect" class="model-select"[\s\S]*?<select id="codexLoopSubtaskThinkingMode" class="thinking-select"[\s\S]*?<\/div>/,
+    /<div class="open-code-model-row codex-loop-model-row loop-subtask-route-row">[\s\S]*?<label class="open-code-model-label" for="codexLoopSubtaskCliSelect">[\s\S]*?<\/label>[\s\S]*?<select id="codexLoopSubtaskCliSelect"[\s\S]*?<select id="codexLoopSubtaskModelSelect" class="model-select"[\s\S]*?<select id="codexLoopSubtaskThinkingMode" class="thinking-select"[\s\S]*?<\/div>/,
   );
   assert.doesNotMatch(html, /<label class="open-code-model-row/);
   assert.match(

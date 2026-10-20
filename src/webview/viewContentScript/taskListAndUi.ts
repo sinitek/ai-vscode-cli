@@ -888,6 +888,14 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (payloadValue) {
           return payloadValue;
         }
+        if (role === "subtask" && typeof getLoopSubtaskRoute === "function") {
+          const route = getLoopSubtaskRoute();
+          if (route && route.crossCli) {
+            return typeof readLoopSubtaskModelSelection === "function"
+              ? readLoopSubtaskModelSelection(route)
+              : "";
+          }
+        }
         return getSelectedLoopRoleModelForCli(targetCli, role);
       }
 
@@ -895,26 +903,94 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (!normalizedPayload) {
           return normalizedPayload;
         }
-        if (!shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab)) {
+        const includeRoleModels = shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab);
+        const includeSubtaskRoute = includeRoleModels
+          || targetInteractiveMode === "loop"
+          || targetInteractiveMode === "graph"
+          || targetInteractiveMode === "loop_plus"
+          || Boolean(targetTab && targetTab.loopTaskRole === "subtask");
+        let nextPayload = normalizedPayload;
+        if (!includeRoleModels) {
           const { loopMainModel, loopSubtaskModel, loopMainThinkingMode, loopSubtaskThinkingMode, ...payloadWithoutRoleModels } = normalizedPayload;
-          return payloadWithoutRoleModels;
+          nextPayload = payloadWithoutRoleModels;
+        } else if (typeof getSelectedLoopRoleModelForCli === "function") {
+          const loopMainModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "main");
+          const loopSubtaskModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "subtask");
+          const loopMainThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopMainThinkingMode)
+            || getSelectedLoopRoleThinkingModeForCli(targetCli, "main");
+          const loopSubtaskThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopSubtaskThinkingMode)
+            || (typeof getLoopSubtaskRoute === "function" && getLoopSubtaskRoute() && getLoopSubtaskRoute().crossCli
+              ? ""
+              : getSelectedLoopRoleThinkingModeForCli(targetCli, "subtask"));
+          nextPayload = {
+            ...normalizedPayload,
+            ...(loopMainModel ? { loopMainModel } : {}),
+            ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+            ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
+            ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
+          };
         }
-        if (typeof getSelectedLoopRoleModelForCli !== "function") {
-          return normalizedPayload;
+        if (!includeSubtaskRoute) {
+          const { loopSubtaskCli, loopSubtaskConfigId, loopSubtaskRouteBlocked, ...withoutRoute } = nextPayload;
+          return withoutRoute;
         }
-        const loopMainModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "main");
-        const loopSubtaskModel = resolvePromptLoopRoleModel(normalizedPayload, targetCli, "subtask");
-        const loopMainThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopMainThinkingMode)
-          || getSelectedLoopRoleThinkingModeForCli(targetCli, "main");
-        const loopSubtaskThinkingMode = normalizeThinkingModeSelection(normalizedPayload.loopSubtaskThinkingMode)
-          || getSelectedLoopRoleThinkingModeForCli(targetCli, "subtask");
-        return {
-          ...normalizedPayload,
-          ...(loopMainModel ? { loopMainModel } : {}),
-          ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
-          ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
-          ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
+        if (normalizedPayload.loopSubtaskCli || normalizedPayload.loopSubtaskConfigId) {
+          return {
+            ...nextPayload,
+            ...(normalizedPayload.loopSubtaskCli ? { loopSubtaskCli: normalizedPayload.loopSubtaskCli } : {}),
+            ...(normalizedPayload.loopSubtaskConfigId ? { loopSubtaskConfigId: normalizedPayload.loopSubtaskConfigId } : {}),
+            ...(normalizedPayload.loopSubtaskModel ? { loopSubtaskModel: normalizedPayload.loopSubtaskModel } : {}),
+            ...(normalizedPayload.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: normalizedPayload.loopSubtaskThinkingMode } : {}),
+          };
+        }
+        if (typeof getLoopSubtaskRoute !== "function") {
+          return nextPayload;
+        }
+        const route = getLoopSubtaskRoute();
+        if (!route || !route.crossCli) {
+          if (targetCli === "claude" && typeof readLoopSubtaskThinkingSelection === "function") {
+            const thinking = readLoopSubtaskThinkingSelection({ subtaskCli: "claude", crossCli: false });
+            return thinking ? { ...nextPayload, loopSubtaskThinkingMode: thinking } : nextPayload;
+          }
+          if ((targetCli === "grok" || targetCli === "opencode") && typeof readLoopSubtaskModelSelection === "function") {
+            const model = readLoopSubtaskModelSelection({ subtaskCli: targetCli, crossCli: false });
+            const thinking = targetCli === "grok" && typeof readLoopSubtaskThinkingSelection === "function"
+              ? readLoopSubtaskThinkingSelection({ subtaskCli: targetCli, crossCli: false })
+              : "";
+            return {
+              ...nextPayload,
+              ...(model ? { loopSubtaskModel: model } : {}),
+              ...(thinking ? { loopSubtaskThinkingMode: thinking } : {}),
+            };
+          }
+          return nextPayload;
+        }
+        if (route.unavailableReason || !route.subtaskConfigId) {
+          return {
+            ...nextPayload,
+            loopSubtaskRouteBlocked: route.unavailableReason || (typeof t === "function" ? t("loopSubtaskRouteMissingConfig") : "目标 CLI 没有可用配置，不能派发子任务。"),
+          };
+        }
+        const model = typeof readLoopSubtaskModelSelection === "function" ? readLoopSubtaskModelSelection(route) : "";
+        const thinking = route.subtaskCli !== "opencode" && typeof readLoopSubtaskThinkingSelection === "function"
+          ? readLoopSubtaskThinkingSelection(route)
+          : "";
+        const routed = {
+          ...nextPayload,
+          loopSubtaskCli: route.subtaskCli,
+          loopSubtaskConfigId: route.subtaskConfigId,
         };
+        if (model) {
+          routed.loopSubtaskModel = model;
+        } else {
+          delete routed.loopSubtaskModel;
+        }
+        if (thinking) {
+          routed.loopSubtaskThinkingMode = thinking;
+        } else {
+          delete routed.loopSubtaskThinkingMode;
+        }
+        return routed;
       }
 
       function snapshotPromptPayloadForQueue(payload) {
@@ -972,6 +1048,19 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           targetInteractiveMode,
           targetTab
         );
+        if (normalizedPayload && normalizedPayload.loopSubtaskRouteBlocked) {
+          if (typeof elements !== "undefined" && elements && elements.loopSubtaskRouteIssue) {
+            elements.loopSubtaskRouteIssue.textContent = normalizedPayload.loopSubtaskRouteBlocked;
+            elements.loopSubtaskRouteIssue.style.display = "inline";
+          }
+          appendMessage({
+            id: createMessageId(),
+            role: "system",
+            content: normalizedPayload.loopSubtaskRouteBlocked,
+            createdAt: Date.now(),
+          });
+          return false;
+        }
         const targetRuntimeState = getConversationRuntimeState(targetTabId, { create: false });
         const shouldSuppressFlush = isTabRunning(targetTabId);
         if (isConfigApplyPendingForCli(targetCli)) {
@@ -1019,6 +1108,12 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (normalizedPayload.loopSubtaskThinkingMode) {
           sendPromptMessage.loopSubtaskThinkingMode = normalizedPayload.loopSubtaskThinkingMode;
+        }
+        if (normalizedPayload.loopSubtaskCli) {
+          sendPromptMessage.loopSubtaskCli = normalizedPayload.loopSubtaskCli;
+        }
+        if (normalizedPayload.loopSubtaskConfigId) {
+          sendPromptMessage.loopSubtaskConfigId = normalizedPayload.loopSubtaskConfigId;
         }
         if (targetLoopExecutionMode) {
           sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;

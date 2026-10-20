@@ -851,6 +851,16 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!normalizedPayload) {
           return;
         }
+        if (normalizedPayload.loopSubtaskRouteBlocked) {
+          if (typeof elements !== "undefined" && elements && elements.loopSubtaskRouteIssue) {
+            elements.loopSubtaskRouteIssue.textContent = normalizedPayload.loopSubtaskRouteBlocked;
+            elements.loopSubtaskRouteIssue.style.display = "inline";
+          }
+          if (typeof showToast === "function") {
+            showToast(normalizedPayload.loopSubtaskRouteBlocked);
+          }
+          return;
+        }
         const runtimeState = getActiveConversationRuntimeState();
         if (!runtimeState) {
           return;

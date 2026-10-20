@@ -198,6 +198,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       model: prompt.model,
       loopMainModel: prompt.loopMainModel,
       loopSubtaskModel: prompt.loopSubtaskModel,
+      loopSubtaskCli: prompt.loopSubtaskCli,
+      loopSubtaskConfigId: prompt.loopSubtaskConfigId,
       loopMainThinkingMode: prompt.loopMainThinkingMode,
       loopSubtaskThinkingMode: prompt.loopSubtaskThinkingMode,
     });
@@ -233,6 +235,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       model: binding.model,
       loopMainModel: binding.loopMainModel,
       loopSubtaskModel: binding.loopSubtaskModel,
+      ...(binding.loopSubtaskCli ? { loopSubtaskCli: binding.loopSubtaskCli } : {}),
+      ...(binding.loopSubtaskConfigId ? { loopSubtaskConfigId: binding.loopSubtaskConfigId } : {}),
       loopMainThinkingMode: binding.loopMainThinkingMode,
       loopSubtaskThinkingMode: binding.loopSubtaskThinkingMode,
       taskRole: role,
@@ -512,6 +516,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       model: input.model,
       loopMainModel: input.loopMainModel,
       loopSubtaskModel: input.loopSubtaskModel,
+      loopSubtaskCli: input.loopSubtaskCli,
+      loopSubtaskConfigId: input.loopSubtaskConfigId,
       loopMainThinkingMode: input.loopMainThinkingMode,
       loopSubtaskThinkingMode: input.loopSubtaskThinkingMode,
     }, target, {

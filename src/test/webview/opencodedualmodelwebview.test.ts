@@ -267,7 +267,8 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
   assert.match(group, /<div class="open-code-model-row">/);
   assert.doesNotMatch(group, /<label class="open-code-model-row"/);
   assert.match(group, /<label class="open-code-model-label" for="openCodePrimaryModelSelect">主模型<\/label>/);
-  assert.match(group, /<label class="open-code-model-label" for="openCodeSmallModelSelect">子模型<\/label>/);
+  assert.match(group, /<label class="open-code-model-label" for="openCodeLoopSubtaskCliSelect">子模型<\/label>/);
+  assert.match(group, /id="openCodeLoopSubtaskCliSelect"[^>]*aria-label="子模型 CLI 分组"/);
   assert.match(group, /id="openCodePrimaryModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodeSmallModelSelect"[^>]*class="model-select"/);
   assert.match(group, /id="openCodePrimaryThinkingMode"[^>]*class="thinking-select"/);

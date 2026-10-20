@@ -534,15 +534,38 @@
     {
       "id": "plugin.rule.loop_graph_continue_model_choice",
       "name": "Loop 与 Graph 继续时可选择主子模型",
-      "description": "Loop 群聊、Loop+ 群聊和 Graph 运行图点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop / Loop+ 继续弹窗打开时立即刷新当前主子模型，弹窗打开期间继续应用配置补丁并保留说明、选择、焦点和显隐；原配置不可用时回退新配置。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会写回 Loop modelRouting 或 Graph modelRouting，并用于后续续跑；未记录原模型时不能伪造成保持原模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
+      "description": "Loop 群聊、Loop+ 群聊和 Graph 运行图点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop / Loop+ 继续弹窗打开时立即刷新当前主子模型，弹窗打开期间继续应用配置补丁并保留说明、选择、焦点和显隐；原配置不可用时回退新配置。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案、子 CLI、对应配置和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会重新读取当前子 CLI 分组所选配置，并写回完整 Loop modelRouting 或 Graph modelRouting，用于后续续跑；未记录原模型时不能伪造成保持原模型。Claude 没有模型字符串时仍是有效子路由，继续摘要用默认模型区分，不能把无模型当成无路由，也不能补成主 CLI 的模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/continueModelChoice.ts"},
+        {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/webview/loopDebatePanel.ts"},
         {"path": "src/panelDiagnostics.ts"},
         {"path": "src/extensionHost/graphControls.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_graph_cross_cli_subtask",
+      "name": "Loop 与 Graph 子任务可绑定另一个 CLI",
+      "description": "Loop、Loop+ 和 Graph 的子任务可以选择另一个 CLI 分组当前选中配置下的模型，并只用该 CLI 执行。角色路由用可选 cli 与 configId 扩展现有记录，请求链使用 loopSubtaskCli 与 loopSubtaskConfigId。缺省跟随主 CLI。子 CLI 选择按主配置保存，不改主 CLI、主配置、主模型或目标 CLI 的主模型角色。显式跨 CLI 的配置缺失、读取失败、非法 CLI 或与执行目标不一致时失败，不能静默改跑主 CLI，也不能回退主模型、主 configId、主 sessionId、主思考档或 OpenCode variant。Claude 没有模型选择，但仍可作为主 CLI 或子 CLI；未指定模型时使用目标 CLI 自己的默认。Claude 子任务继续使用 bypassPermissions；隔离项目指令时保留 user settings，以免屏蔽用户级 MCP / 搜索工具。经典 Loop 创建目标 CLI 的独立子 Tab；Loop+ attempt 的 targetCli 使用绑定子路由；Graph 只有 executor 节点切换执行 CLI，plan 与 summary 仍用 planner。主任务的 CLI、会话、任务存储归属、workspaceKey 和父子关联保持不变。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.local_cli", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "src/subtaskCliRoute.ts"},
+        {"path": "src/modelSelectionStore.ts"},
+        {"path": "src/loopTaskStore.ts"},
+        {"path": "src/graph/types.ts"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
+        {"path": "src/extensionHost/graphRuntime.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/interactive/claudeRunner.ts"},
+        {"path": "src/webview/viewContentHtml.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "ARCHITECTURE.md"}
       ]
     },
     {

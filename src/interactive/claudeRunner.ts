@@ -468,6 +468,266 @@ function isTerminalClaudeSessionResult(message: any): boolean {
   return subtype === "error_max_turns" || subtype === "error_max_budget_usd";
 }
 
+type ClaudeTurnEventStrategy = (message: any) => boolean;
+
+class ClaudeTurnEventProcessor {
+  private lastAssistantText = "";
+  private readonly seenToolUseTraceIds = new Set<string>();
+  private readonly seenToolResultTraceIds = new Set<string>();
+  private readonly seenTodoToolUseIds = new Set<string>();
+  private readonly seenTodoToolResultIds = new Set<string>();
+  private readonly toolUseNames = new Map<string, string>();
+  private readonly seenThinkingKeys = new Set<string>();
+  private readonly taskListTracker = new ClaudeTaskListTracker();
+  private readonly strategies: ReadonlyMap<string, ClaudeTurnEventStrategy>;
+
+  public constructor(private readonly streamHandlers: ClaudeStreamHandlers) {
+    this.strategies = new Map<string, ClaudeTurnEventStrategy>([
+      ["stream_event", (message) => this.handleStreamEvent(message)],
+      ["assistant", (message) => this.handleAssistant(message)],
+      ["user", (message) => this.handleUser(message)],
+      ["tool_progress", () => false],
+      ["system", (message) => this.handleSystem(message)],
+      ["result", (message) => this.handleResult(message)],
+    ]);
+  }
+
+  public handle(message: any): boolean {
+    this.streamHandlers.onEvent?.(message);
+    const type = typeof message?.type === "string" ? message.type : "";
+    const strategy = this.strategies.get(type);
+    if (!strategy) {
+      return false;
+    }
+    return strategy(message);
+  }
+
+  private emitTaskListUpdate(items: { text: string; done: boolean }[] | null): void {
+    if (items) {
+      this.streamHandlers.onTaskListUpdate(items);
+    }
+  }
+
+  private emitThinkingTrace(
+    source: string,
+    messageId: string | undefined,
+    block: Record<string, unknown>,
+    blockIndex: number
+  ): void {
+    const rawText = extractThinkingText(block);
+    const normalizedText = rawText.trim();
+    if (!normalizedText) {
+      return;
+    }
+    const signature = typeof block.signature === "string" ? block.signature : "";
+    const key = [source, messageId ?? "", signature || normalizedText, String(blockIndex)].join("::");
+    if (this.seenThinkingKeys.has(key)) {
+      return;
+    }
+    this.seenThinkingKeys.add(key);
+    const content = /^(?:thinking|思考)\b/i.test(normalizedText)
+      ? normalizedText
+      : `thinking ${normalizedText}`;
+    this.streamHandlers.onTrace(content, "thinking", { merge: false });
+  }
+
+  private emitToolUseTrace(toolUse: ClaudeToolUseEvent): void {
+    if (toolUse.id && toolUse.name) {
+      this.toolUseNames.set(toolUse.id, toolUse.name);
+    }
+    this.emitTaskListUpdate(this.taskListTracker.recordToolUse(toolUse));
+    if (toolUse.name === "TodoWrite") {
+      const items = extractClaudeTodoWriteItems(toolUse.input);
+      if (items.length) {
+        if (toolUse.id) {
+          if (!this.seenTodoToolUseIds.has(toolUse.id)) {
+            this.seenTodoToolUseIds.add(toolUse.id);
+            this.streamHandlers.onTaskListUpdate(items);
+          }
+        } else {
+          this.streamHandlers.onTaskListUpdate(items);
+        }
+      }
+    }
+    if (toolUse.id && this.seenToolUseTraceIds.has(toolUse.id)) {
+      return;
+    }
+    if (toolUse.id) {
+      this.seenToolUseTraceIds.add(toolUse.id);
+    }
+    this.streamHandlers.onTrace(
+      formatClaudeToolUseMessage(toolUse.name, toolUse.input),
+      "tool-use",
+      { merge: false }
+    );
+  }
+
+  private emitToolResultTrace(toolResult: ClaudeToolResultEvent): void {
+    const resolvedToolName =
+      toolResult.toolName
+      ?? (toolResult.toolUseId ? this.toolUseNames.get(toolResult.toolUseId) : undefined);
+    this.emitTaskListUpdate(this.taskListTracker.recordToolResult({
+      toolUseId: toolResult.toolUseId,
+      toolName: resolvedToolName,
+      content: toolResult.content,
+    }));
+    if (resolvedToolName === "TodoWrite") {
+      const items = extractClaudeTodoWriteItems(toolResult.content);
+      if (items.length) {
+        if (toolResult.toolUseId) {
+          if (!this.seenTodoToolResultIds.has(toolResult.toolUseId)) {
+            this.seenTodoToolResultIds.add(toolResult.toolUseId);
+            this.streamHandlers.onTaskListUpdate(items);
+          }
+        } else {
+          this.streamHandlers.onTaskListUpdate(items);
+        }
+      }
+    }
+    if (toolResult.toolUseId && this.seenToolResultTraceIds.has(toolResult.toolUseId)) {
+      return;
+    }
+    if (toolResult.toolUseId) {
+      this.seenToolResultTraceIds.add(toolResult.toolUseId);
+    }
+    this.streamHandlers.onTrace(
+      formatClaudeToolResultMessage(toolResult.content, resolvedToolName),
+      "normal",
+      { merge: false }
+    );
+  }
+
+  private processMessageBlocks(
+    blocks: Record<string, unknown>[],
+    source: string,
+    messageId?: string
+  ): void {
+    blocks.forEach((block, blockIndex) => {
+      this.emitThinkingTrace(source, messageId, block, blockIndex);
+      const toolUse = extractToolUseEvent(block);
+      if (toolUse) {
+        this.emitToolUseTrace(toolUse);
+        return;
+      }
+      const toolResult = extractToolResultEvent(block);
+      if (toolResult) {
+        this.emitToolResultTrace(toolResult);
+      }
+    });
+  }
+
+  private handleStreamEvent(message: any): boolean {
+    if (!message?.event) {
+      return false;
+    }
+    const event = message.event as any;
+    const deltaText = extractDeltaTextFromStreamEvent(event);
+    if (deltaText) {
+      this.streamHandlers.onAssistantDelta(deltaText);
+    }
+    const eventBlocks = extractBlocksFromStreamEvent(event);
+    if (eventBlocks.length) {
+      const streamMessageId =
+        typeof event?.message?.id === "string"
+          ? event.message.id
+          : typeof event?.id === "string"
+            ? event.id
+            : undefined;
+      this.processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
+    }
+    return false;
+  }
+
+  private handleAssistant(message: any): boolean {
+    if (!message?.message) {
+      return false;
+    }
+    const fullText = extractTextFromMessage(message.message);
+    if (fullText) {
+      const delta = fullText.startsWith(this.lastAssistantText)
+        ? fullText.slice(this.lastAssistantText.length)
+        : fullText;
+      if (delta) {
+        this.streamHandlers.onAssistantDelta(delta);
+      }
+      this.lastAssistantText = fullText;
+    }
+    const blocks = getMessageContentBlocks(message.message);
+    if (blocks.length) {
+      const messageId = typeof message.message?.id === "string" ? message.message.id : undefined;
+      this.processMessageBlocks(blocks, "assistant", messageId);
+    }
+    return false;
+  }
+
+  private handleUser(message: any): boolean {
+    if (!message?.message) {
+      return false;
+    }
+    const blocks = getMessageContentBlocks(message.message);
+    if (blocks.length) {
+      const messageId = typeof message.message?.id === "string" ? message.message.id : undefined;
+      this.processMessageBlocks(blocks, "user", messageId);
+    }
+    if (Object.prototype.hasOwnProperty.call(message, "tool_use_result")) {
+      const toolUseResult = (message as Record<string, unknown>).tool_use_result;
+      const toolUseId = extractFirstToolResultUseId(blocks);
+      const toolName = toolUseId ? this.toolUseNames.get(toolUseId) : undefined;
+      this.emitTaskListUpdate(this.taskListTracker.recordToolResult({
+        toolUseId,
+        toolName,
+        content: toolUseResult,
+      }));
+      if (hasClaudeTodoWriteResultShape(toolUseResult)) {
+        const items = extractClaudeTodoWriteItems(toolUseResult);
+        if (items.length) {
+          this.streamHandlers.onTaskListUpdate(items);
+        }
+      }
+    }
+    return false;
+  }
+
+  private handleSystem(message: any): boolean {
+    if (message?.subtype === "hook_response") {
+      const stdout = typeof message.stdout === "string" ? message.stdout : "";
+      const stderr = typeof message.stderr === "string" ? message.stderr : "";
+      const content = [
+        message.hook_name ? `hook ${message.hook_name}` : "hook",
+        stdout && `stdout:\n${stdout}`,
+        stderr && `stderr:\n${stderr}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      if (content.trim()) {
+        this.streamHandlers.onTrace(content);
+      }
+      return false;
+    }
+    if (message?.subtype === "status") {
+      if (message.status) {
+        this.streamHandlers.onTrace(`status: ${String(message.status)}`);
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private handleResult(message: any): boolean {
+    const sessionNotFound = extractSessionNotFoundErrorMessage(message);
+    if (sessionNotFound) {
+      const error = new Error(sessionNotFound) as Error & { code?: string };
+      error.code = "CLAUDE_SESSION_NOT_FOUND";
+      throw error;
+    }
+    const resultText = typeof message.result === "string" ? message.result : "";
+    if (resultText && !this.lastAssistantText) {
+      this.streamHandlers.onAssistantDelta(resultText);
+    }
+    return true;
+  }
+}
+
 export class ClaudeInteractiveRunner {
   public readonly cli: CliName = "claude";
   private disposed = false;
@@ -671,129 +931,7 @@ export class ClaudeInteractiveRunner {
       rejectTurn = reject;
     });
     done.catch(() => undefined);
-    let lastAssistantText = "";
-    const seenToolUseTraceIds = new Set<string>();
-    const seenToolResultTraceIds = new Set<string>();
-    const seenTodoToolUseIds = new Set<string>();
-    const seenTodoToolResultIds = new Set<string>();
-    const toolUseNames = new Map<string, string>();
-    const seenThinkingKeys = new Set<string>();
-    const taskListTracker = new ClaudeTaskListTracker();
-
-    const emitTaskListUpdate = (items: { text: string; done: boolean }[] | null): void => {
-      if (items) {
-        handlers.onTaskListUpdate(items);
-      }
-    };
-
-    const emitThinkingTrace = (
-      source: string,
-      messageId: string | undefined,
-      block: Record<string, unknown>,
-      blockIndex: number
-    ): void => {
-      const rawText = extractThinkingText(block);
-      const normalizedText = rawText.trim();
-      if (!normalizedText) {
-        return;
-      }
-      const signature = typeof block.signature === "string" ? block.signature : "";
-      const key = [source, messageId ?? "", signature || normalizedText, String(blockIndex)].join("::");
-      if (seenThinkingKeys.has(key)) {
-        return;
-      }
-      seenThinkingKeys.add(key);
-      const content = /^(?:thinking|思考)\b/i.test(normalizedText)
-        ? normalizedText
-        : `thinking ${normalizedText}`;
-      handlers.onTrace(content, "thinking", { merge: false });
-    };
-
-    const emitToolUseTrace = (toolUse: ClaudeToolUseEvent): void => {
-      if (toolUse.id && toolUse.name) {
-        toolUseNames.set(toolUse.id, toolUse.name);
-      }
-      emitTaskListUpdate(taskListTracker.recordToolUse(toolUse));
-      if (toolUse.name === "TodoWrite") {
-        const items = extractClaudeTodoWriteItems(toolUse.input);
-        if (items.length) {
-          if (toolUse.id) {
-            if (!seenTodoToolUseIds.has(toolUse.id)) {
-              seenTodoToolUseIds.add(toolUse.id);
-              handlers.onTaskListUpdate(items);
-            }
-          } else {
-            handlers.onTaskListUpdate(items);
-          }
-        }
-      }
-      if (toolUse.id && seenToolUseTraceIds.has(toolUse.id)) {
-        return;
-      }
-      if (toolUse.id) {
-        seenToolUseTraceIds.add(toolUse.id);
-      }
-      handlers.onTrace(
-        formatClaudeToolUseMessage(toolUse.name, toolUse.input),
-        "tool-use",
-        { merge: false }
-      );
-    };
-
-    const emitToolResultTrace = (toolResult: ClaudeToolResultEvent): void => {
-      const resolvedToolName =
-        toolResult.toolName
-        ?? (toolResult.toolUseId ? toolUseNames.get(toolResult.toolUseId) : undefined);
-      emitTaskListUpdate(taskListTracker.recordToolResult({
-        toolUseId: toolResult.toolUseId,
-        toolName: resolvedToolName,
-        content: toolResult.content,
-      }));
-      if (resolvedToolName === "TodoWrite") {
-        const items = extractClaudeTodoWriteItems(toolResult.content);
-        if (items.length) {
-          if (toolResult.toolUseId) {
-            if (!seenTodoToolResultIds.has(toolResult.toolUseId)) {
-              seenTodoToolResultIds.add(toolResult.toolUseId);
-              handlers.onTaskListUpdate(items);
-            }
-          } else {
-            handlers.onTaskListUpdate(items);
-          }
-        }
-      }
-      if (toolResult.toolUseId && seenToolResultTraceIds.has(toolResult.toolUseId)) {
-        return;
-      }
-      if (toolResult.toolUseId) {
-        seenToolResultTraceIds.add(toolResult.toolUseId);
-      }
-      handlers.onTrace(
-        formatClaudeToolResultMessage(toolResult.content, resolvedToolName),
-        "normal",
-        { merge: false }
-      );
-    };
-
-    const processMessageBlocks = (
-      blocks: Record<string, unknown>[],
-      source: string,
-      messageId?: string
-    ): void => {
-      blocks.forEach((block, blockIndex) => {
-        emitThinkingTrace(source, messageId, block, blockIndex);
-        const toolUse = extractToolUseEvent(block);
-        if (toolUse) {
-          emitToolUseTrace(toolUse);
-          return;
-        }
-        const toolResult = extractToolResultEvent(block);
-        if (toolResult) {
-          emitToolResultTrace(toolResult);
-        }
-      });
-    };
-
+    const events = new ClaudeTurnEventProcessor(handlers);
     const turn: ClaudeActiveTurn = {
       abortGeneration,
       disposeGeneration,
@@ -802,113 +940,7 @@ export class ClaudeInteractiveRunner {
       resolve: () => resolveTurn?.(),
       reject: (error) => rejectTurn?.(error),
       done,
-      handle: (msg: any): boolean => {
-        handlers.onEvent?.(msg);
-        if (msg?.type === "stream_event" && msg.event) {
-          const event = msg.event as any;
-          const deltaText = extractDeltaTextFromStreamEvent(event);
-          if (deltaText) {
-            handlers.onAssistantDelta(deltaText);
-          }
-          const eventBlocks = extractBlocksFromStreamEvent(event);
-          if (eventBlocks.length) {
-            const streamMessageId =
-              typeof event?.message?.id === "string"
-                ? event.message.id
-                : typeof event?.id === "string"
-                  ? event.id
-                  : undefined;
-            processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
-          }
-          return false;
-        }
-
-        if (msg?.type === "assistant" && msg.message) {
-          const fullText = extractTextFromMessage(msg.message);
-          if (fullText) {
-            const delta = fullText.startsWith(lastAssistantText)
-              ? fullText.slice(lastAssistantText.length)
-              : fullText;
-            if (delta) {
-              handlers.onAssistantDelta(delta);
-            }
-            lastAssistantText = fullText;
-          }
-          const blocks = getMessageContentBlocks(msg.message);
-          if (blocks.length) {
-            const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
-            processMessageBlocks(blocks, "assistant", messageId);
-          }
-          return false;
-        }
-
-        if (msg?.type === "user" && msg.message) {
-          const blocks = getMessageContentBlocks(msg.message);
-          if (blocks.length) {
-            const messageId = typeof msg.message?.id === "string" ? msg.message.id : undefined;
-            processMessageBlocks(blocks, "user", messageId);
-          }
-          if (Object.prototype.hasOwnProperty.call(msg, "tool_use_result")) {
-            const toolUseResult = (msg as Record<string, unknown>).tool_use_result;
-            const toolUseId = extractFirstToolResultUseId(blocks);
-            const toolName = toolUseId ? toolUseNames.get(toolUseId) : undefined;
-            emitTaskListUpdate(taskListTracker.recordToolResult({
-              toolUseId,
-              toolName,
-              content: toolUseResult,
-            }));
-            if (hasClaudeTodoWriteResultShape(toolUseResult)) {
-              const items = extractClaudeTodoWriteItems(toolUseResult);
-              if (items.length) {
-                handlers.onTaskListUpdate(items);
-              }
-            }
-          }
-          return false;
-        }
-
-        if (msg?.type === "tool_progress") {
-          return false;
-        }
-
-        if (msg?.type === "system" && msg.subtype === "hook_response") {
-          const stdout = typeof msg.stdout === "string" ? msg.stdout : "";
-          const stderr = typeof msg.stderr === "string" ? msg.stderr : "";
-          const content = [
-            msg.hook_name ? `hook ${msg.hook_name}` : "hook",
-            stdout && `stdout:\n${stdout}`,
-            stderr && `stderr:\n${stderr}`,
-          ]
-            .filter(Boolean)
-            .join("\n");
-          if (content.trim()) {
-            handlers.onTrace(content);
-          }
-          return false;
-        }
-
-        if (msg?.type === "system" && msg.subtype === "status") {
-          if (msg.status) {
-            handlers.onTrace(`status: ${String(msg.status)}`);
-          }
-          return false;
-        }
-
-        if (msg?.type === "result") {
-          const sessionNotFound = extractSessionNotFoundErrorMessage(msg);
-          if (sessionNotFound) {
-            const error = new Error(sessionNotFound) as Error & { code?: string };
-            error.code = "CLAUDE_SESSION_NOT_FOUND";
-            throw error;
-          }
-          const resultText = typeof msg.result === "string" ? msg.result : "";
-          if (resultText && !lastAssistantText) {
-            handlers.onAssistantDelta(resultText);
-          }
-          return true;
-        }
-        return false;
-      },
+      handle: (message) => events.handle(message),
     };
     this.activeTurn = turn;
     return turn;
@@ -943,7 +975,7 @@ export class ClaudeInteractiveRunner {
       cwd,
       model,
       permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
-      settingSources: this.options.isolateProjectInstructions ? [] : ["user", "project", "local"],
+      settingSources: this.options.isolateProjectInstructions ? ["user"] : ["user", "project", "local"],
       pathToClaudeCodeExecutable: this.options.entrypoint,
       maxTurns: 200,
       env: {
@@ -973,6 +1005,7 @@ export class ClaudeInteractiveRunner {
       interactiveMode: this.options.interactiveMode,
       sessionId: this.options.sessionId,
       isolateProjectInstructions: this.options.isolateProjectInstructions === true,
+      settingSources: queryOptions.settingSources,
       resumed: Boolean(this.options.sessionId),
     });
     const query = queryFn({ prompt: input, options: queryOptions }) as ClaudeQuery;

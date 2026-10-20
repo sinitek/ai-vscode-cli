@@ -22,6 +22,8 @@ import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import type { LoopDebateRoundRecord } from "./loopDebate";
 import { sanitizePathSegment } from "./shared/pathSegments";
+import { parseCliNameField } from "./subtaskCliRoute";
+import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -159,6 +161,8 @@ export type LoopTaskRecord = {
 };
 
 export type LoopTaskModelRoute = {
+  cli?: CliName;
+  configId?: string;
   model?: string;
   fallback?: string;
 };
@@ -964,13 +968,20 @@ function normalizeLoopTaskModelRoute(value: unknown): LoopTaskModelRoute | null 
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
-  const raw = value as { model?: unknown; fallback?: unknown };
+  const raw = value as { cli?: unknown; configId?: unknown; model?: unknown; fallback?: unknown };
+  const parsedCli = parseCliNameField(raw.cli);
+  if (!parsedCli.ok) {
+    return { fallback: INVALID_SUBTASK_CLI_ROUTE };
+  }
+  const configId = typeof raw.configId === "string" && raw.configId.trim() ? raw.configId.trim() : undefined;
   const model = typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined;
   const fallback = typeof raw.fallback === "string" && raw.fallback.trim() ? raw.fallback.trim() : undefined;
-  if (!model && !fallback) {
+  if (!parsedCli.cli && !configId && !model && !fallback) {
     return null;
   }
   return {
+    ...(parsedCli.cli ? { cli: parsedCli.cli } : {}),
+    ...(configId ? { configId } : {}),
     ...(model ? { model } : {}),
     ...(fallback ? { fallback } : {}),
   };

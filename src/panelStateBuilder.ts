@@ -141,6 +141,7 @@ export type PanelStateBuilderDeps = {
   openCodeThinking: PanelState["openCodeThinking"];
   openCodeSmallThinking?: PanelState["openCodeSmallThinking"];
   openCodeModels?: PanelState["openCodeModels"];
+  loopSubtaskOpenCodeModels?: PanelState["loopSubtaskOpenCodeModels"];
   getWorkspaceInteractiveMode: (cli: CliName) => PanelState["interactiveMode"];
   isInteractiveSupported: typeof isInteractiveSupported;
   getProjectRulePaths: () => Record<CliName, string | null>;
@@ -246,6 +247,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     openCodeThinking: deps.openCodeThinking,
     openCodeSmallThinking: deps.openCodeSmallThinking ?? deps.openCodeThinking,
     openCodeModels: normalizeOpenCodeModelsForPanelState(deps.openCodeModels),
+    loopSubtaskOpenCodeModels: normalizeOpenCodeModelsForPanelState(deps.loopSubtaskOpenCodeModels),
     interactiveMode: deps.getWorkspaceInteractiveMode(deps.currentCli),
     interactive: {
       supported: deps.isInteractiveSupported(deps.currentCli),

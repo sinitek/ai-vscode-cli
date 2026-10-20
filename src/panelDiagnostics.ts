@@ -768,11 +768,15 @@ type LoopDebateChatPanelDeps = {
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
+  getSelectedLoopSubtaskCli?: (configId: string | null) => CliName | null;
   captureCurrentLoopOriginProfile?: (input: {
     cli: CliName;
     configId: string | null;
     mainModel: string | null;
     subtaskModel: string | null;
+    subtaskCli?: CliName | null;
+    subtaskConfigId?: string | null;
+    subtaskThinkingMode?: ThinkingMode;
   }) => LoopTaskOriginProfile | null;
   restoreOriginalLoopRuntime?: (task: LoopTaskRecord) => Promise<LoopOriginRestoreResult>;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
@@ -864,6 +868,8 @@ export function buildLoopDebateChatPanelState(
         configId: deps.getActiveConfigIdForCli(cli),
         getSelectedCliModel: deps.getSelectedCliModel,
         getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+        getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
+        getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
       }),
     },
   };
@@ -1443,7 +1449,13 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
       configId: activeConfigId,
       getSelectedCliModel: deps.getSelectedCliModel,
       getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+      getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
+      getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
     });
+    if (currentModels.unavailableReason) {
+      deps.showWarningMessage(currentModels.unavailableReason);
+      return;
+    }
     const selectedModels = resolveLoopContinueModelPair({
       modelSource,
       original: emptyContinueModelPair(),
@@ -1457,6 +1469,8 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
           configId: activeConfigId,
           mainModel: currentModels.main,
           subtaskModel: currentModels.subtask,
+          subtaskCli: currentModels.subtaskCli,
+          subtaskConfigId: currentModels.subtaskConfigId,
         }) ?? undefined;
         deps.updateTaskRecord(task.id, {
           modelRouting: nextRouting,

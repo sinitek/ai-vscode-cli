@@ -14,6 +14,7 @@ import {
   type OpenCodeModelRoleInput,
 } from "./cli/opencodeconfigmodels";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
+import { parseCliName } from "./subtaskCliRoute";
 
 export type LoopTaskRoleForModelSelection = "main" | "subtask";
 
@@ -29,6 +30,7 @@ export type CliModelStore = {
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
   openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>>;
   selectedLoopByConfigId: Record<string, Partial<Record<LoopTaskRoleForModelSelection, string>>>;
+  selectedLoopSubtaskCliByConfigId: Record<string, CliName>;
   loopRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
   openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>;
 };
@@ -150,7 +152,7 @@ function readOpenCodeRoleValue(
 }
 
 export function ensureCliModelStore(
-  store?: CliModelStore,
+  store?: Partial<CliModelStore> | null,
   options?: Pick<ModelSelectionStoreOptions, "defaultModelStoreKey" | "isThinkingMode" | "normalizeThinkingModeForCli">
 ): CliModelStore {
   store = store ? migrateLegacyLoopJson(store).value : store;
@@ -162,6 +164,7 @@ export function ensureCliModelStore(
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
     selectedLoopByConfigId: {},
+    selectedLoopSubtaskCliByConfigId: {},
     loopRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
   };
@@ -202,6 +205,15 @@ export function ensureCliModelStore(
       }
       if (Object.keys(nextSelection).length > 0) {
         normalized.selectedLoopByConfigId[configId] = nextSelection;
+      }
+    }
+  }
+  const storedSubtaskCliByConfigId = store?.selectedLoopSubtaskCliByConfigId;
+  if (storedSubtaskCliByConfigId && typeof storedSubtaskCliByConfigId === "object") {
+    for (const [configId, rawCli] of Object.entries(storedSubtaskCliByConfigId)) {
+      const cli = parseCliName(rawCli);
+      if (configId && cli) {
+        normalized.selectedLoopSubtaskCliByConfigId[configId] = cli;
       }
     }
   }
@@ -676,6 +688,14 @@ export function getSelectedLoopCliModelFromStore(
   return optionsForRole[0] ?? null;
 }
 
+function loopThinkingStorageKey(cli: CliName, model: string | null | undefined): string | null {
+  return normalizeCliModelName(model) ?? (cli === "claude" ? "__default__" : null);
+}
+
+function supportsLoopRoleThinkingStorage(cli: CliName): boolean {
+  return supportsLoopRoleModelStorage(cli) || cli === "claude";
+}
+
 export function getSelectedLoopThinkingModeFromStore(
   store: CliModelStore,
   cli: CliName,
@@ -683,8 +703,8 @@ export function getSelectedLoopThinkingModeFromStore(
   model: string | null | undefined,
   configId: string | null
 ): ThinkingMode | null {
-  const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !supportsLoopRoleModelStorage(cli) || !normalizedModel) {
+  const normalizedModel = loopThinkingStorageKey(cli, model);
+  if (!configId || !supportsLoopRoleThinkingStorage(cli) || !normalizedModel) {
     return null;
   }
   const roleThinking = store?.loopThinkingByConfigId?.[configId]?.[role];
@@ -704,8 +724,8 @@ export function setSelectedLoopThinkingModeInStore(
   thinkingMode: ThinkingMode | null,
   configId: string | null
 ): CliModelStore {
-  const normalizedModel = normalizeCliModelName(model);
-  if (!configId || !supportsLoopRoleModelStorage(cli) || !normalizedModel) {
+  const normalizedModel = loopThinkingStorageKey(cli, model);
+  if (!configId || !supportsLoopRoleThinkingStorage(cli) || !normalizedModel) {
     return ensureCliModelStore(store);
   }
   const nextStore = ensureCliModelStore(store);
@@ -787,6 +807,34 @@ export function selectCliLoopModelInStore(
   nextSelection[role] = normalizedModel;
   nextStore.selectedLoopByConfigId[configId] = nextSelection;
   return ensureCliModelStore(nextStore);
+}
+
+export function getSelectedLoopSubtaskCliFromStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): CliName | null {
+  if (!mainConfigId) {
+    return null;
+  }
+  const normalized = ensureCliModelStore(store);
+  return normalized.selectedLoopSubtaskCliByConfigId[mainConfigId] ?? null;
+}
+
+export function selectLoopSubtaskCliInStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+  cli: CliName | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!mainConfigId) {
+    return nextStore;
+  }
+  if (!cli) {
+    delete nextStore.selectedLoopSubtaskCliByConfigId[mainConfigId];
+    return nextStore;
+  }
+  nextStore.selectedLoopSubtaskCliByConfigId[mainConfigId] = cli;
+  return nextStore;
 }
 
 export function setCliModelLoopRoleInStore(
@@ -1115,8 +1163,10 @@ export function buildModelState(
   const selectedLoopByCli: NonNullable<PanelState["modelState"]["selectedLoopByCli"]> = {};
   const selectedLoopThinkingByCli: NonNullable<PanelState["modelState"]["selectedLoopThinkingByCli"]> = {};
   const loopOptionsByCli: NonNullable<PanelState["modelState"]["loopOptionsByCli"]> = {};
+  const resolvedActiveConfigIdByCli: Partial<Record<CliName, string | null>> = {};
   for (const cli of CLI_LIST) {
     const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
+    resolvedActiveConfigIdByCli[cli] = activeConfigId;
     const managedModels = getManagedModelOptionsForCliFromStore(store, cli, activeConfigId);
     selectedByCli[cli] = getSelectedCliModelFromStore(store, cli, activeConfigId);
     optionsByCli[cli] = getModelOptionsForCliFromStore(store, cli, activeConfigId);
@@ -1155,6 +1205,10 @@ export function buildModelState(
     selectedByCli,
     optionsByCli,
     managedByCli,
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopSubtaskCliByConfigId).length > 0
+      ? { selectedLoopSubtaskCliByConfigId: { ...ensureCliModelStore(store).selectedLoopSubtaskCliByConfigId } }
+      : {}),
+    activeConfigIdByCli: resolvedActiveConfigIdByCli,
     ...(Object.keys(selectedLoopByCli).length > 0 ? { selectedLoopByCli } : {}),
     ...(Object.keys(selectedLoopThinkingByCli).length > 0 ? { selectedLoopThinkingByCli } : {}),
     ...(Object.keys(loopOptionsByCli).length > 0 ? { loopOptionsByCli } : {}),

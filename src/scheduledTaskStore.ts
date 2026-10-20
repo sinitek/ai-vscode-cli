@@ -27,6 +27,8 @@ export type ScheduledTaskInput = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode?: LoopExecutionMode;
@@ -91,6 +93,8 @@ export function createScheduledTaskRecord(
     ...(normalizeOptionalString(input.model) ? { model: normalizeOptionalString(input.model) } : {}),
     ...(normalizeOptionalString(input.loopMainModel) ? { loopMainModel: normalizeOptionalString(input.loopMainModel) } : {}),
     ...(normalizeOptionalString(input.loopSubtaskModel) ? { loopSubtaskModel: normalizeOptionalString(input.loopSubtaskModel) } : {}),
+    ...(input.loopSubtaskCli ? { loopSubtaskCli: input.loopSubtaskCli } : {}),
+    ...(normalizeOptionalString(input.loopSubtaskConfigId) ? { loopSubtaskConfigId: normalizeOptionalString(input.loopSubtaskConfigId) } : {}),
     ...(input.loopMainThinkingMode ? { loopMainThinkingMode: input.loopMainThinkingMode } : {}),
     ...(input.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: input.loopSubtaskThinkingMode } : {}),
     ...(input.interactiveMode !== "loop_plus" && input.loopExecutionMode
@@ -233,6 +237,8 @@ export function normalizeScheduledTaskRecord(
     ...(normalizeOptionalString(raw.model) ? { model: normalizeOptionalString(raw.model) } : {}),
     ...(normalizeOptionalString(raw.loopMainModel) ? { loopMainModel: normalizeOptionalString(raw.loopMainModel) } : {}),
     ...(normalizeOptionalString(raw.loopSubtaskModel) ? { loopSubtaskModel: normalizeOptionalString(raw.loopSubtaskModel) } : {}),
+    ...(typeof raw.loopSubtaskCli === "string" && deps.isCliName(raw.loopSubtaskCli) ? { loopSubtaskCli: raw.loopSubtaskCli } : {}),
+    ...(normalizeOptionalString(raw.loopSubtaskConfigId) ? { loopSubtaskConfigId: normalizeOptionalString(raw.loopSubtaskConfigId) } : {}),
     ...(typeof raw.loopMainThinkingMode === "string" && (!deps.isThinkingMode || deps.isThinkingMode(raw.loopMainThinkingMode))
       ? { loopMainThinkingMode: raw.loopMainThinkingMode }
       : {}),

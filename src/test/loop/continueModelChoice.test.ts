@@ -79,7 +79,7 @@ test("continue model routing ignores empty records and keeps Graph routing unles
 test("new Loop tasks snapshot the prompt main and subtask models", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
   const createTaskIndex = source.indexOf("task = createLoopTaskRecord(target.cli, input.displayPrompt");
-  const snapshotIndex = source.indexOf("loopModelRoutingFromPromptInput(input)", createTaskIndex);
+  const snapshotIndex = source.indexOf("loopModelRoutingFromPromptInput(input, { mainCli: target.cli })", createTaskIndex);
   const originIndex = source.indexOf("captureLoopOriginProfile(", snapshotIndex);
   assert.ok(createTaskIndex >= 0);
   assert.ok(snapshotIndex > createTaskIndex);

@@ -21,7 +21,8 @@ import {
   type LoopPlusScheduler,
   type LoopPlusSchedulerSnapshot,
 } from "../loopPlusScheduler";
-import type { ThinkingMode } from "../cli/types";
+import type { CliName, ThinkingMode } from "../cli/types";
+import { resolveStoredSubtaskExecution } from "../subtaskCliRoute";
 import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import {
   resolveLoopSchedulingMode,
@@ -62,6 +63,8 @@ export type LoopPlusRunInput = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
 };
@@ -1338,6 +1341,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         round: LOOP_PLUS_ATTEMPT_ROUND,
         communicationFile,
       });
+      const subtaskExecution = resolveLoopPlusAttemptExecution(runtime);
+      if (subtaskExecution.unavailableReason) {
+        applyFinish(runtime, {
+          subtaskId: record.subtaskId,
+          attemptId: record.attemptId,
+          outcome: "failed",
+          detail: subtaskExecution.unavailableReason,
+        });
+        return;
+      }
       const request: LoopPlusAttemptRequest = {
         taskId: runtime.taskId,
         subtaskId: record.subtaskId,
@@ -1352,7 +1365,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         conflictGroup: record.conflictGroup ?? undefined,
         communicationFile,
         round: LOOP_PLUS_ATTEMPT_ROUND,
-        targetCli: runtime.cli,
+        targetCli: subtaskExecution.cli,
       };
       let handle: LoopPlusAttemptHandle;
       try {
@@ -1401,6 +1414,18 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         runtime.launching.delete(record.attemptId);
       }
     }
+  }
+
+
+  function resolveLoopPlusAttemptExecution(runtime: ParentRuntime) {
+    const task = deps.readTask(runtime.taskId);
+    return resolveStoredSubtaskExecution({
+      mainCli: runtime.cli,
+      route: task?.modelRouting?.subtask,
+      routeFallback: task?.modelRouting?.subtask.fallback,
+      prompt: runtime.prompt,
+      originThinkingMode: task?.originProfile?.subtaskThinkingMode,
+    });
   }
 
   function abandonUnstarted(runtime: ParentRuntime, record: LoopPlusExecutionRecord): void {

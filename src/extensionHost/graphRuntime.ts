@@ -8,6 +8,7 @@ import {
   type ContinueModelPair,
 } from "../continueModelChoice";
 import { normalizeCliModelName } from "../modelSelectionStore";
+import { INVALID_SUBTASK_CLI_ROUTE, parseCliName, resolveStoredSubtaskExecution } from "../subtaskCliRoute";
 import { resolveLoopSubtaskThinkingMode } from "../loopSubtaskThinking";
 import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import { appendGraphEvent } from "../graph/graphEvents";
@@ -63,6 +64,8 @@ export type PromptRunInput = {
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
+  loopSubtaskCli?: CliName;
+  loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
   loopMainModelFallback?: string;
@@ -107,6 +110,7 @@ export type GraphRuntimeHostDeps = {
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getSelectedLoopCliModel: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   getSelectedLoopThinkingMode: (cli: CliName, role: "main" | "subtask", model?: string | null, configId?: string | null) => ThinkingMode | null;
+  getSelectedLoopSubtaskCli?: (configId: string | null) => CliName | null;
   normalizeThinkingModeForCli: (cli: CliName, mode: ThinkingMode) => ThinkingMode;
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalLoopSubtaskMaxThinkingMode: () => ThinkingMode;
@@ -139,12 +143,19 @@ function normalizePromptRunModel(value: string | undefined): string | undefined 
 
 function resolvePromptRunModelForRole(input: PromptRunInput, role: GraphModelRole): string | undefined {
   const mainModel = normalizePromptRunModel(input.loopMainModel) ?? normalizePromptRunModel(input.model);
-  const subtaskModel = normalizePromptRunModel(input.loopSubtaskModel)
-    ?? normalizePromptRunModel(input.model)
-    ?? mainModel;
-  return role === "subtask"
-    ? (subtaskModel ?? mainModel)
-    : (mainModel ?? subtaskModel);
+  const subtaskCli = parseCliName(input.loopSubtaskCli);
+  const explicitSubtask = normalizePromptRunModel(input.loopSubtaskModel);
+  const isolated = Boolean(subtaskCli);
+  if (role === "subtask") {
+    if (isolated) {
+      return explicitSubtask;
+    }
+    return explicitSubtask ?? normalizePromptRunModel(input.model) ?? mainModel;
+  }
+  if (isolated && subtaskCli) {
+    return mainModel;
+  }
+  return mainModel ?? explicitSubtask;
 }
 
 function resolvePromptRunThinkingModeForRole(
@@ -152,23 +163,27 @@ function resolvePromptRunThinkingModeForRole(
   cli: CliName,
   role: GraphModelRole,
   model: string | undefined,
-  options: { applySubtaskCap?: boolean } = {}
+  options: { applySubtaskCap?: boolean; configId?: string | null } = {}
 ): ThinkingMode | undefined {
+  const crossCli = Boolean(parseCliName(input.loopSubtaskCli));
   const roleModel = normalizePromptRunModel(model)
-    ?? resolvePromptRunModelForRole(input, role)
-    ?? deps.getSelectedCliModel(cli)
-    ?? undefined;
+    ?? (role === "subtask" && crossCli
+      ? normalizePromptRunModel(input.loopSubtaskModel)
+        ?? deps.getSelectedLoopCliModel(cli, "subtask", options.configId)
+        ?? undefined
+      : resolvePromptRunModelForRole(input, role))
+    ?? (crossCli ? undefined : deps.getSelectedCliModel(cli, options.configId) ?? undefined);
   const explicitThinkingMode = role === "subtask"
     ? input.loopSubtaskThinkingMode
     : input.loopMainThinkingMode;
-  const usesLoopRoleThinking = cli === "codex" || cli === "grok";
+  const usesLoopRoleThinking = cli === "codex" || cli === "grok" || (cli === "claude" && role === "subtask");
   const roleThinkingMode = usesLoopRoleThinking && deps.isThinkingMode(explicitThinkingMode)
     ? deps.normalizeThinkingModeForCli(cli, explicitThinkingMode)
     : usesLoopRoleThinking
-      ? deps.getSelectedLoopThinkingMode(cli, role, roleModel) ?? undefined
+      ? deps.getSelectedLoopThinkingMode(cli, role, roleModel, options.configId) ?? undefined
       : undefined;
   const resolvedThinkingMode = roleThinkingMode
-    ?? (options.applySubtaskCap && role === "subtask"
+    ?? (!crossCli && options.applySubtaskCap && role === "subtask"
       ? deps.getEffectiveThinkingMode(cli, roleModel ?? deps.getSelectedCliModel(cli))
       : undefined);
   if (!resolvedThinkingMode) {
@@ -180,6 +195,10 @@ function resolvePromptRunThinkingModeForRole(
 }
 
 function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRole): string {
+  if (role === "subtask" && parseCliName(input.loopSubtaskCli) && !normalizePromptRunModel(input.loopSubtaskModel)) {
+    return input.loopSubtaskModelFallback
+      ?? "no explicit model selected; CLI default applies";
+  }
   if (role === "main") {
     if (input.loopMainModelFallback) {
       return input.loopMainModelFallback;
@@ -215,6 +234,10 @@ function buildGraphRunModelRouting(input: PromptRunInput): GraphRunModelRoutingR
   const executorModel = resolvePromptRunModelForRole(input, "subtask");
   const plannerFallback = resolvePromptRunModelFallback(input, "main");
   const executorFallback = resolvePromptRunModelFallback(input, "subtask");
+  const executorCli = parseCliName(input.loopSubtaskCli);
+  const executorConfigId = typeof input.loopSubtaskConfigId === "string" && input.loopSubtaskConfigId.trim()
+    ? input.loopSubtaskConfigId.trim()
+    : undefined;
   return {
     planner: {
       role: "main",
@@ -223,6 +246,8 @@ function buildGraphRunModelRouting(input: PromptRunInput): GraphRunModelRoutingR
     },
     executor: {
       role: "subtask",
+      ...(executorCli ? { cli: executorCli } : {}),
+      ...(executorConfigId ? { configId: executorConfigId } : {}),
       ...(executorModel ? { model: executorModel } : {}),
       ...(executorFallback !== "none" ? { fallback: executorFallback } : {}),
     },
@@ -277,6 +302,8 @@ function resolveCurrentLoopModelPairForRuntime(
     configId,
     getSelectedCliModel: deps.getSelectedCliModel,
     getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
+    getSelectedLoopSubtaskCli: (mainConfigId) => deps.getSelectedLoopSubtaskCli?.(mainConfigId) ?? null,
+    getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
   });
 }
 
@@ -292,7 +319,10 @@ function buildCurrentGraphModelRouting(
     },
     executor: {
       role: "subtask",
+      ...(pair.subtaskCli ? { cli: pair.subtaskCli } : {}),
+      ...(pair.subtaskConfigId ? { configId: pair.subtaskConfigId } : {}),
       ...(pair.subtask ? { model: pair.subtask } : {}),
+      ...(pair.unavailableReason ? { fallback: INVALID_SUBTASK_CLI_ROUTE } : {}),
     },
   };
 }
@@ -301,25 +331,38 @@ function resolveGraphResumePromptModels(
   run: GraphRunRecord,
   cli: CliName,
   configId: string | null,
-): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
-  if (cli !== "codex" && cli !== "opencode" && cli !== "grok") {
-    const selectedModel = deps.getSelectedCliModel(cli, configId) ?? undefined;
+): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopSubtaskCli" | "loopSubtaskConfigId" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
+  const executorCli = parseCliName(run.modelRouting?.executor.cli);
+  const crossCli = Boolean(executorCli && executorCli !== cli);
+  const executorConfigId = run.modelRouting?.executor.configId;
+  const supportsMainModels = cli === "codex" || cli === "opencode" || cli === "grok";
+  const selectedModel = deps.getSelectedCliModel(cli, configId) ?? undefined;
+  if (!supportsMainModels && !crossCli) {
     return selectedModel ? { model: selectedModel } : {};
   }
   const loopMainModel = run.modelRouting?.planner.model
     ?? deps.getSelectedLoopCliModel(cli, "main", configId)
     ?? deps.getSelectedCliModel(cli, configId)
     ?? undefined;
-  const loopSubtaskModel = run.modelRouting?.executor.model
-    ?? deps.getSelectedLoopCliModel(cli, "subtask", configId)
-    ?? deps.getSelectedCliModel(cli, configId)
-    ?? loopMainModel
-    ?? undefined;
+  const loopSubtaskModel = crossCli
+    ? run.modelRouting?.executor.model
+      ?? deps.getSelectedLoopCliModel(executorCli as CliName, "subtask", executorConfigId ?? null)
+      ?? deps.getSelectedCliModel(executorCli as CliName, executorConfigId ?? null)
+      ?? undefined
+    : run.modelRouting?.executor.model
+      ?? deps.getSelectedLoopCliModel(cli, "subtask", configId)
+      ?? deps.getSelectedCliModel(cli, configId)
+      ?? loopMainModel
+      ?? undefined;
   return {
     ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
     ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
+    ...(crossCli && executorCli ? { loopSubtaskCli: executorCli } : {}),
+    ...(executorConfigId ? { loopSubtaskConfigId: executorConfigId } : {}),
     ...(run.modelRouting?.planner.fallback ? { loopMainModelFallback: run.modelRouting.planner.fallback } : {}),
-    ...(run.modelRouting?.executor.fallback ? { loopSubtaskModelFallback: run.modelRouting.executor.fallback } : {}),
+    ...(run.modelRouting?.executor.fallback && run.modelRouting.executor.fallback !== INVALID_SUBTASK_CLI_ROUTE
+      ? { loopSubtaskModelFallback: run.modelRouting.executor.fallback }
+      : {}),
   };
 }
 
@@ -336,14 +379,23 @@ async function hydrateOpenCodePromptRoleModels(input: PromptRunInput, cli: CliNa
   const explicitMain = normalizePromptRunModel(input.loopMainModel);
   const explicitSubtask = normalizePromptRunModel(input.loopSubtaskModel);
   const explicitSingle = normalizePromptRunModel(input.model);
-  const loopMainModel = explicitMain ?? explicitSingle ?? roles.main ?? undefined;
-  const loopSubtaskModel = explicitSubtask ?? roles.subtask ?? explicitSingle ?? loopMainModel ?? undefined;
+  const subtaskCli = parseCliName(input.loopSubtaskCli);
+  const subtaskIsOtherCli = Boolean(subtaskCli && subtaskCli !== "opencode");
+  const executingCrossCliSubtask = input.taskRole === "subtask" && subtaskCli === "opencode";
+  const loopMainModel = executingCrossCliSubtask
+    ? undefined
+    : explicitMain ?? explicitSingle ?? roles.main ?? undefined;
+  const loopSubtaskModel = subtaskIsOtherCli
+    ? explicitSubtask
+    : explicitSubtask ?? roles.subtask ?? (executingCrossCliSubtask ? undefined : explicitSingle ?? loopMainModel) ?? undefined;
   return {
     ...input,
-    ...(loopMainModel ? { model: loopMainModel, loopMainModel } : {}),
+    ...(executingCrossCliSubtask
+      ? (loopSubtaskModel ? { model: loopSubtaskModel } : {})
+      : (loopMainModel ? { model: loopMainModel, loopMainModel } : {})),
     ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
-    ...(roles.fallback.main ? { loopMainModelFallback: roles.fallback.main } : {}),
-    ...(roles.fallback.subtask ? { loopSubtaskModelFallback: roles.fallback.subtask } : {}),
+    ...(!executingCrossCliSubtask && roles.fallback.main ? { loopMainModelFallback: roles.fallback.main } : {}),
+    ...(!subtaskIsOtherCli && roles.fallback.subtask ? { loopSubtaskModelFallback: roles.fallback.subtask } : {}),
   };
 }
 
@@ -1099,7 +1151,26 @@ async function executeGraphNodeViaRunPrompt(
   }
 
   const communicationFile = resolveGraphNodeCommunicationFile(request.run, request.node);
-  const graphNodeTarget = deps.createGraphNodeRunTarget(target.cli, request.run.id, request.node.id);
+  const modelRole = request.modelRole
+    ?? request.node.modelRole
+    ?? (request.node.kind === "plan" || request.node.kind === "summary" ? "main" : "subtask");
+  const subtaskExecution = modelRole === "subtask"
+    ? resolveStoredSubtaskExecution({
+      mainCli: target.cli,
+      route: request.run.modelRouting?.executor,
+      routeFallback: request.run.modelRouting?.executor.fallback,
+      prompt: rootInput,
+    })
+    : null;
+  if (subtaskExecution?.unavailableReason) {
+    return {
+      status: "failed" as const,
+      summary: subtaskExecution.unavailableReason,
+      error: subtaskExecution.unavailableReason,
+    };
+  }
+  const executionCli = modelRole === "main" ? target.cli : (subtaskExecution?.cli ?? target.cli);
+  const graphNodeTarget = deps.createGraphNodeRunTarget(executionCli, request.run.id, request.node.id);
   deps.messages.appendSystemMessageForGraph(
     target,
     deps.messages.buildGraphNodeDispatchedText(request.run, request.node, graphNodeTarget, communicationFile),
@@ -1111,12 +1182,22 @@ async function executeGraphNodeViaRunPrompt(
     request.run.id,
   );
 
-  const modelRole = request.modelRole
-    ?? request.node.modelRole
-    ?? (request.node.kind === "plan" || request.node.kind === "summary" ? "main" : "subtask");
-  const selectedModel = request.model ?? resolvePromptRunModelForRole(rootInput, modelRole);
-  const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(rootInput, modelRole);
-  const thinkingModeOverride = resolvePromptRunThinkingModeForRole(rootInput, target.cli, modelRole, selectedModel);
+  const routedInput: PromptRunInput = modelRole === "subtask" && subtaskExecution?.crossCli
+    ? {
+      ...rootInput,
+      loopSubtaskCli: subtaskExecution.cli,
+      loopSubtaskModel: subtaskExecution.model,
+      ...(subtaskExecution.configId ? { loopSubtaskConfigId: subtaskExecution.configId } : {}),
+      ...(subtaskExecution.thinkingMode ? { loopSubtaskThinkingMode: subtaskExecution.thinkingMode } : {}),
+    }
+    : rootInput;
+  const selectedModel = modelRole === "subtask" && subtaskExecution?.crossCli
+    ? subtaskExecution.model
+    : (request.model ?? resolvePromptRunModelForRole(routedInput, modelRole));
+  const modelFallback = request.modelFallback ?? resolvePromptRunModelFallback(routedInput, modelRole);
+  const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, executionCli, modelRole, selectedModel, {
+    configId: modelRole === "subtask" ? subtaskExecution?.configId : deps.getActiveConfigIdForCli(target.cli),
+  });
   appendGraphEvent(request.run.eventsFile, {
     runId: request.run.id,
     type: "run.updated",
@@ -1146,11 +1227,20 @@ async function executeGraphNodeViaRunPrompt(
     await deps.runPrompt({
       displayPrompt: request.prompt,
       modelPrompt: request.prompt,
-      contextTags: rootInput.contextTags,
+      contextTags: routedInput.contextTags,
       model: selectedModel,
-      loopMainModel: rootInput.loopMainModel,
-      loopSubtaskModel: rootInput.loopSubtaskModel,
-      imagePaths: rootInput.imagePaths,
+      loopMainModel: routedInput.loopMainModel,
+      loopSubtaskModel: modelRole === "subtask" && subtaskExecution?.crossCli
+        ? subtaskExecution.model
+        : routedInput.loopSubtaskModel,
+      ...(modelRole === "subtask" && subtaskExecution?.crossCli ? { loopSubtaskCli: subtaskExecution.cli } : {}),
+      ...(modelRole === "subtask" && (subtaskExecution?.configId || routedInput.loopSubtaskConfigId)
+        ? { loopSubtaskConfigId: subtaskExecution?.configId ?? routedInput.loopSubtaskConfigId }
+        : {}),
+      ...(modelRole === "subtask" && (subtaskExecution?.thinkingMode || routedInput.loopSubtaskThinkingMode)
+        ? { loopSubtaskThinkingMode: subtaskExecution?.thinkingMode ?? routedInput.loopSubtaskThinkingMode }
+        : {}),
+      imagePaths: routedInput.imagePaths,
       taskRole: modelRole,
       thinkingModeOverride,
       graphRunId: request.run.id,

@@ -5,6 +5,7 @@ import type { GraphModelRole } from "../graph/types";
 import type { I18nKey } from "../i18n";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import { resolveStoredSubtaskExecution } from "../subtaskCliRoute";
 import type { SubagentProgressController, SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { LoopTaskRole, TaskRunStatus } from "../promptRunState";
 import type { LoopMainDecision, LoopSubtaskRecord, LoopTaskRecord } from "../loopTaskStore";
@@ -203,7 +204,7 @@ type LoopOrchestrationRequiredHostDeps =
       cli: CliName,
       role: GraphModelRole,
       model: string | undefined,
-      options?: { applySubtaskCap?: boolean },
+      options?: { applySubtaskCap?: boolean; configId?: string | null },
     ) => ThinkingMode | undefined;
     runPrompt: (
       input: PromptRunInput,
@@ -2599,6 +2600,18 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
   async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
     const { input, target, task, round, subtask } = options;
+    const execution = resolveStoredSubtaskExecution({
+      mainCli: target.cli,
+      route: task.modelRouting?.subtask,
+      routeFallback: task.modelRouting?.subtask.fallback,
+      prompt: input,
+      originThinkingMode: task.originProfile?.subtaskThinkingMode,
+    });
+    if (execution.unavailableReason) {
+      appendSystemMessageForLoop(target, execution.unavailableReason);
+      markLoopSubtaskRunFinished(task.id, subtask.id, "error", null);
+      return "error";
+    }
     const shouldSwitchVisible = options.switchVisible !== false;
     const mainTabId = target.tabId;
     const progressId = `${task.id}:${round}:${subtask.id}`;
@@ -2670,7 +2683,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           return "stopped";
         }
         if (!subtaskTarget) {
-          subtaskTarget = createLoopSubtaskRunTarget(target.cli);
+          subtaskTarget = createLoopSubtaskRunTarget(execution.cli);
           currentSubtaskTarget = subtaskTarget;
         } else {
           const refreshedSessionId = resolvePromptRunTargetSessionId(subtaskTarget);
@@ -2709,6 +2722,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               retryCount,
               communicationFile
             ),
+            executionCli: execution.cli,
+            executionConfigId: execution.configId,
+            boundSubtaskModel: execution.model,
+            boundThinkingMode: execution.thinkingMode,
+            crossCli: execution.crossCli,
           });
         } catch (error) {
           status = "error";
@@ -2782,6 +2800,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     displayPrompt: string;
     modelPrompt: string;
     subtaskId?: string;
+    executionCli?: CliName;
+    executionConfigId?: string | null;
+    boundSubtaskModel?: string;
+    boundThinkingMode?: ThinkingMode;
+    crossCli?: boolean;
   };
 
   async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus> {
@@ -2808,12 +2831,25 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     });
     refreshOpenLoopGroupChatPanelForTask(task.id);
 
-    const roleModel = resolvePromptRunModelForRole(input, role);
-    const thinkingModeOverride = resolvePromptRunThinkingModeForRole(input, target.cli, role, roleModel, {
+    const routedInput: PromptRunInput = role === "subtask"
+      ? {
+        ...input,
+        ...(options.crossCli ? {
+          loopSubtaskCli: options.executionCli,
+          loopSubtaskModel: options.boundSubtaskModel,
+          ...(options.boundThinkingMode ? { loopSubtaskThinkingMode: options.boundThinkingMode } : {}),
+        } : {}),
+        ...(options.executionConfigId ? { loopSubtaskConfigId: options.executionConfigId } : {}),
+      }
+      : input;
+    const roleModel = resolvePromptRunModelForRole(routedInput, role);
+    const thinkingCli = role === "subtask" ? (options.executionCli ?? target.cli) : target.cli;
+    const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, thinkingCli, role, roleModel, {
       applySubtaskCap: true,
+      configId: role === "subtask" ? options.executionConfigId : undefined,
     });
     await runPrompt({
-      ...input,
+      ...routedInput,
       displayPrompt,
       modelPrompt,
       model: roleModel,

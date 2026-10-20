@@ -185,7 +185,8 @@ test("Graph runtime source contract lives in extensionHost/graphRuntime", () => 
   assert.match(graphRuntimeSource, /readGraphNodeExecutionResultArtifact\(resolveGraphNodeCommunicationFile\(run,\s*plannerNode\)\)/);
   assert.match(graphRuntimeSource, /materializeGraphPlan\(run,\s*artifact\.plannedGraph,\s*\{/);
   assert.match(graphRuntimeSource, /plannerNodeId:\s*plannerNode\.id/);
-  assert.match(graphRuntimeSource, /const graphNodeTarget\s*=\s*deps\.createGraphNodeRunTarget\(target\.cli,\s*request\.run\.id,\s*request\.node\.id\)/);
+  assert.match(graphRuntimeSource, /const executionCli = modelRole === "main" \? target\.cli : \(subtaskExecution\?\.cli \?\? target\.cli\)/);
+  assert.match(graphRuntimeSource, /const graphNodeTarget\s*=\s*deps\.createGraphNodeRunTarget\(executionCli,\s*request\.run\.id,\s*request\.node\.id\)/);
   assert.match(graphRuntimeSource, /deps\.runPrompt\(\{[\s\S]*displayPrompt:\s*request\.prompt[\s\S]*graphRunId:\s*request\.run\.id[\s\S]*graphNodeId:\s*request\.node\.id[\s\S]*throwOnError:\s*true[\s\S]*\},\s*\{\s*targetTabId:\s*graphNodeTarget\.tabId/);
   assert.match(graphRuntimeSource, /finally\s*\{\s*try\s*\{[\s\S]*await deps\.closeConversationTabAndRefreshPanel\(graphNodeTarget\.tabId\)[\s\S]*graph-node-tab-auto-closed/);
 });
