@@ -10,6 +10,7 @@ import {
   writeSessionMeta,
 } from "./interactive/metaStore";
 import type { CodexRunSelection } from "./interactive/codexThreadSelection";
+import { collapseGrokConsecutiveThinkingMessages } from "./interactive/grokThinkingBubbles";
 import {
   findSupersedingSessionId,
   isLocalSessionId,
@@ -366,16 +367,20 @@ export function createSessionLifecycleController(deps: {
     const sanitized = sanitizeMessages(messages, cli);
     const recovered = maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
     const resolvedMessages = recovered ?? sanitized.messages;
-    if (recovered || sanitized.changed) {
-      writeMessageFile(cli, sessionId, resolvedMessages, {
+    const collapsed = cli === "grok"
+      ? collapseGrokConsecutiveThinkingMessages(resolvedMessages)
+      : { messages: resolvedMessages, changed: false };
+    const storedMessages = collapsed.messages;
+    if (recovered || sanitized.changed || collapsed.changed) {
+      writeMessageFile(cli, sessionId, storedMessages, {
         activeWorkspaceKey: deps.activeWorkspaceKey(),
         ...messagePathOptions(),
         logError: (event, payload) => deps.logError(event, payload),
       });
     }
-    deps.sessionMessageCache.set(key, resolvedMessages);
-    updateSessionHealth(cli, sessionId, resolvedMessages);
-    return resolvedMessages;
+    deps.sessionMessageCache.set(key, storedMessages);
+    updateSessionHealth(cli, sessionId, storedMessages);
+    return storedMessages;
   };
 
   const maybeRecoverClaudeSessionMessages = (

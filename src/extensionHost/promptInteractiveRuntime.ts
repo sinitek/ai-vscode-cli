@@ -20,6 +20,7 @@ import {
   type HumanInteractionSubmission,
 } from "../humanInteraction";
 import { resolveCodexAssistantMessageContinuation } from "../interactive/codexRunnerRuntime";
+import { prepareGrokThinkingContinuation } from "../interactive/grokThinkingBubbles";
 import type { CodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -550,6 +551,39 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (!chunk && !marksCodexFinalAnswer) {
         return;
       }
+      let assistantChunk = chunk;
+      if (cli === "grok" && kind === "thinking" && assistantChunk) {
+        const continuation = prepareGrokThinkingContinuation(messageTarget);
+        if (continuation) {
+          assistantMessageId = continuation.thinkingMessageId;
+          activeThinkingMessageId = continuation.thinkingMessageId;
+          const anchorIndex = messageTarget.findIndex((message) => message.id === continuation.thinkingMessageId);
+          if (anchorIndex >= 0) {
+            assistantMessageIndex = anchorIndex;
+          }
+          if (continuation.appendedContent) {
+            sendPanelMessage({
+              type: "assistantDelta",
+              id: continuation.thinkingMessageId,
+              content: continuation.appendedContent,
+              kind: "thinking",
+              tabId,
+            });
+          }
+          continuation.removedIds.forEach((id) => {
+            sendPanelMessage({ type: "removeMessage", id, tabId });
+          });
+          const anchor = anchorIndex >= 0 ? messageTarget[anchorIndex] : undefined;
+          if (
+            continuation.separateNextChunk
+            && anchor
+            && String(anchor.content || "").trim()
+            && !assistantChunk.startsWith("\n")
+          ) {
+            assistantChunk = `\n\n${assistantChunk}`;
+          }
+        }
+      }
       const last = messageTarget[messageTarget.length - 1];
       const forceNewFinalAnswer = Boolean(
         marksCodexFinalAnswer
@@ -560,7 +594,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         && last.codexFinalAnswer !== true
         && String(last.content || "").trim()
       );
-      if (chunk) {
+      if (assistantChunk) {
         ensureAssistantMessage(kind, {
           forceNew: forceNewFinalAnswer,
           codexFinalAnswer: marksCodexFinalAnswer,
@@ -580,13 +614,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (kind === "thinking") {
         message.kind = "thinking";
       }
-      if (chunk) {
-        message.content += chunk;
+      if (assistantChunk) {
+        message.content += assistantChunk;
       }
       sendPanelMessage({
         type: "assistantDelta",
         id: assistantMessageId,
-        content: chunk,
+        content: assistantChunk,
         kind,
         tabId,
         ...(marksCodexFinalAnswer ? { codexFinalAnswer: true } : {}),
