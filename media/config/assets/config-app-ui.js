@@ -30,6 +30,13 @@ const CONFIG_PROVIDER_CARD_MIN_WIDTH_PX = Math.round(
 
 const { confirm: uk } = xr;
 
+const isConfigPlatformEnabled = (platform, enabledByName) => {
+  if (!enabledByName || typeof enabledByName !== "object") {
+    return true;
+  }
+  return enabledByName[platform] !== false;
+};
+
 // Config list panel
 const ConfigListPanel = ({ onMobileClose } = {}) => {
     const {
@@ -56,6 +63,11 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       [importError, setImportError] = c.useState(""),
       [isImporting, setIsImporting] = c.useState(!1),
       [skillsMarketOpen, setSkillsMarketOpen] = c.useState(!1),
+      [cliEnabledByName, setCliEnabledByName] = c.useState(() =>
+        window.sinitekCliEnabledByName && typeof window.sinitekCliEnabledByName === "object"
+          ? window.sinitekCliEnabledByName
+          : null,
+      ),
       $ = c.useMemo(() => e.filter((k) => k.platform === "claude"), [e]),
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
       O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
@@ -582,6 +594,28 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           }),
         });
       };
+    c.useEffect(() => {
+      const applyEnabled = (value) => {
+        setCliEnabledByName(value && typeof value === "object" ? value : {});
+      };
+      const handleEnabled = (event) => applyEnabled(event && event.detail);
+      window.addEventListener("sinitek-cli-enabled", handleEnabled);
+      const readEnabled = window.electronAPI && window.electronAPI.config && window.electronAPI.config.getCliEnabled;
+      if (typeof readEnabled === "function") {
+        Promise.resolve(readEnabled())
+          .then((data) => applyEnabled(data && data.cliEnabledByName ? data.cliEnabledByName : data))
+          .catch(() => applyEnabled({}));
+      }
+      return () => window.removeEventListener("sinitek-cli-enabled", handleEnabled);
+    }, []);
+    c.useEffect(() => {
+      if (!r || !cliEnabledByName || typeof cliEnabledByName !== "object") {
+        return;
+      }
+      if (cliEnabledByName[r] === false) {
+        o(null, null);
+      }
+    }, [r, cliEnabledByName, o]);
     return be.jsxs("div", {
       className: "config-sidebar-panel",
       style: { height: "100%", padding: "4px", overflow: "auto" },
@@ -613,10 +647,21 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           ],
         }),
         skillsMarketOpen ? be.jsx(SkillsMarketModal, { onClose: () => setSkillsMarketOpen(!1) }) : null,
-        H("claude", $),
-        H("codex", w),
-        H("opencode", O),
-        H("grok", grokConfigs),
+        isConfigPlatformEnabled("claude", cliEnabledByName) ? H("claude", $) : null,
+        isConfigPlatformEnabled("codex", cliEnabledByName) ? H("codex", w) : null,
+        isConfigPlatformEnabled("opencode", cliEnabledByName) ? H("opencode", O) : null,
+        isConfigPlatformEnabled("grok", cliEnabledByName) ? H("grok", grokConfigs) : null,
+        ["claude", "codex", "opencode", "grok"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
+          ? be.jsx("div", {
+              className: "config-empty-state",
+              style: {
+                color: "var(--text-color-secondary)",
+                fontSize: "12px",
+                padding: "8px 4px",
+              },
+              children: "没有已启用的 CLI",
+            })
+          : null,
         be.jsx(xr, {
           title: "导出配置",
           open: exportOpen,

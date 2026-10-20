@@ -1,11 +1,16 @@
 import { supportsCliManagedModelSelection } from "./cli/modelArgs";
-import { normalizeLoopExecutionMode, type ThinkingMode } from "./cli/types";
+import { normalizeLoopExecutionMode, type CliName, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
-import { normalizeHistoryRetentionDays, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
+import {
+  normalizeHistoryRetentionDays,
+  resolveHumanInteractionTimeoutMinutes,
+  resolveNextEnabledCli,
+  type CliEnabledByName,
+} from "./toolSettings";
 import { PanelMessage } from "./webview/types";
 import { parseCliName, parseCliNameField } from "./subtaskCliRoute";
 import {
@@ -202,6 +207,35 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key.startsWith("cliEnabled.")) {
+    const cliValue = message.key.slice("cliEnabled.".length);
+    if (!deps.isCliName(cliValue) || typeof message.value !== "boolean") {
+      await deps.postPanelState();
+      return;
+    }
+    const currentSettings = deps.readStoredToolSettings?.() ?? {};
+    const nextMap: CliEnabledByName = {};
+    const previous = currentSettings.cliEnabledByName;
+    if (previous && typeof previous === "object") {
+      for (const [key, value] of Object.entries(previous)) {
+        if (deps.isCliName(key) && typeof value === "boolean") {
+          nextMap[key] = value;
+        }
+      }
+    }
+    nextMap[cliValue] = message.value;
+    const saved = deps.updateStoredToolSettings({ cliEnabledByName: nextMap });
+    if (saved) {
+      const nextCli = resolveNextEnabledCli(deps.getCurrentCli(), { cliEnabledByName: nextMap });
+      if (nextCli && nextCli !== deps.getCurrentCli()) {
+        await deps.setCurrentCli(nextCli);
+      }
+      deps.retargetDisabledLoopSubtaskSelections?.(nextCli);
+      deps.publishCliEnabled?.(nextMap);
+    }
+    await deps.postPanelState();
+    return;
+  }
 }
 
 function normalizePromptModel(value: unknown): string | undefined {
@@ -363,6 +397,18 @@ export async function handleSendPromptMessage(
     ?? (deps.isCliName(message.cli ?? "") ? message.cli : currentCli)
     ?? currentCli;
   const requestedSubtaskCli = parseCliName(message.loopSubtaskCli);
+  const cliEnabledSettings = deps.readStoredToolSettings?.() ?? {};
+  const cliExplicitlyDisabled = (cli: string | null | undefined): boolean => (
+    typeof cli === "string" && cliEnabledSettings.cliEnabledByName?.[cli as CliName] === false
+  );
+  if (cliExplicitlyDisabled(targetCli)) {
+    deps.showWebviewError?.("CLI", "该 CLI 已关闭，不能作为新的执行目标。");
+    return;
+  }
+  if (requestedSubtaskCli && cliExplicitlyDisabled(requestedSubtaskCli)) {
+    deps.showWebviewError?.("子任务路由", "目标 CLI 已关闭，不能派发子任务。");
+    return;
+  }
   if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
     const requestedSubtaskConfigId = typeof message.loopSubtaskConfigId === "string"
       ? message.loopSubtaskConfigId.trim()

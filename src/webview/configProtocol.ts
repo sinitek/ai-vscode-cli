@@ -26,6 +26,7 @@ export const CONFIG_ACTIONS = [
   "searchLobehubSkills",
   "installLobehubSkill",
   "exportConfigs",
+  "getCliEnabled",
 ] as const;
 
 export type ConfigAction = typeof CONFIG_ACTIONS[number];
@@ -49,7 +50,13 @@ export type ConfigRequestPayload =
   | { action: "copyCliSkill"; platform: string; name: string; targetPlatform: string }
   | { action: "searchLobehubSkills"; payload?: { query?: string; page?: number } }
   | { action: "installLobehubSkill"; payload?: { identifier?: string; platforms?: string[] } }
-  | { action: "exportConfigs"; payload: { fileName?: string; content: string } };
+  | { action: "exportConfigs"; payload: { fileName?: string; content: string } }
+  | { action: "getCliEnabled" };
+
+export type ConfigCliEnabledMessage = {
+  type: "config:cliEnabled";
+  cliEnabledByName: Partial<Record<string, boolean>>;
+};
 
 export type ConfigRequestMessage = {
   type: "config:request";

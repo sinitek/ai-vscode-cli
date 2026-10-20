@@ -15,6 +15,7 @@ import { logEssential, logInfo } from "../logger";
 import { t } from "../i18n";
 import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 import { expandHomePath } from "../shared/userHomePaths";
+import { normalizeCliEnabledByName, readToolSettings } from "../toolSettings";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void | Promise<void>;
@@ -42,6 +43,7 @@ export class ConfigManagerPanel {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active, false);
       this.enterZenMode();
+      this.postCliEnabled();
       return;
     }
 
@@ -204,6 +206,16 @@ export class ConfigManagerPanel {
     void this.panel.webview.postMessage({ type: "config:syncActive" });
   }
 
+  public postCliEnabled(): void {
+    if (!this.panel) {
+      return;
+    }
+    void this.panel.webview.postMessage({
+      type: "config:cliEnabled",
+      cliEnabledByName: normalizeCliEnabledByName(readToolSettings().cliEnabledByName) ?? {},
+    });
+  }
+
   public reload(): void {
     if (!this.panel) {
       return;
@@ -287,6 +299,11 @@ export class ConfigManagerPanel {
           break;
         case "installLobehubSkill":
           response.data = await configService.installLobehubSkill(message.payload);
+          break;
+        case "getCliEnabled":
+          response.data = {
+            cliEnabledByName: normalizeCliEnabledByName(readToolSettings().cliEnabledByName) ?? {},
+          };
           break;
         case "exportConfigs": {
           const payload = message.payload;

@@ -352,11 +352,14 @@ import {
   type GraphRunRecord,
 } from "./graph/types";
 import {
+  isCliEnabled,
+  listEnabledClis,
   readHumanInteractionTimeoutMs,
   readToolSettings,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
   resolveHumanInteractionTimeoutMinutes,
+  resolveNextEnabledCli,
   type ToolSettingsState,
   writeToolSettings,
 } from "./toolSettings";
@@ -966,6 +969,7 @@ export function activate(context: vscode.ExtensionContext): void {
   initializeConversationTabsFromWorkspaceSettings();
   repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
+  ensureCurrentCliIsEnabled();
   initializeGraphAutoWakeScheduler(context);
   void initLogger().then(() => {
     scheduleLogRetentionCleanup();
@@ -1495,6 +1499,13 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     normalizeLoopMaxRounds,
     isCliName,
     updateStoredToolSettings,
+    readStoredToolSettings: () => readToolSettings(),
+    publishCliEnabled: () => {
+      configManagerPanel?.postCliEnabled();
+    },
+    retargetDisabledLoopSubtaskSelections: (fallbackCli) => {
+      retargetDisabledLoopSubtaskSelections(fallbackCli);
+    },
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness,
     installCodeGraphForWorkspace,
@@ -1633,6 +1644,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     getGlobalLoopSubtaskMaxThinkingMode,
     buildWorkspaceLoopExecutionModeByCli,
     getDebugLogging,
+    getCliEnabledByName: () => readToolSettings().cliEnabledByName,
     getMacTaskShell,
     getEffectiveThinkingMode,
     openCodeThinking: openCodeThinkingState,
@@ -2237,6 +2249,7 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   initializeConversationTabsFromWorkspaceSettings();
   repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
+  ensureCurrentCliIsEnabled();
   scheduledTaskScheduler?.notifyChanged();
 }
 
@@ -2261,6 +2274,29 @@ function updateStoredToolSettings(patch: Partial<ToolSettingsState>): boolean {
     ...readToolSettings(),
     ...patch,
   });
+}
+
+function retargetDisabledLoopSubtaskSelections(fallbackCli: CliName | null): void {
+  const selections = modelStore?.selectedLoopSubtaskCliByConfigId;
+  if (!selections) {
+    return;
+  }
+  const settings = readToolSettings();
+  const nextFallback = fallbackCli && isCliEnabled(fallbackCli, settings) ? fallbackCli : null;
+  for (const [configId, cli] of Object.entries(selections)) {
+    if (!isCliEnabled(cli, settings)) {
+      selectLoopSubtaskCli(configId, nextFallback);
+    }
+  }
+}
+
+function ensureCurrentCliIsEnabled(): void {
+  const settings = readToolSettings();
+  const nextCli = resolveNextEnabledCli(currentCli, settings);
+  if (nextCli && nextCli !== currentCli) {
+    void setCurrentCli(nextCli);
+  }
+  retargetDisabledLoopSubtaskSelections(nextCli ?? listEnabledClis(settings)[0] ?? null);
 }
 
 function migrateLegacyAutoCompactContextAfterRunFromWorkspace(): void {

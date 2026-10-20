@@ -137,9 +137,9 @@ test("passes AbortController to Claude SDK query and aborts active runs", async 
 
 test("keeps user Claude tools available when project instructions are isolated", async (t) => {
   const originalDynamicImport = dynamicImportModule.dynamicImport;
-  const capturedOptions: { value: { permissionMode?: string; allowDangerouslySkipPermissions?: boolean; settingSources?: string[] } | null } = { value: null };
+  const capturedOptions: { value: { permissionMode?: string; allowDangerouslySkipPermissions?: boolean; allowedTools?: string[]; settingSources?: string[] } | null } = { value: null };
   dynamicImportModule.dynamicImport = (async () => ({
-    query: ({ options }: { options: { permissionMode?: string; allowDangerouslySkipPermissions?: boolean; settingSources?: string[] } }) => {
+    query: ({ options }: { options: { permissionMode?: string; allowDangerouslySkipPermissions?: boolean; allowedTools?: string[]; settingSources?: string[] } }) => {
       capturedOptions.value = options;
       return (async function* stream() {
         yield { type: "result", subtype: "success", result: "ok" };
@@ -170,6 +170,7 @@ test("keeps user Claude tools available when project instructions are isolated",
     assert.deepEqual(capturedOptions.value.settingSources, ["user"]);
     assert.equal(capturedOptions.value.permissionMode, "bypassPermissions");
     assert.equal(capturedOptions.value.allowDangerouslySkipPermissions, true);
+    assert.deepEqual(capturedOptions.value.allowedTools, ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TaskStop"]);
   } finally {
     runner.dispose();
   }

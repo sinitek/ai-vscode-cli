@@ -25,8 +25,8 @@ import type {
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
 } from "../../sessionMessageHandlers";
-import type { CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode } from "../../cli/types";
-import type { ToolSettingsState } from "../../toolSettings";
+import { CLI_LIST, type CliName, type InteractiveMode, type LoopExecutionMode, type MacTaskShell, type ThinkingMode } from "../../cli/types";
+import type { CliEnabledByName, ToolSettingsState } from "../../toolSettings";
 import type { ChatMessage, PanelMessage } from "../../webview/types";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
@@ -719,6 +719,93 @@ test("ignores retired implicit-subagents updates without persisting settings", a
   assert.deepEqual(state.workspaceSettings, {});
   assert.deepEqual(calls.savedSettings, []);
   assert.equal(calls.postPanelState, 0);
+});
+
+test("persists CLI availability, moves new selections, and rolls back a failed save", async () => {
+  const { deps, calls, state } = createSendPromptHarness("codex");
+  let stored: ToolSettingsState = {};
+  const published: CliEnabledByName[] = [];
+  const retargets: Array<CliName | null> = [];
+  deps.isCliName = (value: string): value is CliName => (CLI_LIST as readonly string[]).includes(value);
+  deps.readStoredToolSettings = () => stored;
+  deps.updateStoredToolSettings = (patch) => {
+    calls.toolSettingsPatches.push(patch);
+    stored = { ...stored, ...patch };
+    return true;
+  };
+  deps.publishCliEnabled = (map) => {
+    published.push({ ...map });
+  };
+  deps.retargetDisabledLoopSubtaskSelections = (cli) => {
+    retargets.push(cli);
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "cliEnabled.codex",
+    value: false,
+  }, deps);
+  assert.equal(state.currentCli, "claude");
+  assert.deepEqual(stored.cliEnabledByName, { codex: false });
+  assert.deepEqual(retargets, ["claude"]);
+  assert.deepEqual(published[0], { codex: false });
+
+  for (const cli of ["claude", "opencode", "grok"] as const) {
+    await handlePanelMessageWithDeps({
+      type: "updateSetting",
+      key: `cliEnabled.${cli}`,
+      value: false,
+    }, deps);
+  }
+  assert.equal(state.currentCli, "grok");
+  assert.deepEqual(stored.cliEnabledByName, {
+    codex: false,
+    claude: false,
+    opencode: false,
+    grok: false,
+  });
+
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "cliEnabled.claude",
+    value: true,
+  }, deps);
+  assert.equal(state.currentCli, "claude");
+  assert.equal(stored.cliEnabledByName?.claude, true);
+
+  const cliBeforeFailure = state.currentCli;
+  const storedBeforeFailure = { ...stored.cliEnabledByName };
+  deps.updateStoredToolSettings = () => false;
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "cliEnabled.claude",
+    value: false,
+  }, deps);
+  await handlePanelMessageWithDeps({
+    type: "updateSetting",
+    key: "cliEnabled.not-a-cli",
+    value: false,
+  }, deps);
+  assert.equal(state.currentCli, cliBeforeFailure);
+  assert.deepEqual(stored.cliEnabledByName, storedBeforeFailure);
+
+  const errors: string[] = [];
+  deps.readStoredToolSettings = () => stored;
+  deps.showWebviewError = (_title, detail) => {
+    errors.push(String(detail));
+  };
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "should not run",
+    interactiveMode: "coding",
+    contextOptions: { includeCurrentFile: false, includeSelection: false },
+    tabId: "tab-opencode-smoke",
+    cli: "codex",
+    loopSubtaskCli: "grok",
+  }, deps);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.match(errors[0] ?? "", /已关闭/);
 });
 
 test("persists human interaction globally", async () => {

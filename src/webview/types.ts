@@ -336,6 +336,8 @@ export type PanelState = {
   codeGraphInstalling: boolean;
   autoCompactContextAfterRun: boolean;
   humanInteractionEnabled: boolean;
+  /** Explicit CLI availability. Missing names stay enabled. */
+  cliEnabledByName?: Partial<Record<CliName, boolean>>;
   humanInteractionTimeoutMinutes: number;
   historyRetentionDays: number;
   loopMaxRounds: number;

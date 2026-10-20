@@ -465,6 +465,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.codeGraphInstalling = panelState.codeGraphInstalling === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
+        state.cliEnabledByName = panelState && panelState.cliEnabledByName && typeof panelState.cliEnabledByName === "object"
+          ? panelState.cliEnabledByName
+          : {};
+        if (typeof syncCliEnabledControls === "function") {
+          syncCliEnabledControls();
+        }
         state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
           panelState.humanInteractionTimeoutMinutes
         );
@@ -501,8 +507,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (panelState.modelState && matchesSelectedConfig) {
           applyModelState(panelState.modelState, panelState.currentCli);
         }
-        elements.currentCli.value = panelState.currentCli;
-        if (elements.rulesLoadCli) {
+        if (typeof syncEnabledCliSelectElement === "function") {
+          syncEnabledCliSelectElement(elements.currentCli, panelState.currentCli);
+        } else if (elements.currentCli) {
+          elements.currentCli.value = panelState.currentCli;
+        }
+        if (elements.rulesLoadCli && typeof setRulesLoadCliOptions !== "function") {
           elements.rulesLoadCli.value = panelState.currentCli;
         }
         updateRulesScope(state.ruleScope);

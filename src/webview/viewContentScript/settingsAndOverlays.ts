@@ -466,6 +466,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
         elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
       }
+      bindCliEnabledToggles();
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {
           const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);
@@ -979,18 +980,25 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.rulesHint.textContent = message || "";
       }
 
+      function enabledRuleCliNames() {
+        return typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+      }
+
       function collectRuleTargets() {
+        const enabled = enabledRuleCliNames();
         const targets = [];
-        if (elements.rulesSaveCodex.checked) {
+        if (elements.rulesSaveCodex.checked && enabled.indexOf("codex") >= 0) {
           targets.push("codex");
         }
-        if (elements.rulesSaveClaude.checked) {
+        if (elements.rulesSaveClaude.checked && enabled.indexOf("claude") >= 0) {
           targets.push("claude");
         }
-        if (elements.rulesSaveOpenCode.checked) {
+        if (elements.rulesSaveOpenCode.checked && enabled.indexOf("opencode") >= 0) {
           targets.push("opencode");
         }
-        if (elements.rulesSaveGrok.checked) {
+        if (elements.rulesSaveGrok.checked && enabled.indexOf("grok") >= 0) {
           targets.push("grok");
         }
         return targets;
@@ -998,16 +1006,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function setRulesLoadCliOptions(isGlobal) {
         const currentValue = elements.rulesLoadCli.value;
+        const enabled = enabledRuleCliNames();
+        const projectGroup = ["codex", "opencode", "grok"].filter((name) => enabled.indexOf(name) >= 0);
         const options = isGlobal
-          ? [
-              { value: "codex", label: "codex" },
-              { value: "claude", label: "claude" },
-              { value: "opencode", label: "opencode" },
-              { value: "grok", label: "grok" },
-            ]
+          ? enabled.map((name) => ({ value: name, label: name }))
           : [
-              { value: "codex", label: "codex/opencode/grok" },
-              { value: "claude", label: "claude" },
+              ...(projectGroup.length ? [{ value: projectGroup[0], label: projectGroup.join("/") }] : []),
+              ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: "claude" }] : []),
             ];
         elements.rulesLoadCli.innerHTML = "";
         options.forEach((option) => {
@@ -1016,26 +1021,93 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           optionElement.textContent = option.label;
           elements.rulesLoadCli.appendChild(optionElement);
         });
-        const nextValue = options.some((option) => option.value === currentValue) ? currentValue : options[0].value;
+        const nextValue = options.some((option) => option.value === currentValue)
+          ? currentValue
+          : (options[0] ? options[0].value : "");
         elements.rulesLoadCli.value = nextValue;
       }
 
+      function setRuleOptionVisible(option, checkbox, visible) {
+        if (option) {
+          option.style.display = visible ? "" : "none";
+        }
+        if (!visible && checkbox) {
+          checkbox.checked = false;
+        }
+      }
+
       function syncRulesSaveOptions(isGlobal) {
+        const enabled = enabledRuleCliNames();
+        const projectGroup = ["codex", "opencode", "grok"].filter((name) => enabled.indexOf(name) >= 0);
         if (elements.rulesSaveCodexLabel) {
-          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : "codex/opencode/grok";
+          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : projectGroup.join("/");
         }
-        if (elements.rulesSaveOpenCodeOption) {
-          elements.rulesSaveOpenCodeOption.style.display = isGlobal ? "" : "none";
+        setRuleOptionVisible(
+          elements.rulesSaveCodexOption,
+          elements.rulesSaveCodex,
+          isGlobal ? enabled.indexOf("codex") >= 0 : projectGroup.length > 0,
+        );
+        setRuleOptionVisible(
+          elements.rulesSaveClaudeOption,
+          elements.rulesSaveClaude,
+          enabled.indexOf("claude") >= 0,
+        );
+        setRuleOptionVisible(
+          elements.rulesSaveOpenCodeOption,
+          elements.rulesSaveOpenCode,
+          isGlobal && enabled.indexOf("opencode") >= 0,
+        );
+        setRuleOptionVisible(
+          elements.rulesSaveGrokOption,
+          elements.rulesSaveGrok,
+          isGlobal && enabled.indexOf("grok") >= 0,
+        );
+      }
+
+      function syncCliEnabledControls() {
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
+        names.forEach((name) => {
+          const input = document.getElementById("cliEnabled-" + name);
+          if (!input) {
+            return;
+          }
+          input.checked = !state.cliEnabledByName || state.cliEnabledByName[name] !== false;
+        });
+      }
+
+      function syncCliChoiceControls() {
+        if (typeof syncEnabledCliSelectElement === "function" && elements.currentCli) {
+          syncEnabledCliSelectElement(elements.currentCli, state.currentCli);
         }
-        if (!isGlobal && elements.rulesSaveOpenCode) {
-          elements.rulesSaveOpenCode.checked = false;
+        if (state.ruleScope) {
+          updateRulesScope(state.ruleScope);
         }
-        if (elements.rulesSaveGrokOption) {
-          elements.rulesSaveGrokOption.style.display = isGlobal ? "" : "none";
+        if (typeof updateLoopSubtaskTargetControls === "function") {
+          updateLoopSubtaskTargetControls();
         }
-        if (!isGlobal && elements.rulesSaveGrok) {
-          elements.rulesSaveGrok.checked = false;
-        }
+      }
+
+      function bindCliEnabledToggles() {
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
+        names.forEach((name) => {
+          const input = document.getElementById("cliEnabled-" + name);
+          if (!input || input.getAttribute("data-cli-enabled-bound") === "true") {
+            return;
+          }
+          input.setAttribute("data-cli-enabled-bound", "true");
+          input.addEventListener("change", () => {
+            if (!state.cliEnabledByName || typeof state.cliEnabledByName !== "object") {
+              state.cliEnabledByName = {};
+            }
+            state.cliEnabledByName[name] = Boolean(input.checked);
+            syncCliChoiceControls();
+            vscode.postMessage({
+              type: "updateSetting",
+              key: "cliEnabled." + name,
+              value: Boolean(input.checked),
+            });
+          });
+        });
       }
 
       function updateRulesPath(cli) {

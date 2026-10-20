@@ -429,9 +429,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const stored = mainConfigId && state.selectedLoopSubtaskCliByConfigId
           ? state.selectedLoopSubtaskCliByConfigId[mainConfigId]
           : "";
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
-        const subtaskCli = stored && names.indexOf(stored) >= 0 ? stored : mainCli;
-        const crossCli = subtaskCli !== mainCli;
+        const names = typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+        const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
+        const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
+        const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
+        const crossCli = Boolean(subtaskCli) && subtaskCli !== mainCli;
         const subtaskConfigId = crossCli ? getActiveConfigIdForStateCli(subtaskCli) : mainConfigId;
         let unavailableReason = "";
         if (crossCli && !subtaskConfigId) {
@@ -476,7 +480,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         if (!selectElement || isSelectFocused(selectElement)) {
           return;
         }
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
+        const names = typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
         const currentValues = Array.from(selectElement.options || []).map((option) => option.value);
         const same = currentValues.length === names.length && names.every((name, index) => currentValues[index] === name);
         if (!same) {
@@ -488,7 +494,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
             selectElement.appendChild(option);
           });
         }
-        selectElement.value = selectedCli;
+        selectElement.value = names.indexOf(selectedCli) >= 0 ? selectedCli : (names[0] || "");
         selectElement.title = t("loopSubtaskCliSelectAria");
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
@@ -801,8 +807,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function handleLoopSubtaskCliChange(rawValue) {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
-        const nextCli = names.indexOf(rawValue) >= 0 ? rawValue : state.currentCli;
+        const names = typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+        if (names.indexOf(rawValue) < 0) {
+          return;
+        }
+        const nextCli = rawValue;
         const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
         if (!state.selectedLoopSubtaskCliByConfigId || typeof state.selectedLoopSubtaskCliByConfigId !== "object") {
           state.selectedLoopSubtaskCliByConfigId = {};

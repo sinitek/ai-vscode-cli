@@ -500,6 +500,16 @@ ${renderChatModal({
                 </div>
                 <div class="tool-settings-note">${i18n.toolSettingsHistoryRetentionDaysHint}</div>
               </section>
+              <section id="cliEnabledCard" class="tool-settings-card">
+                <div class="tool-settings-label">${i18n.toolSettingsCliEnabledLabel}</div>
+                <div class="tool-settings-note">${i18n.toolSettingsCliEnabledHint}</div>
+${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
+                  <div class="tool-settings-label">${cli}</div>
+                  <label class="debug-toggle" title="${i18n.toolSettingsCliEnabledToggleTitle}">
+                    <input type="checkbox" id="cliEnabled-${cli}" data-cli-enabled="${cli}" checked />
+                  </label>
+                </div>`).join("\n")}
+              </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
               <section class="tool-settings-card">

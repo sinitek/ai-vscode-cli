@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { MacTaskShell } from "./cli/types";
+import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import {
   normalizeLoopSubtaskMaxThinkingMode,
@@ -36,7 +36,14 @@ export type ToolSettingsState = {
   globalMemoryEnabled?: boolean;
   memoryAutoExtractAfterCompact?: boolean;
   memoryAutoExtractAfterLoopTask?: boolean;
+  /**
+   * Global per-CLI availability. Missing, unsaved, or non-boolean entries stay enabled.
+   * There is no workspace override.
+   */
+  cliEnabledByName?: CliEnabledByName;
 };
+
+export type CliEnabledByName = Partial<Record<CliName, boolean>>;
 
 const TOOL_SETTINGS_FILE = path.join(os.homedir(), ".sinitek_cli", "settings.json");
 
@@ -148,7 +155,53 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.memoryAutoExtractAfterLoopTask === "boolean") {
     normalized.memoryAutoExtractAfterLoopTask = record.memoryAutoExtractAfterLoopTask;
   }
+  const cliEnabledByName = normalizeCliEnabledByName(record.cliEnabledByName);
+  if (cliEnabledByName) {
+    normalized.cliEnabledByName = cliEnabledByName;
+  }
   return normalized;
+}
+
+export function normalizeCliEnabledByName(value: unknown): CliEnabledByName | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const normalized: CliEnabledByName = {};
+  let hasExplicit = false;
+  for (const cli of CLI_LIST) {
+    if (typeof record[cli] === "boolean") {
+      normalized[cli] = record[cli];
+      hasExplicit = true;
+    }
+  }
+  return hasExplicit ? normalized : undefined;
+}
+
+export function isCliEnabled(
+  cli: string | null | undefined,
+  settings?: Pick<ToolSettingsState, "cliEnabledByName"> | null,
+): boolean {
+  if (!cli || !(CLI_LIST as readonly string[]).includes(cli)) {
+    return false;
+  }
+  return settings?.cliEnabledByName?.[cli as CliName] !== false;
+}
+
+export function listEnabledClis(
+  settings?: Pick<ToolSettingsState, "cliEnabledByName"> | null,
+): CliName[] {
+  return CLI_LIST.filter((cli) => isCliEnabled(cli, settings));
+}
+
+export function resolveNextEnabledCli(
+  current: string | null | undefined,
+  settings?: Pick<ToolSettingsState, "cliEnabledByName"> | null,
+): CliName | null {
+  if (isCliEnabled(current, settings)) {
+    return current as CliName;
+  }
+  return listEnabledClis(settings)[0] ?? null;
 }
 
 export function resolveHumanInteractionTimeoutMinutes(value: unknown): number {

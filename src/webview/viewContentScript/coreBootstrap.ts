@@ -9,6 +9,40 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       })();
       const i18n = \${JSON.stringify(i18n)};
       const CLI_NAMES = \${JSON.stringify(CLI_LIST)};
+      function isCliChoiceEnabled(name) {
+        if (!name) {
+          return false;
+        }
+        const map = typeof state !== "undefined" && state ? state.cliEnabledByName : null;
+        if (!map || typeof map !== "object") {
+          return true;
+        }
+        return map[name] !== false;
+      }
+      function getEnabledCliNames() {
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
+        return names.filter((name) => isCliChoiceEnabled(name));
+      }
+      function syncEnabledCliSelectElement(selectElement, preferredValue) {
+        if (!selectElement) {
+          return "";
+        }
+        const enabled = getEnabledCliNames();
+        const currentValues = Array.from(selectElement.options || []).map((option) => option.value);
+        const same = currentValues.length === enabled.length && enabled.every((name, index) => currentValues[index] === name);
+        if (!same) {
+          selectElement.innerHTML = "";
+          enabled.forEach((name) => {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            selectElement.appendChild(option);
+          });
+        }
+        const nextValue = enabled.indexOf(preferredValue) >= 0 ? preferredValue : (enabled[0] || "");
+        selectElement.value = nextValue;
+        return nextValue;
+      }
       const LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT = "\${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}";
       const traceMarkers = {
         input: ["Input", "输入"],
@@ -163,6 +197,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         codeGraphInstalling: false,
         autoCompactContextAfterRun: true,
         humanInteractionEnabled: true,
+        cliEnabledByName: {},
         humanInteractionTimeoutMinutes: 10,
         historyRetentionDays: 30,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},

@@ -560,4 +560,3 @@ export class InteractiveRunnerManager {
     entry.idleTimer = null;
   }
 }
-

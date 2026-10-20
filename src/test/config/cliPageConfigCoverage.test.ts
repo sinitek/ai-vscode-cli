@@ -1030,6 +1030,7 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "searchLobehubSkills",
     "installLobehubSkill",
     "exportConfigs",
+    "getCliEnabled",
   ]);
 
   for (const action of actions) {
@@ -1148,6 +1149,9 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   const layout = extractBetween(uiSource, "const CONFIG_MOBILE_NAVIGATION_MEDIA_QUERY", "const readConfigVscodeColor =");
 
   assert.match(listPanel, /H\("claude", \$\)/);
+  assert.match(listPanel, /isConfigPlatformEnabled\("claude", cliEnabledByName\) \? H\("claude", \$\)/);
+  assert.match(listPanel, /children: "没有已启用的 CLI"/);
+  assert.match(listPanel, /children: "Skills 市场"/);
   assert.match(listPanel, /H\("codex", w\)/);
   assert.match(listPanel, /H\("opencode", O\)/);
   assert.match(listPanel, /locale: \{ emptyText: "暂无配置" \}/);

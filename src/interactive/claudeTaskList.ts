@@ -14,13 +14,15 @@ type TrackedClaudeTask = {
   order: number;
 };
 
-const CLAUDE_TASK_TOOL_NAMES = new Set([
+export const CLAUDE_TASK_TRACKING_TOOLS = [
   "TaskCreate",
   "TaskUpdate",
   "TaskList",
   "TaskGet",
   "TaskStop",
-]);
+] as const;
+
+const CLAUDE_TASK_TOOL_NAMES = new Set<string>(CLAUDE_TASK_TRACKING_TOOLS);
 
 const COMPLETED_STATUSES = new Set([
   "completed",

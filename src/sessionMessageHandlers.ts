@@ -3,7 +3,7 @@ import { logDebug } from "./logger";
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type InteractiveSessionBinding } from "./interactive/runnerRetention";
-import { type ToolSettingsState } from "./toolSettings";
+import { type CliEnabledByName, type ToolSettingsState } from "./toolSettings";
 import { type LoopTaskRecord } from "./loopTaskStore";
 import { createPanelMessageRouter } from "./sessionMessageRouter";
 import { createPanelMessageHandlerRegistry } from "./panelMessageHandlers";
@@ -138,6 +138,9 @@ export type PanelMessageHandlerDeps = {
   normalizeLoopMaxRounds: (value: unknown) => number;
   isCliName: (value: string) => value is CliName;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
+  readStoredToolSettings?: () => ToolSettingsState;
+  publishCliEnabled?: (cliEnabledByName: CliEnabledByName) => void;
+  retargetDisabledLoopSubtaskSelections?: (fallbackCli: CliName | null) => void;
   isMacTaskShell: (value: unknown) => value is MacTaskShell;
   confirmAndInitializeWorkspaceHarness: () => Promise<boolean>;
   installCodeGraphForWorkspace: () => Promise<void>;
@@ -197,8 +200,20 @@ export type PanelMessageHandlerDeps = {
 };
 
 
+function isDisabledCliSelectionMessage(message: PanelMessage, deps: PanelMessageHandlerDeps): boolean {
+  if (message.type !== "selectCli" && message.type !== "selectLoopSubtaskCli") {
+    return false;
+  }
+  const settings = deps.readStoredToolSettings?.();
+  return settings?.cliEnabledByName?.[message.cli] === false;
+}
+
 export async function handlePanelMessageWithDeps(message: PanelMessage, deps: PanelMessageHandlerDeps): Promise<void> {
   deps.ensureWorkspaceSessionStore();
+  if (isDisabledCliSelectionMessage(message, deps)) {
+    await deps.postPanelState();
+    return;
+  }
   void logDebug("panel-message", message);
   const router = createPanelMessageRouter(createPanelMessageHandlerRegistry(deps));
   if (await router.dispatch(message)) {

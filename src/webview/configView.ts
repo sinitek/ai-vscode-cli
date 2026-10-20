@@ -417,6 +417,7 @@ export function getConfigViewHtml(
           searchLobehubSkills: (payload) => requestConfig("searchLobehubSkills", { payload }),
           installLobehubSkill: (payload) => requestConfig("installLobehubSkill", { payload }),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
+          getCliEnabled: () => requestConfig("getCliEnabled", {}),
         },
       };
 
@@ -514,6 +515,20 @@ export function getConfigViewHtml(
           return;
         }
         syncActiveConfigIds();
+      });
+
+      window.sinitekCliEnabledByName = null;
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.type !== "config:cliEnabled") {
+          return;
+        }
+        window.sinitekCliEnabledByName = data.cliEnabledByName && typeof data.cliEnabledByName === "object"
+          ? data.cliEnabledByName
+          : {};
+        window.dispatchEvent(new CustomEvent("sinitek-cli-enabled", {
+          detail: window.sinitekCliEnabledByName,
+        }));
       });
 
       const ACTIVE_CONFIG_KEY_PREFIX = "ai_cli_active_config_id_";

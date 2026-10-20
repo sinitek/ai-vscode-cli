@@ -388,6 +388,22 @@ function createHarness(): HandlerHarness {
   };
 }
 
+test("does not select a CLI that tool settings have disabled", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  harness.deps.readStoredToolSettings = () => ({ cliEnabledByName: { claude: false } });
+
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "selectLoopSubtaskCli",
+    cli: "claude",
+    configId: "config-codex",
+  }, harness.deps);
+
+  assert.equal(harness.state.currentCli, "codex");
+  assert.equal(harness.calls.panelStates, 2);
+});
+
 test("orchestrates state, runtime errors, CLI selection, and model changes", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

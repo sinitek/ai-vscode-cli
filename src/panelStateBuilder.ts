@@ -96,7 +96,7 @@ import {
   resolveLoopPlusDecisionSubtaskMax,
   resolveLoopPlusMaxAcceptances,
 } from "./loopPlusDecision";
-import { resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
+import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -127,6 +127,7 @@ export type PanelStateBuilderDeps = {
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
   getGlobalHumanInteractionEnabled: () => boolean;
+  getCliEnabledByName?: () => PanelState["cliEnabledByName"];
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
   getGlobalLoopMaxRounds: () => number;
@@ -225,6 +226,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     codeGraphInstalling: deps.codeGraphInstalling === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
+    cliEnabledByName: normalizeCliEnabledByName(deps.getCliEnabledByName?.()) ?? {},
     humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),
     ),

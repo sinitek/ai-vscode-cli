@@ -8,6 +8,7 @@ import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from 
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 import {
+  CLAUDE_TASK_TRACKING_TOOLS,
   ClaudeTaskListTracker,
   extractClaudeTodoWriteItems,
   hasClaudeTodoWriteResultShape,
@@ -975,6 +976,7 @@ export class ClaudeInteractiveRunner {
       cwd,
       model,
       permissionMode: this.options.interactiveMode === "plan" ? "plan" : "bypassPermissions",
+      allowedTools: [...CLAUDE_TASK_TRACKING_TOOLS],
       settingSources: this.options.isolateProjectInstructions ? ["user"] : ["user", "project", "local"],
       pathToClaudeCodeExecutable: this.options.entrypoint,
       maxTurns: 200,
