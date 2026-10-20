@@ -24,6 +24,7 @@ import {
   buildGrokSessionLoadParams,
   buildGrokSessionNewParams,
   buildGrokSessionPromptParams,
+  buildGrokSessionSetModelParams,
   GROK_RESPONSES_STREAM_INCOMPATIBLE,
   classifyGrokSessionMessage,
   findGrokReasoningOption,
@@ -351,6 +352,10 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.sessionId = acpSessionId;
+    const modelId = String(this.options.model ?? "").trim();
+    if (resumed && modelId) {
+      await this.request("session/set_model", buildGrokSessionSetModelParams(acpSessionId, modelId));
+    }
     const option = findGrokReasoningOption(created) ?? findGrokReasoningOption(initialized);
     const effort = resolveGrokReasoningEffort(this.options.thinkingMode, option);
     if (effort) {

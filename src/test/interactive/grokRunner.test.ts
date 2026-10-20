@@ -32,6 +32,7 @@ class FakeGrok extends EventEmitter {
   public authMethods: Array<{ id: string }> = [{ id: "xai.api_key" }, { id: "cached_token" }];
   public loadSession = false;
   public failLoad = false;
+  public failSetModel = false;
   public loadedSessionId = "loaded-session";
   public promptResponse: ((message: Record<string, unknown>) => void) | null = null;
   public advertiseReasoning = true;
@@ -95,6 +96,14 @@ class FakeGrok extends EventEmitter {
     }
     if (method === "session/new") {
       this.send({ jsonrpc: "2.0", id, result: { sessionId: "grok-session", configOptions: this.reasoningInInitialize ? undefined : configOptions } });
+      return;
+    }
+    if (method === "session/set_model") {
+      if (this.failSetModel) {
+        this.send({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } });
+        return;
+      }
+      this.send({ jsonrpc: "2.0", id, result: {} });
       return;
     }
     if (method === "session/set_config_option") {
@@ -422,6 +431,25 @@ test("continues a live Grok session with another prompt and no second handshake"
   runner.dispose();
 });
 
+test("does not set the model again when starting a new Grok session", async () => {
+  const home = await emptyGrokHome();
+  const fake = new FakeGrok();
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    model: "grok-4.7",
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  try {
+    await runner.start();
+    const methods = fake.lines.map((line) => (JSON.parse(line) as { method?: string }).method);
+    assert.equal(methods.includes("session/set_model"), false);
+  } finally {
+    runner.dispose();
+  }
+});
+
 test("loads a saved Grok session and falls back to a new session when it is gone", async () => {
   const home = await emptyGrokHome();
   const loaded = new FakeGrok();
@@ -431,6 +459,7 @@ test("loads a saved Grok session and falls back to a new session when it is gone
     command: process.execPath,
     env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
     localSessionId: "01a1450f-97a8-7882-a51c-b39c6d30a180",
+    model: "grok-4.7",
     thinkingMode: "high",
     spawnImpl: () => loaded as unknown as GrokChild,
   });
@@ -444,7 +473,30 @@ test("loads a saved Grok session and falls back to a new session when it is gone
     configId: "reasoning_effort",
     value: "high",
   });
+  const loadedModel = loaded.lines.map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((line) => line.method === "session/set_model");
+  assert.deepEqual(loadedModel?.params, { sessionId: "loaded-session", modelId: "grok-4.7" });
+  await loadedRunner.prompt("continue");
+  const loadedMethods = loaded.lines.map((line) => (JSON.parse(line) as { method?: string }).method);
+  assert.ok(loadedMethods.indexOf("session/load") < loadedMethods.indexOf("session/set_model"));
+  assert.ok(loadedMethods.indexOf("session/set_model") < loadedMethods.indexOf("session/prompt"));
   loadedRunner.dispose();
+
+  const unsupported = new FakeGrok();
+  unsupported.loadSession = true;
+  unsupported.failSetModel = true;
+  const unsupportedRunner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    localSessionId: "01a1450f-97a8-7882-a51c-b39c6d30a180",
+    model: "grok-4.7",
+    spawnImpl: () => unsupported as unknown as GrokChild,
+  });
+  await assert.rejects(unsupportedRunner.start());
+  const unsupportedMethods = unsupported.lines.map((line) => (JSON.parse(line) as { method?: string }).method);
+  assert.equal(unsupportedMethods.includes("session/prompt"), false);
+  unsupportedRunner.dispose();
 
   const missing = new FakeGrok();
   missing.loadSession = true;

@@ -251,6 +251,13 @@ export function buildGrokSessionLoadParams(sessionId: string, cwd: string): {
   return { sessionId, cwd, mcpServers: [], _meta: { yoloMode: true } };
 }
 
+export function buildGrokSessionSetModelParams(sessionId: string, modelId: string): {
+  sessionId: string;
+  modelId: string;
+} {
+  return { sessionId, modelId };
+}
+
 export function buildGrokSessionPromptParams(sessionId: string, text: string): {
   sessionId: string;
   prompt: Array<{ type: "text"; text: string }>;

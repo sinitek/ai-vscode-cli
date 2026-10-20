@@ -7,6 +7,7 @@ import {
   buildGrokRequestError,
   buildGrokInitializeParams,
   buildGrokSessionNewParams,
+  buildGrokSessionSetModelParams,
   buildGrokReasoningConfigParams,
   GROK_CLIENT_INFO_VERSION,
   classifyGrokSessionMessage,
@@ -26,6 +27,13 @@ import {
   resolveGrokResumeSessionId,
   selectGrokAuthMethod,
 } from "../../interactive/grokAppServerProtocol";
+
+test("builds Grok session model selection params", () => {
+  assert.deepEqual(buildGrokSessionSetModelParams("saved-session", "grok-4.7"), {
+    sessionId: "saved-session",
+    modelId: "grok-4.7",
+  });
+});
 
 test("reads Grok current context snapshots instead of cumulative session usage", () => {
   const params = {
