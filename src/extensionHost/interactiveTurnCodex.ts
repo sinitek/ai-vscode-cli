@@ -137,7 +137,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               modelContextWindow: update.modelContextWindow,
             });
           },
-          onRequest: port.handleCodexHumanInteractionRequest,
+          onRequest: port.handleStructuredHumanInteractionRequest,
           requestUserInputEnabled: port.canHandleStructuredHumanInteractionRequest(),
           onThreadId: (threadId) => {
             port.updateProcessTitle(port.cli, threadId);

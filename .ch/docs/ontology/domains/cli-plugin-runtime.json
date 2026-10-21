@@ -513,6 +513,22 @@
       ]
     },
     {
+      "id": "plugin.rule.grok_structured_user_question_bridge",
+      "name": "Grok 原生提问复用人工交互生命周期",
+      "description": "Grok ACP 的 _x.ai/ask_user_question（兼容 x.ai/ask_user_question）在 humanInteractionEnabled 开启的 Vibe/coding 普通任务中接入现有人工交互表单。单选、多选与其他回答按问题原文映射回传 outcome=accepted 和 answers；超时要求模型自行选择最佳方案继续。关闭交互、无活跃处理器及 Loop/Graph 请求返回 outcome=cancelled，不弹窗。跨会话与非法参数拒绝处理。用户拒绝返回取消并停止宿主任务，不进入 hidden retry；停止后的迟到回答不影响下一回合。工具错误同时保留通用 error 与具体 message。",
+      "aliases": ["ask_user_question", "_x.ai/ask_user_question", "Grok 人工交互"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/interactive/grokUserQuestion.ts"},
+        {"path": "src/interactive/grokAcpClient.ts"},
+        {"path": "src/interactive/grokRunner.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Grok 原生人工交互补充"}
+      ]
+    },
+    {
       "id": "plugin.rule.codex_default_mode_user_input_feature",
       "name": "Codex Default mode 结构化人工交互需显式启用",
       "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 10 分钟、范围 1–240。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；模型应自行选择最佳方案继续。",

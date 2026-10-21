@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import * as path from "path";
 import { killProcessTree } from "./codexRunnerProcess";
+import { readGrokUserQuestionParams, type GrokUserQuestionParams, type GrokUserQuestionResponse } from "./grokUserQuestion";
 
 const DEFAULT_OUTPUT_BYTE_LIMIT = 1024 * 1024;
 
@@ -37,7 +38,10 @@ export class GrokAcpClient {
   private nextTerminalId = 1;
   private readonly terminals = new Map<string, LiveTerminal>();
 
-  public constructor(private readonly cwd: string) {}
+  public constructor(
+    private readonly cwd: string,
+    private readonly requestUserQuestion?: (params: GrokUserQuestionParams) => Promise<GrokUserQuestionResponse>,
+  ) {}
 
   public async handle(method: string, params: unknown, sessionId: string | null): Promise<unknown> {
     switch (method) {
@@ -57,6 +61,15 @@ export class GrokAcpClient {
         return this.writeTextFile(params, sessionId);
       case "session/request_permission":
         return this.requestPermission(params, sessionId);
+      case "_x.ai/ask_user_question":
+      case "x.ai/ask_user_question": {
+        requireSession(requireRecord(params), sessionId);
+        const request = readGrokUserQuestionParams(params);
+        if (!request) {
+          throw new GrokAcpClientError("Invalid params: questions", -32602);
+        }
+        return this.requestUserQuestion?.(request) ?? { outcome: "cancelled" };
+      }
       default:
         throw new GrokAcpClientError(`Method not found: ${method}`, -32601);
     }

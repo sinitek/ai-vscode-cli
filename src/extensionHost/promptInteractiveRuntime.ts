@@ -21,6 +21,7 @@ import {
 } from "../humanInteraction";
 import { resolveCodexAssistantMessageContinuation } from "../interactive/codexRunnerRuntime";
 import { prepareGrokThinkingContinuation } from "../interactive/grokThinkingBubbles";
+import { buildGrokHumanInteractionResolution, isGrokUserQuestionMethod, normalizeHumanInteractionRequestFromGrok } from "../interactive/grokUserQuestion";
 import type { CodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -759,7 +760,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     const canHandleStructuredHumanInteractionRequest = (): boolean => {
-      return cli === "codex" && humanInteractionEnabledForVibeRun;
+      return (cli === "codex" || cli === "grok") && humanInteractionEnabledForVibeRun;
     };
 
     const canHandleNaturalLanguageHumanInteraction = (): boolean => {
@@ -780,32 +781,38 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       });
     };
 
-    const handleCodexHumanInteractionRequest = async (request: {
+    const handleStructuredHumanInteractionRequest = async (request: {
       method: string;
       params?: unknown;
     }) => {
       if (
         !canHandleStructuredHumanInteractionRequest()
         || (
-          request.method !== "item/tool/requestUserInput"
-          && request.method !== "mcpServer/elicitation/request"
+          cli === "grok" ? !isGrokUserQuestionMethod(request.method)
+            : request.method !== "item/tool/requestUserInput"
+              && request.method !== "mcpServer/elicitation/request"
         )
       ) {
         return null;
       }
-      const humanRequest = normalizeHumanInteractionRequestFromCodex({
+      const input = {
         method: request.method,
         params: request.params,
         fallbackInteractionId: createMessageId(),
         tabId,
-      });
+      };
+      const humanRequest = cli === "grok"
+        ? normalizeHumanInteractionRequestFromGrok(input)
+        : normalizeHumanInteractionRequestFromCodex(input);
       appendSystemMessageForTab(t("run.humanInteractionWaiting"));
       const submission = await requestHumanInteraction(humanRequest);
       appendHumanInteractionSubmissionForTab(submission, humanRequest);
       if (submission.status === "aborted") {
         throw createHumanInteractionRejectedError();
       }
-      return buildCodexHumanInteractionResolution(request.method, submission);
+      return cli === "grok"
+        ? buildGrokHumanInteractionResolution(request.params, submission)
+        : buildCodexHumanInteractionResolution(request.method, submission);
     };
 
     const buildHumanInteractionContinuationPrompt = (
@@ -1207,7 +1214,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           updateSubagentProgress: (update) => {
             subagentProgress.update(update);
           },
-          handleCodexHumanInteractionRequest,
+          handleStructuredHumanInteractionRequest,
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
           resolveCodexInteractiveSelection,

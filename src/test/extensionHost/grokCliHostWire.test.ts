@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { installVscodeMock } from "../vscodeMock";
+import { buildTimedOutHumanInteractionSubmission, HUMAN_INTERACTION_TIMEOUT_TEXT, type HumanInteractionRequest } from "../../humanInteraction";
 
 installVscodeMock();
 
@@ -105,6 +106,8 @@ function createHostHarness(options: {
   requireExplicitFinalAnswer?: boolean;
   acpSessionId?: string;
   resolveGrokModelForRun?: RuntimeDeps["resolveGrokModelForRun"];
+  humanInteractionEnabled?: boolean;
+  requestHumanInteraction?: RuntimeDeps["requestHumanInteraction"];
 } ) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
@@ -115,6 +118,7 @@ function createHostHarness(options: {
   const created: string[] = [];
   const resumed: Array<string | null> = [];
   const models: Array<string | null | undefined> = [];
+  const humanRequests: HumanInteractionRequest[] = [];
   let idCounter = 0;
   const runner = {
     start: async () => ({ acpSessionId: options.acpSessionId ?? "acp-session", resumed: false, retainedLocalSessionId: null }),
@@ -155,7 +159,7 @@ function createHostHarness(options: {
     getConversationTabById: () => ({ sessionId: "local-session" }),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "xhigh",
-    getGlobalHumanInteractionEnabled: () => false,
+    getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled === true,
     getPendingSessionDraft: (tabId) => {
       const existing = pendingMessagesByTab.get(tabId);
       if (existing) {
@@ -189,12 +193,15 @@ function createHostHarness(options: {
     resolveInteractiveMappedId: () => null,
     resolveInteractiveSessionForResume: async (_cli, sessionId) => sessionId,
     resolveWorkspaceCwd: () => "/workspace",
-    requestHumanInteraction: async (request) => ({
-      interactionId: request.interactionId,
-      tabId: request.tabId,
-      status: "completed",
-      values: {},
-    }),
+    requestHumanInteraction: async (request) => {
+      humanRequests.push(request);
+      return options.requestHumanInteraction?.(request) ?? {
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: "completed",
+        values: {},
+      };
+    },
     cancelHumanInteractionForTab: () => undefined,
     sendPanelMessage: (payload) => {
       panelMessages.push(payload);
@@ -216,6 +223,7 @@ function createHostHarness(options: {
     created,
     resumed,
     models,
+    humanRequests,
     messagesBySession,
   };
 }
@@ -506,4 +514,75 @@ test("Grok reloads a saved ACP session instead of the local session id", async (
   assert.deepEqual(harness.resumed, ["01a1450f-97a8-7882-a51c-b39c6d30a180"]);
   assert.deepEqual(harness.adopted, []);
   assert.deepEqual(harness.runStatus, ["start", "end"]);
+});
+
+const grokQuestionRequest = {
+  method: "_x.ai/ask_user_question",
+  params: { sessionId: "acp-session", questions: [{ question: "选择平台？", options: [{ label: "Linux" }, { label: "Windows" }], multiSelect: true }] },
+};
+
+test("Grok native questions use the existing tab-bound human interaction form", async () => {
+  const harness = createHostHarness({
+    humanInteractionEnabled: true,
+    requestHumanInteraction: async (request) => ({
+      interactionId: request.interactionId, tabId: request.tabId, status: "completed", values: { answer_1: ["Linux", "Windows"] },
+    }),
+    behavior: async (_prompt, handlers) => {
+      assert.deepEqual(await handlers.onRequest?.(grokQuestionRequest), { result: { outcome: "accepted", answers: { "选择平台？": ["Linux", "Windows"] } } });
+      handlers.onAssistantDelta?.("已根据选择继续。");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("确认平台后继续"), targetFor("local-session"));
+  assert.equal(harness.humanRequests.length, 1);
+  assert.equal(harness.humanRequests[0].tabId, "tab-grok");
+  assert.deepEqual(harness.runStatus, ["start", "end"]);
+  const messages = harness.messagesBySession.get("local-session") ?? [];
+  assert.ok(messages.some((message) => message.role === "user" && message.content.includes("Linux") && message.content.includes("Windows")));
+});
+
+test("Grok native questions respect disabled interaction and Loop or Graph ownership", async () => {
+  for (const input of [{ enabled: false }, { enabled: true, loopTaskId: "loop-one" }, { enabled: true, graphRunId: "graph-one" }]) {
+    const harness = createHostHarness({
+      humanInteractionEnabled: input.enabled,
+      behavior: async (_prompt, handlers) => {
+        assert.equal(await handlers.onRequest?.(grokQuestionRequest), null);
+        handlers.onAssistantDelta?.("继续执行。");
+        handlers.onComplete?.({ stopReason: "end_turn" });
+      },
+    });
+    await harness.host.runPromptInteractive({ ...inputFor("继续"), loopTaskId: input.loopTaskId, graphRunId: input.graphRunId }, targetFor("local-session"));
+    assert.equal(harness.humanRequests.length, 0);
+  }
+});
+
+test("Grok timed-out questions return autonomous continuation rather than rejection", async () => {
+  const harness = createHostHarness({
+    humanInteractionEnabled: true,
+    requestHumanInteraction: async (request) => buildTimedOutHumanInteractionSubmission(request),
+    behavior: async (_prompt, handlers) => {
+      assert.deepEqual(await handlers.onRequest?.(grokQuestionRequest), {
+        result: { outcome: "accepted", answers: { "选择平台？": [HUMAN_INTERACTION_TIMEOUT_TEXT] } },
+      });
+      handlers.onAssistantDelta?.("自行选择后继续。");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("确认后继续"), targetFor("local-session"));
+  assert.deepEqual(harness.runStatus, ["start", "end"]);
+});
+
+test("rejecting a Grok native question stops the host task without hidden retries", async () => {
+  let prompts = 0;
+  const harness = createHostHarness({
+    humanInteractionEnabled: true,
+    requestHumanInteraction: async (request) => ({ interactionId: request.interactionId, status: "aborted", values: {} }),
+    behavior: async (_prompt, handlers) => {
+      prompts += 1;
+      await handlers.onRequest?.(grokQuestionRequest);
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("确认后继续"), targetFor("local-session"));
+  assert.equal(prompts, 1);
+  assert.deepEqual(harness.runStatus, ["start", "stopped"]);
 });

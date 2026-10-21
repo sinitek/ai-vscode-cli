@@ -6,6 +6,12 @@
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
+## Grok 原生人工交互补充
+
+| 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AI 对话 / Grok | 原生提问桥接与错误详情 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/interactive/grokUserQuestion.ts`、`src/interactive/grokAcpClient.ts`、`src/interactive/grokRunner.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/interactive/grokToolCallStream.ts` | `npm run build`；`node --test dist/test/interactive/grokUserQuestion.test.js dist/test/interactive/grokAcpClient.test.js dist/test/interactive/grokRunner.test.js dist/test/interactive/grokToolCallStream.test.js dist/test/extensionHost/grokCliHostWire.test.js` | `_x.ai/ask_user_question` 复用 Vibe 人工交互表单及全局开关/超时；支持单选、多选、其他回答，按问题原文返回 Grok 原生答案。拒绝/停止不重试，超时自主继续；关闭交互及 Loop/Graph 不弹窗，跨会话请求被拒绝，迟到答案不影响下一回合。工具失败同时展示错误码和具体原因。 |
+
 ## 更新规则
 
 - 新增能力时新增一行。

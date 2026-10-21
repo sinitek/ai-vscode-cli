@@ -85,7 +85,7 @@ export type InteractiveTurnAttemptPort = {
   setStopCurrentTurn(stop: () => void): void;
   updateProcessTitle(cli: CliName, sessionId: string): void;
   updateSubagentProgress(update: SubagentProgressUpdate): void;
-  handleCodexHumanInteractionRequest: NonNullable<CodexStreamHandlers["onRequest"]>;
+  handleStructuredHumanInteractionRequest: NonNullable<CodexStreamHandlers["onRequest"]>;
   canHandleStructuredHumanInteractionRequest(): boolean;
   resolveInteractiveMappedId(cli: CliName, sessionId: string): string | null;
   resolveCodexInteractiveSelection(sessionId: string): CodexRunSelection | null;

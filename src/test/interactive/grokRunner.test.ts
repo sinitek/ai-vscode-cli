@@ -15,6 +15,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphR
 import type { PromptInteractiveRuntimeHostDeps } from "../../extensionHost/promptInteractiveRuntime";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 import { parseGrokToml } from "../../config/grokToml";
+import { createHumanInteractionRejectedError } from "../../humanInteraction";
 
 installVscodeMock();
 
@@ -568,6 +569,105 @@ test("answers Grok terminal/create instead of returning method not found", async
   assert.equal(done.stopReason, "end_turn");
   assert.equal(fake.lines.some((line) => line.includes("Method not found: terminal/create")), false);
   runner.dispose();
+});
+
+async function createGrokQuestionFixture(context: test.TestContext) {
+  const home = await emptyGrokHome();
+  const fake = new FakeGrok();
+  fake.promptResponse = () => undefined;
+  const runner = new GrokInteractiveRunner({
+    cwd: process.cwd(), command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    spawnImpl: () => fake as unknown as GrokChild,
+  });
+  context.after(async () => {
+    runner.dispose();
+    await fs.rm(home, { recursive: true, force: true });
+  });
+  await runner.start();
+  const ask = (id: string, sessionId = "grok-session") => fake.send({
+    jsonrpc: "2.0", id, method: "_x.ai/ask_user_question",
+    params: { sessionId, questions: [{ question: "选择方案？", options: [{ label: "方案一" }] }] },
+  });
+  const finish = () => {
+    const prompt = fake.lines.map((line) => JSON.parse(line) as Record<string, unknown>).filter((line) => line.method === "session/prompt").at(-1);
+    fake.send({ jsonrpc: "2.0", id: prompt?.id, result: { stopReason: "end_turn" } });
+  };
+  return { fake, runner, ask, finish };
+}
+
+test("bridges native Grok questions and keeps client requests out of replay", async (context) => {
+  const { fake, runner, ask, finish } = await createGrokQuestionFixture(context);
+  const events: unknown[] = [];
+  const prompt = runner.prompt("先问再执行", {
+    onRequest: async (request) => {
+      assert.equal(request.method, "_x.ai/ask_user_question");
+      return { result: { outcome: "accepted", answers: { "选择方案？": ["方案一"] } } };
+    },
+    onEvent: (event) => events.push(event),
+  });
+  ask("ask-one");
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "ask-one")).result,
+    { outcome: "accepted", answers: { "选择方案？": ["方案一"] } });
+  finish();
+  await prompt;
+  assert.equal(events.some((event) => JSON.stringify(event).includes("ask_user_question")), false);
+});
+
+test("unattended and foreign-session Grok questions never open a user form", async (context) => {
+  const { fake, runner, ask, finish } = await createGrokQuestionFixture(context);
+  const prompt = runner.prompt("继续");
+  ask("no-handler");
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "no-handler")).result, { outcome: "cancelled" });
+  ask("foreign", "other-session");
+  assert.equal(((await waitForLine(fake, (line) => line.id === "foreign")).error as { code: number }).code, -32602);
+  finish();
+  await prompt;
+});
+
+test("Grok user rejection cancels the tool and rejects the prompt without disposing the runner", async (context) => {
+  const { fake, runner, ask } = await createGrokQuestionFixture(context);
+  const prompt = runner.prompt("确认后继续", { onRequest: async () => { throw createHumanInteractionRejectedError(); } });
+  const rejected = assert.rejects(prompt, (error: unknown) => (error as { code?: string }).code === "HUMAN_INTERACTION_REJECTED");
+  ask("rejected");
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "rejected")).result, { outcome: "cancelled" });
+  await rejected;
+  assert.ok(fake.lines.some((line) => JSON.parse(line).method === "session/cancel"));
+  assert.equal(runner.isReusable(), true);
+});
+
+test("late Grok question answers cannot affect a later prompt", async (context) => {
+  const { fake, runner, ask, finish } = await createGrokQuestionFixture(context);
+  let complete: ((value: { result: unknown }) => void) | undefined;
+  const first = runner.prompt("第一个回合", {
+    onRequest: () => new Promise((resolve) => { complete = resolve; }),
+  });
+  ask("late-question");
+  while (!complete) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  runner.cancelTurn();
+  finish();
+  await first;
+  const second = runner.prompt("第二个回合");
+  complete({ result: { outcome: "accepted", answers: { "选择方案？": ["方案一"] } } });
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "late-question")).result, { outcome: "cancelled" });
+  finish();
+  await second;
+});
+
+test("Grok host callback errors retain their reason and malformed answers are rejected", async (context) => {
+  const { fake, runner, ask, finish } = await createGrokQuestionFixture(context);
+  const prompt = runner.prompt("确认后继续", { onRequest: async () => { throw new Error("表单加载失败"); } });
+  ask("callback-error");
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "callback-error")).error, { code: -32603, message: "表单加载失败" });
+  finish();
+  await prompt;
+  const invalid = runner.prompt("再次确认", { onRequest: async () => ({ result: { answers: [] } }) });
+  ask("invalid-response");
+  assert.deepEqual((await waitForLine(fake, (line) => line.id === "invalid-response")).error, { code: -32603, message: "Invalid user question response" });
+  finish();
+  await invalid;
 });
 
 test("sends xhigh and max when advertised, and skips an effort that is not allowed", async () => {

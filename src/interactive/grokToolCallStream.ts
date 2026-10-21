@@ -367,10 +367,10 @@ function formatToolSummary(state: ToolState, rawOutput: unknown): string {
   }
   if (state.update.status === "failed") {
     const error = result?.error;
-    const detail = typeof error === "string" ? error : asRecord(error)?.message ?? result?.message;
-    const text = typeof detail === "string" ? detail
-      : typeof rawOutput === "string" ? rawOutput
-        : [result?.stderr, result?.output, result?.output_for_prompt].filter((value) => typeof value === "string" && value).join("\n");
+    const detail = [...new Set([typeof error === "string" ? error : asRecord(error)?.message, result?.message]
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim())))].join("\n");
+    const text = detail || (typeof rawOutput === "string" ? rawOutput
+      : [result?.stderr, result?.output, result?.output_for_prompt].filter((value) => typeof value === "string" && value).join("\n"));
     const fallback = text || (output ? JSON.stringify(output) : "");
     if (fallback) {
       lines.push(`output:\n${shorten(fallback, 2000, true)}`);

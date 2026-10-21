@@ -69,6 +69,7 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
         let lastGrokActivityAt = 0;
         const grokToolMessageIds = new Map<string, string>();
         await runner.prompt(port.attemptPrompt, {
+          onRequest: port.handleStructuredHumanInteractionRequest,
           onActivity: () => {
             if (!port.isCurrentRunActive()) {
               return;

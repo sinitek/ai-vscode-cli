@@ -106,3 +106,37 @@ test("allows a permission request once and rejects unknown client methods", asyn
   );
   client.dispose();
 });
+
+test("routes native Grok questions to the host and cancels when no handler is available", async () => {
+  const questions = [{ question: "选择方案？", options: [{ label: "方案一" }], multiSelect: false }];
+  const requests: unknown[] = [];
+  const client = new GrokAcpClient(process.cwd(), async (params) => {
+    requests.push(params);
+    return { outcome: "accepted", answers: { "选择方案？": ["方案一"] } };
+  });
+  for (const method of ["_x.ai/ask_user_question", "x.ai/ask_user_question"]) {
+    assert.deepEqual(await client.handle(method, { sessionId: SESSION, questions }, SESSION), {
+      outcome: "accepted", answers: { "选择方案？": ["方案一"] },
+    });
+  }
+  assert.equal(requests.length, 2);
+  const unattended = new GrokAcpClient(process.cwd());
+  assert.deepEqual(await unattended.handle("_x.ai/ask_user_question", { sessionId: SESSION, questions }, SESSION), { outcome: "cancelled" });
+  client.dispose();
+  unattended.dispose();
+});
+
+test("rejects malformed and foreign-session questions before invoking the host", async () => {
+  let calls = 0;
+  const client = new GrokAcpClient(process.cwd(), async () => {
+    calls += 1;
+    return { outcome: "cancelled" };
+  });
+  for (const params of [null, { sessionId: "foreign", questions: [] }, { sessionId: SESSION, questions: [] },
+    { sessionId: SESSION, questions: [{ question: "missing options" }] }]) {
+    await assert.rejects(client.handle("_x.ai/ask_user_question", params, SESSION),
+      (error: unknown) => error instanceof GrokAcpClientError && error.code === -32602);
+  }
+  assert.equal(calls, 0);
+  client.dispose();
+});

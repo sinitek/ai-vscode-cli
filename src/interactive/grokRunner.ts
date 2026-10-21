@@ -14,6 +14,8 @@ import {
 import { requestChildShutdown } from "./codexRunnerProcess";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
 import { GrokAcpClient, GrokAcpClientError } from "./grokAcpClient";
+import { isHumanInteractionRejectedErrorInfo } from "../humanInteraction";
+import { GROK_USER_QUESTION_METHOD, isGrokUserQuestionMethod, readGrokUserQuestionResponse } from "./grokUserQuestion";
 import { GrokReplayStream } from "./grokReplayStream";
 import {
   buildGrokAuthenticateParams,
@@ -75,6 +77,8 @@ export type GrokSpawn = (
 export type GrokTraceKind = "thinking" | "normal" | "tool-use" | "error";
 
 export type GrokStreamHandlers = {
+  onRequest?: (request: { method: string; params?: unknown }) =>
+    Promise<{ result?: unknown; error?: unknown } | null | undefined> | { result?: unknown; error?: unknown } | null | undefined;
   onAssistantDelta?: (text: string) => void;
   onTrace?: (content: string, kind?: GrokTraceKind, meta?: { toolCallId?: string }) => void;
   onEvent?: (message: GrokJsonRpcMessage) => void;
@@ -124,6 +128,7 @@ export class GrokInteractiveRunner {
   private closed = false;
   private failed: Error | null = null;
   private activeHandlers: GrokStreamHandlers | null = null;
+  private turnCancelled = false;
   private tokenUsageHandler: GrokStreamHandlers["onTokenUsageUpdate"] = undefined;
   private latestTokenUsage: GrokTokenUsageUpdate | null = null;
   private streamFailure: string | null = null;
@@ -133,7 +138,21 @@ export class GrokInteractiveRunner {
   private readonly acpClient: GrokAcpClient;
 
   public constructor(private readonly options: GrokRunnerOptions) {
-    this.acpClient = new GrokAcpClient(options.cwd);
+    this.acpClient = new GrokAcpClient(options.cwd, async (params) => {
+      const handlers = this.activeHandlers;
+      if (!handlers || this.turnCancelled) {
+        return { outcome: "cancelled" };
+      }
+      const resolution = await handlers.onRequest?.({ method: GROK_USER_QUESTION_METHOD, params });
+      if (handlers !== this.activeHandlers || this.turnCancelled || !resolution) {
+        return { outcome: "cancelled" };
+      }
+      const response = readGrokUserQuestionResponse(resolution.result);
+      if (!response) {
+        throw new GrokAcpClientError("Invalid user question response", -32603);
+      }
+      return response;
+    });
   }
 
   public isReusable(): boolean {
@@ -231,6 +250,7 @@ export class GrokInteractiveRunner {
       throw new Error(t("grok.requestFailed"));
     }
     this.activeHandlers = handlers;
+    this.turnCancelled = false;
     this.tokenUsageHandler = handlers.onTokenUsageUpdate;
     if (this.latestTokenUsage) {
       this.tokenUsageHandler?.(this.latestTokenUsage);
@@ -268,6 +288,7 @@ export class GrokInteractiveRunner {
   }
 
   public cancelTurn(): void {
+    this.turnCancelled = true;
     this.tokenUsageHandler = undefined;
     this.activeReplay?.finish("cancelled");
     if (!this.sessionId || !this.canWrite()) {
@@ -471,6 +492,7 @@ export class GrokInteractiveRunner {
   }
 
   private async answerClientRequest(message: GrokJsonRpcMessage): Promise<void> {
+    const handlers = this.activeHandlers;
     try {
       const result = await this.acpClient.handle(String(message.method), message.params, this.sessionId);
       if (this.canWrite()) {
@@ -478,6 +500,22 @@ export class GrokInteractiveRunner {
       }
     } catch (error) {
       if (!this.canWrite()) {
+        return;
+      }
+      if (isGrokUserQuestionMethod(String(message.method)) && error instanceof Error
+        && isHumanInteractionRejectedErrorInfo(error)) {
+        if (handlers && handlers === this.activeHandlers && !this.turnCancelled) {
+          for (const [requestId, pending] of this.pending) {
+            if (pending.method === "session/prompt") {
+              this.pending.delete(requestId);
+              pending.reject(error);
+            }
+          }
+        }
+        this.write({ jsonrpc: "2.0", id: message.id, result: { outcome: "cancelled" } });
+        if (handlers && handlers === this.activeHandlers && !this.turnCancelled) {
+          this.cancelTurn();
+        }
         return;
       }
       const code = error instanceof GrokAcpClientError ? error.code : -32603;

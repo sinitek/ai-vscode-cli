@@ -91,6 +91,16 @@ test("keeps both ends of long failures in summaries without truncating replay ou
   assert.equal((updateOf(events[0]).rawOutput as { output: string }).output, output);
 });
 
+test("preserves the detailed failure message alongside a generic tool error code", () => {
+  const { stream, traces, events } = createStream();
+  const rawOutput = { error: "tool_execution_failed", message: "Failed to reach the client for user question: Method not found: _x.ai/ask_user_question" };
+  stream.append(message({ sessionUpdate: "tool_call", toolCallId: "ask", title: "ask_user_question" }));
+  stream.append(message({ sessionUpdate: "tool_call_update", toolCallId: "ask", status: "failed", rawOutput }));
+  assert.match(traces.at(-1)?.content ?? "", /tool_execution_failed\nFailed to reach the client/);
+  assert.match(traces.at(-1)?.content ?? "", /Method not found: _x.ai\/ask_user_question/);
+  assert.deepEqual(updateOf(events.at(-1)!).rawOutput, rawOutput);
+});
+
 test("normalizes known UTF-8 fields without losing binary, distinct, or unknown representations", () => {
   const text = "中文🙂\n";
   const original = { type: "Bash", output: [...Buffer.from(text)], output_for_prompt: text, truncated: false };

@@ -2704,6 +2704,25 @@
 - `src/interactive/claudeRunner.ts`
 
 
+## Grok 原生提问方法未桥接且错误详情被隐藏
+
+- 状态：已规避
+- 首次发现：2026-10-21
+- 适用范围：Grok ACP Vibe 人工交互、工具错误摘要
+
+### 现象与根因
+
+- `ask_user_question` 显示 `failed / tool_execution_failed`，实际 `rawOutput.message` 为 `Method not found: _x.ai/ask_user_question`。
+- 原生提问是 ACP 客户端扩展请求，不能当成 `session/request_permission` 自动审批。仅接终端、文件和权限方法不足以完成提问。
+- 错误摘要不能因 `error` 是通用字符串就丢弃同时存在的 `message`。无 error/message 时仍需回退 stderr/output，保持长日志首尾。
+
+### 长期规避与验证
+
+- Grok 原生回答采用 `{ outcome: "accepted", answers: { [question]: string[] } }` 或 `{ outcome: "cancelled" }`，不是 Codex questionId 结构，也不是按问题顺序排列的二维数组。契约与官方 `xai-grok-test-support/src/acp_ask_user_question.rs` 核对，并用本机 CLI 验证。
+- 复用已有开关、超时和表单；拒绝必须传播为宿主停止，不让 CLI 的通用工具错误吞掉拒绝并继续执行。
+- 逐回合绑定处理器；旧表单的迟到结果不能复用下一回合处理器。
+- `npm run build`；`node --test dist/test/interactive/grokUserQuestion.test.js dist/test/interactive/grokAcpClient.test.js dist/test/interactive/grokRunner.test.js dist/test/interactive/grokToolCallStream.test.js`。
+
 ## 主任务澄清表单被当成通过或写两次
 
 - 状态：已规避
