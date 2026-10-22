@@ -49,6 +49,8 @@ Claude 工具兼容提示通过统一构建器附加到普通、分组、Loop/Gr
 
 折叠指令组的摘要与上下相邻气泡统一保持 20px 间距；去掉原生 `details` 折叠后残留的 12px flex 空隙。展开时摘要到正文仍为 12px，组内气泡间距仍为 20px；不改变折叠交互与消息内容。规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`，样式回归入口为 `src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 
+执行日志气泡没有已识别标题时，以正文合并空白后的前 20 个 Unicode 字符作为标题，不追加省略号；不足 20 个字符全部显示，空白内容不生成标题，已有语义标题、完整正文和折叠规则保持不变。实现见 `src/webview/viewContentScript/traceRendering.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`，规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`。
+
 连续指令气泡收起后，摘要以“(数量) 主标题”显示组内最新气泡的主标题，并在已有摘要时接成“主标题： 摘要”；标题过长出现省略时，数量仍完整可见。执行命令展开 shell 包装并带上命令，文件和编辑带上路径末段，搜索和网络查询带上关键词；只有状态或 limit 时不追加空摘要。展开后仍显示“收起 (数量)”。实现见 `src/webview/instructionGroupSummary.ts` 与 `src/webview/viewContentScript/messageRendering.ts`，回归见 `src/test/webview/instructionGroupSummary.test.ts`。
 
 Loop、Loop+、Graph 专属通知与操作入口不进入指令折叠：系统通知，以及带有效群聊或运行图操作的气泡直接显示，并将前后普通指令分为独立折叠组；历史恢复、重绘和实时追加保持一致。任务关联标记本身不影响普通工具/回复的折叠，“仅看结果”筛选保持不变。实现见 `src/webview/viewContentScript/messageRendering.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`，规格见 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.6 输出渲染与任务观测`。

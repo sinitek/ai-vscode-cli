@@ -212,7 +212,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 思考与最终回复在 runStatus 运行期间持续复用单一流式文本节点，超过 3 秒的输出停顿也不会切回 Markdown，避免下一次 append 又切回纯文本导致高度反复变化。结束、错误或停止事件统一格式化剩余气泡；未处于运行态时仍支持连续 3 秒无新文字后格式化。该调度只改变渲染方式，不删除思考或回复正文
 - 标题栏右侧工具组在新建会话图标左侧提供当前激活会话的关键词搜索。点击搜索图标或按 Ctrl/Cmd+F 打开浮动关键词条，在当前 tab 已渲染文本中做大小写不敏感的字面量查找、高亮，并用上一条/下一条自动定位；计数显示为当前/总数。搜索不进入其他会话 tab、按钮控件或未渲染消息。消息重绘后保留关键词并重新高亮；存在关键词时不把视图强行拉回底部
 - 最终成功回复使用强调卡片样式，Markdown 外层带主题强调边框
-- trace 分段展示
+- trace 分段展示；执行日志气泡没有已识别标题时，以正文合并空白后的前 20 个 Unicode 字符作为标题，不追加省略号；短内容全部显示，空白内容不生成标题，已有语义标题、完整正文和折叠规则不变
 - thinking 与 tool-use 事件区分渲染
 - Loop 主任务和子任务 conversation tab 的流水动画以实际运行进程为准；Webview 每 60 秒请求一次运行态校准，宿主同时返回需要启动和停止流水动画的 Tab，补偿遗漏的实时 `runStatus:start`，且不为普通 CLI、Graph 或已结束任务误加动画
 - Codex app-server 的 reasoning/thinking 会消费 `item/reasoning/summaryTextDelta`、`item/reasoning/textDelta` 与 `item/reasoning/summaryPartAdded` 实时写入 thinking 气泡；同一 reasoning item 在工具气泡插入后仍续写原思考气泡。思考气泡与最终结论气泡一样，在实际 runStatus 运行期间保持纯文本，结束、错误或停止时完整渲染 Markdown；未处于运行态时才使用连续 3 秒无新文字后的格式化，避免不断 append 时反复切换排版。所有模型的 `thread/start` 与 `thread/resume` 都请求 `model_reasoning_summary=detailed`，不再按模型名包含 `grok` 特殊处理。插件不按 200 字裁切思考正文；GPT 摘要在日志里是完整短标题，Grok/kedaya 仍可能由上游在约 200 字处结束并带上 `...`，`detailed` 不能补回未下发的文本。`item.completed` 只补尚未展示的续写，不得用更短摘要覆盖已流式思考。摘要会精准移除独占一行的空 HTML 注释 `<!-- -->` 及其水平空白变体，并截掉思考正文中泄漏的 `[final_answer]` 草稿；不会改写普通 assistant/user 消息、行内空注释或非空 HTML 注释。历史 Codex thinking 消息在加载时使用同一规则清洗并回写会话存档。

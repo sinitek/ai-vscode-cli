@@ -3173,6 +3173,31 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   assert.equal(context.classifyCommandPurposeTag("git status").type, "git-read");
   assert.equal(context.unwrapShellCommand("bash -lc \"npm test\""), "npm test");
   assert.equal(context.getTracePresentation("unknown").type, "");
+  const untitledTraceCases = [
+    {
+      content: 'mcp codegraph :: codegraph_explore\nparams: {\n  "query": "allocateVersion"\n}',
+      title: "mcp codegraph :: cod",
+    },
+    { content: "短日志", title: "短日志" },
+    { content: "12345678901234567890", title: "12345678901234567890" },
+    { content: "12345678901234567890x", title: "12345678901234567890" },
+    { content: " \r\n  first\tsecond \n third  ", title: "first second third" },
+    { content: "一二三四五六七八九十".repeat(3), title: "一二三四五六七八九十".repeat(2) },
+    { content: "😀".repeat(19) + "📋extra", title: "😀".repeat(19) + "📋" },
+    { content: "<标题>&内容", title: "&lt;标题&gt;&amp;内容" },
+  ];
+  for (const { content, title } of untitledTraceCases) {
+    const html = context.renderTraceContent({ role: "trace", content });
+    assert.ok(html.includes('<span class="trace-title">' + title + "</span>"), content);
+  }
+  const untitledMcpTrace = context.renderTraceContent({ role: "trace", content: untitledTraceCases[0].content });
+  assert.match(untitledMcpTrace, /codegraph_explore/);
+  assert.match(untitledMcpTrace, /allocateVersion/);
+  assert.match(untitledMcpTrace, /trace-collapsible/);
+  assert.match(collapsedExec, /<span class="trace-title">Exec<\/span>/);
+  assert.doesNotMatch(context.renderTraceContent({ role: "trace", content: "" }), /trace-header/);
+  assert.doesNotMatch(context.renderTraceContent({ role: "trace", content: " \r\n\t" }), /trace-header/);
+  assert.doesNotMatch(context.renderMessageContent({ role: "assistant", content: "普通助手回复" }, 0), /trace-header/);
   const fallback = context.safelyRenderMessageContent({ role: "assistant", content: "broken" }, 0);
   assert.doesNotMatch(fallback, /render-message-failed/);
   assert.deepEqual(failures, []);

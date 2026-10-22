@@ -701,11 +701,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           : expandedLines;
         const bodyHtml = renderTraceBodyLines(collapsedLines);
         const showHeaderDetail = shouldCollapse && detailText && !detailDuplicatesBody && !shouldCollapseByContentLength(detailText);
-        const header = presentation.title
+        const title = presentation.title || Array.from(normalizeCollapsePreviewText(content)).slice(0, 20).join("");
+        const header = title
           ? '<div class="trace-header">' +
             '<div class="trace-tag-row">' +
             '<span class="trace-title">' +
-            escapeHtml(presentation.title) +
+            escapeHtml(title) +
             "</span>" +
             (presentation.commandTag
               ? '<span class="trace-command-tag cmd-purpose-' +
