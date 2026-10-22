@@ -257,7 +257,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 对话面板里的配置档案下拉按 CLI 维度维护 `activeConfigIdByCli`：用户先看到待切换配置，但在宿主完成 `applyConfig` 并回写工作区 active config 之前，提示词发送与队列出队都会等待该配置应用完成；应用失败时会回滚到当前 active config，并展示错误提示，不会出现“下拉已切过去但实际运行仍使用旧配置”的状态。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
-- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这四个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
+- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这四个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。全部安装成功后市场弹层保持打开，并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
 - OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/) 和 [Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)。
 - Skills 表格的操作按钮保持同行；“复制到”按钮打开弹窗，可多选当前 CLI 以外的目标。复制期间禁用重复提交，部分失败保留失败目标重试，成功目标不会重复复制；不覆盖同名技能。
 - 配置中心不再提供 MCP 市场、安装、卸载或健康检查
@@ -335,7 +335,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 - 用户能在 VS Code 内完成多 CLI 切换与对话
 - 会话、历史、模型和规则在重开面板后仍可恢复
-- 配置中心能管理本地配置；Skills 可打开、删除、复制四个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI；配置中心不再提供 MCP 管理
+- 配置中心能管理本地配置；Skills 可打开、删除、复制四个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，安装成功后市场弹层保持打开以便继续选择；配置中心不再提供 MCP 管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
 OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。

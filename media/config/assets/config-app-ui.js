@@ -2092,7 +2092,9 @@ const SkillsMarketModal = ({ onClose }) => {
         }));
       }
       if (problems.length === 0) {
-        onClose();
+        setSelectedId("");
+        setSelectedTargets([]);
+        setInstallErrors([]);
         return;
       }
       if (installed.length === 0) Kt.warning("没有安装新技能");

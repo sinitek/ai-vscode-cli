@@ -127,6 +127,13 @@ test("config page exposes the LobeHub skills market beside import", () => {
   assert.match(uiSource, /安装到 CLI（可多选）/);
   assert.match(uiSource, /同名技能会先删除已有目录再安装/);
   assert.match(uiSource, /sinitek-cli-skills-installed/);
+  const installStart = uiSource.indexOf("const confirmInstall = async () => {");
+  const installEnd = uiSource.indexOf("return be.jsx(xr,", installStart);
+  const installBody = uiSource.slice(installStart, installEnd);
+  assert.ok(installStart >= 0 && installEnd > installStart);
+  assert.doesNotMatch(installBody, /onClose\(/);
+  assert.match(installBody, /setSelectedId\(""\)/);
+  assert.match(installBody, /setSelectedTargets\(\[\]\)/);
   assert.match(apiSource, /searchLobehubSkills = async \(payload\)/);
   assert.match(apiSource, /installLobehubSkill = async \(payload\)/);
 });
