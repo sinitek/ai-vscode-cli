@@ -85,6 +85,7 @@ export type PanelMessageHandlerDeps = {
   repairSupersededLocalSession: (cli: CliName, sessionId: string, options?: { notifyPanel?: boolean }) => string;
   findConversationTabIdBySession: (cli: CliName, sessionId: string) => string | null;
   setActiveConversationTab: (tabId: string) => { cli: CliName; sessionId: string | null } | null;
+  restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
   updateStatusBar: () => void;
   getWorkspaceSettings: () => WorkspaceSettings;
   saveWorkspaceSettings: (settings: WorkspaceSettings) => void;

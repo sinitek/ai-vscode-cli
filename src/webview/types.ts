@@ -263,6 +263,13 @@ export type ChatMessageAction =
       label?: string;
     };
 
+export type ConversationExecutionProfile = {
+  configId: string;
+  model: string | null;
+  thinkingMode?: ThinkingMode;
+  openCodeVariant?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "system" | "trace";
@@ -274,6 +281,7 @@ export type ChatMessage = {
   contextTags?: string[];
   /** undefined: legacy/unknown; null: CLI default model. */
   executionModel?: string | null;
+  executionProfile?: ConversationExecutionProfile;
   taskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopAsk?: boolean;

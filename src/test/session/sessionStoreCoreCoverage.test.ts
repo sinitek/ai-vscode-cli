@@ -479,7 +479,10 @@ test("restores execution model snapshots and keeps legacy messages compatible", 
   const messages: ChatMessage[] = [
     { id: "legacy", role: "user", content: "old prompt", createdAt: 1 },
     { id: "default", role: "user", content: "default prompt", createdAt: 2, executionModel: null },
-    { id: "model", role: "user", content: "model prompt", createdAt: 3, executionModel: "gpt-6.1-sol" },
+    {
+      id: "model", role: "user", content: "model prompt", createdAt: 3, executionModel: "gpt-6.1-sol",
+      executionProfile: { configId: "saved-config", model: "raw-model-id", thinkingMode: "xhigh", openCodeVariant: "high" },
+    },
   ];
   try {
     writeMessageFile("codex", "models", messages, options);

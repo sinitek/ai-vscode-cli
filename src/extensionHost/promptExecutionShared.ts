@@ -35,6 +35,7 @@ export type OpenCodeRuntimePreparationInput = {
 };
 
 export type OpenCodeRuntimePreparation = {
+  configId?: string | null;
   envOverrides: Record<string, string>;
   configContent: string;
   role: OpenCodeCanonicalModelRole;

@@ -10,6 +10,7 @@ type RecordedPort = OpenCodePromptRunPorts & {
 
 function createRuntimePreparation() {
   return {
+    configId: "open-config",
     envOverrides: {},
     configContent: "{}",
     role: "main" as const,
@@ -72,6 +73,7 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
       role: "user" as const,
       content: input.displayPrompt,
       executionModel: input.executionModel,
+      executionProfile: input.executionProfile,
       createdAt,
     }),
     appendUserMessage: () => {
@@ -448,9 +450,13 @@ test("records the effective OpenCode model and preserves each prompt snapshot", 
   });
   await runOpenCodePromptTemplate(createInput({ model: "requested-model" }), createTarget(), {}, ports);
   assert.equal(messages[0]?.executionModel, "effective-model");
+  assert.deepEqual(messages[0]?.executionProfile, {
+    configId: "open-config", model: "effective-model", thinkingMode: "medium", openCodeVariant: null,
+  });
   ports.prepareOpenCodeRuntime = async () => ({ ...createRuntimePreparation(), effectiveModel: "next-model" });
   await runOpenCodePromptTemplate(createInput(), createTarget(), {}, ports);
   assert.deepEqual(messages.map((message) => message.executionModel), ["effective-model", "next-model"]);
+  assert.deepEqual(messages.map((message) => message.executionProfile?.model), ["effective-model", "next-model"]);
 });
 
 test("fills the execution model on a preloaded OpenCode prompt without duplicating it", async () => {
@@ -467,6 +473,9 @@ test("fills the execution model on a preloaded OpenCode prompt without duplicati
   await runOpenCodePromptTemplate(createInput({ preloadedUserMessageId: message.id }), createTarget(), {}, ports);
   assert.equal(messages.length, 1);
   assert.equal(message.executionModel, "effective-model");
+  assert.deepEqual(message.executionProfile, {
+    configId: "open-config", model: "effective-model", thinkingMode: "medium", openCodeVariant: null,
+  });
   assert.equal(message.createdAt, 123);
   assert.deepEqual(replacements, [message]);
 });

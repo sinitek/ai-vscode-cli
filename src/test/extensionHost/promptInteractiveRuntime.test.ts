@@ -339,6 +339,9 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   await harness.host.runPromptInteractive(createPromptInput(), createTarget());
 
   const messages = harness.messagesBySession.get("session-1") ?? [];
+  assert.deepEqual(messages.find((message) => message.role === "user")?.executionProfile, {
+    configId: "config-main", model: "gpt-5.5", thinkingMode: "medium",
+  });
   const finalMessage = messages.find((message) => message.role === "assistant" && message.codexFinalAnswer === true);
   assert.ok(finalMessage);
   assert.equal(finalMessage.content, "[final_answer] completed");

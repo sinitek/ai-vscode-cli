@@ -263,6 +263,10 @@ OpenCode Loop 会话恢复补充：上段“当前尝试为空时进入 hidden r
 
 ## 6. 会话与本地映射
 
+对话 Tab 切换与历史会话打开会先恢复目标执行配置，再刷新面板和会话消息。Loop / Loop+ 主 Tab 保持任务对应模式，模型取当前 `modelRouting`，主配置优先取路由中的配置 ID，否则取 `originProfile.configId`；思考力度取任务已记录的档位。跨 CLI 子模型只使用明确绑定的目标配置，不回退主配置。子 Tab 映射为 Vibe，优先取该子会话实际执行的快照，避免任务后续改模型时覆盖原子任务模型。
+
+新用户消息通过 `ChatMessage.executionProfile` 持久化 `{ configId, model, thinkingMode?, openCodeVariant? }`；`model` 是原始模型 ID，区别于展示用 `executionModel`。交互运行时和 OpenCode 共享运行模板在解析实际模型后补齐快照，预载消息原位更新。普通会话仅在有可靠快照时恢复；缺失配置不应用，缺失模型不重新添加、也不改对应思考力度；不支持的思考档位保持当前值。恢复复用配置应用队列和现有模型存储，过期 Tab / 工作区请求不再写模型或发布旧会话消息。
+
 扩展侧会话 ID 与底层真实续接 ID 不同：
 
 - Codex：扩展 sessionId ↔ threadId

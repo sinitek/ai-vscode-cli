@@ -50,6 +50,7 @@ import {
   type GraphRunRecord,
 } from "../graph/types";
 import type { GraphMessagesHost } from "./graphMessages";
+import type { ConversationExecutionProfile } from "../webview/types";
 
 const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1;
 const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES;
@@ -61,6 +62,7 @@ export type PromptRunInput = {
   contextTags: string[];
   preloadedUserMessageId?: string;
   executionModel?: string | null;
+  executionProfile?: ConversationExecutionProfile;
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;

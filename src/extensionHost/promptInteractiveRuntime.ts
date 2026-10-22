@@ -1,4 +1,5 @@
 import { appendBoundedUtf8Text } from "../boundedText";
+import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
 import {
   shouldOverlapLoopMainContextCompaction,
   type LoopMainAutoCompactRequest,
@@ -218,6 +219,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       : requestedModel;
     const executionModel = deps.getModelDisplayName?.(cli, selectedModel) ?? selectedModel;
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
+    const executionProfile = buildConversationExecutionProfile(activeConfigId, selectedModel, thinkingMode);
     const interactiveMode = getWorkspaceInteractiveMode(cli);
     applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
@@ -1018,11 +1020,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     if (!input.preloadedUserMessageId) {
-      appendMessageForTab(buildUserChatMessage({ ...input, executionModel }, userCreatedAt, userMessageId));
+      appendMessageForTab(buildUserChatMessage({ ...input, executionModel, executionProfile }, userCreatedAt, userMessageId));
     } else {
       const userMessage = messageTarget.find((message) => message.id === userMessageId);
       if (userMessage) {
         userMessage.executionModel = executionModel;
+        userMessage.executionProfile = executionProfile;
         sendPanelMessage({ type: "replaceMessage", message: userMessage, tabId });
         schedulePersistForInteractiveRun();
       }

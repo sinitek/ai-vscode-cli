@@ -91,6 +91,13 @@ import {
   type OpenCodeModelRoleInput,
 } from "./cli/opencodeconfigmodels";
 import { isCodeGraphWorkspaceIndexed } from "./cli/codegraphStatus";
+import { isOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
+import { parseGrokConfigModels } from "./cli/grokConfigModels";
+import {
+  buildConversationExecutionProfile,
+  createConversationTabConfigurationRestorer,
+  resolveConversationTabConfiguration,
+} from "./conversationTabConfiguration";
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
@@ -445,6 +452,7 @@ import {
   getManagedModelOptionsForCliFromStore,
   getManagedModelOptionsForConfigFromStore,
   getModelOptionsForCliFromStore,
+  getLoopModelOptionsForCliFromStore,
   getModelOptionsForConfigFromStore,
   getOpenCodeRoleModelFromStore,
   getOpenCodeRoleVariantFromStore,
@@ -1455,6 +1463,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     repairSupersededLocalSession,
     findConversationTabIdBySession,
     setActiveConversationTab,
+    restoreConversationTabConfiguration,
     updateStatusBar,
     getWorkspaceSettings: () => workspaceSettings,
     saveWorkspaceSettings,
@@ -2655,6 +2664,7 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
 }
 
 type OpenCodeRuntimePreparation = {
+  configId?: string | null;
   envOverrides: Record<string, string>;
   configContent: string;
   role: OpenCodeCanonicalModelRole;
@@ -2790,6 +2800,7 @@ async function prepareOpenCodeRuntime(
     compatibilityFields: ["model", "small_model"],
   });
   return {
+    configId,
     envOverrides: configService.parseEnvText(current.envContent ?? ""),
     configContent: runtimeConfigContent,
     role: runtimeInput.role,
@@ -3710,6 +3721,73 @@ function reconcileRunningConversationTabs(): void {
     stopTabIds: selectStaleConversationTabRunningFlowIds(checks),
   });
 }
+
+const restoreConversationTabConfiguration = createConversationTabConfigurationRestorer({
+  getActiveTabId: getActiveConversationTabId,
+  getWorkspaceKey: () => activeWorkspaceKey,
+  getConfiguration: (tabId) => {
+    const tab = getConversationTabById(tabId);
+    if (!tab) {
+      return null;
+    }
+    const context = resolveConversationTabLoopContext(tab);
+    const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+    return resolveConversationTabConfiguration({
+      cli: tab.cli,
+      taskRole: context.taskRole,
+      task: context.loopTaskId ? readLoopTaskRecord(context.loopTaskId) : null,
+      messages: getLiveMessagesForTab(tabId)
+        ?? (sessionId ? loadSessionMessages(tab.cli, sessionId) : getPendingSessionDraft(tabId, tab.cli).messages),
+    });
+  },
+  configExists: async (cli, configId) => Boolean(await configService.getConfigById(cli, configId)),
+  waitForConfigApply: (cli) => configApplyQueue.waitForIdle(cli),
+  getActiveConfigId: getActiveConfigIdForCli,
+  applyConfig: applyConfigById,
+  getModelOptions: async (cli, configId, role) => {
+    if (cli === "opencode") {
+      const config = await configService.getConfigById(cli, configId);
+      const parsed = parseOpenCodeConfigModels(config?.content ?? "{}");
+      return parsed.candidates
+        .filter((candidate) => validateOpenCodeModelOverride(parsed, role === "subtask" ? "subtask" : "main", candidate.value).ok)
+        .map((candidate) => candidate.value);
+    }
+    if (cli === "grok") {
+      const config = await configService.getConfigById(cli, configId);
+      const parsed = parseGrokConfigModels(config?.content ?? "");
+      modelSettingsHost.cacheGrokConfigModels(configId, parsed);
+      return parsed.models;
+    }
+    return role === "vibe"
+      ? getModelOptionsForCli(cli, configId)
+      : getLoopModelOptionsForCliFromStore(modelStore, cli, role, configId);
+  },
+  selectModel: (route, role) => {
+    if (route.cli === "opencode") {
+      selectCliLoopModel(route.cli, role === "subtask" ? "subtask" : "main", route.model ?? null, route.configId);
+    } else if (role === "vibe") {
+      selectCliModel(route.cli, route.model ?? null, route.configId);
+    } else {
+      selectCliLoopModel(route.cli, role, route.model ?? null, route.configId);
+    }
+  },
+  restoreThinking: (route, role) => {
+    if (route.cli === "opencode") {
+      if (route.openCodeVariant === null || isOpenCodeThinkingEffort(route.openCodeVariant)) {
+        updateOpenCodeVariantForConfig(role === "subtask" ? "subtask" : "main", route.openCodeVariant, route.configId, route.model ?? null);
+      }
+    } else if (route.thinkingMode && isThinkingMode(route.thinkingMode)
+      && normalizeThinkingModeForCli(route.cli, route.thinkingMode) === route.thinkingMode) {
+      if (role === "vibe" || (route.cli === "claude" && role === "main")) {
+        setCliModelThinkingMode(route.cli, route.model ?? null, route.thinkingMode);
+      } else {
+        setSelectedLoopThinkingMode(route.cli, role, route.model, route.thinkingMode, route.configId);
+      }
+    }
+  },
+  selectSubtaskCli: selectLoopSubtaskCli,
+  onError: (error) => { void logError("conversation-tab-configuration-restore-failed", { error: String(error) }); },
+});
 
 function resolveAutoInteractiveModeForConversationTab(
   tab: ConversationTabRecord | null
@@ -4934,6 +5012,11 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
   const message = buildUserChatMessage({
     ...input,
     executionModel: resolvePreloadedExecutionModel(input, target.cli),
+    executionProfile: buildConversationExecutionProfile(
+      input.taskRole === "subtask" ? input.loopSubtaskConfigId ?? getActiveConfigIdForCli(target.cli) : getActiveConfigIdForCli(target.cli),
+      resolveRecordedExecutionModel(input, getSelectedCliModel(target.cli)),
+      input.thinkingModeOverride ?? getEffectiveThinkingMode(target.cli, input.model ?? getSelectedCliModel(target.cli)),
+    ),
   }, createdAt, messageId);
   const messageTarget = target.sessionId
     ? loadSessionMessages(target.cli, target.sessionId)

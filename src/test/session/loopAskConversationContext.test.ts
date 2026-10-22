@@ -73,6 +73,7 @@ test("marks only loop ask user bubbles and leaves ordinary prompts unchanged", (
   }, 10, "ask-1");
   const ordinary = buildUserChatMessage({
     displayPrompt: "继续做",
+    executionProfile: { configId: "main-config", model: "raw-model", thinkingMode: "high" },
     contextTags: ["file"],
     taskRole: "main",
     loopTaskId: "loop-1",
@@ -84,4 +85,5 @@ test("marks only loop ask user bubbles and leaves ordinary prompts unchanged", (
   assert.equal(ordinary.loopAsk, undefined);
   assert.equal(ordinary.taskRole, "main");
   assert.equal(ordinary.loopTaskId, "loop-1");
+  assert.deepEqual(ordinary.executionProfile, { configId: "main-config", model: "raw-model", thinkingMode: "high" });
 });

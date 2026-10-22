@@ -297,6 +297,24 @@
 - `src/extensionHost/promptRunRuntime.ts`
 - `.ch/docs/design-docs/loop-plus-scheduling.md`
 
+## 对话标签恢复的配置被前端旧选择反写
+
+### 现象
+- 扩展侧已经恢复目标标签的配置和模型，但面板仍显示前一标签的配置，随后又发送旧配置的 `applyConfig`。
+
+### 根因
+- Webview 的配置一致性保护会保留 `selectedConfigId` 和 pending 配置，防止同一标签的异步配置刷新回退用户选择。
+- 点击标签时 Webview 会提前修改 `conversationTabs.activeTabId`；仅比较当前前端 Tab ID 与新面板状态，无法识别一次真正的标签切换。
+
+### 长期规避
+- 单独记录最后一次已应用面板状态的 CLI / Tab 上下文。上下文切换时清除上一标签的配置和 OpenCode 模型 pending 选择，接受扩展恢复的配置；同一标签手动切换配置时继续保留原有异步保护。
+- `executionModel` 是展示名，不作为可靠的原始模型 ID。执行配置恢复读取任务当前路由或 `executionProfile`。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/session/conversationTabConfiguration.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`
+- 使用真实 Webview HTML 的 Chromium smoke，连续切换同 CLI 的 Loop 与 Loop+ 主标签，再切到跨 CLI 子标签，核对配置、模型和思考力度。
+
 ## Loop+ 协议提示词不能从会话消息里删掉
 
 - 状态：已规避

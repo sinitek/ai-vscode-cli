@@ -577,6 +577,42 @@ test("reports config and rules failures while preserving successful rule contrac
   assert.equal(harness.calls.errors.at(-1)?.detail, harness.state.applyConfigFailure);
 });
 
+test("tab selection restores the execution configuration before publishing the panel state", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const events: string[] = [];
+  harness.deps.restoreConversationTabConfiguration = async (tabId) => {
+    assert.equal(harness.state.activeTabId, tabId);
+    events.push(`restore:${tabId}`);
+  };
+  harness.deps.postPanelState = async () => { events.push("state"); };
+  harness.deps.sendSessionMessagesToPanel = () => { events.push("messages"); };
+  await handlePanelMessageWithDeps({ type: "selectConversationTab", cli: "codex", tabId: "tab-codex" }, harness.deps);
+  assert.deepEqual(events, ["restore:tab-codex", "state", "messages"]);
+});
+
+test("tab selection does not publish stale messages after another tab becomes active", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const events: string[] = [];
+  harness.deps.restoreConversationTabConfiguration = async () => { harness.state.activeTabId = "other-tab"; };
+  harness.deps.postPanelState = async () => { events.push("state"); };
+  harness.deps.sendSessionMessagesToPanel = () => { events.push("messages"); };
+  await handlePanelMessageWithDeps({ type: "selectConversationTab", cli: "codex", tabId: "tab-codex" }, harness.deps);
+  assert.deepEqual(events, []);
+});
+
+test("opening a history session restores its execution configuration but choosing a CLI group does not", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const restoredTabs: string[] = [];
+  harness.deps.restoreConversationTabConfiguration = async (tabId) => { restoredTabs.push(tabId); };
+  await handlePanelMessageWithDeps({ type: "selectSession", cli: "codex", sessionId: "saved-session" }, harness.deps);
+  assert.deepEqual(restoredTabs, [harness.state.activeTabId]);
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
+  assert.equal(restoredTabs.length, 1);
+});
+
 test("applies config successfully and notifies the webview", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

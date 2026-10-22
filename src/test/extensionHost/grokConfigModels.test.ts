@@ -45,6 +45,12 @@ test("Grok host refreshes actual config models and resolves normal and role sele
     runPrompt: async () => undefined, sanitizeConversationTabRecord: () => null, logError: () => undefined,
   });
   const configState = { configs: [], activeConfigId: "profile" };
+  host.cacheGrokConfigModels("cached-profile", {
+    models: ["cached-model"], labels: { "cached-model": "模型展示名" }, defaultModel: "cached-model", error: null,
+  });
+  assert.equal(host.getSelectedCliModel("grok", "cached-profile"), "cached-model");
+  assert.equal(host.getModelDisplayName("grok", "gpt-6.1-sol"), "gpt-6.1-sol");
+  assert.deepEqual(host.getModelOptionsForCli("grok", "cached-profile"), ["cached-model"]);
   await host.refreshGrokConfigModels(configState);
   assert.equal(host.getSelectedCliModel("grok", "profile"), "gpt-6.1-sol");
   assert.equal(host.getSelectedLoopCliModel("grok", "main", "profile"), "gpt-6.1-sol");

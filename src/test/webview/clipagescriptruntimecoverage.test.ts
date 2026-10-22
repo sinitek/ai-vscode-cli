@@ -928,6 +928,28 @@ for (const cli of ["codex", "claude", "opencode"]) {
     assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
   });
 
+  test(`${cli} accepts a tab restored profile even when the webview optimistically selected the new tab`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, "config-a") });
+    api.state.conversationTabs.activeTabId = "tab-2";
+    api.state.pendingConfigApply = { cli, configId: "config-a" };
+    api.state.pendingOpenCodeRoleSelection = { configId: "config-a", role: "main", value: "provider/old" };
+    const postedBeforeSwitch = posted.length;
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-b", {
+        conversationTabs: { activeTabId: "tab-2", tabs: [{ id: "tab-1", cli }, { id: "tab-2", cli }] },
+      }),
+    });
+    assert.equal(document.getElementById("configSelect").value, "config-b");
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-b-model"]);
+    assert.equal(api.state.selectedLoopModelsByCli[cli].main, "config-b-model");
+    assert.equal(api.state.thinkingMode, "low");
+    assert.equal(api.state.pendingConfigApply, null);
+    assert.equal(api.state.pendingOpenCodeRoleSelection, null);
+    assert.deepEqual(posted.slice(postedBeforeSwitch).filter((message) => message.type === "applyConfig"), []);
+  });
+
   test(`${cli} restores models after a failed profile switch and clears them when all profiles are removed`, () => {
     const { api, document, window, posted } = createRuntimeHarness();
     const activeState = createProfilePanelState(cli, "config-b");

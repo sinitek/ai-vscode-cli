@@ -34,6 +34,8 @@ type SessionPanelMessageDeps = Pick<
   | "repairSupersededLocalSession"
   | "findConversationTabIdBySession"
   | "setActiveConversationTab"
+  | "restoreConversationTabConfiguration"
+  | "getActiveConversationTabId"
   | "updateStatusBar"
   | "getWorkspaceSettings"
   | "saveWorkspaceSettings"
@@ -183,7 +185,17 @@ export function createSessionPanelMessageHandlers(
       }
       deps.disposeInteractiveRunnerIfUnused(previousBinding);
       const activeSessionId = deps.syncCurrentSessionWithActiveTab();
+      const activeTabId = deps.getActiveConversationTabId();
+      if (activeTabId) {
+        await deps.restoreConversationTabConfiguration?.(activeTabId);
+        if (deps.getActiveConversationTabId() !== activeTabId) {
+          return;
+        }
+      }
       await deps.postPanelState();
+      if (deps.getActiveConversationTabId() !== activeTabId) {
+        return;
+      }
       deps.sendSessionMessagesToPanel(deps.getCurrentCli(), activeSessionId);
     },
 
@@ -209,7 +221,14 @@ export function createSessionPanelMessageHandlers(
       if (previousCli !== switched.cli) {
         await deps.maybePromptInstallOnCliGroupSwitch(switched.cli);
       }
+      await deps.restoreConversationTabConfiguration?.(message.tabId);
+      if (deps.getActiveConversationTabId() !== message.tabId) {
+        return;
+      }
       await deps.postPanelState();
+      if (deps.getActiveConversationTabId() !== message.tabId) {
+        return;
+      }
       deps.sendSessionMessagesToPanel(switched.cli, switched.sessionId, message.tabId);
     },
 

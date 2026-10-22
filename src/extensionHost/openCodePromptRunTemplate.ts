@@ -1,4 +1,5 @@
 import type { RunProcess } from "../cli/commandRunner";
+import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { FinalConclusionCheckOptions } from "../finalConclusion";
@@ -362,12 +363,19 @@ export async function runOpenCodePromptTemplate(
   const identity = { userMessageId, userCreatedAt };
   ports.bindRunIdentityBeforeUserBubble(prepared, identity);
   const executionModel = runtimeModel ?? null;
+  const executionProfile = buildConversationExecutionProfile(
+    runtimePreparation.configId,
+    executionModel,
+    thinkingMode,
+    runtimePreparation.effectiveVariant,
+  );
   if (!input.preloadedUserMessageId) {
-    ports.appendUserMessage(messageTarget, ports.buildUserChatMessage({ ...input, executionModel }, userCreatedAt, userMessageId));
+    ports.appendUserMessage(messageTarget, ports.buildUserChatMessage({ ...input, executionModel, executionProfile }, userCreatedAt, userMessageId));
   } else {
     const userMessage = messageTarget.find((message) => message.id === userMessageId);
     if (userMessage) {
       userMessage.executionModel = executionModel;
+      userMessage.executionProfile = executionProfile;
       ports.replaceUserMessage(userMessage);
     }
   }

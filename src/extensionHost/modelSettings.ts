@@ -988,6 +988,10 @@ function getGrokModelStoreConfigId(configId: string | null): string {
   return configId ?? `grok:${resolveGrokConfigPath()}`;
 }
 
+function cacheGrokConfigModels(configId: string, config: GrokConfigModels): void {
+  grokModelsByConfigId.set(configId, config);
+}
+
 async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
   const selectedSubtaskCli = getSelectedLoopSubtaskCli(getActiveConfigIdForCli(currentCli));
   if (currentCli !== "grok" && selectedSubtaskCli !== "grok") {
@@ -1440,6 +1444,7 @@ return {
   getLoopSubtaskOpenCodeModels: wrap(getLoopSubtaskOpenCodeModels),
   getManagedModelOptionsForCli: wrap(getManagedModelOptionsForCli),
   getModelOptionsForCli: wrap(getModelOptionsForCli),
+  cacheGrokConfigModels: wrap(cacheGrokConfigModels),
   refreshGrokConfigModels: wrap(refreshGrokConfigModels),
   resolveGrokModelForRun: wrap(resolveGrokModelForRun),
   getModelDisplayName: wrap(getModelDisplayName),

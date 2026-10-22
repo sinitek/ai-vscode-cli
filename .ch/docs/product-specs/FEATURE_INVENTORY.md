@@ -12,6 +12,10 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AI 对话 / Grok | 原生提问桥接与错误详情 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/interactive/grokUserQuestion.ts`、`src/interactive/grokAcpClient.ts`、`src/interactive/grokRunner.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/interactive/grokToolCallStream.ts` | `npm run build`；`node --test dist/test/interactive/grokUserQuestion.test.js dist/test/interactive/grokAcpClient.test.js dist/test/interactive/grokRunner.test.js dist/test/interactive/grokToolCallStream.test.js dist/test/extensionHost/grokCliHostWire.test.js` | `_x.ai/ask_user_question` 复用 Vibe 人工交互表单及全局开关/超时；支持单选、多选、其他回答，按问题原文返回 Grok 原生答案。拒绝/停止不重试，超时自主继续；关闭交互及 Loop/Graph 不弹窗，跨会话请求被拒绝，迟到答案不影响下一回合。工具失败同时展示错误码和具体原因。 |
 
+## 对话标签执行配置恢复
+
+切换 AI 对话标签或打开已有会话时，底部配置随目标标签恢复：Loop / Loop+ 主标签沿用对应调度模式，恢复任务当前绑定的主配置、主模型、子 CLI、子配置和子模型；子标签使用 Vibe，并恢复该标签实际执行的模型。新用户消息持久化配置 ID、原始模型 ID、思考力度和 OpenCode variant 快照，普通会话也可恢复，不用历史展示名反推模型。已删除的配置或模型、缺少可靠快照的旧记录保持对应当前选择；模型不可用时不改其思考力度。快速切换或切换工作区时丢弃过期的模型恢复及消息刷新。实现见 `src/conversationTabConfiguration.ts`、`src/panelMessageHandlers/session.ts`；回归见 `src/test/session/conversationTabConfiguration.test.ts`、`src/test/session/sessionMessageHandlersCoreCoverage.test.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts`。
+
 ## 更新规则
 
 - 新增能力时新增一行。

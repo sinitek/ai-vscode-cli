@@ -369,8 +369,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const nextActiveTabId = state.conversationTabs && typeof state.conversationTabs.activeTabId === "string"
           ? state.conversationTabs.activeTabId
           : null;
-        if (previousCli !== state.currentCli || previousActiveTabId !== nextActiveTabId) {
+        const previousConfigurationContextKey = typeof state.appliedConfigurationContextKey === "string"
+          ? state.appliedConfigurationContextKey
+          : previousCli + ":" + (previousActiveTabId || "");
+        const nextConfigurationContextKey = state.currentCli + ":" + (nextActiveTabId || "");
+        state.appliedConfigurationContextKey = nextConfigurationContextKey;
+        if (previousConfigurationContextKey !== nextConfigurationContextKey) {
           state.autoAppliedConfig = false;
+          state.selectedConfigId = "";
+          state.pendingConfigApply = null;
+          state.pendingOpenCodeRoleSelection = null;
         }
         const tabIds = Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs.map((tab) => tab.id)
