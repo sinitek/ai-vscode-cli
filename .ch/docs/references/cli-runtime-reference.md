@@ -14,6 +14,17 @@
 | Grok Build | 长驻 ACP `grok --no-auto-update agent stdio` | `loadSession` 为真时按 `sessionId/cwd/mcpServers` 续接，否则新建 ACP 会话并保留插件本地记录 | `src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/config/grokConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
+### 交互 Runner 生命周期
+
+- `InteractiveRunnerManager` 只管理 Codex、Claude、Grok。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不是这三项时，查询返回 false 或 null，释放和活动标记无操作。
+- 只有 Grok 的 `getOrCreate` 会 trim sessionId。空白 session 在写入缓存前抛出 `empty grok session`，`reason` 为 `empty`。其它方法不 trim，也不规范化 command、cwd 或路径分隔符。
+- Codex 复用只比较 command、cwd 和规范化后的 configId。model、thinking、interactive、args、threadId 变化时保留 runner，并调用既有 `updateOptions`。模型与 config 仍走 `codexThreadSelection.ts`。
+- Claude 不复用已 dispose 的 runner。thinking、interactive、model，以及只有 true 才算开启的 isolate，必须严格一致。command、cwd、entrypoint 仅在旧值为空时接受新值。复用时优先保留 runner 已有的非空 session id。
+- Grok 只有 `isReusable()` 且 command、cwd、thinking、interactive、model 一致时复用。`agentArgs` 和 `localSessionId` 不触发重建。停止时 Grok 调用 `cancelTurn`，Codex 和 Claude 调用 `stopAndRebuild`。
+- 同一 key 上 `setRunner` 遇到同一对象只刷新元数据；换对象时先释放旧 entry。Codex 缺省 command、cwd、args 会覆盖或清空；Claude 和 Grok 省略这些可选字段时保留旧值。保存的参数数组是副本。`setRunner` 本身不调用 `updateOptions`。
+- 空闲 24 小时后释放。回调里的判定阈值是该超时减 2 秒，并且只释放当前 Map 中的同一个 entry。活动运行期间取消空闲计时，结束后重新计时。释放顺序是清 timer、调用 runner.dispose、再删映射。创建失败不留下半成品 entry，构造、`updateOptions` 和 dispose 的错误原样抛出。
+- 平台差异在 `src/interactive/runnerLifecycleStrategies.ts`，缓存和计时只在 `src/interactive/manager.ts`。这不改变用户可见的续接、停止或会话存档。
+
 ### 会话健康状态与续接前置条件
 
 - `src/sessionHealth.ts` 定义 `normal / abnormal`。任一非空助手回复（含思考、最终结论）或正常操作/思考 trace 即可使会话正常；用户消息、system、错误/警告、重连日志和空占位不算。`SessionRecord.health` 随会话存储持久化，正常状态不降级；旧记录加载消息时回填，local 到远端会话迁移时合并保留任一侧正常状态。

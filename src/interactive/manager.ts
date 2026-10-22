@@ -1,56 +1,43 @@
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
-import { CodexRunSelection, normalizeCodexRunSelection } from "./codexThreadSelection";
+import { CodexRunSelection } from "./codexThreadSelection";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
+import {
+  runnerLifecycleStrategies,
+  stopManagedRunner,
+} from "./runnerLifecycleStrategies";
+import type {
+  ClaudeRunnerCreateOptions,
+  CodexRunnerCreateOptions,
+  GrokRunnerCreateOptions,
+  InteractiveRunnerCli,
+  RunnerByCli,
+  RunnerEntry,
+  RunnerEntryByCli,
+  RunnerRegistration,
+  RunnerRegistrationByCli,
+  RunnerSetOptions,
+  SetRunnerMetadataInput,
+} from "./runnerLifecycleTypes";
+
+const platformEntries: {
+  [TCli in InteractiveRunnerCli]: (entry: RunnerEntry) => RunnerEntryByCli[TCli] | undefined;
+} = {
+  codex: (entry) => entry.cli === "codex" ? entry : undefined,
+  claude: (entry) => entry.cli === "claude" ? entry : undefined,
+  grok: (entry) => entry.cli === "grok" ? entry : undefined,
+};
+
+const platformRunners: {
+  [TCli in InteractiveRunnerCli]: (entry: RunnerEntryByCli[TCli]) => RunnerByCli[TCli];
+} = {
+  codex: (entry) => entry.runner,
+  claude: (entry) => entry.runner,
+  grok: (entry) => entry.runner,
+};
 
 const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-
-type RunnerEntry =
-  | {
-      cli: "codex";
-      sessionId: string;
-      runner: CodexInteractiveRunner;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model: string | null;
-      configId: string | null;
-      command?: string;
-      args: string[];
-      cwd?: string;
-      idleTimer: NodeJS.Timeout | null;
-      lastUsedAt: number;
-    }
-  | {
-      cli: "claude";
-      sessionId: string;
-      runner: ClaudeInteractiveRunner;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model: string | null;
-      command: string;
-      args: string[];
-      cwd?: string;
-      entrypoint?: string;
-      isolateProjectInstructions: boolean;
-      idleTimer: NodeJS.Timeout | null;
-      lastUsedAt: number;
-    }
-  | {
-      cli: "grok";
-      sessionId: string;
-      runner: GrokInteractiveRunner;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model: string | null;
-      command: string;
-      args: string[];
-      cwd?: string;
-      idleTimer: NodeJS.Timeout | null;
-      lastUsedAt: number;
-    };
-
-type InteractiveRunnerCli = "codex" | "claude" | "grok";
 
 export class InteractiveRunnerManager {
   private readonly entries = new Map<string, RunnerEntry>();
@@ -89,180 +76,50 @@ export class InteractiveRunnerManager {
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
-    options: {
-      configId?: string | null;
-      command?: string;
-      args?: string[];
-      cwd?: string;
-      entrypoint?: string;
-      isolateProjectInstructions?: boolean;
-    } = {}
+    options: RunnerSetOptions = {}
   ): void {
-    const key = this.buildKey(cli, sessionId);
-    const existing = this.entries.get(key);
-    const codexSelection = cli === "codex"
-      ? normalizeCodexRunSelection({ configId: options.configId, model })
-      : null;
-    if (existing && existing.runner === runner) {
-      existing.sessionId = sessionId;
-      existing.thinkingMode = thinkingMode;
-      existing.interactiveMode = interactiveMode;
-      if (existing.cli === "codex") {
-        existing.model = codexSelection?.model ?? null;
-        existing.configId = codexSelection?.configId ?? null;
-        existing.command = options.command;
-        existing.args = [...(options.args ?? [])];
-        existing.cwd = options.cwd;
-      } else if (existing.cli === "claude") {
-        existing.model = model;
-        if (typeof options.command === "string") {
-          existing.command = options.command;
-        }
-        if (options.args) {
-          existing.args = [...options.args];
-        }
-        if (options.cwd !== undefined) {
-          existing.cwd = options.cwd;
-        }
-        if (options.entrypoint !== undefined) {
-          existing.entrypoint = options.entrypoint;
-        }
-        if (options.isolateProjectInstructions !== undefined) {
-          existing.isolateProjectInstructions = options.isolateProjectInstructions;
-        }
-      } else {
-        existing.model = model;
-        if (typeof options.command === "string") {
-          existing.command = options.command;
-        }
-        if (options.args) {
-          existing.args = [...options.args];
-        }
-        if (options.cwd !== undefined) {
-          existing.cwd = options.cwd;
-        }
-      }
-      this.touch(existing);
+    const metadata = {
+      sessionId,
+      thinkingMode,
+      interactiveMode,
+      model,
+      options,
+    };
+    if (cli === "codex") {
+      const codexRunner = runner as CodexInteractiveRunner;
+      const input = { ...metadata, runner: codexRunner };
+      this.registerExternalRunner("codex", input, (entry) => {
+        runnerLifecycleStrategies.codex.applySetMetadata(entry, input);
+      }, () => runnerLifecycleStrategies.codex.createSetRegistration(input));
       return;
     }
-    if (existing) {
-      this.disposeEntry(key);
+    if (cli === "claude") {
+      const claudeRunner = runner as ClaudeInteractiveRunner;
+      const input = { ...metadata, runner: claudeRunner };
+      this.registerExternalRunner("claude", input, (entry) => {
+        runnerLifecycleStrategies.claude.applySetMetadata(entry, input);
+      }, () => runnerLifecycleStrategies.claude.createSetRegistration(input));
+      return;
     }
-    const entry: RunnerEntry =
-      cli === "codex"
-        ? {
-            cli,
-            sessionId,
-            runner: runner as CodexInteractiveRunner,
-            thinkingMode,
-            interactiveMode,
-            model: codexSelection?.model ?? null,
-            configId: codexSelection?.configId ?? null,
-            command: options.command,
-            args: [...(options.args ?? [])],
-            cwd: options.cwd,
-            idleTimer: null,
-            lastUsedAt: Date.now(),
-          }
-        : cli === "claude"
-          ? {
-            cli,
-            sessionId,
-            runner: runner as ClaudeInteractiveRunner,
-            thinkingMode,
-            interactiveMode,
-            model,
-            command: options.command ?? "",
-            args: [...(options.args ?? [])],
-            cwd: options.cwd,
-            entrypoint: options.entrypoint,
-            isolateProjectInstructions: options.isolateProjectInstructions === true,
-            idleTimer: null,
-            lastUsedAt: Date.now(),
-          }
-          : {
-            cli,
-            sessionId,
-            runner: runner as GrokInteractiveRunner,
-            thinkingMode,
-            interactiveMode,
-            model,
-            command: options.command ?? "",
-            args: [...(options.args ?? [])],
-            cwd: options.cwd,
-            idleTimer: null,
-            lastUsedAt: Date.now(),
-          };
-    this.entries.set(key, entry);
-    this.touch(entry);
+    const grokRunner = runner as GrokInteractiveRunner;
+    const input = { ...metadata, runner: grokRunner };
+    this.registerExternalRunner("grok", input, (entry) => {
+      runnerLifecycleStrategies.grok.applySetMetadata(entry, input);
+    }, () => runnerLifecycleStrategies.grok.createSetRegistration(input));
   }
 
-  public getOrCreateCodexRunner(options: {
-    sessionId: string;
-    threadId: string | null;
-    command: string;
-    args: string[];
-    cwd?: string;
-    thinkingMode: ThinkingMode;
-    interactiveMode: InteractiveMode;
-    model: string | null;
-    configId?: string | null;
-  }): CodexInteractiveRunner {
-    const key = this.buildKey("codex", options.sessionId);
-    const existing = this.entries.get(key);
-    const nextSelection = normalizeCodexRunSelection({
-      configId: options.configId,
-      model: options.model,
-    });
-    if (existing && existing.cli === "codex") {
-      const sameProcess = existing.command === options.command
-        && existing.cwd === options.cwd
-        && existing.configId === nextSelection.configId;
-      if (sameProcess) {
-        existing.thinkingMode = options.thinkingMode;
-        existing.interactiveMode = options.interactiveMode;
-        existing.model = nextSelection.model;
-        existing.args = [...options.args];
-        existing.runner.updateOptions({
-          command: options.command,
-          args: options.args,
-          cwd: options.cwd,
-          thinkingMode: options.thinkingMode,
-          interactiveMode: options.interactiveMode,
-          model: nextSelection.model,
-          threadId: options.threadId,
-        });
-        this.touch(existing);
-        return existing.runner;
-      }
-      this.disposeEntry(key);
-    }
-    const runner = new CodexInteractiveRunner({
-      command: options.command,
-      args: options.args,
-      cwd: options.cwd,
-      thinkingMode: options.thinkingMode,
-      interactiveMode: options.interactiveMode,
-      model: nextSelection.model,
-      threadId: options.threadId,
-    });
-    const entry: RunnerEntry = {
-      cli: "codex",
-      sessionId: options.sessionId,
-      runner,
-      thinkingMode: options.thinkingMode,
-      interactiveMode: options.interactiveMode,
-      model: nextSelection.model,
-      configId: nextSelection.configId,
-      command: options.command,
-      args: [...options.args],
-      cwd: options.cwd,
-      idleTimer: null,
-      lastUsedAt: Date.now(),
-    };
-    this.entries.set(key, entry);
-    this.touch(entry);
-    return runner;
+  public getOrCreateCodexRunner(options: CodexRunnerCreateOptions): CodexInteractiveRunner {
+    const prepared = runnerLifecycleStrategies.codex.prepare(options);
+    return this.reuseOrCreate(
+      "codex",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies.codex.canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies.codex.applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies.codex.createRunner(prepared),
+      (created) => runnerLifecycleStrategies.codex.createRegistration(prepared, created),
+    );
   }
 
   public hasCodexRunner(sessionId: string | null, runner: CodexInteractiveRunner): boolean {
@@ -277,81 +134,24 @@ export class InteractiveRunnerManager {
 
   public getCodexRunnerSelection(sessionId: string | null): CodexRunSelection | null {
     const entry = this.getEntry("codex", sessionId);
-    if (!entry || entry.cli !== "codex") {
+    if (!entry || !this.isEntryForCli(entry, "codex")) {
       return null;
     }
-    return normalizeCodexRunSelection({
-      configId: entry.configId,
-      model: entry.model,
-    });
+    return runnerLifecycleStrategies.codex.readSelection(entry);
   }
 
-  public getOrCreateClaudeRunner(options: {
-    sessionId: string;
-    mappedSessionId: string | null;
-    command: string;
-    args: string[];
-    cwd?: string;
-    thinkingMode: ThinkingMode;
-    interactiveMode: InteractiveMode;
-    model: string | null;
-    entrypoint?: string;
-    isolateProjectInstructions?: boolean;
-  }): ClaudeInteractiveRunner {
-    const key = this.buildKey("claude", options.sessionId);
-    const existing = this.entries.get(key);
-    if (existing && existing.cli === "claude") {
-      if (existing.runner.isDisposed()) {
-        this.disposeEntry(key);
-      } else if (this.canReuseClaudeRunner(existing, options)) {
-        const runnerSessionId = existing.runner.getSessionId();
-        const expectedSessionId = runnerSessionId || options.mappedSessionId;
-        if (expectedSessionId && runnerSessionId !== expectedSessionId) {
-          existing.runner.updateSessionId(expectedSessionId);
-        }
-        existing.thinkingMode = options.thinkingMode;
-        existing.interactiveMode = options.interactiveMode;
-        existing.model = options.model;
-        existing.command = options.command;
-        existing.args = [...options.args];
-        existing.cwd = options.cwd;
-        existing.entrypoint = options.entrypoint;
-        existing.isolateProjectInstructions = options.isolateProjectInstructions === true;
-        this.touch(existing);
-        return existing.runner;
-      } else {
-        this.disposeEntry(key);
-      }
-    }
-    const runner = new ClaudeInteractiveRunner({
-      command: options.command,
-      args: options.args,
-      cwd: options.cwd,
-      thinkingMode: options.thinkingMode,
-      interactiveMode: options.interactiveMode,
-      model: options.model,
-      entrypoint: options.entrypoint,
-      sessionId: options.mappedSessionId,
-      isolateProjectInstructions: options.isolateProjectInstructions,
-    });
-    const entry: RunnerEntry = {
-      cli: "claude",
-      sessionId: options.sessionId,
-      runner,
-      thinkingMode: options.thinkingMode,
-      interactiveMode: options.interactiveMode,
-      model: options.model,
-      command: options.command,
-      args: [...options.args],
-      cwd: options.cwd,
-      entrypoint: options.entrypoint,
-      isolateProjectInstructions: options.isolateProjectInstructions === true,
-      idleTimer: null,
-      lastUsedAt: Date.now(),
-    };
-    this.entries.set(key, entry);
-    this.touch(entry);
-    return runner;
+  public getOrCreateClaudeRunner(options: ClaudeRunnerCreateOptions): ClaudeInteractiveRunner {
+    const prepared = runnerLifecycleStrategies.claude.prepare(options);
+    return this.reuseOrCreate(
+      "claude",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies.claude.canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies.claude.applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies.claude.createRunner(prepared),
+      (created) => runnerLifecycleStrategies.claude.createRegistration(prepared, created),
+    );
   }
 
   public hasGrokRunner(sessionId: string | null, runner: GrokInteractiveRunner): boolean {
@@ -359,59 +159,18 @@ export class InteractiveRunnerManager {
     return Boolean(entry && entry.cli === "grok" && entry.runner === runner);
   }
 
-  public getOrCreateGrokRunner(options: {
-    sessionId: string;
-    command: string;
-    agentArgs: string[];
-    cwd: string;
-    thinkingMode: ThinkingMode;
-    interactiveMode: InteractiveMode;
-    model: string | null;
-    localSessionId?: string | null;
-  }): GrokInteractiveRunner {
-    const sessionId = options.sessionId.trim();
-    if (!sessionId) {
-      throw Object.assign(new Error("empty grok session"), { reason: "empty" });
-    }
-    const key = this.buildKey("grok", sessionId);
-    const existing = this.entries.get(key);
-    if (existing && existing.cli === "grok") {
-      if (existing.runner.isReusable() && this.canReuseGrokRunner(existing, options)) {
-        existing.thinkingMode = options.thinkingMode;
-        existing.interactiveMode = options.interactiveMode;
-        existing.model = options.model;
-        existing.command = options.command;
-        existing.args = [...options.agentArgs];
-        existing.cwd = options.cwd;
-        this.touch(existing);
-        return existing.runner;
-      }
-      this.disposeEntry(key);
-    }
-    const runner = new GrokInteractiveRunner({
-      command: options.command,
-      agentArgs: options.agentArgs,
-      cwd: options.cwd,
-      thinkingMode: options.thinkingMode,
-      model: options.model,
-      localSessionId: options.localSessionId ?? null,
-    });
-    const entry: RunnerEntry = {
-      cli: "grok",
-      sessionId,
-      runner,
-      thinkingMode: options.thinkingMode,
-      interactiveMode: options.interactiveMode,
-      model: options.model,
-      command: options.command,
-      args: [...options.agentArgs],
-      cwd: options.cwd,
-      idleTimer: null,
-      lastUsedAt: Date.now(),
-    };
-    this.entries.set(key, entry);
-    this.touch(entry);
-    return runner;
+  public getOrCreateGrokRunner(options: GrokRunnerCreateOptions): GrokInteractiveRunner {
+    const prepared = runnerLifecycleStrategies.grok.prepare(options);
+    return this.reuseOrCreate(
+      "grok",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies.grok.canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies.grok.applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies.grok.createRunner(prepared),
+      (created) => runnerLifecycleStrategies.grok.createRegistration(prepared, created),
+    );
   }
 
   public detachRunner(
@@ -436,11 +195,7 @@ export class InteractiveRunnerManager {
     if (!entry) {
       return;
     }
-    if (entry.cli === "grok") {
-      entry.runner.cancelTurn();
-    } else {
-      entry.runner.stopAndRebuild();
-    }
+    stopManagedRunner(entry);
     this.touch(entry);
   }
 
@@ -459,6 +214,76 @@ export class InteractiveRunnerManager {
       return;
     }
     this.touch(entry);
+  }
+
+  private reuseOrCreate<TCli extends InteractiveRunnerCli>(
+    cli: TCli,
+    sessionId: string,
+    canReuse: (entry: RunnerEntryByCli[TCli]) => boolean,
+    applyReuse: (entry: RunnerEntryByCli[TCli]) => void,
+    createRunner: () => RunnerByCli[TCli],
+    createRegistration: (runner: RunnerByCli[TCli]) => RunnerRegistrationByCli[TCli],
+  ): RunnerByCli[TCli] {
+    const key = this.buildKey(cli, sessionId);
+    const existing = this.entries.get(key);
+    const matched = existing ? platformEntries[cli](existing) : undefined;
+    if (matched && canReuse(matched)) {
+      applyReuse(matched);
+      this.touch(matched);
+      return platformRunners[cli](matched);
+    }
+    if (existing) {
+      this.disposeEntry(key);
+    }
+    const runner = createRunner();
+    const entry = this.withLifecycle(createRegistration(runner));
+    this.entries.set(key, entry);
+    this.touch(entry);
+    return runner;
+  }
+
+  private registerExternalRunner<TCli extends InteractiveRunnerCli>(
+    cli: TCli,
+    input: SetRunnerMetadataInput<RunnerByCli[TCli]>,
+    applySetMetadata: (entry: RunnerEntryByCli[TCli]) => void,
+    createSetRegistration: () => RunnerRegistrationByCli[TCli],
+  ): void {
+    const key = this.buildKey(cli, input.sessionId);
+    const existing = this.entries.get(key);
+    const matched = existing ? platformEntries[cli](existing) : undefined;
+    if (matched && matched.runner === input.runner) {
+      applySetMetadata(matched);
+      this.touch(matched);
+      return;
+    }
+    if (existing) {
+      this.disposeEntry(key);
+    }
+    const entry = this.withLifecycle(createSetRegistration());
+    this.entries.set(key, entry);
+    this.touch(entry);
+  }
+
+  private withLifecycle(registration: RunnerRegistration): RunnerEntry {
+    const idleTimer = null;
+    const lastUsedAt = Date.now();
+    if (registration.cli === "codex") {
+      const entry: RunnerEntryByCli["codex"] = { ...registration, idleTimer, lastUsedAt };
+      return entry;
+    }
+    if (registration.cli === "claude") {
+      const entry: RunnerEntryByCli["claude"] = { ...registration, idleTimer, lastUsedAt };
+      return entry;
+    }
+    const entry: RunnerEntryByCli["grok"] = { ...registration, idleTimer, lastUsedAt };
+    return entry;
+  }
+
+  private isEntryForCli<TCli extends InteractiveRunnerCli>(
+    entry: RunnerEntry,
+    cli: TCli,
+  ): entry is Extract<RunnerEntry, { cli: TCli }> {
+    return entry.cli === cli;
   }
 
   private buildKey(cli: InteractiveRunnerCli, sessionId: string): string {
@@ -482,49 +307,6 @@ export class InteractiveRunnerManager {
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
     return cli === "codex" || cli === "claude" || cli === "grok";
-  }
-
-  private canReuseGrokRunner(
-    existing: Extract<RunnerEntry, { cli: "grok" }>,
-    options: {
-      command: string;
-      cwd: string;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model: string | null;
-    },
-  ): boolean {
-    return existing.thinkingMode === options.thinkingMode
-      && existing.interactiveMode === options.interactiveMode
-      && existing.model === options.model
-      && existing.command === options.command
-      && existing.cwd === options.cwd;
-  }
-
-  private canReuseClaudeRunner(
-    existing: Extract<RunnerEntry, { cli: "claude" }>,
-    options: {
-      command: string;
-      cwd?: string;
-      entrypoint?: string;
-      thinkingMode: ThinkingMode;
-      interactiveMode: InteractiveMode;
-      model: string | null;
-      isolateProjectInstructions?: boolean;
-    },
-  ): boolean {
-    const isolateProjectInstructions = options.isolateProjectInstructions === true;
-    return existing.thinkingMode === options.thinkingMode
-      && existing.interactiveMode === options.interactiveMode
-      && existing.model === options.model
-      && existing.isolateProjectInstructions === isolateProjectInstructions
-      && this.sameOrUnspecified(existing.command, options.command)
-      && this.sameOrUnspecified(existing.cwd, options.cwd)
-      && this.sameOrUnspecified(existing.entrypoint, options.entrypoint);
-  }
-
-  private sameOrUnspecified(existingValue: string | undefined, nextValue: string | undefined): boolean {
-    return existingValue === nextValue || existingValue === undefined || existingValue === "";
   }
 
   private disposeEntry(key: string): void {
