@@ -16,6 +16,8 @@
 
 切换 AI 对话标签或打开已有会话时，底部配置随目标标签恢复：Loop / Loop+ 主标签沿用对应调度模式，恢复任务当前绑定的主配置、主模型、子 CLI、子配置和子模型；子标签使用 Vibe，并恢复该标签实际执行的模型。新用户消息持久化配置 ID、原始模型 ID、思考力度和 OpenCode variant 快照，普通会话也可恢复，不用历史展示名反推模型。已删除的配置或模型、缺少可靠快照的旧记录保持对应当前选择；模型不可用时不改其思考力度。快速切换或切换工作区时丢弃过期的模型恢复及消息刷新。实现见 `src/conversationTabConfiguration.ts`、`src/panelMessageHandlers/session.ts`；回归见 `src/test/session/conversationTabConfiguration.test.ts`、`src/test/session/sessionMessageHandlersCoreCoverage.test.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts`。
 
+点击 Loop / Loop+ 主任务标签会打开该任务的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`；回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
+
 ## 更新规则
 
 - 新增能力时新增一行。

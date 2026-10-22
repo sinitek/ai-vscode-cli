@@ -1214,6 +1214,14 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return Boolean(meta && meta.taskRole === "main");
       }
 
+      function openLoopGroupChatForMainTaskTab(tab) {
+        const meta = getLoopMetaForTabSummary(tab);
+        if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
+          return;
+        }
+        vscode.postMessage({ type: "openLoopGroupChat", taskId: meta.loopTaskId });
+      }
+
       function isGraphConversationTabErrored(tab) {
         return Boolean(
           tab
@@ -1703,17 +1711,17 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           }
 
           const selectTab = () => {
-            if (tab.id === activeTabId) {
-              return;
+            if (tab.id !== activeTabId) {
+              applyAutoInteractiveModeForTab(tab);
+              if (state.conversationTabs) {
+                state.conversationTabs.activeTabId = tab.id;
+              }
+              syncActiveMessagesFromRuntime();
+              syncRunningStateForActiveTab();
+              armPromptContextForConversationStart();
+              vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
             }
-            applyAutoInteractiveModeForTab(tab);
-            if (state.conversationTabs) {
-              state.conversationTabs.activeTabId = tab.id;
-            }
-            syncActiveMessagesFromRuntime();
-            syncRunningStateForActiveTab();
-            armPromptContextForConversationStart();
-            vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
+            openLoopGroupChatForMainTaskTab(tab);
           };
 
           tabItem.addEventListener("click", () => {

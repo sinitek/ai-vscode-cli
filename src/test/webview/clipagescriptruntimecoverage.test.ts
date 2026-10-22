@@ -659,6 +659,80 @@ function childValueTextPairs(element: FakeElement): Array<[string, string]> {
   return element.children.map((child) => [child.value, child.textContent]);
 }
 
+function conversationTabByLabel(document: { getElementById(id: string): FakeElement }, label: string): FakeElement | undefined {
+  return document.getElementById("conversationTabs")
+    .querySelectorAll(".conversation-tab")
+    .find((item) => item.querySelector(".conversation-tab-label")?.textContent === label);
+}
+
+function postedTabActions(posted: Array<{ type?: string }>, start: number): Array<{ type?: string }> {
+  return posted.slice(start).filter((message) => (
+    message.type === "selectConversationTab"
+    || message.type === "openLoopGroupChat"
+    || message.type === "closeConversationTab"
+  ));
+}
+
+test("opens the Loop group chat when the main task tab is clicked", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const tabs = {
+    activeTabId: "sub-tab",
+    tabs: [
+      { id: "main-tab", cli: "codex", loopTaskRole: "main", loopTaskId: " task-main ", loopSchedulingMode: "event_driven" },
+      { id: "sub-tab", cli: "codex", loopTaskRole: "subtask", loopTaskId: "task-main" },
+      { id: "plain-tab", cli: "claude" },
+      { id: "blank-main-tab", cli: "codex", loopTaskRole: "main", loopTaskId: " " },
+    ],
+  };
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: tabs }) });
+
+  const beforeMain = posted.length;
+  const mainTab = conversationTabByLabel(document, "☀️ codex");
+  assert.ok(mainTab);
+  mainTab.click();
+  assert.deepEqual(postedTabActions(posted, beforeMain), [
+    { type: "selectConversationTab", tabId: "main-tab", cli: "codex" },
+    { type: "openLoopGroupChat", taskId: "task-main" },
+  ]);
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
+  });
+  const beforeRepeat = posted.length;
+  const activeMainTab = conversationTabByLabel(document, "☀️ codex");
+  assert.ok(activeMainTab);
+  activeMainTab.click();
+  activeMainTab.dispatchEvent({ type: "keydown", key: "Enter" });
+  activeMainTab.dispatchEvent({ type: "keydown", key: " " });
+  assert.deepEqual(postedTabActions(posted, beforeRepeat), [
+    { type: "openLoopGroupChat", taskId: "task-main" },
+    { type: "openLoopGroupChat", taskId: "task-main" },
+    { type: "openLoopGroupChat", taskId: "task-main" },
+  ]);
+
+  const beforeOthers = posted.length;
+  conversationTabByLabel(document, "🌛 codex2")?.click();
+  conversationTabByLabel(document, "claude")?.click();
+  conversationTabByLabel(document, "codex3")?.click();
+  assert.deepEqual(postedTabActions(posted, beforeOthers), [
+    { type: "selectConversationTab", tabId: "sub-tab", cli: "codex" },
+    { type: "selectConversationTab", tabId: "plain-tab", cli: "claude" },
+    { type: "selectConversationTab", tabId: "blank-main-tab", cli: "codex" },
+  ]);
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
+  });
+  const beforeClose = posted.length;
+  conversationTabByLabel(document, "☀️ codex")?.querySelector(".conversation-tab-close")?.click();
+  assert.deepEqual(postedTabActions(posted, beforeClose), [
+    { type: "closeConversationTab", tabId: "main-tab", cli: "codex" },
+  ]);
+  assert.deepEqual(posted.slice(beforeMain).filter((message) => message.type === "webviewError"), []);
+});
+
 test("shows the workspace harness toggle as checked and disabled when .ch already exists", () => {
   const { document, window } = createRuntimeHarness();
   const idleTabs = { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] };

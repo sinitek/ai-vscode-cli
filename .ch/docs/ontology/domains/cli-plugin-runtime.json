@@ -703,6 +703,18 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_main_tab_opens_group_chat",
+      "name": "点击 Loop 主任务 Tab 打开群聊",
+      "description": "用户点击普通对话面板中的 Loop 或 Loop+ 主任务 Tab 时，自动打开该任务已有的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务 Tab、普通会话 Tab 和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_main_task_list_current_only",
       "name": "Loop 主任务不展示过期任务列表",
       "description": "Loop 与 Loop+ 主任务 Tab 不展示任务列表浮层，也不因父任务仍在运行而保留上一轮 external 列表。主任务协议提示禁止复述或续写会话中的旧 Tasklist；子任务和普通对话仍按当前 run 展示任务列表。",
