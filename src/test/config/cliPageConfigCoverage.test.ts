@@ -179,7 +179,7 @@ type PanelHarness = {
   externalUrls: string[];
   messageHandler?: MessageHandler;
   disposeHandler?: () => void;
-  zenModeCommandError?: Error;
+  maximizeCommandError?: Error;
   disposeCount: number;
   panel: {
     title: string;
@@ -246,8 +246,8 @@ function installConfigPanelHarness(): PanelHarness {
   };
   vscode.commands.executeCommand = async (...args: unknown[]) => {
     harness.commandCalls.push(args);
-    if (args[0] === "workbench.action.toggleZenMode" && harness.zenModeCommandError) {
-      throw harness.zenModeCommandError;
+    if (args[0] === "workbench.action.maximizeEditorHideSidebar" && harness.maximizeCommandError) {
+      throw harness.maximizeCommandError;
     }
     return undefined;
   };
@@ -509,6 +509,7 @@ test("config manager panel creates a safe webview and handles non-config host me
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
 
   manager.show();
+  await delay(0);
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.createCalls[0][0], "sinitek-cli-tools.configManager");
   assert.equal((harness.createCalls[0][3] as AnyRecord).enableScripts, true);
@@ -516,17 +517,26 @@ test("config manager panel creates a safe webview and handles non-config host me
   assert.ok(harness.panel.webview.html.includes("window.electronAPI"));
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
+    0,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
     1,
   );
 
   const firstHtml = harness.panel.webview.html;
   manager.show();
+  await delay(0);
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.revealCount, 1);
   assert.equal(harness.commandCalls.find((call) => call[0] === "reveal")?.[2], false);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    1,
+    0,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
+    2,
   );
 
   manager.syncActiveConfig();
@@ -551,9 +561,22 @@ test("config manager panel creates a safe webview and handles non-config host me
   assert.deepEqual(harness.externalUrls, ["https://example.test/signup"]);
 
   harness.disposeHandler?.();
+  await delay(0);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    2,
+    0,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
+    1,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleSidebarVisibility").length,
+    1,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleAuxiliaryBar").length,
+    1,
   );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.filter((message) => (message as AnyRecord).type === "config:syncActive").length, 1);
@@ -573,30 +596,46 @@ test("config manager panel closes when the webview requests it", async () => {
   assert.equal(harness.disposeCount, 1);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    2,
+    0,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
+    1,
   );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.length, 0);
 });
 
-test("config manager panel falls back to the editor surface when Zen Mode is unavailable", async () => {
+test("config manager panel stays in the editor when maximizing width fails", async () => {
   const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
-  harness.zenModeCommandError = new Error("Zen Mode is unavailable");
+  harness.maximizeCommandError = new Error("editor maximize is unavailable");
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
 
   manager.show();
   await delay(0);
   manager.show();
+  await delay(0);
 
   assert.equal(harness.createCalls.length, 1);
   assert.equal(harness.revealCount, 1);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    2,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
+    2,
+  );
+
+  harness.disposeHandler?.();
+  await delay(0);
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleSidebarVisibility").length,
+    0,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleAuxiliaryBar").length,
     0,
   );
 });
@@ -614,9 +653,7 @@ test("config manager panel opens at the maximum editor width and restores splits
   assert.deepEqual(
     openedCommands.filter((command) => command !== "reveal"),
     [
-      "workbench.action.toggleZenMode",
       "workbench.action.maximizeEditorHideSidebar",
-      "workbench.action.toggleCenteredLayout",
     ],
   );
 
@@ -624,7 +661,7 @@ test("config manager panel opens at the maximum editor width and restores splits
   await delay(0);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    1,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
@@ -632,7 +669,7 @@ test("config manager panel opens at the maximum editor width and restores splits
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleCenteredLayout").length,
-    1,
+    0,
   );
 
   harness.disposeHandler?.();
@@ -640,10 +677,18 @@ test("config manager panel opens at the maximum editor width and restores splits
   await delay(0);
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleZenMode").length,
-    2,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
+    1,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleSidebarVisibility").length,
+    1,
+  );
+  assert.equal(
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleAuxiliaryBar").length,
     1,
   );
   manager.syncActiveConfig();

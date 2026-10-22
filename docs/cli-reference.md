@@ -23,7 +23,7 @@ P0 性能与内存硬化运行口径：停止、扩展停用或 reload 会统一
 
 Claude 配置中心管理 `~/.claude/settings.json`，支持可视化与 JSON 高级模式，点击配置档案默认进入 JSON 源码模式。可视化覆盖官方常用核心字段，并可分别设置 `ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL`；未展示字段、额外 `env`、hooks 和权限扩展会保留，非法 JSON 不覆盖有效可视化状态。Claude / OpenCode / Codex 三组可视化参数 label 右侧都有问号 tooltip，枚举参数提示可选值；三组“查看范例”统一放在配置文件名右侧。完整口径以 `.ch/docs/references/cli-runtime-reference.md` 为准。
 
-配置入口：从 AI 对话面板点击“配置”会立即打开并前台聚焦 VS Code 编辑器主区域内的 `WebviewPanel`，随后尝试进入 VS Code Zen Mode，隐藏工作台外围以接近全屏弹窗；重复点击复用同一面板，关闭后恢复由本插件进入的 Zen Mode。VS Code 扩展公开 API 不支持任意 Webview 的原生模态弹窗，Zen Mode 不可用时回退为普通编辑器面板；配置中心自身会铺满 WebviewPanel 剩余视口，大型配置浮层使用近满屏宽高以减少左右和底部空白；不启动独立浏览器或本地 HTTP 页面，视觉颜色和字体使用 VS Code 主题语义变量。完整产品口径以 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 为准。
+配置入口：从 AI 对话面板点击“配置”会立即打开并前台聚焦 VS Code 编辑器主区域内的 `WebviewPanel`，不进入 Zen Mode。活动栏、状态栏、标题栏和底部面板保持显示，同时隐藏主侧栏和辅助侧栏并把当前编辑器组拉到最大宽度，使配置页尽量占满可用宽度；重复点击复用同一面板并再次拉满宽度，关闭后恢复本次加宽隐藏的侧栏和编辑器组尺寸。VS Code 扩展公开 API 不支持任意 Webview 的原生模态弹窗，加宽命令不可用时保持普通编辑器面板；配置中心自身会铺满 WebviewPanel 剩余视口，大型配置浮层使用近满屏宽高以减少左右和底部空白；不启动独立浏览器或本地 HTTP 页面，视觉颜色和字体使用 VS Code 主题语义变量。完整产品口径以 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 为准。
 
 Codex 配置中心管理 `~/.codex/config.toml` 与既有 `~/.codex/auth.json` 入口。`config.toml` 是 Codex 主配置文件，格式为 TOML，不是 JSON；配置卡片保留可视化编辑和 TOML 源码编辑，点击配置档案默认进入 TOML 源码模式；Provider 可视化不提供 `env_key` 输入。插件不展示、读取、写入、备份或导入导出 `~/.codex/.env`，也不删除用户已有文件。配置页空白优先排查本插件 Webview 渲染和配置解析；`AugmentExtensionSidecar` 403 通常属于 Augment 扩展侧请求失败，不直接说明本插件配置页故障。完整口径以 `.ch/docs/references/cli-runtime-reference.md` 为准。
 

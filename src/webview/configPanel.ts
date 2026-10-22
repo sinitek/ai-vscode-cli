@@ -21,18 +21,16 @@ type ConfigManagerHandlers = {
   onConfigChanged?: () => void | Promise<void>;
 };
 
-const CONFIG_ZEN_MODE_COMMAND = "workbench.action.toggleZenMode";
 const CONFIG_MAXIMIZE_EDITOR_COMMAND = "workbench.action.maximizeEditorHideSidebar";
-const CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND = "workbench.action.toggleCenteredLayout";
 const CONFIG_RESTORE_EDITOR_GROUP_COMMAND = "workbench.action.toggleMaximizeEditorGroup";
+const CONFIG_TOGGLE_PRIMARY_SIDE_BAR_COMMAND = "workbench.action.toggleSidebarVisibility";
+const CONFIG_TOGGLE_SECONDARY_SIDE_BAR_COMMAND = "workbench.action.toggleAuxiliaryBar";
 
 export class ConfigManagerPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private zenModeEnteredByPanel = false;
-  private zenModeReady = false;
-  private editorGroupMaximizedByPanel = false;
-  private centeredLayoutAdjustedByPanel = false;
+  private editorWidthExpanded = false;
   private editorWidthRequest = 0;
+  private editorWidthTask: Promise<boolean> | undefined;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -42,7 +40,7 @@ export class ConfigManagerPanel {
   public show(): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active, false);
-      this.enterZenMode();
+      this.expandEditorToMaximumWidth();
       this.postCliEnabled();
       return;
     }
@@ -59,7 +57,7 @@ export class ConfigManagerPanel {
     );
 
     this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
-    this.enterZenMode();
+    this.expandEditorToMaximumWidth();
 
     this.panel.webview.onDidReceiveMessage(
       (
@@ -98,105 +96,74 @@ export class ConfigManagerPanel {
 
     this.panel.onDidDispose(() => {
       this.panel = undefined;
-      this.leaveZenMode();
+      this.restoreEditorWidth();
     });
   }
 
-  private enterZenMode(): void {
-    if (this.zenModeEnteredByPanel) {
-      if (this.zenModeReady) {
-        void this.expandEditorToMaximumWidth();
-      }
-      return;
-    }
-    this.zenModeEnteredByPanel = true;
-    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND))
-      .then(() => {
-        this.zenModeReady = true;
-        return this.expandEditorToMaximumWidth();
-      })
-      .catch((error: unknown) => {
-        this.zenModeEnteredByPanel = false;
-        this.zenModeReady = false;
-        void logInfo("config-zen-mode-unavailable", {
-          command: CONFIG_ZEN_MODE_COMMAND,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-  }
-
-  private leaveZenMode(): void {
-    const shouldRestoreEditorGroup = this.editorGroupMaximizedByPanel;
-    this.editorWidthRequest += 1;
-    this.editorGroupMaximizedByPanel = false;
-    this.centeredLayoutAdjustedByPanel = false;
-    this.zenModeReady = false;
-    const restoreEditorGroup = () => {
-      if (!shouldRestoreEditorGroup) {
-        return;
-      }
-      void Promise.resolve(vscode.commands.executeCommand(CONFIG_RESTORE_EDITOR_GROUP_COMMAND)).catch((error: unknown) => {
-        void logInfo("config-editor-width-restore-failed", {
-          command: CONFIG_RESTORE_EDITOR_GROUP_COMMAND,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    };
-    if (!this.zenModeEnteredByPanel) {
-      restoreEditorGroup();
-      return;
-    }
-    this.zenModeEnteredByPanel = false;
-    void Promise.resolve(vscode.commands.executeCommand(CONFIG_ZEN_MODE_COMMAND))
-      .catch((error: unknown) => {
-        void logInfo("config-zen-mode-restore-failed", {
-          command: CONFIG_ZEN_MODE_COMMAND,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      })
-      .finally(restoreEditorGroup);
-  }
-
-  private async expandEditorToMaximumWidth(): Promise<void> {
+  private expandEditorToMaximumWidth(): void {
     if (!this.panel) {
       return;
     }
     const request = ++this.editorWidthRequest;
-    this.editorGroupMaximizedByPanel = true;
+    this.editorWidthTask = this.applyMaximumEditorWidth(request);
+  }
+
+  private async applyMaximumEditorWidth(request: number): Promise<boolean> {
+    if (!this.panel || request !== this.editorWidthRequest) {
+      return false;
+    }
     try {
       await vscode.commands.executeCommand(CONFIG_MAXIMIZE_EDITOR_COMMAND);
     } catch (error: unknown) {
-      if (request === this.editorWidthRequest) {
-        this.editorGroupMaximizedByPanel = false;
-      }
       void logInfo("config-editor-width-expand-failed", {
         command: CONFIG_MAXIMIZE_EDITOR_COMMAND,
         error: error instanceof Error ? error.message : String(error),
       });
-      return;
+      return false;
     }
-    if (!this.panel || request !== this.editorWidthRequest || this.centeredLayoutAdjustedByPanel) {
-      return;
+    if (!this.panel || request !== this.editorWidthRequest) {
+      return true;
     }
-    if (!this.shouldDisableZenCenteredLayout()) {
-      return;
-    }
-    try {
-      await vscode.commands.executeCommand(CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND);
-      if (!this.panel || request !== this.editorWidthRequest) {
-        return;
-      }
-      this.centeredLayoutAdjustedByPanel = true;
-    } catch (error: unknown) {
-      void logInfo("config-editor-width-expand-failed", {
-        command: CONFIG_TOGGLE_CENTERED_LAYOUT_COMMAND,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    this.editorWidthExpanded = true;
+    return true;
   }
 
-  private shouldDisableZenCenteredLayout(): boolean {
-    return vscode.workspace.getConfiguration("zenMode").get<boolean>("centerLayout", true) !== false;
+  private restoreEditorWidth(): void {
+    const request = ++this.editorWidthRequest;
+    const pending = this.editorWidthTask ?? Promise.resolve(false);
+    const alreadyExpanded = this.editorWidthExpanded;
+    this.editorWidthExpanded = false;
+    void this.finishEditorWidthRestore(request, pending, alreadyExpanded);
+  }
+
+  private async finishEditorWidthRestore(
+    request: number,
+    pending: Promise<boolean>,
+    alreadyExpanded: boolean,
+  ): Promise<void> {
+    const hidSideBars = await pending;
+    if (request !== this.editorWidthRequest || (!alreadyExpanded && !hidSideBars)) {
+      return;
+    }
+    await this.runEditorWidthRestore();
+  }
+
+  private async runEditorWidthRestore(): Promise<void> {
+    const commands = [
+      CONFIG_RESTORE_EDITOR_GROUP_COMMAND,
+      CONFIG_TOGGLE_PRIMARY_SIDE_BAR_COMMAND,
+      CONFIG_TOGGLE_SECONDARY_SIDE_BAR_COMMAND,
+    ];
+    for (const command of commands) {
+      try {
+        await vscode.commands.executeCommand(command);
+      } catch (error: unknown) {
+        void logInfo("config-editor-width-restore-failed", {
+          command,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   public syncActiveConfig(): void {
