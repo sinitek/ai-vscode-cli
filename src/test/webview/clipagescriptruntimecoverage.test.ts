@@ -1954,7 +1954,7 @@ test("keeps ordinary assistant bubbles formatted while throttling continuous app
   assert.match(bubble.innerHTML, /third addition/);
 });
 
-test("auto-scrolls the chat only while the viewport is within 50px of the bottom", () => {
+test("auto-scrolls the chat only while the viewport is within 75px of the bottom", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   api.state.onlyShowFinalResults = false;
@@ -1986,19 +1986,23 @@ test("auto-scrolls the chat only while the viewport is within 50px of the bottom
   appendDelta("new-bubble", "a new bubble", "normal");
   assert.equal(chatArea.scrollTop, 100);
 
-  place(1000, 400, 550);
+  place(1000, 400, 526);
   appendDelta("near-bubble", "near bottom", "normal");
   assert.equal(chatArea.scrollTop, chatArea.scrollHeight);
 
-  place(1000, 400, 549);
+  place(1000, 400, 525);
+  appendDelta("boundary-bubble", "at the threshold", "normal");
+  assert.equal(chatArea.scrollTop, chatArea.scrollHeight);
+
+  place(1000, 400, 524);
   appendDelta("far-bubble", "still reading", "normal");
-  assert.equal(chatArea.scrollTop, 549);
+  assert.equal(chatArea.scrollTop, 524);
 
   place(1000, 400, 100);
   appendDelta("think-1", "thinking", "thinking");
   assert.equal(chatArea.scrollTop, 100);
 
-  place(1000, 400, 580);
+  place(1000, 400, 525);
   appendDelta("think-1", " more", "thinking");
   assert.equal(chatArea.scrollTop, chatArea.scrollHeight);
 
@@ -2484,6 +2488,10 @@ for (const { messageKind, completionStatus } of streamCompletionCases) {
   test(`formats running ${messageKind === "normal" ? "final" : "thinking"} bubbles after an idle pause before ${completionStatus}`, (testContext) => {
     const marked = {
       Renderer: class {
+        code(): string {
+          return "";
+        }
+
         html(): string {
           return "";
         }
@@ -2540,6 +2548,10 @@ test("batches assistant delta markdown rendering while streaming", () => {
   let markdownParseCount = 0;
   const marked = {
     Renderer: class {
+      code(): string {
+        return "";
+      }
+
       html(): string {
         return "";
       }
@@ -2700,6 +2712,10 @@ test("keeps thinking bubbles as plain text while streaming appends", () => {
   let markdownParseCount = 0;
   const marked = {
     Renderer: class {
+      code(): string {
+        return "";
+      }
+
       html(): string {
         return "";
       }
@@ -3158,6 +3174,7 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     "parseCompleteJsonContainer",
     "serializeJsonTreeSource",
     "renderJsonTreeHost",
+    "renderChatImage",
     "renderMarkdown",
   ].map((name) => extractFunctionSource(traceSource, name)).join("\n");
   const failures: any[] = [];

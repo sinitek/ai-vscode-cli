@@ -96,6 +96,21 @@ test("adds the final-answer marker instruction to hidden retry prompts", () => {
   assert.ok(prompt.endsWith(FINAL_ANSWER_PROMPT_INSTRUCTION));
 });
 
+test("guides final replies to use real Markdown images in ordinary and hidden retry prompts", () => {
+  for (const cli of ["codex", "claude", "opencode", "grok"] as const) {
+    for (const prompt of [buildThinkingPrompt(cli, "medium", "展示图片"), buildHiddenRetryPrompt(cli, "medium")]) {
+      assert.ok(prompt.includes("![图片说明](图片地址)"));
+      assert.match(prompt, /Never invent an image URL/);
+      assert.match(prompt, /preview in the editor area/);
+      assert.match(prompt, /actual image file path/);
+      assert.match(prompt, /relative paths resolve from the workspace root/);
+      assert.match(prompt, /download link below each image or SVG/);
+      assert.match(prompt, /fenced code block with the language svg/);
+      assert.match(prompt, /self-contained without scripts, event handlers, or external assets/);
+    }
+  }
+});
+
 test("allows machine-protocol runs to opt out of the human final-answer marker", () => {
   const prompt = buildThinkingPrompt("codex", "high", '{"status":"completed"}', {
     includeFinalAnswerInstruction: false,

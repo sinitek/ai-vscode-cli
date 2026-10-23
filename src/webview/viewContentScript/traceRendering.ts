@@ -1,6 +1,7 @@
 // Assistant, trace, markdown, and diff rendering helpers.
 import { joinGrokThinkingSoftBreaks } from "../../interactive/grokThinkingText";
 import { getTraceInstructionSummary } from "../instructionGroupSummary";
+import { createChatSvgImageSource, normalizeChatImageSource } from "../chatImagePreview";
 
 export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         return "";
@@ -9,6 +10,10 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       const joinGrokThinkingSoftBreaks = ${joinGrokThinkingSoftBreaks.toString()};
 
       ${getTraceInstructionSummary.toString()}
+
+      ${createChatSvgImageSource.toString()}
+
+      ${normalizeChatImageSource.toString()}
 
       function getMessageCollapseThreshold() {
         return 50;
@@ -1377,6 +1382,62 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         });
       }
 
+      function renderChatImage(token) {
+        const source = normalizeChatImageSource(token.href);
+        const alt = String(token.text || "图片");
+        if (!source) {
+          return escapeHtml(alt);
+        }
+        const local = !/^https?:|^data:/i.test(source);
+        const sources = renderChatImage.sources || (renderChatImage.sources = new Map());
+        if (local && !sources.has(source) && typeof vscode !== "undefined") {
+          sources.set(source, { pending: true });
+          vscode.postMessage({ type: "resolveChatImage", source });
+        }
+        const resolved = sources.get(source);
+        const displaySource = local ? (resolved && resolved.resolvedSource || "") : source;
+        const escapeAttribute = (value) => escapeHtml(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        const label = "点击在内容区预览：" + alt;
+        const downloadLabel = /^data:image\\/svg\\+xml/i.test(source) || /\\.svg$/i.test(source) ? "下载 SVG" : "下载图片";
+        const status = local ? (resolved && resolved.error || (!displaySource ? "正在加载本地图片…" : "")) : "";
+        return '<span class="chat-image"><button type="button" class="chat-image-preview" data-image-src="' + escapeAttribute(source)
+          + '" data-image-alt="' + escapeAttribute(alt) + '" aria-label="' + escapeAttribute(label)
+          + '" title="' + escapeAttribute(token.title || label) + '"><img'
+          + (displaySource ? ' src="' + escapeAttribute(displaySource) + '"' : '')
+          + ' alt="' + escapeAttribute(alt) + '" loading="lazy" decoding="async" referrerpolicy="no-referrer"></button>'
+          + '<span class="chat-image-status" role="status">' + escapeHtml(status) + '</span>'
+          + '<a href="#" class="chat-image-download" data-image-action="download" data-image-src="' + escapeAttribute(source)
+          + '" data-image-alt="' + escapeAttribute(alt) + '" aria-label="' + escapeAttribute(downloadLabel + "：" + alt)
+          + '">' + downloadLabel + '</a></span>';
+      }
+
+      function applyChatImageSource(data) {
+        const sources = renderChatImage.sources;
+        if (!sources || !sources.has(data.source)) {
+          return;
+        }
+        const resolvedSource = normalizeChatImageSource(data.resolvedSource);
+        const result = resolvedSource && resolvedSource.startsWith("data:")
+          ? { resolvedSource } : { error: String(data.error || "图片加载失败") };
+        sources.set(data.source, result);
+        if (sources.size > 32) {
+          sources.delete(sources.keys().next().value);
+        }
+        document.querySelectorAll(".chat-image-preview").forEach((button) => {
+          if (button.getAttribute("data-image-src") !== data.source) {
+            return;
+          }
+          const image = button.querySelector("img");
+          if (image && result.resolvedSource) {
+            image.src = result.resolvedSource;
+          }
+          const status = button.parentElement && button.parentElement.querySelector(".chat-image-status");
+          if (status) {
+            status.textContent = result.error || "";
+          }
+        });
+      }
+
       function renderMarkdown(content) {
         if (!content) {
           return "";
@@ -1390,6 +1451,21 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           return escapeHtml(normalized);
         }
         const renderer = new marked.Renderer();
+        renderer.image = renderChatImage;
+        const renderCode = renderer.code.bind(renderer);
+        renderer.code = (token) => {
+          if (String(token.lang || "").trim().split(/\\s+/)[0].toLowerCase() === "svg") {
+            const source = createChatSvgImageSource(token.text);
+            if (source) {
+              const svgDocument = typeof DOMParser === "function"
+                ? new DOMParser().parseFromString(token.text, "image/svg+xml") : null;
+              if (!svgDocument || !svgDocument.querySelector("parsererror")) {
+                return renderChatImage({ href: source, text: "SVG 图示" });
+              }
+            }
+          }
+          return renderCode(token);
+        };
         renderer.html = (html) => escapeHtml(html);
         return marked.parse(normalized, { breaks: true, renderer });
       }

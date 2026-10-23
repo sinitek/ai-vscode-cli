@@ -24,6 +24,9 @@ export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
 
 export type PanelMessage =
   | { type: "requestState" }
+  | { type: "previewChatImage"; source: string; alt?: string }
+  | { type: "resolveChatImage"; source: string }
+  | { type: "downloadChatImage"; source: string; alt?: string }
   | { type: "reconcileRunningConversationTabs" }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }

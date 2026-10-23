@@ -308,6 +308,23 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.chat_markdown_image_preview",
+      "name": "最终回复图片及 SVG 的本地预览与下载",
+      "description": "普通对话与隐藏重试允许按需以 Markdown 图片引用真实本地路径、file URI、HTTP(S) 或图片 data URL，不伪造地址；相对路径以首个工作区根目录解析，优先绝对路径。扩展宿主校验本地图片实际字节并转换为 data URL，不依赖 HTTP 服务或 Webview 私有资源地址，兼容 Windows 驱动器和 UNC。AI 也可通过 svg 代码围栏绘制自包含图示；补齐 xmlns 和仅有有效 viewBox 时的尺寸，超过 256 KiB、包含 DTD/实体或非 SVG 时保留代码。SVG 仅作为 img 加载，不注入 SVG DOM。气泡限制宽度，鼠标与键盘在内容区复用图片预览。每张图片下方提供下载图片或下载 SVG 链接，使用系统另存为保存实际图片字节，保留 SVG 矢量格式，取消不写文件。读取与下载限制 20 MiB，HTTP 下载超时 30 秒，失败提供中文提示。拒绝非图片、脚本协议与带账号密码 URL；预览禁用脚本和本地资源，不打开外部浏览器。机器协议 opt-out 保持原行为。",
+      "status": "active",
+      "aliases": ["图片", "Markdown", "SVG", "svg 代码围栏", "本地图片", "图片预览", "图片下载", "previewChatImage", "downloadChatImage", "resolveChatImage"],
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/finalAnswerProtocol.ts"},
+        {"path": "src/webview/chatImagePreview.ts"},
+        {"path": "src/webview/chatImageResource.ts"},
+        {"path": "src/webview/viewProvider.ts"},
+        {"path": "src/test/webview/chatImagePreview.test.ts"},
+        {"path": "src/test/webview/chatImageResource.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
+      ]
+    },
+    {
       "id": "plugin.rule.marketplace_publish_authenticated_vsix",
       "name": "市场发布先鉴权再导出并上传同一产物",
       "description": "市场发布者固定为 sinitek。发布脚本先验证发布者与权限，再复用现有导出审计流程并上传相同 VSIX，默认通用包且支持已有目标平台。鉴权使用 VSCE_PAT、兼容 VSCODE_MARKETPLACE_PAT 或 vsce 登录缓存，令牌只通过环境传递；非交互缺凭据及任一前置阶段失败均阻止发布。不自动升级或覆盖市场版本，上传失败保留本机包。",

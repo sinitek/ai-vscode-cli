@@ -356,6 +356,7 @@ function loadJsonTreeRuntime(options: {
     "renderJsonTreeHost",
     "createJsonTreeElement",
     "mountJsonTreeHosts",
+    "renderChatImage",
     "renderMarkdown",
     "isLineNumberedLine",
     "wrapLineNumberedBlocks",
@@ -402,6 +403,10 @@ function loadJsonTreeRuntime(options: {
         return `<p>${content}</p>`;
       },
       Renderer: class {
+        code(token: { text: string }): string {
+          return `<pre><code>${token.text}</code></pre>`;
+        }
+
         html(value: string): string {
           return value;
         }

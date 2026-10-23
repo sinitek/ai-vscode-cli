@@ -1,4 +1,53 @@
 export const MARKDOWN_STYLES = `      /* Markdown Styles */
+      .message.assistant .bubble .chat-image {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        max-width: 100%;
+        margin: 8px 0;
+        vertical-align: top;
+      }
+      .message.assistant .bubble .chat-image-download {
+        display: inline-block;
+        margin-top: 4px;
+        padding: 2px 0;
+        color: var(--vscode-textLink-foreground);
+        text-decoration: underline;
+      }
+      .message.assistant .bubble .chat-image-download:focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
+      .message.assistant .bubble .chat-image-status {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        overflow-wrap: anywhere;
+      }
+      .message.assistant .bubble .chat-image-status:empty {
+        display: none;
+      }
+      .message.assistant .bubble .chat-image-preview {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        padding: 0;
+        margin: 0;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: inherit;
+        cursor: zoom-in;
+        overflow: hidden;
+      }
+      .message.assistant .bubble .chat-image-preview img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+      .message.assistant .bubble .chat-image-preview:focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
       .message.assistant .bubble p {
         margin: 0 0 8px 0;
         line-height: 1.6;

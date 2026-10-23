@@ -6,6 +6,8 @@
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
+AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底；超过 75px 时保留当前阅读位置，可通过“回到底部”按钮恢复跟随。聊天搜索结果锚定时不自动置底。执行流面板保留独立的 50px 自动跟随阈值。
+
 ## Grok 原生人工交互补充
 
 | 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
@@ -37,6 +39,14 @@
 - 不自动升级版本或覆盖已发布版本；上传失败保留本机 VSIX。操作入口与前置权限见 `.ch/docs/runbooks/local-development.md` 的“发布到 VS Code 市场”。
 - 验证：`src/test/shared/vsixPublishing.test.ts` 覆盖令牌来源与优先级、缓存、平台路径、缺凭据和失败路径；真实市场写入另依赖本机发布凭据，不以模拟测试代替成功发布证明。
 - 真实发布验收：2026-10-23 经用户确认升级至 `1.2.1`，鉴权、构建、25 项相关单测、通用 VSIX 审计均通过，市场返回 `Published sinitek.sinitek-cli-tools v1.2.1`；公开市场列表可能晚于上传成功更新。
+
+## 对话图片展示、内容区预览与下载
+
+- 状态：active；面向终端用户。普通对话与隐藏重试的最终回复规则允许按需以 `![图片说明](图片地址)` 输出真实图片，复用现有 Markdown，不强制生成图片。
+- 支持本地绝对路径、工作区根目录相对路径、用户主目录路径、file URI、HTTP(S)、栅格图片 base64 data URL，以及编码或 base64 SVG data URL。本地图片由扩展宿主读取并校验实际图片格式，转换为 data URL，不要求 HTTP 服务，不放开 Webview 本地资源根目录；兼容 Windows 驱动器与 UNC 路径。读取与下载上限 20 MiB，失败提供中文提示。
+- AI 可按需在最终回复写 `svg` 代码围栏绘制自包含图示，自动转为图片展示（缺少 xmlns 时补齐，只有 viewBox 时补齐宽高），不执行内联 SVG；不超过 256 KiB 的 SVG 源码才转换，DTD、实体声明或非 SVG 内容保留为代码。图片自适应气泡宽度，点击或用 Enter / Space 在 VS Code 内容区打开并复用“图片预览”页，不打开外部浏览器。每张图片下方提供“下载图片”或“下载 SVG”链接，经系统另存为保存实际图片字节，SVG 保留矢量格式，取消不写文件。不接受脚本协议；预览禁用脚本和本地资源。
+- 事实来源：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#36-输出渲染与任务观测`；实现：`src/finalAnswerProtocol.ts`、`src/webview/chatImagePreview.ts`、`src/webview/chatImageResource.ts`、`src/webview/viewProvider.ts`、`src/webview/viewContentScript/traceRendering.ts`。
+- 验证：`npm run build`；`node --test dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js dist/test/webview/viewProvider.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/extensionHost/promptRuntime.test.js`；Chromium 冒烟覆盖本地图片实际加载、预览、下载链接及窄屏布局。
 
 ## 更新规则
 

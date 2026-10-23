@@ -514,7 +514,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       let suppressScrollButtonUntil = 0;
       const queuePromptPreviewLimit = 200;
       const queuePromptPreviewSuffix = "...";
-      const CHAT_BOTTOM_THRESHOLD_PX = 50;
+      const CHAT_BOTTOM_THRESHOLD_PX = 75;
       const AUTO_SCROLL_BUTTON_SUPPRESS_MS = 240;
       const RUN_STREAM_PREVIEW_MAX_LENGTH = 220;
       const RUN_STREAM_AUTO_SCROLL_THRESHOLD_PX = 50;

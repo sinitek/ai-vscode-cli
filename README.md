@@ -2,8 +2,16 @@
 
 Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统一的 AI 工作台。无需离开编辑器，即可使用本机的 Codex、Claude 或 OpenCode CLI 进行对话、编程和复杂任务协作。
 
-## 核心特性
 
+## changelog
+### 1.2.1
+- 首次发布
+
+### 1.2.2
+- 对话气泡支持图片/svg的展示和预览
+
+
+## 核心特性
 ### 统一使用多个 AI CLI
 
 - 在 VS Code 内切换 Codex、Claude 和 OpenCode。
