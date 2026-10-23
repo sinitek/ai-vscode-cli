@@ -18,6 +18,12 @@
 
 点击 Loop / Loop+ 主任务标签会打开该任务的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`；回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+## VSIX 瘦身与平台定向导出
+
+- 默认导出通用包，剔除开发临时页面、截图、构建 source map、SDK 类型声明和嵌套 Python 缓存，不删除 Claude 内置 CLI、WASM、图片处理或其他运行时能力。
+- `./export_vscode_extension.sh --target current` 或显式平台值导出独立命名、带 VSIX target 标记的平台包；只裁剪其他平台的 ripgrep/sharp/libvips，缺少目标原生依赖时失败，不改变工作区依赖。支持范围与分发边界见 `.ch/docs/runbooks/local-development.md` 的“打包 VSIX”。
+- 实现入口：`export_vscode_extension.sh`、`scripts/vsix_target.js`、`.vscodeignore`；回归入口：`src/test/shared/vsixPackaging.test.ts`，并执行通用与当前平台真实打包、解包和依赖加载验证。
+
 ## 更新规则
 
 - 新增能力时新增一行。

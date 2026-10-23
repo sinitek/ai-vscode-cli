@@ -14,9 +14,18 @@
 
 ## 当前有效条目
 
+- VSIX 瘦身与嵌套缓存误打包：见本页“VSIX 排除规则不能覆盖宽泛否定模式”。
 - Claude 联网工具空结果与域名检查失败：见本页“Claude 工具调用成功包装不代表获得有效数据”。
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
+
+## VSIX 排除规则不能覆盖宽泛否定模式
+
+- 状态：有效。
+- 现象：VSIX 约 40 MB，包含 `.tmp` 截图与页面；执行 scaffold 的 Python 测试后，嵌套 `__pycache__` 也会进入包并被导出审计拒绝。
+- 根因：未排除根级 `.tmp`；`__pycache__/**` 只覆盖根级目录；vsce 将否定规则单独处理，宽泛 `!node_modules/@anthropic-ai/**` 会重新放行 SDK 中本应排除的文件。
+- 长期规避：保持 `.tmp/**`、`**/__pycache__/**` 与 `**/*.pyc`；不添加 SDK 宽泛否定规则。通用包保留运行时资源，平台包必须显式指定 target，并保留目标 sharp/libvips、rg、ripgrep.node、SDK CLI 和 WASM。
+- 验证：`npm run build` 后执行 `node --test dist/test/shared/vsixPackaging.test.js`，再运行导出脚本；脚本会审计包内开发产物与平台资源。细节见 `.ch/docs/runbooks/local-development.md`。
 
 ## Claude 工具调用成功包装不代表获得有效数据
 

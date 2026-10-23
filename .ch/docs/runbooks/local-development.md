@@ -122,16 +122,30 @@ npm install
 ./export_vscode_extension.sh
 ```
 
+默认仍导出通用包，不按构建机平台删除 SDK 的其他平台资源。如只分发给某个平台，可显式导出更小的平台包：
+
+```bash
+./export_vscode_extension.sh --target current
+./export_vscode_extension.sh --target win32-x64
+```
+
+`current` 按运行打包脚本的 Node.js 平台/架构解析；支持 `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64`、`win32-x64`。平台包带 VSIX target 标记，文件名为 `dist/sinitek-cli-tools-<version>-<target>.vsix`，只能分发到对应平台；不要拿 macOS 平台包替代 Windows/Linux 通用发布。SDK 本身不包含 Windows ARM64、Linux ARM32 或 Alpine 专属 ripgrep，本脚本不宣称新增这些平台支持。
+
+建议在目标系统安装完整依赖后打包；跨平台打包必须已经安装目标平台的 sharp/libvips，否则预检失败，不会静默删除图片处理能力。脚本只生成临时 ignore 文件，不修改本机 `node_modules` 或项目 `.vscodeignore`。
+
 导出脚本会：
 
 - 读取 `package.json` 中的版本号
 - 优先调用项目内 `node_modules/.bin/vsce package`，若缺少本地依赖则回退到全局 `vsce`
 - 若当前 `node_modules` 是 pnpm 布局，先复制到临时目录安装成 vsce 可识别的 hoist 布局再打包；本机没有 pnpm 时临时目录改走 `npm install`。不要直接对 pnpm 树执行 `vsce package`（它会跑 `npm list` 并 `ELSPROBLEMS`）
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
-- 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、测试产物和 Python 缓存
-- 解包审计 VSIX 清单，若 `.agents/`、`.ch/`、`.codegraph/`、`docs/`、`scripts/`、`dist/test/` 等开发态内容误入包内会直接失败
-- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、本地化文件、`media` 资源、workspace scaffold、Graph 面板的 Dagre 依赖，以及沟通文件预览的 `marked` 依赖
-- 输出到 `dist/sinitek-cli-tools-<version>.vsix`
+- 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map
+- 解包审计 VSIX 清单，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败
+- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、Graph 面板的 Dagre 依赖、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；不再强制要求当前实现已移除的旧市场 catalog
+- 平台包仅保留对应平台的 SDK ripgrep 和 sharp/libvips，额外检查目标平台原生依赖，拒绝混入其他平台资源；保留 SDK 和原生依赖的许可证
+- 默认输出到 `dist/sinitek-cli-tools-<version>.vsix`，结束时打印实际 MiB/字节大小
+
+Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WASM、原生 ripgrep 和 sharp/libvips 都属于运行时能力，不可为了缩包一并删除。`.vscodeignore` 由 vsce 实现的否定模式优先于排除模式，不能再加 `!node_modules/@anthropic-ai/**` 等宽泛放行，否则会让平台裁剪与类型声明排除失效。对应护栏见 `src/test/shared/vsixPackaging.test.ts`。
 
 ## Loop 子任务规则隔离发布前验证
 

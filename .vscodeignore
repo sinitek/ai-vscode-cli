@@ -1,14 +1,16 @@
 .git/**
 .codegraph/**
+.tmp/**
 .agents/**
 .ch/**
 docs/**
 scripts/**
 src/**
 dist/test/**
+dist/**/*.map
 node_modules/**/.cache/**
-!node_modules/@anthropic-ai/**
-!node_modules/@anthropic-ai/claude-agent-sdk/**
+node_modules/@anthropic-ai/claude-agent-sdk/*.d.ts
+node_modules/@anthropic-ai/claude-agent-sdk/bun.lock
 !node_modules/@dagrejs/**
 !node_modules/cross-spawn/**
 !node_modules/isexe/**
@@ -24,6 +26,8 @@ node_modules/**/.cache/**
 *.vsix
 *.pyc
 __pycache__/**
+**/*.pyc
+**/__pycache__/**
 .DS_Store
 .gitignore
 AGENTS.md
