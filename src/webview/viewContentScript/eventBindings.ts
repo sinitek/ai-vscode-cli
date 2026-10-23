@@ -33,7 +33,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      [
         state.pendingOpenCodeRoleSelection = null;
         const nextCli = event.target.value;
         clearOpenCodeModelOptions();
-        syncModelSelectorByInteractiveMode(nextCli);
+        handleCurrentCliSelectionChange(nextCli);
         vscode.postMessage({ type: "selectCli", cli: nextCli });
       });
 

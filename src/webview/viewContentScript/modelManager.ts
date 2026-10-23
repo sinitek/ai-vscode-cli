@@ -3,6 +3,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         return cli === "codex" || cli === "grok";
       }
 
+      function canOpenModelManagerDialog(cli = state.currentCli) {
+        return cliSupportsManagedModelSelection(cli) && cli !== "grok";
+      }
+
       function getModelsForCurrentCli() {
         const cli = state.currentCli;
         const models = state.modelsByCli && Array.isArray(state.modelsByCli[cli])
@@ -679,13 +683,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         if (typeof updateLoopSubtaskTargetControls === "function") {
           updateLoopSubtaskTargetControls();
         }
-        if (!supportsModelSelection || cli === "grok") {
+      }
+
+      function handleCurrentCliSelectionChange(cli) {
+        syncModelSelectorByInteractiveMode(cli);
+        if (!canOpenModelManagerDialog(cli)) {
           hideAddModelDialog();
         }
       }
 
       function showAddModelDialog() {
-        if (!elements.addModelOverlay || !cliSupportsManagedModelSelection() || state.currentCli === "grok") {
+        if (!elements.addModelOverlay || !canOpenModelManagerDialog()) {
           return;
         }
         if (elements.modelSelect) {

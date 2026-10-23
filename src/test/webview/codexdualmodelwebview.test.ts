@@ -238,10 +238,12 @@ function buildCodexModelHarness() {
 function buildVisibilityHarness() {
   const functionSource = [
     "cliSupportsManagedModelSelection",
+    "canOpenModelManagerDialog",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
     "syncModelSelectorByInteractiveMode",
+    "handleCurrentCliSelectionChange",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
   const state = { currentCli: "codex", interactiveMode: "coding" };
   const elements = {
@@ -256,21 +258,31 @@ function buildVisibilityHarness() {
     modelSelect: createVisibilityControl(),
     loopExecutionModeSelect: createVisibilityControl(),
   };
-  const sync = new Function(
+  let hideDialogCount = 0;
+  const helpers = new Function(
     "state",
     "elements",
     "normalizeInteractiveMode",
     "getLoopExecutionModeForCli",
     "hideAddModelDialog",
-    `${functionSource}; return syncModelSelectorByInteractiveMode;`,
+    `${functionSource}; return { syncModelSelectorByInteractiveMode, handleCurrentCliSelectionChange };`,
   )(
     state,
     elements,
     (value: string) => (value === "loop" || value === "graph" ? value : "coding"),
     () => "main-sub-multi-agent",
-    () => undefined,
-  ) as (cli?: string) => void;
-  return { state, elements, sync };
+    () => { hideDialogCount += 1; },
+  ) as {
+    syncModelSelectorByInteractiveMode(cli?: string): void;
+    handleCurrentCliSelectionChange(cli: string): void;
+  };
+  return {
+    state,
+    elements,
+    sync: helpers.syncModelSelectorByInteractiveMode,
+    handleCurrentCliSelectionChange: helpers.handleCurrentCliSelectionChange,
+    get hideDialogCount() { return hideDialogCount; },
+  };
 }
 
 test("renders Codex Loop and Graph selectors as Chinese role model rows", () => {
@@ -341,6 +353,20 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
+});
+
+test("keeps model manager open during state sync and closes on explicit unsupported CLI selection", () => {
+  const harness = buildVisibilityHarness();
+
+  harness.state.currentCli = "claude";
+  harness.sync();
+  assert.equal(harness.hideDialogCount, 0);
+
+  harness.handleCurrentCliSelectionChange("claude");
+  assert.equal(harness.hideDialogCount, 1);
+
+  harness.handleCurrentCliSelectionChange("codex");
+  assert.equal(harness.hideDialogCount, 1);
 });
 
 test("replays Codex role model options and selections from panel state", () => {
