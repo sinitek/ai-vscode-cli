@@ -270,8 +270,26 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(extensionSource, /const \{ runPromptInteractive \} = createPromptInteractiveRuntimeHost\(\{/);
   assert.match(extensionSource, /function runClassicLoopMainDecision\([\s\S]*requireLoopOrchestrationHost\(\)\.runClassicLoopMainDecision/);
   assert.match(extensionSource, /function runLoopSubtasksBatchWithRetry\([\s\S]*requireLoopOrchestrationHost\(\)\.runLoopSubtasksBatchWithRetry/);
-  assert.match(extensionSource, /await runPromptOneShot\(promptInput, target, executionOptions\);/);
-  assert.match(extensionSource, /await runPromptInteractive\(promptInput, target, executionOptions\);/);
+  const autoRepairStart = extensionSource.indexOf("await promptAutoRepairController.run(promptInput, target, {");
+  assert.notEqual(autoRepairStart, -1);
+  const executeEnd = extensionSource.indexOf("isTargetCurrent:", autoRepairStart);
+  assert.ok(executeEnd > autoRepairStart);
+  const autoRepairExecuteSource = extensionSource.slice(autoRepairStart, executeEnd);
+  assert.match(autoRepairExecuteSource, /await promptAutoRepairController\.run\(promptInput, target, \{/);
+  assert.match(autoRepairExecuteSource, /execute: async \(attemptInput, attemptTarget\) => \{/);
+  assert.match(
+    autoRepairExecuteSource,
+    /if \(shouldUseInteractive\) \{\s*await runPromptInteractive\(attemptInput, attemptTarget, executionOptions\);/,
+  );
+  assert.match(
+    autoRepairExecuteSource,
+    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(attemptInput, attemptTarget, executionOptions\);/,
+  );
+  assert.match(
+    autoRepairExecuteSource,
+    /\} else \{\s*await runPromptOneShot\(attemptInput, attemptTarget, executionOptions\);/,
+  );
+  assert.doesNotMatch(autoRepairExecuteSource, /promptInput, target, executionOptions/);
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
 });
 

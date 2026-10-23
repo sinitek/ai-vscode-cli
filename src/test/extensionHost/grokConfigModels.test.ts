@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { installVscodeMock } from "../vscodeMock";
 import type { ModelSettingsHostDeps } from "../../extensionHost/modelSettings";
+import { resolveGrokConfigPath } from "../../shared/userHomePaths";
 
 installVscodeMock();
 
@@ -14,6 +15,7 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   let content = '[models]\ndefault = "grok"\n[model.grok]\nmodel = "grok-4.7-kedaya"\n[model."gpt-6.1-sol"]\nmodel = "gpt-6.1-sol"';
   const readConfig = context.mock.method(configService, "readGrokConfigText", async () => content);
   let store = ensureCliModelStore();
+  let preferredConfigId: string | null = "profile";
   context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
   store.optionsByConfigId.profile = ["manual-stale"];
   store.selectedByConfigId.profile = "gpt-6.1-sol";
@@ -36,7 +38,7 @@ test("Grok host refreshes actual config models and resolves normal and role sele
     getOpenCodeThinkingConfigId: () => null, setOpenCodeThinkingConfigId: () => undefined,
     getOpenCodeThinkingExactModels: () => ({ main: null, subtask: null }), setOpenCodeThinkingExactModels: () => undefined,
     getOpenCodeThinkingRequestId: () => 0, setOpenCodeThinkingRequestId: () => undefined,
-    getWorkspacePreferredConfigIdForCli: () => "profile", resolveModelConfigIdForCli: (_cli, state) => state.activeConfigId,
+    getWorkspacePreferredConfigIdForCli: () => preferredConfigId, resolveModelConfigIdForCli: (_cli, state) => state.activeConfigId,
     postPanelState: async () => undefined, resolveWorkspaceCwd: () => undefined,
     getExtensionUri: () => ({}) as ReturnType<ModelSettingsHostDeps["getExtensionUri"]>,
     updateStatusBar: () => undefined, getActiveConversationTab: () => null, getActiveConversationTabId: () => null,
@@ -77,11 +79,36 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   assert.equal(host.getModelDisplayName("grok", "updated"), "gpt-6.1-sol");
   assert.equal(host.getSelectedLoopCliModel("grok", "main", "profile"), "updated");
   assert.equal(host.getSelectedCliModel("grok", "other-profile"), null);
+  const nullProfileStoreKey = `grok:${resolveGrokConfigPath()}`;
+  const readsBeforeUnscopedRefresh = readConfig.mock.callCount();
+  preferredConfigId = null;
+  assert.equal(host.getActiveConfigIdForCli("grok"), null);
   await host.refreshGrokConfigModels({ configs: [], activeConfigId: null });
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh);
+  assert.deepEqual(host.getModelOptionsForCli("grok", null), []);
+  assert.equal(host.getSelectedCliModel("grok", null), null);
+  assert.equal(host.getSelectedLoopCliModel("grok", "main", null), null);
+  assert.equal(host.getSelectedLoopCliModel("grok", "subtask", null), null);
+  assert.equal(store.selectedByConfigId[nullProfileStoreKey], undefined);
+  assert.equal(await host.resolveGrokModelForRun("updated"), "updated");
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 1);
+  assert.deepEqual(host.getModelOptionsForCli("grok", null), ["updated"]);
   host.selectCliModel("grok", "updated", null);
   assert.equal(host.getSelectedCliModel("grok", null), "updated");
   host.selectCliLoopModel("grok", "main", "updated", null);
+  host.selectCliLoopModel("grok", "subtask", "updated", null);
   assert.equal(host.getSelectedLoopCliModel("grok", "main", null), "updated");
+  assert.equal(host.getSelectedLoopCliModel("grok", "subtask", null), "updated");
+  assert.notEqual(nullProfileStoreKey, "null");
+  assert.equal(store.selectedByConfigId[nullProfileStoreKey], "updated");
+  assert.equal(store.selectedByConfigId.null, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(store.selectedByConfigId, "null"), false);
+  assert.deepEqual(store.selectedLoopByConfigId[nullProfileStoreKey], { main: "updated", subtask: "updated" });
+  assert.equal(store.selectedLoopByConfigId.null, undefined);
+  assert.equal(store.selectedByConfigId.profile, "grok");
+  assert.deepEqual(store.selectedLoopByConfigId.profile, { main: "gpt-6.1-sol", subtask: "gpt-6.1-sol" });
+  preferredConfigId = "profile";
+  assert.equal(host.getActiveConfigIdForCli("grok"), "profile");
   content = "[[[";
   await host.refreshGrokConfigModels(configState);
   assert.deepEqual(host.getModelOptionsForCli("grok", "profile"), []);
@@ -92,5 +119,5 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   await host.refreshGrokConfigModels(configState);
   assert.equal(host.buildModelState({ grok: "profile" }).selectedLoopByCli?.grok?.main, null);
   await assert.rejects(() => host.resolveGrokModelForRun(null), /Grok/);
-  assert.equal(readConfig.mock.callCount(), 8);
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 5);
 });
