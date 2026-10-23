@@ -308,6 +308,21 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.marketplace_publish_authenticated_vsix",
+      "name": "市场发布先鉴权再导出并上传同一产物",
+      "description": "市场发布者固定为 sinitek。发布脚本先验证发布者与权限，再复用现有导出审计流程并上传相同 VSIX，默认通用包且支持已有目标平台。鉴权使用 VSCE_PAT、兼容 VSCODE_MARKETPLACE_PAT 或 vsce 登录缓存，令牌只通过环境传递；非交互缺凭据及任一前置阶段失败均阻止发布。不自动升级或覆盖市场版本，上传失败保留本机包。",
+      "status": "active",
+      "aliases": ["发布", "Marketplace", "publisher", "sinitek", "VSCE_PAT", "publish_vscode_extension.sh"],
+      "applies_to": ["plugin.extension_host"],
+      "source_refs": [
+        {"path": "package.json", "anchor": "publisher"},
+        {"path": "publish_vscode_extension.sh"},
+        {"path": "src/test/shared/vsixPublishing.test.ts"},
+        {"path": ".ch/docs/runbooks/local-development.md", "anchor": "发布到 VS Code 市场"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "VS Code 市场一键发布"}
+      ]
+    },
+    {
       "id": "plugin.rule.vsix_target_preserves_runtime",
       "name": "VSIX 定向瘦身保留目标平台运行时",
       "description": "导出脚本默认保持通用包，仅排除开发产物。显式 target 平台包独立命名并声明 VSIX 平台，只裁剪其他平台的 ripgrep 与 sharp/libvips；保留目标平台 SDK CLI、WASM、rg、ripgrep.node 和原生图片依赖，缺少目标依赖时失败，不修改工作区依赖。Windows .cmd 启动依赖的内置 Claude CLI 不可删除。",

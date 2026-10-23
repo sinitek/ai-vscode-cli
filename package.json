@@ -2,8 +2,8 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "在 VS Code 中运行 Codex、Claude、OpenCode 和 Grok CLI 的扩展。",
-  "version": "1.2.0",
-  "publisher": "Sinitek",
+  "version": "1.2.1",
+  "publisher": "sinitek",
   "repository": {
     "type": "git",
     "url": "https://codeup.aliyun.com/62491de354d036291ae14d9c/vscode/sinitek_cli.git"

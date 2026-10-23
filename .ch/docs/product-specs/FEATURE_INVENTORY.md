@@ -30,6 +30,14 @@
 - `./export_vscode_extension.sh --target current` 或显式平台值导出独立命名、带 VSIX target 标记的平台包；只裁剪其他平台的 ripgrep/sharp/libvips，缺少目标原生依赖时失败，不改变工作区依赖。支持范围与分发边界见 `.ch/docs/runbooks/local-development.md` 的“打包 VSIX”。
 - 实现入口：`export_vscode_extension.sh`、`scripts/vsix_target.js`、`.vscodeignore`；回归入口：`src/test/shared/vsixPackaging.test.ts`，并执行通用与当前平台真实打包、解包和依赖加载验证。
 
+## VS Code 市场一键发布
+
+- `./publish_vscode_extension.sh` 使用 `sinitek` 发布者，按鉴权预检、现有导出与审计、上传同一 VSIX 的顺序执行；默认通用包，可传导出脚本已有的 `--target`。
+- 支持 `VSCE_PAT`、兼容 `VSCODE_MARKETPLACE_PAT` 或本机 vsce 登录缓存；令牌不进入命令行参数。无凭据、发布者不匹配、鉴权失败或导出失败阻止上传。
+- 不自动升级版本或覆盖已发布版本；上传失败保留本机 VSIX。操作入口与前置权限见 `.ch/docs/runbooks/local-development.md` 的“发布到 VS Code 市场”。
+- 验证：`src/test/shared/vsixPublishing.test.ts` 覆盖令牌来源与优先级、缓存、平台路径、缺凭据和失败路径；真实市场写入另依赖本机发布凭据，不以模拟测试代替成功发布证明。
+- 真实发布验收：2026-10-23 经用户确认升级至 `1.2.1`，鉴权、构建、25 项相关单测、通用 VSIX 审计均通过，市场返回 `Published sinitek.sinitek-cli-tools v1.2.1`；公开市场列表可能晚于上传成功更新。
+
 ## 更新规则
 
 - 新增能力时新增一行。
