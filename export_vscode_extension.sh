@@ -201,6 +201,7 @@ fi
 REQUIRED_ENTRIES=(
   "extension/dist/extension.js"
   "extension/package.json"
+  "extension/media/icon.png"
   "extension/media/logo.svg"
   "extension/media/marked.min.js"
   "extension/media/config/assets/config-app-api.js"
