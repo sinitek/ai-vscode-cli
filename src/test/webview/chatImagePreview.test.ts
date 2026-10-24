@@ -128,10 +128,14 @@ test("renders SVG fences as passive clickable images while retaining ordinary co
 });
 
 test("delegates image clicks to the host and prevents surrounding links from opening", () => {
+  const handlerSource = VIEW_CONTENT_SCRIPT_TRACE_RENDERING.slice(
+    VIEW_CONTENT_SCRIPT_TRACE_RENDERING.indexOf("      function handleChatImageClick("),
+    VIEW_CONTENT_SCRIPT_TRACE_RENDERING.indexOf("      function renderChatImage("),
+  );
   const source = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.slice(0, VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.indexOf("\n      ["));
   const listeners: Record<string, (event: unknown) => void> = {};
   const posted: unknown[] = [];
-  new Function("elements", "vscode", "normalizeChatImageSource", source)(
+  new Function("elements", "vscode", "normalizeChatImageSource", handlerSource + source)(
     { messages: { addEventListener: (name: string, handler: (event: unknown) => void) => { listeners[name] = handler; } } },
     { postMessage: (message: unknown) => posted.push(message) },
     normalizeChatImageSource,

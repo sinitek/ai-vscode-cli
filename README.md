@@ -6,6 +6,7 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 ## changelog
 ### 1.2.2
 - 对话气泡支持图片/svg的展示和预览
+- 任务总结经常会以 svg 做补充展示
 
 ### 1.2.1
 - 首次发布 vscode 市场

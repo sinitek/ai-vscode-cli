@@ -2,6 +2,11 @@ import * as vscode from "vscode";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
+import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
+import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
+import { getMarkedScript, getJsonFormatterScript } from "./markdownAssets";
+import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
+import { getMarkdownStyles } from "./viewContentStyles/markdown";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
@@ -48,6 +53,7 @@ export class LoopDebateChatPanel {
   private domReady = false;
   private htmlInstalled = false;
   private renderGeneration = 0;
+  private readonly imageHost = new ChatImageHost(() => this.panel?.webview);
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -67,7 +73,10 @@ export class LoopDebateChatPanel {
           localResourceRoots: [this.extensionUri],
         },
       );
-      this.panel.webview.onDidReceiveMessage((message: LoopDebateChatPanelMessage) => {
+      this.panel.webview.onDidReceiveMessage(async (message: LoopDebateChatPanelMessage) => {
+        if (isChatImageMessage(message)) {
+          return this.imageHost.handleMessage(message);
+        }
         if (message?.type === "loopDebateChat:domReady") {
           this.handleDomReady(typeof message.generation === "number" ? message.generation : 0);
           return;
@@ -75,6 +84,7 @@ export class LoopDebateChatPanel {
         this.handlers.onMessage(message);
       });
       this.panel.onDidDispose(() => {
+        this.imageHost.invalidate();
         this.panel = undefined;
         this.state = undefined;
         this.domReady = false;
@@ -216,11 +226,13 @@ export function buildLoopDebateChatPanelHtml(
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: http: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(heading)}</title>
     <style>
 ${LOOP_DEBATE_PANEL_STYLES}
+${getMarkdownStyles(".markdown-body")}
+      .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
     </style>
   </head>
   <body>
@@ -292,8 +304,12 @@ ${renderPanelDialog({
 	        </main>
 	      </div>
 	    </div>
+	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getMarkedScript())}</script>
+	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getJsonFormatterScript())}</script>
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
+          const escapeHtml = askEscape;
+${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
@@ -590,6 +606,36 @@ ${renderPanelDialog({
 	          .replace(/'/g, "&#39;");
 	      }
 
+          function mountGroupChatMarkdown(root) {
+            root.querySelectorAll("[data-markdown-source]").forEach((element) => {
+              const links = Array.from(element.querySelectorAll(".communication-file-link"));
+              element.innerHTML = renderMarkdown(element.getAttribute("data-markdown-source") || "");
+              element.removeAttribute("data-markdown-source");
+              links.forEach((link) => {
+                const filePath = link.getAttribute("data-file-path");
+                const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                const matches = [];
+                while (walker.nextNode()) {
+                  const text = walker.currentNode;
+                  if (filePath && text.textContent.includes(filePath) && !text.parentElement.closest("pre, a, button, script")) {
+                    matches.push(text);
+                  }
+                }
+                matches.forEach((text) => {
+                  const fragment = document.createDocumentFragment();
+                  text.textContent.split(filePath).forEach((part, index) => {
+                    if (index) {
+                      fragment.appendChild(link.cloneNode(true));
+                    }
+                    fragment.appendChild(document.createTextNode(part));
+                  });
+                  text.replaceWith(fragment);
+                });
+              });
+            });
+            mountJsonTreeHosts(root);
+          }
+
 	      function renderAskBubble(message) {
 	        if (!message || message.role === "thinking") {
 	          return "";
@@ -599,8 +645,8 @@ ${renderPanelDialog({
 	          : message.role === "system"
 	            ? "system"
 	            : "assistant";
-	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble">' +
-	          askEscape(message.content ? message.content : "") +
+	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body">' +
+	          renderMarkdown(message.content ? message.content : "") +
 	          "</div></article>";
 	      }
 
@@ -623,6 +669,7 @@ ${renderPanelDialog({
 	        askChatMessages.innerHTML = messages.length || waiting
 	          ? messages.map(renderAskBubble).join("") + waiting
 	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
+            mountJsonTreeHosts(askChatMessages);
 	        if (stickToBottom) {
 	          askChatMessages.scrollTop = askChatMessages.scrollHeight;
 	        }
@@ -883,6 +930,7 @@ ${renderPanelDialog({
 	          return;
 	        }
 	        slot.innerHTML = html;
+            mountGroupChatMarkdown(slot);
 	      }
 
 	      function replaceContinueModelChoice(html) {
@@ -974,6 +1022,9 @@ ${renderPanelDialog({
 	      }
 
 	      document.addEventListener("click", (event) => {
+            if (handleChatImageClick(event)) {
+              return;
+            }
 	        const target = event.target.closest("[data-action]");
 	        if (!target) {
 	          return;
@@ -1030,6 +1081,10 @@ ${renderPanelDialog({
 	      });
 	      window.addEventListener("message", (event) => {
 	        const message = event.data;
+            if (message && message.type === "chatImageResolved") {
+              applyChatImageSource(message);
+              return;
+            }
 	        if (applyContentPatch(message)) {
 	          return;
 	        }
@@ -1179,6 +1234,7 @@ ${renderPanelDialog({
 	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
+          mountGroupChatMarkdown(document);
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
 	      vscode.postMessage({ type: "loopDebateChat:domReady", generation: PANEL_GENERATION });
@@ -1819,7 +1875,7 @@ function renderMessageBody(body: string, strings: LoopDebateChatPanelStrings): s
   if (!body.trim()) {
     return `<pre class="message-text empty">(empty)</pre>`;
   }
-  return `<pre class="message-text">${renderLoopGroupChatMessageText(body, strings.communicationFileOpen)}</pre>`;
+  return `<div class="message-text markdown-body" data-markdown-source="${escapeAttribute(body)}">${renderLoopGroupChatMessageText(body, strings.communicationFileOpen)}</div>`;
 }
 
 function renderMetaRow(label: string, value: string): string {

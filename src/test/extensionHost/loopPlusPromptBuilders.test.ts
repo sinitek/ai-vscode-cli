@@ -7,6 +7,7 @@ import {
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
 import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
+import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
@@ -92,6 +93,21 @@ function parseExample(examples: Map<string, string>, status: string): LoopPlusDe
   assert.equal(decision?.status, status);
   return decision as LoopPlusDecision;
 }
+
+test("Loop+ suggests optional SVG in the main finalSummary without changing subtask prompts", () => {
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
+
+    assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
+    assert.doesNotMatch(prompt, /\[final_answer\]/u);
+    assert.ok(parseExample(extractProtocolExamples(prompt), "completed"));
+  }
+  const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
+    subtask: { id: "sub-1", title: "独立执行任务", prompt: "完成指定变更并记录验证结果。" },
+    communicationFile: "/tmp/sub-1.md",
+  });
+  assert.ok(!subtaskPrompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
+});
 
 test("generated protocol examples satisfy the current parser and live event id", () => {
   const current = review("event-live-42", "sub-current");

@@ -24,6 +24,7 @@ import type {
 import type { LoopDebateParticipantDefinition } from "../loopPromptBuilders";
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_ZH } from "../subtaskDesignBriefPolicy";
+import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import type {
   LoopDebateParticipantBatchRunItem,
   LoopDebateRunnerDeps,
@@ -2999,6 +3000,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- requirementCoverage 必须逐条覆盖用户原始需求，不可遗漏；所有项都必须 passed=true。",
       "- roundSummaries 需要按轮次汇总每轮子任务完成内容，至少包含 round、title、summary；如有 subtaskId 也应带上。",
       "- finalSummary 需要给出整体结果，并基于 roundSummaries 归纳所有轮次完成项与最终交付情况。",
+      buildStructuredSvgSummaryPromptInstruction("finalSummary"),
       `- status=continue 时必须提供 acceptance.passed=false、subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}。`,
       "- 当前没有可执行子任务、需要等待外部结果时，必须返回 blocked，并在 finalSummary 说明等待对象。",
       "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",

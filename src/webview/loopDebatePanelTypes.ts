@@ -141,6 +141,7 @@ export type LoopDebateChatPanelState = {
 };
 
 export type LoopDebateChatPanelMessage =
+  | import("./chatImageHost").ChatImageMessage
   | { type: "loopDebateChat:refresh" }
   | { type: "loopDebateChat:domReady"; generation?: number }
   | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }

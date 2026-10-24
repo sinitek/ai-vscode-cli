@@ -1,3 +1,7 @@
+export function getMarkdownStyles(selector: string): string {
+  return MARKDOWN_STYLES.split(".message.assistant .bubble").join(selector);
+}
+
 export const MARKDOWN_STYLES = `      /* Markdown Styles */
       .message.assistant .bubble .chat-image {
         display: inline-flex;

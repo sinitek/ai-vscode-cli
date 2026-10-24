@@ -67,6 +67,8 @@ cli / interactive / config 服务层
 - 位于 `src/webview/`
 - 负责渲染聊天面板、配置中心、输入交互和消息协议
 - 不直接访问文件系统，不直接执行 CLI
+- 主对话与 Loop / Loop+ 群聊复用 `chatMarkdown.ts` 的浏览器侧 Markdown、JSON、SVG 和图片交互运行时；`markdownAssets.ts` 统一加载 Marked / JSONFormatter，`viewContentStyles/markdown.ts` 提供可按容器复用的主题样式。
+- `chatImageHost.ts` 在扩展宿主侧统一承接图片解析、预览和下载，由 `viewProvider.ts` 与 `loopDebatePanel.ts` 各自绑定当前 Webview，防止异步结果写入已替换或关闭的页面。
 
 #### 扩展编排层
 

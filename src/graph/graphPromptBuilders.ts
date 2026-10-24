@@ -10,6 +10,7 @@ import {
   isGraphAiReplannerNode,
 } from "./graphPlanner";
 import { GRAPH_NODE_DESIGN_BRIEF_RULE_ZH } from "../subtaskDesignBriefPolicy";
+import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import {
   sanitizeGraphPathSegment,
   type GraphAcceptanceCheck,
@@ -288,6 +289,7 @@ function buildGraphSummaryPromptTail(run: GraphRunRecord): string[] {
     "- 如果任何必要节点 failed、历史 blocked、stopped、skipped 或缺少验证证据，finalAnswer.unresolved 必须列出具体节点和原因。",
     "- Summary JSON 必须额外包含 finalAnswer：",
     '{"status":"passed|failed","summary":"最终摘要","finalAnswer":{"conclusion":"最终结论","summary":"用户可读总结","evidence":["验证证据或 artifact"],"unresolved":["未完成事项"],"completedAt":1234567890}}',
+    buildStructuredSvgSummaryPromptInstruction("finalAnswer.summary"),
     "",
     "## 节点与 artifact 清单",
     ...run.nodes.map((item) => {

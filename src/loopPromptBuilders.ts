@@ -13,6 +13,7 @@ import {
   type LoopDebatePaths,
 } from "./loopDebate";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_ZH } from "./subtaskDesignBriefPolicy";
+import { buildStructuredSvgSummaryPromptInstruction } from "./finalAnswerProtocol";
 import {
   getLoopCommunicationPaths,
   type LoopMainDecision,
@@ -648,6 +649,7 @@ export function buildLoopDebateConsensusModelPrompt(
     continueDecisionExample,
     '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
     "status=completed 时 answerConclusion 必须直接回答用户原始问题，finalSummary 用于整体任务完成说明。",
+    buildStructuredSvgSummaryPromptInstruction("finalSummary"),
     "",
     "原始目标：",
     task.rootPrompt,

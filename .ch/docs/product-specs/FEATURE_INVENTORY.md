@@ -42,11 +42,14 @@ AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底�
 
 ## 对话图片展示、内容区预览与下载
 
+- Vibe、Loop、Loop+、Graph 在任务结束总结时，统一建议按需使用 SVG 补充流程、架构、依赖、方案对比或交付结果等结构化表达；先给出文字结论，图示不替代验证证据，简单任务、无图示价值或用户要求纯文字时可省略。Loop（含红蓝共识）和 Loop+ 将图示放在 `finalSummary`，Graph summary 节点放在 `finalAnswer.summary`，正确转义 JSON，不新增协议字段、不在 JSON 外追加图示，也不向子任务和非 summary 节点额外注入该建议。
+- 总结提示实现：`src/finalAnswerProtocol.ts`、`src/loopPromptBuilders.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/graph/graphPromptBuilders.ts`。验证：`node --test dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/subtaskCliExecution.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopPromptBuilders.test.js dist/test/graph/graphPromptBuilders.test.js`。
 - 状态：active；面向终端用户。普通对话与隐藏重试的最终回复规则允许按需以 `![图片说明](图片地址)` 输出真实图片，复用现有 Markdown，不强制生成图片。
+- Loop / Loop+ 群聊气泡与普通 AI 对话复用同一 Markdown 运行时及主题样式，覆盖时间线正文、总结、“我要提问”回复、初始载入及增量更新；支持标题、列表、表格、引用、代码、JSON 树、图片和 SVG。保留沟通文件受限预览入口及思考动画，不将代码块中的路径转换为预览按钮；图片解析、预览和下载复用同一扩展宿主处理器。
 - 支持本地绝对路径、工作区根目录相对路径、用户主目录路径、file URI、HTTP(S)、栅格图片 base64 data URL，以及编码或 base64 SVG data URL。本地图片由扩展宿主读取并校验实际图片格式，转换为 data URL，不要求 HTTP 服务，不放开 Webview 本地资源根目录；兼容 Windows 驱动器与 UNC 路径。读取与下载上限 20 MiB，失败提供中文提示。
 - AI 可按需在最终回复写 `svg` 代码围栏绘制自包含图示，自动转为图片展示（缺少 xmlns 时补齐，只有 viewBox 时补齐宽高），不执行内联 SVG；不超过 256 KiB 的 SVG 源码才转换，DTD、实体声明或非 SVG 内容保留为代码。图片自适应气泡宽度，点击或用 Enter / Space 在 VS Code 内容区打开并复用“图片预览”页，不打开外部浏览器。每张图片下方提供“下载图片”或“下载 SVG”链接，经系统另存为保存实际图片字节，SVG 保留矢量格式，取消不写文件。不接受脚本协议；预览禁用脚本和本地资源。
-- 事实来源：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#36-输出渲染与任务观测`；实现：`src/finalAnswerProtocol.ts`、`src/webview/chatImagePreview.ts`、`src/webview/chatImageResource.ts`、`src/webview/viewProvider.ts`、`src/webview/viewContentScript/traceRendering.ts`。
-- 验证：`npm run build`；`node --test dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js dist/test/webview/viewProvider.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/extensionHost/promptRuntime.test.js`；Chromium 冒烟覆盖本地图片实际加载、预览、下载链接及窄屏布局。
+- 事实来源：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#36-输出渲染与任务观测`；实现：`src/finalAnswerProtocol.ts`、`src/webview/chatMarkdown.ts`、`src/webview/markdownAssets.ts`、`src/webview/chatImageHost.ts`、`src/webview/chatImagePreview.ts`、`src/webview/chatImageResource.ts`、`src/webview/viewProvider.ts`、`src/webview/loopDebatePanel.ts`、`src/webview/viewContentScript/traceRendering.ts`。
+- 验证：`npm run build`；`node --test dist/test/webview/chatMarkdown.test.js dist/test/loop/loopDebatePanel.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js dist/test/webview/viewProvider.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/extensionHost/promptRuntime.test.js`；Chromium 冒烟覆盖 Loop / Loop+ 初始及增量渲染、提问回复、沟通文件、本地图片加载、预览与下载消息及窄屏布局；群聊冒烟使用模拟 VS Code 消息桥，不替代真实 Extension Development Host / CLI 验证。
 
 ## 更新规则
 

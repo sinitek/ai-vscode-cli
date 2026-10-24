@@ -6,6 +6,7 @@ import {
   buildGraphSummaryNodePrompt,
   resolveGraphNodeCommunicationFile,
 } from "../../graph/graphPromptBuilders";
+import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
   GRAPH_SCHEMA_VERSION,
   type GraphEdgeRecord,
@@ -108,6 +109,7 @@ test("builds a self-contained executable Graph node prompt with scope and accept
   assert.match(prompt, /如果任务说明写了界面设计，按该设计实现/u);
   assert.doesNotMatch(prompt, /Graph run id：/u);
   assert.doesNotMatch(prompt, /conflictGroup：/u);
+  assert.ok(!prompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
   assert.doesNotMatch(prompt, /## 全图拓扑与当前位置/u);
   assert.doesNotMatch(prompt, /长期记忆沉淀只由主智能体/u);
 });
@@ -666,6 +668,8 @@ test("summary node prompt requires events, node artifacts, evidence, and unresol
   assert.match(prompt, /test-1｜test｜failed｜Validation/u);
   assert.match(prompt, /lastError：Tests failed/u);
   assert.match(prompt, /unresolved/u);
+  assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalAnswer.summary")));
+  assert.doesNotMatch(prompt, /\[final_answer\]/u);
 });
 
 test("puts design key points into the node prompt and does not invent them when absent", () => {
@@ -695,4 +699,5 @@ test("puts design key points into the node prompt and does not invent them when 
   });
   const plannerPrompt = buildGraphNodePrompt({ run: createRun([planner]), node: planner });
   assert.doesNotMatch(plannerPrompt, /不要静默换成另一套设计/u);
+  assert.ok(!plannerPrompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
 });

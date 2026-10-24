@@ -7,6 +7,7 @@ import {
 } from "../../loopPromptBuilders";
 import { buildLoopDebatePaths, type LoopDebateParticipantRecord } from "../../loopDebate";
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
 
 function createTask(): LoopTaskRecord {
   const now = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -54,4 +55,6 @@ test("keeps Loop debate prompts free of Workflow Skill catalogs and skill IDs", 
   assert.match(consensus, /设计关键点：保持既有对外接口兼容/u);
   assert.doesNotMatch(consensus, /"status":"sleep"/u);
   assert.doesNotMatch(consensus, /wakeAfterSeconds|sleepReason|自动睡眠/u);
+  assert.ok(consensus.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
+  assert.doesNotMatch(consensus, /\[final_answer\]/u);
 });

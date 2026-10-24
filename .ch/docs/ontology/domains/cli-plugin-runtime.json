@@ -308,6 +308,22 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.task_summary_svg",
+      "name": "任务结束总结按需使用 SVG 补充结构化表达",
+      "description": "Vibe、经典 Loop（含主持及红蓝共识）、Loop+ 和 Graph 任务总结统一建议按需以自包含 svg 代码围栏补充流程、架构、依赖、方案对比或交付结果。文字结论和验证证据优先，简单任务、无图示价值或用户要求纯文字时可省略；禁止脚本、事件处理和外部资源。Loop/Loop+ 将图示置于 finalSummary，Graph summary 节点置于 finalAnswer.summary，正确转义 JSON，不在对象外追加图示或新增字段。该协议内建议不引入 final_answer 标记，不额外注入子任务和非 summary 节点。",
+      "status": "active",
+      "aliases": ["SVG 总结", "结构化表达", "任务结束总结", "finalSummary", "finalAnswer.summary"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "src/finalAnswerProtocol.ts"},
+        {"path": "src/loopPromptBuilders.ts"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/graph/graphPromptBuilders.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
+      ]
+    },
+    {
       "id": "plugin.rule.chat_markdown_image_preview",
       "name": "最终回复图片及 SVG 的本地预览与下载",
       "description": "普通对话与隐藏重试允许按需以 Markdown 图片引用真实本地路径、file URI、HTTP(S) 或图片 data URL，不伪造地址；相对路径以首个工作区根目录解析，优先绝对路径。扩展宿主校验本地图片实际字节并转换为 data URL，不依赖 HTTP 服务或 Webview 私有资源地址，兼容 Windows 驱动器和 UNC。AI 也可通过 svg 代码围栏绘制自包含图示；补齐 xmlns 和仅有有效 viewBox 时的尺寸，超过 256 KiB、包含 DTD/实体或非 SVG 时保留代码。SVG 仅作为 img 加载，不注入 SVG DOM。气泡限制宽度，鼠标与键盘在内容区复用图片预览。每张图片下方提供下载图片或下载 SVG 链接，使用系统另存为保存实际图片字节，保留 SVG 矢量格式，取消不写文件。读取与下载限制 20 MiB，HTTP 下载超时 30 秒，失败提供中文提示。拒绝非图片、脚本协议与带账号密码 URL；预览禁用脚本和本地资源，不打开外部浏览器。机器协议 opt-out 保持原行为。",
@@ -318,9 +334,29 @@
         {"path": "src/finalAnswerProtocol.ts"},
         {"path": "src/webview/chatImagePreview.ts"},
         {"path": "src/webview/chatImageResource.ts"},
+        {"path": "src/webview/chatImageHost.ts"},
+        {"path": "src/webview/chatMarkdown.ts"},
         {"path": "src/webview/viewProvider.ts"},
         {"path": "src/test/webview/chatImagePreview.test.ts"},
         {"path": "src/test/webview/chatImageResource.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_group_shared_markdown",
+      "name": "Loop 群聊复用普通 AI 对话的 Markdown 渲染",
+      "description": "Loop / Loop+ 群聊时间线、总结和提问回复复用普通 AI 对话的 Markdown 运行时、Marked / JSONFormatter 资源及主题样式；初始载入与增量补丁均支持标题、列表、表格、引用、代码、JSON 树、图片和 SVG。沟通文件保留原有受限预览入口，代码块路径不转换为预览按钮；思考动画及调度保持原行为。图片解析、预览、下载使用共享扩展宿主处理器，沿用地址和字节校验、过期页面保护及禁用预览脚本的安全边界，不执行原始 HTML。",
+      "status": "active",
+      "aliases": ["Loop", "Loop+", "群聊", "Markdown", "提问回复", "增量渲染"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/chatMarkdown.ts"},
+        {"path": "src/webview/markdownAssets.ts"},
+        {"path": "src/webview/chatImageHost.ts"},
+        {"path": "src/webview/viewContentStyles/markdown.ts"},
+        {"path": "src/test/webview/chatMarkdown.test.ts"},
+        {"path": "src/test/loop/loopDebatePanel.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
       ]
     },

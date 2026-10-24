@@ -1,13 +1,10 @@
 import * as vscode from "vscode";
-import * as path from "node:path";
-import * as os from "node:os";
+import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
 import { logError } from "../logger";
 import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
 import { t } from "../i18n";
 import { formatHomeDisplayPath } from "../shared/userHomePaths";
-import { buildChatImagePreviewHtml, normalizeChatImageSource } from "./chatImagePreview";
-import { loadChatImageResource } from "./chatImageResource";
 
 type ViewHandlers = {
   onMessage: (message: PanelMessage) => void;
@@ -18,8 +15,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private webviewReady = false;
   private pendingPromptPaths: string[] = [];
-  private imagePreviewPanel: vscode.WebviewPanel | undefined;
-  private imagePreviewRequest = 0;
+  private readonly imageHost = new ChatImageHost(() => this.view?.webview);
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
@@ -27,12 +23,12 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this.imagePreviewRequest += 1;
+    this.imageHost.invalidate();
     this.view = webviewView;
     this.webviewReady = false;
     webviewView.onDidDispose(() => {
       if (this.view === webviewView) {
-        this.imagePreviewRequest += 1;
+        this.imageHost.invalidate();
         this.view = undefined;
         this.webviewReady = false;
       }
@@ -56,14 +52,8 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       if (this.view !== webviewView) {
         return;
       }
-      if (message.type === "previewChatImage") {
-        return this.previewChatImage(message.source, message.alt);
-      }
-      if (message.type === "resolveChatImage") {
-        return this.resolveChatImage(webviewView, message.source);
-      }
-      if (message.type === "downloadChatImage") {
-        return this.downloadChatImage(message.source);
+      if (isChatImageMessage(message)) {
+        return this.imageHost.handleMessage(message);
       }
       this.handlers.onMessage(message);
       if (message.type === "requestState") {
@@ -71,83 +61,6 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
         this.flushPromptPaths();
       }
     });
-  }
-
-  private getImageBaseDirectory(): string {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-  }
-
-  private async resolveChatImage(view: vscode.WebviewView, source: unknown): Promise<void> {
-    try {
-      const normalized = normalizeChatImageSource(source);
-      if (!normalized || /^https?:|^data:/i.test(normalized)) {
-        throw new Error("不支持的本地图片地址");
-      }
-      const resource = await loadChatImageResource(normalized, this.getImageBaseDirectory());
-      if (this.view === view) {
-        await view.webview.postMessage({ type: "chatImageResolved", source, resolvedSource: resource.source });
-      }
-    } catch {
-      if (this.view === view) {
-        await view.webview.postMessage({ type: "chatImageResolved", source, error: "无法加载本地图片，请确认文件存在、格式受支持且未超过大小限制。" });
-      }
-    }
-  }
-
-  private async downloadChatImage(source: unknown): Promise<void> {
-    try {
-      const resource = await loadChatImageResource(source, this.getImageBaseDirectory());
-      const extension = resource.filename.split(".").pop()!;
-      const destination = await vscode.window.showSaveDialog({
-        title: "下载图片",
-        saveLabel: "保存图片",
-        defaultUri: vscode.Uri.file(path.join(os.homedir(), resource.filename)),
-        filters: { [resource.mime === "image/svg+xml" ? "SVG 图片" : "图片"]: [extension] },
-      });
-      if (destination) {
-        await vscode.workspace.fs.writeFile(destination, resource.bytes);
-      }
-    } catch (error) {
-      void logError("chat-image-download-failed", { error: String(error) });
-      void vscode.window.showErrorMessage("图片下载失败，请检查图片是否存在、网络连接及保存权限。");
-    }
-  }
-
-  private async previewChatImage(source: unknown, alt: unknown): Promise<void> {
-    const request = ++this.imagePreviewRequest;
-    const normalized = normalizeChatImageSource(source);
-    if (!normalized) {
-      void vscode.window.showErrorMessage("图片预览失败：不支持的图片地址。");
-      return;
-    }
-    try {
-      const displaySource = /^https?:|^data:/i.test(normalized) ? normalized
-        : (await loadChatImageResource(normalized, this.getImageBaseDirectory())).source;
-      if (request !== this.imagePreviewRequest) {
-        return;
-      }
-      if (!this.imagePreviewPanel) {
-        const panel = vscode.window.createWebviewPanel(
-          "sinitek-cli-tools.chatImagePreview",
-          "图片预览",
-          vscode.ViewColumn.Active,
-          { enableScripts: false, localResourceRoots: [] },
-        );
-        this.imagePreviewPanel = panel;
-        panel.onDidDispose(() => {
-          if (this.imagePreviewPanel === panel) {
-            this.imagePreviewPanel = undefined;
-          }
-        });
-      }
-      this.imagePreviewPanel.webview.html = buildChatImagePreviewHtml(displaySource, typeof alt === "string" ? alt : "图片");
-      this.imagePreviewPanel.reveal(vscode.ViewColumn.Active);
-    } catch (error) {
-      void logError("chat-image-preview-failed", { error: String(error) });
-      if (request === this.imagePreviewRequest) {
-        void vscode.window.showErrorMessage("图片预览失败，请确认本地图片存在且格式受支持。");
-      }
-    }
   }
 
   public insertPromptPaths(paths: string[]): void {

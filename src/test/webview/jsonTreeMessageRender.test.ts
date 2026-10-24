@@ -559,6 +559,7 @@ test("inlines the JSON formatter runtime into the chat webview", () => {
   const viewContentPath = require.resolve("../../webview/viewContent");
   const loadHtml = () => {
     delete require.cache[viewContentPath];
+    delete require.cache[require.resolve("../../webview/markdownAssets")];
     const { getWebviewHtml } = require("../../webview/viewContent") as typeof import("../../webview/viewContent");
     return getWebviewHtml({ cspSource: "vscode-resource://json-tree" });
   };

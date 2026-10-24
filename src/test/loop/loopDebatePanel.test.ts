@@ -68,13 +68,13 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
   assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
   assert.match(html, /<span class="speaker">我<\/span>/u);
   assert.match(html, /<span class="tag">任务发起<\/span>/u);
-  assert.match(html, /<pre class="message-text">完成任务<\/pre>/u);
-  assert.match(html, /<pre class="message-text">请补充提交失败场景。<\/pre>/u);
+  assert.match(html, /<div class="message-text markdown-body" data-markdown-source="完成任务">完成任务<\/div>/u);
+  assert.match(html, /<div class="message-text markdown-body" data-markdown-source="请补充提交失败场景。">请补充提交失败场景。<\/div>/u);
   assert.ok(
-    html.indexOf("<pre class=\"message-text\">完成任务</pre>")
-      < html.indexOf("<pre class=\"message-text\">请补充提交失败场景。</pre>"),
+    html.indexOf('data-markdown-source="完成任务">完成任务</div>')
+      < html.indexOf('data-markdown-source="请补充提交失败场景。">请补充提交失败场景。</div>'),
   );
-  assert.doesNotMatch(html, /<pre class="message-text">[^<]*主任务轮次/u);
+  assert.doesNotMatch(html, /data-markdown-source="[^"]*主任务轮次/u);
 });
 
 test("renders the Loop task prompt before chat records exist", () => {
@@ -101,10 +101,10 @@ test("renders the Loop task prompt before chat records exist", () => {
   );
 
   assert.match(html, /<span class="tag">任务发起<\/span>/u);
-  assert.match(html, /<pre class="message-text">请先完成任务初始化。<\/pre>/u);
+  assert.match(html, /data-markdown-source="请先完成任务初始化。">请先完成任务初始化。<\/div>/u);
   assert.match(html, /暂无群聊记录。/u);
   assert.ok(
-    html.indexOf("<pre class=\"message-text\">请先完成任务初始化。</pre>")
+    html.indexOf('data-markdown-source="请先完成任务初始化。">请先完成任务初始化。</div>')
       < html.indexOf("暂无群聊记录。"),
   );
 });
@@ -404,6 +404,27 @@ function createPanelHarness() {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+test("group chat handles shared image messages without forwarding them to Loop orchestration", async () => {
+  const { ChatImageHost } = require("../../webview/chatImageHost") as typeof import("../../webview/chatImageHost");
+  const original = ChatImageHost.prototype.handleMessage;
+  const handled: unknown[] = [];
+  const forwarded: unknown[] = [];
+  ChatImageHost.prototype.handleMessage = async (message) => { handled.push(message); };
+  try {
+    const harness = createPanelHarness();
+    const panel = new LoopDebateChatPanel({ fsPath: "/extension" } as any, { onMessage: (message) => forwarded.push(message) });
+    panel.show(createState());
+    for (const type of ["resolveChatImage", "previewChatImage", "downloadChatImage"] as const) {
+      await harness.messageHandler({ type, source: "/tmp/图示.svg", alt: "SVG 图示" });
+    }
+    await harness.messageHandler({ type: "loopDebateChat:refresh" });
+    assert.equal(handled.length, 3);
+    assert.deepEqual(forwarded, [{ type: "loopDebateChat:refresh" }]);
+  } finally {
+    ChatImageHost.prototype.handleMessage = original;
+  }
+});
 
 function createState(overrides: any = {}) {
   return {
@@ -1102,7 +1123,8 @@ test("renders the main-task clarification form in the group chat and pauses auto
   assert.match(html, /请先填写\{label\}/);
   assert.match(html, /clarificationDialogBackdrop/);
   assert.match(html, /var\(--vscode-input-background\)/);
-  assert.doesNotMatch(html, /#[0-9a-fA-F]{3,8}/);
+  const styles = Array.from(html.matchAll(/<style>([\s\S]*?)<\/style>/g), (match) => match[1]).join("\n");
+  assert.doesNotMatch(styles, /#[0-9a-fA-F]{3,8}/);
 
   const hidden = buildLoopDebateChatPanelHtml(
     { cspSource: "self" } as any,

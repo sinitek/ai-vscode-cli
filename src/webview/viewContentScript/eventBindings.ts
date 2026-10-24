@@ -1,18 +1,6 @@
 // Primary UI event bindings and conversation reset controls.
 export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) {
-        elements.messages.addEventListener("click", (event) => {
-          const target = event.target && typeof event.target.closest === "function"
-            ? event.target.closest(".chat-image-preview, .chat-image-download") : null;
-          if (!target) {
-            return;
-          }
-          event.preventDefault();
-          const source = normalizeChatImageSource(target.getAttribute("data-image-src"));
-          if (source) {
-            const type = target.getAttribute("data-image-action") === "download" ? "downloadChatImage" : "previewChatImage";
-            vscode.postMessage({ type, source, alt: target.getAttribute("data-image-alt") || "图片" });
-          }
-        });
+        elements.messages.addEventListener("click", handleChatImageClick);
       }
 
       [

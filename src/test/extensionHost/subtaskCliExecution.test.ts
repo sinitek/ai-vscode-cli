@@ -9,6 +9,7 @@ import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
 import { installVscodeMock } from "../vscodeMock";
 import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
 
 installVscodeMock();
 
@@ -47,6 +48,45 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
     ...overrides,
   };
 }
+
+test("classic Loop and its moderator keep optional SVG guidance in the finalSummary protocol", async () => {
+  const task = loopTask();
+  const prompts: string[] = [];
+  const host = createLoopOrchestrationHost({
+    getLoopCommunicationPaths: () => ({ dir: task.communicationDir, mainFile: task.mainCommunicationFile, subtasksDir: "/tmp/loop-comm/subtasks" }),
+    normalizeLoopContinuePromptForPrompt: () => null,
+    buildLoopSupplementalRequirementsLines: () => [],
+    buildLoopMainSubChatTranscriptFile: () => "/tmp/loop-comm/chat.md",
+    isLoopTaskExecutionInterrupted: () => false,
+    readLoopTaskRecord: () => task,
+    updateLoopTaskRecord: () => task,
+    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+    resolvePromptRunModelForRole: () => undefined,
+    resolvePromptRunThinkingModeForRole: () => undefined,
+    runPrompt: async (input: PromptRunInput) => { prompts.push(input.modelPrompt); },
+    resolveLoopTaskSessionId: () => null,
+    getLoopRoundRunStatus: () => "stopped",
+    appendLoopRound: () => undefined,
+    buildLoopRoundSummary: () => "已中断",
+  } as never);
+
+  for (const moderatorLed of [false, true]) {
+    const result = await host.runClassicLoopMainDecision({
+      input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
+      target: { tabId: "main-tab", cli: "codex", sessionId: null },
+      task,
+      round: 1,
+      moderatorLed,
+    });
+    assert.equal(result.status, "interrupted");
+    assert.equal(result.runStatus, "stopped");
+  }
+  assert.equal(prompts.length, 2);
+  for (const prompt of prompts) {
+    assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
+    assert.doesNotMatch(prompt, /\[final_answer\]/u);
+  }
+});
 
 test("classic Loop creates the subtask tab on the bound CLI and keeps the main target", async () => {
   const created: PromptRunTarget[] = [];

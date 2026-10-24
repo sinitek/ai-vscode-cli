@@ -15,6 +15,8 @@ const {
 const {
   FINAL_ANSWER_PROMPT_INSTRUCTION,
   FINAL_ANSWER_TEXT_MARKER,
+  SVG_SUMMARY_PROMPT_INSTRUCTION,
+  buildStructuredSvgSummaryPromptInstruction,
 } = require("../../finalAnswerProtocol") as typeof import("../../finalAnswerProtocol");
 
 test("resolves the selected model for the active Loop role", () => {
@@ -107,6 +109,10 @@ test("guides final replies to use real Markdown images in ordinary and hidden re
       assert.match(prompt, /download link below each image or SVG/);
       assert.match(prompt, /fenced code block with the language svg/);
       assert.match(prompt, /self-contained without scripts, event handlers, or external assets/);
+      assert.ok(prompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
+      assert.match(prompt, /建议按需使用 SVG 做结构化表达补充/u);
+      assert.match(prompt, /先给出清晰的文字结论/u);
+      assert.match(prompt, /简单任务、没有图示价值或用户要求纯文字时可以省略/u);
     }
   }
 });
@@ -122,6 +128,20 @@ test("allows machine-protocol runs to opt out of the human final-answer marker",
   assert.doesNotMatch(prompt, /\[final_answer\]/);
   assert.doesNotMatch(prompt, /Tasklist:/);
   assert.doesNotMatch(retryPrompt, /\[final_answer\]/);
+  assert.ok(!prompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
+  assert.ok(!retryPrompt.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
+});
+
+test("structured summaries keep optional SVG inside the existing JSON summary field", () => {
+  for (const field of ["finalSummary", "finalAnswer.summary"] as const) {
+    const instruction = buildStructuredSvgSummaryPromptInstruction(field);
+
+    assert.ok(instruction.includes(SVG_SUMMARY_PROMPT_INSTRUCTION));
+    assert.ok(instruction.includes(`一起放入 ${field} 字符串`));
+    assert.match(instruction, /按 JSON 规则转义换行、双引号和反斜杠/u);
+    assert.match(instruction, /不在 JSON 对象外追加图示，不新增图示字段/u);
+    assert.doesNotMatch(instruction, /\[final_answer\]/u);
+  }
 });
 
 test("guides Grok multi-step tasks through native todo_write and honors opt-outs", () => {

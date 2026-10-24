@@ -1,9 +1,7 @@
 import { CLI_LIST } from "../cli/types";
-import { logError } from "../logger";
+import { getMarkedScript, getJsonFormatterScript } from "./markdownAssets";
 import { getWebviewStrings } from "./viewContentStrings";
 import { buildWebviewStaticHtml, neutralizeInlineScriptEndTags } from "./viewContentHtml";
-import { readFileSync } from "fs";
-import * as path from "path";
 import { WEBVIEW_STYLES } from "./viewContentStyles";
 import { buildWebviewRuntimeScript } from "./viewContentScript";
 import { FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
@@ -23,8 +21,6 @@ const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
 const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
 const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
-let cachedMarkedScript: string | undefined;
-let cachedJsonFormatterScript: string | undefined;
 
 export function getWebviewHtml(webview: { cspSource: string }): string {
   const nonce = getNonce();
@@ -84,46 +80,4 @@ function getNonce(): string {
   }
 
   return text;
-}
-
-function getMarkedScript(): string {
-  if (cachedMarkedScript !== undefined) {
-    return cachedMarkedScript;
-  }
-  const candidates = [
-    path.join(__dirname, "..", "..", "media", "marked.min.js"),
-    path.join(__dirname, "..", "..", "node_modules", "marked", "marked.min.js"),
-  ];
-  for (const scriptPath of candidates) {
-    try {
-      cachedMarkedScript = readFileSync(scriptPath, "utf8");
-      return cachedMarkedScript;
-    } catch {
-      // Keep checking next candidate.
-    }
-  }
-  void logError("webview-marked-script-missing", { candidates });
-  cachedMarkedScript = "";
-  return cachedMarkedScript;
-}
-
-function getJsonFormatterScript(): string {
-  if (cachedJsonFormatterScript !== undefined) {
-    return cachedJsonFormatterScript;
-  }
-  const candidates = [
-    path.join(__dirname, "..", "..", "node_modules", "json-formatter-js", "dist", "json-formatter.umd.js"),
-    path.join(__dirname, "..", "..", "media", "json-formatter.umd.js"),
-  ];
-  for (const scriptPath of candidates) {
-    try {
-      cachedJsonFormatterScript = readFileSync(scriptPath, "utf8");
-      return cachedJsonFormatterScript;
-    } catch {
-      // Keep checking next candidate.
-    }
-  }
-  void logError("webview-json-formatter-script-missing", { candidates });
-  cachedJsonFormatterScript = "";
-  return cachedJsonFormatterScript;
 }
