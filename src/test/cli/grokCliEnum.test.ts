@@ -42,7 +42,19 @@ test("appends grok after the existing CLI enum and builds the official stdio com
     '<option value="codex">codex</option><option value="claude">claude</option><option value="opencode">opencode</option><option value="grok">grok</option>',
   );
   assert.match(html, /const CLI_NAMES = \["codex","claude","opencode","grok"\]/);
-  assert.equal((html.match(/<option value="grok">/g) ?? []).length, 1);
+  const grokSelectIds = [
+    "currentCli",
+    "codexLoopSubtaskCliSelect",
+    "openCodeLoopSubtaskCliSelect",
+    "claudeLoopSubtaskCliSelect",
+    "rulesLoadCli",
+  ];
+  for (const id of grokSelectIds) {
+    const block = html.match(new RegExp(`<select id="${id}"[^>]*>[\\s\\S]*?<\\/select>`));
+    assert.ok(block, id);
+    assert.equal((block[0].match(/<option value="grok">/g) ?? []).length, 1, id);
+  }
+  assert.equal((html.match(/<option value="grok">/g) ?? []).length, grokSelectIds.length);
 });
 
 test("keeps an empty Grok agent argument list between agent and stdio", () => {

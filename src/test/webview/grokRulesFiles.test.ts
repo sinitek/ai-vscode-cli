@@ -79,8 +79,10 @@ function buildHtml(): string {
 
 function createRulesHelpers() {
   const source = [
+    "enabledRuleCliNames",
     "collectRuleTargets",
     "setRulesLoadCliOptions",
+    "setRuleOptionVisible",
     "syncRulesSaveOptions",
     "updateRulesPath",
     "updateRulesScope",
@@ -127,8 +129,9 @@ function createRulesHelpers() {
     "elements",
     "document",
     "t",
+    "CLI_NAMES",
     `${source}; return { collectRuleTargets, setRulesLoadCliOptions, syncRulesSaveOptions, updateRulesPath, updateRulesScope };`,
-  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key) as {
+  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, ["codex", "claude", "opencode", "grok"]) as {
     collectRuleTargets: () => string[];
     setRulesLoadCliOptions: (isGlobal: boolean) => void;
     syncRulesSaveOptions: (isGlobal: boolean) => void;

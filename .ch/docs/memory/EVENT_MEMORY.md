@@ -2,7 +2,7 @@
 memory_type: event_memory
 scope: project
 status: active
-last_verified_at: template-fill-when-adopted
+last_verified_at: 2026-10-24
 source_of_truth: .ch/docs/memory/EVENT_MEMORY.md
 derived_from: []
 supersedes: []
@@ -41,3 +41,4 @@ starter 默认不预置事件。接入真实项目后，从第一条真正影响
 
 | 日期 | 类型 | 事件 | 结果/原因 | 可复用结论 | 来源 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-24 | 失败原因 / 成功方案 | Grok 分类器用 `trim()` 丢弃纯空白 `agent_message_chunk` 和 `agent_thought_chunk` | 分块边界把 `Hello` + 空格 + `world` 收成 `Helloworld`，换行和缩进同样丢失。撤销该判断后，非空文本原样保留 | 空字符串才可忽略。宿主期望不能反过来定义丢空白。展示层负责隐藏纯空白气泡 | `.ch/docs/exec-plans/completed/2026-10/2026-10-24-grok-stream-whitespace-contract-repair.md`；`.ch/docs/runbooks/PITFALLS.md` |

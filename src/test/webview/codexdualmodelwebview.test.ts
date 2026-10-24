@@ -367,6 +367,13 @@ test("keeps model manager open during state sync and closes on explicit unsuppor
 
   harness.handleCurrentCliSelectionChange("codex");
   assert.equal(harness.hideDialogCount, 1);
+
+  harness.handleCurrentCliSelectionChange("grok");
+  assert.equal(harness.hideDialogCount, 2);
+  harness.sync();
+  assert.equal(harness.hideDialogCount, 2);
+  harness.handleCurrentCliSelectionChange("codex");
+  assert.equal(harness.hideDialogCount, 2);
 });
 
 test("replays Codex role model options and selections from panel state", () => {

@@ -77,7 +77,7 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
   assert.match(
     html,
     new RegExp(
-      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeRegExp(cspSource)} https:; style-src ${escapeRegExp(cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeRegExp(nonce)}';" />`,
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeRegExp(cspSource)} https: http: data:; style-src ${escapeRegExp(cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeRegExp(nonce)}';" />`,
     ),
   );
   assert.equal(countOccurrences(html, `<script nonce="${nonce}">`), 3);
@@ -353,7 +353,7 @@ test("keeps required anchors when optional resource inputs are empty", () => {
 
   assert.match(
     html,
-    /Content-Security-Policy" content="default-src 'none'; img-src  https:; style-src  'unsafe-inline'; script-src 'nonce-';"/,
+    /Content-Security-Policy" content="default-src 'none'; img-src  https: http: data:; style-src  'unsafe-inline'; script-src 'nonce-';"/,
   );
   assert.match(html, /<select id="currentCli" class="cli-select" aria-label="CLI 选择"><\/select>/);
   assert.match(

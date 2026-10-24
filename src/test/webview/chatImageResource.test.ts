@@ -19,6 +19,7 @@ test("resolves POSIX, Windows, UNC, home, encoded and file URI image paths", () 
   assert.equal(resolveChatImagePath("images/图.png", "C:\\work"), "C:\\work\\images\\图.png");
   assert.equal(resolveChatImagePath("\\\\server\\share\\图.png", "/work"), "\\\\server\\share\\图.png");
   assert.equal(resolveChatImagePath("file://server/share/a.png", "/work"), "\\\\server\\share\\a.png");
+  assert.equal(resolveChatImagePath("%E0%A4%A", "/work"), path.resolve("/work", "%E0%A4%A"));
 });
 
 test("loads local images outside the workspace and converts actual bytes to portable data URLs", async () => {
@@ -53,6 +54,51 @@ test("loads local images outside the workspace and converts actual bytes to port
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }
+});
+
+test("recognizes jpeg, gif, webp, bmp and avif signatures and rejects near misses", () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+  assert.equal(createChatImageResource(jpeg).mime, "image/jpeg");
+  assert.equal(createChatImageResource(jpeg).filename.endsWith(".jpg"), true);
+  assert.equal(createChatImageResource(Buffer.from("GIF89a", "ascii")).mime, "image/gif");
+  assert.equal(createChatImageResource(Buffer.from("GIF87a", "ascii")).mime, "image/gif");
+  const webp = Buffer.alloc(12);
+  webp.write("RIFF", 0, "ascii");
+  webp.write("WEBP", 8, "ascii");
+  assert.equal(createChatImageResource(webp).mime, "image/webp");
+  assert.equal(createChatImageResource(Buffer.from("BM", "ascii")).mime, "image/bmp");
+  const avif = Buffer.alloc(32);
+  avif.write("ftyp", 4, "ascii");
+  avif.write("avif", 8, "ascii");
+  assert.equal(createChatImageResource(avif).mime, "image/avif");
+  const avis = Buffer.alloc(32);
+  avis.write("ftyp", 4, "ascii");
+  avis.write("avis", 8, "ascii");
+  assert.equal(createChatImageResource(avis).mime, "image/avif");
+  assert.throws(() => createChatImageResource(Buffer.from([0xff, 0xd8, 0x00])), /不是支持的图片/);
+  assert.throws(() => createChatImageResource(Buffer.from("GIF87X", "ascii")), /不是支持的图片/);
+  const wave = Buffer.alloc(12);
+  wave.write("RIFF", 0, "ascii");
+  wave.write("WAVE", 8, "ascii");
+  assert.throws(() => createChatImageResource(wave), /不是支持的图片/);
+  const ftyp = Buffer.alloc(32);
+  ftyp.write("ftyp", 4, "ascii");
+  ftyp.write("mp42", 8, "ascii");
+  assert.throws(() => createChatImageResource(ftyp), /不是支持的图片/);
+});
+
+test("rejects an oversized data URL before decoding and sanitizes download names", async () => {
+  const payloadLimit = Math.ceil(MAX_CHAT_IMAGE_BYTES / 3) * 4;
+  await assert.rejects(
+    loadChatImageResource("data:image/png;base64," + "A".repeat(payloadLimit + 1), "/work"),
+    /20 MiB/,
+  );
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+  const illegal = `bad<>:"|?*${String.fromCharCode(1)}${"名".repeat(80)}.jpeg`;
+  const named = createChatImageResource(jpeg, `..\\${illegal}`);
+  assert.equal(named.filename, `bad${"_".repeat(8)}${"名".repeat(80)}`.slice(0, 100) + ".jpg");
+  assert.equal(createChatImageResource(pixel, `${"n".repeat(150)}.png`).filename, `${"n".repeat(100)}.png`);
+  assert.equal(createChatImageResource(pixel, "///.png").filename, "图片.png");
 });
 
 test("validates data image bytes and preserves SVG as a downloadable vector", async () => {

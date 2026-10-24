@@ -2813,3 +2813,31 @@
 - `src/graph/graphKernel.ts`
 - `src/graph/graphNodeLifecycle.ts`
 - `src/panelDiagnostics.ts`
+
+## Grok 分类器不能按 trim 丢弃纯空白分块
+
+- 状态：已规避
+- 首次发现：2026-10-24
+- 适用范围：Grok ACP `agent_message_chunk` / `agent_thought_chunk`
+
+### 现象
+- 同一句话按不同分块边界输出不同正文。`Hello`、一个空格、`world` 变成 `Helloworld`；换行、连续空行、制表符和代码缩进同样消失。单个完整分块却保留原文。正文和思考都会中招。
+
+### 触发条件与根因
+- 分类器用 `text.trim()` 判断片段是否有内容。纯空白增量被当成无内容忽略。
+- 宿主旧断言把 `Hello `、`world` 和三个空格期望成 `Hello world`。这个期望不能证明协议应该丢空白。
+
+### 长期规避
+- 非空字符串原样进入 assistant 或 thinking。空字符串、非文本和无效内容仍忽略。数组文本按原顺序拼接。
+- 不在分类器里缓冲、补空格、统一 trim、去重或清理尾部。
+- 避免纯空白气泡留在展示层。落盘 `sanitizeMessages` 仍可去掉整段没有可见字符的消息，但不能提前删掉流式增量。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/interactive/grokAppServerProtocol.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/interactive/grokRunner.test.js dist/test/interactive/grokReplayStream.test.js`
+
+### 关联资料
+- `src/interactive/grokAppServerProtocol.ts`
+- `src/interactive/grokRunner.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+- `.ch/docs/exec-plans/completed/2026-10/2026-10-24-grok-stream-whitespace-contract-repair.md`

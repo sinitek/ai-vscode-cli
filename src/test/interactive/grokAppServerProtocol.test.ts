@@ -243,6 +243,68 @@ test("parses a Grok session update and keeps line separators inside strings", as
   reader.close();
 });
 
+test("preserves Grok assistant and thinking text across chunk boundaries", () => {
+  const chunk = (sessionUpdate: string, content: unknown) => classifyGrokSessionMessage({
+    method: "session/update",
+    params: { update: { sessionUpdate, content } },
+  });
+  const readText = (sessionUpdate: string, text: string) => {
+    const event = chunk(sessionUpdate, { type: "text", text });
+    if (event.type === "assistant_text" || event.type === "thinking") {
+      return event.text;
+    }
+    return "";
+  };
+  const samples = [
+    { name: "inter-word space", text: "Hello world", splits: [["Hello world"], ["Hello", " ", "world"], ["Hello ", "world"]] },
+    { name: "blank lines", text: "first\n\nsecond", splits: [["first\n\nsecond"], ["first", "\n\n", "second"], ["first", "\n", "\n", "second"]] },
+    { name: "code indent", text: "def f():\n    return 1", splits: [["def f():\n    return 1"], ["def f():", "\n", "    ", "return 1"], ["def f():\n", "    ", "return 1"]] },
+    { name: "tab", text: "a\tb", splits: [["a\tb"], ["a", "\t", "b"]] },
+    { name: "consecutive blank lines", text: "line\n\n\nnext", splits: [["line\n\n\nnext"], ["line", "\n\n\n", "next"], ["line", "\n", "\n", "\n", "next"]] },
+    { name: "trailing space", text: "Hello ", splits: [["Hello "], ["Hello", " "], ["Hell", "o "]] },
+    { name: "repeated words", text: "haha", splits: [["haha"], ["ha", "ha"], ["h", "a", "h", "a"]] },
+    { name: "spaced thinking token", text: " think ", splits: [[" think "], [" ", "think", " "]] },
+  ];
+  for (const sessionUpdate of ["agent_message_chunk", "agent_thought_chunk"] as const) {
+    const expectedType = sessionUpdate === "agent_message_chunk" ? "assistant_text" : "thinking";
+    for (const sample of samples) {
+      assert.deepEqual(chunk(sessionUpdate, { type: "text", text: sample.text }), {
+        type: expectedType,
+        text: sample.text,
+      }, `${sessionUpdate} whole ${sample.name}`);
+      for (const parts of sample.splits) {
+        assert.equal(parts.map((part) => readText(sessionUpdate, part)).join(""), sample.text, `${sessionUpdate} split ${sample.name}`);
+      }
+    }
+    for (const blank of [" ", "   ", "\n", "\n\n", "\t", " \t "]) {
+      assert.deepEqual(chunk(sessionUpdate, { type: "text", text: blank }), {
+        type: expectedType,
+        text: blank,
+      });
+    }
+    assert.deepEqual(chunk(sessionUpdate, { type: "text", text: "" }), { type: "ignored" });
+    assert.deepEqual(chunk(sessionUpdate, { type: "image", data: "image-data" }), { type: "ignored" });
+    assert.deepEqual(chunk(sessionUpdate, null), { type: "ignored" });
+    assert.deepEqual(chunk(sessionUpdate, { type: "text", text: 1 }), { type: "ignored" });
+    assert.deepEqual(chunk(sessionUpdate, { type: "text" }), { type: "ignored" });
+  }
+  assert.deepEqual(chunk("agent_message_chunk", [
+    { type: "text", text: "a" },
+    { type: "text", text: " " },
+    { type: "image", data: "skip" },
+    { type: "text", text: "\n" },
+    { type: "text", text: "b" },
+  ]), { type: "assistant_text", text: "a \nb" });
+  assert.deepEqual(chunk("agent_thought_chunk", [
+    { type: "text", text: " " },
+    { type: "text", text: "\n" },
+  ]), { type: "thinking", text: " \n" });
+  assert.deepEqual(chunk("agent_message_chunk", [
+    { type: "text", text: "" },
+    { type: "image", data: "skip" },
+  ]), { type: "ignored" });
+});
+
 test("selects grok.com when that is the only advertised auth method", () => {
   const selected = selectGrokAuthMethod(["grok.com"], {});
   assert.deepEqual(selected, { ok: true, methodId: "grok.com" });

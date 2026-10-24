@@ -64,7 +64,7 @@ export const WEBVIEW_STRINGS = {
     contextTagSelectionWithRange: "当前文件: {file} [{range}]",
     contextTagRemoveAria: "移除上下文：{label}",
     thinkingModeAria: "思考模式",
-    thinkingOptionOff: "off", 
+    thinkingOptionOff: "off",
     thinkingOptionLow: "low",
     thinkingOptionMedium: "medium",
     thinkingOptionHigh: "high",

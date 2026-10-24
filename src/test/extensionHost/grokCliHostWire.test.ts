@@ -307,10 +307,15 @@ test("Grok session updates enter the existing assistant, thinking, and tool chan
   const assistant = stored.filter((message) => message.role === "assistant" && message.kind !== "thinking");
   const thinking = stored.filter((message) => message.role === "assistant" && message.kind === "thinking");
   const tools = stored.filter((message) => message.role === "trace");
+  const deltas = harness.panelMessages.filter((message) => message.type === "assistantDelta");
+  const deltaBody = deltas.filter((message) => message.kind !== "thinking").map((message) => String(message.content)).join("");
+  const deltaThought = deltas.filter((message) => message.kind === "thinking").map((message) => String(message.content)).join("");
   assert.equal(assistant.length, 1);
-  assert.equal(assistant[0]?.content, "Hello world");
+  assert.equal(assistant[0]?.content, "Hello world   ");
+  assert.equal(deltaBody, "Hello world   ");
   assert.equal(thinking.length, 1);
-  assert.match(thinking[0]?.content ?? "", /consider the file/);
+  assert.equal(thinking[0]?.content, "consider the file   ");
+  assert.equal(deltaThought, "consider the file   ");
   assert.equal(tools.length, 2);
   assert.match(tools[0]?.content ?? "", /^tool:/);
   assert.match(tools[0]?.content ?? "", /status: in_progress/);
@@ -320,6 +325,56 @@ test("Grok session updates enter the existing assistant, thinking, and tool chan
   assert.equal(stored.some((message) => String(message.content).includes("not-body")), false);
   assert.equal(assistant[0]?.content.includes("consider the file"), false);
   assert.equal(assistant[0]?.content.includes("read_file"), false);
+});
+
+test("Grok host chunk boundaries match one complete assistant and thinking chunk", async () => {
+  const bodyParts = ["Hello", " ", "world", "\n\n", "first", "\n", "\n", "second", "\n", "def f():", "\n", "    ", "return 1", "\n", "a", "\t", "b", "Hello ", "ha", "ha"];
+  const thinkingParts = ["consider", " ", "the file", "\n\n", "def f():", "\n", "    ", "return 1", "\t", "ha", "ha", "  "];
+  const body = bodyParts.join("");
+  const thinking = thinkingParts.join("");
+  const run = async (parts: { sessionUpdate: string; pieces: string[] }[]) => {
+    const harness = createHostHarness({
+      behavior: async (_prompt, handlers) => {
+        for (const part of parts) {
+          for (const text of part.pieces) {
+            deliverGrokSessionUpdate(handlers, {
+              sessionUpdate: part.sessionUpdate,
+              content: { type: "text", text },
+            });
+          }
+        }
+        handlers.onComplete?.({ stopReason: "end_turn" });
+      },
+    });
+    await harness.host.runPromptInteractive(inputFor("check whitespace"), targetFor("local-session"));
+    const stored = harness.messagesBySession.get("local-session") ?? [];
+    const assistant = stored.filter((message) => message.role === "assistant" && message.kind !== "thinking");
+    const thoughts = stored.filter((message) => message.role === "assistant" && message.kind === "thinking");
+    const deltas = harness.panelMessages.filter((message) => message.type === "assistantDelta");
+    return {
+      assistantCount: assistant.length,
+      thinkingCount: thoughts.length,
+      assistant: assistant.map((message) => message.content).join(""),
+      thinking: thoughts.map((message) => message.content).join(""),
+      deltaBody: deltas.filter((message) => message.kind !== "thinking").map((message) => String(message.content)).join(""),
+      deltaThought: deltas.filter((message) => message.kind === "thinking").map((message) => String(message.content)).join(""),
+    };
+  };
+  const split = await run([
+    { sessionUpdate: "agent_message_chunk", pieces: bodyParts },
+    { sessionUpdate: "agent_thought_chunk", pieces: thinkingParts },
+  ]);
+  const whole = await run([
+    { sessionUpdate: "agent_message_chunk", pieces: [body] },
+    { sessionUpdate: "agent_thought_chunk", pieces: [thinking] },
+  ]);
+  assert.deepEqual(split, whole);
+  assert.equal(split.assistantCount, 1);
+  assert.equal(split.thinkingCount, 1);
+  assert.equal(split.assistant, body);
+  assert.equal(split.thinking, thinking);
+  assert.equal(split.deltaBody, body);
+  assert.equal(split.deltaThought, thinking);
 });
 
 test("an empty Grok prompt does not create a runner or bubbles", async () => {

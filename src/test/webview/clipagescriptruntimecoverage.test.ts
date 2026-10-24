@@ -2048,7 +2048,7 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   assert.equal(groups.length, 3);
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string } }) => group.querySelector("summary").textContent),
-    ["command two (2)", "command five (3)", "tail two (2)"],
+    ["(2) command two", "(3) command five", "(2) tail two"],
   );
   groups.forEach((group: { open: boolean }) => assert.equal(group.open, false));
   assert.deepEqual(
@@ -2079,7 +2079,7 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
 
   reopened.querySelector("summary").click();
   assert.equal(reopened.open, false);
-  assert.equal(reopened.querySelector("summary").textContent, "command five (3)");
+  assert.equal(reopened.querySelector("summary").textContent, "(3) command five");
 });
 
 test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups", () => {
@@ -2360,7 +2360,7 @@ test("restarts instruction folding after each thinking bubble", () => {
   const groups = messages.querySelectorAll("details.instruction-group");
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { textContent: string; children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector("summary").textContent),
-    ["执行命令： four (4)", "执行命令： eight (4)", "执行命令： ten (2)", "执行命令： thirteen (3)"],
+    ["(4) 执行命令： four", "(4) 执行命令： eight", "(2) 执行命令： ten", "(3) 执行命令： thirteen"],
   );
   assert.deepEqual(
     groups.map((group: { querySelector: (selector: string) => { children: Array<{ dataset: { messageId?: string } }> } }) => group.querySelector(".instruction-group-body").children.map((node) => node.dataset.messageId)),
@@ -2399,12 +2399,12 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
   const messages = document.getElementById("messages");
   const group = messages.querySelector("details.instruction-group");
   const summary = group.querySelector("summary");
-  assert.equal(summary.textContent, "读取文件 (3)");
+  assert.equal(summary.textContent, "(3) 读取文件");
 
   summary.click();
   assert.equal(summary.textContent, "收起 (3)");
   summary.click();
-  assert.equal(summary.textContent, "读取文件 (3)");
+  assert.equal(summary.textContent, "(3) 读取文件");
 
   const summaryText = () => {
     const nextGroup = document.getElementById("messages").querySelector("details.instruction-group");
@@ -2414,7 +2414,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
 
   api.state.messages[2].content = "tool: edit\ninput:\n{}\n";
   api.renderMessages();
-  assert.equal(summaryText(), "编辑文件 (3)");
+  assert.equal(summaryText(), "(3) 编辑文件");
 
   api.state.messages.splice(0, api.state.messages.length,
     { id: "blank-1", role: "trace", content: "   " },
@@ -2422,7 +2422,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
     { id: "blank-3", role: "trace", content: "" },
   );
   api.renderMessages();
-  assert.equal(summaryText(), "已折叠 (3)");
+  assert.equal(summaryText(), "(3) 已折叠");
 
   const longText = "这是一段没有工具标题的中间说明文字，需要在折叠摘要里被截断后继续显示";
   api.state.messages.splice(0, api.state.messages.length,
@@ -2431,7 +2431,7 @@ test("collapsed instruction group summary uses the latest bubble title", () => {
     { id: "note-3", role: "assistant", content: longText },
   );
   api.renderMessages();
-  assert.equal(summaryText(), `${longText.slice(0, 32)}… (3)`);
+  assert.equal(summaryText(), `(3) ${longText.slice(0, 32)}…`);
 });
 
 test("treats assistant narration immediately before a tool call as a thinking bubble", () => {
@@ -3714,6 +3714,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
 
   const settingsSource = [
     "getActiveLoopMainTaskId",
+    "enabledRuleCliNames",
     "collectRuleTargets",
     "buildPromptPreview",
   ].map((name) => extractFunctionSource(`${VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS}\n${VIEW_CONTENT_SCRIPT_HISTORY_PANELS}`, name)).join("\n");
@@ -3730,8 +3731,9 @@ test("handles run stream, queue, attachments, history, and settings function bra
     "state",
     "elements",
     "t",
+    "CLI_NAMES",
     `${settingsSource}; return { getActiveLoopMainTaskId, collectRuleTargets, buildPromptPreview };`,
-  )(settingsState, settingsElements, (key: string) => key);
+  )(settingsState, settingsElements, (key: string) => key, ["codex", "claude", "opencode", "grok"]);
   assert.equal(settingsHelpers.getActiveLoopMainTaskId(), "task-1");
   assert.deepEqual(settingsHelpers.collectRuleTargets(), ["codex", "opencode"]);
   assert.equal(settingsHelpers.buildPromptPreview("  a\n b  "), "a b");

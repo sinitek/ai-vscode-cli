@@ -25,6 +25,7 @@ const {
   startOpenCodeServer,
 } = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
 const { isInteractiveSupported } = require("../../cli/config") as typeof import("../../cli/config");
+const { buildClaudePrompt } = require("../../cli/claudeToolPolicy") as typeof import("../../cli/claudeToolPolicy");
 const {
   OPENCODE_ONE_SHOT_STARTUP_TIMEOUT_MS,
   resolveOpenCodeOneShotWatchdogTimeoutMs,
@@ -390,7 +391,9 @@ test("preserves explicit OpenCode output format args", () => {
 
 test("does not add OpenCode auto mode to Codex or Claude", () => {
   assert.deepEqual(buildCliArgs("codex", {}, "hello"), ["--skip-git-repo-check", "hello"]);
-  assert.deepEqual(buildCliArgs("claude", {}, "hello"), ["hello"]);
+  const claudeArgs = buildCliArgs("claude", {}, "hello");
+  assert.deepEqual(claudeArgs, [buildClaudePrompt("hello")]);
+  assert.equal(claudeArgs.includes("--auto"), false);
 });
 
 test("adds the CLI-specific instruction isolation flags for Loop subtasks", () => {
@@ -400,7 +403,7 @@ test("adds the CLI-specific instruction isolation flags for Loop subtasks", () =
   );
   assert.deepEqual(
     buildCliArgs("claude", { isolateProjectInstructions: true }, "hello"),
-    ["--safe-mode", "hello"],
+    ["--safe-mode", buildClaudePrompt("hello")],
   );
   assert.deepEqual(
     buildCliArgs("opencode", { isolateProjectInstructions: true }, "hello"),
