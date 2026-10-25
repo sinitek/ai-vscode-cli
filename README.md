@@ -6,6 +6,8 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 ## changelog
 ### 1.2.3
 - 此插件增加图标
+- 优化 Loop+ 模式并行逻辑，提高效率
+- 体验优化
 
 ### 1.2.2
 - 对话气泡支持图片/svg的展示和预览
@@ -46,7 +48,7 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 
 ### Skills
 
-- 配置中心只打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录。
+- 配置中心只打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH 五个全局 skills 目录。
 - 配置中心不再提供 MCP 市场，也不会改写本机已有的 MCP 配置。
 
 ### 本地记忆与可靠运行
@@ -58,9 +60,5 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 ## 开始使用
 
 1. 先在本机安装并完成鉴权或配置至少一个 CLI：Codex、Claude 或 OpenCode。
-2. 首次加载时，**Sinitek CLI Assistant** 默认在辅助栏打开（通常在右侧），也可通过状态栏或命令面板打开。
+2. 首次加载时，**携宁 CLI 助手** 默认在辅助栏打开（通常在右侧），也可通过状态栏或命令面板打开。
 3. 选择要使用的 CLI，输入提示词即可开始对话或创建任务。
-
-聊天面板使用 VS Code 1.104 引入的辅助栏入口；已保存的视图位置继续由 VS Code 恢复，不会在启动或 `run_dev.sh` 重载时强制移动到主侧栏。关闭 `sinitek-cli-tools.autoOpenPanel` 后也不会自动展开面板。
-
-插件调用的是本机已安装的 CLI，不提供远程托管服务，也不替代各 CLI 自身的安装、鉴权和高级配置。当前版本不再支持 Gemini CLI。
