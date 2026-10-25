@@ -2004,6 +2004,63 @@ test("retries invalid Loop+ decisions instead of dispatching them as a status st
   assert.equal(await isSettled(run.done), true);
 });
 
+test("backfills compatible Loop+ subtasks and logs pending blockers", async () => {
+  const env = harness({ maxConcurrency: 3 });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [
+      subtask("alpha", ["x.ts"]),
+      subtask("beta", ["x.ts", "y.ts"]),
+      subtask("gamma", ["y.ts"]),
+    ],
+  }));
+  await flush();
+
+  const taskId = run.taskId ?? "";
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "gamma"]);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).running.map((item) => item.subtaskId), ["alpha", "gamma"]);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).pending.map((item) => item.subtaskId), ["beta"]);
+
+  const dispatchLog = env.logs.find((item) => item.event === "loop-plus-dispatched");
+  assert.deepEqual(
+    (dispatchLog?.payload as { pending?: unknown[] } | undefined)?.pending,
+    [{
+      subtaskId: "beta",
+      attemptId: "lp2-beta",
+      blockedBy: {
+        reason: "writeFiles",
+        value: "x.ts",
+        subtaskId: "alpha",
+        attemptId: "lp1-alpha",
+      },
+    }],
+  );
+
+  env.host.stopParent(taskId);
+  await flush();
+
+  const capacityEnv = harness({ maxConcurrency: 1 });
+  const capacityRun = capacityEnv.host.tryRun({ displayPrompt: "ship the feature" }, capacityEnv.target, {
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  capacityEnv.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("delta", ["delta.ts"]), subtask("epsilon", ["epsilon.ts"])],
+  }));
+  await flush();
+  const capacityLog = capacityEnv.logs.find((item) => item.event === "loop-plus-dispatched");
+  assert.deepEqual(
+    (capacityLog?.payload as { pending?: unknown[] } | undefined)?.pending,
+    [{ subtaskId: "epsilon", attemptId: "lp2-epsilon", blockedBy: { reason: "max_concurrency" } }],
+  );
+  capacityEnv.host.stopParent(capacityRun.taskId ?? "");
+  await flush();
+});
+
 test("routes wait, dispatch, and blocked decisions through separate strategies", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
