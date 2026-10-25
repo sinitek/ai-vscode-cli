@@ -131,6 +131,28 @@ export function resolveCodexAssistantMessageContinuation(input: {
   return reasoningItemId ? { thinkingItemId: reasoningItemId } : {};
 }
 
+export function separateCodexReasoningItemDelta(input: {
+  previousContent: string;
+  previousReasoningItemId?: string;
+  nextReasoningItemId?: string;
+  delta: string;
+}): string {
+  const previousReasoningItemId = String(input.previousReasoningItemId || "").trim();
+  const nextReasoningItemId = String(input.nextReasoningItemId || "").trim();
+  if (
+    !input.delta
+    || !input.previousContent.trim()
+    || !previousReasoningItemId
+    || !nextReasoningItemId
+    || previousReasoningItemId === nextReasoningItemId
+    || input.previousContent.endsWith("\n")
+    || /^\r?\n/u.test(input.delta)
+  ) {
+    return input.delta;
+  }
+  return `\n\n${input.delta}`;
+}
+
 export type CodexReasoningBufferState = {
   raw: string;
   emitted: string;

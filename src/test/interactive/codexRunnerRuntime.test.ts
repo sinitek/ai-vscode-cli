@@ -27,6 +27,7 @@ import {
   pickArgValue,
   resolveCodexPackageVersionFromCommand,
   resolveCodexAssistantMessageContinuation,
+  separateCodexReasoningItemDelta,
   shouldEmitItemTraceCandidate,
 } from "../../interactive/codexRunnerRuntime";
 
@@ -542,6 +543,28 @@ test("reasoning deltas buffer blank prefixes until visible text arrives", () => 
   const separator = applyCodexReasoningDelta(visible.state, "\n\n");
   assert.equal(separator.delta, "\n\n");
   assert.equal(separator.state.emitted, " \n\tInspecting the renderer.\n\n");
+});
+
+test("reasoning item changes separate adjacent Markdown emphasis runs", () => {
+  const delta = "**Inspecting tooltip conventions**";
+  assert.equal(separateCodexReasoningItemDelta({
+    previousContent: "**Sizing tooltip for scripts**",
+    previousReasoningItemId: "reasoning-1",
+    nextReasoningItemId: "reasoning-2",
+    delta,
+  }), `\n\n${delta}`);
+  assert.equal(separateCodexReasoningItemDelta({
+    previousContent: "**Sizing tooltip for scripts**\n",
+    previousReasoningItemId: "reasoning-1",
+    nextReasoningItemId: "reasoning-2",
+    delta,
+  }), delta);
+  assert.equal(separateCodexReasoningItemDelta({
+    previousContent: "**Sizing tooltip for scripts**",
+    previousReasoningItemId: "reasoning-1",
+    nextReasoningItemId: "reasoning-1",
+    delta,
+  }), delta);
 });
 
 test("empty reasoning snapshots never create assistant messages", () => {

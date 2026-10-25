@@ -30,6 +30,9 @@ test("shared renderer formats Markdown, code, SVG and JSON with the bundled pars
   for (const tag of ["h2", "strong", "ul", "table", "blockquote", "pre"]) {
     assert.ok(html.includes(`<${tag}`), tag);
   }
+  const separatedEmphasisHtml = render("**Sizing tooltip for scripts**\n\n**Inspecting tooltip conventions**");
+  assert.equal((separatedEmphasisHtml.match(/<strong>/gu) || []).length, 2);
+  assert.match(separatedEmphasisHtml, /<\/p>\n<p>/u);
   assert.match(html, /language-ts/u);
   assert.match(render('```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><text y="20">完成</text></svg>\n```'), /chat-image-preview/u);
   assert.match(render('{"任务":"完成","检查":[true]}'), /json-tree-host/u);

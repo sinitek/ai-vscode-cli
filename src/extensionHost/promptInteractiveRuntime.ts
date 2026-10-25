@@ -20,7 +20,10 @@ import {
   type HumanInteractionRequest,
   type HumanInteractionSubmission,
 } from "../humanInteraction";
-import { resolveCodexAssistantMessageContinuation } from "../interactive/codexRunnerRuntime";
+import {
+  resolveCodexAssistantMessageContinuation,
+  separateCodexReasoningItemDelta,
+} from "../interactive/codexRunnerRuntime";
 import { prepareGrokThinkingContinuation } from "../interactive/grokThinkingBubbles";
 import { buildGrokHumanInteractionResolution, isGrokUserQuestionMethod, normalizeHumanInteractionRequestFromGrok } from "../interactive/grokUserQuestion";
 import type { CodexRunSelection } from "../interactive/codexThreadSelection";
@@ -597,6 +600,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         && last.codexFinalAnswer !== true
         && String(last.content || "").trim()
       );
+      const previousThinkingMessageId = activeThinkingMessageId;
+      const previousThinkingItemId = activeThinkingItemId;
       if (assistantChunk) {
         ensureAssistantMessage(kind, {
           forceNew: forceNewFinalAnswer,
@@ -610,6 +615,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       const message = messageTarget[assistantMessageIndex];
       if (!message || message.role !== "assistant") {
         return;
+      }
+      if (kind === "thinking" && message.id === previousThinkingMessageId) {
+        assistantChunk = separateCodexReasoningItemDelta({
+          previousContent: message.content,
+          previousReasoningItemId: previousThinkingItemId,
+          nextReasoningItemId: options.reasoningItemId,
+          delta: assistantChunk,
+        });
       }
       if (marksCodexFinalAnswer) {
         message.codexFinalAnswer = true;
