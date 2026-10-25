@@ -11,7 +11,7 @@ import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfig
 import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
-import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
+import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
@@ -1128,13 +1128,21 @@ function getSelectedLoopThinkingMode(
   model: string | null | undefined,
   configId: string | null = getActiveConfigIdForCli(cli),
 ): ThinkingMode | null {
-  return getSelectedLoopThinkingModeFromStore(
+  const selected = getSelectedLoopThinkingModeFromStore(
     modelStore,
     cli,
     role,
     model,
     cliModelSelectionStrategies[cli].resolveStoreConfigKey(configId),
   );
+  if (cli !== "dsh" || !selected) {
+    return selected;
+  }
+  const reasoningOptions = dshModelsByConfigId.get(configId)?.reasoningOptionsByModelId;
+  const modelKey = Object.keys(reasoningOptions ?? {}).find((candidate) => (
+    candidate.toLowerCase() === (normalizeCliModelName(model) ?? "").toLowerCase()
+  ));
+  return modelKey && reasoningOptions?.[modelKey]?.includes(selected as DshReasoningOption) ? selected : null;
 }
 
 function getManagedModelOptionsForCli(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string[] {
@@ -1167,7 +1175,17 @@ function setSelectedLoopThinkingMode(
   thinkingMode: ThinkingMode | null,
   configId: string | null = getActiveConfigIdForCli(cli),
 ): void {
-  const normalizedThinkingMode = thinkingMode ? normalizeThinkingModeForCli(cli, thinkingMode) : null;
+  const dshOptions = cli === "dsh"
+    ? dshModelsByConfigId.get(configId)?.reasoningOptionsByModelId
+    : undefined;
+  const dshModelKey = Object.keys(dshOptions ?? {}).find((candidate) => (
+    candidate.toLowerCase() === (normalizeCliModelName(model) ?? "").toLowerCase()
+  ));
+  const canStoreDshMode = cli !== "dsh"
+    || Boolean(thinkingMode && dshModelKey && dshOptions?.[dshModelKey]?.includes(thinkingMode as DshReasoningOption));
+  const normalizedThinkingMode = thinkingMode && canStoreDshMode
+    ? normalizeThinkingModeForCli(cli, thinkingMode)
+    : null;
   modelStore = setSelectedLoopThinkingModeInStore(
     modelStore,
     cli,
@@ -1373,6 +1391,10 @@ function buildModelState(
   state.dshReasoningOptions = dshSelectedModel
     ? [...(dshModelsByConfigId.get(dshConfigId)?.reasoningOptionsByModelId[dshSelectedModel] ?? [])]
     : [];
+  state.dshReasoningOptionsByModel = Object.fromEntries(
+    Object.entries(dshModelsByConfigId.get(dshConfigId)?.reasoningOptionsByModelId ?? {})
+      .map(([model, options]) => [model, [...options]]),
+  );
   state.selectedLoopThinkingByCli = {
     ...state.selectedLoopThinkingByCli,
     grok: {
@@ -1382,6 +1404,10 @@ function buildModelState(
     claude: {
       main: getSelectedLoopThinkingMode("claude", "main", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
       subtask: getSelectedLoopThinkingMode("claude", "subtask", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
+    },
+    dsh: {
+      main: getSelectedLoopThinkingMode("dsh", "main", dshMain, dshConfigId),
+      subtask: getSelectedLoopThinkingMode("dsh", "subtask", dshSubtask, dshConfigId),
     },
   };
   state.thinkingModeByCli = {

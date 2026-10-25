@@ -613,6 +613,44 @@ test("routes Codex Graph with planner and execution model payload fields", async
   });
 });
 
+test("routes DSH role models and thinking modes through Loop, Loop+, and Graph", async () => {
+  for (const interactiveMode of ["loop", "loop_plus", "graph"] as const) {
+    const { deps, calls, state } = createSendPromptHarness("dsh");
+    state.currentCli = "dsh";
+    deps.isCliName = (value: string): value is CliName => (
+      value === "codex" || value === "claude" || value === "opencode" || value === "grok" || value === "dsh"
+    );
+    deps.getSelectedCliModel = () => "dsh-default";
+    deps.getSelectedLoopCliModel = (_cli, role) => role === "main" ? "dsh-main" : "dsh-subtask";
+    deps.getSelectedLoopThinkingMode = (_cli, role, model) => (
+      role === "main" && model === "dsh-main" ? "high" : "max"
+    );
+
+    await handlePanelMessageWithDeps({
+      type: "sendPrompt",
+      prompt: `run DSH ${interactiveMode}`,
+      interactiveMode,
+      contextOptions: {
+        includeCurrentFile: false,
+        includeSelection: false,
+      },
+      tabId: "tab-opencode-smoke",
+      cli: "dsh",
+    }, deps);
+
+    const dispatch = interactiveMode === "graph" ? calls.runGraphPrompt[0] : calls.runLoopPrompt[0];
+    assert.ok(dispatch, `${interactiveMode} dispatches to its orchestration runner`);
+    assert.equal(dispatch.input.model, "dsh-main");
+    assert.equal(dispatch.input.loopMainModel, "dsh-main");
+    assert.equal(dispatch.input.loopSubtaskModel, "dsh-subtask");
+    assert.equal(dispatch.input.loopMainThinkingMode, "high");
+    assert.equal(dispatch.input.loopSubtaskThinkingMode, "max");
+    if (interactiveMode === "loop_plus") {
+      assert.equal(calls.runLoopPrompt[0]?.options.schedulingMode, "event_driven");
+    }
+  }
+});
+
 test("routes OpenCode Loop with selected main and subtask models", async () => {
   const { deps, calls } = createSendPromptHarness("opencode");
   deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
@@ -757,7 +795,7 @@ test("persists CLI availability, moves new selections, and rolls back a failed s
       value: false,
     }, deps);
   }
-  assert.equal(state.currentCli, "grok");
+  assert.equal(state.currentCli, "dsh");
   assert.deepEqual(stored.cliEnabledByName, {
     codex: false,
     claude: false,
@@ -770,7 +808,7 @@ test("persists CLI availability, moves new selections, and rolls back a failed s
     key: "cliEnabled.claude",
     value: true,
   }, deps);
-  assert.equal(state.currentCli, "claude");
+  assert.equal(state.currentCli, "dsh");
   assert.equal(stored.cliEnabledByName?.claude, true);
 
   const cliBeforeFailure = state.currentCli;

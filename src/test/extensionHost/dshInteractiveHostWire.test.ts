@@ -52,7 +52,7 @@ function createHostHarness(options: {
   behavior?: (prompt: string, handlers: DshStreamHandlers) => Promise<void>;
   start?: FakeRunner["start"];
   mappedId?: string | null;
-  thinkingMode?: "ultra" | "high" | "xhigh" | "off";
+  thinkingMode?: "ultra" | "high" | "xhigh" | "medium" | "off";
   reasoningOptions?: string[];
   currentModel?: string | null;
   selectedModel?: string | null;
@@ -377,6 +377,26 @@ test("DSH applies the selected reasoning effort before sending the prompt", asyn
   ), true);
 });
 
+test("DSH applies medium when ACP advertises it", async () => {
+  const harness = createHostHarness({
+    thinkingMode: "medium",
+    reasoningOptions: ["low", "medium", "high", "xhigh", "max"],
+    behavior: async (_prompt, handlers) => {
+      assert.deepEqual(harness.thinking, ["medium"]);
+      handlers.onAssistantDelta?.("ok");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+
+  await harness.host.runPromptInteractive(inputFor("use medium"), targetFor("local_1"));
+
+  assert.deepEqual(harness.thinking, ["medium"]);
+  assert.equal(harness.panelMessages.some((message) =>
+    message.type === "dshReasoningOptions"
+    && message.currentValue === "medium"
+  ), true);
+});
+
 test("DSH selected chat model reaches the ACP model wire", async () => {
   const secondModel = "vendor/second-model";
   const secondWire = toDshModelWireValue(secondModel);
@@ -565,7 +585,7 @@ test("DSH isolated launch upgrades a legacy active profile before starting ACP",
 
     const launch = await prepareDshIsolatedLaunch({ sessionKey: "legacy-profile" });
     const patch = await fs.readFile(launch.patchPath, "utf8");
-    assert.match(patch, /reasoningEfforts:\n\s+low: low\n\s+high: high\n\s+xhigh: xhigh\n\s+max: max/);
+    assert.match(patch, /reasoningEfforts:\n\s+low: low\n\s+medium: medium\n\s+high: high\n\s+xhigh: xhigh\n\s+max: max/);
     assert.match(patch, /compat:\n\s+thinkingFormat: deepseek\n\s+supportsReasoningEffort: true/);
     assert.equal(/^\s+off:/m.test(patch), false);
     await fs.rm(launch.isolatedHome, { recursive: true, force: true });

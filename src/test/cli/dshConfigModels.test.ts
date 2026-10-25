@@ -50,6 +50,19 @@ test("normalizes legacy verified models and keeps custom reasoning opt-in", () =
   assert.equal(legacyParsed.error, null);
   assert.deepEqual(legacyParsed.reasoningOptionsByModelId[DSH_VERIFIED_MODEL_ID], [...DSH_REASONING_OPTIONS]);
 
+  const legacyCurrent = JSON.parse(EXAMPLE) as {
+    models: Array<Record<string, unknown>>;
+  };
+  legacyCurrent.models[0].reasoningEfforts = {
+    low: "low",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  };
+  const legacyCurrentParsed = parseDshConfigModels(JSON.stringify(legacyCurrent));
+  assert.equal(legacyCurrentParsed.error, null);
+  assert.deepEqual(legacyCurrentParsed.reasoningOptionsByModelId[DSH_VERIFIED_MODEL_ID], [...DSH_REASONING_OPTIONS]);
+
   const customId = "gateway/custom-model";
   const custom = JSON.parse(EXAMPLE) as {
     models: Array<Record<string, unknown>>;
@@ -69,6 +82,7 @@ test("normalizes legacy verified models and keeps custom reasoning opt-in", () =
   custom.models[0].reasoningEfforts = {
     off: null,
     low: "low",
+    medium: "medium",
     high: "high",
     max: "max",
   };
@@ -92,6 +106,17 @@ test("normalizes legacy verified models and keeps custom reasoning opt-in", () =
     low: "low",
     medium: "medium",
     high: "high",
+    max: "max",
+  };
+  const mediumLegacy = parseDshConfigModels(JSON.stringify(custom));
+  assert.equal(mediumLegacy.error, null);
+  assert.deepEqual(mediumLegacy.reasoningOptionsByModelId[customId], [...DSH_REASONING_OPTIONS]);
+
+  custom.models[0].reasoningEfforts = {
+    off: null,
+    low: "low",
+    high: "high",
+    ultra: "ultra",
   };
   assert.match(parseDshConfigModels(JSON.stringify(custom)).error ?? "", /reasoningEfforts/);
 });
@@ -245,6 +270,7 @@ test("patch yaml uses the verified provider contract and omits unverified fields
   assert.equal(yaml.includes("headers:"), false);
   assert.match(yaml, /reasoningEfforts:/);
   assert.match(yaml, /low: low/);
+  assert.match(yaml, /medium: medium/);
   assert.match(yaml, /high: high/);
   assert.match(yaml, /xhigh: xhigh/);
   assert.match(yaml, /max: max/);

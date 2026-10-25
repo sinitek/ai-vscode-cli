@@ -277,6 +277,42 @@ test("Graph runtime host resolves role-specific models, fallbacks, and thinking 
   });
 });
 
+test("Graph runtime resolves DSH role thinking for main and subtask models", () => {
+  const { host } = createGraphRuntimeHarness({
+    getSelectedLoopThinkingMode: (cli, role, model) => {
+      if (cli !== "dsh") {
+        return null;
+      }
+      return role === "main" && model === "dsh-main"
+        ? "high"
+        : role === "subtask" && model === "dsh-subtask"
+          ? "xhigh"
+          : null;
+    },
+  });
+
+  assert.equal(
+    host.resolvePromptRunThinkingModeForRole(
+      createPromptRunInput({ loopMainThinkingMode: "high" }),
+      "dsh",
+      "main",
+      "dsh-main",
+      { configId: "dsh-profile" },
+    ),
+    "high",
+  );
+  assert.equal(
+    host.resolvePromptRunThinkingModeForRole(
+      createPromptRunInput(),
+      "dsh",
+      "subtask",
+      "dsh-subtask",
+      { configId: "dsh-profile" },
+    ),
+    "xhigh",
+  );
+});
+
 test("Graph runtime host applies planner and executor routes to materialized nodes", () => {
   const { host } = createGraphRuntimeHarness();
   const run = createGraphRun({

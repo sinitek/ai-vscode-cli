@@ -178,7 +178,7 @@ function resolvePromptRunThinkingModeForRole(
   const explicitThinkingMode = role === "subtask"
     ? input.loopSubtaskThinkingMode
     : input.loopMainThinkingMode;
-  const usesLoopRoleThinking = cli === "codex" || cli === "grok" || (cli === "claude" && role === "subtask");
+  const usesLoopRoleThinking = cli === "codex" || cli === "grok" || cli === "dsh" || (cli === "claude" && role === "subtask");
   const roleThinkingMode = usesLoopRoleThinking && deps.isThinkingMode(explicitThinkingMode)
     ? deps.normalizeThinkingModeForCli(cli, explicitThinkingMode)
     : usesLoopRoleThinking

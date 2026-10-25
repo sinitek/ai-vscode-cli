@@ -350,7 +350,7 @@
     {
       "id": "plugin.rule.dsh_reasoning_effort",
       "name": "DSH 思考力度按模型能力展示并经 ACP 确认",
-      "description": "DSH 对话面板的思考力度只依据当前模型在 ACP configOptions 中公布的 reasoning_effort 值。默认验证模型通过 profile 声明 DeepSeek reasoningEfforts：low=low、high=high、xhigh=xhigh、max=max，并声明对应 compat；其他自定义模型只有显式声明能力时才显示选项，off、空 value 和未纳入 DeepSeek 契约的值不进入面板，未声明时禁用选择器。选项标签直接显示 ACP 原始 value，不翻译成中文；用户选择按当前模型保存，并在下一次执行前经 runner 通过 session/set_config_option 确认后应用。runner 仅将当前 ACP 已公布且属于契约的标量值下发，并以确认后的 currentValue 为准。旧 off / medium 配置读取时归一为可用档位。",
+      "description": "DSH Vibe、Loop、Loop+ 与 Graph 的思考力度选择按当前 profile 中所选模型声明的 reasoningEfforts 展示；默认验证模型声明 DeepSeek low=low、medium=medium、high=high、xhigh=xhigh、max=max 并声明对应 compat，未声明时禁用该角色选择器，off、空 value 和未纳入 DeepSeek 契约的值不进入面板。Loop 角色选择按 configId、角色和模型独立保存。选项标签直接显示 ACP 原始 value，不翻译成中文；下一次执行前由 runner 检查当前 ACP configOptions，并通过 session/set_config_option 确认后应用，只下发当前 ACP 已公布且属于契约的标量值，并以确认后的 currentValue 为准。旧四档及 off 结构读取时补齐 medium；若当前 ACP 未公布 medium，则不会发送。",
       "status": "active",
       "aliases": ["DSH thinking", "DSH reasoning_effort", "DeepSeek 思考力度"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
@@ -359,9 +359,16 @@
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/cli/dshConfigModels.ts"},
         {"path": "src/extensionHost/modelSettings.ts"},
+        {"path": "src/extensionHost/graphRuntime.ts"},
+        {"path": "src/modelSelectionStore.ts"},
+        {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
         {"path": "src/interactive/dshRunner.ts"},
         {"path": "src/extensionHost/interactiveTurnDsh.ts"},
         {"path": "src/test/extensionHost/dshModelSelection.test.ts"},
+        {"path": "src/test/graph/graphExtensionRuntime.test.ts"},
+        {"path": "src/test/webview/codexdualmodelwebview.test.ts"},
         {"path": "src/test/interactive/dshRunner.test.ts"},
         {"path": "src/test/webview/openCodeThinkingWebview.test.ts"}
       ]
@@ -734,6 +741,25 @@
         {"path": "src/extensionHost/openCodePromptRunTemplate.ts"},
         {"path": "src/webview/types.ts"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "6. 会话与本地映射"}
+      ]
+    },
+    {
+      "id": "plugin.rule.conversation_tab_execution_lock",
+      "name": "对话标签首次执行后锁定 CLI 与主模型",
+      "description": "对话 Tab 首次预载有效用户任务时持久化 executionLocked 与首个主模型快照；同一 Tab 后续不得切换 CLI 类型或主模型。Webview 控件只是表现层，Panel 消息、配置恢复和 setCurrentCli 等宿主入口也必须拒绝旁路修改，子模型仍可独立调整。旧会话初始化时检查 Tab 映射的全部 CLI 会话，只要存在有效用户消息就迁移锁定状态；新建 Tab 和其他 Tab 不受影响，切换到其他 Tab 仍然允许。",
+      "status": "active",
+      "applies_to": ["plugin.cli_session", "plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "src/sessionTabs.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/panelMessageHandlers/session.ts"},
+        {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/webview/viewContentScript/eventBindings.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/test/session/conversationTabLock.test.ts"},
+        {"path": "src/test/session/sessionMessageHandlersCoreCoverage.test.ts"},
+        {"path": "src/test/webview/codexdualmodelwebview.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"}
       ]
     },
     {

@@ -81,6 +81,10 @@ export async function handleUpdateSettingMessage(
   if (message.key.startsWith("selectedModel.")) {
     const cliValue = message.key.slice("selectedModel.".length);
     if (deps.isCliName(cliValue)) {
+      if (deps.isActiveConversationTabExecutionLocked?.() && cliValue === deps.getCurrentCli()) {
+        await deps.postPanelState();
+        return;
+      }
       const modelValue = typeof message.value === "string" ? message.value : null;
       deps.selectCliModel(cliValue, modelValue, deps.getActiveConfigIdForCli(cliValue));
       deps.loadModelStore();
@@ -95,6 +99,10 @@ export async function handleUpdateSettingMessage(
       cli
       && (roleValue === "main" || roleValue === "subtask")
     ) {
+      if (roleValue === "main" && deps.isActiveConversationTabExecutionLocked?.() && cli === deps.getCurrentCli()) {
+        await deps.postPanelState();
+        return;
+      }
       const modelValue = typeof message.value === "string" ? message.value : null;
       deps.selectCliLoopModel?.(cli, roleValue, modelValue, deps.getActiveConfigIdForCli(cli));
       deps.loadModelStore();
@@ -106,7 +114,7 @@ export async function handleUpdateSettingMessage(
     const [, cliValue, roleValue] = message.key.split(".");
     const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
     if (
-      (cli === "codex" || cli === "grok" || cli === "claude")
+      (cli === "codex" || cli === "grok" || cli === "claude" || cli === "dsh")
       && (roleValue === "main" || roleValue === "subtask")
     ) {
       const configId = deps.getActiveConfigIdForCli(cli);
@@ -258,7 +266,7 @@ function normalizePromptThinkingMode(
 function supportsMainSubtaskPromptModels(
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
 ): boolean {
-  return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok";
+  return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok" || targetCli === "dsh";
 }
 
 function resolvePromptRoleModels(
@@ -266,7 +274,11 @@ function resolvePromptRoleModels(
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
   configId: string | null,
   deps: PanelMessageHandlerDeps,
-  options: { includeLoopModels: boolean; subtaskContinuation: boolean },
+  options: {
+    includeLoopModels: boolean;
+    subtaskContinuation: boolean;
+    lockedPrimaryModel?: string | null;
+  },
 ): {
   model?: string;
   loopMainModel?: string;
@@ -282,9 +294,13 @@ function resolvePromptRoleModels(
   if (!supportsMainSubtaskPromptModels(targetCli) && !crossCli && !subtaskCli) {
     return {};
   }
-  const explicitModel = normalizePromptModel(message.model);
+  const explicitModel = options.lockedPrimaryModel !== undefined
+    ? normalizePromptModel(options.lockedPrimaryModel)
+    : normalizePromptModel(message.model);
   const selectedModel = supportsMainSubtaskPromptModels(targetCli)
-    ? deps.getSelectedCliModel(targetCli, configId) ?? undefined
+    ? options.lockedPrimaryModel !== undefined
+      ? normalizePromptModel(options.lockedPrimaryModel)
+      : deps.getSelectedCliModel(targetCli, configId) ?? undefined
     : undefined;
   const fallbackModel = explicitModel ?? selectedModel;
   if (!options.includeLoopModels) {
@@ -295,11 +311,13 @@ function resolvePromptRoleModels(
     };
   }
 
-  const loopMainModel = supportsMainSubtaskPromptModels(targetCli)
-    ? normalizePromptModel(message.loopMainModel)
-      ?? normalizePromptModel(message.lobsterMainModel)
-      ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
-      ?? fallbackModel
+  const loopMainModel = options.lockedPrimaryModel !== undefined
+    ? normalizePromptModel(options.lockedPrimaryModel)
+    : supportsMainSubtaskPromptModels(targetCli)
+      ? normalizePromptModel(message.loopMainModel)
+        ?? normalizePromptModel(message.lobsterMainModel)
+        ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
+        ?? fallbackModel
     : normalizePromptModel(message.loopMainModel) ?? explicitModel;
   const subtaskLookupCli = crossCli && subtaskCli ? subtaskCli : targetCli;
   const subtaskLookupConfigId = crossCli ? (subtaskConfigId ?? null) : configId;
@@ -336,7 +354,10 @@ function resolvePromptRoleThinkingModes(
   }
 ): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode } {
   const thinkingSubtaskCli = promptModels.loopSubtaskCli ?? targetCli;
-  const includeSubtaskThinking = thinkingSubtaskCli === "codex" || thinkingSubtaskCli === "grok" || thinkingSubtaskCli === "claude";
+  const includeSubtaskThinking = thinkingSubtaskCli === "codex"
+    || thinkingSubtaskCli === "grok"
+    || thinkingSubtaskCli === "claude"
+    || thinkingSubtaskCli === "dsh";
   if ((!supportsMainSubtaskPromptModels(targetCli) && !includeSubtaskThinking) || !options.includeLoopModels) {
     return {};
   }
@@ -344,7 +365,7 @@ function resolvePromptRoleThinkingModes(
   const subtaskModel = promptModels.loopSubtaskCli
     ? promptModels.loopSubtaskModel
     : promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
-  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok")
+  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok" || targetCli === "dsh")
     ? normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
       ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
       ?? undefined
@@ -473,6 +494,7 @@ export async function handleSendPromptMessage(
   const promptModels = resolvePromptRoleModels(message, targetCli, activeConfigId, deps, {
     includeLoopModels,
     subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
+    ...(targetTab?.executionLocked ? { lockedPrimaryModel: targetTab.lockedPrimaryModel ?? null } : {}),
   });
   const promptThinkingModes = resolvePromptRoleThinkingModes(message, targetCli, activeConfigId, deps, {
     includeLoopModels,

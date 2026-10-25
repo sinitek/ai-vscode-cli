@@ -859,6 +859,21 @@ test("updates the active CLI through session and tab selection fallbacks", async
   assert.deepEqual(harness.calls.savedSettings, [{ currentCli: "claude" }]);
 });
 
+test("rejects CLI and primary model changes for an executed tab", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  harness.deps.isActiveConversationTabExecutionLocked = () => true;
+
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "selectCliModel", cli: "codex", model: "new-model" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "selectCliLoopModel", cli: "codex", role: "main", model: "new-loop-model" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "updateOpenCodeRoleModel", role: "primary", value: "new-opencode-model" }, harness.deps);
+
+  assert.equal(harness.state.currentCli, "codex");
+  assert.deepEqual(harness.calls.selectedModels, []);
+  assert.equal(harness.calls.panelStates, 4);
+});
+
 test("routes optional panel fields through their empty and fallback contracts", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

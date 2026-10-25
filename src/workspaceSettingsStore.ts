@@ -19,6 +19,8 @@ export type ConversationTabRecordForWorkspaceSettings = {
   sessionId: string | null;
   sessionIdByCli: Partial<Record<CliName, string>>;
   createdAt: number;
+  executionLocked?: boolean;
+  lockedPrimaryModel?: string | null;
 };
 
 export type ConversationTabsStateForWorkspaceSettings = {

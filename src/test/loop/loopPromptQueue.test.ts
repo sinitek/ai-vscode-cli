@@ -205,7 +205,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "createMessageId",
     "t",
     "resetTaskListForRunStart",
-    "cliSupportsManagedModelSelection",
+    "cliSupportsModelSelection",
     "getLoopExecutionModeForCli",
     "vscode",
     `${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,

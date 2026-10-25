@@ -693,7 +693,7 @@ function loopThinkingStorageKey(cli: CliName, model: string | null | undefined):
 }
 
 function supportsLoopRoleThinkingStorage(cli: CliName): boolean {
-  return supportsLoopRoleModelStorage(cli) || cli === "claude";
+  return supportsLoopRoleModelStorage(cli) || cli === "claude" || cli === "dsh";
 }
 
 export function getSelectedLoopThinkingModeFromStore(

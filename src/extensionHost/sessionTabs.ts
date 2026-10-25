@@ -277,6 +277,10 @@ function getConversationTabById(tabId: string): ConversationTabRecord | null {
   return sessionTabsController.getConversationTabById(tabId);
 }
 
+function markConversationTabExecutionLocked(tabId: string, primaryModel?: string | null): boolean {
+  return sessionTabsController.markConversationTabExecutionLocked(tabId, primaryModel);
+}
+
 function getActiveConversationTabId(): string | null {
   return sessionTabsController.getActiveConversationTabId();
 }
@@ -620,6 +624,7 @@ return {
   syncCurrentSessionWithActiveTab: wrap(syncCurrentSessionWithActiveTab),
   setCurrentSession: wrap(setCurrentSession),
   startNewSession: wrap(startNewSession),
+  markConversationTabExecutionLocked: wrap(markConversationTabExecutionLocked),
   resetConversationTabSession: wrap(resetConversationTabSession),
   captureSessionFromBuffer: wrap(captureSessionFromBuffer),
   adoptDetectedSessionId: wrap(adoptDetectedSessionId),

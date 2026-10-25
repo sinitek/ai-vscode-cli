@@ -82,7 +82,8 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
 - usage 缺失不显示为 0。出现的 `usage_update.size` 若来自 adapter-fallback，界面标成适配器窗口，不能冒充服务确认容量。
 - 配置页首次打开及切换档案默认进入 JSON 模式；可视化模式编辑同一份完整 JSON，左侧按配置顺序展示模型列表，右侧编辑当前模型与 profile 信息，`acpModel` 通过模型下拉选择。新增操作先在列表中创建空白草稿并选中，模型 id 只在右侧详情填写；空白草稿可以切到 JSON 继续编辑，但保存时会提示模型 id 必填，JSON 内容未通过校验前不能切回可视化。模型删除使用列表行内图标和确认弹窗，至少保留一个模型。无效 JSON 不覆盖上一份有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、非 `apiKey` 密钥字段和 `retryPolicy` 未建模键在验证阶段拒绝。`apiKey` 可直接写入本机 DSH 配置档案，配置目录和备份使用仅用户可读权限；运行时只把它注入 DSH 子进程的 `SINITEK_DSH_API_KEY`，不写入 patch、命令参数或诊断输出。未填写 `apiKey` 时仍可使用外部 `SINITEK_DSH_API_KEY`。运行 patch 只写已验证 provider 字段。provider 只读。`baseURL`、模型 id 和可选 `apiKey` 可编辑；可视化不展示 `apiKeyEnv`。上游 DSH provider schema 允许省略 `apiKeyEnv`，插件在保存后的 profile 和运行 patch 中自动补齐固定值 `SINITEK_DSH_API_KEY`。保存扫描允许根级 `apiKey`，其它位置的密钥仍拒绝。默认模型 id 保持完整 `subcoco/deepseek-v4.1-flash`；已安装 schema 的 `models` 是有序数组，页面按该顺序新增、编辑、删除并选择当前 `acpModel`。聊天面板按顺序列出配置模型，不提供通用模型管理；选择持久化并在执行时映射到对应 provider wire，ACP 确认成功后才运行。别名和未列入该数组的 id 不能执行。DSH 详情区不显示激活状态；保存已激活档案和列表激活动作仍走 `activateDshProfile`。图形 Extension Host 点击验收未做。
-- 默认验证模型在 profile 中声明 DeepSeek `low`、`high`、`xhigh`、`max` 四档，AI 对话面板直接显示 ACP 广告的原始 value，不显示 `off` 或空 value；选择按当前模型保存，并在下一次执行前由 runner 通过 `session/set_config_option` 确认后应用。其它自定义模型需显式声明 `reasoningEfforts` 与 `compat`，未声明时禁用选择器。runner 只发送 ACP 当前广告且属于契约的值；旧 DSH `off` / `medium` 配置读取时归一到可用档位，不继续显示 `off`。DeepSeek 不支持的别名不作为额外选项展示，也不绕过 ACP options 校验。
+- 默认验证模型在 profile 中声明 DeepSeek `low`、`medium`、`high`、`xhigh`、`max` 五档，AI 对话面板直接显示 ACP 广告的原始 value，不显示 `off` 或空 value；选择按当前模型保存，并在下一次执行前由 runner 通过 `session/set_config_option` 确认后应用。其它自定义模型需显式声明 `reasoningEfforts` 与 `compat`，未声明时禁用选择器。runner 只发送 ACP 当前广告且属于契约的值；旧 DSH 四档、`off` 结构读取时补齐 `medium`，但若当前 ACP 未公告 `medium` 则不会发送。DeepSeek 不支持的别名不作为额外选项展示，也不绕过 ACP options 校验。
+- DSH 在 Loop、Loop+、Graph 复用现有主模型和子模型选择行，候选只取当前活动配置中的模型；两种角色分别按所选模型的 `reasoningEfforts` 展示力度，无能力声明时禁用该角色选择器。选择按配置档案、角色和模型独立保存；Loop、Loop+ 与 Graph 派发时将相应角色模型及力度交给 DSH ACP turn，runner 仍必须用当前 ACP 广告值确认并应用，不能因 profile 声明而绕过 `configOptions`。
 - 原生 compaction 明确不支持。`compactSession` 返回不支持，不发送 `/compact`，也不把压缩提示词当成原生压缩。
 - 最终模型的插件实跑覆盖配置激活、隔离 `DSH_HOME`、`DshInteractiveRunner` 和宿主运行时上的新建、续聊、恢复和取消。真实权限请求没有出现。图形 Extension Host 点击验收未做，不得虚报。
 
@@ -173,6 +174,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 ### 3.4 会话与并发
 
 - 切换对话 Tab 或打开已有会话时，底部 CLI 分组、执行模式、配置档案和模型按目标会话恢复。Loop / Loop+ 主 Tab 使用任务当前 `modelRouting` 与 `originProfile` 恢复主子模型及跨 CLI 子路由；子 Tab 使用 Vibe，并优先恢复实际执行快照。用户消息的 `executionProfile` 保存配置 ID、原始模型 ID、思考力度与 OpenCode variant，不把展示名当作模型 ID。配置、模型或可靠记录缺失时保留对应当前选择，不重建已删除模型；思考力度仅在目标模型可用且档位仍受支持时恢复。异步恢复带 Tab 与工作区身份检查，不把旧请求的模型或消息刷新到新标签。
+- 对话 Tab 首次预载有效用户任务时写入 `executionLocked` 和首个主模型快照；同一 Tab 后续不允许切换 CLI 类型或主模型，宿主同时拦截 Webview 消息、Panel 设置消息、配置恢复和 `setCurrentCli` 旁路，子模型仍可调整。已有会话初始化会检查 Tab 映射的全部 CLI 会话，只要存在有效用户消息就迁移为锁定；新建 Tab 和其他 Tab 不受影响。
 
 - 会话持久化 `health: normal / abnormal`：只要出现过正常操作、思考或助手回复气泡即为正常，之后报错或删减消息不会降级；仅用户、系统通知、错误/警告、重连日志或空气泡不算正常。历史记录未带状态时按已保存消息回填。异常会话不能再次复用执行任务；下次执行在原 Tab 自动启动全新底层会话、不传旧会话 ID、不复用旧 runner，并保留旧会话存档。规则覆盖 Codex、Claude、OpenCode、Grok 及后台目标 Tab，不影响其它 Tab 或 CLI 映射。
 - 会话列表与当前会话切换

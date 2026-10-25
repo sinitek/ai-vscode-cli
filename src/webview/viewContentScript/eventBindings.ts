@@ -33,6 +33,10 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         });
 
       elements.currentCli.addEventListener("change", (event) => {
+        if (typeof isActiveConversationTabExecutionLocked === "function" && isActiveConversationTabExecutionLocked()) {
+          syncModelSelectorByInteractiveMode();
+          return;
+        }
         armPromptContextForConversationStart();
         state.pendingOpenCodeRoleSelection = null;
         const nextCli = event.target.value;
@@ -295,6 +299,9 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
       }
 
       function handleOpenCodeRoleModelChange(role, rawValue) {
+        if (role === "main" && typeof isActiveConversationTabExecutionLocked === "function" && isActiveConversationTabExecutionLocked()) {
+          return;
+        }
         const selectedRef = typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : null;
         const configRef = state.openCodeModels
           ? (role === "subtask" ? state.openCodeModels.configSubtaskRef : state.openCodeModels.configMainRef)

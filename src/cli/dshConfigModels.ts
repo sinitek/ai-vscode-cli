@@ -29,16 +29,32 @@ export const DSH_DISPLAY_NAME = "Sinitek custom";
 export const DSH_SCHEMA_VERSION = 1;
 export const DSH_REASONING_EFFORTS = {
   low: "low",
+  medium: "medium",
   high: "high",
   xhigh: "xhigh",
   max: "max",
 } as const;
-export const DSH_REASONING_OPTIONS = ["low", "high", "xhigh", "max"] as const;
+export const DSH_REASONING_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 const LEGACY_DSH_REASONING_EFFORTS = {
   off: null,
   low: "low",
   high: "high",
+  max: "max",
+} as const;
+
+const LEGACY_DSH_REASONING_EFFORTS_WITH_MEDIUM = {
+  off: null,
+  low: "low",
+  medium: "medium",
+  high: "high",
+  max: "max",
+} as const;
+
+const LEGACY_DSH_REASONING_EFFORTS_WITHOUT_MEDIUM = {
+  low: "low",
+  high: "high",
+  xhigh: "xhigh",
   max: "max",
 } as const;
 
@@ -543,8 +559,12 @@ function validateConfiguredModel(value: unknown, seen: ReadonlySet<string>): str
       return "DSH compat requires configured DeepSeek reasoning efforts.";
     }
   } else if (reasoningEfforts !== undefined || compat !== undefined) {
-    if (!isDshReasoningEfforts(reasoningEfforts) && !isLegacyDshReasoningEfforts(reasoningEfforts)) {
-      return "DSH model reasoningEfforts must map low/high/xhigh/max.";
+    if (
+      !isDshReasoningEfforts(reasoningEfforts)
+      && !isLegacyDshReasoningEfforts(reasoningEfforts)
+      && !isLegacyCurrentDshReasoningEfforts(reasoningEfforts)
+    ) {
+      return "DSH model reasoningEfforts must map low/medium/high/xhigh/max.";
     }
     if (!isDshModelCompat(compat)) {
       return "DSH model compat must declare DeepSeek thinkingFormat and reasoning effort support.";
@@ -562,27 +582,54 @@ function isDshReasoningEfforts(value: unknown): value is DshReasoningEfforts {
   const expectedKeys = Object.keys(DSH_REASONING_EFFORTS).sort();
   return keys.join(",") === expectedKeys.join(",")
     && efforts.low === "low"
+    && efforts.medium === "medium"
     && efforts.high === "high"
     && efforts.xhigh === "xhigh"
     && efforts.max === "max";
 }
 
-function isLegacyDshReasoningEfforts(value: unknown): value is typeof LEGACY_DSH_REASONING_EFFORTS {
+function isLegacyDshReasoningEfforts(
+  value: unknown,
+): value is typeof LEGACY_DSH_REASONING_EFFORTS | typeof LEGACY_DSH_REASONING_EFFORTS_WITH_MEDIUM {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const efforts = value as Record<string, unknown>;
   const keys = Object.keys(efforts).sort();
-  const expectedKeys = Object.keys(LEGACY_DSH_REASONING_EFFORTS).sort();
-  return keys.join(",") === expectedKeys.join(",")
-    && efforts.off === null
+  const legacyKeys = Object.keys(LEGACY_DSH_REASONING_EFFORTS).sort();
+  const legacyWithMediumKeys = Object.keys(LEGACY_DSH_REASONING_EFFORTS_WITH_MEDIUM).sort();
+  const hasLegacyValues = efforts.off === null
     && efforts.low === "low"
     && efforts.high === "high"
+    && efforts.max === "max";
+  if (keys.join(",") === legacyKeys.join(",")) {
+    return hasLegacyValues;
+  }
+  return keys.join(",") === legacyWithMediumKeys.join(",")
+    && hasLegacyValues
+    && efforts.medium === "medium";
+}
+
+function isLegacyCurrentDshReasoningEfforts(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const efforts = value as Record<string, unknown>;
+  const keys = Object.keys(efforts).sort();
+  const expectedKeys = Object.keys(LEGACY_DSH_REASONING_EFFORTS_WITHOUT_MEDIUM).sort();
+  return keys.join(",") === expectedKeys.join(",")
+    && efforts.low === "low"
+    && efforts.high === "high"
+    && efforts.xhigh === "xhigh"
     && efforts.max === "max";
 }
 
 function normalizeDshReasoningEfforts(value: unknown): DshReasoningEfforts | undefined {
-  if (isDshReasoningEfforts(value) || isLegacyDshReasoningEfforts(value)) {
+  if (
+    isDshReasoningEfforts(value)
+    || isLegacyDshReasoningEfforts(value)
+    || isLegacyCurrentDshReasoningEfforts(value)
+  ) {
     return { ...DSH_REASONING_EFFORTS };
   }
   return undefined;

@@ -52,6 +52,8 @@ export type ConversationTabRecordForPanel = {
   sessionId: string | null;
   sessionIdByCli: Partial<Record<CliName, string>>;
   createdAt: number;
+  executionLocked?: boolean;
+  lockedPrimaryModel?: string | null;
 };
 
 export type PanelMessageHandlerDeps = {
@@ -92,6 +94,8 @@ export type PanelMessageHandlerDeps = {
   addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
   startNewSession: (cli: CliName) => void;
   getConversationTabById: (tabId: string) => ConversationTabRecordForPanel | null;
+  isActiveConversationTabExecutionLocked?: () => boolean;
+  getActiveConversationTabLockedPrimaryModel?: () => string | null | undefined;
   hasAnyTaskRunning: () => boolean;
   disposeAllInteractiveRunners: () => void;
   maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>;

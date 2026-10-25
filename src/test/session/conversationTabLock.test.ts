@@ -5,11 +5,14 @@ import { type CliName } from "../../cli/types";
 import {
   createSessionTabsController,
   findConversationTabForLoopResume,
+  isConversationTabExecutionLocked,
   resolveAutoInteractiveModeForLoopTask,
+  switchConversationTabCli,
   type ConversationTabsState,
 } from "../../sessionTabs";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
+import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type TabSummary = {
   id: string;
@@ -19,6 +22,8 @@ type TabSummary = {
   loopTaskStatus?: string;
   loopMainTabCloseLocked?: boolean;
   loopSchedulingMode?: string;
+  executionLocked?: boolean;
+  lockedPrimaryModel?: string | null;
 };
 
 function extractFunctionSource(script: string, name: string): string {
@@ -267,6 +272,112 @@ test("finds the same Loop main tab after that tab switches to a new CLI group", 
   assert.equal(resolved, tab);
   assert.equal(resolved?.cli, "opencode");
   assert.equal(resolved?.sessionId, "opencode-session");
+});
+
+test("persists execution lock and refuses CLI changes after the first task", () => {
+  let currentCli: CliName = "codex";
+  const state: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: [{
+      id: "main-tab",
+      cli: "codex",
+      sessionId: null,
+      sessionIdByCli: {},
+      createdAt: 1,
+    }],
+  };
+  const workspaceSettings: WorkspaceSettings = {};
+  let savedConversationTabs: WorkspaceSettings["conversationTabs"];
+  const controller = createSessionTabsController({
+    state,
+    pendingDrafts: {},
+    conversationTabPrefix: "tab_",
+    getCurrentCli: () => currentCli,
+    setCurrentCli: (cli) => { currentCli = cli; },
+    getDefaultCli: () => "codex",
+    isCliName: (value): value is CliName => value === "codex" || value === "claude" || value === "opencode",
+    getLatestSessionId: () => null,
+    getSessionStore: () => undefined,
+    getWorkspaceSettings: () => workspaceSettings,
+    saveWorkspaceSettings: (settings) => { savedConversationTabs = settings.conversationTabs; },
+    setCurrentSession: () => undefined,
+    setWorkspaceInteractiveModeForCli: () => false,
+    resolveAutoInteractiveModeForConversationTab: () => "coding",
+    collectRunningLoopTaskIds: () => new Set(),
+    isLoopTaskRunning: () => false,
+    getLoopTaskStatus: () => null,
+    resolveConversationTabLoopContext: () => ({}),
+    buildSessionLabelFromPrompt: () => null,
+  });
+
+  assert.equal(controller.markConversationTabExecutionLocked("main-tab", "gpt-5"), true);
+  assert.equal(controller.markConversationTabExecutionLocked("main-tab", "other-model"), false);
+  const tab = controller.getConversationTabById("main-tab");
+  assert.equal(isConversationTabExecutionLocked(tab), true);
+  assert.equal(tab?.lockedPrimaryModel, "gpt-5");
+  assert.equal(switchConversationTabCli(tab!, "claude"), false);
+  assert.equal(tab?.cli, "codex");
+  assert.equal(controller.buildConversationTabsState().tabs[0]?.executionLocked, true);
+  assert.equal(controller.buildConversationTabsState().tabs[0]?.lockedPrimaryModel, "gpt-5");
+  assert.equal(savedConversationTabs?.tabs[0]?.lockedPrimaryModel, "gpt-5");
+});
+
+test("migrates execution locks from any existing session mapped to a legacy Tab", () => {
+  let currentCli: CliName = "claude";
+  const state: ConversationTabsState = { activeTabId: "legacy-tab", tabs: [] };
+  const workspaceSettings: WorkspaceSettings = {
+    conversationTabs: {
+      activeTabId: "legacy-tab",
+      tabs: [{
+        id: "legacy-tab",
+        cli: "claude",
+        sessionId: null,
+        sessionIdByCli: {
+          codex: "codex-session",
+          claude: "claude-session",
+        },
+        createdAt: 1,
+      }],
+    },
+  };
+  const controller = createSessionTabsController({
+    state,
+    pendingDrafts: {},
+    conversationTabPrefix: "tab_",
+    getCurrentCli: () => currentCli,
+    setCurrentCli: (cli) => { currentCli = cli; },
+    getDefaultCli: () => "codex",
+    isCliName: (value): value is CliName => value === "codex" || value === "claude" || value === "opencode",
+    getLatestSessionId: () => null,
+    getSessionStore: () => undefined,
+    getSessionMessages: (cli, sessionId) => cli === "codex" && sessionId === "codex-session"
+      ? [{
+          id: "user-1",
+          role: "user",
+          content: "已执行的任务",
+          createdAt: 10,
+          executionProfile: { configId: "codex-config", model: "gpt-5" },
+        }]
+      : [],
+    getWorkspaceSettings: () => workspaceSettings,
+    saveWorkspaceSettings: () => undefined,
+    setCurrentSession: () => undefined,
+    setWorkspaceInteractiveModeForCli: () => false,
+    resolveAutoInteractiveModeForConversationTab: () => "coding",
+    collectRunningLoopTaskIds: () => new Set(),
+    isLoopTaskRunning: () => false,
+    getLoopTaskStatus: () => null,
+    resolveConversationTabLoopContext: () => ({}),
+    buildSessionLabelFromPrompt: () => null,
+  });
+
+  controller.initializeConversationTabsFromWorkspaceSettings();
+
+  const tab = controller.getConversationTabById("legacy-tab");
+  assert.equal(isConversationTabExecutionLocked(tab), true);
+  assert.equal(tab?.lockedPrimaryModel, "gpt-5");
+  assert.equal(switchConversationTabCli(tab!, "codex"), false);
+  assert.equal(tab?.cli, "claude");
 });
 
 test("rebuilds a Loop tab after its running status has been reconciled", () => {

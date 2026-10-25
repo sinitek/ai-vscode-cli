@@ -10,6 +10,8 @@ export type ConversationTabRecord = {
   sessionId: string | null;
   sessionIdByCli: Partial<Record<CliName, string>>;
   createdAt: number;
+  executionLocked?: boolean;
+  lockedPrimaryModel?: string | null;
 };
 
 export type ConversationTabsState = {
@@ -24,6 +26,34 @@ export type PendingSessionDraft = {
 };
 
 export type ConversationTabSwitchResult = { cli: CliName; sessionId: string | null };
+
+export function isConversationTabExecutionLocked(tab: Pick<ConversationTabRecord, "executionLocked"> | null | undefined): boolean {
+  return tab?.executionLocked === true;
+}
+
+export function getConversationTabLockedPrimaryModel(
+  tab: Pick<ConversationTabRecord, "executionLocked" | "lockedPrimaryModel"> | null | undefined,
+): string | null | undefined {
+  if (!isConversationTabExecutionLocked(tab)) {
+    return undefined;
+  }
+  const model = tab?.lockedPrimaryModel;
+  return typeof model === "string" && model.trim() ? model.trim() : null;
+}
+
+export function markConversationTabExecutionLocked(
+  tab: ConversationTabRecord,
+  primaryModel: string | null | undefined,
+): boolean {
+  if (isConversationTabExecutionLocked(tab)) {
+    return false;
+  }
+  tab.executionLocked = true;
+  tab.lockedPrimaryModel = typeof primaryModel === "string" && primaryModel.trim()
+    ? primaryModel.trim()
+    : null;
+  return true;
+}
 
 type LoopConversationTabContext = {
   taskRole?: "main" | "subtask" | null;
@@ -149,6 +179,9 @@ export function setConversationTabSessionIdForCli(
 }
 
 export function switchConversationTabCli(tab: ConversationTabRecord, cli: CliName): boolean {
+  if (isConversationTabExecutionLocked(tab) && tab.cli !== cli) {
+    return false;
+  }
   const nextSessionId = getConversationTabSessionIdForCli(tab, cli);
   const cliChanged = tab.cli !== cli;
   const sessionChanged = tab.sessionId !== nextSessionId;
@@ -174,6 +207,7 @@ export function createSessionTabsController(deps: {
   isCliName: (value: string) => value is CliName;
   getLatestSessionId: (cli: CliName) => string | null;
   getSessionStore: () => SessionStore | undefined;
+  getSessionMessages?: (cli: CliName, sessionId: string) => ChatMessage[];
   getWorkspaceSettings: () => WorkspaceSettings;
   saveWorkspaceSettings: (settings: WorkspaceSettings) => void;
   setCurrentSession: (cli: CliName, sessionId: string | null, options?: { syncConversationTab?: boolean }) => void;
@@ -190,6 +224,7 @@ export function createSessionTabsController(deps: {
   buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
   buildOpenConversationTabSessionMap: () => Map<string, string>;
   clearPendingSessionDraft: (tabId: string, cli?: CliName) => void;
+  markConversationTabExecutionLocked: (tabId: string, primaryModel?: string | null) => boolean;
   closeConversationTab: (tabId: string) => ConversationTabSwitchResult | null;
   createConversationTabId: () => string;
   detachConversationTabsFromSession: (cli: CliName, sessionId: string) => void;
@@ -237,6 +272,37 @@ export function createSessionTabsController(deps: {
     return retained;
   };
 
+  const findLatestExecutedUserMessage = (
+    sessionIdByCli: Partial<Record<CliName, string>>,
+  ): ChatMessage | null => {
+    if (!deps.getSessionMessages) {
+      return null;
+    }
+    let latestMessage: ChatMessage | null = null;
+    for (const cli of CLI_LIST) {
+      const sessionId = sessionIdByCli[cli];
+      if (!sessionId) {
+        continue;
+      }
+      let messages: ChatMessage[];
+      try {
+        messages = deps.getSessionMessages(cli, sessionId);
+      } catch {
+        continue;
+      }
+      const candidate = [...messages].reverse().find(
+        (message) => message.role === "user" && message.content.trim(),
+      );
+      if (!candidate) {
+        continue;
+      }
+      if (!latestMessage || (candidate.createdAt ?? 0) >= (latestMessage.createdAt ?? 0)) {
+        latestMessage = candidate;
+      }
+    }
+    return latestMessage;
+  };
+
   const sanitizeRecord = (value: unknown): ConversationTabRecord | null => {
     if (!value || typeof value !== "object") {
       return null;
@@ -260,12 +326,28 @@ export function createSessionTabsController(deps: {
         sessionId,
       )
     );
+    let executionLocked = record.executionLocked === true;
+    let lockedPrimaryModel = getConversationTabLockedPrimaryModel(record);
+    if (!executionLocked) {
+      const latestUserMessage = findLatestExecutedUserMessage(sessionIdByCli);
+      if (latestUserMessage) {
+        executionLocked = true;
+        lockedPrimaryModel = typeof latestUserMessage.executionProfile?.model === "string"
+          && latestUserMessage.executionProfile.model.trim()
+          ? latestUserMessage.executionProfile.model.trim()
+          : null;
+      }
+    }
     return {
       id,
       cli,
       sessionId: sessionIdByCli[cli] ?? null,
       sessionIdByCli,
       createdAt,
+      ...(executionLocked ? {
+        executionLocked: true,
+        lockedPrimaryModel,
+      } : {}),
     };
   };
 
@@ -302,6 +384,10 @@ export function createSessionTabsController(deps: {
           sessionId: sessionIdByCli[tab.cli] ?? null,
           sessionIdByCli,
           createdAt: tab.createdAt,
+          ...(isConversationTabExecutionLocked(tab) ? {
+            executionLocked: true,
+            lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
+          } : {}),
         };
       }),
     };
@@ -318,6 +404,10 @@ export function createSessionTabsController(deps: {
         sessionId: tab.sessionId,
         sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
         createdAt: tab.createdAt,
+        ...(isConversationTabExecutionLocked(tab) ? {
+          executionLocked: true,
+          lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
+        } : {}),
       })),
     };
     deps.saveWorkspaceSettings(workspaceSettings);
@@ -462,6 +552,8 @@ export function createSessionTabsController(deps: {
           cli: tab.cli,
           sessionId: tab.sessionId,
           createdAt: tab.createdAt,
+          executionLocked: isConversationTabExecutionLocked(tab),
+          lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
           loopTaskRole: loopContext.taskRole ?? undefined,
           loopTaskId: loopTaskId ?? undefined,
           loopTaskRunning,
@@ -652,6 +744,14 @@ export function createSessionTabsController(deps: {
       persistTabs();
     },
     updatePendingSessionDraft: updateDraft,
+    markConversationTabExecutionLocked: (tabId, primaryModel) => {
+      const tab = getTabById(tabId);
+      if (!tab || !markConversationTabExecutionLocked(tab, primaryModel)) {
+        return false;
+      }
+      persistTabs();
+      return true;
+    },
   };
 }
 

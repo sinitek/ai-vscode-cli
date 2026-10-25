@@ -234,6 +234,8 @@ export type ConversationTabSummary = {
   cli: CliName;
   sessionId: string | null;
   createdAt: number;
+  executionLocked?: boolean;
+  lockedPrimaryModel?: string | null;
   loopTaskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopTaskRunning?: boolean;
@@ -401,6 +403,7 @@ export type PanelState = {
       issuesByCli?: Partial<Record<CliName, string>>;
       thinkingModeByCli?: Partial<Record<CliName, ThinkingMode>>;
       dshReasoningOptions?: DshReasoningOption[];
+      dshReasoningOptionsByModel?: Partial<Record<string, DshReasoningOption[]>>;
     };
   editorContext: EditorContextState;
 };

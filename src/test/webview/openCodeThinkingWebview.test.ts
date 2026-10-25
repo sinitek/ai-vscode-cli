@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
+import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type ThinkingOption = {
@@ -85,6 +86,10 @@ function buildThinkingSync() {
     "appendThinkingOption",
     "isOpenCodeThinkingEffort",
     "syncOpenCodeThinkingSelect",
+    "getDshReasoningOptionsForModel",
+    "getLoopRoleModelsForCli",
+    "getSelectedLoopRoleModelForCli",
+    "getLoopRoleThinkingOptionsForCli",
     "getSelectedLoopRoleThinkingModeForCli",
     "getVisibleLoopRoleThinkingModeForCli",
     "appendCodexThinkingOptions",
@@ -94,8 +99,17 @@ function buildThinkingSync() {
     "syncGenericThinkingOptions",
     "syncThinkingOptions",
   ];
+  const modelManagerFunctions = new Set([
+    "getLoopRoleModelsForCli",
+    "getSelectedLoopRoleModelForCli",
+  ]);
   const functionSource = functionNames
-    .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, name))
+    .map((name) => extractFunctionSource(
+      modelManagerFunctions.has(name)
+        ? VIEW_CONTENT_SCRIPT_MODEL_MANAGER
+        : VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE,
+      name,
+    ))
     .join("\n");
   const state: ThinkingState = {
     currentCli: "opencode",
@@ -264,29 +278,26 @@ test("shows only DeepSeek advertised thinking efforts using raw values", () => {
   const harness = buildThinkingSync();
   harness.state.currentCli = "dsh";
   harness.state.thinkingMode = "medium";
-  harness.state.dshReasoningOptions = ["off", "low", "high", "xhigh", "max"];
+  harness.state.dshReasoningOptions = ["off", "low", "medium", "high", "xhigh", "max"];
   harness.syncThinkingOptions();
 
   assert.deepEqual(optionPairs(harness.thinkingMode), [
     ["low", "low"],
+    ["medium", "medium"],
     ["high", "high"],
     ["xhigh", "xhigh"],
     ["max", "max"],
   ]);
-  assert.equal(harness.thinkingMode.value, "high");
+  assert.equal(harness.thinkingMode.value, "medium");
   assert.equal(harness.thinkingMode.disabled, false);
-  assert.deepEqual(harness.messages, [
-    { type: "updateSetting", key: "thinkingMode", value: "high" },
-  ]);
+  assert.deepEqual(harness.messages, []);
 
   harness.state.dshReasoningOptions = ["off"];
   harness.state.thinkingMode = "max";
   harness.syncThinkingOptions();
   assert.deepEqual(optionPairs(harness.thinkingMode), []);
   assert.equal(harness.thinkingMode.disabled, true);
-  assert.deepEqual(harness.messages, [
-    { type: "updateSetting", key: "thinkingMode", value: "high" },
-  ]);
+  assert.deepEqual(harness.messages, []);
 });
 
 test("routes OpenCode variant changes separately from generic thinking settings", () => {

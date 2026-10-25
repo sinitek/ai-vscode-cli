@@ -83,7 +83,7 @@
 | `input` | `[text]` | 本次 `promptCapabilities.image` 为 false |
 | `maxTokens` | `256` | 这是本次请求输出帽，`adapterDefaults.maxTokens` 为 true。不是服务公布的输出容量 |
 | `contextWindow` | 省略 | 省略后走适配器 fallback `262144`。不能称作服务确认的窗口 |
-| `reasoningEfforts` | `low: low`、`high: high`、`xhigh: xhigh`、`max: max` | DSH ACP 仅公布 profile 中声明的标量；插件默认验证模型补齐该档位映射，不生成 `off` |
+| `reasoningEfforts` | `low: low`、`medium: medium`、`high: high`、`xhigh: xhigh`、`max: max` | DSH ACP 仅公布 profile 中声明且当前适配器支持的标量；插件默认验证模型补齐该档位映射，不生成 `off` |
 | `compat` | `thinkingFormat: deepseek`、`supportsReasoningEffort: true` | 告诉 `llm-pi-ai` 按 DeepSeek 思考格式支持 reasoning effort |
 
 未验证因而不要写进第一版 patch 的字段：`headers`、`thinkingBudgets`、`cacheRetention`、`transport`、`defaultContextWindow`、`defaultInput`。`retryPolicy.mode=always` 会无界重试，不要使用。
@@ -118,6 +118,12 @@ ACP 模型线值是 `JSON.stringify([provider, model])`，默认没有空格。�
 斜杠拆分不是合法选择。目录接受选择和真实生成是两件事。只有线值出现在 `configOptions` 里，才允许 `session/set_config_option`。
 
 插件 `resolveDshConfigModel` 只在 `selectedModel` 缺失或空白时回退已配置默认模型。显式未知模型、错误 provider/model 线值、响应别名 `deepseek-v4.1-flash` 和斜杠拆分值返回 null，不静默改成默认模型。完整模型 id 与 `JSON.stringify(["sinitek-custom","subcoco/deepseek-v4.1-flash"])` 解析为配置中的完整 id。
+
+### Loop、Loop+ 与 Graph 角色选择
+
+- DSH 复用现有主模型/子模型控件，候选均来自当前活动 profile 的有序 `models`；主角色和子角色可独立选择，不引入 profile 外模型。
+- 思考力度按各角色当前模型在 profile 中声明的 `reasoningEfforts` 显示。未声明能力的模型禁用该角色选择器；配置选择按 `configId`、角色和模型隔离保存。
+- Loop、Loop+ 和 Graph 都将选中角色模型及力度传给对应 DSH ACP turn。profile 声明只控制可选项；运行前仍须由 DSH runner 检查当前 ACP `configOptions`，并通过 `session/set_config_option` 确认后应用。
 
 ## 5. 原生 ACP 实测
 
@@ -165,13 +171,15 @@ ACP 本次发出了 `usage_update`。字段存在，所以不是缺失。数值�
 
 ## 8. 思考档
 
-插件使用的 DeepSeek 自定义模型将标准档位声明为 `low`、`high`、`xhigh`、`max`。`@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2` 的 ACP `configOptions` 会原样公布模型 profile 的 `reasoningEfforts`；插件面板只显示当前已选模型公布且属于契约的值，并以 `session/set_config_option` 的标量 `value` 写回。
+插件使用的 DeepSeek 自定义模型将标准档位声明为 `low`、`medium`、`high`、`xhigh`、`max`。`@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2` 的 ACP `configOptions` 会原样公布模型 profile 的 `reasoningEfforts`；插件面板只显示当前已选模型公布且属于契约的值，并以 `session/set_config_option` 的标量 `value` 写回。
 
 - DSH 选择器不复用 Grok 的扩展档位，只展示适配器实际广告的规范值；当前验证模型的广告值是 `low`、`high`、`xhigh`、`max`，ACP 额外返回的 provider default 空 value 不进入面板。
-- DSH 配置使用 `low: low`、`high: high`、`xhigh: xhigh`、`max: max`，配合 `compat.thinkingFormat=deepseek` 与 `supportsReasoningEffort=true`；默认验证模型在旧 profile 缺字段或使用旧 `off` 结构时归一为此能力。配置 patch 生成后，ACP 会公布 `low|high|xhigh|max`。
-- 其它自定义模型不会根据模型名称猜测能力：只有 profile 显式声明完整 `reasoningEfforts` 与 `compat` 才显示四档；`reasoningEfforts: false` 或 `off` 只会让选择器没有可用档位；两者均省略则不显示可选档。选项标签直接显示 ACP 原始 value，不翻译成中文。
+- DSH 配置使用 `low: low`、`medium: medium`、`high: high`、`xhigh: xhigh`、`max: max`，配合 `compat.thinkingFormat=deepseek` 与 `supportsReasoningEffort=true`；默认验证模型在旧 profile 缺字段、旧四档结构或使用旧 `off` 结构时归一为此能力。配置 patch 生成后，ACP 只会公布当前适配器实际接受的档位。
+- 其它自定义模型不会根据模型名称猜测能力：只有 profile 显式声明完整 `reasoningEfforts` 与 `compat` 才显示声明且被 ACP 公告的档位；`reasoningEfforts: false` 或 `off` 只会让选择器没有可用档位；两者均省略则不显示可选档。选项标签直接显示 ACP 原始 value，不翻译成中文。
 - `/v1/models` 不公布 reasoning 字段，不代表 DSH provider 不能按已验证的 DeepSeek 格式声明该能力；usage 中的 `reasoning_tokens` 也不是档位证据。
-- 面板只展示 ACP 当前公布且属于契约的规范档位 `low`、`high`、`xhigh`、`max`，不展示 `off`、空 value 或其它别名。旧 DSH 思考值 `off` / `medium` 归一到可用档位；runner 仍以 ACP 当前公布值为最终依据，未公布档位不会发送。
+- 面板只展示 ACP 当前公布且属于契约的规范档位 `low`、`medium`、`high`、`xhigh`、`max`，不展示 `off`、空 value 或其它别名。旧 DSH 思考值 `off` 或缺少 `medium` 的旧结构会归一到新档位；runner 仍以 ACP 当前公布值为最终依据，未公布档位不会发送。
+
+2026-10-25 用当前插件生成的五档 profile patch 在隔离 `DSH_HOME` 下启动 `dsh 0.2.1-rc.2`，`session/new` 的 `reasoning_effort` 公告为 `""`、`low`、`medium`、`high`、`xhigh`、`max`；其中空 value 仍被面板过滤，`medium` 可通过 ACP 确认。
 
 来源： [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode)；当前仓库记录的本机 DSH/`llm-pi-ai` 版本与 ACP 实测契约见本文件第 1 节和 `.ch/docs/references/deepseek-harness-api-reference.md`。
 

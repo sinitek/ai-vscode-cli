@@ -42,6 +42,8 @@ type SessionPanelMessageDeps = Pick<
   | "addConversationTab"
   | "startNewSession"
   | "getConversationTabById"
+  | "isActiveConversationTabExecutionLocked"
+  | "getActiveConversationTabLockedPrimaryModel"
   | "hasAnyTaskRunning"
   | "disposeAllInteractiveRunners"
   | "maybePromptInstallOnCliGroupSwitch"
@@ -68,6 +70,13 @@ export function createSessionPanelMessageHandlers(
 ): PanelMessageHandlerRegistry {
   return {
     selectCli: async (message) => {
+      if (
+        deps.isActiveConversationTabExecutionLocked?.()
+        && deps.getCurrentCli() !== message.cli
+      ) {
+        await deps.postPanelState();
+        return;
+      }
       const previousBinding = deps.getActiveConversationTabBinding();
       await deps.setCurrentCli(message.cli);
       deps.disposeInteractiveRunnerIfUnused(previousBinding);
@@ -77,6 +86,13 @@ export function createSessionPanelMessageHandlers(
     },
 
     selectCliModel: async (message) => {
+      if (
+        deps.isActiveConversationTabExecutionLocked?.()
+        && message.cli === deps.getCurrentCli()
+      ) {
+        await deps.postPanelState();
+        return;
+      }
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
@@ -86,6 +102,14 @@ export function createSessionPanelMessageHandlers(
 
     selectCliLoopModel: async (message) => {
       const role = message.role === "subtask" ? "subtask" : "main";
+      if (
+        role === "main"
+        && deps.isActiveConversationTabExecutionLocked?.()
+        && message.cli === deps.getCurrentCli()
+      ) {
+        await deps.postPanelState();
+        return;
+      }
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
@@ -102,6 +126,13 @@ export function createSessionPanelMessageHandlers(
     },
 
     updateOpenCodeRoleModel: async (message) => {
+      if (
+        message.role === "primary"
+        && deps.isActiveConversationTabExecutionLocked?.()
+      ) {
+        await deps.postPanelState();
+        return;
+      }
       const configId = typeof message.configId === "string" && message.configId.trim()
         ? message.configId.trim()
         : deps.getActiveConfigIdForCli("opencode");

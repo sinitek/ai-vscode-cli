@@ -133,9 +133,13 @@ function buildHarness() {
   );
   const modelFunctionSource = [
     "cliSupportsManagedModelSelection",
+    "cliSupportsModelSelection",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
+    "getActiveConversationTabExecutionLock",
+    "isActiveConversationTabExecutionLocked",
+    "syncLockedConversationTabModelState",
     "syncModelSelectorByInteractiveMode",
   ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))

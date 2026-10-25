@@ -76,6 +76,37 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         };
       }
 
+      function getDshReasoningOptionsForModel(model) {
+        const optionsByModel = state.dshReasoningOptionsByModel;
+        const options = optionsByModel && typeof optionsByModel === "object" && model
+          ? optionsByModel[model]
+          : null;
+        return Array.isArray(options)
+          ? options.filter((option) => typeof option === "string" && ["low", "medium", "high", "xhigh", "max"].includes(option))
+          : [];
+      }
+
+      function getLoopRoleThinkingOptionsForCli(cli, role) {
+        if (cli === "dsh") {
+          const model = typeof getSelectedLoopRoleModelForCli === "function"
+            ? getSelectedLoopRoleModelForCli(cli, role)
+            : "";
+          return getDshReasoningOptionsForModel(model);
+        }
+        const options = [];
+        if (cli === "grok") {
+          options.push("off");
+        }
+        options.push("low", "medium", "high", "xhigh", "max", "ultra");
+        return options;
+      }
+
+      function normalizeLoopRoleThinkingSelection(cli, role, value) {
+        const normalized = typeof value === "string" ? value.trim() : "";
+        const options = getLoopRoleThinkingOptionsForCli(cli, role);
+        return options.includes(normalized) ? normalized : "";
+      }
+
       function normalizeOpenCodeThinkingPayload(payload) {
         const normalized = {
           selectedVariant: null,
@@ -307,6 +338,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.dshReasoningOptions = panelCurrentCli === "dsh" && Array.isArray(modelState.dshReasoningOptions)
           ? modelState.dshReasoningOptions.filter((option) => typeof option === "string" && option.trim())
           : panelCurrentCli === "dsh" ? [] : state.dshReasoningOptions;
+        state.dshReasoningOptionsByModel = modelState.dshReasoningOptionsByModel
+          && typeof modelState.dshReasoningOptionsByModel === "object"
+          ? Object.fromEntries(Object.entries(modelState.dshReasoningOptionsByModel).map(([model, options]) => [
+            model,
+            Array.isArray(options)
+              ? options.filter((option) => typeof option === "string" && ["low", "medium", "high", "xhigh", "max"].includes(option))
+              : [],
+          ]))
+          : state.dshReasoningOptionsByModel || {};
         const incomingSubtaskCli = modelState.selectedLoopSubtaskCliByConfigId && typeof modelState.selectedLoopSubtaskCliByConfigId === "object"
           ? { ...modelState.selectedLoopSubtaskCliByConfigId }
           : {};
@@ -667,9 +707,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function getVisibleLoopRoleThinkingModeForCli(cli, role) {
-        return getSelectedLoopRoleThinkingModeForCli(cli, role)
-          || normalizeThinkingModeSelection(state.thinkingMode)
-          || "medium";
+        const selected = getSelectedLoopRoleThinkingModeForCli(cli, role);
+        if (cli === "dsh") {
+          const options = getLoopRoleThinkingOptionsForCli(cli, role);
+          return options.includes(selected)
+            ? selected
+            : options.includes(state.thinkingMode) ? state.thinkingMode : (options[0] || "");
+        }
+        return selected || normalizeThinkingModeSelection(state.thinkingMode) || "medium";
       }
 
       function appendCodexThinkingOptions(selectElement) {
@@ -686,14 +731,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         selectElement.innerHTML = "";
-        if (state.currentCli === "grok") {
-          appendThinkingOption(selectElement, "off", "off");
-        }
-        appendCodexThinkingOptions(selectElement);
+        const options = getLoopRoleThinkingOptionsForCli(state.currentCli, role);
+        options.forEach((option) => appendThinkingOption(selectElement, option, option));
+        selectElement.disabled = options.length === 0;
         selectElement.value = getVisibleLoopRoleThinkingModeForCli(state.currentCli, role);
         selectElement.title = role === "subtask"
-          ? t(state.currentCli === "grok" ? "grokLoopSubtaskThinkingModeAria" : "codexLoopSubtaskThinkingModeAria")
-          : t(state.currentCli === "grok" ? "grokLoopMainThinkingModeAria" : "codexLoopMainThinkingModeAria");
+          ? t(state.currentCli === "grok" ? "grokLoopSubtaskThinkingModeAria" : state.currentCli === "dsh" ? "dshLoopSubtaskThinkingModeAria" : "codexLoopSubtaskThinkingModeAria")
+          : t(state.currentCli === "grok" ? "grokLoopMainThinkingModeAria" : state.currentCli === "dsh" ? "dshLoopMainThinkingModeAria" : "codexLoopMainThinkingModeAria");
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
         }
@@ -733,7 +777,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
               typeof option === "string"
               && option.trim()
               && option !== "off"
-              && ["low", "high", "xhigh", "max"].includes(option),
+              && ["low", "medium", "high", "xhigh", "max"].includes(option),
             )
             : [];
           elements.thinkingMode.innerHTML = "";

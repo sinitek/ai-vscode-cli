@@ -213,6 +213,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         macTaskShell: "zsh",
         thinkingMode: "medium",
         dshReasoningOptions: [],
+        dshReasoningOptionsByModel: {},
         openCodeThinking: {
           selectedVariant: null,
           configuredDefaultVariant: null,

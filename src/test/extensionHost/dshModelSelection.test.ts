@@ -34,6 +34,35 @@ function configured(modelIds: string[] = [DSH_VERIFIED_MODEL_ID]): DshConfigMode
   return parseDshConfigModels(JSON.stringify(profile));
 }
 
+function configuredWithRoleReasoning(): DshConfigModels {
+  const profile = JSON.parse(createDshExampleProfileText()) as Record<string, unknown> & {
+    models: Array<Record<string, unknown>>;
+    acpModel: string;
+  };
+  const mainModel = "vendor/main-model";
+  const subtaskModel = "vendor/subtask-model";
+  const compat = { thinkingFormat: "deepseek", supportsReasoningEffort: true };
+  profile.models = [
+    {
+      id: mainModel,
+      name: mainModel,
+      input: ["text"],
+      maxTokens: 256,
+      reasoningEfforts: { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
+      compat,
+    },
+    {
+      id: subtaskModel,
+      name: subtaskModel,
+      input: ["text"],
+      maxTokens: 256,
+      reasoningEfforts: false,
+    },
+  ];
+  profile.acpModel = mainModel;
+  return parseDshConfigModels(JSON.stringify(profile));
+}
+
 test("DSH model selection is isolated by configId and ignores aliases", () => {
   const cache = new Map<string | null, DshConfigModels>();
   cache.set("profile-a", configured());
@@ -83,9 +112,44 @@ test("DSH model options preserve profile order and persist a non-default selecti
   assert.equal(strategies.dsh.getSelectedModel(selected, "profile-a"), secondModel);
 });
 
+test("DSH Loop role selections keep model-specific reasoning options", () => {
+  const config = configuredWithRoleReasoning();
+  const strategies = createCliModelSelectionStrategies({
+    getGrokConfigModels: () => undefined,
+    resolveDefaultGrokStoreKey: () => "grok:unused",
+    getDshConfigModels: () => config,
+  });
+  let store = ensureCliModelStore();
+  store = strategies.dsh.selectLoopModel(store, "main", "vendor/main-model", "profile-a");
+  store = strategies.dsh.selectLoopModel(store, "subtask", "vendor/subtask-model", "profile-a");
+
+  assert.deepEqual(strategies.dsh.getModelOptions(store, "profile-a"), [
+    "vendor/main-model",
+    "vendor/subtask-model",
+  ]);
+  assert.equal(strategies.dsh.getSelectedLoopModel(store, "main", "profile-a"), "vendor/main-model");
+  assert.equal(strategies.dsh.getSelectedLoopModel(store, "subtask", "profile-a"), "vendor/subtask-model");
+  assert.deepEqual(config.reasoningOptionsByModelId, {
+    "vendor/main-model": ["low", "medium", "high", "xhigh", "max"],
+    "vendor/subtask-model": [],
+  });
+});
+
 test("DSH host publishes static reasoning options before the first prompt", async (context) => {
   const profileId = "dsh-reasoning-profile";
-  const profileText = createDshExampleProfileText();
+  const profile = JSON.parse(createDshExampleProfileText()) as {
+    models: Array<Record<string, unknown>>;
+    acpModel: string;
+  };
+  const noReasoningModel = "vendor/no-reasoning-model";
+  profile.models.push({
+    id: noReasoningModel,
+    name: noReasoningModel,
+    input: ["text"],
+    maxTokens: 256,
+    reasoningEfforts: false,
+  });
+  const profileText = JSON.stringify(profile);
   context.mock.method(configService, "getConfigById", async (
     platform: Parameters<typeof configService.getConfigById>[0],
     configId: Parameters<typeof configService.getConfigById>[1],
@@ -99,6 +163,11 @@ test("DSH host publishes static reasoning options before the first prompt", asyn
   let store = ensureCliModelStore();
   store.selectedByConfigId[profileId] = DSH_VERIFIED_MODEL_ID;
   store.thinkingByCliAndModel.dsh = { [DSH_VERIFIED_MODEL_ID]: "high" };
+  store.selectedLoopByConfigId[profileId] = { subtask: noReasoningModel };
+  store.loopThinkingByConfigId[profileId] = {
+    main: { [DSH_VERIFIED_MODEL_ID]: "high" },
+    subtask: { [noReasoningModel]: "xhigh" },
+  };
   const thinkingState: ReturnType<ModelSettingsHostDeps["getOpenCodeThinkingState"]> = {
     providerId: null,
     modelId: null,
@@ -156,8 +225,21 @@ test("DSH host publishes static reasoning options before the first prompt", asyn
 
   await host.refreshDshConfigModels({ configs: [], activeConfigId: profileId });
   const state = host.buildModelState({ dsh: profileId });
-  assert.deepEqual(state.optionsByCli.dsh, [DSH_VERIFIED_MODEL_ID]);
-  assert.deepEqual(state.dshReasoningOptions, ["low", "high", "xhigh", "max"]);
+  assert.deepEqual(state.optionsByCli.dsh, [DSH_VERIFIED_MODEL_ID, noReasoningModel]);
+  assert.deepEqual(state.dshReasoningOptions, ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(state.dshReasoningOptionsByModel, {
+    [DSH_VERIFIED_MODEL_ID]: ["low", "medium", "high", "xhigh", "max"],
+    [noReasoningModel]: [],
+  });
+  assert.deepEqual(state.loopOptionsByCli?.dsh, {
+    main: [DSH_VERIFIED_MODEL_ID, noReasoningModel],
+    subtask: [DSH_VERIFIED_MODEL_ID, noReasoningModel],
+  });
+  assert.deepEqual(state.selectedLoopByCli?.dsh, {
+    main: DSH_VERIFIED_MODEL_ID,
+    subtask: noReasoningModel,
+  });
+  assert.deepEqual(state.selectedLoopThinkingByCli?.dsh, { main: "high", subtask: null });
   assert.equal(state.thinkingModeByCli?.dsh, "high");
   assert.equal(host.getEffectiveThinkingMode("dsh", DSH_VERIFIED_MODEL_ID), "high");
 });

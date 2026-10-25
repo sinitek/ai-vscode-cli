@@ -152,6 +152,9 @@ function buildCodexModelHarness() {
     "appendThinkingOption",
     "normalizeThinkingModeSelection",
     "normalizeLoopRoleThinkingPayload",
+    "getDshReasoningOptionsForModel",
+    "getLoopRoleThinkingOptionsForCli",
+    "normalizeLoopRoleThinkingSelection",
     "getSelectedLoopRoleThinkingModeForCli",
     "getVisibleLoopRoleThinkingModeForCli",
     "appendCodexThinkingOptions",
@@ -163,38 +166,53 @@ function buildCodexModelHarness() {
     + "\n"
     + [
       "getCurrentModelConfigId",
+      "getActiveConversationTabExecutionLock",
+      "isActiveConversationTabExecutionLocked",
+      "syncLockedConversationTabModelState",
       "getModelOptionLabel",
       "cliSupportsLoopRoleModelSelection",
       "getLoopRoleModelsForCli",
       "getSelectedLoopRoleModelForCli",
+      "getActiveConfigIdForStateCli",
+      "getLoopSubtaskRoute",
+      "normalizeSubtaskThinkingValue",
+      "readLoopSubtaskModelSelection",
+      "readLoopSubtaskThinkingSelection",
+      "handleLoopSubtaskModelChange",
+      "handleLoopSubtaskThinkingChange",
       "updateCodexLoopRoleModelSelect",
       "updateCodexLoopModelSelectOptions",
       "handleCodexLoopRoleModelChange",
       "handleCodexLoopRoleThinkingChange",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
-  const state = {
+  const state: Record<string, any> = {
     currentCli: "codex",
     selectedConfigId: "cfg-1",
     configState: { activeConfigId: "cfg-1" },
-    modelsByCli: { codex: [], claude: [], opencode: [] },
-    managedModelsByCli: { codex: [], claude: [], opencode: [] },
-    selectedModelsByCli: { codex: "", claude: "", opencode: "" },
+    modelsByCli: { codex: [], claude: [], opencode: [], dsh: [] },
+    managedModelsByCli: { codex: [], claude: [], opencode: [], dsh: [] },
+    selectedModelsByCli: { codex: "", claude: "", opencode: "", dsh: "" },
     selectedModel: "",
     loopModelsByCli: {
       codex: { main: [], subtask: [] },
       claude: { main: [], subtask: [] },
       opencode: { main: [], subtask: [] },
+      dsh: { main: [], subtask: [] },
     },
     selectedLoopModelsByCli: {
       codex: { main: "", subtask: "" },
       claude: { main: "", subtask: "" },
       opencode: { main: "", subtask: "" },
+      dsh: { main: "", subtask: "" },
     },
     selectedLoopThinkingByCli: {
       codex: { main: "", subtask: "" },
       claude: { main: "", subtask: "" },
       opencode: { main: "", subtask: "" },
+      dsh: { main: "", subtask: "" },
     },
+    dshReasoningOptions: [],
+    dshReasoningOptionsByModel: {},
   };
   const elements = {
     codexLoopMainModelSelect: createSelect(),
@@ -217,12 +235,12 @@ function buildCodexModelHarness() {
     "CLI_NAMES",
     "t",
     "vscode",
-    `${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, updateCodexLoopThinkingSelectOptions, handleCodexLoopRoleModelChange, handleCodexLoopRoleThinkingChange };`,
+    `${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, updateCodexLoopThinkingSelectOptions, handleCodexLoopRoleModelChange, handleCodexLoopRoleThinkingChange, handleLoopSubtaskModelChange, handleLoopSubtaskThinkingChange };`,
   )(
     state,
     elements,
     document,
-    ["codex", "claude", "opencode"],
+    ["codex", "claude", "opencode", "grok", "dsh"],
     (key: keyof typeof strings): string => strings[key],
     { postMessage: (message: unknown) => postedMessages.push(message) },
   ) as {
@@ -231,21 +249,27 @@ function buildCodexModelHarness() {
     updateCodexLoopThinkingSelectOptions(): void;
     handleCodexLoopRoleModelChange(role: "main" | "subtask", rawValue: string): void;
     handleCodexLoopRoleThinkingChange(role: "main" | "subtask", rawValue: string): void;
+    handleLoopSubtaskModelChange(rawValue: string): void;
+    handleLoopSubtaskThinkingChange(rawValue: string): void;
   };
   return { state, elements, postedMessages, ...helpers };
 }
 
 function buildVisibilityHarness() {
   const functionSource = [
+    "cliSupportsModelSelection",
     "cliSupportsManagedModelSelection",
     "canOpenModelManagerDialog",
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
+    "getActiveConversationTabExecutionLock",
+    "isActiveConversationTabExecutionLocked",
+    "syncLockedConversationTabModelState",
     "syncModelSelectorByInteractiveMode",
     "handleCurrentCliSelectionChange",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
-  const state = { currentCli: "codex", interactiveMode: "coding" };
+  const state: Record<string, any> = { currentCli: "codex", interactiveMode: "coding" };
   const elements = {
     codexLoopModelGroup: createVisibilityControl(),
     codexLoopMainModelSelect: createVisibilityControl(),
@@ -269,7 +293,7 @@ function buildVisibilityHarness() {
   )(
     state,
     elements,
-    (value: string) => (value === "loop" || value === "graph" ? value : "coding"),
+    (value: string) => (value === "loop" || value === "loop_plus" || value === "graph" ? value : "coding"),
     () => "main-sub-multi-agent",
     () => { hideDialogCount += 1; },
   ) as {
@@ -353,6 +377,19 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
+
+  harness.state.currentCli = "dsh";
+  for (const mode of ["loop", "loop_plus", "graph"]) {
+    harness.state.interactiveMode = mode;
+    harness.sync("dsh");
+    assert.equal(harness.elements.codexLoopModelGroup.style.display, "", `${mode} shows DSH role selectors`);
+    assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
+    assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+    assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
+    assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
+    assert.equal(harness.elements.modelSelect.style.display, "none");
+    assert.equal(harness.elements.loopExecutionModeSelect.style.display, mode === "loop" ? "" : "none");
+  }
 });
 
 test("keeps model manager open during state sync and closes on explicit unsupported CLI selection", () => {
@@ -374,6 +411,28 @@ test("keeps model manager open during state sync and closes on explicit unsuppor
   assert.equal(harness.hideDialogCount, 2);
   harness.handleCurrentCliSelectionChange("codex");
   assert.equal(harness.hideDialogCount, 2);
+});
+
+test("disables the active Tab CLI and primary model selectors after execution", () => {
+  const harness = buildVisibilityHarness();
+  harness.state.conversationTabs = {
+    activeTabId: "tab-1",
+    tabs: [{ id: "tab-1", executionLocked: true, lockedPrimaryModel: "gpt-5" }],
+  };
+
+  harness.state.currentCli = "codex";
+  harness.state.interactiveMode = "coding";
+  harness.sync("codex");
+  assert.equal(harness.elements.modelSelect.disabled, true);
+
+  harness.state.interactiveMode = "loop";
+  harness.sync("codex");
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, true);
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
+
+  harness.state.currentCli = "opencode";
+  harness.sync("opencode");
+  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, true);
 });
 
 test("replays Codex role model options and selections from panel state", () => {
@@ -466,6 +525,89 @@ test("posts Codex role model and thinking changes with role, cli, and config id"
       type: "updateSetting",
       key: "selectedLoopThinkingMode.codex.subtask",
       value: "ultra",
+    },
+  ]);
+});
+
+test("renders and posts DSH Loop and Graph role model and thinking selections", () => {
+  const harness = buildCodexModelHarness();
+  harness.state.currentCli = "dsh";
+  harness.state.modelsByCli.dsh = ["main-model", "subtask-model"];
+  harness.state.loopModelsByCli.dsh = {
+    main: ["main-model", "main-fallback"],
+    subtask: ["subtask-model", "subtask-fallback"],
+  };
+  harness.state.selectedLoopModelsByCli.dsh = {
+    main: "main-model",
+    subtask: "subtask-model",
+  };
+  harness.state.dshReasoningOptionsByModel = {
+    "main-model": ["low", "high"],
+    "main-fallback": ["low", "max"],
+    "subtask-model": ["low", "xhigh"],
+    "subtask-fallback": ["max"],
+  };
+  harness.state.selectedLoopThinkingByCli.dsh = { main: "high", subtask: "xhigh" };
+
+  harness.updateCodexLoopModelSelectOptions();
+  assert.deepEqual(optionPairs(harness.elements.codexLoopMainModelSelect), [
+    ["", "默认"],
+    ["main-model", "main-model"],
+    ["main-fallback", "main-fallback"],
+  ]);
+  assert.deepEqual(optionPairs(harness.elements.codexLoopSubtaskModelSelect), [
+    ["", "默认"],
+    ["subtask-model", "subtask-model"],
+    ["subtask-fallback", "subtask-fallback"],
+  ]);
+  assert.equal(harness.elements.codexLoopMainModelSelect.value, "main-model");
+  assert.equal(harness.elements.codexLoopSubtaskModelSelect.value, "subtask-model");
+  assert.deepEqual(optionPairs(harness.elements.codexLoopMainThinkingMode), [
+    ["low", "low"],
+    ["high", "high"],
+  ]);
+  assert.deepEqual(optionPairs(harness.elements.codexLoopSubtaskThinkingMode), [
+    ["low", "low"],
+    ["xhigh", "xhigh"],
+  ]);
+  assert.equal(harness.elements.codexLoopMainThinkingMode.value, "high");
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.value, "xhigh");
+  assert.equal(harness.elements.codexLoopMainThinkingMode.title, WEBVIEW_STRINGS.dshLoopMainThinkingModeAria);
+  assert.equal(harness.elements.codexLoopSubtaskThinkingMode.title, WEBVIEW_STRINGS.dshLoopSubtaskThinkingModeAria);
+
+  harness.handleCodexLoopRoleModelChange("main", "main-fallback");
+  harness.handleCodexLoopRoleThinkingChange("main", "max");
+  harness.handleLoopSubtaskModelChange("subtask-fallback");
+  harness.handleLoopSubtaskThinkingChange("max");
+
+  assert.equal(harness.state.selectedLoopModelsByCli.dsh.main, "main-fallback");
+  assert.equal(harness.state.selectedLoopModelsByCli.dsh.subtask, "subtask-fallback");
+  assert.equal(harness.state.selectedLoopThinkingByCli.dsh.main, "max");
+  assert.equal(harness.state.selectedLoopThinkingByCli.dsh.subtask, "max");
+  assert.deepEqual(harness.postedMessages, [
+    {
+      type: "selectCliLoopModel",
+      cli: "dsh",
+      role: "main",
+      model: "main-fallback",
+      configId: "cfg-1",
+    },
+    {
+      type: "updateSetting",
+      key: "selectedLoopThinkingMode.dsh.main",
+      value: "max",
+    },
+    {
+      type: "selectCliLoopModel",
+      cli: "dsh",
+      role: "subtask",
+      model: "subtask-fallback",
+      configId: "cfg-1",
+    },
+    {
+      type: "updateSetting",
+      key: "selectedLoopThinkingMode.dsh.subtask",
+      value: "max",
     },
   ]);
 });

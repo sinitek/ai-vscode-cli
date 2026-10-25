@@ -37,7 +37,53 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         return state.selectedConfigId || state.configState.activeConfigId || null;
       }
 
+      function getActiveConversationTabExecutionLock() {
+        const tabsState = state.conversationTabs;
+        const activeTabId = tabsState && typeof tabsState.activeTabId === "string"
+          ? tabsState.activeTabId
+          : "";
+        const tabs = tabsState && Array.isArray(tabsState.tabs) ? tabsState.tabs : [];
+        const activeTab = tabs.find((tab) => tab && tab.id === activeTabId) || null;
+        return activeTab && activeTab.executionLocked === true ? activeTab : null;
+      }
+
+      function isActiveConversationTabExecutionLocked() {
+        return Boolean(getActiveConversationTabExecutionLock());
+      }
+
+      function syncLockedConversationTabModelState() {
+        const lockedTab = getActiveConversationTabExecutionLock();
+        if (elements.currentCli) {
+          elements.currentCli.disabled = Boolean(lockedTab);
+        }
+        if (!lockedTab) {
+          return;
+        }
+        const lockedModel = typeof lockedTab.lockedPrimaryModel === "string"
+          ? lockedTab.lockedPrimaryModel
+          : "";
+        if (!state.selectedModelsByCli || typeof state.selectedModelsByCli !== "object") {
+          state.selectedModelsByCli = {};
+        }
+        state.selectedModelsByCli[state.currentCli] = lockedModel;
+        state.selectedModel = lockedModel;
+        if (state.selectedLoopModelsByCli && typeof state.selectedLoopModelsByCli === "object") {
+          const loopSelection = state.selectedLoopModelsByCli[state.currentCli] || { main: "", subtask: "" };
+          state.selectedLoopModelsByCli[state.currentCli] = {
+            main: lockedModel,
+            subtask: loopSelection.subtask || "",
+          };
+        }
+        if (state.openCodeModels && state.currentCli === "opencode") {
+          state.openCodeModels.selectedMainRef = lockedModel || null;
+          state.openCodeModels.selectedPrimaryRef = state.openCodeModels.selectedMainRef;
+        }
+      }
+
       function handleModelSelectChange(value) {
+        if (isActiveConversationTabExecutionLocked()) {
+          return;
+        }
         if (value === MODEL_MANAGE_OPTION_VALUE) {
           showAddModelDialog();
           return;
@@ -240,7 +286,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "grok";
+        return cli === "codex" || cli === "grok" || cli === "dsh";
       }
 
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
@@ -306,8 +352,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
 
         selectElement.value = getSelectedLoopRoleModelForCli(state.currentCli, role);
         selectElement.title = role === "subtask"
-          ? t(state.currentCli === "grok" ? "grokLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria")
-          : t(state.currentCli === "grok" ? "grokLoopMainModelSelectAria" : "codexLoopMainModelSelectAria");
+          ? t(state.currentCli === "grok" ? "grokLoopSubtaskModelSelectAria" : state.currentCli === "dsh" ? "dshLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria")
+          : t(state.currentCli === "grok" ? "grokLoopMainModelSelectAria" : state.currentCli === "dsh" ? "dshLoopMainModelSelectAria" : "codexLoopMainModelSelectAria");
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
         }
@@ -555,7 +601,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           const selected = models && (models.selectedSubtaskRef || models.selectedSmallRef) || "";
           selectElement.value = selected || "";
           selectElement.title = t("openCodeSmallModelSelectAria");
-        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok")) {
+        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh")) {
           updateCodexLoopRoleModelSelect(selectElement, "subtask");
           return;
         } else {
@@ -574,7 +620,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
             selectElement.appendChild(option);
           });
           selectElement.value = getSelectedLoopRoleModelForCli(cli, "subtask");
-          selectElement.title = t(cli === "grok" ? "grokLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria");
+          selectElement.title = t(cli === "grok" ? "grokLoopSubtaskModelSelectAria" : cli === "dsh" ? "dshLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria");
         }
         if (typeof selectElement.setAttribute === "function" && selectElement.title) {
           selectElement.setAttribute("aria-label", selectElement.title);
@@ -586,6 +632,24 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           return;
         }
         selectElement.innerHTML = "";
+        if (route.subtaskCli === "dsh") {
+          const model = readLoopSubtaskModelSelection(route);
+          const options = typeof getDshReasoningOptionsForModel === "function"
+            ? getDshReasoningOptionsForModel(model)
+            : [];
+          options.forEach((option) => appendThinkingOption(selectElement, option, option));
+          const requested = readLoopSubtaskThinkingSelection(route);
+          const fallback = state.thinkingModeByCli && state.thinkingModeByCli.dsh;
+          selectElement.value = options.includes(requested)
+            ? requested
+            : options.includes(fallback) ? fallback : (options[0] || "");
+          selectElement.disabled = options.length === 0;
+          selectElement.title = t("dshLoopSubtaskThinkingModeAria");
+          if (typeof selectElement.setAttribute === "function") {
+            selectElement.setAttribute("aria-label", selectElement.title);
+          }
+          return;
+        }
         if (route.subtaskCli === "grok" || route.subtaskCli === "claude") {
           appendThinkingOption(selectElement, "off", "off");
         }
@@ -612,7 +676,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const showModel = active && route.subtaskCli !== "claude";
         const showThinking = active;
         const rows = [
-          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: active && (state.currentCli === "codex" || state.currentCli === "grok") },
+          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: active && (state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "dsh") },
           { cli: elements.openCodeLoopSubtaskCliSelect, model: elements.openCodeSmallModelSelect, thinking: elements.openCodeSmallThinkingMode, enabled: active && state.currentCli === "opencode" },
           { cli: elements.claudeLoopSubtaskCliSelect, model: elements.claudeLoopSubtaskModelSelect, thinking: elements.claudeLoopSubtaskThinkingMode, enabled: active && state.currentCli === "claude" },
         ];
@@ -649,6 +713,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
+        if (typeof syncLockedConversationTabModelState === "function") {
+          syncLockedConversationTabModelState();
+        }
+        const primaryModelLocked = isActiveConversationTabExecutionLocked();
         const supportsModelSelection = cliSupportsModelSelection(cli);
         const isOpenCode = cli === "opencode";
         const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
@@ -664,7 +732,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.codexLoopModelGroup.style.display = showCodexLoopModelGroup ? "" : "none";
         }
         if (elements.codexLoopMainModelSelect) {
-          elements.codexLoopMainModelSelect.disabled = !showCodexLoopModelGroup;
+          elements.codexLoopMainModelSelect.disabled = !showCodexLoopModelGroup || primaryModelLocked;
         }
         if (elements.codexLoopSubtaskModelSelect) {
           elements.codexLoopSubtaskModelSelect.disabled = !showCodexLoopModelGroup;
@@ -684,7 +752,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.claudeLoopSubtaskGroup.style.display = showClaudeSubtaskRoute ? "" : "none";
         }
         if (elements.openCodePrimaryModelSelect) {
-          elements.openCodePrimaryModelSelect.disabled = !isOpenCode;
+          elements.openCodePrimaryModelSelect.disabled = !isOpenCode || primaryModelLocked;
         }
         if (elements.openCodeSmallModelSelect) {
           elements.openCodeSmallModelSelect.disabled = !showOpenCodeSubtaskModel;
@@ -695,7 +763,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
-          elements.modelSelect.disabled = !showSingleModelSelect;
+          elements.modelSelect.disabled = !showSingleModelSelect || primaryModelLocked;
         }
         if (elements.loopExecutionModeSelect) {
           elements.loopExecutionModeSelect.style.display = showLoopExecutionModeSelect ? "" : "none";
@@ -802,6 +870,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
 
       function normalizeSubtaskThinkingValue(cli, rawValue) {
         const normalized = typeof rawValue === "string" ? rawValue.trim() : "";
+        if (cli === "dsh") {
+          return ["low", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
+        }
         if (normalized === "off") {
           return cli === "grok" || cli === "claude" ? "off" : "low";
         }
@@ -952,6 +1023,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           return;
         }
         const value = normalizeSubtaskThinkingValue(route.subtaskCli, rawValue) || "medium";
+        if (route.subtaskCli === "dsh" && !getDshReasoningOptionsForModel(readLoopSubtaskModelSelection(route)).includes(value)) {
+          return;
+        }
         if (!state.selectedLoopThinkingByCli || typeof state.selectedLoopThinkingByCli !== "object") {
           state.selectedLoopThinkingByCli = {};
         }
@@ -968,6 +1042,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function handleCodexLoopRoleModelChange(role, rawValue) {
+        if (role === "main" && isActiveConversationTabExecutionLocked()) {
+          return;
+        }
         const value = normalizeModelSelection(rawValue);
         if (!state.selectedLoopModelsByCli || typeof state.selectedLoopModelsByCli !== "object") {
           state.selectedLoopModelsByCli = {};
@@ -1031,11 +1108,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function handleCodexLoopRoleThinkingChange(role, rawValue) {
-        const value = normalizeThinkingModeSelection(rawValue) || "medium";
+        const cli = state.currentCli;
+        const value = cli === "dsh"
+          ? normalizeLoopRoleThinkingSelection(cli, role, rawValue)
+          : normalizeThinkingModeSelection(rawValue) || "medium";
+        if (!value) {
+          return;
+        }
         if (!state.selectedLoopThinkingByCli || typeof state.selectedLoopThinkingByCli !== "object") {
           state.selectedLoopThinkingByCli = {};
         }
-        const cli = state.currentCli;
         const existingThinking = state.selectedLoopThinkingByCli[cli] || { main: "", subtask: "" };
         state.selectedLoopThinkingByCli[cli] = {
           main: role === "main" ? value : normalizeThinkingModeSelection(existingThinking.main),

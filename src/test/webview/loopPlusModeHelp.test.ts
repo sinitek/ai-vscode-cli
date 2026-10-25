@@ -90,6 +90,7 @@ test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
     assert.equal(html.split("npm i -g @openai/codex").length - 1, 1);
     assert.match(html, /npm install -g @anthropic-ai\/claude-code/);
     assert.match(html, /npm install -g opencode-ai/);
+    assert.match(html, /DSH：<code>npm install -g @deepseek-ai\/dsh<\/code>/);
     assert.match(html, /Grok：macOS \/ Linux <code>curl -fsSL https:\/\/x\.ai\/cli\/install\.sh \| bash<\/code>/);
     assert.match(html, /Windows PowerShell <code>irm https:\/\/x\.ai\/cli\/install\.ps1 \| iex<\/code>/);
     assert.match(html, /winget install --id Microsoft\.PowerShell --source winget/);
