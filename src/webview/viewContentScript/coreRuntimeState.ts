@@ -23,6 +23,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           activeRunActivity: "",
           tokensInContextWindow: null,
           modelContextWindow: null,
+          contextWindowSource: null,
           runStreamRecordCounter: 0,
           runStreamActivityAt: 0,
           runStreamRecords: [],
@@ -317,6 +318,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         runtimeState.activeRunActivity = "";
         runtimeState.tokensInContextWindow = null;
         runtimeState.modelContextWindow = null;
+        runtimeState.contextWindowSource = null;
         runtimeState.runStreamRecordCounter = 0;
         runtimeState.runStreamActivityAt = 0;
         runtimeState.runStreamRecords.length = 0;
@@ -595,7 +597,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           }
           return normalizeThinkingValue(payload.loopSubtaskThinkingMode);
         })();
-        const loopSubtaskCliNames = ["codex", "claude", "opencode", "grok"];
+        const loopSubtaskCliNames = ["codex", "claude", "opencode", "grok", "dsh"];
         const loopSubtaskCli = typeof payload.loopSubtaskCli === "string" && loopSubtaskCliNames.indexOf(payload.loopSubtaskCli) >= 0
           ? payload.loopSubtaskCli
           : "";

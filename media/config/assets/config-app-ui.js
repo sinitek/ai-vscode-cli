@@ -7,6 +7,7 @@ const DEFAULT_RUN_COMMANDS = {
     codex: "codex --dangerously-bypass-approvals-and-sandbox",
     opencode: "opencode --auto",
     grok: "grok --always-approve",
+    dsh: "dsh",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
@@ -14,7 +15,553 @@ const DEFAULT_INSTALL_COMMANDS = {
     codex: "npm i -g @openai/codex",
     opencode: "npm install -g opencode-ai",
     grok: "curl -fsSL https://x.ai/cli/install.sh | bash",
+    dsh: "npm install -g @deepseek-ai/dsh",
   };
+
+const DSH_UI_PROVIDER = "sinitek-custom";
+const DSH_UI_API = "openai-completions";
+const DSH_UI_API_KEY_ENV = "SINITEK_DSH_API_KEY";
+const DSH_UI_MODEL_ID = "subcoco/deepseek-v4.1-flash";
+const DSH_UI_MODEL_ALIAS = "deepseek-v4.1-flash";
+const DSH_UI_EXAMPLE_BASE_URL = "https://gateway.example/v1";
+const DSH_UI_DISPLAY_NAME = "Sinitek custom";
+const DSH_UI_SUPPORTS_MODEL_LIST = true;
+const DSH_UI_SECRET_ASSIGNMENT = /(?:^|[\s,{])(?:SINITEK_DSH_API_KEY|DEEPSEEK_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*\S+/i;
+const DSH_UI_SECRET_TOKEN = /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/;
+const DSH_UI_ALIAS_ERROR = "DSH response alias deepseek-v4.1-flash cannot replace the configured model id.";
+const DSH_UI_SECRET_ERROR = "DSH profile contains a credential value. Reference SINITEK_DSH_API_KEY only.";
+const DSH_UI_API_KEY_ERROR = "DSH apiKey must be a single-line string.";
+const DSH_UI_KEY_ERROR = "DSH credentials must reference SINITEK_DSH_API_KEY.";
+const DSH_UI_MODEL_LIST_ERROR = "DSH models must list at least one complete model id.";
+const DSH_UI_MODEL_ID_REQUIRED_ERROR = "模型 id 为必填项，请在右侧填写后再保存。";
+const DSH_UI_ACP_ERROR = "DSH acpModel must be one of the configured model ids.";
+const DSH_UI_PROFILE_KEYS = [
+  "schemaVersion",
+  "provider",
+  "api",
+  "apiKey",
+  "apiKeyEnv",
+  "baseURL",
+  "displayName",
+  "timeoutMs",
+  "streamIdleTimeoutMs",
+  "retryPolicy",
+  "models",
+  "acpModel",
+];
+const DSH_UI_MODEL_KEYS = ["id", "name", "input", "maxTokens"];
+const DSH_UI_UNVERIFIED = [
+  "headers",
+  "thinkingBudgets",
+  "cacheRetention",
+  "transport",
+  "defaultContextWindow",
+  "defaultInput",
+  "contextWindow",
+  "reasoningEfforts",
+  "compat",
+  "modelOverrides",
+  "apiKey",
+  "api_key",
+  "token",
+  "password",
+];
+const DSH_UI_BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+const configPlatformLabel = (platform) =>
+  platform === "claude"
+    ? "Claude"
+    : platform === "codex"
+      ? "Codex"
+      : platform === "opencode"
+        ? "OpenCode"
+        : platform === "grok"
+          ? "Grok"
+          : platform === "dsh"
+            ? "DSH"
+            : "OpenCode";
+
+function dshUiContainsSecret(value) {
+  return DSH_UI_SECRET_ASSIGNMENT.test(String(value || "")) || DSH_UI_SECRET_TOKEN.test(String(value || ""));
+}
+
+function dshUiContainsProfileSecret(value) {
+  const source = String(value || "");
+  try {
+    const profile = JSON.parse(source);
+    if (profile && typeof profile === "object" && !Array.isArray(profile)) {
+      const publicFields = { ...profile };
+      delete publicFields.apiKey;
+      return dshUiContainsSecret(JSON.stringify(publicFields));
+    }
+  } catch {}
+  return dshUiContainsSecret(source);
+}
+
+function dshUiEmptyFields() {
+  return {
+    provider: "",
+    baseURL: "",
+    modelId: "",
+    apiKey: "",
+    apiKeyEnv: DSH_UI_API_KEY_ENV,
+    models: [],
+    acpModel: "",
+  };
+}
+
+function dshUiDocumentFromParts(parts) {
+  return {
+    schemaVersion: 1,
+    provider: DSH_UI_PROVIDER,
+    api: DSH_UI_API,
+    ...(parts.apiKey ? { apiKey: parts.apiKey } : {}),
+    apiKeyEnv: DSH_UI_API_KEY_ENV,
+    baseURL: parts.baseURL,
+    displayName: DSH_UI_DISPLAY_NAME,
+    timeoutMs: 45000,
+    streamIdleTimeoutMs: 60000,
+    retryPolicy: {
+      mode: "normal",
+      maxRetries: 1,
+      backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+    },
+    models: parts.models.map((id) => ({
+      id,
+      name: id,
+      input: ["text"],
+      maxTokens: 256,
+    })),
+    acpModel: parts.acpModel,
+  };
+}
+
+function dshUiSerializeRaw(document) {
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+function createDshUiProfileText(baseURL) {
+  const candidate = typeof baseURL === "string" && baseURL.trim() ? baseURL.trim() : DSH_UI_EXAMPLE_BASE_URL;
+  const resolved = dshUiContainsSecret(candidate) ? DSH_UI_EXAMPLE_BASE_URL : candidate;
+  return dshUiSerializeRaw(dshUiDocumentFromParts({
+    baseURL: resolved,
+    models: [DSH_UI_MODEL_ID],
+    acpModel: DSH_UI_MODEL_ID,
+  }));
+}
+
+function dshUiFailed(error, fields) {
+  return { ok: false, error, fields: fields || dshUiEmptyFields(), document: null, content: "" };
+}
+
+function dshUiModelIdError(value, seen) {
+  if (typeof value !== "string" || value.length === 0) return DSH_UI_MODEL_ID_REQUIRED_ERROR;
+  if (value !== value.trim() || /\s/.test(value) || value.includes("\\")) {
+    return "DSH model id must be a non-empty complete id without path separators.";
+  }
+  if (value === DSH_UI_MODEL_ALIAS) return DSH_UI_ALIAS_ERROR;
+  if (dshUiContainsSecret(value)) return DSH_UI_SECRET_ERROR;
+  if (seen && seen.has(value)) return "DSH model ids must stay unique in configuration order.";
+  return "";
+}
+
+function dshUiLoopbackHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "0:0:0:0:0:0:0:1") return true;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
+  if (mapped) return dshUiIpv4Loopback(mapped[1]);
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (mappedHex) {
+    const high = Number.parseInt(mappedHex[1], 16);
+    const low = Number.parseInt(mappedHex[2], 16);
+    return ((high >> 8) & 255) === 127;
+  }
+  return dshUiIpv4Loopback(host);
+}
+
+function dshUiIpv4Loopback(host) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return false;
+  const octets = match.slice(1).map((part) => Number(part));
+  if (octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return octets[0] === 127;
+}
+
+function dshUiCloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function dshUiBlockedKey(key, path = "") {
+  if (/^models\[\d+\]$/.test(path) && (key === "reasoningEfforts" || key === "compat")) return false;
+  return DSH_UI_BLOCKED_KEYS.has(key) || DSH_UI_UNVERIFIED.includes(key);
+}
+
+function dshUiFindUnverified(value, path) {
+  if (!value || typeof value !== "object") return "";
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const found = dshUiFindUnverified(value[index], `${path || ""}[${index}]`);
+      if (found) return found;
+    }
+    return "";
+  }
+  for (const [key, child] of Object.entries(value)) {
+    const fieldPath = path ? `${path}.${key}` : key;
+    if (dshUiBlockedKey(key, path)) return fieldPath;
+    const found = dshUiFindUnverified(child, fieldPath);
+    if (found) return found;
+  }
+  return "";
+}
+
+function dshUiHasModelsAndOverrides(value) {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((item) => dshUiHasModelsAndOverrides(item));
+  if (Object.prototype.hasOwnProperty.call(value, "models") && Object.prototype.hasOwnProperty.call(value, "modelOverrides")) {
+    return true;
+  }
+  return Object.values(value).some((child) => dshUiHasModelsAndOverrides(child));
+}
+
+function dshUiPreserved(record, known, path) {
+  const fields = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (known.includes(key)) continue;
+    const fieldPath = path ? `${path}.${key}` : key;
+    if (dshUiBlockedKey(key, path)) return { ok: false, error: `DSH profile field ${fieldPath} is not part of the verified contract.` };
+    let cloned;
+    try {
+      cloned = dshUiCloneJson(value);
+    } catch {
+      return { ok: false, error: `DSH profile field ${fieldPath} is not part of the verified contract.` };
+    }
+    const blocked = dshUiFindUnverified(cloned, fieldPath);
+    if (blocked) return { ok: false, error: `DSH profile field ${blocked} is not part of the verified contract.` };
+    fields[key] = cloned;
+  }
+  return { ok: true, fields };
+}
+
+function dshUiRetryError(policy) {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    return "DSH retryPolicy must stay mode=normal with the verified backoff.";
+  }
+  const extra = Object.keys(policy).find((key) => !["mode", "maxRetries", "backoff"].includes(key));
+  if (extra) return `DSH profile field retryPolicy.${extra} is not part of the verified contract.`;
+  if (policy.mode !== "normal" || policy.maxRetries !== 1) {
+    return "DSH retryPolicy must stay mode=normal with the verified backoff.";
+  }
+  const backoff = policy.backoff;
+  if (!backoff || typeof backoff !== "object" || Array.isArray(backoff)) {
+    return "DSH retryPolicy must stay mode=normal with the verified backoff.";
+  }
+  const backoffExtra = Object.keys(backoff).find((key) => !["initialDelayMs", "maxDelayMs"].includes(key));
+  if (backoffExtra) return `DSH profile field retryPolicy.backoff.${backoffExtra} is not part of the verified contract.`;
+  if (backoff.initialDelayMs !== 200 || backoff.maxDelayMs !== 1000) {
+    return "DSH retryPolicy must stay mode=normal with the verified backoff.";
+  }
+  return "";
+}
+
+function dshUiCanonicalBaseUrl(value) {
+  if (typeof value !== "string" || value.length === 0 || /\s/.test(value) || value.includes("\\") || dshUiContainsSecret(value)) {
+    return "";
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return "";
+  }
+  if (url.username || url.password || url.search || url.hash) return "";
+  const loopbackHttp = url.protocol === "http:" && dshUiLoopbackHost(url.hostname);
+  if (url.protocol !== "https:" && !loopbackHttp) return "";
+  return `${url.protocol}//${url.host}${url.pathname}`;
+}
+
+function readDshUiDocument(content) {
+  const fields = dshUiEmptyFields();
+  const text = String(content || "");
+  if (!text.trim()) return dshUiFailed("DSH profile is empty.", fields);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return dshUiFailed("DSH profile must be the verified JSON document, not TOML or an arbitrary string.", fields);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return dshUiFailed("DSH profile must be an object.", fields);
+  }
+  if (parsed.apiKey !== undefined && (typeof parsed.apiKey !== "string" || /[\r\n\0]/.test(parsed.apiKey))) {
+    return dshUiFailed(DSH_UI_API_KEY_ERROR, fields);
+  }
+  const publicFields = { ...parsed };
+  delete publicFields.apiKey;
+  if (dshUiContainsSecret(JSON.stringify(publicFields))) {
+    return dshUiFailed(DSH_UI_SECRET_ERROR, fields);
+  }
+  const provider = parsed.provider === DSH_UI_PROVIDER ? parsed.provider : "";
+  const baseURL = dshUiCanonicalBaseUrl(parsed.baseURL);
+  const nextFields = {
+    ...fields,
+    provider,
+    baseURL,
+    apiKeyEnv: DSH_UI_API_KEY_ENV,
+  };
+  if (!provider) {
+    return dshUiFailed("DSH provider route must be sinitek-custom. Do not split the model id on '/'.", nextFields);
+  }
+  if (parsed.apiKeyEnv !== undefined && parsed.apiKeyEnv !== DSH_UI_API_KEY_ENV) {
+    return dshUiFailed(DSH_UI_KEY_ERROR, nextFields);
+  }
+  if (parsed.api !== DSH_UI_API) return dshUiFailed("DSH api must be openai-completions.", nextFields);
+  if (parsed.schemaVersion !== 1) return dshUiFailed("DSH profile schemaVersion must be 1.", nextFields);
+  if (parsed.displayName !== DSH_UI_DISPLAY_NAME) return dshUiFailed("DSH displayName must stay Sinitek custom.", nextFields);
+  if (parsed.timeoutMs !== 45000 || parsed.streamIdleTimeoutMs !== 60000) {
+    return dshUiFailed("DSH timeout fields must stay at the verified values.", nextFields);
+  }
+  const retryError = dshUiRetryError(parsed.retryPolicy);
+  if (retryError) return dshUiFailed(retryError, nextFields);
+  if (!Array.isArray(parsed.models) || parsed.models.length === 0) {
+    return dshUiFailed(DSH_UI_MODEL_LIST_ERROR, nextFields);
+  }
+  if (!DSH_UI_SUPPORTS_MODEL_LIST && parsed.models.length !== 1) {
+    return dshUiFailed("DSH models must list only the verified complete model id.", nextFields);
+  }
+  const ids = [];
+  const seen = new Set();
+  for (const entry of parsed.models) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return dshUiFailed("DSH model entry must be an object.", { ...nextFields, modelId: "" });
+    }
+    const idError = dshUiModelIdError(entry.id, seen);
+    if (idError) return dshUiFailed(idError, { ...nextFields, modelId: "" });
+    if (entry.name === DSH_UI_MODEL_ALIAS) return dshUiFailed(DSH_UI_ALIAS_ERROR, { ...nextFields, modelId: "" });
+    if (entry.name !== entry.id) return dshUiFailed("DSH model name must match the model id.", { ...nextFields, modelId: "" });
+    if (!Array.isArray(entry.input) || entry.input.length !== 1 || entry.input[0] !== "text") {
+      return dshUiFailed("DSH model input must be [text].", { ...nextFields, modelId: "" });
+    }
+    if (entry.maxTokens !== 256) {
+      return dshUiFailed("DSH model maxTokens must stay at the verified value 256.", { ...nextFields, modelId: "" });
+    }
+    seen.add(entry.id);
+    ids.push(entry.id);
+  }
+  if (parsed.acpModel === DSH_UI_MODEL_ALIAS) return dshUiFailed(DSH_UI_ALIAS_ERROR, { ...nextFields, modelId: "", models: ids });
+  if (typeof parsed.acpModel !== "string" || !ids.includes(parsed.acpModel)) {
+    return dshUiFailed(DSH_UI_ACP_ERROR, { ...nextFields, modelId: "", models: ids });
+  }
+  if (!baseURL) {
+    return dshUiFailed("DSH baseURL must be https, or http on a loopback host, without embedded credentials.", nextFields);
+  }
+  if (dshUiHasModelsAndOverrides(parsed)) {
+    return dshUiFailed("DSH providers.models and modelOverrides cannot be used together.", nextFields);
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed, "initialize")) {
+    return dshUiFailed("DSH initialize acceptance is not an executable model list.", nextFields);
+  }
+  const unverified = dshUiFindUnverified(publicFields, "");
+  if (unverified) return dshUiFailed(`DSH profile field ${unverified} is not part of the verified contract.`, nextFields);
+  const preserved = dshUiPreserved(parsed, DSH_UI_PROFILE_KEYS, "");
+  if (!preserved.ok) return dshUiFailed(preserved.error, nextFields);
+  const modelObjects = [];
+  for (let index = 0; index < parsed.models.length; index += 1) {
+    const entry = parsed.models[index];
+    const modelPreserved = dshUiPreserved(entry, DSH_UI_MODEL_KEYS, `models[${index}]`);
+    if (!modelPreserved.ok) return dshUiFailed(modelPreserved.error, nextFields);
+    modelObjects.push(Object.assign({
+      id: entry.id,
+      name: entry.id,
+      input: ["text"],
+      maxTokens: 256,
+    }, modelPreserved.fields));
+  }
+  const document = Object.assign(dshUiDocumentFromParts({
+    baseURL,
+    models: ids,
+    acpModel: parsed.acpModel,
+    apiKey: parsed.apiKey,
+  }), preserved.fields);
+  document.models = modelObjects;
+  return {
+    ok: true,
+    error: "",
+    fields: {
+      provider: DSH_UI_PROVIDER,
+      baseURL,
+      modelId: parsed.acpModel,
+      apiKeyEnv: DSH_UI_API_KEY_ENV,
+      models: ids,
+      acpModel: parsed.acpModel,
+    },
+    document,
+    content: dshUiSerializeRaw(document),
+  };
+}
+
+function dshUiHasDraftModel(document) {
+  return Boolean(document && Array.isArray(document.models) && document.models.some((model) => model.id === ""));
+}
+
+function dshUiDraftChange(document) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  return { ok: true, error: "", document: dshUiCloneJson(document), content: dshUiSerializeRaw(document) };
+}
+
+function dshUiChange(document) {
+  if (dshUiHasDraftModel(document)) return dshUiDraftChange(document);
+  const content = dshUiSerializeRaw(document);
+  const parsed = readDshUiDocument(content);
+  if (!parsed.ok) return { ok: false, error: parsed.error, document: null, content: "" };
+  return { ok: true, error: "", document: parsed.document, content: parsed.content };
+}
+
+function dshUiUpdateModelId(document, previousId, nextId) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  const ids = document.models.map((model) => model.id);
+  const index = ids.indexOf(previousId);
+  if (index < 0) return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
+  if (nextId === previousId) return dshUiChange(document);
+  if (nextId === "") {
+    if (ids.some((id, currentIndex) => currentIndex !== index && id === "")) {
+      return { ok: false, error: DSH_UI_MODEL_ID_REQUIRED_ERROR, document: null, content: "" };
+    }
+    const next = dshUiCloneJson(document);
+    next.models[index].id = "";
+    next.models[index].name = "";
+    if (next.acpModel === previousId) {
+      next.acpModel = next.models.find((model) => model.id)?.id || "";
+    }
+    return dshUiDraftChange(next);
+  }
+  const seen = new Set(ids.filter((id) => id !== previousId));
+  const idError = dshUiModelIdError(nextId, seen);
+  if (idError) return { ok: false, error: idError, document: null, content: "" };
+  const next = dshUiCloneJson(document);
+  next.models[index].id = nextId;
+  next.models[index].name = nextId;
+  if (next.acpModel === previousId || !next.acpModel) next.acpModel = nextId;
+  return dshUiChange(next);
+}
+
+function dshUiAddModel(document, rawId) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (rawId === void 0) {
+    if (dshUiHasDraftModel(document)) {
+      return { ok: false, error: DSH_UI_MODEL_ID_REQUIRED_ERROR, document: null, content: "" };
+    }
+    const next = dshUiCloneJson(document);
+    next.models.push({ id: "", name: "", input: ["text"], maxTokens: 256 });
+    return dshUiDraftChange(next);
+  }
+  const id = typeof rawId === "string" ? rawId.trim() : "";
+  const ids = document.models.map((model) => model.id);
+  const idError = dshUiModelIdError(id, new Set(ids));
+  if (idError) return { ok: false, error: idError, document: null, content: "" };
+  const next = dshUiCloneJson(document);
+  next.models.push({ id, name: id, input: ["text"], maxTokens: 256 });
+  return dshUiChange(next);
+}
+
+function dshUiDeleteModel(document, id) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (!Array.isArray(document.models) || document.models.length <= 1) {
+    return { ok: false, error: DSH_UI_MODEL_LIST_ERROR, document: null, content: "" };
+  }
+  const ids = document.models.map((model) => model.id);
+  const index = ids.indexOf(id);
+  if (index < 0) return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
+  const next = dshUiCloneJson(document);
+  next.models.splice(index, 1);
+  if (next.acpModel === id) next.acpModel = next.models.find((model) => model.id)?.id || "";
+  return dshUiChange(next);
+}
+
+function dshUiSetAcpModel(document, id) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (id === DSH_UI_MODEL_ALIAS) return { ok: false, error: DSH_UI_ALIAS_ERROR, document: null, content: "" };
+  if (!document.models.some((model) => model.id === id)) {
+    return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
+  }
+  const next = dshUiCloneJson(document);
+  next.acpModel = id;
+  return dshUiChange(next);
+}
+
+function dshUiUpdateBaseUrl(document, value) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (dshUiContainsSecret(value)) return { ok: false, error: DSH_UI_SECRET_ERROR, document: null, content: "" };
+  const baseURL = dshUiCanonicalBaseUrl(value);
+  if (!baseURL) {
+    return {
+      ok: false,
+      error: "DSH baseURL must be https, or http on a loopback host, without embedded credentials.",
+      document: null,
+      content: "",
+    };
+  }
+  const next = dshUiCloneJson(document);
+  next.baseURL = baseURL;
+  return dshUiChange(next);
+}
+
+function dshUiUpdateApiKeyEnv(document, value) {
+  if (dshUiContainsSecret(value)) return { ok: false, error: DSH_UI_SECRET_ERROR, document: null, content: "" };
+  if (value !== DSH_UI_API_KEY_ENV) return { ok: false, error: DSH_UI_KEY_ERROR, document: null, content: "" };
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  return dshUiChange(document);
+}
+
+function dshUiUpdateApiKey(document, value) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
+    return { ok: false, error: DSH_UI_API_KEY_ERROR, document: null, content: "" };
+  }
+  const next = dshUiCloneJson(document);
+  if (value.trim()) next.apiKey = value.trim();
+  else delete next.apiKey;
+  return dshUiChange(next);
+}
+
+function dshUiSwitchMode(input) {
+  const nextMode = input && input.nextMode === "json" ? "json" : "visual";
+  const text = input && typeof input.text === "string" ? input.text : "";
+  const document = input && input.document ? input.document : null;
+  if (nextMode === "visual") {
+    const parsed = readDshUiDocument(text);
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error, mode: input.mode || "json", text, document };
+    }
+    return { ok: true, error: "", mode: "visual", text: parsed.content, document: parsed.document };
+  }
+  if (!document) return { ok: true, error: "", mode: "json", text, document: null };
+  const serialized = dshUiChange(document);
+  if (!serialized.ok) {
+    return { ok: false, error: serialized.error, mode: input.mode || "visual", text, document };
+  }
+  return { ok: true, error: "", mode: "json", text: serialized.content, document: serialized.document };
+}
+
+const DshConfigPageUtils = {
+  containsSecret: dshUiContainsSecret,
+  containsProfileSecret: dshUiContainsProfileSecret,
+  createProfileText: createDshUiProfileText,
+  readDocument: readDshUiDocument,
+  updateModelId: dshUiUpdateModelId,
+  addModel: dshUiAddModel,
+  deleteModel: dshUiDeleteModel,
+  setAcpModel: dshUiSetAcpModel,
+  updateBaseUrl: dshUiUpdateBaseUrl,
+  updateApiKeyEnv: dshUiUpdateApiKeyEnv,
+  updateApiKey: dshUiUpdateApiKey,
+  switchMode: dshUiSwitchMode,
+  provider: DSH_UI_PROVIDER,
+  apiKeyEnv: DSH_UI_API_KEY_ENV,
+  modelId: DSH_UI_MODEL_ID,
+  alias: DSH_UI_MODEL_ALIAS,
+  exampleBaseUrl: DSH_UI_EXAMPLE_BASE_URL,
+  supportsMultipleModels: DSH_UI_SUPPORTS_MODEL_LIST,
+};
 
 const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS = 500;
 const CONFIG_FIELD_HELP_TOOLTIP_DELAY_MS = CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS / 2;
@@ -72,6 +619,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       w = c.useMemo(() => e.filter((k) => k.platform === "codex"), [e]),
       O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
       grokConfigs = c.useMemo(() => e.filter((k) => k.platform === "grok"), [e]),
+      dshConfigs = c.useMemo(() => e.filter((k) => k.platform === "dsh"), [e]),
       exportSelectedCount = c.useMemo(
         () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
@@ -79,8 +627,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       exportAllChecked = e.length > 0 && exportSelectedCount === e.length,
       exportAnySelected = exportSelectedCount > 0,
       I = (k) => {
-        const L =
-          k === "claude" ? "Claude" : k === "codex" ? "Codex" : k === "grok" ? "Grok" : "OpenCode";
+        const L = configPlatformLabel(k);
         xr.confirm({
           title: `添加${L}配置`,
           content: be.jsx(zi, {
@@ -117,6 +664,13 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                         content: "",
                         configContent: "",
                       }))
+                  : k === "dsh"
+                    ? (T = await l({
+                        name: U,
+                        platform: k,
+                        content: createDshUiProfileText(),
+                        configContent: createDshUiProfileText(),
+                      }))
                   : (T = await l({
                       name: U,
                       platform: k,
@@ -149,7 +703,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           Kt.error("复制失败，请手动复制");
         }
       },
-      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : O),
+      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : k === "dsh" ? dshConfigs : O),
       _ = (k) => {
         x(k);
       },
@@ -204,6 +758,12 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
                     })
+                : L.platform === "dsh"
+                  ? await applyConfigItem(L.platform, {
+                      content: L.configContent || L.content || "",
+                      configContent: L.configContent || L.content || "",
+                      profileId: L.id,
+                    })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
                     authContent: L.authContent,
@@ -236,7 +796,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       V = async (k, L) => {
         k.stopPropagation();
         const G = [
-          { label: L.platform === "claude" ? "Claude" : L.platform === "codex" ? "Codex" : L.platform === "grok" ? "Grok" : "OpenCode", value: L.platform },
+          { label: configPlatformLabel(L.platform), value: L.platform },
         ];
         const Y = G[0].label;
         let copyTargetPlatform = L.platform;
@@ -322,7 +882,16 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         setExportSelection((G) => ({ ...G, [k]: L }));
       },
       doExport = async () => {
-        const k = e.filter((L) => exportSelection[L.id]);
+        const selected = e.filter((L) => exportSelection[L.id]);
+        const skippedSecret = selected.some((L) =>
+          L.platform === "dsh" && dshUiContainsSecret(`${L.content || ""}\n${L.configContent || ""}`),
+        );
+        const k = selected.filter((L) =>
+          L.platform !== "dsh" || !dshUiContainsSecret(`${L.content || ""}\n${L.configContent || ""}`),
+        );
+        if (skippedSecret) {
+          Kt.warning("已跳过包含密钥的 DSH 配置");
+        }
         if (k.length === 0) {
           Kt.warning("请选择要导出的配置");
           return;
@@ -335,7 +904,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	            platform: G.platform,
 	            content: G.content,
 	            mcpContent: G.mcpContent,
-            envContent: G.platform === "codex" || G.platform === "opencode" || G.platform === "grok" ? void 0 : G.envContent,
+            envContent: G.platform === "codex" || G.platform === "opencode" || G.platform === "grok" || G.platform === "dsh" ? void 0 : G.envContent,
 	            configContent: G.configContent,
 	            authContent: G.authContent,
 	          })),
@@ -409,6 +978,16 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             configContent: grokContent,
           };
         }
+        if (L === "dsh") {
+          const dshContent = k.configContent ?? k.content ?? "";
+          if (dshUiContainsSecret(dshContent)) return null;
+          return {
+            name: G,
+            platform: L,
+            content: dshContent,
+            configContent: dshContent,
+          };
+        }
         return null;
       },
       handleImportFile = async (k) => {
@@ -453,8 +1032,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         }
       },
       H = (k, L) => {
-        const G =
-            k === "claude" ? "Claude" : k === "codex" ? "Codex" : k === "grok" ? "Grok" : "OpenCode",
+        const G = configPlatformLabel(k),
           U = DEFAULT_RUN_COMMANDS[k],
           T = DEFAULT_INSTALL_COMMANDS[k];
         return be.jsx(aa, {
@@ -651,7 +1229,8 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         isConfigPlatformEnabled("codex", cliEnabledByName) ? H("codex", w) : null,
         isConfigPlatformEnabled("opencode", cliEnabledByName) ? H("opencode", O) : null,
         isConfigPlatformEnabled("grok", cliEnabledByName) ? H("grok", grokConfigs) : null,
-        ["claude", "codex", "opencode", "grok"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
+        isConfigPlatformEnabled("dsh", cliEnabledByName) ? H("dsh", dshConfigs) : null,
+        ["claude", "codex", "opencode", "grok", "dsh"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
           ? be.jsx("div", {
               className: "config-empty-state",
               style: {
@@ -754,13 +1333,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                                         fontSize: "12px",
                                       },
                                       children:
-                                        k.platform === "claude"
-                                          ? "Claude"
-                                          : k.platform === "codex"
-                                            ? "Codex"
-                                            : k.platform === "grok"
-                                              ? "Grok"
-                                              : "OpenCode",
+                                        configPlatformLabel(k.platform),
                                     }),
                                   ],
                                 }),
@@ -909,13 +1482,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                                     fontSize: "12px",
                                   },
                                   children:
-                                    k.platform === "claude"
-                                      ? "Claude"
-                                      : k.platform === "codex"
-                                        ? "Codex"
-                                        : k.platform === "grok"
-                                          ? "Grok"
-                                          : "OpenCode",
+                                    configPlatformLabel(k.platform),
                                 }),
                               ],
                             },
@@ -1920,6 +2487,7 @@ const CLI_GLOBAL_SKILL_TARGETS = [
   { id: "opencode", label: "OpenCode" },
   { id: "grok", label: "Grok" },
   { id: "codex", label: "Codex" },
+  { id: "dsh", label: "DSH" },
 ];
 
 function skillsTitleByPlatform(platform) {
@@ -4062,11 +4630,11 @@ requires_openai_auth = true`,
 	    },
     grok: {
       config: `[models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 default_reasoning_effort = "xhigh"
 
-[model."grok-4.7-kedaya"]
-model = "grok-4.7-kedaya"
+[model."grok-4.7"]
+model = "grok-4.7"
 base_url = "http://127.0.0.1:33391/v1"
 api_key = ""
 api_backend = "responses"
@@ -4076,6 +4644,9 @@ reasoning_summary = "auto"
 compaction_at_tokens = 450000
 `,
     },
+	    dsh: {
+	      config: createDshUiProfileText(),
+	    },
 	  };
 
 const Nk = {
@@ -4090,6 +4661,7 @@ const Nk = {
     "codex-config": { title: "Codex config.toml", content: ps.codex.config },
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
     "grok-config": { title: "Grok config.toml", content: ps.grok.config },
+	    "dsh-config": { title: "DSH profile JSON", content: ps.dsh.config },
   };
 
 // Config editor panel
@@ -4139,6 +4711,12 @@ const ConfigEditorPanel = () => {
       [grokNewModelId, setGrokNewModelId] = c.useState(""),
       [grokModelActionError, setGrokModelActionError] = c.useState(""),
       grokNewModelInputRef = c.useRef(null),
+      [dshEditorMode, setDshEditorMode] = c.useState("json"),
+      [dshText, setDshText] = c.useState(""),
+      [dshVisual, setDshVisual] = c.useState(null),
+      [dshFieldError, setDshFieldError] = c.useState(""),
+      [dshSelectedModelId, setDshSelectedModelId] = c.useState(""),
+      [dshBusy, setDshBusy] = c.useState(!1),
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
       O = e ? n(e, t || void 0) : null,
@@ -4176,7 +4754,13 @@ const ConfigEditorPanel = () => {
           setGrokTextDraft(""),
           setGrokValidContent(""),
           setGrokVisualState(null),
-          setGrokVisualError(""));
+          setGrokVisualError(""),
+          setDshEditorMode("json"),
+          setDshText(""),
+          setDshVisual(null),
+          setDshFieldError(""),
+          setDshSelectedModelId(""),
+          setDshBusy(!1));
         return;
       }
       if (O.platform === "claude") {
@@ -4200,6 +4784,31 @@ const ConfigEditorPanel = () => {
         H.ok && !H.state.fieldError
           ? (setGrokVisualState(H.state), setGrokValidContent(W), setGrokVisualError(""))
           : (setGrokVisualState(H.state), setGrokValidContent(""), setGrokVisualError(H.ok ? H.state.fieldError : H.error));
+      } else if (O.platform === "dsh") {
+        const W = O.configContent || O.content || "";
+        setDshSelectedModelId("");
+        setDshBusy(!1);
+        s(""), v(""), h("");
+        if (dshUiContainsProfileSecret(W)) {
+          setDshText("");
+          setDshVisual(null);
+          setDshFieldError(DSH_UI_SECRET_ERROR);
+          setDshEditorMode("json");
+        } else {
+          const H = readDshUiDocument(W);
+          setDshText(W);
+          if (H.ok) {
+            setDshVisual(H.document);
+            setDshText(H.content);
+            setDshFieldError("");
+            setDshSelectedModelId(H.document.acpModel || H.document.models[0]?.id || "");
+            setDshEditorMode("json");
+          } else {
+            setDshVisual(null);
+            setDshFieldError(H.error);
+            setDshEditorMode("json");
+          }
+        }
       } else {
         const W = O.configContent || "",
           H = codexVisualParseContent(W);
@@ -4516,6 +5125,17 @@ const ConfigEditorPanel = () => {
             case "grok-config":
               syncGrokVisualContent(I.content, "visual", !0);
               break;
+	          case "dsh-config": {
+	            const H = readDshUiDocument(I.content);
+	            if (H.ok) {
+	              setDshText(H.content);
+              setDshVisual(H.document);
+              setDshFieldError("");
+              setDshSelectedModelId(H.document.acpModel || H.document.models[0]?.id || "");
+              setDshEditorMode("json");
+	            }
+	            break;
+	          }
           }
           (Kt.success("已导入范例内容，请确认后保存"), z());
         }
@@ -4558,12 +5178,14 @@ const ConfigEditorPanel = () => {
             : null,
         }),
       A = async (W) => {
-        if (!(!O || !(o(O.platform) === O.id)))
-          try {
-            (await applyConfigItem(O.platform, W), Kt.success("已更新当前激活的配置"));
-          } catch (k) {
-            Kt.error("已保存，但更新激活配置失败: " + k);
-          }
+        if (!O || o(O.platform) !== O.id) return;
+        const payload = O.platform === "dsh" ? { ...W, profileId: O.id } : W;
+        try {
+          await applyConfigItem(O.platform, payload);
+          Kt.success("已更新当前激活的配置");
+        } catch (k) {
+          Kt.error("已保存，但更新激活配置失败: " + k);
+        }
       },
       saveClaudeSettingsCard = async () => {
         if (!O) {
@@ -4742,6 +5364,60 @@ const ConfigEditorPanel = () => {
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
+      },
+      switchDshEditorMode = (nextMode) => {
+        if (dshBusy || configListLoading || nextMode === dshEditorMode) return;
+        const switched = dshUiSwitchMode({
+          mode: dshEditorMode,
+          nextMode,
+          text: dshText,
+          document: dshVisual,
+        });
+        if (!switched.ok) {
+          setDshFieldError(switched.error);
+          Kt.error(switched.error);
+          return;
+        }
+        setDshEditorMode(switched.mode);
+        setDshText(switched.text);
+        setDshVisual(switched.document);
+        setDshFieldError("");
+      },
+      saveDshConfigCard = async () => {
+        if (!O || O.platform !== "dsh") {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        if (dshBusy || configListLoading) return;
+        const source = dshEditorMode === "json" ? dshText : dshUiSerializeRaw(dshVisual || {});
+        if (dshUiContainsProfileSecret(source)) {
+          setDshFieldError(DSH_UI_SECRET_ERROR);
+          Kt.error(DSH_UI_SECRET_ERROR);
+          return;
+        }
+        const parsed = readDshUiDocument(dshEditorMode === "json" ? dshText : dshUiSerializeRaw(dshVisual || {}));
+        if (!parsed.ok) {
+          setDshFieldError(parsed.error);
+          Kt.error(parsed.error);
+          return;
+        }
+        const content = parsed.content;
+        setDshBusy(!0);
+        try {
+          await r(O.id, { content, configContent: content });
+          setDshVisual(parsed.document);
+          setDshText(content);
+          setDshFieldError("");
+          Kt.success("保存成功");
+          await A({ content, configContent: content });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const safeMessage = dshUiContainsSecret(message) ? DSH_UI_SECRET_ERROR : message;
+          setDshFieldError(safeMessage);
+          Kt.error("保存失败: " + safeMessage);
+        } finally {
+          setDshBusy(!1);
+        }
       };
     const configAppUsesChinese =
         typeof navigator === "undefined" ||
@@ -4913,7 +5589,7 @@ const ConfigEditorPanel = () => {
                             boxShadow: "0 4px 14px var(--shadow-color)",
                             fontSize: "12px",
                             lineHeight: 1.45,
-                            whiteSpace: "normal",
+                            whiteSpace: "pre-wrap",
                             pointerEvents: "none",
                           },
                           children: getConfigFieldHelp(W, H),
@@ -6465,6 +7141,390 @@ const ConfigEditorPanel = () => {
           renderFixedEditorModeTabs(H),
         ],
       });
+    const renderDshProfileEditor = () => {
+      const controlsDisabled = Boolean(dshBusy || configListLoading);
+      const document = dshVisual && typeof dshVisual === "object" ? dshVisual : null;
+      const models = document && Array.isArray(document.models) ? document.models : [];
+      const selectedModelId = models.some((model) => model.id === dshSelectedModelId)
+        ? dshSelectedModelId
+        : (document && (document.acpModel || models[0]?.id)) || "";
+      const selectedModel = models.find((model) => model.id === selectedModelId) || null;
+      const applyDshResult = (result) => {
+        if (!result || !result.ok) {
+          setDshFieldError(result && result.error ? result.error : "DSH profile is empty.");
+          return;
+        }
+        setDshVisual(result.document);
+        setDshText(result.content);
+        setDshFieldError("");
+      };
+      const modeTabs = [
+        {
+          value: "visual",
+          label: "可视化",
+          active: dshEditorMode === "visual",
+          onClick: controlsDisabled ? undefined : () => switchDshEditorMode("visual"),
+        },
+        {
+          value: "json",
+          label: "JSON",
+          active: dshEditorMode === "json",
+          onClick: controlsDisabled ? undefined : () => switchDshEditorMode("json"),
+        },
+      ];
+      return be.jsxs("div", {
+        className: "config-editor-shell config-editor-dsh",
+        "data-testid": "dsh-profile-editor",
+        style: {
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          padding: "8px",
+          minHeight: 0,
+        },
+        children: [
+          be.jsx(aa, {
+            title: be.jsxs("div", {
+              className: "config-editor-fixed-title",
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: "4px",
+              },
+              children: [
+                be.jsx("div", { "data-testid": "dsh-profile-name", children: O.name }),
+                be.jsx("div", {
+                  "data-testid": "dsh-editor-mode",
+                  "data-mode": dshEditorMode,
+                  children: renderFixedEditorModeTabs(modeTabs),
+                }),
+              ],
+            }),
+            extra: be.jsx("div", {
+              className: "config-editor-fixed-actions",
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: "4px",
+              },
+              children: be.jsx("div", {
+                className: "config-editor-fixed-action-row",
+                style: {
+                  display: "flex",
+                  gap: "4px",
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                },
+                children: be.jsx(xn, {
+                  className: "config-standard-action-button",
+                  type: "primary",
+                  size: "small",
+                  icon: be.jsx(Pv, {}),
+                  disabled: controlsDisabled,
+                  onClick: saveDshConfigCard,
+                  children: "保存",
+                }),
+              }),
+            }),
+            style: {
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            },
+            bodyStyle: {
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              padding: "8px",
+              gap: "8px",
+              overflow: "auto",
+              minHeight: 0,
+            },
+            children: be.jsxs("div", {
+              className: "dsh-profile-fields",
+              style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
+              children: [
+                be.jsxs("div", {
+                  style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                  children: [
+                    be.jsxs("strong", { children: [be.jsx(Ya, {}), " profile.json"] }),
+                    be.jsx(xn, {
+                      size: "small",
+                      onClick: () => N("dsh-config"),
+                      children: "查看范例",
+                    }),
+                  ],
+                }),
+                be.jsx("div", {
+                  style: {
+                    marginBottom: "4px",
+                    color: "var(--text-color-secondary)",
+                    fontSize: "12px",
+                  },
+                  children: "配置文件路径: ~/.dsh/__config/active-profile.json",
+                }),
+                dshEditorMode === "json"
+                  ? [
+                    dshFieldError
+                      ? be.jsx("div", {
+                          "data-testid": "dsh-field-error",
+                          style: {
+                            padding: "8px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            color: "var(--error-color)",
+                          },
+                          children: dshFieldError,
+                        })
+                      : null,
+                    be.jsx("div", {
+                      style: {
+                        color: "var(--text-color-secondary)",
+                        fontSize: "12px",
+                        lineHeight: 1.5,
+                      },
+                      children: "JSON 模式编辑同一份完整配置。JSON 无效时不会覆盖最后一次有效的可视化状态。",
+                    }),
+                    be.jsx(Qa, {
+                      "data-testid": "dsh-json-editor",
+                      value: dshText,
+                      disabled: controlsDisabled,
+                      placeholder: "请输入 JSON 配置",
+                      rows: 18,
+                      onChange: (event) => {
+                        const value = event && event.target ? event.target.value : "";
+                        setDshText(value);
+                        const parsed = readDshUiDocument(value);
+                        if (!parsed.ok) {
+                          setDshFieldError(parsed.error);
+                          return;
+                        }
+                        setDshVisual(parsed.document);
+                        setDshFieldError("");
+                      },
+                      style: {
+                        flex: 1,
+                        minHeight: 420,
+                        fontFamily: "monospace",
+                        fontSize: "13px",
+                      },
+                    }),
+                  ]
+                : [
+                    dshFieldError
+                      ? be.jsx("div", {
+                          "data-testid": "dsh-field-error",
+                          style: {
+                            padding: "8px",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: "6px",
+                            color: "var(--error-color)",
+                          },
+                          children: dshFieldError,
+                        })
+                      : null,
+                    be.jsxs("div", {
+                      className: "grok-model-workspace",
+                      "data-testid": "dsh-model-workspace",
+                      children: [
+                        be.jsxs("aside", {
+                          className: "grok-model-sidebar",
+                          "data-testid": "dsh-model-list",
+                          "aria-label": "模型管理",
+                          children: [
+                            be.jsxs("div", {
+                              className: "grok-model-list-header",
+                              children: [
+                                be.jsx("strong", { children: "模型列表" }),
+                                be.jsx(xn, {
+                                  size: "small",
+                                  "data-testid": "dsh-add-model",
+                                  disabled: controlsDisabled || dshUiHasDraftModel(document),
+                                  onClick: () => {
+                                    if (controlsDisabled) return;
+                                    const added = dshUiAddModel(document);
+                                    if (!added.ok) {
+                                      setDshFieldError(added.error);
+                                      return;
+                                    }
+                                    setDshSelectedModelId("");
+                                    applyDshResult(added);
+                                  },
+                                  children: "新增",
+                                }),
+                              ],
+                            }),
+                            be.jsx("div", {
+                              className: "grok-model-list",
+                              role: "group",
+                              "aria-label": "模型列表",
+                                  children: models.map((model) => be.jsxs("div", {
+                                className: "grok-model-row",
+                                "data-testid": "dsh-model-row",
+                                "data-dsh-model-id": model.id,
+                                children: [
+                                  be.jsx(xn, {
+                                    className: "grok-model-select",
+                                    type: model.id === selectedModelId ? "primary" : "default",
+                                    "aria-pressed": model.id === selectedModelId,
+                                    "data-testid": "dsh-model-select",
+                                    "data-dsh-model-id": model.id,
+                                    title: model.id || "新模型",
+                                    disabled: controlsDisabled,
+                                    onClick: () => setDshSelectedModelId(model.id),
+                                    children: model.id || "新模型",
+                                  }),
+                                  be.jsx(xn, {
+                                    type: "text",
+                                    size: "small",
+                                    danger: true,
+                                    className: "grok-model-delete",
+                                    icon: be.jsx(AH, {}),
+                                    "data-testid": "dsh-delete-model",
+                                    "data-dsh-model-id": model.id,
+                                    "aria-label": model.id ? `删除模型 ${model.id}` : "取消新增模型",
+                                    title: model.id ? `删除模型 ${model.id}` : "取消新增模型",
+                                    disabled: controlsDisabled || models.length <= 1,
+                                    onClick: (event) => {
+                                      event.stopPropagation();
+                                      if (controlsDisabled) return;
+                                      const cancelDraft = model.id === "";
+                                      xr.confirm({
+                                        title: cancelDraft ? "取消新增模型" : "删除模型",
+                                        content: cancelDraft ? "确定放弃尚未填写的模型 id？" : `确定删除模型 ${model.id}？`,
+                                        okText: cancelDraft ? "放弃" : "删除",
+                                        cancelText: "取消",
+                                        onOk: () => {
+                                          const deleted = dshUiDeleteModel(document, model.id);
+                                          if (!deleted.ok) {
+                                            setDshFieldError(deleted.error);
+                                            return;
+                                          }
+                                          setDshSelectedModelId(deleted.document.models.some((item) => item.id === dshSelectedModelId)
+                                            ? dshSelectedModelId
+                                            : deleted.document.acpModel || deleted.document.models[0]?.id || "");
+                                          applyDshResult(deleted);
+                                        },
+                                      });
+                                    },
+                                  }),
+                                ],
+                              }, model.id)),
+                            }),
+                            models.length === 0
+                              ? be.jsx("div", {
+                                  "data-testid": "dsh-model-empty",
+                                  role: "status",
+                                  style: { color: "var(--text-color-secondary)" },
+                                  children: "尚无模型，请先添加。",
+                                })
+                              : null,
+                          ],
+                        }),
+                        be.jsxs("div", {
+                          className: "grok-model-detail",
+                          children: [
+                            renderCodexField("provider", document ? document.provider : "", () => {}, DSH_UI_PROVIDER, {
+                              readOnly: true,
+                              disabled: controlsDisabled,
+                              "data-testid": "dsh-provider",
+                            }),
+                            renderCodexField("baseURL", document ? document.baseURL : "", (value) => {
+                              if (controlsDisabled || !document) return;
+                              if (dshUiContainsSecret(value)) {
+                                setDshFieldError(DSH_UI_SECRET_ERROR);
+                                return;
+                              }
+                              const committed = dshUiUpdateBaseUrl(document, value);
+                              if (!committed.ok) {
+                                setDshFieldError(committed.error);
+                                return;
+                              }
+                              applyDshResult(committed);
+                            }, DSH_UI_EXAMPLE_BASE_URL, {
+                              disabled: controlsDisabled,
+                              "data-testid": "dsh-base-url",
+                            }),
+                            renderCodexField("apiKey", document ? document.apiKey || "" : "", (value) => {
+                              if (controlsDisabled) return;
+                              applyDshResult(dshUiUpdateApiKey(document, value));
+                            }, "直接填写 API Key（可选）", {
+                              type: "password",
+                              help: [
+                                "非空时优先使用此密钥；留空时使用 SINITEK_DSH_API_KEY。配置档案、激活副本和备份都会以明文保存。",
+                                "apiKeyEnv 是固定的环境变量名，保存时会自动补为 SINITEK_DSH_API_KEY，不需要在可视化模式填写。",
+                                "macOS/Linux（Bash）：",
+                                "read -rsp 'DSH API Key: ' SINITEK_DSH_API_KEY && export SINITEK_DSH_API_KEY && code .",
+                                "Windows（PowerShell）：",
+                                "$secure = Read-Host 'DSH API Key' -AsSecureString; $env:SINITEK_DSH_API_KEY = [System.Net.NetworkCredential]::new('', $secure).Password; code .",
+                              ].join("\n"),
+                              disabled: controlsDisabled,
+                              "data-testid": "dsh-api-key",
+                            }),
+                            be.jsx("div", {
+                              "data-testid": "dsh-api-key-warning",
+                              style: { color: "var(--text-color-secondary)", fontSize: "12px" },
+                              children: "安全提示：apiKey 会以明文保存在本机配置档案、激活副本和备份中；JSON 模式可见密钥，请勿分享含密钥的配置。",
+                            }),
+                            be.jsx("div", {
+                              "data-testid": "dsh-acp-model",
+                              children: renderCodexSelect(
+                                "默认模型 acpModel",
+                                document ? document.acpModel : "",
+                                (value) => {
+                                  if (controlsDisabled) return;
+                                  const updated = dshUiSetAcpModel(document, value);
+                                  if (updated.ok) setDshSelectedModelId(value);
+                                  applyDshResult(updated);
+                                },
+                                models.filter((model) => model.id).map((model) => ({ value: model.id, label: model.id })),
+                                { disabled: controlsDisabled },
+                              ),
+                            }),
+                            selectedModel
+                              ? be.jsxs("div", {
+                                  "data-testid": "dsh-selected-model-detail",
+                                  style: { display: "flex", flexDirection: "column", gap: "8px" },
+                                  children: [
+                                    be.jsx("strong", { children: selectedModel.id ? `模型详情：${selectedModel.id}` : "新增模型" }),
+                                    renderCodexField("模型 id", selectedModel.id, (value) => {
+                                      if (controlsDisabled) return;
+                                      const renamed = dshUiUpdateModelId(document, selectedModel.id, value);
+                                      if (renamed.ok && dshSelectedModelId === selectedModel.id) {
+                                        setDshSelectedModelId(value.trim());
+                                      }
+                                      applyDshResult(renamed);
+                                    }, DSH_UI_MODEL_ID, {
+                                      disabled: controlsDisabled,
+                                      placeholder: "输入完整模型 id",
+                                      "data-testid": "dsh-model-id",
+                                    }),
+                                    be.jsx("div", {
+                                      style: { color: "var(--text-color-secondary)", fontSize: "12px" },
+                                      children: "输入类型：text；最大输出：256 tokens。这些字段由 DSH 已验证 schema 固定。",
+                                    }),
+                                  ],
+                                })
+                              : be.jsx("div", {
+                                  "data-testid": "dsh-selected-model-empty",
+                                  style: { color: "var(--text-color-secondary)" },
+                                children: "请从左侧选择模型，或点击新增。",
+                                }),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ],
+              ],
+            }),
+          }),
+        ],
+      });
+    };
+    // dsh profile editor
     return O
       ? O.platform === "claude"
         ? be.jsxs("div", {
@@ -6965,6 +8025,10 @@ const ConfigEditorPanel = () => {
                   }),
                   B(),
                 ],
+              })
+          : O.platform === "dsh"
+            ? be.jsxs(be.Fragment, {
+                children: [renderDshProfileEditor(), B()],
               })
           : be.jsxs("div", {
               className: "config-editor-shell config-editor-codex",

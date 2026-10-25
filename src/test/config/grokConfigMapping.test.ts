@@ -27,7 +27,7 @@ custom_root = "keep"
 [models]
 default = "old"
 
-[model."grok-4.7-kedaya"]
+[model."grok-4.7"]
 custom_note = "keep"
 service_tier = "fast"
 
@@ -88,8 +88,8 @@ default = "gpt-6.1-sol"
 [model."gpt-6.1-sol"]
 model = "gpt-6.1-sol"
 api_backend = "chat_completions"
-[model."grok-4.7-kedaya"]
-model = "grok-4.7-kedaya"
+[model."grok-4.7"]
+model = "grok-4.7"
 name = "  Legacy name  "
 `);
   assert.ok(parsed.ok);
@@ -110,7 +110,7 @@ name = "  Legacy name  "
   const models = result.value.model as Record<string, Record<string, unknown>>;
   assert.equal(models["gpt-6.1-sol"].name, undefined);
   assert.equal(models["gpt-6.1-sol"].base_url, "https://api.example.com/v1");
-  assert.equal(models["grok-4.7-kedaya"].name, "  Legacy name  ");
+  assert.equal(models["grok-4.7"].name, "  Legacy name  ");
   assert.equal(GROK_VISUAL_FIELDS.some((field) => field.id === "model.name"), false);
 });
 
@@ -138,7 +138,7 @@ test("treats empty Grok config input as an empty document", () => {
 });
 
 test("keeps an existing Grok api_key and accepts toml underscores", () => {
-  const merged = mergeGrokKedayaProfile(`[model."grok-4.7-kedaya"]\napi_key = "keep-me"\ncontext_window = 500_000\n`);
+  const merged = mergeGrokKedayaProfile(`[model."grok-4.7"]\napi_key = "keep-me"\ncontext_window = 500_000\n`);
   assert.equal(merged.ok, true);
   if (!merged.ok) {
     return;
@@ -179,7 +179,7 @@ test("keeps the last valid Grok TOML when parsing or visual values fail", () => 
     return;
   }
   const rejected = applyGrokVisualPatch(parsed.value, {
-    model: { id: "grok-4.7-kedaya", apiBackend: "wire_api", envKey: "not a var" },
+    model: { id: "grok-4.7", apiBackend: "wire_api", envKey: "not a var" },
   });
   assert.equal(rejected.ok, false);
   assert.equal(parsed.value.model, undefined);
@@ -221,9 +221,9 @@ test("writes the kedaya profile by merge without touching settings snapshots", a
 test("detects a default model credential without treating env_key as the secret", () => {
   const parsed = parseGrokToml(`
 [models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 
-[model."grok-4.7-kedaya"]
+[model."grok-4.7"]
 api_key = ""
 env_key = "GROK_GATEWAY_KEY"
 `);
@@ -235,9 +235,9 @@ env_key = "GROK_GATEWAY_KEY"
   assert.equal(grokActiveModelHasOwnCredential(parsed.value, { GROK_GATEWAY_KEY: "present" }), true);
   const keyed = parseGrokToml(`
 [models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 
-[model."grok-4.7-kedaya"]
+[model."grok-4.7"]
 api_key = "present"
 `);
   assert.equal(keyed.ok, true);

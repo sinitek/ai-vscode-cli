@@ -4,6 +4,7 @@ import type { CliName } from "../cli/types";
 import {
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
+  resolveDshHomeDir,
   resolveGrokHomeDir,
   resolveOpenCodeHomeDir,
   resolveXdgConfigHome,
@@ -40,6 +41,10 @@ export type ConfigPathMap = {
     config: string;
     configDir: string;
   };
+  dsh: {
+    config: string;
+    configDir: string;
+  };
 };
 
 export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
@@ -54,6 +59,9 @@ export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): Co
   }
   if (platform === "grok") {
     return "grok";
+  }
+  if (platform === "dsh") {
+    return "dsh";
   }
   throw new Error(`Unsupported config platform: ${String(platform)}`);
 }
@@ -84,6 +92,10 @@ export function createConfigPaths(
       config: path.join(resolveGrokHomeDir(env, homeDir), "config.toml"),
       configDir: path.join(resolveGrokHomeDir(env, homeDir), CONFIG_DIR_NAME),
     },
+    dsh: {
+      config: path.join(resolveDshHomeDir(env, homeDir), CONFIG_DIR_NAME, "active-patch.yaml"),
+      configDir: path.join(resolveDshHomeDir(env, homeDir), CONFIG_DIR_NAME),
+    },
   };
 }
 
@@ -96,6 +108,9 @@ export function getConfigDir(
   const normalized = normalizeConfigPlatform(platform);
   if (normalized === "grok" && paths === CONFIG_PATHS) {
     return path.join(resolveGrokHomeDir(), CONFIG_DIR_NAME);
+  }
+  if (normalized === "dsh" && paths === CONFIG_PATHS) {
+    return path.join(resolveDshHomeDir(), CONFIG_DIR_NAME);
   }
   return paths[normalized].configDir;
 }

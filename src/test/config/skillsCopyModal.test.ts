@@ -92,10 +92,10 @@ test("skill row actions stay on one line and copying opens a dialog instead of a
 });
 
 test("copy dialog excludes its source CLI and empty selection cannot submit", async () => {
-  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"]]) {
+  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"], ["dsh", "DSH"]]) {
     let calls = 0;
     const harness = createHarness(async () => { calls++; }, platform);
-    assert.equal(harness.options().length, 3);
+    assert.equal(harness.options().length, 4);
     assert.ok(harness.options().every((node) => node.props.children[1].props.children !== label));
     assert.equal(harness.render().props.okButtonProps.disabled, true);
     await harness.render().props.onOk();
@@ -209,4 +209,196 @@ test("copy handler propagates host errors and never refreshes a different source
   sandbox.skillsLoadTargetRef.current = "grok:another";
   await copy(skill, "codex");
   assert.equal(refreshCount, 1);
+});
+
+function targetLabels(nodes: ElementNode[]): string[] {
+  return nodes.map((node) => node.props.children[1].props.children);
+}
+
+function plain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function skillUiSlice(): string {
+  return uiSource.slice(uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="), uiSource.indexOf("const SkillsManagerModal ="));
+}
+
+test("DSH is appended to the shared copy targets and can receive a skill copy", async () => {
+  const targets = vm.runInNewContext(`${skillUiSlice()}\nCLI_GLOBAL_SKILL_TARGETS`, {});
+  assert.deepEqual(plain(targets), [
+    { id: "claude", label: "Claude" },
+    { id: "opencode", label: "OpenCode" },
+    { id: "grok", label: "Grok" },
+    { id: "codex", label: "Codex" },
+    { id: "dsh", label: "DSH" },
+  ]);
+
+  const calls: string[] = [];
+  const harness = createHarness(async (item, platform) => {
+    assert.equal(item, skill);
+    calls.push(platform);
+  }, "claude");
+  assert.deepEqual(targetLabels(harness.options()), ["OpenCode", "Grok", "Codex", "DSH"]);
+  assert.equal(harness.option("DSH").props.type, "checkbox");
+  assert.equal(harness.option("DSH").props.disabled, false);
+  assert.equal(harness.option("Codex").props.disabled, false);
+  harness.select("Codex");
+  harness.select("DSH");
+  await harness.render().props.onOk();
+  assert.deepEqual(calls, ["codex", "dsh"]);
+  assert.deepEqual(harness.messages, ["已复制 example-skill 到 Codex、DSH"]);
+  assert.equal(JSON.stringify(calls).includes("sk-"), false);
+  assert.equal(JSON.stringify(harness.messages).includes("SINITEK_DSH_API_KEY"), false);
+
+  const fromDsh = createHarness(async () => undefined, "dsh");
+  assert.deepEqual(targetLabels(fromDsh.options()), ["Claude", "OpenCode", "Grok", "Codex"]);
+  assert.equal(fromDsh.options().some((node) => targetLabels([node])[0] === "DSH"), false);
+});
+
+function createMarketHarness(installResult: unknown) {
+  const state: any[] = [];
+  let cursor = 0;
+  const effects: Array<() => void> = [];
+  const installs: Array<Record<string, unknown>> = [];
+  const messages: string[] = [];
+  const warnings: string[] = [];
+  const events: Array<{ type: string; detail?: unknown }> = [];
+  const element = (type: string, props: Record<string, any>) => ({ type, props });
+  const sandbox = {
+    Error,
+    be: { jsx: element, jsxs: element },
+    xr: "modal",
+    xn: "button",
+    Kt: {
+      success: (message: string) => messages.push(message),
+      warning: (message: string) => warnings.push(message),
+    },
+    searchLobehubSkills: async () => ({
+      currentPage: 1,
+      totalPages: 1,
+      totalCount: 1,
+      items: [{
+        identifier: "market-skill",
+        name: "market-skill",
+        description: "描述",
+        author: "author",
+        version: "1.0.0",
+        installCount: 2,
+      }],
+    }),
+    installLobehubSkill: async (payload: Record<string, unknown>) => {
+      installs.push(payload);
+      return installResult;
+    },
+    window: {
+      dispatchEvent(event: { type: string; detail?: unknown }) {
+        events.push(event);
+      },
+    },
+    CustomEvent: class CustomEvent {
+      type: string;
+      detail?: unknown;
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
+    c: {
+      useState(initial: unknown) {
+        const index = cursor++;
+        if (!(index in state)) state[index] = initial;
+        return [state[index], (value: any) => {
+          state[index] = typeof value === "function" ? value(state[index]) : value;
+        }];
+      },
+      useRef(initial: unknown) {
+        const index = cursor++;
+        if (!(index in state)) state[index] = { current: initial };
+        return state[index];
+      },
+      useEffect(effect: () => void) {
+        if (effects.length === 0) effects.push(effect);
+      },
+    },
+  };
+  const components = vm.runInNewContext(`${skillUiSlice()}\n({ SkillsMarketModal, CLI_GLOBAL_SKILL_TARGETS })`, sandbox);
+  const render = (): ElementNode => {
+    cursor = 0;
+    return components.SkillsMarketModal({ onClose: () => undefined });
+  };
+  const targetNodes = () => descendants(render()).filter((node) => node.type === "label" && node.props.className === "skills-copy-target");
+  const button = (label: string) => {
+    const match = descendants(render()).find((node) => node.type === "button" && node.props.children === label);
+    assert.ok(match, `missing market button ${label}`);
+    return match;
+  };
+  return {
+    components,
+    installs,
+    messages,
+    warnings,
+    events,
+    render,
+    targetNodes,
+    button,
+    boot: async () => {
+      render();
+      effects[0]();
+      await new Promise((resolve) => setImmediate(resolve));
+      return render();
+    },
+  };
+}
+
+test("skills market install uses the shared list and can install to DSH", async () => {
+  const harness = createMarketHarness({
+    targets: [{ platform: "dsh", name: "market-skill", status: "installed" }],
+  });
+  assert.deepEqual(plain(harness.components.CLI_GLOBAL_SKILL_TARGETS.map((item: { id: string }) => item.id)), [
+    "claude",
+    "opencode",
+    "grok",
+    "codex",
+    "dsh",
+  ]);
+  await harness.boot();
+  harness.button("下载").props.onClick();
+  assert.deepEqual(targetLabels(harness.targetNodes()), ["Claude", "OpenCode", "Grok", "Codex", "DSH"]);
+  assert.equal(harness.button("安装").props.disabled, true);
+  const dsh = harness.targetNodes().find((node) => targetLabels([node])[0] === "DSH");
+  assert.ok(dsh);
+  assert.equal(dsh.props.children[0].props.type, "checkbox");
+  dsh.props.children[0].props.onChange({ target: { checked: true } });
+  const codex = harness.targetNodes().find((node) => targetLabels([node])[0] === "Codex");
+  assert.ok(codex);
+  assert.equal(codex.props.children[0].props.disabled, false);
+  assert.equal(harness.button("安装").props.disabled, false);
+  harness.button("安装").props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(harness.installs.length, 1);
+  assert.deepEqual(plain(harness.installs[0]), { identifier: "market-skill", platforms: ["dsh"] });
+  assert.deepEqual(Object.keys(harness.installs[0]).sort(), ["identifier", "platforms"]);
+  assert.deepEqual(harness.messages, ["已安装 market-skill"]);
+  assert.equal(harness.events[0]?.type, "sinitek-cli-skills-installed");
+  assert.deepEqual(plain(harness.events[0]?.detail), { platforms: ["dsh"] });
+  assert.equal(JSON.stringify(harness.installs).includes("apiKey"), false);
+  assert.equal(JSON.stringify(harness.events).includes("sk-"), false);
+});
+
+test("skills market install failure keeps the DSH label from the shared target list", async () => {
+  const harness = createMarketHarness({
+    targets: [{ platform: "dsh", name: "market-skill", status: "failed", message: "目录不可写" }],
+  });
+  await harness.boot();
+  harness.button("下载").props.onClick();
+  const dsh = harness.targetNodes().find((node) => targetLabels([node])[0] === "DSH");
+  assert.ok(dsh);
+  dsh.props.children[0].props.onChange({ target: { checked: true } });
+  harness.button("安装").props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  const error = descendants(harness.render()).find((node) => node.props.role === "alert" && String(node.props.children).includes("DSH"));
+  assert.equal(error?.props.children, "DSH / market-skill：目录不可写");
+  assert.deepEqual(harness.warnings, ["没有安装新技能"]);
+  assert.deepEqual(harness.messages, []);
+  assert.deepEqual(plain(harness.installs[0]?.platforms), ["dsh"]);
 });

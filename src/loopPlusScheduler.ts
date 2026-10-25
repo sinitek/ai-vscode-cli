@@ -754,19 +754,20 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       return [];
     }
     const started: LoopPlusExecutionRecord[] = [];
-    const active = running.map(copyExecution);
+    const reserved = running.map(copyExecution);
     const nextPending: LoopPlusExecutionRecord[] = [];
     for (const candidate of pending) {
-      const conflict = findConflict(candidate, active);
+      const conflict = findConflict(candidate, reserved);
       const capacityLeft = running.length + started.length < maxConcurrency;
       if (!conflict && capacityLeft) {
         const runningRecord = copyExecution(candidate);
         runningRecord.state = "running";
         started.push(runningRecord);
-        active.push(copyExecution(runningRecord));
+        reserved.push(copyExecution(runningRecord));
         continue;
       }
       nextPending.push(candidate);
+      reserved.push(copyExecution(candidate));
     }
     if (started.length === 0) {
       return [];
@@ -777,7 +778,8 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   function explainPending(attemptId: string): { block: LoopPlusConflictBlock | null; concurrencyBlocked: boolean } {
-    const candidate = pending.find((item) => item.attemptId === attemptId);
+    const index = pending.findIndex((item) => item.attemptId === attemptId);
+    const candidate = index >= 0 ? pending[index] : undefined;
     if (!candidate) {
       return { block: null, concurrencyBlocked: false };
     }
@@ -785,7 +787,12 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     if (runningConflict) {
       return { block: runningConflict, concurrencyBlocked: false };
     }
-    return { block: null, concurrencyBlocked: running.length >= maxConcurrency };
+    const earlierPending = pending.slice(0, index);
+    const pendingConflict = findConflict(candidate, earlierPending);
+    if (pendingConflict) {
+      return { block: pendingConflict, concurrencyBlocked: false };
+    }
+    return { block: null, concurrencyBlocked: true };
   }
 
   function latchWake(): boolean {

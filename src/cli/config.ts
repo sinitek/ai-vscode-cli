@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { buildDshLaunchArgs } from "../interactive/dshAppServerProtocol";
 import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
@@ -94,7 +95,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude" || cli === "grok";
+  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
@@ -107,10 +108,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && globalMode === "max") {
+    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && globalMode === "max") {
       return "high";
     }
-    if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && globalMode === "xhigh") {
+    if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && globalMode === "xhigh") {
       return "high";
     }
     if (usesCodexLikeThinking && globalMode === "off") {
@@ -121,10 +122,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && mode === "max") {
+  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && mode === "max") {
     return "high";
   }
-  if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && mode === "xhigh") {
+  if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && mode === "xhigh") {
     return "high";
   }
   if (usesCodexLikeThinking && mode === "off") {
@@ -205,6 +206,26 @@ export function getGrokCommand(): string {
   const configured = config.get<string>("commands.grok");
   const command = typeof configured === "string" ? configured.trim() : "";
   return command || "grok";
+}
+
+export function getDshCommand(): string {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<string>("commands.dsh");
+  const command = typeof configured === "string" ? configured.trim() : "";
+  return command || "dsh";
+}
+
+export function readExplicitDshPatchArgs(args: readonly unknown[]): string[] {
+  const normalized = args.filter((arg): arg is string => typeof arg === "string");
+  const launched = buildDshLaunchArgs(normalized);
+  if (launched[0] !== "--profile" || launched[1] !== "acp") {
+    throw new Error("DSH launch profile is fixed to acp and cannot be configured.");
+  }
+  return launched.slice(2);
+}
+
+export function getDshConfiguredPatchArgs(): string[] {
+  return readExplicitDshPatchArgs(getCliArgs("dsh"));
 }
 
 export function getGrokAgentArgs(): string[] {

@@ -12,15 +12,17 @@
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
 | OpenCode | one-shot / 并行 `opencode run --auto [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
 | Grok Build | 长驻 ACP `grok --no-auto-update agent stdio` | `loadSession` 为真时按 `sessionId/cwd/mcpServers` 续接，否则新建 ACP 会话并保留插件本地记录 | `src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/config/grokConfig.ts` |
+| DeepSeek Harness | 长驻 ACP `dsh --profile acp` | ACP UUID 用 `session/resume` 续接。不发送 `session/load`。插件 `local_` id 不是恢复 id | `src/interactive/dshRunner.ts`、`src/interactive/manager.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/config/dshConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
 ### 交互 Runner 生命周期
 
-- `InteractiveRunnerManager` 只管理 Codex、Claude、Grok。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不是这三项时，查询返回 false 或 null，释放和活动标记无操作。
+- `InteractiveRunnerManager` 管理 Codex、Claude、Grok、DSH。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不是这四项时，查询返回 false 或 null，释放和活动标记无操作。
 - 只有 Grok 的 `getOrCreate` 会 trim sessionId。空白 session 在写入缓存前抛出 `empty grok session`，`reason` 为 `empty`。其它方法不 trim，也不规范化 command、cwd 或路径分隔符。
 - Codex 复用只比较 command、cwd 和规范化后的 configId。model、thinking、interactive、args、threadId 变化时保留 runner，并调用既有 `updateOptions`。模型与 config 仍走 `codexThreadSelection.ts`。
 - Claude 不复用已 dispose 的 runner。thinking、interactive、model，以及只有 true 才算开启的 isolate，必须严格一致。command、cwd、entrypoint 仅在旧值为空时接受新值。复用时优先保留 runner 已有的非空 session id。
 - Grok 只有 `isReusable()` 且 command、cwd、thinking、interactive、model 一致时复用。`agentArgs` 和 `localSessionId` 不触发重建。停止时 Grok 调用 `cancelTurn`，Codex 和 Claude 调用 `stopAndRebuild`。
+- DSH 复用要求 runner 仍可复用，且 command、cwd、interactiveMode、localSessionId、`DSH_HOME` 和显式 agent 参数一致。启动固定 `dsh --profile acp`。停止先发 `session/cancel`。模型线值必须命中当前公布选项。思考档只接受当前模型公布且属于 DeepSeek 契约的 raw 标量；默认验证模型为 `low`、`high`、`xhigh`、`max`，`off` 和空 value 不进入面板。每次 prompt 前通过 `session/set_config_option` 确认当前值。
 - 同一 key 上 `setRunner` 遇到同一对象只刷新元数据；换对象时先释放旧 entry。Codex 缺省 command、cwd、args 会覆盖或清空；Claude 和 Grok 省略这些可选字段时保留旧值。保存的参数数组是副本。`setRunner` 本身不调用 `updateOptions`。
 - 空闲 24 小时后释放。回调里的判定阈值是该超时减 2 秒，并且只释放当前 Map 中的同一个 entry。活动运行期间取消空闲计时，结束后重新计时。释放顺序是清 timer、调用 runner.dispose、再删映射。创建失败不留下半成品 entry，构造、`updateOptions` 和 dispose 的错误原样抛出。
 - 平台差异在 `src/interactive/runnerLifecycleStrategies.ts`，缓存和计时只在 `src/interactive/manager.ts`。这不改变用户可见的续接、停止或会话存档。
@@ -46,6 +48,7 @@
 - `sinitek-cli-tools.commands.claude`
 - `sinitek-cli-tools.commands.opencode`
 - `sinitek-cli-tools.commands.grok`
+- `sinitek-cli-tools.commands.dsh`
 
 参数来源：
 
@@ -53,6 +56,7 @@
 - `sinitek-cli-tools.args.claude`
 - `sinitek-cli-tools.args.opencode`
 - `sinitek-cli-tools.args.grok`
+- `sinitek-cli-tools.args.dsh`
 
 命令拆分与解析边界集中在 `src/cli/commandResolution.ts`，执行路径由 `src/cli/commandRunner.ts` 复用：
 
@@ -63,6 +67,7 @@
 - Windows 下额外尝试 npm 全局安装目录、官方 Codex 安装目录 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`、`%USERPROFILE%\.local\bin`、scoop shims、Volta bin 和 WinGet Links
 - Codex 用户级目录遵循 `CODEX_HOME` / `CODEX_HOME_DIR`，未设置时为当前用户目录下的 `.codex`（Windows 即 `%USERPROFILE%\.codex`）
 - Grok Build 用户配置是 `$GROK_HOME/config.toml`；未设置 `GROK_HOME` 时为 `~/.grok/config.toml`，Windows 为 `%USERPROFILE%\.grok\config.toml`。`~/.grok/settings.json` 与 `user-settings.json` 不是该 schema，插件不读取、迁移或删除其中的密钥。
+- DeepSeek Harness 默认命令是 `dsh`。`args.dsh` 只保留明确的 `--patch`，不能覆盖 `--profile`。运行时使用隔离 `DSH_HOME`。全局 Skills 根是 `${DSH_HOME:-~/.dsh}/skills`，全局规则是 `${DSH_HOME:-~/.dsh}/AGENTS.md`。凭据只进入子进程环境变量 `SINITEK_DSH_API_KEY`。
 - macOS 下优先直接启动已解析的 CLI；仅在命令仍无法直接解析时，才回退到 `sinitek-cli-tools.macTaskShell` 对应的 `zsh` / `bash`
 
 ## 3. 交互模式真实行为
@@ -196,11 +201,23 @@
 - Grok 恢复已有会话时，`session/load` 成功后、发送下一条 `session/prompt` 前，使用 `session/set_model` 将本轮所选模型应用到同一个 ACP session；模型切换 RPC 失败时停止本轮，不静默沿用旧模型。新建会话仍通过进程级 `--model` 选择模型。
 - 回合停止发送文档中的 `session/cancel`。进程停止、spawn 失败和释放仍先关 stdin，再 `SIGTERM`，最后 `SIGKILL`，并清理进程组；Windows 走现有等价清理。命令解析、`~` / `%USERPROFILE%` 展开和用户级 bin 目录复用 `commandResolution`。
 - 聊天区 `#thinkingMode` 在 grok 下的选项顺序是 `off`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。已保存的 `max` 或 `ultra` 保持原值，不改写成 `high`。下发值只使用 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。插件的 `off` 映射为 `none`，`on` 映射为 `medium`，`ultra` 映射为 `max`，`xhigh` 仍是 `xhigh`，`max` 仍是 `max`，不把 `on` / `off` / `ultra` 原样传给 grok。只有广告了 `reasoning_effort` 且映射后的值在允许列表中时才调用 `session/set_config_option`；不在允许列表或未广告时不发送、不自动降级、不加 `--reasoning-effort`。`initialize` 上的同名字段只作为旧响应的兼容回退。
-- 配置页在 Claude、Codex、OpenCode 之后追加 Grok 卡片，不调整前三个平台的顺序，也不恢复 Gemini。空配置顺序是 `[]`，空 active id 是 `null`；读取缺少 `grok` 键的旧存档时补空，并保留原来三个平台的顺序。文本模式编辑完整 `config.toml`，非法 TOML 或空文本不覆盖上一份有效内容。可视化复用 Codex 配置页的行、label、问号 tooltip、对齐和主题语义色，只映射 `models.default`、`models.default_reasoning_effort` 和 `model.<id>` 的 `model`、`base_url`、`api_backend`（仅 `chat_completions`、`responses`、`messages`）、`api_key`、`env_key`、`context_window`、`reasoning_summary`（仅 `none`、`auto`、`concise`、`detailed`）、`compaction_at_tokens`。未展示字段保留。不写 `service_tier`、`disable_response_storage`、`wire_api` 或 `requires_openai_auth`。`api_key` 是 `[model.<id>]` 的密钥本身，不知道时写空字符串，不从 Codex `auth.json` 复制；`env_key` 只表示环境变量名。内容为空、加载中、解析错误或字段无效时保存按钮禁用。
+- 配置页在 Claude、Codex、OpenCode 之后追加 Grok 卡片，DSH 再追加在 Grok 之后，不调整前面平台的顺序，也不恢复 Gemini。空配置顺序是 `[]`，空 active id 是 `null`；读取缺少 `grok` 或 `dsh` 键的旧存档时只补空数组，并保留已有平台 id。文本模式编辑完整 `config.toml`，非法 TOML 或空文本不覆盖上一份有效内容。可视化复用 Codex 配置页的行、label、问号 tooltip、对齐和主题语义色，只映射 `models.default`、`models.default_reasoning_effort` 和 `model.<id>` 的 `model`、`base_url`、`api_backend`（仅 `chat_completions`、`responses`、`messages`）、`api_key`、`env_key`、`context_window`、`reasoning_summary`（仅 `none`、`auto`、`concise`、`detailed`）、`compaction_at_tokens`。未展示字段保留。不写 `service_tier`、`disable_response_storage`、`wire_api` 或 `requires_openai_auth`。`api_key` 是 `[model.<id>]` 的密钥本身，不知道时写空字符串，不从 Codex `auth.json` 复制；`env_key` 只表示环境变量名。内容为空、加载中、解析错误或字段无效时保存按钮禁用。
 
 - Grok 可视化采用左侧模型列表、右侧参数编辑，不再用“当前模型”下拉切换。“新增”打开单名称输入弹窗，`model` 和表键默认使用该输入，非必需的 `name` 不提供可视化输入或范例、新增时不生成，已有模型中的值原样保留；支持取消、重名校验与回车确认（组词时不提交）。新增模型深拷贝当前项全部参数（含凭据、协议与未知嵌套字段），仅替换 `model` 并省略新项可选的 `name`；每行名称右侧的删除 SVG 确认后只删除该项，删除未选中项保留当前选择；当前项不存在时回退默认/首项，再回退空模板。模型之间不共享嵌套对象，其他 TOML 字段与全局默认语义保持不变。
 - 真实 Responses 流可能在正文之后发送当前 Grok 不支持的 `response.metadata` 等事件；这时 ACP 返回错误而非成功。运行器从 RPC `error.data` 和失败 `retry_state` 识别此类错误，返回 `GROK_RESPONSES_STREAM_INCOMPATIBLE`，提示按服务能力改为 `chat_completions`，停止无效重试并销毁故障 runner。不根据模型名称全局改协议，也不将部分正文作为成功结束。修改本机协议时需同步对应配置档案，详情见 `.ch/docs/runbooks/grok-model-config.md`。
 - 合并与快照比较只忽略本机真实 Grok 流中逐事件变化的 `params._meta.eventId`、`chunkId`、`agentTimestampMs`；合并记录保留最后一片的 `_meta`。`promptId`、流/回合起点、token 用量、内容注解和未知元数据变化仍构成边界，不按文本相同来删除重复词。
+
+### DeepSeek Harness
+
+- 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`。交互主路径固定为 `dsh --profile acp`。`args.dsh` 只接受明确的 `--patch`。
+- 模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。ACP 线值是 `JSON.stringify(["sinitek-custom","subcoco/deepseek-v4.1-flash"])`，并且必须出现在当前 `configOptions` 中。响应短名和斜杠拆分不改当前模型，也不能当作可见模型 id。
+- 未配置模型不能执行。未出现在已配置模型和当前 `configOptions` 中的 id 不得当成可执行模型。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。
+- 凭据默认引用 `SINITEK_DSH_API_KEY`；配置档案也可直接保存 `apiKey`。直接配置的密钥只在本机配置目录和备份中以用户可读权限保存，运行时只进入 DSH 子进程环境，不进 patch、参数、仓库或诊断输出；未填写 `apiKey` 时回退到外部 `SINITEK_DSH_API_KEY`。
+- 配置页分组在 Grok 之后。旧顺序缺少 `dsh` 时只补空数组。配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化模型编辑沿用 Grok 双栏布局，左侧按顺序列出模型，右侧编辑当前模型与 profile 信息，`acpModel` 下拉选择默认模型。已接受的额外顶层字段和模型对象字段会保留；未验证字段、非 `apiKey` 密钥字段和 `retryPolicy` 未建模键在验证阶段拒绝。运行 patch 只写已验证字段；可选 `apiKey` 不进入 patch。provider 只读。`baseURL`、模型 id 和 `apiKey` 可编辑；可视化模式不展示 `apiKeyEnv`。DSH 官方 provider schema 将 `apiKeyEnv` 定义为可选；profile 可省略，插件在保存 profile 和运行 patch 时自动补齐固定值 `SINITEK_DSH_API_KEY`。直接配置的 `apiKey` 只在本机配置目录和备份中保存，运行时注入子进程环境，未填写时使用外部环境变量；保存校验只对 profile 根级 `apiKey` 排除密钥扫描，嵌套或其它位置的密钥仍拒绝。默认模型 id 是 `subcoco/deepseek-v4.1-flash`；有序 `models` 数组允许配置多个完整 id。聊天模型选择器按序列出 profile 模型，不提供通用管理入口；切换持久化，并在每轮执行时解析为配置内 wire，由 ACP 确认后才执行。别名和未列入该数组的 id 不能执行。DSH 详情区不显示激活状态；保存已激活档案和列表激活动作仍走 `activateDshProfile`。图形 Extension Host 点击验收未做。Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根是 `<DSH_HOME>/skills`。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则是共享的 `AGENTS.md`。
+- `usage_update` 缺失时不显示 0。窗口若来自 adapter-fallback，界面标题标明它不是服务确认容量。
+- 思考档只使用当前模型公布且属于 DeepSeek 契约的 raw 标量。默认验证模型 profile 声明 `low`、`high`、`xhigh`、`max`，面板直接显示这些 value，不显示 `off` 或空 value；其它自定义模型仅在显式声明能力时显示。ACP 广告仍是最终依据；旧 `off` / `medium` 归一为可用档位，不显示 Grok 的扩展档位，也不绕过 ACP options 校验。
+- 原生 compaction 明确不支持。真实 `session/request_permission` 和图形 Extension Host 点击验收未验证。
+- 插件启动的 DSH ACP 子进程显式覆盖 `DSH_PERMISSION_MODE=danger-full-access`，让 DSH 官方配置同时使用 `danger-full-access` 沙箱与 `never` 审批；父进程环境不会被修改。该模式授予 DSH 子进程完整文件访问且不弹审批，只作用于插件启动的 DSH 执行。
 
 ### Gemini
 

@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { extractSkillDescription, skillDescriptionStrategies } from "./skillDiscovery";
 import {
   installCliSkillDirectory,
+  isCliGlobalSkillPlatform,
   type CliGlobalSkillPlatform,
 } from "./cliGlobalSkills";
 
@@ -23,7 +24,6 @@ const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 const MAX_ZIP_ENTRIES = 500;
 const MAX_REDIRECTS = 3;
-const CLI_PLATFORMS: readonly CliGlobalSkillPlatform[] = ["claude", "codex", "opencode", "grok"];
 
 export type LobehubSkillMarketItem = {
   identifier: string;
@@ -123,10 +123,10 @@ function normalizePlatforms(value: unknown): CliGlobalSkillPlatform[] {
   }
   const platforms: CliGlobalSkillPlatform[] = [];
   for (const item of value) {
-    if (!CLI_PLATFORMS.includes(item as CliGlobalSkillPlatform)) {
+    if (!isCliGlobalSkillPlatform(item)) {
       throw new SkillMarketError(t("skill.global.invalidPlatform"));
     }
-    const platform = item as CliGlobalSkillPlatform;
+    const platform = item;
     if (!platforms.includes(platform)) {
       platforms.push(platform);
     }

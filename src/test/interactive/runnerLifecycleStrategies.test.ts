@@ -9,9 +9,11 @@ installVscodeMock();
 const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 const { ClaudeInteractiveRunner } = require("../../interactive/claudeRunner") as typeof import("../../interactive/claudeRunner");
 const { GrokInteractiveRunner } = require("../../interactive/grokRunner") as typeof import("../../interactive/grokRunner");
+const { DshInteractiveRunner } = require("../../interactive/dshRunner") as typeof import("../../interactive/dshRunner");
 const {
   claudeRunnerLifecycleStrategy,
   codexRunnerLifecycleStrategy,
+  dshRunnerLifecycleStrategy,
   grokRunnerLifecycleStrategy,
   runnerLifecycleStrategies,
   stopManagedRunner,
@@ -78,6 +80,7 @@ test("lifecycle strategy modules do not import the manager facade", () => {
   assert.equal(runnerLifecycleStrategies.codex.cli, "codex");
   assert.equal(runnerLifecycleStrategies.claude.cli, "claude");
   assert.equal(runnerLifecycleStrategies.grok.cli, "grok");
+  assert.equal(runnerLifecycleStrategies.dsh.cli, "dsh");
 });
 
 test("Codex strategy normalizes selection without trimming the session or rebuilding on model", () => {
@@ -367,5 +370,75 @@ test("stop routes Codex and Claude to stopAndRebuild and Grok to cancelTurn", ()
     codex.dispose();
     claude.dispose();
     grok.dispose();
+  }
+});
+
+test("DSH strategy keeps an independent runner and reuses across model changes", () => {
+  assert.throws(() => dshRunnerLifecycleStrategy.prepare({
+    sessionId: "  ",
+    command: "dsh",
+    agentArgs: [],
+    cwd: "/workspace",
+    thinkingMode: "ultra",
+    interactiveMode: "coding",
+    model: null,
+  }), (error: unknown) => {
+    assert.equal((error as { reason?: string }).reason, "empty");
+    return true;
+  });
+  const callerArgs = ["--patch", "/tmp/acp-patch.yaml"];
+  const prepared = dshRunnerLifecycleStrategy.prepare({
+    sessionId: " local-session ",
+    command: "dsh",
+    agentArgs: callerArgs,
+    cwd: "/workspace",
+    thinkingMode: "ultra",
+    interactiveMode: "coding",
+    model: "[\"sinitek-custom\",\"deepseek-v4.1-flash\"]",
+    localSessionId: "9a871318-21c4-4603-8e65-693ba8589abe",
+    env: { DSH_HOME: "/tmp/isolated", SINITEK_DSH_API_KEY: "secret" },
+  });
+  assert.equal(prepared.sessionId, "local-session");
+  const runner = dshRunnerLifecycleStrategy.createRunner(prepared);
+  try {
+    assert.equal(runner instanceof DshInteractiveRunner, true);
+    assert.equal(runner instanceof GrokInteractiveRunner, false);
+    const entry = {
+      ...dshRunnerLifecycleStrategy.createRegistration(prepared, runner),
+      idleTimer: null,
+      lastUsedAt: 0,
+    };
+    assert.notEqual(entry.args, callerArgs);
+    assert.equal(entry.cli, "dsh");
+    assert.equal(entry.localSessionId, "9a871318-21c4-4603-8e65-693ba8589abe");
+    const changed = dshRunnerLifecycleStrategy.prepare({
+      ...prepared.options,
+      sessionId: "local-session",
+      model: "[\"sinitek-custom\",\"other\"]",
+      thinkingMode: "max",
+    });
+    assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, changed), true);
+    assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, dshRunnerLifecycleStrategy.prepare({
+      ...prepared.options,
+      sessionId: "local-session",
+      cwd: "/other",
+    })), false);
+    assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, dshRunnerLifecycleStrategy.prepare({
+      ...prepared.options,
+      sessionId: "local-session",
+      localSessionId: null,
+    })), false);
+    dshRunnerLifecycleStrategy.applyReuse(entry, changed);
+    assert.equal(entry.model, "[\"sinitek-custom\",\"other\"]");
+    assert.equal(entry.thinkingMode, "max");
+    const calls: string[] = [];
+    runner.cancelTurn = () => {
+      calls.push("cancel");
+    };
+    dshRunnerLifecycleStrategy.stop(runner);
+    stopManagedRunner(entry);
+    assert.deepEqual(calls, ["cancel", "cancel"]);
+  } finally {
+    runner.dispose();
   }
 });

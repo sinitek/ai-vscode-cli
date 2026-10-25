@@ -1,14 +1,17 @@
 import { normalizeCodexRunSelection, type CodexRunSelection } from "./codexThreadSelection";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { CodexInteractiveRunner } from "./codexRunner";
+import { DshInteractiveRunner } from "./dshRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import type {
   ClaudeRunnerCreateOptions,
   CodexRunnerCreateOptions,
   CodexRunnerEntry,
+  DshRunnerCreateOptions,
   GrokRunnerCreateOptions,
   PreparedClaudeCreate,
   PreparedCodexCreate,
+  PreparedDshCreate,
   PreparedGrokCreate,
   RunnerEntry,
   RunnerLifecycleStrategy,
@@ -28,6 +31,14 @@ function sameOrUnspecified(existingValue: string | undefined, nextValue: string 
 
 function emptyGrokSessionError(): Error {
   return Object.assign(new Error("empty grok session"), { reason: "empty" });
+}
+
+function emptyDshSessionError(): Error {
+  return Object.assign(new Error("empty dsh session"), { reason: "empty" });
+}
+
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export const codexRunnerLifecycleStrategy: CodexRunnerLifecycleStrategy = {
@@ -319,10 +330,114 @@ export const grokRunnerLifecycleStrategy: RunnerLifecycleStrategy<"grok", GrokRu
   },
 };
 
+export const dshRunnerLifecycleStrategy: RunnerLifecycleStrategy<"dsh", DshRunnerCreateOptions, PreparedDshCreate> = {
+  cli: "dsh",
+  prepare(options) {
+    const sessionId = options.sessionId.trim();
+    if (!sessionId) {
+      throw emptyDshSessionError();
+    }
+    return {
+      sessionId,
+      options: {
+        ...options,
+        sessionId,
+        agentArgs: copyArgs(options.agentArgs),
+        localSessionId: options.localSessionId ?? null,
+      },
+    };
+  },
+  canReuse(entry, prepared) {
+    return entry.runner.isReusable()
+      && entry.command === prepared.options.command
+      && entry.cwd === prepared.options.cwd
+      && entry.interactiveMode === prepared.options.interactiveMode
+      && entry.localSessionId === (prepared.options.localSessionId ?? null)
+      && (entry.env?.DSH_HOME ?? "") === (prepared.options.env?.DSH_HOME ?? "")
+      && sameStringList(entry.args, prepared.options.agentArgs);
+  },
+  applyReuse(entry, prepared) {
+    entry.command = prepared.options.command;
+    entry.args = copyArgs(prepared.options.agentArgs);
+    entry.cwd = prepared.options.cwd;
+    entry.interactiveMode = prepared.options.interactiveMode;
+    entry.localSessionId = prepared.options.localSessionId ?? null;
+    entry.env = prepared.options.env;
+    entry.model = prepared.options.model;
+    entry.thinkingMode = prepared.options.thinkingMode;
+  },
+  createRunner(prepared) {
+    return new DshInteractiveRunner({
+      command: prepared.options.command,
+      agentArgs: prepared.options.agentArgs,
+      cwd: prepared.options.cwd,
+      thinkingMode: prepared.options.thinkingMode,
+      model: prepared.options.model,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    });
+  },
+  createRegistration(prepared, runner) {
+    return {
+      cli: "dsh",
+      sessionId: prepared.sessionId,
+      runner,
+      thinkingMode: prepared.options.thinkingMode,
+      interactiveMode: prepared.options.interactiveMode,
+      model: prepared.options.model,
+      command: prepared.options.command,
+      args: copyArgs(prepared.options.agentArgs),
+      cwd: prepared.options.cwd,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    };
+  },
+  applySetMetadata(entry, input) {
+    entry.sessionId = input.sessionId;
+    entry.thinkingMode = input.thinkingMode;
+    entry.interactiveMode = input.interactiveMode;
+    entry.model = input.model;
+    if (typeof input.options.command === "string") {
+      entry.command = input.options.command;
+    }
+    if (input.options.args) {
+      entry.args = copyArgs(input.options.args);
+    }
+    if (input.options.cwd !== undefined) {
+      entry.cwd = input.options.cwd;
+    }
+    if (input.options.localSessionId !== undefined) {
+      entry.localSessionId = input.options.localSessionId;
+    }
+    if (input.options.env) {
+      entry.env = input.options.env;
+    }
+  },
+  createSetRegistration(input) {
+    return {
+      cli: "dsh",
+      sessionId: input.sessionId,
+      runner: input.runner,
+      thinkingMode: input.thinkingMode,
+      interactiveMode: input.interactiveMode,
+      model: input.model,
+      command: input.options.command ?? "",
+      args: copyArgs(input.options.args ?? []),
+      cwd: input.options.cwd,
+      localSessionId: input.options.localSessionId ?? null,
+      env: input.options.env,
+    };
+  },
+  stop(runner) {
+    runner.cancelTurn();
+  },
+};
+
 export const runnerLifecycleStrategies = {
   codex: codexRunnerLifecycleStrategy,
   claude: claudeRunnerLifecycleStrategy,
   grok: grokRunnerLifecycleStrategy,
+  dsh: dshRunnerLifecycleStrategy,
 };
 
 export function stopManagedRunner(entry: RunnerEntry): void {
@@ -334,5 +449,9 @@ export function stopManagedRunner(entry: RunnerEntry): void {
     claudeRunnerLifecycleStrategy.stop(entry.runner);
     return;
   }
-  grokRunnerLifecycleStrategy.stop(entry.runner);
+  if (entry.cli === "grok") {
+    grokRunnerLifecycleStrategy.stop(entry.runner);
+    return;
+  }
+  dshRunnerLifecycleStrategy.stop(entry.runner);
 }

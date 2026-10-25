@@ -851,6 +851,10 @@ export function getConfigViewHtml(
             normalizeConfigLines(current.configContent || current.content)
           );
         }
+        if (platform === "dsh") {
+          return normalizeJson(config.configContent || config.content || "")
+            === normalizeJson(current.configContent || current.content || "");
+        }
         return (
           areLinesSubset(
             normalizeConfigLines(config.configContent),
@@ -861,7 +865,7 @@ export function getConfigViewHtml(
       }
 
       async function syncActiveConfigIds() {
-        const platforms = ["claude", "codex", "opencode", "grok"];
+        const platforms = ["claude", "codex", "opencode", "grok", "dsh"];
         let updated = false;
         postConfigDebug({
           event: "syncActive:start",

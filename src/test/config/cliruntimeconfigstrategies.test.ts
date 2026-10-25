@@ -51,6 +51,11 @@ function createPorts(): CliRuntimeConfigIoPorts {
       writeGrokConfigText: unused("writeGrokConfigText"),
       backupGrokConfig: unused("backupGrokConfig"),
     },
+    dsh: {
+      readDshConfigText: unused("readDshConfigText"),
+      writeDshConfigText: unused("writeDshConfigText"),
+      backupDshConfig: unused("backupDshConfig"),
+    },
   };
 }
 
@@ -61,7 +66,7 @@ function strategiesFrom(ports: CliRuntimeConfigIoPorts) {
 test("strategy registration covers four platforms without calling IO", () => {
   const ports = createPorts();
   const strategies = strategiesFrom(ports);
-  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "grok", "opencode"]);
+  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "opencode"]);
 });
 
 test("Claude read, apply, backup, and default fields keep settings and MCP rules", async () => {
@@ -413,12 +418,14 @@ test("every platform backup delegates to its own port in return order", async ()
     codex: ["/codex/config", "/codex/auth"],
     opencode: ["/opencode/config"],
     grok: ["/grok/config"],
+    dsh: ["/dsh/config"],
   };
   const ports = createPorts();
   ports.claude.backupClaudeConfig = async () => expected.claude;
   ports.codex.backupCodexConfig = async () => expected.codex;
   ports.opencode.backupOpenCodeConfig = async () => expected.opencode;
   ports.grok.backupGrokConfig = async () => expected.grok;
+  ports.dsh.backupDshConfig = async () => expected.dsh;
   const strategies = strategiesFrom(ports);
   for (const platform of Object.keys(expected) as CurrentConfigPlatform[]) {
     assert.deepEqual(await strategies[platform].backup(), expected[platform]);

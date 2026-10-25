@@ -403,7 +403,7 @@ test("restores a snapshot without losing reviews, pending work, or dedupe histor
   assert.throws(() => createLoopPlusScheduler(), /Invalid Loop\+ maxConcurrency/);
 });
 
-test("uses running tasks for conflict checks without reserving pending write scopes", () => {
+test("uses loopParallel conflict rules for running tasks and reserves pending write scopes", () => {
   const fresh = createLoopPlusScheduler({ maxConcurrency: 2 });
   const sameBatch = fresh.dispatch([
     spec("left", ["src/shared.ts"]),
@@ -463,32 +463,10 @@ test("uses running tasks for conflict checks without reserving pending write sco
   assert.equal(waiting.decisions[0]?.concurrencyBlocked, true);
   const overlapping = reserved.dispatch([spec("overlap", ["./SRC/Queued.ts"])]);
   assert.equal(overlapping.decisions[0]?.admission, "pending");
-  assert.equal(overlapping.decisions[0]?.concurrencyBlocked, true);
-  assert.equal(overlapping.decisions[0]?.block, null);
+  assert.equal(overlapping.decisions[0]?.concurrencyBlocked, false);
+  assert.equal(overlapping.decisions[0]?.block?.reason, "writeFiles");
+  assert.equal(overlapping.decisions[0]?.block?.otherAttemptId, "queued-1");
   assert.deepEqual(overlapping.started, []);
-
-  const released = reserved.finish({
-    subtaskId: "holder",
-    attemptId: "holder-1",
-    outcome: "completed",
-  });
-  assert.deepEqual(attemptIds(released.started), ["queued-1"]);
-  assert.deepEqual(attemptIds(released.view.pending), ["overlap-1"]);
-  assert.equal(released.view.pending[0]?.state, "pending");
-  assert.equal(released.view.running[0]?.attemptId, "queued-1");
-
-  const backfill = createLoopPlusScheduler({ maxConcurrency: 3 });
-  const first = backfill.dispatch([
-    spec("alpha", ["x.ts"]),
-    spec("beta", ["x.ts", "y.ts"]),
-    spec("gamma", ["y.ts"]),
-  ]);
-  assert.deepEqual(attemptIds(first.started), ["alpha-1", "gamma-1"]);
-  assert.deepEqual(attemptIds(first.view.pending), ["beta-1"]);
-  assert.equal(first.decisions[1]?.block?.reason, "writeFiles");
-  assert.equal(first.decisions[1]?.block?.otherAttemptId, "alpha-1");
-  assert.equal(first.decisions[2]?.admission, "started");
-  assert.equal(first.view.pending[0]?.state, "pending");
 });
 
 test("counts already-running work against concurrency and promotes the oldest eligible task", () => {

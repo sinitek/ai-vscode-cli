@@ -62,6 +62,7 @@ function createEmptyStore(): SessionStore {
     claude: { currentId: null, sessions: [] },
     opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+    dsh: { currentId: null, sessions: [] },
   };
 }
 
@@ -753,6 +754,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+      dsh: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: { codex: { [staleId]: { threadId: "thread-1", frozenThreadIds: [], updatedAt: 1 } } },
@@ -788,6 +790,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       claude: { currentId: "stale-claude", sessions: [{ ...createRecord("stale-claude"), lastUsedAt: 1 }] },
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+      dsh: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -845,6 +848,7 @@ test("writes pruned session metadata when retained mappings remain", async () =>
       claude: { currentId: "kept-claude", sessions: [{ ...createRecord("kept-claude"), lastUsedAt: 999 }] },
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+      dsh: { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -871,6 +875,7 @@ test("contains session file write errors during retained workspace cleanup", asy
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+      dsh: { currentId: null, sessions: [] },
     } as SessionStore);
 
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
@@ -1015,6 +1020,7 @@ test("covers retained stores, deletion, no-op drafts, local promotion, and fallb
       claude: { currentId: null, sessions: [] },
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
+      dsh: { currentId: null, sessions: [] },
     } as SessionStore);
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
     assert.ok(harness.state.globalState.get("session-store:retained-workspace"));

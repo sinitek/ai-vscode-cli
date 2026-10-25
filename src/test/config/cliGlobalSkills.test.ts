@@ -1,5 +1,6 @@
 import assert = require("node:assert/strict");
 import * as fs from "fs";
+import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import test = require("node:test");
@@ -8,15 +9,25 @@ import {
   copyCliSkill,
   deleteCliSkill,
   getCliSkillsList,
+  installCliSkillDirectory,
   openCliSkillsDirectory,
+  readDshUnsupportedCapability,
 } from "../../config/cliGlobalSkills";
+import { buildDshSessionPromptParams } from "../../interactive/dshAppServerProtocol";
 import { t } from "../../i18n";
+import {
+  resolveDshGlobalRulesPath,
+  resolveDshGlobalSkillsDirectory,
+  resolveDshHomeDir,
+} from "../../shared/userHomePaths";
 
 const originalHomedir = os.homedir;
 const originalCodexHome = process.env.CODEX_HOME;
 const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 const originalGrokHome = process.env.GROK_HOME;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+const originalDshHome = process.env.DSH_HOME;
+const originalDshApiKey = process.env.SINITEK_DSH_API_KEY;
 
 async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T> {
   const temp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "sinitek-cli-global-skills-"));
@@ -30,6 +41,8 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   delete process.env.CODEX_HOME_DIR;
   delete process.env.GROK_HOME;
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.DSH_HOME;
+  delete process.env.SINITEK_DSH_API_KEY;
   try {
     return await run(homeDir);
   } finally {
@@ -56,6 +69,16 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
       delete process.env.XDG_CONFIG_HOME;
     } else {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+    if (originalDshHome === undefined) {
+      delete process.env.DSH_HOME;
+    } else {
+      process.env.DSH_HOME = originalDshHome;
+    }
+    if (originalDshApiKey === undefined) {
+      delete process.env.SINITEK_DSH_API_KEY;
+    } else {
+      process.env.SINITEK_DSH_API_KEY = originalDshApiKey;
     }
     await fs.promises.rm(temp, { recursive: true, force: true });
   }
@@ -287,5 +310,141 @@ test.describe("cli global skills", { concurrency: false }, () => {
         await fs.promises.rm(custom, { recursive: true, force: true });
       }
     });
+  });
+
+  test("resolves DSH skills under DSH_HOME for macOS, Linux, and Windows", () => {
+    const home = path.join(path.sep, "Users", "tester");
+    assert.equal(
+      resolveDshGlobalSkillsDirectory({}, home, "darwin"),
+      path.join(home, ".dsh", "skills"),
+    );
+    assert.equal(
+      resolveDshGlobalSkillsDirectory({}, home, "linux"),
+      path.join(home, ".dsh", "skills"),
+    );
+    assert.equal(
+      resolveDshGlobalSkillsDirectory({ DSH_HOME: "~/.dsh-custom" }, home, "darwin"),
+      path.join(home, ".dsh-custom", "skills"),
+    );
+    assert.equal(
+      resolveDshGlobalSkillsDirectory({ DSH_HOME: "   " }, home, "linux"),
+      path.join(home, ".dsh", "skills"),
+    );
+    const windowsEnv = { DSH_HOME: "%USERPROFILE%\\dsh-home", USERPROFILE: "/Users/tester" };
+    const windowsHome = resolveDshHomeDir(windowsEnv, home, "win32");
+    assert.equal(windowsHome.includes("%USERPROFILE%"), false);
+    assert.equal(windowsHome.includes("dsh-home"), true);
+    assert.equal(resolveDshGlobalSkillsDirectory(windowsEnv, home, "win32"), path.join(windowsHome, "skills"));
+    assert.equal(resolveDshGlobalRulesPath(windowsEnv, home, "win32"), path.join(windowsHome, "AGENTS.md"));
+    assert.equal(resolveDshGlobalRulesPath({}, home, "linux"), path.join(home, ".dsh", "AGENTS.md"));
+  });
+
+  test("lists, copies, and replaces DSH skills without moving other CLI roots", async () => {
+    await withTempHome(async (homeDir) => {
+      const customHome = path.join(path.dirname(homeDir), "dsh-custom");
+      process.env.DSH_HOME = customHome;
+      const secret = "sk-fixturekey123456";
+      process.env.SINITEK_DSH_API_KEY = secret;
+      const root = path.join(customHome, "skills");
+      await writeSkill(root, "demo", "from dsh");
+      await fs.promises.writeFile(path.join(root, "demo", "SKILL.md"), `---\ndescription: from dsh\n---\n${secret}\n`, "utf8");
+      const listed = await getCliSkillsList("dsh");
+      assert.equal(listed.directory, root);
+      assert.equal(listed.displayDirectory, root);
+      assert.deepEqual(listed.skills.map((skill) => skill.name), ["demo"]);
+      assert.equal(listed.skills[0]?.description, "from dsh");
+      assert.equal(JSON.stringify(listed).includes(secret), false);
+
+      const claude = await getCliSkillsList("claude");
+      const codex = await getCliSkillsList("codex");
+      const opencode = await getCliSkillsList("opencode");
+      const grok = await getCliSkillsList("grok");
+      assert.equal(claude.directory, path.join(homeDir, ".claude", "skills"));
+      assert.equal(codex.directory, path.join(homeDir, ".codex", "skills"));
+      assert.equal(opencode.directory, path.join(homeDir, ".config", "opencode", "skills"));
+      assert.equal(grok.directory, path.join(homeDir, ".grok", "skills"));
+
+      await copyCliSkill("dsh", "demo", "claude");
+      assert.equal(fs.existsSync(path.join(homeDir, ".claude", "skills", "demo", "SKILL.md")), true);
+      assert.equal(fs.existsSync(path.join(root, "demo", "SKILL.md")), true);
+      assert.equal(fs.existsSync(path.join(homeDir, ".codex", "skills")), false);
+      assert.equal(fs.existsSync(path.join(homeDir, ".grok", "skills")), false);
+
+      const replacement = await fs.promises.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-skill-src-"));
+      try {
+        await writeSkill(replacement, "demo", "replaced");
+        await fs.promises.writeFile(path.join(root, "demo", "old-note.txt"), "keep-until-replace\n", "utf8");
+        assert.equal(await installCliSkillDirectory("dsh", "demo", path.join(replacement, "demo")), "installed");
+        assert.equal(fs.existsSync(path.join(root, "demo", "old-note.txt")), false);
+        assert.match(await fs.promises.readFile(path.join(root, "demo", "SKILL.md"), "utf8"), /replaced/);
+        assert.equal(fs.existsSync(path.join(root, ".demo.sinitek-replacing")), false);
+      } finally {
+        await fs.promises.rm(replacement, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("rolls back a failed DSH skill replacement and does not leak secrets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    await withTempHome(async (homeDir) => {
+      const secret = "sk-fixturekey123456";
+      process.env.DSH_HOME = homeDir;
+      process.env.SINITEK_DSH_API_KEY = secret;
+      const root = path.join(homeDir, "skills");
+      await writeSkill(root, "demo", "original");
+      await fs.promises.writeFile(path.join(root, "demo", "marker.txt"), "original-marker", "utf8");
+      const source = await fs.promises.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-skill-fail-"));
+      const sourceSkill = path.join(source, "demo");
+      await writeSkill(sourceSkill, "nested", "ignored");
+      await fs.promises.writeFile(
+        path.join(source, "demo", "SKILL.md"),
+        `---\ndescription: next\n---\n${secret}\n`,
+        "utf8",
+      );
+      const socketName = `blocked-${secret}.sock`;
+      const server = net.createServer();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(path.join(source, "demo", socketName), () => resolve());
+        });
+        await assert.rejects(
+          () => installCliSkillDirectory("dsh", "demo", path.join(source, "demo")),
+          (error: Error) => {
+            assert.equal(error.message.includes(secret), false);
+            assert.match(error.message, /\[redacted\]/);
+            return true;
+          },
+        );
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.promises.rm(source, { recursive: true, force: true });
+      }
+      assert.equal(await fs.promises.readFile(path.join(root, "demo", "marker.txt"), "utf8"), "original-marker");
+      assert.equal(fs.existsSync(path.join(root, "demo", socketName)), false);
+      assert.equal(fs.existsSync(path.join(root, ".demo.sinitek-replacing")), false);
+      assert.equal(fs.existsSync(path.join(homeDir, ".claude", "skills")), false);
+    });
+  });
+
+  test("keeps DSH rules on disk and does not inject them into prompts", () => {
+    const home = path.join(path.sep, "Users", "tester");
+    const rules = "UNIQUE_DSH_RULE_SENTINEL_do_not_inject";
+    assert.equal(resolveDshGlobalRulesPath({ DSH_HOME: home }, home, "linux"), path.join(home, "AGENTS.md"));
+    const promptSource = fs.readFileSync(path.join(process.cwd(), "src/promptRuntime.ts"), "utf8");
+    assert.equal(promptSource.includes("AGENTS.md"), false);
+    assert.equal(promptSource.includes(rules), false);
+    const params = buildDshSessionPromptParams("session-1", "do the task");
+    assert.deepEqual(params.prompt, [{ type: "text", text: "do the task" }]);
+    assert.equal(JSON.stringify(params).includes(rules), false);
+    assert.equal(readDshUnsupportedCapability("explicitSkillsApi").supported, false);
+    assert.match(readDshUnsupportedCapability("explicitSkillsApi").reason, /<DSH_HOME>\/skills/);
+    assert.equal(readDshUnsupportedCapability("nativeCompaction").supported, false);
+    assert.match(readDshUnsupportedCapability("nativeCompaction").reason, /compactSession/);
+    const turnSource = fs.readFileSync(path.join(process.cwd(), "src/extensionHost/interactiveTurnDsh.ts"), "utf8");
+    assert.match(turnSource, /runner\.prompt\(port\.attemptPrompt/);
+    assert.equal(turnSource.includes("AGENTS.md"), false);
   });
 });

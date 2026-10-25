@@ -1,6 +1,6 @@
 export const LEGACY_GEMINI_CONFIG_PLATFORM = "gemini" as const;
 
-export type CurrentConfigPlatform = "claude" | "codex" | "opencode" | "grok";
+export type CurrentConfigPlatform = "claude" | "codex" | "opencode" | "grok" | "dsh";
 export type LegacyConfigPlatform = typeof LEGACY_GEMINI_CONFIG_PLATFORM;
 export type ConfigPlatform = CurrentConfigPlatform | LegacyConfigPlatform;
 
@@ -64,6 +64,7 @@ export type OpenCodeSkillToggle = OpenCodeSkillItem & {
 };
 
 export type ApplyPayload = {
+  profileId?: string;
   content?: string;
   mcpContent?: string;
   envContent?: string;

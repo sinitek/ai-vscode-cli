@@ -1,4 +1,4 @@
-import { getCliArgs, getThinkingArgs } from "./config";
+import { getCliArgs, getThinkingArgs, readExplicitDshPatchArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import type { CliName, ThinkingMode } from "./types";
 import { buildClaudePrompt } from "./claudeToolPolicy";
@@ -187,12 +187,31 @@ function createOpenCodeRunArgStrategy(): CliRunArgStrategy {
   };
 }
 
+function createDshRunArgStrategy(): CliRunArgStrategy {
+  return {
+    includeThinkingArgs: false,
+    applyIsolation(args) {
+      return readExplicitDshPatchArgs(args);
+    },
+    applyBeforePrompt(args) {
+      return readExplicitDshPatchArgs(args);
+    },
+    appendPrompt(args, _options, prompt) {
+      if (prompt.trim()) {
+        throw new Error("DSH one-shot prompt arguments are outside the verified ACP launch contract.");
+      }
+      return readExplicitDshPatchArgs(args);
+    },
+  };
+}
+
 export function createCliRunArgStrategies(): Record<CliName, CliRunArgStrategy> {
   return {
     claude: createClaudeRunArgStrategy(),
     codex: createCodexRunArgStrategy(),
     opencode: createOpenCodeRunArgStrategy(),
     grok: createGrokRunArgStrategy(),
+    dsh: createDshRunArgStrategy(),
   };
 }
 

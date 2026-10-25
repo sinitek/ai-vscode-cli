@@ -198,7 +198,7 @@ custom_root = "keep"
 [models]
 default = "grok"
 [model.grok]
-model = "grok-4.7-kedaya"
+model = "grok-4.7"
 api_key = ""
 custom_option = "keep"
 [model.empty]
@@ -210,7 +210,7 @@ custom_option = "keep"
     apiBackend: "responses", envKey: "SOL_TEST_KEY", contextWindow: "500000",
   });
   const switched = utils.updateState(edited, { selectedModelId: "grok" });
-  assert.equal(switched.model, "grok-4.7-kedaya");
+  assert.equal(switched.model, "grok-4.7");
   const defaulted = utils.updateState(switched, { defaultModel: "gpt-6.1-sol" });
   const serialized = utils.serializeState(defaulted);
   assert.ok(serialized.ok);
@@ -357,8 +357,8 @@ test("Grok config example omits optional model names and stays editable", () => 
   const parsed = utils.parseContent(match[1]);
   assert.ok(parsed.ok);
   const models = parsed.state!.source.model as Record<string, Record<string, unknown>>;
-  assert.equal(models["grok-4.7-kedaya"].model, "grok-4.7-kedaya");
-  assert.equal(models["grok-4.7-kedaya"].name, undefined);
+  assert.equal(models["grok-4.7"].model, "grok-4.7");
+  assert.equal(models["grok-4.7"].name, undefined);
   const updated = utils.updateState(parsed.state, { model: "gpt-6.1-sol" });
   const saved = utils.serializeState(updated);
   assert.ok(saved.ok);
@@ -373,12 +373,13 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
   const codexCard = listPanel.indexOf('H("codex", w)');
   const openCodeCard = listPanel.indexOf('H("opencode", O)');
   const grokCard = listPanel.indexOf('H("grok", grokConfigs)');
-  assert.ok(claudeCard >= 0 && codexCard > claudeCard && openCodeCard > codexCard && grokCard > openCodeCard);
-  assert.match(storeSource, /activeConfigIds: \{ claude: null, codex: null, opencode: null, grok: null \}/);
+  const dshCard = listPanel.indexOf('H("dsh", dshConfigs)');
+  assert.ok(claudeCard >= 0 && codexCard > claudeCard && openCodeCard > codexCard && grokCard > openCodeCard && dshCard > grokCard);
+  assert.match(storeSource, /activeConfigIds: createEmptyActiveIds\(\)/);
   assert.doesNotMatch(listPanel, /gemini/);
 
   const { utils, storage } = loadStoreUtilities();
-  assert.deepEqual(JSON.parse(JSON.stringify(utils.createEmptyOrder())), { claude: [], codex: [], opencode: [], grok: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(utils.createEmptyOrder())), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
   storage.set(
     "ai_cli_config_order",
     JSON.stringify({ claude: ["c1", "c2"], codex: ["x"], opencode: ["o1"] }),
@@ -388,6 +389,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
     codex: ["x"],
     opencode: ["o1"],
     grok: [],
+    dsh: [],
   });
   assert.deepEqual(
     JSON.parse(JSON.stringify(utils.appendOrderForConfigs([{ id: "g1", platform: "grok" }], {
@@ -395,7 +397,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
       codex: ["x"],
       opencode: ["o1"],
     }))),
-    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"] },
+    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"], dsh: [] },
   );
 });
 
@@ -446,8 +448,8 @@ test("Grok visual mode maps only the documented config.toml fields and keeps hid
 default = "old"
 default_reasoning_effort = "low"
 
-[model."grok-4.7-kedaya"]
-model = "grok-4.7-kedaya"
+[model."grok-4.7"]
+model = "grok-4.7"
 name = "Kedaya"
 base_url = "http://127.0.0.1:33391/v1"
 api_key = ""
@@ -466,13 +468,13 @@ trust_level = "trusted"
   assert.equal(parsed.ok, true);
   assert.equal(parsed.state?.fieldError || "", "");
   const updated = utils.updateState(parsed.state, {
-    defaultModel: "grok-4.7-kedaya",
+    defaultModel: "grok-4.7",
     apiBackend: "messages",
     envKey: "NOT A SECRET",
   });
   assert.match(updated.fieldError, /env_key/);
   const valid = utils.updateState(parsed.state, {
-    defaultModel: "grok-4.7-kedaya",
+    defaultModel: "grok-4.7",
     defaultReasoningEffort: "xhigh",
     apiBackend: "messages",
     envKey: "XAI_API_KEY",

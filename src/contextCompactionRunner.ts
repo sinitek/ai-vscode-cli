@@ -928,7 +928,7 @@ export async function runContextCompactionWithDeps(
   const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
     ? Math.floor(options.timeoutMs)
     : null;
-  if (!deps.isInteractiveSupported(cli)) {
+  if (!deps.isInteractiveSupported(cli) || cli === "dsh") {
     if (!silent) {
       deps.appendSystemMessageForCli(cli, deps.getCurrentSessionId(cli), t("rules.compactUnsupported"));
     }

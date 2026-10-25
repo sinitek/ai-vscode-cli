@@ -1,3 +1,4 @@
+import { resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
 import { resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import type { CliName } from "../cli/types";
 import {
@@ -14,6 +15,8 @@ import {
 export type CliModelSelectionStrategyDeps = {
   getGrokConfigModels: (configId: string | null | undefined) => GrokConfigModels | undefined;
   resolveDefaultGrokStoreKey: () => string;
+  getDshConfigModels?: (configId: string | null | undefined) => DshConfigModels | undefined;
+  resolveDefaultDshStoreKey?: () => string;
 };
 
 export type CliModelSelectionStrategy = {
@@ -36,7 +39,9 @@ export type CliModelSelectionStrategy = {
   getModelDisplayName: (model: string | null, configId: string | null) => string | null;
 };
 
-type StoreBackedCliName = Exclude<CliName, "grok">;
+type StoreBackedCliName = Exclude<CliName, "grok" | "dsh">;
+
+const UNCONFIGURED_DSH_STORE_KEY = "dsh:unconfigured";
 
 function createStoreBackedCliModelSelectionStrategy(cli: StoreBackedCliName): CliModelSelectionStrategy {
   return {
@@ -130,6 +135,78 @@ function createGrokCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps
   };
 }
 
+function createDshCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps): CliModelSelectionStrategy {
+  function resolveStoreConfigKey(configId: string | null | undefined): string {
+    return configId ?? deps.resolveDefaultDshStoreKey?.() ?? UNCONFIGURED_DSH_STORE_KEY;
+  }
+
+  function configuredModels(configId: string | null | undefined): DshConfigModels | undefined {
+    return deps.getDshConfigModels?.(configId);
+  }
+
+  function getSelectedModel(store: CliModelStore, configId: string | null): string | null {
+    const storedModel = store.selectedByConfigId?.[resolveStoreConfigKey(configId)];
+    const selectedModel = typeof storedModel === "string" ? storedModel : null;
+    return resolveDshConfigModel(configuredModels(configId), selectedModel);
+  }
+
+  return {
+    getSelectedModel,
+    getSelectedLoopModel(store, role, configId) {
+      const storedRoleModel = store.selectedLoopByConfigId?.[resolveStoreConfigKey(configId)]?.[role];
+      return resolveDshConfigModel(
+        configuredModels(configId),
+        storedRoleModel ?? getSelectedModel(store, configId),
+      );
+    },
+    getModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
+    },
+    getManagedModelOptions() {
+      return [];
+    },
+    selectModel(store, model, configId) {
+      const resolved = resolveDshConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      return {
+        ...store,
+        selectedByConfigId: {
+          ...store.selectedByConfigId,
+          [storeKey]: resolved ?? "",
+        },
+      };
+    },
+    selectLoopModel(store, role, model, configId) {
+      const resolved = resolveDshConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      const selection = { ...store.selectedLoopByConfigId[storeKey] };
+      if (resolved) {
+        selection[role] = resolved;
+      } else {
+        delete selection[role];
+      }
+      return {
+        ...store,
+        selectedLoopByConfigId: {
+          ...store.selectedLoopByConfigId,
+          [storeKey]: selection,
+        },
+      };
+    },
+    resolveStoreConfigKey,
+    getModelDisplayName(model, configId) {
+      if (!model) {
+        return model;
+      }
+      const config = configuredModels(configId);
+      if (!config || config.error || !config.models.includes(model)) {
+        return null;
+      }
+      return config.labels[model] ?? model;
+    },
+  };
+}
+
 export function createCliModelSelectionStrategies(
   deps: CliModelSelectionStrategyDeps,
 ): Record<CliName, CliModelSelectionStrategy> {
@@ -138,5 +215,6 @@ export function createCliModelSelectionStrategies(
     claude: createStoreBackedCliModelSelectionStrategy("claude"),
     opencode: createStoreBackedCliModelSelectionStrategy("opencode"),
     grok: createGrokCliModelSelectionStrategy(deps),
+    dsh: createDshCliModelSelectionStrategy(deps),
   };
 }

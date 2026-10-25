@@ -1100,22 +1100,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     deps.log?.("loop-plus-dispatched", {
       taskId: runtime.taskId,
       started: dispatched.started.map((item) => item.attemptId),
-      pending: dispatched.decisions
-        .filter((item) => item.admission === "pending")
-        .map((item) => ({
-          subtaskId: item.subtaskId,
-          attemptId: item.attemptId,
-          blockedBy: item.block
-            ? {
-              reason: item.block.reason,
-              value: item.block.value,
-              subtaskId: item.block.otherSubtaskId,
-              attemptId: item.block.otherAttemptId,
-            }
-            : item.concurrencyBlocked
-              ? { reason: "max_concurrency" }
-              : { reason: "scheduler" },
-        })),
+      pending: dispatched.view.pending.map((item) => item.attemptId),
       rejected: dispatched.rejected.map((item) => ({
         subtaskId: item.subtaskId,
         attemptId: item.attemptId,

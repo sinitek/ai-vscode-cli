@@ -9,6 +9,10 @@
 
 Loop 开发级 Workflow Skills 的字段、门禁、恢复与降级以 CLI 运行时参考为准；内置快照来源、许可和隔离以权威 Skills 文档为准；同步、测试与 VSIX 逐项核验以本地开发 runbook 为准。本文不重复维护这些规则。
 
+DeepSeek Harness 已作为 `dsh` 接入。命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`。交互主路径是 `dsh --profile acp`。配置只接受明确的 `--patch`，不能覆盖 `--profile`，也不能切换 headless、sdk 或 tui。模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。凭据默认引用 `SINITEK_DSH_API_KEY`；也可在 profile 根级直接配置 `apiKey`，明文仅保存在本机私有配置和备份中，运行 patch 不包含密钥，直接配置优先于外部环境变量。配置页分组在 Grok 之后。配置页同时提供 JSON 文本和可视化两种模式，编辑同一份完整 JSON。已接受的额外顶层字段和模型对象字段会保留。未验证字段和嵌套密钥在验证阶段拒绝，且不写入运行 patch。provider 只读。`baseURL`、模型 id、`apiKeyEnv` 和根级 `apiKey` 可编辑；`apiKeyEnv` 仍固定为 `SINITEK_DSH_API_KEY`。`models` 按已安装 schema 保持有序数组，可新增、编辑、删除并选择当前 `acpModel`。详情区不显示激活状态。Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根是 `<DSH_HOME>/skills`，规则链读取 DSH 的 `AGENTS.md`。未配置模型不能执行。usage 缺失不显示为 0。`usage_update.size` 的 adapter-fallback 窗口不能冒充服务容量。思考力度只按 profile 能力声明和 ACP 当前公布的标量处理，不从模型名称推断；默认验证模型提供 `low`、`high`、`xhigh`、`max`，面板隐藏 `off` 和空 value，其他自定义模型未声明能力时不显示选项。原生 compaction 明确不支持。真实权限请求和图形 Extension Host 点击验收未验证，不得写成已完成。字段边界见 `.ch/docs/references/dsh-custom-provider-contract.md`。
+
+DSH 思考力度不从模型名称推断，面板选项直接显示当前 ACP 广告且属于契约的原始 value。默认验证模型提供 `low`、`high`、`xhigh`、`max` 四档；面板隐藏 `off` 和空 value。其他自定义模型需明确声明 `reasoningEfforts` 和 DeepSeek `compat`，否则选择器禁用；选择后在下一次 prompt 前通过 `configId: "reasoning_effort"` 和 raw `value` 经 ACP 确认，未公布的值不会发送。
+
 Loop / Graph 模型语义：Claude 不接受插件侧模型选择；Codex 普通 Coding 仍使用单模型，切到 Loop 或 Graph 时显示主模型/子模型两个选择器；OpenCode 也统一显示主模型/子模型口径，底层 `model` / `small_model` 仅作为 OpenCode CLI 配置字段适配。Loop 主任务、主持/复核和续跑使用主模型，Loop 子任务使用子模型；Graph planner 和最终 `summary` 节点使用主模型，Graph 其他执行节点使用子模型；子模型缺失时按主模型/单模型兼容回退并记录原因。内部 `<thinking>` / `<think>` / `<analysis>` / `<reasoning>` wrapper 会被定向解析或去标签，普通 HTML 标签不受影响。
 
 配置中心不再安装或卸载 OpenCode 全局 MCP，也不会改写用户已有的 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`。

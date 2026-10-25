@@ -1,4 +1,4 @@
-export const CLI_LIST = ["codex", "claude", "opencode", "grok"] as const;
+export const CLI_LIST = ["codex", "claude", "opencode", "grok", "dsh"] as const;
 
 export type PublicCliName = (typeof CLI_LIST)[number];
 
@@ -62,6 +62,10 @@ export type ThinkingWorkspaceFile = {
 export const GROK_CLI = "grok" as const;
 
 export type GrokCliName = typeof GROK_CLI;
+
+export const DSH_CLI = "dsh" as const;
+
+export type DshCliName = typeof DSH_CLI;
 
 export const GROK_REASONING_EFFORTS = [
   "none",

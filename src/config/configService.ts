@@ -32,6 +32,13 @@ import {
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
+import { commitDshDocument } from "../cli/dshConfigModels";
+import {
+  activateDshProfile,
+  readDshActiveProfileText,
+  resolveDshConfigPaths,
+  writeDshAppliedProfile,
+} from "./dshConfig";
 
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
 const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
@@ -157,6 +164,33 @@ export async function writeGrokConfigText(content: string): Promise<void> {
   await writeFileAtomically(configPath, content);
 }
 
+export async function readDshConfigText(): Promise<string> {
+  return readDshActiveProfileText(resolveDshConfigPaths());
+}
+
+export async function writeDshConfigText(content: string): Promise<void> {
+  const committed = commitDshDocument(content);
+  if (!committed.ok) {
+    throw new Error(committed.error);
+  }
+  await writeDshAppliedProfile(committed.content, resolveDshConfigPaths());
+}
+
+export async function activateSavedDshConfig(profileId: string): Promise<void> {
+  const profile = await getConfigById("dsh", profileId);
+  if (!profile) {
+    throw new Error("DSH profile was not found.");
+  }
+  const result = await activateDshProfile({
+    profileId,
+    content: profile.configContent ?? profile.content ?? "",
+    paths: resolveDshConfigPaths(),
+  });
+  if (!result.ok || !result.activated) {
+    throw new Error(result.error);
+  }
+}
+
 export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
   await ensureFile(CONFIG_PATHS.opencode.config, "{}");
   const config = await fs.readFile(CONFIG_PATHS.opencode.config, "utf-8");
@@ -255,6 +289,16 @@ export async function backupGrokConfig(): Promise<string[]> {
   return [configBackupPath];
 }
 
+export async function backupDshConfig(): Promise<string[]> {
+  await ensureDir(BACKUP_DIR);
+  const config = await readDshConfigText();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const configBackupPath = path.join(BACKUP_DIR, `dsh_config_${timestamp}.json`);
+  await fs.writeFile(configBackupPath, config, { encoding: "utf-8", mode: 0o600 });
+  await fs.chmod(configBackupPath, 0o600);
+  return [configBackupPath];
+}
+
 const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
   claude: {
     readClaudeConfig,
@@ -278,6 +322,11 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
     writeGrokConfigText,
     backupGrokConfig,
   },
+  dsh: {
+    readDshConfigText,
+    writeDshConfigText,
+    backupDshConfig,
+  },
 });
 
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
@@ -290,7 +339,9 @@ export async function getBackupList(platform: LegacyConfigPlatformInput): Promis
       ? "codex_"
       : normalizedPlatform === "grok"
         ? "grok_"
-        : "opencode_";
+        : normalizedPlatform === "dsh"
+          ? "dsh_"
+          : "opencode_";
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
@@ -357,6 +408,9 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
       if (normalizedConfig.platform === "grok") {
         normalizeGrokConfigFields(normalizedConfig);
       }
+      if (normalizedConfig.platform === "dsh") {
+        normalizeDshConfigFields(normalizedConfig);
+      }
       configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
@@ -378,7 +432,7 @@ export async function getConfigList(platform: LegacyConfigPlatformInput): Promis
 
 type LegacyConfigOrder = ConfigOrder & { gemini?: string[] };
 
-const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [] };
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [], dsh: [] };
 
 function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
   return {
@@ -386,6 +440,7 @@ function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
     codex: Array.isArray(order.codex) ? [...order.codex] : [],
     opencode: Array.isArray(order.opencode) ? [...order.opencode] : Array.isArray(order.gemini) ? [...order.gemini] : [],
     grok: Array.isArray(order.grok) ? [...order.grok] : [],
+    dsh: Array.isArray(order.dsh) ? [...order.dsh] : [],
   };
 }
 
@@ -447,6 +502,19 @@ function normalizeGrokConfigFields(config: ConfigItem): void {
   delete config.mcpContent;
   delete config.envContent;
   config.grokSkills = config.grokSkills ?? [];
+}
+
+function normalizeDshConfigFields(config: ConfigItem): void {
+  const content = config.configContent ?? config.content ?? "";
+  config.content = content;
+  config.configContent = content;
+  delete config.authContent;
+  delete config.mcpContent;
+  delete config.envContent;
+  delete config.claudeSkills;
+  delete config.codexSkills;
+  delete config.openCodeSkills;
+  delete config.grokSkills;
 }
 
 function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
@@ -766,6 +834,14 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
       grokSkills: source.platform === "grok" ? [...(source.grokSkills ?? [])] : [],
     };
   }
+  if (targetPlatform === "dsh") {
+    const content = source.platform === "dsh" ? source.configContent ?? source.content ?? "" : "";
+    return {
+      ...base,
+      content,
+      configContent: content,
+    };
+  }
   return {
     ...base,
     content: source.platform === "codex" ? getCodexTomlContent(source) : "",
@@ -802,7 +878,16 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.platform === "grok") {
     normalizeGrokConfigFields(configToSave);
   }
-  if (configToSave.content && configToSave.platform !== "codex" && configToSave.platform !== "grok") {
+  if (configToSave.platform === "dsh") {
+    normalizeDshConfigFields(configToSave);
+    const committed = commitDshDocument(configToSave.content ?? "");
+    if (!committed.ok) {
+      throw new Error(committed.error);
+    }
+    configToSave.content = committed.content;
+    configToSave.configContent = committed.content;
+  }
+  if (configToSave.content && configToSave.platform !== "codex" && configToSave.platform !== "grok" && configToSave.platform !== "dsh") {
     configToSave.content = formatJSONString(configToSave.content);
   }
   if (configToSave.mcpContent) {
@@ -829,7 +914,13 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   delete legacyConfig.geminiSkills;
 
   const filePath = getConfigFilePath(configToSave.platform, config.id);
-  await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), "utf-8");
+  if (configToSave.platform === "dsh") {
+    await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
+    await fs.chmod(configDir, 0o700);
+    await writeFileAtomically(filePath, JSON.stringify(configToSave, null, 2), { mode: 0o600 });
+  } else {
+    await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), "utf-8");
+  }
 }
 
 export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem> {
@@ -844,6 +935,12 @@ export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem
     || (sourcePlatform !== "opencode" && targetPlatform === "opencode")
   ) {
     throw new Error("OpenCode configs can only be copied as OpenCode configs; Claude/Codex configs are not converted.");
+  }
+  if (
+    (sourcePlatform === "dsh" && targetPlatform !== "dsh")
+    || (sourcePlatform !== "dsh" && targetPlatform === "dsh")
+  ) {
+    throw new Error("DSH configs can only be copied as DSH configs.");
   }
   const existingNames = (await getConfigList(targetPlatform)).map((config) => config.name);
   const name = payload.name?.trim() || createCopyName(source.name, existingNames);
@@ -883,6 +980,9 @@ export async function getConfigById(
     delete config.geminiSkills;
     if (config.platform === "codex") {
       normalizeCodexConfigFields(config);
+    }
+    if (config.platform === "dsh") {
+      normalizeDshConfigFields(config);
     }
     return config;
   } catch {
@@ -930,6 +1030,17 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
 
 export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
+  const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
+  if (normalizedPlatform === "dsh" && profileId) {
+    const result = await activateDshProfile({
+      profileId,
+      content: payload.content ?? payload.configContent ?? "",
+    });
+    if (!result.ok || !result.activated) {
+      throw new Error(result.error);
+    }
+    return;
+  }
   await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
 }
 
@@ -939,15 +1050,16 @@ export async function backupConfig(platform: LegacyConfigPlatformInput): Promise
 }
 
 export {
+  CLI_GLOBAL_SKILL_PLATFORMS,
   getCliSkillsList,
   openCliSkillsDirectory,
   deleteCliSkill,
   copyCliSkill,
   installCliSkillDirectory,
+  readDshUnsupportedCapability,
 } from "./cliGlobalSkills";
 
 export {
   searchLobehubSkills,
   installLobehubSkill,
 } from "./lobehubSkillMarket";
-

@@ -149,7 +149,7 @@ Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WAS
 
 ## 发布到 VS Code 市场
 
-市场发布者 ID 为 `sinitek`，插件 ID 为 `sinitek.sinitek-cli-tools`，以 `package.json` 为准。
+市场发布者 ID 为 `sinitek`，插件 ID 为 `sinitek.sinitek-cli-tools`，以 `package.json` 为准。市场列表图标使用根字段 `icon` 指向的 `media/icon.png`（128×128 PNG）。侧栏的 `media/logo.svg` 不会出现在市场页面；更换图标后必须发布新版本。
 
 首次在本机终端登录，输入具有 Marketplace `Manage` 权限且有权管理 `sinitek` 的 PAT；不要把令牌粘贴到聊天、脚本或仓库文件中：
 

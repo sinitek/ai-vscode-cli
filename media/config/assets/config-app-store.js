@@ -68,17 +68,38 @@ const CONFIG_STORAGE_KEYS = {
     for (; t.includes(o); ) ((r += 1), (o = `${n}${r}`));
     return o;
   },
-  createEmptyOrder = () => ({ claude: [], codex: [], opencode: [], grok: [] }),
+  configManagerPlatforms = typeof CONFIG_MANAGER_PLATFORMS !== "undefined"
+    ? CONFIG_MANAGER_PLATFORMS
+    : ["claude", "codex", "opencode", "grok", "dsh"],
+  CONFIG_PLATFORM_SYNC_LABELS = {
+    claude: "Claude",
+    codex: "Codex",
+    opencode: "OpenCode",
+    grok: "Grok",
+    dsh: "DSH",
+  },
+  createEmptyActiveIds = () => {
+    const activeIds = {};
+    configManagerPlatforms.forEach((platform) => {
+      activeIds[platform] = null;
+    });
+    return activeIds;
+  },
+  createEmptyOrder = () => {
+    const order = {};
+    configManagerPlatforms.forEach((platform) => {
+      order[platform] = [];
+    });
+    return order;
+  },
   loadStoredOrder = () => {
-    const e = readJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER);
-    return e
-      ? {
-          claude: Array.isArray(e.claude) ? e.claude : [],
-          codex: Array.isArray(e.codex) ? e.codex : [],
-          opencode: Array.isArray(e.opencode) ? e.opencode : [],
-          grok: Array.isArray(e.grok) ? e.grok : [],
-        }
-      : createEmptyOrder();
+    const stored = readJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER);
+    const order = createEmptyOrder();
+    if (!stored || typeof stored !== "object") return order;
+    configManagerPlatforms.forEach((platform) => {
+      order[platform] = Array.isArray(stored[platform]) ? stored[platform] : [];
+    });
+    return order;
   },
   mergeOrderWithConfigs = (e, t) => {
     const n = new Set(t),
@@ -92,16 +113,14 @@ const CONFIG_STORAGE_KEYS = {
     return { configs: l, order: l.map((s) => s.id) };
   },
   appendOrderForConfigs = (e, t) => {
-    const n = {
-      claude: [...(t.claude ?? [])],
-      codex: [...(t.codex ?? [])],
-      opencode: [...(t.opencode ?? [])],
-      grok: [...(t.grok ?? [])],
-    };
+    const n = createEmptyOrder();
+    configManagerPlatforms.forEach((platform) => {
+      n[platform] = [...((t && t[platform]) || [])];
+    });
     return (
       e.forEach((r) => {
         const o = n[r.platform];
-        o.includes(r.id) || o.push(r.id);
+        o && (o.includes(r.id) || o.push(r.id));
       }),
       n
     );
@@ -110,7 +129,7 @@ const CONFIG_STORAGE_KEYS = {
 // Config store
   useConfigStore = QH((e, t) => ({
     configs: [],
-    activeConfigIds: { claude: null, codex: null, opencode: null, grok: null },
+    activeConfigIds: createEmptyActiveIds(),
     configOrders: loadStoredOrder(),
     selectedConfigId: null,
     selectedConfigPlatform: null,
@@ -118,96 +137,59 @@ const CONFIG_STORAGE_KEYS = {
     loadConfigs: async () => {
       try {
         e({ isLoading: !0 });
-        const [n, r, o, grokList] = await Promise.all([
-            fetchConfigList("claude"),
-            fetchConfigList("codex"),
-            fetchConfigList("opencode"),
-            fetchConfigList("grok"),
-          ]),
-          [l, s, u, grokOrder] = await Promise.all([
-            fetchConfigOrder("claude").catch(() => null),
-            fetchConfigOrder("codex").catch(() => null),
-            fetchConfigOrder("opencode").catch(() => null),
-            fetchConfigOrder("grok").catch(() => null),
-          ]),
-          f = loadStoredOrder(),
-          m = {
-            claude: l?.claude?.length ? l.claude : f.claude,
-            codex: s?.codex?.length ? s.codex : f.codex,
-            opencode: u?.opencode?.length ? u.opencode : f.opencode,
-            grok: grokOrder?.grok?.length ? grokOrder.grok : f.grok,
-          },
-          v = mergeOrderWithConfigs(n, m.claude),
-          p = mergeOrderWithConfigs(r, m.codex),
-          h = mergeOrderWithConfigs(o, m.opencode),
-          grokMerged = mergeOrderWithConfigs(grokList, m.grok),
-          b = { claude: v.order, codex: p.order, opencode: h.order, grok: grokMerged.order },
-          g = [...v.configs, ...p.configs, ...h.configs, ...grokMerged.configs],
-          y = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_claude`) || null,
-          w = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_codex`) || null,
-          A = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_opencode`) || null,
-          grokActiveId = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_grok`) || null;
+        const platforms = configManagerPlatforms,
+          lists = await Promise.all(platforms.map((platform) => fetchConfigList(platform))),
+          orders = await Promise.all(
+            platforms.map((platform) => fetchConfigOrder(platform).catch(() => null)),
+          ),
+          stored = loadStoredOrder(),
+          preferred = {},
+          merged = [],
+          nextOrders = {},
+          configs = [],
+          activeConfigIds = {};
+        platforms.forEach((platform, index) => {
+          const remoteOrder = orders[index] && Array.isArray(orders[index][platform]) ? orders[index][platform] : [];
+          preferred[platform] = remoteOrder.length ? remoteOrder : stored[platform] || [];
+          merged[index] = mergeOrderWithConfigs(lists[index], preferred[platform]);
+          nextOrders[platform] = merged[index].order;
+          configs.push(...merged[index].configs);
+          activeConfigIds[platform] = readJson(`${CONFIG_STORAGE_KEYS.ACTIVE_CONFIG_ID}_${platform}`) || null;
+        });
         (e({
-          configs: g,
-          activeConfigIds: { claude: y, codex: w, opencode: A, grok: grokActiveId },
-          configOrders: b,
+          configs,
+          activeConfigIds,
+          configOrders: nextOrders,
           isLoading: !1,
         }),
-          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, b));
-        const k = !l?.claude?.length && f.claude.length > 0,
-          C = !s?.codex?.length && f.codex.length > 0,
-          T = !u?.opencode?.length && f.opencode.length > 0,
-          grokNeedsOrderSync = !grokOrder?.grok?.length && f.grok.length > 0;
-        k &&
-          saveConfigOrder("claude", b).catch((E) =>
-            console.error("同步 Claude 配置顺序失败:", E)
-          );
-        C &&
-          saveConfigOrder("codex", b).catch((E) =>
-            console.error("同步 Codex 配置顺序失败:", E)
-          );
-        T &&
-          saveConfigOrder("opencode", b).catch((E) =>
-            console.error("同步 OpenCode 配置顺序失败:", E)
-          );
-        grokNeedsOrderSync &&
-          saveConfigOrder("grok", b).catch((E) =>
-            console.error("同步 Grok 配置顺序失败:", E)
-          );
+          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, nextOrders));
+        platforms.forEach((platform, index) => {
+          const remoteOrder = orders[index] && Array.isArray(orders[index][platform]) ? orders[index][platform] : [];
+          !remoteOrder.length &&
+            (stored[platform] || []).length > 0 &&
+            saveConfigOrder(platform, nextOrders).catch((error) =>
+              console.error(`同步 ${CONFIG_PLATFORM_SYNC_LABELS[platform] || platform} 配置顺序失败:`, error)
+            );
+        });
       } catch (n) {
         throw (console.error("加载配置失败:", n), e({ isLoading: !1 }), n);
       }
     },
     initDefaultConfigs: async () => {
       try {
-        const [n, r, o, grokDefault] = await Promise.all([
-            initDefaultConfigItem("claude"),
-            initDefaultConfigItem("codex"),
-            initDefaultConfigItem("opencode"),
-            initDefaultConfigItem("grok"),
-          ]),
-          l = [];
-        if ((n && l.push(n), r && l.push(r), o && l.push(o), grokDefault && l.push(grokDefault), l.length > 0)) {
-          const s = t().configOrders,
-            u = appendOrderForConfigs(l, s),
-            f = [...t().configs, ...l];
-          (e({ configs: f, configOrders: u }), storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, u));
-          n &&
-            saveConfigOrder("claude", u).catch((m) =>
-              console.error("同步 Claude 配置顺序失败:", m)
-            );
-          r &&
-            saveConfigOrder("codex", u).catch((m) =>
-              console.error("同步 Codex 配置顺序失败:", m)
-            );
-          o &&
-            saveConfigOrder("opencode", u).catch((m) =>
-              console.error("同步 OpenCode 配置顺序失败:", m)
-            );
-          grokDefault &&
-            saveConfigOrder("grok", u).catch((m) =>
-              console.error("同步 Grok 配置顺序失败:", m)
-            );
+        const platforms = configManagerPlatforms,
+          created = await Promise.all(platforms.map((platform) => initDefaultConfigItem(platform))),
+          items = created.filter(Boolean);
+        if (items.length > 0) {
+          const nextOrders = appendOrderForConfigs(items, t().configOrders),
+            configs = [...t().configs, ...items];
+          (e({ configs, configOrders: nextOrders }), storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, nextOrders));
+          platforms.forEach((platform, index) => {
+            created[index] &&
+              saveConfigOrder(platform, nextOrders).catch((error) =>
+                console.error(`同步 ${CONFIG_PLATFORM_SYNC_LABELS[platform] || platform} 配置顺序失败:`, error)
+              );
+          });
         }
       } catch (n) {
         throw (console.error("初始化默认配置失败:", n), n);
@@ -324,26 +306,24 @@ const CONFIG_STORAGE_KEYS = {
     },
     reorderConfigs: (n, r, o) => {
       const l = t(),
-        s = {
-          claude: l.configs.filter((h) => h.platform === "claude"),
-          codex: l.configs.filter((h) => h.platform === "codex"),
-          opencode: l.configs.filter((h) => h.platform === "opencode"),
-          grok: l.configs.filter((h) => h.platform === "grok"),
-        },
-        u = s[n];
-      if (r < 0 || r >= u.length || o < 0 || u.length === 0) return;
+        s = {};
+      configManagerPlatforms.forEach((platform) => {
+        s[platform] = l.configs.filter((h) => h.platform === platform);
+      });
+      const u = s[n];
+      if (!u || r < 0 || r >= u.length || o < 0 || u.length === 0) return;
       const f = Math.min(o, u.length - 1);
       if (r === f) return;
       const m = [...u],
         [v] = m.splice(r, 1);
       (m.splice(f, 0, v), (s[n] = m));
-      const p = {
-        claude: s.claude.map((h) => h.id),
-        codex: s.codex.map((h) => h.id),
-        opencode: s.opencode.map((h) => h.id),
-        grok: s.grok.map((h) => h.id),
-      };
-      (e({ configs: [...s.claude, ...s.codex, ...s.opencode, ...s.grok], configOrders: p }),
+      const p = {},
+        flat = [];
+      configManagerPlatforms.forEach((platform) => {
+        p[platform] = s[platform].map((h) => h.id);
+        flat.push(...s[platform]);
+      });
+      (e({ configs: flat, configOrders: p }),
         storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, p));
       saveConfigOrder(n, p).catch((h) =>
         console.error("同步配置顺序失败:", h)

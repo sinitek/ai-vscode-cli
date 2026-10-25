@@ -9,6 +9,11 @@ export const AGENTS_HOME_DIRECTORY_NAME = ".agents";
 export const CODEX_HOME_DIR_ENV_KEY = "CODEX_HOME_DIR";
 export const GROK_HOME_DIRECTORY_NAME = ".grok";
 export const GROK_HOME_ENV_KEY = "GROK_HOME";
+export const DSH_HOME_DIRECTORY_NAME = ".dsh";
+export const DSH_HOME_ENV_KEY = "DSH_HOME";
+export const DSH_GLOBAL_SKILLS_DIRECTORY_NAME = "skills";
+export const DSH_GLOBAL_RULES_FILE_NAME = "AGENTS.md";
+export const DSH_WORKSPACE_RULES_FILE_NAME = "AGENTS.md";
 
 const WINDOWS_ENV_VAR_PATTERN = /%([^%]+)%/g;
 
@@ -118,6 +123,39 @@ export function resolveGrokHomeDir(
 ): string {
   const configured = expandHomePath(env[GROK_HOME_ENV_KEY], { homeDir, env, platform });
   return configured || path.join(homeDir, GROK_HOME_DIRECTORY_NAME);
+}
+
+export function resolveDshHomeDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const configured = expandHomePath(env[DSH_HOME_ENV_KEY], { homeDir, env, platform });
+  return configured || path.join(homeDir, DSH_HOME_DIRECTORY_NAME);
+}
+
+export function resolveDshGlobalSkillsDirectory(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveDshHomeDir(env, homeDir, platform), DSH_GLOBAL_SKILLS_DIRECTORY_NAME);
+}
+
+export function resolveDshGlobalRulesPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveDshHomeDir(env, homeDir, platform), DSH_GLOBAL_RULES_FILE_NAME);
+}
+
+export function resolveDshActivePatchPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveDshHomeDir(env, homeDir, platform), "__config", "active-patch.yaml");
 }
 
 export function resolveGrokConfigPath(

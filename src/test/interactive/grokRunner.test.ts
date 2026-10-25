@@ -366,9 +366,9 @@ test("skips account authentication when the default model has its own api key", 
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "grok-keyed-"));
   await fs.writeFile(path.join(home, "config.toml"), `
 [models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 
-[model."grok-4.7-kedaya"]
+[model."grok-4.7"]
 api_key = "secret-value"
 `);
   const fake = new FakeGrok();
@@ -392,9 +392,9 @@ test("still authenticates grok.com when the model api key is empty", async () =>
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "grok-empty-key-"));
   await fs.writeFile(path.join(home, "config.toml"), `
 [models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 
-[model."grok-4.7-kedaya"]
+[model."grok-4.7"]
 api_key = ""
 `);
   const fake = new FakeGrok();

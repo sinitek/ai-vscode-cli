@@ -1,8 +1,8 @@
 {
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
-  "description": "在 VS Code 中运行 Codex、Claude、OpenCode 和 Grok CLI 的扩展。",
-  "version": "1.2.2",
+  "description": "在 VS Code 中运行 Codex、Claude、OpenCode、Grok 和 DeepSeek Harness CLI 的扩展。",
+  "version": "1.2.3",
   "publisher": "sinitek",
   "icon": "media/icon.png",
   "repository": {
@@ -83,7 +83,8 @@
             "codex",
             "claude",
             "opencode",
-            "grok"
+            "grok",
+            "dsh"
           ],
           "default": "codex",
           "description": "扩展激活时默认运行的 CLI。"
@@ -149,6 +150,19 @@
             "--always-approve"
           ],
           "description": "Grok Build 的 agent 选项，插入在 agent 与 stdio 之间；默认是 --always-approve。"
+        },
+        "sinitek-cli-tools.commands.dsh": {
+          "type": "string",
+          "default": "dsh",
+          "description": "用于运行 DeepSeek Harness CLI 的命令。默认是 dsh。交互主路径固定为 dsh --profile acp。"
+        },
+        "sinitek-cli-tools.args.dsh": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "只允许明确的 --patch 参数。不能通过此配置覆盖 --profile，也不能切换 headless、sdk、tui 或其他 profile。"
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",

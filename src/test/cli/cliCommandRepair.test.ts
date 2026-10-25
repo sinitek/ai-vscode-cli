@@ -118,6 +118,7 @@ test("reports spawn ENOENT only for CLI commands the extension host cannot use",
       "spawn claude ENOENT",
       "spawn opencode ENOENT",
       "spawn grok ENOENT",
+      "spawn dsh ENOENT",
     ]);
 
     const windowsAppsDir = path.join(homeDir, "Local", "Microsoft", "WindowsApps");
@@ -132,7 +133,7 @@ test("reports spawn ENOENT only for CLI commands the extension host cannot use",
       claude: "claude",
       opencode: "opencode",
     }, "win32");
-    assert.deepEqual(resolved.map((issue) => issue.cli), ["claude", "opencode", "grok"]);
+    assert.deepEqual(resolved.map((issue) => issue.cli), ["claude", "opencode", "grok", "dsh"]);
   } finally {
     restorePlatform();
     restoreEnv();
@@ -215,7 +216,7 @@ test("plans one startup repair for bare commands and skips explicit paths", asyn
       },
     });
     assert.equal(registryReads, 1);
-    assert.deepEqual(plans.map((plan) => plan.cli), ["codex", "opencode", "grok"]);
+    assert.deepEqual(plans.map((plan) => plan.cli), ["codex", "opencode", "grok", "dsh"]);
     assert.equal(plans[0]?.status, "repaired");
     assert.equal(plans[0]?.nextCommand, `${codexPath} --profile work`);
     assert.equal(plans[1]?.status, "not-found");
@@ -247,8 +248,8 @@ test("startup repair reads the registry once and keeps going when lookup fails",
         throw new Error("registry unavailable");
       },
     });
-    assert.deepEqual(plans.map((plan) => plan.cli), ["codex", "claude", "opencode", "grok"]);
-    assert.deepEqual(plans.map((plan) => plan.status), ["not-found", "not-found", "not-found", "not-found"]);
+    assert.deepEqual(plans.map((plan) => plan.cli), ["codex", "claude", "opencode", "grok", "dsh"]);
+    assert.deepEqual(plans.map((plan) => plan.status), ["not-found", "not-found", "not-found", "not-found", "not-found"]);
   } finally {
     restorePlatform();
     restoreEnv();

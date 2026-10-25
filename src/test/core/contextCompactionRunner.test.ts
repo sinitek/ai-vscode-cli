@@ -997,3 +997,28 @@ test("automatic Grok compaction times out, disposes its runner and ignores late 
   assert.deepEqual(calls.sendRunStatuses, [{ status: "start", activity: "contextCompaction" }, { status: "stopped", activity: undefined }]);
   assert.equal(calls.clearActiveRun, 1);
 });
+
+test("DSH compaction uses the unsupported status and does not start a compact prompt", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createSilentCodexCompactionDeps();
+  const messages: string[] = [];
+  let began = 0;
+  deps.isInteractiveSupported = () => true;
+  deps.getCurrentCli = () => "dsh";
+  deps.appendSystemMessageForCli = (_cli, _sessionId, content) => {
+    messages.push(content);
+  };
+  deps.beginActiveRunState = () => {
+    began += 1;
+  };
+  deps.getCliCommand = () => {
+    throw new Error("must not prepare a DSH compact command");
+  };
+  assert.equal(await runContextCompactionWithDeps(deps, { cli: "dsh", sessionId: "local_1" }), false);
+  assert.deepEqual(messages, ["当前 CLI 不支持上下文压缩。"]);
+  assert.equal(began, 0);
+  assert.deepEqual(calls.sendRunStatuses, []);
+  messages.length = 0;
+  assert.equal(await runContextCompactionWithDeps(deps, { cli: "dsh", silent: true }), false);
+  assert.deepEqual(messages, []);
+});

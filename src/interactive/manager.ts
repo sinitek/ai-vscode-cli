@@ -2,6 +2,7 @@ import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { CodexRunSelection } from "./codexThreadSelection";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
+import { DshInteractiveRunner } from "./dshRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import {
   runnerLifecycleStrategies,
@@ -10,6 +11,7 @@ import {
 import type {
   ClaudeRunnerCreateOptions,
   CodexRunnerCreateOptions,
+  DshRunnerCreateOptions,
   GrokRunnerCreateOptions,
   InteractiveRunnerCli,
   RunnerByCli,
@@ -27,6 +29,7 @@ const platformEntries: {
   codex: (entry) => entry.cli === "codex" ? entry : undefined,
   claude: (entry) => entry.cli === "claude" ? entry : undefined,
   grok: (entry) => entry.cli === "grok" ? entry : undefined,
+  dsh: (entry) => entry.cli === "dsh" ? entry : undefined,
 };
 
 const platformRunners: {
@@ -35,6 +38,7 @@ const platformRunners: {
   codex: (entry) => entry.runner,
   claude: (entry) => entry.runner,
   grok: (entry) => entry.runner,
+  dsh: (entry) => entry.runner,
 };
 
 const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -72,7 +76,7 @@ export class InteractiveRunnerManager {
   public setRunner(
     cli: InteractiveRunnerCli,
     sessionId: string,
-    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner,
+    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner | DshInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
@@ -101,11 +105,19 @@ export class InteractiveRunnerManager {
       }, () => runnerLifecycleStrategies.claude.createSetRegistration(input));
       return;
     }
-    const grokRunner = runner as GrokInteractiveRunner;
-    const input = { ...metadata, runner: grokRunner };
-    this.registerExternalRunner("grok", input, (entry) => {
-      runnerLifecycleStrategies.grok.applySetMetadata(entry, input);
-    }, () => runnerLifecycleStrategies.grok.createSetRegistration(input));
+    if (cli === "grok") {
+      const grokRunner = runner as GrokInteractiveRunner;
+      const input = { ...metadata, runner: grokRunner };
+      this.registerExternalRunner("grok", input, (entry) => {
+        runnerLifecycleStrategies.grok.applySetMetadata(entry, input);
+      }, () => runnerLifecycleStrategies.grok.createSetRegistration(input));
+      return;
+    }
+    const dshRunner = runner as DshInteractiveRunner;
+    const input = { ...metadata, runner: dshRunner };
+    this.registerExternalRunner("dsh", input, (entry) => {
+      runnerLifecycleStrategies.dsh.applySetMetadata(entry, input);
+    }, () => runnerLifecycleStrategies.dsh.createSetRegistration(input));
   }
 
   public getOrCreateCodexRunner(options: CodexRunnerCreateOptions): CodexInteractiveRunner {
@@ -173,10 +185,29 @@ export class InteractiveRunnerManager {
     );
   }
 
+  public hasDshRunner(sessionId: string | null, runner: DshInteractiveRunner): boolean {
+    const entry = this.getEntry("dsh", sessionId);
+    return Boolean(entry && entry.cli === "dsh" && entry.runner === runner);
+  }
+
+  public getOrCreateDshRunner(options: DshRunnerCreateOptions): DshInteractiveRunner {
+    const prepared = runnerLifecycleStrategies.dsh.prepare(options);
+    return this.reuseOrCreate(
+      "dsh",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies.dsh.canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies.dsh.applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies.dsh.createRunner(prepared),
+      (created) => runnerLifecycleStrategies.dsh.createRegistration(prepared, created),
+    );
+  }
+
   public detachRunner(
     cli: InteractiveRunnerCli,
     sessionId: string | null,
-    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner,
+    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner | DshInteractiveRunner,
   ): void {
     const key = this.buildKeyForCli(cli, sessionId);
     if (!key) {
@@ -275,7 +306,11 @@ export class InteractiveRunnerManager {
       const entry: RunnerEntryByCli["claude"] = { ...registration, idleTimer, lastUsedAt };
       return entry;
     }
-    const entry: RunnerEntryByCli["grok"] = { ...registration, idleTimer, lastUsedAt };
+    if (registration.cli === "grok") {
+      const entry: RunnerEntryByCli["grok"] = { ...registration, idleTimer, lastUsedAt };
+      return entry;
+    }
+    const entry: RunnerEntryByCli["dsh"] = { ...registration, idleTimer, lastUsedAt };
     return entry;
   }
 
@@ -306,7 +341,7 @@ export class InteractiveRunnerManager {
   }
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
-    return cli === "codex" || cli === "claude" || cli === "grok";
+    return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh";
   }
 
   private disposeEntry(key: string): void {

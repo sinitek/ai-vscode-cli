@@ -479,7 +479,7 @@ test("trace candidate helper rejects blanks and repeated item content", () => {
 
 test("Codex thread config requests a detailed reasoning summary for every model", () => {
   assert.equal(
-    buildCodexAppServerConfig({ model: "grok-4.7-kedaya" }).model_reasoning_summary,
+    buildCodexAppServerConfig({ model: "grok-4.7" }).model_reasoning_summary,
     "detailed",
   );
   assert.equal(

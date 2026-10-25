@@ -23,9 +23,9 @@ export const GROK_VISUAL_BLOCKED_KEYS = [
 
 export const GROK_KEDAYA_PROFILE = {
   id: "config_grok_4_7_kedaya",
-  name: "grok-4.7-kedaya",
+  name: "grok-4.7",
   sourceConfigId: "config_1774255517037_j3noqy1rp",
-  modelId: "grok-4.7-kedaya",
+  modelId: "grok-4.7",
   reasoningEffort: "xhigh",
   baseUrl: "http://127.0.0.1:33391/v1",
   apiBackend: "responses",

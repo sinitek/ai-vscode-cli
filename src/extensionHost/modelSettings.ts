@@ -11,6 +11,7 @@ import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfig
 import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
+import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
@@ -33,7 +34,7 @@ import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
 import { isCliName } from "../panelStateBuilder";
-import { resolveGrokConfigPath } from "../shared/userHomePaths";
+import { resolveDshActivePatchPath, resolveGrokConfigPath } from "../shared/userHomePaths";
 
 export type ModelSettingsHostDeps = {
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void;
@@ -87,6 +88,7 @@ let codeGraphInstalling = false;
 let codeGraphInstallPollTimer: ReturnType<typeof setInterval> | null = null;
 let codeGraphInstallPollStartedAt = 0;
 const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
+const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   getGrokConfigModels(configId) {
     if (configId === undefined) {
@@ -96,6 +98,15 @@ const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   },
   resolveDefaultGrokStoreKey() {
     return `grok:${resolveGrokConfigPath()}`;
+  },
+  getDshConfigModels(configId) {
+    if (configId === undefined) {
+      return undefined;
+    }
+    return dshModelsByConfigId.get(configId);
+  },
+  resolveDefaultDshStoreKey() {
+    return `dsh:${resolveDshActivePatchPath()}`;
   },
 });
 let currentCli = deps.getCurrentCli();
@@ -454,7 +465,10 @@ function isLoopTaskBlockedByMainAiFailureLimit(task: Pick<LoopTaskRecord, "mainA
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
-  if (cli === "grok") {
+  if (cli === "dsh" && (mode === "off" || mode === "medium")) {
+    return "high";
+  }
+  if (cli === "grok" || cli === "dsh") {
     return mode;
   }
   if (cli !== "codex" && cli !== "claude" && mode === "max") {
@@ -1016,6 +1030,73 @@ async function refreshGrokConfigModels(configState: PanelState["configState"]): 
   }
 }
 
+function cacheDshConfigModels(configId: string, config: DshConfigModels): void {
+  dshModelsByConfigId.set(configId, config);
+}
+
+async function refreshDshConfigModels(configState: PanelState["configState"]): Promise<void> {
+  const selectedSubtaskCli = getSelectedLoopSubtaskCli(getActiveConfigIdForCli(currentCli));
+  if (currentCli !== "dsh" && selectedSubtaskCli !== "dsh") {
+    return;
+  }
+  const configId = currentCli === "dsh"
+    ? deps.resolveModelConfigIdForCli("dsh", configState)
+    : getActiveConfigIdForCli("dsh");
+  if (!configId) {
+    return;
+  }
+  try {
+    const profile = await configService.getConfigById("dsh", configId);
+    if (!profile) {
+      dshModelsByConfigId.set(configId, emptyDshModels("DSH profile was not found."));
+      return;
+    }
+    dshModelsByConfigId.set(configId, parseDshConfigModels(profile.content ?? profile.configContent ?? ""));
+  } catch (error) {
+    dshModelsByConfigId.set(configId, emptyDshModels(errorToMessage(error)));
+    void logError("dsh-config-models-read-failed", { error: errorToMessage(error) });
+  }
+}
+
+async function resolveDshModelForRun(selectedModel: string | null): Promise<string> {
+  const configId = getActiveConfigIdForCli("dsh");
+  if (!configId) {
+    throw new Error("DSH profile is not active.");
+  }
+  const profile = await configService.getConfigById("dsh", configId);
+  if (!profile) {
+    throw new Error("DSH profile was not found.");
+  }
+  const config = parseDshConfigModels(profile.content ?? profile.configContent ?? "");
+  dshModelsByConfigId.set(configId, config);
+  if (config.error) {
+    throw new Error(config.error);
+  }
+  const model = resolveDshConfigModel(config, selectedModel);
+  if (!model) {
+    throw new Error("DSH has no configured executable model.");
+  }
+  return model;
+}
+
+async function resolveDshModelWireForRun(selectedModel: string | null): Promise<string> {
+  const configId = getActiveConfigIdForCli("dsh");
+  if (!configId) {
+    throw new Error("DSH profile is not active.");
+  }
+  const profile = await configService.getConfigById("dsh", configId);
+  if (!profile) {
+    throw new Error("DSH profile was not found.");
+  }
+  const config = parseDshConfigModels(profile.content ?? profile.configContent ?? "");
+  dshModelsByConfigId.set(configId, config);
+  return readDshModelWireForRun(config, selectedModel);
+}
+
+function emptyDshModels(error: string): DshConfigModels {
+  return { models: [], labels: {}, defaultModel: null, wireByModelId: {}, reasoningOptionsByModelId: {}, error };
+}
+
 async function resolveGrokModelForRun(selectedModel: string | null): Promise<string> {
   const config = parseGrokConfigModels(await configService.readGrokConfigText());
   if (config.error) {
@@ -1275,6 +1356,23 @@ function buildModelState(
   const main = getSelectedLoopCliModel("grok", "main", configId);
   const subtask = getSelectedLoopCliModel("grok", "subtask", configId);
   state.selectedLoopByCli = { ...state.selectedLoopByCli, grok: { main, subtask } };
+  const dshConfigId = activeConfigIdByCli.dsh ?? getActiveConfigIdForCli("dsh");
+  const dshModels = getModelOptionsForCli("dsh", dshConfigId);
+  state.optionsByCli.dsh = dshModels;
+  state.labelsByCli = {
+    ...state.labelsByCli,
+    dsh: { ...(dshModelsByConfigId.get(dshConfigId)?.labels ?? {}) },
+  };
+  state.managedByCli.dsh = [];
+  state.selectedByCli.dsh = getSelectedCliModel("dsh", dshConfigId);
+  state.loopOptionsByCli = { ...state.loopOptionsByCli, dsh: { main: dshModels, subtask: dshModels } };
+  const dshMain = getSelectedLoopCliModel("dsh", "main", dshConfigId);
+  const dshSubtask = getSelectedLoopCliModel("dsh", "subtask", dshConfigId);
+  state.selectedLoopByCli = { ...state.selectedLoopByCli, dsh: { main: dshMain, subtask: dshSubtask } };
+  const dshSelectedModel = state.selectedByCli.dsh;
+  state.dshReasoningOptions = dshSelectedModel
+    ? [...(dshModelsByConfigId.get(dshConfigId)?.reasoningOptionsByModelId[dshSelectedModel] ?? [])]
+    : [];
   state.selectedLoopThinkingByCli = {
     ...state.selectedLoopThinkingByCli,
     grok: {
@@ -1291,10 +1389,17 @@ function buildModelState(
     claude: getEffectiveThinkingMode("claude", null),
     opencode: "off",
     grok: getEffectiveThinkingMode("grok", state.selectedByCli.grok),
+    dsh: getEffectiveThinkingMode("dsh", state.selectedByCli.dsh),
   };
-  const grokIssue = grokModelsByConfigId.get(configId)?.error;
-  if (grokIssue) {
-    state.issuesByCli = { grok: "目标 CLI 配置读取失败，不能派发子任务。" };
+  const issues = { ...(state.issuesByCli ?? {}) };
+  if (grokModelsByConfigId.get(configId)?.error) {
+    issues.grok = "目标 CLI 配置读取失败，不能派发子任务。";
+  }
+  if (dshModelsByConfigId.get(dshConfigId)?.error) {
+    issues.dsh = "目标 CLI 配置读取失败，不能派发子任务。";
+  }
+  if (Object.keys(issues).length > 0) {
+    state.issuesByCli = issues;
   }
   return state;
 }
@@ -1420,6 +1525,10 @@ return {
   cacheGrokConfigModels: wrap(cacheGrokConfigModels),
   refreshGrokConfigModels: wrap(refreshGrokConfigModels),
   resolveGrokModelForRun: wrap(resolveGrokModelForRun),
+  cacheDshConfigModels: wrap(cacheDshConfigModels),
+  refreshDshConfigModels: wrap(refreshDshConfigModels),
+  resolveDshModelForRun: wrap(resolveDshModelForRun),
+  resolveDshModelWireForRun: wrap(resolveDshModelWireForRun),
   getModelDisplayName: wrap(getModelDisplayName),
   selectCliModel: wrap(selectCliModel),
   selectCliLoopModel: wrap(selectCliLoopModel),

@@ -11,6 +11,7 @@ import type { GraphRunStatus } from "../graph/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
 import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
+import type { DshReasoningOption } from "../cli/dshConfigModels";
 
 export type ConfigSummary = {
   id: string;
@@ -399,6 +400,7 @@ export type PanelState = {
       activeConfigIdByCli?: Partial<Record<CliName, string | null>>;
       issuesByCli?: Partial<Record<CliName, string>>;
       thinkingModeByCli?: Partial<Record<CliName, ThinkingMode>>;
+      dshReasoningOptions?: DshReasoningOption[];
     };
   editorContext: EditorContextState;
 };

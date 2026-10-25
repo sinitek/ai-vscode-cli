@@ -5,7 +5,7 @@ import {
   type LoopMainAutoCompactRequest,
 } from "../loopMainAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
-import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getGrokAgentArgs, getGrokCommand } from "../cli/config";
+import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -59,6 +59,7 @@ import {
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
+import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import { createInteractiveTurnStrategies } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
@@ -87,6 +88,8 @@ export type PromptInteractiveRuntimeHostDeps = {
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
+  resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
+  prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env">>;
   getModelDisplayName?: (cli: CliName, model: string | null) => string | null;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   getInteractiveRunnerManager: () => InteractiveRunnerManager;
@@ -253,8 +256,23 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       includeFinalAnswerInstruction,
     });
     const debugLogging = getDebugLogging();
+    let dshModelWire: string | null = null;
+    let dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null = null;
+    if (cli === "dsh") {
+      if (!deps.resolveDshModelWireForRun) {
+        throw new Error("DSH model wire resolver is not configured.");
+      }
+      dshModelWire = await deps.resolveDshModelWireForRun(requestedModel);
+      // Keep one isolated DSH_HOME per tab. The UI id changes from local_ to the
+      // ACP UUID after session/new, but the session files stay in the original home.
+      dshLaunch = await (deps.prepareDshInteractiveLaunch ?? prepareDshIsolatedLaunch)({
+        sessionKey: tabId,
+      });
+    }
     const grokAgentArgs = cli === "grok" ? getGrokAgentArgs() : [];
-    const args = cli === "grok"
+    const args = cli === "dsh"
+      ? [...(dshLaunch?.agentArgs ?? [])]
+      : cli === "grok"
       ? buildGrokAgentStdioArgs(grokAgentArgs, selectedModel)
       : cli === "codex" || executionOptions.isolateProjectInstructions
       ? buildCliArgs(cli, {
@@ -264,7 +282,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
         })
       : getEffectiveCliArgs(cli, selectedModel);
-    const command = cli === "grok" ? getGrokCommand() : getCliCommand(cli);
+    const command = cli === "dsh" ? getDshCommand() : cli === "grok" ? getGrokCommand() : getCliCommand(cli);
     const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
     const commandForRunner = cli === "claude"
       ? (resolvedCommand?.command ?? "claude")
@@ -318,6 +336,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let observedCodexPrimaryTurnCompleted = false;
     let observedClaudeFinalAnswer = false;
     let observedGrokFinalAnswer = false;
+    let observedDshFinalAnswer = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -991,7 +1010,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (hasAssistantFinalConclusionAfterMessage(messageTarget, userMessageId, {
         observedFinalAnswer: (source === "codex" && observedCodexFinalAnswer)
           || (source === "claude" && observedClaudeFinalAnswer)
-          || (source === "grok" && observedGrokFinalAnswer),
+          || (source === "grok" && observedGrokFinalAnswer)
+          || (source === "dsh" && observedDshFinalAnswer),
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
@@ -1068,7 +1088,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       graphNodeId: input.graphNodeId,
     });
 
-    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok"): Promise<"continue" | "return"> => {
+    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh"): Promise<"continue" | "return"> => {
       if (await maybeHandleNaturalLanguageHumanInteraction()) {
         return "continue";
       }
@@ -1126,7 +1146,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       beginInteractiveAttempt(attemptPrompt);
 
       try {
-        if (cli !== "codex" && cli !== "claude" && cli !== "grok") {
+        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh") {
           throw new Error(`interactive-runner-unsupported:${cli}`);
         }
         const disposition = await interactiveTurnStrategies[cli].runAttempt({
@@ -1138,6 +1158,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           commandForRunner,
           args,
           grokAgentArgs,
+          dshModelWire,
+          dshLaunch,
           cwd,
           thinkingMode,
           interactiveMode,
@@ -1211,6 +1233,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           },
           set observedGrokFinalAnswer(value: boolean) {
             observedGrokFinalAnswer = value;
+          },
+          get observedDshFinalAnswer() {
+            return observedDshFinalAnswer;
+          },
+          set observedDshFinalAnswer(value: boolean) {
+            observedDshFinalAnswer = value;
           },
           settleInteractiveAttempt,
           appendAssistantChunkForTab,

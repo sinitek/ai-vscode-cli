@@ -8,11 +8,13 @@ import type { SubagentProgressUpdate } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import type { InteractiveTabRun } from "./promptExecutionShared";
+import type { DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import { createClaudeInteractiveTurnStrategy } from "./interactiveTurnClaude";
 import { createCodexInteractiveTurnStrategy } from "./interactiveTurnCodex";
+import { createDshInteractiveTurnStrategy } from "./interactiveTurnDsh";
 import { createGrokInteractiveTurnStrategy } from "./interactiveTurnGrok";
 
-export type InteractiveTurnCli = "codex" | "claude" | "grok";
+export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh";
 
 export type InteractiveAttemptDisposition = "continue" | "return";
 
@@ -38,6 +40,8 @@ export type InteractiveTurnAttemptPort = {
   readonly commandForRunner: string;
   readonly args: string[];
   readonly grokAgentArgs: string[];
+  readonly dshModelWire: string | null;
+  readonly dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null;
   readonly cwd: string | undefined;
   readonly thinkingMode: ThinkingMode;
   readonly interactiveMode: InteractiveMode;
@@ -60,6 +64,7 @@ export type InteractiveTurnAttemptPort = {
   observedCodexPrimaryTurnCompleted: boolean;
   observedClaudeFinalAnswer: boolean;
   observedGrokFinalAnswer: boolean;
+  observedDshFinalAnswer: boolean;
   settleInteractiveAttempt(cli: InteractiveTurnCli): Promise<InteractiveAttemptDisposition>;
   appendAssistantChunkForTab(
     chunk: string,
@@ -104,5 +109,6 @@ export function createInteractiveTurnStrategies(): Record<InteractiveTurnCli, In
     codex: createCodexInteractiveTurnStrategy(),
     claude: createClaudeInteractiveTurnStrategy(),
     grok: createGrokInteractiveTurnStrategy(),
+    dsh: createDshInteractiveTurnStrategy(),
   };
 }

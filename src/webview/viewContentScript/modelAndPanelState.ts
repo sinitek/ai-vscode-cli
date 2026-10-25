@@ -304,6 +304,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopModelsByCli = nextLoopModelsByCli;
         state.selectedLoopModelsByCli = nextSelectedLoopModelsByCli;
         state.selectedLoopThinkingByCli = nextSelectedLoopThinkingByCli;
+        state.dshReasoningOptions = panelCurrentCli === "dsh" && Array.isArray(modelState.dshReasoningOptions)
+          ? modelState.dshReasoningOptions.filter((option) => typeof option === "string" && option.trim())
+          : panelCurrentCli === "dsh" ? [] : state.dshReasoningOptions;
         const incomingSubtaskCli = modelState.selectedLoopSubtaskCliByConfigId && typeof modelState.selectedLoopSubtaskCliByConfigId === "object"
           ? { ...modelState.selectedLoopSubtaskCliByConfigId }
           : {};
@@ -356,6 +359,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           ? previousConversationTabs.activeTabId
           : null;
         state.currentCli = panelState.currentCli;
+        if (state.currentCli !== "dsh") {
+          state.dshReasoningOptions = [];
+        } else if (Array.isArray(panelState.dshReasoningOptions)) {
+          state.dshReasoningOptions = panelState.dshReasoningOptions.filter((option) => typeof option === "string" && option.trim());
+        }
         state.sessionState = panelState.sessionState;
         const nextConversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
         const newlyCompletedLoopTabIds = getNewlyCompletedLoopTabIds(
@@ -719,6 +727,36 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function syncGenericThinkingOptions() {
+        if (state.currentCli === "dsh") {
+          const advertised = Array.isArray(state.dshReasoningOptions)
+            ? state.dshReasoningOptions.filter((option) =>
+              typeof option === "string"
+              && option.trim()
+              && option !== "off"
+              && ["low", "high", "xhigh", "max"].includes(option),
+            )
+            : [];
+          elements.thinkingMode.innerHTML = "";
+          elements.thinkingMode.title = t("thinkingModeAria");
+          if (advertised.length === 0) {
+            elements.thinkingMode.disabled = true;
+            return;
+          }
+          elements.thinkingMode.disabled = false;
+          advertised.forEach((option) => {
+            appendThinkingOption(elements.thinkingMode, option, option);
+          });
+          const selected = advertised.includes(state.thinkingMode)
+            ? state.thinkingMode
+            : advertised.includes("high")
+            ? "high"
+            : advertised[0];
+          elements.thinkingMode.value = selected;
+          if (selected !== state.thinkingMode) {
+            updateThinkingMode(selected);
+          }
+          return;
+        }
         const isCodex = state.currentCli === "codex";
         const isClaude = state.currentCli === "claude";
         const isGrok = state.currentCli === "grok";

@@ -1007,6 +1007,38 @@ test("detach and a thrown stop leave the current runner registered", async () =>
   });
 });
 
+test("DSH runner identity stays on its own session and does not dispose Grok", () => {
+  withManager((manager) => {
+    const wire = "[\"sinitek-custom\",\"deepseek-v4.1-flash\"]";
+    const options = {
+      sessionId: "shared",
+      command: "dsh",
+      agentArgs: ["--patch", "/tmp/acp-patch.yaml"],
+      cwd: "/workspace",
+      thinkingMode: "ultra" as const,
+      interactiveMode: "coding" as const,
+      model: wire,
+      localSessionId: "9a871318-21c4-4603-8e65-693ba8589abe",
+      env: { DSH_HOME: "/tmp/isolated-a" },
+    };
+    const first = manager.getOrCreateDshRunner(options);
+    const reused = manager.getOrCreateDshRunner({ ...options, model: "[\"sinitek-custom\",\"other\"]", thinkingMode: "max" });
+    assert.equal(reused, first);
+    assert.equal(manager.hasDshRunner("shared", first), true);
+    const grok = manager.getOrCreateGrokRunner(grokOptions("shared"));
+    const moved = manager.getOrCreateDshRunner({ ...options, env: { DSH_HOME: "/tmp/isolated-b" } });
+    assert.notEqual(moved, first);
+    assert.equal(first.isReusable(), false);
+    assert.equal(manager.hasGrokRunner("shared", grok), true);
+    manager.detachRunner("dsh", "shared", moved);
+    assert.equal(manager.hasDshRunner("shared", moved), false);
+    assert.equal(moved.isReusable(), true);
+    manager.disposeForCli("dsh");
+    assert.equal(manager.hasGrokRunner("shared", grok), true);
+    moved.dispose();
+  });
+});
+
 type ContractDiagnostic = {
   code: number;
   line: number;

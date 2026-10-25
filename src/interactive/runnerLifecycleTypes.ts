@@ -2,9 +2,10 @@ import type { InteractiveMode, ThinkingMode } from "../cli/types";
 import type { CodexRunSelection } from "./codexThreadSelection";
 import type { ClaudeInteractiveRunner } from "./claudeRunner";
 import type { CodexInteractiveRunner } from "./codexRunner";
+import type { DshInteractiveRunner } from "./dshRunner";
 import type { GrokInteractiveRunner } from "./grokRunner";
 
-export type InteractiveRunnerCli = "codex" | "claude" | "grok";
+export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh";
 
 export type RunnerLifecycleFields = {
   idleTimer: NodeJS.Timeout | null;
@@ -50,12 +51,27 @@ export type GrokRunnerEntry = {
   cwd?: string;
 } & RunnerLifecycleFields;
 
-export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry;
+export type DshRunnerEntry = {
+  cli: "dsh";
+  sessionId: string;
+  runner: DshInteractiveRunner;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  command: string;
+  args: string[];
+  cwd?: string;
+  localSessionId: string | null;
+  env?: NodeJS.ProcessEnv;
+} & RunnerLifecycleFields;
+
+export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry | DshRunnerEntry;
 
 export type RunnerEntryByCli = {
   codex: CodexRunnerEntry;
   claude: ClaudeRunnerEntry;
   grok: GrokRunnerEntry;
+  dsh: DshRunnerEntry;
 };
 
 export type RunnerByCli = {
@@ -121,6 +137,23 @@ export type PreparedGrokCreate = {
   options: GrokRunnerCreateOptions;
 };
 
+export type DshRunnerCreateOptions = {
+  sessionId: string;
+  command: string;
+  agentArgs: string[];
+  cwd: string;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  localSessionId?: string | null;
+  env?: NodeJS.ProcessEnv;
+};
+
+export type PreparedDshCreate = {
+  sessionId: string;
+  options: DshRunnerCreateOptions;
+};
+
 export type RunnerSetOptions = {
   configId?: string | null;
   command?: string;
@@ -128,6 +161,8 @@ export type RunnerSetOptions = {
   cwd?: string;
   entrypoint?: string;
   isolateProjectInstructions?: boolean;
+  localSessionId?: string | null;
+  env?: NodeJS.ProcessEnv;
 };
 
 export type SetRunnerMetadataInput<TRunner> = {

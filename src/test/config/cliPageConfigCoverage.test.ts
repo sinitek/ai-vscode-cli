@@ -474,7 +474,7 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.match(html, /openCodeSkills: config\.openCodeSkills \?\? config\.geminiSkills \?\? \[\]/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = config/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = payload/);
-  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok"\]/);
+  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok", "dsh"\]/);
   assert.match(html, /event: "syncActive:empty"/);
   assert.match(html, /event: "syncActive:error"/);
   assert.match(html, /localStorage\.removeItem\(ACTIVE_CONFIG_KEY_PREFIX \+ platform\)/);
@@ -1142,7 +1142,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
 test("config store asset keeps platform order, duplicate names, empty states, and error fallbacks isolated", () => {
   const { utils, storage } = loadStoreUtilities();
 
-  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [] });
+  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
   assert.equal(utils.createCopyName("Gateway", []), "Gateway_副本");
   assert.equal(
     utils.createCopyName("Gateway", ["Gateway_副本", "Gateway_副本2"]),
@@ -1170,14 +1170,14 @@ test("config store asset keeps platform order, duplicate names, empty states, an
       ],
       { claude: [], codex: ["codex-one"], opencode: [] },
     )),
-    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [] },
+    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [], dsh: [] },
   );
 
   utils.storeJson("valid", { ok: true });
   assert.equal(storage.get("valid"), "{\"ok\":true}");
   storage.set("broken", "{not-json");
   assert.deepEqual(toPlain(utils.readJson("broken", { fallback: true })), { fallback: true });
-  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [] });
+  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
 
   const storeSource = readProjectFile("media/config/assets/config-app-store.js");
   assert.match(storeSource, /selectedConfigPlatform: null/);
@@ -1199,6 +1199,12 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(listPanel, /children: "Skills 市场"/);
   assert.match(listPanel, /H\("codex", w\)/);
   assert.match(listPanel, /H\("opencode", O\)/);
+  assert.match(listPanel, /H\("grok", grokConfigs\)/);
+  assert.match(listPanel, /H\("dsh", dshConfigs\)/);
+  assert.ok(listPanel.indexOf('H("claude"') < listPanel.indexOf('H("codex"'));
+  assert.ok(listPanel.indexOf('H("codex"') < listPanel.indexOf('H("opencode"'));
+  assert.ok(listPanel.indexOf('H("opencode"') < listPanel.indexOf('H("grok"'));
+  assert.ok(listPanel.indexOf('H("grok"') < listPanel.indexOf('H("dsh"'));
   assert.match(listPanel, /locale: \{ emptyText: "暂无配置" \}/);
   assert.match(listPanel, /children: "暂无配置可导出"/);
   assert.match(listPanel, /onClick: \(\) => I\(k\)/);
@@ -1209,6 +1215,10 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /className: "config-editor-shell config-editor-claude"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-opencode"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-codex"/);
+  assert.match(editorPanel, /className: "config-editor-shell config-editor-dsh"/);
+  assert.match(editorPanel, /"data-testid": "dsh-model-id"/);
+  assert.match(editorPanel, /DSH_UI_MODEL_ID/);
+  assert.match(layout, /config-mobile-directory-button/);
   assert.match(editorPanel, /\[claudeEditorMode, setClaudeEditorMode\] = c\.useState\("json"\)/);
   assert.match(editorPanel, /\[openCodeEditorMode, setOpenCodeEditorMode\] = c\.useState\("json"\)/);
   assert.match(editorPanel, /\[codexEditorMode, setCodexEditorMode\] = c\.useState\("toml"\)/);
@@ -1221,7 +1231,7 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /const renderFixedEditorModeTabs =/);
   assert.equal(
     (editorPanel.match(/className: "config-editor-fixed-actions"/g) || []).length,
-    4,
+    5,
     "each config editor should render a fixed action area",
   );
   assert.match(editorPanel, /const renderConfigEditorCardTitle =/);
@@ -1408,4 +1418,138 @@ test("Codex, Claude, and OpenCode visual editor utilities expose stable observab
   assert.equal(openCodeSerialized.ok, true);
   assert.equal(openCodeSerialized.config.model, "builtin/main");
   assert.equal(Object.keys(openCodeSerialized.config.provider).length, 1);
+});
+
+test("skills copy and market install share the DSH target appended after Codex", async () => {
+  const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
+  assert.equal(uiSource.split("const CLI_GLOBAL_SKILL_TARGETS =").length, 2);
+  const targetBlock = extractBetween(uiSource, "const CLI_GLOBAL_SKILL_TARGETS = [", "];");
+  assert.equal(targetBlock, `const CLI_GLOBAL_SKILL_TARGETS = [
+  { id: "claude", label: "Claude" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "grok", label: "Grok" },
+  { id: "codex", label: "Codex" },
+  { id: "dsh", label: "DSH" },
+`);
+  const copyModal = extractBetween(uiSource, "const SkillsCopyModal =", "const SkillsMarketModal =");
+  const marketModal = extractBetween(uiSource, "const SkillsMarketModal =", "const renderSkillRows =");
+  assert.match(copyModal, /const targets = CLI_GLOBAL_SKILL_TARGETS\.filter\(\(item\) => item\.id !== platform\)/);
+  assert.match(marketModal, /platforms: selectedTargets/);
+  assert.match(marketModal, /\.\.\.CLI_GLOBAL_SKILL_TARGETS\.map\(\(target\) => be\.jsxs\("label"/);
+  assert.match(marketModal, /CLI_GLOBAL_SKILL_TARGETS\.find\(\(target\) => target\.id === item\.platform\)/);
+  assert.doesNotMatch(copyModal, /id: "claude"|apiKey|sk-[A-Za-z0-9]/);
+  assert.doesNotMatch(marketModal, /id: "claude"|apiKey|sk-[A-Za-z0-9]/);
+
+  const slice = uiSource.slice(uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="), uiSource.indexOf("const SkillsManagerModal ="));
+  const state: unknown[] = [];
+  let cursor = 0;
+  const effects: Array<() => void> = [];
+  const copies: string[] = [];
+  const installs: Array<Record<string, unknown>> = [];
+  const element = (type: string, props: AnyRecord) => ({ type, props });
+  const descendants = (node: AnyRecord): AnyRecord[] => {
+    const children = [node.props.children].flat().filter((child) => child && typeof child === "object");
+    return [node, ...children.flatMap(descendants)];
+  };
+  const sandbox = {
+    Error,
+    be: { jsx: element, jsxs: element },
+    xr: "modal",
+    xn: "button",
+    Kt: { success: () => undefined, warning: () => undefined },
+    searchLobehubSkills: async () => ({
+      currentPage: 1,
+      totalPages: 1,
+      totalCount: 1,
+      items: [{ identifier: "market-skill", name: "market-skill", description: "描述" }],
+    }),
+    installLobehubSkill: async (payload: Record<string, unknown>) => {
+      installs.push(payload);
+      return { targets: [{ platform: "dsh", name: "market-skill", status: "installed" }] };
+    },
+    window: { dispatchEvent: () => undefined },
+    CustomEvent: class CustomEvent {
+      type: string;
+      constructor(type: string) {
+        this.type = type;
+      }
+    },
+    c: {
+      useState(initial: unknown) {
+        const index = cursor++;
+        if (!(index in state)) state[index] = initial;
+        return [state[index], (value: unknown) => {
+          state[index] = typeof value === "function" ? (value as (current: unknown) => unknown)(state[index]) : value;
+        }];
+      },
+      useRef(initial: unknown) {
+        const index = cursor++;
+        if (!(index in state)) state[index] = { current: initial };
+        return state[index];
+      },
+      useEffect(effect: () => void) {
+        if (effects.length === 0) effects.push(effect);
+      },
+    },
+  };
+  const components = vm.runInNewContext(`${slice}\n({ SkillsCopyModal, SkillsMarketModal })`, sandbox) as {
+    SkillsCopyModal: (props: AnyRecord) => AnyRecord;
+    SkillsMarketModal: (props: AnyRecord) => AnyRecord;
+  };
+  cursor = 0;
+  const copyModalNode = components.SkillsCopyModal({
+    skill: { name: "example-skill", path: "/skills/example-skill" },
+    platform: "claude",
+    onClose: () => undefined,
+    onCopy: async (_item: unknown, platform: string) => {
+      copies.push(platform);
+    },
+  });
+  const copyLabels = descendants(copyModalNode)
+    .filter((node) => node.type === "label")
+    .map((node) => node.props.children[1].props.children);
+  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH"]);
+  const dshCopy = descendants(copyModalNode).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
+  assert.ok(dshCopy);
+  dshCopy.props.children[0].props.onChange({ target: { checked: true } });
+  cursor = 0;
+  await components.SkillsCopyModal({
+    skill: { name: "example-skill", path: "/skills/example-skill" },
+    platform: "claude",
+    onClose: () => undefined,
+    onCopy: async (_item: unknown, platform: string) => {
+      copies.push(platform);
+    },
+  }).props.onOk();
+  assert.deepEqual(copies, ["dsh"]);
+
+  state.length = 0;
+  cursor = 0;
+  const market = () => {
+    cursor = 0;
+    return components.SkillsMarketModal({ onClose: () => undefined });
+  };
+  market();
+  effects[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  const listed = market();
+  const download = descendants(listed).find((node) => node.type === "button" && node.props.children === "下载");
+  assert.ok(download);
+  download.props.onClick();
+  const selected = market();
+  const marketLabels = descendants(selected)
+    .filter((node) => node.type === "label" && node.props.className === "skills-copy-target")
+    .map((node) => node.props.children[1].props.children);
+  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH"]);
+  const dshInstall = descendants(selected).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
+  assert.ok(dshInstall);
+  dshInstall.props.children[0].props.onChange({ target: { checked: true } });
+  const install = descendants(market()).find((node) => node.type === "button" && node.props.children === "安装");
+  assert.ok(install);
+  assert.equal(install.props.disabled, false);
+  install.props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(toPlain(installs), [{ identifier: "market-skill", platforms: ["dsh"] }]);
+  assert.equal(JSON.stringify(installs).includes("apiKey"), false);
+  assert.equal(JSON.stringify(copies).includes("sk-"), false);
 });

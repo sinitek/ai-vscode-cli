@@ -20,7 +20,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return map[name] !== false;
       }
       function getEnabledCliNames() {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"];
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"];
         return names.filter((name) => isCliChoiceEnabled(name));
       }
       function syncEnabledCliSelectElement(selectElement, preferredValue) {
@@ -212,6 +212,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
+        dshReasoningOptions: [],
         openCodeThinking: {
           selectedVariant: null,
           configuredDefaultVariant: null,
@@ -428,6 +429,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulesSaveOpenCode: document.getElementById("rulesSaveOpenCode"),
         rulesSaveGrokOption: document.getElementById("rulesSaveGrokOption"),
         rulesSaveGrok: document.getElementById("rulesSaveGrok"),
+        rulesSaveDshOption: document.getElementById("rulesSaveDshOption"),
+        rulesSaveDsh: document.getElementById("rulesSaveDsh"),
         saveRules: document.getElementById("saveRules"),
         rulesHint: document.getElementById("rulesHint"),
         rulesPath: document.getElementById("rulesPath"),

@@ -389,7 +389,7 @@ test("resumes only a real Grok session and treats end_turn as completion", () =>
 
 test("reads a Grok session id from session/load _meta", () => {
   assert.equal(readGrokSessionId({
-    models: { currentModelId: "grok-4.7-kedaya" },
+    models: { currentModelId: "grok-4.7" },
     _meta: {
       sessionId: "01a14527-e90f-7980-9af5-d9db3333ee4d",
       "x.ai/sessionDetail": { sessionId: "01a14527-e90f-7980-9af5-d9db3333ee4d" },

@@ -274,6 +274,7 @@ export const WEBVIEW_STRINGS = {
     runContextTokensLabel: "{value}",
     runContextTokensTitle: "当前上下文已用 {used} tokens",
     runContextTokensTitleWithWindow: "当前上下文已用 {used} / {window} tokens",
+    runContextTokensTitleWithAdapterWindow: "当前上下文已用 {used} tokens；窗口 {window} 是适配器 fallback，不是服务确认容量",
     runContextTokensPendingAria: "正在等待已用上下文",
     runContextTokensPendingTitle: "收到 CLI 上下文用量后显示",
     runPromptTitle: "会话提示词",

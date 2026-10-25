@@ -18,7 +18,7 @@
 ### 已覆盖
 
 - 内置聊天侧边栏与状态栏入口
-- Codex / Claude / OpenCode 三个平台统一接入
+- Codex、Claude、OpenCode、Grok、DeepSeek Harness 按 `codex`、`claude`、`opencode`、`grok`、`dsh` 接入
 - Codex / Claude 交互式续接会话；Codex 切换插件侧模型或配置档案时仍复用现有 `threadId`。同一 app-server 连接只 `initialize` 一次，已加载 thread 的后续回合只发 `turn/start`；`modelProvider` 只在冷 `thread/start` / `thread/resume` 时传入。该恢复不会重放旧工具调用或历史事件；若目标 provider/account 无法解密历史 reasoning/compaction 内容，则显示 app-server 原始错误。
 - 多标签会话并行管理
 - Prompt 上下文增强、附件上传、任务流观察
@@ -33,6 +33,7 @@
 - 不提供远程服务端托管
 - OpenCode 作为新增支持目标接入；官方 TUI commands 文档列出 `/compact`（alias `/summarize`），说明为 compact current session；官方配置文档还提供 `compaction.auto`（默认 `true`）、`compaction.prune` 和 `compaction.reserved`，并有 `OPENCODE_DISABLE_AUTOCOMPACT` 环境变量用于关闭自动上下文压缩。插件侧手动/自动压缩支持应优先复用当前会话运行链路，若 OpenCode 当前模式无法走交互 Runner，则只能通过官方 slash command / 后台 fallback 路径执行，不能宣称完全等同 Codex app-server 压缩语义
 - Gemini 已移除，不再作为当前支持 CLI
+- DeepSeek Harness 原生 compaction 明确不支持。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。真实 `session/request_permission` 与图形 Extension Development Host 点击验收未验证，不得写成已完成
 - 不负责替代官方 CLI 本身的安装、鉴权和全部高级能力
 - Graph 当前不提供图编辑器、模板库、完整人工审批工作流、局部返工路径编辑、复杂布尔条件编辑器、任意条件重写/可视化重规划、rollback 预演或证据文件正文读取；真实 CLI 停止只会在存在 active Graph run/node 映射时发起请求，不能保证外部进程已退出
 
@@ -71,6 +72,19 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - 在面板内切换当前 CLI
 - 为不同 CLI 配置不同命令与参数
 - 在同一 UI 下查看统一格式的消息与 trace
+
+### DeepSeek Harness
+
+- 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`。交互主路径固定为 `dsh --profile acp`。配置参数只接受明确的 `--patch`，不能覆盖 `--profile`，也不能切换 headless、sdk 或 tui。
+- 默认模型 id 是 `subcoco/deepseek-v4.1-flash`；profile 可按顺序配置多个完整模型 id，`acpModel` 指定默认值。聊天面板仅提供 profile 中的模型选择，所选 id 会持久化，并在下一次执行时解析为已配置 provider wire、由 ACP 确认切换。未配置或 ACP 未公布的模型不能执行。凭据默认引用 `SINITEK_DSH_API_KEY`，不借用 `DEEPSEEK_API_KEY` 或其他平台密钥；配置页也允许把 `apiKey` 直接保存到本机 DSH profile，并仅在启动子进程时注入该环境变量。配置页分组在 Grok 之后，直接密钥输入使用密码控件。`apiKeyEnv` 不是密钥值；可视化模式不展示该字段，profile 可省略，保存和运行 patch 会自动规范化为固定值 `SINITEK_DSH_API_KEY`。响应短名不能当作可见模型 id，也不能替换配置中的完整 id。
+- 未配置模型不能执行。未出现在已配置模型和当前 ACP `configOptions` 中的 id 不得当成可执行模型。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。
+- 携宁 CLI 启动 DSH ACP 子进程时固定覆盖 `DSH_PERMISSION_MODE=danger-full-access`，使用 DSH 官方的完整访问且免审批策略；仅作用于该子进程，不修改扩展宿主环境。
+- Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
+- usage 缺失不显示为 0。出现的 `usage_update.size` 若来自 adapter-fallback，界面标成适配器窗口，不能冒充服务确认容量。
+- 配置页首次打开及切换档案默认进入 JSON 模式；可视化模式编辑同一份完整 JSON，左侧按配置顺序展示模型列表，右侧编辑当前模型与 profile 信息，`acpModel` 通过模型下拉选择。新增操作先在列表中创建空白草稿并选中，模型 id 只在右侧详情填写；空白草稿可以切到 JSON 继续编辑，但保存时会提示模型 id 必填，JSON 内容未通过校验前不能切回可视化。模型删除使用列表行内图标和确认弹窗，至少保留一个模型。无效 JSON 不覆盖上一份有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、非 `apiKey` 密钥字段和 `retryPolicy` 未建模键在验证阶段拒绝。`apiKey` 可直接写入本机 DSH 配置档案，配置目录和备份使用仅用户可读权限；运行时只把它注入 DSH 子进程的 `SINITEK_DSH_API_KEY`，不写入 patch、命令参数或诊断输出。未填写 `apiKey` 时仍可使用外部 `SINITEK_DSH_API_KEY`。运行 patch 只写已验证 provider 字段。provider 只读。`baseURL`、模型 id 和可选 `apiKey` 可编辑；可视化不展示 `apiKeyEnv`。上游 DSH provider schema 允许省略 `apiKeyEnv`，插件在保存后的 profile 和运行 patch 中自动补齐固定值 `SINITEK_DSH_API_KEY`。保存扫描允许根级 `apiKey`，其它位置的密钥仍拒绝。默认模型 id 保持完整 `subcoco/deepseek-v4.1-flash`；已安装 schema 的 `models` 是有序数组，页面按该顺序新增、编辑、删除并选择当前 `acpModel`。聊天面板按顺序列出配置模型，不提供通用模型管理；选择持久化并在执行时映射到对应 provider wire，ACP 确认成功后才运行。别名和未列入该数组的 id 不能执行。DSH 详情区不显示激活状态；保存已激活档案和列表激活动作仍走 `activateDshProfile`。图形 Extension Host 点击验收未做。
+- 默认验证模型在 profile 中声明 DeepSeek `low`、`high`、`xhigh`、`max` 四档，AI 对话面板直接显示 ACP 广告的原始 value，不显示 `off` 或空 value；选择按当前模型保存，并在下一次执行前由 runner 通过 `session/set_config_option` 确认后应用。其它自定义模型需显式声明 `reasoningEfforts` 与 `compat`，未声明时禁用选择器。runner 只发送 ACP 当前广告且属于契约的值；旧 DSH `off` / `medium` 配置读取时归一到可用档位，不继续显示 `off`。DeepSeek 不支持的别名不作为额外选项展示，也不绕过 ACP options 校验。
+- 原生 compaction 明确不支持。`compactSession` 返回不支持，不发送 `/compact`，也不把压缩提示词当成原生压缩。
+- 最终模型的插件实跑覆盖配置激活、隔离 `DSH_HOME`、`DshInteractiveRunner` 和宿主运行时上的新建、续聊、恢复和取消。真实权限请求没有出现。图形 Extension Host 点击验收未做，不得虚报。
 
 ### 3.3 执行模式
 
@@ -132,7 +146,6 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - Loop 模式的执行方式属于 `loop` 内部设置，不新增顶层 `InteractiveMode`。Webview 在 Loop 模式下展示“Loop 执行方式”下拉，包含 `main_sub_multi_agent`（主从多智能体）和 `debate_multi_agent`（红蓝辩论多智能体）；默认值为 `main_sub_multi_agent`，老任务记录缺少 `executionMode` 时也按该值处理。新建任务会把 `executionMode` 固化到 `LoopTaskRecord`，恢复任务时以记录为准，执行中切换下拉只影响新任务。该下拉独立于模型选择能力：Claude 不显示插件侧模型选择；Codex Coding 使用单模型，Codex Loop 显示主模型/子模型；OpenCode Vibe（coding）仅显示主模型，Loop/Graph 显示主模型/子模型与各自思考力度。
 - Loop 编排角色与模型角色按 CLI 能力映射。Codex Loop 主任务、主持/复核和续跑使用 `loopMainModel` 和 `loopMainThinkingMode`，Loop 子任务使用 `loopSubtaskModel` 和 `loopSubtaskThinkingMode`；缺少子模型时兼容回退到主模型或单模型。OpenCode Vibe（coding）只传递主模型，不要求子模型；OpenCode Loop/Graph 使用主模型和子模型，缺少子模型时沿用主模型回退。旧 `lobsterMainModel` / `lobsterSubtaskModel`、`selectedLoopByConfigId` / `loopRolesByConfigId` 与 OpenCode 旧 `primary` / `small` 字段仅用于兼容读取和迁移。OpenCode 的 `small_model` 仅是底层 CLI 兼容字段，对应插件子模型角色。
 - “工具设置 - AI任务配置”提供 `loopPlusDecisionSubtaskMax`，默认 6，范围 1–20，保存在 `~/.sinitek_cli/settings.json`。它只限制 Loop+ 主任务一次 `dispatch` 或 `accept` 最多附带的子任务数，并在下一次主任务提示里告诉模型当前上限；未配置时仍按 6 校验。经典 Loop 的批次上限和 Loop+ 的 `maxConcurrency` 不读取这个字段。一次决策超过并发上限时，调度器仍把超额子任务留在 pending。
-- Loop+ scheduler 按 pending FIFO 检查任务，但 pending 本身不占并发槽或写入冲突范围；冲突仅检查当前 running 任务及本次已提升运行的任务。因冲突等待的任务不会挡住后续与实际运行任务兼容的子任务，允许安全回填空闲并发槽；仍受 `maxConcurrency`、`writeFiles`、`conflictGroup` 和 3 秒错峰启动约束。派发日志对每个 pending attempt 记录具体冲突 blocker 或 `max_concurrency`，便于区分等待原因。人工中断且等待续跑结果的开放 attempt 仍占用运行槽和写入范围。
 - “工具设置 - AI任务配置”提供 `loopPlusMaxAcceptances`，默认 100，范围 1–999，保存在 `~/.sinitek_cli/settings.json`。它限制一个 Loop+ 任务最多确认多少次子任务验收：每个新变为 `reviewed` 的 attempt 计 1 次。下一次整批确认若会超过该任务上限，宿主不提交这批，父任务进入 `needs-review`，验收队列保持不变；已达上限后也不再 `dispatch` 新子任务。没有新验收事件时仍可完成父任务。新建任务写入当前全局值；之后全局设置只升不降。该上限不读取经典 Loop 的 `loopMaxRounds`。
 - Loop+ 主任务用和派发子任务相同的 JSON 中断子任务，不提供单独按钮。`steer`，以及 `dispatch` 或 `accept` 上的 `controls`，可以对正在运行或排队的子任务执行 `close` 或 `reprompt`。`close` 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，也不计入验收次数。`reprompt` 同样先关闭被中止 attempt 的 tab，再用至少 80 字的新提示词为同一子任务开启新 attempt 和新 tab，未覆盖的标题、写入范围和冲突组沿用原任务。用户手动停止、停止整个父任务、子任务失败，以及尚未创建 tab 的排队子任务，都不因此关闭 tab。验收批次开着时不能单独 `steer`。`wait`、`blocked`、`completed` 带 `controls` 会整份拒绝。达到验收上限后可以关闭，但不能再 `reprompt`。群聊把最新 attempt 已关闭的子任务显示为已停止。
 - Loop+ 子任务手动中断时保留开放 attempt 及其并发槽和写入范围占用，子任务记录为 `blocked`，等待该子任务对话成功续跑后的通知；中断不生成验收事件、不增加验收次数，也不写入本次 attempt 结束报告或结束发言。再次中断、父任务显式继续、宿主重建均保留等待。成功通知只为该开放 attempt 生成一次完成事件，其他完成子任务仍可独立验收；开放项阻止父任务提前收口及冲突任务启动。群聊显示“已中断，等待续跑”，该项不计运行中数量且不显示思考动画。真实失败、丢失进程和整个父任务停止保留原有终止处理，主模型仍可用 `close` 或 `reprompt` 处置开放项。
@@ -244,7 +257,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 打开“管理模型”时，如果前端看到空列表但磁盘或运行态仍有模型数据，扩展会弹出可复制的诊断详情，包含配置 id、存储路径、模型计数和最近读取/配置加载错误
 - thinking mode 按 CLI 记忆；AI 对话面板与配置中心中的思考力度一律展示 raw value，不显示“低 / 高 / 最高”等中文别名。Codex/Claude 面板的固定列表为 `low`、`medium`、`high`、`xhigh`、`max`、`ultra`，其中 `ultra` 紧跟 `max` 且为末位；`ultra` 是用户要求的产品级扩展，实际 Codex/Claude 接受程度取决于已安装 CLI/模型。配置中心的 Codex 固定候选为 `minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`，其中 `max` 紧跟 `xhigh`；Claude 的新建候选不包含 `max`，加载存量 `max` 时会把兼容选项插在 `ultra` 前并保留未知值。OpenCode 对话区使用与 Codex/Claude 相同的固定档位 `low`、`medium`、`high`、`xhigh`、`max`、`ultra`，不按模型 variants 收窄或重排；模型配置里的自定义 variants 只会被 OpenCode 合并进内置档位，不是插件下拉的白名单。
 - Global / Project 规则读写
-- 规则目标覆盖 Codex / Claude / OpenCode
+- 规则目标覆盖 Codex、Claude、OpenCode、Grok、DSH。全局规则各自独立；项目范围里已启用的 Codex、OpenCode、Grok、DSH 共用工作区 `AGENTS.md`
 - Loop 主任务沿用项目规则；Loop 子任务固定使用运行时隔离，不受规则读写设置影响
 
 ### 3.8 配置中心
@@ -265,8 +278,8 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 对话面板里的配置档案下拉按 CLI 维度维护 `activeConfigIdByCli`：用户先看到待切换配置，但在宿主完成 `applyConfig` 并回写工作区 active config 之前，提示词发送与队列出队都会等待该配置应用完成；应用失败时会回滚到当前 active config，并展示错误提示，不会出现“下拉已切过去但实际运行仍使用旧配置”的状态。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
-- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex 四个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这四个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。全部安装成功后市场弹层保持打开，并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
-- OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/) 和 [Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)。
+- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH 五个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这五个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。全部安装成功后市场弹层保持打开，并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
+- OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。DSH 的全局技能目录为 `${DSH_HOME:-~/.dsh}/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/) 和 [Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)。
 - Skills 表格的操作按钮保持同行；“复制到”按钮打开弹窗，可多选当前 CLI 以外的目标。复制期间禁用重复提交，部分失败保留失败目标重试，成功目标不会重复复制；不覆盖同名技能。
 - 配置中心不再提供 MCP 市场、安装、卸载或健康检查
 
@@ -343,7 +356,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 - 用户能在 VS Code 内完成多 CLI 切换与对话
 - 会话、历史、模型和规则在重开面板后仍可恢复
-- 配置中心能管理本地配置；Skills 可打开、删除、复制四个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，安装成功后市场弹层保持打开以便继续选择；配置中心不再提供 MCP 管理
+- 配置中心能管理本地配置；Skills 可打开、删除、复制 Claude、OpenCode、Grok、Codex、DSH 五个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，安装成功后市场弹层保持打开以便继续选择；配置中心不再提供 MCP 管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
 OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。

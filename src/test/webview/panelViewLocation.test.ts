@@ -38,6 +38,11 @@ test("chat view identity and startup opening preference remain unchanged", () =>
 test("chat container and view titles stay fixed Simplified Chinese without nls bundles", () => {
   const manifest = readJson("package.json");
   assert.equal(manifest.displayName, "携宁 CLI 助手");
+  assert.equal(manifest.icon, "media/icon.png");
+  const icon = fs.readFileSync(path.join(process.cwd(), manifest.icon));
+  assert.equal(icon.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(icon.readUInt32BE(16), 128);
+  assert.equal(icon.readUInt32BE(20), 128);
   assert.equal(manifest.contributes.viewsContainers.secondarySidebar[0].title, "携宁 CLI 助手");
   assert.equal(manifest.contributes.views.sinitekCliBridgePanel[0].name, "携宁 CLI 助手");
   assert.equal(fs.existsSync(path.join(process.cwd(), "package.nls.json")), false);

@@ -77,7 +77,7 @@ function buildHtml(): string {
   });
 }
 
-function createRulesHelpers() {
+function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) {
   const source = [
     "enabledRuleCliNames",
     "collectRuleTargets",
@@ -95,12 +95,14 @@ function createRulesHelpers() {
         claude: "/state/global/claude/CLAUDE.md",
         opencode: "/state/global/opencode/AGENTS.md",
         grok: "/state/global/grok/AGENTS.md",
+        dsh: "/state/global/dsh/AGENTS.md",
       },
       project: {
         codex: "/state/project/AGENTS.md",
         claude: "/state/project/CLAUDE.md",
         opencode: "/state/project/AGENTS.md",
         grok: "/state/project/AGENTS.md",
+        dsh: "/state/project/AGENTS.md",
       },
     },
   };
@@ -115,6 +117,8 @@ function createRulesHelpers() {
     rulesSaveOpenCodeOption: { style: { display: "" } },
     rulesSaveGrok: { checked: false },
     rulesSaveGrokOption: { style: { display: "" } },
+    rulesSaveDsh: { checked: false },
+    rulesSaveDshOption: { style: { display: "" } },
     scopeGlobal: { className: "", setAttribute() { return undefined; } },
     scopeProject: { className: "", setAttribute() { return undefined; } },
   };
@@ -131,7 +135,7 @@ function createRulesHelpers() {
     "t",
     "CLI_NAMES",
     `${source}; return { collectRuleTargets, setRulesLoadCliOptions, syncRulesSaveOptions, updateRulesPath, updateRulesScope };`,
-  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, ["codex", "claude", "opencode", "grok"]) as {
+  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, cliNames) as {
     collectRuleTargets: () => string[];
     setRulesLoadCliOptions: (isGlobal: boolean) => void;
     syncRulesSaveOptions: (isGlobal: boolean) => void;
@@ -243,4 +247,34 @@ test("checking global grok adds grok to save targets and hint labels stay separa
     translations.filter((entry) => entry.key === "rulesHintSaved").map((entry) => entry.params?.targets).join("|"),
     "grok|codex/opencode/grok",
   );
+});
+
+test("global DSH rules stay separate and project DSH shares one AGENTS file", () => {
+  const html = buildHtml();
+  assert.match(html, /<option value="dsh">dsh<\/option>/);
+  assert.match(html, /<label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" \/> dsh<\/label>/);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveDshOption: document\.getElementById\("rulesSaveDshOption"\)/);
+  const { elements, helpers } = createRulesHelpers(["codex", "claude", "opencode", "grok", "dsh"]);
+  helpers.updateRulesScope("global");
+  elements.rulesSaveDsh.checked = true;
+  assert.deepEqual(helpers.collectRuleTargets(), ["dsh"]);
+  assert.equal(elements.rulesSaveDshOption.style.display, "");
+  helpers.updateRulesPath("dsh");
+  assert.equal(elements.rulesPath.textContent, "路径：/state/global/dsh/AGENTS.md");
+
+  elements.rulesSaveCodex.checked = true;
+  elements.rulesSaveDsh.checked = true;
+  helpers.updateRulesScope("project");
+  assert.deepEqual(
+    elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
+    [
+      ["codex", "codex/opencode/grok/dsh"],
+      ["claude", "claude"],
+    ],
+  );
+  assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "dsh"), false);
+  assert.equal(elements.rulesSaveDsh.checked, false);
+  assert.equal(elements.rulesSaveDshOption.style.display, "none");
+  assert.deepEqual(helpers.collectRuleTargets(), ["codex"]);
+  assert.equal(elements.rulesPath.textContent, "路径：/state/project/AGENTS.md");
 });

@@ -12,7 +12,7 @@ const modelSelectionStore = require("../../modelSelectionStore") as typeof impor
 const { ensureCliModelStore } = modelSelectionStore;
 
 test("Grok host refreshes actual config models and resolves normal and role selections per config", async (context) => {
-  let content = '[models]\ndefault = "grok"\n[model.grok]\nmodel = "grok-4.7-kedaya"\n[model."gpt-6.1-sol"]\nmodel = "gpt-6.1-sol"';
+  let content = '[models]\ndefault = "grok"\n[model.grok]\nmodel = "grok-4.7"\n[model."gpt-6.1-sol"]\nmodel = "gpt-6.1-sol"';
   const readConfig = context.mock.method(configService, "readGrokConfigText", async () => content);
   let store = ensureCliModelStore();
   let preferredConfigId: string | null = "profile";
@@ -59,8 +59,8 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   assert.equal(host.getSelectedLoopCliModel("grok", "subtask", "profile"), "grok");
   const state = host.buildModelState({ grok: "profile" });
   assert.deepEqual(state.optionsByCli.grok, ["grok", "gpt-6.1-sol"]);
-  assert.deepEqual(state.labelsByCli?.grok, { grok: "grok-4.7-kedaya", "gpt-6.1-sol": "gpt-6.1-sol" });
-  assert.equal(host.getModelDisplayName("grok", "grok"), "grok-4.7-kedaya");
+  assert.deepEqual(state.labelsByCli?.grok, { grok: "grok-4.7", "gpt-6.1-sol": "gpt-6.1-sol" });
+  assert.equal(host.getModelDisplayName("grok", "grok"), "grok-4.7");
   assert.equal(host.getModelDisplayName("codex", "gpt-6.1-sol"), "gpt-6.1-sol");
   assert.equal(host.getModelDisplayName("claude", null), null);
   assert.deepEqual(state.managedByCli.grok, []);

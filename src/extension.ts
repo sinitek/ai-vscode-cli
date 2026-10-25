@@ -216,8 +216,10 @@ import {
   isLoopSubtaskLinkFailedError,
 } from "./loopSubtaskExecutionRoot";
 import {
+  DSH_WORKSPACE_RULES_FILE_NAME,
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
+  resolveDshGlobalRulesPath,
   resolveGrokHomeDir,
   resolveOpenCodeHomeDir,
 } from "./shared/userHomePaths";
@@ -782,13 +784,22 @@ const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   claude: path.join(resolveClaudeHomeDir(), "CLAUDE.md"),
   opencode: path.join(resolveOpenCodeHomeDir(), "AGENTS.md"),
   grok: path.join(resolveGrokHomeDir(), "AGENTS.md"),
+  dsh: resolveDshGlobalRulesPath(),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
   claude: "CLAUDE.md",
   opencode: "AGENTS.md",
   grok: "AGENTS.md",
+  dsh: DSH_WORKSPACE_RULES_FILE_NAME,
 };
+
+function currentGlobalRulePaths(): Record<CliName, string> {
+  return {
+    ...CLI_RULE_PATHS_GLOBAL,
+    dsh: resolveDshGlobalRulesPath(),
+  };
+}
 const PROMPT_HISTORY_LIMIT = 200;
 const CONTEXT_COMPACT_TURN_THRESHOLD = 30;
 const CONTEXT_COMPACT_CHAR_THRESHOLD = 24000;
@@ -823,6 +834,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   claude: null,
   opencode: null,
   grok: null,
+  dsh: null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
@@ -1616,6 +1628,7 @@ async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const configState = await loadConfigState(currentCli);
   await modelSettingsHost.refreshGrokConfigModels(configState);
+  await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
   return buildPanelStateFromConfigState(configState);
@@ -1626,6 +1639,7 @@ async function buildPanelStateWithConfigState(
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   await modelSettingsHost.refreshGrokConfigModels(configState);
+  await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
   return buildPanelStateFromConfigState(configState);
@@ -1640,7 +1654,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     codeGraphInstalled: isCodeGraphWorkspaceIndexed(resolveWorkspaceCwd() ?? null),
     codeGraphInstalling: isCodeGraphInstalling(),
     processPlatform: process.platform,
-    cliRulePathsGlobal: CLI_RULE_PATHS_GLOBAL,
+    cliRulePathsGlobal: currentGlobalRulePaths(),
     getWorkspaceConfiguration: () => vscode.workspace.getConfiguration("sinitek-cli-tools"),
     getAutoAddEditorContextTags,
     getEffectiveLongTermMemoryEnabled,
@@ -2035,6 +2049,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   getWorkspaceInteractiveMode,
   getInteractiveRunnerManager: () => interactiveRunnerManager,
   resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
+  resolveDshModelWireForRun: (model) => modelSettingsHost.resolveDshModelWireForRun(model),
   getModelDisplayName: (cli, model) => modelSettingsHost.getModelDisplayName(cli, model),
   loadSessionMessages,
   logCliStartup,
@@ -2401,6 +2416,7 @@ function getProjectRulePaths(): Record<CliName, string | null> {
       claude: null,
       opencode: null,
       grok: null,
+      dsh: null,
     };
   }
   return {
@@ -2408,12 +2424,13 @@ function getProjectRulePaths(): Record<CliName, string | null> {
     claude: path.join(root, CLI_RULE_FILENAMES_PROJECT.claude),
     opencode: path.join(root, CLI_RULE_FILENAMES_PROJECT.opencode),
     grok: path.join(root, CLI_RULE_FILENAMES_PROJECT.grok),
+    dsh: path.join(root, CLI_RULE_FILENAMES_PROJECT.dsh),
   };
 }
 
 async function readCliRules(cli: CliName, scope: "global" | "project"): Promise<string> {
   const targetPath = scope === "global"
-    ? CLI_RULE_PATHS_GLOBAL[cli]
+    ? currentGlobalRulePaths()[cli]
     : getProjectRulePaths()[cli];
   if (!targetPath) {
     throw new Error("no-workspace");
@@ -2434,7 +2451,7 @@ async function writeCliRules(
   content: string
 ): Promise<void> {
   const targetPath = scope === "global"
-    ? CLI_RULE_PATHS_GLOBAL[cli]
+    ? currentGlobalRulePaths()[cli]
     : getProjectRulePaths()[cli];
   if (!targetPath) {
     throw new Error("no-workspace");

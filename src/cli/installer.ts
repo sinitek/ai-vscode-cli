@@ -7,6 +7,7 @@ const CLI_INSTALL_COMMANDS: Record<CliName, string> = {
   claude: "npm install -g @anthropic-ai/claude-code",
   opencode: "npm install -g opencode-ai",
   grok: "",
+  dsh: "npm install -g @deepseek-ai/dsh",
 };
 
 const CLI_DISPLAY_NAMES: Record<CliName, string> = {
@@ -14,6 +15,7 @@ const CLI_DISPLAY_NAMES: Record<CliName, string> = {
   claude: "Claude",
   opencode: "OpenCode",
   grok: "Grok",
+  dsh: "DSH",
 };
 
 const CODEGRAPH_INSTALL_STEP_COMMANDS = {

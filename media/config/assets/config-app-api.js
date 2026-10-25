@@ -1,4 +1,35 @@
 // Config API
+const CONFIG_MANAGER_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh"];
+const DSH_PROFILE_SECRET = /(?:^|[\s,{])(?:SINITEK_DSH_API_KEY|DEEPSEEK_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*\S+/i;
+const DSH_PROFILE_TOKEN = /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/;
+const stripDshDirectApiKey = (text) => {
+  try {
+    const profile = JSON.parse(String(text || ""));
+    if (!profile || typeof profile !== "object" || Array.isArray(profile) || !Object.prototype.hasOwnProperty.call(profile, "apiKey")) {
+      return String(text || "");
+    }
+    delete profile.apiKey;
+    return JSON.stringify(profile);
+  } catch {
+    return String(text || "");
+  }
+};
+const rejectDshSecretText = (text) => {
+  const value = stripDshDirectApiKey(text);
+  if (DSH_PROFILE_SECRET.test(value) || DSH_PROFILE_TOKEN.test(value)) {
+    throw new Error("DSH profile contains a credential value. Reference SINITEK_DSH_API_KEY only.");
+  }
+};
+const rejectDshConfigSecrets = (config) => {
+  if (!config || config.platform !== "dsh") return;
+  rejectDshSecretText(config.content);
+  rejectDshSecretText(config.configContent);
+};
+const rejectDshApplySecrets = (platform, payload) => {
+  if (platform !== "dsh" || !payload) return;
+  rejectDshSecretText(payload.content);
+  rejectDshSecretText(payload.configContent);
+};
 const detectConfigApiMode = () =>
     typeof window < "u" && window.electronAPI?.config ? "ipc" : "http",
   CONFIG_API_BASE = "http://127.0.0.1:9001/api",
@@ -144,6 +175,7 @@ const detectConfigApiMode = () =>
   },
   saveConfigItem = async (e) => {
     try {
+      rejectDshConfigSecrets(e);
       return configApi.save(e);
     } catch (t) {
       throw (console.error("保存配置失败:", t), t);
@@ -166,6 +198,7 @@ const detectConfigApiMode = () =>
   },
   applyConfigItem = async (e, t) => {
     try {
+      rejectDshApplySecrets(e, t);
       return configApi.apply(e, t);
     } catch (n) {
       throw (console.error("应用配置失败:", n), n);

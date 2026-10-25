@@ -6,7 +6,7 @@ const content = `
 [models]
 default = "sol"
 [model.grok]
-model = "grok-4.7-kedaya"
+model = "grok-4.7"
 [model.sol]
 model = "gpt-6.1-sol"
 name = "Display name must not override model"
@@ -17,7 +17,7 @@ model = "gpt-6.1-sol"
 test("uses API model fields as labels while keeping config keys as distinct selection values", () => {
   const parsed = parseGrokConfigModels(content);
   assert.deepEqual(parsed.models, ["grok", "sol", "gpt-6.1-sol"]);
-  assert.deepEqual(parsed.labels, { grok: "grok-4.7-kedaya", sol: "gpt-6.1-sol", "gpt-6.1-sol": "gpt-6.1-sol" });
+  assert.deepEqual(parsed.labels, { grok: "grok-4.7", sol: "gpt-6.1-sol", "gpt-6.1-sol": "gpt-6.1-sol" });
   assert.equal(parsed.error, null);
   assert.equal(resolveGrokConfigModel(parsed, null), "sol");
   assert.equal(resolveGrokConfigModel(parsed, " grok "), "grok");

@@ -54,16 +54,18 @@
       "id": "plugin.local_cli",
       "name": "本地 AI CLI",
       "kind": "resource",
-      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode 和官方 Grok Build；命令、参数、会话和输出解析由服务层处理。Grok 是 CLI_LIST 的最后一项，顺序为 codex、claude、opencode、grok，并由已有 GrokInteractiveRunner 走长驻 ACP stdio。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证，密钥不进入 RPC。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
+      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build 和 DeepSeek Harness；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id，默认是 subcoco/deepseek-v4.1-flash。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型和响应别名不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
-      "aliases": ["codex", "claude", "opencode", "opcode", "grok", "local CLI"],
-      "implementation_paths": ["src/cli", "src/interactive"],
+      "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "local CLI"],
+      "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": "docs/cli-reference.md"},
         {"path": "src/interactive/grokRunner.ts"},
         {"path": "src/interactive/grokAppServerProtocol.ts"},
-        {"path": "src/interactive/grokAcpClient.ts"}
+        {"path": "src/interactive/grokAcpClient.ts"},
+        {"path": "src/interactive/dshRunner.ts"},
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"}
       ]
     },
     {
@@ -84,10 +86,10 @@
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex 四个全局 skills 目录，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH 五个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。默认模型 id 是 subcoco/deepseek-v4.1-flash。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
-      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/extensionHost/cliModelSelectionStrategies.ts"],
+      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/extensionHost/cliModelSelectionStrategies.ts", "src/config/dshConfig.ts", "src/cli/dshConfigModels.ts"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/config/cliGlobalSkills.ts"},
@@ -97,7 +99,10 @@
         {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "src/extensionHost/cliModelSelectionStrategies.ts"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md"},
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
+        {"path": "src/config/dshConfig.ts"},
+        {"path": "src/cli/dshConfigModels.ts"}
       ]
     },
     {
@@ -307,6 +312,60 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.dsh_execution_no_approval",
+      "name": "DSH 插件执行固定使用免审批完整访问",
+      "description": "携宁 CLI 启动 DSH ACP 子进程时，覆盖子进程的 DSH_PERMISSION_MODE 为 danger-full-access。依据 DSH 官方 dsh-base 配置，此值同时设 sandbox 为 danger-full-access、approval 为 never；仅影响 DSH 子进程，不修改扩展宿主或其他 CLI 环境。",
+      "status": "active",
+      "aliases": ["DSH 免审", "DSH 免审批", "DSH_PERMISSION_MODE"],
+      "applies_to": ["plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/extensionHost/dshInteractiveLaunch.ts"},
+        {"path": "src/test/extensionHost/dshInteractiveHostWire.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "DeepSeek Harness"}
+      ]
+    },
+    {
+      "id": "plugin.rule.dsh_profile_edit",
+      "name": "DSH 配置页与多模型切换",
+      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，baseURL、模型 id 和可选 apiKey 可编辑。默认模型 id 为 subcoco/deepseek-v4.1-flash；models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。响应别名和未列入模型数组的 id 不能执行。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "status": "active",
+      "aliases": ["DSH 配置", "acpModel", "SINITEK_DSH_API_KEY"],
+      "applies_to": ["plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/cli/dshConfigModels.ts"},
+        {"path": "src/config/dshConfig.ts"},
+        {"path": "media/config/assets/config-app-ui.js"},
+        {"path": "src/extensionHost/modelSettings.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/extensionHost/cliModelSelectionStrategies.ts"},
+        {"path": "src/test/config/dshconfigpage.test.ts"},
+        {"path": "src/test/webview/grokmodelselection.test.ts"},
+        {"path": "src/test/extensionHost/dshModelSelection.test.ts"},
+        {"path": "src/test/extensionHost/dshInteractiveHostWire.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.dsh_reasoning_effort",
+      "name": "DSH 思考力度按模型能力展示并经 ACP 确认",
+      "description": "DSH 对话面板的思考力度只依据当前模型在 ACP configOptions 中公布的 reasoning_effort 值。默认验证模型通过 profile 声明 DeepSeek reasoningEfforts：low=low、high=high、xhigh=xhigh、max=max，并声明对应 compat；其他自定义模型只有显式声明能力时才显示选项，off、空 value 和未纳入 DeepSeek 契约的值不进入面板，未声明时禁用选择器。选项标签直接显示 ACP 原始 value，不翻译成中文；用户选择按当前模型保存，并在下一次执行前经 runner 通过 session/set_config_option 确认后应用。runner 仅将当前 ACP 已公布且属于契约的标量值下发，并以确认后的 currentValue 为准。旧 off / medium 配置读取时归一为可用档位。",
+      "status": "active",
+      "aliases": ["DSH thinking", "DSH reasoning_effort", "DeepSeek 思考力度"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/cli/dshConfigModels.ts"},
+        {"path": "src/extensionHost/modelSettings.ts"},
+        {"path": "src/interactive/dshRunner.ts"},
+        {"path": "src/extensionHost/interactiveTurnDsh.ts"},
+        {"path": "src/test/extensionHost/dshModelSelection.test.ts"},
+        {"path": "src/test/interactive/dshRunner.test.ts"},
+        {"path": "src/test/webview/openCodeThinkingWebview.test.ts"}
+      ]
+    },
     {
       "id": "plugin.rule.task_summary_svg",
       "name": "任务结束总结按需使用 SVG 补充结构化表达",
@@ -834,14 +893,11 @@
     {
       "id": "plugin.rule.loop_plus_dispatch_subtask_max",
       "name": "Loop+ 单次派发子任务上限可配置",
-      "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency。pending 按 FIFO 检查但不互相预占冲突范围；只有 running 和本轮已提升任务参与 writeFiles / conflictGroup 冲突判定，因此可跳过被冲突阻塞的队列项回填安全并发槽。仍受并发上限约束的子任务留在 pending，日志记录实际冲突 blocker 或 max_concurrency 原因。",
+      "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency；超出并发上限的已接受子任务留在 pending。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
-        {"path": "src/loopPlusScheduler.ts", "anchor": "promote"},
-        {"path": "src/test/loop/loopPlusScheduler.test.ts", "anchor": "without reserving pending write scopes"},
         {"path": "src/loopPlusDecision.ts"},
         {"path": "src/toolSettings.ts"}
       ]

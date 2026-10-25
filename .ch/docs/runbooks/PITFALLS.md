@@ -2675,7 +2675,7 @@
 - 适用范围：Codex app-server 长连接、Grok 等代理模型、hidden retry 与界面运行状态
 
 ### 现象
-- 2026-09-27 会话 `01a0dcad-17b3-7010-9b55-7735d3fbd7e3` 使用 `grok-4.7-kedaya`。界面已经写出带 `[final_answer]` 的 assistant 回复，rollout 在 `2026-09-26T16:16:45.237Z` 记录 `task_complete`，app-server 也发出 `turn/completed targeted_connections=1`。插件消息停在这条最终回复，没有“任务已完成”，界面仍是运行中，不是压缩上下文。
+- 2026-09-27 会话 `01a0dcad-17b3-7010-9b55-7735d3fbd7e3` 使用 `grok-4.7`。界面已经写出带 `[final_answer]` 的 assistant 回复，rollout 在 `2026-09-26T16:16:45.237Z` 记录 `task_complete`，app-server 也发出 `turn/completed targeted_connections=1`。插件消息停在这条最终回复，没有“任务已完成”，界面仍是运行中，不是压缩上下文。
 
 ### 触发条件与根因
 - 长连接下回合结束不退出进程，运行状态只随当前 operation 结束。`runStreamedOnce` 先等待 `turn/start` 响应，再等待 `turn/completed`。

@@ -3,6 +3,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         return cli === "codex" || cli === "grok";
       }
 
+      function cliSupportsModelSelection(cli = state.currentCli) {
+        return cliSupportsManagedModelSelection(cli) || cli === "dsh";
+      }
+
       function canOpenModelManagerDialog(cli = state.currentCli) {
         return cliSupportsManagedModelSelection(cli) && cli !== "grok";
       }
@@ -31,6 +35,24 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
 
       function getCurrentModelConfigId() {
         return state.selectedConfigId || state.configState.activeConfigId || null;
+      }
+
+      function handleModelSelectChange(value) {
+        if (value === MODEL_MANAGE_OPTION_VALUE) {
+          showAddModelDialog();
+          return;
+        }
+        const model = typeof value === "string" ? value : "";
+        state.selectedModel = model;
+        if (state.selectedModelsByCli) {
+          state.selectedModelsByCli[state.currentCli] = model;
+        }
+        vscode.postMessage({
+          type: "selectCliModel",
+          cli: state.currentCli,
+          model: model || null,
+          configId: getCurrentModelConfigId(),
+        });
       }
 
       function reportModelManagerInspection() {
@@ -202,7 +224,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.modelSelect.appendChild(option);
         });
 
-        if (state.currentCli !== "grok") {
+        if (canOpenModelManagerDialog(state.currentCli)) {
           const manageOption = document.createElement("option");
           manageOption.value = MODEL_MANAGE_OPTION_VALUE;
           manageOption.textContent = t("modelOptionManage");
@@ -435,7 +457,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           : "";
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
         const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
         const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
         const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
@@ -486,7 +508,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
         const currentValues = Array.from(selectElement.options || []).map((option) => option.value);
         const same = currentValues.length === names.length && names.every((name, index) => currentValues[index] === name);
         if (!same) {
@@ -627,7 +649,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
-        const supportsModelSelection = cliSupportsManagedModelSelection(cli);
+        const supportsModelSelection = cliSupportsModelSelection(cli);
         const isOpenCode = cli === "opencode";
         const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
         const isLoop = interactiveMode === "loop";
@@ -817,7 +839,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       function handleLoopSubtaskCliChange(rawValue) {
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
         if (names.indexOf(rawValue) < 0) {
           return;
         }
@@ -1046,21 +1068,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       if (elements.modelSelect) {
         updateModelSelectOptions();
         elements.modelSelect.addEventListener("change", (event) => {
-          const value = event.target.value || "";
-          if (value === MODEL_MANAGE_OPTION_VALUE) {
-            showAddModelDialog();
-            return;
-          }
-          state.selectedModel = value;
-          if (state.selectedModelsByCli) {
-            state.selectedModelsByCli[state.currentCli] = value;
-          }
-          vscode.postMessage({
-            type: "selectCliModel",
-            cli: state.currentCli,
-            model: value || null,
-            configId: getCurrentModelConfigId(),
-          });
+          handleModelSelectChange(event.target.value || "");
         });
       }
       syncModelSelectorByInteractiveMode();

@@ -786,7 +786,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           ? String(Math.round(activeRuntime.modelContextWindow))
           : "";
         const title = windowSize
-          ? t("runContextTokensTitleWithWindow", { used, window: windowSize })
+          ? (activeRuntime && activeRuntime.contextWindowSource === "adapter-fallback"
+            ? t("runContextTokensTitleWithAdapterWindow", { used, window: windowSize })
+            : t("runContextTokensTitleWithWindow", { used, window: windowSize }))
           : t("runContextTokensTitle", { used });
         const aria = t("runContextTokensAria", { value });
         elements.runContextTokens.textContent = t("runContextTokensLabel", { value });
@@ -1081,7 +1083,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           targetRuntimeState.suppressQueueFlushOnce = true;
         }
         resetTaskListForRunStart(targetTabId);
-        const targetModel = targetCli && cliSupportsManagedModelSelection(targetCli) && state.selectedModelsByCli
+        const targetModel = targetCli && cliSupportsModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : "";
         const targetLoopExecutionMode = targetInteractiveMode === "loop"

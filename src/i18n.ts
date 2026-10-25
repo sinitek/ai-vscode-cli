@@ -283,6 +283,7 @@ const MESSAGES = {
     "grok.reasoningNotAllowed": "当前 Grok 模型不支持思考档 {effort}，本次未下发；允许档位：{allowed}。",
     "grok.invalidConfig": "Grok 配置不是合法 TOML，已保留上一份有效内容。",
     "grok.noConfiguredModels": "请先在 Grok 配置文件中添加模型，再刷新模型列表。",
+    "dsh.reasoningUnavailable": "当前 DSH 模型没有公布所选 reasoning_effort，本次未下发，也不会把 ultra 改成 max。",
     "grok.responsesStreamIncompatible": "Grok 无法解析模型 {model} 的 Responses 流事件 {event}，本轮未完整结束，已停止自动重试。请在“携宁 CLI 配置”中将该模型的接口协议改为 chat_completions（需服务支持）后保存，并新建会话重试。",
     "grok.commandNotFound": "没有找到 {command}。请安装 Grok Build，或把 sinitek-cli-tools.commands.grok 设成绝对路径。",
     "grok.exited": "Grok Build 异常退出（{detail}）：{stderr}",

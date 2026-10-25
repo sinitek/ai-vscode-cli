@@ -1,6 +1,7 @@
 import { mergeClaudeSkillsConfig } from "./claudeSkills";
 import { mergeCodexSkillsConfig } from "./codexSkills";
 import { mergeOpenCodeSkillsConfig } from "./geminiSkills";
+import { commitDshDocument, createDshExampleProfileText } from "../cli/dshConfigModels";
 import { commitGrokText, validateGrokDocument } from "./grokConfig";
 import { mergeGrokSkillsConfig } from "./grokSkills";
 import { t } from "../i18n";
@@ -56,11 +57,18 @@ export type GrokRuntimeConfigIo = {
   backupGrokConfig: () => Promise<string[]>;
 };
 
+export type DshRuntimeConfigIo = {
+  readDshConfigText: () => Promise<string>;
+  writeDshConfigText: (content: string) => Promise<void>;
+  backupDshConfig: () => Promise<string[]>;
+};
+
 export type CliRuntimeConfigIoPorts = {
   claude: ClaudeRuntimeConfigIo;
   codex: CodexRuntimeConfigIo;
   opencode: OpenCodeRuntimeConfigIo;
   grok: GrokRuntimeConfigIo;
+  dsh: DshRuntimeConfigIo;
 };
 
 type LegacyGeminiApplyPayload = ApplyPayload & {
@@ -238,6 +246,40 @@ function createGrokRuntimeConfigStrategy(io: GrokRuntimeConfigIo): CliRuntimeCon
   };
 }
 
+function createDshRuntimeConfigStrategy(io: DshRuntimeConfigIo): CliRuntimeConfigStrategy {
+  return {
+    async readCurrent() {
+      const config = await io.readDshConfigText();
+      return { content: config, configContent: config };
+    },
+    async apply(payload) {
+      const nextContent = payload.content ?? payload.configContent ?? "";
+      const committed = commitDshDocument(nextContent);
+      if (!committed.ok) {
+        throw new Error(committed.error);
+      }
+      await io.writeDshConfigText(committed.content);
+    },
+    backup() {
+      return io.backupDshConfig();
+    },
+    async readInitialFields() {
+      const config = await io.readDshConfigText();
+      return {
+        content: config,
+        configContent: config,
+      };
+    },
+    fallbackInitialFields() {
+      const content = createDshExampleProfileText();
+      return {
+        content,
+        configContent: content,
+      };
+    },
+  };
+}
+
 export function createCliRuntimeConfigStrategies(
   ports: CliRuntimeConfigIoPorts,
 ): Record<CurrentConfigPlatform, CliRuntimeConfigStrategy> {
@@ -246,5 +288,6 @@ export function createCliRuntimeConfigStrategies(
     codex: createCodexRuntimeConfigStrategy(ports.codex),
     opencode: createOpenCodeRuntimeConfigStrategy(ports.opencode),
     grok: createGrokRuntimeConfigStrategy(ports.grok),
+    dsh: createDshRuntimeConfigStrategy(ports.dsh),
   };
 }

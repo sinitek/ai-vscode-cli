@@ -13,6 +13,8 @@ const originalCodexHome = process.env.CODEX_HOME;
 const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 const originalGrokHome = process.env.GROK_HOME;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+const originalDshHome = process.env.DSH_HOME;
+const originalDshApiKey = process.env.SINITEK_DSH_API_KEY;
 
 type ZipEntry = {
   name: string;
@@ -99,6 +101,8 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   delete process.env.CODEX_HOME_DIR;
   delete process.env.GROK_HOME;
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.DSH_HOME;
+  delete process.env.SINITEK_DSH_API_KEY;
   try {
     return await run(homeDir);
   } finally {
@@ -111,6 +115,10 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
     else process.env.GROK_HOME = originalGrokHome;
     if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    if (originalDshHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = originalDshHome;
+    if (originalDshApiKey === undefined) delete process.env.SINITEK_DSH_API_KEY;
+    else process.env.SINITEK_DSH_API_KEY = originalDshApiKey;
     await fs.promises.rm(temp, { recursive: true, force: true });
   }
 }
@@ -297,6 +305,46 @@ test("installs a downloaded skill and replaces an existing directory", async () 
         { fetchImpl: async () => zipResponse(zip), maxZipBytes: 32 },
       ),
       { message: t("skill.market.tooLarge") },
+    );
+  });
+});
+
+test("installs a market skill to DSH and replaces the same directory without touching other CLIs", async () => {
+  await withTempHome(async (homeDir) => {
+    const secret = "sk-fixturekey123456";
+    process.env.DSH_HOME = path.join(homeDir, "dsh-home");
+    process.env.SINITEK_DSH_API_KEY = secret;
+    const zip = createZip([
+      { name: "SKILL.md", data: skillMarkdown("pdf", "DSH PDF skill"), method: 8 },
+      { name: "scripts/extract.py", data: Buffer.from("print('dsh')\n", "utf8") },
+    ]);
+    const dshSkill = path.join(homeDir, "dsh-home", "skills", "pdf");
+    await fs.promises.mkdir(dshSkill, { recursive: true });
+    await fs.promises.writeFile(path.join(dshSkill, "old-note.txt"), "stale\n", "utf8");
+    const installed = await installLobehubSkill(
+      { identifier: "dsh-pdf", platforms: ["dsh", "dsh"] },
+      { fetchImpl: async () => zipResponse(zip) },
+    );
+    assert.deepEqual(installed.targets.map((target) => target.platform), ["dsh"]);
+    assert.equal(installed.targets[0]?.status, "installed");
+    assert.equal(installed.targets[0]?.message, undefined);
+    assert.equal(JSON.stringify(installed).includes(secret), false);
+    assert.equal(fs.existsSync(path.join(dshSkill, "old-note.txt")), false);
+    assert.equal(await fs.promises.readFile(path.join(dshSkill, "scripts", "extract.py"), "utf8"), "print('dsh')\n");
+    assert.equal(fs.existsSync(path.join(homeDir, ".claude", "skills")), false);
+    assert.equal(fs.existsSync(path.join(homeDir, ".codex", "skills")), false);
+    assert.equal(fs.existsSync(path.join(homeDir, ".grok", "skills")), false);
+    assert.equal(fs.existsSync(path.join(homeDir, ".config", "opencode", "skills")), false);
+    await assert.rejects(
+      () => installLobehubSkill(
+        { identifier: "dsh-pdf", platforms: ["gemini"] },
+        { fetchImpl: async () => { throw new Error(secret); } },
+      ),
+      (error: Error) => {
+        assert.equal(error.message.includes(secret), false);
+        assert.equal(error.message, t("skill.global.invalidPlatform"));
+        return true;
+      },
     );
   });
 });

@@ -23,6 +23,7 @@ type ThinkingSelect = {
 type ThinkingState = {
   currentCli: string;
   thinkingMode: string;
+  dshReasoningOptions?: string[];
   interactiveMode?: string;
   selectedLoopThinkingByCli?: Record<string, { main?: string | null; subtask?: string | null }>;
   openCodeThinking: unknown;
@@ -99,6 +100,7 @@ function buildThinkingSync() {
   const state: ThinkingState = {
     currentCli: "opencode",
     thinkingMode: "medium",
+    dshReasoningOptions: [],
     interactiveMode: "coding",
     openCodeThinking: null,
     openCodeSmallThinking: null,
@@ -256,6 +258,35 @@ test("keeps fixed Codex and Claude thinking modes raw while retaining legacy max
   ]);
   assert.equal(claude.thinkingMode.value, "max");
   assert.deepEqual(claude.messages, []);
+});
+
+test("shows only DeepSeek advertised thinking efforts using raw values", () => {
+  const harness = buildThinkingSync();
+  harness.state.currentCli = "dsh";
+  harness.state.thinkingMode = "medium";
+  harness.state.dshReasoningOptions = ["off", "low", "high", "xhigh", "max"];
+  harness.syncThinkingOptions();
+
+  assert.deepEqual(optionPairs(harness.thinkingMode), [
+    ["low", "low"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+  ]);
+  assert.equal(harness.thinkingMode.value, "high");
+  assert.equal(harness.thinkingMode.disabled, false);
+  assert.deepEqual(harness.messages, [
+    { type: "updateSetting", key: "thinkingMode", value: "high" },
+  ]);
+
+  harness.state.dshReasoningOptions = ["off"];
+  harness.state.thinkingMode = "max";
+  harness.syncThinkingOptions();
+  assert.deepEqual(optionPairs(harness.thinkingMode), []);
+  assert.equal(harness.thinkingMode.disabled, true);
+  assert.deepEqual(harness.messages, [
+    { type: "updateSetting", key: "thinkingMode", value: "high" },
+  ]);
 });
 
 test("routes OpenCode variant changes separately from generic thinking settings", () => {

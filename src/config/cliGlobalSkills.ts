@@ -6,6 +6,7 @@ import {
   formatHomeDisplayPath,
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
+  resolveDshGlobalSkillsDirectory,
   resolveGrokHomeDir,
   resolveXdgConfigHome,
 } from "../shared/userHomePaths";
@@ -15,9 +16,22 @@ import {
   skillDescriptionStrategies,
 } from "./skillDiscovery";
 
-const CLI_GLOBAL_SKILL_PLATFORMS = ["claude", "codex", "opencode", "grok"] as const;
+export const CLI_GLOBAL_SKILL_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh"] as const;
 
 export type CliGlobalSkillPlatform = (typeof CLI_GLOBAL_SKILL_PLATFORMS)[number];
+
+export const DSH_UNSUPPORTED_CAPABILITIES = {
+  explicitSkillsApi: "DSH ACP has no explicit skills method. Global skills are directories under <DSH_HOME>/skills.",
+  nativeCompaction: "DSH ACP compactSession is not supported. Sending /compact is not a proven native compaction trigger.",
+} as const;
+
+export function readDshUnsupportedCapability(
+  name: keyof typeof DSH_UNSUPPORTED_CAPABILITIES,
+): { supported: false; reason: string } {
+  return { supported: false, reason: DSH_UNSUPPORTED_CAPABILITIES[name] };
+}
+
+const SECRET_ENV_KEY = /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)(?:_|$)/i;
 
 export type CliGlobalSkillSummary = {
   name: string;
@@ -31,24 +45,40 @@ export type CliGlobalSkillsSnapshot = {
   skills: CliGlobalSkillSummary[];
 };
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
+function redactSkillDiagnostic(message: string): string {
+  let redacted = message;
+  const values: string[] = [];
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value || value.length < 8 || !SECRET_ENV_KEY.test(key)) {
+      continue;
+    }
+    values.push(value);
   }
-  return t("common.unknownError");
+  values.sort((left, right) => right.length - left.length);
+  for (const value of values) {
+    redacted = redacted.split(value).join("[redacted]");
+  }
+  return redacted.replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/g, "[redacted]");
+}
+
+function errorMessage(error: unknown): string {
+  const message = error instanceof Error && error.message.trim()
+    ? error.message.trim()
+    : t("common.unknownError");
+  return redactSkillDiagnostic(message);
 }
 
 function isEnoent(error: unknown): boolean {
   return !!error && typeof error === "object" && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
+export function isCliGlobalSkillPlatform(platform: unknown): platform is CliGlobalSkillPlatform {
+  return typeof platform === "string"
+    && (CLI_GLOBAL_SKILL_PLATFORMS as readonly string[]).includes(platform);
+}
+
 function assertPlatform(platform: unknown): CliGlobalSkillPlatform {
-  if (
-    platform === "claude" ||
-    platform === "codex" ||
-    platform === "opencode" ||
-    platform === "grok"
-  ) {
+  if (isCliGlobalSkillPlatform(platform)) {
     return platform;
   }
   throw new Error(t("skill.global.invalidPlatform"));
@@ -72,6 +102,8 @@ export function resolveCliGlobalSkillsDirectory(platform: CliGlobalSkillPlatform
       return path.join(resolveXdgConfigHome(), "opencode", "skills");
     case "grok":
       return path.join(resolveGrokHomeDir(), "skills");
+    case "dsh":
+      return resolveDshGlobalSkillsDirectory();
     case "codex":
       return path.join(resolveCodexHomeDir(), "skills");
     default: {
@@ -237,7 +269,7 @@ async function assertNoSymlinks(directory: string): Promise<void> {
   }
 }
 
-async function removeExistingSkillTarget(targetPath: string): Promise<void> {
+async function discardPath(targetPath: string): Promise<void> {
   let stat;
   try {
     stat = await fs.lstat(targetPath);
@@ -252,6 +284,41 @@ async function removeExistingSkillTarget(targetPath: string): Promise<void> {
     return;
   }
   await fs.rm(targetPath, { recursive: true, force: false });
+}
+
+async function replaceSkillDirectory(sourcePath: string, targetPath: string): Promise<void> {
+  const backupPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.sinitek-replacing`);
+  await discardPath(backupPath);
+  let moved = false;
+  try {
+    await fs.rename(targetPath, backupPath);
+    moved = true;
+  } catch (error) {
+    if (!isEnoent(error)) {
+      throw error;
+    }
+  }
+  try {
+    await fs.cp(sourcePath, targetPath, {
+      recursive: true,
+      dereference: false,
+      errorOnExist: true,
+      force: false,
+    });
+  } catch (error) {
+    await discardPath(targetPath);
+    if (moved) {
+      try {
+        await fs.rename(backupPath, targetPath);
+      } catch (restoreError) {
+        throw new Error(`${errorMessage(error)}; ${errorMessage(restoreError)}`);
+      }
+    }
+    throw error;
+  }
+  if (moved) {
+    await discardPath(backupPath);
+  }
 }
 
 export async function installCliSkillDirectory(
@@ -290,13 +357,7 @@ export async function installCliSkillDirectory(
   const targetPath = path.resolve(targetDirectory, skillName);
   assertInsideDirectory(targetDirectory, targetPath);
   try {
-    await removeExistingSkillTarget(targetPath);
-    await fs.cp(sourcePath, targetPath, {
-      recursive: true,
-      dereference: false,
-      errorOnExist: true,
-      force: false,
-    });
+    await replaceSkillDirectory(sourcePath, targetPath);
   } catch (error) {
     throw new Error(t("skill.market.installFailed", { error: errorMessage(error) }));
   }

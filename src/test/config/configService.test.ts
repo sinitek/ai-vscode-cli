@@ -707,6 +707,84 @@ test("Grok runtime keeps a missing file empty and does not replace invalid conte
   });
 });
 
+test("DSH profile storage keeps only root apiKey, drops skill toggles, and accepts dsh skills", async () => {
+  await withTempHome(async (homeDir) => {
+    const previousHome = process.env.DSH_HOME;
+    const previousKey = process.env.SINITEK_DSH_API_KEY;
+    const secret = "sk-fixturekey123456";
+    process.env.DSH_HOME = homeDir;
+    process.env.SINITEK_DSH_API_KEY = secret;
+    try {
+      const configService = loadConfigService();
+      const { createDshExampleProfileText } = require("../../cli/dshConfigModels") as typeof import("../../cli/dshConfigModels");
+      const example = createDshExampleProfileText();
+      const config = {
+        id: "dsh-profile",
+        name: "DSH",
+        platform: "dsh" as const,
+        content: example,
+        configContent: example,
+        claudeSkills: [{ name: "x", path: "/tmp/x", enabled: true }],
+        codexSkills: [{ name: "x", path: "/tmp/x", enabled: true }],
+        openCodeSkills: [{ name: "x", path: "/tmp/x", enabled: true }],
+        grokSkills: [{ name: "x", path: "/tmp/x", enabled: true }],
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      await configService.saveConfig(config);
+      const saved = JSON.parse(await fs.readFile(path.join(homeDir, "__config", "dsh-profile.json"), "utf8"));
+      assert.equal(saved.claudeSkills, undefined);
+      assert.equal(saved.codexSkills, undefined);
+      assert.equal(saved.openCodeSkills, undefined);
+      assert.equal(saved.grokSkills, undefined);
+      assert.equal(JSON.stringify(saved).includes(secret), false);
+      const loaded = await configService.getConfigById("dsh", "dsh-profile");
+      assert.equal(loaded?.claudeSkills, undefined);
+      assert.equal(loaded?.grokSkills, undefined);
+      assert.deepEqual(
+        [...configService.CLI_GLOBAL_SKILL_PLATFORMS],
+        ["claude", "codex", "opencode", "grok", "dsh"],
+      );
+      assert.equal(configService.readDshUnsupportedCapability("explicitSkillsApi").supported, false);
+      assert.equal(configService.readDshUnsupportedCapability("nativeCompaction").supported, false);
+
+      await fs.mkdir(path.join(homeDir, "skills", "demo"), { recursive: true });
+      await fs.writeFile(path.join(homeDir, "skills", "demo", "SKILL.md"), "---\ndescription: demo\n---\n# demo\n", "utf8");
+      const listed = await configService.getCliSkillsList("dsh");
+      assert.equal(listed.directory, path.join(homeDir, "skills"));
+      assert.deepEqual(listed.skills.map((skill) => skill.name), ["demo"]);
+
+      const poisoned = example.replace(
+        "\"displayName\": \"Sinitek custom\"",
+        `"displayName": "Sinitek custom", "apiKey": "${secret}"`,
+      );
+      await configService.saveConfig({
+        ...config,
+        id: "dsh-secret",
+        content: poisoned,
+        configContent: poisoned,
+      });
+      const savedSecret = JSON.parse(await fs.readFile(path.join(homeDir, "__config", "dsh-secret.json"), "utf8"));
+      assert.equal(JSON.parse(savedSecret.content).apiKey, secret);
+      if (process.platform !== "win32") {
+        const secretStat = await fs.stat(path.join(homeDir, "__config", "dsh-secret.json"));
+        assert.equal(secretStat.mode & 0o777, 0o600);
+      }
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.DSH_HOME;
+      } else {
+        process.env.DSH_HOME = previousHome;
+      }
+      if (previousKey === undefined) {
+        delete process.env.SINITEK_DSH_API_KEY;
+      } else {
+        process.env.SINITEK_DSH_API_KEY = previousKey;
+      }
+    }
+  });
+});
+
 test("reloading configService after HOME changes does not keep the previous runtime paths", async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-config-reload-"));
   const homeA = path.join(tempRoot, "home-a");

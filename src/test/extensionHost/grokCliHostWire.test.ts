@@ -45,7 +45,7 @@ function grokOptions(sessionId = "local-session") {
     cwd: "/workspace",
     thinkingMode: "xhigh" as const,
     interactiveMode: "coding" as const,
-    model: "grok-4.7-kedaya",
+    model: "grok-4.7",
     localSessionId: sessionId,
   };
 }
@@ -58,7 +58,7 @@ test("host selection creates and reuses a GrokInteractiveRunner", () => {
     assert.equal(first instanceof GrokRunner, true);
     assert.equal(reused, first);
     assert.equal(manager.hasGrokRunner("local-session", first), true);
-    manager.setRunner("grok", "local-session", first, "max", "coding", "grok-4.7-kedaya", {
+    manager.setRunner("grok", "local-session", first, "max", "coding", "grok-4.7", {
       command: "grok",
       args: ["--always-approve"],
       cwd: "/workspace",
@@ -169,7 +169,7 @@ function createHostHarness(options: {
       pendingMessagesByTab.set(tabId, next);
       return { messages: next };
     },
-    getSelectedCliModel: () => "grok-4.7-kedaya",
+    getSelectedCliModel: () => "grok-4.7",
     resolveGrokModelForRun: options.resolveGrokModelForRun,
     getWorkspaceInteractiveMode: () => "coding",
     getInteractiveRunnerManager: () => manager,
@@ -407,12 +407,12 @@ test("a failed Grok turn does not become assistant text", async () => {
 const SAMPLE_GROK_TOML = `
 # keep-comment
 [models]
-default = "grok-4.7-kedaya"
+default = "grok-4.7"
 default_reasoning_effort = "xhigh"
 
-[model.grok-4.7-kedaya]
-model = "grok-4.7-kedaya"
-name = "grok-4.7-kedaya"
+[model.grok-4.7]
+model = "grok-4.7"
+name = "grok-4.7"
 base_url = "http://127.0.0.1:33391/v1"
 api_backend = "responses"
 env_key = "EXAMPLE_ENV_NAME"
@@ -449,9 +449,9 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
       return;
     }
     const patched = applyGrokVisualPatch(parsed.value, {
-      defaultModel: "grok-4.7-kedaya",
+      defaultModel: "grok-4.7",
       defaultReasoningEffort: "xhigh",
-      model: { id: "grok-4.7-kedaya", model: "gpt-6.1-sol" },
+      model: { id: "grok-4.7", model: "gpt-6.1-sol" },
     });
     assert.equal(patched.ok, true);
     if (!patched.ok) {

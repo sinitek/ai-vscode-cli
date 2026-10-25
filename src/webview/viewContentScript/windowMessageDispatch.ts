@@ -177,6 +177,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
                 if (runtimeState.activeRunActivity !== "contextCompaction") {
                   runtimeState.tokensInContextWindow = null;
                   runtimeState.modelContextWindow = null;
+                  runtimeState.contextWindowSource = null;
                 }
               }
               resetTaskListForRunStart(targetTabId);
@@ -276,12 +277,29 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             if (runtimeState) {
               runtimeState.tokensInContextWindow = tokens;
               runtimeState.modelContextWindow = windowSize && windowSize > 0 ? windowSize : null;
+              runtimeState.contextWindowSource = data.contextWindowSource === "adapter-fallback"
+                ? "adapter-fallback"
+                : null;
             }
             if (!shouldHandleTabScopedEvent(data)) {
               return;
             }
             if (typeof updateContextTokenUsage === "function") {
               updateContextTokenUsage(runtimeState);
+            }
+          }
+          if (data.type === "dshReasoningOptions") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            state.dshReasoningOptions = Array.isArray(data.options)
+              ? data.options.filter((option) => typeof option === "string" && option.trim())
+              : [];
+            if (typeof data.currentValue === "string" && state.dshReasoningOptions.includes(data.currentValue)) {
+              state.thinkingMode = data.currentValue;
+            }
+            if (typeof syncThinkingOptions === "function") {
+              syncThinkingOptions();
             }
           }
           if (data.type === "removeMessage") {
