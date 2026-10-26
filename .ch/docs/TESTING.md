@@ -10,6 +10,7 @@
 - 最小相关单测：先 `npm run build`，再运行 `node --test dist/test/<相关测试>.js ...`。
 - 常用分组：`npm run test:core` 覆盖核心运行时，`npm run test:page` 覆盖 Webview / 配置页相关测试。
 - 静态空白校验：`npm run validate:whitespace`，也可在必要时用脚本参数限制到本次改动范围。
+- Python 开发启动脚本：`python3 -m unittest discover -s scripts/tests -p 'test_run_dev.py'`（Windows 可用 `python`），覆盖依赖布局、失败中止、macOS 路径选择与 Windows `.cmd` 参数传递。
 - 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态的问题，单元测试之外还要补充最小本机真实验证，并记录命令、关键输出和结论。
 
 ## 什么情况下默认要补单元测试

@@ -5,7 +5,7 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 
 ## changelog
 ### 1.3.1
-- bugfix 以及体验优化
+- dsh cli bugfix 和体验优化
 
 ### 1.3.0
 - 此插件增加图标
@@ -45,7 +45,7 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 
 ### 配置中心
 
-- 可视化管理 Codex、Claude 和 OpenCode 的配置档案。
+- 可视化管理 Codex、Claude 和 OpenCode 等 cli 配置档案。
 - 配置模型、Provider、思考强度、规则、工作区设置和任务执行选项。
 - 支持执行后自动压缩上下文、历史记录保留和人工交互开关。
 - 提供配置备份、导出、日志查看和 CLI 找不到时的诊断与修复入口。

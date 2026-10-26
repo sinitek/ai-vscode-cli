@@ -78,6 +78,7 @@ for (const target of targets) {
 
 test("VSIX excludes developer artifacts without excluding embedded workspace scaffold", () => {
   const discarded = [
+    "run_dev.py",
     ".tmp/playwright-smoke/screenshot.png",
     ".tmp/bubble-spacing/webview.html",
     "dist/test/shared/vsixPackaging.test.js",

@@ -55,10 +55,18 @@ node --test \
   dist/test/loop/loopSubtaskThinking.test.js
 ```
 
-### 6. 一键启动开发主机（macOS）
+### 6. 一键启动开发主机（Windows / macOS / Linux）
+
+需要 Python 3.9+、Node.js/npm 和 VS Code。Windows 运行：
+
+```powershell
+python run_dev.py
+```
+
+macOS / Linux 运行：
 
 ```bash
-./run_dev.sh
+python3 run_dev.py
 ```
 
 该脚本会：
@@ -66,11 +74,20 @@ node --test \
 - 按本机 `node_modules` 布局安装依赖：已有 pnpm 布局且本机有 pnpm 时用 `pnpm install`，否则用 `npm install`
 - 若本机是 pnpm 布局但没有 pnpm，会删除该 `node_modules` 后改走 `npm install`，避免直接混用
 - 自动执行 `npm run build`
-- 以 `--extensionDevelopmentPath` 方式启动 VS Code
+- 以 `--new-window --extensionDevelopmentPath` 方式在独立窗口启动 VS Code
+
+脚本始终以脚本所在仓库为工作目录，支持从其他目录启动。macOS 优先使用 `/Applications/Visual Studio Code.app` 内置的 `code`；其他情况查找 PATH，Windows 还会查找用户安装目录和 Program Files 中的 `code.cmd`。
+
+可用 `--code` 指定 VS Code 命令路径；依赖和构建结果已准备好时可用 `--skip-install`、`--skip-build` 跳过相应步骤：
+
+```powershell
+python run_dev.py --skip-install
+python run_dev.py --code "C:\Program Files\Microsoft VS Code\bin\code.cmd"
+```
 
 `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 因机器环境而异，已加入 `.gitignore`，不要提交。不要在 pnpm 的 `node_modules` 上手动执行 `npm install`。
 
-如果脚本找不到 `code` 命令，会提示先在 VS Code 中安装 shell command。
+如果脚本找不到 `code` 命令，会在安装依赖前退出，并提示配置 PATH 或通过 `--code` 指定命令路径。
 
 ### 7. 统计有效代码行数
 
@@ -197,7 +214,7 @@ npm run build
 - 聊天面板 Webview：`src/webview/viewContent.ts`
 - 配置中心面板：`src/webview/configPanel.ts`、`src/webview/configView.ts`
 - 打包脚本：`export_vscode_extension.sh`
-- 本地开发脚本：`run_dev.sh`
+- 本地开发脚本：`run_dev.py`
 
 ## 常见问题
 

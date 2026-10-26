@@ -15,6 +15,12 @@
 | DeepSeek Harness | 长驻 ACP `dsh --profile acp` | ACP UUID 用 `session/resume` 续接。不发送 `session/load`。插件 `local_` id 不是恢复 id | `src/interactive/dshRunner.ts`、`src/interactive/manager.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/config/dshConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
+### 分组切换安装检查
+
+- 切换到 Codex、Claude、OpenCode、Grok 或 DSH 分组时检查目标命令；命令不可用时提示安装，确认后在 VS Code 终端运行对应安装命令。
+- Codex、Claude、OpenCode 和 DSH 使用各自 npm 包；官方 Grok Build 没有走 npm 安装，Windows 执行 `irm https://x.ai/cli/install.ps1 | iex`，macOS/Linux 执行 `curl -fsSL https://x.ai/cli/install.sh | bash`。
+- 安装检查不会阻止切换分组；自定义命令路径仍沿用现有命令解析与设置修复入口。
+
 ### 交互 Runner 生命周期
 
 - `InteractiveRunnerManager` 管理 Codex、Claude、Grok、DSH。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不是这四项时，查询返回 false 或 null，释放和活动标记无操作。

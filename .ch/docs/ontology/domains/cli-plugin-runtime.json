@@ -330,7 +330,7 @@
     {
       "id": "plugin.rule.dsh_profile_edit",
       "name": "DSH 配置页与多模型切换",
-      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
       "status": "active",
       "aliases": ["DSH 配置", "acpModel", "SINITEK_DSH_API_KEY"],
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
@@ -353,7 +353,7 @@
     {
       "id": "plugin.rule.dsh_profile_field_partition",
       "name": "DSH 公共参数与模型参数分层",
-      "description": "DSH 可视化配置将 provider、baseURL、根级 apiKey 和默认 acpModel 放在模型工作区上方；右侧模型详情只编辑 models[] 的 id、name 和 contextWindow。可选 maxTokens 仅在 JSON 中兼容保留，可视化和参考范例不生成它。contextWindow 不能写在 profile 顶层；apiKeyEnv 不展示并在保存规范化时自动补为 SINITEK_DSH_API_KEY；新增模型先创建空白草稿，必须在右侧填写 id 后才能保存。",
+      "description": "DSH 可视化配置将 provider、api、baseURL、根级 apiKey 和默认 acpModel 放在模型工作区上方；api 下拉只提供 openai-completions、openai-responses、anthropic-messages，选择原样写入 profile 与运行 patch；右侧模型详情只编辑 models[] 的 id、name 和 contextWindow。可选 maxTokens 仅在 JSON 中兼容保留，可视化和参考范例不生成它。contextWindow 不能写在 profile 顶层；apiKeyEnv 不展示并在保存规范化时自动补为 SINITEK_DSH_API_KEY；新增模型先创建空白草稿，必须在右侧填写 id 后才能保存。",
       "status": "active",
       "aliases": ["DSH 公共参数", "DSH 模型参数", "contextWindow"],
       "applies_to": ["plugin.config_profile"],
@@ -1035,6 +1035,19 @@
       "source_refs": [
         {"path": "src/webview/panelFileActions.ts", "anchor": "SCHEDULED_ATTACHMENT_DIR"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"}
+      ]
+    },
+    {
+      "id": "plugin.rule.cli_group_install_check",
+      "name": "CLI 分组切换安装检查",
+      "description": "切换到 Codex、Claude、OpenCode、Grok 或 DSH 分组时检测目标命令，不可用时提示安装但不阻止分组切换。用户确认后在终端执行安装命令；Codex、Claude、OpenCode 和 DSH 使用 npm 包，Grok Build 按 Windows 或 macOS/Linux 选择官方安装脚本。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/cli/installer.ts"},
+        {"path": "src/extension.ts", "anchor": "maybePromptInstallOnCliGroupSwitch"},
+        {"path": "src/test/cli/installer.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "CLI 分组切换安装提示"}
       ]
     },
     {

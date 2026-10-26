@@ -54,6 +54,7 @@ function loadDshPageUtils(): {
     content: string;
     document: {
       baseURL: string;
+      api: string;
       models: Array<{ id: string; name?: string; contextWindow?: number; maxTokens?: number }>;
       acpModel: string;
       apiKeyEnv: string;
@@ -71,6 +72,7 @@ function loadDshPageUtils(): {
   setAcpModel: (document: unknown, id: string) => { ok: boolean; error: string; document: any; content: string };
   updateApiKeyEnv: (document: unknown, value: string) => { ok: boolean; error: string; document: any; content: string };
   updateBaseUrl: (document: unknown, value: string) => { ok: boolean; error: string; document: any; content: string };
+  updateApi: (document: unknown, value: string) => { ok: boolean; error: string; document: any; content: string };
   switchMode: (input: { mode: string; nextMode: string; text: string; document: unknown }) => {
     ok: boolean;
     error: string;
@@ -337,6 +339,7 @@ test("DSH visual editor separates profile fields from configurable model fields"
   assert.deepEqual(commonTestIds.filter(Boolean), [
     "dsh-common-parameters",
     "dsh-provider",
+    "dsh-api",
     "dsh-base-url",
     "dsh-api-key",
     "dsh-api-key-env-note",
@@ -479,6 +482,22 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   harness.find("data-testid", "dsh-editor-mode").props.children.props.modes[0].onClick();
   assert.equal(harness.find("data-testid", "dsh-editor-mode").props["data-mode"], "visual");
   const modelField = harness.find("data-testid", "dsh-model-id");
+  const apiField = harness.find("data-testid", "dsh-api").props.children;
+  assert.equal(apiField.type, "Select");
+  assert.equal(apiField.props.label, "API 类型");
+  assert.equal(JSON.stringify(apiField.props.options.map((option: { value: string }) => option.value)), JSON.stringify([
+    "openai-completions",
+    "openai-responses",
+    "anthropic-messages",
+  ]));
+  apiField.props.onChange("openai-responses");
+  assert.equal(harness.sandbox.dshVisual.api, "openai-responses");
+  assert.match(harness.sandbox.dshText, /"api": "openai-responses"/);
+  apiField.props.onChange("anthropic-messages");
+  assert.equal(harness.sandbox.dshVisual.api, "anthropic-messages");
+  assert.equal(harness.find("data-testid", "dsh-api").props.children.props.value, "anthropic-messages");
+  assert.equal(harness.find("data-testid", "dsh-api").props.children.props.options.length, 3);
+  assert.equal(utils.updateApi(harness.sandbox.dshVisual, "azure-openai-responses").ok, false);
   const apiKeyField = harness.find("data-testid", "dsh-api-key");
   assert.equal(editorNodes(harness.render()).some((node) => node.props["data-testid"] === "dsh-api-key-env"), false);
   assert.equal(harness.find("data-testid", "dsh-api-key-env-note").props.children.includes("apiKeyEnv"), true);

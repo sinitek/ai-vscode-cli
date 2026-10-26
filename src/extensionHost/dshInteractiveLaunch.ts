@@ -35,7 +35,7 @@ export async function prepareDshIsolatedLaunch(input: {
   const parentEnv = input.parentEnv ?? process.env;
   const paths = resolveDshConfigPaths(parentEnv);
   const hasExternalPatch = input.patchSourcePath !== undefined && input.patchSourcePath !== null;
-  const sourcePath = input.patchSourcePath ?? await readActivePatchPath(parentEnv);
+  const sourcePath = input.patchSourcePath ?? await readActivePatchPath(paths);
   if (!sourcePath) {
     throw new Error("DSH profile patch is not active.");
   }
@@ -264,15 +264,14 @@ async function replaceCopiedDirectory(source: string, target: string): Promise<v
   }
 }
 
-async function readActivePatchPath(env: NodeJS.ProcessEnv): Promise<string | null> {
-  const paths = resolveDshConfigPaths(env);
+async function readActivePatchPath(paths: ReturnType<typeof resolveDshConfigPaths>): Promise<string | null> {
   const activation = await readDshActivation(paths);
-  if (!activation.patchPath) {
-    return null;
-  }
   try {
-    await fs.access(activation.patchPath);
-    return activation.patchPath;
+    await fs.access(paths.patchPath);
+    if (!activation.activeProfileId || await readDshActiveProfileText(paths)) {
+      return paths.patchPath;
+    }
+    return null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;

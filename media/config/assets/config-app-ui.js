@@ -20,6 +20,7 @@ const DEFAULT_INSTALL_COMMANDS = {
 
 const DSH_UI_PROVIDER = "sinitek-custom";
 const DSH_UI_API = "openai-completions";
+const DSH_UI_SUPPORTED_APIS = [DSH_UI_API, "openai-responses", "anthropic-messages"];
 const DSH_UI_API_KEY_ENV = "SINITEK_DSH_API_KEY";
 const DSH_UI_MODEL_ID = "deepseek-v4.1-flash";
 const DSH_UI_EXAMPLE_BASE_URL = "https://gateway.example/v1";
@@ -112,7 +113,7 @@ function dshUiDocumentFromParts(parts) {
   return {
     schemaVersion: 1,
     provider: DSH_UI_PROVIDER,
-    api: DSH_UI_API,
+    api: parts.api || DSH_UI_API,
     ...(parts.apiKey !== undefined ? { apiKey: parts.apiKey } : {}),
     apiKeyEnv: DSH_UI_API_KEY_ENV,
     baseURL: parts.baseURL,
@@ -303,7 +304,9 @@ function readDshUiDocument(content) {
   if (parsed.apiKeyEnv !== undefined && parsed.apiKeyEnv !== DSH_UI_API_KEY_ENV) {
     return dshUiFailed(DSH_UI_KEY_ERROR, nextFields);
   }
-  if (parsed.api !== DSH_UI_API) return dshUiFailed("DSH api must be openai-completions.", nextFields);
+  if (!DSH_UI_SUPPORTED_APIS.includes(parsed.api)) {
+    return dshUiFailed(`DSH api must be one of: ${DSH_UI_SUPPORTED_APIS.join(", ")}.`, nextFields);
+  }
   if (parsed.schemaVersion !== 1) return dshUiFailed("DSH profile schemaVersion must be 1.", nextFields);
   if (parsed.displayName !== undefined && parsed.displayName !== DSH_UI_DISPLAY_NAME) {
     return dshUiFailed("DSH displayName must stay Sinitek custom.", nextFields);
@@ -375,6 +378,7 @@ function readDshUiDocument(content) {
     }, modelPreserved.fields));
   }
   const document = Object.assign(dshUiDocumentFromParts({
+    api: parsed.api,
     baseURL,
     models: ids,
     acpModel: parsed.acpModel,
@@ -543,6 +547,16 @@ function dshUiUpdateBaseUrl(document, value) {
   return dshUiChange(next);
 }
 
+function dshUiUpdateApi(document, value) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  if (!DSH_UI_SUPPORTED_APIS.includes(value)) {
+    return { ok: false, error: `DSH api must be one of: ${DSH_UI_SUPPORTED_APIS.join(", ")}.`, document: null, content: "" };
+  }
+  const next = dshUiCloneJson(document);
+  next.api = value;
+  return dshUiChange(next);
+}
+
 function dshUiUpdateApiKeyEnv(document, value) {
   if (dshUiContainsSecret(value)) return { ok: false, error: DSH_UI_SECRET_ERROR, document: null, content: "" };
   if (value !== DSH_UI_API_KEY_ENV) return { ok: false, error: DSH_UI_KEY_ERROR, document: null, content: "" };
@@ -601,6 +615,7 @@ const DshConfigPageUtils = {
   deleteModel: dshUiDeleteModel,
   setAcpModel: dshUiSetAcpModel,
   updateBaseUrl: dshUiUpdateBaseUrl,
+  updateApi: dshUiUpdateApi,
   updateApiKeyEnv: dshUiUpdateApiKeyEnv,
   updateApiKey: dshUiUpdateApiKey,
   switchMode: dshUiSwitchMode,
@@ -7406,6 +7421,23 @@ const ConfigEditorPanel = () => {
                           readOnly: true,
                           disabled: controlsDisabled,
                           "data-testid": "dsh-provider",
+                        }),
+                        be.jsx("div", {
+                          "data-testid": "dsh-api",
+                          children: renderCodexSelect(
+                            "API 类型",
+                            document ? document.api : DSH_UI_API,
+                            (value) => {
+                              if (controlsDisabled || !document) return;
+                              applyDshResult(dshUiUpdateApi(document, value));
+                            },
+                            [
+                              { value: "openai-completions", label: "OpenAI Chat Completions（openai-completions）" },
+                              { value: "openai-responses", label: "OpenAI Responses（openai-responses）" },
+                              { value: "anthropic-messages", label: "Anthropic Messages（anthropic-messages）" },
+                            ],
+                            { disabled: controlsDisabled },
+                          ),
                         }),
                         renderCodexField("baseURL", document ? document.baseURL : "", (value) => {
                           if (controlsDisabled || !document) return;

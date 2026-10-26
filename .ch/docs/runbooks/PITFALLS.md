@@ -427,16 +427,16 @@
 
 - 状态：已规避
 - 首次发现：2026-09-19
-- 适用范围：`run_dev.sh`、本机开发依赖安装、pnpm 与 npm 混用、无法访问 GitHub 的网络
+- 适用范围：`run_dev.py`、本机开发依赖安装、pnpm 与 npm 混用、无法访问 GitHub 的网络
 
 ### 现象
-- `./run_dev.sh` 卡在 `npm install`，或最终报 `ETIMEDOUT`。
+- 开发启动脚本卡在 `npm install`，或最终报 `ETIMEDOUT`。
 - npm 日志出现 `http fetch GET https://github.com/markedjs/marked/tarball/v14.1.1 attempt N failed with ETIMEDOUT`。
 - 另一台同样能访问内网 npm 源的 Mac 可以正常启动。
 
 ### 触发条件
 - 本机已经用 `pnpm install` 生成了 `node_modules/.pnpm` 或未跟踪的 `pnpm-lock.yaml`。
-- `run_dev.sh` 无条件执行 `npm install`。
+- 旧版开发启动脚本无条件执行 `npm install`。
 - 当前网络访问不到 GitHub。
 
 ### 根因
@@ -445,15 +445,15 @@
 - 官方开发路径是 `npm install`；另一台机器如果从一开始就用 npm，不会触发这条链路。
 
 ### 长期规避
-- `run_dev.sh` 与导出脚本共用 `scripts/install_workspace_node_modules.sh`：已有 pnpm 布局且本机有 pnpm 时用 pnpm，否则用 npm；缺少 pnpm 时删除不兼容的 `node_modules` 再 `npm install`，绝不在 pnpm 树上直接 `npm install`。
+- `run_dev.py` 与导出/发布脚本的 `scripts/install_workspace_node_modules.sh` 保持相同策略：已有 pnpm 布局且本机有 pnpm 时用 pnpm，否则用 npm；缺少 pnpm 时删除不兼容的 `node_modules` 再 `npm install`，绝不在 pnpm 树上直接 `npm install`。
 - 锁文件不入库，换机器时不会被另一台电脑的 pnpm/npm 选择带偏。
 
 ### 验证方式
-- 在已有 pnpm `node_modules` 的工作区执行 `./run_dev.sh`，确认走 `pnpm install` 且能完成 `npm run build`。
+- 在已有 pnpm `node_modules` 的工作区执行 `python3 run_dev.py`（Windows 用 `python run_dev.py`），确认走 `pnpm install` 且能完成 `npm run build`。
 - 确认脚本不再请求 `https://github.com/markedjs/marked/tarball/v14.1.1`。
 
 ### 关联资料
-- `run_dev.sh`
+- `run_dev.py`
 - `.ch/docs/runbooks/local-development.md`
 
 
