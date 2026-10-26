@@ -56,34 +56,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         if (elements.currentCli) {
           elements.currentCli.disabled = Boolean(lockedTab);
         }
-        if (!lockedTab) {
-          return;
-        }
-        const lockedModel = typeof lockedTab.lockedPrimaryModel === "string"
-          ? lockedTab.lockedPrimaryModel
-          : "";
-        if (!state.selectedModelsByCli || typeof state.selectedModelsByCli !== "object") {
-          state.selectedModelsByCli = {};
-        }
-        state.selectedModelsByCli[state.currentCli] = lockedModel;
-        state.selectedModel = lockedModel;
-        if (state.selectedLoopModelsByCli && typeof state.selectedLoopModelsByCli === "object") {
-          const loopSelection = state.selectedLoopModelsByCli[state.currentCli] || { main: "", subtask: "" };
-          state.selectedLoopModelsByCli[state.currentCli] = {
-            main: lockedModel,
-            subtask: loopSelection.subtask || "",
-          };
-        }
-        if (state.openCodeModels && state.currentCli === "opencode") {
-          state.openCodeModels.selectedMainRef = lockedModel || null;
-          state.openCodeModels.selectedPrimaryRef = state.openCodeModels.selectedMainRef;
-        }
       }
 
       function handleModelSelectChange(value) {
-        if (isActiveConversationTabExecutionLocked()) {
-          return;
-        }
         if (value === MODEL_MANAGE_OPTION_VALUE) {
           showAddModelDialog();
           return;
@@ -716,7 +691,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         if (typeof syncLockedConversationTabModelState === "function") {
           syncLockedConversationTabModelState();
         }
-        const primaryModelLocked = isActiveConversationTabExecutionLocked();
         const supportsModelSelection = cliSupportsModelSelection(cli);
         const isOpenCode = cli === "opencode";
         const interactiveMode = normalizeInteractiveMode(state.interactiveMode);
@@ -732,7 +706,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.codexLoopModelGroup.style.display = showCodexLoopModelGroup ? "" : "none";
         }
         if (elements.codexLoopMainModelSelect) {
-          elements.codexLoopMainModelSelect.disabled = !showCodexLoopModelGroup || primaryModelLocked;
+          elements.codexLoopMainModelSelect.disabled = !showCodexLoopModelGroup;
         }
         if (elements.codexLoopSubtaskModelSelect) {
           elements.codexLoopSubtaskModelSelect.disabled = !showCodexLoopModelGroup;
@@ -752,7 +726,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.claudeLoopSubtaskGroup.style.display = showClaudeSubtaskRoute ? "" : "none";
         }
         if (elements.openCodePrimaryModelSelect) {
-          elements.openCodePrimaryModelSelect.disabled = !isOpenCode || primaryModelLocked;
+          elements.openCodePrimaryModelSelect.disabled = !isOpenCode;
         }
         if (elements.openCodeSmallModelSelect) {
           elements.openCodeSmallModelSelect.disabled = !showOpenCodeSubtaskModel;
@@ -763,7 +737,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
-          elements.modelSelect.disabled = !showSingleModelSelect || primaryModelLocked;
+          elements.modelSelect.disabled = !showSingleModelSelect;
         }
         if (elements.loopExecutionModeSelect) {
           elements.loopExecutionModeSelect.style.display = showLoopExecutionModeSelect ? "" : "none";
@@ -1042,9 +1016,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function handleCodexLoopRoleModelChange(role, rawValue) {
-        if (role === "main" && isActiveConversationTabExecutionLocked()) {
-          return;
-        }
         const value = normalizeModelSelection(rawValue);
         if (!state.selectedLoopModelsByCli || typeof state.selectedLoopModelsByCli !== "object") {
           state.selectedLoopModelsByCli = {};

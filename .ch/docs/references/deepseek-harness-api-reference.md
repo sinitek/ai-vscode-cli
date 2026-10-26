@@ -2,12 +2,12 @@
 
 - 核对版本：`@deepseek-ai/dsh@0.2.1-rc.2`
 - 核对日期：2026-10-24
-- 状态：上游安装与程序化契约。插件分组、配置页、ACP runner、Skills 根和 `AGENTS.md` 规则链已接入。Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。可执行模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。图形 Extension Host 点击验收和真实权限请求未验证。原生 compaction 明确不支持。凭据默认引用 `SINITEK_DSH_API_KEY`，插件也允许 profile 根级 `apiKey` 并在启动时注入子进程环境。
+- 状态：上游安装与程序化契约。插件分组、配置页、ACP runner、Skills 根和 `AGENTS.md` 规则链已接入。Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。当前范例模型 id 是无前缀的 `deepseek-v4.1-flash`；模型 id 按用户 endpoint 原样配置，必须同时列于 `models[]`、匹配 `acpModel` 并由当前 ACP 广告，不自动增删前缀。此前实跑使用的 `subcoco/deepseek-v4.1-flash` 只代表当时 endpoint 的特定模型 id。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。图形 Extension Host 点击验收和真实权限请求未验证。原生 compaction 明确不支持。凭据默认引用 `SINITEK_DSH_API_KEY`，插件也允许 profile 根级 `apiKey` 并在启动时注入子进程环境。
 - 发布性质：官方推荐通道 `latest` 当前指向发布候选 `0.2.1-rc.2`。它不是稳定版。`next` 的 `0.2.1-rc.3` 也不是稳定版。
 
 本文只记录已安装包、官方 README 和隔离进程探针能证明的事实。没有 `DEEPSEEK_API_KEY` 时不借用其他平台密钥，也不把未发生的在线生成写成成功。
 
-2026-10-24 用户把目标模型纠正为 `subcoco/deepseek-v4.1-flash`。该模型的原生 ACP 成功、用量、取消、恢复和压缩边界在 `.ch/docs/references/dsh-custom-provider-contract.md`。旧模型探针和本文的无凭据官方路由探针都不能代替那份契约。本文其余官方路由结论仍然只描述当时的默认 `deepseek-official` 探针。响应短名不能回写成配置 id。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。
+2026-10-24 的历史验证记录了当时 endpoint 广告的完整模型 id `subcoco/deepseek-v4.1-flash`，并把响应中的 `deepseek-v4.1-flash` 作为短名观察；该结果只描述当时 endpoint，不规定当前范例或其它服务必须带此前缀。当前范例默认使用无前缀 `deepseek-v4.1-flash`。历史模型的原生 ACP 成功、用量、取消、恢复和压缩边界在 `.ch/docs/references/dsh-custom-provider-contract.md`。旧模型探针和本文的无凭据官方路由探针都不能代替那份契约。本文其余官方路由结论仍然只描述当时的默认 `deepseek-official` 探针。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。
 
 ## 1. 安装身份
 
@@ -400,7 +400,7 @@ Headless 每次进程只跑一个任务。它不是交互 runner。
 
 ACP 不能把用户输入的任意模型字符串设为当前模型。无凭据时连默认目录模型也不会出现在选项里。SDK 能接收任意字符串，但本次不能证明该字符串可执行。
 
-自定义 provider 的执行只接受已配置、且出现在当前 `configOptions` 中的模型。未配置 id 不能执行。官方路由上 initialize 接受任意字符串的结果不能搬到 `sinitek-custom`。数据格式不要复制 Grok。当前页面没有 Grok 式多模型编辑证据，不得把该编辑器写成已交付能力。可见模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。
+自定义 provider 的执行只接受已配置、且出现在当前 `configOptions` 中的模型。未配置 id 不能执行。官方路由上 initialize 接受任意字符串的结果不能搬到 `sinitek-custom`。2026-10-24 的历史探针使用了完整模型 id `subcoco/deepseek-v4.1-flash`，并观察到响应短名 `deepseek-v4.1-flash`；该结果只描述当时 endpoint。当前配置页已支持有序多模型编辑，范例默认使用无前缀 `deepseek-v4.1-flash`。模型 id 按 endpoint 原样配置，必须由 ACP 广告，不自动迁移或增删前缀。
 
 建议的插件侧记录：
 

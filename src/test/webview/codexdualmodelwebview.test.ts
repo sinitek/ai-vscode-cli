@@ -413,7 +413,7 @@ test("keeps model manager open during state sync and closes on explicit unsuppor
   assert.equal(harness.hideDialogCount, 2);
 });
 
-test("disables the active Tab CLI and primary model selectors after execution", () => {
+test("keeps primary model selectors editable after execution", () => {
   const harness = buildVisibilityHarness();
   harness.state.conversationTabs = {
     activeTabId: "tab-1",
@@ -423,16 +423,16 @@ test("disables the active Tab CLI and primary model selectors after execution", 
   harness.state.currentCli = "codex";
   harness.state.interactiveMode = "coding";
   harness.sync("codex");
-  assert.equal(harness.elements.modelSelect.disabled, true);
+  assert.equal(harness.elements.modelSelect.disabled, false);
 
   harness.state.interactiveMode = "loop";
   harness.sync("codex");
-  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, true);
+  assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
 
   harness.state.currentCli = "opencode";
   harness.sync("opencode");
-  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, true);
+  assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
 });
 
 test("replays Codex role model options and selections from panel state", () => {

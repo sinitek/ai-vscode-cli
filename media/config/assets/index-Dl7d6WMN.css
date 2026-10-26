@@ -1585,6 +1585,46 @@ input[type="file"]::file-selector-button {
   min-height: 420px;
 }
 
+.dsh-common-parameters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.dsh-common-parameters > strong,
+.dsh-common-parameter-note {
+  grid-column: 1 / -1;
+}
+
+.dsh-common-parameter-note {
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.config-field-input-with-suffix {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.config-field-input-with-suffix > .ant-input,
+.config-field-input-with-suffix > .ant-input-number {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.config-field-input-suffix {
+  flex: 0 0 auto;
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .grok-model-sidebar,
 .grok-model-detail,
 .grok-model-list,
@@ -1649,6 +1689,10 @@ input[type="file"]::file-selector-button {
 }
 
 @media (max-width: 700px) {
+  .dsh-common-parameters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .grok-model-workspace {
     grid-template-columns: minmax(100px, 30%) minmax(0, 1fr);
     gap: 8px;

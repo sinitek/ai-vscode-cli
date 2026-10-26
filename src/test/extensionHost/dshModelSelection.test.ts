@@ -1,7 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
-  DSH_RESPONSE_MODEL_ALIAS,
   DSH_VERIFIED_MODEL_ID,
   createDshExampleProfileText,
   parseDshConfigModels,
@@ -77,18 +76,18 @@ test("DSH model selection is isolated by configId and ignores aliases", () => {
   const store = ensureCliModelStore();
   const selected = strategies.dsh.selectModel(store, toDshModelWireValue(DSH_VERIFIED_MODEL_ID), "profile-a");
   assert.equal(selected.selectedByConfigId["profile-a"], DSH_VERIFIED_MODEL_ID);
-  assert.equal(selected.selectedByConfigId["profile-a"].includes(DSH_RESPONSE_MODEL_ALIAS) && selected.selectedByConfigId["profile-a"] !== DSH_VERIFIED_MODEL_ID, false);
+  assert.equal(selected.selectedByConfigId["profile-a"], DSH_VERIFIED_MODEL_ID);
   assert.equal(strategies.dsh.getSelectedModel(selected, "profile-a"), DSH_VERIFIED_MODEL_ID);
   assert.deepEqual(strategies.dsh.getModelOptions(selected, "profile-a"), [DSH_VERIFIED_MODEL_ID]);
   assert.deepEqual(strategies.dsh.getModelOptions(selected, "profile-b"), []);
   assert.equal(strategies.dsh.getSelectedModel(selected, "profile-b"), null);
-  const loop = strategies.dsh.selectLoopModel(selected, "subtask", DSH_RESPONSE_MODEL_ALIAS, "profile-a");
+  const loop = strategies.dsh.selectLoopModel(selected, "subtask", "not-configured-model", "profile-a");
   assert.equal(loop.selectedLoopByConfigId["profile-a"]?.subtask, undefined);
-  const slashSplit = strategies.dsh.selectModel(selected, JSON.stringify(["subcoco", DSH_RESPONSE_MODEL_ALIAS]), "profile-a");
+  const slashSplit = strategies.dsh.selectModel(selected, JSON.stringify(["subcoco", DSH_VERIFIED_MODEL_ID]), "profile-a");
   assert.equal(slashSplit.selectedByConfigId["profile-a"], "");
   assert.equal(strategies.dsh.resolveStoreConfigKey("profile-a"), "profile-a");
   assert.equal(strategies.dsh.resolveStoreConfigKey(null), "dsh:/tmp/a/active-patch.yaml");
-  assert.equal(strategies.dsh.getModelDisplayName(DSH_RESPONSE_MODEL_ALIAS, "profile-a"), null);
+  assert.equal(strategies.dsh.getModelDisplayName("not-configured-model", "profile-a"), null);
   assert.equal(strategies.dsh.getModelDisplayName(DSH_VERIFIED_MODEL_ID, "profile-a"), DSH_VERIFIED_MODEL_ID);
 });
 

@@ -3,7 +3,6 @@ import assert = require("node:assert/strict");
 import {
   DSH_EXAMPLE_BASE_URL,
   DSH_REASONING_OPTIONS,
-  DSH_RESPONSE_MODEL_ALIAS,
   DSH_SUPPORTS_CONFIGURED_MODEL_LIST,
   DSH_VERIFIED_MODEL_ID,
   commitDshDocument,
@@ -23,21 +22,96 @@ const { readExplicitDshPatchArgs } = require("../../cli/config") as typeof impor
 
 const EXAMPLE = createDshExampleProfileText();
 
-test("parses only the verified complete model id", () => {
+test("parses the unprefixed default example model id", () => {
   const parsed = parseDshConfigModels(EXAMPLE);
+  const exampleDocument = JSON.parse(EXAMPLE) as Record<string, unknown>;
+  assert.equal(exampleDocument.apiKey, "");
+  assert.equal("displayName" in exampleDocument, false);
+  assert.equal("timeoutMs" in exampleDocument, false);
+  assert.equal("streamIdleTimeoutMs" in exampleDocument, false);
+  assert.equal("retryPolicy" in exampleDocument, false);
   assert.equal(parsed.error, null);
   assert.deepEqual(parsed.models, [DSH_VERIFIED_MODEL_ID]);
   assert.equal(parsed.labels[DSH_VERIFIED_MODEL_ID], DSH_VERIFIED_MODEL_ID);
   assert.equal(parsed.defaultModel, DSH_VERIFIED_MODEL_ID);
   assert.deepEqual(parsed.reasoningOptionsByModelId[DSH_VERIFIED_MODEL_ID], [...DSH_REASONING_OPTIONS]);
   assert.equal(parsed.wireByModelId[DSH_VERIFIED_MODEL_ID], toDshModelWireValue(DSH_VERIFIED_MODEL_ID));
-  assert.equal(toDshModelWireValue(DSH_VERIFIED_MODEL_ID), "[\"sinitek-custom\",\"subcoco/deepseek-v4.1-flash\"]");
+  assert.equal(toDshModelWireValue(DSH_VERIFIED_MODEL_ID), "[\"sinitek-custom\",\"deepseek-v4.1-flash\"]");
   assert.equal(readDshModelWireForRun(parsed, DSH_VERIFIED_MODEL_ID), toDshModelWireValue(DSH_VERIFIED_MODEL_ID));
   assert.equal(readDshModelWireForRun(parsed, null), toDshModelWireValue(DSH_VERIFIED_MODEL_ID));
-  assert.throws(() => readDshModelWireForRun(parsed, DSH_RESPONSE_MODEL_ALIAS), /wire value/);
+  assert.equal(readDshModelWireForRun(parsed, DSH_VERIFIED_MODEL_ID), toDshModelWireValue(DSH_VERIFIED_MODEL_ID));
   assert.throws(() => readDshModelWireForRun(parsed, "[\"subcoco\",\"deepseek-v4.1-flash\"]"), /wire value/);
   assert.equal(isDshExecutableModel(DSH_VERIFIED_MODEL_ID, parsed.models), true);
   assert.equal(isDshExecutableModel("any-string-initialize-accepted", parsed.models), false);
+});
+
+test("accepts omitted optional provider tuning and keeps explicitly configured values", () => {
+  const minimal = JSON.parse(EXAMPLE) as Record<string, unknown>;
+  const model = minimal.models as Array<Record<string, unknown>>;
+  model[0].id = "gateway/optional-model";
+  model[0].name = "gateway/optional-model";
+  minimal.acpModel = "gateway/optional-model";
+  delete minimal.displayName;
+  delete minimal.timeoutMs;
+  delete minimal.streamIdleTimeoutMs;
+  delete minimal.retryPolicy;
+  const omitted = commitDshDocument(JSON.stringify(minimal));
+  assert.equal(omitted.ok, true);
+  if (!omitted.ok) return;
+  for (const key of ["displayName", "timeoutMs", "streamIdleTimeoutMs", "retryPolicy"]) {
+    assert.equal(key in omitted.document, false, key);
+    assert.equal(omitted.content.includes(`"${key}"`), false, key);
+  }
+  const minimalPatch = serializeDshPatchYaml(omitted.document);
+  assert.equal(minimalPatch.includes("displayName:"), false);
+  assert.equal(minimalPatch.includes("timeoutMs:"), false);
+  assert.equal(minimalPatch.includes("streamIdleTimeoutMs:"), false);
+  assert.equal(minimalPatch.includes("retryPolicy:"), false);
+
+  const configured = {
+    ...minimal,
+    displayName: "Sinitek custom",
+    timeoutMs: 45000,
+    streamIdleTimeoutMs: 60000,
+    retryPolicy: {
+      mode: "normal",
+      maxRetries: 1,
+      backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+    },
+  };
+  const retained = commitDshDocument(JSON.stringify(configured));
+  assert.equal(retained.ok, true);
+  if (!retained.ok) return;
+  assert.match(retained.content, /"displayName": "Sinitek custom"/);
+  assert.match(retained.content, /"timeoutMs": 45000/);
+  assert.match(retained.content, /"streamIdleTimeoutMs": 60000/);
+  assert.match(retained.content, /"retryPolicy"/);
+  const retainedPatch = serializeDshPatchYaml(retained.document);
+  assert.match(retainedPatch, /displayName: "Sinitek custom"/);
+  assert.match(retainedPatch, /timeoutMs: 45000/);
+  assert.match(retainedPatch, /streamIdleTimeoutMs: 60000/);
+  assert.match(retainedPatch, /retryPolicy:/);
+});
+
+test("keeps explicitly configured namespaced model ids unchanged", () => {
+  const namespaced = JSON.parse(EXAMPLE) as {
+    models: Array<Record<string, unknown>>;
+    acpModel: string;
+  };
+  namespaced.models[0].id = "subcoco/deepseek-v4.1-flash";
+  namespaced.models[0].name = "subcoco/deepseek-v4.1-flash";
+  namespaced.acpModel = "subcoco/deepseek-v4.1-flash";
+  delete namespaced.models[0].reasoningEfforts;
+  delete namespaced.models[0].compat;
+
+  const committed = commitDshDocument(JSON.stringify(namespaced));
+  assert.equal(committed.ok, true);
+  if (!committed.ok) return;
+  assert.equal(committed.document.models[0].id, "subcoco/deepseek-v4.1-flash");
+  assert.equal(committed.document.models[0].name, "subcoco/deepseek-v4.1-flash");
+  assert.equal(committed.document.acpModel, "subcoco/deepseek-v4.1-flash");
+  assert.match(committed.content, /subcoco\/deepseek-v4\.1-flash/);
+  assert.equal(committed.content.includes(`"acpModel": "${DSH_VERIFIED_MODEL_ID}"`), false);
 });
 
 test("normalizes legacy verified models and keeps custom reasoning opt-in", () => {
@@ -62,6 +136,20 @@ test("normalizes legacy verified models and keeps custom reasoning opt-in", () =
   const legacyCurrentParsed = parseDshConfigModels(JSON.stringify(legacyCurrent));
   assert.equal(legacyCurrentParsed.error, null);
   assert.deepEqual(legacyCurrentParsed.reasoningOptionsByModelId[DSH_VERIFIED_MODEL_ID], [...DSH_REASONING_OPTIONS]);
+
+  const namespaced = JSON.parse(EXAMPLE) as {
+    models: Array<Record<string, unknown>>;
+    acpModel: string;
+  };
+  namespaced.models[0].id = "subcoco/deepseek-v4.1-flash";
+  namespaced.models[0].name = "subcoco/deepseek-v4.1-flash";
+  namespaced.acpModel = "subcoco/deepseek-v4.1-flash";
+  delete namespaced.models[0].reasoningEfforts;
+  delete namespaced.models[0].compat;
+  const namespacedParsed = parseDshConfigModels(JSON.stringify(namespaced));
+  assert.equal(namespacedParsed.error, null);
+  assert.deepEqual(namespacedParsed.models, ["subcoco/deepseek-v4.1-flash"]);
+  assert.deepEqual(namespacedParsed.reasoningOptionsByModelId["subcoco/deepseek-v4.1-flash"], []);
 
   const customId = "gateway/custom-model";
   const custom = JSON.parse(EXAMPLE) as {
@@ -121,22 +209,13 @@ test("normalizes legacy verified models and keeps custom reasoning opt-in", () =
   assert.match(parseDshConfigModels(JSON.stringify(custom)).error ?? "", /reasoningEfforts/);
 });
 
-test("rejects slash splits, aliases, overrides, secrets, and unverified fields", () => {
+test("rejects slash splits, overrides, secrets, and unverified fields", () => {
   const split = commitDshDocument(JSON.stringify({
     ...JSON.parse(EXAMPLE),
     provider: "subcoco",
     acpModel: "deepseek-v4.1-flash",
   }));
   assert.equal(split.ok, false);
-
-  const alias = JSON.parse(EXAMPLE) as { models: Array<{ id: string; name: string }>; acpModel: string };
-  alias.models[0].id = DSH_RESPONSE_MODEL_ALIAS;
-  alias.models[0].name = DSH_RESPONSE_MODEL_ALIAS;
-  alias.acpModel = DSH_RESPONSE_MODEL_ALIAS;
-  const aliasResult = parseDshConfigModels(JSON.stringify(alias));
-  assert.equal(aliasResult.models.length, 0);
-  assert.match(aliasResult.error ?? "", /alias/);
-  assert.equal(resolveDshConfigModel(aliasResult, DSH_RESPONSE_MODEL_ALIAS), null);
 
   const overrides = JSON.parse(EXAMPLE) as { modelOverrides?: unknown };
   overrides.modelOverrides = { id: DSH_VERIFIED_MODEL_ID };
@@ -162,14 +241,13 @@ test("falls back only when the model selection is missing", () => {
   assert.equal(resolveDshConfigModel(parsed, wire), DSH_VERIFIED_MODEL_ID);
   assert.equal(readDshModelWireForRun(parsed, wire), wire);
 
-  assert.equal(resolveDshConfigModel(parsed, DSH_RESPONSE_MODEL_ALIAS), null);
   assert.equal(resolveDshConfigModel(parsed, "not-configured-model"), null);
   assert.equal(resolveDshConfigModel(parsed, JSON.stringify(["subcoco", "deepseek-v4.1-flash"])), null);
   assert.equal(resolveDshConfigModel(parsed, JSON.stringify(["sinitek-custom", "not-configured-model"])), null);
   assert.equal(resolveDshConfigModel(parsed, JSON.stringify(["Sinitek-custom", DSH_VERIFIED_MODEL_ID])), null);
   assert.equal(resolveDshConfigModel(undefined, null), null);
   assert.equal(resolveDshConfigModel({ ...parsed, error: "invalid" }, ""), null);
-  assert.notEqual(resolveDshConfigModel(parsed, DSH_RESPONSE_MODEL_ALIAS), DSH_RESPONSE_MODEL_ALIAS);
+  assert.equal(resolveDshConfigModel(parsed, DSH_VERIFIED_MODEL_ID), DSH_VERIFIED_MODEL_ID);
   assert.throws(() => readDshModelWireForRun(parsed, "not-configured-model"), /wire value/);
   assert.throws(() => readDshModelWireForRun(parsed, JSON.stringify(["sinitek-custom", "not-configured-model"])), /wire value/);
 });
@@ -236,11 +314,12 @@ test("accepts loopback http baseURL and rejects remote plaintext http, credentia
 test("example profile does not embed secrets and keeps the model id off platform path separators", () => {
   assert.equal(EXAMPLE.includes("sk-"), false);
   assert.equal(EXAMPLE.includes("127.0.0.1"), false);
+  assert.equal(EXAMPLE.includes('"maxTokens"'), false);
   assert.match(EXAMPLE, /https:\/\/gateway\.example\/v1/);
-  assert.equal(DSH_VERIFIED_MODEL_ID, "subcoco/deepseek-v4.1-flash");
+  assert.equal(DSH_VERIFIED_MODEL_ID, "deepseek-v4.1-flash");
+  assert.equal(EXAMPLE.includes("subcoco/"), false);
   assert.equal(DSH_VERIFIED_MODEL_ID.includes("\\"), false);
-  assert.notEqual(String(DSH_VERIFIED_MODEL_ID), String(DSH_RESPONSE_MODEL_ALIAS));
-  assert.equal(EXAMPLE.includes(`"acpModel": "${DSH_RESPONSE_MODEL_ALIAS}"`), false);
+  assert.equal(EXAMPLE.includes(`"acpModel": "${DSH_VERIFIED_MODEL_ID}"`), true);
   const committed = commitDshDocument(EXAMPLE);
   assert.equal(committed.ok, true);
   if (committed.ok) {
@@ -265,7 +344,7 @@ test("patch yaml uses the verified provider contract and omits unverified fields
   assert.match(yaml, /sinitek-custom:/);
   assert.match(yaml, /api: openai-completions/);
   assert.match(yaml, /apiKeyEnv: SINITEK_DSH_API_KEY/);
-  assert.match(yaml, /subcoco\/deepseek-v4\.1-flash/);
+  assert.match(yaml, /deepseek-v4\.1-flash/);
   assert.equal(yaml.includes("modelOverrides"), false);
   assert.equal(yaml.includes("headers:"), false);
   assert.match(yaml, /reasoningEfforts:/);
@@ -275,6 +354,7 @@ test("patch yaml uses the verified provider contract and omits unverified fields
   assert.match(yaml, /xhigh: xhigh/);
   assert.match(yaml, /max: max/);
   assert.equal(yaml.includes("off: null"), false);
+  assert.equal(yaml.includes("maxTokens:"), false);
   assert.equal(yaml.includes("contextWindow"), false);
   assert.equal(yaml.includes("sk-"), false);
   assert.match(yaml, /https:\/\/gateway\.example\/v1/);
@@ -295,15 +375,16 @@ test("treats DSH as an interactive CLI and not an auto-compaction CLI", () => {
 test("keeps configured model order and selects only listed acpModel values", () => {
   assert.equal(DSH_SUPPORTS_CONFIGURED_MODEL_LIST, true);
   const document = JSON.parse(EXAMPLE) as {
-    models: Array<{ id: string; name: string; input: string[]; maxTokens: number }>;
+    models: Array<{ id: string; name: string; input: string[]; maxTokens: number; contextWindow?: number }>;
     acpModel: string;
   };
   const second = "gateway/other-model";
   document.models.push({
     id: second,
-    name: second,
+    name: "Gateway Other",
     input: ["text"],
-    maxTokens: 256,
+    maxTokens: 1024,
+    contextWindow: 65536,
   });
   document.acpModel = second;
   const text = JSON.stringify(document);
@@ -314,18 +395,22 @@ test("keeps configured model order and selects only listed acpModel values", () 
   }
   assert.deepEqual(committed.document.models.map((model) => model.id), [DSH_VERIFIED_MODEL_ID, second]);
   assert.equal(committed.document.acpModel, second);
-  assert.equal(committed.content.includes(DSH_RESPONSE_MODEL_ALIAS) && !committed.content.includes(DSH_VERIFIED_MODEL_ID), false);
+  assert.equal(committed.content.includes("subcoco/"), false);
   const parsed = parseDshConfigModels(committed.content);
   assert.deepEqual(parsed.models, [DSH_VERIFIED_MODEL_ID, second]);
+  assert.equal(parsed.labels[second], "Gateway Other");
   assert.equal(parsed.defaultModel, second);
   assert.equal(resolveDshConfigModel(parsed, null), second);
   assert.equal(resolveDshConfigModel(parsed, DSH_VERIFIED_MODEL_ID), DSH_VERIFIED_MODEL_ID);
   assert.equal(resolveDshConfigModel(parsed, toDshModelWireValue(second)), second);
   assert.equal(readDshModelWireForRun(parsed, second), toDshModelWireValue(second));
   assert.equal(isDshExecutableModel(second, parsed.models), true);
-  assert.equal(isDshExecutableModel(DSH_RESPONSE_MODEL_ALIAS, parsed.models), false);
+    assert.equal(isDshExecutableModel(DSH_VERIFIED_MODEL_ID, parsed.models), true);
   assert.equal(isDshExecutableModel("not-configured-model", parsed.models), false);
   const yaml = serializeDshPatchYaml(committed.document);
+  assert.match(yaml, /name: "Gateway Other"/);
+  assert.match(yaml, /maxTokens: 1024/);
+  assert.match(yaml, /contextWindow: 65536/);
   assert.equal(yaml.indexOf(DSH_VERIFIED_MODEL_ID) < yaml.indexOf(second), true);
   assert.match(yaml, new RegExp(`model: ${JSON.stringify(second)}`));
 
@@ -336,12 +421,6 @@ test("keeps configured model order and selects only listed acpModel values", () 
   if (reversedCommit.ok) {
     assert.deepEqual(reversedCommit.document.models.map((model) => model.id), [second, DSH_VERIFIED_MODEL_ID]);
   }
-
-  const alias = JSON.parse(committed.content) as typeof document;
-  alias.models[1].id = DSH_RESPONSE_MODEL_ALIAS;
-  alias.models[1].name = DSH_RESPONSE_MODEL_ALIAS;
-  alias.acpModel = DSH_RESPONSE_MODEL_ALIAS;
-  assert.match(parseDshConfigModels(JSON.stringify(alias)).error ?? "", /alias/);
 
   const duplicate = JSON.parse(committed.content) as typeof document;
   duplicate.models[1].id = DSH_VERIFIED_MODEL_ID;
@@ -388,7 +467,7 @@ test("keeps accepted extension fields and rejects secrets or closed unknown keys
   assert.equal(yaml.includes("vendorMeta"), false);
   assert.equal(yaml.includes("defaultMaxTokens"), false);
   assert.equal(yaml.includes("preserved"), false);
-  assert.match(yaml, /subcoco\/deepseek-v4\.1-flash/);
+  assert.match(yaml, /deepseek-v4\.1-flash/);
 
   const renamed = JSON.parse(committed.content) as typeof extended;
   renamed.models[0].id = "gateway/other-model";
@@ -440,7 +519,14 @@ test("keeps accepted extension fields and rejects secrets or closed unknown keys
     assert.equal(normalizedEnvReference.document.apiKeyEnv, "SINITEK_DSH_API_KEY");
     assert.match(serializeDshPatchYaml(normalizedEnvReference.document), /apiKeyEnv: SINITEK_DSH_API_KEY/);
   }
-  const closed = JSON.parse(EXAMPLE) as { retryPolicy: { note?: string } };
+  const closed = JSON.parse(EXAMPLE) as {
+    retryPolicy?: { mode: string; maxRetries: number; backoff: { initialDelayMs: number; maxDelayMs: number }; note?: string };
+  };
+  closed.retryPolicy = {
+    mode: "normal",
+    maxRetries: 1,
+    backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+  };
   closed.retryPolicy.note = "drop-me";
   const closedResult = commitDshDocument(JSON.stringify(closed));
   assert.equal(closedResult.ok, false);

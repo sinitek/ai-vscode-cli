@@ -95,7 +95,6 @@ export type PanelMessageHandlerDeps = {
   startNewSession: (cli: CliName) => void;
   getConversationTabById: (tabId: string) => ConversationTabRecordForPanel | null;
   isActiveConversationTabExecutionLocked?: () => boolean;
-  getActiveConversationTabLockedPrimaryModel?: () => string | null | undefined;
   hasAnyTaskRunning: () => boolean;
   disposeAllInteractiveRunners: () => void;
   maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>;

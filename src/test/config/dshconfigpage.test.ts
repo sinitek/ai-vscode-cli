@@ -52,13 +52,21 @@ function loadDshPageUtils(): {
     ok: boolean;
     error: string;
     content: string;
-    document: { baseURL: string; models: Array<{ id: string }>; acpModel: string; apiKeyEnv: string; apiKey?: string } | null;
+    document: {
+      baseURL: string;
+      models: Array<{ id: string; name?: string; contextWindow?: number; maxTokens?: number }>;
+      acpModel: string;
+      apiKeyEnv: string;
+      apiKey?: string;
+    } | null;
     fields: { provider: string; baseURL: string; modelId: string; apiKeyEnv: string; models: string[]; acpModel: string };
   };
   containsSecret: (value: string) => boolean;
   containsProfileSecret: (value: string) => boolean;
-  updateModelId: (document: unknown, previousId: string, nextId: string) => { ok: boolean; error: string; document: any; content: string };
-  addModel: (document: unknown, rawId?: string) => { ok: boolean; error: string; document: any; content: string };
+      updateModelId: (document: unknown, previousId: string, nextId: string) => { ok: boolean; error: string; document: any; content: string };
+      updateModelName: (document: unknown, modelId: string, value: string) => { ok: boolean; error: string; document: any; content: string };
+      updateModelContextWindow: (document: unknown, modelId: string, value: string) => { ok: boolean; error: string; document: any; content: string };
+      addModel: (document: unknown, rawId?: string) => { ok: boolean; error: string; document: any; content: string };
   deleteModel: (document: unknown, id: string) => { ok: boolean; error: string; document: any; content: string };
   setAcpModel: (document: unknown, id: string) => { ok: boolean; error: string; document: any; content: string };
   updateApiKeyEnv: (document: unknown, value: string) => { ok: boolean; error: string; document: any; content: string };
@@ -71,7 +79,6 @@ function loadDshPageUtils(): {
     document: any;
   };
   modelId: string;
-  alias: string;
   apiKeyEnv: string;
   provider: string;
   supportsMultipleModels: boolean;
@@ -102,7 +109,8 @@ function createDshEditorHarness(options: { active?: boolean; baseURL?: string; c
   const renderEnd = source.indexOf("// dsh profile editor");
   assert.ok(helperStart >= 0 && helperEnd > helperStart && renderStart > helperEnd && renderEnd > renderStart);
   const utils = loadDshPageUtils();
-  const profile = utils.readDocument(options.content || utils.createProfileText(options.baseURL));
+  const initialContent = options.content === undefined ? utils.createProfileText(options.baseURL) : options.content;
+  const profile = utils.readDocument(initialContent);
   const jsx = (type: unknown, props: Record<string, any>): EditorNode => ({ type, props });
   const sandbox: Record<string, any> = {
     URL,
@@ -117,9 +125,9 @@ function createDshEditorHarness(options: { active?: boolean; baseURL?: string; c
     o: () => (options.active ? "profile-a" : null),
     O: { id: "profile-a", name: "DSH 配置", platform: "dsh" },
     dshEditorMode: "json",
-    dshText: profile.content,
+    dshText: initialContent,
     dshVisual: options.validated === false ? null : profile.document,
-    dshFieldError: options.error || "",
+    dshFieldError: options.error !== undefined ? options.error : (profile.ok ? "" : profile.error),
     dshSelectedModelId: profile.document?.acpModel || profile.document?.models[0]?.id || "",
     dshBusy: options.busy === true,
     configListLoading: options.loading === true,
@@ -196,6 +204,30 @@ test("old config order missing dsh migrates without dropping earlier platforms",
 test("DSH visual model draft uses the detail id field and confirms icon deletion", () => {
   const utils = loadDshPageUtils();
   const source = utils.createProfileText();
+  const example = JSON.parse(source) as Record<string, unknown>;
+  const backendExample = JSON.parse(createDshExampleProfileText()) as Record<string, unknown>;
+  assert.equal(example.provider, backendExample.provider);
+  assert.equal(example.api, backendExample.api);
+  assert.equal(example.apiKeyEnv, backendExample.apiKeyEnv);
+  assert.equal(example.acpModel, backendExample.acpModel);
+  assert.deepEqual(
+    (example.models as Array<{ id: string }>).map((model) => model.id),
+    (backendExample.models as Array<{ id: string }>).map((model) => model.id),
+  );
+  const edited = JSON.parse(JSON.stringify(example)) as Record<string, unknown>;
+  edited.apiKey = "test-key";
+  edited.baseURL = "https://provider.example/v1";
+  assert.deepEqual({ ...edited, apiKey: example.apiKey, baseURL: example.baseURL }, example);
+  const committed = commitDshDocument(JSON.stringify(edited));
+  if (!committed.ok) assert.fail(committed.error);
+  assert.equal(committed.document.apiKey, "test-key");
+  assert.equal(committed.document.baseURL, "https://provider.example/v1");
+  assert.equal(committed.document.acpModel, example.acpModel);
+  assert.equal(example.apiKey, "");
+  assert.equal("displayName" in example, false);
+  assert.equal("timeoutMs" in example, false);
+  assert.equal("streamIdleTimeoutMs" in example, false);
+  assert.equal("retryPolicy" in example, false);
   const profile = utils.readDocument(source);
   assert.equal(profile.ok, true);
   if (!profile.ok || !profile.document) return;
@@ -203,6 +235,7 @@ test("DSH visual model draft uses the detail id field and confirms icon deletion
   const draft = utils.addModel(profile.document);
   assert.equal(draft.ok, true);
   assert.equal(draft.document.models[1].id, "");
+  assert.equal(Object.prototype.hasOwnProperty.call(draft.document.models[1], "maxTokens"), false);
   assert.match(utils.readDocument(draft.content).error, /模型 id 为必填项/);
   const asJson = utils.switchMode({ mode: "visual", nextMode: "json", text: source, document: draft.document });
   assert.equal(asJson.ok, true);
@@ -241,16 +274,104 @@ test("DSH visual model draft uses the detail id field and confirms icon deletion
   assert.equal(harness.sandbox.dshVisual.models.length, 1);
 });
 
+test("DSH visual editor separates profile fields from configurable model fields", () => {
+  const utils = loadDshPageUtils();
+  const profile = JSON.parse(utils.createProfileText()) as {
+    models: Array<{ id: string; name?: string; contextWindow?: number; maxTokens?: number }>;
+  } & Record<string, unknown>;
+  profile.models[0].name = "DeepSeek Flash";
+  profile.models[0].contextWindow = 131072;
+  profile.models[0].maxTokens = 4096;
+
+  const harness = createDshEditorHarness({ content: JSON.stringify(profile) });
+  assert.equal(harness.sandbox.dshEditorMode, "json");
+  harness.sandbox.switchDshEditorMode("visual");
+
+  const tree = editorNodes(harness.render());
+  const commonParameters = tree.find((node) => node.props["data-testid"] === "dsh-common-parameters");
+  const modelDetails = tree.find((node) => node.props["data-testid"] === "dsh-selected-model-detail");
+  assert.ok(commonParameters);
+  assert.ok(modelDetails);
+  const commonTestIds = editorNodes(commonParameters).map((node) => node.props["data-testid"]);
+  const modelTestIds = editorNodes(modelDetails).map((node) => node.props["data-testid"]);
+  assert.deepEqual(commonTestIds.filter(Boolean), [
+    "dsh-common-parameters",
+    "dsh-provider",
+    "dsh-base-url",
+    "dsh-api-key",
+    "dsh-api-key-env-note",
+    "dsh-api-key-warning",
+    "dsh-acp-model",
+  ]);
+  assert.deepEqual(modelTestIds.filter(Boolean), [
+    "dsh-selected-model-detail",
+    "dsh-model-id",
+    "dsh-model-name",
+    "dsh-model-context-window",
+    "dsh-model-input-type",
+  ]);
+  assert.equal(tree.some((node) => node.props["data-testid"] === "dsh-api-key-env"), false);
+  assert.equal(harness.find("data-testid", "dsh-model-name").props.value, "DeepSeek Flash");
+  assert.equal(harness.find("data-testid", "dsh-model-context-window").props.value, 131072);
+  assert.equal(tree.some((node) => node.props["data-testid"] === "dsh-model-max-tokens"), false);
+
+  harness.find("data-testid", "dsh-model-name").props.onChange("DeepSeek Flash Custom");
+  harness.find("data-testid", "dsh-model-context-window").props.onChange("262144");
+  const invalidContextWindow = utils.updateModelContextWindow(harness.sandbox.dshVisual, profile.models[0].id, "0");
+  assert.equal(invalidContextWindow.ok, false);
+
+  const savedProfile = utils.readDocument(harness.sandbox.dshText);
+  assert.equal(savedProfile.ok, true);
+  assert.equal(savedProfile.document?.models[0].name, "DeepSeek Flash Custom");
+  assert.equal(savedProfile.document?.models[0].contextWindow, 262144);
+  assert.equal(savedProfile.document?.models[0].maxTokens, 4096);
+  const reopened = createDshEditorHarness({ content: savedProfile.content });
+  reopened.sandbox.switchDshEditorMode("visual");
+  assert.equal(reopened.find("data-testid", "dsh-model-name").props.value, "DeepSeek Flash Custom");
+  assert.equal(reopened.find("data-testid", "dsh-model-context-window").props.value, 262144);
+  assert.equal(editorNodes(reopened.render()).some((node) => node.props["data-testid"] === "dsh-model-max-tokens"), false);
+
+  const misplacedContextWindow = { ...profile, contextWindow: 131072 };
+  const rejectedProfile = utils.readDocument(JSON.stringify(misplacedContextWindow));
+  assert.equal(rejectedProfile.ok, false);
+  assert.match(rejectedProfile.error, /contextWindow/);
+});
+
+test("DSH empty profile can switch to a visual draft before strict save validation", () => {
+  const utils = loadDshPageUtils();
+  const switched = utils.switchMode({
+    mode: "json",
+    nextMode: "visual",
+    text: "",
+    document: null,
+  });
+  assert.equal(switched.ok, true);
+  assert.equal(switched.mode, "visual");
+  assert.equal(switched.document.provider, "sinitek-custom");
+  assert.equal(switched.document.apiKey, "");
+  assert.equal(switched.document.baseURL, "https://gateway.example/v1");
+  assert.equal(utils.readDocument(switched.text).ok, true);
+
+  const harness = createDshEditorHarness({ content: "" });
+  assert.equal(harness.sandbox.dshFieldError, "DSH profile is empty.");
+  harness.sandbox.switchDshEditorMode("visual");
+  assert.equal(harness.sandbox.dshEditorMode, "visual");
+  assert.equal(harness.sandbox.dshFieldError, "");
+  assert.equal(harness.find("data-testid", "dsh-api-key").props.value, "");
+  assert.equal(harness.find("data-testid", "dsh-model-id").props.value, "deepseek-v4.1-flash");
+});
+
 test("DSH editor edits the same JSON in text and visual modes without an activation badge", () => {
   const utils = loadDshPageUtils();
   const example = createDshExampleProfileText();
+  assert.equal(example.includes("subcoco/"), false);
   const fromBackend = utils.readDocument(example);
   assert.equal(fromBackend.ok, true);
   assert.equal(fromBackend.fields.provider, "sinitek-custom");
   assert.equal(fromBackend.fields.baseURL, "https://gateway.example/v1");
-  assert.equal(fromBackend.fields.modelId, "subcoco/deepseek-v4.1-flash");
+  assert.equal(fromBackend.fields.modelId, "deepseek-v4.1-flash");
   assert.equal(fromBackend.fields.apiKeyEnv, "SINITEK_DSH_API_KEY");
-  assert.equal(fromBackend.fields.modelId.split("/").length, 2);
+  assert.equal(fromBackend.fields.modelId.split("/").length, 1);
   const profileWithDirectApiKey = JSON.parse(example) as Record<string, unknown>;
   profileWithDirectApiKey.apiKey = "sk-fixturetoken";
   const directApiKeyText = JSON.stringify(profileWithDirectApiKey);
@@ -261,7 +382,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.equal(reopenedWithDirectApiKey.sandbox.dshEditorMode, "json");
   reopenedWithDirectApiKey.sandbox.switchDshEditorMode("visual");
   assert.equal(reopenedWithDirectApiKey.find("data-testid", "dsh-api-key").props.value, "sk-fixturetoken");
-  assert.equal(reopenedWithDirectApiKey.find("data-testid", "dsh-model-id").props.value, "subcoco/deepseek-v4.1-flash");
+  assert.equal(reopenedWithDirectApiKey.find("data-testid", "dsh-model-id").props.value, "deepseek-v4.1-flash");
   assert.equal(fromBackend.fields.modelId, utils.modelId);
   const withoutApiKeyEnv = JSON.parse(example) as Record<string, unknown>;
   delete withoutApiKeyEnv.apiKeyEnv;
@@ -272,7 +393,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
 
   const split = utils.readDocument(JSON.stringify({
     provider: "subcoco",
-    acpModel: "deepseek-v4.1-flash",
+    acpModel: "subcoco/deepseek-v4.1-flash",
     apiKeyEnv: "SINITEK_DSH_API_KEY",
     baseURL: "https://gateway.example/v1",
   }));
@@ -280,6 +401,18 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.equal(split.fields.modelId, "");
   assert.equal(split.fields.provider, "");
   assert.match(split.error, /Do not split the model id/);
+
+  const existingNamespaced = JSON.parse(example) as {
+    models: Array<{ id: string; name: string }>;
+    acpModel: string;
+  };
+  existingNamespaced.models[0].id = "subcoco/deepseek-v4.1-flash";
+  existingNamespaced.models[0].name = "subcoco/deepseek-v4.1-flash";
+  existingNamespaced.acpModel = "subcoco/deepseek-v4.1-flash";
+  const retainedNamespaced = utils.readDocument(JSON.stringify(existingNamespaced));
+  assert.equal(retainedNamespaced.ok, true);
+  assert.equal(retainedNamespaced.document?.models[0].id, "subcoco/deepseek-v4.1-flash");
+  assert.equal(retainedNamespaced.document?.acpModel, "subcoco/deepseek-v4.1-flash");
 
   const secret = "sk-fixturetoken";
   const leaked = utils.readDocument(example.replace(
@@ -308,6 +441,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   const modelField = harness.find("data-testid", "dsh-model-id");
   const apiKeyField = harness.find("data-testid", "dsh-api-key");
   assert.equal(editorNodes(harness.render()).some((node) => node.props["data-testid"] === "dsh-api-key-env"), false);
+  assert.equal(harness.find("data-testid", "dsh-api-key-env-note").props.children.includes("apiKeyEnv"), true);
   assert.match(apiKeyField.props.help, /激活副本.*明文保存/);
   assert.match(apiKeyField.props.help, /apiKeyEnv.*SINITEK_DSH_API_KEY/);
   assert.match(apiKeyField.props.help, /read -rsp 'DSH API Key: ' SINITEK_DSH_API_KEY/);
@@ -315,7 +449,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.ok(exampleButton);
   exampleButton.props.onClick();
   assert.equal(harness.sandbox.exampleKey, "dsh-config");
-  assert.equal(modelField.props.value, "subcoco/deepseek-v4.1-flash");
+  assert.equal(modelField.props.value, "deepseek-v4.1-flash");
   assert.equal(modelField.props.readOnly, undefined);
   assert.equal(apiKeyField.props.value, "");
   apiKeyField.props.onChange("sk-fixturetoken");
@@ -420,7 +554,9 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.match(ui, /onClick: \(\) => N\("dsh-config"\),[\s\S]*?children: "查看范例"/);
   assert.match(ui, /dshUiContainsProfileSecret\(source\)/);
   assert.match(ui, /O\.platform === "dsh"[\s\S]*?renderDshProfileEditor\(\), B\(\)/);
-  assert.equal(ui.slice(ui.indexOf("const renderDshProfileEditor"), ui.indexOf("// dsh profile editor")).includes("dsh-api-key-env"), false);
+  assert.match(ui, /范例导入失败: \" \+ H\.error/);
+  assert.match(ui, /setDshText\(H\.content\)/);
+  assert.equal(ui.slice(ui.indexOf("const renderDshProfileEditor"), ui.indexOf("// dsh profile editor")).includes('"data-testid": "dsh-api-key-env"'), false);
   assert.match(ui, /dshEditorMode.*c\.useState\("json"\)/);
   assert.equal(ui.slice(ui.indexOf("const renderDshProfileEditor"), ui.indexOf("// dsh profile editor")).includes(".split(\"/\")"), false);
 });
@@ -441,7 +577,7 @@ test("DSH page save and activation reuse backend validation without touching pro
     const committed = commitDshDocument(example);
     assert.equal(committed.ok, true);
     if (!committed.ok) return;
-    assert.equal(committed.document.acpModel, "subcoco/deepseek-v4.1-flash");
+    assert.equal(committed.document.acpModel, "deepseek-v4.1-flash");
     assert.equal(committed.document.provider, "sinitek-custom");
     assert.equal(committed.content.includes("sk-"), false);
     const loopback = commitDshDocument(utils.createProfileText("http://127.0.0.1:9/v1"));
@@ -462,7 +598,7 @@ test("DSH page save and activation reuse backend validation without touching pro
     const paths = resolveDshConfigPaths();
     assert.equal((await readDshActivation(paths)).activeProfileId, "profile-a");
     const patch = await fs.promises.readFile(paths.patchPath, "utf8");
-    assert.match(patch, /subcoco\/deepseek-v4\.1-flash/);
+    assert.match(patch, /deepseek-v4\.1-flash/);
     assert.equal(patch.includes("modelOverrides"), false);
     assert.equal(await fs.promises.readFile(settingsPath, "utf8"), "untouched: true\n");
     assert.equal(await fs.promises.readFile(credentialsPath, "utf8"), "key: redacted\n");
@@ -509,10 +645,22 @@ function withDshExtension(content: string): string {
   const document = JSON.parse(content) as {
     uiExtensionMetadata?: { preserved: boolean };
     defaultMaxTokens?: number;
+    displayName?: string;
+    timeoutMs?: number;
+    streamIdleTimeoutMs?: number;
+    retryPolicy?: { mode: string; maxRetries: number; backoff: { initialDelayMs: number; maxDelayMs: number } };
     models: Array<Record<string, unknown>>;
   };
   document.uiExtensionMetadata = { preserved: true };
   document.defaultMaxTokens = 1024;
+  document.displayName = "Sinitek custom";
+  document.timeoutMs = 45000;
+  document.streamIdleTimeoutMs = 60000;
+  document.retryPolicy = {
+    mode: "normal",
+    maxRetries: 1,
+    backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+  };
   document.models[0].vendorMeta = { tier: "flash", preserved: true };
   return JSON.stringify(document);
 }
@@ -525,14 +673,26 @@ test("DSH text and visual edits keep accepted fields and reject secrets", async 
   const parsed = JSON.parse(read.content) as {
     uiExtensionMetadata: { preserved: boolean };
     defaultMaxTokens: number;
+    displayName: string;
+    timeoutMs: number;
+    streamIdleTimeoutMs: number;
+    retryPolicy: { mode: string; maxRetries: number; backoff: { initialDelayMs: number; maxDelayMs: number } };
     acpModel: string;
     models: Array<Record<string, unknown>>;
   };
   assert.deepEqual(parsed.uiExtensionMetadata, { preserved: true });
   assert.equal(parsed.defaultMaxTokens, 1024);
+  assert.equal(parsed.displayName, "Sinitek custom");
+  assert.equal(parsed.timeoutMs, 45000);
+  assert.equal(parsed.streamIdleTimeoutMs, 60000);
+  assert.deepEqual(parsed.retryPolicy, {
+    mode: "normal",
+    maxRetries: 1,
+    backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+  });
   assert.deepEqual(parsed.models[0].vendorMeta, { tier: "flash", preserved: true });
-  assert.equal(parsed.acpModel, "subcoco/deepseek-v4.1-flash");
-  assert.equal(parsed.models[0].id, "subcoco/deepseek-v4.1-flash");
+  assert.equal(parsed.acpModel, "deepseek-v4.1-flash");
+  assert.equal(parsed.models[0].id, "deepseek-v4.1-flash");
 
   const toJson = utils.switchMode({ mode: "visual", nextMode: "json", text: read.content, document: read.document });
   assert.equal(toJson.ok, true);
@@ -551,7 +711,7 @@ test("DSH text and visual edits keep accepted fields and reject secrets", async 
   assert.equal(relocated.document.baseURL, "https://gateway.example/custom");
   assert.equal(relocated.document.uiExtensionMetadata.preserved, true);
   assert.equal(relocated.document.models[0].vendorMeta.preserved, true);
-  const renamed = utils.updateModelId(read.document, "subcoco/deepseek-v4.1-flash", "gateway/other-model");
+  const renamed = utils.updateModelId(read.document, "deepseek-v4.1-flash", "gateway/other-model");
   assert.equal(renamed.ok, true);
   assert.equal(renamed.document.models[0].id, "gateway/other-model");
   assert.equal(renamed.document.acpModel, "gateway/other-model");
@@ -653,12 +813,13 @@ test("DSH text and visual edits keep accepted fields and reject secrets", async 
     const paths = resolveDshConfigPaths();
     const applied = JSON.parse(await readDshActiveProfileText(paths)) as typeof parsed;
     assert.deepEqual(applied.uiExtensionMetadata, { preserved: true });
-    assert.equal(applied.models[0].id, "subcoco/deepseek-v4.1-flash");
+    assert.equal(applied.models[0].id, "deepseek-v4.1-flash");
     const patch = await fs.promises.readFile(paths.patchPath, "utf8");
     assert.equal(patch.includes("uiExtensionMetadata"), false);
     assert.equal(patch.includes("vendorMeta"), false);
     assert.equal(patch.includes("defaultMaxTokens"), false);
-    assert.match(patch, /subcoco\/deepseek-v4\.1-flash/);
+    assert.match(patch, /deepseek-v4\.1-flash/);
+    assert.equal(patch.includes("subcoco/"), false);
     const committed = commitDshDocument(read.content);
     assert.equal(committed.ok, true);
     if (committed.ok) {

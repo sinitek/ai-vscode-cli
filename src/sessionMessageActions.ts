@@ -81,10 +81,6 @@ export async function handleUpdateSettingMessage(
   if (message.key.startsWith("selectedModel.")) {
     const cliValue = message.key.slice("selectedModel.".length);
     if (deps.isCliName(cliValue)) {
-      if (deps.isActiveConversationTabExecutionLocked?.() && cliValue === deps.getCurrentCli()) {
-        await deps.postPanelState();
-        return;
-      }
       const modelValue = typeof message.value === "string" ? message.value : null;
       deps.selectCliModel(cliValue, modelValue, deps.getActiveConfigIdForCli(cliValue));
       deps.loadModelStore();
@@ -99,10 +95,6 @@ export async function handleUpdateSettingMessage(
       cli
       && (roleValue === "main" || roleValue === "subtask")
     ) {
-      if (roleValue === "main" && deps.isActiveConversationTabExecutionLocked?.() && cli === deps.getCurrentCli()) {
-        await deps.postPanelState();
-        return;
-      }
       const modelValue = typeof message.value === "string" ? message.value : null;
       deps.selectCliLoopModel?.(cli, roleValue, modelValue, deps.getActiveConfigIdForCli(cli));
       deps.loadModelStore();
@@ -277,7 +269,6 @@ function resolvePromptRoleModels(
   options: {
     includeLoopModels: boolean;
     subtaskContinuation: boolean;
-    lockedPrimaryModel?: string | null;
   },
 ): {
   model?: string;
@@ -294,13 +285,9 @@ function resolvePromptRoleModels(
   if (!supportsMainSubtaskPromptModels(targetCli) && !crossCli && !subtaskCli) {
     return {};
   }
-  const explicitModel = options.lockedPrimaryModel !== undefined
-    ? normalizePromptModel(options.lockedPrimaryModel)
-    : normalizePromptModel(message.model);
+  const explicitModel = normalizePromptModel(message.model);
   const selectedModel = supportsMainSubtaskPromptModels(targetCli)
-    ? options.lockedPrimaryModel !== undefined
-      ? normalizePromptModel(options.lockedPrimaryModel)
-      : deps.getSelectedCliModel(targetCli, configId) ?? undefined
+    ? deps.getSelectedCliModel(targetCli, configId) ?? undefined
     : undefined;
   const fallbackModel = explicitModel ?? selectedModel;
   if (!options.includeLoopModels) {
@@ -311,9 +298,7 @@ function resolvePromptRoleModels(
     };
   }
 
-  const loopMainModel = options.lockedPrimaryModel !== undefined
-    ? normalizePromptModel(options.lockedPrimaryModel)
-    : supportsMainSubtaskPromptModels(targetCli)
+  const loopMainModel = supportsMainSubtaskPromptModels(targetCli)
       ? normalizePromptModel(message.loopMainModel)
         ?? normalizePromptModel(message.lobsterMainModel)
         ?? deps.getSelectedLoopCliModel?.(targetCli, "main", configId)
@@ -494,7 +479,6 @@ export async function handleSendPromptMessage(
   const promptModels = resolvePromptRoleModels(message, targetCli, activeConfigId, deps, {
     includeLoopModels,
     subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
-    ...(targetTab?.executionLocked ? { lockedPrimaryModel: targetTab.lockedPrimaryModel ?? null } : {}),
   });
   const promptThinkingModes = resolvePromptRoleThinkingModes(message, targetCli, activeConfigId, deps, {
     includeLoopModels,

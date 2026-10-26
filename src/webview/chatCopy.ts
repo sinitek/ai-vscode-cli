@@ -1,4 +1,6 @@
 export const CHAT_COPY_SCRIPT = `
+      let lastChatCopyText = "";
+
       function getChatCopyAnchorElement(selection) {
         if (!selection || !selection.anchorNode) {
           return null;
@@ -17,45 +19,21 @@ export const CHAT_COPY_SCRIPT = `
         return Boolean(element.closest("#messages, #historyMessagesContent, .timeline, #askChatMessages, #filePreviewContent"));
       }
 
-      function copyChatSelectionWithFallback(value) {
-        if (!value) {
-          return false;
+      function readChatCopyText(selection) {
+        if (!selection || selection.isCollapsed) {
+          return "";
         }
-        if (typeof copyTextToClipboard === "function") {
-          copyTextToClipboard(value);
-          return true;
-        }
-        if (
-          typeof navigator !== "undefined"
-          && navigator.clipboard
-          && typeof navigator.clipboard.writeText === "function"
-        ) {
-          try {
-            navigator.clipboard.writeText(value);
-            return true;
-          } catch {
-          }
-        }
-        if (
-          typeof document === "undefined"
-          || !document.body
-          || typeof document.createElement !== "function"
-        ) {
-          return false;
-        }
-        const textarea = document.createElement("textarea");
-        textarea.value = value;
-        textarea.setAttribute("readonly", "true");
-        textarea.style.position = "absolute";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-          return document.execCommand("copy") !== false;
-        } catch {
-          return false;
-        } finally {
-          document.body.removeChild(textarea);
+        const anchor = getChatCopyAnchorElement(selection);
+        return isChatCopyTarget(anchor) ? String(selection.toString() || "") : "";
+      }
+
+      function rememberChatCopySelection() {
+        const selection = typeof window !== "undefined" && typeof window.getSelection === "function"
+          ? window.getSelection()
+          : null;
+        const value = readChatCopyText(selection);
+        if (value) {
+          lastChatCopyText = value;
         }
       }
 
@@ -63,22 +41,21 @@ export const CHAT_COPY_SCRIPT = `
         const selection = typeof window !== "undefined" && typeof window.getSelection === "function"
           ? window.getSelection()
           : null;
-        if (!selection || selection.isCollapsed) {
+        const selectedText = readChatCopyText(selection);
+        if (selectedText) {
+          lastChatCopyText = selectedText;
+        }
+        const target = event && event.target;
+        const targetTagName = target && typeof target.tagName === "string" ? target.tagName.toLowerCase() : "";
+        const inputCopyAfterFocusChange = targetTagName === "textarea" || targetTagName === "input";
+        if (inputCopyAfterFocusChange && target.selectionStart !== target.selectionEnd) {
           return;
         }
-        const anchor = getChatCopyAnchorElement(selection);
-        if (!isChatCopyTarget(anchor)) {
-          return;
-        }
-        const value = String(selection.toString() || "");
+        const value = selectedText || (inputCopyAfterFocusChange ? lastChatCopyText : "");
         if (!value) {
           return;
         }
-        if (
-          event
-          && event.clipboardData
-          && typeof event.clipboardData.setData === "function"
-        ) {
+        if (event && event.clipboardData && typeof event.clipboardData.setData === "function") {
           try {
             event.clipboardData.setData("text/plain", value);
             event.preventDefault();
@@ -86,12 +63,24 @@ export const CHAT_COPY_SCRIPT = `
           } catch {
           }
         }
-        if (copyChatSelectionWithFallback(value) && event && typeof event.preventDefault === "function") {
-          event.preventDefault();
+        if (
+          typeof document !== "undefined"
+          && typeof document.execCommand === "function"
+        ) {
+          try {
+            if (document.execCommand("copy")) {
+              event.preventDefault();
+            }
+          } catch {
+          }
         }
       }
 
       if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        window.addEventListener("mouseup", rememberChatCopySelection);
         window.addEventListener("copy", handleChatCopy);
+      }
+      if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+        document.addEventListener("selectionchange", rememberChatCopySelection);
       }
 `;

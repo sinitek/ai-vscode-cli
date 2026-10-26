@@ -394,7 +394,7 @@ test("DSH strategy keeps an independent runner and reuses across model changes",
     cwd: "/workspace",
     thinkingMode: "ultra",
     interactiveMode: "coding",
-    model: "[\"sinitek-custom\",\"deepseek-v4.1-flash\"]",
+    model: "[\"sinitek-custom\",\"subcoco/deepseek-v4.1-flash\"]",
     localSessionId: "9a871318-21c4-4603-8e65-693ba8589abe",
     env: { DSH_HOME: "/tmp/isolated", SINITEK_DSH_API_KEY: "secret" },
   });

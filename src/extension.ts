@@ -426,7 +426,6 @@ import {
   buildConversationTabSessionLookupKey,
   createSessionTabsController,
   findConversationTabForLoopResume,
-  getConversationTabLockedPrimaryModel,
   getConversationTabSessionIdForCli,
   isConversationTabExecutionLocked,
   resolveConversationTabAutoInteractiveMode,
@@ -1486,7 +1485,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     startNewSession,
     getConversationTabById,
     isActiveConversationTabExecutionLocked: () => isConversationTabExecutionLocked(getActiveConversationTab()),
-    getActiveConversationTabLockedPrimaryModel: () => getConversationTabLockedPrimaryModel(getActiveConversationTab()),
     hasAnyTaskRunning,
     disposeAllInteractiveRunners: () => interactiveRunnerManager?.disposeAll(),
     maybePromptInstallOnCliGroupSwitch,
@@ -5074,16 +5072,9 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
   if (newlyLocked) {
     void postPanelState();
   }
-  const lockedPrimaryModel = getConversationTabLockedPrimaryModel(tab);
-  const lockedPrimaryModelDisplay = lockedPrimaryModel
-    ? modelSettingsHost.getModelDisplayName(target.cli, lockedPrimaryModel) ?? lockedPrimaryModel
-    : null;
-  const tabExecutionLocked = isConversationTabExecutionLocked(tab);
   const executionModel = newlyLocked
     ? firstExecutionDisplayModel
-    : tabExecutionLocked
-      ? lockedPrimaryModelDisplay
-      : firstExecutionDisplayModel;
+    : firstExecutionDisplayModel;
   const createdAt = Date.now();
   const messageId = createMessageId();
   const message = buildUserChatMessage({
@@ -5091,7 +5082,7 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     executionModel,
     executionProfile: buildConversationExecutionProfile(
       input.taskRole === "subtask" ? input.loopSubtaskConfigId ?? getActiveConfigIdForCli(target.cli) : getActiveConfigIdForCli(target.cli),
-      tabExecutionLocked ? lockedPrimaryModel ?? null : firstExecutionModel,
+      firstExecutionModel,
       input.thinkingModeOverride ?? getEffectiveThinkingMode(target.cli, input.model ?? getSelectedCliModel(target.cli)),
     ),
   }, createdAt, messageId);

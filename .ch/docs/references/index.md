@@ -6,7 +6,7 @@
 - `.ch/docs/references/authoritative-skills.md`：外部权威技能候选、来源、适用边界与复用建议
 - `.ch/docs/references/codegraph.md`：CodeGraph 可选集成方式、启用流程和使用边界
 - `.ch/docs/references/deepseek-harness-api-reference.md`：本机 `@deepseek-ai/dsh@0.2.1-rc.2` 的上游程序化契约。`0.2.1-rc.2` 仍是发布候选，不是稳定版
-- `.ch/docs/references/dsh-custom-provider-contract.md`：自定义 OpenAI-compatible provider 的脱敏 patch、环境变量、可选 profile 根级 `apiKey`、配置页和插件实跑边界。可执行模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。凭据默认引用 `SINITEK_DSH_API_KEY`，直接密钥只在本机配置档案和备份保存并在启动时注入子进程。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。原生 compaction 不支持。真实权限请求与图形 Extension Host 点击验收未验证
+- `.ch/docs/references/dsh-custom-provider-contract.md`：自定义 OpenAI-compatible provider 的脱敏 patch、环境变量、可选 profile 根级 `apiKey`、配置页和插件实跑边界。可执行模型 id 必须完整使用 `deepseek-v4.1-flash`。凭据默认引用 `SINITEK_DSH_API_KEY`，直接密钥只在本机配置档案和备份保存并在启动时注入子进程。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。原生 compaction 不支持。真实权限请求与图形 Extension Host 点击验收未验证
 
 ## 维护原则
 

@@ -859,7 +859,7 @@ test("updates the active CLI through session and tab selection fallbacks", async
   assert.deepEqual(harness.calls.savedSettings, [{ currentCli: "claude" }]);
 });
 
-test("rejects CLI and primary model changes for an executed tab", async (t) => {
+test("rejects CLI changes but accepts primary model changes for an executed tab", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);
   harness.deps.isActiveConversationTabExecutionLocked = () => true;
@@ -870,7 +870,9 @@ test("rejects CLI and primary model changes for an executed tab", async (t) => {
   await handlePanelMessageWithDeps({ type: "updateOpenCodeRoleModel", role: "primary", value: "new-opencode-model" }, harness.deps);
 
   assert.equal(harness.state.currentCli, "codex");
-  assert.deepEqual(harness.calls.selectedModels, []);
+  assert.deepEqual(harness.calls.selectedModels, [
+    { cli: "codex", model: "new-model", configId: "config-codex" },
+  ]);
   assert.equal(harness.calls.panelStates, 4);
 });
 

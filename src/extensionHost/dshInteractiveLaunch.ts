@@ -2,7 +2,12 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { commitDshDocument, containsDshSecret, serializeDshPatchYaml } from "../cli/dshConfigModels";
-import { readDshActivation, readDshActiveProfileText, resolveDshConfigPaths } from "../config/dshConfig";
+import {
+  profileFilePath,
+  readDshActivation,
+  readDshActiveProfileText,
+  resolveDshConfigPaths,
+} from "../config/dshConfig";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import {
   buildDshChildEnv,
@@ -28,16 +33,38 @@ export async function prepareDshIsolatedLaunch(input: {
   patchSourcePath?: string | null;
 }): Promise<DshInteractiveLaunch> {
   const parentEnv = input.parentEnv ?? process.env;
+  const paths = resolveDshConfigPaths(parentEnv);
+  const hasExternalPatch = input.patchSourcePath !== undefined && input.patchSourcePath !== null;
   const sourcePath = input.patchSourcePath ?? await readActivePatchPath(parentEnv);
   if (!sourcePath) {
     throw new Error("DSH profile patch is not active.");
   }
-  const paths = resolveDshConfigPaths(parentEnv);
   const sourcePatchText = await fs.readFile(sourcePath, "utf8");
-  const activeProfileText = await readDshActiveProfileText(paths);
-  const activeProfile = activeProfileText ? commitDshDocument(activeProfileText) : null;
-  if (activeProfile && !activeProfile.ok) {
-    throw new Error("DSH active profile is invalid.");
+  let activeProfile: Extract<ReturnType<typeof commitDshDocument>, { ok: true }> | null = null;
+  let activeProfileText = "";
+  let storedProfile: StoredDshProfile | null = null;
+  if (!hasExternalPatch) {
+    const activation = await readDshActivation(paths);
+    activeProfileText = await readDshActiveProfileText(paths);
+    if (activation.activeProfileId && isSafeProfileId(activation.activeProfileId)) {
+      storedProfile = await readStoredDshProfile(paths, activation.activeProfileId);
+      if (storedProfile) {
+        const committed = commitDshDocument(storedProfile.profileText);
+        if (!committed.ok) {
+          throw new Error("DSH active profile is invalid.");
+        }
+        activeProfile = committed;
+      }
+    }
+    if (!activeProfile) {
+      if (activeProfileText) {
+        const committed = commitDshDocument(activeProfileText);
+        if (!committed.ok) {
+          throw new Error("DSH active profile is invalid.");
+        }
+        activeProfile = committed;
+      }
+    }
   }
   const patchText = activeProfile?.ok
     ? serializeDshPatchYaml(activeProfile.document)
@@ -45,9 +72,12 @@ export async function prepareDshIsolatedLaunch(input: {
   if (containsDshSecret(patchText)) {
     throw new Error("DSH patch must not contain a credential value.");
   }
-  if (activeProfile?.ok && sourcePath === paths.patchPath) {
+  if (activeProfile?.ok && sourcePath === paths.patchPath && !hasExternalPatch) {
     if (sourcePatchText !== patchText) {
       await writeFileAtomically(paths.patchPath, patchText, { mode: 0o600 });
+    }
+    if (storedProfile && storedProfile.profileText !== activeProfile.content) {
+      await storedProfile.writeCanonical(activeProfile.content);
     }
     if (activeProfileText !== activeProfile.content) {
       await writeFileAtomically(paths.appliedProfilePath, activeProfile.content, { mode: 0o600 });
@@ -74,6 +104,57 @@ export async function prepareDshIsolatedLaunch(input: {
   }
   assertLaunchHasNoCredential(agentArgs, env, parentEnv);
   return { agentArgs, env, isolatedHome, patchPath };
+}
+
+type StoredDshProfile = {
+  profileText: string;
+  writeCanonical: (content: string) => Promise<void>;
+};
+
+async function readStoredDshProfile(paths: ReturnType<typeof resolveDshConfigPaths>, profileId: string): Promise<StoredDshProfile | null> {
+  const filePath = profileFilePath(paths, profileId);
+  let rawText: string;
+  try {
+    rawText = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    parsed = null;
+  }
+  const stored = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+  const profileText = stored && typeof stored.configContent === "string"
+    ? stored.configContent
+    : stored && typeof stored.content === "string"
+      ? stored.content
+      : rawText;
+  return {
+    profileText,
+    writeCanonical: async (content: string) => {
+      if (stored && (typeof stored.configContent === "string" || typeof stored.content === "string")) {
+        if (typeof stored.configContent === "string") stored.configContent = content;
+        if (typeof stored.content === "string") stored.content = content;
+        await writeFileAtomically(filePath, JSON.stringify(stored, null, 2), { mode: 0o600 });
+        return;
+      }
+      await writeFileAtomically(filePath, content, { mode: 0o600 });
+    },
+  };
+}
+
+function isSafeProfileId(profileId: string): boolean {
+  return Boolean(profileId.trim())
+    && !profileId.includes("/")
+    && !profileId.includes("\\")
+    && !profileId.includes("..");
 }
 
 const MIRRORED_SKIP_NAMES = new Set(["settings.yaml", ".credentials.yaml", "config.toml"]);

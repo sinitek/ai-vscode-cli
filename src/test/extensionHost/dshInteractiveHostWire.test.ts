@@ -17,7 +17,11 @@ import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShare
 const { createPromptInteractiveRuntimeHost } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
 const { prepareDshIsolatedLaunch } = require("../../extensionHost/dshInteractiveLaunch") as typeof import("../../extensionHost/dshInteractiveLaunch");
 const { buildDshLaunchArgs, redactDshDiagnostic } = require("../../interactive/dshAppServerProtocol") as typeof import("../../interactive/dshAppServerProtocol");
-const { activateDshProfile } = require("../../config/dshConfig") as typeof import("../../config/dshConfig");
+const {
+  activateDshProfile,
+  readDshActiveProfileText,
+  resolveDshConfigPaths,
+} = require("../../config/dshConfig") as typeof import("../../config/dshConfig");
 const {
   createDshExampleProfileText,
   parseDshConfigModels,
@@ -538,7 +542,8 @@ test("DSH isolated launch copies the patch and keeps the key out of args", async
     assert.equal(launch.agentArgs.join(" ").includes("secret-key-value"), false);
     assert.equal(launch.agentArgs.some((arg) => arg === "headless" || arg === "sdk" || arg === "tui"), false);
     const patch = await fs.readFile(launch.patchPath, "utf8");
-    assert.match(patch, /subcoco\/deepseek-v4\.1-flash/);
+    assert.match(patch, /deepseek-v4\.1-flash/);
+    assert.equal(patch.includes("subcoco/"), false);
     assert.equal(patch.includes("secret-key-value"), false);
     const names = await fs.readdir(home);
     assert.equal(names.includes("settings.yaml"), false);
@@ -599,16 +604,74 @@ test("DSH isolated launch upgrades a legacy active profile before starting ACP",
   }
 });
 
-test("direct profile apiKey overrides the environment only for the DSH child", async () => {
+test("DSH isolated launch rebuilds the patch from the current active config profile", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-stale-profile-"));
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const activated = await activateDshProfile({
+      profileId: "current",
+      content: createDshExampleProfileText(),
+    });
+    assert.equal(activated.ok, true);
+
+    const current = JSON.parse(createDshExampleProfileText()) as {
+      models: Array<{ id: string; name: string }>;
+      acpModel: string;
+    };
+    current.models[0].id = "gateway/current-model";
+    current.models[0].name = "gateway/current-model";
+    current.acpModel = "gateway/current-model";
+    const paths = resolveDshConfigPaths();
+    const content = JSON.stringify(current);
+    await fs.writeFile(path.join(paths.configDir, "current.json"), JSON.stringify({
+      id: "current",
+      name: "Current",
+      platform: "dsh",
+      content,
+      configContent: content,
+      createdAt: 1,
+      updatedAt: 2,
+    }, null, 2), "utf8");
+
+    const launch = await prepareDshIsolatedLaunch({ sessionKey: "stale-profile" });
+    const patch = await fs.readFile(launch.patchPath, "utf8");
+    assert.match(patch, /gateway\/current-model/);
+    assert.equal(patch.includes("subcoco/deepseek-v4.1-flash"), false);
+
+    const stored = JSON.parse(await fs.readFile(path.join(paths.configDir, "current.json"), "utf8")) as {
+      content: string;
+      configContent: string;
+    };
+    assert.match(stored.content, /gateway\/current-model/);
+    assert.match(stored.configContent, /gateway\/current-model/);
+    const applied = await readDshActiveProfileText(paths);
+    assert.match(applied, /gateway\/current-model/);
+    await fs.rm(launch.isolatedHome, { recursive: true, force: true });
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.DSH_HOME;
+    } else {
+      process.env.DSH_HOME = previousHome;
+    }
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("copied DSH example prepares a launch after changing only apiKey and baseURL", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-direct-key-"));
   const previousHome = process.env.DSH_HOME;
   const previousKey = process.env.SINITEK_DSH_API_KEY;
   const apiKey = "sk-direct-profile-key-12345";
+  const baseURL = "http://127.0.0.1:8787/v1";
   process.env.DSH_HOME = home;
   process.env.SINITEK_DSH_API_KEY = "env-fallback-key";
   try {
-    const profile = JSON.parse(createDshExampleProfileText()) as Record<string, unknown>;
+    const example = JSON.parse(createDshExampleProfileText()) as Record<string, unknown>;
+    const profile = JSON.parse(JSON.stringify(example)) as Record<string, unknown>;
     profile.apiKey = apiKey;
+    profile.baseURL = baseURL;
+    assert.deepEqual({ ...profile, apiKey: example.apiKey, baseURL: example.baseURL }, example);
     const activated = await activateDshProfile({
       profileId: "direct-key",
       content: JSON.stringify(profile),
@@ -618,7 +681,12 @@ test("direct profile apiKey overrides the environment only for the DSH child", a
     assert.equal(launch.env.SINITEK_DSH_API_KEY, apiKey);
     assert.equal(launch.agentArgs.join("\n").includes(apiKey), false);
     assert.equal(redactDshDiagnostic(`token ${apiKey}`, launch.env), "token [redacted]");
-    assert.equal((await fs.readFile(launch.patchPath, "utf8")).includes(apiKey), false);
+    const patch = await fs.readFile(launch.patchPath, "utf8");
+    assert.equal(patch.includes(apiKey), false);
+    const appliedProfileText = await readDshActiveProfileText(resolveDshConfigPaths());
+    const appliedProfile = JSON.parse(appliedProfileText) as { baseURL: string };
+    assert.equal(appliedProfile.baseURL, baseURL);
+    assert.equal(readDshModelWireForRun(parseDshConfigModels(appliedProfileText), DSH_VERIFIED_MODEL_ID), WIRE);
     await fs.rm(launch.isolatedHome, { recursive: true, force: true });
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME;

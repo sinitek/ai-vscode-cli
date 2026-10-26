@@ -2,10 +2,10 @@
  * DeepSeek Harness custom-provider contract.
  *
  * This module does not start dsh, read environment credentials, or copy Grok TOML.
- * The default executable model id is the complete string
- * `subcoco/deepseek-v4.1-flash`. A slash inside that id is not a
- * provider/model split. The response alias `deepseek-v4.1-flash` is not a
- * config id. initialize accepting a string does not make it executable.
+ * The default example model id is `deepseek-v4.1-flash`. Model ids are
+ * endpoint-specific and remain unchanged in the ACP provider wire; a slash,
+ * if present, is part of the model id rather than a provider/model split.
+ * initialize accepting a string does not make an unconfigured id executable.
  * The installed pi-ai schema types `models` as an ordered array, so a profile
  * may list more than one configured model. Selection stays inside that list.
  * Runtime baseURL may be https, or http only for a loopback host. The
@@ -20,8 +20,7 @@
 export const DSH_PROVIDER_ROUTE = "sinitek-custom";
 export const DSH_API = "openai-completions";
 export const DSH_API_KEY_ENV = "SINITEK_DSH_API_KEY";
-export const DSH_VERIFIED_MODEL_ID = "subcoco/deepseek-v4.1-flash";
-export const DSH_RESPONSE_MODEL_ALIAS = "deepseek-v4.1-flash";
+export const DSH_VERIFIED_MODEL_ID = "deepseek-v4.1-flash";
 /** Installed `PiAiProviderProfile.models` is an ordered array, not a single slot. */
 export const DSH_SUPPORTS_CONFIGURED_MODEL_LIST = true;
 export const DSH_EXAMPLE_BASE_URL = "https://gateway.example/v1";
@@ -95,7 +94,7 @@ const DSH_PROFILE_KEYS = [
   "acpModel",
 ] as const;
 
-const DSH_MODEL_KEYS = ["id", "name", "input", "maxTokens", "reasoningEfforts", "compat"] as const;
+const DSH_MODEL_KEYS = ["id", "name", "input", "maxTokens", "contextWindow", "reasoningEfforts", "compat"] as const;
 const DSH_RETRY_KEYS = ["mode", "maxRetries", "backoff"] as const;
 const DSH_BACKOFF_KEYS = ["initialDelayMs", "maxDelayMs"] as const;
 const DSH_BLOCKED_JSON_KEYS = new Set(["__proto__", "constructor", "prototype"]);
@@ -107,9 +106,19 @@ export type DshConfiguredModel = {
   id: string;
   name: string;
   input: ["text"];
-  maxTokens: 256;
+  maxTokens?: number;
+  contextWindow?: number;
   reasoningEfforts?: false | DshReasoningEfforts;
   compat?: DshModelCompat;
+};
+
+type DshRetryPolicy = {
+  mode: "normal";
+  maxRetries: 1;
+  backoff: {
+    initialDelayMs: 200;
+    maxDelayMs: 1000;
+  };
 };
 
 export type DshProfileDocument = {
@@ -119,17 +128,10 @@ export type DshProfileDocument = {
   apiKey?: string;
   apiKeyEnv: typeof DSH_API_KEY_ENV;
   baseURL: string;
-  displayName: string;
-  timeoutMs: 45000;
-  streamIdleTimeoutMs: 60000;
-  retryPolicy: {
-    mode: "normal";
-    maxRetries: 1;
-    backoff: {
-      initialDelayMs: 200;
-      maxDelayMs: 1000;
-    };
-  };
+  displayName?: string;
+  timeoutMs?: 45000;
+  streamIdleTimeoutMs?: 60000;
+  retryPolicy?: DshRetryPolicy;
   models: DshConfiguredModel[];
   acpModel: string;
 };
@@ -154,20 +156,10 @@ export function createDshExampleDocument(
     schemaVersion: DSH_SCHEMA_VERSION,
     provider: DSH_PROVIDER_ROUTE,
     api: DSH_API,
+    apiKey: "",
     apiKeyEnv: DSH_API_KEY_ENV,
     baseURL,
-    displayName: DSH_DISPLAY_NAME,
-    timeoutMs: 45000,
-    streamIdleTimeoutMs: 60000,
-    retryPolicy: {
-      mode: "normal",
-      maxRetries: 1,
-      backoff: {
-        initialDelayMs: 200,
-        maxDelayMs: 1000,
-      },
-    },
-    models: [verifiedModel()],
+    models: [defaultModel()],
     acpModel: DSH_VERIFIED_MODEL_ID,
   };
 }
@@ -210,7 +202,7 @@ export function parseDshConfigModels(content: string): DshConfigModels {
   const wireByModelId: Record<string, string> = {};
   const reasoningOptionsByModelId: Record<string, DshReasoningOption[]> = {};
   for (const modelId of modelIds) {
-    labels[modelId] = modelId;
+    labels[modelId] = committed.document.models.find((model) => model.id === modelId)?.name || modelId;
     wireByModelId[modelId] = toDshModelWireValue(modelId);
   }
   for (const model of committed.document.models) {
@@ -281,7 +273,7 @@ export function isDshExecutableModel(
   configured: readonly string[],
 ): boolean {
   const selected = interpretDshSelection(value, configured);
-  return Boolean(selected && configured.includes(selected) && selected !== DSH_RESPONSE_MODEL_ALIAS);
+  return Boolean(selected && configured.includes(selected));
 }
 
 export function serializeDshPatchYaml(document: DshProfileDocument): string {
@@ -291,8 +283,13 @@ export function serializeDshPatchYaml(document: DshProfileDocument): string {
       `            name: ${quoteYaml(model.name)}`,
       "            input:",
       "              - text",
-      "            maxTokens: 256",
     ];
+    if (model.maxTokens !== undefined) {
+      lines.push(`            maxTokens: ${model.maxTokens}`);
+    }
+    if (model.contextWindow !== undefined) {
+      lines.push(`            contextWindow: ${model.contextWindow}`);
+    }
     if (model.reasoningEfforts === false) {
       lines.push("            reasoningEfforts: false");
     } else if (model.reasoningEfforts) {
@@ -310,23 +307,37 @@ export function serializeDshPatchYaml(document: DshProfileDocument): string {
     }
     return lines;
   });
-  return [
+  const providerLines = [
     "- id: llm-pi-ai",
     "  config:",
     "    providers:",
     `      ${DSH_PROVIDER_ROUTE}:`,
-    `        displayName: ${quoteYaml(document.displayName)}`,
+  ];
+  if (document.displayName !== undefined) {
+    providerLines.push(`        displayName: ${quoteYaml(document.displayName)}`);
+  }
+  providerLines.push(
     `        apiKeyEnv: ${DSH_API_KEY_ENV}`,
     `        api: ${DSH_API}`,
     `        baseURL: ${quoteYaml(document.baseURL)}`,
-    `        timeoutMs: ${document.timeoutMs}`,
-    `        streamIdleTimeoutMs: ${document.streamIdleTimeoutMs}`,
-    "        retryPolicy:",
-    "          mode: normal",
-    "          maxRetries: 1",
-    "          backoff:",
-    "            initialDelayMs: 200",
-    "            maxDelayMs: 1000",
+  );
+  if (document.timeoutMs !== undefined) {
+    providerLines.push(`        timeoutMs: ${document.timeoutMs}`);
+  }
+  if (document.streamIdleTimeoutMs !== undefined) {
+    providerLines.push(`        streamIdleTimeoutMs: ${document.streamIdleTimeoutMs}`);
+  }
+  if (document.retryPolicy !== undefined) {
+    providerLines.push(
+      "        retryPolicy:",
+      "          mode: normal",
+      "          maxRetries: 1",
+      "          backoff:",
+      "            initialDelayMs: 200",
+      "            maxDelayMs: 1000",
+    );
+  }
+  providerLines.push(
     "        models:",
     ...modelLines,
     "- id: acp",
@@ -334,15 +345,15 @@ export function serializeDshPatchYaml(document: DshProfileDocument): string {
     `    provider: ${DSH_PROVIDER_ROUTE}`,
     `    model: ${quoteYaml(document.acpModel)}`,
     "",
-  ].join("\n");
+  );
+  return providerLines.join("\n");
 }
 
-function verifiedModel(): DshConfiguredModel {
+function defaultModel(): DshConfiguredModel {
   return {
     id: DSH_VERIFIED_MODEL_ID,
     name: DSH_VERIFIED_MODEL_ID,
     input: ["text"],
-    maxTokens: 256,
     reasoningEfforts: { ...DSH_REASONING_EFFORTS },
     compat: {
       thinkingFormat: "deepseek",
@@ -420,13 +431,16 @@ function parseDshProfileDocument(content: string): { ok: true; document: DshProf
   if (!baseURL) {
     return { ok: false, error: "DSH baseURL must be https, or http on a loopback host, without embedded credentials." };
   }
-  if (record.displayName !== DSH_DISPLAY_NAME) {
+  if (record.displayName !== undefined && record.displayName !== DSH_DISPLAY_NAME) {
     return { ok: false, error: "DSH displayName must stay Sinitek custom." };
   }
-  if (record.timeoutMs !== 45000 || record.streamIdleTimeoutMs !== 60000) {
-    return { ok: false, error: "DSH timeout fields must stay at the verified values." };
+  if (record.timeoutMs !== undefined && record.timeoutMs !== 45000) {
+    return { ok: false, error: "DSH timeoutMs must stay at the verified value 45000." };
   }
-  const retryError = retryPolicyError(record.retryPolicy);
+  if (record.streamIdleTimeoutMs !== undefined && record.streamIdleTimeoutMs !== 60000) {
+    return { ok: false, error: "DSH streamIdleTimeoutMs must stay at the verified value 60000." };
+  }
+  const retryError = record.retryPolicy === undefined ? null : retryPolicyError(record.retryPolicy);
   if (retryError) {
     return { ok: false, error: retryError };
   }
@@ -437,9 +451,6 @@ function parseDshProfileDocument(content: string): { ok: true; document: DshProf
   const models = readConfiguredModels(record.models);
   if (!models.ok) {
     return models;
-  }
-  if (record.acpModel === DSH_RESPONSE_MODEL_ALIAS) {
-    return { ok: false, error: "DSH response alias deepseek-v4.1-flash cannot replace the configured model id." };
   }
   if (typeof record.acpModel !== "string" || !models.ids.includes(record.acpModel)) {
     return { ok: false, error: "DSH acpModel must be one of the configured model ids." };
@@ -454,17 +465,21 @@ function parseDshProfileDocument(content: string): { ok: true; document: DshProf
     ...(typeof apiKey === "string" && apiKey.length > 0 ? { apiKey } : {}),
     apiKeyEnv: DSH_API_KEY_ENV,
     baseURL,
-    displayName: DSH_DISPLAY_NAME,
-    timeoutMs: 45000,
-    streamIdleTimeoutMs: 60000,
-    retryPolicy: {
-      mode: "normal",
-      maxRetries: 1,
-      backoff: {
-        initialDelayMs: 200,
-        maxDelayMs: 1000,
-      },
-    },
+    ...(record.displayName !== undefined ? { displayName: DSH_DISPLAY_NAME } : {}),
+    ...(record.timeoutMs !== undefined ? { timeoutMs: 45000 } : {}),
+    ...(record.streamIdleTimeoutMs !== undefined ? { streamIdleTimeoutMs: 60000 } : {}),
+    ...(record.retryPolicy !== undefined
+      ? {
+        retryPolicy: {
+          mode: "normal",
+          maxRetries: 1,
+          backoff: {
+            initialDelayMs: 200,
+            maxDelayMs: 1000,
+          },
+        },
+      }
+      : {}),
     models: models.models,
     acpModel: record.acpModel,
   };
@@ -508,10 +523,15 @@ function readConfiguredModels(
       : configured.compat;
     const model: DshConfiguredModel = {
       id,
-      name: id,
+      name: typeof configured.name === "string" && configured.name.trim() ? configured.name.trim() : id,
       input: ["text"],
-      maxTokens: 256,
     };
+    if (typeof configured.maxTokens === "number") {
+      model.maxTokens = configured.maxTokens;
+    }
+    if (typeof configured.contextWindow === "number") {
+      model.contextWindow = configured.contextWindow;
+    }
     if (reasoningEfforts === false || reasoningEfforts) {
       model.reasoningEfforts = reasoningEfforts;
     }
@@ -533,24 +553,24 @@ function validateConfiguredModel(value: unknown, seen: ReadonlySet<string>): str
   if (idError) {
     return idError;
   }
-  if (model.name === DSH_RESPONSE_MODEL_ALIAS) {
-    return "DSH response alias deepseek-v4.1-flash cannot replace the configured model id.";
-  }
-  if (model.name !== model.id) {
-    return "DSH model name must match the model id.";
+  if (model.name !== undefined && typeof model.name !== "string") {
+    return "DSH model name must be a string.";
   }
   if (!Array.isArray(model.input) || model.input.length !== 1 || model.input[0] !== "text") {
     return "DSH model input must be [text].";
   }
-  if (model.maxTokens !== 256) {
-    return "DSH model maxTokens must stay at the verified value 256.";
+  if (model.maxTokens !== undefined && (!Number.isSafeInteger(model.maxTokens) || (model.maxTokens as number) <= 0)) {
+    return "DSH model maxTokens must be a positive safe integer.";
   }
-  const isVerifiedModel = model.id === DSH_VERIFIED_MODEL_ID;
+  if (model.contextWindow !== undefined && (!Number.isSafeInteger(model.contextWindow) || (model.contextWindow as number) <= 0)) {
+    return "DSH model contextWindow must be a positive safe integer.";
+  }
+  const isDefaultModel = model.id === DSH_VERIFIED_MODEL_ID;
   const reasoningEfforts = model.reasoningEfforts === undefined
-    ? isVerifiedModel ? DSH_REASONING_EFFORTS : undefined
+    ? isDefaultModel ? DSH_REASONING_EFFORTS : undefined
     : model.reasoningEfforts;
   const compat = model.compat === undefined
-    ? isVerifiedModel && reasoningEfforts !== false
+    ? isDefaultModel && reasoningEfforts !== false
       ? { thinkingFormat: "deepseek", supportsReasoningEffort: true }
       : undefined
     : model.compat;
@@ -648,10 +668,7 @@ function isDshModelCompat(value: unknown): value is DshModelCompat {
 
 function validateModelId(value: unknown, seen: ReadonlySet<string>): string | null {
   if (typeof value !== "string" || value.length === 0 || value !== value.trim() || /\s/.test(value) || value.includes("\\")) {
-    return "DSH model id must be a non-empty complete id without path separators.";
-  }
-  if (value === DSH_RESPONSE_MODEL_ALIAS) {
-    return "DSH response alias deepseek-v4.1-flash cannot replace the configured model id.";
+    return "DSH model id must be a non-empty complete id without whitespace or backslashes.";
   }
   if (containsDshSecret(value)) {
     return "DSH profile contains a credential value. Reference SINITEK_DSH_API_KEY only.";
@@ -667,7 +684,7 @@ function interpretDshSelection(
   configured: readonly string[],
 ): string | null {
   const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw || raw === DSH_RESPONSE_MODEL_ALIAS) {
+  if (!raw) {
     return null;
   }
   if (configured.includes(raw)) {
@@ -686,7 +703,7 @@ function interpretDshSelection(
     return null;
   }
   const [provider, model] = parsed;
-  if (provider !== DSH_PROVIDER_ROUTE || typeof model !== "string" || model === DSH_RESPONSE_MODEL_ALIAS) {
+  if (provider !== DSH_PROVIDER_ROUTE || typeof model !== "string") {
     return null;
   }
   if (!configured.includes(model)) {
@@ -710,7 +727,7 @@ function findUnverifiedField(value: unknown, path = ""): string | null {
   }
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const isSupportedModelCapability = /^models\[\d+\]$/.test(path)
-      && (key === "reasoningEfforts" || key === "compat");
+      && (key === "reasoningEfforts" || key === "compat" || key === "contextWindow");
     if ((DSH_UNVERIFIED_FIELDS as readonly string[]).includes(key) && !isSupportedModelCapability) {
       return path ? `${path}.${key}` : key;
     }

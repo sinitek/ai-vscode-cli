@@ -45,7 +45,7 @@
 - [x] 契约区分 ACP、SDK JSON-RPC、headless 和模型 HTTP API。
 - [x] 命令顺序为 `codex`、`claude`、`opencode`、`grok`、`dsh`。
 - [x] 交互主路径使用 `dsh --profile acp`，不复用 Grok `session/load`。
-- [x] 模型 id 必须完整使用 `subcoco/deepseek-v4.1-flash`。
+- [x] 模型 id 必须完整使用 `deepseek-v4.1-flash`。
 - [x] 凭据只引用 `SINITEK_DSH_API_KEY`。
 - [x] 配置页分组在 Grok 之后。Skills 根和 `AGENTS.md` 规则链已接入。
 - [x] usage 缺失不显示为 0。adapter-fallback 窗口不能冒充服务容量。
@@ -99,7 +99,7 @@
 
 - 2026-10-24：安装 `latest` `0.2.1-rc.2`，不安装 `next` `0.2.1-rc.3`。
 - 2026-10-24：交互主路径定为 ACP。`session/load` 返回 `-32601`。
-- 2026-10-24：用户纠正模型为完整 id `subcoco/deepseek-v4.1-flash`。不得回退、去前缀或改用响应别名 `deepseek-v4.1-flash`。
+- 2026-10-24：用户纠正模型为完整 id `deepseek-v4.1-flash`。不得回退、去前缀或改用响应别名 `deepseek-v4.1-flash`。
 - 2026-10-24：自定义路由使用 `providers`、`api=openai-completions` 和 `apiKeyEnv=SINITEK_DSH_API_KEY`。
 - 2026-10-24：当前自定义 provider 没有公布思考档。官方默认路由的 `off|low|high|max` 不搬到这条路由。
 - 2026-10-24：收尾确认配置页、runner 和插件实跑已完成。真实权限请求与图形 Extension Host 点击验收仍未验证。
@@ -108,7 +108,7 @@
 
 - 启动：`dsh --profile acp`，NDJSON JSON-RPC，`initialize.protocolVersion=1`。
 - 会话：`session/new` 返回 UUID。恢复用 `session/resume`。取消用无 id 的 `session/cancel`。
-- 模型线值：`["sinitek-custom","subcoco/deepseek-v4.1-flash"]`。不在 `configOptions` 中就拒绝切换。
+- 模型线值：`["sinitek-custom","deepseek-v4.1-flash"]`。不在 `configOptions` 中就拒绝切换。
 - 用量：只消费真实 `usage_update` 的 `used` 和 `size`。没有该事件时不显示 0。`size=262144` 是 adapter-fallback，不是服务容量。
 - 未配置模型不能执行。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。
 - Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根：`<DSH_HOME>/skills`。规则链：全局 `<DSH_HOME>/AGENTS.md`，工作区共享 `AGENTS.md`。

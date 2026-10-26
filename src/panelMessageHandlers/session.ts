@@ -43,7 +43,6 @@ type SessionPanelMessageDeps = Pick<
   | "startNewSession"
   | "getConversationTabById"
   | "isActiveConversationTabExecutionLocked"
-  | "getActiveConversationTabLockedPrimaryModel"
   | "hasAnyTaskRunning"
   | "disposeAllInteractiveRunners"
   | "maybePromptInstallOnCliGroupSwitch"
@@ -86,13 +85,6 @@ export function createSessionPanelMessageHandlers(
     },
 
     selectCliModel: async (message) => {
-      if (
-        deps.isActiveConversationTabExecutionLocked?.()
-        && message.cli === deps.getCurrentCli()
-      ) {
-        await deps.postPanelState();
-        return;
-      }
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
@@ -102,14 +94,6 @@ export function createSessionPanelMessageHandlers(
 
     selectCliLoopModel: async (message) => {
       const role = message.role === "subtask" ? "subtask" : "main";
-      if (
-        role === "main"
-        && deps.isActiveConversationTabExecutionLocked?.()
-        && message.cli === deps.getCurrentCli()
-      ) {
-        await deps.postPanelState();
-        return;
-      }
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
@@ -126,13 +110,6 @@ export function createSessionPanelMessageHandlers(
     },
 
     updateOpenCodeRoleModel: async (message) => {
-      if (
-        message.role === "primary"
-        && deps.isActiveConversationTabExecutionLocked?.()
-      ) {
-        await deps.postPanelState();
-        return;
-      }
       const configId = typeof message.configId === "string" && message.configId.trim()
         ? message.configId.trim()
         : deps.getActiveConfigIdForCli("opencode");

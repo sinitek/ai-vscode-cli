@@ -21,14 +21,12 @@ const DEFAULT_INSTALL_COMMANDS = {
 const DSH_UI_PROVIDER = "sinitek-custom";
 const DSH_UI_API = "openai-completions";
 const DSH_UI_API_KEY_ENV = "SINITEK_DSH_API_KEY";
-const DSH_UI_MODEL_ID = "subcoco/deepseek-v4.1-flash";
-const DSH_UI_MODEL_ALIAS = "deepseek-v4.1-flash";
+const DSH_UI_MODEL_ID = "deepseek-v4.1-flash";
 const DSH_UI_EXAMPLE_BASE_URL = "https://gateway.example/v1";
 const DSH_UI_DISPLAY_NAME = "Sinitek custom";
 const DSH_UI_SUPPORTS_MODEL_LIST = true;
 const DSH_UI_SECRET_ASSIGNMENT = /(?:^|[\s,{])(?:SINITEK_DSH_API_KEY|DEEPSEEK_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*\S+/i;
 const DSH_UI_SECRET_TOKEN = /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/;
-const DSH_UI_ALIAS_ERROR = "DSH response alias deepseek-v4.1-flash cannot replace the configured model id.";
 const DSH_UI_SECRET_ERROR = "DSH profile contains a credential value. Reference SINITEK_DSH_API_KEY only.";
 const DSH_UI_API_KEY_ERROR = "DSH apiKey must be a single-line string.";
 const DSH_UI_KEY_ERROR = "DSH credentials must reference SINITEK_DSH_API_KEY.";
@@ -49,7 +47,7 @@ const DSH_UI_PROFILE_KEYS = [
   "models",
   "acpModel",
 ];
-const DSH_UI_MODEL_KEYS = ["id", "name", "input", "maxTokens"];
+const DSH_UI_MODEL_KEYS = ["id", "name", "input", "maxTokens", "contextWindow"];
 const DSH_UI_UNVERIFIED = [
   "headers",
   "thinkingBudgets",
@@ -115,22 +113,13 @@ function dshUiDocumentFromParts(parts) {
     schemaVersion: 1,
     provider: DSH_UI_PROVIDER,
     api: DSH_UI_API,
-    ...(parts.apiKey ? { apiKey: parts.apiKey } : {}),
+    ...(parts.apiKey !== undefined ? { apiKey: parts.apiKey } : {}),
     apiKeyEnv: DSH_UI_API_KEY_ENV,
     baseURL: parts.baseURL,
-    displayName: DSH_UI_DISPLAY_NAME,
-    timeoutMs: 45000,
-    streamIdleTimeoutMs: 60000,
-    retryPolicy: {
-      mode: "normal",
-      maxRetries: 1,
-      backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
-    },
     models: parts.models.map((id) => ({
       id,
       name: id,
       input: ["text"],
-      maxTokens: 256,
     })),
     acpModel: parts.acpModel,
   };
@@ -147,6 +136,7 @@ function createDshUiProfileText(baseURL) {
     baseURL: resolved,
     models: [DSH_UI_MODEL_ID],
     acpModel: DSH_UI_MODEL_ID,
+    apiKey: "",
   }));
 }
 
@@ -157,9 +147,8 @@ function dshUiFailed(error, fields) {
 function dshUiModelIdError(value, seen) {
   if (typeof value !== "string" || value.length === 0) return DSH_UI_MODEL_ID_REQUIRED_ERROR;
   if (value !== value.trim() || /\s/.test(value) || value.includes("\\")) {
-    return "DSH model id must be a non-empty complete id without path separators.";
+    return "DSH model id must be a non-empty complete id without whitespace or backslashes.";
   }
-  if (value === DSH_UI_MODEL_ALIAS) return DSH_UI_ALIAS_ERROR;
   if (dshUiContainsSecret(value)) return DSH_UI_SECRET_ERROR;
   if (seen && seen.has(value)) return "DSH model ids must stay unique in configuration order.";
   return "";
@@ -192,7 +181,7 @@ function dshUiCloneJson(value) {
 }
 
 function dshUiBlockedKey(key, path = "") {
-  if (/^models\[\d+\]$/.test(path) && (key === "reasoningEfforts" || key === "compat")) return false;
+  if (/^models\[\d+\]$/.test(path) && (key === "reasoningEfforts" || key === "compat" || key === "contextWindow")) return false;
   return DSH_UI_BLOCKED_KEYS.has(key) || DSH_UI_UNVERIFIED.includes(key);
 }
 
@@ -316,11 +305,16 @@ function readDshUiDocument(content) {
   }
   if (parsed.api !== DSH_UI_API) return dshUiFailed("DSH api must be openai-completions.", nextFields);
   if (parsed.schemaVersion !== 1) return dshUiFailed("DSH profile schemaVersion must be 1.", nextFields);
-  if (parsed.displayName !== DSH_UI_DISPLAY_NAME) return dshUiFailed("DSH displayName must stay Sinitek custom.", nextFields);
-  if (parsed.timeoutMs !== 45000 || parsed.streamIdleTimeoutMs !== 60000) {
-    return dshUiFailed("DSH timeout fields must stay at the verified values.", nextFields);
+  if (parsed.displayName !== undefined && parsed.displayName !== DSH_UI_DISPLAY_NAME) {
+    return dshUiFailed("DSH displayName must stay Sinitek custom.", nextFields);
   }
-  const retryError = dshUiRetryError(parsed.retryPolicy);
+  if (parsed.timeoutMs !== undefined && parsed.timeoutMs !== 45000) {
+    return dshUiFailed("DSH timeoutMs must stay at the verified value 45000.", nextFields);
+  }
+  if (parsed.streamIdleTimeoutMs !== undefined && parsed.streamIdleTimeoutMs !== 60000) {
+    return dshUiFailed("DSH streamIdleTimeoutMs must stay at the verified value 60000.", nextFields);
+  }
+  const retryError = parsed.retryPolicy === undefined ? "" : dshUiRetryError(parsed.retryPolicy);
   if (retryError) return dshUiFailed(retryError, nextFields);
   if (!Array.isArray(parsed.models) || parsed.models.length === 0) {
     return dshUiFailed(DSH_UI_MODEL_LIST_ERROR, nextFields);
@@ -336,18 +330,21 @@ function readDshUiDocument(content) {
     }
     const idError = dshUiModelIdError(entry.id, seen);
     if (idError) return dshUiFailed(idError, { ...nextFields, modelId: "" });
-    if (entry.name === DSH_UI_MODEL_ALIAS) return dshUiFailed(DSH_UI_ALIAS_ERROR, { ...nextFields, modelId: "" });
-    if (entry.name !== entry.id) return dshUiFailed("DSH model name must match the model id.", { ...nextFields, modelId: "" });
+    if (entry.name !== undefined && typeof entry.name !== "string") {
+      return dshUiFailed("模型名称必须是字符串。", { ...nextFields, modelId: "" });
+    }
     if (!Array.isArray(entry.input) || entry.input.length !== 1 || entry.input[0] !== "text") {
       return dshUiFailed("DSH model input must be [text].", { ...nextFields, modelId: "" });
     }
-    if (entry.maxTokens !== 256) {
-      return dshUiFailed("DSH model maxTokens must stay at the verified value 256.", { ...nextFields, modelId: "" });
+    if (entry.maxTokens !== undefined && (!Number.isSafeInteger(entry.maxTokens) || entry.maxTokens <= 0)) {
+      return dshUiFailed("最大输出 tokens 必须是正整数。", { ...nextFields, modelId: "" });
+    }
+    if (entry.contextWindow !== undefined && (!Number.isSafeInteger(entry.contextWindow) || entry.contextWindow <= 0)) {
+      return dshUiFailed("上下文窗口必须是正整数。", { ...nextFields, modelId: "" });
     }
     seen.add(entry.id);
     ids.push(entry.id);
   }
-  if (parsed.acpModel === DSH_UI_MODEL_ALIAS) return dshUiFailed(DSH_UI_ALIAS_ERROR, { ...nextFields, modelId: "", models: ids });
   if (typeof parsed.acpModel !== "string" || !ids.includes(parsed.acpModel)) {
     return dshUiFailed(DSH_UI_ACP_ERROR, { ...nextFields, modelId: "", models: ids });
   }
@@ -371,9 +368,10 @@ function readDshUiDocument(content) {
     if (!modelPreserved.ok) return dshUiFailed(modelPreserved.error, nextFields);
     modelObjects.push(Object.assign({
       id: entry.id,
-      name: entry.id,
+      name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : entry.id,
       input: ["text"],
-      maxTokens: 256,
+      ...(typeof entry.maxTokens === "number" ? { maxTokens: entry.maxTokens } : {}),
+      ...(typeof entry.contextWindow === "number" ? { contextWindow: entry.contextWindow } : {}),
     }, modelPreserved.fields));
   }
   const document = Object.assign(dshUiDocumentFromParts({
@@ -382,6 +380,16 @@ function readDshUiDocument(content) {
     acpModel: parsed.acpModel,
     apiKey: parsed.apiKey,
   }), preserved.fields);
+  if (parsed.displayName !== undefined) document.displayName = DSH_UI_DISPLAY_NAME;
+  if (parsed.timeoutMs !== undefined) document.timeoutMs = 45000;
+  if (parsed.streamIdleTimeoutMs !== undefined) document.streamIdleTimeoutMs = 60000;
+  if (parsed.retryPolicy !== undefined) {
+    document.retryPolicy = {
+      mode: "normal",
+      maxRetries: 1,
+      backoff: { initialDelayMs: 200, maxDelayMs: 1000 },
+    };
+  }
   document.models = modelObjects;
   return {
     ok: true,
@@ -438,10 +446,41 @@ function dshUiUpdateModelId(document, previousId, nextId) {
   const idError = dshUiModelIdError(nextId, seen);
   if (idError) return { ok: false, error: idError, document: null, content: "" };
   const next = dshUiCloneJson(document);
+  if (next.models[index].name === previousId || !next.models[index].name) {
+    next.models[index].name = nextId;
+  }
   next.models[index].id = nextId;
-  next.models[index].name = nextId;
   if (next.acpModel === previousId || !next.acpModel) next.acpModel = nextId;
   return dshUiChange(next);
+}
+
+function dshUiUpdateModelName(document, modelId, value) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  const index = document.models.findIndex((model) => model.id === modelId);
+  if (index < 0) return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
+  if (typeof value !== "string" || dshUiContainsSecret(value)) {
+    return { ok: false, error: DSH_UI_SECRET_ERROR, document: null, content: "" };
+  }
+  const next = dshUiCloneJson(document);
+  next.models[index].name = value.trim() || next.models[index].id;
+  return dshUiChange(next);
+}
+
+function dshUiUpdateModelInteger(document, modelId, key, value, label) {
+  if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
+  const index = document.models.findIndex((model) => model.id === modelId);
+  if (index < 0) return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
+  if (value !== "" && (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0)) {
+    return { ok: false, error: `${label}必须是正整数。`, document: null, content: "" };
+  }
+  const next = dshUiCloneJson(document);
+  if (value === "") delete next.models[index][key];
+  else next.models[index][key] = Number(value);
+  return dshUiChange(next);
+}
+
+function dshUiUpdateModelContextWindow(document, modelId, value) {
+  return dshUiUpdateModelInteger(document, modelId, "contextWindow", value, "上下文窗口");
 }
 
 function dshUiAddModel(document, rawId) {
@@ -451,7 +490,7 @@ function dshUiAddModel(document, rawId) {
       return { ok: false, error: DSH_UI_MODEL_ID_REQUIRED_ERROR, document: null, content: "" };
     }
     const next = dshUiCloneJson(document);
-    next.models.push({ id: "", name: "", input: ["text"], maxTokens: 256 });
+    next.models.push({ id: "", name: "", input: ["text"] });
     return dshUiDraftChange(next);
   }
   const id = typeof rawId === "string" ? rawId.trim() : "";
@@ -459,7 +498,7 @@ function dshUiAddModel(document, rawId) {
   const idError = dshUiModelIdError(id, new Set(ids));
   if (idError) return { ok: false, error: idError, document: null, content: "" };
   const next = dshUiCloneJson(document);
-  next.models.push({ id, name: id, input: ["text"], maxTokens: 256 });
+  next.models.push({ id, name: id, input: ["text"] });
   return dshUiChange(next);
 }
 
@@ -479,7 +518,6 @@ function dshUiDeleteModel(document, id) {
 
 function dshUiSetAcpModel(document, id) {
   if (!document) return { ok: false, error: "DSH profile is empty.", document: null, content: "" };
-  if (id === DSH_UI_MODEL_ALIAS) return { ok: false, error: DSH_UI_ALIAS_ERROR, document: null, content: "" };
   if (!document.models.some((model) => model.id === id)) {
     return { ok: false, error: DSH_UI_ACP_ERROR, document: null, content: "" };
   }
@@ -528,6 +566,15 @@ function dshUiSwitchMode(input) {
   const text = input && typeof input.text === "string" ? input.text : "";
   const document = input && input.document ? input.document : null;
   if (nextMode === "visual") {
+    if (!text.trim()) {
+      const draft = dshUiDocumentFromParts({
+        baseURL: DSH_UI_EXAMPLE_BASE_URL,
+        models: [DSH_UI_MODEL_ID],
+        acpModel: DSH_UI_MODEL_ID,
+        apiKey: "",
+      });
+      return { ok: true, error: "", mode: "visual", text: dshUiSerializeRaw(draft), document: draft };
+    }
     const parsed = readDshUiDocument(text);
     if (!parsed.ok) {
       return { ok: false, error: parsed.error, mode: input.mode || "json", text, document };
@@ -548,6 +595,8 @@ const DshConfigPageUtils = {
   createProfileText: createDshUiProfileText,
   readDocument: readDshUiDocument,
   updateModelId: dshUiUpdateModelId,
+  updateModelName: dshUiUpdateModelName,
+  updateModelContextWindow: dshUiUpdateModelContextWindow,
   addModel: dshUiAddModel,
   deleteModel: dshUiDeleteModel,
   setAcpModel: dshUiSetAcpModel,
@@ -558,7 +607,6 @@ const DshConfigPageUtils = {
   provider: DSH_UI_PROVIDER,
   apiKeyEnv: DSH_UI_API_KEY_ENV,
   modelId: DSH_UI_MODEL_ID,
-  alias: DSH_UI_MODEL_ALIAS,
   exampleBaseUrl: DSH_UI_EXAMPLE_BASE_URL,
   supportsMultipleModels: DSH_UI_SUPPORTS_MODEL_LIST,
 };
@@ -5127,13 +5175,16 @@ const ConfigEditorPanel = () => {
               break;
 	          case "dsh-config": {
 	            const H = readDshUiDocument(I.content);
-	            if (H.ok) {
-	              setDshText(H.content);
-              setDshVisual(H.document);
-              setDshFieldError("");
-              setDshSelectedModelId(H.document.acpModel || H.document.models[0]?.id || "");
-              setDshEditorMode("json");
+	            if (!H.ok) {
+	              setDshFieldError(H.error);
+	              Kt.error("范例导入失败: " + H.error);
+	              return;
 	            }
+	            setDshText(H.content);
+	            setDshVisual(H.document);
+	            setDshFieldError("");
+	            setDshSelectedModelId(H.document.acpModel || H.document.models[0]?.id || "");
+	            setDshEditorMode("json");
 	            break;
 	          }
           }
@@ -6547,18 +6598,38 @@ const ConfigEditorPanel = () => {
         });
       },
       renderCodexField = (W, H, k, L, U = {}) =>
-        be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-          children: [
-            renderConfigFieldLabel(W, U.help),
-            be.jsx(zi, {
-              value: H || "",
-              onChange: (T) => k(T.target.value),
-              placeholder: L,
-              ...stripConfigHelpOption(U),
-            }),
-          ],
-        }),
+        (() => {
+          const { suffix: T, ...Y } = U;
+          return be.jsxs("label", {
+            style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+            children: [
+              renderConfigFieldLabel(W, U.help),
+              T
+                ? be.jsxs("span", {
+                    className: "config-field-input-with-suffix",
+                    children: [
+                      be.jsx(zi, {
+                        value: H || "",
+                        onChange: (Z) => k(Z.target.value),
+                        placeholder: L,
+                        ...stripConfigHelpOption(Y),
+                      }),
+                      be.jsx("span", {
+                        className: "config-field-input-suffix",
+                        "aria-hidden": true,
+                        children: T,
+                      }),
+                    ],
+                  })
+                : be.jsx(zi, {
+                    value: H || "",
+                    onChange: (Z) => k(Z.target.value),
+                    placeholder: L,
+                    ...stripConfigHelpOption(Y),
+                  }),
+            ],
+          });
+        })(),
       renderCodexSelect = (W, H, k, L, U = {}) => {
         const T = L.some((Z) => Z.value === H)
           ? L
@@ -7326,6 +7397,75 @@ const ConfigEditorPanel = () => {
                           children: dshFieldError,
                         })
                       : null,
+                    be.jsxs("section", {
+                      className: "dsh-common-parameters",
+                      "data-testid": "dsh-common-parameters",
+                      children: [
+                        be.jsx("strong", { children: "Provider 公共参数" }),
+                        renderCodexField("provider", document ? document.provider : "", () => {}, DSH_UI_PROVIDER, {
+                          readOnly: true,
+                          disabled: controlsDisabled,
+                          "data-testid": "dsh-provider",
+                        }),
+                        renderCodexField("baseURL", document ? document.baseURL : "", (value) => {
+                          if (controlsDisabled || !document) return;
+                          if (dshUiContainsSecret(value)) {
+                            setDshFieldError(DSH_UI_SECRET_ERROR);
+                            return;
+                          }
+                          const committed = dshUiUpdateBaseUrl(document, value);
+                          if (!committed.ok) {
+                            setDshFieldError(committed.error);
+                            return;
+                          }
+                          applyDshResult(committed);
+                        }, DSH_UI_EXAMPLE_BASE_URL, {
+                          disabled: controlsDisabled,
+                          "data-testid": "dsh-base-url",
+                        }),
+                        renderCodexField("apiKey", document ? document.apiKey || "" : "", (value) => {
+                          if (controlsDisabled) return;
+                          applyDshResult(dshUiUpdateApiKey(document, value));
+                        }, "直接填写 API Key（可选）", {
+                          type: "password",
+                          help: [
+                            "非空时优先使用此密钥；留空时使用 SINITEK_DSH_API_KEY。配置档案、激活副本和备份都会以明文保存。",
+                            "apiKeyEnv 是固定的环境变量名，保存时会自动补为 SINITEK_DSH_API_KEY，不需要在可视化模式填写。",
+                            "macOS/Linux（Bash）：",
+                            "read -rsp 'DSH API Key: ' SINITEK_DSH_API_KEY && export SINITEK_DSH_API_KEY && code .",
+                            "Windows（PowerShell）：",
+                            "$secure = Read-Host 'DSH API Key' -AsSecureString; $env:SINITEK_DSH_API_KEY = [System.Net.NetworkCredential]::new('', $secure).Password; code .",
+                          ].join("\n"),
+                          disabled: controlsDisabled,
+                          "data-testid": "dsh-api-key",
+                        }),
+                        be.jsx("div", {
+                          className: "dsh-common-parameter-note",
+                          "data-testid": "dsh-api-key-env-note",
+                          children: "apiKeyEnv 固定为 SINITEK_DSH_API_KEY，保存时自动补齐；未填写 apiKey 时从该环境变量读取密钥。",
+                        }),
+                        be.jsx("div", {
+                          className: "dsh-common-parameter-note",
+                          "data-testid": "dsh-api-key-warning",
+                          children: "安全提示：apiKey 会以明文保存在本机配置档案、激活副本和备份中；JSON 模式可见密钥，请勿分享含密钥的配置。",
+                        }),
+                        be.jsx("div", {
+                          "data-testid": "dsh-acp-model",
+                          children: renderCodexSelect(
+                            "默认模型 acpModel",
+                            document ? document.acpModel : "",
+                            (value) => {
+                              if (controlsDisabled) return;
+                              const updated = dshUiSetAcpModel(document, value);
+                              if (updated.ok) setDshSelectedModelId(value);
+                              applyDshResult(updated);
+                            },
+                            models.filter((model) => model.id).map((model) => ({ value: model.id, label: model.name || model.id })),
+                            { disabled: controlsDisabled },
+                          ),
+                        }),
+                      ],
+                    }),
                     be.jsxs("div", {
                       className: "grok-model-workspace",
                       "data-testid": "dsh-model-workspace",
@@ -7375,7 +7515,7 @@ const ConfigEditorPanel = () => {
                                     title: model.id || "新模型",
                                     disabled: controlsDisabled,
                                     onClick: () => setDshSelectedModelId(model.id),
-                                    children: model.id || "新模型",
+                                    children: model.name || model.id || "新模型",
                                   }),
                                   be.jsx(xn, {
                                     type: "text",
@@ -7427,69 +7567,12 @@ const ConfigEditorPanel = () => {
                         be.jsxs("div", {
                           className: "grok-model-detail",
                           children: [
-                            renderCodexField("provider", document ? document.provider : "", () => {}, DSH_UI_PROVIDER, {
-                              readOnly: true,
-                              disabled: controlsDisabled,
-                              "data-testid": "dsh-provider",
-                            }),
-                            renderCodexField("baseURL", document ? document.baseURL : "", (value) => {
-                              if (controlsDisabled || !document) return;
-                              if (dshUiContainsSecret(value)) {
-                                setDshFieldError(DSH_UI_SECRET_ERROR);
-                                return;
-                              }
-                              const committed = dshUiUpdateBaseUrl(document, value);
-                              if (!committed.ok) {
-                                setDshFieldError(committed.error);
-                                return;
-                              }
-                              applyDshResult(committed);
-                            }, DSH_UI_EXAMPLE_BASE_URL, {
-                              disabled: controlsDisabled,
-                              "data-testid": "dsh-base-url",
-                            }),
-                            renderCodexField("apiKey", document ? document.apiKey || "" : "", (value) => {
-                              if (controlsDisabled) return;
-                              applyDshResult(dshUiUpdateApiKey(document, value));
-                            }, "直接填写 API Key（可选）", {
-                              type: "password",
-                              help: [
-                                "非空时优先使用此密钥；留空时使用 SINITEK_DSH_API_KEY。配置档案、激活副本和备份都会以明文保存。",
-                                "apiKeyEnv 是固定的环境变量名，保存时会自动补为 SINITEK_DSH_API_KEY，不需要在可视化模式填写。",
-                                "macOS/Linux（Bash）：",
-                                "read -rsp 'DSH API Key: ' SINITEK_DSH_API_KEY && export SINITEK_DSH_API_KEY && code .",
-                                "Windows（PowerShell）：",
-                                "$secure = Read-Host 'DSH API Key' -AsSecureString; $env:SINITEK_DSH_API_KEY = [System.Net.NetworkCredential]::new('', $secure).Password; code .",
-                              ].join("\n"),
-                              disabled: controlsDisabled,
-                              "data-testid": "dsh-api-key",
-                            }),
-                            be.jsx("div", {
-                              "data-testid": "dsh-api-key-warning",
-                              style: { color: "var(--text-color-secondary)", fontSize: "12px" },
-                              children: "安全提示：apiKey 会以明文保存在本机配置档案、激活副本和备份中；JSON 模式可见密钥，请勿分享含密钥的配置。",
-                            }),
-                            be.jsx("div", {
-                              "data-testid": "dsh-acp-model",
-                              children: renderCodexSelect(
-                                "默认模型 acpModel",
-                                document ? document.acpModel : "",
-                                (value) => {
-                                  if (controlsDisabled) return;
-                                  const updated = dshUiSetAcpModel(document, value);
-                                  if (updated.ok) setDshSelectedModelId(value);
-                                  applyDshResult(updated);
-                                },
-                                models.filter((model) => model.id).map((model) => ({ value: model.id, label: model.id })),
-                                { disabled: controlsDisabled },
-                              ),
-                            }),
                             selectedModel
                               ? be.jsxs("div", {
                                   "data-testid": "dsh-selected-model-detail",
                                   style: { display: "flex", flexDirection: "column", gap: "8px" },
                                   children: [
-                                    be.jsx("strong", { children: selectedModel.id ? `模型详情：${selectedModel.id}` : "新增模型" }),
+                                    be.jsx("strong", { children: selectedModel.id ? `模型详情：${selectedModel.name || selectedModel.id}` : "新增模型" }),
                                     renderCodexField("模型 id", selectedModel.id, (value) => {
                                       if (controlsDisabled) return;
                                       const renamed = dshUiUpdateModelId(document, selectedModel.id, value);
@@ -7502,9 +7585,28 @@ const ConfigEditorPanel = () => {
                                       placeholder: "输入完整模型 id",
                                       "data-testid": "dsh-model-id",
                                     }),
+                                    renderCodexField("模型名称 name", selectedModel.name || selectedModel.id, (value) => {
+                                      if (controlsDisabled) return;
+                                      applyDshResult(dshUiUpdateModelName(document, selectedModel.id, value));
+                                    }, selectedModel.id || "例如：DeepSeek V4.1 Flash", {
+                                      disabled: controlsDisabled,
+                                      "data-testid": "dsh-model-name",
+                                    }),
+                                    renderCodexField("上下文窗口 contextWindow（tokens）", selectedModel.contextWindow || "", (value) => {
+                                      if (controlsDisabled) return;
+                                      applyDshResult(dshUiUpdateModelContextWindow(document, selectedModel.id, value));
+                                    }, "留空使用 DSH 默认值 262144", {
+                                      type: "number",
+                                      min: 1,
+                                      step: 1,
+                                      disabled: controlsDisabled,
+                                      help: "这是 models[] 中该模型的上下文容量声明；留空时采用 DSH 适配器默认值，不代表服务端实测容量。",
+                                      "data-testid": "dsh-model-context-window",
+                                    }),
                                     be.jsx("div", {
-                                      style: { color: "var(--text-color-secondary)", fontSize: "12px" },
-                                      children: "输入类型：text；最大输出：256 tokens。这些字段由 DSH 已验证 schema 固定。",
+                                      className: "dsh-common-parameter-note",
+                                      "data-testid": "dsh-model-input-type",
+                                      children: "输入类型 input 当前固定为 text；图片能力尚未在 DSH 执行链路中验证。",
                                     }),
                                   ],
                                 })
