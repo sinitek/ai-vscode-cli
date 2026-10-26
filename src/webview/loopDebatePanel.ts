@@ -3,6 +3,7 @@ import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
+import { CHAT_COPY_SCRIPT } from "./chatCopy";
 import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
 import { getMarkedScript, getJsonFormatterScript } from "./markdownAssets";
 import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
@@ -310,6 +311,7 @@ ${renderPanelDialog({
 	      const vscode = acquireVsCodeApi();
           const escapeHtml = askEscape;
 ${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
+${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
 	      const SCROLL_BOTTOM_THRESHOLD = 50;

@@ -1,0 +1,86 @@
+import assert = require("node:assert/strict");
+import test = require("node:test");
+
+import { CHAT_COPY_SCRIPT } from "../../webview/chatCopy";
+import { installVscodeMock } from "../vscodeMock";
+
+installVscodeMock();
+
+const { buildWebviewRuntimeScript } = require("../../webview/viewContentScript") as typeof import("../../webview/viewContentScript");
+const { buildLoopDebateChatPanelHtml } = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
+const { WEBVIEW_STRINGS } = require("../../webview/viewContentStrings") as typeof import("../../webview/viewContentStrings");
+
+test("copies selected chat text through the Webview copy event", () => {
+  const listeners: Record<string, Array<(event: any) => void>> = {};
+  const clipboard: Array<[string, string]> = [];
+  const chatRoot = {
+    closest(selector: string): unknown {
+      return selector.includes("#messages") ? this : null;
+    },
+  };
+  const selection = {
+    anchorNode: { nodeType: 3, parentElement: chatRoot },
+    isCollapsed: false,
+    toString: () => "selected assistant reply",
+  };
+  const window = {
+    getSelection: () => selection,
+    addEventListener(type: string, listener: (event: any) => void): void {
+      (listeners[type] ||= []).push(listener);
+    },
+  };
+  const runtime = new Function("window", "navigator", "document", CHAT_COPY_SCRIPT);
+  runtime(window, {}, {});
+
+  const event = {
+    clipboardData: {
+      setData(type: string, value: string): void {
+        clipboard.push([type, value]);
+      },
+    },
+    defaultPrevented: false,
+    preventDefault(): void {
+      this.defaultPrevented = true;
+    },
+  };
+  listeners.copy?.forEach((listener) => listener(event));
+
+  assert.deepEqual(clipboard, [["text/plain", "selected assistant reply"]]);
+  assert.equal(event.defaultPrevented, true);
+});
+
+test("injects the copy handler into both chat Webviews", () => {
+  const mainScript = buildWebviewRuntimeScript({
+    i18n: WEBVIEW_STRINGS,
+    cliList: ["codex", "claude", "opencode"],
+    loopMaxRoundsDefault: 5,
+    loopMaxRoundsMin: 1,
+    loopMaxRoundsMax: 12,
+    loopSubtaskMaxThinkingModeDefault: "high",
+    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
+    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
+    finalAnswerTextMarker: "<FINAL>",
+  });
+  const groupPanel = buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, {
+    mode: "main_sub",
+    task: {
+      id: "copy-task",
+      cli: "codex",
+      status: "completed",
+      rootPrompt: "copy",
+      taskStoreFile: "/tmp/copy-task.json",
+      mainCommunicationFile: "/tmp/copy-task.md",
+      currentRound: 1,
+      updatedAt: 1,
+      canSupplement: false,
+      canContinue: false,
+      canStop: false,
+    },
+    rounds: [],
+    chatMarkdown: "assistant reply",
+  });
+
+  assert.match(mainScript, /function handleChatCopy\(event\)/u);
+  assert.match(groupPanel, /function handleChatCopy\(event\)/u);
+  assert.match(groupPanel, /window\.addEventListener\("copy", handleChatCopy\)/u);
+});
