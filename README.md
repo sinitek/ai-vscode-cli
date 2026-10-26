@@ -4,6 +4,9 @@ Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统�
 
 
 ## changelog
+### 1.3.1
+- bugfix 以及体验优化
+
 ### 1.3.0
 - 此插件增加图标
 - 新增 dsh 支持，该 cli 可能存在 bug

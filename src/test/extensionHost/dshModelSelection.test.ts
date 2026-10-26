@@ -134,6 +134,52 @@ test("DSH Loop role selections keep model-specific reasoning options", () => {
   });
 });
 
+test("DSH host loads subtask models before a cross-CLI route has been persisted", async (context) => {
+  const profileId = "dsh-subtask-profile";
+  const profileText = createDshExampleProfileText();
+  context.mock.method(configService, "getConfigById", async (
+    platform: Parameters<typeof configService.getConfigById>[0],
+    configId: Parameters<typeof configService.getConfigById>[1],
+  ) => {
+    if (platform !== "dsh" || configId !== profileId) {
+      return null;
+    }
+    return { content: profileText, configContent: profileText } as Awaited<ReturnType<typeof configService.getConfigById>>;
+  });
+  let store = ensureCliModelStore();
+  const thinkingState: ReturnType<ModelSettingsHostDeps["getOpenCodeThinkingState"]> = {
+    providerId: null, modelId: null, reasoning: "unknown", options: [], configuredDefaultVariant: null,
+    selectedVariant: null, status: "unknown", source: "fallback", disabled: true,
+  };
+  const host = createModelSettingsHost({
+    getCurrentCli: () => "codex", setCurrentCli: () => undefined,
+    getModelStore: () => store, setModelStore: (next) => { store = next; },
+    getWorkspaceSettings: () => ({}), setWorkspaceSettings: () => undefined,
+    getPromptHistoryStore: () => ({ items: [] }), setPromptHistoryStore: () => undefined,
+    getModelSelectionStoreState: () => ({ store, lastReadError: null, lastWriteError: null }),
+    getActiveWorkspaceKey: () => "workspace", getConfigHeartbeatSnapshot: () => null,
+    getOpenCodeThinkingState: () => thinkingState, setOpenCodeThinkingState: () => undefined,
+    getOpenCodeSmallThinkingState: () => thinkingState, setOpenCodeSmallThinkingState: () => undefined,
+    getOpenCodeModelsState: () => undefined, setOpenCodeModelsState: () => undefined,
+    getOpenCodeThinkingContextKey: () => "", setOpenCodeThinkingContextKey: () => undefined,
+    getOpenCodeThinkingConfigId: () => null, setOpenCodeThinkingConfigId: () => undefined,
+    getOpenCodeThinkingExactModels: () => ({ main: null, subtask: null }), setOpenCodeThinkingExactModels: () => undefined,
+    getOpenCodeThinkingRequestId: () => 0, setOpenCodeThinkingRequestId: () => undefined,
+    getWorkspacePreferredConfigIdForCli: (cli) => cli === "dsh" ? profileId : "codex-profile",
+    resolveModelConfigIdForCli: (_cli, configState) => configState.activeConfigId,
+    postPanelState: async () => undefined, resolveWorkspaceCwd: () => undefined,
+    getExtensionUri: () => ({}) as ReturnType<ModelSettingsHostDeps["getExtensionUri"]>,
+    updateStatusBar: () => undefined, getActiveConversationTab: () => null, getActiveConversationTabId: () => null,
+    getConversationTabById: () => null, isTabRunActive: () => false,
+    preloadUserMessageForPrompt: (input) => input, resolvePromptRunTarget: () => null,
+    runPrompt: async () => undefined, sanitizeConversationTabRecord: () => null, logError: () => undefined,
+  });
+
+  await host.refreshDshConfigModels({ configs: [], activeConfigId: "codex-profile" });
+
+  assert.ok(host.buildModelState({ dsh: profileId }).loopOptionsByCli?.dsh?.subtask.includes(DSH_VERIFIED_MODEL_ID));
+});
+
 test("DSH host publishes static reasoning options before the first prompt", async (context) => {
   const profileId = "dsh-reasoning-profile";
   const profile = JSON.parse(createDshExampleProfileText()) as {

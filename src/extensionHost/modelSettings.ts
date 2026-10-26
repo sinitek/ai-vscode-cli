@@ -1012,10 +1012,6 @@ function cacheGrokConfigModels(configId: string, config: GrokConfigModels): void
 }
 
 async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const selectedSubtaskCli = getSelectedLoopSubtaskCli(getActiveConfigIdForCli(currentCli));
-  if (currentCli !== "grok" && selectedSubtaskCli !== "grok") {
-    return;
-  }
   const configId = currentCli === "grok"
     ? deps.resolveModelConfigIdForCli("grok", configState)
     : getActiveConfigIdForCli("grok");
@@ -1035,10 +1031,6 @@ function cacheDshConfigModels(configId: string, config: DshConfigModels): void {
 }
 
 async function refreshDshConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const selectedSubtaskCli = getSelectedLoopSubtaskCli(getActiveConfigIdForCli(currentCli));
-  if (currentCli !== "dsh" && selectedSubtaskCli !== "dsh") {
-    return;
-  }
   const configId = currentCli === "dsh"
     ? deps.resolveModelConfigIdForCli("dsh", configState)
     : getActiveConfigIdForCli("dsh");

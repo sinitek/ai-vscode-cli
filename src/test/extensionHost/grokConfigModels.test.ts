@@ -121,3 +121,41 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   await assert.rejects(() => host.resolveGrokModelForRun(null), /Grok/);
   assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 5);
 });
+
+test("Grok host loads subtask models before a cross-CLI route has been persisted", async (context) => {
+  context.mock.method(configService, "readGrokConfigText", async () => (
+    '[models]\ndefault = "grok"\n[model.grok]\nmodel = "grok-4.7"'
+  ));
+  let store = ensureCliModelStore();
+  const thinking: ReturnType<ModelSettingsHostDeps["getOpenCodeThinkingState"]> = {
+    providerId: null, modelId: null, reasoning: "unknown", options: [], configuredDefaultVariant: null,
+    selectedVariant: null, status: "unknown", source: "fallback", disabled: true,
+  };
+  const host = createModelSettingsHost({
+    getCurrentCli: () => "codex", setCurrentCli: () => undefined,
+    getModelStore: () => store, setModelStore: (value) => { store = value; },
+    getWorkspaceSettings: () => ({}), setWorkspaceSettings: () => undefined,
+    getPromptHistoryStore: () => ({ items: [] }), setPromptHistoryStore: () => undefined,
+    getModelSelectionStoreState: () => ({ store, lastReadError: null, lastWriteError: null }),
+    getActiveWorkspaceKey: () => "workspace", getConfigHeartbeatSnapshot: () => null,
+    getOpenCodeThinkingState: () => thinking, setOpenCodeThinkingState: () => undefined,
+    getOpenCodeSmallThinkingState: () => thinking, setOpenCodeSmallThinkingState: () => undefined,
+    getOpenCodeModelsState: () => undefined, setOpenCodeModelsState: () => undefined,
+    getOpenCodeThinkingContextKey: () => "", setOpenCodeThinkingContextKey: () => undefined,
+    getOpenCodeThinkingConfigId: () => null, setOpenCodeThinkingConfigId: () => undefined,
+    getOpenCodeThinkingExactModels: () => ({ main: null, subtask: null }), setOpenCodeThinkingExactModels: () => undefined,
+    getOpenCodeThinkingRequestId: () => 0, setOpenCodeThinkingRequestId: () => undefined,
+    getWorkspacePreferredConfigIdForCli: (cli) => cli === "grok" ? "grok-profile" : "codex-profile",
+    resolveModelConfigIdForCli: (_cli, state) => state.activeConfigId,
+    postPanelState: async () => undefined, resolveWorkspaceCwd: () => undefined,
+    getExtensionUri: () => ({}) as ReturnType<ModelSettingsHostDeps["getExtensionUri"]>,
+    updateStatusBar: () => undefined, getActiveConversationTab: () => null, getActiveConversationTabId: () => null,
+    getConversationTabById: () => null, isTabRunActive: () => false,
+    preloadUserMessageForPrompt: (input) => input, resolvePromptRunTarget: () => null,
+    runPrompt: async () => undefined, sanitizeConversationTabRecord: () => null, logError: () => undefined,
+  });
+
+  await host.refreshGrokConfigModels({ configs: [], activeConfigId: "codex-profile" });
+
+  assert.deepEqual(host.buildModelState({ grok: "grok-profile" }).loopOptionsByCli?.grok?.subtask, ["grok"]);
+});

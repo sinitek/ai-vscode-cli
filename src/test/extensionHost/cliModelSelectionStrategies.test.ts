@@ -485,7 +485,7 @@ test("host Grok refresh failure keeps the existing error state and does not writ
   }]);
 });
 
-test("host skips Grok refresh unless the current CLI or subtask CLI is Grok", async (context) => {
+test("host preloads Grok subtask models only when a target config is active", async (context) => {
   let reads = 0;
   context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
   context.mock.method(configService, "readGrokConfigText", async () => {
@@ -498,7 +498,15 @@ test("host skips Grok refresh unless the current CLI or subtask CLI is Grok", as
   });
   await host.refreshGrokConfigModels({ configs: [], activeConfigId: "profile" });
   await host.refreshGrokConfigModels({ configs: [], activeConfigId: null });
-  assert.equal(reads, 0);
+  assert.equal(reads, 2);
+
+  const withoutTargetConfig = createHost({
+    store: ensureCliModelStore(),
+    currentCli: "codex",
+    preferredConfigId: () => null,
+  });
+  await withoutTargetConfig.host.refreshGrokConfigModels({ configs: [], activeConfigId: "profile" });
+  assert.equal(reads, 2);
 });
 
 test("separate model settings hosts do not share Grok cache or store updates", (context) => {
