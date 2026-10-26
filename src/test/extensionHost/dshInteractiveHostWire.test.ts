@@ -255,7 +255,8 @@ test("DSH host maps assistant, thinking, tool, raw events, activity, and stop re
       handlers.onAssistantDelta?.("Hello ");
       handlers.onAssistantDelta?.("world");
       handlers.onTrace?.("consider", "thinking");
-      handlers.onTrace?.("bash in_progress", "tool-use", { toolCallId: "tool-1" });
+      handlers.onTrace?.("exec npm test", "tool-use", { toolCallId: "tool-1" });
+      handlers.onTrace?.("exec npm test\n2 passing", "tool-use", { toolCallId: "tool-1" });
       handlers.onEvent?.({ jsonrpc: "2.0", method: "session/update" });
       handlers.onComplete?.({ stopReason: "end_turn" });
     },
@@ -275,10 +276,33 @@ test("DSH host maps assistant, thinking, tool, raw events, activity, and stop re
   assert.equal(assistant.map((message) => message.content).join(""), "Hello world");
   assert.equal(thinking.map((message) => message.content).join(""), "consider");
   assert.equal(tools.length, 1);
-  assert.match(String(tools[0]?.content), /bash in_progress/);
+  assert.equal(tools[0]?.content, "exec npm test\n2 passing");
+  assert.equal(harness.panelMessages.filter((message) => message.type === "traceSegment" && message.id === tools[0]?.id).length, 2);
   assert.equal(harness.panelMessages.some((message) => message.type === "rawStreamDelta"), true);
   assert.equal(harness.panelMessages.some((message) => message.type === "runActivity"), true);
   assert.equal(stored.some((message) => String(message.content).includes("end_turn")), false);
+});
+
+test("DSH forwards structured task lists to the active conversation tab", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onTaskListUpdate?.([
+        { text: "读取执行日志", done: true },
+        { text: "修复任务列表", done: false },
+      ]);
+      handlers.onAssistantDelta?.("done");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  await harness.host.runPromptInteractive(inputFor("Inspect tasks"), targetFor("local_1792000000000_abc"));
+  assert.deepEqual(harness.panelMessages.find((message) => message.type === "taskListUpdate"), {
+    type: "taskListUpdate",
+    tabId: "tab-dsh",
+    items: [
+      { text: "读取执行日志", done: true },
+      { text: "修复任务列表", done: false },
+    ],
+  });
 });
 
 test("DSH resume uses the ACP id and does not pass a local_ id to session resume", async () => {

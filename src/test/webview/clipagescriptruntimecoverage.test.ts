@@ -3208,6 +3208,7 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     new Set(["trace-open"]),
     (key: string, params: Record<string, string> = {}) => {
       const map: Record<string, string> = {
+        ...WEBVIEW_STRINGS,
         traceExec: "Exec",
         traceExecTagBuild: "build",
         traceExecTagGitRead: "git-read",
@@ -3249,6 +3250,22 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   assert.match(context.renderMessageContent({ role: "assistant", content: "answer" }, 99), /assistant-message-content-final/);
   assert.match(context.renderMessageContent({ role: "user", content: "<tag>", contextTags: ["src/a.ts"] }, 0), /&lt;tag&gt;/);
   assert.match(context.renderTraceContent({ id: "trace-open", role: "trace", content: "exec: npm run build\n+ added" }), /cmd-purpose-build/);
+  const dshCommand = context.renderTraceContent({
+    id: "dsh-command",
+    role: "trace",
+    content: "exec rg -n 'taskList' src\n" + "src/task.ts:1: taskList\n".repeat(6),
+  });
+  assert.match(dshCommand, /cmd-purpose-search/);
+  assert.match(dshCommand, /trace-collapsible/);
+  assert.match(dshCommand, /rg -n/);
+  const dshRead = context.renderTraceContent({
+    id: "dsh-read",
+    role: "trace",
+    content: 'tool read\n{\n  "path": "src/example.ts"\n}\nconst answer = 42;',
+  });
+  assert.match(dshRead, new RegExp(`<span class="trace-title">${WEBVIEW_STRINGS.traceToolReadFile}<\\/span>`));
+  assert.match(dshRead, /src\/example.ts/);
+  assert.doesNotMatch(dshRead, /in_progress|pending/);
   const collapsedToolResult = context.renderTraceContent({ id: "tool", role: "trace", content: "Tool result: shell\n" + "x".repeat(70) });
   assert.match(collapsedToolResult, /trace-collapsible message-collapsible-generic/);
   assert.match(collapsedToolResult, /Tool result: shell/);

@@ -392,6 +392,80 @@ test("DSH runner reassembles split frames and multiline chunks without splitting
   runner.dispose();
 });
 
+test("DSH runner forwards task plans once without leaking tool status into task text", async () => {
+  const fake = new FakeDsh();
+  const { runner } = createRunner(fake);
+  await runner.start();
+  fake.onPrompt = (message) => {
+    const update = {
+      sessionUpdate: "tool_call",
+      toolCallId: "todo-1",
+      title: "todo_write",
+      status: "in_progress",
+      rawInput: {
+        todos: [
+          { content: "读取计划规则", status: "completed" },
+          { content: "核对代码路径、测试与证据", status: "in_progress" },
+          { content: "写 attempt report", status: "pending" },
+        ],
+      },
+    };
+    fake.send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: SESSION_ID, update } });
+    fake.send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: SESSION_ID, update } });
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+  const taskLists: Array<Array<{ text: string; done: boolean }>> = [];
+  const traces: string[] = [];
+  await runner.prompt("audit", {
+    onTaskListUpdate: (items) => taskLists.push(items),
+    onTrace: (text) => traces.push(text),
+  });
+  assert.deepEqual(taskLists, [[
+    { text: "读取计划规则", done: true },
+    { text: "核对代码路径、测试与证据", done: false },
+    { text: "写 attempt report", done: false },
+  ]]);
+  assert.deepEqual(traces, []);
+  runner.dispose();
+});
+
+test("DSH runner emits Codex-style tool snapshots without repeating unchanged output", async () => {
+  const fake = new FakeDsh();
+  const { runner } = createRunner(fake);
+  await runner.start();
+  fake.onPrompt = (message) => {
+    const sendTool = (update: Record<string, unknown>) => fake.send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: { sessionId: SESSION_ID, update },
+    });
+    sendTool({
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-1",
+      title: "bash",
+      status: "in_progress",
+      rawInput: { command: "npm test" },
+    });
+    sendTool({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-1",
+      status: "completed",
+      content: { type: "text", text: "2 passing" },
+    });
+    sendTool({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-1",
+      status: "completed",
+      content: { type: "text", text: "2 passing" },
+    });
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+  const traces: string[] = [];
+  await runner.prompt("test", { onTrace: (text) => traces.push(text) });
+  assert.deepEqual(traces, ["exec npm test", "exec npm test\n2 passing"]);
+  runner.dispose();
+});
+
 test("DSH model and thinking changes require advertised values and confirmed RPC state", async () => {
   const fake = new FakeDsh();
   fake.modelOptions = [FLASH, PRO];

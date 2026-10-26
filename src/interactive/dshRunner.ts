@@ -33,6 +33,7 @@ import {
   DSH_REASONING_CONFIG_ID,
   DSH_SHUTDOWN_GRACE_MS,
   DSH_STDERR_REPORT_LIMIT,
+  type DshTaskListItem,
   findDshForbiddenWire,
   formatDshRpcError,
   isDshResumableSessionId,
@@ -102,6 +103,7 @@ export type DshStreamHandlers = {
     | undefined;
   onAssistantDelta?: (text: string) => void;
   onTrace?: (content: string, kind?: DshTraceKind, meta?: { toolCallId?: string }) => void;
+  onTaskListUpdate?: (items: DshTaskListItem[]) => void;
   onEvent?: (message: DshJsonRpcMessage) => void;
   onActivity?: () => void;
   onComplete?: (meta: { stopReason: string }) => void;
@@ -170,6 +172,7 @@ export class DshInteractiveRunner {
   private requestedThinkingMode: string | null = null;
   private readonly textTracker = new Map<string, string>();
   private readonly toolStates = new Map<string, DshToolProjection>();
+  private lastTaskListSignature = "";
   private readonly retiredMessageIds = new Set<string>();
   private readonly retiredToolCallIds = new Set<string>();
   private readonly shutdownTimers: NodeJS.Timeout[] = [];
@@ -511,6 +514,7 @@ export class DshInteractiveRunner {
     }
     this.textTracker.clear();
     this.toolStates.clear();
+    this.lastTaskListSignature = "";
     this.turnEpoch += 1;
     this.activeTurnEpoch = this.turnEpoch;
     this.turnCancelled = false;
@@ -607,6 +611,14 @@ export class DshInteractiveRunner {
       }
       return;
     }
+    if (update.type === "plan") {
+      const signature = JSON.stringify(update.items);
+      if (signature !== this.lastTaskListSignature) {
+        this.lastTaskListSignature = signature;
+        handlers.onTaskListUpdate?.(update.items);
+      }
+      return;
+    }
     if (update.type === "tool") {
       this.emitTool(handlers, update);
       return;
@@ -644,7 +656,7 @@ export class DshInteractiveRunner {
 
   private emitTool(
     handlers: DshStreamHandlers,
-    update: { toolCallId: string; title?: string; status?: string; contentText: string },
+    update: { toolCallId: string; title?: string; status?: string; rawInput?: unknown; contentText: string },
   ): void {
     if (this.retiredToolCallIds.has(update.toolCallId)) {
       return;

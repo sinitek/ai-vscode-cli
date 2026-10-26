@@ -110,13 +110,17 @@ export type DshToolProjection = {
   toolCallId: string;
   status: string;
   title: string;
+  rawInput?: unknown;
   contentText: string;
 };
+
+export type DshTaskListItem = { text: string; done: boolean };
 
 export type DshSessionUpdate =
   | { type: "assistant_text"; messageId: string; text: string }
   | { type: "thinking"; messageId: string; text: string }
-  | { type: "tool"; toolCallId: string; title?: string; status?: string; contentText: string }
+  | { type: "tool"; toolCallId: string; title?: string; status?: string; rawInput?: unknown; contentText: string }
+  | { type: "plan"; items: DshTaskListItem[] }
   | { type: "usage"; used: unknown; size: unknown }
   | { type: "config"; configOptions: DshConfigOption[] }
   | { type: "ignored" };
@@ -444,31 +448,68 @@ export function extractDshText(value: unknown): string {
 
 export function projectDshToolUpdate(
   previous: DshToolProjection | undefined,
-  next: { toolCallId: string; title?: string; status?: string; contentText: string },
+  next: { toolCallId: string; title?: string; status?: string; rawInput?: unknown; contentText: string },
 ): { state: DshToolProjection; trace: string | null } {
+  const rawInput = next.rawInput ?? previous?.rawInput;
   const state: DshToolProjection = {
     toolCallId: next.toolCallId,
     status: next.status || previous?.status || "in_progress",
     title: next.title || previous?.title || next.toolCallId,
+    ...(rawInput === undefined ? {} : { rawInput }),
     contentText: previous?.contentText ?? "",
   };
-  const pieces: string[] = [];
-  if (!previous) {
-    pieces.push(`${state.title} ${state.status}`);
-  } else if (next.status && next.status !== previous.status) {
-    pieces.push(`${state.title} ${state.status}`);
-  }
   if (next.contentText && next.contentText !== state.contentText) {
-    const delta = state.contentText && next.contentText.startsWith(state.contentText)
-      ? next.contentText.slice(state.contentText.length)
-      : next.contentText;
-    if (delta) {
-      pieces.push(delta);
-    }
-    state.contentText = next.contentText;
+    state.contentText = state.contentText && next.contentText.startsWith(state.contentText)
+      ? next.contentText
+      : `${state.contentText}${state.contentText ? "\n" : ""}${next.contentText}`;
   }
-  const trace = pieces.join("\n");
-  return { state, trace: trace || null };
+  const trace = formatDshToolTrace(state);
+  return {
+    state,
+    trace: trace && (!previous || trace !== formatDshToolTrace(previous)) ? trace : null,
+  };
+}
+
+function formatDshToolTrace(state: DshToolProjection): string {
+  const input = asRecord(state.rawInput);
+  const command = input ? readDshToolText(input, ["command", "cmd", "script"]) : "";
+  if (command) {
+    return [`exec ${command}`, state.contentText].filter(Boolean).join("\n");
+  }
+  const inputText = input && Object.keys(input).length ? JSON.stringify(input, null, 2) : "";
+  const body = [inputText, state.contentText].filter(Boolean).join("\n");
+  return [`tool ${state.title}`, body].filter(Boolean).join("\n");
+}
+
+function readDshToolText(input: Record<string, unknown>, keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+export function extractDshTaskListItems(value: unknown): DshTaskListItem[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const items: DshTaskListItem[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    const text = typeof record?.content === "string"
+      ? record.content
+      : typeof record?.text === "string"
+        ? record.text
+        : "";
+    if (!text.trim()) {
+      return null;
+    }
+    const status = typeof record?.status === "string" ? record.status.trim().toLowerCase() : "";
+    items.push({ text: text.trim(), done: ["completed", "complete", "done"].includes(status) });
+  }
+  return items;
 }
 
 export function readDshUpdateSessionId(message: DshJsonRpcMessage): string | null {
@@ -517,18 +558,31 @@ export function classifyDshSessionUpdate(update: Record<string, unknown>): DshSe
       text: extractDshText(update.content),
     };
   }
+  if (kind === "plan") {
+    const items = extractDshTaskListItems(update.entries);
+    return items ? { type: "plan", items } : { type: "ignored" };
+  }
   if (kind === "tool_call" || kind === "tool_call_update") {
     const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
     if (!toolCallId) {
       return { type: "ignored" };
     }
-    return {
-      type: "tool",
-      toolCallId,
-      title: typeof update.title === "string" ? update.title : undefined,
-      status: typeof update.status === "string" ? update.status : undefined,
-      contentText: extractDshText(update.content),
-    };
+    const title = typeof update.title === "string" ? update.title : undefined;
+    const status = typeof update.status === "string" ? update.status : undefined;
+    const contentText = extractDshText(update.content);
+    const taskListItems = title && ["todo", "todo_write", "todowrite", "update_plan"].includes(title.trim().toLowerCase())
+      ? extractDshTaskListItems(asRecord(update.rawInput)?.todos)
+      : null;
+    return taskListItems
+      ? { type: "plan", items: taskListItems }
+      : {
+        type: "tool",
+        toolCallId,
+        title,
+        status,
+        ...(update.rawInput === undefined ? {} : { rawInput: update.rawInput }),
+        contentText,
+      };
   }
   if (kind === "usage_update") {
     return { type: "usage", used: update.used, size: update.size };

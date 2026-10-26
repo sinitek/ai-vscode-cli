@@ -120,6 +120,11 @@ export function createDshInteractiveTurnStrategy(): InteractiveTurnStrategy {
         const dshToolMessageIds = new Map<string, string>();
         await runner.prompt(port.attemptPrompt, {
           onRequest: async () => null,
+          onTaskListUpdate: (items) => {
+            if (canEmitDshPresentation()) {
+              port.sendPanelMessage({ type: "taskListUpdate", items, tabId: port.tabId });
+            }
+          },
           onActivity: () => {
             if (!port.isCurrentRunActive()) {
               return;

@@ -23,6 +23,8 @@
 - Claude 不复用已 dispose 的 runner。thinking、interactive、model，以及只有 true 才算开启的 isolate，必须严格一致。command、cwd、entrypoint 仅在旧值为空时接受新值。复用时优先保留 runner 已有的非空 session id。
 - Grok 只有 `isReusable()` 且 command、cwd、thinking、interactive、model 一致时复用。`agentArgs` 和 `localSessionId` 不触发重建。停止时 Grok 调用 `cancelTurn`，Codex 和 Claude 调用 `stopAndRebuild`。
 - DSH 复用要求 runner 仍可复用，且 command、cwd、interactiveMode、localSessionId、`DSH_HOME` 和显式 agent 参数一致。启动固定 `dsh --profile acp`。停止先发 `session/cancel`。模型线值必须命中当前公布选项。思考档只接受当前模型公布且属于 DeepSeek 契约的 raw 标量；默认验证模型为 `low`、`high`、`xhigh`、`max`，`off` 和空 value 不进入面板。每次 prompt 前通过 `session/set_config_option` 确认当前值。
+- DSH `classifyDshSessionUpdate` 将 ACP `plan.entries` 及 `todo_write` / `update_plan` 的 `rawInput.todos` 分类为计划更新；runner 对相同任务快照去重，宿主通过 `taskListUpdate` 只发送 `{ text, done }` 到当前 tab，不从工具摘要反推任务名称。
+- DSH 工具事件用 `rawInput` 生成展示快照：带 `command` / `cmd` / `script` 的调用映射为 `exec <命令>`，其它工具映射为 `tool <名称>` 并保留格式化输入与输出；runner 过滤未变化快照，宿主按 `toolCallId` 复用消息 ID 原位更新同一工具气泡，不展示 `in_progress` / `completed` 等协议状态文本。
 - 同一 key 上 `setRunner` 遇到同一对象只刷新元数据；换对象时先释放旧 entry。Codex 缺省 command、cwd、args 会覆盖或清空；Claude 和 Grok 省略这些可选字段时保留旧值。保存的参数数组是副本。`setRunner` 本身不调用 `updateOptions`。
 - 空闲 24 小时后释放。回调里的判定阈值是该超时减 2 秒，并且只释放当前 Map 中的同一个 entry。活动运行期间取消空闲计时，结束后重新计时。释放顺序是清 timer、调用 runner.dispose、再删映射。创建失败不留下半成品 entry，构造、`updateOptions` 和 dispose 的错误原样抛出。
 - 平台差异在 `src/interactive/runnerLifecycleStrategies.ts`，缓存和计时只在 `src/interactive/manager.ts`。这不改变用户可见的续接、停止或会话存档。

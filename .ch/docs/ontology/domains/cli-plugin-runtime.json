@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-25",
+  "as_of": "2026-10-26",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -57,7 +57,7 @@
       "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build 和 DeepSeek Harness；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
       "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "local CLI"],
-      "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts"],
+      "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts", "src/interactive/dshAppServerProtocol.ts", "src/extensionHost/interactiveTurnDsh.ts"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": "docs/cli-reference.md"},
@@ -65,6 +65,8 @@
         {"path": "src/interactive/grokAppServerProtocol.ts"},
         {"path": "src/interactive/grokAcpClient.ts"},
         {"path": "src/interactive/dshRunner.ts"},
+        {"path": "src/interactive/dshAppServerProtocol.ts"},
+        {"path": "src/extensionHost/interactiveTurnDsh.ts"},
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"}
       ]
     },

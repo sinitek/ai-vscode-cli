@@ -13,6 +13,7 @@ import {
   buildDshSessionPromptParams,
   buildDshSessionResumeParams,
   buildDshSetConfigOptionParams,
+  classifyDshSessionUpdate,
   DshCompactionUnsupportedError,
   DshProtocolError,
   DSH_ACP_PROTOCOL_VERSION,
@@ -30,6 +31,35 @@ import {
 
 const FLASH = JSON.stringify(["deepseek-official", "deepseek-v4-flash"]);
 const PRO = JSON.stringify(["deepseek-official", "deepseek-v4-pro"]);
+
+test("DSH plans use structured task text instead of status markers or tool summaries", () => {
+  const items = [
+    { content: "读取执行日志", status: "completed" },
+    { content: "修复任务列表", status: "in_progress" },
+    { text: "运行验证", status: "pending" },
+  ];
+  const expected = [
+    { text: "读取执行日志", done: true },
+    { text: "修复任务列表", done: false },
+    { text: "运行验证", done: false },
+  ];
+  assert.deepEqual(classifyDshSessionUpdate({ sessionUpdate: "plan", entries: items }), { type: "plan", items: expected });
+  assert.deepEqual(classifyDshSessionUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId: "todo-1",
+    title: "todo_write",
+    status: "in_progress",
+    rawInput: { todos: items },
+  }), { type: "plan", items: expected });
+  assert.deepEqual(classifyDshSessionUpdate({ sessionUpdate: "plan", entries: [] }), { type: "plan", items: [] });
+  assert.equal(classifyDshSessionUpdate({ sessionUpdate: "plan", entries: [{ content: "", status: "pending" }] }).type, "ignored");
+  assert.deepEqual(classifyDshSessionUpdate({
+    sessionUpdate: "tool_call",
+    toolCallId: "todo-2",
+    title: "todo_write",
+    status: "completed",
+  }), { type: "tool", toolCallId: "todo-2", title: "todo_write", status: "completed", contentText: "" });
+});
 
 test("DSH launch args stay on the ACP profile and only accept explicit patch args", () => {
   assert.deepEqual(buildDshLaunchArgs(), ["--profile", "acp"]);
@@ -163,21 +193,36 @@ test("DSH text and tool updates do not replay a full snapshot", () => {
     toolCallId: "tool-1",
     title: "bash",
     status: "in_progress",
+    rawInput: { command: "npm test" },
     contentText: "",
   });
-  assert.equal(first.trace, "bash in_progress");
+  assert.equal(first.trace, "exec npm test");
   const completed = projectDshToolUpdate(first.state, {
     toolCallId: "tool-1",
     status: "completed",
     contentText: "ok",
   });
-  assert.equal(completed.trace, "bash completed\nok");
+  assert.equal(completed.trace, "exec npm test\nok");
   const duplicate = projectDshToolUpdate(completed.state, {
     toolCallId: "tool-1",
     status: "completed",
     contentText: "ok",
   });
   assert.equal(duplicate.trace, null);
+  assert.equal(duplicate.state.rawInput, first.state.rawInput);
+  assert.equal(projectDshToolUpdate(undefined, {
+    toolCallId: "tool-2",
+    title: "read",
+    status: "completed",
+    rawInput: { path: "src/example.ts" },
+    contentText: "const answer = 42;",
+  }).trace, 'tool read\n{\n  "path": "src/example.ts"\n}\nconst answer = 42;');
+  assert.equal(projectDshToolUpdate(undefined, {
+    toolCallId: "tool-3",
+    title: "bash",
+    status: "in_progress",
+    contentText: "",
+  }).trace, "tool bash");
 });
 
 test("DSH permission decisions fail closed unless the host selects an offered option", () => {
