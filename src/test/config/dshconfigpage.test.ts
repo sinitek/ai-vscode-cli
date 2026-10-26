@@ -92,6 +92,24 @@ function loadDshPageUtils(): {
   return (sandbox as { __dsh: never }).__dsh as never;
 }
 
+function loadConfigImportNormalizer(): (item: Record<string, unknown>) => Record<string, unknown> | null {
+  const source = read(uiPath);
+  const helperStart = source.indexOf("const DSH_UI_PROVIDER");
+  const helperEnd = source.indexOf("const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS");
+  const start = source.indexOf("      normalizeImportItem =");
+  const end = source.indexOf("      handleImportFile =", start);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart && start >= 0 && end > start);
+  const functionSource = source.slice(start, end)
+    .replace("      normalizeImportItem = (k) => {", "function normalizeImportItem(k) {")
+    .replace(/\},\s*$/, "}");
+  const sandbox: Record<string, unknown> = { Date };
+  vm.runInNewContext(
+    `${source.slice(helperStart, helperEnd)}\n${functionSource}\nglobalThis.__normalize = normalizeImportItem;`,
+    sandbox,
+  );
+  return (sandbox as { __normalize: (item: Record<string, unknown>) => Record<string, unknown> | null }).__normalize;
+}
+
 type EditorNode = { type: unknown; props: Record<string, any> };
 
 function editorNodes(value: unknown): EditorNode[] {
@@ -199,6 +217,28 @@ test("old config order missing dsh migrates without dropping earlier platforms",
     appended.dsh,
   )));
   assert.deepEqual(merged.order, ["dsh-added", "dsh-new"]);
+});
+
+test("config import keeps valid DSH profiles including a direct apiKey", () => {
+  const normalize = loadConfigImportNormalizer();
+  const utils = loadDshPageUtils();
+  const profile = JSON.parse(utils.createProfileText()) as Record<string, unknown>;
+  profile.apiKey = "sk-fixturetoken";
+  const imported = normalize({ name: "导入的 DSH", platform: "dsh", content: JSON.stringify(profile) });
+  assert.ok(imported);
+  assert.equal(imported.platform, "dsh");
+  assert.equal(imported.content, JSON.stringify(profile));
+  assert.equal(imported.configContent, JSON.stringify(profile));
+  const committed = commitDshDocument(String(imported.content));
+  assert.equal(committed.ok, true);
+});
+
+test("config import rejects DSH credentials outside the supported apiKey field", () => {
+  const normalize = loadConfigImportNormalizer();
+  const utils = loadDshPageUtils();
+  const profile = JSON.parse(utils.createProfileText()) as Record<string, any>;
+  profile.models[0].token = "sk-fixturetoken";
+  assert.equal(normalize({ name: "非法 DSH", platform: "dsh", content: JSON.stringify(profile) }), null);
 });
 
 test("DSH visual model draft uses the detail id field and confirms icon deletion", () => {

@@ -1028,7 +1028,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         }
         if (L === "dsh") {
           const dshContent = k.configContent ?? k.content ?? "";
-          if (dshUiContainsSecret(dshContent)) return null;
+          if (dshUiContainsProfileSecret(dshContent)) return null;
           return {
             name: G,
             platform: L,
