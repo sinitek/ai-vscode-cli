@@ -79,6 +79,8 @@ for (const target of targets) {
 test("VSIX excludes developer artifacts without excluding embedded workspace scaffold", () => {
   const discarded = [
     "run_dev.py",
+    "export_vscode_extension.py",
+    "publish_vscode_extension.py",
     ".tmp/playwright-smoke/screenshot.png",
     ".tmp/bubble-spacing/webview.html",
     "dist/test/shared/vsixPackaging.test.js",
@@ -145,19 +147,19 @@ test("VSIX helper reports invalid targets as a nonzero CLI result", () => {
   assert.equal(result.stdout, "");
 });
 
-test("VSIX export rejects unknown options and incomplete target arguments before building", () => {
+test("VSIX Python export rejects unknown options and incomplete target arguments before building", () => {
   for (const args of [["--target"], ["--unknown"]]) {
-    const result = childProcess.spawnSync("bash", [path.join(repoRoot, "export_vscode_extension.sh"), ...args], { encoding: "utf8" });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /用法/);
+    const result = childProcess.spawnSync(process.env.PYTHON || "python", [path.join(repoRoot, "export_vscode_extension.py"), ...args], { encoding: "utf8" });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /usage:/);
     assert.doesNotMatch(result.stdout, /Building/);
   }
 });
 
-test("VSIX export audits current runtime assets rather than removed marketplace catalogs", () => {
-  const script = fs.readFileSync(path.join(repoRoot, "export_vscode_extension.sh"), "utf8");
-  const requiredBlock = script.match(/REQUIRED_ENTRIES=\(([\s\S]*?)\n\)/u)?.[1] ?? "";
-  const entries = Array.from(requiredBlock.matchAll(/"extension\/([^"]+)"/gu), (match) => match[1]);
+test("VSIX Python export audits current runtime assets rather than removed marketplace catalogs", () => {
+  const script = fs.readFileSync(path.join(repoRoot, "export_vscode_extension.py"), "utf8");
+  const requiredBlock = script.match(/REQUIRED_ENTRIES = \(([\s\S]*?)\n\)/u)?.[1] ?? "";
+  const entries = Array.from(requiredBlock.matchAll(/"([^"]+)"/gu), (match) => match[1]);
   assert.ok(entries.length > 0);
   for (const entry of entries) {
     assert.equal(fs.existsSync(path.join(repoRoot, entry)), true, entry);

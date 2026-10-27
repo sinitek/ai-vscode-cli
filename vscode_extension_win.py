@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
 from shutil import which
 
 
@@ -26,11 +27,12 @@ def cmd_quote(arg: str) -> str:
     return '"' + arg.replace('"', '""') + '"'
 
 
-def run_process(argv: list[str], *, cwd: Path) -> None:
+def run_process(argv: list[str], *, cwd: Path, stdout: TextIO | None = None) -> None:
   if not argv:
     raise ValueError("empty argv")
 
   if is_windows():
+    capture_output = stdout is not None
     exe = argv[0]
     resolved = which(exe) if exe and not any(sep in exe for sep in ("\\", "/")) else None
     if resolved:
@@ -42,10 +44,14 @@ def run_process(argv: list[str], *, cwd: Path) -> None:
       inner = " ".join(cmd_quote(a) for a in argv)
       # Pass a single string to avoid Python escaping quotes (\"...\") which breaks cmd.exe parsing.
       full = f'{cmd_quote(comspec)} /d /s /c "{inner}"'
-      subprocess.run(full, cwd=cwd, check=True)
+      result = subprocess.run(full, cwd=cwd, check=True, capture_output=capture_output, text=capture_output)
+      if capture_output:
+        stdout.write(result.stdout)
       return
 
-  subprocess.run(argv, cwd=cwd, check=True)
+  result = subprocess.run(argv, cwd=cwd, check=True, capture_output=capture_output, text=capture_output)
+  if capture_output:
+    stdout.write(result.stdout)
 
 
 def require_tool(name: str) -> str:

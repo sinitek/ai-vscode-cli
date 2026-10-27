@@ -25,14 +25,20 @@ def find_vscode_command() -> str | None:
     return find_vscode_code_command()
 
 
-def install_workspace_node_modules(npm: str) -> None:
+def workspace_has_pnpm_node_modules(root: Path | None = None) -> bool:
+    root = root or ROOT_DIR
+    return (root / "node_modules" / ".pnpm").is_dir()
+
+
+def install_workspace_node_modules(npm: str, root: Path | None = None) -> None:
     # 与 scripts/install_workspace_node_modules.sh 保持相同的布局选择规则。
-    node_modules = ROOT_DIR / "node_modules"
+    root = root or ROOT_DIR
+    node_modules = root / "node_modules"
     pnpm = shutil.which("pnpm")
     if (node_modules / ".pnpm").is_dir():
         if pnpm:
             print("检测到 pnpm node_modules，使用 pnpm install。", flush=True)
-            run_process([pnpm, "install"], cwd=ROOT_DIR)
+            run_process([pnpm, "install"], cwd=root)
             return
         print("检测到 pnpm node_modules，但本机没有 pnpm。删除后改用 npm install。", flush=True)
         # 根目录是符号链接或 Windows junction 时只移除链接。
@@ -42,13 +48,13 @@ def install_workspace_node_modules(npm: str) -> None:
             node_modules.rmdir()
         else:
             shutil.rmtree(node_modules)
-    elif not node_modules.exists() and (ROOT_DIR / "pnpm-lock.yaml").is_file() and pnpm:
+    elif not node_modules.exists() and (root / "pnpm-lock.yaml").is_file() and pnpm:
         print("检测到本地 pnpm-lock.yaml，使用 pnpm install。", flush=True)
-        run_process([pnpm, "install"], cwd=ROOT_DIR)
+        run_process([pnpm, "install"], cwd=root)
         return
 
     print("使用 npm install。", flush=True)
-    run_process([npm, "install"], cwd=ROOT_DIR)
+    run_process([npm, "install"], cwd=root)
 
 
 def run_dev(*, code_command: str | None, skip_install: bool, skip_build: bool) -> None:

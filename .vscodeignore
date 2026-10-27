@@ -32,8 +32,8 @@ __pycache__/**
 .gitignore
 AGENTS.md
 ARCHITECTURE.md
-export_vscode_extension.sh
-publish_vscode_extension.sh
+export_vscode_extension.py
+publish_vscode_extension.py
 run_dev.py
 vscode_extension_win.py
 pnpm-lock.yaml
