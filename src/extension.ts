@@ -10,6 +10,11 @@ import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
 import {
+  cleanupHumanInteractionHistory,
+  readHumanInteractionHistory,
+  recordHumanInteractionHistory,
+} from "./humanInteractionHistory";
+import {
   CONFIG_NAMESPACE,
   getAutoOpenPanel,
   getDefaultCli,
@@ -1013,6 +1018,7 @@ export function activate(context: vscode.ExtensionContext): void {
     onMessage: async (message) => {
       await handlePanelMessage(message);
     },
+    onRequestHumanInteractionHistory: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
   });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
@@ -1684,6 +1690,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     buildSessionState,
     buildConversationTabsState,
     buildPromptHistoryState,
+    buildHumanInteractionHistoryState: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
     buildScheduledTasksState,
     buildModelState,
     buildEditorContextState,
@@ -1735,6 +1742,26 @@ type PendingHumanInteraction = {
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
 
+const HUMAN_INTERACTION_HISTORY_FILE = path.join(os.homedir(), ".sinitek_cli", "human-interaction-history.json");
+
+function recordHumanInteractionResponse(
+  request: HumanInteractionRequest,
+  submission: HumanInteractionSubmission,
+): void {
+  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE });
+}
+
+function recordOrchestratorInteractionResponse(
+  request: HumanInteractionRequest,
+  submission: HumanInteractionSubmission,
+): void {
+  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE }, "orchestrator");
+}
+
+function cleanupHumanInteractionHistoryRetention(): void {
+  cleanupHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE });
+}
+
 function rememberPendingHumanInteraction(entry: PendingHumanInteraction): void {
   pendingHumanInteractionsById.set(entry.request.interactionId, entry);
   const ids = pendingHumanInteractionIdsByTabId.get(entry.request.tabId) ?? new Set<string>();
@@ -1764,6 +1791,12 @@ function getGlobalHumanInteractionTimeoutMinutes(): number {
 
 function requestHumanInteraction(request: HumanInteractionRequest): Promise<HumanInteractionSubmission> {
   if (!viewProvider) {
+    recordHumanInteractionResponse(request, {
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "aborted",
+      values: {},
+    });
     return Promise.resolve({
       interactionId: request.interactionId,
       tabId: request.tabId,
@@ -1789,10 +1822,17 @@ function requestHumanInteraction(request: HumanInteractionRequest): Promise<Huma
     });
     const resolveOnce = (submission: HumanInteractionSubmission): void => {
       timeout.clear();
+      recordHumanInteractionResponse(request, submission);
       resolve(submission);
     };
     const rejectOnce = (error: Error): void => {
       timeout.clear();
+      recordHumanInteractionResponse(request, {
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: 'aborted',
+        values: {},
+      });
       reject(error);
     };
     rememberPendingHumanInteraction({ request, resolve: resolveOnce, reject: rejectOnce });
@@ -1832,6 +1872,12 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
     if (!entry) {
       return;
     }
+    recordHumanInteractionResponse(entry.request, {
+      interactionId: entry.request.interactionId,
+      tabId: entry.request.tabId,
+      status: "aborted",
+      values: {},
+    });
     entry.reject(createHumanInteractionRejectedError());
   });
   viewProvider?.postMessage({
@@ -2590,6 +2636,7 @@ function scheduleHistoryArtifactRetentionCleanup(): void {
       cleanupLoopTaskStoreRetention();
       cleanupLoopCommunicationRetention();
       cleanupPromptHistoryRetentionAcrossWorkspaces();
+      cleanupHumanInteractionHistoryRetention();
       await cleanupSessionRetentionAcrossWorkspaces();
     })
     .catch((error) => {
@@ -3341,6 +3388,7 @@ graphRuntimeHost = createGraphRuntimeHost({
   errorToMessage,
   messages: graphMessagesHost,
   revealClarification: (graphRunId) => { void openGraphRunPanel(graphRunId); },
+  recordInteractionHistory: recordOrchestratorInteractionResponse,
 });
 
 function initializeGraphAutoWakeScheduler(context: vscode.ExtensionContext): void {
@@ -4369,6 +4417,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         void logInfo(event, payload);
       },
       revealClarification: (taskId) => { void openLoopGroupChatPanel(taskId); },
+      recordInteractionHistory: recordOrchestratorInteractionResponse,
       runPrompt: (input, options) => runPrompt(input, options),
       getMessages: (target) => getLoopMessagesForTarget(target),
       readRuns: () => readTaskStore().runs,
@@ -4668,6 +4717,7 @@ async function waitForLoopTaskClarification(task: LoopTaskRecord, target: Prompt
   void openLoopGroupChatPanel(task.id);
   const submission = await waitForOrchestratorClarification(loopClarificationScope(task.id), request, {
     timeoutMs: readHumanInteractionTimeoutMs(),
+    recordHistory: recordOrchestratorInteractionResponse,
   });
   const latest = readLoopTaskRecord(task.id) ?? task;
   if (latest.status === "stopped" || latest.status === "error") {

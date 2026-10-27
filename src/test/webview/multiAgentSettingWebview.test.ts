@@ -124,9 +124,21 @@ test("renders default-on human interaction setting in the AI task panel and dial
   assert.match(TOAST_MISC_STYLES, /\.human-interaction-modal/u);
   assert.equal(WEBVIEW_STRINGS.toolSettingsHumanInteractionTimeoutLabel, "人工交互超时（分钟）");
   assert.match(htmlForTimeout(), /id="humanInteractionTimeoutMinutes"/u);
-  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /humanInteractionTimeoutMinutes: 10/u);
+  assert.match(htmlForTimeout(), /id="humanInteractionTimeoutMinutes"[\s\S]*?max="1440"/u);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /humanInteractionTimeoutMinutes: 15/u);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /key: "humanInteractionTimeoutMinutes"/u);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.humanInteractionTimeoutMinutes/u);
+});
+
+test("places the human interaction history icon directly after the history icon", () => {
+  const html = buildStaticHtml();
+  const historyIndex = html.indexOf('id="historyButton"');
+  const interactionHistoryIndex = html.indexOf('id="humanInteractionHistoryButton"');
+  const scheduleIndex = html.indexOf('id="scheduleTaskButton"');
+  assert.ok(historyIndex >= 0 && historyIndex < interactionHistoryIndex && interactionHistoryIndex < scheduleIndex);
+  assert.match(html, /id="humanInteractionHistoryOverlay"/u);
+  assert.match(html, /id="humanInteractionHistoryDetailOverlay"/u);
+  assert.equal(WEBVIEW_STRINGS.humanInteractionHistoryAuto, "AI 自动选择");
 });
 
 function htmlForTimeout(): string {

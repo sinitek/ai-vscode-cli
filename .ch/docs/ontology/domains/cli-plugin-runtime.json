@@ -701,13 +701,15 @@
     {
       "id": "plugin.rule.codex_default_mode_user_input_feature",
       "name": "Codex Default mode 结构化人工交互需显式启用",
-      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 10 分钟、范围 1–240。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；模型应自行选择最佳方案继续。",
+      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 15 分钟、范围 1–1440（最长 24 小时）。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；优先采用有效默认值，否则采用首个可选项继续。Vibe 与 Loop/Loop+/Graph 主任务澄清结束后写入全局只读历史，底部历史入口旁的列表仅显示首题前 20 字和触发时间，详情勾选用户或 AI 自动选择的实际选项；最多 500 条并沿用历史保留期，密码答案和密码默认值不保存明文。",
       "aliases": ["request_user_input", "default_mode_request_user_input", "experimentalApi", "人工交互"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "AI 对话"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Codex"},
+        {"path": "src/humanInteractionHistory.ts"},
+        {"path": "src/webview/viewContentScript/humanInteractionHistory.ts"},
         {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex Default mode 的 `request_user_input` 需要显式 feature flag"}
       ]
     },
@@ -864,7 +866,7 @@
     {
       "id": "plugin.rule.orchestrator_clarification_form",
       "name": "主任务主动澄清表单",
-      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 10 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
+      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
       "source_refs": [

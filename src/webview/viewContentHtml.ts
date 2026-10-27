@@ -298,6 +298,11 @@ ${webviewStyles}    </style>
               <path d="M5.6 14.5a7.4 7.4 0 1 0 .2-5.7" />
               <path d="M12 8.2v4.2l2.8 1.9" />
             </svg>
+            <svg id="humanInteractionHistoryButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.humanInteractionHistoryButton}" aria-label="${i18n.humanInteractionHistoryButton}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="3" width="14" height="18" rx="2" />
+              <path d="M9 8h6M9 12h4M9 16h2" />
+              <path d="m14.5 16 1.3 1.3 2.7-2.8" />
+            </svg>
             <button id="scheduleTaskButton" class="icon-button schedule-task-button" title="${i18n.scheduleTaskButton}" aria-label="${i18n.scheduleTaskButton}">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="13" r="7.5" />
@@ -352,6 +357,23 @@ ${renderChatModal({
             <div id="sessionList" class="session-list"></div>
           </div>
         `,
+      })}
+${renderChatModal({
+        id: "humanInteractionHistoryOverlay",
+        className: "history-modal",
+        labelledBy: "humanInteractionHistoryTitle",
+        titleHtml: `<div id="humanInteractionHistoryTitle" class="title">${i18n.humanInteractionHistoryTitle}</div>`,
+        close: { id: "closeHumanInteractionHistory", label: i18n.historyClose },
+        contentHtml: `<div id="humanInteractionHistoryList" class="human-interaction-history-list"></div>`,
+      })}
+${renderChatModal({
+        id: "humanInteractionHistoryDetailOverlay",
+        className: "history-messages-modal",
+        labelledBy: "humanInteractionHistoryDetailTitle",
+        describedBy: "humanInteractionHistoryDetailMeta",
+        titleHtml: `<div class="history-messages-title"><div id="humanInteractionHistoryDetailTitle" class="title"></div><div id="humanInteractionHistoryDetailMeta" class="history-messages-subtitle"></div></div>`,
+        close: { id: "closeHumanInteractionHistoryDetail", label: i18n.historyClose },
+        contentHtml: `<div class="history-messages-body"><div id="humanInteractionHistoryDetailContent" class="history-messages-content"></div></div>`,
       })}
 ${renderChatModal({
         id: "historyMessagesOverlay",
@@ -532,7 +554,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     id="humanInteractionTimeoutMinutes"
                     class="tool-settings-number"
                     min="1"
-                    max="240"
+                    max="1440"
                     step="1"
                     title="${i18n.toolSettingsHumanInteractionTimeoutTitle}"
                     aria-label="${i18n.toolSettingsHumanInteractionTimeoutLabel}"

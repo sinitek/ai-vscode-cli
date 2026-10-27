@@ -592,6 +592,20 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.historyOverlay.classList.remove("visible");
       }
 
+      elements.humanInteractionHistoryButton.addEventListener("click", openHumanInteractionHistory);
+      elements.closeHumanInteractionHistory.addEventListener("click", closeHumanInteractionHistory);
+      elements.humanInteractionHistoryOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.humanInteractionHistoryOverlay) {
+          closeHumanInteractionHistory();
+        }
+      });
+      elements.closeHumanInteractionHistoryDetail.addEventListener("click", closeHumanInteractionHistoryDetail);
+      elements.humanInteractionHistoryDetailOverlay.addEventListener("click", (event) => {
+        if (event.target === elements.humanInteractionHistoryDetailOverlay) {
+          closeHumanInteractionHistoryDetail();
+        }
+      });
+
       function openRules() {
         elements.rulesOverlay.classList.add("visible");
       }

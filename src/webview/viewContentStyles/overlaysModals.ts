@@ -590,6 +590,126 @@ ${DIALOG_SHELL_STYLES}
         width: 760px;
         height: min(85vh, 720px);
       }
+      .human-interaction-history-list {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        gap: 6px;
+        padding: 12px 16px 16px;
+        overflow-y: auto;
+      }
+      #humanInteractionHistoryOverlay .modal-body {
+        overflow: hidden;
+      }
+      .human-interaction-history-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        box-sizing: border-box;
+        flex: 0 0 auto;
+        gap: 12px;
+        min-height: 64px;
+        padding: 12px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        color: var(--vscode-foreground);
+        background: var(--vscode-editor-background);
+        text-align: left;
+      }
+      .human-interaction-history-item:hover {
+        border-color: var(--vscode-focusBorder);
+      }
+      .human-interaction-history-item-title {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .human-interaction-history-status {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .human-interaction-history-status.automatic {
+        color: var(--vscode-charts-blue, var(--vscode-foreground));
+      }
+      .human-interaction-history-question,
+      .human-interaction-history-meta {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+      }
+      .human-interaction-history-question {
+        display: -webkit-box;
+        min-width: 0;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        line-height: 18px;
+        white-space: normal;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+      .human-interaction-history-meta {
+        white-space: nowrap;
+      }
+      .human-interaction-history-empty {
+        padding: 24px;
+        color: var(--vscode-descriptionForeground);
+        text-align: center;
+      }
+      .human-interaction-history-instruction {
+        margin: 4px 8px 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .human-interaction-history-detail-item {
+        margin: 0 4px 12px;
+        padding: 10px;
+        border: 1px solid var(--vscode-widget-border);
+        border-radius: 8px;
+        background: var(--vscode-editorWidget-background);
+      }
+      .human-interaction-history-detail-question {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .human-interaction-history-detail-answer {
+        margin: 8px 0 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+      }
+      .human-interaction-history-detail-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .human-interaction-history-detail-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .human-interaction-history-detail-option.selected {
+        color: var(--vscode-foreground);
+        font-weight: 600;
+      }
+      .human-interaction-history-detail-check {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border));
+        border-radius: 3px;
+        background: var(--vscode-checkbox-background, transparent);
+        color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+        line-height: 1;
+      }
+      .human-interaction-history-detail-option.selected .human-interaction-history-detail-check {
+        border-color: var(--vscode-checkbox-selectBorder, var(--vscode-focusBorder));
+        background: var(--vscode-checkbox-selectBackground, var(--vscode-focusBorder));
+      }
       .history-messages-title {
         min-width: 0;
       }

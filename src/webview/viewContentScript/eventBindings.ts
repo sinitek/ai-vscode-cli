@@ -14,6 +14,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
           elements.attachmentButton,
           elements.scheduleTaskButton,
           elements.historyButton,
+          elements.humanInteractionHistoryButton,
           elements.chatSearchButton,
         ].filter(Boolean).forEach((element) => {
           element.addEventListener("keydown", (event) => {

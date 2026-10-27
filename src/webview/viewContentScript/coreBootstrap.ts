@@ -187,6 +187,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           tabs: [],
         },
         promptHistory: [],
+        humanInteractionHistory: [],
+        selectedHumanInteractionHistoryId: null,
         scheduledTasks: [],
         debug: false,
         autoAddEditorContextTags: false,
@@ -198,7 +200,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         autoCompactContextAfterRun: true,
         humanInteractionEnabled: true,
         cliEnabledByName: {},
-        humanInteractionTimeoutMinutes: 10,
+        humanInteractionTimeoutMinutes: 15,
         historyRetentionDays: 30,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
@@ -396,6 +398,15 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         scheduledTaskList: document.getElementById("scheduledTaskList"),
         sendPrompt: document.getElementById("sendPrompt"),
         historyButton: document.getElementById("historyButton"),
+        humanInteractionHistoryButton: document.getElementById("humanInteractionHistoryButton"),
+        humanInteractionHistoryOverlay: document.getElementById("humanInteractionHistoryOverlay"),
+        closeHumanInteractionHistory: document.getElementById("closeHumanInteractionHistory"),
+        humanInteractionHistoryList: document.getElementById("humanInteractionHistoryList"),
+        humanInteractionHistoryDetailOverlay: document.getElementById("humanInteractionHistoryDetailOverlay"),
+        closeHumanInteractionHistoryDetail: document.getElementById("closeHumanInteractionHistoryDetail"),
+        humanInteractionHistoryDetailTitle: document.getElementById("humanInteractionHistoryDetailTitle"),
+        humanInteractionHistoryDetailMeta: document.getElementById("humanInteractionHistoryDetailMeta"),
+        humanInteractionHistoryDetailContent: document.getElementById("humanInteractionHistoryDetailContent"),
         historyOverlay: document.getElementById("historyOverlay"),
         closeHistory: document.getElementById("closeHistory"),
         clearAllHistory: document.getElementById("clearAllHistory"),
@@ -591,9 +602,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           ? value
           : (typeof value === "string" && value.trim() ? Number(value) : NaN);
         if (!Number.isFinite(numeric)) {
-          return 10;
+          return 15;
         }
-        return Math.min(Math.max(Math.floor(numeric), 1), 240);
+        return Math.min(Math.max(Math.floor(numeric), 1), 1440);
       }
 
       function normalizeLoopMaxRounds(value) {

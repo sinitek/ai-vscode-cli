@@ -1,9 +1,12 @@
 import type {
   HumanInteractionFormField,
+  HumanInteractionHistoryRecorder,
   HumanInteractionSubmission,
+  HumanInteractionRequest,
 } from "./humanInteraction";
 import {
   HUMAN_INTERACTION_TIMEOUT_TEXT,
+  buildTimedOutHumanInteractionSubmission,
   createInteractionTimeout,
   formatHumanInteractionSubmittedText,
   normalizeHumanInteractionRequestFromCodex,
@@ -92,9 +95,6 @@ export function formatOrchestratorClarificationAnswer(
   submission: HumanInteractionSubmission,
   formFields: readonly HumanInteractionFormField[] = [],
 ): string {
-  if (submission.timedOut) {
-    return HUMAN_INTERACTION_TIMEOUT_TEXT;
-  }
   return [
     "用户已提交主任务澄清表单。请据此继续决策，不要重复询问已回答的问题。",
     formatHumanInteractionSubmittedText(submission, formFields),
@@ -149,7 +149,7 @@ export function normalizeClarificationSubmission(
 export function waitForOrchestratorClarification(
   scopeId: string,
   request: OrchestratorClarification,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; recordHistory?: HumanInteractionHistoryRecorder } = {},
 ): Promise<HumanInteractionSubmission> {
   abortOrchestratorClarification(scopeId);
   return new Promise((resolve) => {
@@ -161,6 +161,7 @@ export function waitForOrchestratorClarification(
       }
       settled = true;
       clearWaitingTimeout();
+      options.recordHistory?.(request as HumanInteractionRequest, submission);
       resolve(submission);
     };
     const timeout = createInteractionTimeout(options.timeoutMs ?? 0, () => {
@@ -169,12 +170,7 @@ export function waitForOrchestratorClarification(
         return;
       }
       waiters.delete(scopeId);
-      finish({
-        interactionId: request.interactionId,
-        status: "completed",
-        timedOut: true,
-        values: {},
-      });
+      finish(buildTimedOutHumanInteractionSubmission({ ...request, tabId: "orchestrator" }));
     });
     clearWaitingTimeout = () => timeout.clear();
     waiters.set(scopeId, { request, resolve: finish });

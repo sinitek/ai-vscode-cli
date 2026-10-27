@@ -346,13 +346,13 @@ test("persists the human interaction timeout as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: "10.2" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 0 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 500 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 2000 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: "nope" }, deps);
   assert.deepEqual(calls.toolSettings, [
     { humanInteractionTimeoutMinutes: 10 },
     { humanInteractionTimeoutMinutes: 1 },
-    { humanInteractionTimeoutMinutes: 240 },
-    { humanInteractionTimeoutMinutes: 10 },
+    { humanInteractionTimeoutMinutes: 1440 },
+    { humanInteractionTimeoutMinutes: 15 },
   ]);
   assert.equal(calls.postPanelState, 4);
 });

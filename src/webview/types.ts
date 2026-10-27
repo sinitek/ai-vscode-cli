@@ -12,6 +12,7 @@ import type { LoopTaskStatus } from "../loopTaskStore";
 import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
+import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
 
 export type ConfigSummary = {
   id: string;
@@ -25,6 +26,7 @@ export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
 
 export type PanelMessage =
   | { type: "requestState" }
+  | { type: "requestHumanInteractionHistory" }
   | { type: "previewChatImage"; source: string; alt?: string }
   | { type: "resolveChatImage"; source: string }
   | { type: "downloadChatImage"; source: string; alt?: string }
@@ -385,6 +387,7 @@ export type PanelState = {
     tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];
+  humanInteractionHistory: HumanInteractionHistoryRecord[];
   scheduledTasks: ScheduledTaskSummary[];
   configState: {
     configs: ConfigSummary[];
