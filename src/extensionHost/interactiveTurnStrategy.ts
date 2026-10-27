@@ -9,12 +9,14 @@ import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import type { InteractiveTabRun } from "./promptExecutionShared";
 import type { DshInteractiveLaunch } from "./dshInteractiveLaunch";
+import type { KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
 import { createClaudeInteractiveTurnStrategy } from "./interactiveTurnClaude";
 import { createCodexInteractiveTurnStrategy } from "./interactiveTurnCodex";
 import { createDshInteractiveTurnStrategy } from "./interactiveTurnDsh";
+import { createKimiCodeInteractiveTurnStrategy } from "./interactiveTurnKimi";
 import { createGrokInteractiveTurnStrategy } from "./interactiveTurnGrok";
 
-export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh";
+export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code";
 
 export type InteractiveAttemptDisposition = "continue" | "return";
 
@@ -42,6 +44,8 @@ export type InteractiveTurnAttemptPort = {
   readonly grokAgentArgs: string[];
   readonly dshModelWire: string | null;
   readonly dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null;
+  readonly kimiModelWire: string | null;
+  readonly kimiLaunch: Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue"> | null;
   readonly cwd: string | undefined;
   readonly thinkingMode: ThinkingMode;
   readonly interactiveMode: InteractiveMode;
@@ -65,6 +69,7 @@ export type InteractiveTurnAttemptPort = {
   observedClaudeFinalAnswer: boolean;
   observedGrokFinalAnswer: boolean;
   observedDshFinalAnswer: boolean;
+  observedKimiFinalAnswer: boolean;
   settleInteractiveAttempt(cli: InteractiveTurnCli): Promise<InteractiveAttemptDisposition>;
   appendAssistantChunkForTab(
     chunk: string,
@@ -110,5 +115,6 @@ export function createInteractiveTurnStrategies(): Record<InteractiveTurnCli, In
     claude: createClaudeInteractiveTurnStrategy(),
     grok: createGrokInteractiveTurnStrategy(),
     dsh: createDshInteractiveTurnStrategy(),
+    "kimi-code": createKimiCodeInteractiveTurnStrategy(),
   };
 }

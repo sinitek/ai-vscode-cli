@@ -56,6 +56,12 @@ function createPorts(): CliRuntimeConfigIoPorts {
       writeDshConfigText: unused("writeDshConfigText"),
       backupDshConfig: unused("backupDshConfig"),
     },
+    "kimi-code": {
+      readKimiCodeConfigText: unused("readKimiCodeConfigText"),
+      writeKimiCodeConfigText: unused("writeKimiCodeConfigText"),
+      backupKimiCodeConfig: unused("backupKimiCodeConfig"),
+      createDefaultConfigText: () => "",
+    },
   };
 }
 
@@ -63,10 +69,17 @@ function strategiesFrom(ports: CliRuntimeConfigIoPorts) {
   return createCliRuntimeConfigStrategies(ports);
 }
 
-test("strategy registration covers four platforms without calling IO", () => {
+test("strategy registration covers every config platform without calling IO", () => {
   const ports = createPorts();
   const strategies = strategiesFrom(ports);
-  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "opencode"]);
+  assert.deepEqual(Object.keys(strategies).sort(), [
+    "claude",
+    "codex",
+    "dsh",
+    "grok",
+    "kimi-code",
+    "opencode",
+  ]);
 });
 
 test("Claude read, apply, backup, and default fields keep settings and MCP rules", async () => {
@@ -419,6 +432,7 @@ test("every platform backup delegates to its own port in return order", async ()
     opencode: ["/opencode/config"],
     grok: ["/grok/config"],
     dsh: ["/dsh/config"],
+    "kimi-code": ["/kimi-code/config"],
   };
   const ports = createPorts();
   ports.claude.backupClaudeConfig = async () => expected.claude;
@@ -426,6 +440,7 @@ test("every platform backup delegates to its own port in return order", async ()
   ports.opencode.backupOpenCodeConfig = async () => expected.opencode;
   ports.grok.backupGrokConfig = async () => expected.grok;
   ports.dsh.backupDshConfig = async () => expected.dsh;
+  ports["kimi-code"].backupKimiCodeConfig = async () => expected["kimi-code"];
   const strategies = strategiesFrom(ports);
   for (const platform of Object.keys(expected) as CurrentConfigPlatform[]) {
     assert.deepEqual(await strategies[platform].backup(), expected[platform]);

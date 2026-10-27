@@ -9,6 +9,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       })();
       const i18n = \${JSON.stringify(i18n)};
       const CLI_NAMES = \${JSON.stringify(CLI_LIST)};
+      function formatCliDisplayName(name) {
+        return name === "kimi-code" ? "kimi" : name;
+      }
       function isCliChoiceEnabled(name) {
         if (!name) {
           return false;
@@ -20,7 +23,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return map[name] !== false;
       }
       function getEnabledCliNames() {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"];
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"];
         return names.filter((name) => isCliChoiceEnabled(name));
       }
       function syncEnabledCliSelectElement(selectElement, preferredValue) {
@@ -35,7 +38,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           enabled.forEach((name) => {
             const option = document.createElement("option");
             option.value = name;
-            option.textContent = name;
+            option.textContent = formatCliDisplayName(name);
             selectElement.appendChild(option);
           });
         }
@@ -212,6 +215,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
+        kimiThinkingOptions: [],
+        kimiThinkingOptionsAdvertised: false,
         dshReasoningOptions: [],
         dshReasoningOptionsByModel: {},
         openCodeThinking: {
@@ -432,6 +437,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulesSaveGrok: document.getElementById("rulesSaveGrok"),
         rulesSaveDshOption: document.getElementById("rulesSaveDshOption"),
         rulesSaveDsh: document.getElementById("rulesSaveDsh"),
+        rulesSaveKimiCodeOption: document.getElementById("rulesSaveKimiCodeOption"),
+        rulesSaveKimiCode: document.getElementById("rulesSaveKimiCode"),
         saveRules: document.getElementById("saveRules"),
         rulesHint: document.getElementById("rulesHint"),
         rulesPath: document.getElementById("rulesPath"),

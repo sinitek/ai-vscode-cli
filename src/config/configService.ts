@@ -32,6 +32,13 @@ import {
 import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
+import {
+  commitKimiCodeText,
+  createKimiCodeDefaultConfigText,
+  readKimiCodeConfigText,
+  resolveKimiCodeConfigDir,
+  writeKimiCodeConfigText,
+} from "./kimiCodeConfig";
 import { commitDshDocument } from "../cli/dshConfigModels";
 import {
   activateDshProfile,
@@ -164,6 +171,18 @@ export async function writeGrokConfigText(content: string): Promise<void> {
   await writeFileAtomically(configPath, content);
 }
 
+export async function readKimiCodeConfigTextFromDisk(): Promise<string> {
+  return readKimiCodeConfigText();
+}
+
+export async function writeKimiCodeConfigTextToDisk(content: string): Promise<void> {
+  const committed = commitKimiCodeText("", content);
+  if (!committed.ok) {
+    throw new Error(committed.error);
+  }
+  await writeKimiCodeConfigText(committed.content);
+}
+
 export async function readDshConfigText(): Promise<string> {
   return readDshActiveProfileText(resolveDshConfigPaths());
 }
@@ -289,6 +308,15 @@ export async function backupGrokConfig(): Promise<string[]> {
   return [configBackupPath];
 }
 
+export async function backupKimiCodeConfig(): Promise<string[]> {
+  await ensureDir(BACKUP_DIR);
+  const config = await readKimiCodeConfigTextFromDisk();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const configBackupPath = path.join(BACKUP_DIR, `kimi-code_config_${timestamp}.toml`);
+  await fs.writeFile(configBackupPath, config, "utf-8");
+  return [configBackupPath];
+}
+
 export async function backupDshConfig(): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
   const config = await readDshConfigText();
@@ -327,6 +355,12 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
     writeDshConfigText,
     backupDshConfig,
   },
+  "kimi-code": {
+    readKimiCodeConfigText: readKimiCodeConfigTextFromDisk,
+    writeKimiCodeConfigText: writeKimiCodeConfigTextToDisk,
+    backupKimiCodeConfig: backupKimiCodeConfig,
+    createDefaultConfigText: createKimiCodeDefaultConfigText,
+  },
 });
 
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
@@ -341,7 +375,9 @@ export async function getBackupList(platform: LegacyConfigPlatformInput): Promis
         ? "grok_"
         : normalizedPlatform === "dsh"
           ? "dsh_"
-          : "opencode_";
+          : normalizedPlatform === "kimi-code"
+            ? "kimi-code_"
+            : "opencode_";
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
@@ -411,6 +447,9 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
       if (normalizedConfig.platform === "dsh") {
         normalizeDshConfigFields(normalizedConfig);
       }
+      if (normalizedConfig.platform === "kimi-code") {
+        normalizeKimiCodeConfigFields(normalizedConfig);
+      }
       configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
@@ -432,7 +471,7 @@ export async function getConfigList(platform: LegacyConfigPlatformInput): Promis
 
 type LegacyConfigOrder = ConfigOrder & { gemini?: string[] };
 
-const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [], dsh: [] };
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] };
 
 function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
   return {
@@ -441,6 +480,7 @@ function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
     opencode: Array.isArray(order.opencode) ? [...order.opencode] : Array.isArray(order.gemini) ? [...order.gemini] : [],
     grok: Array.isArray(order.grok) ? [...order.grok] : [],
     dsh: Array.isArray(order.dsh) ? [...order.dsh] : [],
+    "kimi-code": Array.isArray(order["kimi-code"]) ? [...order["kimi-code"]] : [],
   };
 }
 
@@ -505,6 +545,19 @@ function normalizeGrokConfigFields(config: ConfigItem): void {
 }
 
 function normalizeDshConfigFields(config: ConfigItem): void {
+  const content = config.configContent ?? config.content ?? "";
+  config.content = content;
+  config.configContent = content;
+  delete config.authContent;
+  delete config.mcpContent;
+  delete config.envContent;
+  delete config.claudeSkills;
+  delete config.codexSkills;
+  delete config.openCodeSkills;
+  delete config.grokSkills;
+}
+
+function normalizeKimiCodeConfigFields(config: ConfigItem): void {
   const content = config.configContent ?? config.content ?? "";
   config.content = content;
   config.configContent = content;
@@ -842,6 +895,16 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
       configContent: content,
     };
   }
+  if (targetPlatform === "kimi-code") {
+    const content = source.platform === "kimi-code"
+      ? source.configContent ?? source.content ?? ""
+      : createKimiCodeDefaultConfigText();
+    return {
+      ...base,
+      content,
+      configContent: content,
+    };
+  }
   return {
     ...base,
     content: source.platform === "codex" ? getCodexTomlContent(source) : "",
@@ -878,6 +941,15 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   if (configToSave.platform === "grok") {
     normalizeGrokConfigFields(configToSave);
   }
+  if (configToSave.platform === "kimi-code") {
+    normalizeKimiCodeConfigFields(configToSave);
+    const committed = commitKimiCodeText("", configToSave.content ?? "");
+    if (!committed.ok) {
+      throw new Error(committed.error);
+    }
+    configToSave.content = committed.content;
+    configToSave.configContent = committed.content;
+  }
   if (configToSave.platform === "dsh") {
     normalizeDshConfigFields(configToSave);
     const committed = commitDshDocument(configToSave.content ?? "");
@@ -887,7 +959,7 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
     configToSave.content = committed.content;
     configToSave.configContent = committed.content;
   }
-  if (configToSave.content && configToSave.platform !== "codex" && configToSave.platform !== "grok" && configToSave.platform !== "dsh") {
+  if (configToSave.content && configToSave.platform !== "codex" && configToSave.platform !== "grok" && configToSave.platform !== "dsh" && configToSave.platform !== "kimi-code") {
     configToSave.content = formatJSONString(configToSave.content);
   }
   if (configToSave.mcpContent) {
@@ -942,6 +1014,12 @@ export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem
   ) {
     throw new Error("DSH configs can only be copied as DSH configs.");
   }
+  if (
+    (sourcePlatform === "kimi-code" && targetPlatform !== "kimi-code")
+    || (sourcePlatform !== "kimi-code" && targetPlatform === "kimi-code")
+  ) {
+    throw new Error("Kimi Code configs can only be copied as Kimi Code configs.");
+  }
   const existingNames = (await getConfigList(targetPlatform)).map((config) => config.name);
   const name = payload.name?.trim() || createCopyName(source.name, existingNames);
   const copiedConfig = buildConfigCopy(source, targetPlatform, name);
@@ -983,6 +1061,9 @@ export async function getConfigById(
     }
     if (config.platform === "dsh") {
       normalizeDshConfigFields(config);
+    }
+    if (config.platform === "kimi-code") {
+      normalizeKimiCodeConfigFields(config);
     }
     return config;
   } catch {

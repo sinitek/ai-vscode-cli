@@ -11,6 +11,11 @@ export const GROK_HOME_DIRECTORY_NAME = ".grok";
 export const GROK_HOME_ENV_KEY = "GROK_HOME";
 export const DSH_HOME_DIRECTORY_NAME = ".dsh";
 export const DSH_HOME_ENV_KEY = "DSH_HOME";
+export const KIMI_CODE_HOME_DIRECTORY_NAME = ".kimi-code";
+export const KIMI_CODE_HOME_ENV_KEY = "KIMI_CODE_HOME";
+export const KIMI_CODE_GLOBAL_SKILLS_DIRECTORY_NAME = "skills";
+export const KIMI_CODE_GLOBAL_RULES_FILE_NAME = "AGENTS.md";
+export const KIMI_CODE_WORKSPACE_RULES_FILE_NAME = "AGENTS.md";
 export const DSH_GLOBAL_SKILLS_DIRECTORY_NAME = "skills";
 export const DSH_GLOBAL_RULES_FILE_NAME = "AGENTS.md";
 export const DSH_WORKSPACE_RULES_FILE_NAME = "AGENTS.md";
@@ -164,4 +169,37 @@ export function resolveGrokConfigPath(
   platform: NodeJS.Platform = process.platform,
 ): string {
   return path.join(resolveGrokHomeDir(env, homeDir, platform), "config.toml");
+}
+
+export function resolveKimiCodeHomeDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const configured = expandHomePath(env[KIMI_CODE_HOME_ENV_KEY], { homeDir, env, platform });
+  return configured || path.join(homeDir, KIMI_CODE_HOME_DIRECTORY_NAME);
+}
+
+export function resolveKimiCodeConfigPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveKimiCodeHomeDir(env, homeDir, platform), "config.toml");
+}
+
+export function resolveKimiCodeGlobalSkillsDirectory(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveKimiCodeHomeDir(env, homeDir, platform), KIMI_CODE_GLOBAL_SKILLS_DIRECTORY_NAME);
+}
+
+export function resolveKimiCodeGlobalRulesPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveKimiCodeHomeDir(env, homeDir, platform), KIMI_CODE_GLOBAL_RULES_FILE_NAME);
 }

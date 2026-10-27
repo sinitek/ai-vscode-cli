@@ -765,7 +765,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           ? activeRuntime.tokensInContextWindow
           : null;
         const hasValue = tokens !== null && tokens >= 0;
-        const pending = Boolean(state.isRunning && ["codex", "grok"].includes(getActiveConversationCli()) && !hasValue);
+        const pending = Boolean(state.isRunning && ["codex", "grok", "kimi-code"].includes(getActiveConversationCli()) && !hasValue);
         if (!hasValue && !pending) {
           hideContextTokenUsage();
           return;
@@ -785,9 +785,12 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const windowSize = activeRuntime && Number.isFinite(activeRuntime.modelContextWindow) && activeRuntime.modelContextWindow > 0
           ? String(Math.round(activeRuntime.modelContextWindow))
           : "";
+        const windowSource = activeRuntime && activeRuntime.contextWindowSource;
         const title = windowSize
-          ? (activeRuntime && activeRuntime.contextWindowSource === "adapter-fallback"
+          ? (windowSource === "adapter-fallback"
             ? t("runContextTokensTitleWithAdapterWindow", { used, window: windowSize })
+            : windowSource === "kimi-config-window"
+            ? t("runContextTokensTitleWithConfigWindow", { used, window: windowSize })
             : t("runContextTokensTitleWithWindow", { used, window: windowSize }))
           : t("runContextTokensTitle", { used });
         const aria = t("runContextTokensAria", { value });
@@ -954,9 +957,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             const thinking = readLoopSubtaskThinkingSelection({ subtaskCli: "claude", crossCli: false });
             return thinking ? { ...nextPayload, loopSubtaskThinkingMode: thinking } : nextPayload;
           }
-          if ((targetCli === "grok" || targetCli === "opencode") && typeof readLoopSubtaskModelSelection === "function") {
+          if ((targetCli === "grok" || targetCli === "opencode" || targetCli === "kimi-code") && typeof readLoopSubtaskModelSelection === "function") {
             const model = readLoopSubtaskModelSelection({ subtaskCli: targetCli, crossCli: false });
-            const thinking = targetCli === "grok" && typeof readLoopSubtaskThinkingSelection === "function"
+            const thinking = (targetCli === "grok" || targetCli === "kimi-code") && typeof readLoopSubtaskThinkingSelection === "function"
               ? readLoopSubtaskThinkingSelection({ subtaskCli: targetCli, crossCli: false })
               : "";
             return {

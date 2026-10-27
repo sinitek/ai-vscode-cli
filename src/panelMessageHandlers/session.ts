@@ -62,6 +62,8 @@ type SessionPanelMessageDeps = Pick<
   | "getConfigManagerPanel"
   | "applyConfigById"
   | "waitForConfigApply"
+  | "manageKimiCodeModelList"
+  | "cacheKimiCodeConfigModels"
 >;
 
 export function createSessionPanelMessageHandlers(
@@ -126,6 +128,10 @@ export function createSessionPanelMessageHandlers(
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
+      if (message.cli === "kimi-code") {
+        await manageKimiCodeModel(deps, message, configId);
+        return;
+      }
       const addedModel = deps.addCliModel(message.cli, message.model, configId);
       if (!addedModel) {
         return;
@@ -137,6 +143,10 @@ export function createSessionPanelMessageHandlers(
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
+      if (message.cli === "kimi-code") {
+        await manageKimiCodeModel(deps, message, configId);
+        return;
+      }
       const renamedModel = deps.renameCliModel(
         message.cli,
         message.previousModel,
@@ -153,6 +163,10 @@ export function createSessionPanelMessageHandlers(
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
+      if (message.cli === "kimi-code") {
+        await manageKimiCodeModel(deps, message, configId);
+        return;
+      }
       deps.deleteCliModel(message.cli, message.model, configId);
       await deps.postPanelState();
     },
@@ -161,6 +175,10 @@ export function createSessionPanelMessageHandlers(
       const configId = typeof message.configId === "string" && message.configId
         ? message.configId
         : deps.getActiveConfigIdForCli(message.cli);
+      if (message.cli === "kimi-code") {
+        await manageKimiCodeModel(deps, message, configId);
+        return;
+      }
       const movedModel = deps.moveCliModel(message.cli, message.model, message.direction, configId);
       if (!movedModel) {
         return;
@@ -427,6 +445,36 @@ export function createSessionPanelMessageHandlers(
       }
     },
   };
+}
+
+async function manageKimiCodeModel(
+  deps: SessionPanelMessageDeps,
+  message: Extract<PanelMessage, { type: "addCliModel" | "renameCliModel" | "deleteCliModel" | "moveCliModel" }>,
+  configId: string | null,
+): Promise<void> {
+  if (!configId || !deps.manageKimiCodeModelList) return;
+  const change = message.type === "addCliModel"
+    ? { type: "add" as const, model: message.model }
+    : message.type === "renameCliModel"
+      ? { type: "rename" as const, model: message.previousModel, nextModel: message.nextModel }
+      : message.type === "deleteCliModel"
+        ? { type: "delete" as const, model: message.model }
+        : { type: "move" as const, model: message.model, direction: message.direction };
+  try {
+    const result = await deps.manageKimiCodeModelList(change, configId);
+    if (!result.applied) return;
+    deps.cacheKimiCodeConfigModels?.(configId, result.config);
+    if (change.type === "rename") {
+      deps.renameCliModel("kimi-code", change.model, change.nextModel, configId);
+    } else if (change.type === "delete") {
+      deps.deleteCliModel("kimi-code", change.model, configId);
+      deps.selectCliModel("kimi-code", result.model, configId);
+    }
+  } catch (error) {
+    deps.showWebviewError(t("panel.runtimeError"), error instanceof Error ? error.message : error);
+  } finally {
+    await deps.postPanelState();
+  }
 }
 
 export type SessionPanelMessage = Extract<

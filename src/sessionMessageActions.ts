@@ -106,7 +106,7 @@ export async function handleUpdateSettingMessage(
     const [, cliValue, roleValue] = message.key.split(".");
     const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
     if (
-      (cli === "codex" || cli === "grok" || cli === "claude" || cli === "dsh")
+      (cli === "codex" || cli === "grok" || cli === "claude" || cli === "dsh" || cli === "kimi-code")
       && (roleValue === "main" || roleValue === "subtask")
     ) {
       const configId = deps.getActiveConfigIdForCli(cli);
@@ -258,7 +258,8 @@ function normalizePromptThinkingMode(
 function supportsMainSubtaskPromptModels(
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
 ): boolean {
-  return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok" || targetCli === "dsh";
+  return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok" || targetCli === "dsh"
+    || targetCli === "kimi-code";
 }
 
 function resolvePromptRoleModels(
@@ -342,7 +343,8 @@ function resolvePromptRoleThinkingModes(
   const includeSubtaskThinking = thinkingSubtaskCli === "codex"
     || thinkingSubtaskCli === "grok"
     || thinkingSubtaskCli === "claude"
-    || thinkingSubtaskCli === "dsh";
+    || thinkingSubtaskCli === "dsh"
+    || thinkingSubtaskCli === "kimi-code";
   if ((!supportsMainSubtaskPromptModels(targetCli) && !includeSubtaskThinking) || !options.includeLoopModels) {
     return {};
   }
@@ -350,7 +352,7 @@ function resolvePromptRoleThinkingModes(
   const subtaskModel = promptModels.loopSubtaskCli
     ? promptModels.loopSubtaskModel
     : promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
-  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok" || targetCli === "dsh")
+  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok" || targetCli === "dsh" || targetCli === "kimi-code")
     ? normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
       ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
       ?? undefined

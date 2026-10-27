@@ -410,11 +410,11 @@ export function loadModelStore(
 }
 
 function supportsConfigScopedCliModel(cli: CliName): boolean {
-  return cli === "codex" || cli === "grok";
+  return cli === "codex" || cli === "grok" || cli === "kimi-code";
 }
 
 function supportsLoopRoleModelStorage(cli: CliName): boolean {
-  return cli === "codex" || cli === "grok";
+  return cli === "codex" || cli === "grok" || cli === "kimi-code";
 }
 
 export function getSelectedCliModelFromStore(

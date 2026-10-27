@@ -2,6 +2,7 @@ import { normalizeCodexRunSelection, type CodexRunSelection } from "./codexThrea
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { DshInteractiveRunner } from "./dshRunner";
+import { KimiInteractiveRunner } from "./kimiRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import type {
   ClaudeRunnerCreateOptions,
@@ -9,10 +10,12 @@ import type {
   CodexRunnerEntry,
   DshRunnerCreateOptions,
   GrokRunnerCreateOptions,
+  KimiCodeRunnerCreateOptions,
   PreparedClaudeCreate,
   PreparedCodexCreate,
   PreparedDshCreate,
   PreparedGrokCreate,
+  PreparedKimiCodeCreate,
   RunnerEntry,
   RunnerLifecycleStrategy,
 } from "./runnerLifecycleTypes";
@@ -35,6 +38,10 @@ function emptyGrokSessionError(): Error {
 
 function emptyDshSessionError(): Error {
   return Object.assign(new Error("empty dsh session"), { reason: "empty" });
+}
+
+function emptyKimiCodeSessionError(): Error {
+  return Object.assign(new Error("empty kimi-code session"), { reason: "empty" });
 }
 
 function sameStringList(left: readonly string[], right: readonly string[]): boolean {
@@ -433,11 +440,120 @@ export const dshRunnerLifecycleStrategy: RunnerLifecycleStrategy<"dsh", DshRunne
   },
 };
 
+export const kimiCodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
+  "kimi-code",
+  KimiCodeRunnerCreateOptions,
+  PreparedKimiCodeCreate
+> = {
+  cli: "kimi-code",
+  prepare(options) {
+    const sessionId = options.sessionId.trim();
+    if (!sessionId) {
+      throw emptyKimiCodeSessionError();
+    }
+    return {
+      sessionId,
+      options: {
+        ...options,
+        sessionId,
+        agentArgs: copyArgs(options.agentArgs),
+        localSessionId: options.localSessionId ?? null,
+      },
+    };
+  },
+  canReuse(entry, prepared) {
+    return entry.runner.isReusable()
+      && entry.command === prepared.options.command
+      && entry.cwd === prepared.options.cwd
+      && entry.interactiveMode === prepared.options.interactiveMode
+      && entry.localSessionId === (prepared.options.localSessionId ?? null)
+      && (entry.env?.KIMI_CODE_HOME ?? "") === (prepared.options.env?.KIMI_CODE_HOME ?? "")
+      && sameStringList(entry.args, prepared.options.agentArgs);
+  },
+  applyReuse(entry, prepared) {
+    entry.command = prepared.options.command;
+    entry.args = copyArgs(prepared.options.agentArgs);
+    entry.cwd = prepared.options.cwd;
+    entry.interactiveMode = prepared.options.interactiveMode;
+    entry.localSessionId = prepared.options.localSessionId ?? null;
+    entry.env = prepared.options.env;
+    entry.model = prepared.options.model;
+    entry.thinkingMode = prepared.options.thinkingMode;
+  },
+  createRunner(prepared) {
+    return new KimiInteractiveRunner({
+      command: prepared.options.command,
+      agentArgs: prepared.options.agentArgs,
+      cwd: prepared.options.cwd,
+      thinkingMode: prepared.options.thinkingValue ?? null,
+      modeId: prepared.options.modeId ?? null,
+      model: prepared.options.model,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    });
+  },
+  createRegistration(prepared, runner) {
+    return {
+      cli: "kimi-code",
+      sessionId: prepared.sessionId,
+      runner,
+      thinkingMode: prepared.options.thinkingMode,
+      interactiveMode: prepared.options.interactiveMode,
+      model: prepared.options.model,
+      command: prepared.options.command,
+      args: copyArgs(prepared.options.agentArgs),
+      cwd: prepared.options.cwd,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    };
+  },
+  applySetMetadata(entry, input) {
+    entry.sessionId = input.sessionId;
+    entry.thinkingMode = input.thinkingMode;
+    entry.interactiveMode = input.interactiveMode;
+    entry.model = input.model;
+    if (typeof input.options.command === "string") {
+      entry.command = input.options.command;
+    }
+    if (input.options.args) {
+      entry.args = copyArgs(input.options.args);
+    }
+    if (input.options.cwd !== undefined) {
+      entry.cwd = input.options.cwd;
+    }
+    if (input.options.localSessionId !== undefined) {
+      entry.localSessionId = input.options.localSessionId;
+    }
+    if (input.options.env) {
+      entry.env = input.options.env;
+    }
+  },
+  createSetRegistration(input) {
+    return {
+      cli: "kimi-code",
+      sessionId: input.sessionId,
+      runner: input.runner,
+      thinkingMode: input.thinkingMode,
+      interactiveMode: input.interactiveMode,
+      model: input.model,
+      command: input.options.command ?? "",
+      args: copyArgs(input.options.args ?? []),
+      cwd: input.options.cwd,
+      localSessionId: input.options.localSessionId ?? null,
+      env: input.options.env,
+    };
+  },
+  stop(runner) {
+    runner.cancelTurn();
+  },
+};
+
 export const runnerLifecycleStrategies = {
   codex: codexRunnerLifecycleStrategy,
   claude: claudeRunnerLifecycleStrategy,
   grok: grokRunnerLifecycleStrategy,
   dsh: dshRunnerLifecycleStrategy,
+  "kimi-code": kimiCodeRunnerLifecycleStrategy,
 };
 
 export function stopManagedRunner(entry: RunnerEntry): void {
@@ -453,5 +569,9 @@ export function stopManagedRunner(entry: RunnerEntry): void {
     grokRunnerLifecycleStrategy.stop(entry.runner);
     return;
   }
-  dshRunnerLifecycleStrategy.stop(entry.runner);
+  if (entry.cli === "dsh") {
+    dshRunnerLifecycleStrategy.stop(entry.runner);
+    return;
+  }
+  kimiCodeRunnerLifecycleStrategy.stop(entry.runner);
 }

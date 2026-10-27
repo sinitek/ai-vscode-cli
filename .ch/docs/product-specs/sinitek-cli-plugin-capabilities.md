@@ -79,7 +79,7 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - 配置页范例默认模型 id 为 `deepseek-v4.1-flash`，不加 `subcoco/` 前缀；实际模型 id 按 OpenAI-compatible 端点要求原样填写在 `models[].id` 与 `acpModel`。profile 可按顺序配置多个模型，`acpModel` 指定默认值。聊天面板仅提供 profile 中的模型选择，所选 id 会持久化，并在下一次执行时解析为已配置 provider wire、由 ACP 确认切换。未配置或 ACP 未公布的模型不能执行。凭据默认引用 `SINITEK_DSH_API_KEY`，不借用 `DEEPSEEK_API_KEY` 或其他平台密钥；配置页也允许把 `apiKey` 直接保存到本机 DSH profile，并仅在启动子进程时注入该环境变量。配置页分组在 Grok 之后，直接密钥输入使用密码控件。`apiKeyEnv` 不是密钥值；可视化模式不展示该字段，profile 可省略，保存和运行 patch 会自动规范化为固定值 `SINITEK_DSH_API_KEY`。ACP 模型 wire 使用 `JSON.stringify(["sinitek-custom", modelId])`，模型 id 不拆分或自动添加前缀；未列入 `models[]` 或未被当前 ACP 广告的 id 不能执行。
 - 未配置模型不能执行。未出现在已配置模型和当前 ACP `configOptions` 中的 id 不得当成可执行模型。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。
 - 携宁 CLI 启动 DSH ACP 子进程时固定覆盖 `DSH_PERMISSION_MODE=danger-full-access`，使用 DSH 官方的完整访问且免审批策略；仅作用于该子进程，不修改扩展宿主环境。
-- Skills 目标是五个，顺序保持 Claude、OpenCode、Grok、Codex、DSH。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
+- Skills 目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
 - usage 缺失不显示为 0。出现的 `usage_update.size` 若来自 adapter-fallback，界面标成适配器窗口，不能冒充服务确认容量。
 - DSH ACP 的 `plan.entries` 和 `todo_write` / `update_plan` 工具 `rawInput.todos` 使用结构化任务文本与状态更新当前 tab 的任务列表。面板只显示任务正文，不把 `pending`、`in_progress` 等状态标记或“Updated todo list”工具摘要拼入任务名称；重复计划快照不重复更新。
 - DSH 工具调用复用现有 Codex 风格 trace 展示：命令调用显示命令及输出，其它工具显示本地化标题、格式化输入及输出。相同 `toolCallId` 的开始、进度和完成事件原位更新同一气泡，未变化快照不重复发送，协议状态字符串不作为气泡正文。
@@ -88,6 +88,24 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - DSH 在 Loop、Loop+、Graph 复用现有主模型和子模型选择行，候选只取当前活动配置中的模型；两种角色分别按所选模型的 `reasoningEfforts` 展示力度，无能力声明时禁用该角色选择器。选择按配置档案、角色和模型独立保存；Loop、Loop+ 与 Graph 派发时将相应角色模型及力度交给 DSH ACP turn，runner 仍必须用当前 ACP 广告值确认并应用，不能因 profile 声明而绕过 `configOptions`。
 - 原生 compaction 明确不支持。`compactSession` 返回不支持，不发送 `/compact`，也不把压缩提示词当成原生压缩。
 - 最终模型的插件实跑覆盖配置激活、隔离 `DSH_HOME`、`DshInteractiveRunner` 和宿主运行时上的新建、续聊、恢复和取消。真实权限请求没有出现。图形 Extension Host 点击验收未做，不得虚报。
+
+### Kimi Code
+
+- 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`、`kimi-code`；前五项顺序不变。CLI id 固定为 `kimi-code`，默认命令和界面显示名称 `kimi`。官方包是 `@moonshot-ai/kimi-code`（bin `kimi`，要求 Node >= 22.19.0）。
+- 安装只走官方包元数据：`npm install -g @moonshot-ai/kimi-code@latest`。官方文档另有两种官方入口：脚本安装 `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`（Windows PowerShell 为 `irm https://code.kimi.com/kimi-code/install.ps1 | iex`，官方推荐、无需预装 Node）和 npm `npm install -g @moonshot-ai/kimi-code`（需 Node >= 22.19.0）。插件不使用、也不建议由插件执行管道安装脚本。版本检查 `kimi --version`；配置自检 `kimi doctor config [path]`；升级 `kimi upgrade` 或 npm 重装 `@latest`。用户向说明见 `docs/kimi-code-guide.md`。
+- 交互主路径是官方 ACP：`kimi acp`（JSON-RPC 2.0 over stdio）。`args.kimi-code` 只允许 `--region <mainland-cn|global>`；其余参数一律拒绝，不猜测未文档化开关。
+- 新档案默认模型 `kimi-k3.1-pro`，模型别名不含 `subcoco/` 前缀；已有配置不自动迁移别名。凭据只来自 `~/.kimi-code/config.toml`（provider `api_key`、provider `env` 表或 `api_key_env`）或用户自己的 `KIMI_MODEL_*` 环境变量；不使用第二个鉴权文件，不转发 Codex `auth.json`，并在启动子进程前剥离其它 CLI 的 `*_API_KEY`。默认配置和一键导入范例只包含默认模型、免审批、provider、真实模型 ID、URL、凭据和 `max_context_size`；API Key 用 `<your-kimi-api-key>` 占位，配置中心可视化支持直接填写或改用环境变量名。
+- 会话：`session/new {cwd, mcpServers}` 返回 `session_<uuid>`；只有持有该形态 id 时才用 `session/resume`，失败且非强制续接时回落 `session/new`。不发送 `session/load`、`session/fork`、`session/delete`。
+- 模型与模式：`model`、`thinking`、`mode` 都通过 `session/set_config_option` 下发，并且只接受当前 ACP 广告值。`plan` 交互模式映射真实的只读 `plan` mode；其它模式按配置的 `default_permission_mode` 落 `auto` 或 `yolo`，不伪造未公布能力。免审批只能走 `default_permission_mode`：官方 `--auto` / `--yolo` 与 `-p/--prompt` 互斥（实测报 `Cannot combine --prompt with --auto.` / `--yolo.`），插件不拼这两个参数。
+- 主从模型：Kimi Code 复用插件通用主/子模型选择，候选只取当前激活 `config.toml` 里声明的模型。两个角色按配置档案分别持久化；子任务未单独选择时先回落到普通对话选中的模型，再回落到 `default_model`，与 Grok 一致。Loop 主任务与主持/复核用主模型，Loop 子任务用子模型；Graph planner 与 `summary` 用主模型，执行节点用子模型。跨 CLI 子路由不继承主 CLI 模型。Kimi 自身 `config.toml` 没有子模型字段，主从分工完全由插件调度实现。
+- 思考力度：只下发 ACP 广告过的 `thinking` 值。广告集合由模型表决定：无 `capabilities`（或空数组）时不广告 `thinking`；`capabilities = ["thinking"]` 且无 `support_efforts` 时广告 `off`/`on`/`high`；显式 `support_efforts` 时是该数组的子集（`always_thinking` 时不广告 `off`）；env-only 通道只有 `off`/`on`。插件不重写 `ultra` 或 `off`，广告里没有就报错并保留服务端确认值。默认配置与范例生成 `capabilities = ["thinking"]` 和完整五档 `support_efforts`，不生成 `[thinking]`、默认思考档或 `loop_control`；所有保存自动补缺失的思考声明且不覆盖已有值，高级字段不进入可视化表单。此前隔离 `KIMI_CODE_HOME` 的显式声明配置实测广告 `off`/`low`/`medium`/`high`/`xhigh`/`max` 并完成一轮 `session/prompt`（`stopReason: end_turn`）。
+- 权限：`session/request_permission` 由 runner 自动选择广告中的 `allow_once`；`plan` 模式不自动放行。其它反向 RPC（如 `fs/*`、`terminal/*`）统一回 `-32601`，命令由 Kimi 自己执行。
+- 上下文与压缩：`usage_update` 每轮结束后发送一次，`size` 取自模型目录的 `max_context_size`，是配置声明的真实窗口上限而不是估算值。`src/extensionHost/interactiveTurnKimi.ts` 标 `contextWindowSource: "kimi-config-window"`，悬停文案说明窗口取自配置的 `max_context_size`，与 DSH 的 `adapter-fallback` 区分且不共用文案。Kimi Code ACP 没有独立压缩方法，插件 `compactSession()` 抛 `compaction-unsupported`，不伪造本地压缩，面板不显示「压缩上下文」。`/compact` 斜杠命令本身可用（作为 `session/prompt` 文本发送会后台异步压缩并回纯文本完成提示），但没有机器可读完成事件，本轮不接线成可确认的按钮。`[loop_control].reserved_context_size` 只作用于 CLI 自己的循环。
+- Skills 目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、kimi。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。
+- Webview：消费宿主的 `kimiThinkingOptions`（按 `tabId` 隔离、过滤非法值、只从广告集合选当前值、只有 `off`/`on` 时禁用下拉）与 `kimiModeUpdate`（按 `tabId` 存 `kimiAcpModeId`，不新增界面）；收到广告前用官方五档占位，切换标签页或 CLI 会清空广告集合。回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts` 与 `src/test/extensionHost/kimiInteractiveHostWire.test.ts`。
+- 验收：真实 `kimi acp`（2.3.2）+ `subcoco/kimi-k3.1-pro` 已跑通新建会话、`yolo` 模式、`thinking=high`、权限自动放行与写文件任务，文件内容经校验；此前显式声明思考能力的配置在隔离 `KIMI_CODE_HOME` 下实测广告完整六档并完成一轮 prompt。当前精简默认配置另行运行 `kimi doctor config`；图形 Extension Host 点击验收未做。
+
+- Kimi 多模型管理复用 Codex 弹窗，新增、重命名、删除、排序同时保存当前档案和真实 `config.toml`；新增条目复制默认模型 provider、凭据与高级字段，真实 `model` ID 取输入别名。每轮通过 ACP `session/set_config_option` 应用配置别名，复用 runner 后仍重新应用模型及思考档位。配置保存后淘汰持有旧广告集合的 runner，新 runner 通过原 ACP ID 恢复会话，再应用所选模型；直接复用过期 runner 会被拒绝。工具命令只显示 `exec <command>`，普通工具只显示标题，参数 JSON 和成功结果不回放，失败最多两行、600 字符。
 
 ### 3.3 执行模式
 

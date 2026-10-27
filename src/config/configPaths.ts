@@ -6,6 +6,7 @@ import {
   resolveCodexHomeDir,
   resolveDshHomeDir,
   resolveGrokHomeDir,
+  resolveKimiCodeHomeDir,
   resolveOpenCodeHomeDir,
   resolveXdgConfigHome,
 } from "../shared/userHomePaths";
@@ -45,6 +46,10 @@ export type ConfigPathMap = {
     config: string;
     configDir: string;
   };
+  "kimi-code": {
+    config: string;
+    configDir: string;
+  };
 };
 
 export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
@@ -62,6 +67,9 @@ export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): Co
   }
   if (platform === "dsh") {
     return "dsh";
+  }
+  if (platform === "kimi-code") {
+    return "kimi-code";
   }
   throw new Error(`Unsupported config platform: ${String(platform)}`);
 }
@@ -96,6 +104,10 @@ export function createConfigPaths(
       config: path.join(resolveDshHomeDir(env, homeDir), CONFIG_DIR_NAME, "active-patch.yaml"),
       configDir: path.join(resolveDshHomeDir(env, homeDir), CONFIG_DIR_NAME),
     },
+    "kimi-code": {
+      config: path.join(resolveKimiCodeHomeDir(env, homeDir), "config.toml"),
+      configDir: path.join(resolveKimiCodeHomeDir(env, homeDir), CONFIG_DIR_NAME),
+    },
   };
 }
 
@@ -111,6 +123,9 @@ export function getConfigDir(
   }
   if (normalized === "dsh" && paths === CONFIG_PATHS) {
     return path.join(resolveDshHomeDir(), CONFIG_DIR_NAME);
+  }
+  if (normalized === "kimi-code" && paths === CONFIG_PATHS) {
+    return path.join(resolveKimiCodeHomeDir(), CONFIG_DIR_NAME);
   }
   return paths[normalized].configDir;
 }

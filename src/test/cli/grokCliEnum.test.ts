@@ -16,8 +16,8 @@ test("appends grok after the existing CLI enum and builds the official stdio com
     contributes: { configuration: { properties: Record<string, { enum?: string[]; default?: unknown }> } };
   };
   const properties = manifest.contributes.configuration.properties;
-  assert.deepEqual(properties["sinitek-cli-tools.defaultCli"].enum, ["codex", "claude", "opencode", "grok", "dsh"]);
-  assert.deepEqual(CLI_LIST, ["codex", "claude", "opencode", "grok", "dsh"]);
+  assert.deepEqual(properties["sinitek-cli-tools.defaultCli"].enum, ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+  assert.deepEqual(CLI_LIST, ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
   assert.equal(GROK_CLI, "grok");
   assert.equal(CLI_LIST.indexOf("grok"), 3);
   assert.equal(CLI_LIST[CLI_LIST.indexOf("grok") + 1], "dsh");
@@ -40,9 +40,9 @@ test("appends grok after the existing CLI enum and builds the official stdio com
   const select = html.match(/<select id="currentCli"[^>]*>(.*?)<\/select>/);
   assert.equal(
     select?.[1],
-    '<option value="codex">codex</option><option value="claude">claude</option><option value="opencode">opencode</option><option value="grok">grok</option><option value="dsh">dsh</option>',
+    '<option value="codex">codex</option><option value="claude">claude</option><option value="opencode">opencode</option><option value="grok">grok</option><option value="dsh">dsh</option><option value="kimi-code">kimi-code</option>',
   );
-  assert.match(html, /const CLI_NAMES = \["codex","claude","opencode","grok","dsh"\]/);
+  assert.match(html, /const CLI_NAMES = \["codex","claude","opencode","grok","dsh","kimi-code"\]/);
   const grokSelectIds = [
     "currentCli",
     "codexLoopSubtaskCliSelect",

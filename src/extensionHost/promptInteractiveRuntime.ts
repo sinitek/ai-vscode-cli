@@ -5,7 +5,7 @@ import {
   type LoopMainAutoCompactRequest,
 } from "../loopMainAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
-import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand } from "../cli/config";
+import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -60,6 +60,7 @@ import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
 import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
+import { prepareKimiInteractiveLaunch, type KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
 import { createInteractiveTurnStrategies } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
@@ -90,6 +91,12 @@ export type PromptInteractiveRuntimeHostDeps = {
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env">>;
+  resolveKimiModelWireForRun?: (selectedModel: string | null) => Promise<string>;
+  prepareKimiInteractiveLaunch?: (input: {
+    interactiveMode: InteractiveMode;
+    selectedModel: string | null;
+    thinkingMode: ThinkingMode;
+  }) => Promise<Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue">>;
   getModelDisplayName?: (cli: CliName, model: string | null) => string | null;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   getInteractiveRunnerManager: () => InteractiveRunnerManager;
@@ -269,9 +276,24 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         sessionKey: tabId,
       });
     }
+    let kimiModelWire: string | null = null;
+    let kimiLaunch: Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue"> | null = null;
+    if (cli === "kimi-code") {
+      if (!deps.resolveKimiModelWireForRun) {
+        throw new Error("Kimi Code model resolver is not configured.");
+      }
+      kimiModelWire = await deps.resolveKimiModelWireForRun(requestedModel);
+      kimiLaunch = await (deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
+        interactiveMode,
+        selectedModel: kimiModelWire,
+        thinkingMode,
+      });
+    }
     const grokAgentArgs = cli === "grok" ? getGrokAgentArgs() : [];
     const args = cli === "dsh"
       ? [...(dshLaunch?.agentArgs ?? [])]
+      : cli === "kimi-code"
+      ? [...(kimiLaunch?.agentArgs ?? [])]
       : cli === "grok"
       ? buildGrokAgentStdioArgs(grokAgentArgs, selectedModel)
       : cli === "codex" || executionOptions.isolateProjectInstructions
@@ -282,7 +304,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
         })
       : getEffectiveCliArgs(cli, selectedModel);
-    const command = cli === "dsh" ? getDshCommand() : cli === "grok" ? getGrokCommand() : getCliCommand(cli);
+    const command = cli === "dsh"
+      ? getDshCommand()
+      : cli === "kimi-code"
+      ? getKimiCommand()
+      : cli === "grok"
+      ? getGrokCommand()
+      : getCliCommand(cli);
     const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
     const commandForRunner = cli === "claude"
       ? (resolvedCommand?.command ?? "claude")
@@ -337,6 +365,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let observedClaudeFinalAnswer = false;
     let observedGrokFinalAnswer = false;
     let observedDshFinalAnswer = false;
+    let observedKimiFinalAnswer = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -1011,7 +1040,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         observedFinalAnswer: (source === "codex" && observedCodexFinalAnswer)
           || (source === "claude" && observedClaudeFinalAnswer)
           || (source === "grok" && observedGrokFinalAnswer)
-          || (source === "dsh" && observedDshFinalAnswer),
+          || (source === "dsh" && observedDshFinalAnswer)
+          || (source === "kimi-code" && observedKimiFinalAnswer),
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
@@ -1088,7 +1118,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       graphNodeId: input.graphNodeId,
     });
 
-    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh"): Promise<"continue" | "return"> => {
+    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code"): Promise<"continue" | "return"> => {
       if (await maybeHandleNaturalLanguageHumanInteraction()) {
         return "continue";
       }
@@ -1146,7 +1176,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       beginInteractiveAttempt(attemptPrompt);
 
       try {
-        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh") {
+        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code") {
           throw new Error(`interactive-runner-unsupported:${cli}`);
         }
         const disposition = await interactiveTurnStrategies[cli].runAttempt({
@@ -1160,6 +1190,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           grokAgentArgs,
           dshModelWire,
           dshLaunch,
+          kimiModelWire,
+          kimiLaunch,
           cwd,
           thinkingMode,
           interactiveMode,
@@ -1239,6 +1271,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           },
           set observedDshFinalAnswer(value: boolean) {
             observedDshFinalAnswer = value;
+          },
+          get observedKimiFinalAnswer() {
+            return observedKimiFinalAnswer;
+          },
+          set observedKimiFinalAnswer(value: boolean) {
+            observedKimiFinalAnswer = value;
           },
           settleInteractiveAttempt,
           appendAssistantChunkForTab,

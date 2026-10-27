@@ -8,6 +8,7 @@ const CLI_INSTALL_COMMANDS: Record<CliName, string> = {
   opencode: "npm install -g opencode-ai",
   grok: "",
   dsh: "npm install -g @deepseek-ai/dsh",
+  "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
 };
 
 const CLI_DISPLAY_NAMES: Record<CliName, string> = {
@@ -16,6 +17,7 @@ const CLI_DISPLAY_NAMES: Record<CliName, string> = {
   opencode: "OpenCode",
   grok: "Grok",
   dsh: "DSH",
+  "kimi-code": "kimi",
 };
 
 const CODEGRAPH_INSTALL_STEP_COMMANDS = {

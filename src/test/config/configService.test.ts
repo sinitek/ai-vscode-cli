@@ -707,6 +707,110 @@ test("Grok runtime keeps a missing file empty and does not replace invalid conte
   });
 });
 
+test("Kimi Code runtime reads and writes ~/.kimi-code/config.toml without replacing invalid content", async () => {
+  await withTempHome(async (homeDir) => {
+    const kimiHome = path.join(homeDir, "kimi-home");
+    const originalKimiHome = process.env.KIMI_CODE_HOME;
+    process.env.KIMI_CODE_HOME = kimiHome;
+    try {
+      const configService = loadConfigService();
+      const { createKimiCodeDefaultConfigText, parseKimiCodeConfigModels } =
+        require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+      const configPath = path.join(kimiHome, "config.toml");
+      assert.deepEqual(await configService.getCurrentConfig("kimi-code"), {
+        content: "",
+        configContent: "",
+      });
+
+      // 首次进入：没有文件时按默认模型生成，且可直接被官方 CLI 校验。
+      const created = await configService.initDefaultConfig("kimi-code");
+      assert.ok(created);
+      assert.equal(created?.platform, "kimi-code");
+      assert.equal(parseKimiCodeConfigModels(created?.configContent ?? "").defaultModel, "kimi-k3.1-pro");
+      assert.equal(created?.content, created?.configContent);
+
+      // 应用有效配置后落盘内容与传入一致（TOML 不做 JSON 格式化）。
+      const valid = createKimiCodeDefaultConfigText({ permissionMode: "manual" })
+        .replace("max_context_size = 262144", "max_context_size = 262144\nkept_note = \"leave-me\"");
+      await configService.applyConfig("kimi-code", { content: valid, configContent: valid });
+      assert.equal(await fs.readFile(configPath, "utf8"), valid);
+
+      // 非法内容不覆盖上一份有效文件。
+      await assert.rejects(
+        () => configService.applyConfig("kimi-code", { content: "default_permission_mode = \"never\"\n" }),
+        /default_permission_mode 无效/,
+      );
+      await assert.rejects(
+        () => configService.applyConfig("kimi-code", { content: "models = [\n" }),
+      );
+      assert.equal(await fs.readFile(configPath, "utf8"), valid);
+      const keptNote = await fs.readFile(configPath, "utf8");
+      assert.match(keptNote, /kept_note = "leave-me"/, "未展示字段要保留");
+
+      const current = await configService.getCurrentConfig("kimi-code");
+      assert.equal(parseKimiCodeConfigModels(current.content ?? "").permissionMode, "manual");
+    } finally {
+      restoreEnvironmentVariable("KIMI_CODE_HOME", originalKimiHome);
+    }
+  });
+});
+
+test("Kimi Code config profiles persist TOML and reject a cross-platform copy", async () => {
+  await withTempHome(async (homeDir) => {
+    const kimiHome = path.join(homeDir, "kimi-home");
+    const originalKimiHome = process.env.KIMI_CODE_HOME;
+    process.env.KIMI_CODE_HOME = kimiHome;
+    try {
+      const configService = loadConfigService();
+      const { createKimiCodeDefaultConfigText } =
+        require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+      const text = createKimiCodeDefaultConfigText();
+      await configService.saveConfig({
+        id: "kimi-profile",
+        name: "Kimi",
+        platform: "kimi-code",
+        content: text,
+        configContent: text,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const stored = JSON.parse(await fs.readFile(
+        path.join(kimiHome, "__config", "kimi-profile.json"),
+        "utf8",
+      ));
+      assert.equal(stored.platform, "kimi-code");
+      assert.match(stored.content, /default_model = "kimi-k3\.1-pro"/);
+      assert.equal(stored.codexSkills, undefined);
+      assert.equal(stored.grokSkills, undefined);
+
+      const back = await configService.getConfigById("kimi-code", "kimi-profile");
+      assert.equal(back?.configContent, text);
+
+      // 同平台复制保留内容
+      const copy = await configService.copyConfig({
+        sourceId: "kimi-profile",
+        sourcePlatform: "kimi-code",
+        targetPlatform: "kimi-code",
+        name: "Kimi 副本",
+      });
+      assert.equal(copy.platform, "kimi-code");
+      assert.match(String(copy.configContent), /kimi-k3\.1-pro/);
+
+      // 跨平台复制被拒绝：TOML 不能搬进 Codex/Grok，也不能把别的平台内容伪装成 kimi-code
+      await assert.rejects(
+        () => configService.copyConfig({
+          sourceId: "kimi-profile",
+          sourcePlatform: "kimi-code",
+          targetPlatform: "codex",
+        }),
+        /Kimi Code configs can only be copied as Kimi Code configs/,
+      );
+    } finally {
+      restoreEnvironmentVariable("KIMI_CODE_HOME", originalKimiHome);
+    }
+  });
+});
+
 test("DSH profile storage keeps only root apiKey, drops skill toggles, and accepts dsh skills", async () => {
   await withTempHome(async (homeDir) => {
     const previousHome = process.env.DSH_HOME;
@@ -743,7 +847,7 @@ test("DSH profile storage keeps only root apiKey, drops skill toggles, and accep
       assert.equal(loaded?.grokSkills, undefined);
       assert.deepEqual(
         [...configService.CLI_GLOBAL_SKILL_PLATFORMS],
-        ["claude", "codex", "opencode", "grok", "dsh"],
+        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
       );
       assert.equal(configService.readDshUnsupportedCapability("explicitSkillsApi").supported, false);
       assert.equal(configService.readDshUnsupportedCapability("nativeCompaction").supported, false);

@@ -92,6 +92,7 @@ function buildThinkingSync() {
     "getLoopRoleThinkingOptionsForCli",
     "getSelectedLoopRoleThinkingModeForCli",
     "getVisibleLoopRoleThinkingModeForCli",
+    "getCliLoopThinkingAria",
     "appendCodexThinkingOptions",
     "updateCodexLoopRoleThinkingSelect",
     "updateCodexLoopThinkingSelectOptions",

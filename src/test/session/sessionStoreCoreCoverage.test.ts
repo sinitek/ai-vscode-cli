@@ -62,6 +62,7 @@ function createStore(overrides: Partial<SessionStore> = {}): SessionStore {
     opencode: { currentId: null, sessions: [] },
     grok: { currentId: null, sessions: [] },
     dsh: { currentId: null, sessions: [] },
+    "kimi-code": { currentId: null, sessions: [] },
     ...overrides,
   } as SessionStore;
 }
@@ -127,6 +128,7 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
     opencode: [],
     grok: [],
     dsh: [],
+    "kimi-code": [],
   });
   assert.deepEqual(collectStaleSessionIds(source, retained, cliList), {
     codex: ["expired"],
@@ -134,6 +136,7 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
     opencode: [],
     grok: [],
     dsh: [],
+    "kimi-code": [],
   });
 
   const fallbackOnly = ensureSessionStore({
@@ -172,8 +175,8 @@ test("normalizes retained sessions, stale current IDs, and basic store helpers",
   assert.ok(Number.isFinite(fallbackOnly.codex.sessions[1]?.createdAt));
   assert.ok(Number.isFinite(fallbackOnly.codex.sessions[1]?.lastUsedAt));
   assert.deepEqual(
-    collectStaleSessionIds(source, { codex: retained.codex } as SessionStore, cliList),
-    { codex: ["expired"], claude: [], opencode: [], grok: [], dsh: [] },
+    collectStaleSessionIds(source, { codex: retained.codex } as unknown as SessionStore, cliList),
+    { codex: ["expired"], claude: [], opencode: [], grok: [], dsh: [], "kimi-code": [] },
   );
 });
 

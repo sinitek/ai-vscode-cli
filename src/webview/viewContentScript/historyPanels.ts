@@ -121,7 +121,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         if (elements.historyMessagesSubtitle) {
           const timeLabel = active.createdAt ? formatDateTime(active.createdAt) : "";
           elements.historyMessagesSubtitle.textContent = active.cli
-            ? t("historySessionMessagesMeta", { cli: active.cli, time: timeLabel || "-" }) + " · " + label
+            ? t("historySessionMessagesMeta", { cli: formatCliDisplayName(active.cli), time: timeLabel || "-" }) + " · " + label
             : label;
         }
         if (elements.historyMessagesStatus) {
@@ -264,7 +264,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
       }
 
       function formatHistorySessionLabel(session, preview) {
-        const cliLabel = session && session.cli ? "[" + session.cli + "] " : "";
+        const cliLabel = session && session.cli ? "[" + formatCliDisplayName(session.cli) + "] " : "";
         const body = cliLabel + preview;
         if (session && session.taskRole === "main") {
           return t("historySessionRoleMain") + " " + body;
@@ -453,7 +453,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
 
           const meta = document.createElement("div");
           meta.className = "prompt-meta";
-          const cliLabel = item.cli ? "[" + item.cli + "] " : "";
+          const cliLabel = item.cli ? "[" + formatCliDisplayName(item.cli) + "] " : "";
           const timeLabel = item.createdAt ? formatDateTime(item.createdAt) : "";
           meta.textContent = cliLabel + timeLabel;
 

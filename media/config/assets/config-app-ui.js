@@ -8,6 +8,8 @@ const DEFAULT_RUN_COMMANDS = {
     opencode: "opencode --auto",
     grok: "grok --always-approve",
     dsh: "dsh",
+    // 官方 CLI 的 --auto / --yolo 不能与 -p 同用；免审批靠 config.toml 的 default_permission_mode。
+    "kimi-code": "kimi",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
@@ -16,6 +18,8 @@ const DEFAULT_INSTALL_COMMANDS = {
     opencode: "npm install -g opencode-ai",
     grok: "curl -fsSL https://x.ai/cli/install.sh | bash",
     dsh: "npm install -g @deepseek-ai/dsh",
+    // 与本机诊断修复路径（src/cli/installer.ts）保持一致，避免两处提示不同命令。
+    "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
   };
 
 const DSH_UI_PROVIDER = "sinitek-custom";
@@ -77,7 +81,9 @@ const configPlatformLabel = (platform) =>
           ? "Grok"
           : platform === "dsh"
             ? "DSH"
-            : "OpenCode";
+            : platform === "kimi-code"
+              ? "kimi"
+              : "OpenCode";
 
 function dshUiContainsSecret(value) {
   return DSH_UI_SECRET_ASSIGNMENT.test(String(value || "")) || DSH_UI_SECRET_TOKEN.test(String(value || ""));
@@ -668,6 +674,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       O = c.useMemo(() => e.filter((k) => k.platform === "opencode"), [e]),
       grokConfigs = c.useMemo(() => e.filter((k) => k.platform === "grok"), [e]),
       dshConfigs = c.useMemo(() => e.filter((k) => k.platform === "dsh"), [e]),
+      kimiCodeConfigs = c.useMemo(() => e.filter((k) => k.platform === "kimi-code"), [e]),
       exportSelectedCount = c.useMemo(
         () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
@@ -751,7 +758,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           Kt.error("复制失败，请手动复制");
         }
       },
-      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : k === "dsh" ? dshConfigs : O),
+      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : k === "dsh" ? dshConfigs : k === "kimi-code" ? kimiCodeConfigs : O),
       _ = (k) => {
         x(k);
       },
@@ -811,6 +818,11 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
                       profileId: L.id,
+                    })
+                : L.platform === "kimi-code"
+                  ? await applyConfigItem(L.platform, {
+                      content: L.configContent || L.content || "",
+                      configContent: L.configContent || L.content || "",
                     })
                 : await applyConfigItem(L.platform, {
                     configContent: L.configContent,
@@ -952,7 +964,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
 	            platform: G.platform,
 	            content: G.content,
 	            mcpContent: G.mcpContent,
-            envContent: G.platform === "codex" || G.platform === "opencode" || G.platform === "grok" || G.platform === "dsh" ? void 0 : G.envContent,
+            envContent: G.platform === "codex" || G.platform === "opencode" || G.platform === "grok" || G.platform === "dsh" || G.platform === "kimi-code" ? void 0 : G.envContent,
 	            configContent: G.configContent,
 	            authContent: G.authContent,
 	          })),
@@ -1278,7 +1290,8 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         isConfigPlatformEnabled("opencode", cliEnabledByName) ? H("opencode", O) : null,
         isConfigPlatformEnabled("grok", cliEnabledByName) ? H("grok", grokConfigs) : null,
         isConfigPlatformEnabled("dsh", cliEnabledByName) ? H("dsh", dshConfigs) : null,
-        ["claude", "codex", "opencode", "grok", "dsh"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
+        isConfigPlatformEnabled("kimi-code", cliEnabledByName) ? H("kimi-code", kimiCodeConfigs) : null,
+        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
           ? be.jsx("div", {
               className: "config-empty-state",
               style: {
@@ -2536,6 +2549,7 @@ const CLI_GLOBAL_SKILL_TARGETS = [
   { id: "grok", label: "Grok" },
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
+  { id: "kimi-code", label: "kimi" },
 ];
 
 function skillsTitleByPlatform(platform) {
@@ -4607,6 +4621,537 @@ const GrokConfigVisualEditorUtils = Object.freeze({
   deleteModel: grokVisualDeleteModel,
 });
 
+
+const KIMI_CODE_VISUAL_FIELD_IDS = Object.freeze([
+  "default_model",
+  "default_permission_mode",
+  "model.provider",
+  "model.model",
+  "model.max_context_size",
+  "provider.type",
+  "provider.base_url",
+  "provider.api_key",
+  "provider.api_key_env",
+]);
+const KIMI_CODE_VISUAL_PROVIDER_TYPES = Object.freeze([
+  "kimi",
+  "anthropic",
+  "openai",
+  "openai_responses",
+  "google-genai",
+  "vertexai",
+]);
+const KIMI_CODE_VISUAL_PERMISSION_MODES = Object.freeze(["manual", "auto", "yolo"]);
+const KIMI_CODE_VISUAL_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
+const KIMI_CODE_VISUAL_CAPABILITIES = Object.freeze([
+  "thinking",
+  "always_thinking",
+  "image_in",
+  "video_in",
+  "tool_use",
+]);
+const KIMI_CODE_VISUAL_PERMISSION_LABELS = Object.freeze({
+  manual: "逐条询问（manual，官方默认）",
+  auto: "自动放行（auto，免审批）",
+  yolo: "全部放行（yolo）",
+});
+const KIMI_CODE_VISUAL_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const KIMI_CODE_EMPTY_TEXT_ERROR = "空文本不会覆盖上一份有效内容。";
+const KIMI_CODE_DEFAULT_MODEL_ALIAS = "kimi-k3.1-pro";
+const KIMI_CODE_EXAMPLE_BASE_URL = "http://127.0.0.1:33391/v1";
+
+const kimiCodeVisualIsTable = (value) =>
+  !!value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+
+const kimiCodeVisualClone = (value) => {
+  if (Array.isArray(value)) return value.map(kimiCodeVisualClone);
+  if (!kimiCodeVisualIsTable(value)) return value;
+  const next = {};
+  Object.keys(value).forEach((key) => {
+    next[key] = kimiCodeVisualClone(value[key]);
+  });
+  return next;
+};
+
+const kimiCodeVisualReadString = (value) => (typeof value === "string" ? value : "");
+
+const kimiCodeVisualReadInteger = (value) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? String(value) : "";
+
+const kimiCodeVisualReadStringList = (value) =>
+  Array.isArray(value) ? value.filter((item) => typeof item === "string").join(", ") : "";
+
+const kimiCodeVisualParseStringList = (value) =>
+  String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const kimiCodeVisualModelIds = (source) => {
+  const table = kimiCodeVisualIsTable(source?.models) ? source.models : {};
+  return Object.keys(table).filter((id) => kimiCodeVisualIsTable(table[id]));
+};
+
+const kimiCodeVisualPickModelId = (source) => {
+  const ids = kimiCodeVisualModelIds(source);
+  const preferred = kimiCodeVisualReadString(source?.default_model);
+  if (preferred && ids.includes(preferred)) return preferred;
+  return ids[0] || preferred || "";
+};
+
+const kimiCodeVisualProviderIds = (source) => {
+  const table = kimiCodeVisualIsTable(source?.providers) ? source.providers : {};
+  return Object.keys(table).filter((id) => kimiCodeVisualIsTable(table[id]));
+};
+
+const kimiCodeVisualReadModelFields = (source, modelAlias) => {
+  const models = kimiCodeVisualIsTable(source?.models) ? source.models : {};
+  const model = kimiCodeVisualIsTable(models[modelAlias]) ? models[modelAlias] : {};
+  const providers = kimiCodeVisualIsTable(source?.providers) ? source.providers : {};
+  const providerId = kimiCodeVisualReadString(model.provider);
+  const provider = kimiCodeVisualIsTable(providers[providerId]) ? providers[providerId] : {};
+  return {
+    providerId,
+    wireModel: kimiCodeVisualReadString(model.model),
+    displayName: kimiCodeVisualReadString(model.display_name),
+    maxContextSize: kimiCodeVisualReadInteger(model.max_context_size),
+    defaultEffort: kimiCodeVisualReadString(model.default_effort),
+    capabilities: kimiCodeVisualReadStringList(model.capabilities),
+    supportEfforts: kimiCodeVisualReadStringList(model.support_efforts),
+    providerType: kimiCodeVisualReadString(provider.type),
+    baseUrl: kimiCodeVisualReadString(provider.base_url),
+    apiKey: kimiCodeVisualReadString(provider.api_key),
+    apiKeyEnv: kimiCodeVisualReadString(provider.api_key_env),
+  };
+};
+
+const kimiCodeVisualValidateSource = (source) => {
+  if (!kimiCodeVisualIsTable(source)) return "kimi 配置不可用。";
+  const providers = source.providers;
+  if (providers !== void 0 && !kimiCodeVisualIsTable(providers)) return "providers 必须是 TOML 表。";
+  if (kimiCodeVisualIsTable(providers)) {
+    for (const [providerId, value] of Object.entries(providers)) {
+      if (!providerId.trim()) return "provider 名称不能为空。";
+      if (!kimiCodeVisualIsTable(value)) return `providers.${providerId} 必须是 TOML 表。`;
+      if (
+        value.type !== void 0 &&
+        (typeof value.type !== "string" || !KIMI_CODE_VISUAL_PROVIDER_TYPES.includes(value.type))
+      ) {
+        return `providers.${providerId}.type 无效，只允许 ${KIMI_CODE_VISUAL_PROVIDER_TYPES.join("、")}。`;
+      }
+      if (value.base_url !== void 0 && typeof value.base_url !== "string") {
+        return `providers.${providerId}.base_url 必须是字符串。`;
+      }
+      if (value.api_key !== void 0 && typeof value.api_key !== "string") {
+        return `providers.${providerId}.api_key 必须是字符串。`;
+      }
+      if (
+        value.api_key_env !== void 0 &&
+        (typeof value.api_key_env !== "string" || !KIMI_CODE_VISUAL_ENV_KEY_PATTERN.test(value.api_key_env))
+      ) {
+        return `providers.${providerId}.api_key_env 只能是环境变量名。`;
+      }
+    }
+  }
+  const models = source.models;
+  if (models !== void 0 && !kimiCodeVisualIsTable(models)) return "models 必须是 TOML 表。";
+  if (kimiCodeVisualIsTable(models)) {
+    for (const [alias, value] of Object.entries(models)) {
+      if (!alias.trim()) return "模型别名不能为空。";
+      if (!kimiCodeVisualIsTable(value)) return `models.${alias} 必须是 TOML 表。`;
+      if (value.provider !== void 0 && typeof value.provider !== "string") {
+        return `models.${alias}.provider 必须是字符串。`;
+      }
+      if (value.model !== void 0 && typeof value.model !== "string") {
+        return `models.${alias}.model 必须是字符串。`;
+      }
+      if (value.display_name !== void 0 && typeof value.display_name !== "string") {
+        return `models.${alias}.display_name 必须是字符串。`;
+      }
+      for (const key of ["max_context_size", "max_input_size", "max_output_size"]) {
+        if (
+          value[key] !== void 0 &&
+          !(typeof value[key] === "number" && Number.isInteger(value[key]) && value[key] >= 0)
+        ) {
+          return `models.${alias}.${key} 必须是非负整数。`;
+        }
+      }
+      if (
+        value.default_effort !== void 0 &&
+        (typeof value.default_effort !== "string" || !KIMI_CODE_VISUAL_EFFORTS.includes(value.default_effort))
+      ) {
+        return `models.${alias}.default_effort 无效，只允许 ${KIMI_CODE_VISUAL_EFFORTS.join("、")}。`;
+      }
+      if (value.support_efforts !== void 0) {
+        if (!Array.isArray(value.support_efforts)) {
+          return `models.${alias}.support_efforts 必须是字符串数组。`;
+        }
+        for (const effort of value.support_efforts) {
+          if (typeof effort !== "string" || !KIMI_CODE_VISUAL_EFFORTS.includes(effort)) {
+            return `models.${alias}.support_efforts 含无效档位，只允许 ${KIMI_CODE_VISUAL_EFFORTS.join("、")}。`;
+          }
+        }
+      }
+      if (value.capabilities !== void 0) {
+        if (!Array.isArray(value.capabilities)) {
+          return `models.${alias}.capabilities 必须是字符串数组。`;
+        }
+        for (const capability of value.capabilities) {
+          if (typeof capability !== "string" || !KIMI_CODE_VISUAL_CAPABILITIES.includes(capability)) {
+            return `models.${alias}.capabilities 含未知能力，只允许 ${KIMI_CODE_VISUAL_CAPABILITIES.join("、")}。`;
+          }
+        }
+      }
+    }
+  }
+  if (source.default_model !== void 0 && typeof source.default_model !== "string") {
+    return "default_model 必须是字符串。";
+  }
+  if (
+    source.default_permission_mode !== void 0 &&
+    (typeof source.default_permission_mode !== "string" ||
+      !KIMI_CODE_VISUAL_PERMISSION_MODES.includes(source.default_permission_mode))
+  ) {
+    return `default_permission_mode 无效，只允许 ${KIMI_CODE_VISUAL_PERMISSION_MODES.join("、")}。`;
+  }
+  if (source.thinking !== void 0 && !kimiCodeVisualIsTable(source.thinking)) {
+    return "thinking 必须是 TOML 表。";
+  }
+  if (kimiCodeVisualIsTable(source.thinking)) {
+    if (source.thinking.enabled !== void 0 && typeof source.thinking.enabled !== "boolean") {
+      return "thinking.enabled 必须是布尔值。";
+    }
+    if (
+      source.thinking.effort !== void 0 &&
+      (typeof source.thinking.effort !== "string" || !KIMI_CODE_VISUAL_EFFORTS.includes(source.thinking.effort))
+    ) {
+      return `thinking.effort 无效，只允许 ${KIMI_CODE_VISUAL_EFFORTS.join("、")}。`;
+    }
+  }
+  if (source.loop_control !== void 0 && !kimiCodeVisualIsTable(source.loop_control)) {
+    return "loop_control 必须是 TOML 表。";
+  }
+  if (kimiCodeVisualIsTable(source.loop_control)) {
+    const reserved = source.loop_control.reserved_context_size;
+    if (reserved !== void 0 && !(typeof reserved === "number" && Number.isInteger(reserved) && reserved >= 0)) {
+      return "loop_control.reserved_context_size 必须是非负整数。";
+    }
+  }
+  if (source.secondary_model !== void 0 && !kimiCodeVisualIsTable(source.secondary_model)) {
+    return "secondary_model 必须是 TOML 表。";
+  }
+  return "";
+};
+
+const kimiCodeVisualParseContent = (content) => {
+  if (!String(content || "").trim()) {
+    return { ok: false, empty: true, error: KIMI_CODE_EMPTY_TEXT_ERROR, state: null };
+  }
+  try {
+    const source = g1(String(content));
+    const selectedModelId = kimiCodeVisualPickModelId(source);
+    const thinking = kimiCodeVisualIsTable(source.thinking) ? source.thinking : {};
+    const loopControl = kimiCodeVisualIsTable(source.loop_control) ? source.loop_control : {};
+    return {
+      ok: true,
+      state: {
+        source,
+        selectedModelId,
+        defaultModel: kimiCodeVisualReadString(source.default_model),
+        defaultPermissionMode: kimiCodeVisualReadString(source.default_permission_mode),
+        thinkingEnabled: thinking.enabled === true,
+        thinkingEnabledExplicit: Object.prototype.hasOwnProperty.call(thinking, "enabled"),
+        thinkingEffort: kimiCodeVisualReadString(thinking.effort),
+        reservedContextSize: kimiCodeVisualReadInteger(loopControl.reserved_context_size),
+        ...kimiCodeVisualReadModelFields(source, selectedModelId),
+        fieldError: kimiCodeVisualValidateSource(source),
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      empty: false,
+      error: error instanceof Error ? error.message : "非法 TOML。",
+      state: null,
+    };
+  }
+};
+
+const kimiCodeVisualCreateState = (content) => {
+  const parsed = kimiCodeVisualParseContent(content);
+  return parsed.ok ? parsed.state : null;
+};
+
+const kimiCodeVisualWriteOptionalString = (target, key, value) => {
+  if (!String(value || "").trim()) {
+    delete target[key];
+    return;
+  }
+  target[key] = String(value).trim();
+};
+
+const kimiCodeVisualWriteOptionalInteger = (target, key, value) => {
+  if (!String(value || "").trim()) {
+    delete target[key];
+    return "";
+  }
+  if (!/^\d+$/.test(String(value).trim())) return `${key} 必须是非负整数。`;
+  target[key] = Number(String(value).trim());
+  return "";
+};
+
+const kimiCodeVisualEnsureTable = (target, key) => {
+  if (!kimiCodeVisualIsTable(target[key])) target[key] = {};
+  return target[key];
+};
+
+const kimiCodeVisualRebuildState = (source, selectedModelId) => {
+  const thinking = kimiCodeVisualIsTable(source.thinking) ? source.thinking : {};
+  const loopControl = kimiCodeVisualIsTable(source.loop_control) ? source.loop_control : {};
+  return {
+    source,
+    selectedModelId,
+    defaultModel: kimiCodeVisualReadString(source.default_model),
+    defaultPermissionMode: kimiCodeVisualReadString(source.default_permission_mode),
+    thinkingEnabled: thinking.enabled === true,
+    thinkingEnabledExplicit: Object.prototype.hasOwnProperty.call(thinking, "enabled"),
+    thinkingEffort: kimiCodeVisualReadString(thinking.effort),
+    reservedContextSize: kimiCodeVisualReadInteger(loopControl.reserved_context_size),
+    ...kimiCodeVisualReadModelFields(source, selectedModelId),
+    fieldError: kimiCodeVisualValidateSource(source),
+  };
+};
+
+const kimiCodeVisualUpdateState = (state, patch) => {
+  if (!state || !kimiCodeVisualIsTable(state.source)) return state;
+  const source = kimiCodeVisualClone(state.source);
+  if (Object.prototype.hasOwnProperty.call(patch, "defaultModel")) {
+    kimiCodeVisualWriteOptionalString(source, "default_model", patch.defaultModel);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "defaultPermissionMode")) {
+    kimiCodeVisualWriteOptionalString(source, "default_permission_mode", patch.defaultPermissionMode);
+  }
+  let integerError = "";
+  if (Object.prototype.hasOwnProperty.call(patch, "thinkingEffort")) {
+    const thinking = kimiCodeVisualEnsureTable(source, "thinking");
+    kimiCodeVisualWriteOptionalString(thinking, "effort", patch.thinkingEffort);
+    if (thinking.enabled === void 0) thinking.enabled = true;
+    if (!Object.keys(thinking).length) delete source.thinking;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "thinkingEnabled")) {
+    const thinking = kimiCodeVisualEnsureTable(source, "thinking");
+    thinking.enabled = patch.thinkingEnabled === true;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "reservedContextSize")) {
+    const loopControl = kimiCodeVisualEnsureTable(source, "loop_control");
+    integerError = kimiCodeVisualWriteOptionalInteger(
+      loopControl,
+      "reserved_context_size",
+      patch.reservedContextSize,
+    ) || integerError;
+    if (!Object.keys(loopControl).length) delete source.loop_control;
+  }
+  const selectedModelId = Object.prototype.hasOwnProperty.call(patch, "selectedModelId")
+    ? String(patch.selectedModelId || "")
+    : state.selectedModelId || "";
+  const modelPatchKeys = [
+    "providerId",
+    "wireModel",
+    "displayName",
+    "maxContextSize",
+    "defaultEffort",
+    "capabilities",
+    "supportEfforts",
+  ];
+  const providerPatchKeys = ["providerType", "baseUrl", "apiKey", "apiKeyEnv"];
+  const editsModel = modelPatchKeys.some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+  const editsProvider = providerPatchKeys.some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+  if ((editsModel || editsProvider) && selectedModelId) {
+    const models = kimiCodeVisualEnsureTable(source, "models");
+    const current = kimiCodeVisualIsTable(models[selectedModelId])
+      ? kimiCodeVisualClone(models[selectedModelId])
+      : {};
+    const merged = { ...kimiCodeVisualReadModelFields(source, selectedModelId), ...patch };
+    kimiCodeVisualWriteOptionalString(current, "provider", merged.providerId);
+    kimiCodeVisualWriteOptionalString(current, "model", merged.wireModel);
+    kimiCodeVisualWriteOptionalString(current, "display_name", merged.displayName);
+    integerError = kimiCodeVisualWriteOptionalInteger(
+      current,
+      "max_context_size",
+      merged.maxContextSize,
+    ) || integerError;
+    kimiCodeVisualWriteOptionalString(current, "default_effort", merged.defaultEffort);
+    // capabilities / support_efforts 留空表示“保持原样”，避免一次保存把 ACP 公布
+    // 思考档位所需的声明删掉；写了非法值则交给 validateSource 报中文错误。
+    if (Object.prototype.hasOwnProperty.call(patch, "capabilities")) {
+      const capabilities = kimiCodeVisualParseStringList(patch.capabilities);
+      if (capabilities.length) current.capabilities = capabilities;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "supportEfforts")) {
+      const supportEfforts = kimiCodeVisualParseStringList(patch.supportEfforts);
+      if (supportEfforts.length) current.support_efforts = supportEfforts;
+    }
+    if (Object.keys(current).length) models[selectedModelId] = current;
+    else delete models[selectedModelId];
+    if (!Object.keys(models).length) delete source.models;
+    const providerId = kimiCodeVisualReadString(
+      kimiCodeVisualIsTable(models[selectedModelId]) ? models[selectedModelId].provider : "",
+    ) || merged.providerId;
+    if (providerId && String(providerId).trim()) {
+      const providers = kimiCodeVisualEnsureTable(source, "providers");
+      const providerKey = String(providerId).trim();
+      const provider = kimiCodeVisualIsTable(providers[providerKey])
+        ? kimiCodeVisualClone(providers[providerKey])
+        : {};
+      kimiCodeVisualWriteOptionalString(provider, "type", merged.providerType);
+      kimiCodeVisualWriteOptionalString(provider, "base_url", merged.baseUrl);
+      if (Object.prototype.hasOwnProperty.call(patch, "apiKey")) {
+        const apiKey = String(merged.apiKey ?? "").trim();
+        if (apiKey) {
+          provider.api_key = apiKey;
+          // 明文密钥优先于环境变量名，避免同时存在两份互相矛盾的凭据来源。
+          delete provider.api_key_env;
+        } else {
+          delete provider.api_key;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(patch, "apiKeyEnv")) {
+        const apiKeyEnv = String(merged.apiKeyEnv ?? "").trim();
+        if (apiKeyEnv) {
+          // 环境变量名与明文密钥互斥：官方 CLI 只认其中一个来源，同时存在会导致改配置后行为不变。
+          provider.api_key_env = apiKeyEnv;
+          delete provider.api_key;
+        } else {
+          delete provider.api_key_env;
+        }
+      }
+      if (Object.keys(provider).length) providers[providerKey] = provider;
+      else delete providers[providerKey];
+      if (!Object.keys(providers).length) delete source.providers;
+    }
+  }
+  const next = kimiCodeVisualRebuildState(source, selectedModelId);
+  if (integerError) next.fieldError = integerError;
+  return next;
+};
+
+const kimiCodeVisualSerializeState = (state) => {
+  if (!state || !kimiCodeVisualIsTable(state.source)) {
+    return { ok: false, error: "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。" };
+  }
+  if (state.fieldError) return { ok: false, error: state.fieldError };
+  const fieldError = kimiCodeVisualValidateSource(state.source);
+  if (fieldError) return { ok: false, error: fieldError };
+  try {
+    const content = Ik(state.source);
+    if (!String(content || "").trim()) return { ok: false, error: KIMI_CODE_EMPTY_TEXT_ERROR };
+    return { ok: true, content };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "无法序列化 TOML。" };
+  }
+};
+
+const kimiCodeVisualCompleteConfigText = (content) => {
+  const parsed = kimiCodeVisualParseContent(content);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  if (parsed.state.fieldError) return { ok: false, error: parsed.state.fieldError };
+  const source = kimiCodeVisualClone(parsed.state.source);
+  const models = kimiCodeVisualIsTable(source.models) ? source.models : {};
+  for (const model of Object.values(models)) {
+    if (!kimiCodeVisualIsTable(model)) continue;
+    const capabilities = Array.isArray(model.capabilities) ? [...model.capabilities] : [];
+    if (!capabilities.includes("thinking")) capabilities.unshift("thinking");
+    model.capabilities = capabilities;
+    if (model.support_efforts === void 0) {
+      model.support_efforts = [...KIMI_CODE_VISUAL_EFFORTS];
+    }
+  }
+  try {
+    return { ok: true, content: Ik(source) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "无法序列化 TOML。" };
+  }
+};
+
+const kimiCodeVisualAddModel = (state, rawAlias) => {
+  const alias = String(rawAlias || "").trim();
+  if (!alias || ["__proto__", "constructor", "prototype"].includes(alias)) {
+    return { ok: false, error: "invalid-id", state };
+  }
+  if (!state || state.fieldError) return { ok: false, error: "invalid-config", state };
+  const source = kimiCodeVisualClone(state.source);
+  const models = kimiCodeVisualEnsureTable(source, "models");
+  if (Object.prototype.hasOwnProperty.call(models, alias)) {
+    return { ok: false, error: "duplicate-id", state };
+  }
+  const templateAlias = kimiCodeVisualModelIds(source).includes(state.selectedModelId)
+    ? state.selectedModelId
+    : kimiCodeVisualPickModelId(source);
+  const template = kimiCodeVisualIsTable(models[templateAlias])
+    ? kimiCodeVisualClone(models[templateAlias])
+    : { provider: "subcoco", type: "openai" };
+  const wireModel = alias.includes("/") ? alias.split("/").pop() : alias;
+  models[alias] = { ...template, model: wireModel };
+  if (!kimiCodeVisualReadString(source.default_model)) source.default_model = alias;
+  return {
+    ok: true,
+    state: kimiCodeVisualUpdateState({ ...state, source }, { selectedModelId: alias }),
+  };
+};
+
+const kimiCodeVisualDeleteModel = (state, modelAlias) => {
+  if (!state || state.fieldError || !kimiCodeVisualModelIds(state.source).includes(modelAlias)) return state;
+  const source = kimiCodeVisualClone(state.source);
+  delete source.models[modelAlias];
+  const remainingIds = kimiCodeVisualModelIds(source);
+  if (source.default_model === modelAlias) {
+    if (remainingIds.length) source.default_model = remainingIds[0];
+    else delete source.default_model;
+  }
+  const selectedModelId = state.selectedModelId === modelAlias
+    ? remainingIds[0] || ""
+    : state.selectedModelId;
+  return kimiCodeVisualUpdateState({ ...state, source }, { selectedModelId });
+};
+
+const createKimiCodeVisualExampleText = () =>
+  Ik({
+    default_model: KIMI_CODE_DEFAULT_MODEL_ALIAS,
+    default_permission_mode: "auto",
+    providers: {
+      subcoco: {
+        type: "openai",
+        base_url: KIMI_CODE_EXAMPLE_BASE_URL,
+        api_key: "<your-kimi-api-key>",
+      },
+    },
+    models: {
+      [KIMI_CODE_DEFAULT_MODEL_ALIAS]: {
+        provider: "subcoco",
+        model: "kimi-k3.1-pro",
+        max_context_size: 262144,
+        capabilities: ["thinking"],
+        support_efforts: ["low", "medium", "high", "xhigh", "max"],
+      },
+    },
+  });
+
+const KimiCodeConfigVisualEditorUtils = Object.freeze({
+  fieldIds: KIMI_CODE_VISUAL_FIELD_IDS,
+  providerTypes: KIMI_CODE_VISUAL_PROVIDER_TYPES,
+  permissionModes: KIMI_CODE_VISUAL_PERMISSION_MODES,
+  efforts: KIMI_CODE_VISUAL_EFFORTS,
+  capabilities: KIMI_CODE_VISUAL_CAPABILITIES,
+  parseContent: kimiCodeVisualParseContent,
+  createState: kimiCodeVisualCreateState,
+  updateState: kimiCodeVisualUpdateState,
+  serializeState: kimiCodeVisualSerializeState,
+  completeText: kimiCodeVisualCompleteConfigText,
+  validateSource: kimiCodeVisualValidateSource,
+  addModel: kimiCodeVisualAddModel,
+  deleteModel: kimiCodeVisualDeleteModel,
+  createExampleText: createKimiCodeVisualExampleText,
+});
+
 const ps = {
     claude: {
       settings: `{
@@ -4695,6 +5240,9 @@ compaction_at_tokens = 450000
 	    dsh: {
 	      config: createDshUiProfileText(),
 	    },
+	    "kimi-code": {
+	      config: createKimiCodeVisualExampleText(),
+	    },
 	  };
 
 const Nk = {
@@ -4710,6 +5258,7 @@ const Nk = {
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
     "grok-config": { title: "Grok config.toml", content: ps.grok.config },
 	    "dsh-config": { title: "DSH profile JSON", content: ps.dsh.config },
+    "kimi-code-config": { title: "kimi config.toml", content: ps["kimi-code"].config },
   };
 
 // Config editor panel
@@ -4759,6 +5308,15 @@ const ConfigEditorPanel = () => {
       [grokNewModelId, setGrokNewModelId] = c.useState(""),
       [grokModelActionError, setGrokModelActionError] = c.useState(""),
       grokNewModelInputRef = c.useRef(null),
+      [kimiCodeEditorMode, setKimiCodeEditorMode] = c.useState("toml"),
+      [kimiCodeTextDraft, setKimiCodeTextDraft] = c.useState(""),
+      [kimiCodeValidContent, setKimiCodeValidContent] = c.useState(""),
+      [kimiCodeVisualState, setKimiCodeVisualState] = c.useState(null),
+      [kimiCodeVisualError, setKimiCodeVisualError] = c.useState(""),
+      [kimiCodeAddModelOpen, setKimiCodeAddModelOpen] = c.useState(!1),
+      [kimiCodeNewModelAlias, setKimiCodeNewModelAlias] = c.useState(""),
+      [kimiCodeModelActionError, setKimiCodeModelActionError] = c.useState(""),
+      kimiCodeNewModelInputRef = c.useRef(null),
       [dshEditorMode, setDshEditorMode] = c.useState("json"),
       [dshText, setDshText] = c.useState(""),
       [dshVisual, setDshVisual] = c.useState(null),
@@ -4803,6 +5361,14 @@ const ConfigEditorPanel = () => {
           setGrokValidContent(""),
           setGrokVisualState(null),
           setGrokVisualError(""),
+          setKimiCodeEditorMode("toml"),
+          setKimiCodeTextDraft(""),
+          setKimiCodeValidContent(""),
+          setKimiCodeVisualState(null),
+          setKimiCodeVisualError(""),
+          setKimiCodeAddModelOpen(!1),
+          setKimiCodeNewModelAlias(""),
+          setKimiCodeModelActionError(""),
           setDshEditorMode("json"),
           setDshText(""),
           setDshVisual(null),
@@ -4832,6 +5398,17 @@ const ConfigEditorPanel = () => {
         H.ok && !H.state.fieldError
           ? (setGrokVisualState(H.state), setGrokValidContent(W), setGrokVisualError(""))
           : (setGrokVisualState(H.state), setGrokValidContent(""), setGrokVisualError(H.ok ? H.state.fieldError : H.error));
+      } else if (O.platform === "kimi-code") {
+        const W = O.configContent || O.content || "";
+        const H = kimiCodeVisualParseContent(W);
+        setKimiCodeTextDraft(W), setKimiCodeEditorMode("toml");
+        setKimiCodeAddModelOpen(!1), setKimiCodeNewModelAlias(""), setKimiCodeModelActionError("");
+        s(""), v(""), h("");
+        H.ok && !H.state.fieldError
+          ? (setKimiCodeVisualState(H.state), setKimiCodeValidContent(W), setKimiCodeVisualError(""))
+          : (setKimiCodeVisualState(H.ok ? H.state : null),
+             setKimiCodeValidContent(""),
+             setKimiCodeVisualError(H.ok ? H.state.fieldError : H.error));
       } else if (O.platform === "dsh") {
         const W = O.configContent || O.content || "";
         setDshSelectedModelId("");
@@ -4884,6 +5461,19 @@ const ConfigEditorPanel = () => {
         : setCodexVisualError(W.error);
     }, [codexEditorMode, codexVisualState]);
     c.useEffect(() => {
+      if (kimiCodeEditorMode !== "visual" || !kimiCodeVisualState) return;
+      if (kimiCodeVisualState.fieldError) {
+        setKimiCodeVisualError(kimiCodeVisualState.fieldError);
+        return;
+      }
+      const W = kimiCodeVisualSerializeState(kimiCodeVisualState);
+      if (!W.ok || !String(W.content || "").trim()) {
+        setKimiCodeVisualError(W.ok ? KIMI_CODE_EMPTY_TEXT_ERROR : W.error);
+        return;
+      }
+      setKimiCodeTextDraft(W.content), setKimiCodeValidContent(W.content), setKimiCodeVisualError("");
+    }, [kimiCodeEditorMode, kimiCodeVisualState]);
+    c.useEffect(() => {
       if (grokEditorMode !== "visual" || !grokVisualState) return;
       if (grokVisualState.fieldError) {
         setGrokVisualError(grokVisualState.fieldError);
@@ -4920,7 +5510,7 @@ const ConfigEditorPanel = () => {
     c.useEffect(() => {
       const generation = skillsLoadGenerationRef.current + 1;
       skillsLoadGenerationRef.current = generation;
-      if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "opencode" && O.platform !== "grok")) {
+      if (!O || (O.platform !== "claude" && O.platform !== "codex" && O.platform !== "opencode" && O.platform !== "grok" && O.platform !== "kimi-code")) {
         skillsLoadTargetRef.current = "";
         setCliSkills([]), setSkillsDirectory(""), setSkillsDisplayDirectory(""), setSkillsError(""), setSkillsLoading(!1);
         return;
@@ -5173,6 +5763,9 @@ const ConfigEditorPanel = () => {
             case "grok-config":
               syncGrokVisualContent(I.content, "visual", !0);
               break;
+            case "kimi-code-config":
+              if (!syncKimiCodeVisualContent(I.content, "toml", !0)) return;
+              break;
 	          case "dsh-config": {
 	            const H = readDshUiDocument(I.content);
 	            if (!H.ok) {
@@ -5406,10 +5999,111 @@ const ConfigEditorPanel = () => {
             setGrokVisualError(grokVisualError || GROK_EMPTY_TEXT_ERROR);
             return;
           }
+          const kimiCodeCompleted = kimiCodeVisualCompleteConfigText(W);
+          if (!kimiCodeCompleted.ok) {
+            setKimiCodeVisualError(kimiCodeCompleted.error), Kt.error(kimiCodeCompleted.error);
+            return;
+          }
+          W = kimiCodeCompleted.content;
           await r(O.id, { content: W, configContent: W });
           setGrokTextDraft(W), setGrokValidContent(W);
           const H = grokVisualParseContent(W);
           H.ok && !H.state.fieldError && setGrokVisualState(H.state);
+          Kt.success("保存成功");
+          await A({ content: W, configContent: W });
+        } catch (W) {
+          Kt.error("保存失败: " + W);
+        }
+      },
+      kimiCodeSaveDisabled =
+        configListLoading ||
+        !String(kimiCodeTextDraft || "").trim() ||
+        Boolean(kimiCodeVisualError) ||
+        (kimiCodeEditorMode === "visual" && (!kimiCodeVisualState || Boolean(kimiCodeVisualState.fieldError))),
+      syncKimiCodeVisualContent = (W, H = "visual", k = !1) => {
+        if (!String(W || "").trim()) {
+          setKimiCodeVisualError(KIMI_CODE_EMPTY_TEXT_ERROR), k && Kt.error(KIMI_CODE_EMPTY_TEXT_ERROR);
+          return !1;
+        }
+        const L = kimiCodeVisualParseContent(W);
+        if (!L.ok || L.state.fieldError) {
+          const U = L.ok ? L.state.fieldError : L.error;
+          setKimiCodeVisualError(U), k && Kt.error(U);
+          return !1;
+        }
+        return (
+          setKimiCodeTextDraft(W),
+          setKimiCodeValidContent(W),
+          setKimiCodeVisualState(L.state),
+          setKimiCodeVisualError(""),
+          setKimiCodeEditorMode(H),
+          !0
+        );
+      },
+      onKimiCodeTextChange = (W) => {
+        setKimiCodeTextDraft(W);
+        if (!String(W || "").trim()) {
+          setKimiCodeVisualError(KIMI_CODE_EMPTY_TEXT_ERROR);
+          return;
+        }
+        const H = kimiCodeVisualParseContent(W);
+        if (!H.ok) {
+          setKimiCodeVisualError(H.error);
+          return;
+        }
+        setKimiCodeVisualState(H.state);
+        if (H.state.fieldError) {
+          setKimiCodeVisualError(H.state.fieldError);
+          return;
+        }
+        setKimiCodeValidContent(W), setKimiCodeVisualError("");
+      },
+      switchKimiCodeEditorMode = (W) => {
+        if (W === kimiCodeEditorMode) return;
+        if (W === "visual") {
+          syncKimiCodeVisualContent(kimiCodeTextDraft, "visual", !0);
+          return;
+        }
+        if (!kimiCodeVisualState || kimiCodeVisualState.fieldError) {
+          const H = kimiCodeVisualState?.fieldError
+            || kimiCodeVisualError
+            || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。";
+          setKimiCodeVisualError(H), Kt.error(H);
+          return;
+        }
+        const H = kimiCodeVisualSerializeState(kimiCodeVisualState);
+        if (!H.ok || !String(H.content || "").trim()) {
+          const k = H.ok ? KIMI_CODE_EMPTY_TEXT_ERROR : H.error;
+          setKimiCodeVisualError(k), Kt.error(k);
+          return;
+        }
+        setKimiCodeTextDraft(H.content), setKimiCodeValidContent(H.content),
+          setKimiCodeVisualError(""), setKimiCodeEditorMode("toml");
+      },
+      saveKimiCodeConfigCard = async () => {
+        if (!O || O.platform !== "kimi-code") {
+          Kt.warning("请先选择一个配置");
+          return;
+        }
+        if (kimiCodeSaveDisabled) return;
+        try {
+          let W = kimiCodeValidContent;
+          if (kimiCodeEditorMode === "visual") {
+            const H = kimiCodeVisualSerializeState(kimiCodeVisualState);
+            if (!H.ok || !String(H.content || "").trim()) {
+              const k = H.ok ? KIMI_CODE_EMPTY_TEXT_ERROR : H.error;
+              setKimiCodeVisualError(k), Kt.error(k);
+              return;
+            }
+            W = H.content;
+          } else if (!String(kimiCodeTextDraft || "").trim() || kimiCodeTextDraft !== kimiCodeValidContent) {
+            setKimiCodeVisualError(kimiCodeVisualError || KIMI_CODE_EMPTY_TEXT_ERROR);
+            return;
+          }
+          await r(O.id, { content: W, configContent: W });
+          setKimiCodeTextDraft(W), setKimiCodeValidContent(W);
+          const H = kimiCodeVisualParseContent(W);
+          H.ok && !H.state.fieldError && setKimiCodeVisualState(H.state);
           Kt.success("保存成功");
           await A({ content: W, configContent: W });
         } catch (W) {
@@ -6948,6 +7642,319 @@ const ConfigEditorPanel = () => {
           ],
         });
       },
+      renderKimiCodeVisualEditor = () => {
+        const fieldIds = KIMI_CODE_VISUAL_FIELD_IDS;
+        if (!kimiCodeVisualState)
+          return be.jsx("div", {
+            "data-kimi-code-fields": fieldIds.join(" "),
+            style: {
+              padding: "8px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "6px",
+              color: "var(--error-color)",
+            },
+            children: kimiCodeVisualError
+              || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。",
+          });
+        const modelIds = kimiCodeVisualModelIds(kimiCodeVisualState.source),
+          providerIds = kimiCodeVisualProviderIds(kimiCodeVisualState.source),
+          selectedId = kimiCodeVisualState.selectedModelId || "",
+          gridStyle = {
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+            gap: "5px",
+          },
+          blankOption = { value: "", label: "跟随默认" },
+          update = (patch) =>
+            setKimiCodeVisualState((current) =>
+              current ? kimiCodeVisualUpdateState(current, patch) : current,
+            ),
+          addKimiCodeModel = () => {
+            const result = kimiCodeVisualAddModel(kimiCodeVisualState, kimiCodeNewModelAlias);
+            if (!result.ok) {
+              setKimiCodeModelActionError(
+                result.error === "duplicate-id"
+                  ? "配置名称已存在，请使用其他名称。"
+                  : "请输入有效且唯一的模型别名。",
+              );
+              return;
+            }
+            setKimiCodeVisualState(result.state);
+            setKimiCodeAddModelOpen(!1);
+            setKimiCodeNewModelAlias("");
+            setKimiCodeModelActionError("");
+          };
+        return be.jsxs("div", {
+          "data-kimi-code-fields": fieldIds.join(" "),
+          className: "grok-model-workspace kimi-code-model-workspace",
+          children: [
+            be.jsxs("aside", {
+              className: "grok-model-sidebar",
+              "aria-label": "模型管理",
+              children: [
+                be.jsxs("div", {
+                  className: "grok-model-list-header",
+                  children: [
+                    be.jsx("strong", { children: "模型列表" }),
+                    be.jsx(xn, {
+                      size: "small",
+                      "data-testid": "kimi-code-add-model",
+                      disabled: Boolean(kimiCodeVisualState.fieldError),
+                      onClick: () => {
+                        setKimiCodeNewModelAlias("");
+                        setKimiCodeModelActionError("");
+                        setKimiCodeAddModelOpen(!0);
+                      },
+                      children: "新增",
+                    }),
+                  ],
+                }),
+                be.jsx("div", {
+                  className: "grok-model-list",
+                  role: "group",
+                  "aria-label": "模型列表",
+                  children: modelIds.map((modelId) =>
+                    be.jsxs("div", {
+                      className: "grok-model-row",
+                      children: [
+                        be.jsx(xn, {
+                          className: "grok-model-select",
+                          type: modelId === selectedId ? "primary" : "default",
+                          "aria-pressed": modelId === selectedId,
+                          "data-kimi-code-model-id": modelId,
+                          title: modelId,
+                          disabled: Boolean(kimiCodeVisualState.fieldError),
+                          onClick: () => update({ selectedModelId: modelId }),
+                          children: modelId,
+                        }),
+                        be.jsx(xn, {
+                          className: "grok-model-delete",
+                          type: "text",
+                          size: "small",
+                          danger: !0,
+                          icon: be.jsx(AH, {}),
+                          "data-kimi-code-delete-model-id": modelId,
+                          "aria-label": `删除模型 ${modelId}`,
+                          title: `删除模型 ${modelId}`,
+                          disabled: Boolean(kimiCodeVisualState.fieldError),
+                          onClick: (event) => {
+                            event.stopPropagation();
+                            xr.confirm({
+                              title: "删除模型配置",
+                              content: `确定删除 ${modelId}？其他模型和未展示字段会保留。`,
+                              okText: "删除",
+                              cancelText: "取消",
+                              onOk: () =>
+                                setKimiCodeVisualState((previous) =>
+                                  kimiCodeVisualDeleteModel(previous, modelId),
+                                ),
+                            });
+                          },
+                        }),
+                      ],
+                    }, modelId),
+                  ),
+                }),
+                modelIds.length === 0
+                  ? be.jsx("div", { role: "status", children: "尚无模型，请先添加。" })
+                  : null,
+                providerIds.length
+                  ? be.jsxs("div", {
+                      className: "kimi-code-provider-hint",
+                      children: [
+                        be.jsx("strong", { children: "Providers" }),
+                        be.jsx("div", { children: providerIds.join("、") }),
+                      ],
+                    })
+                  : null,
+              ],
+            }),
+            be.jsx(xr, {
+              title: "添加模型",
+              open: kimiCodeAddModelOpen,
+              width: 420,
+              rootClassName: "grok-add-model-modal",
+              destroyOnClose: !0,
+              afterOpenChange: (open) => { if (open) kimiCodeNewModelInputRef.current?.focus(); },
+              onCancel: () => {
+                setKimiCodeAddModelOpen(!1);
+                setKimiCodeNewModelAlias("");
+                setKimiCodeModelActionError("");
+              },
+              onOk: addKimiCodeModel,
+              okText: "添加",
+              cancelText: "取消",
+              okButtonProps: {
+                disabled: !kimiCodeNewModelAlias.trim() || Boolean(kimiCodeVisualState.fieldError),
+              },
+              children: be.jsxs("div", {
+                className: "grok-model-dialog-content",
+                children: [
+                  renderCodexField(
+                    "模型别名",
+                    kimiCodeNewModelAlias,
+                    (value) => { setKimiCodeNewModelAlias(value); setKimiCodeModelActionError(""); },
+                    KIMI_CODE_DEFAULT_MODEL_ALIAS,
+                    {
+                      ref: kimiCodeNewModelInputRef,
+                      "data-testid": "kimi-code-new-model-id",
+                      "aria-invalid": Boolean(kimiCodeModelActionError),
+                      status: kimiCodeModelActionError ? "error" : void 0,
+                      onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) addKimiCodeModel(); },
+                    },
+                  ),
+                  kimiCodeModelActionError
+                    ? be.jsx("div", {
+                        role: "alert",
+                        className: "grok-model-action-error",
+                        children: kimiCodeModelActionError,
+                      })
+                    : null,
+                  be.jsx("div", {
+                    className: "grok-model-copy-hint",
+                    children: selectedId
+                      ? `复制“${selectedId}”的 provider 与参数；model 使用别名最后一段（官方 CLI 用别名做 key，model 是真实模型 ID）。`
+                      : "首个模型添加后，请填写 provider 与接口地址。",
+                  }),
+                ],
+              }),
+            }),
+            be.jsxs("div", {
+              className: "grok-model-detail",
+              children: [
+                renderCodexSection(
+                  "全局默认",
+                  "设置默认模型和免审批方式；其它顶层字段保留在 TOML 源码中。",
+                  be.jsxs("div", {
+                    style: gridStyle,
+                    children: [
+                      renderCodexSelect(
+                        "默认模型",
+                        kimiCodeVisualState.defaultModel,
+                        (value) => update({ defaultModel: value }),
+                        [
+                          blankOption,
+                          ...Array.from(
+                            new Set([...modelIds, kimiCodeVisualState.defaultModel].filter(Boolean)),
+                          ).map((value) => ({ value, label: value })),
+                        ],
+                        { help: "写入 default_model。官方 CLI 用 -m 传入的就是这个别名。" },
+                      ),
+                      renderCodexSelect(
+                        "免审批模式",
+                        kimiCodeVisualState.defaultPermissionMode,
+                        (value) => update({ defaultPermissionMode: value }),
+                        [
+                          blankOption,
+                          ...KIMI_CODE_VISUAL_PERMISSION_MODES.map((value) => ({
+                            value,
+                            label: KIMI_CODE_VISUAL_PERMISSION_LABELS[value] || value,
+                          })),
+                        ],
+                        {
+                          help: "写入 default_permission_mode。auto/yolo 免审批；两者的 --auto/--yolo 命令行参数不能与 -p 同用，因此必须写进配置文件。",
+                        },
+                      ),
+                    ],
+                  }),
+                ),
+                selectedId
+                  ? renderCodexSection(
+                      selectedId,
+                      "编辑此模型的参数；未展示的 TOML 字段会保留。",
+                      be.jsxs("div", {
+                        style: gridStyle,
+                        children: [
+                          renderCodexField(
+                            "Provider 名称",
+                            kimiCodeVisualState.providerId,
+                            (value) => update({ providerId: value }),
+                            "subcoco",
+                            { help: "写入 models.<别名>.provider，必须是 [providers.<名称>] 里存在的表。" },
+                          ),
+                          renderCodexField(
+                            "真实模型 ID",
+                            kimiCodeVisualState.wireModel,
+                            (value) => update({ wireModel: value }),
+                            "kimi-k3.1-pro",
+                            { help: "写入 models.<别名>.model，是发给供应商的真实模型 ID，不是别名。" },
+                          ),
+                          renderCodexField(
+                            "上下文窗口",
+                            kimiCodeVisualState.maxContextSize,
+                            (value) => update({ maxContextSize: value }),
+                            "262144",
+                            {
+                              type: "number",
+                              min: 0,
+                              step: 1,
+                              help: "写入 models.<别名>.max_context_size，用于上下文占用展示与自动压缩阈值计算。",
+                            },
+                          ),
+                        ],
+                      }),
+                    )
+                  : be.jsx("div", {
+                      role: "status",
+                      children: "从左侧添加模型，开始配置。",
+                    }),
+                selectedId
+                  ? renderCodexSection(
+                      "Provider 配置",
+                      "写入 [providers.<名称>]；未展示的字段会保留在 TOML 源码中。",
+                      be.jsxs("div", {
+                        style: gridStyle,
+                        children: [
+                          renderCodexSelect(
+                            "接口协议",
+                            kimiCodeVisualState.providerType,
+                            (value) => update({ providerType: value }),
+                            [
+                              blankOption,
+                              ...KIMI_CODE_VISUAL_PROVIDER_TYPES.map((value) => ({
+                                value,
+                                label: value,
+                              })),
+                            ],
+                            {
+                              help: "写入 providers.<名称>.type。本机代理通常用 openai（Chat Completions）或 openai_responses（Responses）。",
+                            },
+                          ),
+                          renderCodexField(
+                            "接口地址",
+                            kimiCodeVisualState.baseUrl,
+                            (value) => update({ baseUrl: value }),
+                            KIMI_CODE_EXAMPLE_BASE_URL,
+                            { help: "写入 providers.<名称>.base_url，需要包含 /v1。" },
+                          ),
+                          renderCodexField(
+                            "API Key",
+                            kimiCodeVisualState.apiKey,
+                            (value) => update({ apiKey: value }),
+                            "<your-kimi-api-key>",
+                            {
+                              type: "password",
+                              help: "API Key 直接写在 ~/.kimi-code/config.toml 的 providers.<名称>.api_key；kimi 不需要 Codex 那样的第二个 auth.json。以 0600 权限保存，不想写入明文时可改用下面的环境变量名。",
+                            },
+                          ),
+                          renderCodexField(
+                            "环境变量名",
+                            kimiCodeVisualState.apiKeyEnv,
+                            (value) => update({ apiKeyEnv: value }),
+                            "KIMI_CODE_API_KEY",
+                            {
+                              help: "与 API Key 二选一。只写环境变量名，不写密钥值；该变量必须在 VS Code 进程的环境里存在，否则 kimi 会报 no credential configured。",
+                            },
+                          ),
+                        ],
+                      }),
+                    )
+                  : null,
+              ],
+            }),
+          ],
+        });
+      },
       renderCodexVisualEditor = () => {
         if (!codexVisualState)
           return be.jsx("div", {
@@ -8099,6 +9106,149 @@ const ConfigEditorPanel = () => {
                           : be.jsx(Qa, {
                               value: grokTextDraft,
                               onChange: (W) => onGrokTextChange(W.target.value),
+                              placeholder: "请输入TOML配置",
+                              rows: 18,
+                              style: {
+                                flex: 1,
+                                minHeight: 420,
+                                fontFamily: "monospace",
+                                fontSize: "13px",
+                              },
+                            }),
+                      ],
+                    }),
+                  }),
+                  be.jsx(SkillsManagerModal, {
+                    open: skillsModalOpen,
+                    onClose: () => setSkillsModalOpen(!1),
+                    platform: O.platform,
+                    skills: cliSkills,
+                    directory: skillsDirectory,
+                    displayDirectory: skillsDisplayDirectory,
+                    loading: skillsLoading,
+                    errorText: skillsError,
+                    pendingName: pendingSkillName,
+                    onOpenDirectory: openSkillsDirectory,
+                    onCopy: copyCliSkillTo,
+                    onDelete: confirmDeleteCliSkill,
+                  }),
+                  B(),
+                ],
+              })
+          : O.platform === "kimi-code"
+            ? be.jsxs("div", {
+                className: "config-editor-shell config-editor-kimi-code",
+                style: {
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: "8px",
+                  minHeight: 0,
+                },
+                children: [
+                  be.jsx(aa, {
+                    title: renderConfigEditorCardTitle(`编辑配置: ${O.name}`, [
+                      {
+                        value: "visual",
+                        label: "可视化",
+                        active: kimiCodeEditorMode === "visual",
+                        onClick: () => switchKimiCodeEditorMode("visual"),
+                      },
+                      {
+                        value: "toml",
+                        label: "TOML 源码",
+                        active: kimiCodeEditorMode === "toml",
+                        onClick: () => switchKimiCodeEditorMode("toml"),
+                      },
+                    ]),
+                    extra: be.jsx("div", {
+                      className: "config-editor-fixed-actions",
+                      style: {
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: "4px",
+                      },
+                      children: be.jsxs("div", {
+                        className: "config-editor-fixed-action-row",
+                        style: {
+                          display: "flex",
+                          gap: "4px",
+                          flexWrap: "wrap",
+                          justifyContent: "flex-end",
+                        },
+                        children: [
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            size: "small",
+                            onClick: () => setSkillsModalOpen(!0),
+                            children: "Skills",
+                          }),
+                          be.jsx(xn, {
+                            className: "config-standard-action-button",
+                            type: "primary",
+                            size: "small",
+                            icon: be.jsx(Pv, {}),
+                            disabled: kimiCodeSaveDisabled,
+                            onClick: saveKimiCodeConfigCard,
+                            children: "保存",
+                          }),
+                        ],
+                      }),
+                    }),
+                    style: {
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: 0,
+                    },
+                    bodyStyle: {
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      padding: "8px",
+                      gap: "8px",
+                      overflow: "auto",
+                      minHeight: 0,
+                    },
+                    children: be.jsxs("div", {
+                      style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
+                      children: [
+                        be.jsxs("div", {
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          children: [
+                            be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
+                            be.jsx(xn, {
+                              size: "small",
+                              onClick: () => N("kimi-code-config"),
+                              children: "查看范例",
+                            }),
+                          ],
+                        }),
+                        be.jsx("div", {
+                          style: {
+                            marginBottom: "4px",
+                            color: "var(--text-color-secondary)",
+                            fontSize: "12px",
+                          },
+                          children: "配置文件路径: ~/.kimi-code/config.toml",
+                        }),
+                        kimiCodeVisualError
+                          ? be.jsx("div", {
+                              style: {
+                                padding: "8px",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: "6px",
+                                color: "var(--error-color)",
+                              },
+                              children: kimiCodeVisualError,
+                            })
+                          : null,
+                        kimiCodeEditorMode === "visual"
+                          ? renderKimiCodeVisualEditor()
+                          : be.jsx(Qa, {
+                              value: kimiCodeTextDraft,
+                              onChange: (W) => onKimiCodeTextChange(W.target.value),
                               placeholder: "请输入TOML配置",
                               rows: 18,
                               style: {

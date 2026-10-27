@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { buildDshLaunchArgs } from "../interactive/dshAppServerProtocol";
+import { KIMI_DEFAULT_COMMAND, readKimiAcpAgentArgs } from "../interactive/kimiAppServerProtocol";
 import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
@@ -95,7 +96,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh";
+  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
@@ -108,10 +109,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && globalMode === "max") {
+    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && globalMode === "max") {
       return "high";
     }
-    if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && globalMode === "xhigh") {
+    if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && globalMode === "xhigh") {
       return "high";
     }
     if (usesCodexLikeThinking && globalMode === "off") {
@@ -122,10 +123,10 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && mode === "max") {
+  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && mode === "max") {
     return "high";
   }
-  if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && mode === "xhigh") {
+  if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && mode === "xhigh") {
     return "high";
   }
   if (usesCodexLikeThinking && mode === "off") {
@@ -222,6 +223,33 @@ export function readExplicitDshPatchArgs(args: readonly unknown[]): string[] {
     throw new Error("DSH launch profile is fixed to acp and cannot be configured.");
   }
   return launched.slice(2);
+}
+
+export function getKimiCommand(): string {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<string>("commands.kimi-code");
+  const command = typeof configured === "string" ? configured.trim() : "";
+  return command || KIMI_DEFAULT_COMMAND;
+}
+
+export function getKimiAgentArgs(): string[] {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<unknown>("args.kimi-code");
+  if (!Array.isArray(configured)) {
+    return [];
+  }
+  return readExplicitKimiAcpArgs(configured);
+}
+
+/**
+ * `kimi acp` only accepts an optional `--region`. Everything else (one-shot
+ * `-p`, `--yolo`, `--auto`, `--session`, `--plan`, model flags) belongs to other
+ * subcommands and would break the ACP transport, so it is rejected outright
+ * rather than silently rewritten.
+ */
+export function readExplicitKimiAcpArgs(args: readonly unknown[]): string[] {
+  const normalized = args.filter((arg): arg is string => typeof arg === "string");
+  return readKimiAcpAgentArgs(normalized);
 }
 
 export function getDshConfiguredPatchArgs(): string[] {

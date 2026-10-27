@@ -51,6 +51,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
 
       function normalizeThinkingModeSelection(value) {
         const normalized = typeof value === "string" ? value.trim() : "";
+        if (state.currentCli === "kimi-code") {
+          // Kimi Code 的 off/on 表示“沿用配置里的 effort”，不是可选档位；只有 ultra 在
+          // 界面上按 max 展示（与 resolveKimiThinkingValue 的 ultra→配置档位一致）。
+          if (normalized === "ultra") {
+            return "max";
+          }
+          return ["low", "medium", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
+        }
         if (normalized === "off") {
           return state.currentCli === "grok" ? "off" : "low";
         }
@@ -63,6 +71,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const targetCli = typeof cli === "string" && cli ? cli : state.currentCli;
         const normalizeRole = (value) => {
           const normalized = typeof value === "string" ? value.trim() : "";
+          if (targetCli === "kimi-code") {
+            if (normalized === "ultra") {
+              return "max";
+            }
+            return ["low", "medium", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
+          }
           if (normalized === "off") {
             return targetCli === "grok" || targetCli === "claude" ? "off" : "low";
           }
@@ -92,6 +106,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             ? getSelectedLoopRoleModelForCli(cli, role)
             : "";
           return getDshReasoningOptionsForModel(model);
+        }
+        if (cli === "kimi-code") {
+          // 优先用 ACP 公布的档位；未公布时回落到官方默认五档，
+          // 不能把 off / on / ultra 当成真实档位下发。
+          const advertised = Array.isArray(state.kimiThinkingOptions)
+            ? state.kimiThinkingOptions.filter((option) =>
+              typeof option === "string"
+              && ["low", "medium", "high", "xhigh", "max"].includes(option),
+            )
+            : [];
+          return advertised.length > 0 ? advertised : ["low", "medium", "high", "xhigh", "max"];
         }
         const options = [];
         if (cli === "grok") {
@@ -297,12 +322,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const nextSelectedLoopThinkingByCli = {};
 
         CLI_NAMES.forEach((cli) => {
-          const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli], cli === "grok");
+          // Grok / Kimi Code 的模型名直接来自 config 文件别名，大小写有意义。
+          const keepModelCase = cli === "grok" || cli === "kimi-code";
+          const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli], keepModelCase);
           const incomingManagedModels = normalizeModelNameList(modelState.managedByCli && modelState.managedByCli[cli]);
-          const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli], cli === "grok");
+          const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli], keepModelCase);
           const previousManagedModels = normalizeModelNameList(state.managedModelsByCli && state.managedModelsByCli[cli]);
-          const incomingLoopModels = normalizeLoopRoleModelsPayload(modelState.loopOptionsByCli && modelState.loopOptionsByCli[cli], cli === "grok");
-          const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli], cli === "grok");
+          const incomingLoopModels = normalizeLoopRoleModelsPayload(modelState.loopOptionsByCli && modelState.loopOptionsByCli[cli], keepModelCase);
+          const previousLoopModels = normalizeLoopRoleModelsPayload(state.loopModelsByCli && state.loopModelsByCli[cli], keepModelCase);
           const incomingLoopSelection = normalizeLoopRoleSelectionPayload(modelState.selectedLoopByCli && modelState.selectedLoopByCli[cli]);
           const previousLoopSelection = normalizeLoopRoleSelectionPayload(state.selectedLoopModelsByCli && state.selectedLoopModelsByCli[cli]);
           const incomingLoopThinking = normalizeLoopRoleThinkingPayload(modelState.selectedLoopThinkingByCli && modelState.selectedLoopThinkingByCli[cli], cli);
@@ -399,6 +426,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           ? previousConversationTabs.activeTabId
           : null;
         state.currentCli = panelState.currentCli;
+        if (state.currentCli !== "kimi-code" && Array.isArray(state.kimiThinkingOptions)) {
+          // 切换 CLI 后不能沿用上一个 Kimi 会话公布的档位。
+          state.kimiThinkingOptions = [];
+          state.kimiThinkingOptionsAdvertised = false;
+        }
         if (state.currentCli !== "dsh") {
           state.dshReasoningOptions = [];
         } else if (Array.isArray(panelState.dshReasoningOptions)) {
@@ -500,7 +532,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.selectedConfigId = nextSelected;
         const matchesSelectedConfig = (state.configState.activeConfigId || "") === nextSelected;
         if (matchesSelectedConfig) {
-          state.thinkingMode = panelState.thinkingMode || "medium";
+          state.thinkingMode = state.currentCli === "kimi-code"
+            ? normalizeThinkingModeSelection(panelState.thinkingMode) || "high"
+            : panelState.thinkingMode || "medium";
           state.openCodeThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeThinking);
           state.openCodeSmallThinking = normalizeOpenCodeThinkingPayload(panelState.openCodeSmallThinking);
           state.openCodeModels = reconcilePendingOpenCodeRoleSelection(
@@ -708,13 +742,26 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
 
       function getVisibleLoopRoleThinkingModeForCli(cli, role) {
         const selected = getSelectedLoopRoleThinkingModeForCli(cli, role);
-        if (cli === "dsh") {
+        if (cli === "dsh" || cli === "kimi-code") {
           const options = getLoopRoleThinkingOptionsForCli(cli, role);
           return options.includes(selected)
             ? selected
             : options.includes(state.thinkingMode) ? state.thinkingMode : (options[0] || "");
         }
         return selected || normalizeThinkingModeSelection(state.thinkingMode) || "medium";
+      }
+
+      function getCliLoopThinkingAria(cli, role) {
+        if (cli === "kimi-code") {
+          return t(role === "subtask" ? "kimiCodeLoopSubtaskThinkingModeAria" : "kimiCodeLoopMainThinkingModeAria");
+        }
+        if (cli === "grok") {
+          return t(role === "subtask" ? "grokLoopSubtaskThinkingModeAria" : "grokLoopMainThinkingModeAria");
+        }
+        if (cli === "dsh") {
+          return t(role === "subtask" ? "dshLoopSubtaskThinkingModeAria" : "dshLoopMainThinkingModeAria");
+        }
+        return t(role === "subtask" ? "codexLoopSubtaskThinkingModeAria" : "codexLoopMainThinkingModeAria");
       }
 
       function appendCodexThinkingOptions(selectElement) {
@@ -735,9 +782,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         options.forEach((option) => appendThinkingOption(selectElement, option, option));
         selectElement.disabled = options.length === 0;
         selectElement.value = getVisibleLoopRoleThinkingModeForCli(state.currentCli, role);
-        selectElement.title = role === "subtask"
-          ? t(state.currentCli === "grok" ? "grokLoopSubtaskThinkingModeAria" : state.currentCli === "dsh" ? "dshLoopSubtaskThinkingModeAria" : "codexLoopSubtaskThinkingModeAria")
-          : t(state.currentCli === "grok" ? "grokLoopMainThinkingModeAria" : state.currentCli === "dsh" ? "dshLoopMainThinkingModeAria" : "codexLoopMainThinkingModeAria");
+        selectElement.title = getCliLoopThinkingAria(state.currentCli, role);
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
         }
@@ -799,6 +844,39 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           if (selected !== state.thinkingMode) {
             updateThinkingMode(selected);
           }
+          return;
+        }
+        if (state.currentCli === "kimi-code") {
+          // Kimi Code 的可用档位由 ACP 会话公布（取决于 config.toml 的 capabilities /
+          // support_efforts）；没有公布时保留官方默认五档，绝不发未公布值。
+          const advertised = Array.isArray(state.kimiThinkingOptions)
+            ? state.kimiThinkingOptions.filter((option) =>
+              typeof option === "string"
+              && ["low", "medium", "high", "xhigh", "max"].includes(option),
+            )
+            : [];
+          const kimiOptions = advertised.length > 0
+            ? advertised
+            : state.kimiThinkingOptionsAdvertised
+            ? []
+            : ["low", "medium", "high", "xhigh", "max"];
+          elements.thinkingMode.innerHTML = "";
+          elements.thinkingMode.title = t("thinkingModeAria");
+          if (kimiOptions.length === 0) {
+            // 广告里只有 off/on（env-only 通道）时没有真实努力档，宁可禁用也不下发改写值。
+            elements.thinkingMode.disabled = true;
+            return;
+          }
+          elements.thinkingMode.disabled = false;
+          kimiOptions.forEach((option) => {
+            appendThinkingOption(elements.thinkingMode, option, option);
+          });
+          if (!kimiOptions.includes(state.thinkingMode)) {
+            // 只调整界面值，不写回 workspace 设置：用户原本可能选择了“沿用配置 effort”，
+            // 这里擅自持久化会把那个意图覆盖掉。下一轮 ACP 确认值会再对齐一次。
+            state.thinkingMode = kimiOptions.includes("high") ? "high" : kimiOptions[0];
+          }
+          elements.thinkingMode.value = state.thinkingMode;
           return;
         }
         const isCodex = state.currentCli === "codex";
@@ -880,6 +958,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
+        // Kimi Code 的 ACP 通道没有暴露压缩方法（与 DSH 相同），因此不显示“压缩上下文”入口，
+        // 避免用户点了只得到一条“不支持”提示。
         const visible = supported && (state.currentCli === "claude" || state.currentCli === "codex" || state.currentCli === "grok");
         const disabled = !visible || state.isRunning;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";

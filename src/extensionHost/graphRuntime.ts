@@ -178,7 +178,8 @@ function resolvePromptRunThinkingModeForRole(
   const explicitThinkingMode = role === "subtask"
     ? input.loopSubtaskThinkingMode
     : input.loopMainThinkingMode;
-  const usesLoopRoleThinking = cli === "codex" || cli === "grok" || cli === "dsh" || (cli === "claude" && role === "subtask");
+  const usesLoopRoleThinking = cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code"
+    || (cli === "claude" && role === "subtask");
   const roleThinkingMode = usesLoopRoleThinking && deps.isThinkingMode(explicitThinkingMode)
     ? deps.normalizeThinkingModeForCli(cli, explicitThinkingMode)
     : usesLoopRoleThinking
@@ -337,7 +338,7 @@ function resolveGraphResumePromptModels(
   const executorCli = parseCliName(run.modelRouting?.executor.cli);
   const crossCli = Boolean(executorCli && executorCli !== cli);
   const executorConfigId = run.modelRouting?.executor.configId;
-  const supportsMainModels = cli === "codex" || cli === "opencode" || cli === "grok";
+  const supportsMainModels = cli === "codex" || cli === "opencode" || cli === "grok" || cli === "kimi-code";
   const selectedModel = deps.getSelectedCliModel(cli, configId) ?? undefined;
   if (!supportsMainModels && !crossCli) {
     return selectedModel ? { model: selectedModel } : {};

@@ -3,9 +3,10 @@ import type { CodexRunSelection } from "./codexThreadSelection";
 import type { ClaudeInteractiveRunner } from "./claudeRunner";
 import type { CodexInteractiveRunner } from "./codexRunner";
 import type { DshInteractiveRunner } from "./dshRunner";
+import type { KimiInteractiveRunner } from "./kimiRunner";
 import type { GrokInteractiveRunner } from "./grokRunner";
 
-export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh";
+export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code";
 
 export type RunnerLifecycleFields = {
   idleTimer: NodeJS.Timeout | null;
@@ -65,13 +66,28 @@ export type DshRunnerEntry = {
   env?: NodeJS.ProcessEnv;
 } & RunnerLifecycleFields;
 
-export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry | DshRunnerEntry;
+export type KimiCodeRunnerEntry = {
+  cli: "kimi-code";
+  sessionId: string;
+  runner: KimiInteractiveRunner;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  command: string;
+  args: string[];
+  cwd?: string;
+  localSessionId: string | null;
+  env?: NodeJS.ProcessEnv;
+} & RunnerLifecycleFields;
+
+export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry | DshRunnerEntry | KimiCodeRunnerEntry;
 
 export type RunnerEntryByCli = {
   codex: CodexRunnerEntry;
   claude: ClaudeRunnerEntry;
   grok: GrokRunnerEntry;
   dsh: DshRunnerEntry;
+  "kimi-code": KimiCodeRunnerEntry;
 };
 
 export type RunnerByCli = {
@@ -152,6 +168,27 @@ export type DshRunnerCreateOptions = {
 export type PreparedDshCreate = {
   sessionId: string;
   options: DshRunnerCreateOptions;
+};
+
+export type KimiCodeRunnerCreateOptions = {
+  sessionId: string;
+  command: string;
+  agentArgs: string[];
+  cwd: string;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  /** Confirmed thinking effort from the ACP `thinking` config option. */
+  thinkingValue?: string | null;
+  /** ACP `mode` value: default | plan | auto | yolo. */
+  modeId?: string | null;
+  localSessionId?: string | null;
+  env?: NodeJS.ProcessEnv;
+};
+
+export type PreparedKimiCodeCreate = {
+  sessionId: string;
+  options: KimiCodeRunnerCreateOptions;
 };
 
 export type RunnerSetOptions = {

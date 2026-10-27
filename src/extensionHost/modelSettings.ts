@@ -13,6 +13,7 @@ import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THI
 import * as configService from "../config/configService";
 import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
+import { changeKimiCodeConfigModelList, parseKimiCodeConfigModels, resolveKimiCodeConfigModel, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
@@ -34,7 +35,7 @@ import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
 import { isCliName } from "../panelStateBuilder";
-import { resolveDshActivePatchPath, resolveGrokConfigPath } from "../shared/userHomePaths";
+import { resolveDshActivePatchPath, resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
 
 export type ModelSettingsHostDeps = {
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void;
@@ -89,6 +90,7 @@ let codeGraphInstallPollTimer: ReturnType<typeof setInterval> | null = null;
 let codeGraphInstallPollStartedAt = 0;
 const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
 const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
+const kimiCodeModelsByConfigId = new Map<string | null, KimiCodeConfigModels>();
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   getGrokConfigModels(configId) {
     if (configId === undefined) {
@@ -107,6 +109,15 @@ const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   },
   resolveDefaultDshStoreKey() {
     return `dsh:${resolveDshActivePatchPath()}`;
+  },
+  getKimiCodeConfigModels(configId) {
+    if (configId === undefined) {
+      return undefined;
+    }
+    return kimiCodeModelsByConfigId.get(configId);
+  },
+  resolveDefaultKimiCodeStoreKey() {
+    return `kimi-code:${resolveKimiCodeConfigPath()}`;
   },
 });
 let currentCli = deps.getCurrentCli();
@@ -469,6 +480,11 @@ function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): Thinking
     return "high";
   }
   if (cli === "grok" || cli === "dsh") {
+    return mode;
+  }
+  if (cli === "kimi-code") {
+    // kimi-code 支持 max，且不使用 codex 风格的 off→low 归一。
+    // 非超集取值不在此处改写：真实可用档位由 ACP 会话公布，运行期只应用公布值。
     return mode;
   }
   if (cli !== "codex" && cli !== "claude" && mode === "max") {
@@ -1050,6 +1066,54 @@ async function refreshDshConfigModels(configState: PanelState["configState"]): P
   }
 }
 
+function cacheKimiCodeConfigModels(configId: string, config: KimiCodeConfigModels): void {
+  kimiCodeModelsByConfigId.set(configId, config);
+}
+
+async function refreshKimiCodeConfigModels(configState: PanelState["configState"]): Promise<void> {
+  const configId = currentCli === "kimi-code"
+    ? deps.resolveModelConfigIdForCli("kimi-code", configState)
+    : getActiveConfigIdForCli("kimi-code");
+  if (!configId) {
+    return;
+  }
+  try {
+    const current = await configService.getCurrentConfig("kimi-code");
+    kimiCodeModelsByConfigId.set(configId, parseKimiCodeConfigModels(current.content ?? ""));
+  } catch (error) {
+    kimiCodeModelsByConfigId.set(configId, {
+      models: [],
+      labels: {},
+      defaultModel: null,
+      thinkingEffort: null,
+      permissionMode: null,
+      error: errorToMessage(error),
+    });
+    void logError("kimi-code-config-models-read-failed", { error: errorToMessage(error) });
+  }
+}
+
+async function resolveKimiCodeModelForRun(selectedModel: string | null): Promise<string> {
+  const config = parseKimiCodeConfigModels((await configService.getCurrentConfig("kimi-code")).content ?? "");
+  if (config.error) {
+    throw new Error(t("kimi.invalidConfig"));
+  }
+  kimiCodeModelsByConfigId.set(getActiveConfigIdForCli("kimi-code"), config);
+  const model = resolveKimiCodeConfigModel(config, selectedModel);
+  if (!model) {
+    throw new Error(t("kimi.noConfiguredModels"));
+  }
+  return model;
+}
+
+/**
+ * Kimi Code 的 ACP `model` 配置项取值就是 `[models.<alias>]` 的别名本身，
+ * 没有 DSH 那样的 JSON wire 编码，因此这里只做别名解析与空值校验。
+ */
+async function resolveKimiModelWireForRun(selectedModel: string | null): Promise<string> {
+  return resolveKimiCodeModelForRun(selectedModel);
+}
+
 async function resolveDshModelForRun(selectedModel: string | null): Promise<string> {
   const configId = getActiveConfigIdForCli("dsh");
   if (!configId) {
@@ -1254,6 +1318,29 @@ function moveCliModel(cli: CliName, model: string, direction: "up" | "down", con
   return result.movedModel;
 }
 
+async function manageKimiCodeModelList(
+  change: KimiCodeModelListChange,
+  configId: string,
+): Promise<{ applied: boolean; model: string | null; config: KimiCodeConfigModels }> {
+  let content = "";
+  const config = await configService.getConfigById("kimi-code", configId);
+  if (!config) throw new Error("Kimi 配置档案不存在，请刷新后重试。");
+  const changed = changeKimiCodeConfigModelList(config.configContent ?? config.content ?? "", change);
+  if (!changed.ok) throw new Error(changed.error);
+  content = changed.content;
+  await configService.saveConfig({
+    ...config,
+    platform: "kimi-code",
+    content,
+    configContent: content,
+    updatedAt: Date.now(),
+  });
+  const parsed = parseKimiCodeConfigModels(content);
+  kimiCodeModelsByConfigId.set(configId, parsed);
+  if (change.type === "add") selectCliModel("kimi-code", change.model, configId);
+  return { applied: true, model: change.type === "delete" ? parsed.defaultModel : change.type === "rename" ? change.nextModel : change.model, config: parsed };
+}
+
 function getEffectiveCliArgs(cli: CliName, model: string | null = getSelectedCliModel(cli)): string[] {
   return getEffectiveCliArgsFromStore(cli, model);
 }
@@ -1366,6 +1453,25 @@ function buildModelState(
   const main = getSelectedLoopCliModel("grok", "main", configId);
   const subtask = getSelectedLoopCliModel("grok", "subtask", configId);
   state.selectedLoopByCli = { ...state.selectedLoopByCli, grok: { main, subtask } };
+  const kimiCodeConfigId = activeConfigIdByCli["kimi-code"] ?? getActiveConfigIdForCli("kimi-code");
+  const kimiCodeModels = getModelOptionsForCli("kimi-code", kimiCodeConfigId);
+  state.optionsByCli["kimi-code"] = kimiCodeModels;
+  state.labelsByCli = {
+    ...state.labelsByCli,
+    "kimi-code": { ...(kimiCodeModelsByConfigId.get(kimiCodeConfigId)?.labels ?? {}) },
+  };
+  state.managedByCli["kimi-code"] = [...kimiCodeModels];
+  state.selectedByCli["kimi-code"] = getSelectedCliModel("kimi-code", kimiCodeConfigId);
+  state.loopOptionsByCli = {
+    ...state.loopOptionsByCli,
+    "kimi-code": { main: kimiCodeModels, subtask: kimiCodeModels },
+  };
+  const kimiCodeMain = getSelectedLoopCliModel("kimi-code", "main", kimiCodeConfigId);
+  const kimiCodeSubtask = getSelectedLoopCliModel("kimi-code", "subtask", kimiCodeConfigId);
+  state.selectedLoopByCli = {
+    ...state.selectedLoopByCli,
+    "kimi-code": { main: kimiCodeMain, subtask: kimiCodeSubtask },
+  };
   const dshConfigId = activeConfigIdByCli.dsh ?? getActiveConfigIdForCli("dsh");
   const dshModels = getModelOptionsForCli("dsh", dshConfigId);
   state.optionsByCli.dsh = dshModels;
@@ -1401,6 +1507,10 @@ function buildModelState(
       main: getSelectedLoopThinkingMode("dsh", "main", dshMain, dshConfigId),
       subtask: getSelectedLoopThinkingMode("dsh", "subtask", dshSubtask, dshConfigId),
     },
+    "kimi-code": {
+      main: getSelectedLoopThinkingMode("kimi-code", "main", kimiCodeMain, kimiCodeConfigId),
+      subtask: getSelectedLoopThinkingMode("kimi-code", "subtask", kimiCodeSubtask, kimiCodeConfigId),
+    },
   };
   state.thinkingModeByCli = {
     codex: getEffectiveThinkingMode("codex", state.selectedByCli.codex),
@@ -1408,6 +1518,7 @@ function buildModelState(
     opencode: "off",
     grok: getEffectiveThinkingMode("grok", state.selectedByCli.grok),
     dsh: getEffectiveThinkingMode("dsh", state.selectedByCli.dsh),
+    "kimi-code": getEffectiveThinkingMode("kimi-code", state.selectedByCli["kimi-code"]),
   };
   const issues = { ...(state.issuesByCli ?? {}) };
   if (grokModelsByConfigId.get(configId)?.error) {
@@ -1415,6 +1526,9 @@ function buildModelState(
   }
   if (dshModelsByConfigId.get(dshConfigId)?.error) {
     issues.dsh = "目标 CLI 配置读取失败，不能派发子任务。";
+  }
+  if (kimiCodeModelsByConfigId.get(kimiCodeConfigId)?.error) {
+    issues["kimi-code"] = "目标 CLI 配置读取失败，不能派发子任务。";
   }
   if (Object.keys(issues).length > 0) {
     state.issuesByCli = issues;
@@ -1543,6 +1657,10 @@ return {
   cacheGrokConfigModels: wrap(cacheGrokConfigModels),
   refreshGrokConfigModels: wrap(refreshGrokConfigModels),
   resolveGrokModelForRun: wrap(resolveGrokModelForRun),
+  cacheKimiCodeConfigModels: wrap(cacheKimiCodeConfigModels),
+  refreshKimiCodeConfigModels: wrap(refreshKimiCodeConfigModels),
+  resolveKimiCodeModelForRun: wrap(resolveKimiCodeModelForRun),
+  resolveKimiModelWireForRun: wrap(resolveKimiModelWireForRun),
   cacheDshConfigModels: wrap(cacheDshConfigModels),
   refreshDshConfigModels: wrap(refreshDshConfigModels),
   resolveDshModelForRun: wrap(resolveDshModelForRun),
@@ -1556,6 +1674,7 @@ return {
   renameCliModel: wrap(renameCliModel),
   deleteCliModel: wrap(deleteCliModel),
   moveCliModel: wrap(moveCliModel),
+  manageKimiCodeModelList: wrap(manageKimiCodeModelList),
   getEffectiveCliArgs: wrap(getEffectiveCliArgs),
   buildModelState: wrap(buildModelState),
   loadWorkspaceSettings: wrap(loadWorkspaceSettings),

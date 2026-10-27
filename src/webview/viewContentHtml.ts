@@ -1,5 +1,6 @@
 import { renderChatModal } from "./modalComponents";
 import { CLI_LIST } from "../cli/types";
+import { getCliDisplayName } from "../cli/installer";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
@@ -27,7 +28,7 @@ function renderInteractiveModeSelect(
 }
 
 function renderLoopSubtaskCliSelect(i18n: WebviewHtmlStrings, id: string): string {
-  const options = CLI_LIST.map((cli) => `<option value="${cli}">${cli}</option>`).join("");
+  const options = CLI_LIST.map((cli) => `<option value="${cli}">${getCliDisplayName(cli)}</option>`).join("");
   return `<select id="${id}" class="cli-select loop-subtask-cli-select" aria-label="${i18n.loopSubtaskCliSelectAria}" title="${i18n.loopSubtaskCliSelectAria}">${options}</select>`;
 }
 
@@ -432,6 +433,7 @@ ${renderChatModal({
               <option value="opencode">opencode</option>
               <option value="grok">grok</option>
               <option value="dsh">dsh</option>
+              <option value="kimi-code">kimi</option>
             </select>
             <button id="loadRules" class="secondary action-button">${i18n.rulesLoadButton}</button>
           </div>
@@ -445,6 +447,7 @@ ${renderChatModal({
               <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
               <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> grok</label>
               <label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" /> dsh</label>
+              <label id="rulesSaveKimiCodeOption"><input type="checkbox" id="rulesSaveKimiCode" /> kimi</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>`,
@@ -506,7 +509,7 @@ ${renderChatModal({
                 <div class="tool-settings-label">${i18n.toolSettingsCliEnabledLabel}</div>
                 <div class="tool-settings-note">${i18n.toolSettingsCliEnabledHint}</div>
 ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${cli}</div>
+                  <div class="tool-settings-label">${getCliDisplayName(cli)}</div>
                   <label class="debug-toggle" title="${i18n.toolSettingsCliEnabledToggleTitle}">
                     <input type="checkbox" id="cliEnabled-${cli}" data-cli-enabled="${cli}" checked />
                   </label>

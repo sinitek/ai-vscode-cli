@@ -1,5 +1,6 @@
 import { resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
 import { resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
+import { resolveKimiCodeConfigModel, type KimiCodeConfigModels } from "../config/kimiCodeConfig";
 import type { CliName } from "../cli/types";
 import {
   getManagedModelOptionsForCliFromStore,
@@ -17,6 +18,8 @@ export type CliModelSelectionStrategyDeps = {
   resolveDefaultGrokStoreKey: () => string;
   getDshConfigModels?: (configId: string | null | undefined) => DshConfigModels | undefined;
   resolveDefaultDshStoreKey?: () => string;
+  getKimiCodeConfigModels?: (configId: string | null | undefined) => KimiCodeConfigModels | undefined;
+  resolveDefaultKimiCodeStoreKey?: () => string;
 };
 
 export type CliModelSelectionStrategy = {
@@ -39,9 +42,10 @@ export type CliModelSelectionStrategy = {
   getModelDisplayName: (model: string | null, configId: string | null) => string | null;
 };
 
-type StoreBackedCliName = Exclude<CliName, "grok" | "dsh">;
+type StoreBackedCliName = Exclude<CliName, "grok" | "dsh" | "kimi-code">;
 
 const UNCONFIGURED_DSH_STORE_KEY = "dsh:unconfigured";
+const UNCONFIGURED_KIMI_CODE_STORE_KEY = "kimi-code:unconfigured";
 
 function createStoreBackedCliModelSelectionStrategy(cli: StoreBackedCliName): CliModelSelectionStrategy {
   return {
@@ -94,7 +98,7 @@ function createGrokCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps
     getModelOptions(_store, configId) {
       return [...(deps.getGrokConfigModels(configId)?.models ?? [])];
     },
-    getManagedModelOptions() {
+    getManagedModelOptions(_store, configId) {
       return [];
     },
     selectModel(store, model, configId) {
@@ -162,8 +166,8 @@ function createDshCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps)
     getModelOptions(_store, configId) {
       return [...(configuredModels(configId)?.models ?? [])];
     },
-    getManagedModelOptions() {
-      return [];
+    getManagedModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
     },
     selectModel(store, model, configId) {
       const resolved = resolveDshConfigModel(configuredModels(configId), model);
@@ -207,6 +211,75 @@ function createDshCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps)
   };
 }
 
+function createKimiCodeCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps): CliModelSelectionStrategy {
+  function resolveStoreConfigKey(configId: string | null | undefined): string {
+    return configId ?? deps.resolveDefaultKimiCodeStoreKey?.() ?? UNCONFIGURED_KIMI_CODE_STORE_KEY;
+  }
+
+  function configuredModels(configId: string | null | undefined): KimiCodeConfigModels | undefined {
+    return deps.getKimiCodeConfigModels?.(configId);
+  }
+
+  function getSelectedModel(store: CliModelStore, configId: string | null): string | null {
+    const storedModel = store.selectedByConfigId?.[resolveStoreConfigKey(configId)];
+    const selectedModel = typeof storedModel === "string" ? storedModel : null;
+    return resolveKimiCodeConfigModel(configuredModels(configId), selectedModel);
+  }
+
+  return {
+    getSelectedModel,
+    getSelectedLoopModel(store, role, configId) {
+      const storedRoleModel = store.selectedLoopByConfigId?.[resolveStoreConfigKey(configId)]?.[role];
+      return resolveKimiCodeConfigModel(
+        configuredModels(configId),
+        storedRoleModel ?? getSelectedModel(store, configId),
+      );
+    },
+    getModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
+    },
+    getManagedModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
+    },
+    selectModel(store, model, configId) {
+      const resolved = resolveKimiCodeConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      return {
+        ...store,
+        selectedByConfigId: {
+          ...store.selectedByConfigId,
+          [storeKey]: resolved ?? "",
+        },
+      };
+    },
+    selectLoopModel(store, role, model, configId) {
+      const resolved = resolveKimiCodeConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      const selection = { ...store.selectedLoopByConfigId[storeKey] };
+      if (resolved) {
+        selection[role] = resolved;
+      } else {
+        delete selection[role];
+      }
+      return {
+        ...store,
+        selectedLoopByConfigId: {
+          ...store.selectedLoopByConfigId,
+          [storeKey]: selection,
+        },
+      };
+    },
+    resolveStoreConfigKey,
+    getModelDisplayName(model, configId) {
+      if (!model) {
+        return model;
+      }
+      const config = configuredModels(configId);
+      return config?.labels[model] ?? model;
+    },
+  };
+}
+
 export function createCliModelSelectionStrategies(
   deps: CliModelSelectionStrategyDeps,
 ): Record<CliName, CliModelSelectionStrategy> {
@@ -216,5 +289,6 @@ export function createCliModelSelectionStrategies(
     opencode: createStoreBackedCliModelSelectionStrategy("opencode"),
     grok: createGrokCliModelSelectionStrategy(deps),
     dsh: createDshCliModelSelectionStrategy(deps),
+    "kimi-code": createKimiCodeCliModelSelectionStrategy(deps),
   };
 }

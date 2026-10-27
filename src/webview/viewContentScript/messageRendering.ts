@@ -1236,7 +1236,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         if (cli === "opencode") {
           return "opcode";
         }
-        return typeof cli === "string" && cli ? cli : "session";
+        return typeof cli === "string" && cli ? formatCliDisplayName(cli) : "session";
       }
 
       function formatConversationTabLabel(tab, baseLabel) {
@@ -1718,6 +1718,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
               }
               syncActiveMessagesFromRuntime();
               syncRunningStateForActiveTab();
+              if (typeof updateContextTokenUsage === "function") {
+                updateContextTokenUsage();
+              }
               armPromptContextForConversationStart();
               vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
             }

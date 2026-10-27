@@ -93,6 +93,7 @@ import {
 import { isCodeGraphWorkspaceIndexed } from "./cli/codegraphStatus";
 import { isOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
 import { parseGrokConfigModels } from "./cli/grokConfigModels";
+import { parseKimiCodeConfigModels } from "./config/kimiCodeConfig";
 import {
   buildConversationExecutionProfile,
   createConversationTabConfigurationRestorer,
@@ -217,10 +218,12 @@ import {
 } from "./loopSubtaskExecutionRoot";
 import {
   DSH_WORKSPACE_RULES_FILE_NAME,
+  KIMI_CODE_WORKSPACE_RULES_FILE_NAME,
   resolveClaudeHomeDir,
   resolveCodexHomeDir,
   resolveDshGlobalRulesPath,
   resolveGrokHomeDir,
+  resolveKimiCodeGlobalRulesPath,
   resolveOpenCodeHomeDir,
 } from "./shared/userHomePaths";
 import {
@@ -786,6 +789,8 @@ const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   opencode: path.join(resolveOpenCodeHomeDir(), "AGENTS.md"),
   grok: path.join(resolveGrokHomeDir(), "AGENTS.md"),
   dsh: resolveDshGlobalRulesPath(),
+  // Kimi Code 全局指令文件：<KIMI_CODE_HOME>/AGENTS.md（默认 ~/.kimi-code/AGENTS.md）。
+  "kimi-code": resolveKimiCodeGlobalRulesPath(),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
@@ -793,12 +798,14 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   opencode: "AGENTS.md",
   grok: "AGENTS.md",
   dsh: DSH_WORKSPACE_RULES_FILE_NAME,
+  "kimi-code": KIMI_CODE_WORKSPACE_RULES_FILE_NAME,
 };
 
 function currentGlobalRulePaths(): Record<CliName, string> {
   return {
     ...CLI_RULE_PATHS_GLOBAL,
     dsh: resolveDshGlobalRulesPath(),
+    "kimi-code": resolveKimiCodeGlobalRulesPath(),
   };
 }
 const PROMPT_HISTORY_LIMIT = 200;
@@ -836,6 +843,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   opencode: null,
   grok: null,
   dsh: null,
+  "kimi-code": null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
@@ -1470,6 +1478,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     selectCliLoopModel,
     selectLoopSubtaskCli,
     updateOpenCodeRoleModel: updateOpenCodeRoleModelForConfig,
+    manageKimiCodeModelList,
+    cacheKimiCodeConfigModels: modelSettingsHost.cacheKimiCodeConfigModels,
     addCliModel,
     renameCliModel,
     deleteCliModel,
@@ -1585,6 +1595,30 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
   });
 }
 
+async function manageKimiCodeModelList(
+  change: import("./config/kimiCodeConfig").KimiCodeModelListChange,
+  configId: string,
+): Promise<{ applied: boolean; model: string | null; config: import("./config/kimiCodeConfig").KimiCodeConfigModels }> {
+  let managed: { applied: boolean; model: string | null; config: import("./config/kimiCodeConfig").KimiCodeConfigModels } | null = null;
+  const result = await configApplyQueue.request("kimi-code", {
+    apply: async () => {
+      managed = await modelSettingsHost.manageKimiCodeModelList(change, configId);
+      const config = await configService.getConfigById("kimi-code", configId);
+      if (!config) throw new Error(t("config.notFound"));
+      await configService.applyConfig("kimi-code", {
+        content: config.content,
+        envContent: config.envContent,
+        configContent: config.configContent,
+        authContent: config.authContent,
+      });
+    },
+    commit: () => { setWorkspaceActiveConfigId("kimi-code", configId); },
+  });
+  if (!managed) throw new Error("Kimi 模型配置未保存。");
+  const saved = managed as { applied: boolean; model: string | null; config: import("./config/kimiCodeConfig").KimiCodeConfigModels };
+  return { ...saved, applied: result === "applied" };
+}
+
 async function autoRepairUnresolvedCliCommands(): Promise<void> {
   try {
     const plans = await planUnresolvedCliCommandRepairs(
@@ -1631,6 +1665,7 @@ async function buildPanelState(): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   const configState = await loadConfigState(currentCli);
   await modelSettingsHost.refreshGrokConfigModels(configState);
+  await modelSettingsHost.refreshKimiCodeConfigModels(configState);
   await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
@@ -1642,6 +1677,7 @@ async function buildPanelStateWithConfigState(
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
   await modelSettingsHost.refreshGrokConfigModels(configState);
+  await modelSettingsHost.refreshKimiCodeConfigModels(configState);
   await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
@@ -2088,6 +2124,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   getInteractiveRunnerManager: () => interactiveRunnerManager,
   resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
   resolveDshModelWireForRun: (model) => modelSettingsHost.resolveDshModelWireForRun(model),
+  resolveKimiModelWireForRun: (model) => modelSettingsHost.resolveKimiModelWireForRun(model),
   getModelDisplayName: (cli, model) => modelSettingsHost.getModelDisplayName(cli, model),
   loadSessionMessages,
   logCliStartup,
@@ -2455,6 +2492,7 @@ function getProjectRulePaths(): Record<CliName, string | null> {
       opencode: null,
       grok: null,
       dsh: null,
+      "kimi-code": null,
     };
   }
   return {
@@ -2463,6 +2501,7 @@ function getProjectRulePaths(): Record<CliName, string | null> {
     opencode: path.join(root, CLI_RULE_FILENAMES_PROJECT.opencode),
     grok: path.join(root, CLI_RULE_FILENAMES_PROJECT.grok),
     dsh: path.join(root, CLI_RULE_FILENAMES_PROJECT.dsh),
+    "kimi-code": path.join(root, CLI_RULE_FILENAMES_PROJECT["kimi-code"]),
   };
 }
 
@@ -3094,7 +3133,7 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
         persistOpenCodeVariant(profile.configId, subtaskModel, "subtask", profile.subtaskOpenCodeVariant);
       }
       await refreshOpenCodeThinkingState(await loadConfigState("opencode"));
-    } else if (task.cli === "codex" || task.cli === "grok") {
+    } else if (task.cli === "codex" || task.cli === "grok" || task.cli === "kimi-code") {
       if (mainModel) {
         selectCliLoopModel(task.cli, "main", mainModel, profile.configId);
       }
@@ -3814,6 +3853,12 @@ const restoreConversationTabConfiguration = createConversationTabConfigurationRe
       const config = await configService.getConfigById(cli, configId);
       const parsed = parseGrokConfigModels(config?.content ?? "");
       modelSettingsHost.cacheGrokConfigModels(configId, parsed);
+      return parsed.models;
+    }
+    if (cli === "kimi-code") {
+      const config = await configService.getConfigById(cli, configId);
+      const parsed = parseKimiCodeConfigModels(config?.configContent ?? config?.content ?? "");
+      modelSettingsHost.cacheKimiCodeConfigModels(configId, parsed);
       return parsed.models;
     }
     return role === "vibe"

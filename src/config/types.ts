@@ -1,6 +1,6 @@
 export const LEGACY_GEMINI_CONFIG_PLATFORM = "gemini" as const;
 
-export type CurrentConfigPlatform = "claude" | "codex" | "opencode" | "grok" | "dsh";
+export type CurrentConfigPlatform = "claude" | "codex" | "opencode" | "grok" | "dsh" | "kimi-code";
 export type LegacyConfigPlatform = typeof LEGACY_GEMINI_CONFIG_PLATFORM;
 export type ConfigPlatform = CurrentConfigPlatform | LegacyConfigPlatform;
 

@@ -3,6 +3,7 @@ import { mergeCodexSkillsConfig } from "./codexSkills";
 import { mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { commitDshDocument, createDshExampleProfileText } from "../cli/dshConfigModels";
 import { commitGrokText, validateGrokDocument } from "./grokConfig";
+import { commitKimiCodeText } from "./kimiCodeConfig";
 import { mergeGrokSkillsConfig } from "./grokSkills";
 import { t } from "../i18n";
 import type {
@@ -63,12 +64,20 @@ export type DshRuntimeConfigIo = {
   backupDshConfig: () => Promise<string[]>;
 };
 
+export type KimiCodeRuntimeConfigIo = {
+  readKimiCodeConfigText: () => Promise<string>;
+  writeKimiCodeConfigText: (content: string) => Promise<void>;
+  backupKimiCodeConfig: () => Promise<string[]>;
+  createDefaultConfigText: () => string;
+};
+
 export type CliRuntimeConfigIoPorts = {
   claude: ClaudeRuntimeConfigIo;
   codex: CodexRuntimeConfigIo;
   opencode: OpenCodeRuntimeConfigIo;
   grok: GrokRuntimeConfigIo;
   dsh: DshRuntimeConfigIo;
+  "kimi-code": KimiCodeRuntimeConfigIo;
 };
 
 type LegacyGeminiApplyPayload = ApplyPayload & {
@@ -280,6 +289,50 @@ function createDshRuntimeConfigStrategy(io: DshRuntimeConfigIo): CliRuntimeConfi
   };
 }
 
+function createKimiCodeRuntimeConfigStrategy(io: KimiCodeRuntimeConfigIo): CliRuntimeConfigStrategy {
+  return {
+    async readCurrent() {
+      const config = await io.readKimiCodeConfigText();
+      return { content: config, configContent: config };
+    },
+    async apply(payload) {
+      const nextContent = payload.content ?? payload.configContent ?? "";
+      const current = await io.readKimiCodeConfigText();
+      const committed = commitKimiCodeText(current, nextContent);
+      if (!committed.ok) {
+        throw new Error(committed.error);
+      }
+      await io.writeKimiCodeConfigText(committed.content);
+    },
+    backup() {
+      return io.backupKimiCodeConfig();
+    },
+    async readInitialFields() {
+      const config = await io.readKimiCodeConfigText();
+      // 本机还没有 config.toml 时给出一份能被 `kimi doctor config` 通过的范例，
+      // 否则新建的 Kimi Code 档案既没有模型也没有 provider，用户必须先手写 TOML。
+      if (!config.trim()) {
+        const content = io.createDefaultConfigText();
+        return {
+          content,
+          configContent: content,
+        };
+      }
+      return {
+        content: config,
+        configContent: config,
+      };
+    },
+    fallbackInitialFields() {
+      const content = io.createDefaultConfigText();
+      return {
+        content,
+        configContent: content,
+      };
+    },
+  };
+}
+
 export function createCliRuntimeConfigStrategies(
   ports: CliRuntimeConfigIoPorts,
 ): Record<CurrentConfigPlatform, CliRuntimeConfigStrategy> {
@@ -289,5 +342,6 @@ export function createCliRuntimeConfigStrategies(
     opencode: createOpenCodeRuntimeConfigStrategy(ports.opencode),
     grok: createGrokRuntimeConfigStrategy(ports.grok),
     dsh: createDshRuntimeConfigStrategy(ports.dsh),
+    "kimi-code": createKimiCodeRuntimeConfigStrategy(ports["kimi-code"]),
   };
 }

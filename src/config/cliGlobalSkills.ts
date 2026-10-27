@@ -8,6 +8,7 @@ import {
   resolveCodexHomeDir,
   resolveDshGlobalSkillsDirectory,
   resolveGrokHomeDir,
+  resolveKimiCodeHomeDir,
   resolveXdgConfigHome,
 } from "../shared/userHomePaths";
 import {
@@ -16,7 +17,7 @@ import {
   skillDescriptionStrategies,
 } from "./skillDiscovery";
 
-export const CLI_GLOBAL_SKILL_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh"] as const;
+export const CLI_GLOBAL_SKILL_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"] as const;
 
 export type CliGlobalSkillPlatform = (typeof CLI_GLOBAL_SKILL_PLATFORMS)[number];
 
@@ -104,6 +105,9 @@ export function resolveCliGlobalSkillsDirectory(platform: CliGlobalSkillPlatform
       return path.join(resolveGrokHomeDir(), "skills");
     case "dsh":
       return resolveDshGlobalSkillsDirectory();
+    case "kimi-code":
+      // 官方 CLI 的用户级技能目录：<KIMI_CODE_HOME>/skills（默认 ~/.kimi-code/skills）。
+      return path.join(resolveKimiCodeHomeDir(), "skills");
     case "codex":
       return path.join(resolveCodexHomeDir(), "skills");
     default: {

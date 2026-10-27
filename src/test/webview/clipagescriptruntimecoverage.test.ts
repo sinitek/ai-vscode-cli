@@ -467,7 +467,11 @@ function runLatestTimer(fakeWindow: { timers: Map<number, Listener>; timerDelays
   latest[1]();
 }
 
-function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unknown) {
+function createRuntimeHarness(
+  markedOverride?: unknown,
+  fileReaderOverride?: unknown,
+  cliListOverride?: string[],
+) {
   const document = createFakeDocument();
   const fakeWindow = createFakeWindow();
   const posted: any[] = [];
@@ -490,7 +494,7 @@ function createRuntimeHarness(markedOverride?: unknown, fileReaderOverride?: unk
   };
   const script = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
-    cliList: ["codex", "claude", "opencode"],
+    cliList: cliListOverride ?? ["codex", "claude", "opencode"],
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
@@ -4053,4 +4057,184 @@ test("thinking overflow control stays hidden through five lines and appears beyo
   append();
   assert.equal(button.hidden, false);
   assert.equal(viewport.parentElement.querySelector(".thinking-bubble-collapse").hidden, true);
+});
+
+function createKimiPanelState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return createPanelState({
+    currentCli: "kimi-code",
+    interactiveMode: "coding",
+    conversationTabs: {
+      activeTabId: "tab-1",
+      tabs: [
+        { id: "tab-1", cli: "kimi-code" },
+        { id: "tab-2", cli: "kimi-code" },
+      ],
+    },
+    modelState: {
+      optionsByCli: { "kimi-code": ["subcoco/kimi-k3.1-pro"] },
+      managedByCli: { "kimi-code": [] },
+      selectedByCli: { "kimi-code": "subcoco/kimi-k3.1-pro" },
+      loopOptionsByCli: { "kimi-code": { main: [], subtask: [] } },
+      selectedLoopByCli: { "kimi-code": { main: "", subtask: "" } },
+      selectedLoopThinkingByCli: { "kimi-code": { main: "", subtask: "" } },
+    },
+    thinkingMode: "high",
+    ...overrides,
+  });
+}
+
+test("Kimi thinking options come from ACP, drop off, and never cross tabs or CLIs", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, [
+    "codex",
+    "claude",
+    "opencode",
+    "kimi-code",
+  ]);
+  window.dispatchMessage({ type: "state", payload: createKimiPanelState() });
+  const select = document.getElementById("thinkingMode");
+  // 未收到 ACP 广告时保留官方默认五档
+  assert.deepEqual(childValueTextPairs(select), [
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+  ]);
+  assert.equal(select.value, "high");
+
+  window.dispatchMessage({
+    type: "kimiThinkingOptions",
+    tabId: "tab-1",
+    options: ["off", "low", "high", "bogus", "max"],
+    currentValue: "high",
+  });
+  assert.deepEqual(api.state.kimiThinkingOptions, ["low", "high", "max"]);
+  assert.deepEqual(childValueTextPairs(select), [["low", "low"], ["high", "high"], ["max", "max"]]);
+  assert.equal(select.value, "high");
+  assert.equal(api.state.thinkingMode, "high");
+
+  // 其它标签页的广告不能覆盖当前标签页
+  window.dispatchMessage({
+    type: "kimiThinkingOptions",
+    tabId: "tab-2",
+    options: ["low"],
+    currentValue: "low",
+  });
+  assert.deepEqual(api.state.kimiThinkingOptions, ["low", "high", "max"]);
+  assert.equal(api.state.thinkingMode, "high");
+
+  // 未广告的当前值不得被选中：回落到广告集合内的高档/首档，绝不发 xhigh
+  window.dispatchMessage({
+    type: "kimiThinkingOptions",
+    tabId: "tab-1",
+    options: ["low", "medium"],
+    currentValue: "xhigh",
+  });
+  assert.deepEqual(childValueTextPairs(select), [["low", "low"], ["medium", "medium"]]);
+  assert.equal(select.value, "low", "界面回落到广告集合内的档位");
+  assert.equal(api.state.thinkingMode, "low", "只会在广告集合内取值");
+  assert.equal(["low", "medium"].includes(api.state.thinkingMode), true);
+
+  // env-only 通道只广告 off/on：没有真实努力档时禁用选择框，绝不下发改写值
+  window.dispatchMessage({
+    type: "kimiThinkingOptions",
+    tabId: "tab-1",
+    options: ["off", "on"],
+    currentValue: "high",
+  });
+  assert.deepEqual(api.state.kimiThinkingOptions, []);
+  assert.equal(select.disabled, true);
+  assert.deepEqual(childValueTextPairs(select), []);
+
+  // 切到别的 CLI 后必须丢掉 Kimi 的广告集合
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      interactiveMode: "coding",
+      conversationTabs: { activeTabId: "tab-9", tabs: [{ id: "tab-9", cli: "claude" }] },
+    }),
+  });
+  assert.deepEqual(api.state.kimiThinkingOptions, []);
+  assert.equal(api.state.kimiThinkingOptionsAdvertised, false);
+});
+
+test("Kimi ACP mode updates stay on their own tab and add no new UI", () => {
+  const { api, window } = createRuntimeHarness(undefined, undefined, [
+    "codex",
+    "claude",
+    "opencode",
+    "kimi-code",
+  ]);
+  window.dispatchMessage({ type: "state", payload: createKimiPanelState() });
+  window.dispatchMessage({ type: "kimiModeUpdate", tabId: "tab-1", modeId: "plan" });
+  assert.equal(api.getConversationRuntimeState("tab-1").kimiAcpModeId, "plan");
+  // 非当前标签页的模式更新不得落盘：消息按 tab 隔离
+  window.dispatchMessage({ type: "kimiModeUpdate", tabId: "tab-2", modeId: "yolo" });
+  assert.equal(api.getConversationRuntimeState("tab-2").kimiAcpModeId, null);
+  assert.equal(api.getConversationRuntimeState("tab-1").kimiAcpModeId, "plan");
+  // 切到 tab-2 后只接受 tab-2 自己的模式更新
+  api.state.conversationTabs.activeTabId = "tab-2";
+  window.dispatchMessage({ type: "kimiModeUpdate", tabId: "tab-1", modeId: "auto" });
+  assert.equal(api.getConversationRuntimeState("tab-1").kimiAcpModeId, "plan");
+  window.dispatchMessage({ type: "kimiModeUpdate", tabId: "tab-2", modeId: "yolo" });
+  assert.equal(api.getConversationRuntimeState("tab-2").kimiAcpModeId, "yolo");
+});
+
+test("Kimi keeps the compact entry hidden while other CLIs still show it", () => {
+  const { document, window } = createRuntimeHarness(undefined, undefined, [
+    "codex",
+    "claude",
+    "opencode",
+    "kimi-code",
+  ]);
+  const button = document.getElementById("commonCommandButton");
+  window.dispatchMessage({ type: "state", payload: createKimiPanelState() });
+  assert.equal(button.style.display, "none", "Kimi 没有 ACP 压缩方法，不得显示入口");
+  assert.equal(button.disabled, true);
+
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      interactiveMode: "coding",
+      conversationTabs: { activeTabId: "tab-9", tabs: [{ id: "tab-9", cli: "claude" }] },
+    }),
+  });
+  assert.notEqual(button.style.display, "none", "其它 CLI 的入口不受影响");
+});
+
+test("Kimi context window is labelled as the configured max_context_size", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, [
+    "codex",
+    "claude",
+    "opencode",
+    "kimi-code",
+  ]);
+  window.dispatchMessage({ type: "state", payload: createKimiPanelState() });
+  api.state.isRunning = true;
+  const label = document.getElementById("runContextTokens");
+
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 4000,
+    modelContextWindow: 262144,
+    contextWindowSource: "kimi-config-window",
+  });
+  assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, "kimi-config-window");
+  assert.equal(label.textContent, "4k");
+  const title = String(label.getAttribute("title") || label.title);
+  assert.match(title, /4000 \/ 262144/);
+  assert.match(title, /max_context_size/);
+  assert.doesNotMatch(title, /adapter fallback|适配器 fallback/);
+
+  // DSH 的 fallback 语义不受影响
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 4000,
+    modelContextWindow: 262144,
+    contextWindowSource: "adapter-fallback",
+  });
+  assert.match(String(label.getAttribute("title") || label.title), /适配器 fallback/);
+  assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, "adapter-fallback");
 });

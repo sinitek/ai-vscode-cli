@@ -1,4 +1,4 @@
-import { getCliArgs, getThinkingArgs, readExplicitDshPatchArgs } from "./config";
+import { getCliArgs, getThinkingArgs, readExplicitDshPatchArgs, readExplicitKimiAcpArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import type { CliName, ThinkingMode } from "./types";
 import { buildClaudePrompt } from "./claudeToolPolicy";
@@ -205,6 +205,24 @@ function createDshRunArgStrategy(): CliRunArgStrategy {
   };
 }
 
+function createKimiCodeRunArgStrategy(): CliRunArgStrategy {
+  return {
+    includeThinkingArgs: false,
+    applyIsolation(args) {
+      return readExplicitKimiAcpArgs(args);
+    },
+    applyBeforePrompt(args) {
+      return readExplicitKimiAcpArgs(args);
+    },
+    appendPrompt(args, _options, prompt) {
+      if (prompt.trim()) {
+        throw new Error("Kimi Code one-shot prompt arguments are outside the verified ACP launch contract.");
+      }
+      return readExplicitKimiAcpArgs(args);
+    },
+  };
+}
+
 export function createCliRunArgStrategies(): Record<CliName, CliRunArgStrategy> {
   return {
     claude: createClaudeRunArgStrategy(),
@@ -212,6 +230,7 @@ export function createCliRunArgStrategies(): Record<CliName, CliRunArgStrategy> 
     opencode: createOpenCodeRunArgStrategy(),
     grok: createGrokRunArgStrategy(),
     dsh: createDshRunArgStrategy(),
+    "kimi-code": createKimiCodeRunArgStrategy(),
   };
 }
 

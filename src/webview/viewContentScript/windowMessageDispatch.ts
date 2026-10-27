@@ -279,6 +279,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               runtimeState.modelContextWindow = windowSize && windowSize > 0 ? windowSize : null;
               runtimeState.contextWindowSource = data.contextWindowSource === "adapter-fallback"
                 ? "adapter-fallback"
+                : data.contextWindowSource === "kimi-config-window"
+                ? "kimi-config-window"
                 : null;
             }
             if (!shouldHandleTabScopedEvent(data)) {
@@ -300,6 +302,47 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             }
             if (typeof syncThinkingOptions === "function") {
               syncThinkingOptions();
+            }
+          }
+          if (data.type === "kimiThinkingOptions") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            // ACP 公布 off/low/.../max；off 由 resolveKimiThinkingValue 映射成配置里的档位，
+            // 选择框只保留五档真实 effort，避免把 off 当成真实档位下发。
+            const advertisedKimiThinking = Array.isArray(data.options)
+              ? data.options.filter((option) =>
+                typeof option === "string"
+                && ["low", "medium", "high", "xhigh", "max"].includes(option.trim()),
+              )
+              : [];
+            state.kimiThinkingOptions = advertisedKimiThinking;
+            // 记录“ACP 确实公布过”，用于区分「还没收到广告」和「广告里没有五档努力值」。
+            state.kimiThinkingOptionsAdvertised = Array.isArray(data.options) && data.options.length > 0;
+            const confirmedKimiThinking = typeof data.currentValue === "string"
+              ? data.currentValue.trim()
+              : "";
+            if (confirmedKimiThinking && advertisedKimiThinking.includes(confirmedKimiThinking)) {
+              state.thinkingMode = confirmedKimiThinking;
+            } else if (confirmedKimiThinking === "ultra" && advertisedKimiThinking.includes("max")) {
+              state.thinkingMode = "max";
+            }
+            if (typeof syncThinkingOptions === "function") {
+              syncThinkingOptions();
+            }
+          }
+          if (data.type === "kimiModeUpdate") {
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            const modeTabId = typeof data.tabId === "string" && data.tabId
+              ? data.tabId
+              : getActiveConversationTabId();
+            const modeRuntimeState = getConversationRuntimeState(modeTabId, { create: false });
+            if (modeRuntimeState) {
+              modeRuntimeState.kimiAcpModeId = typeof data.modeId === "string" && data.modeId.trim()
+                ? data.modeId.trim()
+                : null;
             }
           }
           if (data.type === "removeMessage") {

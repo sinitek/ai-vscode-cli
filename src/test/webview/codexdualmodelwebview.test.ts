@@ -154,6 +154,7 @@ function buildCodexModelHarness() {
     "normalizeLoopRoleThinkingPayload",
     "getDshReasoningOptionsForModel",
     "getLoopRoleThinkingOptionsForCli",
+    "getCliLoopThinkingAria",
     "normalizeLoopRoleThinkingSelection",
     "getSelectedLoopRoleThinkingModeForCli",
     "getVisibleLoopRoleThinkingModeForCli",
@@ -180,6 +181,9 @@ function buildCodexModelHarness() {
       "readLoopSubtaskThinkingSelection",
       "handleLoopSubtaskModelChange",
       "handleLoopSubtaskThinkingChange",
+      "cliUsesConfigDeclaredModels",
+      "getCliLoopModelSelectAria",
+      "getNoConfiguredModelLabel",
       "updateCodexLoopRoleModelSelect",
       "updateCodexLoopModelSelectOptions",
       "handleCodexLoopRoleModelChange",
@@ -257,6 +261,7 @@ function buildCodexModelHarness() {
 
 function buildVisibilityHarness() {
   const functionSource = [
+    "cliUsesConfigDeclaredModels",
     "cliSupportsModelSelection",
     "cliSupportsManagedModelSelection",
     "canOpenModelManagerDialog",

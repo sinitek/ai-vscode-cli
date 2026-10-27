@@ -404,6 +404,7 @@ export type PanelState = {
       thinkingModeByCli?: Partial<Record<CliName, ThinkingMode>>;
       dshReasoningOptions?: DshReasoningOption[];
       dshReasoningOptionsByModel?: Partial<Record<string, DshReasoningOption[]>>;
+      kimiThinkingOptions?: string[];
     };
   editorContext: EditorContextState;
 };

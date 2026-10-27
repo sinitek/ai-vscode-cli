@@ -379,7 +379,14 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
   assert.doesNotMatch(listPanel, /gemini/);
 
   const { utils, storage } = loadStoreUtilities();
-  assert.deepEqual(JSON.parse(JSON.stringify(utils.createEmptyOrder())), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(utils.createEmptyOrder())), {
+    claude: [],
+    codex: [],
+    opencode: [],
+    grok: [],
+    dsh: [],
+    "kimi-code": [],
+  });
   storage.set(
     "ai_cli_config_order",
     JSON.stringify({ claude: ["c1", "c2"], codex: ["x"], opencode: ["o1"] }),
@@ -390,6 +397,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
     opencode: ["o1"],
     grok: [],
     dsh: [],
+    "kimi-code": [],
   });
   assert.deepEqual(
     JSON.parse(JSON.stringify(utils.appendOrderForConfigs([{ id: "g1", platform: "grok" }], {
@@ -397,7 +405,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
       codex: ["x"],
       opencode: ["o1"],
     }))),
-    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"], dsh: [] },
+    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"], dsh: [], "kimi-code": [] },
   );
 });
 

@@ -474,7 +474,7 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.match(html, /openCodeSkills: config\.openCodeSkills \?\? config\.geminiSkills \?\? \[\]/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = config/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = payload/);
-  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok", "dsh"\]/);
+  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok", "dsh", "kimi-code"\]/);
   assert.match(html, /event: "syncActive:empty"/);
   assert.match(html, /event: "syncActive:error"/);
   assert.match(html, /localStorage\.removeItem\(ACTIVE_CONFIG_KEY_PREFIX \+ platform\)/);
@@ -1142,7 +1142,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
 test("config store asset keeps platform order, duplicate names, empty states, and error fallbacks isolated", () => {
   const { utils, storage } = loadStoreUtilities();
 
-  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
+  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] });
   assert.equal(utils.createCopyName("Gateway", []), "Gateway_副本");
   assert.equal(
     utils.createCopyName("Gateway", ["Gateway_副本", "Gateway_副本2"]),
@@ -1170,14 +1170,14 @@ test("config store asset keeps platform order, duplicate names, empty states, an
       ],
       { claude: [], codex: ["codex-one"], opencode: [] },
     )),
-    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [], dsh: [] },
+    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [], dsh: [], "kimi-code": [] },
   );
 
   utils.storeJson("valid", { ok: true });
   assert.equal(storage.get("valid"), "{\"ok\":true}");
   storage.set("broken", "{not-json");
   assert.deepEqual(toPlain(utils.readJson("broken", { fallback: true })), { fallback: true });
-  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [] });
+  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] });
 
   const storeSource = readProjectFile("media/config/assets/config-app-store.js");
   assert.match(storeSource, /selectedConfigPlatform: null/);
@@ -1231,13 +1231,13 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /const renderFixedEditorModeTabs =/);
   assert.equal(
     (editorPanel.match(/className: "config-editor-fixed-actions"/g) || []).length,
-    5,
+    6,
     "each config editor should render a fixed action area",
   );
   assert.match(editorPanel, /const renderConfigEditorCardTitle =/);
   assert.equal(
     (editorPanel.match(/title: renderConfigEditorCardTitle\(/g) || []).length,
-    4,
+    5,
     "each config editor should render mode tabs under the card title",
   );
   assert.equal(
@@ -1420,7 +1420,7 @@ test("Codex, Claude, and OpenCode visual editor utilities expose stable observab
   assert.equal(Object.keys(openCodeSerialized.config.provider).length, 1);
 });
 
-test("skills copy and market install share the DSH target appended after Codex", async () => {
+test("skills copy and market install share the DSH and Kimi Code targets appended after Codex", async () => {
   const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
   assert.equal(uiSource.split("const CLI_GLOBAL_SKILL_TARGETS =").length, 2);
   const targetBlock = extractBetween(uiSource, "const CLI_GLOBAL_SKILL_TARGETS = [", "];");
@@ -1430,6 +1430,7 @@ test("skills copy and market install share the DSH target appended after Codex",
   { id: "grok", label: "Grok" },
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
+  { id: "kimi-code", label: "kimi" },
 `);
   const copyModal = extractBetween(uiSource, "const SkillsCopyModal =", "const SkillsMarketModal =");
   const marketModal = extractBetween(uiSource, "const SkillsMarketModal =", "const renderSkillRows =");
@@ -1508,7 +1509,7 @@ test("skills copy and market install share the DSH target appended after Codex",
   const copyLabels = descendants(copyModalNode)
     .filter((node) => node.type === "label")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH"]);
+  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH", "kimi"]);
   const dshCopy = descendants(copyModalNode).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshCopy);
   dshCopy.props.children[0].props.onChange({ target: { checked: true } });
@@ -1540,7 +1541,7 @@ test("skills copy and market install share the DSH target appended after Codex",
   const marketLabels = descendants(selected)
     .filter((node) => node.type === "label" && node.props.className === "skills-copy-target")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH"]);
+  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH", "kimi"]);
   const dshInstall = descendants(selected).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshInstall);
   dshInstall.props.children[0].props.onChange({ target: { checked: true } });

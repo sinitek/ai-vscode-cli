@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "在 VS Code 中运行 Codex、Claude、OpenCode、Grok 和 DeepSeek Harness CLI 的扩展。",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "publisher": "sinitek",
   "icon": "media/icon.png",
   "repository": {
@@ -84,7 +84,8 @@
             "claude",
             "opencode",
             "grok",
-            "dsh"
+            "dsh",
+            "kimi-code"
           ],
           "default": "codex",
           "description": "扩展激活时默认运行的 CLI。"
@@ -156,6 +157,11 @@
           "default": "dsh",
           "description": "用于运行 DeepSeek Harness CLI 的命令。默认是 dsh。交互主路径固定为 dsh --profile acp。"
         },
+        "sinitek-cli-tools.commands.kimi-code": {
+          "type": "string",
+          "default": "kimi",
+          "description": "kimi 可执行命令（官方 CLI 的 bin 名为 kimi）。"
+        },
         "sinitek-cli-tools.args.dsh": {
           "type": "array",
           "items": {
@@ -163,6 +169,14 @@
           },
           "default": [],
           "description": "只允许明确的 --patch 参数。不能通过此配置覆盖 --profile，也不能切换 headless、sdk、tui 或其他 profile。"
+        },
+        "sinitek-cli-tools.args.kimi-code": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "kimi 启动参数。官方 CLI 的 --auto / --yolo 不能与 -p 同用，免审批请在 config.toml 设置 default_permission_mode。"
         },
         "sinitek-cli-tools.autoOpenPanel": {
           "type": "boolean",

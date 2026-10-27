@@ -855,6 +855,12 @@ export function getConfigViewHtml(
           return normalizeJson(config.configContent || config.content || "")
             === normalizeJson(current.configContent || current.content || "");
         }
+        if (platform === "kimi-code") {
+          return areLinesSubset(
+            normalizeConfigLines(config.configContent || config.content),
+            normalizeConfigLines(current.configContent || current.content)
+          );
+        }
         return (
           areLinesSubset(
             normalizeConfigLines(config.configContent),
@@ -865,7 +871,7 @@ export function getConfigViewHtml(
       }
 
       async function syncActiveConfigIds() {
-        const platforms = ["claude", "codex", "opencode", "grok", "dsh"];
+        const platforms = ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"];
         let updated = false;
         postConfigDebug({
           event: "syncActive:start",

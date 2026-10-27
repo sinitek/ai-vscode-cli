@@ -39,8 +39,8 @@ test("ignores retired implicit-subagents settings without affecting other settin
 });
 
 test("keeps CLI enable flags default-on and persists only explicit booleans", () => {
-  assert.deepEqual(listEnabledClis({}), ["codex", "claude", "opencode", "grok", "dsh"]);
-  assert.deepEqual(listEnabledClis(null), ["codex", "claude", "opencode", "grok", "dsh"]);
+  assert.deepEqual(listEnabledClis({}), ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+  assert.deepEqual(listEnabledClis(null), ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
   assert.equal(isCliEnabled("codex", {}), true);
   assert.equal(isCliEnabled("not-a-cli", {}), false);
   assert.deepEqual(normalizeToolSettings({
@@ -50,12 +50,12 @@ test("keeps CLI enable flags default-on and persists only explicit booleans", ()
   });
   assert.deepEqual(
     listEnabledClis({ cliEnabledByName: { codex: false } }),
-    ["claude", "opencode", "grok", "dsh"],
+    ["claude", "opencode", "grok", "dsh", "kimi-code"],
   );
   assert.equal(resolveNextEnabledCli("codex", { cliEnabledByName: { codex: false } }), "claude");
   assert.equal(resolveNextEnabledCli("grok", { cliEnabledByName: { grok: true } }), "grok");
   assert.equal(resolveNextEnabledCli("codex", {
-    cliEnabledByName: { codex: false, claude: false, opencode: false, grok: false, dsh: false },
+    cliEnabledByName: { codex: false, claude: false, opencode: false, grok: false, dsh: false, "kimi-code": false },
   }), null);
   assert.equal(normalizeCliEnabledByName(["codex"]), undefined);
   assert.equal(normalizeCliEnabledByName({ codex: 1, claude: null }), undefined);

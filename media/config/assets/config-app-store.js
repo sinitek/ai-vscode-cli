@@ -70,13 +70,14 @@ const CONFIG_STORAGE_KEYS = {
   },
   configManagerPlatforms = typeof CONFIG_MANAGER_PLATFORMS !== "undefined"
     ? CONFIG_MANAGER_PLATFORMS
-    : ["claude", "codex", "opencode", "grok", "dsh"],
+    : ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
   CONFIG_PLATFORM_SYNC_LABELS = {
     claude: "Claude",
     codex: "Codex",
     opencode: "OpenCode",
     grok: "Grok",
     dsh: "DSH",
+    "kimi-code": "kimi",
   },
   createEmptyActiveIds = () => {
     const activeIds = {};

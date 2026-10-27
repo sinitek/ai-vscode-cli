@@ -8,6 +8,8 @@
 
 - `.ch/docs/runbooks/PITFALLS.md`：真实踩坑条目、维护规则和条目模板。
 - `.ch/docs/runbooks/PITFALLS_HISTORY.md`：历史归档入口；只有真实历史条目达到拆分阈值后再展开专题文件。
+- `.ch/docs/runbooks/grok-model-config.md`：Grok 多模型配置、语义回放、任务列表与上下文用量口径。
+- `.ch/docs/runbooks/kimi-code-config.md`：Kimi Code 安装自检、隔离验证、配置模板、失败现象处置与不能做的事。
 
 ## 未来建议收录
 

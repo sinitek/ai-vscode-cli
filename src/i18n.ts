@@ -287,6 +287,10 @@ const MESSAGES = {
     "grok.responsesStreamIncompatible": "Grok 无法解析模型 {model} 的 Responses 流事件 {event}，本轮未完整结束，已停止自动重试。请在“携宁 CLI 配置”中将该模型的接口协议改为 chat_completions（需服务支持）后保存，并新建会话重试。",
     "grok.commandNotFound": "没有找到 {command}。请安装 Grok Build，或把 sinitek-cli-tools.commands.grok 设成绝对路径。",
     "grok.exited": "Grok Build 异常退出（{detail}）：{stderr}",
+    "kimi.invalidConfig": "kimi 配置不是合法 TOML，或字段不合法，已保留上一份有效内容。",
+    "kimi.noConfiguredModels": "请先在 kimi 配置文件 ~/.kimi-code/config.toml 的 [models] 中添加模型，再刷新模型列表。",
+    "kimi.commandNotFound": "没有找到 {command}。请安装 kimi（npm install -g @moonshot-ai/kimi-code），或把 sinitek-cli-tools.commands.kimi-code 设成绝对路径。",
+    "kimi.exited": "kimi 异常退出（{detail}）：{stderr}",
 } as const;
 
 export type I18nKey = keyof typeof MESSAGES;

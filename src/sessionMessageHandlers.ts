@@ -9,6 +9,7 @@ import { createPanelMessageRouter } from "./sessionMessageRouter";
 import { createPanelMessageHandlerRegistry } from "./panelMessageHandlers";
 import { type ConfigApplyResult } from "./config/configApplyQueue";
 import { type ConfigManagerPanel } from "./webview/configPanel";
+import type { KimiCodeConfigModels, KimiCodeModelListChange } from "./config/kimiCodeConfig";
 
 export type PromptRunInputForPanel = {
   displayPrompt: string;
@@ -80,6 +81,11 @@ export type PanelMessageHandlerDeps = {
     value: string | null,
     configId: string | null
   ) => Promise<string | null>;
+  manageKimiCodeModelList?: (
+    change: KimiCodeModelListChange,
+    configId: string,
+  ) => Promise<{ applied: boolean; model: string | null; config: KimiCodeConfigModels }>;
+  cacheKimiCodeConfigModels?: (configId: string, config: KimiCodeConfigModels) => void;
   addCliModel: (cli: CliName, model: string, configId?: string | null) => string | null;
   renameCliModel: (cli: CliName, previousModel: string, nextModel: string, configId?: string | null) => string | null;
   deleteCliModel: (cli: CliName, model: string, configId?: string | null) => void;

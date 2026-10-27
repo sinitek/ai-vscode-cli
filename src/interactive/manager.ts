@@ -3,6 +3,7 @@ import { CodexRunSelection } from "./codexThreadSelection";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { DshInteractiveRunner } from "./dshRunner";
+import { KimiInteractiveRunner } from "./kimiRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import {
   runnerLifecycleStrategies,
@@ -13,6 +14,7 @@ import type {
   CodexRunnerCreateOptions,
   DshRunnerCreateOptions,
   GrokRunnerCreateOptions,
+  KimiCodeRunnerCreateOptions,
   InteractiveRunnerCli,
   RunnerByCli,
   RunnerEntry,
@@ -30,6 +32,7 @@ const platformEntries: {
   claude: (entry) => entry.cli === "claude" ? entry : undefined,
   grok: (entry) => entry.cli === "grok" ? entry : undefined,
   dsh: (entry) => entry.cli === "dsh" ? entry : undefined,
+  "kimi-code": (entry) => entry.cli === "kimi-code" ? entry : undefined,
 };
 
 const platformRunners: {
@@ -39,6 +42,7 @@ const platformRunners: {
   claude: (entry) => entry.runner,
   grok: (entry) => entry.runner,
   dsh: (entry) => entry.runner,
+  "kimi-code": (entry) => entry.runner,
 };
 
 const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -76,7 +80,12 @@ export class InteractiveRunnerManager {
   public setRunner(
     cli: InteractiveRunnerCli,
     sessionId: string,
-    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner | DshInteractiveRunner,
+    runner:
+      | CodexInteractiveRunner
+      | ClaudeInteractiveRunner
+      | GrokInteractiveRunner
+      | DshInteractiveRunner
+      | KimiInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
@@ -113,11 +122,19 @@ export class InteractiveRunnerManager {
       }, () => runnerLifecycleStrategies.grok.createSetRegistration(input));
       return;
     }
-    const dshRunner = runner as DshInteractiveRunner;
-    const input = { ...metadata, runner: dshRunner };
-    this.registerExternalRunner("dsh", input, (entry) => {
-      runnerLifecycleStrategies.dsh.applySetMetadata(entry, input);
-    }, () => runnerLifecycleStrategies.dsh.createSetRegistration(input));
+    if (cli === "dsh") {
+      const dshRunner = runner as DshInteractiveRunner;
+      const input = { ...metadata, runner: dshRunner };
+      this.registerExternalRunner("dsh", input, (entry) => {
+        runnerLifecycleStrategies.dsh.applySetMetadata(entry, input);
+      }, () => runnerLifecycleStrategies.dsh.createSetRegistration(input));
+      return;
+    }
+    const kimiRunner = runner as KimiInteractiveRunner;
+    const input = { ...metadata, runner: kimiRunner };
+    this.registerExternalRunner("kimi-code", input, (entry) => {
+      runnerLifecycleStrategies["kimi-code"].applySetMetadata(entry, input);
+    }, () => runnerLifecycleStrategies["kimi-code"].createSetRegistration(input));
   }
 
   public getOrCreateCodexRunner(options: CodexRunnerCreateOptions): CodexInteractiveRunner {
@@ -204,10 +221,34 @@ export class InteractiveRunnerManager {
     );
   }
 
+  public hasKimiCodeRunner(sessionId: string | null, runner: KimiInteractiveRunner): boolean {
+    const entry = this.getEntry("kimi-code", sessionId);
+    return Boolean(entry && entry.cli === "kimi-code" && entry.runner === runner);
+  }
+
+  public getOrCreateKimiCodeRunner(options: KimiCodeRunnerCreateOptions): KimiInteractiveRunner {
+    const prepared = runnerLifecycleStrategies["kimi-code"].prepare(options);
+    return this.reuseOrCreate(
+      "kimi-code",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies["kimi-code"].canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies["kimi-code"].applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies["kimi-code"].createRunner(prepared),
+      (created) => runnerLifecycleStrategies["kimi-code"].createRegistration(prepared, created),
+    );
+  }
+
   public detachRunner(
     cli: InteractiveRunnerCli,
     sessionId: string | null,
-    runner: CodexInteractiveRunner | ClaudeInteractiveRunner | GrokInteractiveRunner | DshInteractiveRunner,
+    runner:
+      | CodexInteractiveRunner
+      | ClaudeInteractiveRunner
+      | GrokInteractiveRunner
+      | DshInteractiveRunner
+      | KimiInteractiveRunner,
   ): void {
     const key = this.buildKeyForCli(cli, sessionId);
     if (!key) {
@@ -310,7 +351,11 @@ export class InteractiveRunnerManager {
       const entry: RunnerEntryByCli["grok"] = { ...registration, idleTimer, lastUsedAt };
       return entry;
     }
-    const entry: RunnerEntryByCli["dsh"] = { ...registration, idleTimer, lastUsedAt };
+    if (registration.cli === "dsh") {
+      const entry: RunnerEntryByCli["dsh"] = { ...registration, idleTimer, lastUsedAt };
+      return entry;
+    }
+    const entry: RunnerEntryByCli["kimi-code"] = { ...registration, idleTimer, lastUsedAt };
     return entry;
   }
 
@@ -341,7 +386,7 @@ export class InteractiveRunnerManager {
   }
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
-    return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh";
+    return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
   }
 
   private disposeEntry(key: string): void {

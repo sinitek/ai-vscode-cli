@@ -63,6 +63,7 @@ function createEmptyStore(): SessionStore {
     opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
     dsh: { currentId: null, sessions: [] },
+    "kimi-code": { currentId: null, sessions: [] },
   };
 }
 
@@ -755,6 +756,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
       dsh: { currentId: null, sessions: [] },
+      "kimi-code": { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: { codex: { [staleId]: { threadId: "thread-1", frozenThreadIds: [], updatedAt: 1 } } },
@@ -791,6 +793,7 @@ test("cleans expired workspace artifacts and contains malformed session-message 
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
       dsh: { currentId: null, sessions: [] },
+      "kimi-code": { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -849,6 +852,7 @@ test("writes pruned session metadata when retained mappings remain", async () =>
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
       dsh: { currentId: null, sessions: [] },
+      "kimi-code": { currentId: null, sessions: [] },
     } as SessionStore);
     harness.state.meta = {
       byCli: {
@@ -876,6 +880,7 @@ test("contains session file write errors during retained workspace cleanup", asy
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
       dsh: { currentId: null, sessions: [] },
+      "kimi-code": { currentId: null, sessions: [] },
     } as SessionStore);
 
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
@@ -1021,6 +1026,7 @@ test("covers retained stores, deletion, no-op drafts, local promotion, and fallb
       opencode: { currentId: null, sessions: [] },
       grok: { currentId: null, sessions: [] },
       dsh: { currentId: null, sessions: [] },
+      "kimi-code": { currentId: null, sessions: [] },
     } as SessionStore);
     await harness.controller.cleanupSessionRetentionAcrossWorkspaces();
     assert.ok(harness.state.globalState.get("session-store:retained-workspace"));

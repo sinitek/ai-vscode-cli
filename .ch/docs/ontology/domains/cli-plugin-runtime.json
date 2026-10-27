@@ -54,10 +54,10 @@
       "id": "plugin.local_cli",
       "name": "本地 AI CLI",
       "kind": "resource",
-      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build 和 DeepSeek Harness；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
+      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build、DeepSeek-Harness 和 Kimi Code；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh、kimi-code。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
-      "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "local CLI"],
-      "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts", "src/interactive/dshAppServerProtocol.ts", "src/extensionHost/interactiveTurnDsh.ts"],
+      "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "kimi-code", "kimi", "local CLI"],
+      "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts", "src/interactive/dshAppServerProtocol.ts", "src/extensionHost/interactiveTurnDsh.ts", "src/interactive/kimiRunner.ts", "src/interactive/kimiAppServerProtocol.ts", "src/extensionHost/interactiveTurnKimi.ts", "src/extensionHost/kimiInteractiveLaunch.ts"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": "docs/cli-reference.md"},
@@ -67,7 +67,9 @@
         {"path": "src/interactive/dshRunner.ts"},
         {"path": "src/interactive/dshAppServerProtocol.ts"},
         {"path": "src/extensionHost/interactiveTurnDsh.ts"},
-        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"}
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
+        {"path": "src/interactive/kimiRunner.ts"},
+        {"path": "src/interactive/kimiAppServerProtocol.ts"}
       ]
     },
     {
@@ -88,7 +90,7 @@
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序保持 Claude、Codex、OpenCode，并在其后追加 Grok；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH 五个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序是 Claude、Codex、OpenCode、Grok、DSH、Kimi Code；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH、Kimi Code 六个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。Kimi Code 配置页在 DSH 之后，用户配置是 $KIMI_CODE_HOME/config.toml（默认 ~/.kimi-code/config.toml），打开档案默认使用 TOML 源码模式；查看范例后一键导入会更新当前 TOML 草稿，用户保存后才应用。可视化字段集只含 default_model、default_permission_mode、model.provider、model.model、model.max_context_size、provider.type、provider.base_url、provider.api_key、provider.api_key_env；思考、Loop、显示名和能力声明不进入表单。保存经 commitKimiCodeText 自动补思考声明，其它未展示字段原样保留，非法 TOML 或空文本不覆盖上一份有效内容。Skills 与市场目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
       "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/extensionHost/cliModelSelectionStrategies.ts", "src/config/dshConfig.ts", "src/cli/dshConfigModels.ts"],
@@ -103,6 +105,8 @@
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
         {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md"},
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
+        {"path": "src/interactive/kimiRunner.ts"},
+        {"path": "src/interactive/kimiAppServerProtocol.ts"},
         {"path": "src/config/dshConfig.ts"},
         {"path": "src/cli/dshConfigModels.ts"}
       ]
@@ -391,6 +395,77 @@
         {"path": "src/test/webview/codexdualmodelwebview.test.ts"},
         {"path": "src/test/interactive/dshRunner.test.ts"},
         {"path": "src/test/webview/openCodeThinkingWebview.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.kimi_acp_install_and_launch",
+      "name": "Kimi Code 走官方 ACP，安装与版本检查以官方资料为准",
+      "description": "kimi-code 是第 6 个 CLI，前五项顺序不变。安装有两条官方入口：脚本 curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash（Windows 为 irm https://code.kimi.com/kimi-code/install.ps1 | iex，官方推荐、无需预装 Node）与 npm install -g @moonshot-ai/kimi-code（需 Node >= 22.19.0）；插件自身的安装、诊断修复与配置页安装命令只用可回滚的 npm install -g @moonshot-ai/kimi-code@latest，不执行管道脚本。版本检查为 kimi --version，配置自检为 kimi doctor config。交互主路径是官方 ACP kimi acp（JSON-RPC 2.0 over stdio），args.kimi-code 只允许 --region <mainland-cn|global>，其余参数一律拒绝。只使用 session/new、session/resume、session/prompt、session/set_config_option、session/cancel、session/close，不发送 session/load、session/fork、session/delete。免审批只能写 default_permission_mode（manual/yolo/auto），因为官方 --auto 与 --yolo 均与 -p/--prompt 互斥，插件不拼这两个参数。凭据只来自同一个 ~/.kimi-code/config.toml 的 api_key、api_key_env 或 [providers.<名称>.env]，无第二个 auth.json；默认配置与范例只生成常用字段，CLI 不会从 shell 自动读取惯用密钥变量；插件不注入密钥，并在启动子进程前剥离其它 CLI 的 *_API_KEY。",
+      "status": "active",
+      "aliases": ["Kimi Code 安装", "kimi acp", "kimi-code", "KIMI_CODE_HOME", "default_permission_mode"],
+      "applies_to": ["plugin.local_cli", "plugin.config_profile"],
+      "source_refs": [
+        {"path": ".ch/docs/references/kimi-code-official-reference.md"},
+        {"path": "docs/kimi-code-guide.md"},
+        {"path": ".ch/docs/runbooks/kimi-code-config.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Kimi Code"},
+        {"path": "src/cli/installer.ts", "anchor": "CLI_INSTALL_COMMANDS"},
+        {"path": "src/config/kimiCodeConfig.ts"},
+        {"path": "src/interactive/kimiAppServerProtocol.ts"},
+        {"path": "src/interactive/kimiRunner.ts"},
+        {"path": "src/extensionHost/kimiInteractiveLaunch.ts"},
+        {"path": "src/test/config/kimiCodeDocContract.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.kimi_config_model_management",
+      "name": "Kimi 配置模型可管理且每轮动态应用",
+      "description": "kimi acp 没有 --model，模型候选只来自当前 config.toml 的模型别名。对话面板复用 Codex 模型管理弹窗，新增、重命名、删除、排序同时保存配置档案和真实 config.toml；新增条目复制默认模型 provider、凭据引用和高级字段，真实 model ID 取输入别名。重命名默认模型同步 default_model，删除默认模型回落到剩余首项，重复别名、缺失模型和越界移动拒绝写入。每轮通过 session/set_config_option 应用所选别名，复用 ACP runner 也重新应用模型与思考档位。配置写入按 KIMI_CODE_HOME 推进修订号，旧 runner 失效后由管理器释放并新建，新 runner 用原 ACP ID 执行 session/resume，再读取新模型广告并应用选择。工具投影命令使用 exec 标题，普通工具只显示标题，不回放参数 JSON 或成功结果，失败最多两行、600 字符。",
+      "status": "active",
+      "aliases": ["Kimi 多模型", "Kimi 模型管理", "Kimi 回放精简", "session/set_config_option"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "docs/kimi-code-guide.md", "anchor": "多模型与动态切换"},
+        {"path": "src/config/kimiCodeConfig.ts", "anchor": "changeKimiCodeConfigModelList"},
+        {"path": "src/interactive/kimiRunner.ts", "anchor": "isReusable"},
+        {"path": "src/extensionHost/modelSettings.ts", "anchor": "manageKimiCodeModelList"},
+        {"path": "src/extensionHost/interactiveTurnKimi.ts"},
+        {"path": "src/interactive/kimiAppServerProtocol.ts", "anchor": "projectKimiToolUpdate"},
+        {"path": "src/panelMessageHandlers/session.ts", "anchor": "manageKimiCodeModel"},
+        {"path": "src/test/session/kimiModelMessageHandlers.test.ts"},
+        {"path": "src/test/interactive/kimiRunner.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.kimi_thinking_capability_gated",
+      "name": "Kimi 思考力度只按 ACP 广告值下发",
+      "description": "Kimi Code 的 thinking 是 ACP configOption，广告集合由 config.toml 的模型表决定：没有 capabilities（或空数组）时不广告 thinking；capabilities = [\"thinking\"] 且无 support_efforts 时广告 off/on/high；显式 support_efforts 时是该数组的子集；always_thinking 时不广告 off；只走 KIMI_MODEL_* 环境变量通道时只有 off/on。createKimiCodeDefaultConfigText 与配置页 createKimiCodeVisualExampleText 生成 capabilities = [\"thinking\"] 和完整五档 support_efforts；所有保存经 commitKimiCodeText 给每个模型补缺失的 thinking 能力和五档列表，不覆盖已有能力或显式档位限制。高级字段不进入可视化表单，validateKimiCodeDocument 拒绝未知能力。插件只下发当前 ACP 广告过的值，ultra 不改写为 max，off 不改写为 medium，广告里没有就报错并保留服务端确认值，不伪造档位。Webview 通过 windowMessageDispatch.ts 消费 kimiThinkingOptions/kimiModeUpdate，按 tabId 隔离、过滤非法值、只从广告集合选当前值，只有 off/on 时禁用下拉，切换标签页或 CLI 清空广告集合。",
+      "status": "active",
+      "aliases": ["Kimi thinking", "support_efforts", "capabilities", "Kimi 思考力度"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.config_profile"],
+      "source_refs": [
+        {"path": ".ch/docs/references/kimi-code-official-reference.md", "anchor": "思考力度在 ACP 上的真实广告"},
+        {"path": "docs/kimi-code-guide.md", "anchor": "思考力度（真实能力与前置条件）"},
+        {"path": "src/config/kimiCodeConfig.ts", "anchor": "createKimiCodeDefaultConfigText"},
+        {"path": "media/config/assets/config-app-ui.js", "anchor": "createKimiCodeVisualExampleText"},
+        {"path": "src/extensionHost/interactiveTurnKimi.ts", "anchor": "kimiThinkingOptions"},
+        {"path": "src/test/config/kimiCodeDocContract.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.kimi_no_native_compaction",
+      "name": "Kimi ACP 没有压缩方法，usage 窗口取配置声明值",
+      "description": "Kimi Code ACP 的官方能力矩阵没有 session/compact 这类独立压缩方法，initialize 也不公布压缩能力，因此插件 compactSession() 抛 compaction-unsupported，不伪造本地压缩，对话面板不显示「压缩上下文」入口；[loop_control].reserved_context_size 只作用于 CLI 自己的会话循环。/compact 斜杠命令本身可用：本机隔离实测把它作为 session/prompt 文本发送会返回「Context compaction started」并后台异步执行，随后推一条含消息数与前后 token 的「Compaction completed.」纯文本，没有机器可读完成事件，因此不接线成可确认的按钮。上下文窗口展示读每轮结束的 usage_update.size，它来自模型目录中该模型的 max_context_size，即配置声明的真实容量，缺失时不显示为 0；interactiveTurnKimi.ts 标 contextWindowSource 为独立的 kimi-config-window，悬停文案说明窗口取自配置的 max_context_size，与 DSH 的 adapter-fallback 区分且不共用文案。",
+      "status": "active",
+      "aliases": ["Kimi 压缩", "compaction-unsupported", "reserved_context_size", "usage_update"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/references/kimi-code-official-reference.md", "anchor": "上下文用量"},
+        {"path": "docs/kimi-code-guide.md", "anchor": "上下文大小显示与自动压缩"},
+        {"path": "src/interactive/kimiRunner.ts", "anchor": "compactSession"},
+        {"path": "src/extensionHost/interactiveTurnKimi.ts"},
+        {"path": "src/contextCompactionRunner.ts", "anchor": "CONTEXT_COMPACTION_STRATEGY_CLIS"},
+        {"path": "src/test/config/kimiCodeDocContract.test.ts"}
       ]
     },
     {

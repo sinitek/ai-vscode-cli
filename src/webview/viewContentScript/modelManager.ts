@@ -1,6 +1,31 @@
 // Model manager, model selection, and model persistence handlers.
-export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsManagedModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "grok";
+export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDeclaredModels(cli = state.currentCli) {
+        // Grok / Kimi Code 的模型来自各自 config 文件，没有“默认”占位项。
+        return cli === "grok" || cli === "kimi-code";
+      }
+
+      function getCliLoopModelSelectAria(cli, role) {
+        if (cli === "grok") {
+          return t(role === "subtask" ? "grokLoopSubtaskModelSelectAria" : "grokLoopMainModelSelectAria");
+        }
+        if (cli === "dsh") {
+          return t(role === "subtask" ? "dshLoopSubtaskModelSelectAria" : "dshLoopMainModelSelectAria");
+        }
+        if (cli === "kimi-code") {
+          return t(role === "subtask" ? "kimiCodeLoopSubtaskModelSelectAria" : "kimiCodeLoopMainModelSelectAria");
+        }
+        return t(role === "subtask" ? "codexLoopSubtaskModelSelectAria" : "codexLoopMainModelSelectAria");
+      }
+
+      function getNoConfiguredModelLabel(cli) {
+        if (cli === "kimi-code") {
+          return t("kimiCodeNoConfiguredModel");
+        }
+        return t(cli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
+      }
+
+      function cliSupportsManagedModelSelection(cli = state.currentCli) {
+        return cli === "codex" || cli === "grok" || cli === "kimi-code";
       }
 
       function cliSupportsModelSelection(cli = state.currentCli) {
@@ -8,7 +33,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       }
 
       function canOpenModelManagerDialog(cli = state.currentCli) {
-        return cliSupportsManagedModelSelection(cli) && cli !== "grok";
+        return cli === "codex" || cli === "kimi-code";
       }
 
       function getModelsForCurrentCli() {
@@ -230,11 +255,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const availableModels = getModelsForCurrentCli();
         elements.modelSelect.innerHTML = "";
 
-        if (state.currentCli !== "grok" || availableModels.length === 0) {
+        if (!cliUsesConfigDeclaredModels() || availableModels.length === 0) {
+          const configDeclared = cliUsesConfigDeclaredModels();
           const defaultOption = document.createElement("option");
           defaultOption.value = "";
-          defaultOption.textContent = t(state.currentCli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
-          defaultOption.disabled = state.currentCli === "grok";
+          defaultOption.textContent = getNoConfiguredModelLabel(state.currentCli);
+          defaultOption.disabled = configDeclared;
           elements.modelSelect.appendChild(defaultOption);
         }
 
@@ -257,11 +283,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           elements.modelSelect.value = nextValue;
           return;
         }
-        elements.modelSelect.value = state.currentCli === "grok" ? availableModels[0] || "" : "";
+        elements.modelSelect.value = cliUsesConfigDeclaredModels() ? availableModels[0] || "" : "";
       }
 
       function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "grok" || cli === "dsh";
+        return cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
       }
 
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
@@ -310,11 +336,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const availableModels = getLoopRoleModelsForCli(state.currentCli, role);
         selectElement.innerHTML = "";
 
-        if (state.currentCli !== "grok" || availableModels.length === 0) {
+        const configDeclared = cliUsesConfigDeclaredModels();
+        if (!configDeclared || availableModels.length === 0) {
           const defaultOption = document.createElement("option");
           defaultOption.value = "";
-          defaultOption.textContent = t(state.currentCli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
-          defaultOption.disabled = state.currentCli === "grok";
+          defaultOption.textContent = getNoConfiguredModelLabel(state.currentCli);
+          defaultOption.disabled = configDeclared;
           selectElement.appendChild(defaultOption);
         }
 
@@ -326,9 +353,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         });
 
         selectElement.value = getSelectedLoopRoleModelForCli(state.currentCli, role);
-        selectElement.title = role === "subtask"
-          ? t(state.currentCli === "grok" ? "grokLoopSubtaskModelSelectAria" : state.currentCli === "dsh" ? "dshLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria")
-          : t(state.currentCli === "grok" ? "grokLoopMainModelSelectAria" : state.currentCli === "dsh" ? "dshLoopMainModelSelectAria" : "codexLoopMainModelSelectAria");
+        selectElement.title = getCliLoopModelSelectAria(state.currentCli, role);
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
         }
@@ -478,7 +503,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           : "";
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
         const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
         const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
         const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
@@ -529,7 +554,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         }
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
         const currentValues = Array.from(selectElement.options || []).map((option) => option.value);
         const same = currentValues.length === names.length && names.every((name, index) => currentValues[index] === name);
         if (!same) {
@@ -576,16 +601,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
           const selected = models && (models.selectedSubtaskRef || models.selectedSmallRef) || "";
           selectElement.value = selected || "";
           selectElement.title = t("openCodeSmallModelSelectAria");
-        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh")) {
+        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code")) {
           updateCodexLoopRoleModelSelect(selectElement, "subtask");
           return;
         } else {
           const models = getLoopRoleModelsForCli(cli, "subtask");
-          if (cli !== "grok" || models.length === 0) {
+          const configDeclared = cliUsesConfigDeclaredModels(cli);
+          if (!configDeclared || models.length === 0) {
             const empty = document.createElement("option");
             empty.value = "";
-            empty.textContent = t(cli === "grok" ? "grokNoConfiguredModel" : "modelOptionDefault");
-            empty.disabled = cli === "grok";
+            empty.textContent = getNoConfiguredModelLabel(cli);
+            empty.disabled = configDeclared;
             selectElement.appendChild(empty);
           }
           models.forEach((modelName) => {
@@ -595,7 +621,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
             selectElement.appendChild(option);
           });
           selectElement.value = getSelectedLoopRoleModelForCli(cli, "subtask");
-          selectElement.title = t(cli === "grok" ? "grokLoopSubtaskModelSelectAria" : cli === "dsh" ? "dshLoopSubtaskModelSelectAria" : "codexLoopSubtaskModelSelectAria");
+          selectElement.title = getCliLoopModelSelectAria(cli, "subtask");
         }
         if (typeof selectElement.setAttribute === "function" && selectElement.title) {
           selectElement.setAttribute("aria-label", selectElement.title);
@@ -620,6 +646,20 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
             : options.includes(fallback) ? fallback : (options[0] || "");
           selectElement.disabled = options.length === 0;
           selectElement.title = t("dshLoopSubtaskThinkingModeAria");
+          if (typeof selectElement.setAttribute === "function") {
+            selectElement.setAttribute("aria-label", selectElement.title);
+          }
+          return;
+        }
+        if (route.subtaskCli === "kimi-code") {
+          // Kimi Code 的思考档只有 low/medium/high/xhigh/max，没有 off/on/ultra。
+          ["low", "medium", "high", "xhigh", "max"].forEach((option) => {
+            appendThinkingOption(selectElement, option, option);
+          });
+          const requested = readLoopSubtaskThinkingSelection(route);
+          selectElement.value = ["low", "medium", "high", "xhigh", "max"].includes(requested) ? requested : "medium";
+          selectElement.disabled = false;
+          selectElement.title = t("kimiCodeLoopSubtaskThinkingModeAria");
           if (typeof selectElement.setAttribute === "function") {
             selectElement.setAttribute("aria-label", selectElement.title);
           }
@@ -651,7 +691,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         const showModel = active && route.subtaskCli !== "claude";
         const showThinking = active;
         const rows = [
-          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: active && (state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "dsh") },
+          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: active && (state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "dsh" || state.currentCli === "kimi-code") },
           { cli: elements.openCodeLoopSubtaskCliSelect, model: elements.openCodeSmallModelSelect, thinking: elements.openCodeSmallThinkingMode, enabled: active && state.currentCli === "opencode" },
           { cli: elements.claudeLoopSubtaskCliSelect, model: elements.claudeLoopSubtaskModelSelect, thinking: elements.claudeLoopSubtaskThinkingMode, enabled: active && state.currentCli === "claude" },
         ];
@@ -847,6 +887,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
         if (cli === "dsh") {
           return ["low", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
         }
+        if (cli === "kimi-code") {
+          return ["low", "medium", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
+        }
         if (normalized === "off") {
           return cli === "grok" || cli === "claude" ? "off" : "low";
         }
@@ -884,7 +927,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliSupportsMana
       function handleLoopSubtaskCliChange(rawValue) {
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
         if (names.indexOf(rawValue) < 0) {
           return;
         }
