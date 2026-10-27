@@ -158,11 +158,13 @@ python export_vscode_extension.py --target win32-x64
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map
 - 使用 Python 标准库读取 ZIP 清单并审计，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败；无需安装 unzip
-- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、Graph 面板的 Dagre 依赖、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；不再强制要求当前实现已移除的旧市场 catalog
+- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、Graph 面板的 Dagre 依赖、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；审计失败会打印具体缺失文件，不再只显示子进程退出码
 - 平台包仅保留对应平台的 SDK ripgrep 和 sharp/libvips，额外检查目标平台原生依赖，拒绝混入其他平台资源；保留 SDK 和原生依赖的许可证
 - 默认输出到 `dist/sinitek-cli-tools-<version>.vsix`，结束时打印实际 MiB/字节大小
 
 Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WASM、原生 ripgrep 和 sharp/libvips 都属于运行时能力，不可为了缩包一并删除。`.vscodeignore` 由 vsce 实现的否定模式优先于排除模式，不能再加 `!node_modules/@anthropic-ai/**` 等宽泛放行，否则会让平台裁剪与类型声明排除失效。对应护栏见 `src/test/shared/vsixPackaging.test.ts`。
+
+Claude SDK 固定为 `0.2.12`：新版 SDK 已改为按平台拆分原生 CLI，不能直接沿用当前通用包的资源布局与审计规则。需要升级时必须先同步实现平台依赖解析、打包裁剪、审计及跨平台真实验证。
 
 ## 发布到 VS Code 市场
 
@@ -178,8 +180,9 @@ python publish_vscode_extension.py
 以上命令必须在插件项目根目录执行，不是在上级 `sinitek` 目录。也可直接使用项目 `node_modules/.bin/vsce` 的绝对路径登录。项目依赖为 `@vscode/vsce`；不要在其他目录运行 `npx --no-install vsce`，否则缺少本地可执行文件时会尝试解析旧的非 scoped `vsce` 包，并因禁止安装而失败。
 
 脚本先验证发布者与鉴权，再调用 Python 导出脚本构建、审计 VSIX，最后通过 `vsce publish --packagePath` 上传同一份产物。非交互环境支持通过安全环境变量注入 `VSCE_PAT`，兼容 `VSCODE_MARKETPLACE_PAT`，前者优先；令牌不放入命令行参数。缺少 vsce 时复用项目依赖安装流程；无凭据或鉴权失败会在构建之前退出。
+交互式终端中，无论发布成功或失败，脚本都会保留窗口并等待按 Enter 关闭，便于查看失败原因；CI 与管道调用不会等待输入。
 
-默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `python publish_vscode_extension.py --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Windows 使用 `python`，Linux/macOS 使用 `python3`；无需 Git Bash/WSL，路径含空格受支持。
+默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `python publish_vscode_extension.py --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Windows 使用 `python`，Linux/macOS 使用 `python3`；发布、导出和进程调用不依赖 Windows 专属模块或 Git Bash/WSL，路径含空格受支持。跨平台命令执行由 `vscode_extension_process.py` 统一处理，仅 VS Code 的 Windows 安装路径探测保留在 `vscode_extension_win.py`。
 
 市场不允许覆盖已发布的同版本包；脚本不会自动改版本、创建提交或 tag。需要更新时先手动调整 `package.json` 的版本再重跑。上传失败保留本次导出的 VSIX；仅需离线安装包时仍使用 `python export_vscode_extension.py`，不需要市场凭据。
 

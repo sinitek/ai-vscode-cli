@@ -63,6 +63,14 @@ class VsixAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "无法读取 VSIX"):
                 export_script.audit_vsix(package, "universal")
 
+    def test_audit_failure_includes_subprocess_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sinitek export test ") as temporary:
+            package = self.create_vsix(Path(temporary), list(export_script.REQUIRED_ENTRIES))
+            result = subprocess.CompletedProcess([], 1, "", "缺少 cli.js")
+            with patch.object(export_script.subprocess, "run", return_value=result):
+                with self.assertRaisesRegex(RuntimeError, "缺少 cli.js"):
+                    export_script.audit_vsix(package, "universal")
+
 
 if __name__ == "__main__":
     unittest.main()

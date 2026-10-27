@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 
 from run_dev import install_workspace_node_modules, workspace_has_pnpm_node_modules
-from vscode_extension_win import require_tool, run_process
+from vscode_extension_process import require_tool, run_process
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -38,7 +38,7 @@ FORBIDDEN_ENTRY_PATTERN = re.compile(
     r"^(?:"
     r"(?:\.agents|\.ch|\.codegraph|\.tmp|docs|scripts|dist/test)(?:/|$)|"
     r"(?:AGENTS\.md|ARCHITECTURE\.md|export_vscode_extension\.(?:py|sh)|"
-    r"publish_vscode_extension\.(?:py|sh)|run_dev\.(?:py|sh)|to)$|"
+    r"publish_vscode_extension\.(?:py|sh)|run_dev\.(?:py|sh)|vscode_extension_process\.py|to)$|"
     r"dist/.*\.map$|"
     r"node_modules/@anthropic-ai/claude-agent-sdk/[^/]+\.d\.ts$|"
     r"(?:.*/)?__pycache__/|.*\.pyc$"
@@ -178,6 +178,9 @@ def audit_vsix(out_file: Path, target: str) -> None:
         text=True,
         encoding="utf-8",
     )
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout).strip()
+        raise RuntimeError(f"VSIX 平台运行时资源审计失败：\n{details or '未提供错误详情'}")
     print(result.stdout.strip(), flush=True)
     size = out_file.stat().st_size
     print(f"VSIX content check passed ({len(names)} entries).")

@@ -10,7 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from vscode_extension_win import find_vscode_code_command, require_tool, run_process
+from vscode_extension_process import require_tool, run_process
+from vscode_extension_win import find_vscode_code_command
 
 
 ROOT_DIR = Path(__file__).resolve().parent

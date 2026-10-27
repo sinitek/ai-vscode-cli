@@ -23,6 +23,13 @@ const { minimatch } = require(require.resolve("minimatch", {
 })) as { minimatch: (file: string, pattern: string, options: { dot: boolean }) => boolean };
 const targets = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"];
 
+test("VSIX pins the Claude SDK layout supported by universal packaging", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>;
+  };
+  assert.equal(manifest.dependencies["@anthropic-ai/claude-agent-sdk"], "0.2.12");
+});
+
 function isIncluded(file: string, ignoreRules: string): boolean {
   const patterns = ignoreRules.split(/\r?\n/u).map((pattern) => pattern.trim())
     .filter((pattern) => pattern && !pattern.startsWith("#"));
@@ -81,6 +88,7 @@ test("VSIX excludes developer artifacts without excluding embedded workspace sca
     "run_dev.py",
     "export_vscode_extension.py",
     "publish_vscode_extension.py",
+    "vscode_extension_process.py",
     ".tmp/playwright-smoke/screenshot.png",
     ".tmp/bubble-spacing/webview.html",
     "dist/test/shared/vsixPackaging.test.js",

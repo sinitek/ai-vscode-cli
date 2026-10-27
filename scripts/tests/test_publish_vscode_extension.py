@@ -21,6 +21,7 @@ class PublishFixture:
         for filename in (
             "publish_vscode_extension.py",
             "run_dev.py",
+            "vscode_extension_process.py",
             "vscode_extension_win.py",
         ):
             (self.root / filename).write_bytes((ROOT_DIR / filename).read_bytes())
@@ -213,6 +214,41 @@ class MarketplacePublishTests(unittest.TestCase):
         self.assertIn("已发布版本不能重复覆盖", result.stderr)
         self.assertNotIn("发布成功", result.stdout)
         self.assertTrue((fixture.root / "dist" / "sinitek-cli-tools-1.2.0.vsix").is_file())
+
+
+class InteractiveExitTests(unittest.TestCase):
+    def run_entrypoint(self, isatty: bool) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(prefix="sinitek publish entrypoint ") as temporary:
+            script = Path(temporary) / "entrypoint.py"
+            script.write_text(
+                "import runpy\n"
+                "from unittest.mock import patch\n"
+                "import publish_vscode_extension as publish_script\n"
+                "publish_script.main = lambda: 1\n"
+                f"publish_script.sys.stdin.isatty = lambda: {isatty}\n"
+                "with patch('builtins.input') as wait_for_input:\n"
+                "    try:\n"
+                "        runpy.run_module('publish_vscode_extension', run_name='__main__')\n"
+                "    except SystemExit:\n"
+                "        pass\n"
+                f"assert wait_for_input.call_count == {int(isatty)}\n",
+                encoding="utf-8",
+            )
+            return subprocess.run(
+                [sys.executable, "-c", f"import runpy; runpy.run_path({str(script)!r}, run_name='__main__')"],
+                cwd=ROOT_DIR,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+
+    def test_interactive_failure_keeps_window_open_and_preserves_exit_code(self) -> None:
+        result = self.run_entrypoint(True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_noninteractive_failure_does_not_wait_for_input(self) -> None:
+        result = self.run_entrypoint(False)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

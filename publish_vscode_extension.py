@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from export_vscode_extension import ROOT_DIR, output_file, read_manifest, resolve_target, resolve_vsce
-from vscode_extension_win import require_tool, run_process
+from vscode_extension_process import require_tool, run_process
 
 
 EXPECTED_PUBLISHER = "sinitek"
@@ -86,4 +86,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    if sys.stdin.isatty():
+        try:
+            input("按 Enter 键关闭窗口...")
+        except EOFError:
+            pass
+    raise SystemExit(exit_code)
