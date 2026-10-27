@@ -10,6 +10,11 @@ import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
 import {
+  cleanupHumanInteractionHistory,
+  readHumanInteractionHistory,
+  recordHumanInteractionHistory,
+} from "./humanInteractionHistory";
+import {
   CONFIG_NAMESPACE,
   getAutoOpenPanel,
   getDefaultCli,
@@ -1021,6 +1026,7 @@ export function activate(context: vscode.ExtensionContext): void {
     onMessage: async (message) => {
       await handlePanelMessage(message);
     },
+    onRequestHumanInteractionHistory: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
   });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
@@ -1720,6 +1726,7 @@ function buildPanelStateFromConfigState(configState: PanelState["configState"]):
     buildSessionState,
     buildConversationTabsState,
     buildPromptHistoryState,
+    buildHumanInteractionHistoryState: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
     buildScheduledTasksState,
     buildModelState,
     buildEditorContextState,
@@ -1771,6 +1778,26 @@ type PendingHumanInteraction = {
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
 
+const HUMAN_INTERACTION_HISTORY_FILE = path.join(os.homedir(), ".sinitek_cli", "human-interaction-history.json");
+
+function recordHumanInteractionResponse(
+  request: HumanInteractionRequest,
+  submission: HumanInteractionSubmission,
+): void {
+  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE });
+}
+
+function recordOrchestratorInteractionResponse(
+  request: HumanInteractionRequest,
+  submission: HumanInteractionSubmission,
+): void {
+  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE }, "orchestrator");
+}
+
+function cleanupHumanInteractionHistoryRetention(): void {
+  cleanupHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE });
+}
+
 function rememberPendingHumanInteraction(entry: PendingHumanInteraction): void {
   pendingHumanInteractionsById.set(entry.request.interactionId, entry);
   const ids = pendingHumanInteractionIdsByTabId.get(entry.request.tabId) ?? new Set<string>();
@@ -1800,6 +1827,12 @@ function getGlobalHumanInteractionTimeoutMinutes(): number {
 
 function requestHumanInteraction(request: HumanInteractionRequest): Promise<HumanInteractionSubmission> {
   if (!viewProvider) {
+    recordHumanInteractionResponse(request, {
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "aborted",
+      values: {},
+    });
     return Promise.resolve({
       interactionId: request.interactionId,
       tabId: request.tabId,
@@ -1825,10 +1858,17 @@ function requestHumanInteraction(request: HumanInteractionRequest): Promise<Huma
     });
     const resolveOnce = (submission: HumanInteractionSubmission): void => {
       timeout.clear();
+      recordHumanInteractionResponse(request, submission);
       resolve(submission);
     };
     const rejectOnce = (error: Error): void => {
       timeout.clear();
+      recordHumanInteractionResponse(request, {
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: 'aborted',
+        values: {},
+      });
       reject(error);
     };
     rememberPendingHumanInteraction({ request, resolve: resolveOnce, reject: rejectOnce });
@@ -1868,6 +1908,12 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
     if (!entry) {
       return;
     }
+    recordHumanInteractionResponse(entry.request, {
+      interactionId: entry.request.interactionId,
+      tabId: entry.request.tabId,
+      status: "aborted",
+      values: {},
+    });
     entry.reject(createHumanInteractionRejectedError());
   });
   viewProvider?.postMessage({
@@ -1916,7 +1962,7 @@ async function updateOpenCodeRoleModelForConfig(
   }
   return updateOpenCodeRoleModelForConfigFromStore(role, model, configId);
 }
-const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
+const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
 const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, normalizeChatGraphRunId, resolveGraphRunIdFromMessages, resolveSessionGraphRunIdFromMessages, resolveConversationTabGraphRunId, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, createGraphNodeRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
@@ -2629,6 +2675,7 @@ function scheduleHistoryArtifactRetentionCleanup(): void {
       cleanupLoopTaskStoreRetention();
       cleanupLoopCommunicationRetention();
       cleanupPromptHistoryRetentionAcrossWorkspaces();
+      cleanupHumanInteractionHistoryRetention();
       await cleanupSessionRetentionAcrossWorkspaces();
     })
     .catch((error) => {
@@ -3380,6 +3427,7 @@ graphRuntimeHost = createGraphRuntimeHost({
   errorToMessage,
   messages: graphMessagesHost,
   revealClarification: (graphRunId) => { void openGraphRunPanel(graphRunId); },
+  recordInteractionHistory: recordOrchestratorInteractionResponse,
 });
 
 function initializeGraphAutoWakeScheduler(context: vscode.ExtensionContext): void {
@@ -4414,6 +4462,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         void logInfo(event, payload);
       },
       revealClarification: (taskId) => { void openLoopGroupChatPanel(taskId); },
+      recordInteractionHistory: recordOrchestratorInteractionResponse,
       runPrompt: (input, options) => runPrompt(input, options),
       getMessages: (target) => getLoopMessagesForTarget(target),
       readRuns: () => readTaskStore().runs,
@@ -4713,6 +4762,7 @@ async function waitForLoopTaskClarification(task: LoopTaskRecord, target: Prompt
   void openLoopGroupChatPanel(task.id);
   const submission = await waitForOrchestratorClarification(loopClarificationScope(task.id), request, {
     timeoutMs: readHumanInteractionTimeoutMs(),
+    recordHistory: recordOrchestratorInteractionResponse,
   });
   const latest = readLoopTaskRecord(task.id) ?? task;
   if (latest.status === "stopped" || latest.status === "error") {

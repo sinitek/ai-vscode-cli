@@ -594,6 +594,24 @@ test("DSH isolated launch copies the patch and keeps the key out of args", async
   }
 });
 
+test("DSH isolated launch recovers an applied profile without an activation marker", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-applied-profile-"));
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const activated = await activateDshProfile({ profileId: "applied", content: createDshExampleProfileText() });
+    assert.equal(activated.ok, true);
+    await fs.rm(resolveDshConfigPaths().activePath);
+    const launch = await prepareDshIsolatedLaunch({ sessionKey: "applied-profile" });
+    assert.match(await fs.readFile(launch.patchPath, "utf8"), /deepseek-v4[.]1-flash/);
+    await fs.rm(launch.isolatedHome, { recursive: true, force: true });
+  } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test("DSH isolated launch upgrades a legacy active profile before starting ACP", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-legacy-profile-"));
   const previousHome = process.env.DSH_HOME;

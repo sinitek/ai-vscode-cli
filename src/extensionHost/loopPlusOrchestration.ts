@@ -12,6 +12,7 @@ import {
   loopClarificationScope,
   waitForOrchestratorClarification,
 } from "../orchestratorClarification";
+import type { HumanInteractionHistoryRecorder } from "../humanInteraction";
 import {
   buildLoopPlusFinishEventId,
   createLoopPlusScheduler,
@@ -164,6 +165,7 @@ export type LoopPlusOrchestrationDeps = {
   log?: (event: string, payload?: unknown) => void;
   revealClarification?: (taskId: string) => void;
   clarificationTimeoutMs?: () => number;
+  recordInteractionHistory?: HumanInteractionHistoryRecorder;
 };
 
 type ControlPlan = {
@@ -1028,6 +1030,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     deps.revealClarification?.(runtime.taskId);
     const submission = await waitForOrchestratorClarification(loopClarificationScope(runtime.taskId), request, {
       timeoutMs: deps.clarificationTimeoutMs?.() ?? readHumanInteractionTimeoutMs(),
+      recordHistory: deps.recordInteractionHistory,
     });
     if (runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.released) {
       return "stop";

@@ -4,6 +4,7 @@ import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "./viewContentScript/core
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "./viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "./viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "./viewContentScript/historyPanels";
+import { VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY } from "./viewContentScript/humanInteractionHistory";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "./viewContentScript/traceRendering";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "./viewContentScript/taskListAndUi";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "./viewContentScript/runStreamAndQueue";
@@ -48,6 +49,7 @@ const RUNTIME_SCRIPT_PARTS = [
   VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,
   VIEW_CONTENT_SCRIPT_HISTORY_PANELS,
   VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
+  VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY,
   VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
   CHAT_COPY_SCRIPT,
   VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE,

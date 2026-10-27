@@ -334,7 +334,7 @@
     {
       "id": "plugin.rule.dsh_profile_edit",
       "name": "DSH 配置页与多模型切换",
-      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
       "status": "active",
       "aliases": ["DSH 配置", "acpModel", "SINITEK_DSH_API_KEY"],
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
@@ -357,7 +357,7 @@
     {
       "id": "plugin.rule.dsh_profile_field_partition",
       "name": "DSH 公共参数与模型参数分层",
-      "description": "DSH 可视化配置将 provider、baseURL、根级 apiKey 和默认 acpModel 放在模型工作区上方；右侧模型详情只编辑 models[] 的 id、name 和 contextWindow。可选 maxTokens 仅在 JSON 中兼容保留，可视化和参考范例不生成它。contextWindow 不能写在 profile 顶层；apiKeyEnv 不展示并在保存规范化时自动补为 SINITEK_DSH_API_KEY；新增模型先创建空白草稿，必须在右侧填写 id 后才能保存。",
+      "description": "DSH 可视化配置将 provider、api、baseURL、根级 apiKey 和默认 acpModel 放在模型工作区上方；api 下拉只提供 openai-completions、openai-responses、anthropic-messages，选择原样写入 profile 与运行 patch；右侧模型详情只编辑 models[] 的 id、name 和 contextWindow。可选 maxTokens 仅在 JSON 中兼容保留，可视化和参考范例不生成它。contextWindow 不能写在 profile 顶层；apiKeyEnv 不展示并在保存规范化时自动补为 SINITEK_DSH_API_KEY；新增模型先创建空白草稿，必须在右侧填写 id 后才能保存。",
       "status": "active",
       "aliases": ["DSH 公共参数", "DSH 模型参数", "contextWindow"],
       "applies_to": ["plugin.config_profile"],
@@ -526,12 +526,12 @@
       "name": "市场发布先鉴权再导出并上传同一产物",
       "description": "市场发布者固定为 sinitek。发布脚本先验证发布者与权限，再复用现有导出审计流程并上传相同 VSIX，默认通用包且支持已有目标平台。鉴权使用 VSCE_PAT、兼容 VSCODE_MARKETPLACE_PAT 或 vsce 登录缓存，令牌只通过环境传递；非交互缺凭据及任一前置阶段失败均阻止发布。不自动升级或覆盖市场版本，上传失败保留本机包。",
       "status": "active",
-      "aliases": ["发布", "Marketplace", "publisher", "sinitek", "VSCE_PAT", "publish_vscode_extension.sh"],
+      "aliases": ["发布", "Marketplace", "publisher", "sinitek", "VSCE_PAT", "publish_vscode_extension.py"],
       "applies_to": ["plugin.extension_host"],
       "source_refs": [
         {"path": "package.json", "anchor": "publisher"},
-        {"path": "publish_vscode_extension.sh"},
-        {"path": "src/test/shared/vsixPublishing.test.ts"},
+        {"path": "publish_vscode_extension.py"},
+        {"path": "scripts/tests/test_publish_vscode_extension.py"},
         {"path": ".ch/docs/runbooks/local-development.md", "anchor": "发布到 VS Code 市场"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "VS Code 市场一键发布"}
       ]
@@ -541,10 +541,10 @@
       "name": "VSIX 定向瘦身保留目标平台运行时",
       "description": "导出脚本默认保持通用包，仅排除开发产物。显式 target 平台包独立命名并声明 VSIX 平台，只裁剪其他平台的 ripgrep 与 sharp/libvips；保留目标平台 SDK CLI、WASM、rg、ripgrep.node 和原生图片依赖，缺少目标依赖时失败，不修改工作区依赖。Windows .cmd 启动依赖的内置 Claude CLI 不可删除。",
       "status": "active",
-      "aliases": ["VSIX", "打包", "瘦身", "--target", "export_vscode_extension.sh"],
+      "aliases": ["VSIX", "打包", "瘦身", "--target", "export_vscode_extension.py"],
       "applies_to": ["plugin.extension_host"],
       "source_refs": [
-        {"path": "export_vscode_extension.sh"},
+        {"path": "export_vscode_extension.py"},
         {"path": "scripts/vsix_target.js"},
         {"path": "src/test/shared/vsixPackaging.test.ts"},
         {"path": ".ch/docs/runbooks/local-development.md", "anchor": "打包 VSIX"},
@@ -776,13 +776,15 @@
     {
       "id": "plugin.rule.codex_default_mode_user_input_feature",
       "name": "Codex Default mode 结构化人工交互需显式启用",
-      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 10 分钟、范围 1–240。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；模型应自行选择最佳方案继续。",
+      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 15 分钟、范围 1–1440（最长 24 小时）。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；优先采用有效默认值，否则采用首个可选项继续。Vibe 与 Loop/Loop+/Graph 主任务澄清结束后写入全局只读历史，底部历史入口旁的列表仅显示首题前 20 字和触发时间，详情勾选用户或 AI 自动选择的实际选项；最多 500 条并沿用历史保留期，密码答案和密码默认值不保存明文。",
       "aliases": ["request_user_input", "default_mode_request_user_input", "experimentalApi", "人工交互"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "AI 对话"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Codex"},
+        {"path": "src/humanInteractionHistory.ts"},
+        {"path": "src/webview/viewContentScript/humanInteractionHistory.ts"},
         {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex Default mode 的 `request_user_input` 需要显式 feature flag"}
       ]
     },
@@ -939,7 +941,7 @@
     {
       "id": "plugin.rule.orchestrator_clarification_form",
       "name": "主任务主动澄清表单",
-      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 10 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
+      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
       "source_refs": [
@@ -1110,6 +1112,19 @@
       "source_refs": [
         {"path": "src/webview/panelFileActions.ts", "anchor": "SCHEDULED_ATTACHMENT_DIR"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"}
+      ]
+    },
+    {
+      "id": "plugin.rule.cli_group_install_check",
+      "name": "CLI 分组切换安装检查",
+      "description": "切换到 Codex、Claude、OpenCode、Grok 或 DSH 分组时检测目标命令，不可用时提示安装但不阻止分组切换。用户确认后在终端执行安装命令；Codex、Claude、OpenCode 和 DSH 使用 npm 包，Grok Build 按 Windows 或 macOS/Linux 选择官方安装脚本。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/cli/installer.ts"},
+        {"path": "src/extension.ts", "anchor": "maybePromptInstallOnCliGroupSwitch"},
+        {"path": "src/test/cli/installer.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "CLI 分组切换安装提示"}
       ]
     },
     {

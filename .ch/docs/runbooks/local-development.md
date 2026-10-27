@@ -55,10 +55,18 @@ node --test \
   dist/test/loop/loopSubtaskThinking.test.js
 ```
 
-### 6. 一键启动开发主机（macOS）
+### 6. 一键启动开发主机（Windows / macOS / Linux）
+
+需要 Python 3.9+、Node.js/npm 和 VS Code。Windows 运行：
+
+```powershell
+python run_dev.py
+```
+
+macOS / Linux 运行：
 
 ```bash
-./run_dev.sh
+python3 run_dev.py
 ```
 
 该脚本会：
@@ -66,11 +74,20 @@ node --test \
 - 按本机 `node_modules` 布局安装依赖：已有 pnpm 布局且本机有 pnpm 时用 `pnpm install`，否则用 `npm install`
 - 若本机是 pnpm 布局但没有 pnpm，会删除该 `node_modules` 后改走 `npm install`，避免直接混用
 - 自动执行 `npm run build`
-- 以 `--extensionDevelopmentPath` 方式启动 VS Code
+- 以 `--new-window --extensionDevelopmentPath` 方式在独立窗口启动 VS Code
+
+脚本始终以脚本所在仓库为工作目录，支持从其他目录启动。macOS 优先使用 `/Applications/Visual Studio Code.app` 内置的 `code`；其他情况查找 PATH，Windows 还会查找用户安装目录和 Program Files 中的 `code.cmd`。
+
+可用 `--code` 指定 VS Code 命令路径；依赖和构建结果已准备好时可用 `--skip-install`、`--skip-build` 跳过相应步骤：
+
+```powershell
+python run_dev.py --skip-install
+python run_dev.py --code "C:\Program Files\Microsoft VS Code\bin\code.cmd"
+```
 
 `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 因机器环境而异，已加入 `.gitignore`，不要提交。不要在 pnpm 的 `node_modules` 上手动执行 `npm install`。
 
-如果脚本找不到 `code` 命令，会提示先在 VS Code 中安装 shell command。
+如果脚本找不到 `code` 命令，会在安装依赖前退出，并提示配置 PATH 或通过 `--code` 指定命令路径。
 
 ### 7. 统计有效代码行数
 
@@ -119,14 +136,14 @@ npm install
 ### 2. 导出插件
 
 ```bash
-./export_vscode_extension.sh
+python3 export_vscode_extension.py
 ```
 
 默认仍导出通用包，不按构建机平台删除 SDK 的其他平台资源。如只分发给某个平台，可显式导出更小的平台包：
 
-```bash
-./export_vscode_extension.sh --target current
-./export_vscode_extension.sh --target win32-x64
+```powershell
+python export_vscode_extension.py --target current
+python export_vscode_extension.py --target win32-x64
 ```
 
 `current` 按运行打包脚本的 Node.js 平台/架构解析；支持 `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64`、`win32-x64`。平台包带 VSIX target 标记，文件名为 `dist/sinitek-cli-tools-<version>-<target>.vsix`，只能分发到对应平台；不要拿 macOS 平台包替代 Windows/Linux 通用发布。SDK 本身不包含 Windows ARM64、Linux ARM32 或 Alpine 专属 ripgrep，本脚本不宣称新增这些平台支持。
@@ -140,12 +157,14 @@ npm install
 - 若当前 `node_modules` 是 pnpm 布局，先复制到临时目录安装成 vsce 可识别的 hoist 布局再打包；本机没有 pnpm 时临时目录改走 `npm install`。不要直接对 pnpm 树执行 `vsce package`（它会跑 `npm list` 并 `ELSPROBLEMS`）
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map
-- 解包审计 VSIX 清单，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败
-- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、Graph 面板的 Dagre 依赖、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；不再强制要求当前实现已移除的旧市场 catalog
+- 使用 Python 标准库读取 ZIP 清单并审计，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败；无需安装 unzip
+- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、Graph 面板的 Dagre 依赖、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；审计失败会打印具体缺失文件，不再只显示子进程退出码
 - 平台包仅保留对应平台的 SDK ripgrep 和 sharp/libvips，额外检查目标平台原生依赖，拒绝混入其他平台资源；保留 SDK 和原生依赖的许可证
 - 默认输出到 `dist/sinitek-cli-tools-<version>.vsix`，结束时打印实际 MiB/字节大小
 
 Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WASM、原生 ripgrep 和 sharp/libvips 都属于运行时能力，不可为了缩包一并删除。`.vscodeignore` 由 vsce 实现的否定模式优先于排除模式，不能再加 `!node_modules/@anthropic-ai/**` 等宽泛放行，否则会让平台裁剪与类型声明排除失效。对应护栏见 `src/test/shared/vsixPackaging.test.ts`。
+
+Claude SDK 固定为 `0.2.12`：新版 SDK 已改为按平台拆分原生 CLI，不能直接沿用当前通用包的资源布局与审计规则。需要升级时必须先同步实现平台依赖解析、打包裁剪、审计及跨平台真实验证。
 
 ## 发布到 VS Code 市场
 
@@ -153,18 +172,19 @@ Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WAS
 
 首次在本机终端登录，输入具有 Marketplace `Manage` 权限且有权管理 `sinitek` 的 PAT；不要把令牌粘贴到聊天、脚本或仓库文件中：
 
-```bash
-./node_modules/.bin/vsce login sinitek
-./publish_vscode_extension.sh
+```powershell
+.\node_modules\.bin\vsce.cmd login sinitek
+python publish_vscode_extension.py
 ```
 
 以上命令必须在插件项目根目录执行，不是在上级 `sinitek` 目录。也可直接使用项目 `node_modules/.bin/vsce` 的绝对路径登录。项目依赖为 `@vscode/vsce`；不要在其他目录运行 `npx --no-install vsce`，否则缺少本地可执行文件时会尝试解析旧的非 scoped `vsce` 包，并因禁止安装而失败。
 
-脚本先验证发布者与鉴权，再调用已有导出脚本构建、审计 VSIX，最后通过 `vsce publish --packagePath` 上传同一份产物。非交互环境支持通过安全环境变量注入 `VSCE_PAT`，兼容 `VSCODE_MARKETPLACE_PAT`，前者优先；令牌不放入命令行参数。缺少 vsce 时复用项目依赖安装流程；无凭据或鉴权失败会在构建之前退出。
+脚本先验证发布者与鉴权，再调用 Python 导出脚本构建、审计 VSIX，最后通过 `vsce publish --packagePath` 上传同一份产物。非交互环境支持通过安全环境变量注入 `VSCE_PAT`，兼容 `VSCODE_MARKETPLACE_PAT`，前者优先；令牌不放入命令行参数。缺少 vsce 时复用项目依赖安装流程；无凭据或鉴权失败会在构建之前退出。
+交互式终端中，无论发布成功或失败，脚本都会保留窗口并等待按 Enter 关闭，便于查看失败原因；CI 与管道调用不会等待输入。
 
-默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `./publish_vscode_extension.sh --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Linux/macOS 直接运行 Bash 脚本，Windows 在 Git Bash/WSL 中执行；路径含空格受支持。
+默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `python publish_vscode_extension.py --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Windows 使用 `python`，Linux/macOS 使用 `python3`；发布、导出和进程调用不依赖 Windows 专属模块或 Git Bash/WSL，路径含空格受支持。跨平台命令执行由 `vscode_extension_process.py` 统一处理，仅 VS Code 的 Windows 安装路径探测保留在 `vscode_extension_win.py`。
 
-市场不允许覆盖已发布的同版本包；脚本不会自动改版本、创建提交或 tag。需要更新时先手动调整 `package.json` 的版本再重跑。上传失败保留本次导出的 VSIX；仅需离线安装包时仍使用 `./export_vscode_extension.sh`，不需要市场凭据。
+市场不允许覆盖已发布的同版本包；脚本不会自动改版本、创建提交或 tag。需要更新时先手动调整 `package.json` 的版本再重跑。上传失败保留本次导出的 VSIX；仅需离线安装包时仍使用 `python export_vscode_extension.py`，不需要市场凭据。
 
 ## Loop 子任务规则隔离发布前验证
 
@@ -196,8 +216,8 @@ npm run build
 - 入口：`src/extension.ts`
 - 聊天面板 Webview：`src/webview/viewContent.ts`
 - 配置中心面板：`src/webview/configPanel.ts`、`src/webview/configView.ts`
-- 打包脚本：`export_vscode_extension.sh`
-- 本地开发脚本：`run_dev.sh`
+- 打包脚本：`export_vscode_extension.py`
+- 本地开发脚本：`run_dev.py`
 
 ## 常见问题
 

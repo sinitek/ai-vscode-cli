@@ -19,6 +19,7 @@
 
 export const DSH_PROVIDER_ROUTE = "sinitek-custom";
 export const DSH_API = "openai-completions";
+export const DSH_SUPPORTED_APIS = [DSH_API, "openai-responses", "anthropic-messages"] as const;
 export const DSH_API_KEY_ENV = "SINITEK_DSH_API_KEY";
 export const DSH_VERIFIED_MODEL_ID = "deepseek-v4.1-flash";
 /** Installed `PiAiProviderProfile.models` is an ordered array, not a single slot. */
@@ -59,6 +60,7 @@ const LEGACY_DSH_REASONING_EFFORTS_WITHOUT_MEDIUM = {
 
 export type DshReasoningEfforts = typeof DSH_REASONING_EFFORTS;
 export type DshReasoningOption = (typeof DSH_REASONING_OPTIONS)[number];
+export type DshApi = (typeof DSH_SUPPORTED_APIS)[number];
 export type DshModelCompat = {
   thinkingFormat: "deepseek";
   supportsReasoningEffort: true;
@@ -124,7 +126,7 @@ type DshRetryPolicy = {
 export type DshProfileDocument = {
   schemaVersion: typeof DSH_SCHEMA_VERSION;
   provider: typeof DSH_PROVIDER_ROUTE;
-  api: typeof DSH_API;
+  api: DshApi;
   apiKey?: string;
   apiKeyEnv: typeof DSH_API_KEY_ENV;
   baseURL: string;
@@ -318,7 +320,7 @@ export function serializeDshPatchYaml(document: DshProfileDocument): string {
   }
   providerLines.push(
     `        apiKeyEnv: ${DSH_API_KEY_ENV}`,
-    `        api: ${DSH_API}`,
+    `        api: ${document.api}`,
     `        baseURL: ${quoteYaml(document.baseURL)}`,
   );
   if (document.timeoutMs !== undefined) {
@@ -421,8 +423,8 @@ function parseDshProfileDocument(content: string): { ok: true; document: DshProf
   if (record.provider !== DSH_PROVIDER_ROUTE) {
     return { ok: false, error: "DSH provider route must be sinitek-custom. Do not split the model id on '/'." };
   }
-  if (record.api !== DSH_API) {
-    return { ok: false, error: "DSH api must be openai-completions." };
+  if (typeof record.api !== "string" || !(DSH_SUPPORTED_APIS as readonly string[]).includes(record.api)) {
+    return { ok: false, error: `DSH api must be one of: ${DSH_SUPPORTED_APIS.join(", ")}.` };
   }
   if (record.apiKeyEnv !== undefined && record.apiKeyEnv !== DSH_API_KEY_ENV) {
     return { ok: false, error: "DSH credentials must reference SINITEK_DSH_API_KEY." };
@@ -461,7 +463,7 @@ function parseDshProfileDocument(content: string): { ok: true; document: DshProf
   const document: DshProfileDocument = {
     schemaVersion: DSH_SCHEMA_VERSION,
     provider: DSH_PROVIDER_ROUTE,
-    api: DSH_API,
+    api: record.api as DshApi,
     ...(typeof apiKey === "string" && apiKey.length > 0 ? { apiKey } : {}),
     apiKeyEnv: DSH_API_KEY_ENV,
     baseURL,

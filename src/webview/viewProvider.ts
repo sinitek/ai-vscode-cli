@@ -8,6 +8,7 @@ import { formatHomeDisplayPath } from "../shared/userHomePaths";
 
 type ViewHandlers = {
   onMessage: (message: PanelMessage) => void;
+  onRequestHumanInteractionHistory?: () => Record<string, unknown>[];
 };
 
 export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
@@ -54,6 +55,13 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       }
       if (isChatImageMessage(message)) {
         return this.imageHost.handleMessage(message);
+      }
+      if (message.type === "requestHumanInteractionHistory") {
+        this.postMessage({
+          type: "humanInteractionHistory",
+          items: this.handlers.onRequestHumanInteractionHistory?.() ?? [],
+        });
+        return;
       }
       this.handlers.onMessage(message);
       if (message.type === "requestState") {

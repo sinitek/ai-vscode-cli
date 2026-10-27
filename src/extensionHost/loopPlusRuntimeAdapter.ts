@@ -65,6 +65,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   appendAttemptReport: (filePath: string, content: string) => void;
   log?: LoopPlusOrchestrationDeps["log"];
   revealClarification?: (taskId: string) => void;
+  recordInteractionHistory?: LoopPlusOrchestrationDeps["recordInteractionHistory"];
   runPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null }) => Promise<void>;
   getMessages: (target: LoopPlusPromptTarget) => ChatMessage[];
   readRuns: () => TaskRunRecord[];
@@ -458,6 +459,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         },
         log: deps.log,
         revealClarification: deps.revealClarification,
+        recordInteractionHistory: deps.recordInteractionHistory,
       });
     }
     return hostInstance;

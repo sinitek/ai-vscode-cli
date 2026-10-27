@@ -44,6 +44,11 @@ export type HumanInteractionSubmission = {
   timedOut?: boolean;
 };
 
+export type HumanInteractionHistoryRecorder = (
+  request: HumanInteractionRequest,
+  submission: HumanInteractionSubmission,
+) => void;
+
 export const HUMAN_INTERACTION_TIMEOUT_TEXT = "用户未在时限内回答，请自行选择最佳方案继续，不要再问同一问题。";
 
 export type CodexHumanInteractionRequest = {
@@ -525,9 +530,6 @@ export function formatHumanInteractionSubmittedText(
   submission: HumanInteractionSubmission,
   formFields: readonly HumanInteractionFormField[] = [],
 ): string {
-  if (submission.timedOut) {
-    return HUMAN_INTERACTION_TIMEOUT_TEXT;
-  }
   if (submission.status === "aborted") {
     return "用户已拒绝补充信息。";
   }
@@ -553,9 +555,10 @@ export function formatHumanInteractionSubmittedText(
       return `${field.label || field.id}：${displayValue}`;
     })
     .filter(Boolean);
-  return lines.length
+  const answerText = lines.length
     ? ["已提交补充信息：", ...lines].join("\n")
     : "已提交补充信息。";
+  return submission.timedOut ? `${HUMAN_INTERACTION_TIMEOUT_TEXT}\n${answerText}` : answerText;
 }
 
 export function buildCodexHumanInteractionResolution(
@@ -598,7 +601,21 @@ export function buildTimedOutHumanInteractionValues(
   for (const field of formFields) {
     const multiple = field.type === "multiselect"
       || (field.type === "checkbox" && Boolean(field.options && field.options.length > 0));
-    values[field.id] = multiple ? [HUMAN_INTERACTION_TIMEOUT_TEXT] : HUMAN_INTERACTION_TIMEOUT_TEXT;
+    const options = field.options ?? [];
+    const allowed = new Set(options.map((option) => option.value));
+    const defaults = (Array.isArray(field.defaultValue) ? field.defaultValue : [field.defaultValue])
+      .filter((value) => value !== undefined && value !== null)
+      .map((value) => String(value))
+      .filter((value) => allowed.has(value));
+    if (multiple && options.length) {
+      values[field.id] = defaults.length ? defaults : [options[0].value];
+    } else if (field.type === "radio" || field.type === "select") {
+      values[field.id] = defaults[0] ?? options[0]?.value ?? HUMAN_INTERACTION_TIMEOUT_TEXT;
+    } else if (field.type === "checkbox") {
+      values[field.id] = typeof field.defaultValue === "boolean" ? field.defaultValue : true;
+    } else {
+      values[field.id] = field.defaultValue ?? HUMAN_INTERACTION_TIMEOUT_TEXT;
+    }
   }
   return values;
 }

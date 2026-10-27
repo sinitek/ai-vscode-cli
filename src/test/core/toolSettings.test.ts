@@ -199,11 +199,12 @@ test("normalizes global Loop tool settings", () => {
     }),
     {},
   );
-  assert.equal(resolveHumanInteractionTimeoutMinutes(undefined), 10);
+  assert.equal(resolveHumanInteractionTimeoutMinutes(undefined), 15);
   assert.equal(resolveHumanInteractionTimeoutMinutes(0), 1);
-  assert.equal(resolveHumanInteractionTimeoutMinutes(999), 240);
-  assert.equal(readHumanInteractionTimeoutMs({}), 600_000);
+  assert.equal(resolveHumanInteractionTimeoutMinutes(9999), 1440);
+  assert.equal(readHumanInteractionTimeoutMs({}), 900_000);
   assert.equal(readHumanInteractionTimeoutMs({ humanInteractionTimeoutMinutes: 2 }), 120_000);
+  assert.equal(readHumanInteractionTimeoutMs({ humanInteractionTimeoutMinutes: 1440 }), 86_400_000);
   assert.deepEqual(
     normalizeToolSettings({ loopSubtaskMaxThinkingMode: "ultra" }),
     { loopSubtaskMaxThinkingMode: "xhigh" },

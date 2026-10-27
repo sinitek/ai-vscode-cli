@@ -11,6 +11,7 @@ import { normalizeCliModelName } from "../modelSelectionStore";
 import { INVALID_SUBTASK_CLI_ROUTE, parseCliName, resolveStoredSubtaskExecution } from "../subtaskCliRoute";
 import { resolveLoopSubtaskThinkingMode } from "../loopSubtaskThinking";
 import { readHumanInteractionTimeoutMs } from "../toolSettings";
+import type { HumanInteractionHistoryRecorder } from "../humanInteraction";
 import { appendGraphEvent } from "../graph/graphEvents";
 import { tickGraphRun, type GraphNodeExecutionRequest } from "../graph/graphKernel";
 import { readGraphNodeExecutionResultArtifact } from "../graph/graphNodeArtifact";
@@ -136,6 +137,7 @@ export type GraphRuntimeHostDeps = {
   errorToMessage: (error: unknown) => string;
   messages: GraphMessagesHost;
   revealClarification?: (graphRunId: string) => void;
+  recordInteractionHistory?: HumanInteractionHistoryRecorder;
 };
 
 export function createGraphRuntimeHost(deps: GraphRuntimeHostDeps) {
@@ -528,6 +530,7 @@ async function tickGraphRunToPause(
       await deps.postPanelState();
       const submission = await waitForOrchestratorClarification(graphClarificationScope(run.id), clarification, {
         timeoutMs: readHumanInteractionTimeoutMs(),
+        recordHistory: deps.recordInteractionHistory,
       });
       const stored = readGraphRunRecord(run.id).run ?? run;
       if (stored.status === "stopped" || stored.status === "error") {

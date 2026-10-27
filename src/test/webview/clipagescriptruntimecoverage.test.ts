@@ -6,6 +6,7 @@ import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "../../webview/viewCont
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
+import { VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY } from "../../webview/viewContentScript/humanInteractionHistory";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
@@ -14,6 +15,7 @@ import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentS
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
+import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 
 type Listener = (event?: any) => void;
 
@@ -537,6 +539,7 @@ function createRuntimeHarness(
         getAssistantMessageContentForDisplay,
         getRunPromptHistory,
         handleFileSelection,
+        humanInteractionHistoryAnswer,
         appendAssistantDelta,
         openHistorySessionMessages,
         openQueueOverlay,
@@ -1473,7 +1476,72 @@ test("normalizes the human interaction timeout from the AI task settings input",
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 1 });
   document.getElementById("humanInteractionTimeoutMinutes").value = "999";
   document.getElementById("humanInteractionTimeoutMinutes").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 240 });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 999 });
+  document.getElementById("humanInteractionTimeoutMinutes").value = "9999";
+  document.getElementById("humanInteractionTimeoutMinutes").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: 1440 });
+});
+
+test("opens human interaction history from the bottom icon and renders automatic selection details", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      humanInteractionHistory: [{
+        id: "history-1",
+        interactionId: "question-1",
+        source: "orchestrator",
+        title: "确认实现方案",
+        instruction: "请选择后续执行方案。",
+        formFields: [{ id: "mode", label: "请选择后续执行方案并确认是否继续", type: "radio", options: [{ label: "兼容方案", value: "safe" }, { label: "重写方案", value: "rewrite" }] }],
+        status: "completed",
+        timedOut: true,
+        values: { mode: "safe" },
+        createdAt: 1_700_000_000_000,
+      }],
+    }),
+  });
+
+  document.getElementById("humanInteractionHistoryButton").click();
+  assert.deepEqual(posted.at(-1), { type: "requestHumanInteractionHistory" });
+  api.state.humanInteractionHistory = api.state.humanInteractionHistory;
+  window.dispatchMessage({ type: "humanInteractionHistory", items: api.state.humanInteractionHistory });
+  assert.equal(document.getElementById("humanInteractionHistoryOverlay").classList.contains("visible"), true);
+  const list = document.getElementById("humanInteractionHistoryList");
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].children.length, 2);
+  assert.equal(list.children[0].children[0].textContent, "请选择后续执行方案并确认是否继续".slice(0, 20));
+  assert.equal(list.children[0].children[0].className, "human-interaction-history-question");
+  assert.equal(list.children[0].children[1].className, "human-interaction-history-meta");
+  const longQuestion = "这是一次用于验证人机交互历史列表双行摘要的长问题，摘要应该保留前五十个字而不是二十个字，并且在弹窗中以更清晰的文字颜色显示";
+  const originalRecord = structuredClone(api.state.humanInteractionHistory[0]);
+  const longRecord = { ...originalRecord, id: "history-long", formFields: [{ id: "long", label: longQuestion, type: "text" }] };
+  window.dispatchMessage({ type: "humanInteractionHistory", items: [longRecord] });
+  assert.equal(list.children[0].children[0].textContent, Array.from(longQuestion).slice(0, 50).join(""));
+  assert.equal(Array.from(list.children[0].children[0].textContent).length, 50);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-item\s*\{[^}]*min-height:\s*64px;[^}]*padding:\s*12px;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question\s*\{[^}]*display:\s*-webkit-box;[^}]*line-height:\s*18px;[^}]*-webkit-line-clamp:\s*2;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question,\s*\.human-interaction-history-meta\s*\{[^}]*color:\s*var\(--vscode-foreground\);/);
+
+  window.dispatchMessage({ type: "humanInteractionHistory", items: [originalRecord] });
+  list.children[0].click();
+  assert.equal(document.getElementById("humanInteractionHistoryDetailOverlay").classList.contains("visible"), true);
+  assert.equal(document.getElementById("humanInteractionHistoryDetailTitle").textContent, "确认实现方案");
+  assert.match(document.getElementById("humanInteractionHistoryDetailMeta").textContent, /AI 自动选择/u);
+  const detail = document.getElementById("humanInteractionHistoryDetailContent");
+  assert.equal(detail.children[0].textContent, "请选择后续执行方案。");
+  assert.equal(detail.children[1].children[0].textContent, "问题：请选择后续执行方案并确认是否继续");
+  assert.equal(detail.children[1].children[1].textContent, "选择结果：兼容方案");
+  const options = detail.children[1].children[2];
+  assert.equal(options.children[0].className, "human-interaction-history-detail-option selected");
+  assert.equal(options.children[0].children[0].textContent, "✓");
+  assert.equal(options.children[1].className, "human-interaction-history-detail-option");
+  assert.equal(options.children[1].children[0].textContent, "");
+
+  const record = api.state.humanInteractionHistory[0];
+  assert.equal(api.humanInteractionHistoryAnswer({ ...record, timedOut: false, values: { mode: "safe" } }, record.formFields[0]), "兼容方案");
+  assert.equal(api.humanInteractionHistoryAnswer(record, { id: "token", label: "令牌", type: "password" }), "已隐藏");
+  assert.equal(api.humanInteractionHistoryAnswer({ ...record, values: { mode: "已隐藏" } }, record.formFields[0]), "AI 自动选择");
 });
 
 test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {

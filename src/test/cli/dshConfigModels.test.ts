@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import {
   DSH_EXAMPLE_BASE_URL,
   DSH_REASONING_OPTIONS,
+  DSH_SUPPORTED_APIS,
   DSH_SUPPORTS_CONFIGURED_MODEL_LIST,
   DSH_VERIFIED_MODEL_ID,
   commitDshDocument,
@@ -21,6 +22,26 @@ installVscodeMock();
 const { readExplicitDshPatchArgs } = require("../../cli/config") as typeof import("../../cli/config");
 
 const EXAMPLE = createDshExampleProfileText();
+
+test("accepts only the three API protocols supported by custom DSH providers", () => {
+  assert.deepEqual(DSH_SUPPORTED_APIS, ["openai-completions", "openai-responses", "anthropic-messages"]);
+  for (const api of DSH_SUPPORTED_APIS) {
+    const source = JSON.parse(EXAMPLE) as Record<string, unknown>;
+    source.api = api;
+    const committed = commitDshDocument(JSON.stringify(source));
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.equal(committed.document.api, api);
+    assert.match(serializeDshPatchYaml(committed.document), new RegExp(`api: ${api}(?:\\n|$)`));
+  }
+  for (const api of ["azure-openai-responses", "google-generative-ai", "", null]) {
+    const source = JSON.parse(EXAMPLE) as Record<string, unknown>;
+    source.api = api;
+    const committed = commitDshDocument(JSON.stringify(source));
+    assert.equal(committed.ok, false);
+    if (!committed.ok) assert.match(committed.error, /openai-completions, openai-responses, anthropic-messages/);
+  }
+});
 
 test("parses the unprefixed default example model id", () => {
   const parsed = parseDshConfigModels(EXAMPLE);

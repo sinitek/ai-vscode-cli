@@ -7,52 +7,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
 from shutil import which
+
+from vscode_extension_process import cmd_quote, is_windows, require_tool, run_process
 
 
 ROOT_DIR = Path(__file__).resolve().parent
-
-
-def is_windows() -> bool:
-    return os.name == "nt"
-
-
-def cmd_quote(arg: str) -> str:
-    if arg == "":
-        return '""'
-    needs_quotes = any(ch in arg for ch in ' \t"&|<>()^') or '"' in arg
-    if not needs_quotes:
-        return arg
-    return '"' + arg.replace('"', '""') + '"'
-
-
-def run_process(argv: list[str], *, cwd: Path) -> None:
-  if not argv:
-    raise ValueError("empty argv")
-
-  if is_windows():
-    exe = argv[0]
-    resolved = which(exe) if exe and not any(sep in exe for sep in ("\\", "/")) else None
-    if resolved:
-      exe = resolved
-      argv = [resolved, *argv[1:]]
-
-    if exe.lower().endswith((".cmd", ".bat")):
-      comspec = os.environ.get("COMSPEC", "cmd.exe")
-      inner = " ".join(cmd_quote(a) for a in argv)
-      # Pass a single string to avoid Python escaping quotes (\"...\") which breaks cmd.exe parsing.
-      full = f'{cmd_quote(comspec)} /d /s /c "{inner}"'
-      subprocess.run(full, cwd=cwd, check=True)
-      return
-
-  subprocess.run(argv, cwd=cwd, check=True)
-
-
-def require_tool(name: str) -> str:
-    resolved = which(name)
-    if not resolved:
-        raise RuntimeError(f"{name} 未安装或不在 PATH 中。")
-    return resolved
 
 
 def find_vscode_code_command() -> str | None:

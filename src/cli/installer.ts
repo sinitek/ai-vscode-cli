@@ -2,13 +2,17 @@ import { CliName } from "./types";
 
 const CODEGRAPH_NPM_PACKAGE = "@colbymchenry/codegraph";
 
-const CLI_INSTALL_COMMANDS: Record<CliName, string> = {
+const CLI_NPM_INSTALL_COMMANDS: Record<Exclude<CliName, "grok">, string> = {
   codex: "npm install -g @openai/codex",
   claude: "npm install -g @anthropic-ai/claude-code",
   opencode: "npm install -g opencode-ai",
-  grok: "",
   dsh: "npm install -g @deepseek-ai/dsh",
   "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
+};
+
+const GROK_INSTALL_COMMANDS: Record<"windows" | "unix", string> = {
+  windows: "irm https://x.ai/cli/install.ps1 | iex",
+  unix: "curl -fsSL https://x.ai/cli/install.sh | bash",
 };
 
 const CLI_DISPLAY_NAMES: Record<CliName, string> = {
@@ -34,8 +38,11 @@ export type CodeGraphInstallCommandOptions = {
   initializeWorkspace?: boolean;
 };
 
-export function getCliInstallCommand(cli: CliName): string {
-  return CLI_INSTALL_COMMANDS[cli];
+export function getCliInstallCommand(cli: CliName, processPlatform: NodeJS.Platform = process.platform): string {
+  if (cli === "grok") {
+    return processPlatform === "win32" ? GROK_INSTALL_COMMANDS.windows : GROK_INSTALL_COMMANDS.unix;
+  }
+  return CLI_NPM_INSTALL_COMMANDS[cli];
 }
 
 export function getCliDisplayName(cli: CliName): string {

@@ -24,6 +24,7 @@ node_modules/@anthropic-ai/claude-agent-sdk/bun.lock
 !node_modules/pend/**
 !node_modules/zod/**
 *.vsix
+publish-vscode-extension.log
 *.pyc
 __pycache__/**
 **/*.pyc
@@ -32,9 +33,10 @@ __pycache__/**
 .gitignore
 AGENTS.md
 ARCHITECTURE.md
-export_vscode_extension.sh
-publish_vscode_extension.sh
-run_dev.sh
+export_vscode_extension.py
+publish_vscode_extension.py
+run_dev.py
 vscode_extension_win.py
+vscode_extension_process.py
 pnpm-lock.yaml
 tsconfig.json

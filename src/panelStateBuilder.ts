@@ -148,6 +148,7 @@ export type PanelStateBuilderDeps = {
   buildSessionState: (cli: CliName) => { currentSessionId: string | null; sessions: SessionSummary[] };
   buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
   buildPromptHistoryState: () => PromptHistoryItem[];
+  buildHumanInteractionHistoryState?: () => PanelState["humanInteractionHistory"];
   buildScheduledTasksState?: () => ScheduledTaskSummary[];
   buildModelState: (activeConfigIdByCli?: Partial<Record<CliName, string | null>>) => PanelState["modelState"];
   buildEditorContextState: () => EditorContextState;
@@ -260,6 +261,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     sessionState: deps.buildSessionState(deps.currentCli),
     conversationTabs: deps.buildConversationTabsState(),
     promptHistory: deps.buildPromptHistoryState(),
+    humanInteractionHistory: deps.buildHumanInteractionHistoryState?.() ?? [],
     scheduledTasks: deps.buildScheduledTasksState?.() ?? [],
     configState: deps.configState,
     modelState: deps.buildModelState(activeConfigIdByCli),

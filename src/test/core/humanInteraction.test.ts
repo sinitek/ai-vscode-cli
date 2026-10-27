@@ -299,13 +299,14 @@ test("formats an unanswered human interaction as best-effort continuation", () =
   });
   assert.equal(submission.status, "completed");
   assert.equal(submission.timedOut, true);
-  assert.equal(submission.values.scope, HUMAN_INTERACTION_TIMEOUT_TEXT);
-  assert.notEqual(submission.values.scope, "api");
-  assert.equal(formatHumanInteractionSubmittedText(submission), HUMAN_INTERACTION_TIMEOUT_TEXT);
+  assert.equal(submission.values.scope, "api");
+  assert.equal(formatHumanInteractionSubmittedText(submission, [
+    { id: "scope", label: "Scope", type: "radio", options: [{ label: "API", value: "api" }] },
+  ]), `${HUMAN_INTERACTION_TIMEOUT_TEXT}\n已提交补充信息：\nScope：API`);
   assert.deepEqual(buildCodexHumanInteractionResolution("item/tool/requestUserInput", submission), {
     result: {
       answers: {
-        scope: { answers: [HUMAN_INTERACTION_TIMEOUT_TEXT] },
+        scope: { answers: ["api"] },
         note: { answers: [HUMAN_INTERACTION_TIMEOUT_TEXT] },
       },
     },
@@ -313,8 +314,21 @@ test("formats an unanswered human interaction as best-effort continuation", () =
   assert.deepEqual(buildCodexHumanInteractionResolution("mcpServer/elicitation/request", submission).result, {
     action: "accept",
     content: submission.values,
-    _meta: { text: HUMAN_INTERACTION_TIMEOUT_TEXT },
+    _meta: { text: `${HUMAN_INTERACTION_TIMEOUT_TEXT}\n已提交补充信息。` },
   });
+});
+
+test("uses valid defaults before the first option for automatic selections", () => {
+  const submission = buildTimedOutHumanInteractionSubmission({
+    interactionId: "ask-defaults",
+    tabId: "tab-1",
+    formFields: [
+      { id: "mode", label: "模式", type: "radio", defaultValue: "safe", options: [{ label: "重写", value: "rewrite" }, { label: "兼容", value: "safe" }] },
+      { id: "targets", label: "目标", type: "multiselect", options: [{ label: "桌面", value: "desktop" }] },
+      { id: "confirmed", label: "确认", type: "checkbox" },
+    ],
+  });
+  assert.deepEqual(submission.values, { mode: "safe", targets: ["desktop"], confirmed: true });
 });
 
 test("identifies human interaction rejection errors", () => {

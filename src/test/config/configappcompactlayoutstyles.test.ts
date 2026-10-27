@@ -66,7 +66,11 @@ test("configuration cards and list items keep compact internal spacing", () => {
   );
   assert.match(
     rule(css, ".config-sidebar-panel > .ant-card .ant-card-head-title"),
-    /\bpadding:\s*3px 0;/,
+    /\bfont-size:\s*12px;/,
+  );
+  assert.match(
+    rule(css, ".config-sidebar-panel > .ant-card .ant-card-head-title .ant-space"),
+    /\bgap:\s*2px !important;/,
   );
   assert.match(
     rule(css, ".config-sidebar-panel > .ant-card .ant-card-body"),
@@ -116,11 +120,19 @@ test("configuration action buttons use compact square shared styling", () => {
     ".config-sidebar-panel > .ant-card .ant-card-extra .ant-btn:not(.config-standard-action-button),\n.config-editor-shell > .ant-card > .ant-card-head .ant-card-extra .ant-btn:not(.config-standard-action-button)",
   );
   assert.match(topActionButton, /\bheight:\s*20px;/);
-  assert.match(topActionButton, /\bpadding:\s*0 6px !important;/);
+  assert.match(topActionButton, /\bpadding:\s*0 3px !important;/);
   assert.match(topActionButton, /\bbackground:\s*var\(--clay-text\) !important;/);
   assert.match(topActionButton, /\bcolor:\s*var\(--clay-inverse\) !important;/);
-  assert.match(topActionButton, /\bfont-size:\s*80%;/);
+  assert.match(topActionButton, /\bfont-size:\s*12px;/);
   assert.match(topActionButton, /\bborder-radius:\s*0 !important;/);
+
+  const sidebarAddButton = rule(
+    css,
+    ".config-sidebar-panel > .ant-card .ant-card-extra .ant-btn.config-standard-action-button",
+  );
+  assert.match(sidebarAddButton, /\bheight:\s*20px;/);
+  assert.match(sidebarAddButton, /\bpadding:\s*0 3px;/);
+  assert.match(sidebarAddButton, /\bfont-size:\s*12px;/);
 
   assert.match(css, /\.ant-btn \{\s+border-radius:\s*0;/);
   assert.match(rule(css, ".config-list .ant-btn-text"), /\bborder-radius:\s*0;/);
