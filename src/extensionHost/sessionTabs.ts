@@ -1,5 +1,5 @@
 import type { CliName } from "../cli/types";
-import { CLI_LIST } from "../cli/types";
+import { CLI_LIST, type InteractiveMode } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
 import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
@@ -23,7 +23,8 @@ export type ExtensionSessionTabsHostDeps = {
   getLiveMessagesForTab: (tabId: string) => ChatMessage[] | null; getPendingSessionDraft: (tabId: string, cli?: CliName) => PendingSessionDraft; getActiveTabIdForRun: () => string | null; getActiveSessionId: () => string | null; persistSessionStore: (store: SessionStore) => Promise<void>; getSessionStoreKey: (workspaceKey?: string) => string; loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[]; saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean; isGraphRunBlockedForMainTab: (run: GraphRunRecord) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
-  getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: "coding") => boolean;
+  getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
+  resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
   extractSessionId: (cli: CliName, buffer: string) => string | null; isLocalSessionId: (sessionId: string) => boolean; migrateLocalSessionToTargetSession: (cli: CliName, from: string, to: string, options?: { notifyPanel?: boolean }) => void; adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
   getActiveTaskRunMutable: () => { cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null; logInfo: (event: string, payload?: unknown) => void; activeData: { WORKSPACE_KEY_FALLBACK: string; LEGACY_SESSION_FILE: string; SESSION_DIR: string; SESSION_BUFFER_LIMIT: number };
 };
@@ -313,6 +314,7 @@ async function switchVisibleConversationTabForLoop(
   if (!switched) {
     return null;
   }
+  setWorkspaceInteractiveModeForCli(switched.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
   if (currentCli !== switched.cli) {
     currentCli = switched.cli;
     updateStatusBar();
@@ -413,6 +415,9 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   }
   if (next && previousCli !== next.cli) {
     await maybePromptInstallOnCliGroupSwitch(next.cli);
+  }
+  if (next) {
+    setWorkspaceInteractiveModeForCli(next.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
   }
   await postPanelState();
   if (next) {
