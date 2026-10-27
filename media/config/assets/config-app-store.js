@@ -126,6 +126,29 @@ const CONFIG_STORAGE_KEYS = {
       n
     );
   },
+  createConfigFromExample = (name, platform) => {
+    const base = { name, platform };
+    if (platform === "claude") {
+      return { ...base, content: ps.claude.settings, mcpContent: "{}", claudeSkills: [] };
+    }
+    if (platform === "codex") {
+      return { ...base, configContent: ps.codex.config, authContent: ps.codex.auth, codexSkills: [] };
+    }
+    if (platform === "opencode") {
+      return { ...base, content: ps.opencode.settings, openCodeSkills: [] };
+    }
+    if (platform === "grok") {
+      return { ...base, content: ps.grok.config, configContent: ps.grok.config };
+    }
+    if (platform === "dsh") {
+      return { ...base, content: ps.dsh.config, configContent: ps.dsh.config };
+    }
+    if (platform === "kimi-code") {
+      const content = ps["kimi-code"].config;
+      return { ...base, content, configContent: content };
+    }
+    throw new Error(`不支持的配置平台: ${platform}`);
+  },
 
 // Config store
   useConfigStore = QH((e, t) => ({

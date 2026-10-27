@@ -711,45 +711,9 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
               ?.value?.trim();
             if (!U) return (Kt.error("配置名称不能为空"), Promise.reject());
             try {
-              let T;
-              (k === "claude"
-                ? (T = await l({
-                    name: U,
-                    platform: k,
-                    content: "{}",
-                    mcpContent: "{}",
-                    claudeSkills: [],
-                  }))
-                : k === "opencode"
-	                  ? (T = await l({
-	                      name: U,
-	                      platform: k,
-	                      content: "{}",
-	                      openCodeSkills: [],
-	                    }))
-                  : k === "grok"
-                    ? (T = await l({
-                        name: U,
-                        platform: k,
-                        content: "",
-                        configContent: "",
-                      }))
-                  : k === "dsh"
-                    ? (T = await l({
-                        name: U,
-                        platform: k,
-                        content: createDshUiProfileText(),
-                        configContent: createDshUiProfileText(),
-                      }))
-                  : (T = await l({
-                      name: U,
-                      platform: k,
-                      configContent: "",
-                      authContent: "{}",
-                      codexSkills: [],
-                    })),
-                o(T.id, T.platform),
-                Kt.success("添加成功"));
+              const T = await l(createConfigFromExample(U, k));
+              o(T.id, T.platform);
+              Kt.success("添加成功");
             } catch (T) {
               return (Kt.error("添加失败: " + T), Promise.reject(T));
             }

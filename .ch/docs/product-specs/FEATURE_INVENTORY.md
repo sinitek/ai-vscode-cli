@@ -140,6 +140,8 @@ starter 默认不预置功能项。复制模板后，请从第一个真实能力
 
 2026-10-26 DSH 配置修复：配置范例显式包含空 `apiKey`；“一键导入”成功后覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误；空 profile 可先切换到可视化草稿，保存时仍执行完整必填校验。实现与验证记录见 `.ch/docs/exec-plans/completed/2026-10/2026-10-26-dsh-config-import-visual-empty.md`。
 
+2026-10-27 配置中心新增 Claude、Codex、OpenCode、Grok、DSH、kimi 配置档案时自动复制对应范例，回归入口：`src/test/config/newConfigFromExample.test.ts`。
+
 2026-10-26 DSH 配置档案导入修复：配置中心导入保留受支持的根级 `apiKey`，与 DSH 保存和 API 校验使用相同边界；非根级密钥字段仍拒绝导入。回归入口：`src/test/config/dshconfigpage.test.ts`。
 | 业务域 | 功能名称 | 状态 | 主要角色 | 规格来源 | 实现位置 | 测试状态 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
