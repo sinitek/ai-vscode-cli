@@ -1,12 +1,12 @@
-# Sinitek AI VS Code CLI 插件
+# 携宁 CLI 助手
 
-Sinitek AI VS Code CLI 插件（携宁 CLI 助手）为 VS Code 提供一个统一的 AI 工作台。无需离开编辑器，即可使用本机的 Codex、Claude、OpenCode、Grok、DSH 或 Kimi Code CLI 进行对话、编程和复杂任务协作。
+《携宁 CLI 助手》为 VS Code 提供一个统一的 AI 工作台。无需离开编辑器，即可使用本机的 Codex、Claude、OpenCode、Grok、DSH 或 Kimi Code CLI 进行对话、编程和复杂任务协作。支持主模型和子模型使用不同的 cli 执行。
 
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
 ### 1.4.0
-- 新增 kimi code 支持，适配该 cli 可能存在 bug
+- 新增 kimi code 支持
 - bugfix 以及体验优化
 
 ### 1.3.1
