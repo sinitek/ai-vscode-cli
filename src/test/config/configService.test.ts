@@ -361,18 +361,16 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   assert.equal(sample.small_model, "myAPI/small-task-model");
   assert.equal(sample.provider.myAPI.npm, "@ai-sdk/openai-compatible");
   assert.equal(sample.provider.myAPI.name, "myAPI");
-  assert.equal(sample.provider.myAPI.options.baseURL, "{env:MY_API_BASE_URL}");
-  assert.equal(sample.provider.myAPI.options.apiKey, "{env:MY_API_KEY}");
+  assert.equal(sample.provider.myAPI.options.baseURL, "http://127.0.0.1:33391/v1");
+  assert.equal(sample.provider.myAPI.options.apiKey, "your_apikey");
   assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "main-chat-model"));
   assert.ok(Object.prototype.hasOwnProperty.call(sample.provider.myAPI.models, "small-task-model"));
   assert.equal(Object.prototype.hasOwnProperty.call(sample, "mcp"), false);
 
   const configService = loadConfigService();
   const validation = configService.validateOpenCodeConfigForRun(sampleText, undefined, {});
-  assert.equal(validation.ok, false);
-  assert.ok(validation.issues.some((issue) => issue.code === "missing-env"));
-  assert.equal(validation.issues.some((issue) => issue.code === "placeholder-model"), false);
-  assert.equal(validation.issues.some((issue) => issue.code === "placeholder-base-url"), false);
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.issues, []);
 });
 
 async function withGrokHome<T>(homeDir: string, run: (grokHome: string) => Promise<T>): Promise<T> {
@@ -858,10 +856,7 @@ test("DSH profile storage keeps only root apiKey, drops skill toggles, and accep
       assert.equal(listed.directory, path.join(homeDir, "skills"));
       assert.deepEqual(listed.skills.map((skill) => skill.name), ["demo"]);
 
-      const poisoned = example.replace(
-        "\"displayName\": \"Sinitek custom\"",
-        `"displayName": "Sinitek custom", "apiKey": "${secret}"`,
-      );
+      const poisoned = example.replace('"apiKey": "your_apikey"', `"apiKey": "${secret}"`);
       await configService.saveConfig({
         ...config,
         id: "dsh-secret",

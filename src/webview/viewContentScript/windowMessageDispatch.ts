@@ -293,6 +293,18 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               updateContextTokenUsage(runtimeState);
             }
           }
+          if (data.type === "kimiCompactionUpdate") {
+            const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
+            const targetTabId = eventTabId || getActiveConversationTabId();
+            const runtimeState = getConversationRuntimeState(targetTabId);
+            if (runtimeState) {
+              runtimeState.activeRunActivity = data.status === "started" ? "contextCompaction" : "";
+            }
+            if (!shouldHandleTabScopedEvent(data)) {
+              return;
+            }
+            updateRunWait();
+          }
           if (data.type === "dshReasoningOptions") {
             if (!shouldHandleTabScopedEvent(data)) {
               return;

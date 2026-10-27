@@ -64,12 +64,17 @@ KIMI_CODE_API_KEY=placeholder kimi acp
 | 模型广告 | `session/new` 的 `configOptions` | 含 `model`，值与 `config.toml` 一致 |
 | 模型管理 | AI 对话 → kimi → 模型下拉 → 管理模型 | 新增、重命名、删除、排序后，当前档案和真实 `config.toml` 一致；配置保存会淘汰旧 runner，新进程恢复原 ACP 会话并应用所选别名 |
 | 工具回放 | 执行含命令及文件工具的任务 | 命令是 `exec <command>`，普通工具只有标题；无参数 JSON 和成功结果重复回放 |
+| 流式回放 | 执行需要联网查询并输出多段正文的任务 | 思考、用量与命令目录不生成回放 JSON；正文按消息聚合；工具逐 token 参数及输出快照合并为新增片段，保留完整参数与终态 |
 | 权限模式 | `session/new` 的 `modes` | `default` / `plan` / `auto` / `yolo` |
 | 思考档位 | `session/new` 的 `configOptions` | 含 `thinking`，值 ⊆ `support_efforts`；不含则见 4.3 |
 | 上下文窗口 | 一轮结束后 `usage_update` | `size` 等于配置的 `max_context_size` |
 | 压缩 | 对话面板常用指令 | Kimi 不出现「压缩上下文」入口 |
 
 ## 4. 失败现象与处置
+
+### 4.0 第二轮起反复提示「没有产生最终结论气泡」
+
+官方 ACP 的流式 `agent_message_chunk` 不保证携带 `messageId`。缺失时必须按当前轮次与正文类型生成去重键，不能跨轮固定使用 `assistant`，否则第二轮起的最终回答会被过滤，并触发宿主自动重试。原始事件流中的多条 JSON 是流式协议记录，不等同于多次模型任务；排障时应同时核对是否出现隐藏重试 prompt。
 
 ### 4.1 `session/new` 返回 `-32000 Authentication required`
 
@@ -111,11 +116,11 @@ Provider "subcoco" declares api_key_env = "KIMI_CODE_API_KEY"
 
 ### 4.6 点「压缩上下文」报不支持
 
-预期行为。Kimi Code ACP 没有独立压缩方法，`compactSession()` 抛 `compaction-unsupported`，面板不显示入口。需要压缩时可在输入框直接发 `/compact`：本机隔离实测会返回「Context compaction started（后台异步）」，随后再推一条「Compaction completed.」纯文本（含消息数与前后 token），但没有机器可读完成事件，所以插件不把它包成可确认的按钮。上下文控制仍可用 `[loop_control].reserved_context_size` 交给 CLI 自己的循环。
+预期行为。Kimi Code ACP 没有独立压缩方法，`compactSession()` 抛 `compaction-unsupported`，面板不显示入口。Kimi CLI 本身支持自动压缩；需要手动压缩时可在输入框直接发 `/compact`，会返回「Context compaction started（后台异步）」。ACP 把自动压缩和 `/compact` 的开始确认、完成、取消、阻塞作为普通助手文本发送，插件据此显示「压缩中」，不作为最终答复或机器可读压缩方法；因此不把它包成可确认的按钮。上下文控制仍可用 `[loop_control].reserved_context_size` 交给 CLI 自己的循环。
 
 ### 4.7 上下文窗口显示不准 / 文案说适配器兜底
 
-`usage_update.size` 来自模型目录的 `max_context_size`，是配置声明的真值。`src/extensionHost/interactiveTurnKimi.ts` 把 `contextWindowSource` 标为 `"kimi-config-window"`，悬停文案是「当前上下文已用 {used} / {window} tokens；窗口取自 Kimi Code 配置的 max_context_size」。若看到「适配器 fallback」字样，说明当前不是 Kimi 会话（那是 DSH 的来源枚举）。切换标签页会按各标签页自己的来源重算文案。
+`usage_update.size` 来自模型目录的 `max_context_size`，是配置声明的真值。该事件可能在 `session/prompt` 返回 `stopReason` 之后才到达，runner 与 host 必须保留同会话收尾通知。`src/extensionHost/interactiveTurnKimi.ts` 把 `contextWindowSource` 标为 `"kimi-config-window"`，悬停文案是「当前上下文已用 {used} / {window} tokens；窗口取自 Kimi Code 配置的 max_context_size」。未收到有效用量时整颗标签隐藏，不显示「—」。若看到「适配器 fallback」字样，说明当前不是 Kimi 会话（那是 DSH 的来源枚举）。切换标签页会按各标签页自己的来源重算文案。
 
 ### 4.8 模型下拉为空
 

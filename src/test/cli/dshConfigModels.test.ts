@@ -46,7 +46,7 @@ test("accepts only the three API protocols supported by custom DSH providers", (
 test("parses the unprefixed default example model id", () => {
   const parsed = parseDshConfigModels(EXAMPLE);
   const exampleDocument = JSON.parse(EXAMPLE) as Record<string, unknown>;
-  assert.equal(exampleDocument.apiKey, "");
+  assert.equal(exampleDocument.apiKey, "your_apikey");
   assert.equal("displayName" in exampleDocument, false);
   assert.equal("timeoutMs" in exampleDocument, false);
   assert.equal("streamIdleTimeoutMs" in exampleDocument, false);
@@ -334,9 +334,10 @@ test("accepts loopback http baseURL and rejects remote plaintext http, credentia
 
 test("example profile does not embed secrets and keeps the model id off platform path separators", () => {
   assert.equal(EXAMPLE.includes("sk-"), false);
-  assert.equal(EXAMPLE.includes("127.0.0.1"), false);
+  assert.equal(EXAMPLE.includes("127.0.0.1"), true);
   assert.equal(EXAMPLE.includes('"maxTokens"'), false);
-  assert.match(EXAMPLE, /https:\/\/gateway\.example\/v1/);
+  assert.match(EXAMPLE, /http:\/\/127\.0\.0\.1:33391\/v1/);
+  assert.match(EXAMPLE, /"apiKey": "your_apikey"/);
   assert.equal(DSH_VERIFIED_MODEL_ID, "deepseek-v4.1-flash");
   assert.equal(EXAMPLE.includes("subcoco/"), false);
   assert.equal(DSH_VERIFIED_MODEL_ID.includes("\\"), false);
@@ -378,7 +379,7 @@ test("patch yaml uses the verified provider contract and omits unverified fields
   assert.equal(yaml.includes("maxTokens:"), false);
   assert.equal(yaml.includes("contextWindow"), false);
   assert.equal(yaml.includes("sk-"), false);
-  assert.match(yaml, /https:\/\/gateway\.example\/v1/);
+  assert.match(yaml, /http:\/\/127\.0\.0\.1:33391\/v1/);
 });
 
 test("treats DSH as an interactive CLI and not an auto-compaction CLI", () => {

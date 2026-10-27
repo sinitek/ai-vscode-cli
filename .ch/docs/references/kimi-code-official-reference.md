@@ -159,9 +159,9 @@ timeout = 5
 
 ## 8. 上下文用量
 
-官方未把 `usage_update` 写进 ACP 能力矩阵，但已安装包 2.3.2 的行为是：每轮结束后（`onTurnEnded`）发一次 `usage_update`，`used` 为 agent 上下文 token 数，`size` 取模型目录中该模型的 `max_context_size`；没有匹配模型时跳过。
+官方未把 `usage_update` 写进 ACP 能力矩阵，但已安装包 2.3.2 / 2.3.3 的行为是：每轮结束后（`onTurnEnded`）异步发一次 `usage_update`，可能晚于 `session/prompt` 的 RPC 返回，`used` 为 agent 上下文 token 数，`size` 取模型目录中该模型的 `max_context_size`；没有匹配模型时跳过。插件 2.3.3 实测普通回合收到有效用量。
 
-插件侧结论：Kimi 的窗口上限是配置里声明的真实容量，不是估算值。`src/extensionHost/interactiveTurnKimi.ts` 现在把 `contextWindowSource` 标为独立枚举值 `kimi-config-window`，Webview 悬停文案为「当前上下文已用 {used} / {window} tokens；窗口取自 Kimi Code 配置的 max_context_size」，切换标签页时按标签页各自的来源重算。DSH 的 `adapter-fallback` 语义保持不变。
+插件侧结论：Kimi 的窗口上限是配置里声明的真实容量，不是估算值。`src/extensionHost/interactiveTurnKimi.ts` 把 `contextWindowSource` 标为独立枚举值 `kimi-config-window`，Webview 悬停文案为「当前上下文已用 {used} / {window} tokens；窗口取自 Kimi Code 配置的 max_context_size」，切换标签页时按标签页各自的来源重算；未收到时整颗标签隐藏。DSH 的 `adapter-fallback` 语义保持不变。2.3.3 的 ACP 自动压缩通知仍为普通助手文本，插件精确识别这些官方文本以展示「压缩中」，但不新增独立压缩方法或按钮。
 
 ## 9. Skills 与规则
 
@@ -182,7 +182,7 @@ timeout = 5
 | --- | --- | --- | --- |
 | 安装入口 | 脚本（推荐）+ npm | 只用 npm，文案已说明脚本存在但不使用 | 已对齐，文档写明两者 |
 | 免审批 | `--auto` / `--yolo` 或配置字段 | 只能配置字段（`-p` 互斥） | 已对齐并写入文档 |
-| 压缩 | `/compact` 斜杠命令存在，经 `session/prompt` 也能触发，但后台异步且只有纯文本完成提示；无 `session/compact` 方法 | `compactSession()` 抛 `compaction-unsupported`，不显示入口，不把斜杠命令包装成可确认的按钮 | 已对齐：能力边界与本轮产品选择都写明 |
+| 压缩 | CLI 支持自动压缩，`/compact` 斜杠命令经 `session/prompt` 可触发；后台异步，以普通助手文本通知开始、完成、取消或阻塞；无 `session/compact` 方法 | `compactSession()` 抛 `compaction-unsupported`，不显示入口；官方文本映射为「压缩中」，不作为最终答复或独立压缩方法 | 已对齐：2.3.3 实测 `/compact` 开始及后台完成通知 |
 | 思考档位 | 由 `capabilities` / `support_efforts` 决定 | 默认配置与范例生成五档声明；保存自动补缺失字段并保留已有值，可视化不展示高级字段 | 已对齐：`src/config/kimiCodeConfig.ts`、`media/config/assets/config-app-ui.js` |
 | 上下文窗口来源 | 模型目录 `max_context_size` | `contextWindowSource = "kimi-config-window"`，悬停文案说明取自配置 | 已对齐：`src/extensionHost/interactiveTurnKimi.ts`、`src/webview/viewContentScript/taskListAndUi.ts` |
 | 思考档下拉的数据源 | ACP `config_option_update` / `configOptions` | Webview 消费 `kimiThinkingOptions` 与 `kimiModeUpdate`，按 tabId 隔离 | 已对齐：`src/webview/viewContentScript/windowMessageDispatch.ts` |

@@ -1963,6 +1963,14 @@ test("hides the context size label while compacting and restores it afterwards",
   assert.equal(status.textContent, "");
   assert.equal(label.style.display, "inline-flex");
   assert.equal(label.textContent, "4k");
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+  window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "started" });
+  assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "completed" });
+  assert.equal(document.getElementById("runStatusText").style.display, "none");
+  assert.equal(label.style.display, "inline-flex");
 });
 
 test("does not show context tokens for runs without native usage support", () => {
@@ -4294,6 +4302,20 @@ test("Kimi context window is labelled as the configured max_context_size", () =>
   assert.match(title, /4000 \/ 262144/);
   assert.match(title, /max_context_size/);
   assert.doesNotMatch(title, /adapter fallback|适配器 fallback/);
+
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000 });
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+
+  window.dispatchMessage({
+    type: "contextTokenUsage",
+    tabId: "tab-1",
+    tokensInContextWindow: 4000,
+    modelContextWindow: 262144,
+    contextWindowSource: "kimi-config-window",
+  });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "4k");
 
   // DSH 的 fallback 语义不受影响
   window.dispatchMessage({

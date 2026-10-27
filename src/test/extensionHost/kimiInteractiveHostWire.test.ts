@@ -39,6 +39,7 @@ function createKimiRunner(options: FakeRunnerOptions) {
     modeOptions: ["default", "plan", "auto", "yolo"],
   };
   let disposed = 0;
+  let lastHandlers: KimiStreamHandlers | null = null;
   const runner = {
     start: async (startOptions?: { requireResume?: boolean }) => {
       starts.push(startOptions ?? {});
@@ -49,6 +50,7 @@ function createKimiRunner(options: FakeRunnerOptions) {
       };
     },
     prompt: async (prompt: string, handlers?: KimiStreamHandlers) => {
+      lastHandlers = handlers ?? {};
       await options.behavior?.(prompt, handlers ?? {});
       return { stopReason: "end_turn" };
     },
@@ -65,7 +67,7 @@ function createKimiRunner(options: FakeRunnerOptions) {
       return snapshot;
     },
   };
-  return { runner, starts, snapshot, appliedModels, disposed: () => disposed };
+  return { runner, starts, snapshot, appliedModels, disposed: () => disposed, lastHandlers: () => lastHandlers };
 }
 
 function createHostHarness(options: FakeRunnerOptions = {}) {
@@ -74,17 +76,25 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
   const panelMessages: Array<Record<string, unknown>> = [];
+  const sessionIdByTabId = new Map<string, string>();
   const runStatus: string[] = [];
   const created: Array<Record<string, unknown>> = [];
   let runnerCreated = false;
   const registered: Array<Record<string, unknown>> = [];
   const launched: Array<Record<string, unknown>> = [];
+  const prompts: string[] = [];
   let idCounter = 0;
   const manager = {
     getOrCreateKimiCodeRunner: (input: Record<string, unknown>) => {
       created.push(input);
       runnerCreated = true;
-      return fake.runner;
+      return {
+        ...fake.runner,
+        prompt: async (prompt: string, handlers?: KimiStreamHandlers) => {
+          prompts.push(prompt);
+          return fake.runner.prompt(prompt, handlers);
+        },
+      };
     },
     hasKimiCodeRunner: () => runnerCreated,
     setRunner: (_cli: string, _sessionId: string, _runner: unknown, _thinking: string, _mode: string, _model: string, runnerOptions: Record<string, unknown>) => {
@@ -108,7 +118,7 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
     buildTaskRunCompletionText: (status) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => ({ sessionId: "local_1", cli: "kimi-code" }),
+    getConversationTabById: (tabId) => ({ sessionId: sessionIdByTabId.get(tabId) ?? "local_1", cli: "kimi-code" }),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => options.effectiveThinkingMode ?? "high",
     getGlobalHumanInteractionEnabled: () => false,
@@ -147,8 +157,17 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
     logCliStartup: () => undefined,
     maybeAutoCompactContextAfterPromptSuccess: async () => undefined,
     maybePersistLongTermMemoryFromRun: () => undefined,
-    migrateLocalSessionToTargetSession: () => undefined,
-    persistMessagesForTab: () => undefined,
+    migrateLocalSessionToTargetSession: (_cli: CliName, previousSessionId: string, newSessionId: string) => {
+      messagesBySession.set(newSessionId, messagesBySession.get(previousSessionId) ?? []);
+      sessionIdByTabId.set("tab-kimi", newSessionId);
+    },
+    persistMessagesForTab: (_cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]) => {
+      if (!sessionId) {
+        return;
+      }
+      messagesBySession.set(sessionId, messages);
+      sessionIdByTabId.set(tabId, sessionId);
+    },
     preparePendingLabel: () => undefined,
     resolveClaudeInteractiveEntrypoint: () => undefined,
     resolveCodexInteractiveSelection: () => null,
@@ -181,6 +200,7 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
     created,
     registered,
     launched,
+    prompts,
     messagesBySession,
     activeRunsByTabId,
     fake,
@@ -231,6 +251,23 @@ test("Kimi host applies the selected model at the start of every turn", async ()
   assert.deepEqual(harness.fake.appliedModels, [KIMI_CODE_DEFAULT_MODEL, KIMI_CODE_DEFAULT_MODEL]);
 });
 
+test("Kimi host accepts assistant text on consecutive turns without hidden retries", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta?.("done");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+
+  await harness.host.runPromptInteractive(inputFor("first"), targetFor("local_1"));
+  await harness.host.runPromptInteractive(inputFor("second"), targetFor("local_1"));
+
+  assert.equal(harness.prompts.length, 2);
+  assert.equal(harness.prompts[0]?.startsWith("first\n"), true);
+  assert.equal(harness.prompts[1]?.startsWith("second\n"), true);
+  assert.deepEqual(harness.runStatus, ["start", "end", "start", "end"]);
+});
+
 test("Kimi host labels the context window as the configured capacity, not an adapter fallback", async () => {
   const harness = createHostHarness({
     behavior: async (_prompt, handlers) => {
@@ -248,6 +285,22 @@ test("Kimi host labels the context window as the configured capacity, not an ada
   assert.notEqual(usage[0]?.contextWindowSource, "adapter-fallback");
 });
 
+test("Kimi host forwards usage that arrives after the owning run ends", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta?.("done");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  const completion = harness.host.runPromptInteractive(inputFor("count"), targetFor("local_1"));
+  await completion;
+  harness.fake.lastHandlers()?.onTokenUsageUpdate?.({ tokensInContextWindow: 9000, modelContextWindow: 262144 });
+  const usage = harness.panelMessages.filter((message) => message.type === "contextTokenUsage");
+  assert.equal(usage.length, 1);
+  assert.equal(usage[0]?.tokensInContextWindow, 9000);
+  assert.equal(usage[0]?.contextWindowSource, "kimi-config-window");
+});
+
 test("Kimi host drops usage without real counts and never sends zero", async () => {
   const harness = createHostHarness({
     behavior: async (_prompt, handlers) => {
@@ -259,6 +312,24 @@ test("Kimi host drops usage without real counts and never sends zero", async () 
   });
   await harness.host.runPromptInteractive(inputFor("count"), targetFor("local_1"));
   assert.equal(harness.panelMessages.some((message) => message.type === "contextTokenUsage"), false);
+});
+
+test("Kimi host forwards official compaction state without treating it as an answer", async () => {
+  const harness = createHostHarness({
+    behavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta?.("Compacting conversation context…");
+      handlers.onAssistantDelta?.("done");
+      handlers.onComplete?.({ stopReason: "end_turn" });
+    },
+  });
+  const completion = harness.host.runPromptInteractive(inputFor("hello"), targetFor("local_1"));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const handler = harness.fake.lastHandlers();
+  handler?.onCompactionUpdate?.({ status: "completed", text: "Compaction completed." });
+  await completion;
+  assert.deepEqual(harness.panelMessages.filter((message) => message.type === "kimiCompactionUpdate").map((message) => message.status), ["started", "completed"]);
+  assert.equal(harness.messagesBySession.get(ACP_ID)?.some((message) => message.role === "assistant" && message.content === "Compacting conversation context…"), false);
+  assert.equal(harness.messagesBySession.get(ACP_ID)?.some((message) => message.role === "trace" && message.content === "Compaction completed."), true);
 });
 
 test("Kimi host forwards off as the configured effort and keeps the launch credential-free", async () => {

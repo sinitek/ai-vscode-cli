@@ -355,12 +355,14 @@ test("Kimi ACP handshake launches kimi acp and settles only from stopReason", as
   const traces: string[] = [];
   const tasks: unknown[] = [];
   const usage: unknown[] = [];
+  const replayEvents: Record<string, unknown>[] = [];
   let completed = "";
   const result = await created.runner.prompt("write hello.txt", {
     onAssistantDelta: (text) => deltas.push(text),
     onTrace: (text, kind) => traces.push(`${kind ?? "normal"}:${text}`),
     onTaskListUpdate: (items) => tasks.push(items),
     onTokenUsageUpdate: (update) => usage.push(update),
+    onEvent: (event) => replayEvents.push(event as Record<string, unknown>),
     onComplete: (meta) => {
       completed = meta.stopReason;
     },
@@ -371,6 +373,11 @@ test("Kimi ACP handshake launches kimi acp and settles only from stopReason", as
   assert.equal(traces.some((trace) => trace === "thinking:thinking"), true);
   assert.equal(traces.some((trace) => trace.startsWith("tool-use:")), true);
   assert.deepEqual(usage, [{ tokensInContextWindow: 42, modelContextWindow: 262144 }]);
+  assert.deepEqual(replayEvents.map((event) => (event.params as { update: { sessionUpdate: string } }).update.sessionUpdate), [
+    "agent_message_chunk",
+    "tool_call",
+    "tool_call_update",
+  ]);
   assert.equal(Array.isArray(tasks), true);
   assert.equal(fake.methods().includes("session/load"), false);
   assert.equal(fake.methods().includes("session/close"), false);
@@ -504,6 +511,79 @@ test("Kimi mode changes stay inside the advertised mode list", async () => {
   assert.equal(applied.modeId, "yolo");
 });
 
+test("Kimi forwards asynchronous usage after the prompt settles", async () => {
+  const fake = new FakeKimi();
+  fake.finishPrompt = ((message: Record<string, unknown>) => {
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    const sessionId = (message.params as { sessionId: string }).sessionId;
+    setTimeout(() => {
+      fake.send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId,
+          update: { sessionUpdate: "usage_update", used: 8192, size: 262144 },
+        },
+      });
+    }, 10);
+  }) as typeof fake.finishPrompt;
+  const { runner } = createRunner(fake);
+  await runner.start();
+  const events: string[] = [];
+  const result = await runner.prompt("hello", {
+    onComplete: () => events.push("complete"),
+    onTokenUsageUpdate: (update) => events.push(`${update.tokensInContextWindow}/${update.modelContextWindow}`),
+  });
+
+  assert.equal(result.stopReason, "end_turn");
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.deepEqual(events, ["complete", "8192/262144"]);
+  runner.dispose();
+});
+
+test("Kimi forwards official auto-compaction notifications after the prompt settles", async () => {
+  const fake = new FakeKimi();
+  fake.finishPrompt = ((message: Record<string, unknown>) => {
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    const sessionId = (message.params as { sessionId: string }).sessionId;
+    setTimeout(() => {
+      fake.send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Compacting conversation context…" },
+          },
+        },
+      });
+    }, 10);
+  }) as typeof fake.finishPrompt;
+  const { runner } = createRunner(fake);
+  await runner.start();
+  const updates: string[] = [];
+  const text: string[] = [];
+  await runner.prompt("hello", {
+    onTokenUsageUpdate: () => updates.push("usage"),
+    onCompactionUpdate: (update) => updates.push(update.status),
+    onAssistantDelta: (delta) => text.push(delta),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  fake.send({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: SESSION_ID,
+      update: { sessionUpdate: "usage_update", used: 4096, size: 262144 },
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(updates, ["started", "usage"]);
+  assert.deepEqual(text, []);
+  runner.dispose();
+});
+
 test("Kimi compaction is reported as unsupported rather than faked", async () => {
   const fake = new FakeKimi();
   const { runner } = createRunner(fake);
@@ -515,6 +595,110 @@ test("Kimi compaction is reported as unsupported rather than faked", async () =>
     return true;
   });
   assert.equal(fake.lines.length, before);
+});
+
+test("Kimi replaces settled handlers on a new turn and drops notifications after cancellation", async () => {
+  const fake = new FakeKimi();
+  fake.finishPrompt = ((message: Record<string, unknown>) => {
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  }) as typeof fake.finishPrompt;
+  const { runner } = createRunner(fake);
+  await runner.start();
+  const firstEvents: string[] = [];
+  const secondEvents: string[] = [];
+  const firstHandlers = {
+    onTokenUsageUpdate: () => firstEvents.push("usage"),
+    onCompactionUpdate: () => firstEvents.push("compaction"),
+  };
+  const secondHandlers = {
+    onTokenUsageUpdate: () => secondEvents.push("usage"),
+    onCompactionUpdate: () => secondEvents.push("compaction"),
+  };
+  await runner.prompt("first", firstHandlers);
+  await runner.prompt("second", secondHandlers);
+  fake.send({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId: SESSION_ID, update: { sessionUpdate: "usage_update", used: 1, size: 262144 } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(firstEvents, []);
+  assert.deepEqual(secondEvents, ["usage"]);
+  runner.cancelTurn();
+  fake.send({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId: SESSION_ID, update: { sessionUpdate: "usage_update", used: 2, size: 262144 } },
+  });
+  fake.send({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: { sessionId: SESSION_ID, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Compaction completed." } } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(firstEvents, []);
+  assert.deepEqual(secondEvents, ["usage"]);
+  runner.dispose();
+});
+
+test("Kimi accepts assistant chunks without messageId on every turn", async () => {
+  const fake = new FakeKimi();
+  let turn = 0;
+  fake.finishPrompt = ((message: Record<string, unknown>) => {
+    turn += 1;
+    const sessionId = (message.params as { sessionId: string }).sessionId;
+    fake.send({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: `answer-${turn}` },
+        },
+      },
+    });
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  }) as typeof fake.finishPrompt;
+  const { runner } = createRunner(fake);
+  await runner.start();
+  const replies: string[] = [];
+  const handlers = { onAssistantDelta: (text: string) => replies.push(text) };
+
+  await runner.prompt("first", handlers);
+  await runner.prompt("second", handlers);
+
+  assert.deepEqual(replies, ["answer-1", "answer-2"]);
+  runner.dispose();
+});
+
+test("Kimi replay coalesces missing-message-id chunks without merging turns", async () => {
+  const fake = new FakeKimi();
+  let turn = 0;
+  fake.finishPrompt = ((message: Record<string, unknown>) => {
+    turn += 1;
+    const sessionId = (message.params as { sessionId: string }).sessionId;
+    for (const chunk of ["answer-", String(turn)]) {
+      fake.send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: chunk } } },
+      });
+    }
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  }) as typeof fake.finishPrompt;
+  const { runner } = createRunner(fake);
+  await runner.start();
+  const replayEvents: Record<string, unknown>[] = [];
+  const handlers = { onEvent: (event: Record<string, unknown>) => replayEvents.push(event) };
+
+  await runner.prompt("first", handlers);
+  await runner.prompt("second", handlers);
+
+  assert.deepEqual(replayEvents.map((event) => (
+    (event.params as { update: { content: { text: string } } }).update.content.text
+  )), ["answer-1", "answer-2"]);
+  runner.dispose();
 });
 
 test("Kimi rejects a protocol version it was not built against", async () => {

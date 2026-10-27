@@ -402,7 +402,7 @@ test("DSH empty profile can switch to a visual draft before strict save validati
   assert.equal(switched.mode, "visual");
   assert.equal(switched.document.provider, "sinitek-custom");
   assert.equal(switched.document.apiKey, "");
-  assert.equal(switched.document.baseURL, "https://gateway.example/v1");
+  assert.equal(switched.document.baseURL, "http://127.0.0.1:33391/v1");
   assert.equal(utils.readDocument(switched.text).ok, true);
 
   const harness = createDshEditorHarness({ content: "" });
@@ -421,7 +421,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   const fromBackend = utils.readDocument(example);
   assert.equal(fromBackend.ok, true);
   assert.equal(fromBackend.fields.provider, "sinitek-custom");
-  assert.equal(fromBackend.fields.baseURL, "https://gateway.example/v1");
+  assert.equal(fromBackend.fields.baseURL, "http://127.0.0.1:33391/v1");
   assert.equal(fromBackend.fields.modelId, "deepseek-v4.1-flash");
   assert.equal(fromBackend.fields.apiKeyEnv, "SINITEK_DSH_API_KEY");
   assert.equal(fromBackend.fields.modelId.split("/").length, 1);
@@ -532,7 +532,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.equal(harness.sandbox.dshVisual.apiKey, secret);
   assert.equal(harness.sandbox.dshText.includes(secret), true);
   harness.find("data-testid", "dsh-base-url").props.onChange(secret);
-  assert.equal(harness.sandbox.dshVisual.baseURL, "https://gateway.example/v1");
+  assert.equal(harness.sandbox.dshVisual.baseURL, "http://127.0.0.1:33391/v1");
   modelField.props.onChange("gateway/other-model");
   assert.equal(harness.sandbox.dshVisual.models[0].id, "gateway/other-model");
   assert.equal(harness.sandbox.dshVisual.acpModel, "gateway/other-model");

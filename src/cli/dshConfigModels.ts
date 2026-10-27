@@ -9,7 +9,7 @@
  * The installed pi-ai schema types `models` as an ordered array, so a profile
  * may list more than one configured model. Selection stays inside that list.
  * Runtime baseURL may be https, or http only for a loopback host. The
- * repository example stays on the placeholder https gateway.
+ * repository example stays on the local loopback gateway.
  * Accepted extension fields on the profile and on model objects stay in the
  * profile JSON. The optional root apiKey is stored in the local profile and
  * later injected into the DSH child environment; it is never serialized into
@@ -24,7 +24,7 @@ export const DSH_API_KEY_ENV = "SINITEK_DSH_API_KEY";
 export const DSH_VERIFIED_MODEL_ID = "deepseek-v4.1-flash";
 /** Installed `PiAiProviderProfile.models` is an ordered array, not a single slot. */
 export const DSH_SUPPORTS_CONFIGURED_MODEL_LIST = true;
-export const DSH_EXAMPLE_BASE_URL = "https://gateway.example/v1";
+export const DSH_EXAMPLE_BASE_URL = "http://127.0.0.1:33391/v1";
 export const DSH_DISPLAY_NAME = "Sinitek custom";
 export const DSH_SCHEMA_VERSION = 1;
 export const DSH_REASONING_EFFORTS = {
@@ -158,7 +158,7 @@ export function createDshExampleDocument(
     schemaVersion: DSH_SCHEMA_VERSION,
     provider: DSH_PROVIDER_ROUTE,
     api: DSH_API,
-    apiKey: "",
+    apiKey: "your_apikey",
     apiKeyEnv: DSH_API_KEY_ENV,
     baseURL,
     models: [defaultModel()],

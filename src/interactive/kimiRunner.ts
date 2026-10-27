@@ -7,6 +7,7 @@ import {
   type CodexAppServerNdjsonReader,
 } from "./codexAppServerNdjson";
 import { killProcessTree, resolveSpawnCommand } from "./codexRunnerProcess";
+import { KimiReplayStream } from "./kimiReplayStream";
 import { getKimiCodeConfigRevision } from "../config/kimiCodeConfig";
 import {
   acceptKimiIncrementalText,
@@ -42,6 +43,7 @@ import {
   projectKimiToolUpdate,
   readKimiConfigOption,
   readKimiConfigOptions,
+  readKimiCompactionUpdate,
   readKimiModeState,
   readKimiPermissionOffer,
   readKimiPromptStopReason,
@@ -52,6 +54,7 @@ import {
   redactKimiDiagnostic,
   resolveKimiPermissionDecision,
   type KimiConfigOption,
+  type KimiCompactionUpdate,
   type KimiJsonRpcMessage,
   type KimiTaskListItem,
   type KimiTokenUsageUpdate,
@@ -110,6 +113,7 @@ export type KimiStreamHandlers = {
   onActivity?: () => void;
   onComplete?: (meta: { stopReason: string }) => void;
   onTokenUsageUpdate?: (update: KimiTokenUsageUpdate) => void;
+  onCompactionUpdate?: (update: KimiCompactionUpdate) => void;
   onModeUpdate?: (modeId: string) => void;
 };
 
@@ -173,6 +177,9 @@ export class KimiInteractiveRunner {
   private turnEpoch = 0;
   private activeTurnEpoch = 0;
   private activeHandlers: KimiStreamHandlers | null = null;
+  private replayStream: KimiReplayStream | null = null;
+  private settledHandlers: KimiStreamHandlers | null = null;
+  private settledReplayStream: KimiReplayStream | null = null;
   private turnOpen = false;
   private configOptions: KimiConfigOption[] = [];
   private modeOptions: string[] = [];
@@ -295,6 +302,9 @@ export class KimiInteractiveRunner {
     if (this.promptInFlight) {
       throw new KimiProtocolError("a Kimi Code prompt is already in flight", "concurrent-prompt");
     }
+    this.settledHandlers = null;
+    this.settledReplayStream?.finish();
+    this.settledReplayStream = null;
     this.promptInFlight = true;
     this.beginTurn(handlers);
     const epoch = this.turnEpoch;
@@ -307,12 +317,21 @@ export class KimiInteractiveRunner {
       if (!stopReason) {
         throw new KimiProtocolError("session/prompt completed without stopReason", "missing-stop-reason");
       }
+      this.replayStream?.finish();
       this.turnOpen = false;
+      if (handlers.onTokenUsageUpdate || handlers.onCompactionUpdate || handlers.onEvent) {
+        this.settledHandlers = handlers;
+        if (handlers.onEvent) {
+          this.settledReplayStream = new KimiReplayStream((message) => handlers.onEvent?.(message));
+        }
+      }
       if (this.activeTurnEpoch === epoch) {
         handlers.onComplete?.({ stopReason });
       }
       return { stopReason };
     } finally {
+      this.replayStream?.finish();
+      this.replayStream = null;
       this.turnOpen = false;
       this.endTurn(epoch);
       this.promptInFlight = false;
@@ -322,6 +341,11 @@ export class KimiInteractiveRunner {
   public cancelTurn(): void {
     this.turnCancelled = true;
     this.turnOpen = false;
+    this.replayStream?.finish();
+    this.replayStream = null;
+    this.settledHandlers = null;
+    this.settledReplayStream?.finish();
+    this.settledReplayStream = null;
     if (!this.sessionId || !this.canWrite()) {
       return;
     }
@@ -579,6 +603,9 @@ export class KimiInteractiveRunner {
   }
 
   private beginTurn(handlers: KimiStreamHandlers): void {
+    this.settledHandlers = null;
+    this.settledReplayStream?.finish();
+    this.settledReplayStream = null;
     for (const messageId of this.textTracker.keys()) {
       this.retiredMessageIds.add(messageId);
     }
@@ -593,6 +620,7 @@ export class KimiInteractiveRunner {
     this.turnCancelled = false;
     this.turnOpen = true;
     this.activeHandlers = handlers;
+    this.replayStream = new KimiReplayStream((message) => handlers.onEvent?.(message));
   }
 
   private endTurn(epoch: number): void {
@@ -664,6 +692,23 @@ export class KimiInteractiveRunner {
       return;
     }
     const update = classifyKimiSessionUpdate(body);
+    if (this.settledHandlers && !this.turnOpen && !this.turnCancelled) {
+      if (update.type === "usage") {
+        const usage = readKimiTokenUsageUpdate(update.used, update.size);
+        if (usage) {
+          this.settledHandlers.onTokenUsageUpdate?.(usage);
+        }
+        return;
+      }
+      if (update.type === "assistant_text") {
+        const compaction = readKimiCompactionUpdate(update.text);
+        if (compaction) {
+          this.settledHandlers.onCompactionUpdate?.(compaction);
+        }
+      }
+      this.settledReplayStream?.append(message);
+      return;
+    }
     if (update.type === "config") {
       this.replaceConfigOptions(update.configOptions);
     }
@@ -675,7 +720,7 @@ export class KimiInteractiveRunner {
       return;
     }
     const handlers = this.activeHandlers;
-    handlers.onEvent?.(message);
+    this.replayStream?.append(message);
     handlers.onActivity?.();
     if (update.type === "assistant_text") {
       this.emitText(handlers, "assistant", update.messageId, update.text);
@@ -714,7 +759,7 @@ export class KimiInteractiveRunner {
     messageId: string,
     text: string,
   ): void {
-    const delta = this.acceptTurnText(messageId || kind, text);
+    const delta = this.acceptTurnText(messageId || `turn:${this.activeTurnEpoch}:${kind}`, text);
     if (!delta) {
       return;
     }
@@ -912,6 +957,9 @@ export class KimiInteractiveRunner {
     this.turnCancelled = true;
     this.turnOpen = false;
     this.activeHandlers = null;
+    this.settledHandlers = null;
+    this.settledReplayStream?.finish();
+    this.settledReplayStream = null;
     this.promptInFlight = false;
     this.stopTimers();
     this.reader?.close();

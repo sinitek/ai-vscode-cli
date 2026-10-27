@@ -355,6 +355,17 @@ test("kimi diagnostics redact secret env values and bound their size", () => {
   assert.match(boundKimiDiagnostic("abcdefghijk", 4), /^abcd\n…\[truncated\]$/);
 });
 
+test("Kimi recognizes only official compaction notifications", async () => {
+  const { readKimiCompactionUpdate } = require("../../interactive/kimiAppServerProtocol") as typeof import("../../interactive/kimiAppServerProtocol");
+  assert.equal(readKimiCompactionUpdate("Compacting conversation context…")?.status, "started");
+  assert.equal(readKimiCompactionUpdate("Compacting conversation context with instruction: keep tests")?.status, "started");
+  assert.equal(readKimiCompactionUpdate("Context compaction started — it runs in the background and the compacted context applies once it finishes.")?.status, "started");
+  assert.equal(readKimiCompactionUpdate("Compaction completed.\n- Tokens after: 1,000")?.status, "completed");
+  assert.equal(readKimiCompactionUpdate("Compaction cancelled.")?.status, "cancelled");
+  assert.equal(readKimiCompactionUpdate("Compaction is blocked by the current turn; retry when the turn is idle.")?.status, "blocked");
+  assert.equal(readKimiCompactionUpdate("A normal answer mentioning compaction."), null);
+});
+
 test("kimi compaction is an explicit unsupported capability", async () => {
   const error = new KimiCompactionUnsupportedError();
   assert.equal(error.code, "compaction-unsupported");

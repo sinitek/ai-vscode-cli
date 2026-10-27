@@ -455,7 +455,7 @@
     {
       "id": "plugin.rule.kimi_no_native_compaction",
       "name": "Kimi ACP 没有压缩方法，usage 窗口取配置声明值",
-      "description": "Kimi Code ACP 的官方能力矩阵没有 session/compact 这类独立压缩方法，initialize 也不公布压缩能力，因此插件 compactSession() 抛 compaction-unsupported，不伪造本地压缩，对话面板不显示「压缩上下文」入口；[loop_control].reserved_context_size 只作用于 CLI 自己的会话循环。/compact 斜杠命令本身可用：本机隔离实测把它作为 session/prompt 文本发送会返回「Context compaction started」并后台异步执行，随后推一条含消息数与前后 token 的「Compaction completed.」纯文本，没有机器可读完成事件，因此不接线成可确认的按钮。上下文窗口展示读每轮结束的 usage_update.size，它来自模型目录中该模型的 max_context_size，即配置声明的真实容量，缺失时不显示为 0；interactiveTurnKimi.ts 标 contextWindowSource 为独立的 kimi-config-window，悬停文案说明窗口取自配置的 max_context_size，与 DSH 的 adapter-fallback 区分且不共用文案。",
+      "description": "Kimi Code ACP 的官方能力矩阵没有 session/compact 这类独立压缩方法，initialize 也不公布压缩能力，因此插件 compactSession() 抛 compaction-unsupported，不伪造本地压缩，对话面板不显示「压缩上下文」入口；[loop_control].reserved_context_size 只作用于 CLI 自己的会话循环。Kimi CLI 本身支持自动压缩，/compact 斜杠命令也可作为 session/prompt 文本使用；ACP 把自动压缩的开始、完成、取消、阻塞与 /compact 的开始确认作为普通助手文本发送，插件精确识别官方文案并显示「压缩中」，不作为最终答复或独立压缩方法。上下文窗口展示读每轮结束的 usage_update.size，它来自模型目录中该模型的 max_context_size，即配置声明的真实容量；事件可能晚于 prompt RPC 返回，runner 与 host 保留同会话收尾通知，缺失时隐藏标签而不显示 0 或「—」。interactiveTurnKimi.ts 标 contextWindowSource 为独立的 kimi-config-window，悬停文案说明窗口取自配置的 max_context_size，与 DSH 的 adapter-fallback 区分且不共用文案。",
       "status": "active",
       "aliases": ["Kimi 压缩", "compaction-unsupported", "reserved_context_size", "usage_update"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel"],

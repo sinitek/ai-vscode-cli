@@ -1,5 +1,6 @@
 import {
   isKimiCompletedStopReason,
+  readKimiCompactionUpdate,
   resolveKimiHostResumeId,
 } from "../interactive/kimiAppServerProtocol";
 import { KimiInteractiveRunner } from "../interactive/kimiRunner";
@@ -26,6 +27,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
         ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
         : null;
       const resumeSessionId = resolveKimiHostResumeId(uiSessionIdAtStart, mappedSessionId);
+      const confirmedSessionId = { value: resumeSessionId };
       const requireResume = resumeSessionId !== null;
       port.observedKimiFinalAnswer = false;
       const model = port.kimiModelWire ?? launch.modelAlias;
@@ -55,9 +57,21 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
         });
 
       let flushingKimiStop = false;
+      let kimiPromptCompleted = false;
       const canEmitKimiPresentation = (): boolean => {
         const entry = port.interactiveRunsByTabId.get(port.tabId);
         return Boolean(entry && entry.runId === port.runId && (!entry.stopped || flushingKimiStop));
+      };
+      const canEmitKimiSettledNotification = (): boolean => {
+        const entry = port.interactiveRunsByTabId.get(port.tabId);
+        if (entry && entry.runId !== port.runId) {
+          return false;
+        }
+        const currentTab = port.getConversationTabById(port.tabId);
+        return currentTab?.cli === "kimi-code"
+          && currentTab.sessionId === port.uiSessionId
+          && Boolean(confirmedSessionId.value)
+          && port.interactiveRunnerManager.hasKimiCodeRunner(confirmedSessionId.value as string, runner);
       };
       try {
         port.setStopCurrentTurn(() => {
@@ -77,6 +91,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
           await runner.setThinkingMode(launch.thinkingValue);
         }
         port.updateSessionForNewRun(started.acpSessionId);
+        confirmedSessionId.value = started.acpSessionId;
         const uiSessionId = port.uiSessionId;
         if (previousSessionId && previousSessionId !== uiSessionId) {
           port.interactiveRunnerManager.detachRunner("kimi-code", previousSessionId, runner);
@@ -111,7 +126,6 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
           });
         }
         let kimiStopReason: string | null = null;
-        let kimiPromptCompleted = false;
         let lastKimiActivityAt = 0;
         const kimiToolMessageIds = new Map<string, string>();
         await runner.prompt(port.attemptPrompt, {
@@ -161,11 +175,25 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
             if (!port.isCurrentRunActive() || !chunk) {
               return;
             }
+            const compaction = readKimiCompactionUpdate(chunk);
+            if (compaction) {
+              port.sendPanelMessage({ type: "kimiCompactionUpdate", tabId: port.tabId, status: compaction.status });
+              port.appendTraceMessageForTab(chunk, "normal", { merge: false });
+              port.appendTraceLog(chunk);
+              return;
+            }
             if (chunk.trim()) {
               port.attemptHadNormalReply = true;
             }
             port.appendAssistantChunkForTab(chunk);
             port.appendDebugStdout(chunk);
+          },
+          onCompactionUpdate: (update) => {
+            if (canEmitKimiPresentation() || canEmitKimiSettledNotification()) {
+              port.sendPanelMessage({ type: "kimiCompactionUpdate", tabId: port.tabId, status: update.status });
+              port.appendTraceMessageForTab(update.text, "normal", { merge: false });
+              port.appendTraceLog(update.text);
+            }
           },
           onTrace: (content, kind, meta) => {
             if (!canEmitKimiPresentation()) {

@@ -27,7 +27,7 @@ const DSH_UI_API = "openai-completions";
 const DSH_UI_SUPPORTED_APIS = [DSH_UI_API, "openai-responses", "anthropic-messages"];
 const DSH_UI_API_KEY_ENV = "SINITEK_DSH_API_KEY";
 const DSH_UI_MODEL_ID = "deepseek-v4.1-flash";
-const DSH_UI_EXAMPLE_BASE_URL = "https://gateway.example/v1";
+const DSH_UI_EXAMPLE_BASE_URL = "http://127.0.0.1:33391/v1";
 const DSH_UI_DISPLAY_NAME = "Sinitek custom";
 const DSH_UI_SUPPORTS_MODEL_LIST = true;
 const DSH_UI_SECRET_ASSIGNMENT = /(?:^|[\s,{])(?:SINITEK_DSH_API_KEY|DEEPSEEK_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*\S+/i;
@@ -136,14 +136,14 @@ function dshUiSerializeRaw(document) {
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 
-function createDshUiProfileText(baseURL) {
+function createDshUiProfileText(baseURL, apiKey = "") {
   const candidate = typeof baseURL === "string" && baseURL.trim() ? baseURL.trim() : DSH_UI_EXAMPLE_BASE_URL;
   const resolved = dshUiContainsSecret(candidate) ? DSH_UI_EXAMPLE_BASE_URL : candidate;
   return dshUiSerializeRaw(dshUiDocumentFromParts({
     baseURL: resolved,
     models: [DSH_UI_MODEL_ID],
     acpModel: DSH_UI_MODEL_ID,
-    apiKey: "",
+    apiKey,
   }));
 }
 
@@ -5100,7 +5100,7 @@ const createKimiCodeVisualExampleText = () =>
       subcoco: {
         type: "openai",
         base_url: KIMI_CODE_EXAMPLE_BASE_URL,
-        api_key: "<your-kimi-api-key>",
+        api_key: "your_apikey",
       },
     },
     models: {
@@ -5138,8 +5138,8 @@ const ps = {
   "effortLevel": "high",
   "language": "zh-CN",
   "env": {
-    "ANTHROPIC_AUTH_TOKEN": "<请填写你的 auth token>",
-    "ANTHROPIC_BASE_URL": "http://127.0.0.1:33391",
+    "ANTHROPIC_AUTH_TOKEN": "your_apikey",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:33391/v1",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-sonnet-5",
@@ -5160,11 +5160,11 @@ web_search = "cached"
 
 [model_providers.codex]
 name = "codex"
-base_url = "<供应商 url>"
+base_url = "http://127.0.0.1:33391/v1"
 wire_api = "responses"
 requires_openai_auth = true`,
       auth: `{
-  "OPENAI_API_KEY": "<你的 api key>"
+  "OPENAI_API_KEY": "your_apikey"
 }`,
     },
     opencode: {
@@ -5177,8 +5177,8 @@ requires_openai_auth = true`,
       "npm": "@ai-sdk/openai-compatible",
       "name": "myAPI",
       "options": {
-        "baseURL": "{env:MY_API_BASE_URL}",
-        "apiKey": "{env:MY_API_KEY}"
+        "baseURL": "http://127.0.0.1:33391/v1",
+        "apiKey": "your_apikey"
       },
       "models": {
         "main-chat-model": {
@@ -5217,7 +5217,7 @@ compaction_at_tokens = 450000
 `,
     },
 	    dsh: {
-	      config: createDshUiProfileText(),
+      config: createDshUiProfileText(undefined, "your_apikey"),
 	    },
 	    "kimi-code": {
 	      config: createKimiCodeVisualExampleText(),
@@ -7636,7 +7636,6 @@ const ConfigEditorPanel = () => {
               || "当前 TOML 无法加载到可视化编辑器，请切换到 TOML 源码修复。",
           });
         const modelIds = kimiCodeVisualModelIds(kimiCodeVisualState.source),
-          providerIds = kimiCodeVisualProviderIds(kimiCodeVisualState.source),
           selectedId = kimiCodeVisualState.selectedModelId || "",
           gridStyle = {
             display: "grid",
@@ -7665,10 +7664,54 @@ const ConfigEditorPanel = () => {
           };
         return be.jsxs("div", {
           "data-kimi-code-fields": fieldIds.join(" "),
-          className: "grok-model-workspace kimi-code-model-workspace",
+          className: "kimi-code-visual-editor",
           children: [
+            be.jsxs("section", {
+              className: "dsh-common-parameters kimi-code-common-parameters",
+              "data-testid": "kimi-code-common-parameters",
+              children: [
+                be.jsx("strong", { children: "公共参数" }),
+                  be.jsxs("div", {
+                    style: gridStyle,
+                    children: [
+                      renderCodexSelect(
+                        "默认模型",
+                        kimiCodeVisualState.defaultModel,
+                        (value) => update({ defaultModel: value }),
+                        [
+                          blankOption,
+                          ...Array.from(
+                            new Set([...modelIds, kimiCodeVisualState.defaultModel].filter(Boolean)),
+                          ).map((value) => ({ value, label: value })),
+                        ],
+                        { help: "写入 default_model。官方 CLI 用 -m 传入的就是这个别名。" },
+                      ),
+                      renderCodexSelect(
+                        "免审批模式",
+                        kimiCodeVisualState.defaultPermissionMode,
+                        (value) => update({ defaultPermissionMode: value }),
+                        [
+                          blankOption,
+                          ...KIMI_CODE_VISUAL_PERMISSION_MODES.map((value) => ({
+                            value,
+                            label: KIMI_CODE_VISUAL_PERMISSION_LABELS[value] || value,
+                          })),
+                        ],
+                        {
+                          help: "写入 default_permission_mode。auto/yolo 免审批；两者的 --auto/--yolo 命令行参数不能与 -p 同用，因此必须写进配置文件。",
+                        },
+                      ),
+                    ],
+                  }),
+              ],
+            }),
+            be.jsxs("div", {
+              className: "grok-model-workspace kimi-code-model-workspace",
+              "data-testid": "kimi-code-model-workspace",
+              children: [
             be.jsxs("aside", {
               className: "grok-model-sidebar",
+              "data-testid": "kimi-code-model-list",
               "aria-label": "模型管理",
               children: [
                 be.jsxs("div", {
@@ -7737,15 +7780,106 @@ const ConfigEditorPanel = () => {
                 modelIds.length === 0
                   ? be.jsx("div", { role: "status", children: "尚无模型，请先添加。" })
                   : null,
-                providerIds.length
-                  ? be.jsxs("div", {
-                      className: "kimi-code-provider-hint",
-                      children: [
-                        be.jsx("strong", { children: "Providers" }),
-                        be.jsx("div", { children: providerIds.join("、") }),
-                      ],
-                    })
+              ],
+            }),
+                be.jsxs("div", {
+                  className: "grok-model-detail",
+                  "data-testid": "kimi-code-model-parameters",
+                  children: [
+                selectedId
+                  ? renderCodexSection(
+                      selectedId,
+                      "编辑此模型的参数；未展示的 TOML 字段会保留。",
+                      be.jsxs("div", {
+                        style: gridStyle,
+                        children: [
+                          renderCodexField(
+                            "Provider 名称",
+                            kimiCodeVisualState.providerId,
+                            (value) => update({ providerId: value }),
+                            "subcoco",
+                            { help: "写入 models.<别名>.provider，必须是 [providers.<名称>] 里存在的表。" },
+                          ),
+                          renderCodexField(
+                            "真实模型 ID",
+                            kimiCodeVisualState.wireModel,
+                            (value) => update({ wireModel: value }),
+                            "kimi-k3.1-pro",
+                            { help: "写入 models.<别名>.model，是发给供应商的真实模型 ID，不是别名。" },
+                          ),
+                          renderCodexField(
+                            "上下文窗口",
+                            kimiCodeVisualState.maxContextSize,
+                            (value) => update({ maxContextSize: value }),
+                            "262144",
+                            {
+                              type: "number",
+                              min: 0,
+                              step: 1,
+                              help: "写入 models.<别名>.max_context_size，用于上下文占用展示与自动压缩阈值计算。",
+                            },
+                          ),
+                        ],
+                      }),
+                    )
+                  : be.jsx("div", {
+                      role: "status",
+                      children: "从左侧添加模型，开始配置。",
+                    }),
+                selectedId
+                  ? renderCodexSection(
+                      "连接参数",
+                      "写入当前模型引用的 [providers.<名称>]；未展示的字段会保留在 TOML 源码中。",
+                      be.jsxs("div", {
+                        style: gridStyle,
+                        children: [
+                          renderCodexSelect(
+                            "接口协议",
+                            kimiCodeVisualState.providerType,
+                            (value) => update({ providerType: value }),
+                            [
+                              blankOption,
+                              ...KIMI_CODE_VISUAL_PROVIDER_TYPES.map((value) => ({
+                                value,
+                                label: value,
+                              })),
+                            ],
+                            {
+                              help: "写入 providers.<名称>.type。本机代理通常用 openai（Chat Completions）或 openai_responses（Responses）。",
+                            },
+                          ),
+                          renderCodexField(
+                            "接口地址",
+                            kimiCodeVisualState.baseUrl,
+                            (value) => update({ baseUrl: value }),
+                            KIMI_CODE_EXAMPLE_BASE_URL,
+                            { help: "写入 providers.<名称>.base_url，需要包含 /v1。" },
+                          ),
+                          renderCodexField(
+                            "API Key",
+                            kimiCodeVisualState.apiKey,
+                            (value) => update({ apiKey: value }),
+                            "<your-kimi-api-key>",
+                            {
+                              type: "password",
+                              help: "API Key 直接写在 ~/.kimi-code/config.toml 的 providers.<名称>.api_key；Kimi 不需要 Codex 那样的第二个 auth.json。以 0600 权限保存，不想写入明文时可改用下面的环境变量名。",
+                            },
+                          ),
+                          renderCodexField(
+                            "环境变量名",
+                            kimiCodeVisualState.apiKeyEnv,
+                            (value) => update({ apiKeyEnv: value }),
+                            "KIMI_CODE_API_KEY",
+                            {
+                              help: "与 API Key 二选一。只写环境变量名，不写密钥值；该变量必须在 VS Code 进程的环境里存在，否则 Kimi 会报 no credential configured。",
+                            },
+                          ),
+                        ],
+                      }),
+                    )
                   : null,
+                  ],
+                }),
               ],
             }),
             be.jsx(xr, {
@@ -7797,139 +7931,6 @@ const ConfigEditorPanel = () => {
                   }),
                 ],
               }),
-            }),
-            be.jsxs("div", {
-              className: "grok-model-detail",
-              children: [
-                renderCodexSection(
-                  "全局默认",
-                  "设置默认模型和免审批方式；其它顶层字段保留在 TOML 源码中。",
-                  be.jsxs("div", {
-                    style: gridStyle,
-                    children: [
-                      renderCodexSelect(
-                        "默认模型",
-                        kimiCodeVisualState.defaultModel,
-                        (value) => update({ defaultModel: value }),
-                        [
-                          blankOption,
-                          ...Array.from(
-                            new Set([...modelIds, kimiCodeVisualState.defaultModel].filter(Boolean)),
-                          ).map((value) => ({ value, label: value })),
-                        ],
-                        { help: "写入 default_model。官方 CLI 用 -m 传入的就是这个别名。" },
-                      ),
-                      renderCodexSelect(
-                        "免审批模式",
-                        kimiCodeVisualState.defaultPermissionMode,
-                        (value) => update({ defaultPermissionMode: value }),
-                        [
-                          blankOption,
-                          ...KIMI_CODE_VISUAL_PERMISSION_MODES.map((value) => ({
-                            value,
-                            label: KIMI_CODE_VISUAL_PERMISSION_LABELS[value] || value,
-                          })),
-                        ],
-                        {
-                          help: "写入 default_permission_mode。auto/yolo 免审批；两者的 --auto/--yolo 命令行参数不能与 -p 同用，因此必须写进配置文件。",
-                        },
-                      ),
-                    ],
-                  }),
-                ),
-                selectedId
-                  ? renderCodexSection(
-                      selectedId,
-                      "编辑此模型的参数；未展示的 TOML 字段会保留。",
-                      be.jsxs("div", {
-                        style: gridStyle,
-                        children: [
-                          renderCodexField(
-                            "Provider 名称",
-                            kimiCodeVisualState.providerId,
-                            (value) => update({ providerId: value }),
-                            "subcoco",
-                            { help: "写入 models.<别名>.provider，必须是 [providers.<名称>] 里存在的表。" },
-                          ),
-                          renderCodexField(
-                            "真实模型 ID",
-                            kimiCodeVisualState.wireModel,
-                            (value) => update({ wireModel: value }),
-                            "kimi-k3.1-pro",
-                            { help: "写入 models.<别名>.model，是发给供应商的真实模型 ID，不是别名。" },
-                          ),
-                          renderCodexField(
-                            "上下文窗口",
-                            kimiCodeVisualState.maxContextSize,
-                            (value) => update({ maxContextSize: value }),
-                            "262144",
-                            {
-                              type: "number",
-                              min: 0,
-                              step: 1,
-                              help: "写入 models.<别名>.max_context_size，用于上下文占用展示与自动压缩阈值计算。",
-                            },
-                          ),
-                        ],
-                      }),
-                    )
-                  : be.jsx("div", {
-                      role: "status",
-                      children: "从左侧添加模型，开始配置。",
-                    }),
-                selectedId
-                  ? renderCodexSection(
-                      "Provider 配置",
-                      "写入 [providers.<名称>]；未展示的字段会保留在 TOML 源码中。",
-                      be.jsxs("div", {
-                        style: gridStyle,
-                        children: [
-                          renderCodexSelect(
-                            "接口协议",
-                            kimiCodeVisualState.providerType,
-                            (value) => update({ providerType: value }),
-                            [
-                              blankOption,
-                              ...KIMI_CODE_VISUAL_PROVIDER_TYPES.map((value) => ({
-                                value,
-                                label: value,
-                              })),
-                            ],
-                            {
-                              help: "写入 providers.<名称>.type。本机代理通常用 openai（Chat Completions）或 openai_responses（Responses）。",
-                            },
-                          ),
-                          renderCodexField(
-                            "接口地址",
-                            kimiCodeVisualState.baseUrl,
-                            (value) => update({ baseUrl: value }),
-                            KIMI_CODE_EXAMPLE_BASE_URL,
-                            { help: "写入 providers.<名称>.base_url，需要包含 /v1。" },
-                          ),
-                          renderCodexField(
-                            "API Key",
-                            kimiCodeVisualState.apiKey,
-                            (value) => update({ apiKey: value }),
-                            "<your-kimi-api-key>",
-                            {
-                              type: "password",
-                              help: "API Key 直接写在 ~/.kimi-code/config.toml 的 providers.<名称>.api_key；Kimi 不需要 Codex 那样的第二个 auth.json。以 0600 权限保存，不想写入明文时可改用下面的环境变量名。",
-                            },
-                          ),
-                          renderCodexField(
-                            "环境变量名",
-                            kimiCodeVisualState.apiKeyEnv,
-                            (value) => update({ apiKeyEnv: value }),
-                            "KIMI_CODE_API_KEY",
-                            {
-                              help: "与 API Key 二选一。只写环境变量名，不写密钥值；该变量必须在 VS Code 进程的环境里存在，否则 Kimi 会报 no credential configured。",
-                            },
-                          ),
-                        ],
-                      }),
-                    )
-                  : null,
-              ],
             }),
           ],
         });

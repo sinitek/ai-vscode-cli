@@ -60,8 +60,8 @@ test("OpenCode config page exposes a parseable myAPI dual-model example", async 
   assert.equal(example.small_model, "myAPI/small-task-model");
   assert.deepEqual(Object.keys(example.provider), ["myAPI"]);
   assert.equal(provider.npm, "@ai-sdk/openai-compatible");
-  assert.equal(provider.options.baseURL, "{env:MY_API_BASE_URL}");
-  assert.equal(provider.options.apiKey, "{env:MY_API_KEY}");
+  assert.equal(provider.options.baseURL, "http://127.0.0.1:33391/v1");
+  assert.equal(provider.options.apiKey, "your_apikey");
   assert.deepEqual(Object.keys(provider.models).sort(), ["main-chat-model", "small-task-model"]);
   assert.equal(mainModel.limit.context, 128000);
   assert.equal(mainModel.options, undefined);

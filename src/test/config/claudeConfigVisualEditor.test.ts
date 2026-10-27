@@ -310,8 +310,8 @@ test("official example and editor expose visual plus JSON modes", () => {
     effortLevel: "high",
     language: "zh-CN",
     env: {
-      ANTHROPIC_AUTH_TOKEN: "<请填写你的 auth token>",
-      ANTHROPIC_BASE_URL: "http://127.0.0.1:33391",
+      ANTHROPIC_AUTH_TOKEN: "your_apikey",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:33391/v1",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-sonnet-5",
       ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5",
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-5",

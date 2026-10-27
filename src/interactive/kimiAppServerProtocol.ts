@@ -129,6 +129,11 @@ export type KimiTokenUsageUpdate = {
   modelContextWindow: number;
 };
 
+export type KimiCompactionUpdate = {
+  status: "started" | "completed" | "cancelled" | "blocked";
+  text: string;
+};
+
 export type KimiPermissionDecision =
   | { outcome: "selected"; optionId: string }
   | { outcome: "cancelled" };
@@ -493,6 +498,24 @@ export function readKimiTokenUsageUpdate(used: unknown, size: unknown): KimiToke
     return null;
   }
   return { tokensInContextWindow: used, modelContextWindow: size };
+}
+
+export function readKimiCompactionUpdate(text: string): KimiCompactionUpdate | null {
+  if (/^Compacting conversation context(?:…|\.\.\.)(?:\n|$)/.test(text)
+    || /^Compacting conversation context with instruction: .+(?:\n|$)/.test(text)
+    || /^Context compaction started — it runs in the background and the compacted context applies once it finishes\.(?:\n|$)/.test(text)) {
+    return { status: "started", text };
+  }
+  if (/^Compaction completed\.(?:\n|$)/.test(text)) {
+    return { status: "completed", text };
+  }
+  if (/^Compaction cancelled\.(?:\n|$)/.test(text)) {
+    return { status: "cancelled", text };
+  }
+  if (/^Compaction is blocked by the current turn; retry when the turn is idle\.(?:\n|$)/.test(text)) {
+    return { status: "blocked", text };
+  }
+  return null;
 }
 
 export function acceptKimiIncrementalText(tracker: Map<string, string>, key: string, text: string): string | null {

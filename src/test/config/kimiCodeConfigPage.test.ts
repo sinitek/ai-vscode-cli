@@ -93,7 +93,7 @@ test("Kimi Code 可视化编辑器可以解析、往返序列化并保留未展�
   const kimi = loadKimiVisualUtils();
   const example = kimi.createExampleText() as string;
   assert.match(example, /default_permission_mode = "auto"/);
-  assert.match(example, /api_key = "<your-kimi-api-key>"/);
+  assert.match(example, /api_key = "your_apikey"/);
   assert.doesNotMatch(example, /subcoco\//);
   assert.match(example, /capabilities = \[\s*"thinking"\s*\]/);
   assert.match(example, /support_efforts = \[[\s\S]*?"low"[\s\S]*?"max"[\s\S]*?\]/);
@@ -107,7 +107,7 @@ test("Kimi Code 可视化编辑器可以解析、往返序列化并保留未展�
   assert.equal(parsed.state.thinkingEffort, "");
   assert.equal(parsed.state.baseUrl, "http://127.0.0.1:33391/v1");
   assert.equal(parsed.state.providerType, "openai");
-  assert.equal(parsed.state.apiKey, "<your-kimi-api-key>");
+  assert.equal(parsed.state.apiKey, "your_apikey");
   assert.equal(parsed.state.capabilities, "thinking");
   assert.equal(parsed.state.supportEfforts, "low, medium, high, xhigh, max");
 
@@ -223,7 +223,7 @@ test("Kimi Code 可视化编辑器修改 provider 字段会真正写回 TOML", (
   const modelOnlyText = kimi.serializeState(modelOnly).content;
   assert.match(modelOnlyText, /display_name = "改名"/);
   assert.match(modelOnlyText, /max_context_size = 8000/);
-  assert.match(modelOnlyText, /api_key = "<your-kimi-api-key>"/);
+  assert.match(modelOnlyText, /api_key = "your_apikey"/);
 });
 
 test("Kimi Code 可视化编辑器新增/删除模型时保持别名与真实模型 ID 分离", () => {
@@ -302,6 +302,19 @@ test("Kimi Code 可视化渲染函数暴露稳定字段与删除确认", () => {
   };
 
   const root = render();
+  const sections = root.props.children as EditorNode[];
+  assert.equal(sections[0].props["data-testid"], "kimi-code-common-parameters");
+  assert.equal(sections[1].props["data-testid"], "kimi-code-model-workspace");
+  const workspaceColumns = sections[1].props.children as EditorNode[];
+  assert.equal(workspaceColumns[0].props["data-testid"], "kimi-code-model-list");
+  assert.equal(workspaceColumns[1].props["data-testid"], "kimi-code-model-parameters");
+  assert.equal(editorNodes(root).some((node) => node.props.className === "kimi-code-provider-hint"), false);
+  assert.equal(editorNodes(root).some((node) => node.props.children === "Providers"), false);
+  const commonLabels = editorNodes(sections[0]).map((node) => node.props.label).filter(Boolean);
+  assert.deepEqual(commonLabels, ["\u9ed8\u8ba4\u6a21\u578b", "\u514d\u5ba1\u6279\u6a21\u5f0f"]);
+  const parameterSections = editorNodes(workspaceColumns[1]).filter((node) => node.type === "Section");
+  assert.equal(parameterSections[0].props.title, "kimi-k3.1-pro");
+  assert.equal(parameterSections[1].props.title, "\u8fde\u63a5\u53c2\u6570");
   const fieldIds = String(root.props["data-kimi-code-fields"] ?? "");
   for (const id of [
     "default_model",

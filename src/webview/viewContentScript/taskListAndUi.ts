@@ -692,8 +692,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (elements.runStatusText) {
           const isCompacting = Boolean(
-            state.isRunning
-            && runtimeState
+            runtimeState
             && runtimeState.activeRunActivity === "contextCompaction"
           );
           const summary = isCompacting
@@ -753,8 +752,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const activeRuntime = runtimeState || getActiveConversationRuntimeState({ create: false });
         const isCompacting = Boolean(
-          state.isRunning
-          && activeRuntime
+          activeRuntime
           && activeRuntime.activeRunActivity === "contextCompaction"
         );
         if (isCompacting) {
@@ -765,7 +763,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           ? activeRuntime.tokensInContextWindow
           : null;
         const hasValue = tokens !== null && tokens >= 0;
-        const pending = Boolean(state.isRunning && ["codex", "grok", "kimi-code"].includes(getActiveConversationCli()) && !hasValue);
+        const pending = Boolean(state.isRunning && ["codex", "grok"].includes(getActiveConversationCli()) && !hasValue);
         if (!hasValue && !pending) {
           hideContextTokenUsage();
           return;
