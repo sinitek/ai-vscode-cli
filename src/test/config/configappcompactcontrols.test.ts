@@ -40,6 +40,8 @@ test("renders a leftmost radio group for activation without changing config acti
   assert.match(listPanel, /className: "config-list-actions",\s+size: 4/);
 
   assert.match(listPanel, /onClick: \(\) => I\(k\),\s+children: "添加"/);
+  assert.match(listPanel, /onClick: \(\) => R\(T, "安装命令"\),\s+children: "安装"/);
+  assert.match(listPanel, /onClick: \(\) => R\(U, "启动命令"\),\s+children: "执行"/);
   assert.match(listPanel, /icon: be\.jsx\(zH, \{\}\),\s+onClick: \(ae\) => V\(ae, F\),\s+title: "复制配置"/);
   assert.match(listPanel, /icon: be\.jsx\(FH, \{\}\),\s+onClick: \(ae\) => W\(ae, F\),\s+title: "重命名"/);
   assert.match(listPanel, /icon: be\.jsx\(AH, \{\}\),\s+onClick: \(ae\) => A\(ae, F\),\s+title: "删除配置"/);

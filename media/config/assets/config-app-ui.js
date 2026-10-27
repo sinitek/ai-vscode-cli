@@ -1111,12 +1111,12 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                     be.jsx(xn, {
                       size: "small",
                       onClick: () => R(T, "安装命令"),
-                      children: "安装命令",
+                      children: "安装",
                     }),
                     be.jsx(xn, {
                       size: "small",
                       onClick: () => R(U, "启动命令"),
-                      children: "启动命令",
+                      children: "执行",
                     }),
                   ],
                 }),
