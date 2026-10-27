@@ -83,7 +83,7 @@ const configPlatformLabel = (platform) =>
           : platform === "dsh"
             ? "DSH"
             : platform === "kimi-code"
-              ? "kimi"
+              ? "Kimi"
               : "OpenCode";
 
 function dshUiContainsSecret(value) {
@@ -2528,7 +2528,7 @@ const CLI_GLOBAL_SKILL_TARGETS = [
   { id: "grok", label: "Grok" },
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
-  { id: "kimi-code", label: "kimi" },
+  { id: "kimi-code", label: "Kimi" },
 ];
 
 function skillsTitleByPlatform(platform) {
@@ -4705,7 +4705,7 @@ const kimiCodeVisualReadModelFields = (source, modelAlias) => {
 };
 
 const kimiCodeVisualValidateSource = (source) => {
-  if (!kimiCodeVisualIsTable(source)) return "kimi 配置不可用。";
+  if (!kimiCodeVisualIsTable(source)) return "Kimi 配置不可用。";
   const providers = source.providers;
   if (providers !== void 0 && !kimiCodeVisualIsTable(providers)) return "providers 必须是 TOML 表。";
   if (kimiCodeVisualIsTable(providers)) {
@@ -5237,7 +5237,7 @@ const Nk = {
     "codex-auth": { title: "Codex auth.json", content: ps.codex.auth },
     "grok-config": { title: "Grok config.toml", content: ps.grok.config },
 	    "dsh-config": { title: "DSH profile JSON", content: ps.dsh.config },
-    "kimi-code-config": { title: "kimi config.toml", content: ps["kimi-code"].config },
+    "kimi-code-config": { title: "Kimi config.toml", content: ps["kimi-code"].config },
   };
 
 // Config editor panel
@@ -7913,7 +7913,7 @@ const ConfigEditorPanel = () => {
                             "<your-kimi-api-key>",
                             {
                               type: "password",
-                              help: "API Key 直接写在 ~/.kimi-code/config.toml 的 providers.<名称>.api_key；kimi 不需要 Codex 那样的第二个 auth.json。以 0600 权限保存，不想写入明文时可改用下面的环境变量名。",
+                              help: "API Key 直接写在 ~/.kimi-code/config.toml 的 providers.<名称>.api_key；Kimi 不需要 Codex 那样的第二个 auth.json。以 0600 权限保存，不想写入明文时可改用下面的环境变量名。",
                             },
                           ),
                           renderCodexField(
@@ -7922,7 +7922,7 @@ const ConfigEditorPanel = () => {
                             (value) => update({ apiKeyEnv: value }),
                             "KIMI_CODE_API_KEY",
                             {
-                              help: "与 API Key 二选一。只写环境变量名，不写密钥值；该变量必须在 VS Code 进程的环境里存在，否则 kimi 会报 no credential configured。",
+                              help: "与 API Key 二选一。只写环境变量名，不写密钥值；该变量必须在 VS Code 进程的环境里存在，否则 Kimi 会报 no credential configured。",
                             },
                           ),
                         ],
