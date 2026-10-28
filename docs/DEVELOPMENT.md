@@ -13,6 +13,6 @@
 
 npm install
 
-python3 export_vscode_extension.py
+python3 scripts/export_vscode_extension.py
 
 产物输出到 dist/<name>-<version>.vsix。

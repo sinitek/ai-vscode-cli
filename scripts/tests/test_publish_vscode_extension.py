@@ -10,6 +10,19 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT_DIR / "scripts"))
+
+
+class ScriptLocationTests(unittest.TestCase):
+    def test_absolute_entrypoint_loads_modules_outside_repository(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT_DIR / "scripts" / "publish_vscode_extension.py"), "--help"],
+            cwd=tempfile.gettempdir(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class PublishFixture:
@@ -18,15 +31,14 @@ class PublishFixture:
         test.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.events_file = self.root / "events.jsonl"
+        (self.root / "run_dev.py").write_bytes((ROOT_DIR / "run_dev.py").read_bytes())
+        (self.root / "scripts").mkdir()
         for filename in (
             "publish_vscode_extension.py",
-            "run_dev.py",
             "vscode_extension_process.py",
             "vscode_extension_win.py",
+            "vsix_target.js",
         ):
-            (self.root / filename).write_bytes((ROOT_DIR / filename).read_bytes())
-        (self.root / "scripts").mkdir()
-        for filename in ("vsix_target.js",):
             (self.root / "scripts" / filename).write_bytes((ROOT_DIR / "scripts" / filename).read_bytes())
         (self.root / "package.json").write_text(
             json.dumps({"name": "sinitek-cli-tools", "publisher": publisher, "version": "1.2.0"}),
@@ -48,15 +60,15 @@ class PublishFixture:
             "    output.write_bytes(b'fixture vsix')\n",
             encoding="utf-8",
         )
-        (self.root / "export_vscode_extension.py").write_text(
+        (self.root / "scripts" / "export_vscode_extension.py").write_text(
             "import runpy, sys\n"
             "from pathlib import Path\n"
             "if __name__ == '__main__':\n"
-            "    sys.argv[0] = str(Path(__file__).with_name('export_fixture.py'))\n"
+            "    sys.argv[0] = str(Path(__file__).parents[1] / 'export_fixture.py')\n"
             "    runpy.run_path(sys.argv[0], run_name='__main__')\n"
             "else:\n"
             "    sys.stdin.isatty = lambda: False\n"
-            "    ROOT_DIR = Path(__file__).resolve().parent\n"
+            "    ROOT_DIR = Path(__file__).resolve().parent.parent\n"
             "    import json, os\n"
             "    read_manifest = lambda root=ROOT_DIR: json.loads((root / 'package.json').read_text(encoding='utf-8'))\n"
             "    def resolve_target(target, root=ROOT_DIR):\n"
@@ -120,7 +132,7 @@ class PublishFixture:
             env.pop(name, None)
         env.update({"EVENT_FILE": str(self.events_file), "PYTHONIOENCODING": "utf-8", **overrides})
         return subprocess.run(
-            [sys.executable, str(self.root / "publish_vscode_extension.py"), *(args or [])],
+            [sys.executable, str(self.root / "scripts" / "publish_vscode_extension.py"), *(args or [])],
             cwd=tempfile.gettempdir(),
             env=env,
             capture_output=True,
@@ -222,7 +234,9 @@ class InteractiveExitTests(unittest.TestCase):
             script = Path(temporary) / "entrypoint.py"
             script.write_text(
                 "import runpy\n"
+                "import sys\n"
                 "from unittest.mock import patch\n"
+                f"sys.path.insert(0, {str(ROOT_DIR / 'scripts')!r})\n"
                 "import publish_vscode_extension as publish_script\n"
                 "publish_script.main = lambda: 1\n"
                 f"publish_script.sys.stdin.isatty = lambda: {isatty}\n"

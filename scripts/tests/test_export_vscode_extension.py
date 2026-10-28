@@ -11,8 +11,21 @@ from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(ROOT_DIR / "scripts"))
 
 import export_vscode_extension as export_script
+
+
+class ScriptLocationTests(unittest.TestCase):
+    def test_absolute_entrypoint_imports_run_dev_outside_repository(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT_DIR / "scripts" / "export_vscode_extension.py"), "--help"],
+            cwd=tempfile.gettempdir(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class VsixAuditTests(unittest.TestCase):
@@ -52,7 +65,7 @@ class VsixAuditTests(unittest.TestCase):
 
     def test_audit_rejects_developer_files_and_missing_runtime(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "开发态文件"):
-            self.audit([*export_script.REQUIRED_ENTRIES, "publish_vscode_extension.py"])
+            self.audit([*export_script.REQUIRED_ENTRIES, "scripts/publish_vscode_extension.py"])
         with self.assertRaisesRegex(RuntimeError, "缺少必需运行时文件"):
             self.audit(list(export_script.REQUIRED_ENTRIES[:-1]))
 

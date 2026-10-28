@@ -13,7 +13,7 @@ from shutil import which
 from vscode_extension_process import cmd_quote, is_windows, require_tool, run_process
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 def find_vscode_code_command() -> str | None:

@@ -40,7 +40,7 @@ test("appends grok after the existing CLI enum and builds the official stdio com
   const select = html.match(/<select id="currentCli"[^>]*>(.*?)<\/select>/);
   assert.equal(
     select?.[1],
-    '<option value="codex">codex</option><option value="claude">claude</option><option value="opencode">opencode</option><option value="grok">grok</option><option value="dsh">dsh</option><option value="kimi-code">kimi-code</option>',
+    '<option value="codex">Codex</option><option value="claude">Claude</option><option value="opencode">OpenCode</option><option value="grok">Grok</option><option value="dsh">DSH</option><option value="kimi-code">KimiCode</option>',
   );
   assert.match(html, /const CLI_NAMES = \["codex","claude","opencode","grok","dsh","kimi-code"\]/);
   const grokSelectIds = [

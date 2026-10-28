@@ -30,6 +30,7 @@ import {
   readKimiConfigOptions,
   readKimiModeState,
   readKimiPermissionOffer,
+  readKimiPromptError,
   readKimiPromptStopReason,
   readKimiSessionId,
   readKimiTokenUsageUpdate,
@@ -133,6 +134,15 @@ test("kimi parses JSON-RPC frames and reports protocol errors", () => {
   assert.equal(error.code, "turn-failed");
   assert.equal(error.rpcCode, -32000);
   assert.equal(formatKimiRpcError({}).message, "ACP request failed");
+});
+
+test("kimi preserves nested provider errors and their model-not-found type", () => {
+  const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
+  const error = readKimiPromptError({ error: { message, type: "model_not_found" } });
+
+  assert.ok(error instanceof KimiProtocolError);
+  assert.equal(error.message, message);
+  assert.equal(error.code, "model_not_found");
 });
 
 test("kimi reads advertised config options and mode state", () => {

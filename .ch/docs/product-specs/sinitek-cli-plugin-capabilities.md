@@ -91,7 +91,7 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 
 ### Kimi Code
 
-- 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`、`kimi-code`；前五项顺序不变。CLI id 固定为 `kimi-code`，默认命令和界面显示名称 `kimi`。官方包是 `@moonshot-ai/kimi-code`（bin `kimi`，要求 Node >= 22.19.0）。
+- 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`、`kimi-code`；前五项顺序不变。CLI id 固定为 `kimi-code`，默认命令为 `kimi`，主 CLI 下拉和子模型 CLI 分组的界面显示名称为 `KimiCode`。官方包是 `@moonshot-ai/kimi-code`（bin `kimi`，要求 Node >= 22.19.0）。
 - 安装只走官方包元数据：`npm install -g @moonshot-ai/kimi-code@latest`。官方文档另有两种官方入口：脚本安装 `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`（Windows PowerShell 为 `irm https://code.kimi.com/kimi-code/install.ps1 | iex`，官方推荐、无需预装 Node）和 npm `npm install -g @moonshot-ai/kimi-code`（需 Node >= 22.19.0）。插件不使用、也不建议由插件执行管道安装脚本。版本检查 `kimi --version`；配置自检 `kimi doctor config [path]`；升级 `kimi upgrade` 或 npm 重装 `@latest`。用户向说明见 `docs/kimi-code-guide.md`。
 - 交互主路径是官方 ACP：`kimi acp`（JSON-RPC 2.0 over stdio）。`args.kimi-code` 只允许 `--region <mainland-cn|global>`；其余参数一律拒绝，不猜测未文档化开关。
 - 新档案默认模型 `kimi-k3.1-pro`，模型别名不含 `subcoco/` 前缀；已有配置不自动迁移别名。凭据只来自 `~/.kimi-code/config.toml`（provider `api_key`、provider `env` 表或 `api_key_env`）或用户自己的 `KIMI_MODEL_*` 环境变量；不使用第二个鉴权文件，不转发 Codex `auth.json`，并在启动子进程前剥离其它 CLI 的 `*_API_KEY`。默认配置和一键导入范例只包含默认模型、免审批、provider、真实模型 ID、URL、凭据和 `max_context_size`；API Key 用 `<your-kimi-api-key>` 占位，配置中心可视化支持直接填写或改用环境变量名。
@@ -102,7 +102,8 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - 权限：`session/request_permission` 由 runner 自动选择广告中的 `allow_once`；`plan` 模式不自动放行。其它反向 RPC（如 `fs/*`、`terminal/*`）统一回 `-32601`，命令由 Kimi 自己执行。
 - 上下文与压缩：`usage_update` 每轮结束后异步发送一次，`size` 取自模型目录的 `max_context_size`，是配置声明的真实窗口上限而不是估算值。runner 与 host 保留同一 ACP 会话的收尾通知，收到有效用量后按 Tab 展示；未收到时不显示「—」或估算值。`src/extensionHost/interactiveTurnKimi.ts` 标 `contextWindowSource: "kimi-config-window"`，悬停文案说明窗口取自配置的 `max_context_size`，与 DSH 的 `adapter-fallback` 区分且不共用文案。Kimi CLI 支持自动压缩与 `/compact`，ACP 会把自动压缩的开始、完成、取消、阻塞及 `/compact` 的开始确认作为普通助手文本发送，插件精确识别这些官方文本并显示「压缩中」，完成或失败后恢复；它们不进入最终答复判定。ACP 没有独立压缩方法，插件 `compactSession()` 抛 `compaction-unsupported`，不伪造本地压缩，面板不显示「压缩上下文」按钮。`[loop_control].reserved_context_size` 只作用于 CLI 自己的循环。
 - 回放：`KimiReplayStream` 只精简诊断回放，聊天仍实时展示正文与思考。`agent_thought_chunk`、`usage_update`、命令目录和会话信息不生成回放 JSON；普通正文兼容增量及累计文本，按消息或当前回合以 1 秒或 32 KiB 合并，仅忽略 `_meta` 中逐帧变化的 `eventId`、`chunkId`、`agentTimestampMs`，合并结果保留最后一片元数据，消息/会话等未知元数据变化仍构成边界，缺失 `messageId` 时不跨回合去重。工具无 `toolCallId` 的帧丢弃，保留开始、完整标题/参数和规范化终态；进行中逐 token 参数及命令输出的累计快照按新增片段合并，32 KiB 或语义边界触发冲刷，状态重复快照不新增记录。重复计划快照同样去重，其他未知事件保守保留。工具、计划、回合结束及取消都会排空待合并正文，Webview 回放与 JSONL 导出消费同一批记录。
-- Skills 目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、kimi。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。
+- 错误收口：`session/prompt` 返回的 provider 错误（包括 `type: "model_not_found"` 及“not supported by any configured account”）保留原始错误消息并直接显示错误气泡，不进入“没有最终结论”的 hidden retry，也不伪装成中断或成功结束。
+- Skills 目标是六个，显示顺序保持 Claude、OpenCode、Grok、Codex、DSH、KimiCode。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。
 - Webview：消费宿主的 `kimiThinkingOptions`（按 `tabId` 隔离、过滤非法值、只从广告集合选当前值、只有 `off`/`on` 时禁用下拉）与 `kimiModeUpdate`（按 `tabId` 存 `kimiAcpModeId`，不新增界面）；收到广告前用官方五档占位，切换标签页或 CLI 会清空广告集合。回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts` 与 `src/test/extensionHost/kimiInteractiveHostWire.test.ts`。
 - 配置中心可视化布局与 DSH 一致：默认模型、免审批模式作为公共参数置于上方；下方左侧管理模型列表，右侧编辑所选模型参数及该模型引用的连接参数。模型列表下不再展示 Providers 清单，TOML 中的 `providers` 数据与未展示字段仍原样保留。
 - 验收：真实 `kimi acp`（2.3.2）+ `subcoco/kimi-k3.1-pro` 已跑通新建会话、`yolo` 模式、`thinking=high`、权限自动放行与写文件任务，文件内容经校验；此前显式声明思考能力的配置在隔离 `KIMI_CODE_HOME` 下实测广告完整六档并完成一轮 prompt。当前精简默认配置另行运行 `kimi doctor config`；图形 Extension Host 点击验收未做。
@@ -208,7 +209,7 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 - 历史记录弹窗不再提供独立“Loop 群聊”恢复 tab；Loop 会话统一从“历史会话”加载。恢复主会话后，点击该主任务 tab，或使用输入区“打开群聊”按钮，都会进入对应群聊
 - 从历史加载未打开的会话时会新建 tab 承载该会话；若该会话已在 tabs 中打开，则直接切换到已有 tab
 - OpenCode 首次执行会从 JSONL `sessionID` 接管真实 `ses_*`，同一 tab 后续执行使用该真实 ID续接；插件内部 `local_*` 占位 ID不会作为 `--session` 传入 CLI。修复前留下的 `local_*` tab 会在下一次执行创建新底层会话，并在捕获真实 ID后迁移已有插件消息历史。
-- 多个 conversation tab（超过 5 个时启用左右翻页按钮，每页最多显示 5 个；第一页隐藏“上一页”，最后一页隐藏“下一页”，中间页显示两个方向，不展示不可用方向的禁用按钮）；Loop 主任务 tab 在 CLI 标签前显示 `☀️` 图标，子任务 tab 显示 `🌛` 图标，均不额外显示 `Loop` 文本。点击 Loop / Loop+ 主任务 tab 会打开该任务已有的群聊页面；标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务 tab、普通会话 tab 和关闭按钮不打开群聊。OpenCode 任务 tab 的 CLI 标签显示为 `opcode`，同一 CLI 的后续 tab 依次为 `opcode2` 起；内部 `cli` 标识仍为 `opencode`，Codex / Claude 标签不变
+- 多个 conversation tab（超过 5 个时启用左右翻页按钮，每页最多显示 5 个；第一页隐藏“上一页”，最后一页隐藏“下一页”，中间页显示两个方向，不展示不可用方向的禁用按钮）；Loop 主任务 tab 在 CLI 标签前显示 `☀️` 图标，子任务 tab 显示 `🌛` 图标，均不额外显示 `Loop` 文本。点击 Loop / Loop+ 主任务 tab 会打开该任务已有的群聊页面；标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务 tab、普通会话 tab 和关闭按钮不打开群聊。对话 Tab 的 CLI 标签显示为 `Codex`、`Claude`、`OpCode`、`Grok`、`DSH`、`Kimi`；OpenCode 同一 CLI 的后续 Tab 为 `OpCode2` 起，内部 `cli` 标识仍为 `opencode`。`kimi-code` 在 Tab 中特判显示为 `Kimi`，在主 CLI 下拉和子模型 CLI 分组显示为 `KimiCode`
 - 即使只有 1 个 conversation tab 也展示顶部标签；运行中 tab 使用主题 focus 色蓝色虚线流水边框，异常终止、进入自动重试等待期或收到错误 trace 气泡的所属 tab 显示错误红框。错误气泡追加、更新时均同步到对应前台或后台 tab；折叠、展开和切换 tab 不改变错误标记。警告气泡不标错；后续恢复输出、成功结束或手动停止会清除错误样式
 - 单个 tab 切换 CLI 分组或切换历史会话时，不应中断其他 tab 中正在执行的任务
 - 历史会话删除、清空、重置当前 Tab；其中“重置当前 Tab”会关闭当前 tab 并新建一个空白 tab，不会复用原 tab 清空后继续写入，因此旧会话历史仍可从会话列表恢复

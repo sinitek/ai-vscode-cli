@@ -694,7 +694,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: tabs }) });
 
   const beforeMain = posted.length;
-  const mainTab = conversationTabByLabel(document, "☀️ codex");
+  const mainTab = conversationTabByLabel(document, "☀️ Codex");
   assert.ok(mainTab);
   mainTab.click();
   assert.deepEqual(postedTabActions(posted, beforeMain), [
@@ -707,7 +707,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeRepeat = posted.length;
-  const activeMainTab = conversationTabByLabel(document, "☀️ codex");
+  const activeMainTab = conversationTabByLabel(document, "☀️ Codex");
   assert.ok(activeMainTab);
   activeMainTab.click();
   activeMainTab.dispatchEvent({ type: "keydown", key: "Enter" });
@@ -719,9 +719,9 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   ]);
 
   const beforeOthers = posted.length;
-  conversationTabByLabel(document, "🌛 codex2")?.click();
-  conversationTabByLabel(document, "claude")?.click();
-  conversationTabByLabel(document, "codex3")?.click();
+  conversationTabByLabel(document, "🌛 Codex2")?.click();
+  conversationTabByLabel(document, "Claude")?.click();
+  conversationTabByLabel(document, "Codex3")?.click();
   assert.deepEqual(postedTabActions(posted, beforeOthers), [
     { type: "selectConversationTab", tabId: "sub-tab", cli: "codex" },
     { type: "selectConversationTab", tabId: "plain-tab", cli: "claude" },
@@ -733,7 +733,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeClose = posted.length;
-  conversationTabByLabel(document, "☀️ codex")?.querySelector(".conversation-tab-close")?.click();
+  conversationTabByLabel(document, "☀️ Codex")?.querySelector(".conversation-tab-close")?.click();
   assert.deepEqual(postedTabActions(posted, beforeClose), [
     { type: "closeConversationTab", tabId: "main-tab", cli: "codex" },
   ]);
@@ -1673,7 +1673,7 @@ test("filters prompt and session history by the shared keyword search", () => {
 
   assert.equal(api.state.historySearchQuery, "RELEASE");
   assert.equal(document.getElementById("sessionList").children.length, 1);
-  assert.equal(document.getElementById("sessionList").children[0].querySelector(".session-label")?.textContent, "[codex] Deploy release notes");
+  assert.equal(document.getElementById("sessionList").children[0].querySelector(".session-label")?.textContent, "[Codex] Deploy release notes");
 
   document.getElementById("historyTabPrompts").click();
   const promptList = document.getElementById("promptHistoryList");

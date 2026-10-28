@@ -1234,9 +1234,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
 
       function formatConversationTabCliLabel(cli) {
         if (cli === "opencode") {
-          return "opcode";
+          return "OpCode";
         }
-        return typeof cli === "string" && cli ? formatCliDisplayName(cli) : "session";
+        if (cli === "kimi-code") {
+          return "Kimi";
+        }
+        return typeof cli === "string" && cli ? formatCliDisplayName(cli) : "Session";
       }
 
       function formatConversationTabLabel(tab, baseLabel) {

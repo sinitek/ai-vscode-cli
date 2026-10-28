@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import { type CliName } from "../../cli/types";
+import { getCliDisplayName } from "../../cli/installer";
 import {
   createSessionTabsController,
   findConversationTabForLoopResume,
@@ -131,8 +132,9 @@ function buildSyncRunningStateForActiveTab(tab: TabSummary | null): {
 function buildFormatConversationTabCliLabel(): (cli: string | null | undefined) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "formatConversationTabCliLabel");
   return new Function(
+    "formatCliDisplayName",
     `${functionSource}; return formatConversationTabCliLabel;`,
-  )() as (cli: string | null | undefined) => string;
+  )(getCliDisplayName) as (cli: string | null | undefined) => string;
 }
 
 function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: string) => string {
@@ -196,14 +198,17 @@ function buildResetConversationTabSessionRequest(
   ) as () => void;
 }
 
-test("shows OpenCode conversation tabs as opcode", () => {
+test("conversation tabs use capitalized CLI labels and keep Kimi separate from KimiCode", () => {
   const formatCliLabel = buildFormatConversationTabCliLabel();
 
-  assert.equal(formatCliLabel("opencode"), "opcode");
-  assert.equal(formatCliLabel("codex"), "codex");
-  assert.equal(formatCliLabel("claude"), "claude");
-  assert.equal(formatCliLabel(""), "session");
-  assert.equal(formatCliLabel(undefined), "session");
+  assert.equal(formatCliLabel("opencode"), "OpCode");
+  assert.equal(formatCliLabel("codex"), "Codex");
+  assert.equal(formatCliLabel("claude"), "Claude");
+  assert.equal(formatCliLabel("grok"), "Grok");
+  assert.equal(formatCliLabel("dsh"), "DSH");
+  assert.equal(formatCliLabel("kimi-code"), "Kimi");
+  assert.equal(formatCliLabel(""), "Session");
+  assert.equal(formatCliLabel(undefined), "Session");
 });
 
 test("uses sun and moon icons to identify Loop task tabs", () => {

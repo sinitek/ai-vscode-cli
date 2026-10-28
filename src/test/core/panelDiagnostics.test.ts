@@ -53,6 +53,14 @@ test("preserves existing non-retryable abort and executable-not-found guards", (
   assert.equal(isHiddenRetryEligibleErrorInfo({ code: "ENOENT", message: "spawn codex ENOENT" }), false);
 });
 
+test("does not retry terminal Kimi model-not-found errors", () => {
+  const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
+  assert.equal(isHiddenRetryEligibleErrorInfo({ code: "model_not_found", message }), false);
+  assert.equal(isHiddenRetryEligibleErrorInfo({
+    message: JSON.stringify({ error: { message, type: "model_not_found" } }),
+  }), false);
+});
+
 test("rejects a billing failure reported through a nonzero CLI exit", () => {
   assert.equal(isHiddenRetryEligibleAttempt(
     { type: "exit", code: 1 },

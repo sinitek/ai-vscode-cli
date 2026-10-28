@@ -136,14 +136,14 @@ npm install
 ### 2. 导出插件
 
 ```bash
-python3 export_vscode_extension.py
+python3 scripts/export_vscode_extension.py
 ```
 
 默认仍导出通用包，不按构建机平台删除 SDK 的其他平台资源。如只分发给某个平台，可显式导出更小的平台包：
 
 ```powershell
-python export_vscode_extension.py --target current
-python export_vscode_extension.py --target win32-x64
+python scripts/export_vscode_extension.py --target current
+python scripts/export_vscode_extension.py --target win32-x64
 ```
 
 `current` 按运行打包脚本的 Node.js 平台/架构解析；支持 `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64`、`win32-x64`。平台包带 VSIX target 标记，文件名为 `dist/sinitek-cli-tools-<version>-<target>.vsix`，只能分发到对应平台；不要拿 macOS 平台包替代 Windows/Linux 通用发布。SDK 本身不包含 Windows ARM64、Linux ARM32 或 Alpine 专属 ripgrep，本脚本不宣称新增这些平台支持。
@@ -174,7 +174,7 @@ Claude SDK 固定为 `0.2.12`：新版 SDK 已改为按平台拆分原生 CLI，
 
 ```powershell
 .\node_modules\.bin\vsce.cmd login sinitek
-python publish_vscode_extension.py
+python scripts/publish_vscode_extension.py
 ```
 
 以上命令必须在插件项目根目录执行，不是在上级 `sinitek` 目录。也可直接使用项目 `node_modules/.bin/vsce` 的绝对路径登录。项目依赖为 `@vscode/vsce`；不要在其他目录运行 `npx --no-install vsce`，否则缺少本地可执行文件时会尝试解析旧的非 scoped `vsce` 包，并因禁止安装而失败。
@@ -182,9 +182,9 @@ python publish_vscode_extension.py
 脚本先验证发布者与鉴权，再调用 Python 导出脚本构建、审计 VSIX，最后通过 `vsce publish --packagePath` 上传同一份产物。非交互环境支持通过安全环境变量注入 `VSCE_PAT`，兼容 `VSCODE_MARKETPLACE_PAT`，前者优先；令牌不放入命令行参数。缺少 vsce 时复用项目依赖安装流程；无凭据或鉴权失败会在构建之前退出。
 交互式终端中，无论发布成功或失败，脚本都会保留窗口并等待按 Enter 关闭，便于查看失败原因；CI 与管道调用不会等待输入。
 
-默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `python publish_vscode_extension.py --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Windows 使用 `python`，Linux/macOS 使用 `python3`；发布、导出和进程调用不依赖 Windows 专属模块或 Git Bash/WSL，路径含空格受支持。跨平台命令执行由 `vscode_extension_process.py` 统一处理，仅 VS Code 的 Windows 安装路径探测保留在 `vscode_extension_win.py`。
+默认发布通用包 `dist/sinitek-cli-tools-<version>.vsix`；确有平台分发需求时，可用 `python scripts/publish_vscode_extension.py --target current` 或导出脚本已有的显式平台值。平台包不替代其他系统的通用包。Windows 使用 `python`，Linux/macOS 使用 `python3`；发布、导出和进程调用不依赖 Windows 专属模块或 Git Bash/WSL，路径含空格受支持。跨平台命令执行由 `scripts/vscode_extension_process.py` 统一处理，仅 VS Code 的 Windows 安装路径探测保留在 `scripts/vscode_extension_win.py`。
 
-市场不允许覆盖已发布的同版本包；脚本不会自动改版本、创建提交或 tag。需要更新时先手动调整 `package.json` 的版本再重跑。上传失败保留本次导出的 VSIX；仅需离线安装包时仍使用 `python export_vscode_extension.py`，不需要市场凭据。
+市场不允许覆盖已发布的同版本包；脚本不会自动改版本、创建提交或 tag。需要更新时先手动调整 `package.json` 的版本再重跑。上传失败保留本次导出的 VSIX；仅需离线安装包时仍使用 `python scripts/export_vscode_extension.py`，不需要市场凭据。
 
 ## Loop 子任务规则隔离发布前验证
 
@@ -216,7 +216,7 @@ npm run build
 - 入口：`src/extension.ts`
 - 聊天面板 Webview：`src/webview/viewContent.ts`
 - 配置中心面板：`src/webview/configPanel.ts`、`src/webview/configView.ts`
-- 打包脚本：`export_vscode_extension.py`
+- 打包脚本：`scripts/export_vscode_extension.py`
 - 本地开发脚本：`run_dev.py`
 
 ## 常见问题

@@ -50,7 +50,7 @@ test("Kimi Code 用户指南写清 default_model 与免审批配置方式", () =
   assert.doesNotMatch(guide, /subcoco\//);
   // 别名与真实模型 ID 的区分必须写出来，避免用户把表键当模型 ID
   assert.match(guide, /别名 ≠ 模型 ID|与真实模型 ID/);
-  assert.match(guide, /\[providers\.subcoco\]/);
+  assert.match(guide, /\[providers\.default\]/);
   assert.match(guide, /api_key = "<your-kimi-api-key>"/);
   assert.match(guide, /api_key_env = "KIMI_CODE_API_KEY"/);
   assert.match(guide, /不需要 Codex 那样的第二个 `auth\.json`/);
@@ -205,6 +205,7 @@ test("业务 ontology 登记了 Kimi 规则，且引用文件都在仓库里", (
     [
     "plugin.rule.kimi_acp_install_and_launch",
     "plugin.rule.kimi_config_model_management",
+      "plugin.rule.kimi_model_not_found_terminal_error",
       "plugin.rule.kimi_no_native_compaction",
       "plugin.rule.kimi_thinking_capability_gated",
     ],

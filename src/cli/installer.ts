@@ -21,7 +21,7 @@ const CLI_DISPLAY_NAMES: Record<CliName, string> = {
   opencode: "OpenCode",
   grok: "Grok",
   dsh: "DSH",
-  "kimi-code": "kimi",
+  "kimi-code": "KimiCode",
 };
 
 const CODEGRAPH_INSTALL_STEP_COMMANDS = {

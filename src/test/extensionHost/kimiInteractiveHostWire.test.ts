@@ -14,6 +14,7 @@ import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShare
 
 const { createPromptInteractiveRuntimeHost } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
 const { KIMI_CODE_DEFAULT_MODEL } = require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+const { formatKimiRpcError } = require("../../interactive/kimiAppServerProtocol") as typeof import("../../interactive/kimiAppServerProtocol");
 
 type RuntimeDeps = Parameters<typeof createPromptInteractiveRuntimeHost>[0];
 
@@ -266,6 +267,27 @@ test("Kimi host accepts assistant text on consecutive turns without hidden retri
   assert.equal(harness.prompts[0]?.startsWith("first\n"), true);
   assert.equal(harness.prompts[1]?.startsWith("second\n"), true);
   assert.deepEqual(harness.runStatus, ["start", "end", "start", "end"]);
+});
+
+test("Kimi model-not-found errors end as error bubbles without missing-conclusion retries", async () => {
+  const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
+  const harness = createHostHarness({
+    behavior: async () => {
+      throw formatKimiRpcError({ message, type: "model_not_found" });
+    },
+  });
+
+  await assert.rejects(
+    harness.host.runPromptInteractive(inputFor("hello"), targetFor("local_1")),
+    (error: unknown) => error instanceof Error && error.message === message,
+  );
+
+  const messages = Array.from(harness.messagesBySession.values()).flat();
+  assert.equal(harness.prompts.length, 1);
+  assert.deepEqual(harness.runStatus, ["start", "error"]);
+  assert.equal(messages.some((item) => item.role === "system" && item.content === message), true);
+  assert.equal(messages.some((item) => String(item.content).includes("run.missingFinalConclusionRetryReason")), false);
+  assert.equal(messages.some((item) => String(item.content).includes("run.hiddenRetryQueued")), false);
 });
 
 test("Kimi host labels the context window as the configured capacity, not an adapter fallback", async () => {

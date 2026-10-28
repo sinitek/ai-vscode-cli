@@ -46,10 +46,7 @@ logs
 logs/**
 
 # Python scripts
-vscode_extension_win.py
 dev_run_mac.sh
-export_vscode_extension.py
-publish_vscode_extension.py
 run_dev.py
 
 # Lock files

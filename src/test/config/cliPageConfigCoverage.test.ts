@@ -1430,7 +1430,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   { id: "grok", label: "Grok" },
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
-  { id: "kimi-code", label: "kimi" },
+  { id: "kimi-code", label: "KimiCode" },
 `);
   const copyModal = extractBetween(uiSource, "const SkillsCopyModal =", "const SkillsMarketModal =");
   const marketModal = extractBetween(uiSource, "const SkillsMarketModal =", "const renderSkillRows =");
@@ -1509,7 +1509,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   const copyLabels = descendants(copyModalNode)
     .filter((node) => node.type === "label")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH", "kimi"]);
+  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
   const dshCopy = descendants(copyModalNode).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshCopy);
   dshCopy.props.children[0].props.onChange({ target: { checked: true } });
@@ -1541,7 +1541,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   const marketLabels = descendants(selected)
     .filter((node) => node.type === "label" && node.props.className === "skills-copy-target")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH", "kimi"]);
+  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
   const dshInstall = descendants(selected).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshInstall);
   dshInstall.props.children[0].props.onChange({ target: { checked: true } });

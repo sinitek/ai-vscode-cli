@@ -450,12 +450,7 @@ ${renderChatModal({
           </div>
           <div class="rules-row">
             <select id="rulesLoadCli" class="cli-select" aria-label="${i18n.rulesLoadCliAria}">
-              <option value="codex">codex</option>
-              <option value="claude">claude</option>
-              <option value="opencode">opencode</option>
-              <option value="grok">grok</option>
-              <option value="dsh">dsh</option>
-              <option value="kimi-code">kimi</option>
+              ${CLI_LIST.map((cli) => `<option value="${cli}">${getCliDisplayName(cli)}</option>`).join("")}
             </select>
             <button id="loadRules" class="secondary action-button">${i18n.rulesLoadButton}</button>
           </div>
@@ -464,12 +459,12 @@ ${renderChatModal({
           <div class="rules-row rules-save-row">
             <span>${i18n.rulesSaveLabel}</span>
             <div class="rules-checkboxes" role="group" aria-label="${i18n.rulesSaveGroupLabel}">
-              <label id="rulesSaveCodexOption"><input type="checkbox" id="rulesSaveCodex" /> <span id="rulesSaveCodexLabel">codex</span></label>
-              <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> claude</label>
-              <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> opencode</label>
-              <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> grok</label>
-              <label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" /> dsh</label>
-              <label id="rulesSaveKimiCodeOption"><input type="checkbox" id="rulesSaveKimiCode" /> kimi</label>
+              <label id="rulesSaveCodexOption"><input type="checkbox" id="rulesSaveCodex" /> <span id="rulesSaveCodexLabel">${getCliDisplayName("codex")}</span></label>
+              <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> ${getCliDisplayName("claude")}</label>
+              <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> ${getCliDisplayName("opencode")}</label>
+              <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> ${getCliDisplayName("grok")}</label>
+              <label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" /> ${getCliDisplayName("dsh")}</label>
+              <label id="rulesSaveKimiCodeOption"><input type="checkbox" id="rulesSaveKimiCode" /> ${getCliDisplayName("kimi-code")}</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>`,

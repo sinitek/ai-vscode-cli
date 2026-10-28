@@ -11,6 +11,17 @@ test("every CLI group has an install command on Windows and Unix", () => {
   }
 });
 
+test("CLI groups use the requested display names", () => {
+  assert.deepEqual(CLI_LIST.map(getCliDisplayName), [
+    "Codex",
+    "Claude",
+    "OpenCode",
+    "Grok",
+    "DSH",
+    "KimiCode",
+  ]);
+});
+
 test("Grok uses the official installer for the current platform", () => {
   assert.equal(getCliInstallCommand("grok", "win32"), "irm https://x.ai/cli/install.ps1 | iex");
   assert.equal(getCliInstallCommand("grok", "darwin"), "curl -fsSL https://x.ai/cli/install.sh | bash");

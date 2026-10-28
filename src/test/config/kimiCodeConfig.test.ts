@@ -292,9 +292,9 @@ test("default config text uses the documented model, provider and context fields
   const root = parsed.value as Record<string, any>;
   assert.equal(root.default_model, KIMI_CODE_DEFAULT_MODEL);
   assert.equal(root.default_permission_mode, "auto", "免审批必须写进配置文件，-p 不能带 --auto");
-  assert.equal(root.providers.subcoco.base_url, "http://127.0.0.1:33391/v1");
-  assert.equal(root.providers.subcoco.api_key_env, "KIMI_CODE_API_KEY");
-  assert.equal(root.providers.subcoco.api_key, undefined);
+  assert.equal(root.providers.default.base_url, "http://127.0.0.1:33391/v1");
+  assert.equal(root.providers.default.api_key_env, "KIMI_CODE_API_KEY");
+  assert.equal(root.providers.default.api_key, undefined);
   assert.equal(root.models[KIMI_CODE_DEFAULT_MODEL].window ?? root.models[KIMI_CODE_DEFAULT_MODEL].max_context_size, 262144);
   assert.equal(root.models[KIMI_CODE_DEFAULT_MODEL].model, "kimi-k3.1-pro");
   assert.equal(root.thinking, undefined);
@@ -314,9 +314,9 @@ test("default config text keeps the provider, base_url, alias and real model id 
   if (!parsed.ok) return;
   const root = parsed.value as Record<string, any>;
   assert.equal(root.default_model, "kimi-k3.1-pro");
-  assert.deepEqual(Object.keys(root.providers), ["subcoco"]);
-  assert.equal(root.providers.subcoco.base_url, "http://127.0.0.1:33391/v1");
-  assert.equal(root.models["kimi-k3.1-pro"].provider, "subcoco");
+  assert.deepEqual(Object.keys(root.providers), ["default"]);
+  assert.equal(root.providers.default.base_url, "http://127.0.0.1:33391/v1");
+  assert.equal(root.models["kimi-k3.1-pro"].provider, "default");
   assert.equal(root.models["kimi-k3.1-pro"].model, "kimi-k3.1-pro");
 });
 
@@ -326,8 +326,8 @@ test("default config text prefers an inline api_key when one is supplied", () =>
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
   const root = parsed.value as Record<string, any>;
-  assert.equal(root.providers.subcoco.api_key, "sk-test");
-  assert.equal(root.providers.subcoco.api_key_env, undefined);
+  assert.equal(root.providers.default.api_key, "sk-test");
+  assert.equal(root.providers.default.api_key_env, undefined);
   assert.equal(root.default_permission_mode, "yolo");
 });
 

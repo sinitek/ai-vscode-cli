@@ -46,6 +46,7 @@ import {
   readKimiCompactionUpdate,
   readKimiModeState,
   readKimiPermissionOffer,
+  readKimiPromptError,
   readKimiPromptStopReason,
   readKimiSessionId,
   readKimiSessionUpdateBody,
@@ -313,6 +314,10 @@ export class KimiInteractiveRunner {
         "session/prompt",
         buildKimiSessionPromptParams(this.sessionId, text),
       );
+      const promptError = readKimiPromptError(result);
+      if (promptError) {
+        throw promptError;
+      }
       const stopReason = readKimiPromptStopReason(result);
       if (!stopReason) {
         throw new KimiProtocolError("session/prompt completed without stopReason", "missing-stop-reason");

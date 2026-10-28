@@ -1039,10 +1039,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         const enabled = enabledRuleCliNames();
         const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code"].filter((name) => enabled.indexOf(name) >= 0);
         const options = isGlobal
-          ? enabled.map((name) => ({ value: name, label: name }))
+          ? enabled.map((name) => ({ value: name, label: formatCliDisplayName(name) }))
           : [
-              ...(projectGroup.length ? [{ value: projectGroup[0], label: projectGroup.join("/") }] : []),
-              ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: "claude" }] : []),
+              ...(projectGroup.length ? [{ value: projectGroup[0], label: projectGroup.map(formatCliDisplayName).join("/") }] : []),
+              ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: formatCliDisplayName("claude") }] : []),
             ];
         elements.rulesLoadCli.innerHTML = "";
         options.forEach((option) => {
@@ -1070,7 +1070,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         const enabled = enabledRuleCliNames();
         const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code"].filter((name) => enabled.indexOf(name) >= 0);
         if (elements.rulesSaveCodexLabel) {
-          elements.rulesSaveCodexLabel.textContent = isGlobal ? "codex" : projectGroup.join("/");
+          elements.rulesSaveCodexLabel.textContent = isGlobal
+            ? formatCliDisplayName("codex")
+            : projectGroup.map(formatCliDisplayName).join("/");
         }
         setRuleOptionVisible(
           elements.rulesSaveCodexOption,

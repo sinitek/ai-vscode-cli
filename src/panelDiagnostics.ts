@@ -233,6 +233,13 @@ const NON_RETRYABLE_BILLING_ERROR_PATTERNS = [
   /\brequires?\s+\d+(?:\.\d+)?\s+points?\b[\s\S]*\bremaining\s+0(?![\d.])/i,
 ] as const;
 
+const NON_RETRYABLE_MODEL_ERROR_CODES = new Set(["MODEL_NOT_FOUND"]);
+
+const NON_RETRYABLE_MODEL_ERROR_PATTERNS = [
+  /\bmodel_not_found\b/i,
+  /\bnot supported by any configured account\b/i,
+] as const;
+
 export function isNonRetryableBillingErrorInfo(info: ErrorInfo): boolean {
   const normalizedCode = String(info.code ?? "").trim().toUpperCase();
   if (NON_RETRYABLE_BILLING_ERROR_CODES.has(normalizedCode)) {
@@ -253,6 +260,10 @@ export function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
     return false;
   }
   const combined = `${info.name ?? ""} ${info.code ?? ""} ${info.message}`.toLowerCase();
+  if (NON_RETRYABLE_MODEL_ERROR_CODES.has(String(info.code ?? "").trim().toUpperCase())
+    || NON_RETRYABLE_MODEL_ERROR_PATTERNS.some((pattern) => pattern.test(combined))) {
+    return false;
+  }
   if ((info.code ?? "").toUpperCase() === "ENOENT" || combined.includes("enoent")) {
     return false;
   }

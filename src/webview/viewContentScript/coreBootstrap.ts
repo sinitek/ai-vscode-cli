@@ -9,8 +9,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       })();
       const i18n = \${JSON.stringify(i18n)};
       const CLI_NAMES = \${JSON.stringify(CLI_LIST)};
+      const CLI_DISPLAY_NAMES = \${JSON.stringify(cliDisplayNames)};
       function formatCliDisplayName(name) {
-        return name === "kimi-code" ? "kimi" : name;
+        return CLI_DISPLAY_NAMES[name] || name;
       }
       function isCliChoiceEnabled(name) {
         if (!name) {

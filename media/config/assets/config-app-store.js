@@ -77,7 +77,7 @@ const CONFIG_STORAGE_KEYS = {
     opencode: "OpenCode",
     grok: "Grok",
     dsh: "DSH",
-    "kimi-code": "Kimi",
+    "kimi-code": "KimiCode",
   },
   createEmptyActiveIds = () => {
     const activeIds = {};

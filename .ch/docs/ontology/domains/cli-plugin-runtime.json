@@ -530,7 +530,7 @@
       "applies_to": ["plugin.extension_host"],
       "source_refs": [
         {"path": "package.json", "anchor": "publisher"},
-        {"path": "publish_vscode_extension.py"},
+        {"path": "scripts/publish_vscode_extension.py"},
         {"path": "scripts/tests/test_publish_vscode_extension.py"},
         {"path": ".ch/docs/runbooks/local-development.md", "anchor": "发布到 VS Code 市场"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "VS Code 市场一键发布"}
@@ -544,7 +544,7 @@
       "aliases": ["VSIX", "打包", "瘦身", "--target", "export_vscode_extension.py"],
       "applies_to": ["plugin.extension_host"],
       "source_refs": [
-        {"path": "export_vscode_extension.py"},
+        {"path": "scripts/export_vscode_extension.py"},
         {"path": "scripts/vsix_target.js"},
         {"path": "src/test/shared/vsixPackaging.test.ts"},
         {"path": ".ch/docs/runbooks/local-development.md", "anchor": "打包 VSIX"},
@@ -1139,6 +1139,20 @@
         {"path": "src/test/extensionHost/promptAutoRepair.test.ts"},
         {"path": "src/extension.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "工具设置自动修复 CLI ENOENT"}
+      ]
+    },
+    {
+      "id": "plugin.rule.kimi_model_not_found_terminal_error",
+      "name": "Kimi 模型未配置错误直接终止",
+      "description": "Kimi ACP 的 session/prompt provider 错误保留服务端消息与错误类型；model_not_found 或模型不受当前账户组支持时直接显示错误气泡，不进入 hidden retry 或缺少最终结论续跑，也不伪装成中断或成功结束。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/interactive/kimiAppServerProtocol.ts", "anchor": "readKimiPromptError"},
+        {"path": "src/interactive/kimiRunner.ts", "anchor": "readKimiPromptError"},
+        {"path": "src/panelDiagnostics.ts", "anchor": "isHiddenRetryEligibleErrorInfo"},
+        {"path": "src/test/extensionHost/kimiInteractiveHostWire.test.ts", "anchor": "Kimi model-not-found errors"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Kimi Code ACP 收到"}
       ]
     },
     {

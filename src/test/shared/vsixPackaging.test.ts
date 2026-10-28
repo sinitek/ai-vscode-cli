@@ -86,9 +86,10 @@ for (const target of targets) {
 test("VSIX excludes developer artifacts without excluding embedded workspace scaffold", () => {
   const discarded = [
     "run_dev.py",
-    "export_vscode_extension.py",
-    "publish_vscode_extension.py",
-    "vscode_extension_process.py",
+    "scripts/export_vscode_extension.py",
+    "scripts/publish_vscode_extension.py",
+    "scripts/vscode_extension_process.py",
+    "scripts/vscode_extension_win.py",
     ".tmp/playwright-smoke/screenshot.png",
     ".tmp/bubble-spacing/webview.html",
     "dist/test/shared/vsixPackaging.test.js",
@@ -157,7 +158,8 @@ test("VSIX helper reports invalid targets as a nonzero CLI result", () => {
 
 test("VSIX Python export rejects unknown options and incomplete target arguments before building", () => {
   for (const args of [["--target"], ["--unknown"]]) {
-    const result = childProcess.spawnSync(process.env.PYTHON || "python", [path.join(repoRoot, "export_vscode_extension.py"), ...args], { encoding: "utf8" });
+    const python = process.env.PYTHON || process.env.PYTHON3 || (process.platform === "win32" ? "python" : "python3");
+    const result = childProcess.spawnSync(python, [path.join(repoRoot, "scripts", "export_vscode_extension.py"), ...args], { encoding: "utf8" });
     assert.equal(result.status, 2);
     assert.match(result.stderr, /usage:/);
     assert.doesNotMatch(result.stdout, /Building/);
@@ -165,7 +167,7 @@ test("VSIX Python export rejects unknown options and incomplete target arguments
 });
 
 test("VSIX Python export audits current runtime assets rather than removed marketplace catalogs", () => {
-  const script = fs.readFileSync(path.join(repoRoot, "export_vscode_extension.py"), "utf8");
+  const script = fs.readFileSync(path.join(repoRoot, "scripts", "export_vscode_extension.py"), "utf8");
   const requiredBlock = script.match(/REQUIRED_ENTRIES = \(([\s\S]*?)\n\)/u)?.[1] ?? "";
   const entries = Array.from(requiredBlock.matchAll(/"([^"]+)"/gu), (match) => match[1]);
   assert.ok(entries.length > 0);

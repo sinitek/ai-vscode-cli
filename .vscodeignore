@@ -33,10 +33,6 @@ __pycache__/**
 .gitignore
 AGENTS.md
 ARCHITECTURE.md
-export_vscode_extension.py
-publish_vscode_extension.py
 run_dev.py
-vscode_extension_win.py
-vscode_extension_process.py
 pnpm-lock.yaml
 tsconfig.json

@@ -13,11 +13,14 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
 from run_dev import install_workspace_node_modules, workspace_has_pnpm_node_modules
 from vscode_extension_process import require_tool, run_process
 
 
-ROOT_DIR = Path(__file__).resolve().parent
 REQUIRED_ENTRIES = (
     "dist/extension.js",
     "package.json",
@@ -36,7 +39,7 @@ REQUIRED_ENTRIES = (
 )
 FORBIDDEN_ENTRY_PATTERN = re.compile(
     r"^(?:"
-    r"(?:\.agents|\.ch|\.codegraph|\.tmp|docs|scripts|dist/test)(?:/|$)|"
+    r"(?:\.agents|\.ch|\.codegraph|\.tmp|docs|scripts|dist/test)(?:/.*)?|"
     r"(?:AGENTS\.md|ARCHITECTURE\.md|export_vscode_extension\.(?:py|sh)|"
     r"publish_vscode_extension\.(?:py|sh)|run_dev\.(?:py|sh)|vscode_extension_process\.py|to)$|"
     r"dist/.*\.map$|"

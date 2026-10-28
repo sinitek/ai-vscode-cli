@@ -20,13 +20,13 @@ kimi doctor config             # 期望 All checked config files are valid.
 default_model = "kimi-k3.1-pro"
 default_permission_mode = "auto"
 
-[providers.subcoco]
+[providers.default]
 type = "openai"
 base_url = "http://127.0.0.1:33391/v1"
 api_key = "<your-kimi-api-key>"
 
 [models."kimi-k3.1-pro"]
-provider = "subcoco"
+provider = "default"
 model = "kimi-k3.1-pro"
 max_context_size = 262144
 capabilities = ["thinking"]

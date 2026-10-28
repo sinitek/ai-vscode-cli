@@ -95,7 +95,7 @@ test("skill row actions stay on one line and copying opens a dialog instead of a
 });
 
 test("copy dialog excludes its source CLI and empty selection cannot submit", async () => {
-  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"], ["dsh", "DSH"], ["kimi-code", "kimi"]]) {
+  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"], ["dsh", "DSH"], ["kimi-code", "KimiCode"]]) {
     let calls = 0;
     const harness = createHarness(async () => { calls++; }, platform);
     assert.equal(harness.options().length, harness.components.CLI_GLOBAL_SKILL_TARGETS.length - 1);
@@ -234,7 +234,7 @@ test("DSH is appended to the shared copy targets and can receive a skill copy", 
     { id: "grok", label: "Grok" },
     { id: "codex", label: "Codex" },
     { id: "dsh", label: "DSH" },
-    { id: "kimi-code", label: "kimi" },
+    { id: "kimi-code", label: "KimiCode" },
   ]);
 
   const calls: string[] = [];
@@ -242,7 +242,7 @@ test("DSH is appended to the shared copy targets and can receive a skill copy", 
     assert.equal(item, skill);
     calls.push(platform);
   }, "claude");
-  assert.deepEqual(targetLabels(harness.options()), ["OpenCode", "Grok", "Codex", "DSH", "kimi"]);
+  assert.deepEqual(targetLabels(harness.options()), ["OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
   assert.equal(harness.option("DSH").props.type, "checkbox");
   assert.equal(harness.option("DSH").props.disabled, false);
   assert.equal(harness.option("Codex").props.disabled, false);
@@ -255,7 +255,7 @@ test("DSH is appended to the shared copy targets and can receive a skill copy", 
   assert.equal(JSON.stringify(harness.messages).includes("SINITEK_DSH_API_KEY"), false);
 
   const fromDsh = createHarness(async () => undefined, "dsh");
-  assert.deepEqual(targetLabels(fromDsh.options()), ["Claude", "OpenCode", "Grok", "Codex", "kimi"]);
+  assert.deepEqual(targetLabels(fromDsh.options()), ["Claude", "OpenCode", "Grok", "Codex", "KimiCode"]);
   assert.equal(fromDsh.options().some((node) => targetLabels([node])[0] === "DSH"), false);
 });
 
@@ -368,7 +368,7 @@ test("skills market install uses the shared list and can install to DSH", async 
   ]);
   await harness.boot();
   harness.button("下载").props.onClick();
-  assert.deepEqual(targetLabels(harness.targetNodes()), ["Claude", "OpenCode", "Grok", "Codex", "DSH", "kimi"]);
+  assert.deepEqual(targetLabels(harness.targetNodes()), ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
   assert.equal(harness.button("安装").props.disabled, true);
   const dsh = harness.targetNodes().find((node) => targetLabels([node])[0] === "DSH");
   assert.ok(dsh);

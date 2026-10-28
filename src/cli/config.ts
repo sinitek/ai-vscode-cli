@@ -37,6 +37,9 @@ export function getDefaultCli(): CliName {
 }
 
 export function getCliCommand(cli: CliName): string {
+  if (cli === "kimi-code") {
+    return getKimiCommand();
+  }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   return config.get<string>(`commands.${cli}`, cli);
 }
@@ -229,7 +232,7 @@ export function getKimiCommand(): string {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
   const configured = config.get<string>("commands.kimi-code");
   const command = typeof configured === "string" ? configured.trim() : "";
-  return command || KIMI_DEFAULT_COMMAND;
+  return command && command !== "kimi-code" ? command : KIMI_DEFAULT_COMMAND;
 }
 
 export function getKimiAgentArgs(): string[] {

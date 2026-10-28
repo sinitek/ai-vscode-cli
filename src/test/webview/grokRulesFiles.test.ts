@@ -1,6 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { getCliDisplayName } from "../../cli/installer";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
@@ -134,8 +135,9 @@ function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) 
     "document",
     "t",
     "CLI_NAMES",
+    "formatCliDisplayName",
     `${source}; return { collectRuleTargets, setRulesLoadCliOptions, syncRulesSaveOptions, updateRulesPath, updateRulesScope };`,
-  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, cliNames) as {
+  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, cliNames, getCliDisplayName) as {
     collectRuleTargets: () => string[];
     setRulesLoadCliOptions: (isGlobal: boolean) => void;
     syncRulesSaveOptions: (isGlobal: boolean) => void;
@@ -150,9 +152,9 @@ test("global rules loader includes an independent grok file option", () => {
   const selectMatch = html.match(/<select id="rulesLoadCli"[\s\S]*?<\/select>/);
   assert.ok(selectMatch, "rulesLoadCli select should exist");
   const selectHtml = selectMatch[0];
-  assert.match(selectHtml, /<option value="grok">grok<\/option>/);
-  assert.match(html, /<label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" \/> grok<\/label>/);
-  assert.match(html, /<span id="rulesSaveCodexLabel">codex<\/span>/);
+  assert.match(selectHtml, /<option value="grok">Grok<\/option>/);
+  assert.match(html, /<label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" \/> Grok<\/label>/);
+  assert.match(html, /<span id="rulesSaveCodexLabel">Codex<\/span>/);
   assert.equal(html.split('id="rulesSaveGrok"').length - 1, 1);
   assert.doesNotMatch(html, /~\/\.grok|[A-Za-z]:\\/);
   assert.doesNotMatch(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /~\/\.grok|[A-Za-z]:\\/);
@@ -164,13 +166,13 @@ test("global rules loader includes an independent grok file option", () => {
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "codex"],
-      ["claude", "claude"],
-      ["opencode", "opencode"],
-      ["grok", "grok"],
+      ["codex", "Codex"],
+      ["claude", "Claude"],
+      ["opencode", "OpenCode"],
+      ["grok", "Grok"],
     ],
   );
-  assert.equal(elements.rulesSaveCodexLabel.textContent, "codex");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex");
   assert.equal(elements.rulesSaveGrokOption.style.display, "");
   elements.rulesLoadCli.value = "grok";
   helpers.updateRulesPath("grok");
@@ -188,13 +190,13 @@ test("project scope keeps one shared AGENTS target and does not submit grok sepa
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "codex/opencode/grok"],
-      ["claude", "claude"],
+      ["codex", "Codex/OpenCode/Grok"],
+      ["claude", "Claude"],
     ],
   );
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "grok"), false);
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "opencode"), false);
-  assert.equal(elements.rulesSaveCodexLabel.textContent, "codex/opencode/grok");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex/OpenCode/Grok");
   assert.equal(elements.rulesSaveOpenCodeOption.style.display, "none");
   assert.equal(elements.rulesSaveOpenCode.checked, false);
   assert.equal(elements.rulesSaveGrokOption.style.display, "none");
@@ -208,7 +210,7 @@ test("checking global grok adds grok to save targets and hint labels stay separa
   helpers.updateRulesScope("global");
   elements.rulesSaveGrok.checked = true;
   assert.deepEqual(helpers.collectRuleTargets(), ["grok"]);
-  assert.equal(elements.rulesSaveCodexLabel.textContent, "codex");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex");
   assert.equal(elements.rulesSaveGrokOption.style.display, "");
 
   const handlerSource = extractWindowMessageHandlerSource();
@@ -251,8 +253,8 @@ test("checking global grok adds grok to save targets and hint labels stay separa
 
 test("global DSH rules stay separate and project DSH shares one AGENTS file", () => {
   const html = buildHtml();
-  assert.match(html, /<option value="dsh">dsh<\/option>/);
-  assert.match(html, /<label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" \/> dsh<\/label>/);
+  assert.match(html, /<option value="dsh">DSH<\/option>/);
+  assert.match(html, /<label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" \/> DSH<\/label>/);
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveDshOption: document\.getElementById\("rulesSaveDshOption"\)/);
   const { elements, helpers } = createRulesHelpers(["codex", "claude", "opencode", "grok", "dsh"]);
   helpers.updateRulesScope("global");
@@ -268,8 +270,8 @@ test("global DSH rules stay separate and project DSH shares one AGENTS file", ()
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "codex/opencode/grok/dsh"],
-      ["claude", "claude"],
+      ["codex", "Codex/OpenCode/Grok/DSH"],
+      ["claude", "Claude"],
     ],
   );
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "dsh"), false);

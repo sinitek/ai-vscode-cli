@@ -95,13 +95,13 @@ npm uninstall -g @moonshot-ai/kimi-code       # 卸载
 default_model = "kimi-k3.1-pro"
 default_permission_mode = "auto"
 
-[providers.subcoco]
+[providers.default]
 type = "openai"
 base_url = "http://127.0.0.1:33391/v1"
 api_key = "<your-kimi-api-key>"
 
 [models."kimi-k3.1-pro"]
-provider = "subcoco"
+provider = "default"
 model = "kimi-k3.1-pro"
 max_context_size = 262144
 capabilities = ["thinking"]
@@ -168,7 +168,7 @@ ACP 会话只广告当前模型允许的值。以下是本机隔离 `KIMI_CODE_H
 
 ```toml
 [models."kimi-k3.1-pro"]
-provider = "subcoco"
+provider = "default"
 model = "kimi-k3.1-pro"
 max_context_size = 262144
 display_name = "Kimi K3.1 Pro"

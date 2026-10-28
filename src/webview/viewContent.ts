@@ -1,4 +1,5 @@
 import { CLI_LIST } from "../cli/types";
+import { getCliDisplayName } from "../cli/installer";
 import { getMarkedScript, getJsonFormatterScript } from "./markdownAssets";
 import { getWebviewStrings } from "./viewContentStrings";
 import { buildWebviewStaticHtml, neutralizeInlineScriptEndTags } from "./viewContentHtml";
@@ -26,7 +27,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
   const nonce = getNonce();
   const i18n = getWebviewStrings();
   const cliOptions = CLI_LIST.map(
-    (cli) => `<option value="${cli}">${cli}</option>`,
+    (cli) => `<option value="${cli}">${getCliDisplayName(cli)}</option>`,
   ).join("");
   const markedScript = getMarkedScript();
   const jsonFormatterScript = getJsonFormatterScript();

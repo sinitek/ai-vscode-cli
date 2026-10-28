@@ -376,14 +376,21 @@ export function readKimiPromptStopReason(result: unknown): string | null {
   return typeof stopReason === "string" && stopReason.trim() ? stopReason : null;
 }
 
+export function readKimiPromptError(result: unknown): KimiProtocolError | null {
+  const record = asRecord(result);
+  const error = asRecord(record?.error);
+  return error ? formatKimiRpcError(error) : null;
+}
+
 export function formatKimiRpcError(error: unknown): KimiProtocolError {
   const record = asRecord(error);
   const message = typeof record?.message === "string" && record.message.trim()
     ? record.message
     : "ACP request failed";
   const rpcCode = typeof record?.code === "number" ? record.code : -32603;
+  const errorType = typeof record?.type === "string" ? record.type.trim() : "";
   const turnFailed = /turn failed/i.test(message);
-  return new KimiProtocolError(message, turnFailed ? "turn-failed" : "rpc-error", rpcCode);
+  return new KimiProtocolError(message, turnFailed ? "turn-failed" : errorType || "rpc-error", rpcCode);
 }
 
 export function buildKimiMethodNotFoundError(method: string): { code: number; message: string; data: { method: string } } {

@@ -391,10 +391,10 @@
 
 - 状态：已规避
 - 首次发现：2026-09-19
-- 适用范围：`export_vscode_extension.py`、`publish_vscode_extension.py`、`vsce package`、pnpm 与 npm 混用
+- 适用范围：`scripts/export_vscode_extension.py`、`scripts/publish_vscode_extension.py`、`vsce package`、pnpm 与 npm 混用
 
 ### 现象
-- `python3 export_vscode_extension.py` 在 `vscode:prepublish` 之后失败，`dist/sinitek-cli-tools-<version>.vsix` 不会生成。
+- `python3 scripts/export_vscode_extension.py` 在 `vscode:prepublish` 之后失败，`dist/sinitek-cli-tools-<version>.vsix` 不会生成。
 - 报错为 `ERROR  Command failed: npm list --production --parseable --depth=99999 --loglevel=error`，并伴随大量 `npm error missing` / `ELSPROBLEMS`。
 - 另一台从一开始就用 `npm install` 的 Mac 可以正常导出。
 
@@ -413,13 +413,13 @@
 - `.vscodeignore` 同样忽略这些锁文件，避免进入 VSIX。
 
 ### 验证方式
-- 在已有 pnpm `node_modules` 的工作区执行 `python3 export_vscode_extension.py`。
+- 在已有 pnpm `node_modules` 的工作区执行 `python3 scripts/export_vscode_extension.py`。
 - 确认生成 `dist/sinitek-cli-tools-<version>.vsix`，且 ZIP 中包含 `extension/dist/extension.js` 与 `extension/node_modules/@dagrejs/(dagre|graphlib)/package.json`。
 
 ### 关联资料
-- `export_vscode_extension.py`
+- `scripts/export_vscode_extension.py`
 - `.vscodeignore`
-- `publish_vscode_extension.py`
+- `scripts/publish_vscode_extension.py`
 - `.vscodeignore`
 - `.ch/docs/runbooks/local-development.md`
 
@@ -1087,7 +1087,7 @@
 
 ### 验证方式
 - 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graph/graphRunPanel.test.js dist/test/loop/loopCommunicationFilePreview.test.js`。
-- 执行 `python3 export_vscode_extension.py` 后，用 Python ZIP 审计确认主依赖和传递依赖都进入包。
+- 执行 `python3 scripts/export_vscode_extension.py` 后，用 Python ZIP 审计确认主依赖和传递依赖都进入包。
 - 可进一步解包到临时目录并加载对应 `dist` 模块，确认不会再因缺少依赖抛错。
 
 ### 关联资料
@@ -1095,16 +1095,16 @@
 - `package.json`
 - `src/webview/graphRunPanel.ts`
 - `src/test/graph/graphRunPanel.test.ts`
-- `export_vscode_extension.py`
+- `scripts/export_vscode_extension.py`
 
 ## VSIX 打包脚本不能只依赖全局 `vsce`
 
 - 状态：已规避，需发布时检查
 - 首次发现：2026-08-20
-- 适用范围：VS Code 插件打包、`export_vscode_extension.py`、`publish_vscode_extension.py`、本机开发环境
+- 适用范围：VS Code 插件打包、`scripts/export_vscode_extension.py`、`scripts/publish_vscode_extension.py`、本机开发环境
 
 ### 现象
-- 执行 `python3 export_vscode_extension.py` 立即失败并提示找不到 vsce。
+- 执行 `python3 scripts/export_vscode_extension.py` 立即失败并提示找不到 vsce。
 - 同一仓库之前可用，但换机器、清理全局 npm 包或 PATH 变化后突然失败。
 
 ### 触发条件
@@ -1118,24 +1118,24 @@
 ### 长期规避
 - 将 `@vscode/vsce` 放入 `devDependencies`。
 - 打包和发布脚本优先调用 `node_modules/.bin/vsce`，仅在本地依赖不存在时回退到全局 `vsce`。
-- 文档以 `npm install` + `python3 export_vscode_extension.py` 为默认流程，不再要求全局安装。
+- 文档以 `npm install` + `python3 scripts/export_vscode_extension.py` 为默认流程，不再要求全局安装。
 
 ### 验证方式
 - 执行 `npm run build`。
-- 执行 `python3 export_vscode_extension.py`，确认无全局 `vsce` 时也能生成 VSIX 并通过 ZIP 清单检查。
+- 执行 `python3 scripts/export_vscode_extension.py`，确认无全局 `vsce` 时也能生成 VSIX 并通过 ZIP 清单检查。
 
 ### 关联资料
 - `package.json`
 - `package-lock.json`
-- `export_vscode_extension.py`
-- `publish_vscode_extension.py`
+- `scripts/export_vscode_extension.py`
+- `scripts/publish_vscode_extension.py`
 - `.ch/docs/runbooks/local-development.md`
 
 ## macOS 自带 rsync 不能复制 CodeGraph Unix socket
 
 - 状态：已规避
 - 首次发现：2026-10-03
-- 适用范围：macOS 上使用 `export_vscode_extension.py` 临时目录打包
+- 适用范围：macOS 上使用 `scripts/export_vscode_extension.py` 临时目录打包
 
 ### 现象
 - 导出在复制源码到临时 staging 目录时失败，输出 `rsync: error: mkstempsock: Invalid argument`。
@@ -1146,11 +1146,11 @@
 - macOS 自带 `openrsync` 在复制该 socket 时失败；即使改用 tar 回退，也不应把运行时 CodeGraph 状态复制到 staging。
 
 ### 长期规避
-- `export_vscode_extension.py` 使用 Python 复制源码到临时目录，并排除根目录 `.codegraph`。
+- `scripts/export_vscode_extension.py` 使用 Python 复制源码到临时目录，并排除根目录 `.codegraph`。
 - 打包只使用扩展源码，不复制 CodeGraph 数据库、daemon 状态或 socket。
 
 ### 验证方式
-- 在含有 `.codegraph/daemon.sock` 的 macOS 工作区执行 `python3 export_vscode_extension.py`。
+- 在含有 `.codegraph/daemon.sock` 的 macOS 工作区执行 `python3 scripts/export_vscode_extension.py`。
 - 确认 VSIX 内容检查通过，且 VSIX 不包含 `extension/.codegraph/`。
 
 ## Codex 可见 Tasklist 不能只识别括号状态

@@ -10,9 +10,26 @@ from unittest.mock import patch
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(ROOT_DIR / "scripts"))
 
 import vscode_extension_process as process
+
+
+class ScriptLocationTests(unittest.TestCase):
+    def test_scripts_are_unique_and_share_repository_root(self) -> None:
+        import export_vscode_extension
+        import publish_vscode_extension
+        import vscode_extension_win
+
+        modules = (export_vscode_extension, publish_vscode_extension, process, vscode_extension_win)
+        for module in modules:
+            script = ROOT_DIR / "scripts" / f"{module.__name__}.py"
+            self.assertTrue(script.is_file())
+            self.assertFalse(script.is_symlink())
+            self.assertFalse((ROOT_DIR / f"{module.__name__}.py").exists())
+
+        for module in (export_vscode_extension, publish_vscode_extension, vscode_extension_win):
+            self.assertEqual(module.ROOT_DIR, ROOT_DIR)
 
 
 class PosixProcessTests(unittest.TestCase):
@@ -35,7 +52,7 @@ class PosixProcessTests(unittest.TestCase):
         self.assertEqual(result.exception.returncode, 7)
 
     def test_process_module_does_not_depend_on_windows_helpers(self) -> None:
-        source = (ROOT_DIR / "vscode_extension_process.py").read_text(encoding="utf-8")
+        source = (ROOT_DIR / "scripts" / "vscode_extension_process.py").read_text(encoding="utf-8")
         self.assertNotIn("vscode_extension_win", source)
         self.assertNotIn("code.cmd", source)
 

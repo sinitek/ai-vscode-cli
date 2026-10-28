@@ -39,6 +39,8 @@ class FakeKimi extends EventEmitter {
   public modeOptions = ["default", "plan", "auto", "yolo"];
   public failResume = false;
   public permissionOptionId = "approve_once";
+  public promptResult: Record<string, unknown> = { stopReason: "end_turn" };
+  public promptError: Record<string, unknown> | null = null;
   private pendingPrompt: Record<string, unknown> | null = null;
   private buffer = "";
 
@@ -190,7 +192,9 @@ class FakeKimi extends EventEmitter {
         update: { sessionUpdate: "usage_update", used: 42, size: 262144 },
       },
     });
-    this.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    this.send(this.promptError
+      ? { jsonrpc: "2.0", id: message.id, error: this.promptError }
+      : { jsonrpc: "2.0", id: message.id, result: this.promptResult });
   }
 
   public holdPrompt(message: Record<string, unknown>): void {
@@ -400,6 +404,36 @@ test("Kimi permission requests auto-approve with an advertised allow option", as
     .map((line) => JSON.parse(line) as Record<string, unknown>)
     .find((message) => message.id === "perm-1");
   assert.deepEqual(permissionReply?.result, { outcome: { outcome: "selected", optionId: "approve_once" } });
+});
+
+test("Kimi prompt rejects provider errors embedded in an ACP result", async () => {
+  const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
+  const fake = new FakeKimi();
+  fake.promptResult = { error: { message, type: "model_not_found" } };
+  const { runner } = createRunner(fake, { model: MODEL });
+  await runner.start();
+
+  await assert.rejects(runner.prompt("hello"), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, message);
+    assert.equal((error as Error & { code?: string }).code, "model_not_found");
+    return true;
+  });
+});
+
+test("Kimi prompt preserves model-not-found errors from a JSON-RPC error response", async () => {
+  const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
+  const fake = new FakeKimi();
+  fake.promptError = { message, type: "model_not_found" };
+  const { runner } = createRunner(fake, { model: MODEL });
+  await runner.start();
+
+  await assert.rejects(runner.prompt("hello"), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, message);
+    assert.equal((error as Error & { code?: string }).code, "model_not_found");
+    return true;
+  });
 });
 
 test("Kimi reuses its ACP session while applying the next turn model", async () => {

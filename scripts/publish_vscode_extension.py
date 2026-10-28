@@ -50,7 +50,7 @@ def publish_extension(target: str) -> None:
     run_process([vsce, "verify-pat", publisher], cwd=ROOT_DIR)
     out_file = output_file(target)
     print(f"[2/3] 导出并校验 VSIX：{out_file}", flush=True)
-    run_process([sys.executable, str(ROOT_DIR / "export_vscode_extension.py"), "--target", target], cwd=ROOT_DIR)
+    run_process([sys.executable, str(ROOT_DIR / "scripts" / "export_vscode_extension.py"), "--target", target], cwd=ROOT_DIR)
     if not out_file.is_file() or out_file.stat().st_size == 0:
         raise RuntimeError(f"导出后未找到有效 VSIX：{out_file}")
     package_name = manifest["name"]

@@ -46,16 +46,16 @@ test("配置中心把 kimi-code 注册为一个完整平台（平台列表、标
 
   const store = read(storePath);
   assert.match(store, /\[[^\]]*"kimi-code"\]/, "配置排序/回落列表要包含 kimi-code");
-  assert.match(store, /"kimi-code": "kimi"/, "平台同步使用 kimi 标签");
+  assert.match(store, /"kimi-code": "KimiCode"/, "平台同步使用 KimiCode 标签");
 
   const ui = read(uiPath);
   assert.match(ui, /DEFAULT_RUN_COMMANDS[\s\S]{0,400}?"kimi-code": "kimi"/, "启动命令不能带 --auto（与 -p 互斥）");
   assert.match(ui, /DEFAULT_INSTALL_COMMANDS[\s\S]{0,600}?"kimi-code": "npm install -g @moonshot-ai\/kimi-code@latest"/);
-  assert.match(ui, /platform === "kimi-code"[\s\S]{0,40}?"kimi"/);
-  assert.match(ui, /\{ id: "kimi-code", label: "kimi" \}/, "Skills 目标显示 kimi");
+  assert.match(ui, /platform === "kimi-code"[\s\S]{0,40}?"KimiCode"/);
+  assert.match(ui, /\{ id: "kimi-code", label: "KimiCode" \}/, "Skills 目标显示 KimiCode");
   assert.match(ui, /kimiCodeConfigs = c\.useMemo/, "侧边栏要有 Kimi Code 配置分组");
   assert.match(ui, /isConfigPlatformEnabled\("kimi-code", cliEnabledByName\)/);
-  assert.match(ui, /"kimi-code-config": \{ title: "kimi config\.toml"/, "查看范例要能打开 kimi-code");
+  assert.match(ui, /"kimi-code-config": \{ title: "KimiCode config\.toml"/, "查看范例要能打开 kimi-code");
 });
 
 test("安装命令与官方文档一致，且不把 -p 与 --auto/--yolo 混用", () => {

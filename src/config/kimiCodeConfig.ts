@@ -363,7 +363,7 @@ export function createKimiCodeDefaultConfigText(options: {
   permissionMode?: KimiCodePermissionMode;
 } = {}): string {
   const model = options.model?.trim() || KIMI_CODE_DEFAULT_MODEL;
-  const providerId = options.providerId?.trim() || "subcoco";
+  const providerId = options.providerId?.trim() || "default";
   const baseUrl = options.baseUrl?.trim() || "http://127.0.0.1:33391/v1";
   const apiKey = options.apiKey?.trim() ?? "";
   const provider: GrokTomlTable = {

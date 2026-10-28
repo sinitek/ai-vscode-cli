@@ -22,10 +22,13 @@ import {
   LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
+import { CLI_LIST } from "../cli/types";
+import { getCliDisplayName } from "../cli/installer";
 
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
   cliList: unknown;
+  cliDisplayNames?: unknown;
   loopMaxRoundsDefault: number;
   loopMaxRoundsMin: number;
   loopMaxRoundsMax: number;
@@ -68,6 +71,13 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
   const replacements: Array<[string, string]> = [
     ["${JSON.stringify(i18n)}", JSON.stringify(input.i18n)],
     ["${JSON.stringify(CLI_LIST)}", JSON.stringify(input.cliList)],
+    [
+      "${JSON.stringify(cliDisplayNames)}",
+      JSON.stringify(
+        input.cliDisplayNames
+          ?? Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliDisplayName(cli)])),
+      ),
+    ],
     ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
     ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
     ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],

@@ -14,6 +14,7 @@ const {
   parseOpenCodeSessionId,
   runCli,
 } = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
+const { getCliCommand } = require("../../cli/config") as typeof import("../../cli/config");
 
 type FakeStream = EventEmitter & {
   setEncoding: (encoding: string) => void;
@@ -90,6 +91,70 @@ test("sends an escaped configured CLI command to the VS Code terminal", async ()
 
 test("rejects whitespace-only CLI availability checks without spawning a process", async () => {
   assert.equal(await isCliCommandAvailable(" \n\t "), false);
+});
+
+test("uses kimi as the Kimi group command fallback", () => {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, fallback?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(_key: string, fallback?: T): T | undefined => fallback,
+  });
+
+  try {
+    assert.equal(getCliCommand("kimi-code"), "kimi");
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  }
+});
+
+test("normalizes the legacy kimi-code command value to kimi", () => {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, fallback?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => (
+      key === "commands.kimi-code" ? "kimi-code" as T : fallback
+    ),
+  });
+
+  try {
+    assert.equal(getCliCommand("kimi-code"), "kimi");
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  }
+});
+
+test("preserves a configured Kimi executable override", () => {
+  const vscode = require("vscode") as {
+    workspace: {
+      getConfiguration: () => {
+        get: <T>(key: string, fallback?: T) => T | undefined;
+      };
+    };
+  };
+  const originalGetConfiguration = vscode.workspace.getConfiguration;
+  vscode.workspace.getConfiguration = () => ({
+    get: <T>(key: string, fallback?: T): T | undefined => (
+      key === "commands.kimi-code" ? "custom-kimi" as T : fallback
+    ),
+  });
+
+  try {
+    assert.equal(getCliCommand("kimi-code"), "custom-kimi");
+  } finally {
+    vscode.workspace.getConfiguration = originalGetConfiguration;
+  }
 });
 
 test("extracts a nested OpenCode session id while ignoring malformed JSONL lines", () => {
