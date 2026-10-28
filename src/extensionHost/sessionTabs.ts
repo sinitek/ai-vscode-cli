@@ -318,6 +318,7 @@ async function switchVisibleConversationTabForLoop(
   setWorkspaceInteractiveModeForCli(switched.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
   if (currentCli !== switched.cli) {
     currentCli = switched.cli;
+    deps.setCurrentCli(currentCli);
     updateStatusBar();
     workspaceSettings.currentCli = currentCli;
     saveWorkspaceSettings(workspaceSettings);
@@ -419,6 +420,7 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   });
   if (next && currentCli !== next.cli) {
     currentCli = next.cli;
+    deps.setCurrentCli(currentCli);
     updateStatusBar();
     workspaceSettings.currentCli = currentCli;
     saveWorkspaceSettings(workspaceSettings);

@@ -20,6 +20,7 @@ function createHost(initial: {
   const pendingDrafts: Record<string, PendingSessionDraft> = {};
   const restoredTabIds: string[] = [];
   const postedTabIds: Array<string | null> = [];
+  const postedClis: CliName[] = [];
   const sentTabIds: Array<string | null> = [];
   const contextFor = (tab: ConversationTabRecord | null) => {
     const role = tab?.id.includes("main") ? "main" as const : tab?.id.includes("sub") ? "subtask" as const : undefined;
@@ -86,7 +87,10 @@ function createHost(initial: {
     isGraphRunBlockedForMainTab: () => false,
     isTabRunActive: () => false,
     isLoopMainTabCloseLocked: () => false,
-    postPanelState: async () => { postedTabIds.push(controller.getActiveConversationTabId()); },
+    postPanelState: async () => {
+      postedClis.push(currentCli);
+      postedTabIds.push(controller.getActiveConversationTabId());
+    },
     restoreConversationTabConfiguration: async (tabId) => {
       restoredTabIds.push(tabId);
       await initial.onRestore?.(tabId);
@@ -108,7 +112,7 @@ function createHost(initial: {
     logInfo: () => undefined,
     activeData: { WORKSPACE_KEY_FALLBACK: "fallback", LEGACY_SESSION_FILE: "legacy", SESSION_DIR: "sessions", SESSION_BUFFER_LIMIT: 1 },
   });
-  return { host, modes, postedTabIds, restoredTabIds, sentTabIds, currentCli: () => currentCli };
+  return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, currentCli: () => currentCli };
 }
 
 test("returning from a cross-CLI Loop+ subtask restores the main CLI and Loop+ mode", async () => {
@@ -122,8 +126,31 @@ test("returning from a cross-CLI Loop+ subtask restores the main CLI and Loop+ m
   const env = createHost({ state, currentCli: "claude", modes: { codex: "loop_plus", claude: "coding" } });
   await env.host.switchVisibleConversationTabForLoop("main-tab");
   assert.equal(env.currentCli(), "codex");
+  assert.deepEqual(env.postedClis, ["codex"]);
   assert.equal(env.modes.codex, "loop_plus");
   assert.equal(env.modes.claude, "coding");
+});
+
+test("closing an active Grok tab publishes the fallback Codex configuration", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "grok-tab",
+    tabs: [
+      { id: "codex-tab", cli: "codex", sessionId: "codex-session", sessionIdByCli: { codex: "codex-session" }, createdAt: 1 },
+      { id: "grok-tab", cli: "grok", sessionId: "grok-session", sessionIdByCli: { grok: "grok-session" }, createdAt: 2 },
+    ],
+  };
+  const env = createHost({
+    state,
+    currentCli: "grok",
+    modes: { codex: "coding", grok: "coding" },
+  });
+
+  await env.host.closeConversationTabAndRefreshPanel("grok-tab");
+
+  assert.equal(env.currentCli(), "codex");
+  assert.deepEqual(env.restoredTabIds, ["codex-tab"]);
+  assert.deepEqual(env.postedClis, ["codex"]);
+  assert.deepEqual(env.postedTabIds, ["codex-tab"]);
 });
 
 test("closing a Graph node tab restores the main tab Graph mode and preserves an unrelated mode", async () => {
