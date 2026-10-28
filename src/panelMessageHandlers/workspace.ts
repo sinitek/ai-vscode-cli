@@ -1,6 +1,7 @@
 import * as path from "path";
 import { getCliCommand } from "../cli/config";
 import { getConfiguredCliCommandParts } from "../cli/commandResolution";
+import { CLI_LIST } from "../cli/types";
 import {
   buildRepairedCliCommand,
   inspectUnresolvedCliCommands,
@@ -207,11 +208,9 @@ export function createWorkspacePanelMessageHandlers(
       await waitForCliCommandAutoRepair();
       deps.postWebviewMessage({
         type: "cliRepairIssues",
-        issues: inspectUnresolvedCliCommands({
-          codex: getCliCommand("codex"),
-          claude: getCliCommand("claude"),
-          opencode: getCliCommand("opencode"),
-        }),
+        issues: inspectUnresolvedCliCommands(
+          Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliCommand(cli)])),
+        ),
       });
     },
 
