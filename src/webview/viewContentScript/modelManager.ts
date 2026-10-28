@@ -62,24 +62,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         return state.selectedConfigId || state.configState.activeConfigId || null;
       }
 
-      function getActiveConversationTabExecutionLock() {
-        const tabsState = state.conversationTabs;
-        const activeTabId = tabsState && typeof tabsState.activeTabId === "string"
-          ? tabsState.activeTabId
-          : "";
-        const tabs = tabsState && Array.isArray(tabsState.tabs) ? tabsState.tabs : [];
-        const activeTab = tabs.find((tab) => tab && tab.id === activeTabId) || null;
-        return activeTab && activeTab.executionLocked === true ? activeTab : null;
-      }
-
-      function isActiveConversationTabExecutionLocked() {
-        return Boolean(getActiveConversationTabExecutionLock());
-      }
-
-      function syncLockedConversationTabModelState() {
-        const lockedTab = getActiveConversationTabExecutionLock();
+      function syncCliSelectAvailability() {
         if (elements.currentCli) {
-          elements.currentCli.disabled = Boolean(lockedTab);
+          elements.currentCli.disabled = false;
         }
       }
 
@@ -728,8 +713,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
-        if (typeof syncLockedConversationTabModelState === "function") {
-          syncLockedConversationTabModelState();
+        if (typeof syncCliSelectAvailability === "function") {
+          syncCliSelectAvailability();
         }
         const supportsModelSelection = cliSupportsModelSelection(cli);
         const isOpenCode = cli === "opencode";

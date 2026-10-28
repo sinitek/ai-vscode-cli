@@ -178,8 +178,12 @@ export function setConversationTabSessionIdForCli(
   return changed;
 }
 
-export function switchConversationTabCli(tab: ConversationTabRecord, cli: CliName): boolean {
-  if (isConversationTabExecutionLocked(tab) && tab.cli !== cli) {
+export function switchConversationTabCli(
+  tab: ConversationTabRecord,
+  cli: CliName,
+  options: { allowExecutionLocked?: boolean } = {},
+): boolean {
+  if (isConversationTabExecutionLocked(tab) && tab.cli !== cli && options.allowExecutionLocked !== true) {
     return false;
   }
   const nextSessionId = getConversationTabSessionIdForCli(tab, cli);

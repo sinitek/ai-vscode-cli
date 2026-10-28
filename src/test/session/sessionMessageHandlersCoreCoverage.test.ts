@@ -239,6 +239,7 @@ function createHarness(): HandlerHarness {
     inspectModelManagerState: async () => undefined,
     getActiveConversationTabBinding: () => null,
     setCurrentCli: async (cli) => { state.currentCli = cli; },
+    setCurrentCliFromPanelSelection: async (cli) => { state.currentCli = cli; },
     disposeInteractiveRunnerIfUnused: () => { calls.disposedUnused += 1; },
     syncCurrentSessionWithActiveTab: () => {
       const tab = state.activeTabId ? state.tabs.get(state.activeTabId) : undefined;
@@ -859,10 +860,12 @@ test("updates the active CLI through session and tab selection fallbacks", async
   assert.deepEqual(harness.calls.savedSettings, [{ currentCli: "claude" }]);
 });
 
-test("rejects CLI changes but accepts primary model changes for an executed tab", async (t) => {
+test("restores CLI after a canceled switch and accepts model changes for an executed tab", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);
-  harness.deps.isActiveConversationTabExecutionLocked = () => true;
+  harness.deps.getActiveConversationTabBinding = (cli) => (
+    cli === "codex" ? { cli, sessionId: "codex-session" } : null
+  );
 
   await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "selectCliModel", cli: "codex", model: "new-model" }, harness.deps);
@@ -874,6 +877,52 @@ test("rejects CLI changes but accepts primary model changes for an executed tab"
     { cli: "codex", model: "new-model", configId: "config-codex" },
   ]);
   assert.equal(harness.calls.panelStates, 4);
+});
+
+test("confirms an executed session before switching CLI and restores on cancel", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  harness.deps.getActiveConversationTabBinding = (cli) => (
+    cli === "codex" ? { cli, sessionId: "codex-session" } : null
+  );
+  const confirmations: Array<{ message: string; confirmLabel: string }> = [];
+  harness.deps.confirm = async (message, confirmLabel) => {
+    confirmations.push({ message, confirmLabel });
+    return false;
+  };
+
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
+
+  assert.equal(harness.state.currentCli, "codex");
+  assert.deepEqual(confirmations, [{
+    message: "切换其它 CLI 会丢失上下文，确定？",
+    confirmLabel: "确定",
+  }]);
+});
+
+test("switches an executed session after CLI confirmation and skips confirmation without a session ID", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  harness.deps.getActiveConversationTabBinding = (cli) => (
+    cli === "codex" ? { cli, sessionId: "codex-session" } : null
+  );
+  harness.state.warningAccepted = true;
+
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "claude" }, harness.deps);
+
+  assert.equal(harness.state.currentCli, "claude");
+
+  harness.state.currentCli = "codex";
+  harness.deps.getActiveConversationTabBinding = (cli) => (
+    cli === "codex" ? { cli, sessionId: null } : null
+  );
+  harness.deps.confirm = async () => {
+    throw new Error("confirmation should not be requested without a session ID");
+  };
+
+  await handlePanelMessageWithDeps({ type: "selectCli", cli: "opencode" }, harness.deps);
+
+  assert.equal(harness.state.currentCli, "opencode");
 });
 
 test("routes optional panel fields through their empty and fallback contracts", async (t) => {

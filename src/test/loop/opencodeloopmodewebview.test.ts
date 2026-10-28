@@ -137,9 +137,7 @@ function buildHarness() {
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
-    "getActiveConversationTabExecutionLock",
-    "isActiveConversationTabExecutionLocked",
-    "syncLockedConversationTabModelState",
+    "syncCliSelectAvailability",
     "syncModelSelectorByInteractiveMode",
   ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))

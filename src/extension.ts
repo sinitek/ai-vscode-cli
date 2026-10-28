@@ -1477,6 +1477,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     inspectModelManagerState,
     getActiveConversationTabBinding,
     setCurrentCli,
+    setCurrentCliFromPanelSelection,
     disposeInteractiveRunnerIfUnused,
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
@@ -1500,7 +1501,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     addConversationTab,
     startNewSession,
     getConversationTabById,
-    isActiveConversationTabExecutionLocked: () => isConversationTabExecutionLocked(getActiveConversationTab()),
     hasAnyTaskRunning,
     disposeAllInteractiveRunners: () => interactiveRunnerManager?.disposeAll(),
     maybePromptInstallOnCliGroupSwitch,
@@ -3053,9 +3053,26 @@ async function setCurrentCli(
   cli: CliName,
   options: { syncActiveTab?: boolean } = {}
 ): Promise<void> {
+  await applyCurrentCli(cli, options, false);
+}
+
+async function setCurrentCliFromPanelSelection(cli: CliName): Promise<void> {
+  await applyCurrentCli(cli, {}, true);
+}
+
+async function applyCurrentCli(
+  cli: CliName,
+  options: { syncActiveTab?: boolean },
+  allowLockedTabCliSwitch: boolean,
+): Promise<void> {
   const syncActiveTab = options.syncActiveTab !== false;
   const activeTab = getActiveConversationTab();
-  if (activeTab && isConversationTabExecutionLocked(activeTab) && activeTab.cli !== cli) {
+  if (
+    activeTab
+    && isConversationTabExecutionLocked(activeTab)
+    && activeTab.cli !== cli
+    && !allowLockedTabCliSwitch
+  ) {
     return;
   }
   const previousCli = currentCli;
@@ -3064,7 +3081,9 @@ async function setCurrentCli(
 
   if (syncActiveTab) {
     if (activeTab && activeTab.cli !== cli) {
-      switchConversationTabCli(activeTab, cli);
+      switchConversationTabCli(activeTab, cli, {
+        allowExecutionLocked: allowLockedTabCliSwitch,
+      });
       persistConversationTabsToWorkspaceSettings();
     }
   }

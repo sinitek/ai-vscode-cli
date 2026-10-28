@@ -20,6 +20,7 @@ type SessionPanelMessageDeps = Pick<
   | "inspectModelManagerState"
   | "getActiveConversationTabBinding"
   | "setCurrentCli"
+  | "setCurrentCliFromPanelSelection"
   | "disposeInteractiveRunnerIfUnused"
   | "syncCurrentSessionWithActiveTab"
   | "getActiveConfigIdForCli"
@@ -42,7 +43,6 @@ type SessionPanelMessageDeps = Pick<
   | "addConversationTab"
   | "startNewSession"
   | "getConversationTabById"
-  | "isActiveConversationTabExecutionLocked"
   | "hasAnyTaskRunning"
   | "disposeAllInteractiveRunners"
   | "maybePromptInstallOnCliGroupSwitch"
@@ -71,15 +71,19 @@ export function createSessionPanelMessageHandlers(
 ): PanelMessageHandlerRegistry {
   return {
     selectCli: async (message) => {
+      const currentCli = deps.getCurrentCli();
+      const currentSessionId = currentCli !== message.cli
+        ? deps.getActiveConversationTabBinding(currentCli)?.sessionId
+        : null;
       if (
-        deps.isActiveConversationTabExecutionLocked?.()
-        && deps.getCurrentCli() !== message.cli
+        currentSessionId
+        && !(await deps.confirm(t("session.confirmSwitchCli"), "确定"))
       ) {
         await deps.postPanelState();
         return;
       }
       const previousBinding = deps.getActiveConversationTabBinding();
-      await deps.setCurrentCli(message.cli);
+      await deps.setCurrentCliFromPanelSelection(message.cli);
       deps.disposeInteractiveRunnerIfUnused(previousBinding);
       const activeSessionId = deps.syncCurrentSessionWithActiveTab();
       await deps.postPanelState();

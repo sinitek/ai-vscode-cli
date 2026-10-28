@@ -842,8 +842,8 @@
     },
     {
       "id": "plugin.rule.conversation_tab_execution_lock",
-      "name": "对话标签首次执行后锁定 CLI 但允许切换模型",
-      "description": "对话 Tab 首次预载有效用户任务时持久化 executionLocked 与首个主模型快照；同一 Tab 后续不得切换 CLI 类型，配置恢复和 setCurrentCli 等宿主入口仍拒绝旁路修改。主模型与子模型选择器保持可用，Webview 与 Panel 消息接受切换，后续执行及消息执行快照使用新选择。旧会话初始化时检查 Tab 映射的全部 CLI 会话，只要存在有效用户消息就迁移锁定状态；新建 Tab 和其他 Tab 不受影响，切换到其他 Tab 仍然允许。",
+      "name": "对话标签首次执行后切换 CLI 需确认但允许切换模型",
+      "description": "对话 Tab 首次预载有效用户任务时持久化 executionLocked 与首个主模型快照；同一 Tab 的 CLI 下拉允许切换，当前 CLI 有 session ID 时先提示“切换其它 CLI 会丢失上下文，确定？”，确认条件不依赖 executionLocked；取消保持原 CLI，确认后沿用目标 CLI 会话映射；无 session ID 时无需确认。主模型与子模型选择器保持可用，Webview 与 Panel 消息接受切换，后续执行及消息执行快照使用新选择。旧会话初始化时检查 Tab 映射的全部 CLI 会话，只要存在有效用户消息就迁移锁定状态；新建 Tab 和其他 Tab 不受影响，切换到其他 Tab 仍然允许。配置恢复和其它 setCurrentCli 旁路仍保留默认执行锁拦截。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
       "source_refs": [

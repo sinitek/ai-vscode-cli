@@ -216,15 +216,14 @@ function buildVisibilityHarness() {
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
-    "getActiveConversationTabExecutionLock",
-    "isActiveConversationTabExecutionLocked",
-    "syncLockedConversationTabModelState",
+    "syncCliSelectAvailability",
     "syncModelSelectorByInteractiveMode",
   ]
     .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name))
     .join("\n");
   const state = { currentCli: "codex", interactiveMode: "coding" };
   const elements = {
+    currentCli: createVisibilityElement(),
     codexLoopModelGroup: createVisibilityElement(),
     codexLoopMainModelSelect: createVisibilityElement(),
     codexLoopSubtaskModelSelect: createVisibilityElement(),

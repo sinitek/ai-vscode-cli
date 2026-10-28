@@ -34,10 +34,6 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         });
 
       elements.currentCli.addEventListener("change", (event) => {
-        if (typeof isActiveConversationTabExecutionLocked === "function" && isActiveConversationTabExecutionLocked()) {
-          syncModelSelectorByInteractiveMode();
-          return;
-        }
         armPromptContextForConversationStart();
         state.pendingOpenCodeRoleSelection = null;
         const nextCli = event.target.value;

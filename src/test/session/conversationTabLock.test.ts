@@ -327,6 +327,23 @@ test("persists execution lock and refuses CLI changes after the first task", () 
   assert.equal(savedConversationTabs?.tabs[0]?.lockedPrimaryModel, "gpt-5");
 });
 
+test("allows an explicitly confirmed CLI switch for an executed tab", () => {
+  const tab = {
+    id: "main-tab",
+    cli: "codex" as CliName,
+    sessionId: "codex-session",
+    sessionIdByCli: { codex: "codex-session", claude: "claude-session" },
+    createdAt: 1,
+    executionLocked: true,
+    lockedPrimaryModel: "gpt-5",
+  };
+
+  assert.equal(switchConversationTabCli(tab, "claude", { allowExecutionLocked: true }), true);
+  assert.equal(tab.cli, "claude");
+  assert.equal(tab.sessionId, "claude-session");
+  assert.deepEqual(tab.sessionIdByCli, { codex: "codex-session", claude: "claude-session" });
+});
+
 test("migrates execution locks from any existing session mapped to a legacy Tab", () => {
   let currentCli: CliName = "claude";
   const state: ConversationTabsState = { activeTabId: "legacy-tab", tabs: [] };

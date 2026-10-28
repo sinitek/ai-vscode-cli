@@ -187,6 +187,9 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     setCurrentCli: async (cli) => {
       state.currentCli = cli;
     },
+    setCurrentCliFromPanelSelection: async (cli) => {
+      state.currentCli = cli;
+    },
     disposeInteractiveRunnerIfUnused: () => undefined,
     syncCurrentSessionWithActiveTab: () => null,
     getActiveConfigIdForCli: () => "config-opencode",

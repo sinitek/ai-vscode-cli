@@ -5,12 +5,11 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
+### 1.4.1
+- bugfix & 体验优化
+
 ### 1.4.0
 - 新增 kimi code 支持
-- bugfix 以及体验优化
-
-### 1.3.1
-- dsh cli bugfix 和体验优化
 - 增加人机交互历史记录查看功能
 
 ### 1.3.0
@@ -18,8 +17,6 @@
 - 新增 dsh 支持
 - 优化 Loop+ 模式并行逻辑，提高效率
 - 体验优化
-
-### 1.2.2
 - 对话气泡支持图片/svg的展示和预览
 - 任务总结经常会以 svg 做补充展示
 

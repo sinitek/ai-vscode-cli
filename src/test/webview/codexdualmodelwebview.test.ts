@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "../../webview/viewContentScript/modelManager";
+import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 type FakeOption = {
@@ -167,9 +168,7 @@ function buildCodexModelHarness() {
     + "\n"
     + [
       "getCurrentModelConfigId",
-      "getActiveConversationTabExecutionLock",
-      "isActiveConversationTabExecutionLocked",
-      "syncLockedConversationTabModelState",
+      "syncCliSelectAvailability",
       "getModelOptionLabel",
       "cliSupportsLoopRoleModelSelection",
       "getLoopRoleModelsForCli",
@@ -268,14 +267,13 @@ function buildVisibilityHarness() {
     "cliSupportsLoopRoleModelSelection",
     "isLoopRoleModelMode",
     "isOpenCodeRoleModelMode",
-    "getActiveConversationTabExecutionLock",
-    "isActiveConversationTabExecutionLocked",
-    "syncLockedConversationTabModelState",
+    "syncCliSelectAvailability",
     "syncModelSelectorByInteractiveMode",
     "handleCurrentCliSelectionChange",
   ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, name)).join("\n");
   const state: Record<string, any> = { currentCli: "codex", interactiveMode: "coding" };
   const elements = {
+    currentCli: createVisibilityControl(),
     codexLoopModelGroup: createVisibilityControl(),
     codexLoopMainModelSelect: createVisibilityControl(),
     codexLoopSubtaskModelSelect: createVisibilityControl(),
@@ -428,6 +426,7 @@ test("keeps primary model selectors editable after execution", () => {
   harness.state.currentCli = "codex";
   harness.state.interactiveMode = "coding";
   harness.sync("codex");
+  assert.equal(harness.elements.currentCli.disabled, false);
   assert.equal(harness.elements.modelSelect.disabled, false);
 
   harness.state.interactiveMode = "loop";
@@ -438,6 +437,17 @@ test("keeps primary model selectors editable after execution", () => {
   harness.state.currentCli = "opencode";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
+});
+
+test("forwards CLI selector changes for execution-locked tabs", () => {
+  const selectorChangeStart = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.indexOf("elements.currentCli.addEventListener(\"change\"");
+  const nextHandlerStart = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.indexOf("elements.configSelect.addEventListener(\"change\"");
+  const selectorChangeHandler = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.slice(selectorChangeStart, nextHandlerStart);
+
+  assert.notEqual(selectorChangeStart, -1);
+  assert.notEqual(nextHandlerStart, -1);
+  assert.match(selectorChangeHandler, /type: "selectCli"/);
+  assert.doesNotMatch(selectorChangeHandler, /isActiveConversationTabExecutionLocked/);
 });
 
 test("replays Codex role model options and selections from panel state", () => {

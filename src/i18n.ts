@@ -55,6 +55,7 @@ const MESSAGES = {
     "session.confirmDelete": "确认删除该会话历史？",
     "session.confirmClearAll": "确认清空所有 CLI 的历史会话？",
     "session.confirmClearPromptHistory": "确认清空当前工作区未收藏的历史提示词？收藏项会保留。",
+    "session.confirmSwitchCli": "切换其它 CLI 会丢失上下文，确定？",
     "session.unnamed": "未命名会话",
     "rules.loadNoWorkspace": "未找到工作区，无法加载项目规则。",
     "rules.loadFailed": "加载规则失败，请重试。",
