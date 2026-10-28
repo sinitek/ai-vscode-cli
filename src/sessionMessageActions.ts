@@ -12,7 +12,12 @@ import {
   type CliEnabledByName,
 } from "./toolSettings";
 import { PanelMessage } from "./webview/types";
-import { parseCliName, parseCliNameField } from "./subtaskCliRoute";
+import {
+  parseCliName,
+  parseCliNameField,
+  resolveSubtaskRouteConfigId,
+  SUBTASK_ROUTE_CONFIG_MAX_RETRIES,
+} from "./subtaskCliRoute";
 import {
   type PanelMessageHandlerDeps,
   type PromptRunInputForPanel,
@@ -377,10 +382,11 @@ export async function handleSendPromptMessage(
   if (!trimmed) {
     return;
   }
-  if (!parseCliNameField(message.loopSubtaskCli).ok) {
-    deps.showWebviewError("子任务路由", "子模型 CLI 分组无效，不能派发子任务。");
-    return;
-  }
+  const requestedInteractiveMode = deps.isInteractiveMode(message.interactiveMode)
+    ? deps.normalizeVisibleInteractiveMode(message.interactiveMode)
+    : undefined;
+  const requestedLoopFamily = requestedInteractiveMode === "loop" || requestedInteractiveMode === "loop_plus";
+  const requestedSubtaskRouteMode = requestedLoopFamily || requestedInteractiveMode === "graph";
 
   const requestedTabId = typeof message.tabId === "string" && message.tabId
     ? message.tabId
@@ -404,7 +410,6 @@ export async function handleSendPromptMessage(
   const targetCli = targetTab?.cli
     ?? (deps.isCliName(message.cli ?? "") ? message.cli : currentCli)
     ?? currentCli;
-  const requestedSubtaskCli = parseCliName(message.loopSubtaskCli);
   const cliEnabledSettings = deps.readStoredToolSettings?.() ?? {};
   const cliExplicitlyDisabled = (cli: string | null | undefined): boolean => (
     typeof cli === "string" && cliEnabledSettings.cliEnabledByName?.[cli as CliName] === false
@@ -412,19 +417,6 @@ export async function handleSendPromptMessage(
   if (cliExplicitlyDisabled(targetCli)) {
     deps.showWebviewError?.("CLI", "该 CLI 已关闭，不能作为新的执行目标。");
     return;
-  }
-  if (requestedSubtaskCli && cliExplicitlyDisabled(requestedSubtaskCli)) {
-    deps.showWebviewError?.("子任务路由", "目标 CLI 已关闭，不能派发子任务。");
-    return;
-  }
-  if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
-    const requestedSubtaskConfigId = typeof message.loopSubtaskConfigId === "string"
-      ? message.loopSubtaskConfigId.trim()
-      : "";
-    if (!requestedSubtaskConfigId) {
-      deps.showWebviewError("子任务路由", "目标 CLI 没有可用配置，不能派发子任务。");
-      return;
-    }
   }
 
   if (!preserveActiveTab && deps.getCurrentCli() !== targetCli) {
@@ -438,13 +430,34 @@ export async function handleSendPromptMessage(
   const promptTargetTabId = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
   const loopSubtaskContext = deps.resolveLoopSubtaskConversationContext(targetCli, promptTargetTabId);
   const isLoopSubtaskContinuation = Boolean(loopSubtaskContext);
-  const requestedInteractiveMode = deps.isInteractiveMode(message.interactiveMode)
-    ? deps.normalizeVisibleInteractiveMode(message.interactiveMode)
-    : undefined;
-  const requestedLoopFamily = requestedInteractiveMode === "loop" || requestedInteractiveMode === "loop_plus";
   const effectiveInteractiveMode = isLoopSubtaskContinuation && requestedLoopFamily
     ? "coding"
     : requestedInteractiveMode;
+  const requiresSubtaskRoute = requestedSubtaskRouteMode || isLoopSubtaskContinuation;
+  const parsedSubtaskCli = requiresSubtaskRoute
+    ? parseCliNameField(message.loopSubtaskCli)
+    : { ok: true as const };
+  if (!parsedSubtaskCli.ok) {
+    deps.showWebviewError("子任务路由", "子模型 CLI 分组无效，不能派发子任务。");
+    return;
+  }
+  const requestedSubtaskCli = parsedSubtaskCli.cli;
+  if (requestedSubtaskCli && cliExplicitlyDisabled(requestedSubtaskCli)) {
+    deps.showWebviewError?.("子任务路由", "目标 CLI 已关闭，不能派发子任务。");
+    return;
+  }
+  let promptMessage = message;
+  if (!requiresSubtaskRoute) {
+    const {
+      loopSubtaskCli: _loopSubtaskCli,
+      loopSubtaskConfigId: _loopSubtaskConfigId,
+      loopSubtaskModel: _loopSubtaskModel,
+      loopSubtaskThinkingMode: _loopSubtaskThinkingMode,
+      lobsterSubtaskModel: _lobsterSubtaskModel,
+      ...messageWithoutSubtaskRoute
+    } = message;
+    promptMessage = messageWithoutSubtaskRoute;
+  }
 
   if (deps.isInteractiveMode(effectiveInteractiveMode)) {
     deps.setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
@@ -474,15 +487,33 @@ export async function handleSendPromptMessage(
   if (!configReady) {
     return;
   }
+  if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
+    const resolvedConfigId = await resolveSubtaskRouteConfigId({
+      cli: requestedSubtaskCli,
+      configId: message.loopSubtaskConfigId,
+      getActiveConfigId: (cli) => deps.getActiveConfigIdForCli(cli),
+      waitForConfigApply: deps.waitForConfigApply,
+      refreshPanelState: () => deps.postPanelState(),
+      delay: deps.waitForConfigRetryDelay,
+    });
+    if (!resolvedConfigId) {
+      deps.showWebviewError(
+        "子任务路由",
+        `目标 CLI 配置同步失败（已重试 ${SUBTASK_ROUTE_CONFIG_MAX_RETRIES} 次），暂不能派发子任务；请确认配置可用后重试。`,
+      );
+      return;
+    }
+    promptMessage = { ...message, loopSubtaskConfigId: resolvedConfigId };
+  }
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
   const loopPlusSchedulingMode = schedulingModeForInteractiveMode(effectiveInteractiveMode);
   const shouldRunLoop = effectiveInteractiveMode === "loop" || loopPlusSchedulingMode === "event_driven";
   const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;
-  const promptModels = resolvePromptRoleModels(message, targetCli, activeConfigId, deps, {
+  const promptModels = resolvePromptRoleModels(promptMessage, targetCli, activeConfigId, deps, {
     includeLoopModels,
     subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
   });
-  const promptThinkingModes = resolvePromptRoleThinkingModes(message, targetCli, activeConfigId, deps, {
+  const promptThinkingModes = resolvePromptRoleThinkingModes(promptMessage, targetCli, activeConfigId, deps, {
     includeLoopModels,
   }, promptModels);
   const promptInput: PromptRunInputForPanel = {

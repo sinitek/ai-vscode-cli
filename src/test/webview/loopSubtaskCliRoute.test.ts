@@ -60,6 +60,7 @@ function createRouteApi(state: Record<string, any>) {
       "getSelectedLoopRoleModelForCli",
       "getActiveConfigIdForStateCli",
       "getLoopSubtaskRoute",
+      "shouldShowSubtaskRouteIssue",
       "getLoopSubtaskOpenCodeModelState",
       "normalizeSubtaskThinkingValue",
       "readLoopSubtaskModelSelection",
@@ -74,7 +75,7 @@ function createRouteApi(state: Record<string, any>) {
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, name)),
-    "return { getLoopSubtaskRoute, handleLoopSubtaskCliChange, handleLoopSubtaskModelChange, handleLoopSubtaskThinkingChange, applyCodexLoopRoleModelsToPromptPayload };",
+    "return { getLoopSubtaskRoute, shouldShowSubtaskRouteIssue, handleLoopSubtaskCliChange, handleLoopSubtaskModelChange, handleLoopSubtaskThinkingChange, applyCodexLoopRoleModelsToPromptPayload };",
   ].join("\n");
   return {
     posted,
@@ -84,6 +85,7 @@ function createRouteApi(state: Record<string, any>) {
       (key: string) => WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS] || key,
     ) as {
       getLoopSubtaskRoute: () => any;
+      shouldShowSubtaskRouteIssue: (mode: string) => boolean;
       handleLoopSubtaskCliChange: (value: string) => void;
       handleLoopSubtaskModelChange: (value: string) => void;
       handleLoopSubtaskThinkingChange: (value: string) => void;
@@ -136,6 +138,8 @@ test("subtask CLI choices stay on the main config and do not rewrite main or tar
   const { api, posted } = createRouteApi(state);
   assert.equal(api.getLoopSubtaskRoute().subtaskCli, "codex");
   assert.equal(api.getLoopSubtaskRoute().crossCli, false);
+  assert.equal(api.shouldShowSubtaskRouteIssue("coding"), false);
+  assert.equal(api.shouldShowSubtaskRouteIssue("loop"), true);
 
   api.handleLoopSubtaskCliChange("claude");
   assert.equal(state.currentCli, "codex");
@@ -195,8 +199,14 @@ test("prompt payload carries a cross-CLI route, blocks a missing config, and kee
   state.activeConfigIdByCli.opencode = null;
   api.handleLoopSubtaskCliChange("opencode");
   const blocked = api.applyCodexLoopRoleModelsToPromptPayload(basePayload, "codex", "graph", null);
-  assert.equal(blocked.loopSubtaskRouteBlocked, "目标 CLI 没有可用配置，不能派发子任务。");
-  assert.equal(blocked.loopSubtaskCli, undefined);
+  assert.equal(api.getLoopSubtaskRoute().configPending, true);
+  assert.equal(blocked.loopSubtaskRouteBlocked, undefined);
+  assert.equal(blocked.loopSubtaskCli, "opencode");
+  assert.equal(blocked.loopSubtaskConfigId, undefined);
+
+  const vibe = api.applyCodexLoopRoleModelsToPromptPayload(basePayload, "codex", "coding", null);
+  assert.equal(vibe.loopSubtaskRouteBlocked, undefined);
+  assert.equal(vibe.loopSubtaskCli, undefined);
 
   state.currentCli = "claude";
   state.selectedConfigId = "claude-config";

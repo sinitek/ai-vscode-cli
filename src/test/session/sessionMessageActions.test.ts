@@ -84,6 +84,8 @@ type SendPromptHarness = {
     stoppedTabs: Array<string | null>;
     toolSettingsPatches: Array<Partial<ToolSettingsState>>;
     configApplyWaits: CliName[];
+    configSyncRetryDelays: number[];
+    webviewErrors: string[];
   };
   state: {
     currentCli: CliName;
@@ -150,6 +152,8 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     stoppedTabs: [],
     toolSettingsPatches: [],
     configApplyWaits: [],
+    configSyncRetryDelays: [],
+    webviewErrors: [],
   };
   const state: SendPromptHarness["state"] = {
     currentCli: "codex",
@@ -181,7 +185,9 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
       state.currentCli = cli;
     },
     getCurrentSessionId: () => null,
-    showWebviewError: () => undefined,
+    showWebviewError: (_title, detail) => {
+      calls.webviewErrors.push(String(detail));
+    },
     inspectModelManagerState: async () => undefined,
     getActiveConversationTabBinding: () => null,
     setCurrentCli: async (cli) => {
@@ -240,6 +246,9 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     waitForConfigApply: (cli) => {
       calls.configApplyWaits.push(cli);
       return state.waitForConfigApply ? state.waitForConfigApply(cli) : Promise.resolve(true);
+    },
+    waitForConfigRetryDelay: async (milliseconds) => {
+      calls.configSyncRetryDelays.push(milliseconds);
     },
     readCliRules: async () => "",
     writeCliRules: async () => undefined,
@@ -370,6 +379,64 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   });
   assert.equal(calls.preloaded.length, 1);
   assert.equal(calls.preloaded[0].target.cli, "opencode");
+});
+
+test("ignores stale cross-CLI subtask routing in Vibe mode", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "normal vibe prompt",
+    interactiveMode: "coding",
+    loopSubtaskCli: "claude",
+  }, deps);
+
+  assert.deepEqual(calls.webviewErrors, []);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.equal(calls.runPrompt[0].input.loopSubtaskCli, undefined);
+  assert.equal(calls.runPrompt[0].input.loopSubtaskConfigId, undefined);
+  assert.deepEqual(calls.configSyncRetryDelays, []);
+});
+
+test("retries cross-CLI config synchronization before dispatching Loop", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  let activeClaudeConfigId: string | null = null;
+  deps.getActiveConfigIdForCli = (cli) => cli === "claude" ? activeClaudeConfigId : "config-opencode";
+  deps.waitForConfigRetryDelay = async (milliseconds) => {
+    calls.configSyncRetryDelays.push(milliseconds);
+    activeClaudeConfigId = "claude-live-config";
+  };
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run the subtask",
+    interactiveMode: "loop",
+    loopSubtaskCli: "claude",
+  }, deps);
+
+  assert.deepEqual(calls.webviewErrors, []);
+  assert.deepEqual(calls.configSyncRetryDelays, [3000]);
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.equal(calls.runLoopPrompt[0].input.loopSubtaskConfigId, "claude-live-config");
+  assert.equal(calls.postPanelState, 2);
+});
+
+test("does not dispatch Loop when cross-CLI config synchronization exhausts retries", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  deps.getActiveConfigIdForCli = (cli) => cli === "claude" ? null : "config-opencode";
+
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run the subtask",
+    interactiveMode: "loop",
+    loopSubtaskCli: "claude",
+  }, deps);
+
+  assert.deepEqual(calls.configSyncRetryDelays, [3000, 3000, 3000]);
+  assert.equal(calls.postPanelState, 3);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.deepEqual(calls.webviewErrors, [
+    "目标 CLI 配置同步失败（已重试 3 次），暂不能派发子任务；请确认配置可用后重试。",
+  ]);
 });
 
 test("waits for pending config apply before sending a prompt", async () => {

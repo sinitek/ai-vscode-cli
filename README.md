@@ -5,7 +5,7 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.4.1
+### 1.4.x
 - bugfix & 体验优化
 
 ### 1.4.0

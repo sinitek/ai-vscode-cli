@@ -145,6 +145,8 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 2026-10-27 配置中心新增 Claude、Codex、OpenCode、Grok、DSH、kimi 配置档案时自动复制对应范例，回归入口：`src/test/config/newConfigFromExample.test.ts`。
 
+2026-10-28 子任务跨 CLI 路由修复：Vibe 忽略并清理残留路由字段；Loop、Loop+、Graph 与子任务续跑在目标 CLI 配置状态暂未同步时，宿主每隔 3 秒刷新并重查，最多 3 次，成功后再派发，耗尽则明确失败且不回退主 CLI。回归入口：`src/test/session/sessionMessageActions.test.ts`、`src/test/loop/subtaskCliRoute.test.ts`、`src/test/webview/loopSubtaskCliRoute.test.ts`。
+
 2026-10-26 DSH 配置档案导入修复：配置中心导入保留受支持的根级 `apiKey`，与 DSH 保存和 API 校验使用相同边界；非根级密钥字段仍拒绝导入。回归入口：`src/test/config/dshconfigpage.test.ts`。
 | 业务域 | 功能名称 | 状态 | 主要角色 | 规格来源 | 实现位置 | 测试状态 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- |

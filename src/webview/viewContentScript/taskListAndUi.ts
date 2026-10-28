@@ -968,7 +968,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           }
           return nextPayload;
         }
-        if (route.unavailableReason || !route.subtaskConfigId) {
+        if ((route.unavailableReason && !route.configPending) || (!route.subtaskConfigId && !route.configPending)) {
           return {
             ...nextPayload,
             loopSubtaskRouteBlocked: route.unavailableReason || (typeof t === "function" ? t("loopSubtaskRouteMissingConfig") : "目标 CLI 没有可用配置，不能派发子任务。"),
@@ -981,7 +981,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const routed = {
           ...nextPayload,
           loopSubtaskCli: route.subtaskCli,
-          loopSubtaskConfigId: route.subtaskConfigId,
+          ...(route.subtaskConfigId ? { loopSubtaskConfigId: route.subtaskConfigId } : {}),
         };
         if (model) {
           routed.loopSubtaskModel = model;

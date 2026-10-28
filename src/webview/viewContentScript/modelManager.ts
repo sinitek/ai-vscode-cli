@@ -494,8 +494,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
         const crossCli = Boolean(subtaskCli) && subtaskCli !== mainCli;
         const subtaskConfigId = crossCli ? getActiveConfigIdForStateCli(subtaskCli) : mainConfigId;
+        const configPending = crossCli && !subtaskConfigId;
         let unavailableReason = "";
-        if (crossCli && !subtaskConfigId) {
+        if (configPending) {
           unavailableReason = t("loopSubtaskRouteMissingConfig");
         } else if (state.modelIssuesByCli && state.modelIssuesByCli[subtaskCli]) {
           unavailableReason = state.modelIssuesByCli[subtaskCli];
@@ -509,7 +510,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
             unavailableReason = t("loopSubtaskRouteReadFailed");
           }
         }
-        return { mainCli, mainConfigId, subtaskCli, crossCli, subtaskConfigId, unavailableReason };
+        return { mainCli, mainConfigId, subtaskCli, crossCli, subtaskConfigId, configPending, unavailableReason };
+      }
+
+      function shouldShowSubtaskRouteIssue(interactiveMode) {
+        return interactiveMode === "loop" || interactiveMode === "graph" || interactiveMode === "loop_plus";
       }
 
       function getLoopSubtaskOpenCodeModelState() {
@@ -706,8 +711,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           }
         });
         if (elements.loopSubtaskRouteIssue) {
-          elements.loopSubtaskRouteIssue.textContent = route.unavailableReason || "";
-          elements.loopSubtaskRouteIssue.style.display = route.unavailableReason ? "inline" : "none";
+          const routeIssue = !shouldShowSubtaskRouteIssue(mode)
+            ? ""
+            : route.configPending
+              ? t("loopSubtaskRouteConfigSyncing")
+              : route.unavailableReason;
+          elements.loopSubtaskRouteIssue.textContent = routeIssue;
+          elements.loopSubtaskRouteIssue.style.display = routeIssue ? "inline" : "none";
         }
         state.loopSubtaskRoute = route;
       }

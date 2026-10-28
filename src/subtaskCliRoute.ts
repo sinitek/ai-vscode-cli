@@ -1,6 +1,37 @@
 import { CLI_LIST, type CliName, type ThinkingMode } from "./cli/types";
 
 const THINKING_MODES = ["off", "on", "low", "medium", "high", "xhigh", "ultra", "max"] as const;
+export const SUBTASK_ROUTE_CONFIG_RETRY_DELAY_MS = 3000;
+export const SUBTASK_ROUTE_CONFIG_MAX_RETRIES = 3;
+
+export async function resolveSubtaskRouteConfigId(input: {
+  cli: CliName;
+  configId?: unknown;
+  getActiveConfigId: (cli: CliName) => string | null;
+  waitForConfigApply?: (cli: CliName) => Promise<boolean>;
+  refreshPanelState?: () => Promise<void>;
+  delay?: (milliseconds: number) => Promise<void>;
+}): Promise<string | null> {
+  const requestedConfigId = normalizeRouteConfigId(input.configId);
+  if (requestedConfigId) {
+    return requestedConfigId;
+  }
+  const delay = input.delay ?? ((milliseconds: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  }));
+  let activeConfigId = normalizeRouteConfigId(input.getActiveConfigId(input.cli));
+  for (let attempt = 0; !activeConfigId && attempt < SUBTASK_ROUTE_CONFIG_MAX_RETRIES; attempt += 1) {
+    await delay(SUBTASK_ROUTE_CONFIG_RETRY_DELAY_MS);
+    try {
+      await input.waitForConfigApply?.(input.cli);
+    } catch {}
+    try {
+      await input.refreshPanelState?.();
+    } catch {}
+    activeConfigId = normalizeRouteConfigId(input.getActiveConfigId(input.cli));
+  }
+  return activeConfigId ?? null;
+}
 
 export const INVALID_SUBTASK_CLI_ROUTE = "invalid-subtask-cli";
 

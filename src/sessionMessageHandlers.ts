@@ -120,6 +120,7 @@ export type PanelMessageHandlerDeps = {
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;
   applyConfigById: (cli: CliName, configId: string) => Promise<ConfigApplyResult>;
   waitForConfigApply?: (cli: CliName) => Promise<boolean>;
+  waitForConfigRetryDelay?: (milliseconds: number) => Promise<void>;
   readCliRules: (cli: CliName, scope: "global" | "project") => Promise<string>;
   writeCliRules: (cli: CliName, scope: "global" | "project", content: string) => Promise<void>;
   normalizeRuleTargets: (targets: CliName[] | undefined) => CliName[];

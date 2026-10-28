@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-26",
+  "as_of": "2026-10-28",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -878,11 +878,12 @@
     {
       "id": "plugin.rule.loop_graph_cross_cli_subtask",
       "name": "Loop 与 Graph 子任务可绑定另一个 CLI",
-      "description": "Loop、Loop+ 和 Graph 的子任务可以选择另一个 CLI 分组当前选中配置下的模型，并只用该 CLI 执行。宿主预先加载具有激活配置的 Grok/DSH 模型，首次选择跨 CLI 子路由不依赖已保存的子路由或先切换主 CLI。角色路由用可选 cli 与 configId 扩展现有记录，请求链使用 loopSubtaskCli 与 loopSubtaskConfigId。缺省跟随主 CLI。子 CLI 选择按主配置保存，不改主 CLI、主配置、主模型或目标 CLI 的主模型角色。显式跨 CLI 的配置缺失、读取失败、非法 CLI 或与执行目标不一致时失败，不能静默改跑主 CLI，也不能回退主模型、主 configId、主 sessionId、主思考档或 OpenCode variant。Claude 没有模型选择，但仍可作为主 CLI 或子 CLI；未指定模型时使用目标 CLI 自己的默认。Claude 子任务继续使用 bypassPermissions；Claude 交互请求显式启用任务跟踪工具，保证任务列表观测不依赖默认模型能力；隔离项目指令时保留 user settings，以免屏蔽用户级 MCP / 搜索工具。经典 Loop 创建目标 CLI 的独立子 Tab；Loop+ attempt 的 targetCli 使用绑定子路由；Graph 只有 executor 节点切换执行 CLI，plan 与 summary 仍用 planner。主任务的 CLI、会话、任务存储归属、workspaceKey 和父子关联保持不变。",
+      "description": "Loop、Loop+ 和 Graph 的子任务可以选择另一个 CLI 分组当前选中配置下的模型，并只用该 CLI 执行。宿主预先加载具有激活配置的 Grok/DSH 模型，首次选择跨 CLI 子路由不依赖已保存的子路由或先切换主 CLI。角色路由用可选 cli 与 configId 扩展现有记录，请求链使用 loopSubtaskCli 与 loopSubtaskConfigId。缺省跟随主 CLI。Vibe（coding）不执行子任务路由；普通发送忽略残留路由字段并清理请求，Webview 不显示子任务配置告警。Loop、Loop+、Graph 与子任务续跑的跨 CLI 路由若缺少目标配置 ID，宿主读取目标 CLI 当前激活配置；暂时缺失时每隔 3 秒等待配置应用、刷新面板并重查，最多重试 3 次，成功后才派发并附上配置 ID，耗尽后明确失败。显式跨 CLI 配置缺失、读取失败、非法 CLI 或与执行目标不一致时失败，不能静默改跑主 CLI，也不能回退主模型、主 configId、主 sessionId、主思考档或 OpenCode variant。子 CLI 选择按主配置保存，不改主 CLI、主配置、主模型或目标 CLI 的主模型角色。Claude 没有模型选择，但仍可作为主 CLI 或子 CLI；未指定模型时使用目标 CLI 自己的默认。Claude 子任务继续使用 bypassPermissions；Claude 交互请求显式启用任务跟踪工具，保证任务列表观测不依赖默认模型能力；隔离项目指令时保留 user settings，以免屏蔽用户级 MCP / 搜索工具。经典 Loop 创建目标 CLI 的独立子 Tab；Loop+ attempt 的 targetCli 使用绑定子路由；Graph 只有 executor 节点切换执行 CLI，plan 与 summary 仍用 planner。主任务的 CLI、会话、任务存储归属、workspaceKey 和父子关联保持不变。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.local_cli", "plugin.config_profile"],
       "source_refs": [
         {"path": "src/subtaskCliRoute.ts"},
+        {"path": "src/sessionMessageActions.ts"},
         {"path": "src/modelSelectionStore.ts"},
         {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "src/loopTaskStore.ts"},
@@ -895,6 +896,11 @@
         {"path": "src/interactive/claudeRunner.ts"},
         {"path": "src/interactive/claudeTaskList.ts"},
         {"path": "src/webview/viewContentHtml.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
+        {"path": "src/test/session/sessionMessageActions.test.ts"},
+        {"path": "src/test/loop/subtaskCliRoute.test.ts"},
+        {"path": "src/test/webview/loopSubtaskCliRoute.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "ARCHITECTURE.md"}
       ]

@@ -96,6 +96,7 @@ export const WEBVIEW_STRINGS = {
     codexLoopSubtaskModelLabel: "子模型",
     loopSubtaskCliSelectAria: "子模型 CLI 分组",
     loopSubtaskRouteMissingConfig: "目标 CLI 没有可用配置，不能派发子任务。",
+    loopSubtaskRouteConfigSyncing: "正在同步目标 CLI 配置，发送后会自动重试。",
     loopSubtaskRouteReadFailed: "目标 CLI 配置读取失败，不能派发子任务。",
     openCodePrimaryThinkingModeAria: "OpenCode 主模型思考模式",
     openCodeSmallThinkingModeAria: "OpenCode 子模型思考模式",

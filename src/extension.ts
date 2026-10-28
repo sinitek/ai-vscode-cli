@@ -2157,7 +2157,6 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
   resolveDshModelWireForRun: (model) => modelSettingsHost.resolveDshModelWireForRun(model),
   resolveKimiModelWireForRun: (model) => modelSettingsHost.resolveKimiModelWireForRun(model),
-  resolveZcodeModelWireForRun: (model) => modelSettingsHost.resolveZcodeModelWireForRun(model),
   getModelDisplayName: (cli, model) => modelSettingsHost.getModelDisplayName(cli, model),
   loadSessionMessages,
   logCliStartup,

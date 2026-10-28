@@ -9,6 +9,7 @@ installVscodeMock();
 const {
   INVALID_SUBTASK_CLI_ROUTE,
   planBoundSubtaskConfigApply,
+  resolveSubtaskRouteConfigId,
   resolveStoredSubtaskExecution,
   subtaskRouteIsConfigured,
 } = require("../../subtaskCliRoute") as typeof import("../../subtaskCliRoute");
@@ -27,10 +28,6 @@ const {
   resolveCurrentLoopModelPair,
   resolveLoopContinueModelPair,
 } = require("../../continueModelChoice") as typeof import("../../continueModelChoice");
-const {
-  handleSendPromptMessage,
-} = require("../../sessionMessageActions") as typeof import("../../sessionMessageActions");
-
 test("old Loop routes stay on the same CLI and illegal CLI values never reach a runner", () => {
   const legacy = normalizeLoopTaskModelRouting({
     main: { model: "gpt-main" },
@@ -155,25 +152,28 @@ test("continue keeps the original cross-CLI route and current config rewrites th
   assert.equal(hasContinueModel(missing), false);
 });
 
-test("send rejects an explicit cross-CLI route when the target config is missing", async () => {
-  const errors: string[] = [];
-  let ran = false;
-  await handleSendPromptMessage({
-    type: "sendPrompt",
-    prompt: "run the subtask",
-    interactiveMode: "loop",
-    loopSubtaskCli: "claude",
-  }, {
-    getCurrentCli: () => "codex",
-    getActiveConversationTab: () => ({ id: "main-tab", cli: "codex" }),
-    isCliName: (value: string): value is CliName => ["codex", "claude", "opencode", "grok"].includes(value),
-    showWebviewError: (_title: string, detail: string) => {
-      errors.push(detail);
-    },
-    runLoopPrompt: async () => {
-      ran = true;
-    },
-  } as never);
-  assert.deepEqual(errors, ["目标 CLI 没有可用配置，不能派发子任务。"]);
-  assert.equal(ran, false);
+test("cross-CLI config sync retries every three seconds at most three times", async () => {
+  const delays: number[] = [];
+  let refreshes = 0;
+  let waits = 0;
+  const configId = await resolveSubtaskRouteConfigId({
+    cli: "claude",
+    getActiveConfigId: () => refreshes === 3 ? "claude-live-config" : null,
+    waitForConfigApply: async () => { waits += 1; return true; },
+    refreshPanelState: async () => { refreshes += 1; },
+    delay: async (milliseconds) => { delays.push(milliseconds); },
+  });
+  assert.equal(configId, "claude-live-config");
+  assert.deepEqual(delays, [3000, 3000, 3000]);
+  assert.equal(refreshes, 3);
+  assert.equal(waits, 3);
+
+  const exhaustedDelays: number[] = [];
+  const exhausted = await resolveSubtaskRouteConfigId({
+    cli: "claude",
+    getActiveConfigId: () => null,
+    delay: async (milliseconds) => { exhaustedDelays.push(milliseconds); },
+  });
+  assert.equal(exhausted, null);
+  assert.deepEqual(exhaustedDelays, [3000, 3000, 3000]);
 });
