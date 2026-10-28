@@ -42,6 +42,53 @@ test("shared renderer formats Markdown, code, SVG and JSON with the bundled pars
   assert.match(render("```svg\n非 SVG 内容\n```"), /language-svg/u);
 });
 
+test("standalone raw SVG bubbles render exactly like SVG fences without changing the source", () => {
+  const render = loadRenderer();
+  for (const svg of [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><text y="20">完成</text></svg>',
+    '<svg viewBox="0 0 120 40">\n<text y="20">完成</text>\n</svg>',
+    '<svg\nviewBox="0 0 120 40">\r\n<text y="20">完成</text>\r\n</svg>',
+  ]) {
+    const fenced = "```svg\n" + svg + "\n```";
+    const expected = render(fenced);
+    assert.match(expected, /chat-image-preview/u);
+    assert.match(expected, /下载 SVG/u);
+    assert.equal(render(svg), expected);
+    assert.equal(render("\uFEFF \r\n" + svg + "\r\n "), expected);
+    assert.equal(render(fenced), expected);
+  }
+});
+
+test("raw SVG compatibility leaves mixed, incomplete and non-SVG bubbles unconverted", () => {
+  const render = loadRenderer();
+  const svg = '<svg viewBox="0 0 120 40"><text y="20">完成</text></svg>';
+  for (const content of [
+    "说明\n" + svg,
+    svg + "\n说明",
+    '<svg viewBox="0 0 120 40"><text y="20">完成</text>',
+    '<svg-preview>不是 SVG</svg>',
+    '<div>不是 SVG</div>',
+    "```xml\n" + svg + "\n```",
+    "```text\n" + svg + "\n```",
+  ]) {
+    const html = render(content);
+    assert.doesNotMatch(html, /chat-image-preview/u, content);
+    assert.doesNotMatch(html, /<svg[\s>]/iu, content);
+  }
+});
+
+test("raw SVG compatibility preserves image size and entity validation", () => {
+  const render = loadRenderer();
+  for (const svg of [
+    '<svg><!ENTITY unsafe "不执行"></svg>',
+    "<svg>" + "x".repeat(256 * 1024) + "</svg>",
+  ]) {
+    const html = render(svg);
+    assert.doesNotMatch(html, /chat-image-preview/u);
+    assert.match(html, /language-svg/u);
+  }
+});
+
 test("Loop and Loop+ embed the same renderer as AI chat for initial and patched bubbles", () => {
   const shared = neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT);
   assert.ok(getWebviewHtml({ cspSource: "self" }).includes(shared));

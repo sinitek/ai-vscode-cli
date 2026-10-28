@@ -198,7 +198,12 @@ export const CHAT_MARKDOWN_SCRIPT = `
         if (jsonValue) {
           return renderJsonTreeHost(jsonValue);
         }
-        const normalized = wrapLineNumberedBlocks(content);
+        const trimmed = String(content).trim();
+        const fence = String.fromCharCode(96).repeat(3);
+        const markdown = /^<svg(?=[\\s>])/i.test(trimmed) && /<\\/svg\\s*>$/i.test(trimmed)
+          ? fence + "svg\\n" + trimmed + "\\n" + fence
+          : content;
+        const normalized = wrapLineNumberedBlocks(markdown);
         if (typeof marked === "undefined" || !marked.parse) {
           return escapeHtml(normalized);
         }

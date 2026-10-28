@@ -121,7 +121,8 @@ test("renders SVG fences as passive clickable images while retaining ordinary co
   assert.match(render("```xml\n" + svg + "\n```"), /<pre><code class="language-xml">/);
   assert.match(render("```svg\nnot svg\n```"), /<pre><code class="language-svg">/);
   assert.match(render("```svg\n<!DOCTYPE svg>\n<svg\/>\n```"), /<pre><code class="language-svg">/);
-  assert.doesNotMatch(render(svg), /<svg|<img/);
+  assert.equal(render(svg), render("```svg\n" + svg + "\n```"));
+  assert.doesNotMatch(render(svg), /<svg/);
   const preview = buildChatImagePreviewHtml(createChatSvgImageSource(svg)!, "SVG 图示");
   assert.match(preview, /<img src="data:image\/svg\+xml,/);
   assert.doesNotMatch(preview, /<svg|<script/);
