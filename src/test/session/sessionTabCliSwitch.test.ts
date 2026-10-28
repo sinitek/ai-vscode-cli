@@ -12,11 +12,15 @@ function createHost(initial: {
   currentCli: CliName;
   modes: Partial<Record<CliName, InteractiveMode>>;
   graphTabIds?: Set<string>;
+  onRestore?: (tabId: string) => Promise<void>;
 }) {
   let currentCli = initial.currentCli;
   const modes = { ...initial.modes };
   const settings: { currentCli?: CliName } = {};
   const pendingDrafts: Record<string, PendingSessionDraft> = {};
+  const restoredTabIds: string[] = [];
+  const postedTabIds: Array<string | null> = [];
+  const sentTabIds: Array<string | null> = [];
   const contextFor = (tab: ConversationTabRecord | null) => {
     const role = tab?.id.includes("main") ? "main" as const : tab?.id.includes("sub") ? "subtask" as const : undefined;
     return { taskRole: role, loopTaskId: role ? "task-1" : null };
@@ -82,10 +86,14 @@ function createHost(initial: {
     isGraphRunBlockedForMainTab: () => false,
     isTabRunActive: () => false,
     isLoopMainTabCloseLocked: () => false,
-    postPanelState: async () => undefined,
+    postPanelState: async () => { postedTabIds.push(controller.getActiveConversationTabId()); },
+    restoreConversationTabConfiguration: async (tabId) => {
+      restoredTabIds.push(tabId);
+      await initial.onRestore?.(tabId);
+    },
     updateStatusBar: () => undefined,
     maybePromptInstallOnCliGroupSwitch: async () => undefined,
-    sendSessionMessagesToPanel: () => undefined,
+    sendSessionMessagesToPanel: (_cli, _sessionId, tabId) => { sentTabIds.push(tabId ?? null); },
     getInteractiveSessionBindingsForTab: () => [],
     disposeInteractiveRunnerIfUnused: () => undefined,
     setWorkspaceInteractiveModeForCli: (cli, mode) => { modes[cli] = mode; return true; },
@@ -100,7 +108,7 @@ function createHost(initial: {
     logInfo: () => undefined,
     activeData: { WORKSPACE_KEY_FALLBACK: "fallback", LEGACY_SESSION_FILE: "legacy", SESSION_DIR: "sessions", SESSION_BUFFER_LIMIT: 1 },
   });
-  return { host, modes, currentCli: () => currentCli };
+  return { host, modes, postedTabIds, restoredTabIds, sentTabIds, currentCli: () => currentCli };
 }
 
 test("returning from a cross-CLI Loop+ subtask restores the main CLI and Loop+ mode", async () => {
@@ -132,6 +140,41 @@ test("closing a Graph node tab restores the main tab Graph mode and preserves an
   assert.equal(env.currentCli(), "codex");
   assert.equal(env.modes.codex, "graph");
   assert.equal(env.modes.claude, "loop_plus");
+  assert.deepEqual(env.restoredTabIds, ["main-tab"]);
+});
+
+test("closing a background tab does not restore configuration for the unchanged active tab", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: [
+      { id: "main-tab", cli: "codex", sessionId: "main", sessionIdByCli: { codex: "main" }, createdAt: 1 },
+      { id: "background-tab", cli: "claude", sessionId: "background", sessionIdByCli: { claude: "background" }, createdAt: 2 },
+    ],
+  };
+  const env = createHost({ state, currentCli: "codex", modes: { codex: "coding", claude: "coding" } });
+  await env.host.closeConversationTabAndRefreshPanel("background-tab");
+  assert.deepEqual(env.restoredTabIds, []);
+});
+
+test("closing an active tab stops stale refresh when another tab becomes active during restore", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "closing-tab",
+    tabs: [
+      { id: "main-tab", cli: "codex", sessionId: "main", sessionIdByCli: { codex: "main" }, createdAt: 1 },
+      { id: "closing-tab", cli: "claude", sessionId: "closing", sessionIdByCli: { claude: "closing" }, createdAt: 2 },
+      { id: "other-tab", cli: "opencode", sessionId: "other", sessionIdByCli: { opencode: "other" }, createdAt: 3 },
+    ],
+  };
+  const env = createHost({
+    state,
+    currentCli: "claude",
+    modes: { codex: "coding", claude: "coding", opencode: "coding" },
+    onRestore: async () => { state.activeTabId = "other-tab"; },
+  });
+  await env.host.closeConversationTabAndRefreshPanel("closing-tab");
+  assert.deepEqual(env.restoredTabIds, ["main-tab"]);
+  assert.deepEqual(env.postedTabIds, []);
+  assert.deepEqual(env.sentTabIds, []);
 });
 
 test("a rejected main-tab switch does not change the current CLI or mode", async () => {

@@ -23,6 +23,7 @@ export type ExtensionSessionTabsHostDeps = {
   getLiveMessagesForTab: (tabId: string) => ChatMessage[] | null; getPendingSessionDraft: (tabId: string, cli?: CliName) => PendingSessionDraft; getActiveTabIdForRun: () => string | null; getActiveSessionId: () => string | null; persistSessionStore: (store: SessionStore) => Promise<void>; getSessionStoreKey: (workspaceKey?: string) => string; loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[]; saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean; isGraphRunBlockedForMainTab: (run: GraphRunRecord) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
+  restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
   extractSessionId: (cli: CliName, buffer: string) => string | null; isLocalSessionId: (sessionId: string) => boolean; migrateLocalSessionToTargetSession: (cli: CliName, from: string, to: string, options?: { notifyPanel?: boolean }) => void; adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
@@ -324,7 +325,14 @@ async function switchVisibleConversationTabForLoop(
   if (previousCli !== switched.cli) {
     await maybePromptInstallOnCliGroupSwitch(switched.cli);
   }
+  await deps.restoreConversationTabConfiguration?.(tabId);
+  if (getActiveConversationTabId() !== tabId) {
+    return null;
+  }
   await postPanelState();
+  if (getActiveConversationTabId() !== tabId) {
+    return null;
+  }
   sendSessionMessagesToPanel(switched.cli, switched.sessionId, tabId);
   return switched;
 }
@@ -400,10 +408,12 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   if (!closingTab) {
     return;
   }
+  const previousActiveTabId = getActiveConversationTabId();
   graphNodeRunTargetsByTabId.delete(tabId);
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
   const next = closeConversationTab(tabId);
+  const nextActiveTabId = getActiveConversationTabId();
   closingBindings.forEach((binding) => {
     disposeInteractiveRunnerIfUnused(binding);
   });
@@ -419,7 +429,16 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   if (next) {
     setWorkspaceInteractiveModeForCli(next.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
   }
+  if (next && nextActiveTabId && nextActiveTabId !== previousActiveTabId) {
+    await deps.restoreConversationTabConfiguration?.(nextActiveTabId);
+    if (getActiveConversationTabId() !== nextActiveTabId) {
+      return;
+    }
+  }
   await postPanelState();
+  if (nextActiveTabId && getActiveConversationTabId() !== nextActiveTabId) {
+    return;
+  }
   if (next) {
     sendSessionMessagesToPanel(next.cli, next.sessionId);
     return;
