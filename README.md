@@ -2,8 +2,6 @@
 
 《携宁 CLI 助手》为 VS Code 提供一个统一的 AI 工作台。无需离开编辑器，即可使用本机的 Codex、Claude、OpenCode、Grok、DSH 或 Kimi Code CLI 进行对话、编程和复杂任务协作。支持主模型和子模型使用不同的 cli 执行。
 
-![Loop+ AI 协作流程：主模型规划拆分、子模型编码、闭环验收与交付](media/loop-plus-intro.jpg)
-
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
