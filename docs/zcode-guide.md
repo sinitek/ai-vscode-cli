@@ -10,7 +10,7 @@ Windows、macOS、Linux 统一使用以下命令安装：
 npm install -g zcode-app-cli@latest
 ```
 
-AI 对话助手切换到 ZCode 时，如果找不到配置的 `zcode` 命令，会与其他 CLI 一样提示“一键安装”；点击后在 VS Code 终端执行上述命令，不跳转网页或命令设置。需要本机可用的 Node.js 和 npm，实际安装进度及结果以终端输出为准。
+AI 对话助手切换到 ZCode 时，如果找不到配置的 `zcode` 命令，会与其他 CLI 一样直接弹出模态安装确认，不再仅显示铃铛通知；点击“一键安装”后在 VS Code 终端执行上述命令，不跳转网页或命令设置。需要本机可用的 Node.js 和 npm，实际安装进度及结果以终端输出为准。
 
 已安装且命令可用时不提示、不重复安装。安装后可执行 `zcode --version` 检查；如果仍无法找到命令，可在设置 `sinitek-cli-tools.commands.zcode` 中填写可执行文件绝对路径，必要时重新加载 VS Code 窗口。已有桌面应用附带的 `zcode` 命令仍可使用。
 

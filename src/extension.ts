@@ -5853,6 +5853,7 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
   ].join("\n\n");
   const selection = await vscode.window.showWarningMessage(
     message,
+    { modal: true },
     installLabel,
     openSettingsLabel
   );

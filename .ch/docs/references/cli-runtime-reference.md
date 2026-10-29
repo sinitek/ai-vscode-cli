@@ -17,9 +17,10 @@
 
 ### 分组切换安装检查
 
-- 切换到 Codex、Claude、OpenCode、Grok 或 DSH 分组时检查目标命令；命令不可用时提示安装，确认后在 VS Code 终端运行对应安装命令。
-- Codex、Claude、OpenCode 和 DSH 使用各自 npm 包；官方 Grok Build 没有走 npm 安装，Windows 执行 `irm https://x.ai/cli/install.ps1 | iex`，macOS/Linux 执行 `curl -fsSL https://x.ai/cli/install.sh | bash`。
-- 安装检查不会阻止切换分组；自定义命令路径仍沿用现有命令解析与设置修复入口。
+- 切换到 Codex、Claude、OpenCode、Grok、DSH、KimiCode 或 ZCode 分组时检查目标命令；命令不可用时直接弹出 VS Code 模态安装确认（`showWarningMessage` 的 `{ modal: true }`），而不是仅发送可能收进铃铛的普通通知。
+- 对话框提供“一键安装”“打开设置”和取消；只有选择安装才显示 VS Code 终端并运行对应安装命令。已安装时不出现缺失安装提示，取消不执行命令；上下文切换确认不替代安装确认。
+- 除 Grok 外均使用各自 npm 包，ZCode 为 `npm install -g zcode-app-cli@latest`；官方 Grok Build 没有走 npm 安装，Windows 执行 `irm https://x.ai/cli/install.ps1 | iex`，macOS/Linux 执行 `curl -fsSL https://x.ai/cli/install.sh | bash`。
+- 取消安装不会撤销分组切换；自定义命令路径仍沿用现有命令解析与设置修复入口。排查“没有提示”时，先区分命令未检测、普通通知已进入铃铛和真正未发送提示，避免仅根据弹出与否判断检测失效。
 
 ### 交互 Runner 生命周期
 

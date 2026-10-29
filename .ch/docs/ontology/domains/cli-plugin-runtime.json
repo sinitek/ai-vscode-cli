@@ -320,6 +320,20 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.missing_cli_install_dialog",
+      "name": "缺失 CLI 使用模态安装确认",
+      "description": "切换到命令不可用的 Codex、Claude、OpenCode、Grok、DSH、KimiCode 或 ZCode 分组时，共享安装入口使用 VS Code 模态对话框，避免普通通知只进入铃铛。对话框提供一键安装、打开设置和取消，仅明确选择安装后才显示终端并执行平台对应命令；取消不执行命令，已安装时不出现缺失安装提示。上下文切换确认与安装确认独立，检测和命令注册规则保持不变。",
+      "status": "active",
+      "aliases": ["CLI 安装弹窗", "一键安装弹窗", "安装通知在铃铛", "modal"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/extension.ts", "symbol": "promptInstallMissingCli"},
+        {"path": "src/test/extensionHost/cliInstallation.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "分组切换安装检查"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "CLI 缺失安装弹窗"}
+      ]
+    },
+    {
       "id": "plugin.rule.zcode_one_click_install",
       "name": "ZCode 复用公共一键终端安装",
       "description": "切换到 ZCode 且配置命令不可用时，复用公共缺失检测与一键安装提示。Windows、macOS、Linux 统一在 VS Code 终端执行 npm install -g zcode-app-cli@latest，清空安装检测缓存，不将安装操作误路由到设置或网页。已安装时不提示、不重复安装；取消不执行命令，打开设置仍定位 ZCode 命令配置。实际安装结果以终端输出为准。",

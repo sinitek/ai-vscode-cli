@@ -98,6 +98,10 @@ AI 面板首次打开及配置保存后，并行读取 Codex、Claude、OpenCode
 
 子模型提示区分首次状态尚未到达、完整快照确认没有可用档案以及配置读取失败；后两种状态给出实际原因，不再持续显示“正在同步”。删除目标档案后不沿用旧身份，恢复有效档案后模型控件随快照自动恢复。
 
+## CLI 缺失安装弹窗
+
+切换到命令不可用的 Codex、Claude、OpenCode、Grok、DSH、KimiCode 或 ZCode 分组时，直接弹出 VS Code 模态安装确认，不再仅依赖铃铛中的普通通知。对话框提供“一键安装”“打开设置”和取消；仅确认安装后才显示终端并执行原有平台对应命令，取消不执行命令，已安装时不出现缺失安装提示。上下文切换确认与安装确认保持独立。实现见 `src/extension.ts` 的 `promptInstallMissingCli`，回归见 `src/test/extensionHost/cliInstallation.test.ts`。
+
 ## ZCode 一键安装
 
 AI 对话助手切换到 ZCode 且配置命令不可用时，复用其他 CLI 的“一键安装”提示；点击后创建并显示 VS Code 终端，在 Windows、macOS、Linux 统一执行 `npm install -g zcode-app-cli@latest`，清空安装检测缓存，不误跳设置或网页。命令已可用时不重复提示或安装；取消不执行命令，“打开设置”仍定位 `sinitek-cli-tools.commands.zcode`。实际安装结果以终端输出为准。实现见 `src/cli/installer.ts`、`src/extension.ts`，回归见 `src/test/cli/installer.test.ts`、`src/test/extensionHost/cliInstallation.test.ts`。
