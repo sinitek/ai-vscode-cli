@@ -3451,8 +3451,9 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
   assert.match(dshRead, /src\/example.ts/);
   assert.doesNotMatch(dshRead, /in_progress|pending/);
   const collapsedToolResult = context.renderTraceContent({ id: "tool", role: "trace", content: "Tool result: shell\n" + "x".repeat(70) });
-  assert.match(collapsedToolResult, /trace-collapsible message-collapsible-generic/);
-  assert.match(collapsedToolResult, /Tool result: shell/);
+  assert.match(collapsedToolResult, /trace-collapsible trace-collapsible-tool-result/);
+  assert.match(collapsedToolResult, /trace-title">Exec<\/span>/);
+  assert.doesNotMatch(collapsedToolResult, /class="trace-detail"/);
   const longCommand = "/bin/zsh -lc \"" + "sed -n '45,121p' search_ontology.py; ".repeat(4) + "\"";
   const collapsedExec = context.renderTraceContent({ id: "exec-long", role: "trace", content: "exec " + longCommand });
   assert.match(collapsedExec, /trace-collapsible/);
@@ -3484,6 +3485,22 @@ test("renders message and trace helpers across final, collapsed, tool-result, an
     content: "tool bash\n" + "npm test output\n".repeat(6),
   });
   assert.match(collapsedOpenCode, /trace-collapsible/);
+  const cliTraces = {
+    codex: "exec /bin/zsh -lc \"apply_patch <<'PATCH'\"\n" + "updated file\n".repeat(8),
+    claude: "工具结果: Edit\n" + "changed line\n".repeat(8),
+    opencode: "tool bash\n" + "npm test output\n".repeat(8),
+    grok: "tool: exec_command\ncommand: npm run build\n" + "build output\n".repeat(8),
+    dsh: "exec rg -n taskList src\n" + "search output\n".repeat(8),
+    "kimi-code": "exec node example.js\n" + "node output\n".repeat(8),
+    zcode: "exec /bin/zsh -lc \"apply_patch <<'PATCH'\"\n" + "patch output\n".repeat(8),
+  };
+  for (const [cli, content] of Object.entries(cliTraces)) {
+    const html = context.renderTraceContent({ id: `${cli}-no-subtitle`, role: "trace", content });
+    assert.doesNotMatch(html, /class="trace-detail"/, cli);
+    assert.match(html, /class="trace-title"/, cli);
+    assert.match(html, /trace-collapsible/, cli);
+    assert.match(html, /trace-content/, cli);
+  }
   assert.equal(context.classifyCommandPurposeTag("git status").type, "git-read");
   assert.equal(context.unwrapShellCommand("bash -lc \"npm test\""), "npm test");
   assert.equal(context.getTracePresentation("unknown").type, "");
@@ -4262,6 +4279,43 @@ function createKimiPanelState(overrides: Record<string, unknown> = {}): Record<s
     ...overrides,
   });
 }
+
+test("ZCode preserves explicit UI reasoning and uses only the current session's advertised levels", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  const panel = createPanelState({
+    currentCli: "zcode",
+    interactiveMode: "coding",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "zcode" }, { id: "tab-2", cli: "zcode" }] },
+    modelState: {
+      optionsByCli: { zcode: ["local-glm/glm-5.3-flash"] },
+      managedByCli: { zcode: [] },
+      selectedByCli: { zcode: "local-glm/glm-5.3-flash" },
+    },
+    thinkingMode: "max",
+  });
+  window.dispatchMessage({ type: "state", payload: panel });
+  const select = document.getElementById("thinkingMode");
+  assert.equal(select.value, "max");
+  assert.equal(api.state.thinkingMode, "max");
+  api.state.thinkingMode = "high";
+  window.dispatchMessage({ type: "zcodeThinkingOptions", tabId: "tab-1", options: ["low", "high", "max", "ultra", "bogus"], currentValue: "max" });
+  assert.deepEqual(api.state.zcodeThinkingOptions, ["low", "high", "max"]);
+  assert.deepEqual(childValueTextPairs(select), [["low", "low"], ["high", "high"], ["max", "max"]]);
+  assert.equal(api.state.thinkingMode, "high");
+  assert.equal(select.value, "high");
+  window.dispatchMessage({ type: "zcodeThinkingOptions", tabId: "tab-2", options: ["low"], currentValue: "low" });
+  assert.deepEqual(api.state.zcodeThinkingOptions, ["low", "high", "max"]);
+  assert.equal(api.state.thinkingMode, "high");
+  window.dispatchMessage({ type: "zcodeThinkingOptions", tabId: "tab-1", options: [], currentValue: null });
+  assert.equal(select.disabled, true);
+  assert.deepEqual(childValueTextPairs(select), []);
+  window.dispatchMessage({ type: "state", payload: { ...panel, conversationTabs: { activeTabId: "tab-2", tabs: [{ id: "tab-2", cli: "zcode" }] } } });
+  assert.equal(api.state.zcodeThinkingOptions, null);
+  assert.equal(select.disabled, false);
+  window.dispatchMessage({ type: "state", payload: createPanelState({ currentCli: "codex" }) });
+  window.dispatchMessage({ type: "zcodeThinkingOptions", options: ["low"], currentValue: "low" });
+  assert.equal(api.state.zcodeThinkingOptions, null);
+});
 
 test("Kimi thinking options come from ACP, drop off, and never cross tabs or CLIs", () => {
   const { api, document, window } = createRuntimeHarness(undefined, undefined, [

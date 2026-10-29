@@ -1,5 +1,5 @@
 // Config API
-const CONFIG_MANAGER_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"];
+const CONFIG_MANAGER_PLATFORMS = ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"];
 const DSH_PROFILE_SECRET = /(?:^|[\s,{])(?:SINITEK_DSH_API_KEY|DEEPSEEK_API_KEY|API_KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*\S+/i;
 const DSH_PROFILE_TOKEN = /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/;
 const stripDshDirectApiKey = (text) => {

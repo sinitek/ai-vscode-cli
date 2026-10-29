@@ -228,6 +228,7 @@ const MESSAGES = {
     "compact.summaryCompressed": "【会话摘要】已压缩：{from} -> {to}",
     "compact.codexNativeCompressed": "Codex 当前线程上下文压缩已完成：{threadId}",
     "compact.grokNativeCompressed": "Grok 当前会话上下文压缩已完成：{sessionId}",
+    "compact.zcodeNativeCompressed": "ZCode 当前会话已通过 session/compact 压缩：{sessionId}",
     "compact.grokNativeUnconfirmed": "Grok 未确认原生上下文压缩完成，已保留原会话。请检查当前 CLI 是否支持 /compact，或查看日志中的失败原因。",
     "compact.claudeNativeCompressed": "Claude 当前会话上下文压缩已完成：{sessionId}",
     "compact.claudeNativeCompressedForked": "Claude 上下文压缩已完成：{from} -> {to}",

@@ -600,7 +600,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           }
           return normalizeThinkingValue(payload.loopSubtaskThinkingMode);
         })();
-        const loopSubtaskCliNames = ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"];
+        const loopSubtaskCliNames = ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"];
         const loopSubtaskCli = typeof payload.loopSubtaskCli === "string" && loopSubtaskCliNames.indexOf(payload.loopSubtaskCli) >= 0
           ? payload.loopSubtaskCli
           : "";

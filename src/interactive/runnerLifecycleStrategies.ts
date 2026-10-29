@@ -3,6 +3,7 @@ import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { CodexInteractiveRunner } from "./codexRunner";
 import { DshInteractiveRunner } from "./dshRunner";
 import { KimiInteractiveRunner } from "./kimiRunner";
+import { ZcodeInteractiveRunner } from "./zcodeRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import type {
   ClaudeRunnerCreateOptions,
@@ -16,7 +17,9 @@ import type {
   PreparedDshCreate,
   PreparedGrokCreate,
   PreparedKimiCodeCreate,
+  PreparedZcodeCreate,
   RunnerEntry,
+  ZcodeRunnerCreateOptions,
   RunnerLifecycleStrategy,
 } from "./runnerLifecycleTypes";
 
@@ -548,12 +551,120 @@ export const kimiCodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
   },
 };
 
+export const zcodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
+  "zcode",
+  ZcodeRunnerCreateOptions,
+  PreparedZcodeCreate
+> = {
+  cli: "zcode",
+  prepare(options) {
+    const sessionId = options.sessionId.trim();
+    if (!sessionId) {
+      throw Object.assign(new Error("empty zcode session"), { reason: "empty" });
+    }
+    return {
+      sessionId,
+      options: {
+        ...options,
+        sessionId,
+        agentArgs: copyArgs(options.agentArgs),
+        localSessionId: options.localSessionId ?? null,
+      },
+    };
+  },
+  canReuse(entry, prepared) {
+    return entry.runner.isReusable()
+      && entry.command === prepared.options.command
+      && entry.cwd === prepared.options.cwd
+      && entry.interactiveMode === prepared.options.interactiveMode
+      && entry.localSessionId === (prepared.options.localSessionId ?? null)
+      && sameStringList(entry.args, prepared.options.agentArgs);
+  },
+  applyReuse(entry, prepared) {
+    entry.command = prepared.options.command;
+    entry.args = copyArgs(prepared.options.agentArgs);
+    entry.cwd = prepared.options.cwd;
+    entry.interactiveMode = prepared.options.interactiveMode;
+    entry.localSessionId = prepared.options.localSessionId ?? null;
+    entry.env = prepared.options.env;
+    entry.model = prepared.options.model;
+    entry.thinkingMode = prepared.options.thinkingMode;
+  },
+  createRunner(prepared) {
+    return new ZcodeInteractiveRunner({
+      command: prepared.options.command,
+      agentArgs: prepared.options.agentArgs,
+      cwd: prepared.options.cwd,
+      thinkingMode: prepared.options.thinkingValue ?? null,
+      modeId: prepared.options.modeId ?? null,
+      model: prepared.options.model,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    });
+  },
+  createRegistration(prepared, runner) {
+    return {
+      cli: "zcode",
+      sessionId: prepared.sessionId,
+      runner,
+      thinkingMode: prepared.options.thinkingMode,
+      interactiveMode: prepared.options.interactiveMode,
+      model: prepared.options.model,
+      command: prepared.options.command,
+      args: copyArgs(prepared.options.agentArgs),
+      cwd: prepared.options.cwd,
+      localSessionId: prepared.options.localSessionId ?? null,
+      env: prepared.options.env,
+    };
+  },
+  applySetMetadata(entry, input) {
+    entry.sessionId = input.sessionId;
+    entry.thinkingMode = input.thinkingMode;
+    entry.interactiveMode = input.interactiveMode;
+    entry.model = input.model;
+    if (typeof input.options.command === "string") {
+      entry.command = input.options.command;
+    }
+    if (input.options.args) {
+      entry.args = copyArgs(input.options.args);
+    }
+    if (input.options.cwd !== undefined) {
+      entry.cwd = input.options.cwd;
+    }
+    if (input.options.localSessionId !== undefined) {
+      entry.localSessionId = input.options.localSessionId;
+    }
+    if (input.options.env) {
+      entry.env = input.options.env;
+    }
+  },
+  createSetRegistration(input) {
+    return {
+      cli: "zcode",
+      sessionId: input.sessionId,
+      runner: input.runner,
+      thinkingMode: input.thinkingMode,
+      interactiveMode: input.interactiveMode,
+      model: input.model,
+      command: input.options.command ?? "",
+      args: copyArgs(input.options.args ?? []),
+      cwd: input.options.cwd,
+      localSessionId: input.options.localSessionId ?? null,
+      env: input.options.env,
+    };
+  },
+  stop(runner) {
+    runner.cancelTurn();
+  },
+};
+
 export const runnerLifecycleStrategies = {
   codex: codexRunnerLifecycleStrategy,
   claude: claudeRunnerLifecycleStrategy,
   grok: grokRunnerLifecycleStrategy,
   dsh: dshRunnerLifecycleStrategy,
   "kimi-code": kimiCodeRunnerLifecycleStrategy,
+  zcode: zcodeRunnerLifecycleStrategy,
 };
 
 export function stopManagedRunner(entry: RunnerEntry): void {
@@ -573,5 +684,9 @@ export function stopManagedRunner(entry: RunnerEntry): void {
     dshRunnerLifecycleStrategy.stop(entry.runner);
     return;
   }
-  kimiCodeRunnerLifecycleStrategy.stop(entry.runner);
+  if (entry.cli === "kimi-code") {
+    kimiCodeRunnerLifecycleStrategy.stop(entry.runner);
+    return;
+  }
+  zcodeRunnerLifecycleStrategy.stop(entry.runner);
 }

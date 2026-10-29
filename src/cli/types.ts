@@ -1,4 +1,4 @@
-export const CLI_LIST = ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"] as const;
+export const CLI_LIST = ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"] as const;
 
 export type PublicCliName = (typeof CLI_LIST)[number];
 

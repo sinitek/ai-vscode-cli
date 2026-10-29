@@ -997,13 +997,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       function enabledRuleCliNames() {
         return typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
       }
 
       function collectRuleTargets() {
         const enabled = enabledRuleCliNames();
         const targets = [];
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
         if (state.ruleScope === "project") {
           if (elements.rulesSaveCodex.checked && projectGroup.length > 0) {
             targets.push(projectGroup[0]);
@@ -1031,13 +1031,16 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.rulesSaveKimiCode && elements.rulesSaveKimiCode.checked && enabled.indexOf("kimi-code") >= 0) {
           targets.push("kimi-code");
         }
+        if (elements.rulesSaveZcode && elements.rulesSaveZcode.checked && enabled.indexOf("zcode") >= 0) {
+          targets.push("zcode");
+        }
         return targets;
       }
 
       function setRulesLoadCliOptions(isGlobal) {
         const currentValue = elements.rulesLoadCli.value;
         const enabled = enabledRuleCliNames();
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
         const options = isGlobal
           ? enabled.map((name) => ({ value: name, label: formatCliDisplayName(name) }))
           : [
@@ -1068,7 +1071,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function syncRulesSaveOptions(isGlobal) {
         const enabled = enabledRuleCliNames();
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
         if (elements.rulesSaveCodexLabel) {
           elements.rulesSaveCodexLabel.textContent = isGlobal
             ? formatCliDisplayName("codex")
@@ -1104,10 +1107,15 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           elements.rulesSaveKimiCode,
           isGlobal && enabled.indexOf("kimi-code") >= 0,
         );
+        setRuleOptionVisible(
+          elements.rulesSaveZcodeOption,
+          elements.rulesSaveZcode,
+          isGlobal && enabled.indexOf("zcode") >= 0,
+        );
       }
 
       function syncCliEnabledControls() {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"];
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"];
         names.forEach((name) => {
           const input = document.getElementById("cliEnabled-" + name);
           if (!input) {
@@ -1130,7 +1138,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       }
 
       function bindCliEnabledToggles() {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"];
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"];
         names.forEach((name) => {
           const input = document.getElementById("cliEnabled-" + name);
           if (!input || input.getAttribute("data-cli-enabled-bound") === "true") {

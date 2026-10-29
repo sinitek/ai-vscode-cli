@@ -2,6 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { buildDshLaunchArgs } from "../interactive/dshAppServerProtocol";
 import { KIMI_DEFAULT_COMMAND, readKimiAcpAgentArgs } from "../interactive/kimiAppServerProtocol";
+import { ZCODE_DEFAULT_COMMAND } from "../interactive/zcodeAppServerProtocol";
 import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
@@ -99,7 +100,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
+  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode";
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {
@@ -112,7 +113,7 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const usesCodexLikeThinking = cli === "codex" || isOpenCodeCli(cli);
   const globalMode = config.get<ThinkingMode>("thinkingMode");
   if (globalMode) {
-    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && globalMode === "max") {
+    if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode" && globalMode === "max") {
       return "high";
     }
     if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && globalMode === "xhigh") {
@@ -126,7 +127,7 @@ export function getThinkingMode(cli: CliName): ThinkingMode {
   const perCliKey = `thinkingMode${cli.charAt(0).toUpperCase()}${cli.slice(1)}`;
   const mode = config.get<ThinkingMode>(perCliKey)
     ?? config.get<ThinkingMode>(`thinkingMode.${cli}`, "medium");
-  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && mode === "max") {
+  if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode" && mode === "max") {
     return "high";
   }
   if (!usesCodexLikeThinking && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && mode === "xhigh") {
@@ -233,6 +234,22 @@ export function getKimiCommand(): string {
   const configured = config.get<string>("commands.kimi-code");
   const command = typeof configured === "string" ? configured.trim() : "";
   return command && command !== "kimi-code" ? command : KIMI_DEFAULT_COMMAND;
+}
+
+export function getZcodeCommand(): string {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<string>("commands.zcode");
+  const command = typeof configured === "string" ? configured.trim() : "";
+  return command || ZCODE_DEFAULT_COMMAND;
+}
+
+export function getZcodeAgentArgs(): string[] {
+  const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+  const configured = config.get<unknown>("args.zcode");
+  if (!Array.isArray(configured)) {
+    return [];
+  }
+  return configured.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 export function getKimiAgentArgs(): string[] {

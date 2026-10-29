@@ -29,13 +29,13 @@ import {
 const VALID_TOML = `default_model = "subcoco/kimi-k3.1-pro"
 default_permission_mode = "auto"
 
-[providers.subcoco]
+[providers.default]
 type = "openai"
 base_url = "http://127.0.0.1:33391/v1"
 api_key_env = "KIMI_CODE_API_KEY"
 
-[models."subcoco/kimi-k3.1-pro"]
-provider = "subcoco"
+[models."default/kimi-k3.1-pro"]
+provider = "default"
 model = "kimi-k3.1-pro"
 max_context_size = 262144
 display_name = "Kimi K3.1 Pro"
@@ -43,8 +43,8 @@ default_effort = "high"
 support_efforts = ["low", "medium", "high", "xhigh", "max"]
 capabilities = ["thinking", "tool_use"]
 
-[models."subcoco/kimi-k3.1-max"]
-provider = "subcoco"
+[models."default/kimi-k3.1-max"]
+provider = "default"
 model = "kimi-k3.1-max"
 max_context_size = 1048576
 
@@ -56,7 +56,7 @@ effort = "high"
 reserved_context_size = 16384
 `;
 
-const LEGACY_DEFAULT_MODEL = "subcoco/kimi-k3.1-pro";
+const LEGACY_DEFAULT_MODEL = "default/kimi-k3.1-pro";
 
 test("kimi-code config paths follow KIMI_CODE_HOME and the official directory names", () => {
   assert.match(resolveKimiCodeConfigPath(), /\.kimi-code[\\/]config\.toml$/);

@@ -272,7 +272,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function cliSupportsLoopRoleModelSelection(cli = state.currentCli) {
-        return cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
+        return cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode";
       }
 
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
@@ -488,7 +488,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           : "";
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
         const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
         const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
         const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
@@ -544,7 +544,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         }
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
         const currentValues = Array.from(selectElement.options || []).map((option) => option.value);
         const same = currentValues.length === names.length && names.every((name, index) => currentValues[index] === name);
         if (!same) {
@@ -591,7 +591,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           const selected = models && (models.selectedSubtaskRef || models.selectedSmallRef) || "";
           selectElement.value = selected || "";
           selectElement.title = t("openCodeSmallModelSelectAria");
-        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code")) {
+        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode")) {
           updateCodexLoopRoleModelSelect(selectElement, "subtask");
           return;
         } else {
@@ -922,7 +922,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       function handleLoopSubtaskCliChange(rawValue) {
         const names = typeof getEnabledCliNames === "function"
           ? getEnabledCliNames()
-          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"]);
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
         if (names.indexOf(rawValue) < 0) {
           return;
         }

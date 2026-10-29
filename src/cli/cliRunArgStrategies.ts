@@ -1,3 +1,4 @@
+import { buildZcodeLaunchArgs } from "../interactive/zcodeAppServerProtocol";
 import { getCliArgs, getThinkingArgs, readExplicitDshPatchArgs, readExplicitKimiAcpArgs } from "./config";
 import { applyModelArg } from "./modelArgs";
 import type { CliName, ThinkingMode } from "./types";
@@ -205,6 +206,24 @@ function createDshRunArgStrategy(): CliRunArgStrategy {
   };
 }
 
+function createZcodeRunArgStrategy(): CliRunArgStrategy {
+  return {
+    includeThinkingArgs: false,
+    applyIsolation(args) {
+      return buildZcodeLaunchArgs(args);
+    },
+    applyBeforePrompt(args) {
+      return buildZcodeLaunchArgs(args);
+    },
+    appendPrompt(args, _options, prompt) {
+      if (prompt.trim()) {
+        throw new Error("ZCode one-shot prompt arguments are outside the verified app-server contract.");
+      }
+      return buildZcodeLaunchArgs(args);
+    },
+  };
+}
+
 function createKimiCodeRunArgStrategy(): CliRunArgStrategy {
   return {
     includeThinkingArgs: false,
@@ -231,6 +250,7 @@ export function createCliRunArgStrategies(): Record<CliName, CliRunArgStrategy> 
     grok: createGrokRunArgStrategy(),
     dsh: createDshRunArgStrategy(),
     "kimi-code": createKimiCodeRunArgStrategy(),
+    zcode: createZcodeRunArgStrategy(),
   };
 }
 

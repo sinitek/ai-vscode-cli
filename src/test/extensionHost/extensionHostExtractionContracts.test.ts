@@ -268,6 +268,7 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(extensionSource, /const \{ runPromptParallel \} = createPromptParallelRuntimeHost\(\{/);
   assert.match(extensionSource, /const \{ runPromptOneShot \} = createPromptOneShotRuntimeHost\(\{/);
   assert.match(extensionSource, /const \{ runPromptInteractive \} = createPromptInteractiveRuntimeHost\(\{/);
+  assert.match(extensionSource, /resolveZcodeModelWireForRun: \(model\) => modelSettingsHost\.resolveZcodeModelWireForRun\(model\)/);
   assert.match(extensionSource, /function runClassicLoopMainDecision\([\s\S]*requireLoopOrchestrationHost\(\)\.runClassicLoopMainDecision/);
   assert.match(extensionSource, /function runLoopSubtasksBatchWithRetry\([\s\S]*requireLoopOrchestrationHost\(\)\.runLoopSubtasksBatchWithRetry/);
   const autoRepairStart = extensionSource.indexOf("await promptAutoRepairController.run(promptInput, target, {");

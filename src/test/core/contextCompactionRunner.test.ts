@@ -106,6 +106,9 @@ function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions =
       getOrCreateGrokRunner: () => {
         throw new Error("Grok runner should not be used in this test");
       },
+      getOrCreateZcodeRunner: () => {
+        throw new Error("ZCode runner should not be used in this test");
+      },
       setRunner: () => {},
     },
     resolveInteractiveMappedId: (cli: CliName) => cli === "codex" ? "thread-before-compact" : null,
@@ -269,6 +272,9 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
       },
       getOrCreateGrokRunner: () => {
         throw new Error("Grok runner should not be used in this test");
+      },
+      getOrCreateZcodeRunner: () => {
+        throw new Error("ZCode runner should not be used in this test");
       },
       setRunner: () => {},
     },
@@ -686,6 +692,9 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
           },
           dispose: () => { calls.grokDisposed += 1; },
         } as never;
+      },
+      getOrCreateZcodeRunner: () => {
+        throw new Error("ZCode runner should not be used in this test");
       },
       setRunner: (targetCli, sessionId, _runner, thinkingMode, interactiveMode, model, extra) => {
         calls.events.push(`set-runner:${targetCli}:${sessionId}`);

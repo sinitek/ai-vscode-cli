@@ -4,6 +4,7 @@ import { CodexInteractiveRunner } from "./codexRunner";
 import { ClaudeInteractiveRunner } from "./claudeRunner";
 import { DshInteractiveRunner } from "./dshRunner";
 import { KimiInteractiveRunner } from "./kimiRunner";
+import { ZcodeInteractiveRunner } from "./zcodeRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import {
   runnerLifecycleStrategies,
@@ -15,6 +16,7 @@ import type {
   DshRunnerCreateOptions,
   GrokRunnerCreateOptions,
   KimiCodeRunnerCreateOptions,
+  ZcodeRunnerCreateOptions,
   InteractiveRunnerCli,
   RunnerByCli,
   RunnerEntry,
@@ -33,6 +35,7 @@ const platformEntries: {
   grok: (entry) => entry.cli === "grok" ? entry : undefined,
   dsh: (entry) => entry.cli === "dsh" ? entry : undefined,
   "kimi-code": (entry) => entry.cli === "kimi-code" ? entry : undefined,
+  zcode: (entry) => entry.cli === "zcode" ? entry : undefined,
 };
 
 const platformRunners: {
@@ -43,6 +46,7 @@ const platformRunners: {
   grok: (entry) => entry.runner,
   dsh: (entry) => entry.runner,
   "kimi-code": (entry) => entry.runner,
+  zcode: (entry) => entry.runner,
 };
 
 const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -85,7 +89,8 @@ export class InteractiveRunnerManager {
       | ClaudeInteractiveRunner
       | GrokInteractiveRunner
       | DshInteractiveRunner
-      | KimiInteractiveRunner,
+      | KimiInteractiveRunner
+      | ZcodeInteractiveRunner,
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
@@ -128,6 +133,14 @@ export class InteractiveRunnerManager {
       this.registerExternalRunner("dsh", input, (entry) => {
         runnerLifecycleStrategies.dsh.applySetMetadata(entry, input);
       }, () => runnerLifecycleStrategies.dsh.createSetRegistration(input));
+      return;
+    }
+    if (cli === "zcode") {
+      const zcodeRunner = runner as ZcodeInteractiveRunner;
+      const zcodeInput = { ...metadata, runner: zcodeRunner };
+      this.registerExternalRunner("zcode", zcodeInput, (entry) => {
+        runnerLifecycleStrategies.zcode.applySetMetadata(entry, zcodeInput);
+      }, () => runnerLifecycleStrategies.zcode.createSetRegistration(zcodeInput));
       return;
     }
     const kimiRunner = runner as KimiInteractiveRunner;
@@ -226,6 +239,25 @@ export class InteractiveRunnerManager {
     return Boolean(entry && entry.cli === "kimi-code" && entry.runner === runner);
   }
 
+  public hasZcodeRunner(sessionId: string | null, runner: ZcodeInteractiveRunner): boolean {
+    const entry = this.getEntry("zcode", sessionId);
+    return Boolean(entry && entry.cli === "zcode" && entry.runner === runner);
+  }
+
+  public getOrCreateZcodeRunner(options: ZcodeRunnerCreateOptions): ZcodeInteractiveRunner {
+    const prepared = runnerLifecycleStrategies.zcode.prepare(options);
+    return this.reuseOrCreate(
+      "zcode",
+      prepared.sessionId,
+      (entry) => runnerLifecycleStrategies.zcode.canReuse(entry, prepared),
+      (entry) => {
+        runnerLifecycleStrategies.zcode.applyReuse(entry, prepared);
+      },
+      () => runnerLifecycleStrategies.zcode.createRunner(prepared),
+      (created) => runnerLifecycleStrategies.zcode.createRegistration(prepared, created),
+    );
+  }
+
   public getOrCreateKimiCodeRunner(options: KimiCodeRunnerCreateOptions): KimiInteractiveRunner {
     const prepared = runnerLifecycleStrategies["kimi-code"].prepare(options);
     return this.reuseOrCreate(
@@ -248,7 +280,8 @@ export class InteractiveRunnerManager {
       | ClaudeInteractiveRunner
       | GrokInteractiveRunner
       | DshInteractiveRunner
-      | KimiInteractiveRunner,
+      | KimiInteractiveRunner
+      | ZcodeInteractiveRunner,
   ): void {
     const key = this.buildKeyForCli(cli, sessionId);
     if (!key) {
@@ -355,7 +388,11 @@ export class InteractiveRunnerManager {
       const entry: RunnerEntryByCli["dsh"] = { ...registration, idleTimer, lastUsedAt };
       return entry;
     }
-    const entry: RunnerEntryByCli["kimi-code"] = { ...registration, idleTimer, lastUsedAt };
+    if (registration.cli === "kimi-code") {
+      const entry: RunnerEntryByCli["kimi-code"] = { ...registration, idleTimer, lastUsedAt };
+      return entry;
+    }
+    const entry: RunnerEntryByCli["zcode"] = { ...registration, idleTimer, lastUsedAt };
     return entry;
   }
 
@@ -386,7 +423,7 @@ export class InteractiveRunnerManager {
   }
 
   private isInteractiveRunnerCli(cli: CliName): cli is InteractiveRunnerCli {
-    return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code";
+    return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode";
   }
 
   private disposeEntry(key: string): void {

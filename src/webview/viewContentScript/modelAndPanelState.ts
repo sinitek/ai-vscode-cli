@@ -323,7 +323,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
 
         CLI_NAMES.forEach((cli) => {
           // Grok / Kimi Code 的模型名直接来自 config 文件别名，大小写有意义。
-          const keepModelCase = cli === "grok" || cli === "kimi-code";
+          const keepModelCase = cli === "grok" || cli === "kimi-code" || cli === "zcode";
           const incomingModels = normalizeModelNameList(modelState.optionsByCli && modelState.optionsByCli[cli], keepModelCase);
           const incomingManagedModels = normalizeModelNameList(modelState.managedByCli && modelState.managedByCli[cli]);
           const previousModels = normalizeModelNameList(state.modelsByCli && state.modelsByCli[cli], keepModelCase);
@@ -426,6 +426,12 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           ? previousConversationTabs.activeTabId
           : null;
         state.currentCli = panelState.currentCli;
+        if (state.currentCli !== "zcode" || previousCli !== "zcode"
+          || previousActiveTabId !== panelState.conversationTabs?.activeTabId
+          || state.selectedModelsByCli?.zcode !== panelState.modelState?.selectedByCli?.zcode
+          || state.configState?.activeConfigId !== panelState.configState?.activeConfigId) {
+          state.zcodeThinkingOptions = null;
+        }
         if (state.currentCli !== "kimi-code" && Array.isArray(state.kimiThinkingOptions)) {
           // 切换 CLI 后不能沿用上一个 Kimi 会话公布的档位。
           state.kimiThinkingOptions = [];
@@ -835,6 +841,23 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function syncGenericThinkingOptions() {
+        if (state.currentCli === "zcode" && Array.isArray(state.zcodeThinkingOptions)) {
+          const advertised = state.zcodeThinkingOptions;
+          elements.thinkingMode.innerHTML = "";
+          elements.thinkingMode.title = t("thinkingModeAria");
+          elements.thinkingMode.disabled = advertised.length === 0;
+          advertised.forEach((option) => appendThinkingOption(elements.thinkingMode, option, option));
+          if (advertised.length > 0) {
+            const selected = advertised.includes(state.thinkingMode)
+              ? state.thinkingMode
+              : advertised.includes("high") ? "high" : advertised[0];
+            elements.thinkingMode.value = selected;
+            if (selected !== state.thinkingMode) {
+              updateThinkingMode(selected);
+            }
+          }
+          return;
+        }
         if (state.currentCli === "dsh") {
           const advertised = Array.isArray(state.dshReasoningOptions)
             ? state.dshReasoningOptions.filter((option) =>
@@ -901,7 +924,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         const isCodex = state.currentCli === "codex";
         const isClaude = state.currentCli === "claude";
         const isGrok = state.currentCli === "grok";
-        const keepsExtendedThinking = isCodex || isClaude || isGrok;
+        const keepsExtendedThinking = isCodex || isClaude || isGrok || state.currentCli === "zcode";
         elements.thinkingMode.innerHTML = "";
         elements.thinkingMode.disabled = false;
         elements.thinkingMode.title = t("thinkingModeAria");

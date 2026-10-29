@@ -110,6 +110,13 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 
 - Kimi 多模型管理复用 Codex 弹窗，新增、重命名、删除、排序同时保存当前档案和真实 `config.toml`；新增条目复制默认模型 provider、凭据与高级字段，真实 `model` ID 取输入别名。每轮通过 ACP `session/set_config_option` 应用配置别名，复用 runner 后仍重新应用模型及思考档位。配置保存后淘汰持有旧广告集合的 runner，新 runner 通过原 ACP ID 恢复会话，再应用所选模型；直接复用过期 runner 会被拒绝。工具命令只显示 `exec <command>`，普通工具只显示标题，参数 JSON 和成功结果不回放，失败最多两行、600 字符。
 
+### ZCode
+
+- ZCode 作为独立 CLI 接入，使用 ZCode Protocol 1（`zcode app-server --stdio --mode yolo`），不伪装成 ACP。配置中心复用其它 CLI 的公共参数与编辑模式入口；公共参数置顶，下方为左侧模型列表和右侧模型参数，并提供一键导入范例。
+- GLM 范例使用 `openai-responses`，已有配置协议不自动改写；范例模型为 `glm-5.3-flash`，推理档位为必填项。旧配置缺少档位时补默认 `max`，会话只发送当前模型实际公布的 thought level。
+- 正文、思考及工具输入从 `model.streaming` 读取，工具生命周期从 `tool.updated` 读取。相同 `toolCallId` 的开始、输入和结果更新同一条 Codex-compatible 工具气泡，沿用既有标题、本地化和折叠样式。
+- ZCode 提供上下文用量 projection、`session/compact` 原生压缩以及 `--mode yolo` 免审批运行；安装说明和配置字段见 `docs/zcode-guide.md`。
+
 ### 3.3 执行模式
 
 - Codex / Claude：支持交互式会话续接
@@ -231,7 +238,7 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 ### 3.5 Prompt 输入增强
 
 - `@` 路径插入
-- 资源管理器文件和目录可右键“加入到 Sinitek CLI 引用”，该命令标题直接写在 package.json，不随 VS Code 显示语言切换；支持多选，将工作区相对路径插入当前 AI 对话多行输入框的选区位置；含空格路径加引号，面板未打开时先打开再插入，不自动发送提示词。
+- 资源管理器文件和目录可右键“加入到携宁 CLI 引用”，该命令标题直接写在 package.json，不随 VS Code 显示语言切换；支持多选，将工作区相对路径插入当前 AI 对话多行输入框的选区位置；含空格路径加引号，面板未打开时先打开再插入，不自动发送提示词。
 - 读取当前文件 / 当前选区作为上下文标签（可在工具设置开启，默认关闭）
 - 附件上传
 - 工作区路径选择器

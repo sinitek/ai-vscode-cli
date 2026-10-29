@@ -465,6 +465,7 @@ ${renderChatModal({
               <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> ${getCliDisplayName("grok")}</label>
               <label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" /> ${getCliDisplayName("dsh")}</label>
               <label id="rulesSaveKimiCodeOption"><input type="checkbox" id="rulesSaveKimiCode" /> ${getCliDisplayName("kimi-code")}</label>
+              <label id="rulesSaveZcodeOption"><input type="checkbox" id="rulesSaveZcode" /> ${getCliDisplayName("zcode")}</label>
             </div>
           </div>
           <div class="rules-hint" id="rulesHint"></div>`,

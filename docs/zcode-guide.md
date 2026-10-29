@@ -1,0 +1,93 @@
+# ZCode
+
+ZCode 在本插件中是独立 CLI，id 为 `zcode`。它使用 ZCode Protocol，不是 ACP。
+
+## 安装
+
+本机已安装的 `zcode` 0.17.0 是官方桌面应用附带命令：`~/.npm-global/bin/zcode` 转到 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`。插件不提供未核实的安装命令。版本检查是 `zcode --version`。
+
+## 协议
+
+交互启动固定为：
+
+```text
+zcode app-server --stdio --mode yolo
+```
+
+请求是一行一个 JSON 对象，字段为 `id`、`method`、`params`。不要加 `jsonrpc`。免审批模式是 `--mode yolo`。计划模式使用 `plan`。
+
+会话方法：
+
+- `session/create` 新建会话
+- `session/resume` 恢复 `sess_` 会话
+- `session/send` 发送提示
+- `session/stop` 停止当前回合
+- `session/close` 释放会话
+- `session/setModel` 设置 `providerId/modelId`；推理模型还必须提供 `options.reasoningLevel`
+- `session/setThoughtLevel` 只接受当前模型 advertised 的档位
+- `session/compact` 是原生压缩，返回 `accepted` 或 `already_running`
+
+流式事件通过 `session/event` 接收。兼容旧版 `part.delta` 的 `text` 与 `reasoning`；ZCode 0.17.0 的流式正文、思考和工具输入使用 `model.streaming`，工具生命周期通过 `tool.updated` 报告。上下文用量读取 `projection.contextUsed` 与 `projection.contextWindow`。
+
+同一对话的连续任务复用健康的 app-server 进程和原生会话；每回合调用 `start()` 只返回现有会话及最新用量，不重复创建或订阅。只有订阅、模式和模型设置全部完成的 runner 才可复用，不能仅凭已拿到会话 ID 判断启动成功。进程重建时用 `session/resume` 恢复原生会话，已释放或退出的 runner 不可重新启动。发送提示前即注册回合监听，确保早于发送确认到达的正文、完成或失败事件不丢失。
+
+工具输入分片按 `toolCallId` 聚合，`scheduled`、`started` 和 `result` 只更新同一条 trace 气泡。Shell 命令输出为 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构；Webview 复用 Codex 的工具标题、本地化和折叠结果样式，不另建 ZCode 专属气泡。
+
+## GLM 配置
+
+自定义供应商写入 `~/.zcode/v2/provider_config.json`。范例模型 ID 为 `glm-5.3-flash`：
+
+```text
+model: glm-5.3-flash
+base URL: http://127.0.0.1:33391/v1
+api type: openai-responses
+api key: your_apikey
+```
+
+最小完整范例如下；只有连接信息、模型和默认思考力度需要按实际情况填写。范例协议为 `openai-responses`，已有配置不会自动改写协议：
+
+```json
+{
+  "schemaVersion": 1,
+  "config": {
+    "defaultModelSelection": {
+      "providerId": "local-glm",
+      "modelId": "glm-5.3-flash",
+      "options": { "reasoningLevel": "high" }
+    },
+    "providerConfigRules": {
+      "providerRules": [{
+        "providerId": "local-glm",
+        "config": {
+          "group": "standard-personal",
+          "access": { "type": "api-key", "apiKey": "your_apikey" },
+          "api": { "type": "openai-responses", "baseUrl": "http://127.0.0.1:33391/v1" },
+          "personalModelIds": ["glm-5.3-flash"]
+        }
+      }]
+    },
+    "modelConfigRules": {
+      "providerModelRules": [],
+      "manualProviderModelRules": []
+    }
+  }
+}
+```
+
+`your_apikey` 是占位符。真实密钥只放在本机用户配置里，文件权限为 `0600`。该本地服务的 chat completions 可用，anthropic-messages 不被该模型接受。
+
+范例名称不代表本地网关一定配置了同名模型。若服务提示 `Model 'glm-5.3-flash' not configured`，请使用该服务模型列表里的实际 ID；本机此次验证可用的是 `glm-5.3-flash_sub-coco`，保存的默认档案已与实际配置统一，范例仍保留 `glm-5.3-flash`。
+
+思考力度通过 `defaultModelSelection.options.reasoningLevel` 选择，不能用能力列表 `optionSpecs.reasoningLevel.values` 代替。范例默认 `high`；本机两种 GLM 模型实际公布 `low`、`high`、`max`。无需手填上下文窗口、能力档位、显示名称、启用标记或供应商顺序；已有的高级覆写在可视化保存时保留。空模型规则数组和 `group` 是原生配置结构的一部分，不能因精简删除。
+
+配置页默认打开 JSON，切换档案及抽屉导入也保持 JSON；可视化只展示连接信息、默认模型／思考力度和模型 ID，继续复用现有双栏组件。导入范例不会自动保存。应用配置只替换该供应商的模型规则，保留其他供应商。
+
+创建会话先使用配置选定的档位。会话快照返回后，每个回合（含复用与恢复）都重新应用当前模型及档位：用户 UI 选择的合法档位优先于配置默认值。配置 `max`、UI 选择 `high` 时，实际模型选择和 `thoughtLevel` 都必须是 `high`。修改设置后读取原生返回快照确认，不仅更新插件缓存；切换模型后使用新模型公布的档位，不继承上一模型的能力。面板保留合法的 UI 选择，不把 `max` 自动降为 `high`，也不让配置回报覆盖已选择的 `high`。只有模型公布的思考档位才可下发：例如全局继承 `medium`、模型只公布 `low/high/max` 时，保留配置的 `max`，不把 `medium` 发给模型，也不把 `max` 自动降为 `high`。未声明思考能力的其他模型无需填写思考字段，留空时不序列化该参数。
+
+## 报错排查
+
+- `Reasoning level is required`：检查默认选择的 `options.reasoningLevel`，它会随模型选择进入协议；仅声明能力列表不代表已经选择档位。
+- `ZCode model resolver is not configured.`：属于插件交互宿主依赖接线缺失，不是服务地址或密钥错误。更新插件代码后需重新加载扩展宿主；只重开配置 Webview 不会加载新的宿主代码。
+- 第二次任务报 `ZCode runner is already started.`：属于健康 runner 的重复启动契约缺失，不需要修改模型配置或新建对话。修复后连续任务复用同一进程；更新代码后须重新加载扩展宿主。
+- 配置删掉必需数组后，原生进程可能看不到个人模型。插件现会在读取／保存阶段提示缺失结构，不应继续凭空补能力参数。
+- `turn.failed` 会显示原生嵌套错误的实际原因并脱敏，不再仅显示笼统的 `ZCode turn failed.`。

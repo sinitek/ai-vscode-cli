@@ -103,10 +103,23 @@ test("visual editor exposes official provider npm suggestions without thinking e
   assert.match(source, /renderClaudeSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
   assert.match(source, /renderOpenCodeSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
   assert.match(source, /renderCodexSelect = \([\s\S]*?return renderConfigSelect\(W, H, k, T, U\)/);
-  assert.doesNotMatch(source, /renderOpenCodeCombobox|be\.jsx\("datalist"|be\.jsx\("select"/);
+  const openCodeToolStart = source.indexOf("renderOpenCodeSelect =");
+  const openCodeToolEnd = source.indexOf("selectedCodexProvider =", openCodeToolStart);
+  assert.notEqual(openCodeToolStart, -1, "OpenCode select helper should exist");
+  assert.ok(openCodeToolEnd > openCodeToolStart, "OpenCode visual tools should end before Codex state");
+  const openCodeTools = source.slice(openCodeToolStart, openCodeToolEnd);
+  assert.doesNotMatch(openCodeTools, /renderOpenCodeCombobox|be\.jsx\("datalist"|be\.jsx\("select"/);
+  const zcodeVisualStart = source.indexOf("// ZCODE_VISUAL_EDITOR_UTILS_START");
+  const zcodeVisualEnd = source.indexOf("// ZCODE_VISUAL_EDITOR_UTILS_END");
+  assert.ok(zcodeVisualStart >= 0 && zcodeVisualEnd > zcodeVisualStart, "ZCode visual editor should stay in its own fragment");
+  assert.match(
+    source.slice(zcodeVisualStart, zcodeVisualEnd),
+    /renderSelect\([\s\S]*?"协议"/,
+    "ZCode protocol select uses the shared configuration control outside the OpenCode assertion",
+  );
   assert.doesNotMatch(source, /renderOpenCodeMultiSelect/);
   assert.doesNotMatch(source, /opencode-effort-multiselect/);
-  assert.doesNotMatch(source, /思考力度/);
+  assert.doesNotMatch(openCodeTools, /思考力度/);
   assert.doesNotMatch(source, /source: "opencode-efforts"/);
   assert.doesNotMatch(source, /OPEN_CODE_REASONING_EFFORT_OPTIONS/);
   assert.match(source, /Google \(@ai-sdk\/google\)/);
@@ -490,7 +503,7 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   );
   assert.match(source, /renderConfigFieldLabel =/);
   assert.match(source, /children: "\?"/);
-  assert.doesNotMatch(source, /思考力度/);
+  assert.doesNotMatch(openCodeVisualSource, /思考力度/);
   assert.match(source, /上下文大小 limit\.context/);
   assert.match(openCodeVisualSource, /provider\.models\.<id>\.limit\.context/);
   assert.match(

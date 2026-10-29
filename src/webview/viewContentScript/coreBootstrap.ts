@@ -24,7 +24,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return map[name] !== false;
       }
       function getEnabledCliNames() {
-        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code"];
+        const names = Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"];
         return names.filter((name) => isCliChoiceEnabled(name));
       }
       function syncEnabledCliSelectElement(selectElement, preferredValue) {

@@ -230,6 +230,7 @@ import {
   resolveGrokHomeDir,
   resolveKimiCodeGlobalRulesPath,
   resolveOpenCodeHomeDir,
+  resolveZcodeGlobalRulesPath,
 } from "./shared/userHomePaths";
 import {
   buildLoopAnswerConclusionMarkdown,
@@ -796,6 +797,7 @@ const CLI_RULE_PATHS_GLOBAL: Record<CliName, string> = {
   dsh: resolveDshGlobalRulesPath(),
   // Kimi Code 全局指令文件：<KIMI_CODE_HOME>/AGENTS.md（默认 ~/.kimi-code/AGENTS.md）。
   "kimi-code": resolveKimiCodeGlobalRulesPath(),
+  zcode: resolveZcodeGlobalRulesPath(),
 };
 const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   codex: "AGENTS.md",
@@ -804,6 +806,7 @@ const CLI_RULE_FILENAMES_PROJECT: Record<CliName, string> = {
   grok: "AGENTS.md",
   dsh: DSH_WORKSPACE_RULES_FILE_NAME,
   "kimi-code": KIMI_CODE_WORKSPACE_RULES_FILE_NAME,
+  zcode: "AGENTS.md",
 };
 
 function currentGlobalRulePaths(): Record<CliName, string> {
@@ -811,6 +814,7 @@ function currentGlobalRulePaths(): Record<CliName, string> {
     ...CLI_RULE_PATHS_GLOBAL,
     dsh: resolveDshGlobalRulesPath(),
     "kimi-code": resolveKimiCodeGlobalRulesPath(),
+    zcode: resolveZcodeGlobalRulesPath(),
   };
 }
 const PROMPT_HISTORY_LIMIT = 200;
@@ -849,6 +853,7 @@ const cliInstallStatuses: Record<CliName, CliInstallStatus | null> = {
   grok: null,
   dsh: null,
   "kimi-code": null,
+  zcode: null,
 };
 let openCodeThinkingState = buildDefaultOpenCodeThinkingState();
 let openCodeSmallThinkingState = buildDefaultOpenCodeThinkingState();
@@ -1672,6 +1677,7 @@ async function buildPanelState(): Promise<PanelState> {
   const configState = await loadConfigState(currentCli);
   await modelSettingsHost.refreshGrokConfigModels(configState);
   await modelSettingsHost.refreshKimiCodeConfigModels(configState);
+  await modelSettingsHost.refreshZcodeConfigModels(configState);
   await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
@@ -1684,6 +1690,7 @@ async function buildPanelStateWithConfigState(
   ensureWorkspaceSessionStore();
   await modelSettingsHost.refreshGrokConfigModels(configState);
   await modelSettingsHost.refreshKimiCodeConfigModels(configState);
+  await modelSettingsHost.refreshZcodeConfigModels(configState);
   await modelSettingsHost.refreshDshConfigModels(configState);
   await refreshOpenCodeThinkingState(configState);
   await refreshLoopSubtaskOpenCodeModels();
@@ -2157,6 +2164,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   resolveGrokModelForRun: (model) => modelSettingsHost.resolveGrokModelForRun(model),
   resolveDshModelWireForRun: (model) => modelSettingsHost.resolveDshModelWireForRun(model),
   resolveKimiModelWireForRun: (model) => modelSettingsHost.resolveKimiModelWireForRun(model),
+  resolveZcodeModelWireForRun: (model) => modelSettingsHost.resolveZcodeModelWireForRun(model),
   getModelDisplayName: (cli, model) => modelSettingsHost.getModelDisplayName(cli, model),
   loadSessionMessages,
   logCliStartup,
@@ -2525,6 +2533,7 @@ function getProjectRulePaths(): Record<CliName, string | null> {
       grok: null,
       dsh: null,
       "kimi-code": null,
+      zcode: null,
     };
   }
   return {
@@ -2534,6 +2543,7 @@ function getProjectRulePaths(): Record<CliName, string | null> {
     grok: path.join(root, CLI_RULE_FILENAMES_PROJECT.grok),
     dsh: path.join(root, CLI_RULE_FILENAMES_PROJECT.dsh),
     "kimi-code": path.join(root, CLI_RULE_FILENAMES_PROJECT["kimi-code"]),
+    zcode: path.join(root, CLI_RULE_FILENAMES_PROJECT.zcode),
   };
 }
 

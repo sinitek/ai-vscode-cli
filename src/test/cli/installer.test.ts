@@ -6,6 +6,11 @@ import { getCliDisplayName, getCliInstallCommand } from "../../cli/installer";
 test("every CLI group has an install command on Windows and Unix", () => {
   for (const cli of CLI_LIST) {
     assert.ok(getCliDisplayName(cli).trim());
+    if (cli === "zcode") {
+      assert.equal(getCliInstallCommand(cli, "win32"), "");
+      assert.equal(getCliInstallCommand(cli, "linux"), "");
+      continue;
+    }
     assert.ok(getCliInstallCommand(cli, "win32").trim(), cli + " needs a Windows install command");
     assert.ok(getCliInstallCommand(cli, "linux").trim(), cli + " needs a Unix install command");
   }
@@ -19,6 +24,7 @@ test("CLI groups use the requested display names", () => {
     "Grok",
     "DSH",
     "KimiCode",
+    "ZCode",
   ]);
 });
 

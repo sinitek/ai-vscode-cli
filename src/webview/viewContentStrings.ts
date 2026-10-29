@@ -54,7 +54,7 @@ export const WEBVIEW_STRINGS = {
     openCurrentGraphRunAria: "打开当前 Graph 运行图面板",
     openConfigButton: "配置",
     promptPlaceholder:
-      "Shift + Enter 换行，输入 @ 选择文件/目录；右键文件或目录，在菜单中单击“加入到 Sinitek CLI 引用”即可引用；支持附件黏贴...",
+      "Shift + Enter 换行，输入 @ 选择文件/目录；右键文件或目录，在菜单中单击“加入到携宁 CLI 引用”即可引用；支持附件黏贴...",
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
@@ -299,6 +299,7 @@ export const WEBVIEW_STRINGS = {
     runContextTokensTitleWithWindow: "当前上下文已用 {used} / {window} tokens",
     runContextTokensTitleWithAdapterWindow: "当前上下文已用 {used} tokens；窗口 {window} 是适配器 fallback，不是服务确认容量",
     runContextTokensTitleWithConfigWindow: "当前上下文已用 {used} / {window} tokens；窗口取自 KimiCode 配置的 max_context_size",
+    runContextTokensTitleWithZcodeWindow: "当前上下文已用 {used} / {window} tokens；窗口取自 ZCode 会话 projection",
     runContextTokensPendingAria: "正在等待已用上下文",
     runContextTokensPendingTitle: "收到 CLI 上下文用量后显示",
     runPromptTitle: "会话提示词",

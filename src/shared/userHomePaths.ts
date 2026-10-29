@@ -207,6 +207,14 @@ export function resolveKimiCodeGlobalSkillsDirectory(
   return path.join(resolveKimiCodeHomeDir(env, homeDir, platform), KIMI_CODE_GLOBAL_SKILLS_DIRECTORY_NAME);
 }
 
+export function resolveZcodeGlobalRulesPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return path.join(resolveZcodeHomeDir(env, homeDir, platform), "AGENTS.md");
+}
+
 export function resolveKimiCodeGlobalRulesPath(
   env: NodeJS.ProcessEnv = process.env,
   homeDir: string = os.homedir(),

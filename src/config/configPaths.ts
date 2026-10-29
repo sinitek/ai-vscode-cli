@@ -8,6 +8,7 @@ import {
   resolveGrokHomeDir,
   resolveKimiCodeHomeDir,
   resolveOpenCodeHomeDir,
+  resolveZcodeHomeDir,
   resolveXdgConfigHome,
 } from "../shared/userHomePaths";
 import {
@@ -50,6 +51,10 @@ export type ConfigPathMap = {
     config: string;
     configDir: string;
   };
+  zcode: {
+    config: string;
+    configDir: string;
+  };
 };
 
 export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): ConfigPathPlatform {
@@ -70,6 +75,9 @@ export function normalizeConfigPlatform(platform: LegacyConfigPlatformInput): Co
   }
   if (platform === "kimi-code") {
     return "kimi-code";
+  }
+  if (platform === "zcode") {
+    return "zcode";
   }
   throw new Error(`Unsupported config platform: ${String(platform)}`);
 }
@@ -108,6 +116,10 @@ export function createConfigPaths(
       config: path.join(resolveKimiCodeHomeDir(env, homeDir), "config.toml"),
       configDir: path.join(resolveKimiCodeHomeDir(env, homeDir), CONFIG_DIR_NAME),
     },
+    zcode: {
+      config: path.join(resolveZcodeHomeDir(env, homeDir), "v2", "provider_config.json"),
+      configDir: path.join(resolveZcodeHomeDir(env, homeDir), CONFIG_DIR_NAME),
+    },
   };
 }
 
@@ -126,6 +138,9 @@ export function getConfigDir(
   }
   if (normalized === "kimi-code" && paths === CONFIG_PATHS) {
     return path.join(resolveKimiCodeHomeDir(), CONFIG_DIR_NAME);
+  }
+  if (normalized === "zcode" && paths === CONFIG_PATHS) {
+    return path.join(resolveZcodeHomeDir(), CONFIG_DIR_NAME);
   }
   return paths[normalized].configDir;
 }

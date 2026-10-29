@@ -4,6 +4,7 @@ import { mergeOpenCodeSkillsConfig } from "./geminiSkills";
 import { commitDshDocument, createDshExampleProfileText } from "../cli/dshConfigModels";
 import { commitGrokText, validateGrokDocument } from "./grokConfig";
 import { commitKimiCodeText } from "./kimiCodeConfig";
+import { mergeZcodeProviderConfigText } from "./zcodeConfig";
 import { mergeGrokSkillsConfig } from "./grokSkills";
 import { t } from "../i18n";
 import type {
@@ -64,6 +65,13 @@ export type DshRuntimeConfigIo = {
   backupDshConfig: () => Promise<string[]>;
 };
 
+export type ZcodeRuntimeConfigIo = {
+  readZcodeConfigText: () => Promise<string>;
+  writeZcodeConfigText: (content: string) => Promise<void>;
+  backupZcodeConfig: () => Promise<string | null>;
+  createDefaultConfigText: () => string;
+};
+
 export type KimiCodeRuntimeConfigIo = {
   readKimiCodeConfigText: () => Promise<string>;
   writeKimiCodeConfigText: (content: string) => Promise<void>;
@@ -78,6 +86,7 @@ export type CliRuntimeConfigIoPorts = {
   grok: GrokRuntimeConfigIo;
   dsh: DshRuntimeConfigIo;
   "kimi-code": KimiCodeRuntimeConfigIo;
+  zcode: ZcodeRuntimeConfigIo;
 };
 
 type LegacyGeminiApplyPayload = ApplyPayload & {
@@ -289,6 +298,41 @@ function createDshRuntimeConfigStrategy(io: DshRuntimeConfigIo): CliRuntimeConfi
   };
 }
 
+function createZcodeRuntimeConfigStrategy(io: ZcodeRuntimeConfigIo): CliRuntimeConfigStrategy {
+  return {
+    async readCurrent() {
+      const config = await io.readZcodeConfigText();
+      return { content: config, configContent: config };
+    },
+    async apply(payload) {
+      const nextContent = payload.content ?? payload.configContent ?? "";
+      const current = await io.readZcodeConfigText();
+      const committed = mergeZcodeProviderConfigText(current, nextContent);
+      if (!committed.ok) {
+        throw new Error(committed.error);
+      }
+      await io.backupZcodeConfig();
+      await io.writeZcodeConfigText(committed.content);
+    },
+    async backup() {
+      const backup = await io.backupZcodeConfig();
+      return backup ? [backup] : [];
+    },
+    async readInitialFields() {
+      const config = await io.readZcodeConfigText();
+      if (!config.trim()) {
+        const content = io.createDefaultConfigText();
+        return { content, configContent: content };
+      }
+      return { content: config, configContent: config };
+    },
+    fallbackInitialFields() {
+      const content = io.createDefaultConfigText();
+      return { content, configContent: content };
+    },
+  };
+}
+
 function createKimiCodeRuntimeConfigStrategy(io: KimiCodeRuntimeConfigIo): CliRuntimeConfigStrategy {
   return {
     async readCurrent() {
@@ -343,5 +387,6 @@ export function createCliRuntimeConfigStrategies(
     grok: createGrokRuntimeConfigStrategy(ports.grok),
     dsh: createDshRuntimeConfigStrategy(ports.dsh),
     "kimi-code": createKimiCodeRuntimeConfigStrategy(ports["kimi-code"]),
+    zcode: createZcodeRuntimeConfigStrategy(ports.zcode),
   };
 }

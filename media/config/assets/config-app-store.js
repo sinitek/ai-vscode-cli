@@ -70,7 +70,7 @@ const CONFIG_STORAGE_KEYS = {
   },
   configManagerPlatforms = typeof CONFIG_MANAGER_PLATFORMS !== "undefined"
     ? CONFIG_MANAGER_PLATFORMS
-    : ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
+    : ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"],
   CONFIG_PLATFORM_SYNC_LABELS = {
     claude: "Claude",
     codex: "Codex",
@@ -78,6 +78,7 @@ const CONFIG_STORAGE_KEYS = {
     grok: "Grok",
     dsh: "DSH",
     "kimi-code": "KimiCode",
+    zcode: "ZCode",
   },
   createEmptyActiveIds = () => {
     const activeIds = {};
@@ -145,6 +146,10 @@ const CONFIG_STORAGE_KEYS = {
     }
     if (platform === "kimi-code") {
       const content = ps["kimi-code"].config;
+      return { ...base, content, configContent: content };
+    }
+    if (platform === "zcode") {
+      const content = ps.zcode.config;
       return { ...base, content, configContent: content };
     }
     throw new Error(`不支持的配置平台: ${platform}`);

@@ -334,6 +334,13 @@ function createHost(options: {
   };
 }
 
+test("ZCode preserves native reasoning levels without generic max downgrades", () => {
+  const { host } = createHost({ store: ensureCliModelStore(), currentCli: "zcode" });
+  assert.equal(host.normalizeThinkingModeForCli("zcode", "max"), "max");
+  assert.equal(host.normalizeThinkingModeForCli("zcode", "medium"), "medium");
+  assert.equal(host.normalizeThinkingModeForCli("zcode", "off"), "off");
+});
+
 test("host delegates four CLIs, persists through the host, and isolates Grok profiles", (context) => {
   let writes = 0;
   context.mock.method(modelSelectionStore, "writeModelStore", () => {

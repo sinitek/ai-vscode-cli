@@ -19,6 +19,14 @@ installVscodeMock();
 
 const repoRoot = process.cwd();
 
+test("importable configuration examples use high for independent reasoning levels", () => {
+  const source = readProjectFile("media/config/assets/config-app-ui.js");
+  const examples = extractBetween(source, "const ps =", "const Nk =");
+  const assignments = Array.from(examples.matchAll(/(?:effortLevel|model_reasoning_effort|default_reasoning_effort)["']?\s*[:=]\s*["']([^"']+)["']/g));
+  assert.equal(assignments.length, 3);
+  assert.deepEqual(assignments.map((match) => match[1]), ["high", "high", "high"]);
+});
+
 type AnyRecord = Record<string, any>;
 type MessageHandler = (message: unknown) => void;
 
@@ -1161,7 +1169,7 @@ test("config API asset supports IPC, HTTP success, and HTTP error contracts", as
 test("config store asset keeps platform order, duplicate names, empty states, and error fallbacks isolated", () => {
   const { utils, storage } = loadStoreUtilities();
 
-  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] });
+  assert.deepEqual(toPlain(utils.createEmptyOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [], zcode: [] });
   assert.equal(utils.createCopyName("Gateway", []), "Gateway_副本");
   assert.equal(
     utils.createCopyName("Gateway", ["Gateway_副本", "Gateway_副本2"]),
@@ -1189,14 +1197,14 @@ test("config store asset keeps platform order, duplicate names, empty states, an
       ],
       { claude: [], codex: ["codex-one"], opencode: [] },
     )),
-    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [], dsh: [], "kimi-code": [] },
+    { claude: ["claude-one"], codex: ["codex-one"], opencode: ["opencode-one"], grok: [], dsh: [], "kimi-code": [], zcode: [] },
   );
 
   utils.storeJson("valid", { ok: true });
   assert.equal(storage.get("valid"), "{\"ok\":true}");
   storage.set("broken", "{not-json");
   assert.deepEqual(toPlain(utils.readJson("broken", { fallback: true })), { fallback: true });
-  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] });
+  assert.deepEqual(toPlain(utils.loadStoredOrder()), { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [], zcode: [] });
 
   const storeSource = readProjectFile("media/config/assets/config-app-store.js");
   assert.match(storeSource, /selectedConfigPlatform: null/);
@@ -1250,19 +1258,19 @@ test("configuration UI asset exposes platform switching, empty/error states, and
   assert.match(editorPanel, /const renderFixedEditorModeTabs =/);
   assert.equal(
     (editorPanel.match(/className: "config-editor-fixed-actions"/g) || []).length,
-    6,
+    7,
     "each config editor should render a fixed action area",
   );
   assert.match(editorPanel, /const renderConfigEditorCardTitle =/);
   assert.equal(
     (editorPanel.match(/title: renderConfigEditorCardTitle\(/g) || []).length,
-    5,
+    6,
     "each config editor should render mode tabs under the card title",
   );
   assert.equal(
     (editorPanel.match(/renderFixedEditorModeTabs\(\[/g) || []).length,
     0,
-    "mode tabs should not render from the right-side action area",
+    "mode tabs should only be rendered through the shared card title helper",
   );
   assert.match(editorPanel, /className: "config-editor-fixed-title"/);
   assert.match(editorPanel, /children: \[[\s\S]*?be\.jsx\("div", \{ children: W \}\)[\s\S]*?renderFixedEditorModeTabs\(H\)/);

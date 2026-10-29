@@ -284,6 +284,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
                 ? "adapter-fallback"
                 : data.contextWindowSource === "kimi-config-window"
                 ? "kimi-config-window"
+                : data.contextWindowSource === "zcode-projection"
+                ? "zcode-projection"
                 : null;
             }
             if (!shouldHandleTabScopedEvent(data)) {
@@ -304,6 +306,21 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               return;
             }
             updateRunWait();
+          }
+          if (data.type === "zcodeThinkingOptions") {
+            if (!shouldHandleTabScopedEvent(data) || state.currentCli !== "zcode") {
+              return;
+            }
+            state.zcodeThinkingOptions = Array.isArray(data.options)
+              ? data.options.filter((option) => ["low", "medium", "high", "xhigh", "max"].includes(option))
+              : [];
+            if (!state.zcodeThinkingOptions.includes(state.thinkingMode)
+              && state.zcodeThinkingOptions.includes(data.currentValue)) {
+              state.thinkingMode = data.currentValue;
+            }
+            if (typeof syncThinkingOptions === "function") {
+              syncThinkingOptions();
+            }
           }
           if (data.type === "dshReasoningOptions") {
             if (!shouldHandleTabScopedEvent(data)) {

@@ -789,6 +789,8 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             ? t("runContextTokensTitleWithAdapterWindow", { used, window: windowSize })
             : windowSource === "kimi-config-window"
             ? t("runContextTokensTitleWithConfigWindow", { used, window: windowSize })
+            : windowSource === "zcode-projection"
+            ? t("runContextTokensTitleWithZcodeWindow", { used, window: windowSize })
             : t("runContextTokensTitleWithWindow", { used, window: windowSize }))
           : t("runContextTokensTitle", { used });
         const aria = t("runContextTokensAria", { value });
@@ -955,9 +957,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             const thinking = readLoopSubtaskThinkingSelection({ subtaskCli: "claude", crossCli: false });
             return thinking ? { ...nextPayload, loopSubtaskThinkingMode: thinking } : nextPayload;
           }
-          if ((targetCli === "grok" || targetCli === "opencode" || targetCli === "kimi-code") && typeof readLoopSubtaskModelSelection === "function") {
+          if ((targetCli === "grok" || targetCli === "opencode" || targetCli === "kimi-code" || targetCli === "zcode") && typeof readLoopSubtaskModelSelection === "function") {
             const model = readLoopSubtaskModelSelection({ subtaskCli: targetCli, crossCli: false });
-            const thinking = (targetCli === "grok" || targetCli === "kimi-code") && typeof readLoopSubtaskThinkingSelection === "function"
+            const thinking = (targetCli === "grok" || targetCli === "kimi-code" || targetCli === "zcode") && typeof readLoopSubtaskThinkingSelection === "function"
               ? readLoopSubtaskThinkingSelection({ subtaskCli: targetCli, crossCli: false })
               : "";
             return {

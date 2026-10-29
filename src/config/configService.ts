@@ -33,6 +33,12 @@ import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
 import {
+  createZcodeExampleText,
+  readZcodeProviderConfigText,
+  writeZcodeProviderConfigText,
+  backupZcodeProviderConfig,
+} from "./zcodeConfig";
+import {
   commitKimiCodeText,
   createKimiCodeDefaultConfigText,
   readKimiCodeConfigText,
@@ -361,6 +367,12 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
     backupKimiCodeConfig: backupKimiCodeConfig,
     createDefaultConfigText: createKimiCodeDefaultConfigText,
   },
+  zcode: {
+    readZcodeConfigText: () => readZcodeProviderConfigText(),
+    writeZcodeConfigText: (content) => writeZcodeProviderConfigText(content),
+    backupZcodeConfig: () => backupZcodeProviderConfig(),
+    createDefaultConfigText: createZcodeExampleText,
+  },
 });
 
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
@@ -377,7 +389,9 @@ export async function getBackupList(platform: LegacyConfigPlatformInput): Promis
           ? "dsh_"
           : normalizedPlatform === "kimi-code"
             ? "kimi-code_"
-            : "opencode_";
+            : normalizedPlatform === "zcode"
+              ? "zcode_"
+              : "opencode_";
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
@@ -450,6 +464,9 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
       if (normalizedConfig.platform === "kimi-code") {
         normalizeKimiCodeConfigFields(normalizedConfig);
       }
+      if (normalizedConfig.platform === "zcode") {
+        normalizeZcodeConfigFields(normalizedConfig);
+      }
       configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
@@ -471,7 +488,7 @@ export async function getConfigList(platform: LegacyConfigPlatformInput): Promis
 
 type LegacyConfigOrder = ConfigOrder & { gemini?: string[] };
 
-const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [] };
+const DEFAULT_CONFIG_ORDER: ConfigOrder = { claude: [], codex: [], opencode: [], grok: [], dsh: [], "kimi-code": [], zcode: [] };
 
 function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
   return {
@@ -481,6 +498,7 @@ function normalizeConfigOrder(order: LegacyConfigOrder): ConfigOrder {
     grok: Array.isArray(order.grok) ? [...order.grok] : [],
     dsh: Array.isArray(order.dsh) ? [...order.dsh] : [],
     "kimi-code": Array.isArray(order["kimi-code"]) ? [...order["kimi-code"]] : [],
+    zcode: Array.isArray(order.zcode) ? [...order.zcode] : [],
   };
 }
 
@@ -545,6 +563,19 @@ function normalizeGrokConfigFields(config: ConfigItem): void {
 }
 
 function normalizeDshConfigFields(config: ConfigItem): void {
+  const content = config.configContent ?? config.content ?? "";
+  config.content = content;
+  config.configContent = content;
+  delete config.authContent;
+  delete config.mcpContent;
+  delete config.envContent;
+  delete config.claudeSkills;
+  delete config.codexSkills;
+  delete config.openCodeSkills;
+  delete config.grokSkills;
+}
+
+function normalizeZcodeConfigFields(config: ConfigItem): void {
   const content = config.configContent ?? config.content ?? "";
   config.content = content;
   config.configContent = content;
@@ -905,6 +936,16 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
       configContent: content,
     };
   }
+  if (targetPlatform === "zcode") {
+    const content = source.platform === "zcode"
+      ? source.configContent ?? source.content ?? ""
+      : createZcodeExampleText();
+    return {
+      ...base,
+      content,
+      configContent: content,
+    };
+  }
   return {
     ...base,
     content: source.platform === "codex" ? getCodexTomlContent(source) : "",
@@ -940,6 +981,9 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   }
   if (configToSave.platform === "grok") {
     normalizeGrokConfigFields(configToSave);
+  }
+  if (configToSave.platform === "zcode") {
+    normalizeZcodeConfigFields(configToSave);
   }
   if (configToSave.platform === "kimi-code") {
     normalizeKimiCodeConfigFields(configToSave);
@@ -1020,6 +1064,12 @@ export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem
   ) {
     throw new Error("Kimi Code configs can only be copied as Kimi Code configs.");
   }
+  if (
+    (sourcePlatform === "zcode" && targetPlatform !== "zcode")
+    || (sourcePlatform !== "zcode" && targetPlatform === "zcode")
+  ) {
+    throw new Error("ZCode configs can only be copied as ZCode configs.");
+  }
   const existingNames = (await getConfigList(targetPlatform)).map((config) => config.name);
   const name = payload.name?.trim() || createCopyName(source.name, existingNames);
   const copiedConfig = buildConfigCopy(source, targetPlatform, name);
@@ -1064,6 +1114,9 @@ export async function getConfigById(
     }
     if (config.platform === "kimi-code") {
       normalizeKimiCodeConfigFields(config);
+    }
+    if (config.platform === "zcode") {
+      normalizeZcodeConfigFields(config);
     }
     return config;
   } catch {

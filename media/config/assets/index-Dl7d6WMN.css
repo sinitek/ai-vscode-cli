@@ -1597,7 +1597,8 @@ input[type="file"]::file-selector-button {
   min-height: 420px;
 }
 
-.kimi-code-visual-editor {
+.kimi-code-visual-editor,
+.zcode-visual-editor {
   display: flex;
   flex-direction: column;
   gap: 12px;

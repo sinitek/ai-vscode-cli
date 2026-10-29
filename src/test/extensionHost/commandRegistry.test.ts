@@ -84,7 +84,7 @@ test("Explorer reference manifest enables files and directories with a Chinese m
   assert.ok(manifest.activationEvents.includes(`onCommand:${commandId}`));
   assert.deepEqual(manifest.contributes.commands.find((item: any) => item.command === commandId), {
     command: commandId,
-    title: "加入到 Sinitek CLI 引用",
+    title: "加入到携宁 CLI 引用",
   });
   const menu = manifest.contributes.menus["explorer/context"].find((item: any) => item.command === commandId);
   assert.equal(menu.when, "resourceScheme == file || resourceScheme == vscode-remote");

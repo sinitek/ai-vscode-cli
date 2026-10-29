@@ -14,6 +14,7 @@ import * as configService from "../config/configService";
 import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { changeKimiCodeConfigModelList, parseKimiCodeConfigModels, resolveKimiCodeConfigModel, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
+import { readZcodeConfigModels, resolveZcodeModelWireForRun as resolveConfiguredZcodeModelWireForRun, type ZcodeConfigModels } from "../config/zcodeConfig";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
@@ -91,6 +92,7 @@ let codeGraphInstallPollStartedAt = 0;
 const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
 const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
 const kimiCodeModelsByConfigId = new Map<string | null, KimiCodeConfigModels>();
+const zcodeModelsByConfigId = new Map<string | null, ZcodeConfigModels>();
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   getGrokConfigModels(configId) {
     if (configId === undefined) {
@@ -118,6 +120,15 @@ const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   },
   resolveDefaultKimiCodeStoreKey() {
     return `kimi-code:${resolveKimiCodeConfigPath()}`;
+  },
+  getZcodeConfigModels(configId) {
+    if (configId === undefined) {
+      return undefined;
+    }
+    return zcodeModelsByConfigId.get(configId);
+  },
+  resolveDefaultZcodeStoreKey() {
+    return "zcode:provider_config.json";
   },
 });
 let currentCli = deps.getCurrentCli();
@@ -479,7 +490,7 @@ function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): Thinking
   if (cli === "dsh" && (mode === "off" || mode === "medium")) {
     return "high";
   }
-  if (cli === "grok" || cli === "dsh") {
+  if (cli === "grok" || cli === "dsh" || cli === "zcode") {
     return mode;
   }
   if (cli === "kimi-code") {
@@ -1114,6 +1125,34 @@ async function resolveKimiModelWireForRun(selectedModel: string | null): Promise
   return resolveKimiCodeModelForRun(selectedModel);
 }
 
+async function refreshZcodeConfigModels(configState: PanelState["configState"]): Promise<void> {
+  const configId = currentCli === "zcode"
+    ? deps.resolveModelConfigIdForCli("zcode", configState)
+    : getActiveConfigIdForCli("zcode");
+  if (!configId) {
+    return;
+  }
+  try {
+    const current = await configService.getCurrentConfig("zcode");
+    zcodeModelsByConfigId.set(configId, readZcodeConfigModels(current.content ?? ""));
+  } catch (error) {
+    zcodeModelsByConfigId.set(configId, {
+      models: [],
+      labels: {},
+      defaultModel: null,
+      error: errorToMessage(error),
+    });
+    void logError("zcode-config-models-read-failed", { error: errorToMessage(error) });
+  }
+}
+
+async function resolveZcodeModelWireForRun(selectedModel: string | null): Promise<string> {
+  const content = (await configService.getCurrentConfig("zcode")).content ?? "";
+  const config = readZcodeConfigModels(content);
+  zcodeModelsByConfigId.set(getActiveConfigIdForCli("zcode"), config);
+  return resolveConfiguredZcodeModelWireForRun(content, selectedModel);
+}
+
 async function resolveDshModelForRun(selectedModel: string | null): Promise<string> {
   const configId = getActiveConfigIdForCli("dsh");
   if (!configId) {
@@ -1466,6 +1505,25 @@ function buildModelState(
     ...state.loopOptionsByCli,
     "kimi-code": { main: kimiCodeModels, subtask: kimiCodeModels },
   };
+  const zcodeConfigId = activeConfigIdByCli.zcode ?? getActiveConfigIdForCli("zcode");
+  const zcodeModels = getModelOptionsForCli("zcode", zcodeConfigId);
+  state.optionsByCli.zcode = zcodeModels;
+  state.labelsByCli = {
+    ...state.labelsByCli,
+    zcode: { ...(zcodeModelsByConfigId.get(zcodeConfigId)?.labels ?? {}) },
+  };
+  state.managedByCli.zcode = [...zcodeModels];
+  state.selectedByCli.zcode = getSelectedCliModel("zcode", zcodeConfigId);
+  state.loopOptionsByCli = {
+    ...state.loopOptionsByCli,
+    zcode: { main: zcodeModels, subtask: zcodeModels },
+  };
+  const zcodeMain = getSelectedLoopCliModel("zcode", "main", zcodeConfigId);
+  const zcodeSubtask = getSelectedLoopCliModel("zcode", "subtask", zcodeConfigId);
+  state.selectedLoopByCli = {
+    ...state.selectedLoopByCli,
+    zcode: { main: zcodeMain, subtask: zcodeSubtask },
+  };
   const kimiCodeMain = getSelectedLoopCliModel("kimi-code", "main", kimiCodeConfigId);
   const kimiCodeSubtask = getSelectedLoopCliModel("kimi-code", "subtask", kimiCodeConfigId);
   state.selectedLoopByCli = {
@@ -1511,6 +1569,10 @@ function buildModelState(
       main: getSelectedLoopThinkingMode("kimi-code", "main", kimiCodeMain, kimiCodeConfigId),
       subtask: getSelectedLoopThinkingMode("kimi-code", "subtask", kimiCodeSubtask, kimiCodeConfigId),
     },
+    zcode: {
+      main: getSelectedLoopThinkingMode("zcode", "main", zcodeMain, zcodeConfigId),
+      subtask: getSelectedLoopThinkingMode("zcode", "subtask", zcodeSubtask, zcodeConfigId),
+    },
   };
   state.thinkingModeByCli = {
     codex: getEffectiveThinkingMode("codex", state.selectedByCli.codex),
@@ -1519,6 +1581,7 @@ function buildModelState(
     grok: getEffectiveThinkingMode("grok", state.selectedByCli.grok),
     dsh: getEffectiveThinkingMode("dsh", state.selectedByCli.dsh),
     "kimi-code": getEffectiveThinkingMode("kimi-code", state.selectedByCli["kimi-code"]),
+    zcode: getEffectiveThinkingMode("zcode", state.selectedByCli.zcode),
   };
   const issues = { ...(state.issuesByCli ?? {}) };
   if (grokModelsByConfigId.get(configId)?.error) {
@@ -1529,6 +1592,9 @@ function buildModelState(
   }
   if (kimiCodeModelsByConfigId.get(kimiCodeConfigId)?.error) {
     issues["kimi-code"] = "目标 CLI 配置读取失败，不能派发子任务。";
+  }
+  if (zcodeModelsByConfigId.get(zcodeConfigId)?.error) {
+    issues.zcode = "目标 CLI 配置读取失败，不能派发子任务。";
   }
   if (Object.keys(issues).length > 0) {
     state.issuesByCli = issues;
@@ -1661,6 +1727,8 @@ return {
   refreshKimiCodeConfigModels: wrap(refreshKimiCodeConfigModels),
   resolveKimiCodeModelForRun: wrap(resolveKimiCodeModelForRun),
   resolveKimiModelWireForRun: wrap(resolveKimiModelWireForRun),
+  refreshZcodeConfigModels: wrap(refreshZcodeConfigModels),
+  resolveZcodeModelWireForRun: wrap(resolveZcodeModelWireForRun),
   cacheDshConfigModels: wrap(cacheDshConfigModels),
   refreshDshConfigModels: wrap(refreshDshConfigModels),
   resolveDshModelForRun: wrap(resolveDshModelForRun),

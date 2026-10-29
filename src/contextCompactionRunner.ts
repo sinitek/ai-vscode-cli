@@ -17,6 +17,7 @@ import {
 import { buildGeminiThinkingRuntimeProfile } from "./cli/geminiThinking";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
 import { resolveGrokResumeSessionId } from "./interactive/grokAppServerProtocol";
+import { isZcodeSessionId } from "./interactive/zcodeAppServerProtocol";
 import { getGrokAgentArgs } from "./cli/config";
 import { ClaudeInteractiveRunner } from "./interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "./interactive/manager";
@@ -493,7 +494,7 @@ export type ContextCompactionRunStatus = "end" | "error" | "stopped";
 
 export type ContextCompactionRunnerManager = Pick<
   InteractiveRunnerManager,
-  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "setRunner"
+  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "getOrCreateZcodeRunner" | "setRunner"
 >;
 
 export type ContextCompactionRunDeps = {
@@ -578,7 +579,7 @@ export type ContextCompactionRunDeps = {
   buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
-const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok"] as const;
+const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok", "zcode"] as const;
 
 type ContextCompactionStrategyCli = (typeof CONTEXT_COMPACTION_STRATEGY_CLIS)[number];
 
@@ -909,7 +910,53 @@ const contextCompactionStrategyRegistry: ContextCompactionStrategyRegistry = {
     cli: "grok",
     execute: executeGrokContextCompaction,
   },
+  zcode: {
+    cli: "zcode",
+    execute: executeZcodeContextCompaction,
+  },
 };
+
+async function executeZcodeContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks,
+): Promise<boolean> {
+  const mappedSessionId = deps.resolveInteractiveMappedId(run.cli, run.sessionId);
+  if (!isZcodeSessionId(mappedSessionId)) {
+    deps.appendSystemMessage(t("rules.compactNoSession"));
+    return false;
+  }
+  const runner = deps.interactiveRunnerManager.getOrCreateZcodeRunner({
+    sessionId: run.sessionId,
+    command: run.command,
+    agentArgs: run.args,
+    cwd: run.cwd ?? process.cwd(),
+    thinkingMode: run.thinkingMode,
+    interactiveMode: run.interactiveMode,
+    model: run.selectedModel,
+    localSessionId: mappedSessionId,
+  });
+  hooks.setStopCurrentTurn(() => runner.cancelTurn());
+  deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+  try {
+    const result = await hooks.withCompactionTimeout(runner.compact());
+    if (result.state !== "accepted" && result.state !== "already_running") {
+      throw new Error("ZCode did not accept native compaction.");
+    }
+    deps.upsertInteractiveMapping(run.cli, run.sessionId, mappedSessionId);
+    deps.appendSystemMessage(t("compact.zcodeNativeCompressed", { sessionId: mappedSessionId }));
+    void logInfo("context-compact-zcode-complete", {
+      cli: run.cli,
+      sessionId: run.sessionId,
+      zcodeSessionId: mappedSessionId,
+      state: result.state,
+      tokensInContextWindow: result.usage?.tokensInContextWindow ?? null,
+    });
+  } finally {
+    deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+  }
+  return true;
+}
 
 function resolveContextCompactionStrategy(cli: CliName): ContextCompactionStrategy | undefined {
   if (!isAutoContextCompactionCli(cli)) {

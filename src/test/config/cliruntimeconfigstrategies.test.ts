@@ -62,6 +62,12 @@ function createPorts(): CliRuntimeConfigIoPorts {
       backupKimiCodeConfig: unused("backupKimiCodeConfig"),
       createDefaultConfigText: () => "",
     },
+    zcode: {
+      readZcodeConfigText: unused("readZcodeConfigText"),
+      writeZcodeConfigText: unused("writeZcodeConfigText"),
+      backupZcodeConfig: unused("backupZcodeConfig"),
+      createDefaultConfigText: () => "",
+    },
   };
 }
 
@@ -79,6 +85,7 @@ test("strategy registration covers every config platform without calling IO", ()
     "grok",
     "kimi-code",
     "opencode",
+    "zcode",
   ]);
 });
 
@@ -433,6 +440,7 @@ test("every platform backup delegates to its own port in return order", async ()
     grok: ["/grok/config"],
     dsh: ["/dsh/config"],
     "kimi-code": ["/kimi-code/config"],
+    zcode: ["/zcode/provider"],
   };
   const ports = createPorts();
   ports.claude.backupClaudeConfig = async () => expected.claude;
@@ -441,6 +449,7 @@ test("every platform backup delegates to its own port in return order", async ()
   ports.grok.backupGrokConfig = async () => expected.grok;
   ports.dsh.backupDshConfig = async () => expected.dsh;
   ports["kimi-code"].backupKimiCodeConfig = async () => expected["kimi-code"];
+  ports.zcode.backupZcodeConfig = async () => expected.zcode[0] ?? null;
   const strategies = strategiesFrom(ports);
   for (const platform of Object.keys(expected) as CurrentConfigPlatform[]) {
     assert.deepEqual(await strategies[platform].backup(), expected[platform]);

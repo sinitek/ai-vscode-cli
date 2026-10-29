@@ -64,7 +64,7 @@ test("visual parser loads TOML fields and provider mapping", () => {
   assert.equal(parsed.state.modelProvider, "codex");
   assert.equal(parsed.state.approvalPolicy, "on-request");
   assert.equal(parsed.state.sandboxMode, "workspace-write");
-  assert.equal(parsed.state.reasoningEffort, "medium");
+  assert.equal(parsed.state.reasoningEffort, "high");
   assert.equal(parsed.state.reasoningSummary, "detailed");
   assert.match(parsed.state.webSearch, /__sinitek_codex_compatibility__/);
   assert.equal(parsed.state.toolsWebSearch, undefined);

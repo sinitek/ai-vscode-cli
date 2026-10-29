@@ -1,6 +1,7 @@
 import { resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
 import { resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { resolveKimiCodeConfigModel, type KimiCodeConfigModels } from "../config/kimiCodeConfig";
+import { resolveZcodeConfigModel, type ZcodeConfigModels } from "../config/zcodeConfig";
 import type { CliName } from "../cli/types";
 import {
   getManagedModelOptionsForCliFromStore,
@@ -20,6 +21,8 @@ export type CliModelSelectionStrategyDeps = {
   resolveDefaultDshStoreKey?: () => string;
   getKimiCodeConfigModels?: (configId: string | null | undefined) => KimiCodeConfigModels | undefined;
   resolveDefaultKimiCodeStoreKey?: () => string;
+  getZcodeConfigModels?: (configId: string | null | undefined) => ZcodeConfigModels | undefined;
+  resolveDefaultZcodeStoreKey?: () => string;
 };
 
 export type CliModelSelectionStrategy = {
@@ -42,10 +45,11 @@ export type CliModelSelectionStrategy = {
   getModelDisplayName: (model: string | null, configId: string | null) => string | null;
 };
 
-type StoreBackedCliName = Exclude<CliName, "grok" | "dsh" | "kimi-code">;
+type StoreBackedCliName = Exclude<CliName, "grok" | "dsh" | "kimi-code" | "zcode">;
 
 const UNCONFIGURED_DSH_STORE_KEY = "dsh:unconfigured";
 const UNCONFIGURED_KIMI_CODE_STORE_KEY = "kimi-code:unconfigured";
+const UNCONFIGURED_ZCODE_STORE_KEY = "zcode:unconfigured";
 
 function createStoreBackedCliModelSelectionStrategy(cli: StoreBackedCliName): CliModelSelectionStrategy {
   return {
@@ -290,5 +294,74 @@ export function createCliModelSelectionStrategies(
     grok: createGrokCliModelSelectionStrategy(deps),
     dsh: createDshCliModelSelectionStrategy(deps),
     "kimi-code": createKimiCodeCliModelSelectionStrategy(deps),
+    zcode: createZcodeCliModelSelectionStrategy(deps),
+  };
+}
+
+function createZcodeCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps): CliModelSelectionStrategy {
+  function resolveStoreConfigKey(configId: string | null | undefined): string {
+    return configId ?? deps.resolveDefaultZcodeStoreKey?.() ?? UNCONFIGURED_ZCODE_STORE_KEY;
+  }
+
+  function configuredModels(configId: string | null | undefined): ZcodeConfigModels | undefined {
+    return deps.getZcodeConfigModels?.(configId);
+  }
+
+  function getSelectedModel(store: CliModelStore, configId: string | null): string | null {
+    const storedModel = store.selectedByConfigId?.[resolveStoreConfigKey(configId)];
+    const selectedModel = typeof storedModel === "string" ? storedModel : null;
+    return resolveZcodeConfigModel(configuredModels(configId), selectedModel);
+  }
+
+  return {
+    getSelectedModel,
+    getSelectedLoopModel(store, role, configId) {
+      const storedRoleModel = store.selectedLoopByConfigId?.[resolveStoreConfigKey(configId)]?.[role];
+      return resolveZcodeConfigModel(
+        configuredModels(configId),
+        storedRoleModel ?? getSelectedModel(store, configId),
+      );
+    },
+    getModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
+    },
+    getManagedModelOptions(_store, configId) {
+      return [...(configuredModels(configId)?.models ?? [])];
+    },
+    selectModel(store, model, configId) {
+      const resolved = resolveZcodeConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      return {
+        ...store,
+        selectedByConfigId: {
+          ...store.selectedByConfigId,
+          [storeKey]: resolved ?? "",
+        },
+      };
+    },
+    selectLoopModel(store, role, model, configId) {
+      const resolved = resolveZcodeConfigModel(configuredModels(configId), model);
+      const storeKey = resolveStoreConfigKey(configId);
+      const selection = { ...store.selectedLoopByConfigId[storeKey] };
+      if (resolved) {
+        selection[role] = resolved;
+      } else {
+        delete selection[role];
+      }
+      return {
+        ...store,
+        selectedLoopByConfigId: {
+          ...store.selectedLoopByConfigId,
+          [storeKey]: selection,
+        },
+      };
+    },
+    resolveStoreConfigKey,
+    getModelDisplayName(model, configId) {
+      if (!model) {
+        return model;
+      }
+      return configuredModels(configId)?.labels[model] ?? model;
+    },
   };
 }

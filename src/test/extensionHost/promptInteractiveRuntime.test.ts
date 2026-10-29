@@ -60,6 +60,7 @@ function createInteractiveRuntimeHarness(options: {
   autoCompactAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
   selectedModel?: string | null;
+  runtimeDeps?: Partial<PromptInteractiveRuntimeDeps>;
   humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
 } = {}) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
@@ -240,6 +241,7 @@ function createInteractiveRuntimeHarness(options: {
         freezePrevious: upsertOptions?.freezePrevious,
       });
     },
+    ...options.runtimeDeps,
   };
 
   return {
@@ -316,6 +318,61 @@ test("interactive runtime host keeps empty prompts inside its boundary", async (
   assert.deepEqual(harness.runStatusEvents, []);
   assert.equal(harness.activeRunsByTabId.size, 0);
   assert.deepEqual(harness.persistedMessages, []);
+});
+
+test("ZCode default config is resolved before launch and its runner completes through the interactive host", async () => {
+  const wire = "local-glm/glm-5.3-flash$max";
+  const resolvedModels: Array<string | null> = [];
+  const launchModels: Array<string | null> = [];
+  const settings = {
+    model: "local-glm/glm-5.3-flash", modelOptions: ["local-glm/glm-5.3-flash"],
+    thinking: "max", thinkingOptions: ["low", "high", "max"], thinkingEnabled: true, modeId: "yolo",
+  };
+  const runner = {
+    start: async () => ({ sessionId: "sess_zcode-test", settings, usage: null, resumed: false }),
+    getSettings: () => settings,
+    setModel: async (model: string, thinkingMode: string) => {
+      assert.equal(model, wire);
+      assert.equal(thinkingMode, "high");
+      settings.thinking = thinkingMode;
+    },
+    setThoughtLevel: async (level: string) => assert.equal(level, "high"),
+    cancelTurn: () => undefined,
+    prompt: async (_prompt: string, handlers: import("../../interactive/zcodeRunner").ZcodeStreamHandlers) => {
+      const text = "[final_answer] 已生成冒泡排序文件。";
+      handlers.onAssistantDelta?.(text);
+      return { text, usage: null };
+    },
+  };
+  const harness = createInteractiveRuntimeHarness({
+    selectedModel: null,
+    runtimeDeps: {
+      getEffectiveThinkingMode: () => "high",
+      resolveZcodeModelWireForRun: async (model) => {
+        resolvedModels.push(model);
+        return wire;
+      },
+      prepareZcodeInteractiveLaunch: async (input) => {
+        launchModels.push(input.selectedModel);
+        return { agentArgs: ["app-server", "--stdio", "--mode", "yolo"], env: {}, modeId: "yolo", modelRef: wire, thinkingValue: "high" };
+      },
+      getInteractiveRunnerManager: () => ({
+        getOrCreateZcodeRunner: (input: { model: string | null }) => {
+          assert.equal(input.model, wire);
+          return runner;
+        },
+        setRunner: () => undefined,
+        detachRunner: () => undefined,
+      }) as unknown as InteractiveRunnerManager,
+    },
+  });
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget({ cli: "zcode" }));
+  assert.deepEqual(resolvedModels, [null]);
+  assert.deepEqual(launchModels, [wire]);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
+  assert.ok(harness.panelMessages.some((message) => message.type === "zcodeThinkingOptions" && message.currentValue === "high"));
+  assert.equal(harness.activeRunsByTabId.size, 0);
 });
 
 test("interactive runtime host completes a successful Codex runner turn", async () => {

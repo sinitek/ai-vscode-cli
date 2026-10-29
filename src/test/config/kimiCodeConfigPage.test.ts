@@ -40,6 +40,10 @@ test("配置中心完整脚本可编译，保存分支的局部声明不能阻�
   assert.doesNotThrow(() => new vm.Script(read(uiPath), { filename: uiPath }));
 });
 
+test("配置中心所有分组的范例和默认提示不包含 subcoco", () => {
+  assert.doesNotMatch(read(uiPath), /subcoco/i);
+});
+
 test("配置中心把 kimi-code 注册为一个完整平台（平台列表、标签、命令、Skills 目标）", () => {
   const api = read(apiPath);
   assert.match(api, /const CONFIG_MANAGER_PLATFORMS = \[[^\]]*"kimi-code"\]/);
@@ -94,7 +98,9 @@ test("Kimi Code 可视化编辑器可以解析、往返序列化并保留未展�
   const example = kimi.createExampleText() as string;
   assert.match(example, /default_permission_mode = "auto"/);
   assert.match(example, /api_key = "your_apikey"/);
-  assert.doesNotMatch(example, /subcoco\//);
+  assert.doesNotMatch(example, /subcoco/i);
+  assert.match(example, /\[providers\.default\]/);
+  assert.match(example, /provider = "default"/);
   assert.match(example, /capabilities = \[\s*"thinking"\s*\]/);
   assert.match(example, /support_efforts = \[[\s\S]*?"low"[\s\S]*?"max"[\s\S]*?\]/);
   assert.doesNotMatch(example, /loop_control|display_name|default_effort|\[thinking\]/);
@@ -107,6 +113,7 @@ test("Kimi Code 可视化编辑器可以解析、往返序列化并保留未展�
   assert.equal(parsed.state.thinkingEffort, "");
   assert.equal(parsed.state.baseUrl, "http://127.0.0.1:33391/v1");
   assert.equal(parsed.state.providerType, "openai");
+  assert.equal(parsed.state.providerId, "default");
   assert.equal(parsed.state.apiKey, "your_apikey");
   assert.equal(parsed.state.capabilities, "thinking");
   assert.equal(parsed.state.supportEfforts, "low, medium, high, xhigh, max");
@@ -235,7 +242,7 @@ test("Kimi Code 可视化编辑器新增/删除模型时保持别名与真实模
   assert.equal(added.ok, true);
   assert.equal(added.state.selectedModelId, "kimi-k3.1-max");
   assert.equal(added.state.wireModel, "kimi-k3.1-max");
-  assert.equal(added.state.providerId, "subcoco", "新模型复制当前模型的 provider");
+  assert.equal(added.state.providerId, "default", "新模型复制当前模型的 provider");
 
   const duplicate = kimi.addModel(added.state, "kimi-k3.1-max");
   assert.equal(duplicate.ok, false);
@@ -250,6 +257,10 @@ test("Kimi Code 可视化编辑器新增/删除模型时保持别名与真实模
   const removedDefault = kimi.deleteModel(state, "kimi-k3.1-pro");
   assert.equal(removedDefault.defaultModel, "");
   assert.equal(removedDefault.selectedModelId, "");
+
+  const readded = kimi.addModel(removedDefault, "kimi-k3.1-max");
+  assert.equal(readded.ok, true);
+  assert.equal(readded.state.providerId, "default", "无模型可复制时使用通用 provider");
 
   const keepOne = kimi.deleteModel(added.state, "kimi-k3.1-pro");
   assert.equal(keepOne.defaultModel, "kimi-k3.1-max");
@@ -302,6 +313,7 @@ test("Kimi Code 可视化渲染函数暴露稳定字段与删除确认", () => {
   };
 
   const root = render();
+  assert.equal(find("label", "Provider 名称").props.placeholder, "default");
   const sections = root.props.children as EditorNode[];
   assert.equal(sections[0].props["data-testid"], "kimi-code-common-parameters");
   assert.equal(sections[1].props["data-testid"], "kimi-code-model-workspace");

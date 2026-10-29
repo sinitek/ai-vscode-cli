@@ -8,9 +8,9 @@ const {
   createInteractiveTurnStrategies,
 } = require("../../extensionHost/interactiveTurnStrategy") as typeof import("../../extensionHost/interactiveTurnStrategy");
 
-test("interactive turn strategy registry is codex, claude, grok, dsh, and kimi-code", () => {
+test("interactive turn strategy registry includes zcode beside the existing CLIs", () => {
   const strategies = createInteractiveTurnStrategies();
-  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "kimi-code"]);
+  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "kimi-code", "zcode"]);
   assert.equal(Object.prototype.hasOwnProperty.call(strategies, "opencode"), false);
   assert.equal("opencode" in strategies, false);
   assert.equal(typeof strategies.codex.runAttempt, "function");
@@ -18,4 +18,5 @@ test("interactive turn strategy registry is codex, claude, grok, dsh, and kimi-c
   assert.equal(typeof strategies.grok.runAttempt, "function");
   assert.equal(typeof strategies.dsh.runAttempt, "function");
   assert.equal(typeof strategies["kimi-code"].runAttempt, "function");
+  assert.equal(typeof strategies.zcode.runAttempt, "function");
 });

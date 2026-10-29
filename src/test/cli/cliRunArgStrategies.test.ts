@@ -44,7 +44,7 @@ function installConfiguration(values: Record<string, unknown>): () => void {
 
 test("registers exactly the current CLI platforms", () => {
   const strategies = createCliRunArgStrategies();
-  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "kimi-code", "opencode"]);
+  assert.deepEqual(Object.keys(strategies).sort(), ["claude", "codex", "dsh", "grok", "kimi-code", "opencode", "zcode"]);
   assert.equal(strategies.opencode.includeThinkingArgs, false);
   assert.equal(strategies.claude.includeThinkingArgs, true);
   assert.equal(strategies.codex.includeThinkingArgs, true);

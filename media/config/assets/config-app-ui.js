@@ -10,6 +10,7 @@ const DEFAULT_RUN_COMMANDS = {
     dsh: "dsh",
     // 官方 CLI 的 --auto / --yolo 不能与 -p 同用；免审批靠 config.toml 的 default_permission_mode。
     "kimi-code": "kimi",
+    zcode: "zcode",
   };
 
 const DEFAULT_INSTALL_COMMANDS = {
@@ -20,6 +21,8 @@ const DEFAULT_INSTALL_COMMANDS = {
     dsh: "npm install -g @deepseek-ai/dsh",
     // 与本机诊断修复路径（src/cli/installer.ts）保持一致，避免两处提示不同命令。
     "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
+    // 本机 0.17.0 的 zcode 是官方桌面应用附带命令，没有核实过的安装脚本。
+    zcode: "",
   };
 
 const DSH_UI_PROVIDER = "sinitek-custom";
@@ -84,7 +87,9 @@ const configPlatformLabel = (platform) =>
             ? "DSH"
             : platform === "kimi-code"
               ? "KimiCode"
-              : "OpenCode";
+              : platform === "zcode"
+                ? "ZCode"
+                : "OpenCode";
 
 function dshUiContainsSecret(value) {
   return DSH_UI_SECRET_ASSIGNMENT.test(String(value || "")) || DSH_UI_SECRET_TOKEN.test(String(value || ""));
@@ -690,6 +695,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       grokConfigs = c.useMemo(() => e.filter((k) => k.platform === "grok"), [e]),
       dshConfigs = c.useMemo(() => e.filter((k) => k.platform === "dsh"), [e]),
       kimiCodeConfigs = c.useMemo(() => e.filter((k) => k.platform === "kimi-code"), [e]),
+      zcodeConfigs = c.useMemo(() => e.filter((k) => k.platform === "zcode"), [e]),
       exportSelectedCount = c.useMemo(
         () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
@@ -737,7 +743,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           Kt.error("复制失败，请手动复制");
         }
       },
-      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : k === "dsh" ? dshConfigs : k === "kimi-code" ? kimiCodeConfigs : O),
+      P = (k) => (k === "claude" ? $ : k === "codex" ? w : k === "grok" ? grokConfigs : k === "dsh" ? dshConfigs : k === "kimi-code" ? kimiCodeConfigs : k === "zcode" ? zcodeConfigs : O),
       _ = (k) => {
         x(k);
       },
@@ -798,7 +804,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       configContent: L.configContent || L.content || "",
                       profileId: L.id,
                     })
-                : L.platform === "kimi-code"
+                : L.platform === "kimi-code" || L.platform === "zcode"
                   ? await applyConfigItem(L.platform, {
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
@@ -1270,7 +1276,8 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         isConfigPlatformEnabled("grok", cliEnabledByName) ? H("grok", grokConfigs) : null,
         isConfigPlatformEnabled("dsh", cliEnabledByName) ? H("dsh", dshConfigs) : null,
         isConfigPlatformEnabled("kimi-code", cliEnabledByName) ? H("kimi-code", kimiCodeConfigs) : null,
-        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
+        isConfigPlatformEnabled("zcode", cliEnabledByName) ? H("zcode", zcodeConfigs) : null,
+        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].every((platform) => !isConfigPlatformEnabled(platform, cliEnabledByName))
           ? be.jsx("div", {
               className: "config-empty-state",
               style: {
@@ -5113,7 +5120,7 @@ const kimiCodeVisualAddModel = (state, rawAlias) => {
     : kimiCodeVisualPickModelId(source);
   const template = kimiCodeVisualIsTable(models[templateAlias])
     ? kimiCodeVisualClone(models[templateAlias])
-    : { provider: "subcoco", type: "openai" };
+    : { provider: "default", type: "openai" };
   const wireModel = alias.includes("/") ? alias.split("/").pop() : alias;
   models[alias] = { ...template, model: wireModel };
   if (!kimiCodeVisualReadString(source.default_model)) source.default_model = alias;
@@ -5143,7 +5150,7 @@ const createKimiCodeVisualExampleText = () =>
     default_model: KIMI_CODE_DEFAULT_MODEL_ALIAS,
     default_permission_mode: "auto",
     providers: {
-      subcoco: {
+      default: {
         type: "openai",
         base_url: KIMI_CODE_EXAMPLE_BASE_URL,
         api_key: "your_apikey",
@@ -5151,7 +5158,7 @@ const createKimiCodeVisualExampleText = () =>
     },
     models: {
       [KIMI_CODE_DEFAULT_MODEL_ALIAS]: {
-        provider: "subcoco",
+        provider: "default",
         model: "kimi-k3.1-pro",
         max_context_size: 262144,
         capabilities: ["thinking"],
@@ -5177,6 +5184,403 @@ const KimiCodeConfigVisualEditorUtils = Object.freeze({
   createExampleText: createKimiCodeVisualExampleText,
 });
 
+// ZCODE_VISUAL_EDITOR_UTILS_START
+const ZCODE_VISUAL_API_TYPES = ["openai-chat-completions", "openai-responses", "anthropic-messages"];
+const ZCODE_VISUAL_EXAMPLE_MODEL = "glm-5.3-flash";
+const zcodeVisualClone = (value) => JSON.parse(JSON.stringify(value));
+const zcodeVisualIsRecord = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+
+const zcodeVisualReadDocument = (content) => {
+  if (!String(content || "").trim()) {
+    return { ok: false, error: "ZCode 配置为空。" };
+  }
+  let document;
+  try {
+    document = JSON.parse(content);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "ZCode 配置不是 JSON。" };
+  }
+  if (!zcodeVisualIsRecord(document) || document.schemaVersion !== 1 || !zcodeVisualIsRecord(document.config)) {
+    return { ok: false, error: "ZCode provider_config.json 必须是 schemaVersion 1。" };
+  }
+  if (!Array.isArray(document.config.providerConfigRules?.providerRules)
+    || !Array.isArray(document.config.modelConfigRules?.providerModelRules)
+    || !Array.isArray(document.config.modelConfigRules?.manualProviderModelRules)) {
+    return { ok: false, error: "ZCode 配置缺少必需的供应商或模型规则数组，请参考范例补齐；没有覆写时保留空数组。" };
+  }
+  return { ok: true, document };
+};
+
+const zcodeVisualProviderRules = (document) => {
+  const rules = document.config.providerConfigRules;
+  return zcodeVisualIsRecord(rules) && Array.isArray(rules.providerRules) ? rules.providerRules : [];
+};
+
+const zcodeVisualCreateState = (document) => {
+  const rules = zcodeVisualProviderRules(document).filter(zcodeVisualIsRecord);
+  const rule = rules.find((item) => item.providerId === "local-glm") || rules[0] || {};
+  const config = zcodeVisualIsRecord(rule.config) ? rule.config : {};
+  const api = zcodeVisualIsRecord(config.api) ? config.api : {};
+  const access = zcodeVisualIsRecord(config.access) ? config.access : {};
+  const modelIds = Array.isArray(config.personalModelIds)
+    ? config.personalModelIds.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  const modelRules = zcodeVisualIsRecord(document.config.modelConfigRules) ? document.config.modelConfigRules : {};
+  const configuredModels = Array.isArray(modelRules.providerModelRules)
+    ? modelRules.providerModelRules
+    : [];
+  const manualModels = Array.isArray(modelRules.manualProviderModelRules)
+    ? modelRules.manualProviderModelRules
+    : [];
+  const models = modelIds.map((id) => {
+    const configured = configuredModels.find((item) => zcodeVisualIsRecord(item) && item.modelId === id && item.providerId === rule.providerId)
+      || manualModels.find((item) => zcodeVisualIsRecord(item) && item.modelId === id && item.providerId === rule.providerId);
+    const modelConfig = zcodeVisualIsRecord(configured?.config) ? configured.config : {};
+    const properties = zcodeVisualIsRecord(modelConfig.properties) ? modelConfig.properties : {};
+    const optionSpecs = zcodeVisualIsRecord(modelConfig.optionSpecs) ? modelConfig.optionSpecs : {};
+    const reasoning = zcodeVisualIsRecord(optionSpecs.reasoningLevel) ? optionSpecs.reasoningLevel : {};
+    return {
+      id,
+      sourceId: id,
+      contextWindow: typeof properties.contextWindow === "number" ? String(properties.contextWindow) : "",
+      reasoningLevels: Array.isArray(reasoning.values) ? reasoning.values.filter((item) => typeof item === "string").join(", ") : "",
+    };
+  });
+  const selection = zcodeVisualIsRecord(document.config.defaultModelSelection) ? document.config.defaultModelSelection : {};
+  const selectionOptions = zcodeVisualIsRecord(selection.options) ? selection.options : {};
+  const defaultModelId = selection.providerId === rule.providerId && typeof selection.modelId === "string"
+    ? selection.modelId : (models[0]?.id || "");
+  const defaultModel = models.find((model) => model.id === defaultModelId);
+  const defaultLevels = String(defaultModel?.reasoningLevels || "").split(",").map((item) => item.trim()).filter(Boolean);
+  return {
+    source: document,
+    providerId: typeof rule.providerId === "string" ? rule.providerId : "local-glm",
+    providerName: typeof rule.providerName === "string" ? rule.providerName : "Local GLM",
+    enabled: rule.enabled !== false,
+    apiType: ZCODE_VISUAL_API_TYPES.includes(api.type) ? api.type : "openai-chat-completions",
+    baseUrl: typeof api.baseUrl === "string" ? api.baseUrl : "",
+    apiKey: typeof access.apiKey === "string" ? access.apiKey : "",
+    models,
+    selectedModelId: models[0]?.id || "",
+    defaultModelId,
+    defaultReasoningLevel: selection.providerId === rule.providerId && typeof selectionOptions.reasoningLevel === "string"
+      ? selectionOptions.reasoningLevel
+      : defaultLevels[0] || (/^glm-5\.3-flash(?:_sub-coco)?$/.test(defaultModelId) ? "max" : ""),
+    fieldError: "",
+  };
+};
+
+const zcodeVisualParseContent = (content) => {
+  const parsed = zcodeVisualReadDocument(content);
+  if (!parsed.ok) return parsed;
+  return { ok: true, state: zcodeVisualCreateState(parsed.document) };
+};
+
+const zcodeVisualValidateState = (state) => {
+  if (!state) return "可视化配置尚未加载。";
+  if (!String(state.providerId || "").trim()) return "Provider ID 不能为空。";
+  if (!ZCODE_VISUAL_API_TYPES.includes(state.apiType)) return "协议必须是 ZCode 支持的官方兼容类型。";
+  if (!String(state.baseUrl || "").trim()) return "Base URL 不能为空。";
+  const ids = new Set();
+  for (const model of state.models || []) {
+    const id = String(model.id || "").trim();
+    if (!id) return "模型 ID 不能为空。";
+    if (ids.has(id)) return `模型 ID “${id}” 重复。`;
+    ids.add(id);
+    if (String(model.contextWindow || "").trim()) {
+      const context = Number(model.contextWindow);
+      if (!Number.isInteger(context) || context <= 0) return `模型 “${id}” 的上下文窗口必须是正整数。`;
+    }
+  }
+  if (state.models?.length && !ids.has(state.defaultModelId)) return "请选择列表中的默认模型。";
+  const defaultModel = state.models?.find((model) => model.id === state.defaultModelId);
+  const requiresReasoning = /^glm-5\.3-flash(?:_sub-coco)?$/.test(state.defaultModelId)
+    || String(defaultModel?.reasoningLevels || "").trim();
+  if (requiresReasoning && !String(state.defaultReasoningLevel || "").trim()) return "默认思考力度不能为空，请填写模型支持的档位。";
+  return "";
+};
+
+const zcodeVisualSerializeState = (state) => {
+  const fieldError = zcodeVisualValidateState(state);
+  if (fieldError) return { ok: false, error: fieldError };
+  const source = zcodeVisualClone(state.source || { schemaVersion: 1, config: {} });
+  source.schemaVersion = 1;
+  source.config = zcodeVisualIsRecord(source.config) ? source.config : {};
+  const providerRules = zcodeVisualProviderRules(source).filter(zcodeVisualIsRecord);
+  const providerId = state.providerId.trim();
+  const existing = providerRules.find((rule) => rule.providerId === providerId) || {};
+  const existingConfig = zcodeVisualIsRecord(existing.config) ? existing.config : {};
+  const nextRule = {
+    ...existing,
+    providerId,
+    config: {
+      ...existingConfig,
+      group: existingConfig.group || "standard-personal",
+      access: {
+        ...(zcodeVisualIsRecord(existingConfig.access) ? existingConfig.access : {}),
+        type: "api-key",
+        apiKey: state.apiKey,
+      },
+      api: {
+        ...(zcodeVisualIsRecord(existingConfig.api) ? existingConfig.api : {}),
+        type: state.apiType,
+        baseUrl: state.baseUrl.trim(),
+      },
+      personalModelIds: state.models.map((model) => model.id.trim()),
+    },
+  };
+  const nextRules = providerRules.some((rule) => rule.providerId === providerId)
+    ? providerRules.map((rule) => (rule.providerId === providerId ? nextRule : rule))
+    : [...providerRules, nextRule];
+  source.config.providerConfigRules = {
+    ...(zcodeVisualIsRecord(source.config.providerConfigRules) ? source.config.providerConfigRules : {}),
+    providerRules: nextRules,
+  };
+  const modelRules = zcodeVisualIsRecord(source.config.modelConfigRules) ? source.config.modelConfigRules : {};
+  const preserveModelRules = (rules) => (Array.isArray(rules) ? rules : []).flatMap((rule) => {
+    if (!zcodeVisualIsRecord(rule) || rule.providerId !== providerId) return [rule];
+    const model = state.models.find((item) => (item.sourceId || item.id) === rule.modelId);
+    return model ? [{ ...rule, modelId: model.id.trim() }] : [];
+  });
+  source.config.modelConfigRules = {
+    ...modelRules,
+    providerModelRules: preserveModelRules(modelRules.providerModelRules),
+    manualProviderModelRules: preserveModelRules(modelRules.manualProviderModelRules),
+  };
+  if (state.defaultModelId) {
+    const selection = zcodeVisualIsRecord(source.config.defaultModelSelection) ? source.config.defaultModelSelection : {};
+    const options = { ...(zcodeVisualIsRecord(selection.options) ? selection.options : {}) };
+    const reasoningLevel = String(state.defaultReasoningLevel || "").trim();
+    if (reasoningLevel) options.reasoningLevel = reasoningLevel;
+    else delete options.reasoningLevel;
+    source.config.defaultModelSelection = {
+      ...selection,
+      providerId,
+      modelId: state.defaultModelId,
+    };
+    if (Object.keys(options).length) source.config.defaultModelSelection.options = options;
+    else delete source.config.defaultModelSelection.options;
+  } else if (source.config.defaultModelSelection?.providerId === providerId) {
+    delete source.config.defaultModelSelection;
+  }
+  return { ok: true, content: JSON.stringify(source, null, 2) + "\n" };
+};
+
+const zcodeVisualAddModel = (state, rawId) => {
+  const id = String(rawId || "").trim();
+  if (!id) return { ok: false, error: "invalid-id", state };
+  if ((state.models || []).some((model) => model.id === id)) return { ok: false, error: "duplicate-id", state };
+  const models = [...state.models, { id, contextWindow: "", reasoningLevels: "" }];
+  return { ok: true, state: { ...state, models, selectedModelId: id, defaultModelId: state.defaultModelId || id } };
+};
+
+const zcodeVisualDeleteModel = (state, modelId) => {
+  const models = state.models.filter((model) => model.id !== modelId);
+  return {
+    ...state,
+    models,
+    selectedModelId: state.selectedModelId === modelId ? (models[0]?.id || "") : state.selectedModelId,
+    defaultModelId: state.defaultModelId === modelId ? (models[0]?.id || "") : state.defaultModelId,
+  };
+};
+
+const ZcodeConfigVisualEditorUtils = Object.freeze({
+  apiTypes: ZCODE_VISUAL_API_TYPES,
+  parseContent: zcodeVisualParseContent,
+  validateState: zcodeVisualValidateState,
+  serializeState: zcodeVisualSerializeState,
+  addModel: zcodeVisualAddModel,
+  deleteModel: zcodeVisualDeleteModel,
+  createExampleText: () => JSON.stringify({
+    schemaVersion: 1,
+    config: {
+      defaultModelSelection: { providerId: "local-glm", modelId: ZCODE_VISUAL_EXAMPLE_MODEL, options: { reasoningLevel: "high" } },
+      providerConfigRules: {
+        providerRules: [{
+          providerId: "local-glm",
+          config: {
+            group: "standard-personal",
+            access: { type: "api-key", apiKey: "your_apikey" },
+            api: { type: "openai-responses", baseUrl: "http://127.0.0.1:33391/v1" },
+            personalModelIds: [ZCODE_VISUAL_EXAMPLE_MODEL],
+          },
+        }],
+      },
+      modelConfigRules: {
+        providerModelRules: [],
+        manualProviderModelRules: [],
+      },
+    },
+  }, null, 2) + "\n",
+});
+
+const renderZcodeVisualEditor = (state, setState, options = {}) => {
+  const { controlsDisabled = false, renderField, renderSelect, Button } = options;
+  if (!state) {
+    return be.jsx("div", {
+      role: "alert",
+      className: "config-editor-inline-error",
+      style: { padding: "8px", border: "1px solid var(--border-color)", borderRadius: "6px", color: "var(--error-color)" },
+      children: "当前 JSON 无法加载到可视化编辑器，请切换到 JSON 源码修复。",
+    });
+  }
+  const models = Array.isArray(state.models) ? state.models : [];
+  const selected = models.find((model) => model.id === state.selectedModelId) || null;
+  const defaultModel = models.find((model) => model.id === state.defaultModelId);
+  const configuredLevels = String(defaultModel?.reasoningLevels || "").split(",").map((item) => item.trim()).filter(Boolean);
+  const reasoningLevels = configuredLevels.length ? configuredLevels
+    : /^glm-5\.3-flash(?:_sub-coco)?$/.test(state.defaultModelId) ? ["low", "high", "max"] : [];
+  const updateModel = (patch) => {
+    const current = models.find((model) => model.id === state.selectedModelId);
+    if (!current) return;
+    const idChanged = Object.prototype.hasOwnProperty.call(patch, "id") && patch.id !== current.id;
+    setState({
+      ...state,
+      models: models.map((model) => (model.id === current.id ? { ...model, ...patch } : model)),
+      ...(idChanged ? {
+        selectedModelId: state.selectedModelId === current.id ? patch.id : state.selectedModelId,
+        defaultModelId: state.defaultModelId === current.id ? patch.id : state.defaultModelId,
+      } : {}),
+    });
+  };
+  const updateModelList = (nextState) => setState(nextState);
+  return be.jsxs("div", {
+    className: "zcode-visual-editor",
+    "data-testid": "zcode-visual-editor",
+    children: [
+      be.jsxs("section", {
+        className: "dsh-common-parameters",
+        "data-testid": "zcode-common-parameters",
+        children: [
+          be.jsx("strong", { children: "公共参数" }),
+          be.jsxs("div", {
+            children: [
+              renderSelect(
+                "协议",
+                state.apiType,
+                (value) => setState({ ...state, apiType: value }),
+                ZCODE_VISUAL_API_TYPES.map((apiType) => ({ value: apiType, label: apiType })),
+                { disabled: controlsDisabled },
+              ),
+              renderField("Base URL", state.baseUrl, (value) => setState({ ...state, baseUrl: value }), "http://127.0.0.1:33391/v1", { disabled: controlsDisabled }),
+              renderField("API Key", state.apiKey, (value) => setState({ ...state, apiKey: value }), "your_apikey", { disabled: controlsDisabled, type: "password", autoComplete: "new-password" }),
+              renderSelect(
+                "默认模型",
+                state.defaultModelId,
+                (value) => setState({ ...state, defaultModelId: value }),
+                models.map((model) => ({ value: model.id, label: model.id })),
+                { disabled: controlsDisabled || models.length === 0 },
+              ),
+              reasoningLevels.length
+                ? renderSelect(
+                  "默认思考力度",
+                  state.defaultReasoningLevel,
+                  (value) => setState({ ...state, defaultReasoningLevel: value }),
+                  reasoningLevels.map((value) => ({ value, label: value })),
+                  { disabled: controlsDisabled || models.length === 0 },
+                )
+                : renderField("默认思考力度", state.defaultReasoningLevel, (value) => setState({ ...state, defaultReasoningLevel: value }), "可选；仅推理模型需要填写", { disabled: controlsDisabled || models.length === 0 }),
+            ],
+          }),
+        ],
+      }),
+      be.jsxs("div", {
+        className: "grok-model-workspace",
+        "data-testid": "zcode-model-workspace",
+        children: [
+          be.jsxs("aside", {
+            className: "grok-model-sidebar",
+            "data-testid": "zcode-model-list",
+            "aria-label": "模型列表",
+            children: [
+              be.jsxs("div", {
+                className: "grok-model-list-header",
+                children: [
+                  be.jsx("strong", { children: "模型列表" }),
+                  be.jsx(Button, {
+                    size: "small",
+                    "data-testid": "zcode-add-model",
+                    disabled: controlsDisabled,
+                    onClick: () => {
+                      const added = zcodeVisualAddModel(state, `model-${models.length + 1}`);
+                      if (added.ok) setState(added.state);
+                    },
+                    children: "新增",
+                  }),
+                ],
+              }),
+              models.length === 0
+                ? be.jsx("div", {
+                  role: "status",
+                  style: { padding: "8px 4px", color: "var(--text-color-secondary)", fontSize: "12px" },
+                  children: "暂无模型，请使用右上角“新增”添加模型。",
+                })
+                : be.jsx("div", {
+                  className: "grok-model-list",
+                  role: "group",
+                  children: models.map((model) => be.jsxs("div", {
+                    className: "grok-model-row",
+                    "data-testid": "zcode-model-row",
+                    "data-zcode-model-id": model.id,
+                    children: [
+                      be.jsx(Button, {
+                        type: model.id === state.selectedModelId ? "primary" : "default",
+                        className: "grok-model-select",
+                        "aria-pressed": model.id === state.selectedModelId,
+                        title: model.id,
+                        disabled: controlsDisabled,
+                        onClick: () => setState({ ...state, selectedModelId: model.id }),
+                        children: model.id,
+                      }),
+                      be.jsx(Button, {
+                        type: "text",
+                        size: "small",
+                        danger: true,
+                        className: "grok-model-delete",
+                        icon: be.jsx(AH, {}),
+                        "data-testid": "zcode-delete-model",
+                        "data-zcode-model-id": model.id,
+                        "aria-label": `删除模型 ${model.id}`,
+                        title: `删除模型 ${model.id}`,
+                        disabled: controlsDisabled,
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          xr.confirm({
+                            title: "删除模型配置",
+                            content: `确定删除 ${model.id}？其他模型和未展示字段会保留。`,
+                            okText: "删除",
+                            cancelText: "取消",
+                            onOk: () => setState((previous) => zcodeVisualDeleteModel(previous, model.id)),
+                          });
+                        },
+                      }),
+                    ],
+                  }, model.id)),
+                }),
+            ],
+          }),
+          be.jsxs("section", {
+            className: "grok-model-detail",
+            "data-testid": "zcode-model-detail",
+            children: selected
+              ? [
+                renderField("模型 ID", selected.id, (value) => updateModel({ id: value }), "glm-5.3-flash", { disabled: controlsDisabled }),
+                be.jsx("p", { className: "dsh-common-parameter-note", children: "上下文和可用思考档位由 ZCode 自动识别，其他参数可在 JSON 中配置。" }),
+              ]
+              : [be.jsx("div", {
+                role: "status",
+                style: { padding: "8px 4px", color: "var(--text-color-secondary)", fontSize: "12px" },
+                children: "选择左侧模型后编辑参数。",
+              })],
+          }),
+        ],
+      }),
+    ],
+  });
+};
+// ZCODE_VISUAL_EDITOR_UTILS_END
+
+
 const ps = {
     claude: {
       settings: `{
@@ -5196,7 +5600,7 @@ const ps = {
     codex: {
       config: `model_provider = "codex"
 model = "gpt-5.1-codex"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 model_reasoning_summary = "detailed"
 model_verbosity = "high"
 model_supports_reasoning_summaries = true
@@ -5249,7 +5653,7 @@ requires_openai_auth = true`,
     grok: {
       config: `[models]
 default = "grok-4.7"
-default_reasoning_effort = "xhigh"
+default_reasoning_effort = "high"
 
 [model."grok-4.7"]
 model = "grok-4.7"
@@ -5268,6 +5672,9 @@ compaction_at_tokens = 450000
 	    "kimi-code": {
 	      config: createKimiCodeVisualExampleText(),
 	    },
+	    zcode: {
+	      config: ZcodeConfigVisualEditorUtils.createExampleText(),
+	    },
 	  };
 
 const Nk = {
@@ -5284,6 +5691,7 @@ const Nk = {
     "grok-config": { title: "Grok config.toml", content: ps.grok.config },
 	    "dsh-config": { title: "DSH profile JSON", content: ps.dsh.config },
     "kimi-code-config": { title: "KimiCode config.toml", content: ps["kimi-code"].config },
+    "zcode-config": { title: "ZCode provider_config.json", content: ps.zcode.config },
   };
 
 // Config editor panel
@@ -5342,6 +5750,10 @@ const ConfigEditorPanel = () => {
       [kimiCodeNewModelAlias, setKimiCodeNewModelAlias] = c.useState(""),
       [kimiCodeModelActionError, setKimiCodeModelActionError] = c.useState(""),
       kimiCodeNewModelInputRef = c.useRef(null),
+      [zcodeEditorMode, setZcodeEditorMode] = c.useState("json"),
+      [zcodeTextDraft, setZcodeTextDraft] = c.useState(""),
+      [zcodeVisualState, setZcodeVisualState] = c.useState(null),
+      [zcodeVisualError, setZcodeVisualError] = c.useState(""),
       [dshEditorMode, setDshEditorMode] = c.useState("json"),
       [dshText, setDshText] = c.useState(""),
       [dshVisual, setDshVisual] = c.useState(null),
@@ -5423,6 +5835,15 @@ const ConfigEditorPanel = () => {
         H.ok && !H.state.fieldError
           ? (setGrokVisualState(H.state), setGrokValidContent(W), setGrokVisualError(""))
           : (setGrokVisualState(H.state), setGrokValidContent(""), setGrokVisualError(H.ok ? H.state.fieldError : H.error));
+      } else if (O.platform === "zcode") {
+        const W = O.configContent || O.content || "";
+        const H = ZcodeConfigVisualEditorUtils.parseContent(W);
+        setZcodeTextDraft(W);
+        setZcodeEditorMode("json");
+        s(""), v(""), h("");
+        H.ok
+          ? (setZcodeVisualState(H.state), setZcodeVisualError(H.state.fieldError || ""))
+          : (setZcodeVisualState(null), setZcodeVisualError(H.error));
       } else if (O.platform === "kimi-code") {
         const W = O.configContent || O.content || "";
         const H = kimiCodeVisualParseContent(W);
@@ -5791,7 +6212,7 @@ const ConfigEditorPanel = () => {
             case "kimi-code-config":
               if (!syncKimiCodeVisualContent(I.content, "toml", !0)) return;
               break;
-	          case "dsh-config": {
+            case "dsh-config": {
 	            const H = readDshUiDocument(I.content);
 	            if (!H.ok) {
 	              setDshFieldError(H.error);
@@ -5802,9 +6223,12 @@ const ConfigEditorPanel = () => {
 	            setDshVisual(H.document);
 	            setDshFieldError("");
 	            setDshSelectedModelId(H.document.acpModel || H.document.models[0]?.id || "");
-	            setDshEditorMode("json");
-	            break;
-	          }
+            setDshEditorMode("json");
+            break;
+          }
+            case "zcode-config":
+              importZcodeExample();
+              return;
           }
           (Kt.success("已导入范例内容，请确认后保存"), z());
         }
@@ -6134,6 +6558,47 @@ const ConfigEditorPanel = () => {
         } catch (W) {
           Kt.error("保存失败: " + W);
         }
+      },
+      syncZcodeVisualContent = (content, nextMode = "json", showToast = !1) => {
+        const parsed = ZcodeConfigVisualEditorUtils.parseContent(content);
+        if (!parsed.ok) {
+          setZcodeVisualError(parsed.error);
+          if (showToast) Kt.error(parsed.error);
+          return !1;
+        }
+        const stateError = ZcodeConfigVisualEditorUtils.validateState(parsed.state);
+        if (stateError) {
+          setZcodeVisualError(stateError);
+          if (showToast) Kt.error(stateError);
+          return !1;
+        }
+        setZcodeTextDraft(content);
+        setZcodeVisualState(parsed.state);
+        setZcodeVisualError("");
+        setZcodeEditorMode(nextMode);
+        return !0;
+      },
+      switchZcodeEditorMode = (nextMode) => {
+        if (configListLoading || nextMode === zcodeEditorMode) return;
+        if (nextMode === "visual") {
+          syncZcodeVisualContent(zcodeTextDraft, "visual", !0);
+          return;
+        }
+        const serialized = ZcodeConfigVisualEditorUtils.serializeState(zcodeVisualState);
+        if (!serialized.ok) {
+          setZcodeVisualError(serialized.error);
+          Kt.error(serialized.error);
+          return;
+        }
+        setZcodeTextDraft(serialized.content);
+        setZcodeVisualError("");
+        setZcodeEditorMode("json");
+      },
+      importZcodeExample = () => {
+        const example = Nk["zcode-config"]?.content || ZcodeConfigVisualEditorUtils.createExampleText();
+        if (!syncZcodeVisualContent(example, "json", !0)) return;
+        Kt.success("已导入范例内容，请确认后保存");
+        z();
       },
       switchDshEditorMode = (nextMode) => {
         if (dshBusy || configListLoading || nextMode === dshEditorMode) return;
@@ -7843,7 +8308,7 @@ const ConfigEditorPanel = () => {
                             "Provider 名称",
                             kimiCodeVisualState.providerId,
                             (value) => update({ providerId: value }),
-                            "subcoco",
+                            "default",
                             { help: "写入 models.<别名>.provider，必须是 [providers.<名称>] 里存在的表。" },
                           ),
                           renderCodexField(
@@ -8231,8 +8696,9 @@ const ConfigEditorPanel = () => {
           minWidth: "150px",
         },
       });
-    const renderConfigEditorCardTitle = (W, H) =>
+    const renderConfigEditorCardTitle = (W, H, attributes = {}) =>
       be.jsxs("div", {
+        ...attributes,
         className: "config-editor-fixed-title",
         style: {
           display: "flex",
@@ -9178,7 +9644,109 @@ const ConfigEditorPanel = () => {
                   B(),
                 ],
               })
-          : O.platform === "kimi-code"
+          : O.platform === "zcode"
+            ? be.jsxs("div", {
+                className: "config-editor-shell config-editor-zcode",
+                "data-testid": "zcode-config-editor",
+                style: { height: "100%", display: "flex", flexDirection: "column", padding: "8px", minHeight: 0 },
+                children: [
+                  be.jsx(aa, {
+                    title: renderConfigEditorCardTitle(
+                      be.jsx("span", { "data-testid": "zcode-config-name", children: `编辑配置: ${O.name}` }),
+                      [
+                        { value: "visual", label: "可视化", active: zcodeEditorMode === "visual", onClick: configListLoading ? undefined : () => switchZcodeEditorMode("visual") },
+                        { value: "json", label: "JSON", active: zcodeEditorMode === "json", onClick: configListLoading ? undefined : () => switchZcodeEditorMode("json") },
+                      ],
+                      { "data-testid": "zcode-editor-mode", "data-mode": zcodeEditorMode },
+                    ),
+                    extra: be.jsx("div", {
+                      className: "config-editor-fixed-actions",
+                      style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" },
+                      children: be.jsx("div", {
+                        className: "config-editor-fixed-action-row",
+                        style: { display: "flex", gap: "4px", flexWrap: "wrap", justifyContent: "flex-end" },
+                        children: be.jsx(xn, {
+                          className: "config-standard-action-button",
+                          type: "primary",
+                          size: "small",
+                          icon: be.jsx(Pv, {}),
+                          "data-testid": "zcode-save-config",
+                          disabled: Boolean(zcodeVisualError)
+                            || configListLoading
+                            || (zcodeEditorMode === "visual" && !zcodeVisualState)
+                            || (zcodeEditorMode === "json" && !String(zcodeTextDraft || "").trim()),
+                          onClick: async () => {
+                            const serialized = zcodeEditorMode === "json"
+                              ? ZcodeConfigVisualEditorUtils.parseContent(zcodeTextDraft).ok
+                                ? { ok: true, content: zcodeTextDraft }
+                                : ZcodeConfigVisualEditorUtils.parseContent(zcodeTextDraft)
+                              : ZcodeConfigVisualEditorUtils.serializeState(zcodeVisualState);
+                            if (!serialized.ok) {
+                              setZcodeVisualError(serialized.error);
+                              Kt.error(serialized.error);
+                              return;
+                            }
+                            await r(O.id, { content: serialized.content, configContent: serialized.content });
+                            setZcodeTextDraft(serialized.content);
+                            const parsed = ZcodeConfigVisualEditorUtils.parseContent(serialized.content);
+                            if (parsed.ok) setZcodeVisualState(parsed.state);
+                            Kt.success("保存成功");
+                            await A({ content: serialized.content, configContent: serialized.content });
+                          },
+                          children: "保存",
+                        }),
+                      }),
+                    }),
+                    style: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
+                    bodyStyle: { flex: 1, display: "flex", flexDirection: "column", padding: "8px", gap: "8px", overflow: "auto", minHeight: 0 },
+                    children: be.jsxs("div", {
+                      className: "zcode-config-fields",
+                      style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
+                      children: [
+                        be.jsxs("div", {
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          children: [
+                            be.jsxs("strong", { children: [be.jsx(Ya, {}), " provider_config.json"] }),
+                            be.jsx(xn, { size: "small", onClick: () => N("zcode-config"), children: "查看范例" }),
+                          ],
+                        }),
+                        be.jsx("div", { style: { marginBottom: "4px", color: "var(--text-color-secondary)", fontSize: "12px" }, children: "配置文件路径: ~/.zcode/v2/provider_config.json" }),
+                        zcodeVisualError
+                          ? be.jsx("div", { role: "alert", className: "config-editor-inline-error", style: { padding: "8px", border: "1px solid var(--border-color)", borderRadius: "6px", color: "var(--error-color)" }, children: zcodeVisualError })
+                          : null,
+                        zcodeEditorMode === "visual"
+                          ? renderZcodeVisualEditor(zcodeVisualState, (next) => {
+                            setZcodeVisualState(next);
+                            setZcodeVisualError(next ? ZcodeConfigVisualEditorUtils.validateState(next) : zcodeVisualError);
+                          }, {
+                            controlsDisabled: configListLoading,
+                            renderField: renderCodexField,
+                            renderSelect: renderConfigSelect,
+                            Button: xn,
+                          })
+                          : be.jsx(Qa, {
+                            value: zcodeTextDraft,
+                            "aria-label": "ZCode JSON 配置",
+                            onChange: (event) => {
+                              const value = event.target.value;
+                              setZcodeTextDraft(value);
+                              const parsed = ZcodeConfigVisualEditorUtils.parseContent(value);
+                              if (parsed.ok) {
+                                setZcodeVisualState(parsed.state);
+                                setZcodeVisualError(ZcodeConfigVisualEditorUtils.validateState(parsed.state));
+                              } else {
+                                setZcodeVisualError(parsed.error);
+                              }
+                            },
+                            style: { flex: 1, minHeight: 420, fontFamily: "monospace", fontSize: "13px" },
+                          }),
+                      ],
+                    }),
+                  }),
+                  B(),
+                ],
+              })
+            : O.platform === "kimi-code"
             ? be.jsxs("div", {
                 className: "config-editor-shell config-editor-kimi-code",
                 style: {

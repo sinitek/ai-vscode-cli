@@ -4,9 +4,10 @@ import type { ClaudeInteractiveRunner } from "./claudeRunner";
 import type { CodexInteractiveRunner } from "./codexRunner";
 import type { DshInteractiveRunner } from "./dshRunner";
 import type { KimiInteractiveRunner } from "./kimiRunner";
+import type { ZcodeInteractiveRunner } from "./zcodeRunner";
 import type { GrokInteractiveRunner } from "./grokRunner";
 
-export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code";
+export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode";
 
 export type RunnerLifecycleFields = {
   idleTimer: NodeJS.Timeout | null;
@@ -80,7 +81,40 @@ export type KimiCodeRunnerEntry = {
   env?: NodeJS.ProcessEnv;
 } & RunnerLifecycleFields;
 
-export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry | DshRunnerEntry | KimiCodeRunnerEntry;
+export type ZcodeRunnerEntry = {
+  cli: "zcode";
+  sessionId: string;
+  runner: ZcodeInteractiveRunner;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  command: string;
+  args: string[];
+  cwd?: string;
+  localSessionId: string | null;
+  env?: NodeJS.ProcessEnv;
+} & RunnerLifecycleFields;
+
+export type ZcodeRunnerCreateOptions = {
+  sessionId: string;
+  command: string;
+  agentArgs: string[];
+  cwd: string;
+  thinkingMode: ThinkingMode;
+  interactiveMode: InteractiveMode;
+  model: string | null;
+  thinkingValue?: string | null;
+  modeId?: string | null;
+  localSessionId?: string | null;
+  env?: NodeJS.ProcessEnv;
+};
+
+export type PreparedZcodeCreate = {
+  sessionId: string;
+  options: ZcodeRunnerCreateOptions;
+};
+
+export type RunnerEntry = CodexRunnerEntry | ClaudeRunnerEntry | GrokRunnerEntry | DshRunnerEntry | KimiCodeRunnerEntry | ZcodeRunnerEntry;
 
 export type RunnerEntryByCli = {
   codex: CodexRunnerEntry;
@@ -88,6 +122,7 @@ export type RunnerEntryByCli = {
   grok: GrokRunnerEntry;
   dsh: DshRunnerEntry;
   "kimi-code": KimiCodeRunnerEntry;
+  zcode: ZcodeRunnerEntry;
 };
 
 export type RunnerByCli = {

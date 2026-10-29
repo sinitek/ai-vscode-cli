@@ -271,15 +271,6 @@ export const SYSTEM_TRACE_STYLES = `      /* System & Trace Messages */
       .trace-command-tag.cmd-purpose-run {
         color: var(--vscode-terminal-ansiCyan, var(--vscode-charts-foreground));
       }
-      .trace-detail {
-        font-size: 11px;
-        color: var(--vscode-descriptionForeground);
-        font-family: var(--vscode-editor-font-family);
-        width: 100%;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        text-align: left;
-      }
       .trace-time {
         margin-top: 6px;
         font-size: 11px;

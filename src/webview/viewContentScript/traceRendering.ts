@@ -701,7 +701,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           ? [detailText].concat(expandedLines)
           : expandedLines;
         const bodyHtml = renderTraceBodyLines(collapsedLines);
-        const showHeaderDetail = shouldCollapse && detailText && !detailDuplicatesBody && !shouldCollapseByContentLength(detailText);
         const title = presentation.title || Array.from(normalizeCollapsePreviewText(content)).slice(0, 20).join("");
         const header = title
           ? '<div class="trace-header">' +
@@ -717,9 +716,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
                 "</span>"
               : "") +
             "</div>" +
-            (showHeaderDetail
-              ? '<span class="trace-detail">' + escapeHtml(detailText) + "</span>"
-              : "") +
             "</div>"
           : "";
         if (shouldCollapse) {
@@ -1059,17 +1055,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           const rawName = toolResultMatch[1] ? toolResultMatch[1].trim() : "";
           const resolvedName = resolveToolResultDisplayName(rawName, followingText);
           const title = getLocalizedToolTitle(resolvedName);
-          const legacyToolMatch = trimmed.match(/^(?:tool|调用工具)[:：]?\\s*(.*)$/i);
-          if (legacyToolMatch) {
-            const legacyName = legacyToolMatch[1] ? legacyToolMatch[1].trim() : "";
-            const bucket = getToolStyleBucket(legacyName);
-            return {
-              type: "tool-use-" + bucket,
-              title: title,
-              match: /^(?:tool|调用工具)[:：]?\\s*(.+)?$/i,
-              detail: () => "",
-            };
-          }
           return {
             type: "tool-result",
             title: title,

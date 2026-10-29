@@ -5,7 +5,7 @@ import {
   type LoopMainAutoCompactRequest,
 } from "../loopMainAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
-import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand } from "../cli/config";
+import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand, getZcodeCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -61,6 +61,7 @@ import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
 import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import { prepareKimiInteractiveLaunch, type KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
+import { prepareZcodeInteractiveLaunch, type ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
 import { createInteractiveTurnStrategies } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
@@ -92,6 +93,8 @@ export type PromptInteractiveRuntimeHostDeps = {
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env">>;
   resolveKimiModelWireForRun?: (selectedModel: string | null) => Promise<string>;
+  resolveZcodeModelWireForRun?: (selectedModel: string | null) => Promise<string>;
+  prepareZcodeInteractiveLaunch?: typeof prepareZcodeInteractiveLaunch;
   prepareKimiInteractiveLaunch?: (input: {
     interactiveMode: InteractiveMode;
     selectedModel: string | null;
@@ -289,11 +292,26 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         thinkingMode,
       });
     }
+    let zcodeModelWire: string | null = null;
+    let zcodeLaunch: Pick<ZcodeInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelRef" | "thinkingValue"> | null = null;
+    if (cli === "zcode") {
+      if (!deps.resolveZcodeModelWireForRun) {
+        throw new Error("ZCode model resolver is not configured.");
+      }
+      zcodeModelWire = await deps.resolveZcodeModelWireForRun(requestedModel);
+      zcodeLaunch = await (deps.prepareZcodeInteractiveLaunch ?? prepareZcodeInteractiveLaunch)({
+        interactiveMode,
+        selectedModel: zcodeModelWire,
+        thinkingMode,
+      });
+    }
     const grokAgentArgs = cli === "grok" ? getGrokAgentArgs() : [];
     const args = cli === "dsh"
       ? [...(dshLaunch?.agentArgs ?? [])]
       : cli === "kimi-code"
       ? [...(kimiLaunch?.agentArgs ?? [])]
+      : cli === "zcode"
+      ? [...(zcodeLaunch?.agentArgs ?? [])]
       : cli === "grok"
       ? buildGrokAgentStdioArgs(grokAgentArgs, selectedModel)
       : cli === "codex" || executionOptions.isolateProjectInstructions
@@ -308,6 +326,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       ? getDshCommand()
       : cli === "kimi-code"
       ? getKimiCommand()
+      : cli === "zcode"
+      ? getZcodeCommand()
       : cli === "grok"
       ? getGrokCommand()
       : getCliCommand(cli);
@@ -366,6 +386,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let observedGrokFinalAnswer = false;
     let observedDshFinalAnswer = false;
     let observedKimiFinalAnswer = false;
+    let observedZcodeFinalAnswer = false;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -1041,7 +1062,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           || (source === "claude" && observedClaudeFinalAnswer)
           || (source === "grok" && observedGrokFinalAnswer)
           || (source === "dsh" && observedDshFinalAnswer)
-          || (source === "kimi-code" && observedKimiFinalAnswer),
+          || (source === "kimi-code" && observedKimiFinalAnswer)
+          || (source === "zcode" && observedZcodeFinalAnswer),
         observedCompletedTurn: source === "codex" && observedCodexPrimaryTurnCompleted,
         fallbackCreatedAt: userCreatedAt,
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
@@ -1118,7 +1140,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       graphNodeId: input.graphNodeId,
     });
 
-    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code"): Promise<"continue" | "return"> => {
+    const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode"): Promise<"continue" | "return"> => {
       if (await maybeHandleNaturalLanguageHumanInteraction()) {
         return "continue";
       }
@@ -1176,7 +1198,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       beginInteractiveAttempt(attemptPrompt);
 
       try {
-        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code") {
+        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode") {
           throw new Error(`interactive-runner-unsupported:${cli}`);
         }
         const disposition = await interactiveTurnStrategies[cli].runAttempt({
@@ -1192,6 +1214,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           dshLaunch,
           kimiModelWire,
           kimiLaunch,
+          zcodeModelWire,
+          zcodeLaunch,
           cwd,
           thinkingMode,
           interactiveMode,
@@ -1277,6 +1301,12 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           },
           set observedKimiFinalAnswer(value: boolean) {
             observedKimiFinalAnswer = value;
+          },
+          get observedZcodeFinalAnswer() {
+            return observedZcodeFinalAnswer;
+          },
+          set observedZcodeFinalAnswer(value: boolean) {
+            observedZcodeFinalAnswer = value;
           },
           settleInteractiveAttempt,
           appendAssistantChunkForTab,

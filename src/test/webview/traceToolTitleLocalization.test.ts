@@ -35,6 +35,30 @@ function buildToolTitleResolver() {
   )((key: keyof typeof WEBVIEW_STRINGS) => strings[key]) as (toolName: string) => string;
 }
 
+function buildTraceDefinitionResolver() {
+  const titleSource = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
+    "getLocalizedToolTitle",
+  );
+  const definitionSource = extractFunctionSource(
+    VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
+    "getTraceTypeDefinition",
+  );
+  const strings = WEBVIEW_STRINGS;
+  return new Function(
+    "t",
+    `${titleSource}; ${definitionSource}; return getTraceTypeDefinition;`,
+  )((key: keyof typeof WEBVIEW_STRINGS, params?: Record<string, string>) => {
+    let value: string = strings[key];
+    if (params) {
+      for (const [name, replacement] of Object.entries(params)) {
+        value = value.replace(`{${name}}`, replacement);
+      }
+    }
+    return value;
+  }) as (content: string, followingText?: string) => { type: string; title: string; detail: (value: string) => string };
+}
+
 test("renders common OpenCode tool bubble titles in Chinese", () => {
   const resolveTitle = buildToolTitleResolver();
 
@@ -57,4 +81,13 @@ test("preserves unknown tool names", () => {
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING,
     /title:\s*getLocalizedToolTitle\(toolName\)/,
   );
+});
+
+test("renders tool results as result bubbles instead of tool calls", () => {
+  const getTraceDefinition = buildTraceDefinitionResolver();
+
+  const presentation = getTraceDefinition("tool result: Write", "Output:\nWrote file successfully.");
+  assert.equal(presentation.type, "tool-result");
+  assert.equal(presentation.title, "写入文件");
+  assert.equal(presentation.detail("tool result: Write"), "Write");
 });

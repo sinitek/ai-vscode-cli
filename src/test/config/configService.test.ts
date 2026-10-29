@@ -845,7 +845,7 @@ test("DSH profile storage keeps only root apiKey, drops skill toggles, and accep
       assert.equal(loaded?.grokSkills, undefined);
       assert.deepEqual(
         [...configService.CLI_GLOBAL_SKILL_PLATFORMS],
-        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
+        ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"],
       );
       assert.equal(configService.readDshUnsupportedCapability("explicitSkillsApi").supported, false);
       assert.equal(configService.readDshUnsupportedCapability("nativeCompaction").supported, false);

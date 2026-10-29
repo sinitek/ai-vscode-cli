@@ -271,6 +271,8 @@
 
 ### thinking mode
 
+所有 CLI 的指令 trace 气泡共用 renderer，不再生成命令副标题。主标题、用途标签、折叠摘要、展开正文和复制行为不变；命令与文件路径仍保留在摘要或正文中。配置页可导入范例中已存在的独立思考力度统一使用 `high`，不新增无必要字段，不改写能力枚举、历史测量或用户配置。
+
 插件对外暴露统一的 thinking mode，但实际映射按 CLI 各自处理：
 
 - Codex：映射到 reasoning effort / 相关参数，支持 `low`、`medium`、`high`、`xhigh`、`max`
@@ -278,6 +280,24 @@
 - OpenCode：按插件通用 CLI 参数拼装接入；当前通过 `opencode run` one-shot / 并行路径执行，不声明交互 Runner 支持
 - Grok Build：只发送官方档位 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`；`off -> none`、`on -> medium`、`ultra -> max`
 - Kimi Code：运行时不改写档位——只下发 ACP `thinking` 选项真实广告过的值，广告里没有就报错并保留服务端确认值（`off` 不转发、`ultra` 不改写成 `max`）。面板只暴露 `low`、`medium`、`high`、`xhigh`、`max` 五档；旧持久化值在 Webview 归一化（`on -> medium`、`ultra -> max`、`off -> low`）后再走 ACP 校验。实际可用档位由 `[models."<别名>"].support_efforts` 决定，env-only 通道只有 `off`/`on`
+- ZCode：只下发当前会话快照 `settings.thoughtLevel.available` 中的值。`off` 与 `on` 不转发，`ultra` 不改写成 `max`。本机 `glm-5.3-flash_sub-coco` 在 ZCode 0.17.0 上 advertised `low`、`high`、`max`，默认 `max`。未 advertised 的档位不得写入。
+
+### ZCode
+
+- CLI id 是 `zcode`，显示名 ZCode，命令默认 `zcode`。顺序在 `kimi-code` 之后。
+- 本机 0.17.0 的可执行文件是 `/Users/fangjiawei/.npm-global/bin/zcode`，它是指向 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` 的 shell shim。这是官方桌面应用附带命令，不是已核实的 npm 包。插件安装命令留空，不写入未核实的安装脚本。
+- 交互协议是 ZCode Protocol 1，启动 `zcode app-server --stdio --mode yolo`。请求形如 `{id, method, params}`。带 `jsonrpc` 的信封会被拒绝。它不是 ACP，也不复用 Grok 或 DSH 的 ACP 方法。
+- 会话：`session/create` 新建，`session/resume` 恢复 `sess_` 前缀会话，`session/subscribe` 使用 `desktop-continuous`，`session/send` 发送提示，`session/stop` 停止当前回合，`session/close` 释放。创建期间客户端必须回答 `session/requestRuntimePreferences`。
+- 流式事件通过 `session/event` 接收。兼容旧 `part.delta` 的 `text` 与 `reasoning`；ZCode 0.17.0 的正文、思考和工具输入来自 `model.streaming`，工具生命周期来自 `tool.updated`。工具输入按 `toolCallId` 聚合，`scheduled`、`started` 与 `result` 复用同一消息 ID 更新 Codex-compatible trace 气泡；Shell 命令使用 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构。回合结束看 `turn.completed`，失败看 `turn.failed`。
+- 免审批是协议里的 `--mode yolo`。`plan` 交互模式映射为 `plan`。权限请求 `interaction/requestPermission` 只在广告了 allow 选项时自动选择，没有 allow 选项则拒绝该请求。
+- 上下文用量读取快照 `projection.contextUsed` 与 `projection.contextWindow`，来源标记 `zcode-projection`。没有有效数字时不显示。
+- 原生压缩是 `session/compact`。返回 `accepted` 或 `already_running` 才算接通。插件不把普通回答当成压缩完成。
+- 用户配置是 `~/.zcode/v2/provider_config.json`，可用 `ZCODE_DATA_BASE_DIR` 改数据根，也可用 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 指向文件。写入前备份，按 providerId 合并，不覆盖其它 provider。凭据文件权限为 `0600`。
+- GLM 自定义供应商范例使用 `openai-responses`；已有配置的协议不自动改写。范例模型 ID 为 `glm-5.3-flash`，Base URL 为 `http://127.0.0.1:33391/v1`，示例密钥只写 `your_apikey`。默认思考力度写入 `defaultModelSelection.options.reasoningLevel`，范例为 `high`，运行时通过 `model.options.reasoningLevel` 传给 ZCode。模型能力交由官方目录识别，不要求声明 `optionSpecs`；旧配置的显式档位列表仍兼容，默认模型显式选择优先于能力列表顺序，其他模型不继承该选择。旧版两种 GLM 模型引用缺少档位时兼容 `max`。本机 ZCode 0.17.0 为两种模型公布 `low`、`high`、`max`；该本地服务拒绝 `anthropic-messages`。官方文件结构仍需要 `modelConfigRules` 下的两个规则数组，无覆写时均为空；个人供应商保留 `group: standard-personal`，不要因精简删除这些结构。应用文件按供应商替换模型规则快照，不保留该供应商已删除的旧覆写；其他供应商不变。
+- 配置页在 KimiCode 之后追加 ZCode。首次打开、切换档案及范例导入默认 JSON。可视化复用现有公共参数置顶、左侧模型列表、右侧模型参数的布局和主题控件；公共参数为协议、Base URL、API Key、默认模型及默认思考力度，右侧编辑模型 ID。上下文与能力档位由 ZCode 目录提供，供应商显示名等高级字段可在 JSON 编辑，未展示字段往返保存不丢失。`src/extension.ts` 必须向交互宿主传入模型解析器；仅终端可运行不能证明宿主接线完整。
+- 用户说明：`docs/zcode-guide.md`。
+- 会话续接：健康 runner 的 `start()` 幂等返回当前原生会话、设置和最新上下文用量，不重新启动进程，也不重复创建或订阅。只有订阅、模式和模型设置全部完成才标记可复用，初始化中或初始化失败的会话不能复用。进程重建通过 `session/resume` 恢复相同 `sess_`，已退出、失败或释放的 runner 拒绝再次启动。`session/send` 前注册回合监听，并同时等待发送确认与回合终态，避免快速正文或完成／失败事件丢失；发送失败清理监听，后续任务不被错误的 busy 状态阻塞。
+- 创建会话使用配置中的思考档位，取得快照后才允许已公布的用户偏好覆写。每个回合（含复用与恢复）重新应用模型与思考力度，合法 UI 选择优先于配置默认值，例如配置 max、UI high 时 model.options.reasoningLevel 与 thoughtLevel 均为 high；原生设置回包更新缓存，模型切换更新能力集合，原生不确认所选档位时按错误展示。面板消费按 Tab 隔离的 zcodeThinkingOptions，保留已选合法档位，切换 Tab、模型、档案或 CLI 时清除旧广告，不自动把 max 降为 high。继承的 `medium` 若不在模型档位中，不发送该值；ZCode 的 `max` 不经通用逻辑降为 `high`。非推理模型可省略思考字段。`turn.failed.payload.error.message` 会被提取并脱敏展示。范例模型名称需与服务实际提供的模型 ID 对齐，本机已验证默认档案使用 `glm-5.3-flash_sub-coco`。
 
 ### interactive mode
 

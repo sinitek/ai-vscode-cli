@@ -10,13 +10,15 @@ import type { ChatMessage } from "../webview/types";
 import type { InteractiveTabRun } from "./promptExecutionShared";
 import type { DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import type { KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
+import type { ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
 import { createClaudeInteractiveTurnStrategy } from "./interactiveTurnClaude";
 import { createCodexInteractiveTurnStrategy } from "./interactiveTurnCodex";
 import { createDshInteractiveTurnStrategy } from "./interactiveTurnDsh";
 import { createKimiCodeInteractiveTurnStrategy } from "./interactiveTurnKimi";
+import { createZcodeInteractiveTurnStrategy } from "./interactiveTurnZcode";
 import { createGrokInteractiveTurnStrategy } from "./interactiveTurnGrok";
 
-export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code";
+export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode";
 
 export type InteractiveAttemptDisposition = "continue" | "return";
 
@@ -46,6 +48,8 @@ export type InteractiveTurnAttemptPort = {
   readonly dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null;
   readonly kimiModelWire: string | null;
   readonly kimiLaunch: Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue"> | null;
+  readonly zcodeModelWire: string | null;
+  readonly zcodeLaunch: Pick<ZcodeInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelRef" | "thinkingValue"> | null;
   readonly cwd: string | undefined;
   readonly thinkingMode: ThinkingMode;
   readonly interactiveMode: InteractiveMode;
@@ -70,6 +74,7 @@ export type InteractiveTurnAttemptPort = {
   observedGrokFinalAnswer: boolean;
   observedDshFinalAnswer: boolean;
   observedKimiFinalAnswer: boolean;
+  observedZcodeFinalAnswer: boolean;
   settleInteractiveAttempt(cli: InteractiveTurnCli): Promise<InteractiveAttemptDisposition>;
   appendAssistantChunkForTab(
     chunk: string,
@@ -116,5 +121,6 @@ export function createInteractiveTurnStrategies(): Record<InteractiveTurnCli, In
     grok: createGrokInteractiveTurnStrategy(),
     dsh: createDshInteractiveTurnStrategy(),
     "kimi-code": createKimiCodeInteractiveTurnStrategy(),
+    zcode: createZcodeInteractiveTurnStrategy(),
   };
 }
