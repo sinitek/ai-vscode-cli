@@ -555,6 +555,153 @@ test("runtime backups keep prefixes, shared timestamps, content, and backup list
   });
 });
 
+test("DSH and Kimi Code backups keep exact names, raw content, and DSH 0o600 mode", async () => {
+  const isPosix = process.platform !== "win32";
+  await withTempHome(async (homeDir) => {
+    const kimiHome = path.join(homeDir, "kimi-home");
+    const originalKimiHome = process.env.KIMI_CODE_HOME;
+    const originalDshHome = process.env.DSH_HOME;
+    process.env.KIMI_CODE_HOME = kimiHome;
+    process.env.DSH_HOME = homeDir;
+    try {
+      const configService = loadConfigService();
+      const { createKimiCodeDefaultConfigText } =
+        require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+      const kimiText = createKimiCodeDefaultConfigText({ permissionMode: "manual" })
+        .replace("max_context_size = 262144", "max_context_size = 262144\nkept_note = \"raw-kimi\"");
+      await fs.mkdir(kimiHome, { recursive: true });
+      await fs.writeFile(path.join(kimiHome, "config.toml"), kimiText, "utf-8");
+      const dshProfileDir = path.join(homeDir, "__config");
+      await fs.mkdir(dshProfileDir, { recursive: true });
+      await fs.writeFile(path.join(dshProfileDir, "active-profile.json"), "{\"profile\":\"dsh-raw\"}\n", "utf-8");
+
+      const dshBackups = await configService.backupConfig("dsh");
+      assert.equal(dshBackups.length, 1);
+      assert.match(path.basename(dshBackups[0]), /^dsh_config_\d{4}-\d{2}-\d{2}T.*\.json$/);
+      assert.equal(await fs.readFile(dshBackups[0], "utf8"), "{\"profile\":\"dsh-raw\"}\n");
+      if (isPosix) {
+        const dshStat = await fs.stat(dshBackups[0]);
+        assert.equal(dshStat.mode & 0o777, 0o600);
+      }
+
+      const kimiBackups = await configService.backupConfig("kimi-code");
+      assert.equal(kimiBackups.length, 1);
+      assert.match(path.basename(kimiBackups[0]), /^kimi-code_config_\d{4}-\d{2}-\d{2}T.*\.toml$/);
+      assert.equal(await fs.readFile(kimiBackups[0], "utf8"), kimiText);
+      if (isPosix) {
+        const referencePath = path.join(path.dirname(kimiBackups[0]), "reference_default_mode_file");
+        await fs.writeFile(referencePath, "reference", "utf-8");
+        const kimiStat = await fs.stat(kimiBackups[0]);
+        const referenceStat = await fs.stat(referencePath);
+        assert.equal(kimiStat.mode & 0o777, referenceStat.mode & 0o777);
+      }
+
+      const dshDirect = await configService.backupDshConfig();
+      const kimiDirect = await configService.backupKimiCodeConfig();
+      assert.equal(dshDirect.length, 1);
+      assert.equal(kimiDirect.length, 1);
+      assert.match(path.basename(dshDirect[0]), /^dsh_config_.*\.json$/);
+      assert.match(path.basename(kimiDirect[0]), /^kimi-code_config_.*\.toml$/);
+      if (isPosix) {
+        assert.equal((await fs.stat(dshDirect[0])).mode & 0o777, 0o600);
+      }
+
+      // getBackupList 对 dsh 与 kimi-code 各自只返回自己的前缀，且为字典序逆序。
+      // 同毫秒内两次备份共享时间戳会覆盖同名文件（无跨调用唯一性保证），所以不断言列表长度为 2。
+      const dshList = await configService.getBackupList("dsh");
+      assert.ok(dshList.length >= 1);
+      assert.ok(dshList.every((name) => name.startsWith("dsh_")));
+      assert.deepEqual(dshList, dshList.slice().sort().reverse());
+      const kimiList = await configService.getBackupList("kimi-code");
+      assert.ok(kimiList.length >= 1);
+      assert.ok(kimiList.every((name) => name.startsWith("kimi-code_")));
+      assert.deepEqual(kimiList, kimiList.slice().sort().reverse());
+    } finally {
+      restoreEnvironmentVariable("KIMI_CODE_HOME", originalKimiHome);
+      if (originalDshHome === undefined) {
+        delete process.env.DSH_HOME;
+      } else {
+        process.env.DSH_HOME = originalDshHome;
+      }
+    }
+  });
+});
+
+test("getBackupList isolates all platform prefixes against cross-platform noise", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const backupDir = path.join(homeDir, ".ai_cli_tools_backups");
+    await fs.mkdir(backupDir, { recursive: true });
+    await fs.writeFile(path.join(backupDir, "claude_settings_2026-01-01T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "claude_settings_2026-01-02T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "claude_mcp_2026-01-01T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "codex_config_2026-01-01T00-00-00-000Z.toml"), "");
+    await fs.writeFile(path.join(backupDir, "codex_auth_2026-01-01T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "opencode_config_2026-01-01T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "grok_config_2026-01-01T00-00-00-000Z.toml"), "");
+    await fs.writeFile(path.join(backupDir, "dsh_config_2026-01-01T00-00-00-000Z.json"), "{}");
+    await fs.writeFile(path.join(backupDir, "kimi-code_config_2026-01-01T00-00-00-000Z.toml"), "");
+    await fs.writeFile(path.join(backupDir, "zcode_provider_config.json.bak-123"), "{}");
+    await fs.writeFile(path.join(backupDir, "unrelated.txt"), "noise");
+
+    const expected: Record<string, string[]> = {
+      claude: [
+        "claude_settings_2026-01-02T00-00-00-000Z.json",
+        "claude_settings_2026-01-01T00-00-00-000Z.json",
+        "claude_mcp_2026-01-01T00-00-00-000Z.json",
+      ],
+      codex: ["codex_config_2026-01-01T00-00-00-000Z.toml", "codex_auth_2026-01-01T00-00-00-000Z.json"],
+      opencode: ["opencode_config_2026-01-01T00-00-00-000Z.json"],
+      grok: ["grok_config_2026-01-01T00-00-00-000Z.toml"],
+      dsh: ["dsh_config_2026-01-01T00-00-00-000Z.json"],
+      "kimi-code": ["kimi-code_config_2026-01-01T00-00-00-000Z.toml"],
+      zcode: ["zcode_provider_config.json.bak-123"],
+    };
+
+    for (const [platform, names] of Object.entries(expected)) {
+      const list = await configService.getBackupList(platform as "claude");
+      assert.deepEqual(list, [...names], `backup list for ${platform}`);
+      assert.ok(list.every((name) => !path.isAbsolute(name)), `${platform} list returns base names`);
+    }
+    const geminiList = await configService.getBackupList("gemini");
+    assert.deepEqual(geminiList, expected.opencode);
+    await assert.rejects(
+      () => configService.getBackupList("unknown-platform" as "claude"),
+      /Unsupported config platform: unknown-platform/,
+    );
+  });
+});
+
+test("backup failures from the underlying reads propagate without partial swallowing", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const blockedGrokHome = path.join(homeDir, "grok-blocked");
+    const originalGrokHome = process.env.GROK_HOME;
+    process.env.GROK_HOME = blockedGrokHome;
+    try {
+      const grokConfigPath = path.join(blockedGrokHome, "config.toml");
+      await fs.mkdir(grokConfigPath, { recursive: true });
+      await assert.rejects(
+        () => configService.backupConfig("grok"),
+        (error: NodeJS.ErrnoException) => error.code === "EISDIR",
+      );
+
+      const codexDir = path.join(homeDir, ".codex");
+      await fs.mkdir(path.join(codexDir, "config.toml"), { recursive: true });
+      await fs.mkdir(path.join(codexDir, "auth.json"), { recursive: true });
+      await assert.rejects(
+        () => configService.backupConfig("codex"),
+        (error: NodeJS.ErrnoException) => error.code === "EISDIR",
+      );
+      const backupDir = path.join(homeDir, ".ai_cli_tools_backups");
+      const codexBackupNames = (await fs.readdir(backupDir)).filter((file) => file.startsWith("codex_"));
+      assert.deepEqual(codexBackupNames, []);
+    } finally {
+      restoreEnvironmentVariable("GROK_HOME", originalGrokHome);
+    }
+  });
+});
+
 async function useHome<T>(homeDir: string, run: () => Promise<T>): Promise<T> {
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;

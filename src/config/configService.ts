@@ -8,6 +8,7 @@ import {
   LEGACY_GEMINI_CONFIG_PLATFORM,
   CopyConfigPayload,
   CurrentConfig,
+  CurrentConfigPlatform,
 } from "./types";
 import { t } from "../i18n";
 import { createCliRuntimeConfigStrategies } from "./cliRuntimeConfigStrategies";
@@ -270,67 +271,123 @@ export async function writeOpenCodeConfig(config: string, _env?: string): Promis
   await fs.writeFile(CONFIG_PATHS.opencode.config, config, "utf-8");
 }
 
-export async function backupClaudeConfig(): Promise<string[]> {
+type BackupFileSpec = {
+  baseName: string;
+  suffix: ".json" | ".toml";
+  content: string;
+  mode?: number;
+};
+
+type BackupPlatformSpec = {
+  prefix: string;
+  readFiles: () => Promise<BackupFileSpec[]>;
+};
+
+type BackupRegistryPlatform = Exclude<CurrentConfigPlatform, "zcode">;
+
+function writeBackupFile(spec: BackupFileSpec, backupPath: string): Promise<void> {
+  if (spec.mode === undefined) {
+    return fs.writeFile(backupPath, spec.content, "utf-8");
+  }
+  return fs.writeFile(backupPath, spec.content, { encoding: "utf-8", mode: spec.mode });
+}
+
+async function runBackup(spec: BackupPlatformSpec): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
-  const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
+  const files = await spec.readFiles();
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const settingsBackupPath = path.join(BACKUP_DIR, `claude_settings_${timestamp}.json`);
-  const mcpBackupPath = path.join(BACKUP_DIR, `claude_mcp_${timestamp}.json`);
-  await Promise.all([
-    fs.writeFile(settingsBackupPath, content, "utf-8"),
-    fs.writeFile(mcpBackupPath, mcpContent, "utf-8"),
-  ]);
-  return [settingsBackupPath, mcpBackupPath];
+  const backupPaths = files.map((file) => path.join(BACKUP_DIR, `${spec.prefix}${file.baseName}_${timestamp}${file.suffix}`));
+  await Promise.all(files.map((file, index) => writeBackupFile(file, backupPaths[index])));
+  await Promise.all(
+    files
+      .map((file, index) => ({ file, backupPath: backupPaths[index] }))
+      .filter(({ file }) => file.mode !== undefined)
+      .map(({ file, backupPath }) => fs.chmod(backupPath, file.mode as number)),
+  );
+  return backupPaths;
+}
+
+const BACKUP_PLATFORMS: Record<BackupRegistryPlatform, BackupPlatformSpec> = {
+  claude: {
+    prefix: "claude_",
+    readFiles: async () => {
+      const [content, mcpContent] = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
+      return [
+        { baseName: "settings", suffix: ".json", content },
+        { baseName: "mcp", suffix: ".json", content: mcpContent },
+      ];
+    },
+  },
+  codex: {
+    prefix: "codex_",
+    readFiles: async () => {
+      const { config, auth } = await readCodexConfig();
+      return [
+        { baseName: "config", suffix: ".toml", content: config },
+        { baseName: "auth", suffix: ".json", content: auth },
+      ];
+    },
+  },
+  opencode: {
+    prefix: "opencode_",
+    readFiles: async () => {
+      const { config } = await readOpenCodeConfig();
+      return [{ baseName: "config", suffix: ".json", content: config }];
+    },
+  },
+  grok: {
+    prefix: "grok_",
+    readFiles: async () => [
+      { baseName: "config", suffix: ".toml", content: await readGrokConfigText() },
+    ],
+  },
+  "kimi-code": {
+    prefix: "kimi-code_",
+    readFiles: async () => [
+      { baseName: "config", suffix: ".toml", content: await readKimiCodeConfigTextFromDisk() },
+    ],
+  },
+  dsh: {
+    prefix: "dsh_",
+    readFiles: async () => [
+      { baseName: "config", suffix: ".json", content: await readDshConfigText(), mode: 0o600 },
+    ],
+  },
+};
+
+function getBackupPlatformSpec(platform: BackupRegistryPlatform): BackupPlatformSpec {
+  return BACKUP_PLATFORMS[platform];
+}
+
+function getBackupPrefix(platform: BackupRegistryPlatform | "zcode"): string {
+  if (platform === "zcode") {
+    return "zcode_";
+  }
+  return getBackupPlatformSpec(platform).prefix;
+}
+
+export async function backupClaudeConfig(): Promise<string[]> {
+  return runBackup(getBackupPlatformSpec("claude"));
 }
 
 export async function backupCodexConfig(): Promise<string[]> {
-  await ensureDir(BACKUP_DIR);
-  const { config, auth } = await readCodexConfig();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const configBackupPath = path.join(BACKUP_DIR, `codex_config_${timestamp}.toml`);
-  const authBackupPath = path.join(BACKUP_DIR, `codex_auth_${timestamp}.json`);
-  await Promise.all([
-    fs.writeFile(configBackupPath, config, "utf-8"),
-    fs.writeFile(authBackupPath, auth, "utf-8"),
-  ]);
-  return [configBackupPath, authBackupPath];
+  return runBackup(getBackupPlatformSpec("codex"));
 }
 
 export async function backupOpenCodeConfig(): Promise<string[]> {
-  await ensureDir(BACKUP_DIR);
-  const { config } = await readOpenCodeConfig();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const configBackupPath = path.join(BACKUP_DIR, `opencode_config_${timestamp}.json`);
-  await fs.writeFile(configBackupPath, config, "utf-8");
-  return [configBackupPath];
+  return runBackup(getBackupPlatformSpec("opencode"));
 }
 
 export async function backupGrokConfig(): Promise<string[]> {
-  await ensureDir(BACKUP_DIR);
-  const config = await readGrokConfigText();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const configBackupPath = path.join(BACKUP_DIR, `grok_config_${timestamp}.toml`);
-  await fs.writeFile(configBackupPath, config, "utf-8");
-  return [configBackupPath];
+  return runBackup(getBackupPlatformSpec("grok"));
 }
 
 export async function backupKimiCodeConfig(): Promise<string[]> {
-  await ensureDir(BACKUP_DIR);
-  const config = await readKimiCodeConfigTextFromDisk();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const configBackupPath = path.join(BACKUP_DIR, `kimi-code_config_${timestamp}.toml`);
-  await fs.writeFile(configBackupPath, config, "utf-8");
-  return [configBackupPath];
+  return runBackup(getBackupPlatformSpec("kimi-code"));
 }
 
 export async function backupDshConfig(): Promise<string[]> {
-  await ensureDir(BACKUP_DIR);
-  const config = await readDshConfigText();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const configBackupPath = path.join(BACKUP_DIR, `dsh_config_${timestamp}.json`);
-  await fs.writeFile(configBackupPath, config, { encoding: "utf-8", mode: 0o600 });
-  await fs.chmod(configBackupPath, 0o600);
-  return [configBackupPath];
+  return runBackup(getBackupPlatformSpec("dsh"));
 }
 
 const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
@@ -379,19 +436,7 @@ export async function getBackupList(platform: LegacyConfigPlatformInput): Promis
   await ensureDir(BACKUP_DIR);
   const files = await fs.readdir(BACKUP_DIR);
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  const prefix = normalizedPlatform === "claude"
-    ? "claude_"
-    : normalizedPlatform === "codex"
-      ? "codex_"
-      : normalizedPlatform === "grok"
-        ? "grok_"
-        : normalizedPlatform === "dsh"
-          ? "dsh_"
-          : normalizedPlatform === "kimi-code"
-            ? "kimi-code_"
-            : normalizedPlatform === "zcode"
-              ? "zcode_"
-              : "opencode_";
+  const prefix = getBackupPrefix(normalizedPlatform);
   return files.filter((file) => file.startsWith(prefix)).sort().reverse();
 }
 
