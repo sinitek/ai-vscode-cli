@@ -84,7 +84,23 @@ AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底�
 
 2026-10-26 DSH 启动兼容已保存快照缺少 `active.json` 的状态：存在有效 `active-profile.json` 和 `active-patch.yaml` 时恢复执行，不再误报 `DSH profile patch is not active.`；显式外部 patch 和激活档案的优先级不变。
 
+## 所有 CLI 配置与子模型同步
+
+AI 面板首次打开及配置保存后，并行读取 Codex、Claude、OpenCode、Grok、DSH、KimiCode、ZCode 的本机配置与独立激活身份，统一刷新配置派生模型和 OpenCode 本机子模型元数据。Loop、Loop+、Graph 及共享子模型入口直接使用这份完整状态，无需先切到目标 CLI。包括 ZCode 在内的主 CLI 都可操作共用子模型分组控件；单个配置读取失败只影响对应分组。
+
+配置页各 CLI 统一使用宿主确认的激活身份，不依赖编辑器对保存文本的重复猜测。保存激活档案会应用运行时并等待当前 AI 面板刷新；保存未激活档案只更新列表，不切换档案或主 CLI。Grok、KimiCode 使用原生 TOML 内容匹配，DSH 使用 JSON 结构匹配，ZCode 保持供应商保留式合并语义。没有保存档案时仍读取已有原生模型，但不创建档案、不批量激活、不启动所有 CLI、不发模型请求；跨 CLI 实际派发仍要求可用档案绑定。显式空身份不复用旧心跳模型，已有 Codex／Claude 显式模型选择不被配置加载覆盖。
+
+实现见 `src/webviewCommandCoordinator.ts`、`src/panelStateBuilder.ts`、`src/extensionHost/modelSettings.ts`、`src/webview/configPanel.ts`、`src/webview/viewContentScript/modelManager.ts`；回归见 `src/test/config/cliPageConfigCoverage.test.ts`、`src/test/extensionHost/cliModelSelectionStrategies.test.ts`、`src/test/extensionHost/opencodethinkingintegration.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。
+
+子模型提示区分首次状态尚未到达、完整快照确认没有可用档案以及配置读取失败；后两种状态给出实际原因，不再持续显示“正在同步”。删除目标档案后不沿用旧身份，恢复有效档案后模型控件随快照自动恢复。
+
 ## ZCode 配置范例抽屉
+
+ZCode 配置页的初始及周期激活同步覆盖统一 CLI 注册表。宿主返回激活档案身份，复用工作区偏好回退，避免旧版保存后档案与运行时分叉导致失去激活标识；未确认身份时不擅自激活。匹配遵循供应商保留式合并语义，忽略 JSON 格式和对象键顺序，不以 Codex TOML 行匹配 ZCode。保存激活档案后应用运行时并等待 AI 面板模型刷新；保存未激活档案仅更新档案；应用失败明确提示档案已保存、运行时未更新。回归见 `src/test/config/cliPageConfigCoverage.test.ts`，实现见 `src/webview/configView.ts`、`src/webview/configPanel.ts`、`src/webviewCommandCoordinator.ts`。
+
+AI 对话面板的 ZCode 普通对话显示并启用单模型下拉框，Loop／Graph／Loop+ 使用主／子模型行及对应 ZCode 无障碍名称；切换 CLI 后正确恢复入口。候选只来自当前配置，不显示“默认”占位项或不支持的模型管理入口；配置为空时显示中文配置指引。回归同时断言控件可见性、禁用状态、选项和选择事件，避免仅有选项但界面隐藏仍判定通过。实际模型 ID 必须匹配服务提供的模型，范例不能代替真实配置；保存档案与应用配置需同步维护。
+
+ZCode 分组的模型选择仅显示配置中的原始 `modelId`，不额外显示 `providerId/` 前缀；`modelId` 自身包含的命名空间完整保留。模型选项值、已选模型与执行协议仍使用完整 `providerId/modelId`，不改变供应商路由、默认选择或思考档位。回归见 `src/test/config/zcodeConfig.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
 ZCode 配置页默认使用 JSON：首次打开、切换档案和导入范例均显示 JSON。“查看范例”复用其他 CLI 的共享范例抽屉；“一键导入”仅在抽屉内提供。关闭抽屉不修改配置，导入后仍需点击“保存”才写入档案。可视化沿用公共参数置顶、左侧模型列表、右侧模型参数布局，仅填写协议、Base URL、API Key、默认模型、默认思考力度及模型 ID；上下文和能力档位使用 ZCode 模型目录，不要求填写供应商显示名或能力覆写。已有未展示字段仍保留。精简范例通过 `defaultModelSelection.options.reasoningLevel` 指定 `high`，保留官方协议必需的空模型规则数组，不生成非必要的排序、名称、启用标记和能力覆写。应用配置时替换该供应商的模型规则快照，保留其他供应商，防止已删除的覆写再次出现。交互宿主必须接入 ZCode 模型解析器，将默认档位传入协议。实现与回归见 `src/config/zcodeConfig.ts`、`src/extension.ts`、`media/config/assets/config-app-ui.js`、`src/test/config/zcodeConfig.test.ts`、`src/test/extensionHost/promptInteractiveRuntime.test.ts`。
 

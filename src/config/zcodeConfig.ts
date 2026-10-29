@@ -351,12 +351,13 @@ export function readZcodeConfigModels(text: string): ZcodeConfigModels {
   if (!view) {
     return { models: [], labels: {}, defaultModel: null, error: "ZCode provider config could not be parsed." };
   }
-  const models = view.providerId
-    ? view.models.map((model) => `${view.providerId}/${model.id}`)
+  const modelEntries = view.providerId
+    ? view.models.map((model) => [`${view.providerId}/${model.id}`, model.id] as const)
     : [];
+  const models: string[] = modelEntries.map(([model]) => model);
   return {
     models,
-    labels: Object.fromEntries(models.map((model) => [model, model])),
+    labels: Object.fromEntries(modelEntries),
     defaultModel: view.defaultModel && models.includes(view.defaultModel) ? view.defaultModel : models[0] ?? null,
     error: null,
   };

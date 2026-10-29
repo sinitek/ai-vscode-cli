@@ -33,6 +33,14 @@ zcode app-server --stdio --mode yolo
 
 工具输入分片按 `toolCallId` 聚合，`scheduled`、`started` 和 `result` 只更新同一条 trace 气泡。Shell 命令输出为 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构；Webview 复用 Codex 的工具标题、本地化和折叠结果样式，不另建 ZCode 专属气泡。
 
+## 对话面板模型选择
+
+普通对话显示当前 ZCode 配置中的模型下拉框；Loop、Graph 和 Loop+ 显示主／子模型下拉框。选项显示原始 `modelId`，包含命名空间的模型 ID 不截断；内部选择与执行仍使用完整 `providerId/modelId`。模型候选来自配置文件，不提供任意添加模型的管理弹窗，也不额外插入“默认”选项。配置未声明模型时，下拉框显示中文配置指引。
+
+增加或修改模型需在配置页编辑 `personalModelIds`，并核对 `defaultModelSelection.modelId`。模型 ID 必须与服务实际提供的 ID 完全一致，不能因为范例有同名模型就认为服务已支持。保存档案和实际应用配置需要同时保持正确，否则切换／重新应用档案会把临时修好的真实配置覆盖回旧值。
+
+保存当前激活的 ZCode 档案时，插件会同时应用到运行时配置，并在模型列表刷新后提示“已更新当前激活的配置”；保存未激活档案不会自动切换当前配置。若提示“已保存，但更新激活配置失败”，档案已保存，但运行时尚未更新，需根据错误修复后重新保存或激活。配置页以扩展宿主识别的激活档案为准，即使旧版保存曾导致档案与运行时分叉，工作区仍记录该档案时也能保留激活身份；没有可确认的激活身份时，请先手动激活目标档案。
+
 ## GLM 配置
 
 自定义供应商写入 `~/.zcode/v2/provider_config.json`。范例模型 ID 为 `glm-5.3-flash`：
@@ -86,6 +94,8 @@ api key: your_apikey
 
 ## 报错排查
 
+- `Model request failed.`：原生进程有时只返回概括性错误。检查本机 `~/.zcode/cli/log/` 对应会话的 `model.request.failed`；若为 HTTP 404，优先核对实际模型 ID。示例模型不是服务探测结果；修复时同步保存档案和真实配置，修改前保留备份，不自动把不存在的模型映射到其他模型。
+- 看不到模型选择：普通对话应显示单模型下拉，Loop／Graph／Loop+ 应显示主／子模型行。早期版本前端遗漏了 ZCode 的单模型选择能力，需安装修复后的插件并重新加载 VS Code 窗口；仅打开配置页无法更新旧代码。
 - `Reasoning level is required`：检查默认选择的 `options.reasoningLevel`，它会随模型选择进入协议；仅声明能力列表不代表已经选择档位。
 - `ZCode model resolver is not configured.`：属于插件交互宿主依赖接线缺失，不是服务地址或密钥错误。更新插件代码后需重新加载扩展宿主；只重开配置 Webview 不会加载新的宿主代码。
 - 第二次任务报 `ZCode runner is already started.`：属于健康 runner 的重复启动契约缺失，不需要修改模型配置或新建对话。修复后连续任务复用同一进程；更新代码后须重新加载扩展宿主。

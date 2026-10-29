@@ -498,6 +498,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.humanInteractionHistory = Array.isArray(panelState.humanInteractionHistory) ? panelState.humanInteractionHistory : [];
         state.scheduledTasks = Array.isArray(panelState.scheduledTasks) ? panelState.scheduledTasks : [];
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
+        state.configStateByCli = panelState.configStateByCli && typeof panelState.configStateByCli === "object"
+          ? panelState.configStateByCli
+          : {};
         const configs = Array.isArray(state.configState.configs)
           ? state.configState.configs
           : [];

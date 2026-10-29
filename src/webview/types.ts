@@ -393,6 +393,7 @@ export type PanelState = {
     configs: ConfigSummary[];
     activeConfigId: string | null;
   };
+  configStateByCli?: Partial<Record<CliName, PanelState["configState"]>>;
   modelState: {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;

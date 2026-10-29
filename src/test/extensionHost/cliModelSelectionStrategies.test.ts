@@ -8,6 +8,10 @@ import type { CliModelSelectionStrategyDeps } from "../../extensionHost/cliModel
 import type { ModelSettingsHostDeps } from "../../extensionHost/modelSettings";
 import type { CliModelStore } from "../../modelSelectionStore";
 import type { ConfigHeartbeatSnapshot } from "../../webviewCommandCoordinator";
+import type { PanelState } from "../../webview/types";
+import { createDshExampleProfileText } from "../../cli/dshConfigModels";
+import { createKimiCodeDefaultConfigText } from "../../config/kimiCodeConfig";
+import { createZcodeExampleText } from "../../config/zcodeConfig";
 
 installVscodeMock();
 
@@ -492,7 +496,7 @@ test("host Grok refresh failure keeps the existing error state and does not writ
   }]);
 });
 
-test("host preloads Grok subtask models only when a target config is active", async (context) => {
+test("host preloads native Grok subtask models even without a saved target profile", async (context) => {
   let reads = 0;
   context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
   context.mock.method(configService, "readGrokConfigText", async () => {
@@ -513,7 +517,124 @@ test("host preloads Grok subtask models only when a target config is active", as
     preferredConfigId: () => null,
   });
   await withoutTargetConfig.host.refreshGrokConfigModels({ configs: [], activeConfigId: "profile" });
-  assert.equal(reads, 2);
+  assert.equal(reads, 3);
+});
+
+function allCliConfigStates(active: boolean): Record<CliName, PanelState["configState"]> {
+  return Object.fromEntries(CLI_LIST.map((cli) => [cli, {
+    configs: active ? [{ id: `${cli}-profile`, name: cli, platform: cli }] : [],
+    activeConfigId: active ? `${cli}-profile` : null,
+  }])) as Record<CliName, PanelState["configState"]>;
+}
+
+function nativeConfigContent(cli: CliName): string {
+  if (cli === "dsh") return createDshExampleProfileText();
+  if (cli === "kimi-code") return createKimiCodeDefaultConfigText({ model: "synthetic-kimi" });
+  if (cli === "zcode") return createZcodeExampleText();
+  if (cli === "opencode") {
+    return JSON.stringify({ model: "fixture/main", small_model: "fixture/child", provider: {
+      fixture: { models: { main: { name: "主模型" }, child: { name: "子模型" } } },
+    } });
+  }
+  return "";
+}
+
+test("all CLI snapshots preload shared child models without switching or applying any CLI", async (context) => {
+  const states = allCliConfigStates(true);
+  const reads: string[] = [];
+  let preferredConfigId: string | null = null;
+  let grokContent = '[model.initial]\nmodel = "synthetic-initial"';
+  const writes = context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
+  const apply = context.mock.method(configService, "applyConfig", async () => { throw new Error("must not apply"); });
+  context.mock.method(configService, "readGrokConfigText", async () => grokContent);
+  context.mock.method(configService, "getCurrentConfig", async (cli: CliName) => {
+    reads.push(cli);
+    return { content: nativeConfigContent(cli as CliName) };
+  });
+  context.mock.method(configService, "getConfigById", async (cli: CliName, configId: string) => {
+    assert.equal(configId, `${cli}-profile`);
+    reads.push(cli);
+    return { id: configId, name: cli, platform: cli, content: nativeConfigContent(cli as CliName), createdAt: 1, updatedAt: 1 };
+  });
+  const store = ensureCliModelStore();
+  store.optionsByConfigId["codex-profile"] = ["gpt-5", "gpt-5-codex"];
+  store.selectedByConfigId["codex-profile"] = "gpt-5-codex";
+  const { host } = createHost({ store, currentCli: "codex", preferredConfigId: () => preferredConfigId });
+  await host.refreshConfigModels(states);
+  await host.refreshLoopSubtaskOpenCodeModels(states.opencode);
+  const state = host.buildModelState();
+  for (const cli of CLI_LIST) {
+    assert.equal(host.getActiveConfigIdForCli(cli), `${cli}-profile`);
+    assert.equal(state.activeConfigIdByCli?.[cli], `${cli}-profile`);
+  }
+  for (const cli of ["grok", "dsh", "kimi-code", "zcode"] as const) {
+    assert.ok(state.optionsByCli[cli].length > 0, cli);
+    assert.deepEqual(state.loopOptionsByCli?.[cli]?.subtask, state.optionsByCli[cli]);
+    assert.ok(state.selectedLoopByCli?.[cli]?.subtask, cli);
+  }
+  assert.equal(state.selectedByCli.codex, "gpt-5-codex");
+  assert.deepEqual(reads.sort(), ["dsh", "kimi-code", "opencode", "zcode"]);
+  assert.equal(host.getLoopSubtaskOpenCodeModels()?.selectedSubtaskRef, "fixture/child");
+  assert.equal(apply.mock.callCount(), 0);
+  assert.equal(writes.mock.callCount(), 0);
+
+  grokContent = '[model.saved]\nmodel = "synthetic-saved"';
+  await host.refreshConfigModels(states);
+  assert.deepEqual(host.buildModelState().loopOptionsByCli?.grok?.subtask, ["saved"]);
+  assert.equal(host.buildModelState().activeConfigIdByCli?.codex, "codex-profile");
+  preferredConfigId = "newly-applied-profile";
+  assert.equal(host.getActiveConfigIdForCli("codex"), "newly-applied-profile");
+});
+
+test("all CLI native defaults load with explicit null identities instead of stale saved preferences", async (context) => {
+  const states = allCliConfigStates(false);
+  const reads: string[] = [];
+  context.mock.method(configService, "readGrokConfigText", async () => '[model.native]\nmodel = "synthetic-native"');
+  context.mock.method(configService, "getCurrentConfig", async (cli: CliName) => {
+    reads.push(cli);
+    return { content: nativeConfigContent(cli as CliName) };
+  });
+  const getSaved = context.mock.method(configService, "getConfigById", async () => { throw new Error("must read native defaults"); });
+  const { host } = createHost({ store: ensureCliModelStore(), currentCli: "codex", preferredConfigId: () => "stale-profile" });
+  host.cacheGrokConfigModels("stale-profile", grokModels(["stale"], {}, "stale"));
+  await host.refreshConfigModels(states);
+  await host.refreshLoopSubtaskOpenCodeModels(states.opencode);
+  const state = host.buildModelState(Object.fromEntries(CLI_LIST.map((cli) => [cli, null])));
+  for (const cli of CLI_LIST) assert.equal(state.activeConfigIdByCli?.[cli], null);
+  for (const cli of ["grok", "dsh", "kimi-code", "zcode"] as const) assert.ok(state.optionsByCli[cli].length, cli);
+  assert.deepEqual(state.optionsByCli.grok, ["native"]);
+  assert.deepEqual(reads.sort(), ["dsh", "kimi-code", "opencode", "zcode"]);
+  assert.equal(getSaved.mock.callCount(), 0);
+  assert.equal(host.getActiveConfigIdForCli("grok"), null);
+  assert.equal(host.getLoopSubtaskOpenCodeModels()?.selectedSubtaskRef, "fixture/child");
+});
+
+test("all CLI model refresh isolates a broken native config from other child model lists", async (context) => {
+  const states = allCliConfigStates(false);
+  context.mock.method(configService, "readGrokConfigText", async () => '[model.healthy]\nmodel = "synthetic-healthy"');
+  context.mock.method(configService, "getCurrentConfig", async (cli: CliName) => {
+    if (cli === "kimi-code") throw new Error("synthetic read failure");
+    return { content: nativeConfigContent(cli as CliName) };
+  });
+  const { host } = createHost({ store: ensureCliModelStore(), currentCli: "codex", preferredConfigId: () => null });
+  await host.refreshConfigModels(states);
+  const state = host.buildModelState();
+  assert.deepEqual(state.loopOptionsByCli?.grok?.subtask, ["healthy"]);
+  assert.ok(state.loopOptionsByCli?.zcode?.subtask.length);
+  assert.deepEqual(state.optionsByCli["kimi-code"], []);
+  assert.match(state.issuesByCli?.["kimi-code"] ?? "", /配置读取失败/);
+  assert.equal(state.issuesByCli?.zcode, undefined);
+});
+
+test("explicit null model identities never fall back to a stale heartbeat profile", () => {
+  const store = ensureCliModelStore();
+  store.optionsByConfigId.stale = ["stale-model"];
+  store.selectedByConfigId.stale = "stale-model";
+  const state = modelSelectionStore.buildModelState(store, () => "stale", { codex: null, grok: null });
+  assert.equal(state.activeConfigIdByCli?.codex, null);
+  assert.equal(state.activeConfigIdByCli?.grok, null);
+  assert.equal(state.optionsByCli.codex.includes("stale-model"), false);
+  assert.equal(state.selectedByCli.codex, null);
 });
 
 test("separate model settings hosts do not share Grok cache or store updates", (context) => {

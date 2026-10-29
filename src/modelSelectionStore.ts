@@ -1165,7 +1165,8 @@ export function buildModelState(
   const loopOptionsByCli: NonNullable<PanelState["modelState"]["loopOptionsByCli"]> = {};
   const resolvedActiveConfigIdByCli: Partial<Record<CliName, string | null>> = {};
   for (const cli of CLI_LIST) {
-    const activeConfigId = activeConfigIdByCli[cli] ?? getActiveConfigIdForCli(cli);
+    const providedConfigId = activeConfigIdByCli[cli];
+    const activeConfigId = providedConfigId !== undefined ? providedConfigId : getActiveConfigIdForCli(cli);
     resolvedActiveConfigIdByCli[cli] = activeConfigId;
     const managedModels = getManagedModelOptionsForCliFromStore(store, cli, activeConfigId);
     selectedByCli[cli] = getSelectedCliModelFromStore(store, cli, activeConfigId);

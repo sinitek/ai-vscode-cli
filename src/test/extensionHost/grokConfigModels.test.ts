@@ -84,14 +84,14 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   preferredConfigId = null;
   assert.equal(host.getActiveConfigIdForCli("grok"), null);
   await host.refreshGrokConfigModels({ configs: [], activeConfigId: null });
-  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh);
-  assert.deepEqual(host.getModelOptionsForCli("grok", null), []);
-  assert.equal(host.getSelectedCliModel("grok", null), null);
-  assert.equal(host.getSelectedLoopCliModel("grok", "main", null), null);
-  assert.equal(host.getSelectedLoopCliModel("grok", "subtask", null), null);
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 1);
+  assert.deepEqual(host.getModelOptionsForCli("grok", null), ["updated"]);
+  assert.equal(host.getSelectedCliModel("grok", null), "updated");
+  assert.equal(host.getSelectedLoopCliModel("grok", "main", null), "updated");
+  assert.equal(host.getSelectedLoopCliModel("grok", "subtask", null), "updated");
   assert.equal(store.selectedByConfigId[nullProfileStoreKey], undefined);
   assert.equal(await host.resolveGrokModelForRun("updated"), "updated");
-  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 1);
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 2);
   assert.deepEqual(host.getModelOptionsForCli("grok", null), ["updated"]);
   host.selectCliModel("grok", "updated", null);
   assert.equal(host.getSelectedCliModel("grok", null), "updated");
@@ -119,7 +119,7 @@ test("Grok host refreshes actual config models and resolves normal and role sele
   await host.refreshGrokConfigModels(configState);
   assert.equal(host.buildModelState({ grok: "profile" }).selectedLoopByCli?.grok?.main, null);
   await assert.rejects(() => host.resolveGrokModelForRun(null), /Grok/);
-  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 5);
+  assert.equal(readConfig.mock.callCount(), readsBeforeUnscopedRefresh + 6);
 });
 
 test("Grok host loads subtask models before a cross-CLI route has been persisted", async (context) => {

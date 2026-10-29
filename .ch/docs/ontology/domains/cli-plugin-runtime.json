@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-28",
+  "as_of": "2026-10-29",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -483,6 +483,56 @@
         {"path": "src/extensionHost/interactiveTurnZcode.ts"},
         {"path": "src/config/zcodeConfig.ts"},
         {"path": "docs/zcode-guide.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.zcode_config_model_selection",
+      "name": "ZCode 对话模型选择来自配置且入口可见",
+      "description": "ZCode 普通对话显示可用的单模型下拉，Loop、Graph、Loop+ 显示主／子模型行和 ZCode 无障碍名称。模型候选来自当前 provider_config.json，不提供任意添加模型的管理弹窗，也不插入默认占位项；空配置显示中文配置指引。界面仅显示原始 modelId，保留模型自身命名空间，选项值与执行仍使用 providerId/modelId。模型 ID 必须匹配服务实际提供的模型，范例不代表服务能力；真实配置和保存档案须同步维护，防止切换档案恢复错误模型。回归需同时验证可见性、禁用状态、选项、切换和选择消息。",
+      "status": "active",
+      "aliases": ["ZCode 模型下拉", "ZCode 多模型", "ZCode 配置模型"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/webview/viewContentStrings.ts"},
+        {"path": "src/config/zcodeConfig.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": "docs/zcode-guide.md", "anchor": "对话面板模型选择"}
+      ]
+    },
+    {
+      "id": "plugin.rule.zcode_active_config_save_sync",
+      "name": "ZCode 激活档案保存同步运行时和模型面板",
+      "description": "配置页按统一 CLI 注册表同步激活档案，ZCode 身份由扩展宿主提供，复用工作区偏好回退以兼容已保存档案与运行时分叉。宿主按供应商保留式合并后的幂等状态匹配档案，不使用 Codex TOML 行匹配，JSON 格式和对象键顺序不影响识别。保存激活档案后应用运行时，等待 AI 面板模型刷新再确认应用成功；保存未激活档案不切换配置，应用失败明确区分已保存和未应用。没有可确认身份时不自动激活。",
+      "status": "active",
+      "aliases": ["ZCode 保存后不刷新", "ZCode 激活配置同步"],
+      "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/webview/configView.ts"},
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webviewCommandCoordinator.ts"},
+        {"path": "src/test/config/cliPageConfigCoverage.test.ts"},
+        {"path": "docs/zcode-guide.md", "anchor": "对话面板模型选择"}
+      ]
+    },
+    {
+      "id": "plugin.rule.all_cli_config_snapshot_sync",
+      "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
+      "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不批量激活、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
+      "status": "active",
+      "aliases": ["配置保存统一刷新", "所有 CLI 默认配置加载", "子模型配置未加载", "Loop+ Graph 子模型初始化", "已加载空档案不无限同步"],
+      "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli", "plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "所有 CLI 配置与子模型同步"},
+        {"path": "src/webviewCommandCoordinator.ts"},
+        {"path": "src/panelStateBuilder.ts"},
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
+        {"path": "src/extensionHost/modelSettings.ts"},
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/test/extensionHost/cliModelSelectionStrategies.test.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"}
       ]
     },
     {

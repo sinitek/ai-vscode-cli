@@ -22,6 +22,17 @@
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
 
+## 子模型配置加载不能依赖先访问目标 CLI
+
+- 状态：已规避
+- 首次发现：2026-10-29
+- 适用范围：七个 CLI 的配置保存同步、Loop／Loop+／Graph 共用子模型入口
+- 现象：面板刚打开就切到多模型模式时，目标 CLI 显示正在同步或配置未加载；保存其他 CLI 的激活档案后仍显示旧模型。
+- 根因：面板只完整加载当前 CLI，其他分组依赖历史身份；原生模型缓存没有档案 ID 时直接跳过。配置编辑器还重复匹配文本，Grok／KimiCode／DSH 误用 Codex 匹配规则，ZCode 主模型的共享控件注册另有遗漏。
+- 长期规避：并行读取所有 CLI 的独立快照后刷新模型缓存；空身份保留 null，不能借用旧心跳。配置页统一使用宿主身份，只对激活档案自动应用。新增主 CLI 复用共享角色能力判定，不再复制容易漏项的名单。跨 CLI 没有有效档案时仍阻止派发，不自动创建档案或启动进程。
+- 验证方式：配置桥接与模型宿主测试覆盖所有分组、原生无档案、读取失败和显式空身份；Webview 回归覆盖七个主 CLI × 三种模式 × 七个目标 CLI，并验证模型保存后的快照更新。浏览器使用隔离临时配置与模拟 VS Code 消息桥，不发送模型请求。
+- 关联资料：`src/webviewCommandCoordinator.ts`、`src/extensionHost/modelSettings.ts`、`src/webview/viewContentScript/modelManager.ts`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`。
+
 ## 本地图片由扩展宿主读取，不复用 Webview 私有 URI
 
 - 状态：已规避

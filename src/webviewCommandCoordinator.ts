@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { CliName } from "./cli/types";
+import { isDeepStrictEqual } from "util";
+import { CLI_LIST, CliName } from "./cli/types";
 import { PanelState } from "./webview/types";
 import { type CliModelStore } from "./modelSelectionStore";
 
@@ -7,6 +8,8 @@ import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
 import { stripCodexSkillsBlock } from "./config/codexSkills";
 import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
 import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
+import { mergeZcodeProviderConfigText } from "./config/zcodeConfig";
+import { parseGrokToml } from "./config/grokToml";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import {
   formatLoopGroupChatMemberName,
@@ -207,6 +210,19 @@ export function matchesActiveConfig(
   config: ConfigItem,
   current: CurrentConfig
 ): boolean {
+  if (platform === "zcode") {
+    const content = config.content ?? config.configContent ?? "";
+    const currentContent = current.content ?? current.configContent ?? "";
+    const merged = mergeZcodeProviderConfigText(currentContent, content);
+    if (!merged.ok) {
+      return false;
+    }
+    try {
+      return isDeepStrictEqual(JSON.parse(merged.content), JSON.parse(currentContent));
+    } catch {
+      return false;
+    }
+  }
   if (platform === "claude") {
     const normalizedConfigContent = stripManagedClaudeSkillRules(config.content, config.claudeSkills);
     const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
@@ -236,6 +252,16 @@ export function matchesActiveConfig(
       contentMatch &&
       normalizeLineEndings(config.envContent ?? "") === normalizeLineEndings(current.envContent ?? "")
     );
+  }
+  if (platform === "grok" || platform === "kimi-code") {
+    const expected = parseGrokToml(config.configContent ?? config.content ?? "");
+    const actual = parseGrokToml(current.configContent ?? current.content ?? "");
+    return expected.ok && actual.ok && isDeepEqualSubset(expected.value, actual.value);
+  }
+  if (platform === "dsh") {
+    const expected = parseJsonObject(config.content ?? config.configContent);
+    const actual = parseJsonObject(current.content ?? current.configContent);
+    return Boolean(expected && actual && isDeepEqualSubset(expected, actual));
   }
   return (
     areLinesSubset(
@@ -354,6 +380,25 @@ export function resolveModelConfigIdForCli(
       : null;
   }
   return preferredConfigId;
+}
+
+export async function loadConfigStateByCli(
+  loader: (cli: CliName) => Promise<PanelState["configState"]>,
+  seed?: { cli: CliName; state: PanelState["configState"] },
+  onError?: (cli: CliName, error: unknown) => void,
+): Promise<Record<CliName, PanelState["configState"]>> {
+  const entries = await Promise.all(CLI_LIST.map(async (cli) => {
+    if (seed?.cli === cli) {
+      return [cli, seed.state] as const;
+    }
+    try {
+      return [cli, await loader(cli)] as const;
+    } catch (error) {
+      onError?.(cli, error);
+      return [cli, { configs: [], activeConfigId: null }] as const;
+    }
+  }));
+  return Object.fromEntries(entries) as Record<CliName, PanelState["configState"]>;
 }
 
 export type ConfigStateLoaderDeps = {

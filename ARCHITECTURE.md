@@ -108,6 +108,10 @@ cli / interactive / config 服务层
 
 #### CLI / Interactive / Config 服务层
 
+- AI 面板首次构建和配置保存后的刷新统一通过 `loadConfigStateByCli` 并行读取七个 CLI 的档案列表与激活身份；心跳传入的当前 CLI 快照复用为种子。`PanelState.configState` 保留当前分组兼容字段，`configStateByCli` 只携带各分组的档案摘要和身份，不下发原始配置或凭据。单个分组读取失败不阻断其他分组。
+- `modelSettings.refreshConfigModels` 刷新 Grok、DSH、KimiCode、ZCode 的配置派生模型；缺少保存档案时仍读取本机原生配置。跨 CLI 的 OpenCode 子模型从本机配置元数据解析，不为其他 CLI 启动进程或能力探测。明确的空身份不能回退到旧心跳身份；新应用的工作区配置优先于旧快照。
+- Loop、Loop+、Graph 共用 `modelState` 的分组身份、角色模型和子模型路由，不要求先访问目标 CLI。配置页各分组统一采用宿主确认的激活身份；激活档案保存后应用并等待面板刷新，未激活档案保存只刷新、不切换配置或主 CLI。跨 CLI 派发仍要求有效档案绑定，真实缺失或无效配置不伪装成可用。
+- Webview 根据 `configStateByCli` 区分尚未加载与已加载但缺少档案；后一种状态显示缺少可用配置，读取错误显示失败原因，不再无限显示“正在同步”。
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
 - `src/cli/cliRunArgStrategies.ts` 用显式 `Record<CliName, CliRunArgStrategy>` 注册 Codex、Claude、OpenCode、Grok、DSH 的启动参数差异。`buildCliArgs` 仍从 `commandRunner.ts` 导出。参数顺序留在外观函数：基础参数、按 `includeThinkingArgs` 拼接 thinking、模型、隔离、`applyBeforePrompt`，空 prompt 立即返回，否则 `appendPrompt`。各平台各自实现差异，没有类继承，也没有 DI 容器。DSH 策略只保留明确 `--patch`，不把 one-shot prompt 写成已验证启动参数。`wc -l` 当前 `cliRunArgStrategies.ts` 为 219 行，`commandRunner.ts` 为 528 行。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md`
 - `src/cli/openCodeRunOutput.ts` 承载 OpenCode 输出解释。该纯解析模块集中 JSONL、可见事件、活动跟踪、session/message id、export 文档选择、最终正文和失败文案，只依赖 `thinkingMarkup`、`boundedText`、`openCodeTaskList` 和 `opencodewatchdog`。`commandRunner.ts` 作为 Facade 保留进程、终端、runtime overlay、停止和 `recoverOpenCodeMissingAssistantOutput`；`opencode export` 的 `captureCliOutput` 副作用与 `OPENCODE_EXPORT_RECOVERY_TIMEOUT_MS` 留在该外观。公开解析符号仍从 `commandRunner.ts` 再导出。`wc -l` 当前 `openCodeRunOutput.ts` 为 1033 行，`commandRunner.ts` 为 528 行。测试入口是 `src/test/cli/openCodeRunOutput.test.ts`。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-output-parser-facade.md`

@@ -93,6 +93,11 @@ const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
 const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
 const kimiCodeModelsByConfigId = new Map<string | null, KimiCodeConfigModels>();
 const zcodeModelsByConfigId = new Map<string | null, ZcodeConfigModels>();
+let loadedConfigStates: {
+  workspaceKey: string;
+  states: NonNullable<PanelState["configStateByCli"]>;
+  preferredIds: Partial<Record<CliName, string | null>>;
+} | null = null;
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   getGrokConfigModels(configId) {
     if (configId === undefined) {
@@ -1020,6 +1025,13 @@ function loadModelStore(): CliModelStore {
 
 function getActiveConfigIdForCli(cli: CliName): string | null {
   const workspacePreferredConfigId = deps.getWorkspacePreferredConfigIdForCli(cli);
+  const loaded = loadedConfigStates?.workspaceKey === activeWorkspaceKey ? loadedConfigStates : null;
+  const loadedState = loaded?.states[cli];
+  if (loadedState) {
+    return workspacePreferredConfigId !== loaded?.preferredIds[cli]
+      ? workspacePreferredConfigId
+      : loadedState.activeConfigId;
+  }
   if (workspacePreferredConfigId) {
     return workspacePreferredConfigId;
   }
@@ -1028,6 +1040,28 @@ function getActiveConfigIdForCli(cli: CliName): string | null {
     return snapshot.activeConfigId;
   }
   return null;
+}
+
+function resolveConfigModelId(cli: CliName, configState: PanelState["configState"]): string | null {
+  if (loadedConfigStates?.workspaceKey === activeWorkspaceKey && loadedConfigStates.states[cli]) {
+    return getActiveConfigIdForCli(cli);
+  }
+  return currentCli === cli ? deps.resolveModelConfigIdForCli(cli, configState) : getActiveConfigIdForCli(cli);
+}
+
+async function refreshConfigModels(states: Record<CliName, PanelState["configState"]>): Promise<void> {
+  loadedConfigStates = {
+    workspaceKey: activeWorkspaceKey,
+    states,
+    preferredIds: Object.fromEntries(CLI_LIST.map((cli) => [cli, deps.getWorkspacePreferredConfigIdForCli(cli)])),
+  };
+  const currentState = states[currentCli];
+  await Promise.all([
+    refreshGrokConfigModels(currentState),
+    refreshKimiCodeConfigModels(currentState),
+    refreshZcodeConfigModels(currentState),
+    refreshDshConfigModels(currentState),
+  ]);
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
@@ -1039,12 +1073,7 @@ function cacheGrokConfigModels(configId: string, config: GrokConfigModels): void
 }
 
 async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = currentCli === "grok"
-    ? deps.resolveModelConfigIdForCli("grok", configState)
-    : getActiveConfigIdForCli("grok");
-  if (!configId) {
-    return;
-  }
+  const configId = resolveConfigModelId("grok", configState);
   try {
     grokModelsByConfigId.set(configId, parseGrokConfigModels(await configService.readGrokConfigText()));
   } catch (error) {
@@ -1058,14 +1087,11 @@ function cacheDshConfigModels(configId: string, config: DshConfigModels): void {
 }
 
 async function refreshDshConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = currentCli === "dsh"
-    ? deps.resolveModelConfigIdForCli("dsh", configState)
-    : getActiveConfigIdForCli("dsh");
-  if (!configId) {
-    return;
-  }
+  const configId = resolveConfigModelId("dsh", configState);
   try {
-    const profile = await configService.getConfigById("dsh", configId);
+    const profile = configId
+      ? await configService.getConfigById("dsh", configId)
+      : await configService.getCurrentConfig("dsh");
     if (!profile) {
       dshModelsByConfigId.set(configId, emptyDshModels("DSH profile was not found."));
       return;
@@ -1082,12 +1108,7 @@ function cacheKimiCodeConfigModels(configId: string, config: KimiCodeConfigModel
 }
 
 async function refreshKimiCodeConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = currentCli === "kimi-code"
-    ? deps.resolveModelConfigIdForCli("kimi-code", configState)
-    : getActiveConfigIdForCli("kimi-code");
-  if (!configId) {
-    return;
-  }
+  const configId = resolveConfigModelId("kimi-code", configState);
   try {
     const current = await configService.getCurrentConfig("kimi-code");
     kimiCodeModelsByConfigId.set(configId, parseKimiCodeConfigModels(current.content ?? ""));
@@ -1126,12 +1147,7 @@ async function resolveKimiModelWireForRun(selectedModel: string | null): Promise
 }
 
 async function refreshZcodeConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = currentCli === "zcode"
-    ? deps.resolveModelConfigIdForCli("zcode", configState)
-    : getActiveConfigIdForCli("zcode");
-  if (!configId) {
-    return;
-  }
+  const configId = resolveConfigModelId("zcode", configState);
   try {
     const current = await configService.getCurrentConfig("zcode");
     zcodeModelsByConfigId.set(configId, readZcodeConfigModels(current.content ?? ""));
@@ -1426,21 +1442,16 @@ function openCodeModelsFromParsed(
   };
 }
 
-async function refreshLoopSubtaskOpenCodeModels(): Promise<void> {
+async function refreshLoopSubtaskOpenCodeModels(configState?: PanelState["configState"]): Promise<void> {
   if (currentCli === "opencode" && openCodeModelsState) {
     loopSubtaskOpenCodeModelsState = openCodeModelsState;
     return;
   }
-  const configId = getActiveConfigIdForCli("opencode");
-  if (!configId) {
-    loopSubtaskOpenCodeModelsState = {
-      models: [],
-      issues: [{ code: "missing-role-model", messageKey: "opencodeModels.issue.missing-role-model" }],
-    };
-    return;
-  }
+  const configId = configState ? configState.activeConfigId : getActiveConfigIdForCli("opencode");
   try {
-    const activeConfig = await configService.getConfigById("opencode", configId);
+    const activeConfig = configId
+      ? await configService.getConfigById("opencode", configId)
+      : await configService.getCurrentConfig("opencode");
     if (!activeConfig) {
       loopSubtaskOpenCodeModelsState = {
         models: [],
@@ -1482,7 +1493,8 @@ function buildModelState(
   activeConfigIdByCli: Partial<Record<CliName, string | null>> = {}
 ): PanelState["modelState"] {
   const state = buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
-  const configId = activeConfigIdByCli.grok ?? getActiveConfigIdForCli("grok");
+  const resolvedIds = state.activeConfigIdByCli ?? {};
+  const configId = resolvedIds.grok ?? null;
   const models = getModelOptionsForCli("grok", configId);
   state.optionsByCli.grok = models;
   state.labelsByCli = { grok: { ...(grokModelsByConfigId.get(configId)?.labels ?? {}) } };
@@ -1492,7 +1504,7 @@ function buildModelState(
   const main = getSelectedLoopCliModel("grok", "main", configId);
   const subtask = getSelectedLoopCliModel("grok", "subtask", configId);
   state.selectedLoopByCli = { ...state.selectedLoopByCli, grok: { main, subtask } };
-  const kimiCodeConfigId = activeConfigIdByCli["kimi-code"] ?? getActiveConfigIdForCli("kimi-code");
+  const kimiCodeConfigId = resolvedIds["kimi-code"] ?? null;
   const kimiCodeModels = getModelOptionsForCli("kimi-code", kimiCodeConfigId);
   state.optionsByCli["kimi-code"] = kimiCodeModels;
   state.labelsByCli = {
@@ -1505,7 +1517,7 @@ function buildModelState(
     ...state.loopOptionsByCli,
     "kimi-code": { main: kimiCodeModels, subtask: kimiCodeModels },
   };
-  const zcodeConfigId = activeConfigIdByCli.zcode ?? getActiveConfigIdForCli("zcode");
+  const zcodeConfigId = resolvedIds.zcode ?? null;
   const zcodeModels = getModelOptionsForCli("zcode", zcodeConfigId);
   state.optionsByCli.zcode = zcodeModels;
   state.labelsByCli = {
@@ -1530,7 +1542,7 @@ function buildModelState(
     ...state.selectedLoopByCli,
     "kimi-code": { main: kimiCodeMain, subtask: kimiCodeSubtask },
   };
-  const dshConfigId = activeConfigIdByCli.dsh ?? getActiveConfigIdForCli("dsh");
+  const dshConfigId = resolvedIds.dsh ?? null;
   const dshModels = getModelOptionsForCli("dsh", dshConfigId);
   state.optionsByCli.dsh = dshModels;
   state.labelsByCli = {
@@ -1558,8 +1570,8 @@ function buildModelState(
       subtask: getSelectedLoopThinkingMode("grok", "subtask", subtask, configId),
     },
     claude: {
-      main: getSelectedLoopThinkingMode("claude", "main", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
-      subtask: getSelectedLoopThinkingMode("claude", "subtask", null, activeConfigIdByCli.claude ?? getActiveConfigIdForCli("claude")),
+      main: getSelectedLoopThinkingMode("claude", "main", null, resolvedIds.claude ?? null),
+      subtask: getSelectedLoopThinkingMode("claude", "subtask", null, resolvedIds.claude ?? null),
     },
     dsh: {
       main: getSelectedLoopThinkingMode("dsh", "main", dshMain, dshConfigId),
@@ -1711,6 +1723,7 @@ return {
   writeModelStore: wrap(writeModelStore),
   loadModelStore: wrap(loadModelStore),
   getActiveConfigIdForCli: wrap(getActiveConfigIdForCli),
+  refreshConfigModels: wrap(refreshConfigModels),
   getSelectedCliModel: wrap(getSelectedCliModel),
   getSelectedLoopCliModel: wrap(getSelectedLoopCliModel),
   getSelectedLoopThinkingMode: wrap(getSelectedLoopThinkingMode),

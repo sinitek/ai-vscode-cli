@@ -98,6 +98,7 @@ test("example config uses the local OpenAI Responses endpoint and a placeholder 
   assert.equal(text.includes("sk-"), false);
   const models = readZcodeConfigModels(text);
   assert.deepEqual(models.models, [`local-glm/${ZCODE_EXAMPLE_MODEL_ID}`]);
+  assert.deepEqual(models.labels, { [`local-glm/${ZCODE_EXAMPLE_MODEL_ID}`]: ZCODE_EXAMPLE_MODEL_ID });
   assert.equal(models.error, null);
   const parsed = parseZcodeProviderConfig(text);
   assert.deepEqual(parsed?.models[0].reasoningLevels, ["max"]);
@@ -110,6 +111,36 @@ test("example config uses the local OpenAI Responses endpoint and a placeholder 
   assert.equal(document.config.providerConfigRules.providerRules[0].providerName, undefined);
   assert.equal(document.config.providerConfigRules.providerRules[0].enabled, undefined);
   assert.equal(document.config.providerConfigRules.providerRules[0].config.group, "standard-personal");
+});
+
+test("model labels preserve modelId without the provider prefix or truncating model namespaces", () => {
+  const document = JSON.parse(createZcodeExampleText());
+  document.config.providerConfigRules.providerRules[0].config.personalModelIds.push("vendor/second-model");
+  const text = JSON.stringify(document);
+  const models = readZcodeConfigModels(text);
+
+  assert.deepEqual(models.models, [`local-glm/${ZCODE_EXAMPLE_MODEL_ID}`, "local-glm/vendor/second-model"]);
+  assert.deepEqual(models.labels, {
+    [`local-glm/${ZCODE_EXAMPLE_MODEL_ID}`]: ZCODE_EXAMPLE_MODEL_ID,
+    "local-glm/vendor/second-model": "vendor/second-model",
+  });
+  assert.equal(models.defaultModel, `local-glm/${ZCODE_EXAMPLE_MODEL_ID}`);
+  assert.equal(resolveZcodeModelWireForRun(text, "local-glm/vendor/second-model"), "local-glm/vendor/second-model");
+});
+
+test("empty or invalid configs do not expose model labels", () => {
+  for (const text of ["", "  ", "{not-json"]) {
+    const models = readZcodeConfigModels(text);
+    assert.deepEqual(models.models, []);
+    assert.deepEqual(models.labels, {});
+    assert.equal(models.defaultModel, null);
+    assert.equal(Boolean(models.error), Boolean(text.trim()));
+  }
+  const document = JSON.parse(createZcodeExampleText());
+  document.config.providerConfigRules.providerRules[0].config.personalModelIds = [];
+  assert.deepEqual(readZcodeConfigModels(JSON.stringify(document)), {
+    models: [], labels: {}, defaultModel: null, error: null,
+  });
 });
 
 test("visual editor preserves an explicitly configured chat completions API type", () => {

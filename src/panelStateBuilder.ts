@@ -116,6 +116,7 @@ export type LoopSubtaskConversationContext = {
 export type PanelStateBuilderDeps = {
   currentCli: CliName;
   configState: PanelState["configState"];
+  configStateByCli?: PanelState["configStateByCli"];
   workspaceSettings: WorkspaceSettings;
   workspaceHarnessInstalled?: boolean;
   codeGraphInstalled?: boolean;
@@ -209,10 +210,19 @@ function normalizeOpenCodeModelsForPanelState(
 
 export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState {
   const config = deps.getWorkspaceConfiguration();
-  const modelConfigId = deps.resolveModelConfigIdForCli(deps.currentCli, deps.configState);
+  const currentConfigState = deps.configStateByCli?.[deps.currentCli];
+  const modelConfigId = currentConfigState
+    ? currentConfigState.activeConfigId
+    : deps.resolveModelConfigIdForCli(deps.currentCli, deps.configState);
   const activeConfigIdByCli: Partial<Record<CliName, string | null>> = {
     [deps.currentCli]: modelConfigId,
   };
+  for (const cli of CLI_LIST) {
+    const cliState = deps.configStateByCli?.[cli];
+    if (cliState) {
+      activeConfigIdByCli[cli] = cliState.activeConfigId;
+    }
+  }
   const selectedModel = deps.getSelectedCliModel(deps.currentCli, modelConfigId);
 
   return {
@@ -264,6 +274,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     humanInteractionHistory: deps.buildHumanInteractionHistoryState?.() ?? [],
     scheduledTasks: deps.buildScheduledTasksState?.() ?? [],
     configState: deps.configState,
+    configStateByCli: deps.configStateByCli,
     modelState: deps.buildModelState(activeConfigIdByCli),
     editorContext: deps.buildEditorContextState(),
   };

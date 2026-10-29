@@ -1,6 +1,8 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
+import { CLI_LIST } from "../../cli/types";
 
+import { createZcodeExampleText, readZcodeConfigModels, ZCODE_EXAMPLE_MODEL_ID } from "../../config/zcodeConfig";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
 import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "../../webview/viewContentScript/attachmentsAndTime";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
@@ -4279,6 +4281,218 @@ function createKimiPanelState(overrides: Record<string, unknown> = {}): Record<s
     ...overrides,
   });
 }
+
+test("ZCode model dropdown displays modelId while keeping provider-qualified selection values", () => {
+  const { api, document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  const config = JSON.parse(createZcodeExampleText());
+  config.config.providerConfigRules.providerRules[0].config.personalModelIds.push("vendor/second-model");
+  const models = readZcodeConfigModels(JSON.stringify(config));
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      currentCli: "zcode",
+      interactiveMode: "coding",
+      conversationTabs: { activeTabId: "zcode-tab", tabs: [{ id: "zcode-tab", cli: "zcode" }] },
+      sessionState: { currentSessionId: null, sessions: [] },
+      modelState: {
+        optionsByCli: { zcode: models.models },
+        labelsByCli: { zcode: models.labels },
+        managedByCli: { zcode: [] },
+        selectedByCli: { zcode: models.defaultModel },
+      },
+    }),
+  });
+  const select = document.getElementById("modelSelect");
+  assert.notEqual(select.style.display, "none");
+  assert.equal(select.disabled, false);
+  assert.deepEqual(childValueTextPairs(select).map(([value]) => value), models.models);
+  assert.deepEqual(childValueTextPairs(select).filter(([value]) => value), [
+    [`local-glm/${ZCODE_EXAMPLE_MODEL_ID}`, ZCODE_EXAMPLE_MODEL_ID],
+    ["local-glm/vendor/second-model", "vendor/second-model"],
+  ]);
+  assert.equal(select.value, `local-glm/${ZCODE_EXAMPLE_MODEL_ID}`);
+  select.value = "local-glm/vendor/second-model";
+  select.dispatchEvent({ type: "change" });
+  assert.equal(api.state.selectedModel, "local-glm/vendor/second-model");
+  assert.equal(posted.filter((message) => message.type === "selectCliModel").slice(-1)[0]?.model, "local-glm/vendor/second-model");
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("ZCode model selectors follow interaction modes and recover after CLI switches", () => {
+  const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  const models = readZcodeConfigModels(createZcodeExampleText());
+  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+    const roleMode = interactiveMode !== "coding";
+    window.dispatchMessage({
+      type: "state",
+      payload: createPanelState({
+        currentCli: "zcode",
+        interactiveMode,
+        conversationTabs: { activeTabId: "zcode-tab", tabs: [{ id: "zcode-tab", cli: "zcode" }] },
+        sessionState: { currentSessionId: null, sessions: [] },
+        modelState: {
+          optionsByCli: { zcode: models.models },
+          labelsByCli: { zcode: models.labels },
+          managedByCli: { zcode: models.models },
+          selectedByCli: { zcode: models.defaultModel },
+          loopOptionsByCli: { zcode: { main: models.models, subtask: models.models } },
+          selectedLoopByCli: { zcode: { main: models.defaultModel, subtask: models.defaultModel } },
+        },
+      }),
+    });
+    assert.equal(document.getElementById("modelSelect").style.display, roleMode ? "none" : "");
+    assert.equal(document.getElementById("modelSelect").disabled, roleMode);
+    assert.equal(document.getElementById("codexLoopModelGroup").style.display, roleMode ? "" : "none");
+    const mainSelect = document.getElementById("codexLoopMainModelSelect");
+    assert.equal(mainSelect.disabled, !roleMode);
+    assert.equal(mainSelect.getAttribute("aria-label"), "ZCode Loop/Graph 主模型选择");
+    assert.deepEqual(childValueTextPairs(mainSelect), [[models.defaultModel, ZCODE_EXAMPLE_MODEL_ID]]);
+    assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, !roleMode);
+    window.dispatchMessage({
+      type: "state",
+      payload: createPanelState({
+        currentCli: "codex",
+        interactiveMode: "coding",
+        conversationTabs: { activeTabId: "codex-tab", tabs: [{ id: "codex-tab", cli: "codex" }] },
+        sessionState: { currentSessionId: null, sessions: [] },
+      }),
+    });
+    assert.notEqual(document.getElementById("modelSelect").style.display, "none");
+  }
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("all CLI child routes initialize and refresh in loop, loop+ and graph without visiting target CLIs", () => {
+  const activeConfigIdByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, `${cli}-profile`]));
+  const optionsByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, cli === "claude" ? [] : [`synthetic-${cli}`]]));
+  const selectedByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, optionsByCli[cli][0] ?? ""]));
+  const loopOptionsByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, { main: optionsByCli[cli], subtask: optionsByCli[cli] }]));
+  const selectedLoopByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, { main: selectedByCli[cli], subtask: selectedByCli[cli] }]));
+  const openCodeModels = {
+    models: [{ ref: "fixture/child", label: "子模型", providerId: "fixture", modelId: "child" }],
+    selectedMainRef: "fixture/child", selectedSubtaskRef: "fixture/child", issues: [],
+  };
+  for (const mainCli of CLI_LIST) {
+    for (const mode of ["loop", "loop_plus", "graph"]) {
+      const { document, window, api, posted } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+      for (const targetCli of CLI_LIST) {
+        const payload = createPanelState({
+          currentCli: mainCli,
+          interactiveMode: mode,
+          conversationTabs: { activeTabId: "fixture", tabs: [{ id: "fixture", cli: mainCli }] },
+          configState: { activeConfigId: activeConfigIdByCli[mainCli], configs: [{ id: activeConfigIdByCli[mainCli], name: "当前配置" }] },
+          modelState: {
+            optionsByCli, managedByCli: optionsByCli, selectedByCli, loopOptionsByCli, selectedLoopByCli,
+            activeConfigIdByCli,
+            selectedLoopSubtaskCliByConfigId: { [activeConfigIdByCli[mainCli]]: targetCli },
+          },
+          openCodeModels,
+          loopSubtaskOpenCodeModels: openCodeModels,
+        });
+        window.dispatchMessage({ type: "state", payload });
+        const prefix = mainCli === "claude" ? "claudeLoop" : mainCli === "opencode" ? "openCodeLoop" : "codexLoop";
+        const modelId = mainCli === "opencode" ? "openCodeSmallModelSelect" : `${prefix}SubtaskModelSelect`;
+        const cliSelect = document.getElementById(`${prefix}SubtaskCliSelect`);
+        assert.equal(cliSelect.disabled, false, `${mainCli}/${mode}/${targetCli}`);
+        assert.equal(cliSelect.value, targetCli);
+        assert.equal(api.state.loopSubtaskRoute.configPending, false);
+        assert.equal(api.state.loopSubtaskRoute.unavailableReason, "");
+        assert.equal(document.getElementById("loopSubtaskRouteIssue").style.display, "none");
+        const select = document.getElementById(modelId);
+        assert.equal(select.disabled, targetCli === "claude");
+        if (targetCli !== "claude") {
+          assert.equal(select.value, targetCli === "opencode" ? "fixture/child" : `synthetic-${targetCli}`);
+          const updatedModel = targetCli === "opencode" ? "fixture/saved" : `saved-${targetCli}`;
+          const updatedOpenCodeModels = {
+            models: [{ ref: "fixture/saved", label: "已保存子模型", providerId: "fixture", modelId: "saved" }],
+            selectedMainRef: "fixture/saved", selectedSubtaskRef: "fixture/saved", issues: [],
+          };
+          window.dispatchMessage({ type: "state", payload: {
+            ...payload,
+            modelState: {
+              ...(payload.modelState as Record<string, unknown>),
+              optionsByCli: { ...optionsByCli, [targetCli]: [updatedModel] },
+              selectedByCli: { ...selectedByCli, [targetCli]: updatedModel },
+              loopOptionsByCli: { ...loopOptionsByCli, [targetCli]: { main: [updatedModel], subtask: [updatedModel] } },
+              selectedLoopByCli: { ...selectedLoopByCli, [targetCli]: { main: updatedModel, subtask: updatedModel } },
+            },
+            openCodeModels: updatedOpenCodeModels,
+            loopSubtaskOpenCodeModels: updatedOpenCodeModels,
+          } });
+          assert.equal(select.value, updatedModel, `${mainCli}/${mode}/${targetCli} 保存刷新`);
+          assert.equal(select.disabled, false);
+        }
+        assert.equal(api.state.currentCli, mainCli);
+      }
+      assert.deepEqual(posted.filter((message) => message.type === "webviewError" || message.type === "applyConfig"), []);
+    }
+  }
+});
+
+test("shared child routes distinguish loading, missing profiles and read failures in every role mode", () => {
+  for (const mode of ["loop", "loop_plus", "graph"]) {
+    const { document, window, api } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+    const payload = createPanelState({
+      interactiveMode: mode,
+      conversationTabs: { activeTabId: "fixture", tabs: [{ id: "fixture", cli: "codex" }] },
+      modelState: {
+        optionsByCli: { codex: ["main"], zcode: [] },
+        selectedByCli: { codex: "main", zcode: "" },
+        managedByCli: {},
+        activeConfigIdByCli: { codex: "cfg-1", zcode: null },
+        selectedLoopSubtaskCliByConfigId: { "cfg-1": "zcode" },
+      },
+    });
+    window.dispatchMessage({ type: "state", payload });
+    assert.equal(api.state.loopSubtaskRoute.configPending, true);
+    assert.equal(document.getElementById("loopSubtaskRouteIssue").textContent, WEBVIEW_STRINGS.loopSubtaskRouteConfigSyncing);
+    payload.configStateByCli = { zcode: { configs: [], activeConfigId: null } };
+    window.dispatchMessage({ type: "state", payload });
+    assert.equal(api.state.loopSubtaskRoute.configPending, false);
+    assert.equal(document.getElementById("loopSubtaskRouteIssue").textContent, WEBVIEW_STRINGS.loopSubtaskRouteMissingConfig);
+    assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, true);
+    const modelState = payload.modelState as Record<string, unknown>;
+    modelState.issuesByCli = { zcode: "目标 CLI 配置读取失败，不能派发子任务。" };
+    window.dispatchMessage({ type: "state", payload });
+    assert.match(document.getElementById("loopSubtaskRouteIssue").textContent, /配置读取失败/);
+    assert.equal(api.state.loopSubtaskRoute.configPending, false);
+    modelState.issuesByCli = {};
+    modelState.activeConfigIdByCli = { codex: "cfg-1", zcode: "zcode-profile" };
+    modelState.optionsByCli = { codex: ["main"], zcode: ["configured-model"] };
+    modelState.selectedByCli = { codex: "main", zcode: "configured-model" };
+    modelState.selectedLoopByCli = { zcode: { main: "configured-model", subtask: "configured-model" } };
+    window.dispatchMessage({ type: "state", payload });
+    assert.equal(document.getElementById("loopSubtaskRouteIssue").style.display, "none");
+    assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, false);
+    assert.equal(document.getElementById("codexLoopSubtaskModelSelect").value, "configured-model");
+  }
+});
+
+test("ZCode empty configuration shows a disabled configuration hint without model management", () => {
+  const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+    window.dispatchMessage({
+      type: "state",
+      payload: createPanelState({
+        currentCli: "zcode",
+        interactiveMode,
+        conversationTabs: { activeTabId: "zcode-tab", tabs: [{ id: "zcode-tab", cli: "zcode" }] },
+        sessionState: { currentSessionId: null, sessions: [] },
+        modelState: {
+          optionsByCli: { zcode: [] },
+          managedByCli: { zcode: [] },
+          selectedByCli: { zcode: null },
+        },
+      }),
+    });
+    const select = document.getElementById(interactiveMode === "coding" ? "modelSelect" : "codexLoopMainModelSelect");
+    assert.equal(select.disabled, false);
+    assert.deepEqual(childValueTextPairs(select), [["", "请在 ZCode 配置文件 provider_config.json 中添加模型"]]);
+    assert.equal(select.children[0].disabled, true);
+    assert.equal(select.value, "");
+  }
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
 
 test("ZCode preserves explicit UI reasoning and uses only the current session's advertised levels", () => {
   const { api, document, window } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);

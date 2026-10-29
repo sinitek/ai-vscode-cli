@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { t } from "../i18n";
+import { CLI_LIST } from "../cli/types";
 
 const ASSETS_DIR = ["media", "config", "assets"];
 
@@ -827,6 +828,9 @@ export function getConfigViewHtml(
         if (!config || !current) {
           return false;
         }
+        if (Object.prototype.hasOwnProperty.call(current, "activeConfigId")) {
+          return config.id === current.activeConfigId;
+        }
         if (platform === "claude") {
           const normalizedConfigContent = stripManagedClaudeSkillRules(config.content, config.claudeSkills);
           const normalizedCurrentContent = stripManagedClaudeSkillRules(current.content, config.claudeSkills);
@@ -872,7 +876,7 @@ export function getConfigViewHtml(
       }
 
       async function syncActiveConfigIds() {
-        const platforms = ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"];
+        const platforms = ${JSON.stringify(CLI_LIST)};
         let updated = false;
         postConfigDebug({
           event: "syncActive:start",

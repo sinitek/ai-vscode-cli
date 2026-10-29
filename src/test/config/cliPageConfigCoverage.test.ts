@@ -482,7 +482,8 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.match(html, /openCodeSkills: config\.openCodeSkills \?\? config\.geminiSkills \?\? \[\]/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = config/);
   assert.match(html, /const \{ geminiSkills, \.\.\.rest \} = payload/);
-  assert.match(html, /const platforms = \["claude", "codex", "opencode", "grok", "dsh", "kimi-code"\]/);
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  assert.ok(html.includes(`const platforms = ${JSON.stringify(CLI_LIST)};`));
   assert.match(html, /event: "syncActive:empty"/);
   assert.match(html, /event: "syncActive:error"/);
   assert.match(html, /localStorage\.removeItem\(ACTIVE_CONFIG_KEY_PREFIX \+ platform\)/);
@@ -509,6 +510,237 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
   assert.equal(openPathMessage.type, "config:openPath");
   assert.equal(openExternalMessage.type, "config:openExternal");
   assert.equal(closeMessage.type, "config:close");
+});
+
+test("ZCode active sync uses the host identity even when a saved profile differs from runtime", async () => {
+  const { html } = renderConfigHtml();
+  const source = extractBetween(html, "      function matchActiveConfig(", "      function loadScript(");
+  const storage = new Map<string, string>();
+  const profiles = ["active", "inactive"].map((id) => ({ id, content: '{"saved":"new"}' }));
+  let activeConfigId: string | null = "active";
+  const requestedPlatforms: string[] = [];
+  const sandbox: AnyRecord = {
+    ACTIVE_CONFIG_KEY_PREFIX: "ai_cli_active_config_id_",
+    postConfigDebug: () => undefined,
+    getStoredActiveId: (platform: string) => JSON.parse(storage.get(`ai_cli_active_config_id_${platform}`) ?? "null"),
+    localStorage: {
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    },
+    requestConfig: async (action: string, payload: AnyRecord) => {
+      if (action === "getList") {
+        requestedPlatforms.push(payload.platform);
+        return payload.platform === "zcode" ? profiles : [];
+      }
+      return { content: '{"runtime":"old"}', activeConfigId };
+    },
+  };
+  vm.runInNewContext(`${source}\nglobalThis.sync = syncActiveConfigIds;`, sandbox);
+  assert.equal(await sandbox.sync(), true);
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  assert.deepEqual(requestedPlatforms.slice().sort(), [...CLI_LIST].sort());
+  assert.equal(storage.get("ai_cli_active_config_id_zcode"), '"active"');
+  assert.equal(await sandbox.sync(), false);
+  activeConfigId = null;
+  assert.equal(await sandbox.sync(), true);
+  assert.equal(storage.has("ai_cli_active_config_id_zcode"), false);
+  activeConfigId = "deleted-profile";
+  assert.equal(await sandbox.sync(), false);
+  assert.equal(storage.has("ai_cli_active_config_id_zcode"), false);
+});
+
+test("ZCode current-config bridge includes the host active identity without changing runtime content", async () => {
+  const configService = require("../../config/configService") as AnyRecord;
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const original = configService.getCurrentConfig;
+  const current = { content: '{"runtime":"old"}', configContent: '{"runtime":"old"}' };
+  configService.getCurrentConfig = async () => current;
+  try {
+    const harness = installConfigPanelHarness();
+    const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
+      getActiveConfigId: async (platform) => {
+        assert.equal(platform, "zcode");
+        return "saved-profile";
+      },
+    });
+    manager.show();
+    await (manager as AnyRecord).handleRequest({ type: "config:request", requestId: "zcode-current", action: "getCurrent", platform: "zcode" });
+    const response = harness.panel.webview.postedMessages.at(-1) as AnyRecord;
+    assert.equal(response.success, true);
+    assert.deepEqual(response.data, { ...current, activeConfigId: "saved-profile" });
+    assert.equal("activeConfigId" in current, false);
+  } finally {
+    configService.getCurrentConfig = original;
+  }
+});
+
+test("ZCode active recognition follows provider-preserving application instead of TOML lines", async () => {
+  const { createZcodeExampleText, mergeZcodeProviderConfigText } = require("../../config/zcodeConfig") as typeof import("../../config/zcodeConfig");
+  const { matchesActiveConfig, loadConfigStateWithDeps } = require("../../webviewCommandCoordinator") as typeof import("../../webviewCommandCoordinator");
+  const profile = { id: "active", name: "ZCode", platform: "zcode" as const, content: createZcodeExampleText(), createdAt: 1, updatedAt: 1 };
+  const other = JSON.parse(profile.content);
+  other.config.providerConfigRules.providerRules[0].providerId = "other";
+  const merged = mergeZcodeProviderConfigText(JSON.stringify(other), profile.content);
+  assert.equal(merged.ok, true);
+  if (!merged.ok) return;
+  const document = JSON.parse(merged.content);
+  const current = { content: JSON.stringify({ config: document.config, schemaVersion: document.schemaVersion }) };
+  assert.equal(matchesActiveConfig("zcode", profile, current), true);
+  const edited = JSON.parse(profile.content);
+  edited.config.defaultModelSelection.modelId = "different-model";
+  const changed = { ...profile, content: JSON.stringify(edited) };
+  assert.equal(matchesActiveConfig("zcode", changed, current), false);
+  assert.equal(matchesActiveConfig("zcode", { ...profile, content: "not-json" }, current), false);
+  assert.equal(matchesActiveConfig("zcode", profile, { content: "not-json" }), false);
+  const state = await loadConfigStateWithDeps("zcode", {
+    workspaceSettings: { activeConfigIdByCli: { zcode: profile.id } },
+    getConfigList: async () => [changed],
+    getConfigOrder: async () => ({ zcode: [profile.id] }),
+    getCurrentConfig: async () => current,
+    setWorkspaceActiveConfigId: () => assert.fail("divergent active identity must be preserved"),
+    setLastConfigStateLoadError: () => undefined,
+    logInfo: () => undefined,
+    logError: () => undefined,
+    errorToMessage: String,
+  } as any);
+  assert.equal(state.activeConfigId, profile.id);
+});
+
+test("all CLI groups synchronize active identities from the host without guessing from saved text", async () => {
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  const { html } = renderConfigHtml();
+  const source = extractBetween(html, "      function matchActiveConfig(", "      function loadScript(");
+  const storage = new Map<string, string>();
+  let hasActiveConfig = true;
+  const sandbox: AnyRecord = {
+    ACTIVE_CONFIG_KEY_PREFIX: "active_",
+    postConfigDebug: () => undefined,
+    getStoredActiveId: (platform: string) => JSON.parse(storage.get(`active_${platform}`) ?? "null"),
+    localStorage: {
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    },
+    requestConfig: async (action: string, { platform }: AnyRecord) => action === "getList"
+      ? [{ id: `${platform}-inactive`, content: "old" }, { id: `${platform}-active`, content: "new" }]
+      : { content: "old", activeConfigId: hasActiveConfig ? `${platform}-active` : null },
+  };
+  vm.runInNewContext(`${source}\nglobalThis.sync = syncActiveConfigIds;`, sandbox);
+  assert.equal(await sandbox.sync(), true);
+  for (const cli of CLI_LIST) assert.equal(storage.get(`active_${cli}`), JSON.stringify(`${cli}-active`));
+  hasActiveConfig = false;
+  assert.equal(await sandbox.sync(), true);
+  assert.equal(storage.size, 0);
+});
+
+test("all CLI current-config responses carry the same authoritative host identity", async (context) => {
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  const configService = require("../../config/configService") as typeof import("../../config/configService");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  context.mock.method(configService, "getCurrentConfig", async () => ({ content: "synthetic-runtime" }));
+  const harness = installConfigPanelHarness();
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
+    getActiveConfigId: async (cli) => `${cli}-active`,
+  });
+  manager.show();
+  for (const cli of [...CLI_LIST, "gemini"] as const) {
+    await (manager as AnyRecord).handleRequest({ type: "config:request", requestId: cli, action: "getCurrent", platform: cli });
+    const response = harness.panel.webview.postedMessages.at(-1) as AnyRecord;
+    assert.equal(response.success, true);
+    assert.deepEqual(response.data, { content: "synthetic-runtime", activeConfigId: `${cli === "gemini" ? "opencode" : cli}-active` });
+  }
+});
+
+test("all CLI saves refresh state while only active profiles apply through the shared editor helper", async (context) => {
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  const configService = require("../../config/configService") as typeof import("../../config/configService");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  context.mock.method(configService, "saveConfig", async (config: import("../../config/types").ConfigItem) => config);
+  const applied: AnyRecord[] = [];
+  context.mock.method(configService, "applyConfig", async (platform: string, payload: AnyRecord) => {
+    applied.push({ platform, payload });
+    return undefined;
+  });
+  let refreshes = 0;
+  const harness = installConfigPanelHarness();
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
+    onConfigChanged: async () => { refreshes += 1; },
+  });
+  manager.show();
+  let requestNumber = 0;
+  const request = async (fields: AnyRecord) => {
+    const requestId = `all-cli-save-${++requestNumber}`;
+    await (manager as AnyRecord).handleRequest({ type: "config:request", requestId, ...fields });
+    const response = (harness.panel.webview.postedMessages as AnyRecord[]).find((message) => message.requestId === requestId);
+    assert.equal(response?.success, true);
+  };
+  const source = readProjectFile("media/config/assets/config-app-ui.js");
+  const applySource = extractBetween(source, "A = async (W) => {", "      saveClaudeSettingsCard =").replace(/,\s*$/, ";");
+  const sandbox: AnyRecord = {
+    O: null,
+    o: (platform: string) => `${platform}-active`,
+    applyConfigItem: (platform: string, payload: AnyRecord) => request({ action: "apply", platform, payload }),
+    Kt: { success: () => undefined, error: (message: string) => assert.fail(message) },
+  };
+  vm.runInNewContext(`const ${applySource}\nglobalThis.applySaved = A;`, sandbox);
+  for (const cli of CLI_LIST) {
+    const before = refreshes;
+    const profile = { id: `${cli}-active`, platform: cli, name: cli, content: "synthetic", createdAt: 1, updatedAt: 1 };
+    sandbox.O = profile;
+    await request({ action: "save", config: profile });
+    await sandbox.applySaved({ content: profile.content });
+    assert.equal(refreshes, before + 2, cli);
+    assert.equal(applied.at(-1)?.platform, cli);
+    assert.equal(applied.at(-1)?.payload.profileId, cli === "dsh" ? profile.id : undefined);
+    const appliesBefore = applied.length;
+    sandbox.O = { ...profile, id: `${cli}-inactive` };
+    await request({ action: "save", config: sandbox.O });
+    await sandbox.applySaved({ content: "synthetic-inactive" });
+    assert.equal(refreshes, before + 3, cli);
+    assert.equal(applied.length, appliesBefore, cli);
+  }
+  assert.equal(applied.length, CLI_LIST.length);
+});
+
+test("all CLI config snapshots load concurrently, reuse the current seed and isolate errors", async () => {
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  const coordinator = require("../../webviewCommandCoordinator") as AnyRecord;
+  assert.equal(typeof coordinator.loadConfigStateByCli, "function");
+  const started: string[] = [];
+  const errors: string[] = [];
+  let release: () => void = () => undefined;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const seeded = { configs: [], activeConfigId: "codex-seed" };
+  const loading = coordinator.loadConfigStateByCli(async (cli: string) => {
+    started.push(cli);
+    await barrier;
+    if (cli === "grok") throw new Error("synthetic invalid config");
+    return { configs: [], activeConfigId: `${cli}-active` };
+  }, { cli: "codex", state: seeded }, (cli: string) => errors.push(cli));
+  await Promise.resolve();
+  assert.deepEqual(started.slice().sort(), CLI_LIST.filter((cli) => cli !== "codex").sort());
+  release();
+  const states = await loading;
+  assert.deepEqual(Object.keys(states).sort(), [...CLI_LIST].sort());
+  assert.equal(states.codex, seeded);
+  assert.deepEqual(states.grok, { configs: [], activeConfigId: null });
+  assert.equal(states.zcode.activeConfigId, "zcode-active");
+  assert.deepEqual(errors, ["grok"]);
+});
+
+test("Grok, KimiCode and DSH identity matching uses their native content formats", () => {
+  const { matchesActiveConfig } = require("../../webviewCommandCoordinator") as typeof import("../../webviewCommandCoordinator");
+  for (const platform of ["grok", "kimi-code"] as const) {
+    const config = { id: "profile", name: "synthetic", platform, content: 'model = "first"', createdAt: 1, updatedAt: 1 };
+    assert.equal(matchesActiveConfig(platform, config, { content: 'model="first"\nother = true' }), true);
+    assert.equal(matchesActiveConfig(platform, config, { content: 'model = "second"' }), false);
+    const tableConfig = { ...config, content: '[first]\nmodel = "one"\n[second]\nmodel = "two"' };
+    assert.equal(matchesActiveConfig(platform, tableConfig, { content: '[second]\nmodel="two"\n[first]\nmodel="one"' }), true);
+    assert.equal(matchesActiveConfig(platform, tableConfig, { content: '[first]\nmodel="two"\n[second]\nmodel="one"' }), false);
+    assert.equal(matchesActiveConfig(platform, tableConfig, { content: '[[[' }), false);
+  }
+  const config = { id: "profile", name: "synthetic", platform: "dsh" as const, content: '{"models":["first"],"acpModel":"first"}', createdAt: 1, updatedAt: 1 };
+  assert.equal(matchesActiveConfig("dsh", config, { content: '{ "acpModel": "first", "models": ["first"] }' }), true);
+  assert.equal(matchesActiveConfig("dsh", config, { content: '{"acpModel":"second","models":["second"]}' }), false);
 });
 
 test("config manager panel creates a safe webview and handles non-config host messages", async () => {
@@ -897,6 +1129,105 @@ test("Grok save applies disk config and awaits model refresh before acknowledgin
     releaseRefresh();
     if (previousHome === undefined) delete process.env.GROK_HOME;
     else process.env.GROK_HOME = previousHome;
+    fs.rmSync(temporaryHome, { recursive: true, force: true });
+  }
+});
+
+test("ZCode save applies only the active profile and waits for runtime model refresh", { timeout: 5000 }, async () => {
+  const configService = require("../../config/configService") as typeof import("../../config/configService");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const { createZcodeExampleText, readZcodeConfigModels, resolveZcodeProviderConfigPath } = require("../../config/zcodeConfig") as typeof import("../../config/zcodeConfig");
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-zcode-save-refresh-"));
+  const previousBase = process.env.ZCODE_DATA_BASE_DIR;
+  const previousFile = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  process.env.ZCODE_DATA_BASE_DIR = temporaryHome;
+  delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+  const initial = createZcodeExampleText();
+  const updated = initial.replace(/glm-5\.3-flash/g, "synthetic-updated-model");
+  const snapshots: string[][] = [];
+  const errors: string[] = [];
+  const successes: string[] = [];
+  let refreshStarted: () => void = () => undefined;
+  let releaseRefresh: () => void = () => undefined;
+  let refreshBarrier = Promise.resolve();
+  try {
+    const runtimePath = resolveZcodeProviderConfigPath();
+    fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
+    fs.writeFileSync(runtimePath, initial);
+    const harness = installConfigPanelHarness();
+    const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
+      onConfigChanged: async () => {
+        const models = readZcodeConfigModels((await configService.getCurrentConfig("zcode")).content ?? "").models;
+        if (models.some((model) => model.includes("synthetic-updated-model"))) {
+          refreshStarted();
+          await refreshBarrier;
+        }
+        snapshots.push(models);
+      },
+    });
+    manager.show();
+    const profile = { id: "active", name: "ZCode", platform: "zcode" as const, content: initial, createdAt: 1, updatedAt: 2 };
+    const responses = harness.panel.webview.postedMessages as AnyRecord[];
+    let requestNumber = 0;
+    const request = async (payload: AnyRecord) => {
+      const requestId = `zcode-save-${++requestNumber}`;
+      await (manager as AnyRecord).handleRequest({ ...payload, type: "config:request", requestId });
+      const response = responses.find((message) => message.requestId === requestId);
+      if (!response?.success) throw new Error(response?.error ?? "missing response");
+      return response.data;
+    };
+    const source = readProjectFile("media/config/assets/config-app-ui.js");
+    const applySource = extractBetween(source, "A = async (W) => {", "      saveClaudeSettingsCard =").replace(/,\s*$/, ";");
+    const saveSection = source.slice(source.indexOf('"data-testid": "zcode-save-config"'));
+    const saveSource = extractBetween(saveSection, "onClick: async () => {", '                          children: "保存",').replace(/,\s*$/, ";");
+    const sandbox: AnyRecord = {
+      O: profile,
+      o: () => "active",
+      zcodeEditorMode: "json",
+      zcodeTextDraft: updated,
+      ZcodeConfigVisualEditorUtils: { parseContent: () => ({ ok: true, state: {} }) },
+      setZcodeTextDraft: () => undefined,
+      setZcodeVisualState: () => undefined,
+      setZcodeVisualError: () => undefined,
+      Kt: { success: (message: string) => successes.push(message), error: (message: string) => errors.push(message) },
+      r: (id: string, fields: AnyRecord) => request({ action: "save", config: { ...sandbox.O, id, ...fields } }),
+      applyConfigItem: (platform: string, payload: AnyRecord) => request({ action: "apply", platform, payload }),
+    };
+    vm.runInNewContext(`const ${applySource}\nconst ${saveSource.replace("onClick:", "save =")}\nglobalThis.saveProfile = save;`, sandbox);
+    refreshBarrier = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const refreshEntered = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    const saving = sandbox.saveProfile();
+    await refreshEntered;
+    assert.match(fs.readFileSync(runtimePath, "utf8"), /synthetic-updated-model/);
+    assert.equal(responses.some((message) => message.requestId === "zcode-save-2"), false);
+    assert.equal(successes.includes("已更新当前激活的配置"), false);
+    releaseRefresh();
+    await saving;
+    assert.equal((await configService.getConfigById("zcode", "active"))?.content, updated);
+    assert.deepEqual(snapshots.map((models) => models[0]), ["local-glm/glm-5.3-flash", "local-glm/synthetic-updated-model"]);
+    assert.equal(successes.at(-1), "已更新当前激活的配置");
+
+    sandbox.O = { ...profile, id: "inactive" };
+    sandbox.zcodeTextDraft = initial;
+    await sandbox.saveProfile();
+    assert.equal(requestNumber, 3);
+    assert.equal((await configService.getConfigById("zcode", "inactive"))?.content, initial);
+    assert.match(fs.readFileSync(runtimePath, "utf8"), /synthetic-updated-model/);
+
+    sandbox.O = profile;
+    fs.writeFileSync(runtimePath, "not-json");
+    successes.length = 0;
+    await sandbox.saveProfile();
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /已保存，但更新激活配置失败/);
+    assert.equal(successes.includes("已更新当前激活的配置"), false);
+    assert.equal(fs.readFileSync(runtimePath, "utf8"), "not-json");
+  } finally {
+    releaseRefresh();
+    if (previousBase === undefined) delete process.env.ZCODE_DATA_BASE_DIR;
+    else process.env.ZCODE_DATA_BASE_DIR = previousBase;
+    if (previousFile === undefined) delete process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+    else process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = previousFile;
     fs.rmSync(temporaryHome, { recursive: true, force: true });
   }
 });

@@ -631,6 +631,7 @@ import {
   createConfigHeartbeatCoordinator,
   getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings,
   loadConfigStateWithDeps,
+  loadConfigStateByCli,
   matchesActiveConfig,
   normalizeCliInstallStatus,
   normalizeJson,
@@ -1018,6 +1019,7 @@ export function activate(context: vscode.ExtensionContext): void {
   setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
     onConfigChanged: () => postPanelState(),
+    getActiveConfigId: async (cli) => (await loadConfigState(cli)).activeConfigId,
   });
   startTempCleanup(context);
   startHistoryArtifactRetentionCleanup(context);
@@ -1673,34 +1675,32 @@ async function persistCliCommand(cli: CliName, command: string): Promise<void> {
 }
 
 async function buildPanelState(): Promise<PanelState> {
-  ensureWorkspaceSessionStore();
-  const configState = await loadConfigState(currentCli);
-  await modelSettingsHost.refreshGrokConfigModels(configState);
-  await modelSettingsHost.refreshKimiCodeConfigModels(configState);
-  await modelSettingsHost.refreshZcodeConfigModels(configState);
-  await modelSettingsHost.refreshDshConfigModels(configState);
-  await refreshOpenCodeThinkingState(configState);
-  await refreshLoopSubtaskOpenCodeModels();
-  return buildPanelStateFromConfigState(configState);
+  return buildPanelStateWithConfigState();
 }
 
 async function buildPanelStateWithConfigState(
-  configState: PanelState["configState"]
+  configState?: PanelState["configState"]
 ): Promise<PanelState> {
   ensureWorkspaceSessionStore();
-  await modelSettingsHost.refreshGrokConfigModels(configState);
-  await modelSettingsHost.refreshKimiCodeConfigModels(configState);
-  await modelSettingsHost.refreshZcodeConfigModels(configState);
-  await modelSettingsHost.refreshDshConfigModels(configState);
-  await refreshOpenCodeThinkingState(configState);
-  await refreshLoopSubtaskOpenCodeModels();
-  return buildPanelStateFromConfigState(configState);
+  const states = await loadConfigStateByCli(
+    loadConfigState,
+    configState ? { cli: currentCli, state: configState } : undefined,
+    (cli, error) => logError("panel-cli-config-state", { cli, error: errorToMessage(error) }),
+  );
+  await modelSettingsHost.refreshConfigModels(states);
+  await refreshOpenCodeThinkingState(states[currentCli]);
+  await refreshLoopSubtaskOpenCodeModels(states.opencode);
+  return buildPanelStateFromConfigState(states[currentCli], states);
 }
 
-function buildPanelStateFromConfigState(configState: PanelState["configState"]): PanelState {
+function buildPanelStateFromConfigState(
+  configState: PanelState["configState"],
+  configStateByCli: PanelState["configStateByCli"],
+): PanelState {
   return buildPanelStateWithDeps({
     currentCli,
     configState,
+    configStateByCli,
     workspaceSettings,
     workspaceHarnessInstalled: isWorkspaceHarnessInstalled(resolveWorkspaceCwd() ?? null),
     codeGraphInstalled: isCodeGraphWorkspaceIndexed(resolveWorkspaceCwd() ?? null),

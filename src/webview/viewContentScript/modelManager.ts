@@ -1,7 +1,6 @@
 // Model manager, model selection, and model persistence handlers.
 export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDeclaredModels(cli = state.currentCli) {
-        // Grok / Kimi Code 的模型来自各自 config 文件，没有“默认”占位项。
-        return cli === "grok" || cli === "kimi-code";
+        return cli === "grok" || cli === "kimi-code" || cli === "zcode";
       }
 
       function getCliLoopModelSelectAria(cli, role) {
@@ -14,10 +13,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         if (cli === "kimi-code") {
           return t(role === "subtask" ? "kimiCodeLoopSubtaskModelSelectAria" : "kimiCodeLoopMainModelSelectAria");
         }
+        if (cli === "zcode") {
+          return t(role === "subtask" ? "zcodeLoopSubtaskModelSelectAria" : "zcodeLoopMainModelSelectAria");
+        }
         return t(role === "subtask" ? "codexLoopSubtaskModelSelectAria" : "codexLoopMainModelSelectAria");
       }
 
       function getNoConfiguredModelLabel(cli) {
+        if (cli === "zcode") {
+          return t("zcodeNoConfiguredModel");
+        }
         if (cli === "kimi-code") {
           return t("kimiCodeNoConfiguredModel");
         }
@@ -29,7 +34,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function cliSupportsModelSelection(cli = state.currentCli) {
-        return cliSupportsManagedModelSelection(cli) || cli === "dsh";
+        return cliSupportsManagedModelSelection(cli) || cli === "dsh" || cli === "zcode";
       }
 
       function canOpenModelManagerDialog(cli = state.currentCli) {
@@ -494,12 +499,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
         const crossCli = Boolean(subtaskCli) && subtaskCli !== mainCli;
         const subtaskConfigId = crossCli ? getActiveConfigIdForStateCli(subtaskCli) : mainConfigId;
-        const configPending = crossCli && !subtaskConfigId;
+        const targetConfigLoaded = state.configStateByCli && Object.prototype.hasOwnProperty.call(state.configStateByCli, subtaskCli);
+        const configPending = crossCli && !subtaskConfigId && !targetConfigLoaded;
         let unavailableReason = "";
-        if (configPending) {
-          unavailableReason = t("loopSubtaskRouteMissingConfig");
-        } else if (state.modelIssuesByCli && state.modelIssuesByCli[subtaskCli]) {
+        if (state.modelIssuesByCli && state.modelIssuesByCli[subtaskCli]) {
           unavailableReason = state.modelIssuesByCli[subtaskCli];
+        } else if (crossCli && !subtaskConfigId) {
+          unavailableReason = t("loopSubtaskRouteMissingConfig");
         } else if (subtaskCli === "opencode") {
           const models = getLoopSubtaskOpenCodeModelState();
           const issues = models && Array.isArray(models.issues) ? models.issues : [];
@@ -681,7 +687,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const showModel = active && route.subtaskCli !== "claude";
         const showThinking = active;
         const rows = [
-          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: active && (state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "dsh" || state.currentCli === "kimi-code") },
+          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: isLoopRoleModelMode(state.currentCli, mode) },
           { cli: elements.openCodeLoopSubtaskCliSelect, model: elements.openCodeSmallModelSelect, thinking: elements.openCodeSmallThinkingMode, enabled: active && state.currentCli === "opencode" },
           { cli: elements.claudeLoopSubtaskCliSelect, model: elements.claudeLoopSubtaskModelSelect, thinking: elements.claudeLoopSubtaskThinkingMode, enabled: active && state.currentCli === "claude" },
         ];

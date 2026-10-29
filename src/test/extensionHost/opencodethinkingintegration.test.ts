@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { installVscodeMock } from "../vscodeMock";
+import { CLI_LIST, type CliName } from "../../cli/types";
 
 installVscodeMock();
 
@@ -59,6 +60,12 @@ test("does not migrate legacy ThinkingMode values into OpenCode variants", () =>
 });
 
 test("serializes dynamic OpenCode thinking state into PanelState", () => {
+  const configStateByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, {
+    configs: [] as PanelState["configState"]["configs"],
+    activeConfigId: cli === "opencode" ? "config-a" : `${cli}-config`,
+  }])) as Record<CliName, PanelState["configState"]>;
+  configStateByCli.zcode.activeConfigId = null;
+  let modelConfigIds: Partial<Record<CliName, string | null>> = {};
   const openCodeThinking: OpenCodeThinkingState & { configuredDefaultVariant: string | null } = {
     providerId: "gateway",
     modelId: "model",
@@ -74,6 +81,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   const deps: PanelStateBuilderDeps = {
     currentCli: "opencode",
     configState: { configs: [], activeConfigId: "config-a" },
+    configStateByCli,
     workspaceSettings: {},
     processPlatform: "linux",
     cliRulePathsGlobal: { codex: "", claude: "", opencode: "", grok: "", dsh: "", "kimi-code": "", zcode: "" },
@@ -103,13 +111,16 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     buildSessionState: () => ({ currentSessionId: null, sessions: [] }),
     buildConversationTabsState: () => ({ activeTabId: null, tabs: [] }),
     buildPromptHistoryState: () => [],
-    buildModelState: () => ({
+    buildModelState: (activeConfigIdByCli) => {
+      modelConfigIds = activeConfigIdByCli ?? {};
+      return {
       selectedByCli: { codex: null, claude: null, opencode: "gateway/model", grok: null, dsh: null, "kimi-code": null, zcode: null },
       optionsByCli: { codex: [], claude: [], opencode: [], grok: [], dsh: [], "kimi-code": [], zcode: [] },
       managedByCli: { codex: [], claude: [], opencode: [], grok: [], dsh: [], "kimi-code": [], zcode: [] },
-    }),
+      };
+    },
     buildEditorContextState: () => ({ filePath: null, fileLabel: null, hasSelection: false, selectionLabel: null }),
-    resolveModelConfigIdForCli: () => "config-a",
+    resolveModelConfigIdForCli: () => "stale-fallback-must-not-override-snapshots",
     getSelectedCliModel: () => "gateway/model",
   };
 
@@ -118,6 +129,9 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");
   assert.equal(state.openCodeModels?.selectedSmallRef, "gateway/small");
   assert.equal(state.loopSubtaskMaxThinkingMode, "xhigh");
+  assert.equal(state.configStateByCli, configStateByCli);
+  assert.equal(state.currentCli, "opencode");
+  for (const cli of CLI_LIST) assert.equal(modelConfigIds[cli], configStateByCli[cli].activeConfigId);
 });
 
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {

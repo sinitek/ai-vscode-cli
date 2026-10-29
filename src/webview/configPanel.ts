@@ -11,14 +11,17 @@ import {
   ConfigOpenPathMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
+import { normalizeConfigPlatform } from "../config/configPaths";
 import { logEssential, logInfo } from "../logger";
 import { t } from "../i18n";
 import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 import { expandHomePath } from "../shared/userHomePaths";
 import { normalizeCliEnabledByName, readToolSettings } from "../toolSettings";
+import type { CliName } from "../cli/types";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void | Promise<void>;
+  getActiveConfigId?: (cli: CliName) => Promise<string | null>;
 };
 
 const CONFIG_MAXIMIZE_EDITOR_COMMAND = "workbench.action.maximizeEditorHideSidebar";
@@ -228,9 +231,14 @@ export class ConfigManagerPanel {
           response.data = true;
           await this.handlers.onConfigChanged?.();
           break;
-        case "getCurrent":
-          response.data = await configService.getCurrentConfig(message.platform);
+        case "getCurrent": {
+          const current = await configService.getCurrentConfig(message.platform);
+          response.data = {
+            ...current,
+            activeConfigId: await this.handlers.getActiveConfigId?.(normalizeConfigPlatform(message.platform)) ?? null,
+          };
           break;
+        }
         case "apply":
           response.data = await configService.applyConfig(message.platform, message.payload);
           await this.handlers.onConfigChanged?.();
