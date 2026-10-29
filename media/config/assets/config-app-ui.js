@@ -2529,6 +2529,7 @@ const CLI_GLOBAL_SKILL_TARGETS = [
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
   { id: "kimi-code", label: "KimiCode" },
+  { id: "zcode", label: "ZCode" },
 ];
 
 function skillsTitleByPlatform(platform) {
@@ -2649,6 +2650,7 @@ const SkillsMarketModal = ({ onClose }) => {
   const [selectedTargets, setSelectedTargets] = c.useState([]);
   const [installing, setInstalling] = c.useState(!1);
   const [installErrors, setInstallErrors] = c.useState([]);
+  const [uploadErrors, setUploadErrors] = c.useState([]);
   const requestRef = c.useRef(0);
   const installingRef = c.useRef(!1);
   const loadPage = async (nextQuery, nextPage) => {
@@ -2719,6 +2721,39 @@ const SkillsMarketModal = ({ onClose }) => {
       setInstalling(!1);
     }
   };
+  const confirmUploadInstall = async () => {
+    if (installingRef.current) return;
+    installingRef.current = !0;
+    setInstalling(!0);
+    setUploadErrors([]);
+    try {
+      const result = await installLocalSkillZip();
+      if (!result) return;
+      const targets = Array.isArray(result?.targets) ? result.targets : [];
+      const installed = targets.filter((item) => item.status === "installed");
+      const problems = targets.filter((item) => item.status !== "installed");
+      if (installed.length > 0) {
+        const names = [...new Set(installed.map((item) => item.name))];
+        Kt.success(`已安装 ${names.join("、")}`);
+        window.dispatchEvent(new CustomEvent("sinitek-cli-skills-installed", {
+          detail: { platforms: [...new Set(installed.map((item) => item.platform))] },
+        }));
+      }
+      if (problems.length > 0) {
+        if (installed.length === 0) Kt.warning("没有安装新技能");
+        setUploadErrors(problems.map((item) => {
+          const label = CLI_GLOBAL_SKILL_TARGETS.find((target) => target.id === item.platform)?.label || item.platform;
+          return `${label} / ${item.name}：${item.message || "安装失败"}`;
+        }));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUploadErrors([message || "安装失败"]);
+    } finally {
+      installingRef.current = !1;
+      setInstalling(!1);
+    }
+  };
   return be.jsx(xr, {
     title: "Skills 市场",
     open: !0,
@@ -2734,7 +2769,7 @@ const SkillsMarketModal = ({ onClose }) => {
       children: [
         be.jsx("div", {
           className: "skills-manager-muted",
-          children: "来自 LobeHub Skills 市场。下载后自动解压，安装到所选 CLI 的全局 Skills 目录；同名技能会先删除已有目录再安装。",
+          children: "可从 LobeHub 下载技能，或选择本地 ZIP 并指定 CLI 安装。ZIP 内单个顶层目录作为技能目录；根目录含 SKILL.md 时使用 ZIP 文件名。",
         }),
         be.jsxs("div", {
           className: "skills-market-search",
@@ -2756,7 +2791,7 @@ const SkillsMarketModal = ({ onClose }) => {
             }),
             be.jsx(xn, {
               size: "small",
-              disabled: loading || installing,
+              disabled: installing,
               onClick: () => {
                 setSelectedId("");
                 setSelectedTargets([]);
@@ -2764,6 +2799,12 @@ const SkillsMarketModal = ({ onClose }) => {
                 void loadPage(query.trim(), 1);
               },
               children: "搜索",
+            }),
+            be.jsx(xn, {
+              size: "small",
+              disabled: loading || installing,
+              onClick: () => void confirmUploadInstall(),
+              children: installing ? "安装中..." : "上传 ZIP 并选择 CLI",
             }),
           ],
         }),
@@ -2801,6 +2842,11 @@ const SkillsMarketModal = ({ onClose }) => {
           className: "skills-copy-errors",
           role: "alert",
           children: errorText,
+        }) : null,
+        uploadErrors.length > 0 ? be.jsx("div", {
+          className: "skills-copy-errors",
+          role: "alert",
+          children: uploadErrors.join("\n"),
         }) : null,
         be.jsx("div", {
           className: "skills-market-list",

@@ -2,7 +2,7 @@
 
 - 核对版本：`@deepseek-ai/dsh@0.2.1-rc.2`
 - 核对日期：2026-10-24
-- 状态：上游安装与程序化契约。插件分组、配置页、ACP runner、Skills 根和 `AGENTS.md` 规则链已接入。Skills 目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code。当前范例模型 id 是无前缀的 `deepseek-v4.1-flash`；模型 id 按用户 endpoint 原样配置，必须同时列于 `models[]`、匹配 `acpModel` 并由当前 ACP 广告，不自动增删前缀。此前实跑使用的 `subcoco/deepseek-v4.1-flash` 只代表当时 endpoint 的特定模型 id。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。图形 Extension Host 点击验收和真实权限请求未验证。原生 compaction 明确不支持。凭据默认引用 `SINITEK_DSH_API_KEY`，插件也允许 profile 根级 `apiKey` 并在启动时注入子进程环境。
+- 状态：上游安装与程序化契约。插件分组、配置页、ACP runner、Skills 根和 `AGENTS.md` 规则链已接入。Skills 市场目标共七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。当前范例模型 id 是无前缀的 `deepseek-v4.1-flash`；模型 id 按用户 endpoint 原样配置，必须同时列于 `models[]`、匹配 `acpModel` 并由当前 ACP 广告，不自动增删前缀。此前实跑使用的 `subcoco/deepseek-v4.1-flash` 只代表当时 endpoint 的特定模型 id。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。图形 Extension Host 点击验收和真实权限请求未验证。原生 compaction 明确不支持。凭据默认引用 `SINITEK_DSH_API_KEY`，插件也允许 profile 根级 `apiKey` 并在启动时注入子进程环境。
 - 发布性质：官方推荐通道 `latest` 当前指向发布候选 `0.2.1-rc.2`。它不是稳定版。`next` 的 `0.2.1-rc.3` 也不是稳定版。
 
 本文只记录已安装包、官方 README 和隔离进程探针能证明的事实。没有 `DEEPSEEK_API_KEY` 时不借用其他平台密钥，也不把未发生的在线生成写成成功。
@@ -435,7 +435,7 @@ type DshConfiguredModel = {
 | `src/extensionHost/interactiveTurnDsh.ts` | 宿主回合已接线。缺失 usage 不补 0。窗口标记为 `adapter-fallback` |
 | `src/extensionHost/modelSettings.ts` | 读取 DSH 配置模型。不把 Grok 推理档写入 DSH |
 | `src/config/dshConfig.ts` 与配置页 | 分组在 Grok 之后。凭据字段只显示 `SINITEK_DSH_API_KEY` |
-| `src/config/cliGlobalSkills.ts` | 平台列表包含 `dsh`。Skills 目标是五个，可见顺序保持 Claude、OpenCode、Grok、Codex、DSH。全局 Skills 根是 `$DSH_HOME/skills` |
+| `src/config/cliGlobalSkills.ts` | 平台列表包含 `dsh`。Skills 市场目标共七个，可见顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。DSH 全局 Skills 根是 `$DSH_HOME/skills` |
 | `src/config/lobehubSkillMarket.ts` | 市场安装目标包含 `dsh`，写入 DSH skill 根。不要把 `dsh plugin` 当成 skills 市场 |
 | 规则链 | 全局读取 `$DSH_HOME/AGENTS.md`。工作区与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。不把其他 CLI 规则复制进 DSH home |
 | `.ch/docs/references/cli-runtime-reference.md` | 已记录落地行为。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。图形点击验收和真实权限请求仍未验证 |

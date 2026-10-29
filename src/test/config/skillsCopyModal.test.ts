@@ -95,7 +95,7 @@ test("skill row actions stay on one line and copying opens a dialog instead of a
 });
 
 test("copy dialog excludes its source CLI and empty selection cannot submit", async () => {
-  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"], ["dsh", "DSH"], ["kimi-code", "KimiCode"]]) {
+  for (const [platform, label] of [["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"], ["codex", "Codex"], ["dsh", "DSH"], ["kimi-code", "KimiCode"], ["zcode", "ZCode"]]) {
     let calls = 0;
     const harness = createHarness(async () => { calls++; }, platform);
     assert.equal(harness.options().length, harness.components.CLI_GLOBAL_SKILL_TARGETS.length - 1);
@@ -226,7 +226,7 @@ function skillUiSlice(): string {
   return uiSource.slice(uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="), uiSource.indexOf("const SkillsManagerModal ="));
 }
 
-test("DSH is appended to the shared copy targets and can receive a skill copy", async () => {
+test("shared copy targets include DSH, Kimi Code, and ZCode", async () => {
   const targets = vm.runInNewContext(`${skillUiSlice()}\nCLI_GLOBAL_SKILL_TARGETS`, {});
   assert.deepEqual(plain(targets), [
     { id: "claude", label: "Claude" },
@@ -235,6 +235,7 @@ test("DSH is appended to the shared copy targets and can receive a skill copy", 
     { id: "codex", label: "Codex" },
     { id: "dsh", label: "DSH" },
     { id: "kimi-code", label: "KimiCode" },
+    { id: "zcode", label: "ZCode" },
   ]);
 
   const calls: string[] = [];
@@ -242,21 +243,24 @@ test("DSH is appended to the shared copy targets and can receive a skill copy", 
     assert.equal(item, skill);
     calls.push(platform);
   }, "claude");
-  assert.deepEqual(targetLabels(harness.options()), ["OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
+  assert.deepEqual(targetLabels(harness.options()), ["OpenCode", "Grok", "Codex", "DSH", "KimiCode", "ZCode"]);
   assert.equal(harness.option("DSH").props.type, "checkbox");
   assert.equal(harness.option("DSH").props.disabled, false);
   assert.equal(harness.option("Codex").props.disabled, false);
   harness.select("Codex");
   harness.select("DSH");
+  harness.select("ZCode");
   await harness.render().props.onOk();
-  assert.deepEqual(calls, ["codex", "dsh"]);
-  assert.deepEqual(harness.messages, ["已复制 example-skill 到 Codex、DSH"]);
+  assert.deepEqual(calls, ["codex", "dsh", "zcode"]);
+  assert.deepEqual(harness.messages, ["已复制 example-skill 到 Codex、DSH、ZCode"]);
   assert.equal(JSON.stringify(calls).includes("sk-"), false);
   assert.equal(JSON.stringify(harness.messages).includes("SINITEK_DSH_API_KEY"), false);
 
   const fromDsh = createHarness(async () => undefined, "dsh");
-  assert.deepEqual(targetLabels(fromDsh.options()), ["Claude", "OpenCode", "Grok", "Codex", "KimiCode"]);
+  assert.deepEqual(targetLabels(fromDsh.options()), ["Claude", "OpenCode", "Grok", "Codex", "KimiCode", "ZCode"]);
   assert.equal(fromDsh.options().some((node) => targetLabels([node])[0] === "DSH"), false);
+  const fromZcode = createHarness(async () => undefined, "zcode");
+  assert.deepEqual(targetLabels(fromZcode.options()), ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
 });
 
 function createMarketHarness(installResult: unknown) {
@@ -356,7 +360,10 @@ function createMarketHarness(installResult: unknown) {
 
 test("skills market install uses the shared list and can install to DSH", async () => {
   const harness = createMarketHarness({
-    targets: [{ platform: "dsh", name: "market-skill", status: "installed" }],
+    targets: [
+      { platform: "dsh", name: "market-skill", status: "installed" },
+      { platform: "zcode", name: "market-skill", status: "installed" },
+    ],
   });
   assert.deepEqual(plain(harness.components.CLI_GLOBAL_SKILL_TARGETS.map((item: { id: string }) => item.id)), [
     "claude",
@@ -365,15 +372,20 @@ test("skills market install uses the shared list and can install to DSH", async 
     "codex",
     "dsh",
     "kimi-code",
+    "zcode",
   ]);
   await harness.boot();
   harness.button("下载").props.onClick();
-  assert.deepEqual(targetLabels(harness.targetNodes()), ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
+  assert.deepEqual(targetLabels(harness.targetNodes()), ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode", "ZCode"]);
   assert.equal(harness.button("安装").props.disabled, true);
   const dsh = harness.targetNodes().find((node) => targetLabels([node])[0] === "DSH");
   assert.ok(dsh);
   assert.equal(dsh.props.children[0].props.type, "checkbox");
   dsh.props.children[0].props.onChange({ target: { checked: true } });
+  const zcode = harness.targetNodes().find((node) => targetLabels([node])[0] === "ZCode");
+  assert.ok(zcode);
+  assert.equal(zcode.props.children[0].props.disabled, false);
+  zcode.props.children[0].props.onChange({ target: { checked: true } });
   const codex = harness.targetNodes().find((node) => targetLabels([node])[0] === "Codex");
   assert.ok(codex);
   assert.equal(codex.props.children[0].props.disabled, false);
@@ -381,11 +393,11 @@ test("skills market install uses the shared list and can install to DSH", async 
   harness.button("安装").props.onClick();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(harness.installs.length, 1);
-  assert.deepEqual(plain(harness.installs[0]), { identifier: "market-skill", platforms: ["dsh"] });
+  assert.deepEqual(plain(harness.installs[0]), { identifier: "market-skill", platforms: ["dsh", "zcode"] });
   assert.deepEqual(Object.keys(harness.installs[0]).sort(), ["identifier", "platforms"]);
   assert.deepEqual(harness.messages, ["已安装 market-skill"]);
   assert.equal(harness.events[0]?.type, "sinitek-cli-skills-installed");
-  assert.deepEqual(plain(harness.events[0]?.detail), { platforms: ["dsh"] });
+  assert.deepEqual(plain(harness.events[0]?.detail), { platforms: ["dsh", "zcode"] });
   assert.equal(JSON.stringify(harness.installs).includes("apiKey"), false);
   assert.equal(JSON.stringify(harness.events).includes("sk-"), false);
 });

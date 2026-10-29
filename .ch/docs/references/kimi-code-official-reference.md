@@ -170,7 +170,7 @@ timeout = 5
 - 全局规则：`~/.kimi-code/AGENTS.md`；工作区 `.kimi-code/AGENTS.md` / `AGENTS.md` / `agents.md`
 - 斜杠命令 `/skill:<name>` 激活
 
-插件侧：Skills 目标从五个扩为六个，追加 Kimi Code；`src/config/cliGlobalSkills.ts` 与 `src/shared/userHomePaths.ts` 提供根路径解析。
+插件侧：Skills 市场目标共七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode；Kimi Code 根路径由 `src/config/cliGlobalSkills.ts` 与 `src/shared/userHomePaths.ts` 解析。
 
 ## 10. 多模型与回放接线
 

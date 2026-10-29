@@ -152,6 +152,14 @@ const detectConfigApiMode = () =>
       throw (console.error("安装 Skill 失败:", error), error);
     }
   },
+  installLocalSkillZip = async () => {
+    if (!configApi.installLocalSkillZip) throw new Error("当前模式不支持安装本地 ZIP");
+    try {
+      return configApi.installLocalSkillZip();
+    } catch (error) {
+      throw (console.error("安装本地 Skill ZIP 失败:", error), error);
+    }
+  },
     fetchConfigList = async (e) => {
     try {
       return configApi.getList(e);

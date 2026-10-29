@@ -19,7 +19,7 @@ const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/;
 const MARKET_USER_AGENT = "sinitek-cli-tools";
 const REQUEST_TIMEOUT_MS = 20000;
 const MAX_SEARCH_BYTES = 2 * 1024 * 1024;
-const MAX_ZIP_BYTES = 32 * 1024 * 1024;
+export const MAX_SKILL_ZIP_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 const MAX_ZIP_ENTRIES = 500;
@@ -58,6 +58,11 @@ export type LobehubSkillInstallResult = {
 };
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+export type LocalSkillZipOptions = {
+  fileName: string;
+  zipBytes: Buffer;
+};
 
 export type LobehubSkillMarketOptions = {
   fetchImpl?: FetchLike;
@@ -177,6 +182,25 @@ function isSkillDirectoryName(name: string): boolean {
   );
 }
 
+function isPortableSkillDirectoryName(name: string): boolean {
+  return isSkillDirectoryName(name)
+    && !/[<>:"|?*\u0000-\u001f]/.test(name)
+    && !/[. ]$/.test(name)
+    && !/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(name);
+}
+
+function skillNameFromZipFileName(fileName: string): string {
+  const archiveName = path.basename(fileName);
+  if (!/\.zip$/i.test(archiveName)) {
+    throw new SkillMarketError(t("skill.market.invalidLocalZip"));
+  }
+  const baseName = archiveName.replace(/\.zip$/i, "");
+  if (!isPortableSkillDirectoryName(baseName)) {
+    throw new SkillMarketError(t("skill.market.invalidLocalZipName"));
+  }
+  return baseName;
+}
+
 function isZipSymlink(entry: Entry): boolean {
   const mode = (entry.externalFileAttributes >>> 16) & 0xffff;
   return (mode & 0o170000) === 0o120000;
@@ -218,7 +242,7 @@ async function extractZipToDirectory(zipBytes: Buffer, destination: string, maxZ
     throw new SkillMarketError(t("skill.market.tooLarge"));
   }
   if (zipBytes.length < 4 || zipBytes[0] !== 0x50 || zipBytes[1] !== 0x4b) {
-    throw new SkillMarketError(t("skill.market.downloadFailed", { error: "响应不是 ZIP" }));
+    throw new SkillMarketError(t("skill.market.badZip"));
   }
   let zipfile: ZipFile;
   try {
@@ -298,6 +322,72 @@ async function extractZipToDirectory(zipBytes: Buffer, destination: string, maxZ
     });
   } finally {
     zipfile.close();
+  }
+}
+
+async function installLocalSkillArchive(
+  options: LocalSkillZipOptions,
+  platforms: CliGlobalSkillPlatform[],
+): Promise<LobehubSkillInstallResult> {
+  if (typeof options.fileName !== "string" || !/\.zip$/i.test(path.basename(options.fileName))) {
+    throw new SkillMarketError(t("skill.market.invalidLocalZip"));
+  }
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-local-skill-"));
+  try {
+    await extractZipToDirectory(options.zipBytes, tempRoot, MAX_SKILL_ZIP_BYTES);
+    const entries = (await fs.readdir(tempRoot, { withFileTypes: true }))
+      .filter((entry) => !entry.name.startsWith(".") && entry.name !== "__MACOSX");
+    const rootSkillFile = path.join(tempRoot, "SKILL.md");
+    let stat: Awaited<ReturnType<typeof fs.stat>> | undefined;
+    try {
+      stat = await fs.stat(rootSkillFile);
+    } catch {
+      stat = undefined;
+    }
+    let skillDirectory: string;
+    let skillName: string;
+    if (stat?.isFile()) {
+      skillDirectory = tempRoot;
+      skillName = skillNameFromZipFileName(options.fileName);
+    } else if (entries.length === 1 && entries[0].isDirectory() && isPortableSkillDirectoryName(entries[0].name)) {
+      skillDirectory = path.join(tempRoot, entries[0].name);
+      skillName = entries[0].name;
+      try {
+        const wrappedSkillStat = await fs.stat(path.join(skillDirectory, "SKILL.md"));
+        if (!wrappedSkillStat.isFile()) {
+          throw new SkillMarketError(t("skill.market.localZipLayout"));
+        }
+      } catch (error) {
+        if (error instanceof SkillMarketError) {
+          throw error;
+        }
+        throw new SkillMarketError(t("skill.market.localZipLayout"));
+      }
+    } else {
+      throw new SkillMarketError(t("skill.market.localZipLayout"));
+    }
+    const skillStat = await fs.lstat(path.join(skillDirectory, "SKILL.md"));
+    if (!skillStat.isFile()) {
+      throw new SkillMarketError(t("skill.market.localZipLayout"));
+    }
+    const content = await fs.readFile(path.join(skillDirectory, "SKILL.md"), "utf8");
+    const description = extractSkillDescription(content, skillDescriptionStrategies.continueOnEmpty);
+    const targets: LobehubSkillInstallTarget[] = [];
+    for (const platform of platforms) {
+      try {
+        const status = await installCliSkillDirectory(platform, skillName, skillDirectory);
+        targets.push({ platform, name: skillName, status });
+      } catch (error) {
+        targets.push({ platform, name: skillName, status: "failed", message: errorMessage(error) });
+      }
+    }
+    return {
+      identifier: skillName,
+      skills: [{ name: skillName, ...(description ? { description: description.trim() } : {}) }],
+      targets,
+    };
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }
 
@@ -466,7 +556,7 @@ export async function installLobehubSkill(
   const identifier = normalizeIdentifier(record.identifier);
   const platforms = normalizePlatforms(record.platforms);
   const fetchImpl = options.fetchImpl ?? fetch;
-  const maxZipBytes = options.maxZipBytes ?? MAX_ZIP_BYTES;
+  const maxZipBytes = options.maxZipBytes ?? MAX_SKILL_ZIP_BYTES;
   const downloadUrl = `${DOWNLOAD_ORIGIN}/api/v1/skills/${encodeURIComponent(identifier)}/download`;
   const zipBytes = await fetchAllowed(downloadUrl, DOWNLOAD_HOSTS, fetchImpl, maxZipBytes, "skill.market.downloadFailed");
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-lobehub-skill-"));
@@ -506,4 +596,31 @@ export async function installLobehubSkill(
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+export async function installLocalSkillZip(
+  input: unknown,
+  options: LocalSkillZipOptions,
+): Promise<LobehubSkillInstallResult> {
+  const record = asRecord(input) ?? {};
+  const platforms = normalizePlatforms(record.platforms);
+  if (!options || !Buffer.isBuffer(options.zipBytes) || typeof options.fileName !== "string") {
+    throw new SkillMarketError(t("skill.market.invalidLocalZip"));
+  }
+  return installLocalSkillArchive(options, platforms);
+}
+
+export async function installLocalSkillZipFromPath(input: unknown, filePath: string): Promise<LobehubSkillInstallResult> {
+  if (typeof filePath !== "string" || !/\.zip$/i.test(path.basename(filePath))) {
+    throw new SkillMarketError(t("skill.market.invalidLocalZip"));
+  }
+  const fileStat = await fs.stat(filePath);
+  if (!fileStat.isFile()) {
+    throw new SkillMarketError(t("skill.market.invalidLocalZip"));
+  }
+  if (fileStat.size > MAX_SKILL_ZIP_BYTES) {
+    throw new SkillMarketError(t("skill.market.tooLarge"));
+  }
+  const zipBytes = await fs.readFile(filePath);
+  return installLocalSkillZip(input, { fileName: path.basename(filePath), zipBytes });
 }

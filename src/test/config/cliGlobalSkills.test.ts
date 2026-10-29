@@ -27,6 +27,8 @@ const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 const originalGrokHome = process.env.GROK_HOME;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 const originalDshHome = process.env.DSH_HOME;
+const originalKimiCodeHome = process.env.KIMI_CODE_HOME;
+const originalZcodeDataBaseDir = process.env.ZCODE_DATA_BASE_DIR;
 const originalDshApiKey = process.env.SINITEK_DSH_API_KEY;
 
 async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T> {
@@ -42,6 +44,8 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   delete process.env.GROK_HOME;
   delete process.env.XDG_CONFIG_HOME;
   delete process.env.DSH_HOME;
+  delete process.env.KIMI_CODE_HOME;
+  delete process.env.ZCODE_DATA_BASE_DIR;
   delete process.env.SINITEK_DSH_API_KEY;
   try {
     return await run(homeDir);
@@ -74,6 +78,16 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
       delete process.env.DSH_HOME;
     } else {
       process.env.DSH_HOME = originalDshHome;
+    }
+    if (originalKimiCodeHome === undefined) {
+      delete process.env.KIMI_CODE_HOME;
+    } else {
+      process.env.KIMI_CODE_HOME = originalKimiCodeHome;
+    }
+    if (originalZcodeDataBaseDir === undefined) {
+      delete process.env.ZCODE_DATA_BASE_DIR;
+    } else {
+      process.env.ZCODE_DATA_BASE_DIR = originalZcodeDataBaseDir;
     }
     if (originalDshApiKey === undefined) {
       delete process.env.SINITEK_DSH_API_KEY;
@@ -291,6 +305,49 @@ test.describe("cli global skills", { concurrency: false }, () => {
       const listed = await getCliSkillsList("opencode");
       assert.equal(listed.directory, path.join(homeDir, ".config", "opencode", "skills"));
       assert.deepEqual(listed.skills, []);
+    });
+  });
+
+  test("installs Kimi Code and ZCode skills under their user-level roots", async () => {
+    await withTempHome(async (homeDir) => {
+      const cases = [
+        {
+          platform: "kimi-code",
+          home: path.join(homeDir, ".kimi-code"),
+          envKey: "KIMI_CODE_HOME",
+          customHome: path.join(homeDir, "kimi-code-custom"),
+        },
+        {
+          platform: "zcode",
+          home: path.join(homeDir, ".zcode"),
+          envKey: "ZCODE_DATA_BASE_DIR",
+          customHome: path.join(homeDir, "zcode-data"),
+        },
+      ] as const;
+
+      for (const item of cases) {
+        const defaultListing = await getCliSkillsList(item.platform);
+        assert.equal(defaultListing.directory, path.join(item.home, "skills"));
+
+        process.env[item.envKey] = item.customHome;
+        const customListing = await getCliSkillsList(item.platform);
+        const expectedDirectory = item.platform === "zcode"
+          ? path.join(item.customHome, ".zcode", "skills")
+          : path.join(item.customHome, "skills");
+        assert.equal(customListing.directory, expectedDirectory);
+
+        const sourceRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), `sinitek-${item.platform}-skill-`));
+        try {
+          const source = await writeSkill(sourceRoot, "market-skill", item.platform);
+          await installCliSkillDirectory(item.platform, "market-skill", source);
+          const installed = await getCliSkillsList(item.platform);
+          assert.equal(installed.directory, expectedDirectory);
+          assert.deepEqual(installed.skills.map((skill) => skill.name), ["market-skill"]);
+          assert.equal(fs.existsSync(path.join(expectedDirectory, "market-skill", "SKILL.md")), true);
+        } finally {
+          await fs.promises.rm(sourceRoot, { recursive: true, force: true });
+        }
+      }
     });
   });
 

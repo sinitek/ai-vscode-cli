@@ -90,13 +90,14 @@
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序是 Claude、Codex、OpenCode、Grok、DSH、Kimi Code；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH、Kimi Code 六个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。Kimi Code 配置页在 DSH 之后，用户配置是 $KIMI_CODE_HOME/config.toml（默认 ~/.kimi-code/config.toml），打开档案默认使用 TOML 源码模式；查看范例后一键导入会更新当前 TOML 草稿，用户保存后才应用。可视化字段集只含 default_model、default_permission_mode、model.provider、model.model、model.max_context_size、provider.type、provider.base_url、provider.api_key、provider.api_key_env；思考、Loop、显示名和能力声明不进入表单。保存经 commitKimiCodeText 自动补思考声明，其它未展示字段原样保留，非法 TOML 或空文本不覆盖上一份有效内容。Skills 与市场目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序是 Claude、Codex、OpenCode、Grok、DSH、Kimi Code；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills；DSH 使用 ${DSH_HOME:-~/.dsh}/skills，Kimi Code 使用 ${KIMI_CODE_HOME:-~/.kimi-code}/skills，ZCode 默认为 ~/.zcode/skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。Kimi Code 配置页在 DSH 之后，用户配置是 $KIMI_CODE_HOME/config.toml（默认 ~/.kimi-code/config.toml），打开档案默认使用 TOML 源码模式；查看范例后一键导入会更新当前 TOML 草稿，用户保存后才应用。可视化字段集只含 default_model、default_permission_mode、model.provider、model.model、model.max_context_size、provider.type、provider.base_url、provider.api_key、provider.api_key_env；思考、Loop、显示名和能力声明不进入表单。保存经 commitKimiCodeText 自动补思考声明，其它未展示字段原样保留，非法 TOML 或空文本不覆盖上一份有效内容。Skills 与市场目标是七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
-      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/extensionHost/cliModelSelectionStrategies.ts", "src/config/dshConfig.ts", "src/cli/dshConfigModels.ts"],
+      "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/shared/userHomePaths.ts", "src/extensionHost/cliModelSelectionStrategies.ts", "src/config/dshConfig.ts", "src/cli/dshConfigModels.ts"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/config/cliGlobalSkills.ts"},
+        {"path": "src/shared/userHomePaths.ts"},
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": "src/config/grokConfig.ts"},
         {"path": "src/cli/grokConfigModels.ts"},
@@ -1239,6 +1240,19 @@
         {"path": "src/webview/viewContentScript/runStreamAndQueue.ts", "anchor": "appendRunRawStream"},
         {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps run stream records beyond the former 2000 count cap"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "性能与内存硬化"}
+      ]
+    },
+    {
+      "id": "plugin.rule.local_skill_zip_layout",
+      "name": "本地技能 ZIP 布局与命名",
+      "description": "Skills 市场本地 ZIP 安装支持两种布局：唯一顶层项为含 SKILL.md 的技能目录时，目录名作为技能名并剥离外层目录；ZIP 根直接含 SKILL.md 时，ZIP 文件名去掉 .zip 后作为技能名并安装根内容。安装前拒绝无效布局、路径穿越、符号链接、加密条目和超限归档。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile"],
+      "source_refs": [
+        {"path": "src/config/lobehubSkillMarket.ts", "anchor": "installLocalSkillArchive"},
+        {"path": "src/test/config/lobehubSkillMarket.test.ts", "anchor": "installs local ZIP skills from a single wrapper directory or archive root"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "技能管理"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Skills 市场本地 ZIP 安装"}
       ]
     }
   ]

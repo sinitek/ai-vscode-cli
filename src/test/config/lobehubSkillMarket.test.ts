@@ -5,7 +5,12 @@ import * as path from "path";
 import test = require("node:test");
 import * as zlib from "zlib";
 
-import { installLobehubSkill, searchLobehubSkills } from "../../config/lobehubSkillMarket";
+import {
+  installLocalSkillZip,
+  installLocalSkillZipFromPath,
+  installLobehubSkill,
+  searchLobehubSkills,
+} from "../../config/lobehubSkillMarket";
 import { t } from "../../i18n";
 
 const originalHomedir = os.homedir;
@@ -14,6 +19,8 @@ const originalCodexHomeDir = process.env.CODEX_HOME_DIR;
 const originalGrokHome = process.env.GROK_HOME;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 const originalDshHome = process.env.DSH_HOME;
+const originalKimiCodeHome = process.env.KIMI_CODE_HOME;
+const originalZcodeDataBaseDir = process.env.ZCODE_DATA_BASE_DIR;
 const originalDshApiKey = process.env.SINITEK_DSH_API_KEY;
 
 type ZipEntry = {
@@ -102,6 +109,8 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   delete process.env.GROK_HOME;
   delete process.env.XDG_CONFIG_HOME;
   delete process.env.DSH_HOME;
+  delete process.env.KIMI_CODE_HOME;
+  delete process.env.ZCODE_DATA_BASE_DIR;
   delete process.env.SINITEK_DSH_API_KEY;
   try {
     return await run(homeDir);
@@ -117,6 +126,10 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
     else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
     if (originalDshHome === undefined) delete process.env.DSH_HOME;
     else process.env.DSH_HOME = originalDshHome;
+    if (originalKimiCodeHome === undefined) delete process.env.KIMI_CODE_HOME;
+    else process.env.KIMI_CODE_HOME = originalKimiCodeHome;
+    if (originalZcodeDataBaseDir === undefined) delete process.env.ZCODE_DATA_BASE_DIR;
+    else process.env.ZCODE_DATA_BASE_DIR = originalZcodeDataBaseDir;
     if (originalDshApiKey === undefined) delete process.env.SINITEK_DSH_API_KEY;
     else process.env.SINITEK_DSH_API_KEY = originalDshApiKey;
     await fs.promises.rm(temp, { recursive: true, force: true });
@@ -132,8 +145,11 @@ test("config page exposes the LobeHub skills market beside import", () => {
   assert.ok(marketAt > importAt);
   assert.match(uiSource, /searchLobehubSkills\(\{ query: nextQuery, page: nextPage \}\)/);
   assert.match(uiSource, /installLobehubSkill\(\{[\s\S]*?identifier: selected\.identifier/);
+  assert.match(uiSource, /installLocalSkillZip\(\)/);
+  assert.match(uiSource, /上传 ZIP 并选择 CLI/);
+  assert.match(uiSource, /ZIP 内单个顶层目录作为技能目录/);
+  assert.match(uiSource, /根目录含 SKILL\.md 时使用 ZIP 文件名/);
   assert.match(uiSource, /安装到 CLI（可多选）/);
-  assert.match(uiSource, /同名技能会先删除已有目录再安装/);
   assert.match(uiSource, /sinitek-cli-skills-installed/);
   const installStart = uiSource.indexOf("const confirmInstall = async () => {");
   const installEnd = uiSource.indexOf("return be.jsx(xr,", installStart);
@@ -144,6 +160,105 @@ test("config page exposes the LobeHub skills market beside import", () => {
   assert.match(installBody, /setSelectedTargets\(\[\]\)/);
   assert.match(apiSource, /searchLobehubSkills = async \(payload\)/);
   assert.match(apiSource, /installLobehubSkill = async \(payload\)/);
+  assert.match(apiSource, /installLocalSkillZip = async \(\)/);
+});
+
+test("installs local ZIP skills from a single wrapper directory or archive root", async () => {
+  await withTempHome(async (homeDir) => {
+    const wrappedZip = createZip([
+      { name: "skill-folder/SKILL.md", data: skillMarkdown("frontmatter-name", "Wrapped skill"), method: 8 },
+      { name: "skill-folder/scripts/run.js", data: Buffer.from("console.log('wrapped')\n", "utf8") },
+    ]);
+    const wrapped = await installLocalSkillZip(
+      { platforms: ["opencode", "grok"] },
+      { fileName: "unrelated-archive.zip", zipBytes: wrappedZip },
+    );
+    assert.deepEqual(wrapped.skills.map((skill) => skill.name), ["skill-folder"]);
+    assert.deepEqual(wrapped.targets.map((target) => target.platform), ["opencode", "grok"]);
+    assert.ok(wrapped.targets.every((target) => target.status === "installed"));
+    assert.equal(
+      await fs.promises.readFile(path.join(homeDir, ".config", "opencode", "skills", "skill-folder", "scripts", "run.js"), "utf8"),
+      "console.log('wrapped')\n",
+    );
+    assert.equal(
+      fs.existsSync(path.join(homeDir, ".config", "opencode", "skills", "unrelated-archive")),
+      false,
+    );
+
+    const flatZip = createZip([
+      { name: "SKILL.md", data: skillMarkdown("ignored-frontmatter", "Flat skill"), method: 8 },
+      { name: "references/guide.md", data: Buffer.from("guide\n", "utf8") },
+    ]);
+    const flat = await installLocalSkillZip(
+      { platforms: ["dsh"] },
+      { fileName: "flat-skill.zip", zipBytes: flatZip },
+    );
+    assert.deepEqual(flat.skills.map((skill) => skill.name), ["flat-skill"]);
+    assert.equal(flat.targets[0].status, "installed");
+    assert.equal(
+      await fs.promises.readFile(path.join(homeDir, ".dsh", "skills", "flat-skill", "references", "guide.md"), "utf8"),
+      "guide\n",
+    );
+
+    const localZipPath = path.join(homeDir, "from-file.ZIP");
+    await fs.promises.writeFile(localZipPath, flatZip);
+    const fromPath = await installLocalSkillZipFromPath({ platforms: ["zcode"] }, localZipPath);
+    assert.equal(fromPath.skills[0].name, "from-file");
+    assert.equal(fromPath.targets[0].status, "installed");
+    assert.equal(
+      await fs.promises.readFile(path.join(homeDir, ".zcode", "skills", "from-file", "SKILL.md"), "utf8"),
+      skillMarkdown("ignored-frontmatter", "Flat skill").toString("utf8"),
+    );
+  });
+});
+
+test("rejects unsafe or ambiguous local ZIP skill packages", async () => {
+  await withTempHome(async () => {
+    const validZip = createZip([{ name: "SKILL.md", data: skillMarkdown("name", "Description") }]);
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, { fileName: "not-a-zip.txt", zipBytes: validZip }),
+      { message: t("skill.market.invalidLocalZip") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, { fileName: "corrupt.zip", zipBytes: Buffer.from("nope") }),
+      { message: t("skill.market.badZip") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, {
+        fileName: ".zip",
+        zipBytes: validZip,
+      }),
+      { message: t("skill.market.invalidLocalZipName") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, {
+        fileName: "bad-layout.zip",
+        zipBytes: createZip([
+          { name: "one/SKILL.md", data: skillMarkdown("one", "One") },
+          { name: "two/SKILL.md", data: skillMarkdown("two", "Two") },
+        ]),
+      }),
+      { message: t("skill.market.localZipLayout") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, {
+        fileName: "missing-skill.zip",
+        zipBytes: createZip([{ name: "README.md", data: Buffer.from("no skill", "utf8") }]),
+      }),
+      { message: t("skill.market.localZipLayout") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: ["claude"] }, {
+        fileName: "escape.zip",
+        zipBytes: createZip([{ name: "../SKILL.md", data: skillMarkdown("escape", "Bad") }]),
+      }),
+      { message: t("skill.market.badZip") },
+    );
+    await assert.rejects(
+      () => installLocalSkillZip({ platforms: [] }, { fileName: "skill.zip", zipBytes: validZip }),
+      { message: t("skill.market.invalidPlatforms") },
+    );
+  });
 });
 
 test("searches the public LobeHub skills market", async () => {
@@ -309,28 +424,40 @@ test("installs a downloaded skill and replaces an existing directory", async () 
   });
 });
 
-test("installs a market skill to DSH and replaces the same directory without touching other CLIs", async () => {
+test("installs a market skill to every non-Claude/Codex user skills root", async () => {
   await withTempHome(async (homeDir) => {
     const secret = "sk-fixturekey123456";
+    process.env.XDG_CONFIG_HOME = path.join(homeDir, "xdg-config");
+    process.env.GROK_HOME = path.join(homeDir, "grok-home");
     process.env.DSH_HOME = path.join(homeDir, "dsh-home");
+    process.env.KIMI_CODE_HOME = path.join(homeDir, "kimi-home");
+    process.env.ZCODE_DATA_BASE_DIR = path.join(homeDir, "zcode-data");
     process.env.SINITEK_DSH_API_KEY = secret;
     const zip = createZip([
       { name: "SKILL.md", data: skillMarkdown("pdf", "DSH PDF skill"), method: 8 },
       { name: "scripts/extract.py", data: Buffer.from("print('dsh')\n", "utf8") },
     ]);
+    const opencodeSkill = path.join(homeDir, "xdg-config", "opencode", "skills", "pdf");
+    const grokSkill = path.join(homeDir, "grok-home", "skills", "pdf");
     const dshSkill = path.join(homeDir, "dsh-home", "skills", "pdf");
+    const kimiSkill = path.join(homeDir, "kimi-home", "skills", "pdf");
+    const zcodeSkill = path.join(homeDir, "zcode-data", ".zcode", "skills", "pdf");
     await fs.promises.mkdir(dshSkill, { recursive: true });
     await fs.promises.writeFile(path.join(dshSkill, "old-note.txt"), "stale\n", "utf8");
     const installed = await installLobehubSkill(
-      { identifier: "dsh-pdf", platforms: ["dsh", "dsh"] },
+      { identifier: "dsh-pdf", platforms: ["opencode", "grok", "dsh", "dsh", "kimi-code", "zcode"] },
       { fetchImpl: async () => zipResponse(zip) },
     );
-    assert.deepEqual(installed.targets.map((target) => target.platform), ["dsh"]);
-    assert.equal(installed.targets[0]?.status, "installed");
-    assert.equal(installed.targets[0]?.message, undefined);
+    assert.deepEqual(installed.targets.map((target) => target.platform), ["opencode", "grok", "dsh", "kimi-code", "zcode"]);
+    assert.ok(installed.targets.every((target) => target.status === "installed"));
+    assert.equal(installed.targets.find((target) => target.platform === "dsh")?.message, undefined);
     assert.equal(JSON.stringify(installed).includes(secret), false);
     assert.equal(fs.existsSync(path.join(dshSkill, "old-note.txt")), false);
     assert.equal(await fs.promises.readFile(path.join(dshSkill, "scripts", "extract.py"), "utf8"), "print('dsh')\n");
+    assert.equal(await fs.promises.readFile(path.join(opencodeSkill, "SKILL.md"), "utf8"), skillMarkdown("pdf", "DSH PDF skill").toString("utf8"));
+    assert.equal(await fs.promises.readFile(path.join(grokSkill, "SKILL.md"), "utf8"), skillMarkdown("pdf", "DSH PDF skill").toString("utf8"));
+    assert.equal(await fs.promises.readFile(path.join(kimiSkill, "SKILL.md"), "utf8"), skillMarkdown("pdf", "DSH PDF skill").toString("utf8"));
+    assert.equal(await fs.promises.readFile(path.join(zcodeSkill, "SKILL.md"), "utf8"), skillMarkdown("pdf", "DSH PDF skill").toString("utf8"));
     assert.equal(fs.existsSync(path.join(homeDir, ".claude", "skills")), false);
     assert.equal(fs.existsSync(path.join(homeDir, ".codex", "skills")), false);
     assert.equal(fs.existsSync(path.join(homeDir, ".grok", "skills")), false);

@@ -79,7 +79,7 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - 配置页范例默认模型 id 为 `deepseek-v4.1-flash`，不加 `subcoco/` 前缀；实际模型 id 按所选 API 协议的端点要求原样填写在 `models[].id` 与 `acpModel`。profile 可按顺序配置多个模型，`acpModel` 指定默认值。聊天面板仅提供 profile 中的模型选择，所选 id 会持久化，并在下一次执行时解析为已配置 provider wire、由 ACP 确认切换。未配置或 ACP 未公布的模型不能执行。凭据默认引用 `SINITEK_DSH_API_KEY`，不借用 `DEEPSEEK_API_KEY` 或其他平台密钥；配置页也允许把 `apiKey` 直接保存到本机 DSH profile，并仅在启动子进程时注入该环境变量。配置页分组在 Grok 之后，直接密钥输入使用密码控件。`apiKeyEnv` 不是密钥值；可视化模式不展示该字段，profile 可省略，保存和运行 patch 会自动规范化为固定值 `SINITEK_DSH_API_KEY`。ACP 模型 wire 使用 `JSON.stringify(["sinitek-custom", modelId])`，模型 id 不拆分或自动添加前缀；未列入 `models[]` 或未被当前 ACP 广告的 id 不能执行。
 - 未配置模型不能执行。未出现在已配置模型和当前 ACP `configOptions` 中的 id 不得当成可执行模型。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。
 - 携宁 CLI 启动 DSH ACP 子进程时固定覆盖 `DSH_PERMISSION_MODE=danger-full-access`，使用 DSH 官方的完整访问且免审批策略；仅作用于该子进程，不修改扩展宿主环境。
-- Skills 目标是六个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
+- Skills 市场目标共七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。Skills 根是 `<DSH_HOME>/skills`。市场安装和复制可以选择 DSH。全局规则是 `<DSH_HOME>/AGENTS.md`，工作区规则与 Codex、OpenCode、Grok 共享一份 `AGENTS.md`。DSH ACP 没有显式 skills 方法。
 - usage 缺失不显示为 0。出现的 `usage_update.size` 若来自 adapter-fallback，界面标成适配器窗口，不能冒充服务确认容量。
 - DSH ACP 的 `plan.entries` 和 `todo_write` / `update_plan` 工具 `rawInput.todos` 使用结构化任务文本与状态更新当前 tab 的任务列表。面板只显示任务正文，不把 `pending`、`in_progress` 等状态标记或“Updated todo list”工具摘要拼入任务名称；重复计划快照不重复更新。
 - DSH 工具调用复用现有 Codex 风格 trace 展示：命令调用显示命令及输出，其它工具显示本地化标题、格式化输入及输出。相同 `toolCallId` 的开始、进度和完成事件原位更新同一气泡，未变化快照不重复发送，协议状态字符串不作为气泡正文。
@@ -103,7 +103,7 @@ Codex 管理模型弹窗的开合由用户显式操作控制；任务执行、�
 - 上下文与压缩：`usage_update` 每轮结束后异步发送一次，`size` 取自模型目录的 `max_context_size`，是配置声明的真实窗口上限而不是估算值。runner 与 host 保留同一 ACP 会话的收尾通知，收到有效用量后按 Tab 展示；未收到时不显示「—」或估算值。`src/extensionHost/interactiveTurnKimi.ts` 标 `contextWindowSource: "kimi-config-window"`，悬停文案说明窗口取自配置的 `max_context_size`，与 DSH 的 `adapter-fallback` 区分且不共用文案。Kimi CLI 支持自动压缩与 `/compact`，ACP 会把自动压缩的开始、完成、取消、阻塞及 `/compact` 的开始确认作为普通助手文本发送，插件精确识别这些官方文本并显示「压缩中」，完成或失败后恢复；它们不进入最终答复判定。ACP 没有独立压缩方法，插件 `compactSession()` 抛 `compaction-unsupported`，不伪造本地压缩，面板不显示「压缩上下文」按钮。`[loop_control].reserved_context_size` 只作用于 CLI 自己的循环。
 - 回放：`KimiReplayStream` 只精简诊断回放，聊天仍实时展示正文与思考。`agent_thought_chunk`、`usage_update`、命令目录和会话信息不生成回放 JSON；普通正文兼容增量及累计文本，按消息或当前回合以 1 秒或 32 KiB 合并，仅忽略 `_meta` 中逐帧变化的 `eventId`、`chunkId`、`agentTimestampMs`，合并结果保留最后一片元数据，消息/会话等未知元数据变化仍构成边界，缺失 `messageId` 时不跨回合去重。工具无 `toolCallId` 的帧丢弃，保留开始、完整标题/参数和规范化终态；进行中逐 token 参数及命令输出的累计快照按新增片段合并，32 KiB 或语义边界触发冲刷，状态重复快照不新增记录。重复计划快照同样去重，其他未知事件保守保留。工具、计划、回合结束及取消都会排空待合并正文，Webview 回放与 JSONL 导出消费同一批记录。
 - 错误收口：`session/prompt` 返回的 provider 错误（包括 `type: "model_not_found"` 及“not supported by any configured account”）保留原始错误消息并直接显示错误气泡，不进入“没有最终结论”的 hidden retry，也不伪装成中断或成功结束。
-- Skills 目标是六个，显示顺序保持 Claude、OpenCode、Grok、Codex、DSH、KimiCode。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。
+- Skills 市场目标共七个，显示顺序保持 Claude、OpenCode、Grok、Codex、DSH、KimiCode、ZCode。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。
 - Webview：消费宿主的 `kimiThinkingOptions`（按 `tabId` 隔离、过滤非法值、只从广告集合选当前值、只有 `off`/`on` 时禁用下拉）与 `kimiModeUpdate`（按 `tabId` 存 `kimiAcpModeId`，不新增界面）；收到广告前用官方五档占位，切换标签页或 CLI 会清空广告集合。回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts` 与 `src/test/extensionHost/kimiInteractiveHostWire.test.ts`。
 - 配置中心可视化布局与 DSH 一致：默认模型、免审批模式作为公共参数置于上方；下方左侧管理模型列表，右侧编辑所选模型参数及该模型引用的连接参数。模型列表下不再展示 Providers 清单，TOML 中的 `providers` 数据与未展示字段仍原样保留。
 - 验收：真实 `kimi acp`（2.3.2）+ `subcoco/kimi-k3.1-pro` 已跑通新建会话、`yolo` 模式、`thinking=high`、权限自动放行与写文件任务，文件内容经校验；此前显式声明思考能力的配置在隔离 `KIMI_CODE_HOME` 下实测广告完整六档并完成一轮 prompt。当前精简默认配置另行运行 `kimi doctor config`；图形 Extension Host 点击验收未做。
@@ -310,8 +310,8 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 - 对话面板里的配置档案下拉按 CLI 维度维护 `activeConfigIdByCli`：用户先看到待切换配置，但在宿主完成 `applyConfig` 并回写工作区 active config 之前，提示词发送与队列出队都会等待该配置应用完成；应用失败时会回滚到当前 active config，并展示错误提示，不会出现“下拉已切过去但实际运行仍使用旧配置”的状态。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
-- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH 五个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这五个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。全部安装成功后市场弹层保持打开，并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
-- OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。DSH 的全局技能目录为 `${DSH_HOME:-~/.dsh}/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/) 和 [Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)。
+- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这七个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。市场也支持选择本地 ZIP 并多选 CLI 安装：若 ZIP 唯一顶层项是含 `SKILL.md` 的技能目录，则以该目录名为技能名，只安装其内部内容；若 ZIP 根目录直接包含 `SKILL.md`，则以 ZIP 文件名（不含 `.zip`）为技能名，并安装根目录内容。两种布局均安装到目标 CLI 的全局技能目录，不保留外层包装目录。拒绝路径穿越、符号链接、加密条目、缺少 `SKILL.md` 的布局及超限压缩包。全部在线安装成功后市场弹层保持打开并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
+- OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。DSH 的全局技能目录为 `${DSH_HOME:-~/.dsh}/skills`，Kimi Code 为 `${KIMI_CODE_HOME:-~/.kimi-code}/skills`，ZCode 默认为 `~/.zcode/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/)、[Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)、[DSH filesystem skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.zh.md)、[Kimi Code Agent Skills](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/skills.html) 和 [ZCode Skill](https://zcode.z.ai/cn/docs/skill)。
 - Skills 表格的操作按钮保持同行；“复制到”按钮打开弹窗，可多选当前 CLI 以外的目标。复制期间禁用重复提交，部分失败保留失败目标重试，成功目标不会重复复制；不覆盖同名技能。
 - 配置中心不再提供 MCP 市场、安装、卸载或健康检查
 
@@ -388,7 +388,7 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 
 - 用户能在 VS Code 内完成多 CLI 切换与对话
 - 会话、历史、模型和规则在重开面板后仍可恢复
-- 配置中心能管理本地配置；Skills 可打开、删除、复制 Claude、OpenCode、Grok、Codex、DSH 五个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，安装成功后市场弹层保持打开以便继续选择；配置中心不再提供 MCP 管理
+- 配置中心能管理本地配置；Skills 可打开、删除、复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，也可上传本地 ZIP 安装：唯一顶层技能目录采用目录名，ZIP 根直接包含 `SKILL.md` 时采用 ZIP 文件名；配置中心不再提供 MCP 管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
 OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。

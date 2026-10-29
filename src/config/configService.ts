@@ -1143,4 +1143,6 @@ export {
 export {
   searchLobehubSkills,
   installLobehubSkill,
+  installLocalSkillZip,
+  installLocalSkillZipFromPath,
 } from "./lobehubSkillMarket";

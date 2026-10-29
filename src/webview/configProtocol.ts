@@ -25,6 +25,7 @@ export const CONFIG_ACTIONS = [
   "copyCliSkill",
   "searchLobehubSkills",
   "installLobehubSkill",
+  "pickAndInstallLocalSkillZip",
   "exportConfigs",
   "getCliEnabled",
 ] as const;
@@ -50,6 +51,7 @@ export type ConfigRequestPayload =
   | { action: "copyCliSkill"; platform: string; name: string; targetPlatform: string }
   | { action: "searchLobehubSkills"; payload?: { query?: string; page?: number } }
   | { action: "installLobehubSkill"; payload?: { identifier?: string; platforms?: string[] } }
+  | { action: "pickAndInstallLocalSkillZip" }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } }
   | { action: "getCliEnabled" };
 

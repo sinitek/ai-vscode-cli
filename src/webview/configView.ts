@@ -416,6 +416,7 @@ export function getConfigViewHtml(
             requestConfig("copyCliSkill", { platform, name, targetPlatform }),
           searchLobehubSkills: (payload) => requestConfig("searchLobehubSkills", { payload }),
           installLobehubSkill: (payload) => requestConfig("installLobehubSkill", { payload }),
+          installLocalSkillZip: () => requestConfig("pickAndInstallLocalSkillZip", {}),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
           getCliEnabled: () => requestConfig("getCliEnabled", {}),
         },

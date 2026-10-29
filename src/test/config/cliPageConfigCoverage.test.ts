@@ -909,6 +909,7 @@ test("config manager panel routes remaining request actions and export branches"
     "openCliSkillsDirectory",
     "deleteCliSkill",
     "copyCliSkill",
+    "installLocalSkillZipFromPath",
   ];
   for (const name of serviceNames) {
     originals.set(name, Object.getOwnPropertyDescriptor(configService, name));
@@ -921,6 +922,9 @@ test("config manager panel routes remaining request actions and export branches"
   }
   const originalMkdir = fs.promises.mkdir;
   const originalWriteFile = fs.promises.writeFile;
+  const vscode = require("vscode") as AnyRecord;
+  const originalShowOpenDialog = vscode.window.showOpenDialog;
+  const originalShowQuickPick = vscode.window.showQuickPick;
   const calls: unknown[][] = [];
   const written: unknown[][] = [];
   let mkdirFailuresRemaining = 1;
@@ -973,6 +977,10 @@ test("config manager panel routes remaining request actions and export branches"
       calls.push(["copyCliSkill", platform, name, targetPlatform]);
       return { directory: `/skills/${platform}`, displayDirectory: `~/${platform}/skills`, skills: [{ name }] };
     };
+    configService.installLocalSkillZipFromPath = async (input: AnyRecord, filePath: string) => {
+      calls.push(["installLocalSkillZipFromPath", input, filePath]);
+      return { targets: [{ platform: "dsh", name: "uploaded-skill", status: "installed" }] };
+    };
     fs.promises.mkdir = (async (target: fs.PathLike) => {
       calls.push(["mkdir", String(target)]);
       if (mkdirFailuresRemaining > 0) {
@@ -988,6 +996,8 @@ test("config manager panel routes remaining request actions and export branches"
 
     const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
     const harness = installConfigPanelHarness();
+    vscode.window.showOpenDialog = async () => [{ fsPath: "/tmp/uploaded-skill.zip" }];
+    vscode.window.showQuickPick = async (items: AnyRecord[]) => [items.find((item) => item.platform === "dsh")];
     let changeNotifications = 0;
     const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, {
       onConfigChanged: () => {
@@ -1011,6 +1021,7 @@ test("config manager panel routes remaining request actions and export branches"
       { requestId: "skills-open", action: "openCliSkillsDirectory", platform: "claude" },
       { requestId: "skills-delete", action: "deleteCliSkill", platform: "opencode", name: "skill-a" },
       { requestId: "skills-copy", action: "copyCliSkill", platform: "grok", name: "skill-b", targetPlatform: "codex" },
+      { requestId: "skills-local-zip", action: "pickAndInstallLocalSkillZip" },
       { requestId: "export-invalid", action: "exportConfigs", payload: { fileName: "ignored.json" } },
       { requestId: "export-default", action: "exportConfigs", payload: { content: "{\"ok\":true}" } },
       { requestId: "export-sanitized", action: "exportConfigs", payload: { fileName: "bad:name", content: "{}" } },
@@ -1036,6 +1047,11 @@ test("config manager panel routes remaining request actions and export branches"
     assert.ok(written.some(([target]) => String(target).endsWith("bad_name.json")));
     assert.ok(written.some(([target]) => String(target).endsWith("ready.json")));
     assert.deepEqual(calls.find((call) => call[0] === "getCliSkillsList"), ["getCliSkillsList", "codex"]);
+    assert.deepEqual(calls.find((call) => call[0] === "installLocalSkillZipFromPath"), [
+      "installLocalSkillZipFromPath",
+      { platforms: ["dsh"] },
+      "/tmp/uploaded-skill.zip",
+    ]);
   } finally {
     for (const [name, descriptor] of originals) {
       if (descriptor) {
@@ -1046,6 +1062,8 @@ test("config manager panel routes remaining request actions and export branches"
     }
     fs.promises.mkdir = originalMkdir;
     fs.promises.writeFile = originalWriteFile;
+    vscode.window.showOpenDialog = originalShowOpenDialog;
+    vscode.window.showQuickPick = originalShowQuickPick;
   }
 });
 
@@ -1074,6 +1092,7 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "copyCliSkill",
     "searchLobehubSkills",
     "installLobehubSkill",
+    "pickAndInstallLocalSkillZip",
     "exportConfigs",
     "getCliEnabled",
   ]);
@@ -1420,7 +1439,7 @@ test("Codex, Claude, and OpenCode visual editor utilities expose stable observab
   assert.equal(Object.keys(openCodeSerialized.config.provider).length, 1);
 });
 
-test("skills copy and market install share the DSH and Kimi Code targets appended after Codex", async () => {
+test("skills copy and market install expose all seven CLI targets", async () => {
   const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
   assert.equal(uiSource.split("const CLI_GLOBAL_SKILL_TARGETS =").length, 2);
   const targetBlock = extractBetween(uiSource, "const CLI_GLOBAL_SKILL_TARGETS = [", "];");
@@ -1431,6 +1450,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   { id: "codex", label: "Codex" },
   { id: "dsh", label: "DSH" },
   { id: "kimi-code", label: "KimiCode" },
+  { id: "zcode", label: "ZCode" },
 `);
   const copyModal = extractBetween(uiSource, "const SkillsCopyModal =", "const SkillsMarketModal =");
   const marketModal = extractBetween(uiSource, "const SkillsMarketModal =", "const renderSkillRows =");
@@ -1509,7 +1529,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   const copyLabels = descendants(copyModalNode)
     .filter((node) => node.type === "label")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
+  assert.deepEqual(copyLabels, ["OpenCode", "Grok", "Codex", "DSH", "KimiCode", "ZCode"]);
   const dshCopy = descendants(copyModalNode).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshCopy);
   dshCopy.props.children[0].props.onChange({ target: { checked: true } });
@@ -1541,7 +1561,7 @@ test("skills copy and market install share the DSH and Kimi Code targets appende
   const marketLabels = descendants(selected)
     .filter((node) => node.type === "label" && node.props.className === "skills-copy-target")
     .map((node) => node.props.children[1].props.children);
-  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode"]);
+  assert.deepEqual(marketLabels, ["Claude", "OpenCode", "Grok", "Codex", "DSH", "KimiCode", "ZCode"]);
   const dshInstall = descendants(selected).find((node) => node.type === "label" && node.props.children[1].props.children === "DSH");
   assert.ok(dshInstall);
   dshInstall.props.children[0].props.onChange({ target: { checked: true } });

@@ -12,6 +12,8 @@ export const GROK_HOME_ENV_KEY = "GROK_HOME";
 export const DSH_HOME_DIRECTORY_NAME = ".dsh";
 export const DSH_HOME_ENV_KEY = "DSH_HOME";
 export const KIMI_CODE_HOME_DIRECTORY_NAME = ".kimi-code";
+export const ZCODE_HOME_DIRECTORY_NAME = ".zcode";
+export const ZCODE_DATA_BASE_ENV_KEY = "ZCODE_DATA_BASE_DIR";
 export const KIMI_CODE_HOME_ENV_KEY = "KIMI_CODE_HOME";
 export const KIMI_CODE_GLOBAL_SKILLS_DIRECTORY_NAME = "skills";
 export const KIMI_CODE_GLOBAL_RULES_FILE_NAME = "AGENTS.md";
@@ -169,6 +171,15 @@ export function resolveGrokConfigPath(
   platform: NodeJS.Platform = process.platform,
 ): string {
   return path.join(resolveGrokHomeDir(env, homeDir, platform), "config.toml");
+}
+
+export function resolveZcodeHomeDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const configured = expandHomePath(env[ZCODE_DATA_BASE_ENV_KEY], { homeDir, env, platform });
+  return path.join(configured || homeDir, ZCODE_HOME_DIRECTORY_NAME);
 }
 
 export function resolveKimiCodeHomeDir(

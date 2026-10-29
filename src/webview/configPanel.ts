@@ -267,6 +267,44 @@ export class ConfigManagerPanel {
         case "installLobehubSkill":
           response.data = await configService.installLobehubSkill(message.payload);
           break;
+        case "pickAndInstallLocalSkillZip": {
+          const selectedFiles = await vscode.window.showOpenDialog({
+            title: "选择 Skills ZIP 包",
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters: { "ZIP 压缩包": ["zip"] },
+          });
+          if (!selectedFiles?.[0]) {
+            response.data = null;
+            break;
+          }
+          const selectedPlatforms = await vscode.window.showQuickPick(
+            [
+              { label: "Claude", platform: "claude" },
+              { label: "Codex", platform: "codex" },
+              { label: "OpenCode", platform: "opencode" },
+              { label: "Grok", platform: "grok" },
+              { label: "DSH", platform: "dsh" },
+              { label: "Kimi Code", platform: "kimi-code" },
+              { label: "ZCode", platform: "zcode" },
+            ],
+            {
+              canPickMany: true,
+              title: "选择安装目标 CLI",
+              placeHolder: "可多选 Skills 安装位置",
+            },
+          );
+          if (!selectedPlatforms?.length) {
+            response.data = null;
+            break;
+          }
+          response.data = await configService.installLocalSkillZipFromPath(
+            { platforms: selectedPlatforms.map((platform) => platform.platform) },
+            selectedFiles[0].fsPath,
+          );
+          break;
+        }
         case "getCliEnabled":
           response.data = {
             cliEnabledByName: normalizeCliEnabledByName(readToolSettings().cliEnabledByName) ?? {},
