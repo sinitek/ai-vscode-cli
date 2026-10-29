@@ -4500,15 +4500,6 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       cancelInvocation: (tabId) => {
         cancelLoopPlusInvocation(tabId);
       },
-      appendSubtaskPrompt: (message) => {
-        appendSystemMessageForLoop(message.target, message.content, {
-          taskRole: "subtask",
-          loopTaskId: message.taskId,
-          loopRound: message.round,
-          loopSubtaskId: message.subtaskId,
-          merge: false,
-        });
-      },
       resolveSessionId: (target) => resolveLoopTaskSessionId(target),
       activeWorkspaceKey: () => activeWorkspaceKey,
       isSubtaskConversation: (target) => Boolean(resolveLoopSubtaskConversationContext(target.cli, target.tabId)),

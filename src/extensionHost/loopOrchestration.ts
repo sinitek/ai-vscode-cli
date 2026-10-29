@@ -2697,10 +2697,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           target,
           buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
         );
-        appendSystemMessageForLoop(
-          subtaskTarget,
-          buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
-        );
         appendLoopMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
         if (shouldSwitchVisible) {
           await switchVisibleConversationTabForLoop(subtaskTarget.tabId);

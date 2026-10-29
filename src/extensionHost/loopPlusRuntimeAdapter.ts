@@ -40,14 +40,6 @@ export type LoopPlusInvocationQuery = {
   displayPrompt: string;
 };
 
-type LoopPlusTranscriptMessage = {
-  target: LoopPlusPromptTarget;
-  content: string;
-  taskId: string;
-  round: number;
-  subtaskId: string;
-};
-
 export type LoopPlusRuntimeAdapterDeps = {
   maxConcurrency?: number;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
@@ -79,7 +71,6 @@ export type LoopPlusRuntimeAdapterDeps = {
   createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"]) => LoopPlusPromptTarget;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   cancelInvocation: (tabId: string) => void;
-  appendSubtaskPrompt: (message: LoopPlusTranscriptMessage) => void;
   resolveSessionId: (target: LoopPlusPromptTarget) => string | null;
   activeWorkspaceKey: () => string;
   isSubtaskConversation: (target: LoopPlusPromptTarget) => boolean;
@@ -358,13 +349,6 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     };
 
     async function runStartedAttempt(): Promise<LoopPlusAttemptResult> {
-      deps.appendSubtaskPrompt({
-        target: subtaskTarget,
-        content: request.prompt,
-        taskId: request.taskId,
-        round: request.round,
-        subtaskId: request.subtaskId,
-      });
       const rootResult = await withLoopPlusExecutionRoot(
         () => deps.createExecutionRoot(),
         async (executionRoot): Promise<AttemptExecution> => {

@@ -1182,11 +1182,6 @@ async function executeGraphNodeViaRunPrompt(
     deps.messages.buildGraphNodeDispatchedText(request.run, request.node, graphNodeTarget, communicationFile),
     request.run.id,
   );
-  deps.messages.appendSystemMessageForGraph(
-    graphNodeTarget,
-    deps.messages.buildGraphNodeStartedText(request.run, request.node, communicationFile),
-    request.run.id,
-  );
 
   const routedInput: PromptRunInput = modelRole === "subtask" && subtaskExecution?.crossCli
     ? {

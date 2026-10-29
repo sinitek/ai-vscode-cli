@@ -93,6 +93,50 @@ function reportText(rootDir: string): string {
   return chunks.join("\n");
 }
 
+test("adapter creates only the normal user prompt bubble in a subtask conversation", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  let messages: ReturnType<typeof fixture.getMessages> = [];
+  try {
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+      });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "A attempt result" });
+      messages = fixture.getMessages(tabId).slice();
+    });
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: completedDecision(currentEventId(input.displayPrompt)),
+      });
+    });
+
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+
+    const subtaskTarget = fixture.createdSubtaskTargets[0];
+    assert.ok(subtaskTarget);
+    const displayPrompt = fixture.attemptCalls[0]?.displayPrompt;
+    assert.ok(displayPrompt?.includes(longPrompt("A", "src/a.ts")));
+    const promptMessages = messages.filter((message) => message.content === displayPrompt);
+    assert.equal(promptMessages.length, 1);
+    assert.equal(promptMessages[0]?.role, "user");
+    assert.equal(promptMessages[0]?.taskRole, "subtask");
+    assert.equal(promptMessages[0]?.loopTaskId, fixture.mainCalls[0]?.loopTaskId);
+    assert.equal(promptMessages[0]?.loopRound, fixture.attemptCalls[0]?.loopRound);
+    assert.equal(promptMessages[0]?.loopSubtaskId, "A");
+    assert.equal(messages.some((message) => message.role === "system"), false);
+    assert.equal(fixture.getMessages(fixture.target.tabId).filter((message) => (
+      message.role === "user" && message.content === fixture.mainCalls[0]?.displayPrompt
+    )).length, 1);
+    assert.equal(fixture.completionMessages[0]?.task.status, "completed");
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("adapter runs A review while B is live, then refreshes current and queued finishes", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {

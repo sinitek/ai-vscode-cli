@@ -56,6 +56,7 @@ export type LoopPlusRuntimeFixture = {
   setReportFailure: (message: string | null) => void;
   setCancelInvocation: (cancel: ((tabId: string) => void) | null) => void;
   publish: (input: PromptRunInput, tabId: string, options?: PublishOptions) => void;
+  getMessages: (tabId: string) => ChatMessage[];
   seedHistory: (input: PromptRunInput, tabId: string, options: { content: string; status: TaskRunStatus; prompt?: string; assistantId?: string }) => void;
   parkedSubtaskIds: () => string[];
   parkedAttempts: () => Array<{ subtaskId: string; tabId: string; input: PromptRunInput }>;
@@ -389,18 +390,6 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
       }
       releaseInvocation(tabId);
     },
-    appendSubtaskPrompt: (message) => {
-      bucket(message.target.tabId).push({
-        id: nextId("system"),
-        role: "system",
-        content: message.content,
-        createdAt: Date.now(),
-        taskRole: "subtask",
-        loopTaskId: message.taskId,
-        loopRound: message.round,
-        loopSubtaskId: message.subtaskId,
-      });
-    },
     resolveSessionId: (promptTarget) => promptTarget.sessionId,
     activeWorkspaceKey: () => "workspace",
     isSubtaskConversation: () => subtaskConversation,
@@ -437,6 +426,7 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
     createdSubtaskTargets,
     rootsDisposed,
     executionCwds,
+    getMessages: bucket,
     queueMain: (action) => {
       mainQueue.push(action);
     },

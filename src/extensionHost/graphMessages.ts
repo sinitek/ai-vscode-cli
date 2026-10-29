@@ -233,24 +233,6 @@ function buildGraphNodeDispatchedText(
   ].join("\n");
 }
 
-function buildGraphNodeStartedText(
-  run: GraphRunRecord,
-  node: GraphNodeExecutionRequest["node"],
-  communicationFile: string,
-): string {
-  return [
-    `Graph 子节点开始执行：${node.id}`,
-    "",
-    `- 运行：${run.id}`,
-    `- 节点标题：${node.title}`,
-    `- 节点类型：${node.kind}`,
-    `- 执行模式：${formatGraphRunExecutionMode(run)}`,
-    `- 执行目录：${formatGraphRunExecutionCwd(run)}`,
-    `- 建议写入：${node.writeFiles?.length ? node.writeFiles.join("、") : "未声明"}`,
-    `- 沟通文件：${communicationFile}`,
-  ].join("\n");
-}
-
 function formatGraphRunExecutionMode(run: GraphRunRecord): string {
   return run.executionMode === "direct" && run.directExecution?.cwd
     ? "direct project workspace"
@@ -468,7 +450,6 @@ function isGraphFinalSummaryMessageForRun(message: ChatMessage, graphRunId: stri
     buildGraphRunMessageAction,
     appendSystemMessageForGraph,
     buildGraphNodeDispatchedText,
-    buildGraphNodeStartedText,
     formatGraphRunExecutionMode,
     formatGraphRunExecutionCwd,
     buildGraphRunStartedText,

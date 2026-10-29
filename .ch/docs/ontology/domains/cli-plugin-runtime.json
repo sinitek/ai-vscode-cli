@@ -1263,6 +1263,21 @@
       ]
     },
     {
+      "id": "plugin.rule.subtask_creation_user_bubble",
+      "name": "子任务创建只生成正常提示词气泡",
+      "description": "Loop、Loop+ 和 Graph 子任务创建时，子会话由统一 runPrompt 路径生成正常样式的 user 提示词气泡，不再额外写入系统样式的提示词副本或启动说明。正常消息保留任务、轮次、子任务元数据，Graph 保留运行及节点绑定。主任务会话的派发、进度、异常和完成消息不变，不全局隐藏系统消息，不改写历史记录。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopOrchestration.ts", "anchor": "runLoopSubtaskWithRetry"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts", "anchor": "runStartedAttempt"},
+        {"path": "src/extensionHost/graphRuntime.ts", "anchor": "createGraphNodeRunTarget"},
+        {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts", "anchor": "normal user prompt bubble"},
+        {"path": "src/test/extensionHost/subtaskCliExecution.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
+      ]
+    },
+    {
       "id": "plugin.rule.child_write_scope_advisory",
       "name": "子模型写入范围只是建议",
       "description": "Loop、Loop+ 和 Graph 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、graph.json、events、其他子任务或节点的沟通文件。主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过。",

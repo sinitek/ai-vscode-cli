@@ -90,6 +90,7 @@ test("classic Loop and its moderator keep optional SVG guidance in the finalSumm
 
 test("classic Loop creates the subtask tab on the bound CLI and keeps the main target", async () => {
   const created: PromptRunTarget[] = [];
+  const systemMessages: Array<{ tabId: string; content: string }> = [];
   const prompts: Array<{ input: PromptRunInput; targetTabId?: string }> = [];
   const parent: PromptRunTarget = { tabId: "main-tab", cli: "codex", sessionId: "main-session" };
   const task = loopTask({
@@ -101,7 +102,9 @@ test("classic Loop creates the subtask tab on the bound CLI and keeps the main t
   });
   const host = createLoopOrchestrationHost({
     t: (key: string) => key,
-    appendSystemMessageForLoop: () => undefined,
+    appendSystemMessageForLoop: (target: PromptRunTarget, content: string) => {
+      systemMessages.push({ tabId: target.tabId, content });
+    },
     createMessageId: () => "message-1",
     getLoopMessagesForTarget: () => [],
     appendMessageToStore: (messages: unknown[], message: unknown) => { (messages as unknown[]).push(message); },
@@ -161,6 +164,10 @@ test("classic Loop creates the subtask tab on the bound CLI and keeps the main t
   assert.equal(prompts[0]?.input.loopSubtaskConfigId, "claude-config");
   assert.equal(prompts[0]?.input.loopSubtaskModel, undefined);
   assert.equal(prompts[0]?.input.loopSubtaskThinkingMode, "high");
+  assert.equal(prompts[0]?.input.taskRole, "subtask");
+  assert.equal(prompts[0]?.input.loopSubtaskId, "sub-1");
+  assert.ok(systemMessages.some((message) => message.tabId === parent.tabId && message.content === "started"));
+  assert.equal(systemMessages.some((message) => message.tabId === created[0]?.tabId), false);
 });
 
 test("classic Loop refuses a missing cross-CLI config instead of running the main CLI", async () => {
@@ -243,6 +250,7 @@ test("Graph executor nodes use the sub CLI and plan nodes stay on the main CLI",
   const created: Array<{ cli: CliName; tabId: string }> = [];
   const prompts: PromptRunInput[] = [];
   const closed: string[] = [];
+  const systemMessages: Array<{ tabId: string; content: string }> = [];
   try {
     const host = createGraphRuntimeHost({
       getActiveWorkspaceKey: () => "workspace",
@@ -295,7 +303,9 @@ test("Graph executor nodes use the sub CLI and plan nodes stay on the main CLI",
       messages: createGraphMessagesHost({
         getGraphNodeRunTarget: () => undefined,
         getLoopMessagesForTarget: () => [],
-        appendSystemMessageForLoop: () => undefined,
+        appendSystemMessageForLoop: (target, content) => {
+          systemMessages.push({ tabId: target.tabId, content });
+        },
         appendMessageToStore: (messages, message) => { messages.push(message); },
         sendPanelMessage: () => undefined,
         persistLoopMessagesForTarget: () => undefined,
@@ -354,9 +364,12 @@ test("Graph executor nodes use the sub CLI and plan nodes stay on the main CLI",
     assert.equal(prompts.some((input) => input.graphNodeId === "implement-1" && input.loopSubtaskCli === "grok" && input.loopSubtaskConfigId === "grok-config" && input.model === "grok-executor"), true);
     assert.equal(closed.some((tabId) => tabId.includes("implement-1:grok")), true);
     assert.equal(executorOutcome.run.cli, "codex");
+    assert.ok(systemMessages.some((message) => message.tabId === mainTarget.tabId && message.content.includes("implement-1")));
+    assert.equal(systemMessages.some((message) => created.some((target) => target.tabId === message.tabId)), false);
 
     created.length = 0;
     prompts.length = 0;
+    systemMessages.length = 0;
     const planRun = {
       ...baseRun,
       id: `graph-subtask-cli-${process.pid}-plan`,
@@ -383,6 +396,8 @@ test("Graph executor nodes use the sub CLI and plan nodes stay on the main CLI",
     assert.equal(created.some((target) => target.cli === "codex" && target.tabId.includes("plan-1")), true);
     assert.equal(created.some((target) => target.cli === "grok"), false);
     assert.equal(prompts.some((input) => input.graphNodeId === "plan-1" && input.loopSubtaskCli === "grok"), false);
+    assert.ok(systemMessages.some((message) => message.tabId === mainTarget.tabId && message.content.includes("plan-1")));
+    assert.equal(systemMessages.some((message) => created.some((target) => target.tabId === message.tabId)), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
