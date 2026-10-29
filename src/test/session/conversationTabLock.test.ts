@@ -190,11 +190,15 @@ function buildResetConversationTabSessionRequest(
     "isActiveConversationTabResetLocked",
     "armPromptContextForConversationStart",
     "vscode",
+    "state",
+    "getActiveConversationTabId",
     `${functionSource}; return requestResetConversationTabSession;`,
   )(
     () => resetLocked,
     onPromptContextArmed,
     { postMessage: (message: Record<string, unknown>) => sentMessages.push(message) },
+    { currentCli: "codex" },
+    () => "tab-1",
   ) as () => void;
 }
 

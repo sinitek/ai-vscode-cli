@@ -183,6 +183,35 @@ test("closing a background tab does not restore configuration for the unchanged 
   assert.deepEqual(env.restoredTabIds, []);
 });
 
+for (const cli of CLI_LIST) {
+  test(`resetting a ${cli} conversation replaces only its tab without restoring a neighboring configuration`, async () => {
+    const state: ConversationTabsState = {
+      activeTabId: "old-tab",
+      tabs: [
+        { id: "neighbor-tab", cli: "claude", sessionId: "neighbor-session", sessionIdByCli: { claude: "neighbor-session" }, createdAt: 1 },
+        { id: "old-tab", cli, sessionId: "old-session", sessionIdByCli: { [cli]: "old-session" }, createdAt: 2, executionLocked: true },
+      ],
+    };
+    const env = createHost({ state, currentCli: cli, modes: { [cli]: "coding" } });
+
+    await env.host.resetConversationTabSession();
+
+    assert.equal(env.currentCli(), cli);
+    assert.equal(state.tabs.length, 2);
+    assert.equal(state.tabs[0].id, "neighbor-tab");
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+    assert.ok(activeTab);
+    assert.notEqual(activeTab.id, "old-tab");
+    assert.equal(activeTab.cli, cli);
+    assert.equal(activeTab.sessionId, null);
+    assert.deepEqual(activeTab.sessionIdByCli, {});
+    assert.equal(activeTab.executionLocked, undefined);
+    assert.deepEqual(env.restoredTabIds, []);
+    assert.deepEqual(env.postedClis, [cli]);
+    assert.deepEqual(env.postedTabIds, [activeTab.id]);
+  });
+}
+
 test("closing an active tab stops stale refresh when another tab becomes active during restore", async () => {
   const state: ConversationTabsState = {
     activeTabId: "closing-tab",

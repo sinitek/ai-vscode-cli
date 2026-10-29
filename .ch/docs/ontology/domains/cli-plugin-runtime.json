@@ -829,7 +829,7 @@
     {
       "id": "plugin.rule.conversation_tab_execution_configuration",
       "name": "对话标签恢复实际执行配置模型与思考力度",
-      "description": "切换对话标签、关闭活动标签后自动回退或打开已有会话时，Loop / Loop+ 主标签恢复任务当前主子路由、配置和思考档位；子标签使用 Vibe，优先恢复实际执行快照。用户消息 executionProfile 保存配置 ID、原始模型 ID、思考档位与 OpenCode variant，展示用 executionModel 不作为新快照模型 ID。缺失配置、模型或可靠旧记录时保留对应选择，不重建模型；模型不可用时不改其思考设置。跨 CLI 子路由不回退主配置。异步恢复检查标签、请求序号和工作区身份，避免过期模型或消息覆盖当前标签。",
+      "description": "切换对话标签、关闭活动标签后自动回退或打开已有会话时，Loop / Loop+ 主标签恢复任务当前主子路由、配置和思考档位；子标签使用 Vibe，优先恢复实际执行快照。用户消息 executionProfile 保存配置 ID、原始模型 ID、思考档位与 OpenCode variant，展示用 executionModel 不作为新快照模型 ID。缺失配置、模型或可靠旧记录时保留对应选择，不重建模型；模型不可用时不改其思考设置。跨 CLI 子路由不回退主配置。异步恢复检查标签、请求序号和工作区身份，避免过期模型或消息覆盖当前标签。显式重置会话以同 CLI 空白新标签替换旧标签时保留当前有效配置选择和待应用配置、模型状态，不按普通标签切换清空；重置意图在标签上下文变化后消费，不影响后续目标标签配置恢复。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.chat_panel", "plugin.config_profile", "plugin.loop_task"],
       "source_refs": [

@@ -939,6 +939,110 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
 }
 
 for (const cli of ["codex", "claude", "opencode"]) {
+  test(`${cli} preserves a pending profile selection when resetting the conversation`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const conversationTabs = {
+      activeTabId: "old-tab",
+      tabs: [{ id: "old-tab", cli, sessionId: "old-session" }],
+    };
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-a", { conversationTabs }),
+    });
+    const configSelect = document.getElementById("configSelect");
+    configSelect.value = "config-b";
+    configSelect.dispatchEvent({ type: "change" });
+    const pendingConfigApply = api.state.pendingConfigApply;
+    const pendingOpenCodeRoleSelection = { configId: "config-b", role: "main", value: "provider/model" };
+    api.state.pendingOpenCodeRoleSelection = pendingOpenCodeRoleSelection;
+    api.setMessagesForTab("old-tab", [{ id: "old-message", role: "user", content: "old prompt" }]);
+    document.getElementById("resetSession").dispatchEvent({ type: "click" });
+    assert.equal(posted.filter((message) => message.type === "resetConversationTabSession").length, 1);
+    const postedBeforeReset = posted.length;
+
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-a", {
+        conversationTabs: { activeTabId: "new-tab", tabs: [{ id: "new-tab", cli, sessionId: null }] },
+      }),
+    });
+
+    assert.equal(api.state.currentCli, cli);
+    assert.equal(api.state.conversationTabs.activeTabId, "new-tab");
+    assert.equal(configSelect.value, "config-b");
+    assert.equal(api.state.pendingConfigApply, pendingConfigApply);
+    assert.equal(api.state.pendingOpenCodeRoleSelection, pendingOpenCodeRoleSelection);
+    assert.deepEqual(api.state.messages, []);
+    assert.deepEqual(posted.slice(postedBeforeReset).filter((message) => message.type === "applyConfig"), []);
+
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-b", {
+        conversationTabs: { activeTabId: "new-tab", tabs: [{ id: "new-tab", cli, sessionId: null }] },
+      }),
+    });
+    assert.equal(configSelect.value, "config-b");
+    assert.equal(api.state.pendingConfigApply, null);
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-a", {
+        conversationTabs: {
+          activeTabId: "other-tab",
+          tabs: [{ id: "new-tab", cli }, { id: "other-tab", cli, sessionId: "other-session" }],
+        },
+      }),
+    });
+    assert.equal(configSelect.value, "config-a");
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  });
+
+  test(`${cli} preserves the selected profile across a reset with a stale configuration refresh`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-b", {
+        conversationTabs: { activeTabId: "old-tab", tabs: [{ id: "old-tab", cli, sessionId: "session" }] },
+      }),
+    });
+    document.getElementById("resetSession").dispatchEvent({ type: "click" });
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-a", {
+        conversationTabs: { activeTabId: "new-tab", tabs: [{ id: "new-tab", cli, sessionId: null }] },
+      }),
+    });
+
+    assert.equal(document.getElementById("configSelect").value, "config-b");
+    assert.equal(api.state.pendingConversationReset, null);
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig"), [
+      { type: "applyConfig", cli, configId: "config-b" },
+    ]);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  });
+
+  test(`${cli} does not preserve a reset profile when switching to an existing empty tab instead`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-b", {
+        conversationTabs: {
+          activeTabId: "old-tab",
+          tabs: [{ id: "old-tab", cli, sessionId: "old-session" }, { id: "existing-tab", cli, sessionId: null }],
+        },
+      }),
+    });
+    document.getElementById("resetSession").dispatchEvent({ type: "click" });
+    window.dispatchMessage({
+      type: "state",
+      payload: createProfilePanelState(cli, "config-a", {
+        conversationTabs: { activeTabId: "existing-tab", tabs: [{ id: "existing-tab", cli, sessionId: null }] },
+      }),
+    });
+    assert.equal(document.getElementById("configSelect").value, "config-a");
+    assert.equal(api.state.pendingConversationReset, null);
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig" || message.type === "webviewError"), []);
+  });
+
   test(`${cli} isolates model snapshots while switching profiles and after a delayed refresh`, () => {
     const { api, document, window, posted } = createRuntimeHarness();
     const dispatchState = (configId: string, overrides: Record<string, unknown> = {}) => {

@@ -110,6 +110,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         if (isActiveConversationTabResetLocked()) {
           return;
         }
+        state.pendingConversationReset = { cli: state.currentCli, tabId: getActiveConversationTabId() };
         armPromptContextForConversationStart();
         vscode.postMessage({ type: "resetConversationTabSession" });
       }

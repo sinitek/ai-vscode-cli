@@ -453,12 +453,30 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           ? state.appliedConfigurationContextKey
           : previousCli + ":" + (previousActiveTabId || "");
         const nextConfigurationContextKey = state.currentCli + ":" + (nextActiveTabId || "");
+        const pendingConversationReset = state.pendingConversationReset;
+        const nextActiveTab = Array.isArray(state.conversationTabs.tabs)
+          ? state.conversationTabs.tabs.find((tab) => tab.id === nextActiveTabId)
+          : null;
+        const preservesResetConfiguration = pendingConversationReset
+          && pendingConversationReset.tabId
+          && pendingConversationReset.cli === previousCli
+          && pendingConversationReset.cli === state.currentCli
+          && pendingConversationReset.tabId === previousActiveTabId
+          && nextActiveTab
+          && nextActiveTab.cli === state.currentCli
+          && !nextActiveTab.sessionId
+          && !(Array.isArray(previousConversationTabs.tabs)
+            && previousConversationTabs.tabs.some((tab) => tab.id === nextActiveTabId))
+          && !state.conversationTabs.tabs.some((tab) => tab.id === pendingConversationReset.tabId);
         state.appliedConfigurationContextKey = nextConfigurationContextKey;
         if (previousConfigurationContextKey !== nextConfigurationContextKey) {
-          state.autoAppliedConfig = false;
-          state.selectedConfigId = "";
-          state.pendingConfigApply = null;
-          state.pendingOpenCodeRoleSelection = null;
+          state.pendingConversationReset = null;
+          if (!preservesResetConfiguration) {
+            state.autoAppliedConfig = false;
+            state.selectedConfigId = "";
+            state.pendingConfigApply = null;
+            state.pendingOpenCodeRoleSelection = null;
+          }
         }
         const tabIds = Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs.map((tab) => tab.id)
