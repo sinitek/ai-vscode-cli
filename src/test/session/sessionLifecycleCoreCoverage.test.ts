@@ -14,7 +14,7 @@ const {
   resolveCliSessionIdForResume,
 } = require("../../sessionLifecycle") as typeof import("../../sessionLifecycle");
 
-import type { CliName } from "../../cli/types";
+import { CLI_LIST, type CliName } from "../../cli/types";
 import type { SessionMetaStore } from "../../interactive/metaStore";
 import type { SessionRecord, SessionStore } from "../../sessionStore";
 import type { ConversationTabRecord, PendingSessionDraft } from "../../sessionTabs";
@@ -227,8 +227,8 @@ function createRecord(id: string, label: string = "Unnamed"): SessionRecord {
   return { id, label, createdAt: 1, lastUsedAt: 2 };
 }
 
-test("replaces an error-only session before another execution for every CLI without deleting its history", () => {
-  for (const cli of ["codex", "claude", "opencode", "grok"] as const) {
+test("replaces an error-only session for every CLI while retaining its bubbles in the new session", () => {
+  for (const cli of CLI_LIST) {
     const harness = createLifecycleHarness();
     try {
       const sessionId = `${cli}-failed`;
@@ -251,22 +251,56 @@ test("replaces an error-only session before another execution for every CLI with
       assert.equal(harness.state.store[cli].currentId, null);
       assert.equal(harness.state.store[cli].sessions[0].health, "abnormal");
       assert.deepEqual(harness.controller.loadSessionMessages(cli, sessionId).map((message) => message.id), ["question", "failure", "retry"]);
-      assert.deepEqual(harness.calls.panelMessages[harness.calls.panelMessages.length - 1], { type: "setMessages", messages: [], tabId: "tab-1" });
+      assert.deepEqual(harness.calls.panelMessages[harness.calls.panelMessages.length - 1], { type: "setMessages", messages, tabId: "tab-1" });
       assert.equal(harness.state.drafts.get(`tab-1:${cli}`)?.label, null);
 
-      harness.state.drafts.set(`tab-1:${cli}`, {
-        label: null,
-        firstPrompt: "再次执行",
-        messages: [createMessage("new-question", "user", "再次执行")],
-      });
+      const draft = harness.state.drafts.get(`tab-1:${cli}`)!;
+      assert.deepEqual(draft.messages, messages);
+      assert.notEqual(draft.messages, harness.controller.loadSessionMessages(cli, sessionId));
+      assert.notEqual(draft.messages[0], messages[0]);
+      draft.messages.push(createMessage("new-question", "user", "再次执行"));
       harness.controller.adoptSessionId(cli, `${cli}-fresh`, "tab-1");
       assert.equal(tab.sessionId, `${cli}-fresh`);
-      assert.deepEqual(harness.controller.loadSessionMessages(cli, `${cli}-fresh`).map((message) => message.id), ["new-question"]);
+      assert.deepEqual(harness.controller.loadSessionMessages(cli, `${cli}-fresh`).map((message) => message.id), ["question", "failure", "retry", "new-question"]);
+      assert.deepEqual(harness.controller.loadSessionMessages(cli, sessionId).map((message) => message.id), ["question", "failure", "retry"]);
       const storedHistory = JSON.parse(fs.readFileSync(path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, cli, `${sessionId}.json`), "utf8"));
       assert.equal(storedHistory.messages.length, messages.length);
+      const newHistory = JSON.parse(fs.readFileSync(path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, cli, `${cli}-fresh.json`), "utf8"));
+      assert.deepEqual(newHistory.messages.map((message: ChatMessage) => message.id), ["question", "failure", "retry", "new-question"]);
     } finally {
       harness.cleanup();
     }
+  }
+});
+
+test("retains the original request across repeated failures before the CLI provides a session id", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const tab = harness.state.tabs[0];
+    const messageIds: string[] = [];
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const draft = harness.state.drafts.get(`${tab.id}:codex`) ?? { label: null, firstPrompt: null, messages: [] };
+      draft.messages.push(
+        createMessage(`question-${attempt}`, "user", `任务 ${attempt}`),
+        createMessage(`failure-${attempt}`, "system", "启动失败"),
+      );
+      messageIds.push(`question-${attempt}`, `failure-${attempt}`);
+      harness.state.drafts.set(`${tab.id}:codex`, draft);
+      harness.controller.ensureLocalSession("codex", tab.id);
+      const failedSessionId = tab.sessionId!;
+      assert.match(failedSessionId, /^local_/);
+
+      assert.equal(harness.controller.prepareSessionForPromptRun("codex", failedSessionId, tab.id), null);
+      assert.deepEqual(harness.state.drafts.get(`${tab.id}:codex`)?.messages.map((message) => message.id), messageIds);
+      assert.deepEqual(harness.controller.loadSessionMessages("codex", failedSessionId).map((message) => message.id), messageIds);
+    }
+
+    harness.state.drafts.get(`${tab.id}:codex`)!.messages.push(createMessage("question-3", "user", "再次执行"));
+    harness.controller.adoptSessionId("codex", "remote-success", tab.id);
+    assert.deepEqual(harness.controller.loadSessionMessages("codex", "remote-success").map((message) => message.id), [...messageIds, "question-3"]);
+    assert.deepEqual(harness.state.drafts.get(`${tab.id}:codex`)?.messages, []);
+  } finally {
+    harness.cleanup();
   }
 });
 
@@ -285,6 +319,8 @@ test("automatic command repair forces a fresh session even when previous history
     assert.equal(tab.sessionId, null);
     assert.equal(harness.state.store.codex.currentId, null);
     assert.deepEqual(harness.controller.loadSessionMessages("codex", "healthy-session"), messages);
+    assert.deepEqual(harness.state.drafts.get(`${tab.id}:codex`)?.messages, []);
+    assert.deepEqual(harness.calls.panelMessages.at(-1), { type: "setMessages", messages: [], tabId: tab.id });
     harness.state.drafts.set(`${tab.id}:codex`, { label: "旧请求", firstPrompt: "旧请求", messages });
     assert.equal(harness.controller.prepareSessionForPromptRun("codex", null, tab.id, { forceNewSession: true }), null);
     assert.equal(harness.state.drafts.get(`${tab.id}:codex`)?.label, null);
@@ -333,8 +369,15 @@ test("replacing an abnormal background target leaves the active tab and other CL
       createdAt: 1,
     });
     harness.state.drafts.set("background-tab:claude", { label: "保留", firstPrompt: null, messages: [] });
+    const failedMessages = [
+      createMessage("background-question", "user", "后台任务"),
+      createMessage("background-error", "system", "启动失败"),
+    ];
+    harness.controller.saveSessionMessages("codex", "failed-background", failedMessages);
 
     assert.equal(harness.controller.prepareSessionForPromptRun("codex", "failed-background", "background-tab"), null);
+    assert.deepEqual(harness.state.drafts.get("background-tab:codex")?.messages, failedMessages);
+    assert.deepEqual(harness.calls.panelMessages.at(-1), { type: "setMessages", messages: failedMessages, tabId: "background-tab" });
     assert.equal(harness.state.activeTabId, "tab-1");
     assert.equal(harness.state.store.codex.currentId, "foreground-session");
     assert.equal(harness.state.tabs[1].sessionIdByCli?.claude, "healthy-claude");

@@ -629,12 +629,13 @@
     {
       "id": "plugin.rule.session_health_gates_reuse",
       "name": "正常气泡决定会话可复用性",
-      "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话及草稿，释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI。",
+      "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话、重置草稿元信息并复制原消息到独立草稿，保留发起气泡和错误记录直至新会话接管持久化，连续启动失败也不丢失或重复。释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI；显式 forceNewSession 仍清空草稿后重放请求。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.local_cli"],
       "source_refs": [
         {"path": "src/sessionHealth.ts"},
         {"path": "src/sessionLifecycle.ts", "anchor": "prepareSessionForPromptRun"},
+        {"path": "src/test/session/sessionLifecycleCoreCoverage.test.ts"},
         {"path": "src/extension.ts", "anchor": "runPrompt"},
         {"path": "src/test/session/sessionHealth.test.ts"},
         {"path": "src/test/extensionHost/promptSessionHealth.test.ts"},

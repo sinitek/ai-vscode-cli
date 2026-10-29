@@ -876,6 +876,9 @@ export function createSessionLifecycleController(deps: {
       setConversationTabSessionIdForCli(tab, cli, null);
       deps.persistConversationTabsToWorkspaceSettings();
       deps.clearPendingSessionDraft(tabId, cli);
+      if (!options.forceNewSession) {
+        deps.updatePendingSessionDraft(tabId, { messages: messages.map((message) => ({ ...message })) }, cli);
+      }
       if (deps.getCurrentSessionId(cli) === sessionId) {
         deps.setCurrentSession(cli, null, { syncConversationTab: false });
       }
