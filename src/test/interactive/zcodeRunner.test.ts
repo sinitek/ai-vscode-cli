@@ -408,6 +408,75 @@ test("ZCode replay stops accepting events after cancellation", async () => {
   }
 });
 
+test("ZCode filters replay snapshots and merges text without delaying chat or activity callbacks", async () => {
+  const child = new FakeZcode();
+  child.beforeSendReply = () => {
+    child.emitEvent("session.updated", { messageCount: 1, iteration: 0 });
+    child.emitEvent("model.streaming", { kind: "text_delta", delta: "first " });
+    child.emitEvent("session.updated", { messageCount: 2, iteration: 1 });
+    child.emitEvent("model.streaming", { kind: "text_delta", delta: "second" });
+    child.completeTurn("first second");
+  };
+  const runner = new ZcodeInteractiveRunner({ cwd: process.cwd(), spawnImpl: () => child });
+  const replay: ZcodeWireMessage[] = [];
+  const assistant: string[] = [];
+  let activityCount = 0;
+  try {
+    await runner.start();
+    await runner.prompt("task", {
+      onEvent: (event) => { replay.push(event); },
+      onAssistantDelta: (delta) => {
+        assistant.push(delta);
+        assert.equal(replay.length, 0);
+      },
+      onActivity: () => { activityCount += 1; },
+    });
+    assert.deepEqual(assistant, ["first ", "second"]);
+    assert.equal(activityCount, 5);
+    assert.deepEqual(replay, [
+      { method: "session/event", params: { sessionId: "sess_test", type: "model.streaming", payload: { kind: "text_delta", delta: "first second" } } },
+      { method: "session/event", params: { sessionId: "sess_test", type: "turn.completed", payload: { response: "first second" } } },
+    ]);
+  } finally {
+    await runner.dispose();
+  }
+});
+
+for (const failure of ["rejected send", "process exit", "turn failure"]) {
+  test(`ZCode flushes pending replay text after ${failure} without leaking into the next task`, async () => {
+    const child = new FakeZcode();
+    const runner = new ZcodeInteractiveRunner({ cwd: process.cwd(), spawnImpl: () => child });
+    const replay: ZcodeWireMessage[] = [];
+    try {
+      await runner.start();
+      child.sendAccepted = failure !== "rejected send";
+      child.beforeSendReply = () => child.emitEvent("part.delta", { field: "text", delta: "pending text" });
+      const pending = runner.prompt("task", { onEvent: (event) => { replay.push(event); } });
+      const rejected = assert.rejects(pending, /did not accept|exited|turn failed/);
+      if (failure !== "rejected send") {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(replay.length, 0);
+        if (failure === "process exit") {
+          child.emit("exit", 1);
+        } else {
+          child.emitEvent("turn.failed", { message: "turn failed" });
+        }
+      }
+      await rejected;
+      assert.equal(replay.length, failure === "turn failure" ? 2 : 1);
+      const replayCount = replay.length;
+      if (failure !== "process exit") {
+        child.sendAccepted = true;
+        child.beforeSendReply = () => child.completeTurn("next task");
+        assert.equal((await runner.prompt("retry")).text, "next task");
+      }
+      assert.equal(replay.length, replayCount);
+    } finally {
+      await runner.dispose();
+    }
+  });
+}
+
 test("an early failed ZCode turn records its terminal replay event and allows a subsequent task", async () => {
   const child = new FakeZcode();
   child.beforeSendReply = () => child.emitEvent("turn.failed", { error: { message: "model unavailable" } });

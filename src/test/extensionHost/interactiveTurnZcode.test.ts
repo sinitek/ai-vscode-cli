@@ -12,6 +12,11 @@ const { createZcodeInteractiveTurnStrategy } = require("../../extensionHost/inte
 function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "turn.completed") {
   let active = true;
   let handlers: ZcodeStreamHandlers = {};
+  let stopCurrentTurn = () => {};
+  let holdPrompt = false;
+  let completePrompt = () => {};
+  const runEntry = { runId: "run_zcode", stopped: false };
+  const runs = new Map([["tab_zcode", runEntry]]);
   const messages: Record<string, unknown>[] = [];
   const debugEvents: unknown[] = [];
   const events: ZcodeWireMessage[] = [
@@ -22,11 +27,14 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
   const runner = {
     start: async () => ({ sessionId: "sess_test", usage: null }),
     getSettings: () => settings,
-    cancelTurn: () => {},
+    cancelTurn: () => { handlers.onEvent?.(events[0]); },
     prompt: async (_content: string, callbacks: ZcodeStreamHandlers) => {
       handlers = callbacks;
       for (const event of events) {
         callbacks.onEvent?.(event);
+      }
+      if (holdPrompt) {
+        await new Promise<void>((resolve) => { completePrompt = resolve; });
       }
       if (terminalType === "turn.failed") {
         throw new Error("任务失败");
@@ -37,6 +45,7 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
   const port = {
     cli: "zcode",
     tabId: "tab_zcode",
+    runId: "run_zcode",
     uiSessionId: "sess_test",
     attemptPrompt: "执行任务",
     cwd: process.cwd(),
@@ -46,7 +55,8 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
       setRunner: () => {},
     },
     resolveInteractiveMappedId: () => "sess_test",
-    setStopCurrentTurn: () => {},
+    interactiveRunsByTabId: runs,
+    setStopCurrentTurn: (stop: () => void) => { stopCurrentTurn = stop; },
     syncInteractiveRunEntry: () => {},
     updateSessionForNewRun: () => {},
     sendPanelMessage: (message: Record<string, unknown>) => { messages.push(message); },
@@ -64,6 +74,10 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
     events,
     getHandlers: () => handlers,
     setActive: (value: boolean) => { active = value; },
+    holdPrompt: () => { holdPrompt = true; },
+    completePrompt: () => completePrompt(),
+    stop: () => stopCurrentTurn(),
+    runEntry,
   };
 }
 
@@ -95,3 +109,26 @@ test("ZCode keeps the terminal failure in replay before propagating the runner e
   assert.deepEqual(replayMessages.map((message) => JSON.parse(String(message.content))), harness.events);
   assert.deepEqual(harness.debugEvents, harness.events);
 });
+
+for (const superseded of [false, true]) {
+  test(`ZCode ${superseded ? "rejects a superseded run's" : "accepts only the current run's synchronous"} stop flush`, async () => {
+    const harness = createReplayHarness();
+    harness.holdPrompt();
+    const pending = createZcodeInteractiveTurnStrategy().runAttempt(harness.port);
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      harness.setActive(false);
+      harness.runEntry.stopped = true;
+      if (superseded) harness.runEntry.runId = "run_replacement";
+      harness.stop();
+      const expected = superseded ? 2 : 3;
+      assert.equal(harness.debugEvents.length, expected);
+      harness.getHandlers().onEvent?.(harness.events[0]);
+      assert.equal(harness.debugEvents.length, expected);
+      assert.equal(harness.messages.filter((message) => message.type === "rawStreamDelta").length, expected);
+    } finally {
+      harness.completePrompt();
+      await pending;
+    }
+  });
+}

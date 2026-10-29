@@ -487,15 +487,17 @@
     },
     {
       "id": "plugin.rule.zcode_task_replay",
-      "name": "ZCode 当前回合原生事件进入对应标签页回放",
-      "description": "ZCode runner 在过滤会话后，将活动回合的原生 session/event 在聊天投影与终态处理前交给 onEvent。宿主仅在当前执行仍活动时发送带 tabId 的 rawStreamDelta，并向调试事件日志转发同一事件。正文、思考、工具、未知事件和成功／失败终态保留原始协议结构与顺序；其他会话、结束或停止后的迟到事件不进入回放，复用 runner 时按回合隔离。回放不依赖调试日志开关，不补写旧版本未采集的历史事件。",
+      "name": "ZCode 当前回合语义事件进入对应标签页回放",
+      "description": "ZCode runner 在过滤会话后为每个活动回合创建独立语义回放投影：过滤已知标题／计数快照、主模型正常首试遥测和重复成功摘要，正文／思考按相同消息与语义元数据在固定 1 秒或 32 KiB 内合并，工具输入按调用身份聚合并去掉重复进度、相同结果及已有终态的成功确认。完整正文、工具结果、失败、重试、未知字段和终态保留；实时聊天及活动时间仍接收全部原生事件。宿主仅在当前执行活动或停止同步排空且 runId 匹配时发送带 tabId 的 rawStreamDelta，调试事件日志同源记录降噪事件。完成、失败、进程异常和停止排空待记录内容，其他会话及结束／停止后的迟到事件被忽略，复用 runner 时按回合隔离。回放不依赖调试日志开关，不重写历史存档。",
       "status": "active",
-      "aliases": ["ZCode 回放", "ZCode 回放为零", "ZCode 事件日志"],
+      "aliases": ["ZCode 回放", "ZCode 回放为零", "ZCode 事件日志", "ZCode 回放降噪"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
       "source_refs": [
         {"path": "docs/zcode-guide.md", "anchor": "任务回放"},
+        {"path": "src/interactive/zcodeReplayStream.ts"},
         {"path": "src/interactive/zcodeRunner.ts"},
         {"path": "src/extensionHost/interactiveTurnZcode.ts"},
+        {"path": "src/test/interactive/zcodeReplayStream.test.ts"},
         {"path": "src/test/interactive/zcodeRunner.test.ts"},
         {"path": "src/test/extensionHost/interactiveTurnZcode.test.ts"}
       ]

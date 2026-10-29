@@ -47,8 +47,14 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           localSessionId: null,
           env: launch.env,
         });
+      let flushingZcodeStop = false;
       port.setStopCurrentTurn(() => {
-        runner.cancelTurn();
+        flushingZcodeStop = true;
+        try {
+          runner.cancelTurn();
+        } finally {
+          flushingZcodeStop = false;
+        }
       });
       port.syncInteractiveRunEntry(port.stopFn);
       const started = await runner.start();
@@ -123,7 +129,8 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           }
         },
         onEvent: (event) => {
-          if (!port.isCurrentRunActive()) {
+          const entry = port.interactiveRunsByTabId.get(port.tabId);
+          if (!port.isCurrentRunActive() && !(flushingZcodeStop && entry?.runId === port.runId)) {
             return;
           }
           const content = normalizeRawStreamContent(event);

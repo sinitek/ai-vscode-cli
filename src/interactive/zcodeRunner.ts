@@ -42,6 +42,7 @@ import {
   type ZcodeWireMessage,
 } from "./zcodeAppServerProtocol";
 import { ZcodeToolTraceProjector } from "./zcodeTrace";
+import { ZcodeReplayStream } from "./zcodeReplayStream";
 
 export type ZcodeChild = {
   stdin: { write: (chunk: string) => unknown; end: () => unknown } | null;
@@ -116,6 +117,7 @@ export class ZcodeInteractiveRunner {
     resolve: (text: string) => void;
     reject: (error: Error) => void;
     handlers: ZcodeStreamHandlers;
+    replay: ZcodeReplayStream;
     text: string;
   } | null = null;
   private compactWait: {
@@ -241,8 +243,9 @@ export class ZcodeInteractiveRunner {
       throw new ZcodeProtocolError("ZCode already has an active prompt.", "busy");
     }
     this.traceProjector.beginTurn();
+    const replay = new ZcodeReplayStream((message) => handlers.onEvent?.(message));
     const turnCompleted = new Promise<string>((resolve, reject) => {
-      this.turnWait = { resolve, reject, handlers, text: "" };
+      this.turnWait = { resolve, reject, handlers, replay, text: "" };
     });
     try {
       const [, text] = await Promise.all([
@@ -260,8 +263,11 @@ export class ZcodeInteractiveRunner {
       }
       return { text, usage };
     } catch (error) {
+      replay.finish();
       this.turnWait = null;
       throw error;
+    } finally {
+      replay.finish();
     }
   }
 
@@ -318,6 +324,7 @@ export class ZcodeInteractiveRunner {
 
   public cancelTurn(): void {
     const error = new ZcodeProtocolError("ZCode turn was stopped.", "stopped");
+    this.turnWait?.replay.finish();
     this.turnWait?.reject(error);
     this.turnWait = null;
     this.compactWait?.reject(error);
@@ -533,8 +540,8 @@ export class ZcodeInteractiveRunner {
       return;
     }
     const wait = this.turnWait;
-    wait?.handlers.onEvent?.(message);
     wait?.handlers.onActivity?.();
+    wait?.replay.append(message);
     const delta = readZcodeTextDelta(event);
     if (delta && wait) {
       if (delta.field === "reasoning") {
@@ -554,11 +561,13 @@ export class ZcodeInteractiveRunner {
     }
     if (event.type === "turn.completed" && wait) {
       const response = typeof event.payload.response === "string" ? event.payload.response : wait.text;
+      wait.replay.finish();
       this.turnWait = null;
       wait.resolve(response || wait.text);
       return;
     }
     if (event.type === "turn.failed" && (wait || this.compactWait)) {
+      wait?.replay.finish();
       this.turnWait = null;
       const error = new ZcodeProtocolError(readZcodeTurnFailure(event), "turn-failed");
       wait?.reject(error);
@@ -580,6 +589,7 @@ export class ZcodeInteractiveRunner {
       pending.reject(error);
     }
     this.pending.clear();
+    this.turnWait?.replay.finish();
     this.turnWait?.reject(error);
     this.turnWait = null;
     this.compactWait?.reject(error);
