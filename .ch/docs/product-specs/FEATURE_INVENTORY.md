@@ -53,6 +53,7 @@ AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底�
 ## VSIX 瘦身与平台定向导出
 
 - 默认导出通用包，剔除开发临时页面、截图、构建 source map、SDK 类型声明和嵌套 Python 缓存，不删除 Claude 内置 CLI、WASM、图片处理或其他运行时能力。
+- 导出保留 README 相对链接，不依赖 GitHub/GitLab 仓库地址推导；README 及介绍图片必须随包保留并通过 ZIP 审计。市场图片公开托管不由此选项提供，详见打包运行手册。
 - `python3 scripts/export_vscode_extension.py --target current`（Windows 可用 `python`）或显式平台值导出独立命名、带 VSIX target 标记的平台包；只裁剪其他平台的 ripgrep/sharp/libvips，缺少目标原生依赖时失败，不改变工作区依赖。支持范围与分发边界见 `.ch/docs/runbooks/local-development.md` 的“打包 VSIX”。
 - 实现入口：`scripts/export_vscode_extension.py`、`scripts/vsix_target.js`、`.vscodeignore`；回归入口：`src/test/shared/vsixPackaging.test.ts`、`scripts/tests/test_export_vscode_extension.py`，并执行真实打包和 ZIP 审计。
 

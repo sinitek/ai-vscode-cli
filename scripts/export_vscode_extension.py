@@ -24,7 +24,9 @@ from vscode_extension_process import require_tool, run_process
 REQUIRED_ENTRIES = (
     "dist/extension.js",
     "package.json",
+    "readme.md",
     "media/icon.png",
+    "media/loop-plus-intro.jpg",
     "media/logo.svg",
     "media/marked.min.js",
     "media/config/assets/config-app-api.js",
@@ -94,7 +96,7 @@ def output_file(target: str, root: Path = ROOT_DIR) -> Path:
 
 
 def package_options(target: str, out_file: Path, ignore_file: Path | None) -> list[str]:
-    options = ["package", "--out", str(out_file)]
+    options = ["package", "--no-rewrite-relative-links", "--out", str(out_file)]
     if target != "universal":
         if ignore_file is None:
             raise ValueError("定向打包缺少 ignore 文件。")

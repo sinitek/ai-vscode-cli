@@ -154,6 +154,7 @@ python scripts/export_vscode_extension.py --target win32-x64
 
 - 读取 `package.json` 中的版本号
 - 优先调用项目内 `node_modules/.bin/vsce package`，若缺少本地依赖则回退到全局 `vsce`
+- 统一传入 `--no-rewrite-relative-links`，保留 README 的相对图片路径，避免非 GitHub/GitLab 仓库无法推导图片地址而打包失败；审计会确认 README 和 `media/loop-plus-intro.jpg` 随包保留。此选项不提供公开图片托管，市场页面若需要展示图片，仍应在 README 使用可公开访问的 HTTPS 图片地址
 - 若当前 `node_modules` 是 pnpm 布局，先复制到临时目录安装成 vsce 可识别的 hoist 布局再打包；本机没有 pnpm 时临时目录改走 `npm install`。不要直接对 pnpm 树执行 `vsce package`（它会跑 `npm list` 并 `ELSPROBLEMS`）
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map

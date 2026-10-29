@@ -28,6 +28,30 @@ class ScriptLocationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+class PackageOptionsTests(unittest.TestCase):
+    def test_universal_package_preserves_relative_readme_links(self) -> None:
+        output = Path("dist") / "fixture.vsix"
+        self.assertEqual(
+            export_script.package_options("universal", output, None),
+            ["package", "--no-rewrite-relative-links", "--out", str(output)],
+        )
+
+    def test_targeted_package_preserves_relative_links_and_target_options(self) -> None:
+        output = Path("output directory") / "fixture.vsix"
+        ignore = Path("ignore directory") / "target.ignore"
+        self.assertEqual(
+            export_script.package_options("win32-x64", output, ignore),
+            [
+                "package", "--no-rewrite-relative-links", "--out", str(output),
+                "--target", "win32-x64", "--ignoreFile", str(ignore),
+            ],
+        )
+
+    def test_targeted_package_still_requires_ignore_file(self) -> None:
+        with self.assertRaisesRegex(ValueError, "定向打包缺少 ignore 文件"):
+            export_script.package_options("win32-x64", Path("fixture.vsix"), None)
+
+
 class VsixAuditTests(unittest.TestCase):
     def create_vsix(self, root: Path, entries: list[str]) -> Path:
         package = root / "fixture.vsix"
@@ -68,6 +92,11 @@ class VsixAuditTests(unittest.TestCase):
             self.audit([*export_script.REQUIRED_ENTRIES, "scripts/publish_vscode_extension.py"])
         with self.assertRaisesRegex(RuntimeError, "缺少必需运行时文件"):
             self.audit(list(export_script.REQUIRED_ENTRIES[:-1]))
+
+    def test_audit_rejects_missing_readme_image(self) -> None:
+        entries = [entry for entry in export_script.REQUIRED_ENTRIES if entry != "media/loop-plus-intro.jpg"]
+        with self.assertRaisesRegex(RuntimeError, r"media/loop-plus-intro\.jpg"):
+            self.audit(entries)
 
     def test_invalid_archive_has_clear_error(self) -> None:
         with tempfile.TemporaryDirectory(prefix="sinitek export test ") as temporary:

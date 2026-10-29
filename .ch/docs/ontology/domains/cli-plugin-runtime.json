@@ -556,12 +556,13 @@
     {
       "id": "plugin.rule.vsix_target_preserves_runtime",
       "name": "VSIX 定向瘦身保留目标平台运行时",
-      "description": "导出脚本默认保持通用包，仅排除开发产物。显式 target 平台包独立命名并声明 VSIX 平台，只裁剪其他平台的 ripgrep 与 sharp/libvips；保留目标平台 SDK CLI、WASM、rg、ripgrep.node 和原生图片依赖，缺少目标依赖时失败，不修改工作区依赖。Windows .cmd 启动依赖的内置 Claude CLI 不可删除。",
+      "description": "导出脚本默认保持通用包，仅排除开发产物。README 相对链接原样保留，不依赖仓库托管地址推导；README 和介绍图片必须随包保留并通过审计，此行为不提供市场图片公开托管。显式 target 平台包独立命名并声明 VSIX 平台，只裁剪其他平台的 ripgrep 与 sharp/libvips；保留目标平台 SDK CLI、WASM、rg、ripgrep.node 和原生图片依赖，缺少目标依赖时失败，不修改工作区依赖。Windows .cmd 启动依赖的内置 Claude CLI 不可删除。",
       "status": "active",
       "aliases": ["VSIX", "打包", "瘦身", "--target", "export_vscode_extension.py"],
       "applies_to": ["plugin.extension_host"],
       "source_refs": [
         {"path": "scripts/export_vscode_extension.py"},
+        {"path": "scripts/tests/test_export_vscode_extension.py"},
         {"path": "scripts/vsix_target.js"},
         {"path": "src/test/shared/vsixPackaging.test.ts"},
         {"path": ".ch/docs/runbooks/local-development.md", "anchor": "打包 VSIX"},
