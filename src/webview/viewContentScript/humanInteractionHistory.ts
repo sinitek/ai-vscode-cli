@@ -63,18 +63,28 @@ export const VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY = `      function hum
           return;
         }
         records.forEach((record) => {
+          const summary = humanInteractionHistorySummary(record);
+          const status = humanInteractionHistoryStatus(record);
           const button = document.createElement("button");
           button.type = "button";
           button.className = "human-interaction-history-item";
           button.dataset.historyId = record.id;
-          button.setAttribute("aria-label", t("humanInteractionHistoryDetail"));
+          button.setAttribute("aria-label", status + " · " + summary + " · " + t("humanInteractionHistoryDetail"));
+          const icon = document.createElement("span");
+          icon.className = "human-interaction-history-icon" + (record.timedOut ? " automatic" : "");
+          icon.title = status;
+          icon.setAttribute("aria-hidden", "true");
+          icon.innerHTML = record.timedOut
+            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="7" width="16" height="14" rx="3"/><path d="M12 3v4M1 12v5m22-5v5M9 17h6M8 12v1m8-1v1"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>';
           const question = document.createElement("span");
           question.className = "human-interaction-history-question";
-          question.textContent = humanInteractionHistorySummary(record);
+          question.textContent = summary;
           question.title = String((record.formFields || [])[0]?.label || record.title || "");
           const meta = document.createElement("span");
           meta.className = "human-interaction-history-meta";
           meta.textContent = formatDateTime(record.createdAt);
+          button.appendChild(icon);
           button.appendChild(question);
           button.appendChild(meta);
           button.addEventListener("click", () => openHumanInteractionHistoryDetail(record.id));

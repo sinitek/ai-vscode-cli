@@ -604,7 +604,7 @@ ${DIALOG_SHELL_STYLES}
       }
       .human-interaction-history-item {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: 20px minmax(0, 1fr) auto;
         align-items: center;
         box-sizing: border-box;
         flex: 0 0 auto;
@@ -619,6 +619,22 @@ ${DIALOG_SHELL_STYLES}
       }
       .human-interaction-history-item:hover {
         border-color: var(--vscode-focusBorder);
+      }
+      .human-interaction-history-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .human-interaction-history-icon.automatic {
+        color: var(--vscode-charts-blue, var(--vscode-foreground));
+      }
+      .human-interaction-history-icon svg {
+        display: block;
+        width: 20px;
+        height: 20px;
       }
       .human-interaction-history-item-title {
         font-weight: 600;

@@ -1615,16 +1615,17 @@ test("opens human interaction history from the bottom icon and renders automatic
   assert.equal(document.getElementById("humanInteractionHistoryOverlay").classList.contains("visible"), true);
   const list = document.getElementById("humanInteractionHistoryList");
   assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].children.length, 2);
-  assert.equal(list.children[0].children[0].textContent, "请选择后续执行方案并确认是否继续".slice(0, 20));
-  assert.equal(list.children[0].children[0].className, "human-interaction-history-question");
-  assert.equal(list.children[0].children[1].className, "human-interaction-history-meta");
+  assert.equal(list.children[0].children.length, 3);
+  assert.equal(list.children[0].children[0].className, "human-interaction-history-icon automatic");
+  assert.equal(list.children[0].children[1].textContent, "请选择后续执行方案并确认是否继续".slice(0, 20));
+  assert.equal(list.children[0].children[1].className, "human-interaction-history-question");
+  assert.equal(list.children[0].children[2].className, "human-interaction-history-meta");
   const longQuestion = "这是一次用于验证人机交互历史列表双行摘要的长问题，摘要应该保留前五十个字而不是二十个字，并且在弹窗中以更清晰的文字颜色显示";
   const originalRecord = structuredClone(api.state.humanInteractionHistory[0]);
   const longRecord = { ...originalRecord, id: "history-long", formFields: [{ id: "long", label: longQuestion, type: "text" }] };
   window.dispatchMessage({ type: "humanInteractionHistory", items: [longRecord] });
-  assert.equal(list.children[0].children[0].textContent, Array.from(longQuestion).slice(0, 50).join(""));
-  assert.equal(Array.from(list.children[0].children[0].textContent).length, 50);
+  assert.equal(list.children[0].children[1].textContent, Array.from(longQuestion).slice(0, 50).join(""));
+  assert.equal(Array.from(list.children[0].children[1].textContent).length, 50);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-item\s*\{[^}]*min-height:\s*64px;[^}]*padding:\s*12px;/);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question\s*\{[^}]*display:\s*-webkit-box;[^}]*line-height:\s*18px;[^}]*-webkit-line-clamp:\s*2;/);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question,\s*\.human-interaction-history-meta\s*\{[^}]*color:\s*var\(--vscode-foreground\);/);
@@ -1648,6 +1649,53 @@ test("opens human interaction history from the bottom icon and renders automatic
   assert.equal(api.humanInteractionHistoryAnswer({ ...record, timedOut: false, values: { mode: "safe" } }, record.formFields[0]), "兼容方案");
   assert.equal(api.humanInteractionHistoryAnswer(record, { id: "token", label: "令牌", type: "password" }), "已隐藏");
   assert.equal(api.humanInteractionHistoryAnswer({ ...record, values: { mode: "已隐藏" } }, record.formFields[0]), "AI 自动选择");
+});
+
+test("distinguishes manual and automatic interaction history with accessible SVG icons", () => {
+  const { document, window } = createRuntimeHarness();
+  const record = {
+    interactionId: "question-icons",
+    source: "vibe",
+    title: "确认方案",
+    instruction: "请选择方案。",
+    formFields: [{ id: "mode", label: "请选择方案", type: "radio" }],
+    status: "completed",
+    values: { mode: "safe" },
+    createdAt: 1_700_000_000_000,
+  };
+  document.getElementById("humanInteractionHistoryButton").click();
+  window.dispatchMessage({
+    type: "humanInteractionHistory",
+    items: [
+      { ...record, id: "manual", timedOut: false },
+      { ...record, id: "automatic", timedOut: true },
+      { ...record, id: "rejected", status: "aborted", timedOut: false },
+      { ...record, id: "legacy" },
+    ],
+  });
+
+  const list = document.getElementById("humanInteractionHistoryList");
+  assert.equal(list.children.length, 4);
+  const statuses = ["用户选择", "AI 自动选择", "已拒绝", "用户选择"];
+  list.children.forEach((button: FakeElement, index: number) => {
+    const icon = button.children[0];
+    assert.equal(icon.className, "human-interaction-history-icon" + (index === 1 ? " automatic" : ""));
+    assert.equal(icon.title, statuses[index]);
+    assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.match(icon.innerHTML, /^<svg\b/u);
+    assert.match(icon.innerHTML, /stroke="currentColor"/u);
+    assert.match(icon.innerHTML, /focusable="false"/u);
+    assert.equal(button.getAttribute("aria-label"), statuses[index] + " · 请选择方案 · " + WEBVIEW_STRINGS.humanInteractionHistoryDetail);
+  });
+  const manualIcon = list.children[0].children[0].innerHTML;
+  const automaticIcon = list.children[1].children[0].innerHTML;
+  assert.match(manualIcon, /<circle\b/u);
+  assert.match(automaticIcon, /<rect\b/u);
+  assert.notEqual(manualIcon, automaticIcon);
+  assert.equal(list.children[2].children[0].innerHTML, manualIcon);
+  assert.equal(list.children[3].children[0].innerHTML, manualIcon);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-item\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\) auto;/u);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-icon\.automatic\s*\{[^}]*color:\s*var\(--vscode-charts-blue, var\(--vscode-foreground\)\);/u);
 });
 
 test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {
