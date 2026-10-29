@@ -116,6 +116,20 @@ class VsixAuditTests(unittest.TestCase):
     def test_required_runtime_entries_pass_python_zip_audit(self) -> None:
         self.audit(list(export_script.REQUIRED_ENTRIES))
 
+    def test_repository_readme_keeps_intro_image_for_marketplace_export(self) -> None:
+        readme = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
+        image_path = "media/loop-plus-intro.jpg"
+        self.assertTrue((ROOT_DIR / image_path).is_file())
+        with tempfile.TemporaryDirectory(prefix="sinitek repository readme ") as temporary:
+            package = self.create_vsix(Path(temporary), list(export_script.REQUIRED_ENTRIES), readme=readme)
+            export_script.prepare_marketplace_readme(package)
+            with zipfile.ZipFile(package) as archive:
+                manifest = json.loads(archive.read("extension/package.json"))
+                expected_url = export_script.marketplace_asset_url(
+                    manifest, export_script.README_IMAGE_ASSETS[image_path],
+                )
+                self.assertIn(expected_url, archive.read("extension/readme.md").decode("utf-8"))
+
     def test_readme_image_becomes_versioned_addressable_marketplace_asset(self) -> None:
         with tempfile.TemporaryDirectory(prefix="sinitek readme assets ") as temporary:
             readme = (
