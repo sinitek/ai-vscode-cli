@@ -98,6 +98,10 @@ AI 面板首次打开及配置保存后，并行读取 Codex、Claude、OpenCode
 
 子模型提示区分首次状态尚未到达、完整快照确认没有可用档案以及配置读取失败；后两种状态给出实际原因，不再持续显示“正在同步”。删除目标档案后不沿用旧身份，恢复有效档案后模型控件随快照自动恢复。
 
+## ZCode 一键安装
+
+AI 对话助手切换到 ZCode 且配置命令不可用时，复用其他 CLI 的“一键安装”提示；点击后创建并显示 VS Code 终端，在 Windows、macOS、Linux 统一执行 `npm install -g zcode-app-cli@latest`，清空安装检测缓存，不误跳设置或网页。命令已可用时不重复提示或安装；取消不执行命令，“打开设置”仍定位 `sinitek-cli-tools.commands.zcode`。实际安装结果以终端输出为准。实现见 `src/cli/installer.ts`、`src/extension.ts`，回归见 `src/test/cli/installer.test.ts`、`src/test/extensionHost/cliInstallation.test.ts`。
+
 ## ZCode 配置范例抽屉
 
 ZCode 配置页的初始及周期激活同步覆盖统一 CLI 注册表。宿主返回激活档案身份，复用工作区偏好回退，避免旧版保存后档案与运行时分叉导致失去激活标识；未确认身份时不擅自激活。匹配遵循供应商保留式合并语义，忽略 JSON 格式和对象键顺序，不以 Codex TOML 行匹配 ZCode。保存激活档案后应用运行时并等待 AI 面板模型刷新；保存未激活档案仅更新档案；应用失败明确提示档案已保存、运行时未更新。回归见 `src/test/config/cliPageConfigCoverage.test.ts`，实现见 `src/webview/configView.ts`、`src/webview/configPanel.ts`、`src/webviewCommandCoordinator.ts`。

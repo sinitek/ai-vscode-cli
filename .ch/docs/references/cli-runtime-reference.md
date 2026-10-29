@@ -285,7 +285,7 @@
 ### ZCode
 
 - CLI id 是 `zcode`，显示名 ZCode，命令默认 `zcode`。顺序在 `kimi-code` 之后。
-- 本机 0.17.0 的可执行文件是 `/Users/fangjiawei/.npm-global/bin/zcode`，它是指向 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs` 的 shell shim。这是官方桌面应用附带命令，不是已核实的 npm 包。插件安装命令留空，不写入未核实的安装脚本。
+- Windows、macOS、Linux 的安装命令统一为 `npm install -g zcode-app-cli@latest`。缺失时切换 ZCode，复用公共“一键安装”提示并在 VS Code 终端执行命令，随后清空安装检测缓存；已安装时不提示、不重复安装。已有桌面应用附带的 `zcode` 命令继续兼容，版本检查使用 `zcode --version`。
 - 交互协议是 ZCode Protocol 1，启动 `zcode app-server --stdio --mode yolo`。请求形如 `{id, method, params}`。带 `jsonrpc` 的信封会被拒绝。它不是 ACP，也不复用 Grok 或 DSH 的 ACP 方法。
 - 会话：`session/create` 新建，`session/resume` 恢复 `sess_` 前缀会话，`session/subscribe` 使用 `desktop-continuous`，`session/send` 发送提示，`session/stop` 停止当前回合，`session/close` 释放。创建期间客户端必须回答 `session/requestRuntimePreferences`。
 - 流式事件通过 `session/event` 接收。兼容旧 `part.delta` 的 `text` 与 `reasoning`；ZCode 0.17.0 的正文、思考和工具输入来自 `model.streaming`，工具生命周期来自 `tool.updated`。工具输入按 `toolCallId` 聚合，`scheduled`、`started` 与 `result` 复用同一消息 ID 更新 Codex-compatible trace 气泡；Shell 命令使用 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构。回合结束看 `turn.completed`，失败看 `turn.failed`。

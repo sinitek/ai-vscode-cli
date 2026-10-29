@@ -2,12 +2,13 @@ import { CliName } from "./types";
 
 const CODEGRAPH_NPM_PACKAGE = "@colbymchenry/codegraph";
 
-const CLI_NPM_INSTALL_COMMANDS: Record<Exclude<CliName, "grok" | "zcode">, string> = {
+const CLI_NPM_INSTALL_COMMANDS: Record<Exclude<CliName, "grok">, string> = {
   codex: "npm install -g @openai/codex",
   claude: "npm install -g @anthropic-ai/claude-code",
   opencode: "npm install -g opencode-ai",
   dsh: "npm install -g @deepseek-ai/dsh",
   "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
+  zcode: "npm install -g zcode-app-cli@latest",
 };
 
 const GROK_INSTALL_COMMANDS: Record<"windows" | "unix", string> = {
@@ -42,11 +43,6 @@ export type CodeGraphInstallCommandOptions = {
 export function getCliInstallCommand(cli: CliName, processPlatform: NodeJS.Platform = process.platform): string {
   if (cli === "grok") {
     return processPlatform === "win32" ? GROK_INSTALL_COMMANDS.windows : GROK_INSTALL_COMMANDS.unix;
-  }
-  // ZCode 0.17.0 on this machine is the official desktop app shim, not an npm package.
-  // Do not invent an install command.
-  if (cli === "zcode") {
-    return "";
   }
   return CLI_NPM_INSTALL_COMMANDS[cli];
 }

@@ -3,16 +3,18 @@ import test = require("node:test");
 import { CLI_LIST } from "../../cli/types";
 import { getCliDisplayName, getCliInstallCommand } from "../../cli/installer";
 
-test("every CLI group has an install command on Windows and Unix", () => {
+test("every CLI group has an install command on Windows, macOS and Linux", () => {
   for (const cli of CLI_LIST) {
     assert.ok(getCliDisplayName(cli).trim());
-    if (cli === "zcode") {
-      assert.equal(getCliInstallCommand(cli, "win32"), "");
-      assert.equal(getCliInstallCommand(cli, "linux"), "");
-      continue;
+    for (const platform of ["win32", "darwin", "linux"] as const) {
+      assert.ok(getCliInstallCommand(cli, platform).trim(), cli + " needs an install command on " + platform);
     }
-    assert.ok(getCliInstallCommand(cli, "win32").trim(), cli + " needs a Windows install command");
-    assert.ok(getCliInstallCommand(cli, "linux").trim(), cli + " needs a Unix install command");
+  }
+});
+
+test("ZCode uses the confirmed npm package on every supported platform", () => {
+  for (const platform of ["win32", "darwin", "linux"] as const) {
+    assert.equal(getCliInstallCommand("zcode", platform), "npm install -g zcode-app-cli@latest");
   }
 });
 

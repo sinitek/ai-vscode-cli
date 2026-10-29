@@ -4,7 +4,15 @@ ZCode 在本插件中是独立 CLI，id 为 `zcode`。它使用 ZCode Protocol�
 
 ## 安装
 
-本机已安装的 `zcode` 0.17.0 是官方桌面应用附带命令：`~/.npm-global/bin/zcode` 转到 `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`。插件不提供未核实的安装命令。版本检查是 `zcode --version`。
+Windows、macOS、Linux 统一使用以下命令安装：
+
+```sh
+npm install -g zcode-app-cli@latest
+```
+
+AI 对话助手切换到 ZCode 时，如果找不到配置的 `zcode` 命令，会与其他 CLI 一样提示“一键安装”；点击后在 VS Code 终端执行上述命令，不跳转网页或命令设置。需要本机可用的 Node.js 和 npm，实际安装进度及结果以终端输出为准。
+
+已安装且命令可用时不提示、不重复安装。安装后可执行 `zcode --version` 检查；如果仍无法找到命令，可在设置 `sinitek-cli-tools.commands.zcode` 中填写可执行文件绝对路径，必要时重新加载 VS Code 窗口。已有桌面应用附带的 `zcode` 命令仍可使用。
 
 ## 协议
 

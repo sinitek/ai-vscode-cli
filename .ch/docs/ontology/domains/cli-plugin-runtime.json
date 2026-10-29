@@ -320,6 +320,22 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.zcode_one_click_install",
+      "name": "ZCode 复用公共一键终端安装",
+      "description": "切换到 ZCode 且配置命令不可用时，复用公共缺失检测与一键安装提示。Windows、macOS、Linux 统一在 VS Code 终端执行 npm install -g zcode-app-cli@latest，清空安装检测缓存，不将安装操作误路由到设置或网页。已安装时不提示、不重复安装；取消不执行命令，打开设置仍定位 ZCode 命令配置。实际安装结果以终端输出为准。",
+      "status": "active",
+      "aliases": ["ZCode 一键安装", "ZCode 终端安装", "zcode-app-cli"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/cli/installer.ts"},
+        {"path": "src/extension.ts", "symbol": "promptInstallMissingCli"},
+        {"path": "src/test/cli/installer.test.ts"},
+        {"path": "src/test/extensionHost/cliInstallation.test.ts"},
+        {"path": "docs/zcode-guide.md", "anchor": "安装"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "ZCode 一键安装"}
+      ]
+    },
+    {
       "id": "plugin.rule.dsh_execution_no_approval",
       "name": "DSH 插件执行固定使用免审批完整访问",
       "description": "携宁 CLI 启动 DSH ACP 子进程时，覆盖子进程的 DSH_PERMISSION_MODE 为 danger-full-access。依据 DSH 官方 dsh-base 配置，此值同时设 sandbox 为 danger-full-access、approval 为 never；仅影响 DSH 子进程，不修改扩展宿主或其他 CLI 环境。",
