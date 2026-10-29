@@ -57,7 +57,7 @@ Loop、Loop+ 和 Graph 子任务创建时，子会话只保留正常样式的用
 ## VSIX 瘦身与平台定向导出
 
 - 默认导出通用包，剔除开发临时页面、截图、构建 source map、SDK 类型声明和嵌套 Python 缓存，不删除 Claude 内置 CLI、WASM、图片处理或其他运行时能力。
-- 导出保留 README 相对链接，不依赖 GitHub/GitLab 仓库地址推导；README 及介绍图片必须随包保留并通过 ZIP 审计。市场图片公开托管不由此选项提供，详见打包运行手册。
+- 仓库 README 保留本地图片预览；导出时不依赖 GitHub/GitLab 地址推导，仅在 VSIX 内将已登记的介绍图改为当前版本的 Gallery HTTPS 地址，并注册标准可寻址截图资产，由市场随包托管。README、图片文件、HTTPS 引用和资产登记均通过 ZIP 审计；新增本地图需登记，缺图或遗漏转换阻止导出。详见打包运行手册。
 - `python3 scripts/export_vscode_extension.py --target current`（Windows 可用 `python`）或显式平台值导出独立命名、带 VSIX target 标记的平台包；只裁剪其他平台的 ripgrep/sharp/libvips，缺少目标原生依赖时失败，不改变工作区依赖。支持范围与分发边界见 `.ch/docs/runbooks/local-development.md` 的“打包 VSIX”。
 - 实现入口：`scripts/export_vscode_extension.py`、`scripts/vsix_target.js`、`.vscodeignore`；回归入口：`src/test/shared/vsixPackaging.test.ts`、`scripts/tests/test_export_vscode_extension.py`，并执行真实打包和 ZIP 审计。
 

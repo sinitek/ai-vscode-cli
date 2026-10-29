@@ -10,8 +10,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -49,6 +51,76 @@ FORBIDDEN_ENTRY_PATTERN = re.compile(
     r"(?:.*/)?__pycache__/|.*\.pyc$"
     r")"
 )
+VSIX_NAMESPACE = "http://schemas.microsoft.com/developer/vsx-schema/2011"
+README_IMAGE_ASSETS = {
+    "media/loop-plus-intro.jpg": "Microsoft.VisualStudio.Services.Screenshots.1",
+}
+README_IMAGE_PATTERN = re.compile(r"(!\[[^\]\r\n]*\]\()([^\s)]+)([^)\r\n]*\))")
+
+
+def marketplace_asset_url(manifest: dict, asset_type: str) -> str:
+    publisher, name, version = (quote(manifest[key], safe="") for key in ("publisher", "name", "version"))
+    return (
+        f"https://{publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/{publisher}"
+        f"/extension/{name}/{version}/assetbyname/{quote(asset_type, safe='')}"
+    )
+
+
+def validate_readme_assets(readme: str, manifest: dict, vsix_manifest: ElementTree.Element, entries: set[str]) -> None:
+    for image in README_IMAGE_PATTERN.finditer(readme):
+        if not image.group(2).startswith("https://"):
+            raise RuntimeError(
+                f"README 图片必须使用市场可访问的 HTTPS 地址：{image.group(2)}；"
+                "本地图片请在 README_IMAGE_ASSETS 中登记。"
+            )
+    assets = vsix_manifest.find(f"{{{VSIX_NAMESPACE}}}Assets")
+    for image_path, asset_type in README_IMAGE_ASSETS.items():
+        if marketplace_asset_url(manifest, asset_type) not in readme:
+            continue
+        asset = assets.find(f"{{{VSIX_NAMESPACE}}}Asset[@Type='{asset_type}']") if assets is not None else None
+        entry = f"extension/{image_path}"
+        if asset is None or asset.get("Path") != entry or asset.get("Addressable", "").lower() != "true":
+            raise RuntimeError(f"README 图片未登记为可寻址市场资产：{image_path}")
+        if entry not in entries:
+            raise RuntimeError(f"VSIX 缺少 README 图片：{image_path}")
+
+
+def prepare_marketplace_readme(out_file: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="sinitek-readme-assets-", dir=out_file.parent) as temporary:
+        staged_output = Path(temporary) / out_file.name
+        with zipfile.ZipFile(out_file) as source:
+            manifest = json.loads(source.read("extension/package.json"))
+            vsix_manifest = ElementTree.fromstring(source.read("extension.vsixmanifest"))
+            assets = vsix_manifest.find(f"{{{VSIX_NAMESPACE}}}Assets")
+            if assets is None:
+                raise RuntimeError("VSIX 清单缺少 Assets，无法登记 README 图片。")
+
+            def replace_image(image: re.Match[str]) -> str:
+                image_path = image.group(2).removeprefix("./")
+                asset_type = README_IMAGE_ASSETS.get(image_path)
+                if asset_type is None:
+                    return image.group(0)
+                asset = assets.find(f"{{{VSIX_NAMESPACE}}}Asset[@Type='{asset_type}']")
+                if asset is None:
+                    ElementTree.SubElement(assets, f"{{{VSIX_NAMESPACE}}}Asset", {
+                        "Type": asset_type, "Path": f"extension/{image_path}", "Addressable": "true",
+                    })
+                return f"{image.group(1)}{marketplace_asset_url(manifest, asset_type)}{image.group(3)}"
+
+            readme = README_IMAGE_PATTERN.sub(replace_image, source.read("extension/readme.md").decode("utf-8"))
+            validate_readme_assets(readme, manifest, vsix_manifest, set(source.namelist()))
+            ElementTree.register_namespace("", VSIX_NAMESPACE)
+            replacements = {
+                "extension/readme.md": readme.encode("utf-8"),
+                "extension.vsixmanifest": ElementTree.tostring(vsix_manifest, encoding="utf-8", xml_declaration=True),
+            }
+            with zipfile.ZipFile(staged_output, "w") as destination:
+                destination.comment = source.comment
+                for entry in source.infolist():
+                    contents = replacements[entry.filename] if entry.filename in replacements else source.read(entry)
+                    destination.writestr(entry, contents)
+        staged_output.replace(out_file)
+    print("README 图片已登记为市场资产，并转换为当前版本的 HTTPS 地址。", flush=True)
 
 
 def read_manifest(root: Path = ROOT_DIR) -> dict:
@@ -174,6 +246,13 @@ def audit_vsix(out_file: Path, target: str) -> None:
     missing = sorted(entry for entry in REQUIRED_ENTRIES if entry not in entries)
     if missing:
         raise RuntimeError("VSIX 缺少必需运行时文件：\n" + "\n".join(missing))
+    with zipfile.ZipFile(out_file) as archive:
+        validate_readme_assets(
+            archive.read("extension/readme.md").decode("utf-8"),
+            json.loads(archive.read("extension/package.json")),
+            ElementTree.fromstring(archive.read("extension.vsixmanifest")),
+            set(names),
+        )
     result = subprocess.run(
         [require_tool("node"), str(ROOT_DIR / "scripts" / "vsix_target.js"), "audit", target],
         cwd=ROOT_DIR,
@@ -206,6 +285,7 @@ def export_extension(target: str) -> Path:
                 cwd=ROOT_DIR,
             )
         package_vsix(target, out_file, ignore_file if target != "universal" else None)
+        prepare_marketplace_readme(out_file)
         audit_vsix(out_file, target)
     return out_file
 

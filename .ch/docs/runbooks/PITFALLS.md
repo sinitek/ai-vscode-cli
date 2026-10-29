@@ -18,9 +18,20 @@
 - 聊天图片按钮继承全局固定高度会裁切图片：见本页“图片预览按钮必须覆盖全局控件高度”。
 - 只有 viewBox 的 SVG 在自适应图片按钮内可能缩为零尺寸：见本页“SVG 图片需提供可确定的固有尺寸”。
 - VSIX 瘦身与嵌套缓存误打包：见本页“VSIX 排除规则不能覆盖宽泛否定模式”。
+- README 图片入包不代表市场可访问：见本页“市场 README 图片必须登记为可寻址资产”。
 - Claude 联网工具空结果与域名检查失败：见本页“Claude 工具调用成功包装不代表获得有效数据”。
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
+
+## 市场 README 图片必须登记为可寻址资产
+
+- 状态：需部署时检查
+- 首次发现：2026-10-29
+- 适用范围：README 图片、Python 导出和市场发布脚本
+- 现象：本地 README 预览正常，JPEG 也在 VSIX 内，但市场介绍页显示破图。
+- 根因：`--no-rewrite-relative-links` 只阻止 vsce 猜测私有仓库 URL；普通随包文件未自动登记为 Gallery 资产，市场页面也不会按安装目录解析相对图片路径。
+- 长期规避：在导出流程中将介绍图登记为标准 `Microsoft.VisualStudio.Services.Screenshots.1` 可寻址资产，只修改 VSIX 内 README 为该版本的 Gallery `assetbyname` HTTPS 地址；不改仓库 README，不依赖额外图床。新增本地图必须更新 `README_IMAGE_ASSETS`，遗漏登记或缺图阻止导出。
+- 验证方式：运行导出和发布脚本单测，再真实导出检查 README、`extension.vsixmanifest` 与 JPEG 字节；维护者升级版本并发布后，匿名请求新版本图片 URL，确认 HTTP 200、图片类型和实际市场展示。本地 ZIP 验证不等于已部署生效。
 
 ## 子模型配置加载不能依赖先访问目标 CLI
 
