@@ -2075,6 +2075,49 @@ test(`common commands remain hidden when ${cli} interactive support is unavailab
   assert.equal(document.getElementById("commonCommandButton").style.display, "none");
   assert.equal(document.getElementById("commandCompact").disabled, true);
 });
+}
+
+test("ZCode hides unknown and initialization context usage while keeping real usage isolated by tab", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: "zcode",
+    conversationTabs: {
+      activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "zcode" }, { id: "tab-2", cli: "zcode" }],
+    },
+  }) });
+  const label = document.getElementById("runContextTokens");
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 0,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+  assert.equal(label.getAttribute("title"), null);
+  assert.equal(label.getAttribute("aria-label"), null);
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-2", tokensInContextWindow: 7733,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 17956,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "18k");
+  assert.match(String(label.getAttribute("title")), /17956 \/ 200000/);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+  assert.equal(label.textContent, "18k");
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.updateContextTokenUsage();
+  assert.equal(label.textContent, "7.7k");
+  api.state.conversationTabs.activeTabId = "tab-1";
+  api.updateContextTokenUsage();
+  assert.equal(label.textContent, "18k");
+});
 
 test("hides the context size label while compacting and restores it afterwards", () => {
   const { document, window } = createRuntimeHarness();
@@ -2123,49 +2166,6 @@ test("hides the context size label while compacting and restores it afterwards",
   window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "started" });
   assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
   assert.equal(label.style.display, "none");
-}
-
-test("ZCode hides unknown and initialization context usage while keeping real usage isolated by tab", () => {
-  const { api, document, window } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
-  window.dispatchMessage({ type: "state", payload: createPanelState({
-    currentCli: "zcode",
-    conversationTabs: {
-      activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "zcode" }, { id: "tab-2", cli: "zcode" }],
-    },
-  }) });
-  const label = document.getElementById("runContextTokens");
-  assert.equal(label.style.display, "none");
-  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
-  assert.equal(label.style.display, "none");
-  window.dispatchMessage({
-    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 0,
-    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
-  });
-  assert.equal(label.style.display, "none");
-  assert.equal(label.textContent, "");
-  assert.equal(label.getAttribute("title"), null);
-  assert.equal(label.getAttribute("aria-label"), null);
-  window.dispatchMessage({
-    type: "contextTokenUsage", tabId: "tab-2", tokensInContextWindow: 7733,
-    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
-  });
-  assert.equal(label.style.display, "none");
-  window.dispatchMessage({
-    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 17956,
-    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
-  });
-  assert.equal(label.style.display, "inline-flex");
-  assert.equal(label.textContent, "18k");
-  assert.match(String(label.getAttribute("title")), /17956 \/ 200000/);
-  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
-  assert.equal(label.textContent, "18k");
-  api.state.conversationTabs.activeTabId = "tab-2";
-  api.updateContextTokenUsage();
-  assert.equal(label.textContent, "7.7k");
-  api.state.conversationTabs.activeTabId = "tab-1";
-  api.updateContextTokenUsage();
-  assert.equal(label.textContent, "18k");
-});
   window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "completed" });
   assert.equal(document.getElementById("runStatusText").style.display, "none");
   assert.equal(label.style.display, "inline-flex");
