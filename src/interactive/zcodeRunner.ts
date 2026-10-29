@@ -64,6 +64,7 @@ export type ZcodeStreamHandlers = {
   onAssistantDelta?: (text: string) => void;
   onThinkingDelta?: (text: string) => void;
   onTrace?: (text: string, kind?: "tool-use" | "error" | "status", meta?: { toolCallId?: string }) => void;
+  onEvent?: (event: ZcodeWireMessage) => void;
   onTokenUsageUpdate?: (usage: ZcodeContextUsage) => void;
   onActivity?: () => void;
 };
@@ -490,7 +491,7 @@ export class ZcodeInteractiveRunner {
     }
     const event = readZcodeSessionEvent(message);
     if (event) {
-      this.onEvent(event);
+      this.onEvent(event, message);
     }
   }
 
@@ -527,11 +528,12 @@ export class ZcodeInteractiveRunner {
     }));
   }
 
-  private onEvent(event: ZcodeSessionEvent): void {
+  private onEvent(event: ZcodeSessionEvent, message: ZcodeWireMessage): void {
     if (this.sessionId && event.sessionId && event.sessionId !== this.sessionId) {
       return;
     }
     const wait = this.turnWait;
+    wait?.handlers.onEvent?.(message);
     wait?.handlers.onActivity?.();
     const delta = readZcodeTextDelta(event);
     if (delta && wait) {

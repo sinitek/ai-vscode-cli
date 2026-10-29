@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test = require("node:test");
 import { installVscodeMock } from "../vscodeMock";
+import type { ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
 
 installVscodeMock();
 
@@ -310,7 +311,104 @@ test("consecutive ZCode tasks capture streaming and completion before send ackno
   }
 });
 
-test("an early failed ZCode turn clears the waiter and allows a subsequent task", async () => {
+test("ZCode replay preserves native text, reasoning, tool and terminal events before send acknowledgement", async () => {
+  const child = new FakeZcode();
+  const events: ZcodeWireMessage[] = [
+    { type: "model.streaming", payload: { kind: "reasoning_delta", delta: "checking" } },
+    { type: "model.streaming", payload: { kind: "tool_call", toolCallId: "call_read", toolName: "Read", input: { path: "README.md" } } },
+    { type: "tool.updated", payload: { kind: "result", toolCallId: "call_read", result: { success: true, content: "read result" } } },
+    { type: "model.request.finished", payload: { status: "completed" } },
+    { type: "model.streaming", payload: { kind: "text_delta", delta: "done" } },
+    { type: "turn.completed", payload: { response: "done" } },
+  ].map((event, index) => ({
+    method: "session/event",
+    params: { sessionId: "sess_test", seq: index + 1, ...event },
+  }));
+  child.beforeSendReply = () => {
+    for (const event of events) {
+      child.stdout.write(`${JSON.stringify(event)}\n`);
+    }
+  };
+  const runner = new ZcodeInteractiveRunner({ cwd: process.cwd(), spawnImpl: () => child });
+  try {
+    await runner.start();
+    const replay: ZcodeWireMessage[] = [];
+    const assistant: string[] = [];
+    const thinking: string[] = [];
+    const traces: string[] = [];
+    assert.equal((await runner.prompt("run task", {
+      onEvent: (event) => { replay.push(event); },
+      onAssistantDelta: (text) => { assistant.push(text); },
+      onThinkingDelta: (text) => { thinking.push(text); },
+      onTrace: (text) => { traces.push(text); },
+    })).text, "done");
+    assert.deepEqual(replay, events);
+    assert.deepEqual(assistant, ["done"]);
+    assert.deepEqual(thinking, ["checking"]);
+    assert.equal(traces.length, 2);
+  } finally {
+    await runner.dispose();
+  }
+});
+
+test("ZCode replay ignores foreign sessions and idle events and isolates consecutive tasks", async () => {
+  const child = new FakeZcode();
+  const runner = new ZcodeInteractiveRunner({ cwd: process.cwd(), spawnImpl: () => child });
+  const replays: ZcodeWireMessage[][] = [];
+  child.beforeSendReply = (request) => {
+    child.stdout.write(`${JSON.stringify({
+      method: "session/event",
+      params: { sessionId: "sess_other", type: "turn.completed", payload: { response: "foreign task" } },
+    })}\n`);
+    child.emitEvent("part.delta", { field: "text", delta: request.params.content });
+    child.completeTurn(String(request.params.content));
+    child.emitEvent("part.delta", { field: "text", delta: "late event" });
+  };
+  try {
+    await runner.start();
+    child.emitEvent("part.delta", { field: "text", delta: "idle event" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    for (const content of ["first task", "second task"]) {
+      const replay: ZcodeWireMessage[] = [];
+      replays.push(replay);
+      assert.equal((await runner.prompt(content, {
+        onEvent: (event) => { replay.push(event); },
+      })).text, content);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepEqual(replay.map((event) => event.params), [
+        { sessionId: "sess_test", type: "part.delta", payload: { field: "text", delta: content } },
+        { sessionId: "sess_test", type: "turn.completed", payload: { response: content } },
+      ]);
+    }
+    assert.deepEqual(replays.map((replay) => replay.length), [2, 2]);
+  } finally {
+    await runner.dispose();
+  }
+});
+
+test("ZCode replay stops accepting events after cancellation", async () => {
+  const child = new FakeZcode();
+  const runner = new ZcodeInteractiveRunner({ cwd: process.cwd(), spawnImpl: () => child });
+  try {
+    await runner.start();
+    const replay: ZcodeWireMessage[] = [];
+    const pending = runner.prompt("cancel task", { onEvent: (event) => { replay.push(event); } });
+    child.emitEvent("part.delta", { field: "text", delta: "before cancellation" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    runner.cancelTurn();
+    await assert.rejects(pending, /turn was stopped/);
+    child.emitEvent("part.delta", { field: "text", delta: "after cancellation" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(replay.length, 1);
+    assert.deepEqual(replay[0].params, {
+      sessionId: "sess_test", type: "part.delta", payload: { field: "text", delta: "before cancellation" },
+    });
+  } finally {
+    await runner.dispose();
+  }
+});
+
+test("an early failed ZCode turn records its terminal replay event and allows a subsequent task", async () => {
   const child = new FakeZcode();
   child.beforeSendReply = () => child.emitEvent("turn.failed", { error: { message: "model unavailable" } });
   const runner = new ZcodeInteractiveRunner({
@@ -319,7 +417,14 @@ test("an early failed ZCode turn clears the waiter and allows a subsequent task"
   const timeout = setTimeout(() => runner.cancelTurn(), 2000);
   try {
     await runner.start();
-    await assert.rejects(runner.prompt("first task"), /model unavailable/);
+    const replay: ZcodeWireMessage[] = [];
+    await assert.rejects(runner.prompt("first task", {
+      onEvent: (event) => { replay.push(event); },
+    }), /model unavailable/);
+    assert.deepEqual(replay, [{
+      method: "session/event",
+      params: { sessionId: "sess_test", type: "turn.failed", payload: { error: { message: "model unavailable" } } },
+    }]);
     assert.equal(runner.isReusable(), true);
     child.beforeSendReply = () => child.completeTurn("recovered");
     assert.equal((await runner.prompt("retry")).text, "recovered");

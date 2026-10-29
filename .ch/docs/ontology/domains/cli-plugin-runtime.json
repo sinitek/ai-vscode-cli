@@ -486,6 +486,21 @@
       ]
     },
     {
+      "id": "plugin.rule.zcode_task_replay",
+      "name": "ZCode 当前回合原生事件进入对应标签页回放",
+      "description": "ZCode runner 在过滤会话后，将活动回合的原生 session/event 在聊天投影与终态处理前交给 onEvent。宿主仅在当前执行仍活动时发送带 tabId 的 rawStreamDelta，并向调试事件日志转发同一事件。正文、思考、工具、未知事件和成功／失败终态保留原始协议结构与顺序；其他会话、结束或停止后的迟到事件不进入回放，复用 runner 时按回合隔离。回放不依赖调试日志开关，不补写旧版本未采集的历史事件。",
+      "status": "active",
+      "aliases": ["ZCode 回放", "ZCode 回放为零", "ZCode 事件日志"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "docs/zcode-guide.md", "anchor": "任务回放"},
+        {"path": "src/interactive/zcodeRunner.ts"},
+        {"path": "src/extensionHost/interactiveTurnZcode.ts"},
+        {"path": "src/test/interactive/zcodeRunner.test.ts"},
+        {"path": "src/test/extensionHost/interactiveTurnZcode.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.zcode_context_compaction",
       "name": "ZCode 仅展示真实用量并等待原生压缩终态",
       "description": "ZCode 上下文用量来自 projection.contextUsed/contextWindow；初始化零值和缺失统计不展示，收到真实正数后按会话 Tab 展示。常用指令开放原生 session/compact；全局执行后自动压缩覆盖 ZCode，仅成功且超过 5 分钟的已有会话触发，自动压缩最多等待 3 分钟。压缩前启动或恢复当前 sess_ 会话；accepted/already_running 仅是接收状态，发请求前监听同会话 state.updated，收到 session_compacted 才确认成功并刷新用量；失败、取消、停止、退出不得误报完成。",

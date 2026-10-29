@@ -1,5 +1,6 @@
 import { ZcodeInteractiveRunner } from "../interactive/zcodeRunner";
 import { isZcodeSessionId } from "../interactive/zcodeAppServerProtocol";
+import { normalizeRawStreamContent } from "../promptRunState";
 import type { ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
 import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
@@ -120,6 +121,19 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
               { id, merge: false },
             );
           }
+        },
+        onEvent: (event) => {
+          if (!port.isCurrentRunActive()) {
+            return;
+          }
+          const content = normalizeRawStreamContent(event);
+          port.sendPanelMessage({
+            type: "rawStreamDelta",
+            content: content + (content.endsWith("\n") ? "" : "\n"),
+            stream: "event",
+            tabId: port.tabId,
+          });
+          port.appendDebugEvent(event);
         },
         onTokenUsageUpdate: (usage) => {
           port.sendPanelMessage({
