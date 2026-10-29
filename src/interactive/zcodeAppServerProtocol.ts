@@ -263,7 +263,7 @@ export function readZcodeContextUsage(snapshot: Record<string, unknown>): ZcodeC
   const projection = readZcodeRecord(snapshot.projection);
   const used = readFiniteCount(projection?.contextUsed);
   const windowSize = readFiniteCount(projection?.contextWindow);
-  if (used === null || windowSize === null || windowSize <= 0) {
+  if (used === null || used <= 0 || windowSize === null || windowSize <= 0) {
     return null;
   }
   return { tokensInContextWindow: used, modelContextWindow: windowSize };

@@ -541,11 +541,51 @@ type StrategySelectionOptions = {
   grokCompactSession?: () => Promise<import("../../interactive/grokRunner").GrokCompactionResult>;
 };
 
-test("Grok participates in the same automatic compaction capability gate as Codex", () => {
+test("Grok and ZCode participate in the same automatic compaction capability gate as Codex", () => {
   const { isAutoContextCompactionCli } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
-  for (const cli of ["codex", "claude", "opencode", "grok"]) assert.equal(isAutoContextCompactionCli(cli), true);
-  for (const cli of ["", "gemini", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
+  for (const cli of ["codex", "claude", "opencode", "grok", "zcode"]) assert.equal(isAutoContextCompactionCli(cli), true);
+  for (const cli of ["", "gemini", "dsh", "kimi-code", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
 });
+
+for (const silent of [false, true]) {
+  test(`ZCode ${silent ? "automatic" : "manual"} compaction resumes before compacting and publishes final usage`, async () => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const { deps, calls } = createSilentCodexCompactionDeps();
+    const events: string[] = [];
+    const messages: unknown[] = [];
+    let finishCompaction!: () => void;
+    const completed = new Promise<void>((resolve) => { finishCompaction = resolve; });
+    deps.getCurrentCli = () => "zcode";
+    deps.getCliCommand = () => "zcode";
+    deps.resolveInteractiveMappedId = () => "sess_zcode";
+    deps.sendPanelMessage = (message) => { messages.push(message); };
+    deps.interactiveRunnerManager.getOrCreateZcodeRunner = (options) => {
+      assert.equal(options.localSessionId, "sess_zcode");
+      return {
+        start: async () => { events.push("resume"); },
+        compact: async () => {
+          events.push("compact");
+          await completed;
+          return { state: "accepted", usage: { tokensInContextWindow: 7733, modelContextWindow: 200000 } };
+        },
+        cancelTurn: () => {},
+      } as never;
+    };
+    const compacting = runContextCompactionWithDeps(deps, { silent });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, ["resume", "compact"]);
+    assert.equal(calls.appendSystemMessage, 0);
+    assert.equal(calls.sendRunStatuses.some((status) => status.status === "end"), false);
+    finishCompaction();
+    assert.equal(await compacting, true);
+    assert.equal(calls.appendSystemMessage, 1);
+    assert.deepEqual(messages, [{
+      type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 7733,
+      modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+    }]);
+    assert.deepEqual(calls.sendRunStatuses.map((status) => status.status), ["start", "end"]);
+  });
+}
 
 function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
   const cli = options.cli ?? "codex";

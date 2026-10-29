@@ -38,6 +38,20 @@ const snapshot = {
   },
 };
 
+test("ZCode context usage excludes initialization zeros and invalid or missing counts", () => {
+  for (const contextUsed of [undefined, null, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(readZcodeContextUsage({ projection: { contextUsed, contextWindow: 200000 } }), null);
+  }
+  for (const contextWindow of [undefined, null, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(readZcodeContextUsage({ projection: { contextUsed: 1234, contextWindow } }), null);
+  }
+  assert.equal(readZcodeContextUsage({}), null);
+  assert.deepEqual(readZcodeContextUsage({ projection: { contextUsed: 17956, contextWindow: 200000 } }), {
+    tokensInContextWindow: 17956,
+    modelContextWindow: 200000,
+  });
+});
+
 test("ZCode wire format is not JSON-RPC and not ACP", () => {
   assert.equal(ZCODE_GLM_OFFICIAL_API_TYPE, "openai-chat-completions");
   assert.deepEqual(buildZcodeLaunchArgs(), ["app-server", "--stdio", "--mode", "yolo"]);

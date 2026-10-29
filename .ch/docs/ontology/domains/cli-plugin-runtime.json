@@ -486,6 +486,25 @@
       ]
     },
     {
+      "id": "plugin.rule.zcode_context_compaction",
+      "name": "ZCode 仅展示真实用量并等待原生压缩终态",
+      "description": "ZCode 上下文用量来自 projection.contextUsed/contextWindow；初始化零值和缺失统计不展示，收到真实正数后按会话 Tab 展示。常用指令开放原生 session/compact；全局执行后自动压缩覆盖 ZCode，仅成功且超过 5 分钟的已有会话触发，自动压缩最多等待 3 分钟。压缩前启动或恢复当前 sess_ 会话；accepted/already_running 仅是接收状态，发请求前监听同会话 state.updated，收到 session_compacted 才确认成功并刷新用量；失败、取消、停止、退出不得误报完成。",
+      "status": "active",
+      "aliases": ["ZCode 上下文", "ZCode 自动压缩", "0k", "session_compacted"],
+      "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "docs/zcode-guide.md", "anchor": "上下文用量与压缩"},
+        {"path": "src/interactive/zcodeAppServerProtocol.ts"},
+        {"path": "src/interactive/zcodeRunner.ts"},
+        {"path": "src/contextCompactionRunner.ts"},
+        {"path": "src/extension.ts", "symbol": "shouldAutoCompactContextAfterRunForTarget"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
+        {"path": "src/test/interactive/zcodeRunner.test.ts"},
+        {"path": "src/test/core/contextCompactionRunner.test.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.zcode_config_model_selection",
       "name": "ZCode 对话模型选择来自配置且入口可见",
       "description": "ZCode 普通对话显示可用的单模型下拉，Loop、Graph、Loop+ 显示主／子模型行和 ZCode 无障碍名称。模型候选来自当前 provider_config.json，不提供任意添加模型的管理弹窗，也不插入默认占位项；空配置显示中文配置指引。界面仅显示原始 modelId，保留模型自身命名空间，选项值与执行仍使用 providerId/modelId。模型 ID 必须匹配服务实际提供的模型，范例不代表服务能力；真实配置和保存档案须同步维护，防止切换档案恢复错误模型。回归需同时验证可见性、禁用状态、选项、切换和选择消息。",

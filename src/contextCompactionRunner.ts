@@ -561,7 +561,16 @@ export type ContextCompactionRunDeps = {
     content: unknown,
     options?: { stream?: "stdout" | "stderr" | "event"; appendNewline?: boolean }
   ) => void;
-  sendPanelMessage: (message: { type: "taskListUpdate"; items: { text: string; done: boolean }[] }) => void;
+  sendPanelMessage: (message:
+    | { type: "taskListUpdate"; items: { text: string; done: boolean }[] }
+    | {
+      type: "contextTokenUsage";
+      tabId?: string;
+      tokensInContextWindow: number;
+      modelContextWindow: number;
+      contextWindowSource: "zcode-projection";
+    }
+  ) => void;
   updateProcessTitle: (cli: CliName, sessionId: string) => void;
   appendTraceMessage: (content: string) => void;
   prepareGeminiRunProfile?: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
@@ -939,11 +948,21 @@ async function executeZcodeContextCompaction(
   hooks.setStopCurrentTurn(() => runner.cancelTurn());
   deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
   try {
+    await hooks.withCompactionTimeout(runner.start());
     const result = await hooks.withCompactionTimeout(runner.compact());
     if (result.state !== "accepted" && result.state !== "already_running") {
       throw new Error("ZCode did not accept native compaction.");
     }
     deps.upsertInteractiveMapping(run.cli, run.sessionId, mappedSessionId);
+    if (result.usage) {
+      deps.sendPanelMessage({
+        type: "contextTokenUsage",
+        tabId: run.tabId ?? undefined,
+        tokensInContextWindow: result.usage.tokensInContextWindow,
+        modelContextWindow: result.usage.modelContextWindow,
+        contextWindowSource: "zcode-projection",
+      });
+    }
     deps.appendSystemMessage(t("compact.zcodeNativeCompressed", { sessionId: mappedSessionId }));
     void logInfo("context-compact-zcode-complete", {
       cli: run.cli,

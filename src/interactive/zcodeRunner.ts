@@ -117,6 +117,10 @@ export class ZcodeInteractiveRunner {
     handlers: ZcodeStreamHandlers;
     text: string;
   } | null = null;
+  private compactWait: {
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null = null;
   private stderrText = "";
   private readonly readLoop: Promise<void> | null = null;
 
@@ -232,7 +236,7 @@ export class ZcodeInteractiveRunner {
     if (!this.sessionId) {
       throw new ZcodeProtocolError("ZCode session is not started.", "session");
     }
-    if (this.turnWait) {
+    if (this.turnWait || this.compactWait) {
       throw new ZcodeProtocolError("ZCode already has an active prompt.", "busy");
     }
     this.traceProjector.beginTurn();
@@ -284,24 +288,40 @@ export class ZcodeInteractiveRunner {
     if (!this.sessionId) {
       throw new ZcodeProtocolError("ZCode session is not started.", "session");
     }
-    const result = await this.request("session/compact", {
-      sessionId: this.sessionId,
-      ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
-    });
-    const compact = result && typeof result === "object"
-      ? (result as { compact?: { state?: unknown } }).compact
-      : undefined;
-    const state = compact?.state;
-    if (state !== "accepted" && state !== "already_running") {
-      throw new ZcodeProtocolError("ZCode did not accept native compaction.", "compaction");
+    if (this.turnWait || this.compactWait) {
+      throw new ZcodeProtocolError("ZCode already has an active turn.", "busy");
     }
-    return { state, usage: await this.readUsage() };
+    const completed = new Promise<void>((resolve, reject) => {
+      this.compactWait = { resolve, reject };
+    });
+    try {
+      const [state] = await Promise.all([
+        this.request("session/compact", {
+          sessionId: this.sessionId,
+          ...(instructions?.trim() ? { instructions: instructions.trim() } : {}),
+        }).then((result) => {
+          const compact = readZcodeRecord(readZcodeRecord(result)?.compact);
+          const state = compact?.state;
+          if (state !== "accepted" && state !== "already_running") {
+            throw new ZcodeProtocolError("ZCode did not accept native compaction.", "compaction");
+          }
+          return state;
+        }),
+        completed,
+      ]);
+      return { state, usage: await this.readUsage() };
+    } finally {
+      this.compactWait = null;
+    }
   }
 
   public cancelTurn(): void {
+    const error = new ZcodeProtocolError("ZCode turn was stopped.", "stopped");
+    this.turnWait?.reject(error);
+    this.turnWait = null;
+    this.compactWait?.reject(error);
+    this.compactWait = null;
     if (!this.sessionId || !this.child?.stdin) {
-      this.turnWait?.reject(new ZcodeProtocolError("ZCode turn was stopped.", "stopped"));
-      this.turnWait = null;
       return;
     }
     const id = this.nextId;
@@ -311,8 +331,6 @@ export class ZcodeInteractiveRunner {
       method: "session/stop",
       params: { sessionId: this.sessionId },
     }));
-    this.turnWait?.reject(new ZcodeProtocolError("ZCode turn was stopped.", "stopped"));
-    this.turnWait = null;
   }
 
   public async dispose(): Promise<void> {
@@ -454,6 +472,22 @@ export class ZcodeInteractiveRunner {
       }
       return;
     }
+    if (message.method === "state.updated" && this.compactWait) {
+      const params = readZcodeRecord(message.params);
+      if (params?.scope === "session" && params.sessionId === this.sessionId) {
+        if (params.reason === "session_compacted") {
+          this.compactWait.resolve();
+        } else if (params.reason === "session_compact_failed" || params.reason === "session_compact_cancelled") {
+          this.compactWait.reject(new ZcodeProtocolError(
+            params.reason === "session_compact_cancelled"
+              ? "ZCode context compaction was cancelled."
+              : "ZCode context compaction failed.",
+            "compaction",
+          ));
+        }
+      }
+      return;
+    }
     const event = readZcodeSessionEvent(message);
     if (event) {
       this.onEvent(event);
@@ -522,9 +556,11 @@ export class ZcodeInteractiveRunner {
       wait.resolve(response || wait.text);
       return;
     }
-    if (event.type === "turn.failed" && wait) {
+    if (event.type === "turn.failed" && (wait || this.compactWait)) {
       this.turnWait = null;
-      wait.reject(new ZcodeProtocolError(readZcodeTurnFailure(event), "turn-failed"));
+      const error = new ZcodeProtocolError(readZcodeTurnFailure(event), "turn-failed");
+      wait?.reject(error);
+      this.compactWait?.reject(error);
     }
   }
 
@@ -544,6 +580,8 @@ export class ZcodeInteractiveRunner {
     this.pending.clear();
     this.turnWait?.reject(error);
     this.turnWait = null;
+    this.compactWait?.reject(error);
+    this.compactWait = null;
   }
 }
 

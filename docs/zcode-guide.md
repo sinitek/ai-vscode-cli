@@ -33,6 +33,15 @@ zcode app-server --stdio --mode yolo
 
 工具输入分片按 `toolCallId` 聚合，`scheduled`、`started` 和 `result` 只更新同一条 trace 气泡。Shell 命令输出为 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构；Webview 复用 Codex 的工具标题、本地化和折叠结果样式，不另建 ZCode 专属气泡。
 
+## 上下文用量与压缩
+
+ZCode 0.17.0 支持读取真实上下文用量。插件使用会话快照的 `projection.contextUsed` 和 `projection.contextWindow`，不是累计 token 数或本地估算；本机最小对话实测可取得非零用量。新建会话的 `contextUsed = 0` 是初始化占位，没有有效统计时隐藏标签，不显示 `0k` 或等待占位；收到真实正数后展示，悬停可看已用量、窗口容量和 ZCode 数据来源。用量在回合结束、健康会话复用及压缩完成后刷新，按对话标签页隔离。
+
+- 手动压缩：ZCode 分组的“常用指令 → 压缩上下文”调用原生 `session/compact`；CLI 本身也提供 `/compact [instructions]`。运行期间禁用重复触发，运行条显示“压缩中”。
+- 执行后自动压缩：在工具设置“AI任务配置”中使用全局“执行后自动压缩上下文”开关，默认开启；与其他已接入 CLI 一样，只有成功且耗时超过 5 分钟的已有会话触发，不是每次短对话都压缩。自动压缩最多等待 3 分钟，超时停止并按未压缩处理。
+- 压缩前先启动或恢复当前 `sess_` 会话，保持原会话映射，不新建替代会话。
+- `session/compact` 返回的 `accepted` 或 `already_running` **仅表示已接收／正在执行**，不是完成。插件在发请求前订阅终态，等待同会话 `state.updated` 的 `session_compacted` 后才确认成功并刷新用量；`session_compact_failed`、`session_compact_cancelled`、回合失败、进程退出及用户停止均不能报告为成功。
+
 ## 对话面板模型选择
 
 普通对话显示当前 ZCode 配置中的模型下拉框；Loop、Graph 和 Loop+ 显示主／子模型下拉框。选项显示原始 `modelId`，包含命名空间的模型 ID 不截断；内部选择与执行仍使用完整 `providerId/modelId`。模型候选来自配置文件，不提供任意添加模型的管理弹窗，也不额外插入“默认”选项。配置未声明模型时，下拉框显示中文配置指引。

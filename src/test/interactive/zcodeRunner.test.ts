@@ -18,7 +18,9 @@ class FakeZcode extends EventEmitter {
   public readonly exitCode: number | null = null;
   public readonly requests: Request[] = [];
   public beforeSendReply?: (request: Request) => void;
+  public beforeCompactReply?: (request: Request) => void;
   public sendAccepted = true;
+  public compactState = "accepted";
   public contextUsed = 1234;
   public failedMethod?: string;
   public responseForRequest?: (request: Request) => unknown;
@@ -41,6 +43,9 @@ class FakeZcode extends EventEmitter {
         if (request.method === "session/send") {
           this.beforeSendReply?.(request);
         }
+        if (request.method === "session/compact") {
+          this.beforeCompactReply?.(request);
+        }
         const result = request.method === "session/create" || request.method === "session/resume" ? {
           protocol: { name: "ZCode Protocol", version: 1 },
           session: { sessionId: "sess_test" },
@@ -54,6 +59,7 @@ class FakeZcode extends EventEmitter {
             },
           },
         } : request.method === "session/send" ? { accepted: this.sendAccepted }
+          : request.method === "session/compact" ? { compact: { state: this.compactState } }
           : request.method === "session/read" ? {
             protocol: { name: "ZCode Protocol", version: 1 },
             projection: { contextUsed: this.contextUsed, contextWindow: 200000 },
@@ -75,12 +81,88 @@ class FakeZcode extends EventEmitter {
     this.emitEvent("turn.completed", { response: content });
   }
 
+  public emitCompactionState(reason: string, sessionId = "sess_test", scope = "session"): void {
+    this.stdout.write(`${JSON.stringify({ method: "state.updated", params: { reason, sessionId, scope } })}\n`);
+  }
+
   public emitEvent(type: string, payload: Record<string, unknown>): void {
     this.stdout.write(`${JSON.stringify({
       method: "session/event",
       params: { sessionId: "sess_test", type, payload },
     })}\n`);
   }
+}
+
+for (const state of ["accepted", "already_running"]) {
+  test(`ZCode ${state} compaction waits for the matching native completion and reads fresh usage`, async () => {
+    const child = new FakeZcode();
+    child.compactState = state;
+    const runner = new ZcodeInteractiveRunner({ cwd: "/workspace", spawnImpl: () => child });
+    try {
+      await runner.start();
+      let settled = false;
+      const compacting = runner.compact("  preserve decisions  ").then((result) => {
+        settled = true;
+        return result;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false);
+      assert.equal(child.requests.some((request) => request.method === "session/read"), false);
+      assert.deepEqual(child.requests.find((request) => request.method === "session/compact")?.params, {
+        sessionId: "sess_test", instructions: "preserve decisions",
+      });
+      await assert.rejects(runner.prompt("do not overlap"), /active prompt/);
+      await assert.rejects(runner.compact(), /active turn/);
+      child.emitCompactionState("session_compacted", "sess_other");
+      child.emitCompactionState("session_compacted", "sess_test", "workspace");
+      child.emitCompactionState("compact_started");
+      child.completeTurn("not the persisted compaction boundary");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false);
+      child.contextUsed = 900;
+      child.emitCompactionState("session_compacted");
+      assert.deepEqual(await compacting, {
+        state, usage: { tokensInContextWindow: 900, modelContextWindow: 200000 },
+      });
+      assert.equal(child.requests.some((request) => request.method === "session/send"), false);
+    } finally {
+      await runner.dispose();
+    }
+  });
+}
+
+test("ZCode captures compaction completion before the request acknowledgement", async () => {
+  const child = new FakeZcode();
+  child.beforeCompactReply = () => child.emitCompactionState("session_compacted");
+  const runner = new ZcodeInteractiveRunner({ cwd: "/workspace", spawnImpl: () => child });
+  try {
+    await runner.start();
+    assert.equal((await runner.compact()).state, "accepted");
+  } finally {
+    await runner.dispose();
+  }
+});
+
+for (const reason of ["session_compact_failed", "session_compact_cancelled", "turn.failed", "stop", "exit", "dispose", "rejected"]) {
+  test(`ZCode compaction does not report success after ${reason}`, async () => {
+    const child = new FakeZcode();
+    const runner = new ZcodeInteractiveRunner({ cwd: "/workspace", spawnImpl: () => child });
+    try {
+      await runner.start();
+      if (reason === "rejected") child.compactState = "unsupported";
+      const compacting = runner.compact();
+      const rejected = assert.rejects(compacting, /failed|cancelled|stopped|exited|disposed|accept/);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (reason === "turn.failed") child.emitEvent("turn.failed", { error: { message: "provider failed" } });
+      else if (reason === "stop") runner.cancelTurn();
+      else if (reason === "exit") child.kill();
+      else if (reason === "dispose") await runner.dispose();
+      else if (reason !== "rejected") child.emitCompactionState(reason);
+      await rejected;
+    } finally {
+      await runner.dispose();
+    }
+  });
 }
 
 test("healthy ZCode runners reuse the same session across consecutive task startups", async () => {

@@ -1981,13 +1981,14 @@ test("SVG common-command buttons support Enter and Space without an HTMLElement 
   assert.equal(clicks, 2);
 });
 
-test("Grok exposes the same common-command compaction interaction and running state as Codex", () => {
-  const { document, window, posted } = createRuntimeHarness();
+for (const cli of ["grok", "zcode"]) {
+test(`${cli} exposes the same common-command compaction interaction and running state as Codex`, () => {
+  const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "grok", "zcode"]);
   window.dispatchMessage({ type: "state", payload: createPanelState({
-    currentCli: "grok",
+    currentCli: cli,
     interactive: { supported: true, enabled: true },
     interactiveMode: "coding",
-    conversationTabs: { activeTabId: "tab-grok", tabs: [{ id: "tab-grok", cli: "grok" }] },
+    conversationTabs: { activeTabId: "tab-compact", tabs: [{ id: "tab-compact", cli }] },
   }) });
   const button = document.getElementById("commonCommandButton");
   const compact = document.getElementById("commandCompact");
@@ -2000,7 +2001,7 @@ test("Grok exposes the same common-command compaction interaction and running st
   compact.click();
   assert.equal(overlay.classList.contains("visible"), false);
   assert.deepEqual(posted.filter((message) => message.type === "runCommonCommand"), [{ type: "runCommonCommand", command: "compactContext" }]);
-  window.dispatchMessage({ type: "runStatus", tabId: "tab-grok", status: "start", activity: "contextCompaction", startedAt: 3000 });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-compact", status: "start", activity: "contextCompaction", startedAt: 3000 });
   assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
   assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), true);
   assert.equal(button.getAttribute("aria-disabled"), "true");
@@ -2011,17 +2012,17 @@ test("Grok exposes the same common-command compaction interaction and running st
   document.getElementById("stopRun").click();
   assert.equal(posted.at(-1)?.type, "stopRun");
   for (const status of ["end", "error", "stopped"]) {
-    window.dispatchMessage({ type: "runStatus", tabId: "tab-grok", status });
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-compact", status });
     assert.equal(button.getAttribute("aria-disabled"), "false");
     assert.equal(compact.disabled, false);
     assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), false);
   }
 });
 
-test("common commands remain hidden when Grok interactive support is unavailable", () => {
-  const { document, window } = createRuntimeHarness();
+test(`common commands remain hidden when ${cli} interactive support is unavailable`, () => {
+  const { document, window } = createRuntimeHarness(undefined, undefined, ["codex", "grok", "zcode"]);
   window.dispatchMessage({ type: "state", payload: createPanelState({
-    currentCli: "grok", interactive: { supported: false, enabled: false },
+    currentCli: cli, interactive: { supported: false, enabled: false },
   }) });
   assert.equal(document.getElementById("commonCommandButton").style.display, "none");
   assert.equal(document.getElementById("commandCompact").disabled, true);
@@ -2074,6 +2075,49 @@ test("hides the context size label while compacting and restores it afterwards",
   window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "started" });
   assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
   assert.equal(label.style.display, "none");
+}
+
+test("ZCode hides unknown and initialization context usage while keeping real usage isolated by tab", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: "zcode",
+    conversationTabs: {
+      activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "zcode" }, { id: "tab-2", cli: "zcode" }],
+    },
+  }) });
+  const label = document.getElementById("runContextTokens");
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 0,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+  assert.equal(label.getAttribute("title"), null);
+  assert.equal(label.getAttribute("aria-label"), null);
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-2", tokensInContextWindow: 7733,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "none");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 17956,
+    modelContextWindow: 200000, contextWindowSource: "zcode-projection",
+  });
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(label.textContent, "18k");
+  assert.match(String(label.getAttribute("title")), /17956 \/ 200000/);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" });
+  assert.equal(label.textContent, "18k");
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.updateContextTokenUsage();
+  assert.equal(label.textContent, "7.7k");
+  api.state.conversationTabs.activeTabId = "tab-1";
+  api.updateContextTokenUsage();
+  assert.equal(label.textContent, "18k");
+});
   window.dispatchMessage({ type: "kimiCompactionUpdate", tabId: "tab-1", status: "completed" });
   assert.equal(document.getElementById("runStatusText").style.display, "none");
   assert.equal(label.style.display, "inline-flex");

@@ -163,7 +163,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
         const visible = state.currentCli === "opencode"
-          || (supported && (state.currentCli === "claude" || state.currentCli === "codex" || state.currentCli === "grok"));
+          || (supported && (state.currentCli === "claude" || state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "zcode"));
         const disabled = !visible || state.isRunning;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
         elements.commonCommandButton.disabled = disabled;

@@ -96,6 +96,9 @@ test("renders default-on automatic compaction in the AI task settings panel", ()
   }
 
   assert.match(WEBVIEW_STRINGS.toolSettingsAutoCompactAfterRunTitle, /全局设置/u);
+  assert.match(WEBVIEW_STRINGS.toolSettingsAutoCompactAfterRunTitle, /ZCode/u);
+  assert.match(WEBVIEW_STRINGS.toolSettingsAutoCompactAfterRunTitle, /超过 5 分钟/u);
+  assert.match(WEBVIEW_STRINGS.commonCommandCompactDesc, /ZCode/u);
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /autoCompactContextAfterRun: true/u);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /key: "autoCompactContextAfterRun"/u);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /panelState\.autoCompactContextAfterRun/u);

@@ -216,7 +216,7 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAutoContextToggle: "开启",
     toolSettingsAutoCompactAfterRunLabel: "执行后自动压缩上下文",
     toolSettingsAutoCompactAfterRunTitle:
-      "Codex、Claude、OpenCode 的全局设置。任务成功结束后自动压缩上下文。",
+      "Codex、Claude、OpenCode、Grok、ZCode 的全局设置。耗时超过 5 分钟的任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
     toolSettingsHumanInteractionLabel: "人工交互",
     toolSettingsHumanInteractionTitle:
@@ -273,7 +273,7 @@ export const WEBVIEW_STRINGS = {
     commonCommandsTitle: "常用指令",
     commonCommandsClose: "关闭",
     commonCommandCompactTitle: "压缩上下文",
-    commonCommandCompactDesc: "适用于 Codex、Claude、OpenCode、Grok，压缩当前会话上下文。",
+    commonCommandCompactDesc: "适用于 Codex、Claude、OpenCode、Grok、ZCode，压缩当前会话上下文。",
     runConflictTitle: "任务执行中",
     runConflictClose: "关闭",
     runConflictBody: "检测到当前任务仍在执行，要如何处理这条消息？",
