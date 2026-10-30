@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "在 VS Code 中运行 Codex、Claude、OpenCode、Grok 和 DeepSeek Harness CLI 的扩展。",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "publisher": "sinitek",
   "icon": "media/icon.png",
   "repository": {
