@@ -1,5 +1,6 @@
 // Assistant, trace, markdown, and diff rendering helpers.
 import { joinGrokThinkingSoftBreaks } from "../../interactive/grokThinkingText";
+import { stripCodexThinkingPlaceholderText } from "../../codexReasoningContent";
 import { getTraceInstructionSummary } from "../instructionGroupSummary";
 import { CHAT_MARKDOWN_SCRIPT } from "../chatMarkdown";
 
@@ -8,6 +9,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
       }
 
       const joinGrokThinkingSoftBreaks = ${joinGrokThinkingSoftBreaks.toString()};
+      const stripCodexThinkingPlaceholderText = ${stripCodexThinkingPlaceholderText.toString()};
 
       ${getTraceInstructionSummary.toString()}
 
@@ -539,6 +541,9 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         if (message.kind === "thinking" && state.currentCli === "grok") {
           content = joinGrokThinkingSoftBreaks(content);
+        }
+        if (message.kind === "thinking" && state.currentCli === "codex") {
+          content = stripCodexThinkingPlaceholderText(content);
         }
         const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
         if (marker) {

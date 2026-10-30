@@ -5,6 +5,31 @@ const STANDALONE_EMPTY_HTML_COMMENT_PATTERN = /^[\t ]*<!--[\t ]*-->[\t ]*$/;
 const EXCESS_BLANK_LINES_PATTERN = /\n(?:[\t ]*\n){2,}/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t\r\n]+$/u;
 
+export function stripCodexThinkingPlaceholderText(content: string): string {
+  const placeholderPattern = /(?:\*\*Thinking\*\*[ \t]*(?:\r?\n[ \t]*)+\*Thinking process completed\.\*[ \t]*)+/g;
+  const placeholder = "**Thinking**\n\n*Thinking process completed.*";
+  let stripped = content.replace(placeholderPattern, "");
+  if (stripped.trim() === "*") {
+    return "";
+  }
+  let candidateIndex = stripped.lastIndexOf("**");
+  while (candidateIndex >= 0) {
+    const candidate = stripped.slice(candidateIndex).replace(/\r\n?/g, "\n");
+    if ((candidate.length > 2 || !stripped.slice(0, candidateIndex).trim()) && placeholder.startsWith(candidate)) {
+      stripped = stripped.slice(0, candidateIndex);
+      break;
+    }
+    if (candidateIndex === 0) {
+      break;
+    }
+    candidateIndex = stripped.lastIndexOf("**", candidateIndex - 1);
+  }
+  if (stripped === content) {
+    return content;
+  }
+  return stripped.replace(/\n(?:[\t ]*\n){2,}/g, "\n\n").trim();
+}
+
 /**
  * Grok and some Codex reasoning summaries append a leaked `[final_answer]` draft
  * after truncated thinking. Keep the thinking prefix only.

@@ -1,7 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 
-import { sanitizeCodexReasoningContent } from "../../codexReasoningContent";
+import {
+  sanitizeCodexReasoningContent,
+  stripCodexThinkingPlaceholderText,
+} from "../../codexReasoningContent";
 import { sanitizeMessages } from "../../sessionStore";
 import { ChatMessage } from "../../webview/types";
 
@@ -11,6 +14,40 @@ test("sanitizeCodexReasoningContent removes standalone empty comment separators"
       "**Planning first step**\n\n<!-- -->\n\n**Planning second step**\n\n<!--\t-->\n"
     ),
     "**Planning first step**\n\n**Planning second step**"
+  );
+});
+
+test("stripCodexThinkingPlaceholderText removes repeated empty thinking placeholders", () => {
+  const placeholder = "**Thinking**\n\n*Thinking process completed.*";
+  assert.equal(
+    stripCodexThinkingPlaceholderText(`${placeholder}${placeholder}`),
+    "",
+  );
+  assert.equal(
+    stripCodexThinkingPlaceholderText(`${placeholder}**Inspecting the repository**`),
+    "**Inspecting the repository**",
+  );
+  assert.equal(
+    stripCodexThinkingPlaceholderText("Document **Thinking** as literal text"),
+    "Document **Thinking** as literal text",
+  );
+  for (let length = 1; length <= placeholder.length; length += 1) {
+    assert.equal(stripCodexThinkingPlaceholderText(placeholder.slice(0, length)), "");
+    assert.equal(stripCodexThinkingPlaceholderText(placeholder + placeholder.slice(0, length)), "");
+  }
+  assert.equal(stripCodexThinkingPlaceholderText("**Inspecting**"), "**Inspecting**");
+  assert.equal(stripCodexThinkingPlaceholderText("**Thinking**\r\n\r\n*Thinking process completed.*"), "");
+  const windowsPlaceholder = placeholder.replace(/\n/g, "\r\n");
+  for (let length = 1; length <= windowsPlaceholder.length; length += 1) {
+    assert.equal(stripCodexThinkingPlaceholderText(windowsPlaceholder.slice(0, length)), "");
+  }
+  assert.equal(
+    stripCodexThinkingPlaceholderText(`**Inspecting tests**\n\n${placeholder}\n\n继续检查。`),
+    "**Inspecting tests**\n\n继续检查。",
+  );
+  assert.equal(
+    sanitizeCodexReasoningContent(placeholder),
+    placeholder,
   );
 });
 

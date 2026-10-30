@@ -769,12 +769,15 @@
     {
       "id": "plugin.rule.thinking_bubble_viewport",
       "name": "思考气泡默认五行滚动并支持展开收起",
-      "description": "thinking assistant、thinking trace 及兼容识别的 reasoning 气泡默认按实际显示行高限制为五行，超出后内部滚动。新增正文时收起状态自动滚底；右上角 SVG 按钮可展开全部正文或再次收起并定位最新内容。展开后底部居中再显示向上箭头，点击后收起并定位最新内容。流式节点复用、结束后 Markdown 格式化及重绘保留展开状态，面板宽度变化重新检测溢出。最终结论、普通回复、工具结果和用户消息不受此规则限制。",
+      "description": "thinking assistant、thinking trace 及兼容识别的 reasoning 气泡默认按实际显示行高限制为五行，超出后内部滚动。新增正文时收起状态自动滚底；右上角 SVG 按钮可展开全部正文或再次收起并定位最新内容。展开后底部居中再显示向上箭头，点击后收起并定位最新内容。流式节点复用、结束后 Markdown 格式化及重绘保留展开状态，面板宽度变化重新检测溢出。Codex 重复的 **Thinking** / *Thinking process completed.* 空占位片段会在展示层移除，纯占位消息不生成可见气泡，真实思考正文保留。最终结论、普通回复、工具结果和用户消息不受此规则限制。",
       "status": "active",
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "mountThinkingBubble"},
+        {"path": "src/webview/viewContentScript/traceRendering.ts", "anchor": "getAssistantMessageContentForDisplay"},
+        {"path": "src/codexReasoningContent.ts", "anchor": "stripCodexThinkingPlaceholderText"},
+        {"path": "src/test/webview/codexThinkingPlaceholder.test.ts"},
         {"path": "src/webview/viewContentStyles/messages.ts", "anchor": ".thinking-bubble-viewport"},
         {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "thinking streams scroll internally"}
       ]
