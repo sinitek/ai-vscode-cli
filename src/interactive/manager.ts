@@ -1,44 +1,32 @@
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { CodexRunSelection } from "./codexThreadSelection";
-import { CodexInteractiveRunner } from "./codexRunner";
-import { ClaudeInteractiveRunner } from "./claudeRunner";
-import { DshInteractiveRunner } from "./dshRunner";
-import { KimiInteractiveRunner } from "./kimiRunner";
-import { ZcodeInteractiveRunner } from "./zcodeRunner";
-import { GrokInteractiveRunner } from "./grokRunner";
+import type { ClaudeInteractiveRunner } from "./claudeRunner";
+import type { CodexInteractiveRunner } from "./codexRunner";
+import type { DshInteractiveRunner } from "./dshRunner";
+import type { KimiInteractiveRunner } from "./kimiRunner";
+import type { ZcodeInteractiveRunner } from "./zcodeRunner";
+import type { GrokInteractiveRunner } from "./grokRunner";
 import {
   runnerLifecycleStrategies,
   stopManagedRunner,
 } from "./runnerLifecycleStrategies";
 import type {
-  ClaudeRunnerCreateOptions,
-  CodexRunnerCreateOptions,
-  DshRunnerCreateOptions,
-  GrokRunnerCreateOptions,
-  KimiCodeRunnerCreateOptions,
-  ZcodeRunnerCreateOptions,
+  CodexStrategyWithSelection,
   InteractiveRunnerCli,
   RunnerByCli,
+  RunnerCreateOptionsByCli,
   RunnerEntry,
   RunnerEntryByCli,
   RunnerRegistration,
   RunnerRegistrationByCli,
   RunnerSetOptions,
   SetRunnerMetadataInput,
+  StrategyForCli,
 } from "./runnerLifecycleTypes";
 
-const platformEntries: {
-  [TCli in InteractiveRunnerCli]: (entry: RunnerEntry) => RunnerEntryByCli[TCli] | undefined;
-} = {
-  codex: (entry) => entry.cli === "codex" ? entry : undefined,
-  claude: (entry) => entry.cli === "claude" ? entry : undefined,
-  grok: (entry) => entry.cli === "grok" ? entry : undefined,
-  dsh: (entry) => entry.cli === "dsh" ? entry : undefined,
-  "kimi-code": (entry) => entry.cli === "kimi-code" ? entry : undefined,
-  zcode: (entry) => entry.cli === "zcode" ? entry : undefined,
-};
+const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
-const platformRunners: {
+const entryRunners: {
   [TCli in InteractiveRunnerCli]: (entry: RunnerEntryByCli[TCli]) => RunnerByCli[TCli];
 } = {
   codex: (entry) => entry.runner,
@@ -48,8 +36,6 @@ const platformRunners: {
   "kimi-code": (entry) => entry.runner,
   zcode: (entry) => entry.runner,
 };
-
-const IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 export class InteractiveRunnerManager {
   private readonly entries = new Map<string, RunnerEntry>();
@@ -84,83 +70,74 @@ export class InteractiveRunnerManager {
   public setRunner(
     cli: InteractiveRunnerCli,
     sessionId: string,
-    runner:
-      | CodexInteractiveRunner
-      | ClaudeInteractiveRunner
-      | GrokInteractiveRunner
-      | DshInteractiveRunner
-      | KimiInteractiveRunner
-      | ZcodeInteractiveRunner,
+    runner: RunnerByCli[InteractiveRunnerCli],
     thinkingMode: ThinkingMode,
     interactiveMode: InteractiveMode,
     model: string | null,
     options: RunnerSetOptions = {}
   ): void {
-    const metadata = {
-      sessionId,
-      thinkingMode,
-      interactiveMode,
-      model,
-      options,
+    const dispatch = <TCli extends InteractiveRunnerCli>(
+      strategy: StrategyForCli<TCli>,
+    ): void => {
+      const input = { sessionId, runner: runner as RunnerByCli[TCli], thinkingMode, interactiveMode, model, options };
+      this.registerExternalRunner(
+        cli as TCli,
+        input,
+        (entry) => {
+          strategy.applySetMetadata(entry, input);
+        },
+        () => strategy.createSetRegistration(input),
+      );
     };
-    if (cli === "codex") {
-      const codexRunner = runner as CodexInteractiveRunner;
-      const input = { ...metadata, runner: codexRunner };
-      this.registerExternalRunner("codex", input, (entry) => {
-        runnerLifecycleStrategies.codex.applySetMetadata(entry, input);
-      }, () => runnerLifecycleStrategies.codex.createSetRegistration(input));
-      return;
+    switch (cli) {
+      case "codex": return dispatch(runnerLifecycleStrategies.codex);
+      case "claude": return dispatch(runnerLifecycleStrategies.claude);
+      case "grok": return dispatch(runnerLifecycleStrategies.grok);
+      case "dsh": return dispatch(runnerLifecycleStrategies.dsh);
+      case "kimi-code": return dispatch(runnerLifecycleStrategies["kimi-code"]);
+      case "zcode": return dispatch(runnerLifecycleStrategies.zcode);
     }
-    if (cli === "claude") {
-      const claudeRunner = runner as ClaudeInteractiveRunner;
-      const input = { ...metadata, runner: claudeRunner };
-      this.registerExternalRunner("claude", input, (entry) => {
-        runnerLifecycleStrategies.claude.applySetMetadata(entry, input);
-      }, () => runnerLifecycleStrategies.claude.createSetRegistration(input));
-      return;
-    }
-    if (cli === "grok") {
-      const grokRunner = runner as GrokInteractiveRunner;
-      const input = { ...metadata, runner: grokRunner };
-      this.registerExternalRunner("grok", input, (entry) => {
-        runnerLifecycleStrategies.grok.applySetMetadata(entry, input);
-      }, () => runnerLifecycleStrategies.grok.createSetRegistration(input));
-      return;
-    }
-    if (cli === "dsh") {
-      const dshRunner = runner as DshInteractiveRunner;
-      const input = { ...metadata, runner: dshRunner };
-      this.registerExternalRunner("dsh", input, (entry) => {
-        runnerLifecycleStrategies.dsh.applySetMetadata(entry, input);
-      }, () => runnerLifecycleStrategies.dsh.createSetRegistration(input));
-      return;
-    }
-    if (cli === "zcode") {
-      const zcodeRunner = runner as ZcodeInteractiveRunner;
-      const zcodeInput = { ...metadata, runner: zcodeRunner };
-      this.registerExternalRunner("zcode", zcodeInput, (entry) => {
-        runnerLifecycleStrategies.zcode.applySetMetadata(entry, zcodeInput);
-      }, () => runnerLifecycleStrategies.zcode.createSetRegistration(zcodeInput));
-      return;
-    }
-    const kimiRunner = runner as KimiInteractiveRunner;
-    const input = { ...metadata, runner: kimiRunner };
-    this.registerExternalRunner("kimi-code", input, (entry) => {
-      runnerLifecycleStrategies["kimi-code"].applySetMetadata(entry, input);
-    }, () => runnerLifecycleStrategies["kimi-code"].createSetRegistration(input));
   }
 
-  public getOrCreateCodexRunner(options: CodexRunnerCreateOptions): CodexInteractiveRunner {
-    const prepared = runnerLifecycleStrategies.codex.prepare(options);
+  public getOrCreateCodexRunner(options: RunnerCreateOptionsByCli["codex"]): RunnerByCli["codex"] {
+    return this.getOrCreateRunner("codex", options);
+  }
+
+  public getOrCreateClaudeRunner(options: RunnerCreateOptionsByCli["claude"]): RunnerByCli["claude"] {
+    return this.getOrCreateRunner("claude", options);
+  }
+
+  public getOrCreateGrokRunner(options: RunnerCreateOptionsByCli["grok"]): RunnerByCli["grok"] {
+    return this.getOrCreateRunner("grok", options);
+  }
+
+  public getOrCreateDshRunner(options: RunnerCreateOptionsByCli["dsh"]): RunnerByCli["dsh"] {
+    return this.getOrCreateRunner("dsh", options);
+  }
+
+  public getOrCreateKimiCodeRunner(options: RunnerCreateOptionsByCli["kimi-code"]): RunnerByCli["kimi-code"] {
+    return this.getOrCreateRunner("kimi-code", options);
+  }
+
+  public getOrCreateZcodeRunner(options: RunnerCreateOptionsByCli["zcode"]): RunnerByCli["zcode"] {
+    return this.getOrCreateRunner("zcode", options);
+  }
+
+  private getOrCreateRunner<TCli extends InteractiveRunnerCli>(
+    cli: TCli,
+    options: RunnerCreateOptionsByCli[TCli],
+  ): RunnerByCli[TCli] {
+    const strategy: StrategyForCli<TCli> = runnerLifecycleStrategies[cli];
+    const prepared = strategy.prepare(options);
     return this.reuseOrCreate(
-      "codex",
+      cli,
       prepared.sessionId,
-      (entry) => runnerLifecycleStrategies.codex.canReuse(entry, prepared),
+      (entry) => strategy.canReuse(entry, prepared),
       (entry) => {
-        runnerLifecycleStrategies.codex.applyReuse(entry, prepared);
+        strategy.applyReuse(entry, prepared);
       },
-      () => runnerLifecycleStrategies.codex.createRunner(prepared),
-      (created) => runnerLifecycleStrategies.codex.createRegistration(prepared, created),
+      () => strategy.createRunner(prepared),
+      (created) => strategy.createRegistration(prepared, created),
     );
   }
 
@@ -176,24 +153,10 @@ export class InteractiveRunnerManager {
 
   public getCodexRunnerSelection(sessionId: string | null): CodexRunSelection | null {
     const entry = this.getEntry("codex", sessionId);
-    if (!entry || !this.isEntryForCli(entry, "codex")) {
+    if (!entry || entry.cli !== "codex") {
       return null;
     }
-    return runnerLifecycleStrategies.codex.readSelection(entry);
-  }
-
-  public getOrCreateClaudeRunner(options: ClaudeRunnerCreateOptions): ClaudeInteractiveRunner {
-    const prepared = runnerLifecycleStrategies.claude.prepare(options);
-    return this.reuseOrCreate(
-      "claude",
-      prepared.sessionId,
-      (entry) => runnerLifecycleStrategies.claude.canReuse(entry, prepared),
-      (entry) => {
-        runnerLifecycleStrategies.claude.applyReuse(entry, prepared);
-      },
-      () => runnerLifecycleStrategies.claude.createRunner(prepared),
-      (created) => runnerLifecycleStrategies.claude.createRegistration(prepared, created),
-    );
+    return (runnerLifecycleStrategies.codex as CodexStrategyWithSelection).readSelection(entry);
   }
 
   public hasGrokRunner(sessionId: string | null, runner: GrokInteractiveRunner): boolean {
@@ -201,37 +164,9 @@ export class InteractiveRunnerManager {
     return Boolean(entry && entry.cli === "grok" && entry.runner === runner);
   }
 
-  public getOrCreateGrokRunner(options: GrokRunnerCreateOptions): GrokInteractiveRunner {
-    const prepared = runnerLifecycleStrategies.grok.prepare(options);
-    return this.reuseOrCreate(
-      "grok",
-      prepared.sessionId,
-      (entry) => runnerLifecycleStrategies.grok.canReuse(entry, prepared),
-      (entry) => {
-        runnerLifecycleStrategies.grok.applyReuse(entry, prepared);
-      },
-      () => runnerLifecycleStrategies.grok.createRunner(prepared),
-      (created) => runnerLifecycleStrategies.grok.createRegistration(prepared, created),
-    );
-  }
-
   public hasDshRunner(sessionId: string | null, runner: DshInteractiveRunner): boolean {
     const entry = this.getEntry("dsh", sessionId);
     return Boolean(entry && entry.cli === "dsh" && entry.runner === runner);
-  }
-
-  public getOrCreateDshRunner(options: DshRunnerCreateOptions): DshInteractiveRunner {
-    const prepared = runnerLifecycleStrategies.dsh.prepare(options);
-    return this.reuseOrCreate(
-      "dsh",
-      prepared.sessionId,
-      (entry) => runnerLifecycleStrategies.dsh.canReuse(entry, prepared),
-      (entry) => {
-        runnerLifecycleStrategies.dsh.applyReuse(entry, prepared);
-      },
-      () => runnerLifecycleStrategies.dsh.createRunner(prepared),
-      (created) => runnerLifecycleStrategies.dsh.createRegistration(prepared, created),
-    );
   }
 
   public hasKimiCodeRunner(sessionId: string | null, runner: KimiInteractiveRunner): boolean {
@@ -244,44 +179,10 @@ export class InteractiveRunnerManager {
     return Boolean(entry && entry.cli === "zcode" && entry.runner === runner);
   }
 
-  public getOrCreateZcodeRunner(options: ZcodeRunnerCreateOptions): ZcodeInteractiveRunner {
-    const prepared = runnerLifecycleStrategies.zcode.prepare(options);
-    return this.reuseOrCreate(
-      "zcode",
-      prepared.sessionId,
-      (entry) => runnerLifecycleStrategies.zcode.canReuse(entry, prepared),
-      (entry) => {
-        runnerLifecycleStrategies.zcode.applyReuse(entry, prepared);
-      },
-      () => runnerLifecycleStrategies.zcode.createRunner(prepared),
-      (created) => runnerLifecycleStrategies.zcode.createRegistration(prepared, created),
-    );
-  }
-
-  public getOrCreateKimiCodeRunner(options: KimiCodeRunnerCreateOptions): KimiInteractiveRunner {
-    const prepared = runnerLifecycleStrategies["kimi-code"].prepare(options);
-    return this.reuseOrCreate(
-      "kimi-code",
-      prepared.sessionId,
-      (entry) => runnerLifecycleStrategies["kimi-code"].canReuse(entry, prepared),
-      (entry) => {
-        runnerLifecycleStrategies["kimi-code"].applyReuse(entry, prepared);
-      },
-      () => runnerLifecycleStrategies["kimi-code"].createRunner(prepared),
-      (created) => runnerLifecycleStrategies["kimi-code"].createRegistration(prepared, created),
-    );
-  }
-
   public detachRunner(
     cli: InteractiveRunnerCli,
     sessionId: string | null,
-    runner:
-      | CodexInteractiveRunner
-      | ClaudeInteractiveRunner
-      | GrokInteractiveRunner
-      | DshInteractiveRunner
-      | KimiInteractiveRunner
-      | ZcodeInteractiveRunner,
+    runner: RunnerByCli[InteractiveRunnerCli],
   ): void {
     const key = this.buildKeyForCli(cli, sessionId);
     if (!key) {
@@ -331,11 +232,11 @@ export class InteractiveRunnerManager {
   ): RunnerByCli[TCli] {
     const key = this.buildKey(cli, sessionId);
     const existing = this.entries.get(key);
-    const matched = existing ? platformEntries[cli](existing) : undefined;
+    const matched = existing && existing.cli === cli ? (existing as RunnerEntryByCli[TCli]) : undefined;
     if (matched && canReuse(matched)) {
       applyReuse(matched);
       this.touch(matched);
-      return platformRunners[cli](matched);
+      return entryRunners[cli](matched);
     }
     if (existing) {
       this.disposeEntry(key);
@@ -355,7 +256,7 @@ export class InteractiveRunnerManager {
   ): void {
     const key = this.buildKey(cli, input.sessionId);
     const existing = this.entries.get(key);
-    const matched = existing ? platformEntries[cli](existing) : undefined;
+    const matched = existing && existing.cli === cli ? (existing as RunnerEntryByCli[TCli]) : undefined;
     if (matched && matched.runner === input.runner) {
       applySetMetadata(matched);
       this.touch(matched);
@@ -370,37 +271,7 @@ export class InteractiveRunnerManager {
   }
 
   private withLifecycle(registration: RunnerRegistration): RunnerEntry {
-    const idleTimer = null;
-    const lastUsedAt = Date.now();
-    if (registration.cli === "codex") {
-      const entry: RunnerEntryByCli["codex"] = { ...registration, idleTimer, lastUsedAt };
-      return entry;
-    }
-    if (registration.cli === "claude") {
-      const entry: RunnerEntryByCli["claude"] = { ...registration, idleTimer, lastUsedAt };
-      return entry;
-    }
-    if (registration.cli === "grok") {
-      const entry: RunnerEntryByCli["grok"] = { ...registration, idleTimer, lastUsedAt };
-      return entry;
-    }
-    if (registration.cli === "dsh") {
-      const entry: RunnerEntryByCli["dsh"] = { ...registration, idleTimer, lastUsedAt };
-      return entry;
-    }
-    if (registration.cli === "kimi-code") {
-      const entry: RunnerEntryByCli["kimi-code"] = { ...registration, idleTimer, lastUsedAt };
-      return entry;
-    }
-    const entry: RunnerEntryByCli["zcode"] = { ...registration, idleTimer, lastUsedAt };
-    return entry;
-  }
-
-  private isEntryForCli<TCli extends InteractiveRunnerCli>(
-    entry: RunnerEntry,
-    cli: TCli,
-  ): entry is Extract<RunnerEntry, { cli: TCli }> {
-    return entry.cli === cli;
+    return { ...registration, idleTimer: null, lastUsedAt: Date.now() };
   }
 
   private buildKey(cli: InteractiveRunnerCli, sessionId: string): string {

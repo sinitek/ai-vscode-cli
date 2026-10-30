@@ -73,6 +73,9 @@ test("switching or disposing a CLI closes only that CLI runner", () => {
 const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 const { ClaudeInteractiveRunner } = require("../../interactive/claudeRunner") as typeof import("../../interactive/claudeRunner");
 const { GrokInteractiveRunner } = require("../../interactive/grokRunner") as typeof import("../../interactive/grokRunner");
+const { DshInteractiveRunner } = require("../../interactive/dshRunner") as typeof import("../../interactive/dshRunner");
+const { KimiInteractiveRunner } = require("../../interactive/kimiRunner") as typeof import("../../interactive/kimiRunner");
+const { ZcodeInteractiveRunner } = require("../../interactive/zcodeRunner") as typeof import("../../interactive/zcodeRunner");
 const codexModule = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 const claudeModule = require("../../interactive/claudeRunner") as typeof import("../../interactive/claudeRunner");
 const grokModule = require("../../interactive/grokRunner") as typeof import("../../interactive/grokRunner");
@@ -96,6 +99,8 @@ type StoredEntry = {
   isolateProjectInstructions?: boolean;
   model: string | null;
   configId?: string | null;
+  env?: NodeJS.ProcessEnv;
+  localSessionId?: string | null;
   idleTimer: unknown;
   lastUsedAt: number;
 };
@@ -1546,4 +1551,292 @@ test("shared reuse flow rejects a CLI that does not match its factory or registr
   assertRejected(negativeSource, negative, "__probeRegisterMismatch", { codes: [2322, 2345, 2740], messageIncludes: "ClaudeInteractiveRunner" });
   const anchorLine = negativeSource.split("\n").findIndex((line) => line === managerAnchor) + 1;
   assert.ok(negative.every((diagnostic) => diagnostic.line < anchorLine), renderDiagnostics(negative));
+});
+
+type DshRunner = InstanceType<typeof DshInteractiveRunner>;
+type KimiRunner = InstanceType<typeof KimiInteractiveRunner>;
+type ZcodeRunner = InstanceType<typeof ZcodeInteractiveRunner>;
+type DshOptions = Parameters<Manager["getOrCreateDshRunner"]>[0];
+type KimiCodeOptions = Parameters<Manager["getOrCreateKimiCodeRunner"]>[0];
+type ZcodeOptions = Parameters<Manager["getOrCreateZcodeRunner"]>[0];
+
+function dshOptions(overrides: Partial<DshOptions> = {}): DshOptions {
+  return {
+    sessionId: "session-dsh",
+    command: "dsh",
+    agentArgs: ["--patch"],
+    cwd: "/workspace",
+    thinkingMode: "ultra",
+    interactiveMode: "coding",
+    model: "[\"sinitek-custom\",\"deepseek-v4.1-flash\"]",
+    localSessionId: "local-dsh-1",
+    env: { DSH_HOME: "/tmp/dsh-home" },
+    ...overrides,
+  };
+}
+
+function kimiCodeOptions(overrides: Partial<KimiCodeOptions> = {}): KimiCodeOptions {
+  return {
+    sessionId: "session-kimi",
+    command: "kimi-code",
+    agentArgs: ["--keep"],
+    cwd: "/workspace",
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: "kimi-latest",
+    thinkingValue: "high",
+    modeId: "plan",
+    localSessionId: "local-kimi-1",
+    env: { KIMI_CODE_HOME: "/tmp/kimi-home" },
+    ...overrides,
+  };
+}
+
+function zcodeOptions(overrides: Partial<ZcodeOptions> = {}): ZcodeOptions {
+  return {
+    sessionId: "session-zcode",
+    command: "zcode",
+    agentArgs: ["--keep"],
+    cwd: "/workspace",
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    model: "zcode-latest",
+    thinkingValue: "high",
+    modeId: "auto",
+    localSessionId: "local-zcode-1",
+    env: { ZCODE_HOME: "/tmp/zcode-home" },
+    ...overrides,
+  };
+}
+
+test("setRunner routes Kimi Code with copied args, env, and optional-field preservation", async () => {
+  await withManagerAsync(async (manager) => {
+    const runner = manager.getOrCreateKimiCodeRunner(kimiCodeOptions());
+    let disposes = 0;
+    const originalDispose = KimiInteractiveRunner.prototype.dispose;
+    const restoreDispose = replaceMethod(KimiInteractiveRunner.prototype, "dispose", function (this: KimiRunner) {
+      disposes += 1;
+      return originalDispose.call(this);
+    });
+    try {
+      const nextArgs = ["--next"];
+      manager.setRunner("kimi-code", "session-kimi", runner, "high", "plan", "kimi-next", {
+        command: "kimi-code",
+        args: nextArgs,
+        cwd: "/workspace",
+        localSessionId: "local-kimi-2",
+        env: { KIMI_CODE_HOME: "/tmp/kimi-next" },
+      });
+      assert.equal(disposes, 0);
+      assert.equal(manager.hasKimiCodeRunner("session-kimi", runner), true);
+      assert.deepEqual(stored(manager, "kimi-code", "session-kimi").args, ["--next"]);
+      nextArgs.push("--mutated");
+      assert.deepEqual(stored(manager, "kimi-code", "session-kimi").args, ["--next"]);
+      assert.equal(stored(manager, "kimi-code", "session-kimi").cwd, "/workspace");
+
+      manager.setRunner("kimi-code", "session-kimi", runner, "medium", "coding", null, {});
+      assert.equal(stored(manager, "kimi-code", "session-kimi").command, "kimi-code");
+      assert.equal(stored(manager, "kimi-code", "session-kimi").cwd, "/workspace");
+      assert.equal((stored(manager, "kimi-code", "session-kimi").env as NodeJS.ProcessEnv | undefined)?.KIMI_CODE_HOME, "/tmp/kimi-next");
+      assert.equal(stored(manager, "kimi-code", "session-kimi").localSessionId, "local-kimi-2");
+      assert.deepEqual(stored(manager, "kimi-code", "session-kimi").args, ["--next"]);
+      assert.equal(manager.getOrCreateKimiCodeRunner(kimiCodeOptions({
+        agentArgs: ["--next"],
+        localSessionId: "local-kimi-2",
+        env: { KIMI_CODE_HOME: "/tmp/kimi-next" },
+        thinkingValue: null,
+        modeId: null,
+      })), runner);
+
+      const replacement = manager.getOrCreateKimiCodeRunner(kimiCodeOptions({ sessionId: "session-kimi", command: "kimi-code-other", agentArgs: ["--next"], localSessionId: "local-kimi-2", env: { KIMI_CODE_HOME: "/tmp/kimi-next" }, thinkingValue: null, modeId: null }));
+      assert.notEqual(replacement, runner);
+      assert.equal(disposes, 1);
+      assert.equal(manager.hasKimiCodeRunner("session-kimi", runner), false);
+
+      const freshRunner = new KimiInteractiveRunner({
+        command: "kimi-code",
+        cwd: "/workspace",
+        agentArgs: [],
+        env: undefined,
+        model: null,
+        localSessionId: null,
+      });
+      try {
+        manager.setRunner("kimi-code", "fresh-kimi", freshRunner, "medium", "coding", null, {});
+        assert.equal(stored(manager, "kimi-code", "fresh-kimi").command, "");
+        assert.equal(stored(manager, "kimi-code", "fresh-kimi").localSessionId, null);
+        assert.equal(stored(manager, "kimi-code", "fresh-kimi").cwd, undefined);
+        assert.deepEqual(stored(manager, "kimi-code", "fresh-kimi").args, []);
+        assert.equal(manager.getOrCreateKimiCodeRunner(kimiCodeOptions({
+          sessionId: "fresh-kimi",
+          command: "",
+          localSessionId: null,
+          env: undefined,
+          agentArgs: [],
+          cwd: undefined,
+        })), freshRunner);
+      } finally {
+        freshRunner.dispose();
+      }
+    } finally {
+      restoreDispose();
+    }
+  });
+});
+
+test("setRunner routes Zcode with copied args, env, and optional-field preservation", async () => {
+  await withManagerAsync(async (manager) => {
+    const runner = manager.getOrCreateZcodeRunner(zcodeOptions());
+    let disposes = 0;
+    const originalDispose = ZcodeInteractiveRunner.prototype.dispose;
+    const restoreDispose = replaceMethod(ZcodeInteractiveRunner.prototype, "dispose", function (this: ZcodeRunner) {
+      disposes += 1;
+      return originalDispose.call(this);
+    });
+    try {
+      const nextArgs = ["--next"];
+      manager.setRunner("zcode", "session-zcode", runner, "high", "plan", "zcode-next", {
+        command: "zcode",
+        args: nextArgs,
+        cwd: "/workspace",
+        localSessionId: "local-zcode-2",
+        env: { ZCODE_HOME: "/tmp/zcode-next" },
+      });
+      assert.equal(disposes, 0);
+      assert.equal(manager.hasZcodeRunner("session-zcode", runner), true);
+      assert.deepEqual(stored(manager, "zcode", "session-zcode").args, ["--next"]);
+      nextArgs.push("--mutated");
+      assert.deepEqual(stored(manager, "zcode", "session-zcode").args, ["--next"]);
+      assert.equal(stored(manager, "zcode", "session-zcode").cwd, "/workspace");
+
+      manager.setRunner("zcode", "session-zcode", runner, "medium", "coding", null, {});
+      assert.equal(stored(manager, "zcode", "session-zcode").command, "zcode");
+      assert.equal((stored(manager, "zcode", "session-zcode").env as NodeJS.ProcessEnv | undefined)?.ZCODE_HOME, "/tmp/zcode-next");
+      assert.equal(stored(manager, "zcode", "session-zcode").localSessionId, "local-zcode-2");
+      assert.deepEqual(stored(manager, "zcode", "session-zcode").args, ["--next"]);
+      // A Zcode runner that has not started() is not reusable, so getOrCreate replaces it.
+      const replacement = manager.getOrCreateZcodeRunner(zcodeOptions({
+        agentArgs: ["--next"],
+        localSessionId: "local-zcode-2",
+        env: { ZCODE_HOME: "/tmp/zcode-next" },
+        thinkingValue: null,
+        modeId: null,
+      }));
+      assert.notEqual(replacement, runner);
+      assert.equal(disposes, 1);
+      assert.equal(manager.hasZcodeRunner("session-zcode", runner), false);
+      assert.deepEqual(stored(manager, "zcode", "session-zcode").args, ["--next"]);
+      assert.equal(stored(manager, "zcode", "session-zcode").cwd, "/workspace");
+      assert.equal(manager.hasZcodeRunner("session-zcode", replacement), true);
+
+      const retired = replacement;
+      const retiredReplacement = manager.getOrCreateZcodeRunner(zcodeOptions({
+        agentArgs: ["--next"],
+        localSessionId: "local-zcode-2",
+        env: { ZCODE_HOME: "/tmp/zcode-next" },
+        thinkingValue: null,
+        modeId: null,
+      }));
+      assert.notEqual(retiredReplacement, retired);
+      assert.equal(disposes, 2);
+
+      const freshRunner = new ZcodeInteractiveRunner({ command: "zcode", cwd: "/workspace", agentArgs: [], localSessionId: null });
+      try {
+        manager.setRunner("zcode", "fresh-zcode", freshRunner, "medium", "coding", null, {});
+        assert.equal(stored(manager, "zcode", "fresh-zcode").command, "");
+        assert.equal(stored(manager, "zcode", "fresh-zcode").localSessionId, null);
+        assert.deepEqual(stored(manager, "zcode", "fresh-zcode").args, []);
+      } finally {
+        void freshRunner.dispose();
+      }
+    } finally {
+      restoreDispose();
+    }
+  });
+});
+
+test("setRunner routes DSH with copied args, env, and local session fields", async () => {
+  await withManagerAsync(async (manager) => {
+    const runner = manager.getOrCreateDshRunner(dshOptions());
+    let disposes = 0;
+    const originalDispose = DshInteractiveRunner.prototype.dispose;
+    const restoreDispose = replaceMethod(DshInteractiveRunner.prototype, "dispose", function (this: DshRunner) {
+      disposes += 1;
+      return originalDispose.call(this);
+    });
+    try {
+      const nextArgs = ["--next"];
+      manager.setRunner("dsh", "session-dsh", runner, "high", "plan", null, {
+        command: "dsh",
+        args: nextArgs,
+        cwd: "/workspace",
+        localSessionId: "local-dsh-2",
+        env: { DSH_HOME: "/tmp/dsh-next" },
+      });
+      assert.equal(disposes, 0);
+      assert.equal(manager.hasDshRunner("session-dsh", runner), true);
+      assert.deepEqual(stored(manager, "dsh", "session-dsh").args, ["--next"]);
+      nextArgs.push("--mutated");
+      assert.deepEqual(stored(manager, "dsh", "session-dsh").args, ["--next"]);
+
+      manager.setRunner("dsh", "session-dsh", runner, "medium", "coding", null, {});
+      assert.equal(stored(manager, "dsh", "session-dsh").command, "dsh");
+      assert.equal((stored(manager, "dsh", "session-dsh").env as NodeJS.ProcessEnv | undefined)?.DSH_HOME, "/tmp/dsh-next");
+      assert.equal(stored(manager, "dsh", "session-dsh").localSessionId, "local-dsh-2");
+      assert.equal(manager.getOrCreateDshRunner(dshOptions({
+        agentArgs: ["--next"],
+        localSessionId: "local-dsh-2",
+        env: { DSH_HOME: "/tmp/dsh-next" },
+      })), runner);
+
+      const replacement = manager.getOrCreateDshRunner(dshOptions({
+        command: "dsh-other",
+        agentArgs: ["--next"],
+        localSessionId: "local-dsh-2",
+        env: { DSH_HOME: "/tmp/dsh-next" },
+      }));
+      assert.notEqual(replacement, runner);
+      assert.equal(disposes, 1);
+    } finally {
+      restoreDispose();
+    }
+  });
+});
+
+test("stopTurnAndRebuild routes DSH, Kimi Code, and Zcode to their cancelTurn methods", () => {
+  withManager((manager) => {
+    const dsh = manager.getOrCreateDshRunner(dshOptions({ sessionId: "shared" }));
+    const kimi = manager.getOrCreateKimiCodeRunner(kimiCodeOptions({ sessionId: "shared" }));
+    const zcode = manager.getOrCreateZcodeRunner(zcodeOptions({ sessionId: "shared" }));
+    const seen: string[] = [];
+    const hook = (runner: { cancelTurn: () => void }, label: string) => {
+      const original = runner.cancelTurn.bind(runner);
+      runner.cancelTurn = () => {
+        seen.push(label);
+      };
+      return () => {
+        runner.cancelTurn = original;
+      };
+    };
+    const restoreDsh = hook(dsh as unknown as { cancelTurn: () => void }, "dsh-cancel");
+    const restoreKimi = hook(kimi as unknown as { cancelTurn: () => void }, "kimi-cancel");
+    const restoreZcode = hook(zcode as unknown as { cancelTurn: () => void }, "zcode-cancel");
+    try {
+      manager.stopTurnAndRebuild("dsh", "shared");
+      manager.stopTurnAndRebuild("kimi-code", "shared");
+      manager.stopTurnAndRebuild("zcode", "shared");
+      manager.stopTurnAndRebuild("opencode", "shared");
+      manager.stopTurnAndRebuild("dsh", null);
+      assert.deepEqual(seen, ["dsh-cancel", "kimi-cancel", "zcode-cancel"]);
+      assert.equal(manager.hasDshRunner("shared", dsh), true);
+      assert.equal(manager.hasKimiCodeRunner("shared", kimi), true);
+      assert.equal(manager.hasZcodeRunner("shared", zcode), true);
+      assert.equal(dsh.isReusable(), true);
+      assert.equal(kimi.isReusable(), true);
+    } finally {
+      restoreDsh();
+      restoreKimi();
+      restoreZcode();
+    }
+  });
 });

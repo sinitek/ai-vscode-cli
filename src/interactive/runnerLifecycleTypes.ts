@@ -269,3 +269,35 @@ export type RunnerLifecycleStrategy<
   ): RunnerRegistrationByCli[TCli];
   stop(runner: RunnerByCli[TCli]): void;
 };
+
+export type RunnerCreateOptionsByCli = {
+  codex: CodexRunnerCreateOptions;
+  claude: ClaudeRunnerCreateOptions;
+  grok: GrokRunnerCreateOptions;
+  dsh: DshRunnerCreateOptions;
+  "kimi-code": KimiCodeRunnerCreateOptions;
+  zcode: ZcodeRunnerCreateOptions;
+};
+
+export type PreparedByCli = {
+  codex: PreparedCodexCreate;
+  claude: PreparedClaudeCreate;
+  grok: PreparedGrokCreate;
+  dsh: PreparedDshCreate;
+  "kimi-code": PreparedKimiCodeCreate;
+  zcode: PreparedZcodeCreate;
+};
+
+export type StrategyForCli<TCli extends InteractiveRunnerCli> = RunnerLifecycleStrategy<
+  TCli,
+  RunnerCreateOptionsByCli[TCli],
+  PreparedByCli[TCli]
+>;
+
+export type CodexStrategyWithSelection = StrategyForCli<"codex"> & {
+  readSelection(entry: RunnerEntryByCli["codex"]): CodexRunSelection;
+};
+
+export type StrategyRegistry = {
+  [TCli in InteractiveRunnerCli]: StrategyForCli<TCli>;
+};

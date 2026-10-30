@@ -6,24 +6,14 @@ import { KimiInteractiveRunner } from "./kimiRunner";
 import { ZcodeInteractiveRunner } from "./zcodeRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import type {
-  ClaudeRunnerCreateOptions,
-  CodexRunnerCreateOptions,
   CodexRunnerEntry,
-  DshRunnerCreateOptions,
-  GrokRunnerCreateOptions,
-  KimiCodeRunnerCreateOptions,
-  PreparedClaudeCreate,
-  PreparedCodexCreate,
-  PreparedDshCreate,
-  PreparedGrokCreate,
-  PreparedKimiCodeCreate,
-  PreparedZcodeCreate,
   RunnerEntry,
-  ZcodeRunnerCreateOptions,
   RunnerLifecycleStrategy,
+  StrategyForCli,
+  StrategyRegistry,
 } from "./runnerLifecycleTypes";
 
-type CodexRunnerLifecycleStrategy = RunnerLifecycleStrategy<"codex", CodexRunnerCreateOptions, PreparedCodexCreate> & {
+type CodexRunnerLifecycleStrategy = StrategyForCli<"codex"> & {
   readSelection(entry: CodexRunnerEntry): CodexRunSelection;
 };
 
@@ -151,7 +141,7 @@ export const codexRunnerLifecycleStrategy: CodexRunnerLifecycleStrategy = {
   },
 };
 
-export const claudeRunnerLifecycleStrategy: RunnerLifecycleStrategy<"claude", ClaudeRunnerCreateOptions, PreparedClaudeCreate> = {
+export const claudeRunnerLifecycleStrategy: StrategyForCli<"claude"> = {
   cli: "claude",
   prepare(options) {
     return {
@@ -256,7 +246,7 @@ export const claudeRunnerLifecycleStrategy: RunnerLifecycleStrategy<"claude", Cl
   },
 };
 
-export const grokRunnerLifecycleStrategy: RunnerLifecycleStrategy<"grok", GrokRunnerCreateOptions, PreparedGrokCreate> = {
+export const grokRunnerLifecycleStrategy: StrategyForCli<"grok"> = {
   cli: "grok",
   prepare(options) {
     const sessionId = options.sessionId.trim();
@@ -340,7 +330,7 @@ export const grokRunnerLifecycleStrategy: RunnerLifecycleStrategy<"grok", GrokRu
   },
 };
 
-export const dshRunnerLifecycleStrategy: RunnerLifecycleStrategy<"dsh", DshRunnerCreateOptions, PreparedDshCreate> = {
+export const dshRunnerLifecycleStrategy: StrategyForCli<"dsh"> = {
   cli: "dsh",
   prepare(options) {
     const sessionId = options.sessionId.trim();
@@ -443,11 +433,7 @@ export const dshRunnerLifecycleStrategy: RunnerLifecycleStrategy<"dsh", DshRunne
   },
 };
 
-export const kimiCodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
-  "kimi-code",
-  KimiCodeRunnerCreateOptions,
-  PreparedKimiCodeCreate
-> = {
+export const kimiCodeRunnerLifecycleStrategy: StrategyForCli<"kimi-code"> = {
   cli: "kimi-code",
   prepare(options) {
     const sessionId = options.sessionId.trim();
@@ -551,11 +537,7 @@ export const kimiCodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
   },
 };
 
-export const zcodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
-  "zcode",
-  ZcodeRunnerCreateOptions,
-  PreparedZcodeCreate
-> = {
+export const zcodeRunnerLifecycleStrategy: StrategyForCli<"zcode"> = {
   cli: "zcode",
   prepare(options) {
     const sessionId = options.sessionId.trim();
@@ -658,7 +640,7 @@ export const zcodeRunnerLifecycleStrategy: RunnerLifecycleStrategy<
   },
 };
 
-export const runnerLifecycleStrategies = {
+export const runnerLifecycleStrategies: StrategyRegistry = {
   codex: codexRunnerLifecycleStrategy,
   claude: claudeRunnerLifecycleStrategy,
   grok: grokRunnerLifecycleStrategy,
@@ -668,25 +650,5 @@ export const runnerLifecycleStrategies = {
 };
 
 export function stopManagedRunner(entry: RunnerEntry): void {
-  if (entry.cli === "codex") {
-    codexRunnerLifecycleStrategy.stop(entry.runner);
-    return;
-  }
-  if (entry.cli === "claude") {
-    claudeRunnerLifecycleStrategy.stop(entry.runner);
-    return;
-  }
-  if (entry.cli === "grok") {
-    grokRunnerLifecycleStrategy.stop(entry.runner);
-    return;
-  }
-  if (entry.cli === "dsh") {
-    dshRunnerLifecycleStrategy.stop(entry.runner);
-    return;
-  }
-  if (entry.cli === "kimi-code") {
-    kimiCodeRunnerLifecycleStrategy.stop(entry.runner);
-    return;
-  }
-  zcodeRunnerLifecycleStrategy.stop(entry.runner);
+  runnerLifecycleStrategies[entry.cli].stop(entry.runner as never);
 }
