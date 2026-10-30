@@ -1,4 +1,4 @@
-import { CliName } from "./types";
+import { CLI_LIST, CliName } from "./types";
 
 const CODEGRAPH_NPM_PACKAGE = "@colbymchenry/codegraph";
 
@@ -45,6 +45,16 @@ export function getCliInstallCommand(cli: CliName, processPlatform: NodeJS.Platf
     return processPlatform === "win32" ? GROK_INSTALL_COMMANDS.windows : GROK_INSTALL_COMMANDS.unix;
   }
   return CLI_NPM_INSTALL_COMMANDS[cli];
+}
+
+export function getCliInstallCommands(
+  processPlatform: NodeJS.Platform = process.platform,
+): Record<CliName, string> {
+  const commands = {} as Record<CliName, string>;
+  for (const cli of CLI_LIST) {
+    commands[cli] = getCliInstallCommand(cli, processPlatform);
+  }
+  return commands;
 }
 
 export function getCliDisplayName(cli: CliName): string {

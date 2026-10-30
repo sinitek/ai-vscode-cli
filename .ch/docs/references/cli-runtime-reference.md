@@ -20,6 +20,7 @@
 - 切换到 Codex、Claude、OpenCode、Grok、DSH、KimiCode 或 ZCode 分组时检查目标命令；命令不可用时直接弹出 VS Code 模态安装确认（`showWarningMessage` 的 `{ modal: true }`），而不是仅发送可能收进铃铛的普通通知。
 - 对话框提供“一键安装”“打开设置”和取消；只有选择安装才显示 VS Code 终端并运行对应安装命令。已安装时不出现缺失安装提示，取消不执行命令；上下文切换确认不替代安装确认。
 - 除 Grok 外均使用各自 npm 包，ZCode 为 `npm install -g zcode-app-cli@latest`；官方 Grok Build 没有走 npm 安装，Windows 执行 `irm https://x.ai/cli/install.ps1 | iex`，macOS/Linux 执行 `curl -fsSL https://x.ai/cli/install.sh | bash`。
+- 配置中心每个 CLI 分组的「安装」按钮只复制 `getCliInstallCommand` 按当前系统解析出的同一条命令，不在配置页执行安装。
 - 取消安装不会撤销分组切换；自定义命令路径仍沿用现有命令解析与设置修复入口。排查“没有提示”时，先区分命令未检测、普通通知已进入铃铛和真正未发送提示，避免仅根据弹出与否判断检测失效。
 
 ### 交互 Runner 生命周期
@@ -286,7 +287,7 @@
 ### ZCode
 
 - CLI id 是 `zcode`，显示名 ZCode，命令默认 `zcode`。顺序在 `kimi-code` 之后。
-- Windows、macOS、Linux 的安装命令统一为 `npm install -g zcode-app-cli@latest`。缺失时切换 ZCode，复用公共“一键安装”提示并在 VS Code 终端执行命令，随后清空安装检测缓存；已安装时不提示、不重复安装。已有桌面应用附带的 `zcode` 命令继续兼容，版本检查使用 `zcode --version`。
+- Windows、macOS、Linux 的安装命令统一为 `npm install -g zcode-app-cli@latest`。缺失时切换 ZCode，复用公共“一键安装”提示并在 VS Code 终端执行命令，随后清空安装检测缓存；已安装时不提示、不重复安装。配置页「安装」复制同一条命令，不执行安装。已有桌面应用附带的 `zcode` 命令继续兼容，版本检查使用 `zcode --version`。
 - 交互协议是 ZCode Protocol 1，启动 `zcode app-server --stdio --mode yolo`。请求形如 `{id, method, params}`。带 `jsonrpc` 的信封会被拒绝。它不是 ACP，也不复用 Grok 或 DSH 的 ACP 方法。
 - 会话：`session/create` 新建，`session/resume` 恢复 `sess_` 前缀会话，`session/subscribe` 使用 `desktop-continuous`，`session/send` 发送提示，`session/stop` 停止当前回合，`session/close` 释放。创建期间客户端必须回答 `session/requestRuntimePreferences`。
 - 流式事件通过 `session/event` 接收。兼容旧 `part.delta` 的 `text` 与 `reasoning`；ZCode 0.17.0 的正文、思考和工具输入来自 `model.streaming`，工具生命周期来自 `tool.updated`。工具输入按 `toolCallId` 聚合，`scheduled`、`started` 与 `result` 复用同一消息 ID 更新 Codex-compatible trace 气泡；Shell 命令使用 `exec <command>`，其它工具使用 `tool:` / `tool result:` 结构。回合结束看 `turn.completed`，失败看 `turn.failed`。

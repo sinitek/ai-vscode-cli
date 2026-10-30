@@ -46,15 +46,16 @@ test("配置中心所有分组的范例和默认提示不包含 subcoco", () => 
 
 test("配置中心把 kimi-code 注册为一个完整平台（平台列表、标签、命令、Skills 目标）", () => {
   const api = read(apiPath);
-  assert.match(api, /const CONFIG_MANAGER_PLATFORMS = \[[^\]]*"kimi-code"\]/);
+  assert.match(api, /const CONFIG_MANAGER_PLATFORMS = \[[^\]]*"kimi-code"[^\]]*\]/);
 
   const store = read(storePath);
-  assert.match(store, /\[[^\]]*"kimi-code"\]/, "配置排序/回落列表要包含 kimi-code");
+  assert.match(store, /\[[^\]]*"kimi-code"/, "配置排序/回落列表要包含 kimi-code");
   assert.match(store, /"kimi-code": "KimiCode"/, "平台同步使用 KimiCode 标签");
 
   const ui = read(uiPath);
   assert.match(ui, /DEFAULT_RUN_COMMANDS[\s\S]{0,400}?"kimi-code": "kimi"/, "启动命令不能带 --auto（与 -p 互斥）");
-  assert.match(ui, /DEFAULT_INSTALL_COMMANDS[\s\S]{0,600}?"kimi-code": "npm install -g @moonshot-ai\/kimi-code@latest"/);
+  assert.match(ui, /function cliInstallCommand\(platform\)[\s\S]{0,300}window\.sinitekCliInstallCommands/);
+  assert.doesNotMatch(ui, /DEFAULT_INSTALL_COMMANDS/);
   assert.match(ui, /platform === "kimi-code"[\s\S]{0,40}?"KimiCode"/);
   assert.match(ui, /\{ id: "kimi-code", label: "KimiCode" \}/, "Skills 目标显示 KimiCode");
   assert.match(ui, /kimiCodeConfigs = c\.useMemo/, "侧边栏要有 Kimi Code 配置分组");
@@ -66,18 +67,15 @@ test("安装命令与官方文档一致，且不把 -p 与 --auto/--yolo 混用"
   const ui = read(uiPath);
   const runCommands = ui.slice(
     ui.indexOf("const DEFAULT_RUN_COMMANDS"),
-    ui.indexOf("const DEFAULT_INSTALL_COMMANDS"),
+    ui.indexOf("function cliInstallCommand"),
   );
   assert.match(runCommands, /"kimi-code": "kimi"/);
   assert.doesNotMatch(runCommands, /"kimi-code": "kimi --auto"/);
   assert.doesNotMatch(runCommands, /"kimi-code": "kimi --yolo"/);
 
-  const installCommands = ui.slice(
-    ui.indexOf("const DEFAULT_INSTALL_COMMANDS"),
-    ui.indexOf("const configPlatformLabel"),
-  );
-  assert.match(installCommands, /npm install -g @moonshot-ai\/kimi-code@latest/);
-  // 与宿主诊断修复路径使用同一条安装命令
+  assert.match(ui, /T = cliInstallCommand\(k\)/);
+  assert.match(ui, /onClick: \(\) => R\(T, "安装命令"\)/);
+  // 配置页复制的命令来自一键安装，不在页面里再写一份
   const installer = fs.readFileSync(path.join(process.cwd(), "src", "cli", "installer.ts"), "utf8");
   assert.match(installer, /"kimi-code": "npm install -g @moonshot-ai\/kimi-code@latest"/);
 });

@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { t } from "../i18n";
+import { getCliInstallCommands } from "../cli/installer";
 import { CLI_LIST } from "../cli/types";
 
 const ASSETS_DIR = ["media", "config", "assets"];
@@ -332,6 +333,7 @@ export function getConfigViewHtml(
       const vscode = acquireVsCodeApi();
       const configBase = ${JSON.stringify(configBaseUri)};
       const downloadsDir = ${JSON.stringify(downloadsDir)};
+      window.sinitekCliInstallCommands = ${JSON.stringify(getCliInstallCommands())};
       try {
         history.replaceState(null, "", configBase + "/index.html");
       } catch (error) {

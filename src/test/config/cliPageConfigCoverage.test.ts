@@ -331,6 +331,26 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   }
 });
 
+test("config page copies the one-click install command for every CLI", () => {
+  const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+  const { getCliInstallCommand } = require("../../cli/installer") as typeof import("../../cli/installer");
+  const { html } = renderConfigHtml();
+  const match = html.match(/window\.sinitekCliInstallCommands = (\{.*?\});/);
+  assert.ok(match, "config view should inject one-click install commands");
+  const commands = JSON.parse(match[1]) as Record<string, string>;
+  for (const cli of CLI_LIST) {
+    assert.equal(commands[cli], getCliInstallCommand(cli));
+    assert.ok(commands[cli].trim(), cli + " install command should be copyable");
+  }
+  const ui = readProjectFile("media/config/assets/config-app-ui.js");
+  assert.match(ui, /function cliInstallCommand\(platform\)/);
+  assert.match(ui, /window\.sinitekCliInstallCommands/);
+  assert.match(ui, /T = cliInstallCommand\(k\)/);
+  assert.match(ui, /onClick: \(\) => R\(T, "安装命令"\)/);
+  assert.doesNotMatch(ui, /DEFAULT_INSTALL_COMMANDS/);
+  assert.doesNotMatch(ui, /terminal\.sendText|一键安装/);
+});
+
 test("config view reports missing hashed and app assets without touching user data", () => {
   const { getConfigViewHtml } = require("../../webview/configView") as typeof import("../../webview/configView");
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-config-view-"));

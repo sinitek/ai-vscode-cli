@@ -13,17 +13,11 @@ const DEFAULT_RUN_COMMANDS = {
     zcode: "zcode",
   };
 
-const DEFAULT_INSTALL_COMMANDS = {
-    claude: "npm install -g @anthropic-ai/claude-code",
-    codex: "npm i -g @openai/codex",
-    opencode: "npm install -g opencode-ai",
-    grok: "curl -fsSL https://x.ai/cli/install.sh | bash",
-    dsh: "npm install -g @deepseek-ai/dsh",
-    // 与本机诊断修复路径（src/cli/installer.ts）保持一致，避免两处提示不同命令。
-    "kimi-code": "npm install -g @moonshot-ai/kimi-code@latest",
-    // 本机 0.17.0 的 zcode 是官方桌面应用附带命令，没有核实过的安装脚本。
-    zcode: "",
-  };
+function cliInstallCommand(platform) {
+  const commands = typeof window !== "undefined" ? window.sinitekCliInstallCommands : null;
+  const command = commands && typeof commands === "object" ? commands[platform] : "";
+  return typeof command === "string" ? command.trim() : "";
+}
 
 const DSH_UI_PROVIDER = "sinitek-custom";
 const DSH_UI_API = "openai-completions";
@@ -1079,7 +1073,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       H = (k, L) => {
         const G = configPlatformLabel(k),
           U = DEFAULT_RUN_COMMANDS[k],
-          T = DEFAULT_INSTALL_COMMANDS[k];
+          T = cliInstallCommand(k);
         return be.jsx(aa, {
           title: be.jsx("div", {
             style: { display: "flex", flexDirection: "column", gap: 2 },

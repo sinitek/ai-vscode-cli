@@ -1,7 +1,7 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
 import { CLI_LIST } from "../../cli/types";
-import { getCliDisplayName, getCliInstallCommand } from "../../cli/installer";
+import { getCliDisplayName, getCliInstallCommand, getCliInstallCommands } from "../../cli/installer";
 
 test("every CLI group has an install command on Windows, macOS and Linux", () => {
   for (const cli of CLI_LIST) {
@@ -28,6 +28,16 @@ test("CLI groups use the requested display names", () => {
     "KimiCode",
     "ZCode",
   ]);
+});
+
+test("install command map reuses the one-click command for every CLI", () => {
+  for (const platform of ["win32", "darwin", "linux"] as const) {
+    const commands = getCliInstallCommands(platform);
+    assert.deepEqual(Object.keys(commands), [...CLI_LIST]);
+    for (const cli of CLI_LIST) {
+      assert.equal(commands[cli], getCliInstallCommand(cli, platform));
+    }
+  }
 });
 
 test("Grok uses the official installer for the current platform", () => {
