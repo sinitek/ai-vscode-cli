@@ -4,6 +4,7 @@
 
 ![Loop+ AI 协作流程：主模型规划拆分、子模型编码、闭环验收与交付](media/loop-plus-intro.jpg)
 
+使用教程：
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog

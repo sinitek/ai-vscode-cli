@@ -806,16 +806,13 @@ function printReport(report, byFile) {
   console.log("有效代码行数（已排除空行、注释、第三方与压缩文件）");
   console.log("");
   const rows = [
-    ["范围", "分类", "文件", "物理行", "空行", "注释", "有效行"],
+    ["范围", "分类", "文件", "物理行", "有效行"],
   ];
   for (const root of report.roots) {
     const group = report.groups[root];
     rows.push(formatCountRow(root, "源码", group.source));
     rows.push(formatCountRow(root, "单测", group.test));
-    rows.push(formatCountRow(root, "小计", group.subtotal));
   }
-  rows.push(formatCountRow("合计", "源码", report.totals.source));
-  rows.push(formatCountRow("合计", "单测", report.totals.test));
   rows.push(formatCountRow("合计", "总计", report.totals.all));
   console.log(renderTable(rows));
   console.log("");
@@ -832,8 +829,6 @@ function formatCountRow(scope, kind, counts) {
     kind,
     String(counts.files),
     String(counts.physical),
-    String(counts.blank),
-    String(counts.comment),
     String(counts.effective),
   ];
 }

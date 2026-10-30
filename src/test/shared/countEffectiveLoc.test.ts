@@ -71,6 +71,8 @@ test("effective loc counter splits source and tests then totals them", () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const report = JSON.parse(result.stdout);
     assert.equal(report.groups.src.source.effective, 2);
+    assert.equal(report.groups.src.source.blank, 1);
+    assert.equal(report.groups.src.source.comment, 3);
     assert.equal(report.groups.src.test.effective, 4);
     assert.equal(report.groups.src.subtotal.effective, 6);
     assert.equal(report.groups.media.source.effective, 3);
@@ -81,6 +83,38 @@ test("effective loc counter splits source and tests then totals them", () => {
     assert.equal(report.totals.all.files, 3);
     assert.ok(report.skipped.reasons.minified >= 2);
     assert.ok(report.skipped.reasons.nonCode >= 1);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("effective loc counter hides blank and comment columns in text reports", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loc-output-"));
+  try {
+    fs.writeFileSync(
+      path.join(tempDir, "hello.ts"),
+      ["// comment", "", "export const value = 1;", ""].join("\n"),
+      "utf8",
+    );
+
+    for (const options of [[], ["--by-file"]]) {
+      const result = childProcess.spawnSync(
+        process.execPath,
+        [SCRIPT_PATH, ...options, tempDir],
+        { cwd: process.cwd(), encoding: "utf8" },
+      );
+
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const header = result.stdout.split(/\r?\n/u).find((line) => line.startsWith("范围"));
+      assert.deepEqual(header?.trim().split(/\s+/u), ["范围", "分类", "文件", "物理行", "有效行"]);
+      assert.doesNotMatch(result.stdout, /\s小计\s/u);
+      assert.equal(result.stdout.match(/^合计\s/gmu)?.length, 1);
+      assert.match(result.stdout, /^合计\s+总计\s+1\s+3\s+1\s*$/mu);
+      if (options.includes("--by-file")) {
+        assert.match(result.stdout, /^有效行\s+物理行\s+范围\s+分类\s+路径\s*$/mu);
+        assert.match(result.stdout, /^1\s+3\s+\S+\s+源码\s+\S*hello\.ts\s*$/mu);
+      }
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
