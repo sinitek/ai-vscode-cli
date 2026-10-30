@@ -46,6 +46,24 @@ test("shared renderer formats Markdown, code, SVG and JSON with the bundled pars
   assert.match(render("```svg\n非 SVG 内容\n```"), /language-svg/u);
 });
 
+test("self-closing SVG animation tags with a following end tag still render as images", () => {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40">',
+    '  <animate attributeName="opacity" values="0;1"/>',
+    "  </animate>",
+    '  <text y="20">完成</text>',
+    "</svg>",
+  ].join("\n");
+  const render = loadRenderer();
+  const html = render("```svg\n" + svg + "\n```");
+  assert.match(html, /<img src="data:image\/svg\+xml,/u);
+  assert.match(html, /chat-image-preview/u);
+  assert.match(html, /下载 SVG/u);
+  assert.doesNotMatch(html, /<pre/u);
+  assert.match(render(svg), /chat-image-preview/u);
+  assert.match(render("```svg\n非 SVG 内容\n```"), /language-svg/u);
+});
+
 test("standalone raw SVG bubbles render exactly like SVG fences without changing the source", () => {
   const render = loadRenderer();
   for (const svg of [

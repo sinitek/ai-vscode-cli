@@ -97,6 +97,16 @@ test("normalizes self-contained SVG markup and encoded or base64 SVG data URLs",
   assert.equal(normalizeChatImageSource(source), source);
   assert.equal(normalizeChatImageSource("data:image/svg+xml;base64," + Buffer.from(svg).toString("base64")), source);
   assert.equal(normalizeChatImageSource("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)), source);
+  const animated = '<svg viewBox="0 0 40 20"><animate attributeName="opacity" values="0;1"/>\n</animate><text y="16">完成</text></svg>';
+  const animatedSource = createChatSvgImageSource(animated);
+  assert.ok(animatedSource);
+  const animatedMarkup = decodeURIComponent(animatedSource!.slice(animatedSource!.indexOf(",") + 1));
+  assert.match(animatedMarkup, /<animate\b[^>]*\/>/);
+  assert.doesNotMatch(animatedMarkup, /<\/animate>/);
+  assert.match(animatedMarkup, /<text y="16">完成<\/text>/);
+  assert.equal(createChatSvgImageSource('<svg viewBox="0 0 40 20"><animate attributeName="opacity" values="0;1"></animate></svg>')?.includes("%3Canimate"), true);
+  assert.equal(createChatSvgImageSource('<svg><path></g></svg>'), null);
+  assert.equal(createChatSvgImageSource('<svg><g></svg>'), null);
   assert.ok(createChatSvgImageSource('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'));
   assert.match(decodeURIComponent(createChatSvgImageSource('<svg width="200" height="40" viewBox="0 0 320 100"/>')!), /<svg xmlns="[^"]+" width="200" height="40"/);
   for (const invalid of [null, "<html></html>", "<svg:invalid/>", "<svg>", "<svg><rect/>", "<svg/><rect/>", "<svg>\ud800</svg>", '<!DOCTYPE svg><svg/>', '<svg><!ENTITY test "text"></svg>', "<svg>" + " ".repeat(256 * 1024) + "</svg>", "<svg>" + "中".repeat(100000) + "</svg>"]) {

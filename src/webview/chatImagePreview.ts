@@ -18,13 +18,109 @@ export function createChatSvgImageSource(value: unknown): string | null {
     && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0) {
     normalized = normalized.replace(/^<svg\b/i, '<svg width="' + viewBox[2] + '" height="' + viewBox[3] + '"');
   }
-  if (new TextEncoder().encode(normalized).byteLength > maxSvgBytes) {
+  const repaired = repairStraySvgEndTags(normalized);
+  if (!repaired || new TextEncoder().encode(repaired).byteLength > maxSvgBytes) {
     return null;
   }
   try {
-    return "data:image/svg+xml," + encodeURIComponent(normalized);
+    return "data:image/svg+xml," + encodeURIComponent(repaired);
   } catch {
     return null;
+  }
+
+  function readSvgTag(source: string, start: number): { raw: string; name: string; closing: boolean; selfClosing: boolean; end: number } | null {
+    let cursor = start + 1;
+    if (source[cursor] === "/") {
+      cursor += 1;
+    }
+    const name = /^[A-Za-z][\w:.-]*/.exec(source.slice(cursor))?.[0];
+    if (!name) {
+      return null;
+    }
+    cursor += name.length;
+    let quote = "";
+    let selfClosingSlash = false;
+    while (cursor < source.length) {
+      const character = source[cursor];
+      if (quote) {
+        if (character === quote) {
+          quote = "";
+        }
+        cursor += 1;
+        continue;
+      }
+      if (character === ">") {
+        const closing = source[start + 1] === "/";
+        return {
+          raw: source.slice(start, cursor + 1),
+          name,
+          closing,
+          selfClosing: !closing && selfClosingSlash,
+          end: cursor + 1,
+        };
+      }
+      if (character === "\"" || character === "'") {
+        quote = character;
+        selfClosingSlash = false;
+      } else if (character === "/") {
+        selfClosingSlash = true;
+      } else if (!/\s/.test(character)) {
+        selfClosingSlash = false;
+      }
+      cursor += 1;
+    }
+    return null;
+  }
+
+  function repairStraySvgEndTags(source: string): string | null {
+    const stack: string[] = [];
+    let result = "";
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = source.indexOf("<", cursor);
+      if (start < 0) {
+        result += source.slice(cursor);
+        break;
+      }
+      result += source.slice(cursor, start);
+      if (source.startsWith("<!--", start)) {
+        const end = source.indexOf("-->", start + 4);
+        if (end < 0) {
+          return null;
+        }
+        result += source.slice(start, end + 3);
+        cursor = end + 3;
+        continue;
+      }
+      if (source.startsWith("<![CDATA[", start)) {
+        const end = source.indexOf("]]>", start + 9);
+        if (end < 0) {
+          return null;
+        }
+        result += source.slice(start, end + 3);
+        cursor = end + 3;
+        continue;
+      }
+      const tag = readSvgTag(source, start);
+      if (!tag) {
+        return null;
+      }
+      if (tag.closing) {
+        if (stack[stack.length - 1] !== tag.name) {
+          if (!stack.includes(tag.name)) {
+            cursor = tag.end;
+            continue;
+          }
+          return null;
+        }
+        stack.pop();
+      } else if (!tag.selfClosing) {
+        stack.push(tag.name);
+      }
+      result += tag.raw;
+      cursor = tag.end;
+    }
+    return stack.length === 0 ? result : null;
   }
 }
 

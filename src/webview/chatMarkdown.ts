@@ -220,11 +220,7 @@ export const CHAT_MARKDOWN_SCRIPT = `
           if (String(token.lang || "").trim().split(/\\s+/)[0].toLowerCase() === "svg") {
             const source = createChatSvgImageSource(token.text);
             if (source) {
-              const svgDocument = typeof DOMParser === "function"
-                ? new DOMParser().parseFromString(token.text, "image/svg+xml") : null;
-              if (!svgDocument || !svgDocument.querySelector("parsererror")) {
-                return renderChatImage({ href: source, text: "SVG 图示" });
-              }
+              return renderChatImage({ href: source, text: "SVG 图示" });
             }
           }
           return renderCode(token);
