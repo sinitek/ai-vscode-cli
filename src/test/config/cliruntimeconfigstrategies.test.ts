@@ -154,6 +154,7 @@ test("Claude apply writes settings before a failing MCP write and skips falsy MC
   let settings = "";
   let mcpWrites = 0;
   const ports = createPorts();
+  ports.claude.readClaudeConfig = async () => settings;
   ports.claude.writeClaudeConfig = async (content) => {
     settings = content;
   };
@@ -194,17 +195,17 @@ test("Claude initial field reads reject without using the fallback object", asyn
 
 test("Codex apply keeps content priority, auth retention, and skills boundaries", async () => {
   const calls: string[] = [];
-  let writtenConfig = "";
-  let writtenAuth: string | undefined;
+  let storedConfig = "model = \"current\"\n";
+  let storedAuth = "{\"token\":\"kept\"}";
   const ports = createPorts();
   ports.codex.readCodexConfig = async () => {
     calls.push("read");
-    return { config: "model = \"current\"\n", auth: "{\"token\":\"kept\"}" };
+    return { config: storedConfig, auth: storedAuth };
   };
   ports.codex.writeCodexConfig = async (config, auth) => {
     calls.push("write");
-    writtenConfig = config;
-    writtenAuth = auth;
+    storedConfig = config;
+    storedAuth = auth ?? "";
   };
   ports.codex.backupCodexConfig = async () => ["/tmp/codex.toml", "/tmp/codex-auth.json"];
   const strategy = strategiesFrom(ports).codex;
@@ -233,62 +234,64 @@ test("Codex apply keeps content priority, auth retention, and skills boundaries"
     configContent: "model = \"from-config-content\"\n",
     authContent: undefined,
   });
-  assert.equal(writtenConfig, "model = \"from-content\"\n");
-  assert.equal(writtenAuth, "{\"token\":\"kept\"}");
+  assert.equal(storedConfig, "model = \"from-content\"\n");
+  assert.equal(storedAuth, "{\"token\":\"kept\"}");
 
   await strategy.apply({
     configContent: "model = \"only-config-content\"",
     authContent: "",
   });
-  assert.equal(writtenConfig, "model = \"only-config-content\"");
-  assert.equal(writtenAuth, "");
-  assert.equal(calls.filter((call) => call === "read").length, 3);
+  assert.equal(storedConfig, "model = \"only-config-content\"");
+  assert.equal(storedAuth, "");
+  assert.equal(calls.filter((call) => call === "read").length, 5);
 
   await strategy.apply({
     content: "",
     configContent: "model = \"ignored\"\n",
     authContent: "{}",
   });
-  assert.equal(writtenConfig, "");
-  assert.equal(writtenAuth, "{}");
+  assert.equal(storedConfig, "");
+  assert.equal(storedAuth, "{}");
 
   await strategy.apply({
     content: "model = \"exact\"",
     authContent: "{}",
   });
-  assert.equal(writtenConfig, "model = \"exact\"");
+  assert.equal(storedConfig, "model = \"exact\"");
 
   await strategy.apply({
     content: "model = \"exact\"",
     authContent: "{}",
     codexSkills: [],
   });
-  assert.equal(writtenConfig, "model = \"exact\"\n");
+  assert.equal(storedConfig, "model = \"exact\"\n");
 
   await strategy.apply({
     content: "model = \"exact\"",
     authContent: "{}",
     codexSkills: [{ name: "demo", path: "/tmp/codex-skill", enabled: false }],
   });
-  assert.match(writtenConfig, /path = "\/tmp\/codex-skill"/);
-  assert.match(writtenConfig, /enabled = false/);
+  assert.match(storedConfig, /path = "\/tmp\/codex-skill"/);
+  assert.match(storedConfig, /enabled = false/);
 
   await assert.rejects(
     () => strategy.apply({ authContent: "{\"token\":\"unused\"}" }),
     new Error(t("config.codexIncomplete")),
   );
-  assert.equal(writtenAuth, "{}");
+  assert.equal(storedAuth, "{}");
 });
 
 test("OpenCode runtime strategy returns only content and preserves skills priority", async () => {
   const writes: Array<{ config: string; env: string | undefined }> = [];
+  let storedConfig = "{\"model\":\"myAPI/claude-sonnet-5\"}";
   const ports = createPorts();
   ports.opencode.readOpenCodeConfig = async () => ({
-    config: "{\"model\":\"myAPI/claude-sonnet-5\"}",
+    config: storedConfig,
     env: "",
   });
   ports.opencode.writeOpenCodeConfig = async (config, env) => {
     writes.push({ config, env });
+    storedConfig = config;
   };
   ports.opencode.backupOpenCodeConfig = async () => ["/tmp/opencode.json"];
   const strategy = strategiesFrom(ports).opencode;
@@ -341,6 +344,21 @@ test("OpenCode skill merge failure does not write", async () => {
     /JSON|object|OpenCode/i,
   );
   assert.equal(writes, 0);
+});
+
+test("runtime strategies reject a successful no-op writer after read-back verification", async () => {
+  const ports = createPorts();
+  ports.opencode.readOpenCodeConfig = async () => ({
+    config: "model = \"old\"\n",
+    env: "",
+  });
+  ports.opencode.writeOpenCodeConfig = async () => undefined;
+  const strategy = strategiesFrom(ports).opencode;
+
+  await assert.rejects(
+    () => strategy.apply({ content: "model = \"new\"\n" }),
+    /未成功更新配置/,
+  );
 });
 
 test("Grok strategy rejects blank or invalid content without writing", async () => {
@@ -455,4 +473,3 @@ test("every platform backup delegates to its own port in return order", async ()
     assert.deepEqual(await strategies[platform].backup(), expected[platform]);
   }
 });
-

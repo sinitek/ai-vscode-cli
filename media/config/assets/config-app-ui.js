@@ -810,7 +810,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             m(L.platform, L.id),
             Kt.success(`已应用配置: ${L.name}`));
         } catch (G) {
-          Kt.error(`应用配置失败: ${G}`);
+          Kt.error("未成功更新配置");
         } finally {
           h(null);
         }
@@ -6271,7 +6271,7 @@ const ConfigEditorPanel = () => {
           await applyConfigItem(O.platform, payload);
           Kt.success("已更新当前激活的配置");
         } catch (k) {
-          Kt.error("已保存，但更新激活配置失败: " + k);
+          Kt.error("未成功更新配置");
         }
       },
       saveClaudeSettingsCard = async () => {

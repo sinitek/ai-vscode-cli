@@ -104,6 +104,9 @@ export async function writeDshAppliedProfile(content: string, paths: DshConfigPa
   await ensurePrivateConfigDir(paths.configDir);
   await writeFileAtomically(paths.patchPath, serializeDshPatchYaml(committed.document), { mode: 0o600 });
   await writeFileAtomically(paths.appliedProfilePath, committed.content, { mode: 0o600 });
+  if (await fs.readFile(paths.appliedProfilePath, "utf8") !== committed.content) {
+    throw new Error("未成功更新配置");
+  }
   await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);
 }
 
@@ -133,6 +136,9 @@ export async function activateDshProfile(options: {
     await ensurePrivateConfigDir(paths.configDir);
     await writeFileAtomically(paths.patchPath, serializeDshPatchYaml(committed.document), { mode: 0o600 });
     await writeFileAtomically(paths.appliedProfilePath, committed.content, { mode: 0o600 });
+    if (await fs.readFile(paths.appliedProfilePath, "utf8") !== committed.content) {
+      throw new Error("未成功更新配置");
+    }
     await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);
     await writeFileAtomically(paths.activePath, marker, { mode: 0o600 });
     await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);

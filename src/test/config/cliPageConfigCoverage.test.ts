@@ -1239,7 +1239,7 @@ test("ZCode save applies only the active profile and waits for runtime model ref
     successes.length = 0;
     await sandbox.saveProfile();
     assert.equal(errors.length, 1);
-    assert.match(errors[0], /已保存，但更新激活配置失败/);
+    assert.equal(errors[0], "未成功更新配置");
     assert.equal(successes.includes("已更新当前激活的配置"), false);
     assert.equal(fs.readFileSync(runtimePath, "utf8"), "not-json");
   } finally {

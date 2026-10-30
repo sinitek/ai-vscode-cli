@@ -432,6 +432,26 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
   },
 });
 
+const configApplyTails = new Map<CurrentConfigPlatform, Promise<void>>();
+
+function enqueueConfigApply(
+  platform: CurrentConfigPlatform,
+  operation: () => Promise<void>,
+): Promise<void> {
+  const previous = configApplyTails.get(platform) ?? Promise.resolve();
+  let queued!: Promise<void>;
+  queued = previous
+    .catch(() => undefined)
+    .then(operation)
+    .finally(() => {
+      if (configApplyTails.get(platform) === queued) {
+        configApplyTails.delete(platform);
+      }
+    });
+  configApplyTails.set(platform, queued);
+  return queued;
+}
+
 export async function getBackupList(platform: LegacyConfigPlatformInput): Promise<string[]> {
   await ensureDir(BACKUP_DIR);
   const files = await fs.readdir(BACKUP_DIR);
@@ -1209,18 +1229,20 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
 
 export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
-  if (normalizedPlatform === "dsh" && profileId) {
-    const result = await activateDshProfile({
-      profileId,
-      content: payload.content ?? payload.configContent ?? "",
-    });
-    if (!result.ok || !result.activated) {
-      throw new Error(result.error);
+  return enqueueConfigApply(normalizedPlatform, async () => {
+    const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
+    if (normalizedPlatform === "dsh" && profileId) {
+      const result = await activateDshProfile({
+        profileId,
+        content: payload.content ?? payload.configContent ?? "",
+      });
+      if (!result.ok || !result.activated) {
+        throw new Error(result.error);
+      }
+      return;
     }
-    return;
-  }
-  await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
+    await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
+  });
 }
 
 export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {

@@ -209,7 +209,7 @@ const detectConfigApiMode = () =>
       rejectDshApplySecrets(e, t);
       return configApi.apply(e, t);
     } catch (n) {
-      throw (console.error("应用配置失败:", n), n);
+      throw (console.error("未成功更新配置:", n), n);
     }
   },
   backupConfigItem = async (e) => {

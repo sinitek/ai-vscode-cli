@@ -963,6 +963,18 @@
       ]
     },
     {
+      "id": "plugin.rule.config_apply_serializes_runtime_writes",
+      "name": "同一 CLI 配置应用串行写入运行文件",
+      "description": "配置中心通过同一 applyConfig 入口应用同一 CLI 的档案时，运行时文件写入按 CLI 串行排队；Codex 的 config.toml 与 auth.json 必须来自同一档案，写入后读回不一致时失败并提示“未成功更新配置”。不同 CLI 分组可独立应用，快速切换不得产生跨档案文件混合。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/config/configService.ts"},
+        {"path": "src/test/config/configService.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
       "description": "AI 对话面板切换配置档案时，Webview 中的待选配置只在宿主完成 applyConfig 并回写 activeConfigIdByCli 后才算生效；提示词发送和队列出队必须等待这次提交完成。最新选择可以覆盖更早的待提交请求，失败时要回滚到当前 active config 并阻止误发旧配置。模型候选、选中模型、主/子模型及思考选项只接受 activeConfigId 与界面 selectedConfigId 一致的快照，其他配置晚到的刷新不得覆盖当前选择。",

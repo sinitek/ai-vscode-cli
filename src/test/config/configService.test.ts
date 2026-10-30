@@ -117,6 +117,35 @@ test("Codex applyConfig writes TOML and auth without changing an existing .env",
   });
 });
 
+test("Codex concurrent profile switches are serialized without mixing runtime files", async () => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const first = {
+      content: "model = \"profile-a\"\n",
+      authContent: '{\n  "token": "profile-a"\n}\n',
+    };
+    const second = {
+      content: "model = \"profile-b\"\n",
+      authContent: '{\n  "token": "profile-b"\n}\n',
+    };
+
+    for (let round = 0; round < 20; round += 1) {
+      await Promise.all([
+        configService.applyConfig("codex", first),
+        configService.applyConfig("codex", second),
+      ]);
+      assert.equal(
+        await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf-8"),
+        second.content,
+      );
+      assert.equal(
+        await fs.readFile(path.join(homeDir, ".codex", "auth.json"), "utf-8"),
+        second.authContent,
+      );
+    }
+  });
+});
+
 test("Codex backup writes config and auth files without backing up .env", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();
