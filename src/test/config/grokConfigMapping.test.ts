@@ -64,7 +64,7 @@ trust_level = "trusted"
   assert.equal(model.env_key, undefined);
   assert.match(merged.content, /api_key = ""/);
   assert.doesNotMatch(merged.content, /requires_openai_auth|disable_response_storage|apiKey/);
-  assert.match(merged.content, /\[model\."grok-4\.7-kedaya"\]/);
+  assert.match(merged.content, /\[model\."grok-4\.7"\]/);
   assert.deepEqual(GROK_VISUAL_FIELDS.map((field) => field.id), [
     "models.default",
     "models.default_reasoning_effort",
@@ -205,7 +205,7 @@ test("writes the kedaya profile by merge without touching settings snapshots", a
   assert.equal(applied.configPath, path.join(grokHome, "config.toml"));
   const saved = await fs.readFile(applied.configPath, "utf8");
   assert.match(saved, /custom_root = "keep"/);
-  assert.match(saved, /grok-4\.7-kedaya/);
+  assert.match(saved, /\[model\."grok-4\.7"\]/);
   assert.match(saved, /api_key = ""/);
   assert.doesNotMatch(saved, /apiKey/);
   const profile = JSON.parse(await fs.readFile(applied.profilePath, "utf8")) as Record<string, unknown>;

@@ -137,8 +137,9 @@ test("Kimi Code 排障 runbook 覆盖隔离验证与已知失败现象", () => {
 test("README 与功能清单已把 Kimi Code 计入 CLI 与 skills 目标", () => {
   const readme = readProjectFile("README.md");
   assert.match(readme, /Kimi Code/);
-  assert.match(readme, /六个全局 skills 目录/);
-  assert.match(readme, /docs\/kimi-code-guide\.md/);
+  const capabilities = readProjectFile(".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md");
+  assert.match(capabilities, /Kimi Code、ZCode 七个全局 skills 目录/);
+  assert.match(capabilities, /docs\/kimi-code-guide\.md/);
 
   const featureList = readProjectFile("docs/插件功能清单.md");
   assert.match(featureList, /kimi-code/);

@@ -551,9 +551,11 @@ test("DSH isolated launch copies the patch and keeps the key out of args", async
   process.env.SINITEK_DSH_API_KEY = "secret-key-value";
   process.env.DSH_PERMISSION_MODE = "workspace-write";
   try {
+    const profile = JSON.parse(createDshExampleProfileText());
+    profile.apiKey = "";
     const activated = await activateDshProfile({
       profileId: "acme",
-      content: createDshExampleProfileText(),
+      content: JSON.stringify(profile),
     });
     assert.equal(activated.ok, true);
     const launch = await prepareDshIsolatedLaunch({ sessionKey: "local_1" });

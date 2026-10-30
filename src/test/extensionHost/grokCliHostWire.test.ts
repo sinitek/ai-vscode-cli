@@ -410,9 +410,9 @@ const SAMPLE_GROK_TOML = `
 default = "grok-4.7"
 default_reasoning_effort = "xhigh"
 
-[model.grok-4.7]
+[model."grok-4.7"]
 model = "grok-4.7"
-name = "grok-4.7"
+name = "legacy-grok-display"
 base_url = "http://127.0.0.1:33391/v1"
 api_backend = "responses"
 env_key = "EXAMPLE_ENV_NAME"
@@ -448,6 +448,8 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
     if (!parsed.ok) {
       return;
     }
+    assert.ok(parsed.value.model && typeof parsed.value.model === "object");
+    assert.deepEqual(Object.keys(parsed.value.model), ["grok-4.7"]);
     const patched = applyGrokVisualPatch(parsed.value, {
       defaultModel: "grok-4.7",
       defaultReasoningEffort: "xhigh",
@@ -465,7 +467,7 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
     await applyConfig("grok", { content: serialized.content });
     const current = await getCurrentConfig("grok");
     assert.match(current.content ?? "", /model = "gpt-6.1-sol"/);
-    assert.match(current.content ?? "", /name = "grok-4\.7-kedaya"/);
+    assert.match(current.content ?? "", /name = "legacy-grok-display"/);
     assert.match(current.content ?? "", /kept_note = "leave-me"/);
     assert.match(current.content ?? "", /\[custom\]/);
     assert.match(current.configContent ?? "", /env_key = "EXAMPLE_ENV_NAME"/);
@@ -495,7 +497,7 @@ test("invalid Grok TOML does not replace the previous valid file", async () => {
     await assert.rejects(() => applyConfig("grok", { content: "models = [\n" }));
     assert.equal(await fs.readFile(configPath, "utf8"), before);
     const current = await getCurrentConfig("grok");
-    assert.match(current.content ?? "", /grok-4\.7-kedaya/);
+    assert.equal(current.content, before);
   });
 });
 

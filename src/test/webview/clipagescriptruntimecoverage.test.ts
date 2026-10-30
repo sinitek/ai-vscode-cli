@@ -1,6 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
-import { CLI_LIST } from "../../cli/types";
+import { CLI_LIST, type CliName } from "../../cli/types";
+import { getCliDisplayName } from "../../cli/installer";
 
 import { createZcodeExampleText, readZcodeConfigModels, ZCODE_EXAMPLE_MODEL_ID } from "../../config/zcodeConfig";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
@@ -2617,9 +2618,9 @@ test("keeps the owning conversation tab errored for error bubbles through append
     message: { id: "user-start", role: "user", content: "start conversation" },
   });
 
-  const tab = (label: string) => document.getElementById("conversationTabs")
+  const tab = (cli: CliName) => document.getElementById("conversationTabs")
     .querySelectorAll(".conversation-tab")
-    .find((item: FakeElement) => item.querySelector(".conversation-tab-label")?.textContent === label);
+    .find((item: FakeElement) => item.querySelector(".conversation-tab-label")?.textContent === getCliDisplayName(cli));
   window.dispatchMessage({
     type: "appendMessage",
     tabId: "tab-1",
@@ -4108,6 +4109,7 @@ test("handles run stream, queue, attachments, history, and settings function bra
   const settingsSource = [
     "getActiveLoopMainTaskId",
     "enabledRuleCliNames",
+    "sharedProjectRuleCliNames",
     "collectRuleTargets",
     "buildPromptPreview",
   ].map((name) => extractFunctionSource(`${VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS}\n${VIEW_CONTENT_SCRIPT_HISTORY_PANELS}`, name)).join("\n");
@@ -4184,6 +4186,7 @@ test("routes window message handler branches without a real webview", () => {
     "openConfigApplyErrorOverlay",
     "applyExternalTaskListUpdate",
     "setRulesHint",
+    "formatRuleTargetLabel",
     "elements",
     "t",
     "console",
@@ -4240,6 +4243,7 @@ test("routes window message handler branches without a real webview", () => {
     () => calls.push("configError"),
     () => calls.push("taskList"),
     () => calls.push("rulesHint"),
+    (_scope: string, target: string) => target,
     { rulesInput: { value: "" } },
     (key: string) => key,
     console,

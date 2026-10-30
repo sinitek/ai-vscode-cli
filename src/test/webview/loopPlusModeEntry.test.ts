@@ -185,6 +185,7 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
   const modelSource = [
     ...[
       "cliSupportsManagedModelSelection",
+      "cliSupportsModelSelection",
       "cliSupportsLoopRoleModelSelection",
       "isLoopRoleModelMode",
       "isOpenCodeRoleModelMode",
@@ -355,6 +356,7 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderConversationTabs"),
       ...[
         "cliSupportsManagedModelSelection",
+        "cliSupportsModelSelection",
         "cliSupportsLoopRoleModelSelection",
         "isLoopRoleModelMode",
         "isOpenCodeRoleModelMode",
@@ -471,6 +473,7 @@ test("restores each main tab mode from its summary after a fresh page load", () 
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderConversationTabs"),
         ...[
           "cliSupportsManagedModelSelection",
+          "cliSupportsModelSelection",
           "cliSupportsLoopRoleModelSelection",
           "isLoopRoleModelMode",
           "isOpenCodeRoleModelMode",
@@ -574,7 +577,7 @@ function buildDispatchHarness() {
     "appendMessage",
     "createMessageId",
     "t",
-    "cliSupportsManagedModelSelection",
+    "cliSupportsModelSelection",
     "getLoopExecutionModeForCli",
     "getSelectedLoopRoleModelForCli",
     "getSelectedLoopRoleThinkingModeForCli",
@@ -906,7 +909,7 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
     "appendMessage",
     "createMessageId",
     "t",
-    "cliSupportsManagedModelSelection",
+    "cliSupportsModelSelection",
     "getLoopExecutionModeForCli",
     "getSelectedLoopRoleModelForCli",
     "getSelectedLoopRoleThinkingModeForCli",

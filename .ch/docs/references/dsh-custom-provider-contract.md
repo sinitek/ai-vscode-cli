@@ -33,7 +33,7 @@
 ### 配置页字段分区
 
 - DSH 配置页默认以 JSON 模式打开；可视化模式编辑同一份 profile JSON。公共参数中的“API 类型”下拉提供官方支持的三种协议，默认 `openai-completions`，选择原样写入 profile 与运行 patch；非法协议在保存校验时拒绝。
-- 配置范例使用安全的示例地址并显式包含空 `apiKey` 字段，不生成任何密钥。一键导入会先验证范例，验证成功后覆盖当前编辑草稿；验证失败时保留抽屉并显示具体错误。当前 profile 为空时，切换到可视化会创建可编辑的本地草稿，保存时仍执行完整 JSON 校验。
+- 配置范例使用安全的示例地址并显式包含 `apiKey: "your_apikey"` 占位值，不生成任何真实密钥。非空 profile `apiKey` 优先注入子进程的 `SINITEK_DSH_API_KEY`；使用已有环境变量时须清空或移除该字段。一键导入会先验证范例，验证成功后覆盖当前编辑草稿；验证失败时保留抽屉并显示具体错误。当前 profile 为空时，切换到可视化会创建可编辑的本地草稿，保存时仍执行完整 JSON 校验。
 - 模型工作区上方集中编辑 profile 公共参数：`provider`（只读）、`api`、`baseURL`、可选根级 `apiKey` 和默认模型 `acpModel`。这些字段不属于 `models[]`。
 - 模型列表右侧详情只编辑当前 `models[]` 项：必填 `id`、可选显示名 `name` 和可选正整数 `contextWindow`。模型名称为空时规范化为 `id`；`input` 目前固定为 `[text]`，不在可视化中编辑。可选的 `maxTokens` 仍可在 JSON 中保留，但不在可视化中展示或生成，新的参考范例也不包含它。公共可选字段 `displayName`、`timeoutMs`、`streamIdleTimeoutMs`、`retryPolicy` 同样不在可视化中配置或新范例中生成；用户已有 JSON 字段会保留并用于 patch。新增模型以空白草稿加入列表，必须在右侧填写 `id` 才能保存。
 - `contextWindow` 只能出现在单个模型对象中，不能写成 profile 顶层公共字段。省略时使用 DSH 适配器 fallback `262144`；这是适配器值，不代表服务公布的模型上下文容量。`maxTokens` 是可选的模型请求默认输出上限，数值按单个 token 计数，不是 `k` 单位。

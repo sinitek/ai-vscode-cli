@@ -208,9 +208,9 @@ test("old config order missing dsh migrates without dropping earlier platforms",
   const loaded = JSON.parse(JSON.stringify(utils.loadStoredOrder()));
   assert.deepEqual(
     JSON.parse(JSON.stringify(utils.configManagerPlatforms)),
-    ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
+    ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"],
   );
-  assert.deepEqual(loaded, { ...previous, dsh: [], "kimi-code": [] });
+  assert.deepEqual(loaded, { ...previous, dsh: [], "kimi-code": [], zcode: [] });
   assert.deepEqual(JSON.parse(JSON.stringify(utils.createEmptyOrder())), {
     claude: [],
     codex: [],
@@ -218,12 +218,13 @@ test("old config order missing dsh migrates without dropping earlier platforms",
     grok: [],
     dsh: [],
     "kimi-code": [],
+    zcode: [],
   });
   const appended = JSON.parse(JSON.stringify(utils.appendOrderForConfigs(
     [{ id: "dsh-added", platform: "dsh" }],
     utils.loadStoredOrder(),
   )));
-  assert.deepEqual(appended, { ...previous, dsh: ["dsh-added"], "kimi-code": [] });
+  assert.deepEqual(appended, { ...previous, dsh: ["dsh-added"], "kimi-code": [], zcode: [] });
   const merged = JSON.parse(JSON.stringify(utils.mergeOrderWithConfigs(
     [{ id: "dsh-added", platform: "dsh" }, { id: "dsh-new", platform: "dsh" }],
     appended.dsh,
@@ -920,7 +921,7 @@ globalThis.__api = { saveConfigItem, applyConfigItem, CONFIG_MANAGER_PLATFORMS }
   const api = sandbox.__api;
   assert.deepEqual(
     JSON.parse(JSON.stringify(api.CONFIG_MANAGER_PLATFORMS)),
-    ["claude", "codex", "opencode", "grok", "dsh", "kimi-code"],
+    ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"],
   );
   const secretConfig = {
     platform: "dsh",

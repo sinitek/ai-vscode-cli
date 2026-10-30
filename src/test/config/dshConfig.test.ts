@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { createDshExampleProfileText } from "../../cli/dshConfigModels";
+import { createDshExampleProfileText, DSH_VERIFIED_MODEL_ID } from "../../cli/dshConfigModels";
 import {
   activateDshProfile,
   readDshActivation,
@@ -73,7 +73,9 @@ test("activation records success only after the patch write and leaves failure i
   assert.equal(status.activeProfileId, "profile-a");
   assert.equal(status.patchPath, paths.patchPath);
   const applied = await readDshActiveProfileText(paths);
-  assert.match(applied, /subcoco\/deepseek-v4\.1-flash/);
+  const appliedProfile = JSON.parse(applied);
+  assert.equal(appliedProfile.acpModel, DSH_VERIFIED_MODEL_ID);
+  assert.deepEqual(appliedProfile.models.map((model: { id: string }) => model.id), [DSH_VERIFIED_MODEL_ID]);
   assert.equal(applied.includes("sk-"), false);
   const patch = await fs.readFile(paths.patchPath, "utf8");
   assert.match(patch, /api: openai-completions/);

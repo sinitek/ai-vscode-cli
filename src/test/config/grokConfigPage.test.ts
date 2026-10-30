@@ -386,6 +386,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
     grok: [],
     dsh: [],
     "kimi-code": [],
+    zcode: [],
   });
   storage.set(
     "ai_cli_config_order",
@@ -398,6 +399,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
     grok: [],
     dsh: [],
     "kimi-code": [],
+    zcode: [],
   });
   assert.deepEqual(
     JSON.parse(JSON.stringify(utils.appendOrderForConfigs([{ id: "g1", platform: "grok" }], {
@@ -405,7 +407,7 @@ test("config page bundle keeps Grok after OpenCode and preserves old order archi
       codex: ["x"],
       opencode: ["o1"],
     }))),
-    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"], dsh: [], "kimi-code": [] },
+    { claude: ["c1"], codex: ["x"], opencode: ["o1"], grok: ["g1"], dsh: [], "kimi-code": [], zcode: [] },
   );
 });
 

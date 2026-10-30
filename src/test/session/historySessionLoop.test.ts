@@ -1,5 +1,6 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
+import { getCliDisplayName } from "../../cli/installer";
 
 import { buildLoopSessionIdsByCli } from "../../loopTaskStore";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
@@ -88,6 +89,7 @@ function renderSessionTitleBadges(
     "isHistorySessionExportPending",
     "historySessionExportPendingKey",
     "requestHistorySessionExport",
+    "formatCliDisplayName",
     `${renderSessionListSource}; return renderSessionList;`,
   )(
     { sessionList },
@@ -109,6 +111,7 @@ function renderSessionTitleBadges(
     () => false,
     "",
     () => undefined,
+    getCliDisplayName,
   ) as () => void;
 
   runtime();
@@ -130,14 +133,14 @@ test("collects bound Loop session ids by CLI and ignores pending tasks", () => {
 });
 
 test("renders Loop, Graph, and open badges together in history sessions", () => {
-  assert.deepEqual(renderSessionTitleBadges(true, true, true), ["[codex] Build the feature", "Loop", "Graph", "Open"]);
-  assert.deepEqual(renderSessionTitleBadges(false, false, false), ["[codex] Build the feature"]);
+  assert.deepEqual(renderSessionTitleBadges(true, true, true), ["[Codex] Build the feature", "Loop", "Graph", "Open"]);
+  assert.deepEqual(renderSessionTitleBadges(false, false, false), ["[Codex] Build the feature"]);
 });
 
 test("prefixes non-vibe history session titles with main and subtask markers", () => {
-  assert.deepEqual(renderSessionTitleBadges(true, false, false, "main"), ["☀️ [codex] Build the feature", "Loop"]);
-  assert.deepEqual(renderSessionTitleBadges(false, true, false, "subtask"), ["🌛 [codex] Build the feature", "Graph"]);
-  assert.deepEqual(renderSessionTitleBadges(false, false, false, null), ["[codex] Build the feature"]);
+  assert.deepEqual(renderSessionTitleBadges(true, false, false, "main"), ["☀️ [Codex] Build the feature", "Loop"]);
+  assert.deepEqual(renderSessionTitleBadges(false, true, false, "subtask"), ["🌛 [Codex] Build the feature", "Graph"]);
+  assert.deepEqual(renderSessionTitleBadges(false, false, false, null), ["[Codex] Build the feature"]);
 });
 
 test("removes the standalone Loop group chat recovery tab", () => {

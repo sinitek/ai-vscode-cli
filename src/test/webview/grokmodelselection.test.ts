@@ -242,6 +242,7 @@ function buildThinkingSync(cli: string, thinkingMode: string, interactiveMode = 
     "isOpenCodeThinkingEffort",
     "syncOpenCodeThinkingSelect",
     "getSelectedLoopRoleThinkingModeForCli",
+    "getLoopRoleThinkingOptionsForCli",
     "getVisibleLoopRoleThinkingModeForCli",
     "getCliLoopThinkingAria",
     "appendCodexThinkingOptions",
@@ -491,11 +492,14 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.equal(elements.modelSelect.style.display, "");
   assert.equal(elements.modelSelect.disabled, false);
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
-  state.interactiveMode = "loop_plus";
-  runner.syncModelSelectorByInteractiveMode();
-  assert.equal(elements.modelSelect.style.display, "");
-  assert.equal(elements.modelSelect.disabled, false);
-  assert.equal(elements.codexLoopModelGroup.style.display, "none");
+  for (const mode of ["loop", "loop_plus", "graph"]) {
+    state.interactiveMode = mode;
+    runner.syncModelSelectorByInteractiveMode();
+    assert.equal(runner.isLoopRoleModelMode("dsh", mode), true);
+    assert.equal(elements.modelSelect.style.display, "none");
+    assert.equal(elements.modelSelect.disabled, true);
+    assert.equal(elements.codexLoopModelGroup.style.display, "");
+  }
 
   assert.equal(WEBVIEW_STRINGS.codexLoopMainModelLabel, "主模型");
   assert.equal(WEBVIEW_STRINGS.codexLoopSubtaskModelLabel, "子模型");
@@ -511,7 +515,10 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /configId: getCurrentModelConfigId\(\)/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /grokLoopMainModelSelectAria/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /function appendCodexThinkingOptions\(selectElement\) \{\s*appendThinkingOption\(selectElement, "low", "low"\);/);
-  assert.match(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, /state\.currentCli === "grok"\) \{\s*appendThinkingOption\(selectElement, "off", "off"\);/);
+  const thinking = buildThinkingSync("grok", "high", "loop");
+  thinking.syncThinkingOptions();
+  assert.deepEqual(optionPairs(thinking.elements.codexLoopMainThinkingMode), GROK_THINKING_OPTIONS);
+  assert.deepEqual(optionPairs(thinking.elements.codexLoopSubtaskThinkingMode), GROK_THINKING_OPTIONS);
 });
 
 test("Grok role thinking changes keep off and role model aria follows the CLI", () => {

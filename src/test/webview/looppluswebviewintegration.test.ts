@@ -404,6 +404,7 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "syncAutoInteractiveModeForActiveTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderConversationTabs"],
     [VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "cliSupportsManagedModelSelection"],
+    [VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "cliSupportsModelSelection"],
     [VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "cliSupportsLoopRoleModelSelection"],
     [VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "isLoopRoleModelMode"],
     [VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "isOpenCodeRoleModelMode"],

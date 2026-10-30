@@ -202,6 +202,8 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 2026-10-26 DSH 配置修复：配置范例显式包含空 `apiKey`；“一键导入”成功后覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误；空 profile 可先切换到可视化草稿，保存时仍执行完整必填校验。实现与验证记录见 `.ch/docs/exec-plans/completed/2026-10/2026-10-26-dsh-config-import-visual-empty.md`。
 
+2026-10-27 DSH 参考范例的 `apiKey` 更新为 `"your_apikey"` 占位值，不是真实密钥。非空 profile `apiKey` 优先注入子进程的 `SINITEK_DSH_API_KEY`；需要沿用环境变量时应先清空或移除该字段。范例与优先级回归入口：`src/test/cli/dshConfigModels.test.ts`、`src/test/extensionHost/dshInteractiveHostWire.test.ts`。
+
 2026-10-27 配置中心新增 Claude、Codex、OpenCode、Grok、DSH、kimi 配置档案时自动复制对应范例，回归入口：`src/test/config/newConfigFromExample.test.ts`。
 
 2026-10-28 子任务跨 CLI 路由修复：Vibe 忽略并清理残留路由字段；Loop、Loop+、Graph 与子任务续跑在目标 CLI 配置状态暂未同步时，宿主每隔 3 秒刷新并重查，最多 3 次，成功后再派发，耗尽则明确失败且不回退主 CLI。回归入口：`src/test/session/sessionMessageActions.test.ts`、`src/test/loop/subtaskCliRoute.test.ts`、`src/test/webview/loopSubtaskCliRoute.test.ts`。

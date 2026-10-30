@@ -16,6 +16,9 @@ function loadConfigFactory() {
   const examplesStart = ui.indexOf("const ps = {");
   const examplesEnd = ui.indexOf("const Nk = {", examplesStart);
   assert.ok(examplesStart >= 0 && examplesEnd > examplesStart, "找不到配置范例");
+  const zcodeStart = ui.indexOf("// ZCODE_VISUAL_EDITOR_UTILS_START");
+  const zcodeEnd = ui.indexOf("// ZCODE_VISUAL_EDITOR_UTILS_END", zcodeStart);
+  assert.ok(zcodeStart >= 0 && zcodeEnd > zcodeStart, "找不到 ZCode 配置工具");
 
   const store = read(storePath);
   const factoryStart = store.indexOf("createConfigFromExample =");
@@ -27,7 +30,7 @@ function loadConfigFactory() {
     createKimiCodeVisualExampleText: () => 'default_model = "kimi-k3.1-pro"\n',
   };
   vm.runInNewContext(
-    `${ui.slice(examplesStart, examplesEnd)}\n${store.slice(factoryStart, factoryEnd).replace(/,\s*$/, ";")}\nglobalThis.__create = createConfigFromExample; globalThis.__examples = ps;`,
+    `${ui.slice(zcodeStart, zcodeEnd)}\n${ui.slice(examplesStart, examplesEnd)}\n${store.slice(factoryStart, factoryEnd).replace(/,\s*$/, ";")}\nglobalThis.__create = createConfigFromExample; globalThis.__examples = ps;`,
     sandbox,
   );
   return { create: sandbox.__create, examples: sandbox.__examples };
@@ -37,7 +40,7 @@ function plain<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-test("六个 CLI 新增配置时自动复制对应范例", () => {
+test("七个 CLI 新增配置时自动复制对应范例", () => {
   const { create, examples } = loadConfigFactory();
 
   assert.deepEqual(plain(create("Claude 测试", "claude")), {
@@ -77,6 +80,12 @@ test("六个 CLI 新增配置时自动复制对应范例", () => {
     platform: "kimi-code",
     content: examples["kimi-code"].config,
     configContent: examples["kimi-code"].config,
+  });
+  assert.deepEqual(plain(create("ZCode 测试", "zcode")), {
+    name: "ZCode 测试",
+    platform: "zcode",
+    content: examples.zcode.config,
+    configContent: examples.zcode.config,
   });
 });
 
