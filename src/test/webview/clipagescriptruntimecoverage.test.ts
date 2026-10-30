@@ -956,6 +956,44 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
   });
 }
 
+for (const cli of CLI_LIST) {
+  test(`${cli} never writes a profile during initial or repeated passive state refreshes`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const refresh = (configId: string, activeConfigId: string | null = configId) => {
+      const payload = createProfilePanelState(cli, configId, { configState: {
+        activeConfigId,
+        configs: ["config-a", "config-b"].map((id) => ({ id, name: id, platform: cli })),
+      } });
+      window.dispatchMessage({ type: "state", payload });
+    };
+    refresh("config-a", null);
+    assert.equal(document.getElementById("configSelect").value, "config-a");
+    assert.equal(api.state.pendingConfigApply, null);
+    refresh("config-a");
+    for (let refreshIndex = 0; refreshIndex < 3; refreshIndex += 1) {
+      refresh("config-b");
+    }
+    assert.equal(document.getElementById("configSelect").value, "config-b");
+    assert.equal(api.state.pendingConfigApply, null);
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig" || message.type === "webviewError"), []);
+  });
+
+  test(`${cli} still applies an explicit selection once and preserves it until commit`, () => {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, "config-a") });
+    const configSelect = document.getElementById("configSelect");
+    configSelect.value = "config-b";
+    configSelect.dispatchEvent({ type: "change" });
+    window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, "config-a") });
+    assert.equal(configSelect.value, "config-b");
+    assert.equal(api.state.pendingConfigApply.configId, "config-b");
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig"), [{ type: "applyConfig", cli, configId: "config-b" }]);
+    window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, "config-b") });
+    assert.equal(api.state.pendingConfigApply, null);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  });
+}
+
 for (const cli of ["codex", "claude", "opencode"]) {
   test(`${cli} preserves a pending profile selection when resetting the conversation`, () => {
     const { api, document, window, posted } = createRuntimeHarness();
@@ -1014,7 +1052,7 @@ for (const cli of ["codex", "claude", "opencode"]) {
     assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
   });
 
-  test(`${cli} preserves the selected profile across a reset with a stale configuration refresh`, () => {
+  test(`${cli} accepts the active profile across a reset without forcing the previous profile back to disk`, () => {
     const { api, document, window, posted } = createRuntimeHarness();
     window.dispatchMessage({
       type: "state",
@@ -1030,11 +1068,9 @@ for (const cli of ["codex", "claude", "opencode"]) {
       }),
     });
 
-    assert.equal(document.getElementById("configSelect").value, "config-b");
+    assert.equal(document.getElementById("configSelect").value, "config-a");
     assert.equal(api.state.pendingConversationReset, null);
-    assert.deepEqual(posted.filter((message) => message.type === "applyConfig"), [
-      { type: "applyConfig", cli, configId: "config-b" },
-    ]);
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig"), []);
     assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
   });
 
@@ -1061,7 +1097,7 @@ for (const cli of ["codex", "claude", "opencode"]) {
     assert.deepEqual(posted.filter((message) => message.type === "applyConfig" || message.type === "webviewError"), []);
   });
 
-  test(`${cli} isolates model snapshots while switching profiles and after a delayed refresh`, () => {
+  test(`${cli} isolates pending model snapshots and accepts later active-profile refreshes without writing`, () => {
     const { api, document, window, posted } = createRuntimeHarness();
     const dispatchState = (configId: string, overrides: Record<string, unknown> = {}) => {
       window.dispatchMessage({ type: "state", payload: createProfilePanelState(cli, configId, overrides) });
@@ -1077,41 +1113,18 @@ for (const cli of ["codex", "claude", "opencode"]) {
 
     dispatchState("config-a");
     assert.equal(api.state.pendingConfigApply, null);
-    const acceptedModels = {
-      models: api.state.modelsByCli,
-      managed: api.state.managedModelsByCli,
-      selected: api.state.selectedModelsByCli,
-      selectedModel: api.state.selectedModel,
-      loopModels: api.state.loopModelsByCli,
-      loopSelected: api.state.selectedLoopModelsByCli,
-      loopThinking: api.state.selectedLoopThinkingByCli,
-      thinking: api.state.thinkingMode,
-      openCodeModels: api.state.openCodeModels,
-      openCodeThinking: api.state.openCodeThinking,
-      openCodeSmallThinking: api.state.openCodeSmallThinking,
-    };
-    assert.deepEqual(acceptedModels.models[cli], ["config-a-model"]);
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-a-model"]);
     dispatchState("config-b", { debug: false });
-    assert.equal(configSelect.value, "config-a");
+    assert.equal(configSelect.value, "config-b");
     assert.equal(api.state.debug, false);
-    assert.deepEqual({
-      models: api.state.modelsByCli,
-      managed: api.state.managedModelsByCli,
-      selected: api.state.selectedModelsByCli,
-      selectedModel: api.state.selectedModel,
-      loopModels: api.state.loopModelsByCli,
-      loopSelected: api.state.selectedLoopModelsByCli,
-      loopThinking: api.state.selectedLoopThinkingByCli,
-      thinking: api.state.thinkingMode,
-      openCodeModels: api.state.openCodeModels,
-      openCodeThinking: api.state.openCodeThinking,
-      openCodeSmallThinking: api.state.openCodeSmallThinking,
-    }, acceptedModels);
+    assert.deepEqual(api.state.modelsByCli[cli], ["config-b-model"]);
+    assert.equal(api.state.pendingConfigApply, null);
+    assert.deepEqual(posted.filter((message) => message.type === "applyConfig"), [{ type: "applyConfig", cli, configId: "config-a" }]);
     const modelSelectId = cli === "codex" ? "codexLoopMainModelSelect"
       : cli === "opencode" ? "openCodePrimaryModelSelect" : "modelSelect";
     const modelOptions = childValueTextPairs(document.getElementById(modelSelectId));
-    assert.ok(modelOptions.some(([value]) => value.includes("config-a-model")));
-    assert.ok(modelOptions.every(([value]) => !value.includes("config-b-model")));
+    assert.ok(modelOptions.some(([value]) => value.includes("config-b-model")));
+    assert.ok(modelOptions.every(([value]) => !value.includes("config-a-model")));
 
     dispatchState("config-a", { modelState: {}, openCodeModels: {}, thinkingMode: "medium" });
     assert.deepEqual(api.state.modelsByCli[cli], []);

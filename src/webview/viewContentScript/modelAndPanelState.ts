@@ -478,7 +478,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (previousConfigurationContextKey !== nextConfigurationContextKey) {
           state.pendingConversationReset = null;
           if (!preservesResetConfiguration) {
-            state.autoAppliedConfig = false;
             state.selectedConfigId = "";
             state.pendingConfigApply = null;
             state.pendingOpenCodeRoleSelection = null;
@@ -511,7 +510,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           ? state.configState.configs
           : [];
         let nextSelected = state.configState.activeConfigId || "";
-        let shouldAutoApplyConfig = false;
         const pendingConfigApply = state.pendingConfigApply
           && state.pendingConfigApply.cli === state.currentCli
           && configs.some(c => c.id === state.pendingConfigApply.configId)
@@ -533,35 +531,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           nextSelected = pendingConfigApply.configId;
         }
 
-        // 配置应用是异步的；在 activeConfigId 追上前端选择前，保持用户刚选的配置。
-        if (!pendingConfigApply && state.selectedConfigId && state.selectedConfigId !== nextSelected) {
-          const configExists = configs.some(c => c.id === state.selectedConfigId);
-          if (configExists) {
-            nextSelected = state.selectedConfigId;
-            shouldAutoApplyConfig = true;
-          }
-        }
-
         if (!nextSelected && configs.length > 0) {
           nextSelected = configs[0].id;
-          shouldAutoApplyConfig = true;
-        }
-        const autoApplyConfigKey = state.currentCli + ":" + nextSelected;
-        const canAutoApplyConfig = shouldAutoApplyConfig && (
-          !state.autoAppliedConfig
-          || lastAutoApplyConfigKey !== autoApplyConfigKey
-          || Date.now() - lastAutoApplyConfigAt > autoApplyConfigRetryMs
-        );
-        if (canAutoApplyConfig) {
-          state.pendingConfigApply = { cli: state.currentCli, configId: nextSelected };
-          state.autoAppliedConfig = true;
-          lastAutoApplyConfigKey = autoApplyConfigKey;
-          lastAutoApplyConfigAt = Date.now();
-          vscode.postMessage({
-            type: "applyConfig",
-            cli: state.currentCli,
-            configId: nextSelected,
-          });
         }
         state.selectedConfigId = nextSelected;
         const matchesSelectedConfig = (state.configState.activeConfigId || "") === nextSelected;

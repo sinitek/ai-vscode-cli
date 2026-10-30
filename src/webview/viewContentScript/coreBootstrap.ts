@@ -183,7 +183,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           claude: [],
           opencode: [],
         },
-        autoAppliedConfig: false,
         sessionState: {
           currentSessionId: null,
           sessions: [],
@@ -521,9 +520,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       let isComposing = false;
       let lastCompositionEndAt = 0;
       const compositionEnterGuardMs = 150;
-      const autoApplyConfigRetryMs = 30000;
-      let lastAutoApplyConfigKey = "";
-      let lastAutoApplyConfigAt = 0;
       const assistantRedirects = {};
       let toastTimer = null;
       let runStreamExportPending = false;

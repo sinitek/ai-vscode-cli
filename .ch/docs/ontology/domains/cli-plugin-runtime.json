@@ -604,7 +604,7 @@
     {
       "id": "plugin.rule.all_cli_config_snapshot_sync",
       "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
-      "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不批量激活、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
+      "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不自动激活首项或后台回写旧选择、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
       "status": "active",
       "aliases": ["配置保存统一刷新", "所有 CLI 默认配置加载", "子模型配置未加载", "Loop+ Graph 子模型初始化", "已加载空档案不无限同步"],
       "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli", "plugin.loop_task", "plugin.graph_run"],
@@ -977,7 +977,7 @@
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
-      "description": "AI 对话面板切换配置档案时，Webview 中的待选配置只在宿主完成 applyConfig 并回写 activeConfigIdByCli 后才算生效；提示词发送和队列出队必须等待这次提交完成。最新选择可以覆盖更早的待提交请求，失败时要回滚到当前 active config 并阻止误发旧配置。模型候选、选中模型、主/子模型及思考选项只接受 activeConfigId 与界面 selectedConfigId 一致的快照，其他配置晚到的刷新不得覆盖当前选择。",
+      "description": "七个 CLI 的显式档案切换在宿主完成 applyConfig 并提交 activeConfigIdByCli 后生效；发送与队列出队等待提交，最新选择覆盖旧请求，失败回滚并阻止派发。待提交时模型与思考只接受 activeConfigId 匹配 selectedConfigId 的快照，提交结束后跟随宿主激活状态。首次加载、心跳及空闲刷新不自动激活首项或回写旧档案，避免覆盖其他窗口或配置中心的切换。统一任务入口在交互式、一次性、并行派发和命令修复重试前重新应用任务档案，ID 相同也重写；绑定子任务档案优先于执行快照及当前激活身份，无身份时启动阶段选择有序首项，无档案则兼容原生配置。应用失败或被新请求替代时不启动；OpenCode 应用后再校验。不引入长期文件锁，不保证跨进程同时启动原子性或迁移运行中进程，旧扩展窗口需重载。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
@@ -988,13 +988,16 @@
         {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
         {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
         {"path": "src/webview/viewContentScript/runStreamAndQueue.ts"},
-        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"}
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": "src/test/extensionHost/promptSessionHealth.test.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "配置切换提交后生效与发送门禁"}
       ]
     },
     {
       "id": "plugin.rule.conversation_tab_execution_configuration",
       "name": "对话标签恢复实际执行配置模型与思考力度",
-      "description": "切换对话标签、关闭活动标签后自动回退或打开已有会话时，Loop / Loop+ 主标签恢复任务当前主子路由、配置和思考档位；子标签使用 Vibe，优先恢复实际执行快照。用户消息 executionProfile 保存配置 ID、原始模型 ID、思考档位与 OpenCode variant，展示用 executionModel 不作为新快照模型 ID。缺失配置、模型或可靠旧记录时保留对应选择，不重建模型；模型不可用时不改其思考设置。跨 CLI 子路由不回退主配置。异步恢复检查标签、请求序号和工作区身份，避免过期模型或消息覆盖当前标签。显式重置会话以同 CLI 空白新标签替换旧标签时保留当前有效配置选择和待应用配置、模型状态，不按普通标签切换清空；重置意图在标签上下文变化后消费，不影响后续目标标签配置恢复。",
+      "description": "切换对话标签、关闭活动标签后自动回退或打开已有会话时，Loop / Loop+ 主标签恢复任务当前主子路由、配置和思考档位；子标签使用 Vibe，优先恢复实际执行快照。用户消息 executionProfile 保存配置 ID、原始模型 ID、思考档位与 OpenCode variant，展示用 executionModel 不作为新快照模型 ID。缺失配置、模型或可靠旧记录时保留对应选择，不重建模型；模型不可用时不改其思考设置。跨 CLI 子路由不回退主配置。异步恢复检查标签、请求序号和工作区身份，避免过期模型或消息覆盖当前标签。显式重置会话以同 CLI 空白新标签替换旧标签时保留尚待应用的显式配置选择与模型状态，不按普通标签切换清空；无待提交切换时接受宿主激活身份，不因重置自动回写旧档案；重置意图在标签上下文变化后消费，不影响后续目标标签配置恢复。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.chat_panel", "plugin.config_profile", "plugin.loop_task"],
       "source_refs": [

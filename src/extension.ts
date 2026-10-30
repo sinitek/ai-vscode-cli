@@ -5392,20 +5392,6 @@ async function runPrompt(
 
   if (target.cli === "opencode") {
     promptInput = preloadUserMessageForPrompt(promptInput, target);
-    const preflightMessage = await getOpenCodeConfigPreflightMessage();
-    if (preflightMessage) {
-      void logError("opencode-config-preflight-failed", {
-        cli: target.cli,
-        tabId: target.tabId,
-        error: preflightMessage,
-      });
-      appendSystemMessageForPromptTarget(target, preflightMessage);
-      sendRunStatusForTab(target.tabId, "error", { message: preflightMessage });
-      if (promptInput.throwOnError) {
-        throw new Error(preflightMessage);
-      }
-      return;
-    }
   }
 
   if (input.taskRole === "subtask") {
@@ -5429,18 +5415,6 @@ async function runPrompt(
       }
       return;
     }
-    if (configPlan.action === "apply") {
-      const applied = await applyConfigById(configPlan.cli, configPlan.configId);
-      if (applied !== "applied") {
-        const message = "目标 CLI 配置不可用，不能派发子任务。";
-        appendSystemMessageForPromptTarget(target, message);
-        sendRunStatusForTab(target.tabId, "error", { message });
-        if (input.throwOnError) {
-          throw new Error(message);
-        }
-        return;
-      }
-    }
   }
 
   const subtaskExecutionRoot = input.taskRole === "subtask" && !input.executionCwd
@@ -5457,8 +5431,47 @@ async function runPrompt(
     };
     const workspaceKey = activeWorkspaceKey;
     const startupCommand = getCliCommand(target.cli);
+    let executionConfigId: string | null | undefined;
     await promptAutoRepairController.run(promptInput, target, {
       execute: async (attemptInput, attemptTarget) => {
+        try {
+          if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
+            throw new Error("配置应用失败，任务未启动，请重新激活配置后重试。");
+          }
+          if (executionConfigId === undefined) {
+            const boundConfigId = attemptInput.taskRole === "subtask"
+              ? attemptInput.loopSubtaskConfigId?.trim()
+              : undefined;
+            executionConfigId = boundConfigId
+              || attemptInput.executionProfile?.configId
+              || getActiveConfigIdForCli(attemptTarget.cli)
+              || null;
+            if (!executionConfigId) {
+              const configState = await loadConfigState(attemptTarget.cli);
+              executionConfigId = configState.activeConfigId || configState.configs[0]?.id || null;
+            }
+          }
+          if (executionConfigId) {
+            const applied = await applyConfigById(attemptTarget.cli, executionConfigId);
+            if (applied !== "applied") {
+              throw new Error("任务配置已被新的切换请求替代，任务未启动，请重试。");
+            }
+          }
+          if (attemptTarget.cli === "opencode") {
+            const preflightMessage = await getOpenCodeConfigPreflightMessage();
+            if (preflightMessage) {
+              void logError("opencode-config-preflight-failed", {
+                cli: attemptTarget.cli,
+                tabId: attemptTarget.tabId,
+                error: preflightMessage,
+              });
+              throw new Error(preflightMessage);
+            }
+          }
+        } catch (error) {
+          appendSystemMessageForPromptTarget(attemptTarget, getErrorInfo(error).message);
+          throw error;
+        }
         if (shouldUseInteractive) {
           await runPromptInteractive(attemptInput, attemptTarget, executionOptions);
         } else if (hasOtherTabRun(attemptTarget.tabId)) {
