@@ -8,6 +8,8 @@
 
 AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底；超过 75px 时保留当前阅读位置，可通过“回到底部”按钮恢复跟随。聊天搜索结果锚定时不自动置底。执行流面板保留独立的 50px 自动跟随阈值。
 
+AI 对话最终答复及普通助手气泡中的 Markdown 表格显示完整单元格边框、表头底色和斑马行，颜色使用 VS Code 主题变量；宽表在气泡内横向滚动。Loop / Loop+ 群聊复用同一套表格样式。实现见 `src/webview/viewContentStyles/markdown.ts`、`src/webview/chatMarkdown.ts`；回归见 `src/test/webview/chatMarkdown.test.ts`。
+
 Loop、Loop+ 和 Graph 子任务创建时，子会话只保留正常样式的用户提示词气泡，不再额外插入系统样式的提示词副本或启动说明。主任务会话的派发提示、进度、异常和完成消息保持不变；不清理已有历史消息。实现入口为 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts` 和 `src/extensionHost/graphRuntime.ts`；回归验证为 `src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
 
 所有 CLI（Codex、Claude、OpenCode、Grok、DSH、KimiCode、ZCode）的指令气泡统一不显示副标题：保留主标题、用途标签、折叠摘要和展开正文，完整命令与路径不丢失。ZCode 每回合（含新建、复用、恢复）应用当前模型及思考档位，合法 UI 选择优先于配置默认值；例如配置 max、UI high，原生模型选项和 thoughtLevel 均须为 high。面板使用会话公布的真实档位，不自动降级 max，不让配置回报覆盖已选择的 high；切换会话、模型、档案或 CLI 后不沿用旧广告。配置页可导入范例中独立思考力度统一 high，未提供独立力度的分组不新增参数；不改写能力枚举、历史测量或用户配置。实现与回归见 `src/webview/viewContentScript/traceRendering.ts`、`src/interactive/zcodeRunner.ts`、`src/extensionHost/interactiveTurnZcode.ts`、`src/test/interactive/zcodeRunner.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`、`src/test/config/cliPageConfigCoverage.test.ts`。

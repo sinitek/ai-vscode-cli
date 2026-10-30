@@ -10,7 +10,7 @@ const { getMarkedScript } = require("../../webview/markdownAssets") as typeof im
 const { getWebviewHtml } = require("../../webview/viewContent") as typeof import("../../webview/viewContent");
 const { buildLoopDebateChatPanelHtml } = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
 const { neutralizeInlineScriptEndTags } = require("../../webview/viewContentHtml") as typeof import("../../webview/viewContentHtml");
-const { getMarkdownStyles } = require("../../webview/viewContentStyles/markdown") as typeof import("../../webview/viewContentStyles/markdown");
+const { getMarkdownStyles, MARKDOWN_STYLES } = require("../../webview/viewContentStyles/markdown") as typeof import("../../webview/viewContentStyles/markdown");
 
 function loadRenderer(): (content: string) => string {
   const source = `${getMarkedScript()}
@@ -30,6 +30,10 @@ test("shared renderer formats Markdown, code, SVG and JSON with the bundled pars
   for (const tag of ["h2", "strong", "ul", "table", "blockquote", "pre"]) {
     assert.ok(html.includes(`<${tag}`), tag);
   }
+  assert.match(html, /<div class="markdown-table-wrap"><table>/u);
+  assert.match(html, /<th>检查<\/th>/u);
+  assert.match(html, /<td>通过<\/td>/u);
+  assert.match(render("| 左 | 右 |\n| :--- | ---: |\n| a | 1 |\n"), /<td align="right">1<\/td>/u);
   const separatedEmphasisHtml = render("**Sizing tooltip for scripts**\n\n**Inspecting tooltip conventions**");
   assert.equal((separatedEmphasisHtml.match(/<strong>/gu) || []).length, 2);
   assert.match(separatedEmphasisHtml, /<\/p>\n<p>/u);
@@ -112,5 +116,10 @@ test("Loop and Loop+ embed the same renderer as AI chat for initial and patched 
     assert.ok(html.includes('renderMarkdown(message.content'));
     assert.match(html, /img-src self https: http: data:/u);
     assert.ok(getMarkdownStyles(".markdown-body").includes(".markdown-body .chat-image-preview img"));
+    const markdownStyles = getMarkdownStyles(".markdown-body");
+    assert.match(markdownStyles, /\.markdown-body table \{[^}]*border:\s*1px solid color-mix\(in srgb, var\(--vscode-foreground\) 32%, transparent\)/u);
+    assert.match(markdownStyles, /\.markdown-body th,\s*\.markdown-body td \{[^}]*border:\s*1px solid color-mix\(in srgb, var\(--vscode-foreground\) 32%, transparent\)/u);
+    assert.match(MARKDOWN_STYLES, /\.message\.assistant \.bubble table \{[^}]*border:\s*1px solid color-mix\(in srgb, var\(--vscode-foreground\) 32%, transparent\)/u);
+    assert.match(MARKDOWN_STYLES, /\.message\.assistant \.bubble th,\s*\.message\.assistant \.bubble td \{[^}]*border:\s*1px solid color-mix\(in srgb, var\(--vscode-foreground\) 32%, transparent\)/u);
   }
 });

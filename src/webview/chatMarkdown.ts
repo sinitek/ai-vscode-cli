@@ -209,6 +209,12 @@ export const CHAT_MARKDOWN_SCRIPT = `
         }
         const renderer = new marked.Renderer();
         renderer.image = renderChatImage;
+        const renderTable = (token) => {
+          const header = token.header.map((cell) => renderer.tablecell(cell)).join("");
+          const body = token.rows.map((row) => renderer.tablerow({ text: row.map((cell) => renderer.tablecell(cell)).join("") })).join("");
+          return '<div class="markdown-table-wrap"><table><thead>' + renderer.tablerow({ text: header }) + "</thead><tbody>" + body + "</tbody></table></div>";
+        };
+        renderer.table = renderTable;
         const renderCode = renderer.code.bind(renderer);
         renderer.code = (token) => {
           if (String(token.lang || "").trim().split(/\\s+/)[0].toLowerCase() === "svg") {

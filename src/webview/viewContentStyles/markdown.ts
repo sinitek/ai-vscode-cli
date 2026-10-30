@@ -99,6 +99,30 @@ export const MARKDOWN_STYLES = `      /* Markdown Styles */
         margin: 8px 0;
         padding: 8px 12px;
       }
+      .message.assistant .bubble .markdown-table-wrap {
+        max-width: 100%;
+        margin: 12px 0;
+        overflow-x: auto;
+      }
+      .message.assistant .bubble table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: collapse;
+        border: 1px solid color-mix(in srgb, var(--vscode-foreground) 32%, transparent);
+      }
+      .message.assistant .bubble th,
+      .message.assistant .bubble td {
+        border: 1px solid color-mix(in srgb, var(--vscode-foreground) 32%, transparent);
+        padding: 6px 10px;
+        vertical-align: top;
+      }
+      .message.assistant .bubble th {
+        background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+        font-weight: 600;
+      }
+      .message.assistant .bubble tr:nth-child(even) td {
+        background: color-mix(in srgb, var(--vscode-editor-foreground) 6%, transparent);
+      }
       .json-tree-host {
         max-width: 100%;
         overflow-x: auto;

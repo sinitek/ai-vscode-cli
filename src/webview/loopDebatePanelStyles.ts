@@ -669,16 +669,6 @@ ${DIALOG_SHELL_STYLES}
 	        border-left: 3px solid var(--vscode-textBlockQuote-border);
 	        color: var(--vscode-textBlockQuote-foreground, var(--vscode-descriptionForeground));
 	      }
-	      .markdown-body table {
-	        border-collapse: collapse;
-	        width: 100%;
-	      }
-	      .markdown-body th,
-	      .markdown-body td {
-	        border: 1px solid var(--vscode-widget-border);
-	        padding: 4px 8px;
-	        text-align: left;
-	      }
       @media (max-width: 780px) {
         .topbar {
           align-items: stretch;
