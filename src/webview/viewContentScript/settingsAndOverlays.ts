@@ -545,7 +545,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       }
 
       elements.openConfig.addEventListener("click", () => {
-        vscode.postMessage({ type: "openConfig" });
+        vscode.postMessage({
+          type: "openConfig",
+          cli: state.currentCli,
+          configId: state.selectedConfigId || null,
+        });
       });
 
       elements.attachmentButton.addEventListener("click", () => {

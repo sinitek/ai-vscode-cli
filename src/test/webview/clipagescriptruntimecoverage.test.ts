@@ -682,6 +682,22 @@ function postedTabActions(posted: Array<{ type?: string }>, start: number): Arra
   ));
 }
 
+test("configuration button forwards the selected CLI and profile rather than the active profile", () => {
+  const { api, posted } = createRuntimeHarness();
+  for (const cli of ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]) {
+    api.state.currentCli = cli;
+    api.state.selectedConfigId = `selected-${cli}`;
+    api.state.configState.activeConfigId = "different-active-profile";
+    api.elements.openConfig.click();
+    assert.deepEqual(posted.at(-1), {
+      type: "openConfig", cli, configId: `selected-${cli}`,
+    });
+  }
+  api.state.selectedConfigId = "";
+  api.elements.openConfig.click();
+  assert.deepEqual(posted.at(-1), { type: "openConfig", cli: "zcode", configId: null });
+});
+
 test("opens the Loop group chat when the main task tab is clicked", () => {
   const { document, window, posted } = createRuntimeHarness();
   const tabs = {

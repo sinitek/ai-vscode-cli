@@ -614,6 +614,26 @@ test("opening a history session restores its execution configuration but choosin
   assert.equal(restoredTabs.length, 1);
 });
 
+test("opens the requested config for editing without applying it or switching CLI", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const targets: unknown[] = [];
+  let syncs = 0;
+  let applies = 0;
+  harness.deps.getConfigManagerPanel = () => ({
+    show: (target: unknown) => targets.push(target),
+    syncActiveConfig: () => { syncs += 1; },
+  } as unknown as ReturnType<PanelMessageHandlerDeps["getConfigManagerPanel"]>);
+  harness.deps.applyConfigById = async () => { applies += 1; return "applied"; };
+  await handlePanelMessageWithDeps({ type: "openConfig", cli: "claude", configId: "selected" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "openConfig", cli: "codex", configId: null }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "openConfig" }, harness.deps);
+  assert.deepEqual(targets, [{ cli: "claude", configId: "selected" }, undefined, undefined]);
+  assert.equal(syncs, 3);
+  assert.equal(applies, 0);
+  assert.equal(harness.state.currentCli, "codex");
+});
+
 test("applies config successfully and notifies the webview", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

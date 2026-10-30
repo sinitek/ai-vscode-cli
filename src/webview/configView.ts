@@ -369,6 +369,7 @@ export function getConfigViewHtml(
 
       window.sinitekConfigBridge = {
         downloadsDir,
+        ready: () => vscode.postMessage({ type: "config:ready" }),
         openPath: (path) => {
           try {
             vscode.postMessage({ type: "config:openPath", path });
@@ -519,6 +520,16 @@ export function getConfigViewHtml(
           return;
         }
         syncActiveConfigIds();
+      });
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.type !== "config:navigate") {
+          return;
+        }
+        window.dispatchEvent(new CustomEvent("sinitek-config-navigation", {
+          detail: data.target,
+        }));
       });
 
       window.sinitekCliEnabledByName = null;

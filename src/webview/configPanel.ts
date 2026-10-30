@@ -9,6 +9,8 @@ import {
   ConfigResponseMessage,
   ConfigOpenExternalMessage,
   ConfigOpenPathMessage,
+  ConfigNavigationTarget,
+  ConfigReadyMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
 import { normalizeConfigPlatform } from "../config/configPaths";
@@ -31,6 +33,8 @@ const CONFIG_TOGGLE_SECONDARY_SIDE_BAR_COMMAND = "workbench.action.toggleAuxilia
 
 export class ConfigManagerPanel {
   private panel: vscode.WebviewPanel | undefined;
+  private viewReady = false;
+  private pendingNavigation: ConfigNavigationTarget | undefined;
   private editorWidthExpanded = false;
   private editorWidthRequest = 0;
   private editorWidthTask: Promise<boolean> | undefined;
@@ -40,11 +44,13 @@ export class ConfigManagerPanel {
     private readonly handlers: ConfigManagerHandlers = {}
   ) {}
 
-  public show(): void {
+  public show(target?: ConfigNavigationTarget): void {
+    this.pendingNavigation = target;
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active, false);
       this.expandEditorToMaximumWidth();
       this.postCliEnabled();
+      this.postPendingNavigation();
       return;
     }
 
@@ -69,8 +75,15 @@ export class ConfigManagerPanel {
           | ConfigOpenPathMessage
           | ConfigOpenExternalMessage
           | ConfigCloseMessage
+          | ConfigReadyMessage
           | { type: "config:debug"; payload?: unknown }
       ) => {
+        if (message && message.type === "config:ready") {
+          this.viewReady = true;
+          this.postCliEnabled();
+          this.postPendingNavigation();
+          return;
+        }
         if (message && message.type === "config:close") {
           this.panel?.dispose();
           return;
@@ -99,8 +112,19 @@ export class ConfigManagerPanel {
 
     this.panel.onDidDispose(() => {
       this.panel = undefined;
+      this.viewReady = false;
+      this.pendingNavigation = undefined;
       this.restoreEditorWidth();
     });
+  }
+
+  private postPendingNavigation(): void {
+    if (!this.panel || !this.viewReady || !this.pendingNavigation) {
+      return;
+    }
+    const target = this.pendingNavigation;
+    this.pendingNavigation = undefined;
+    void this.panel.webview.postMessage({ type: "config:navigate", target });
   }
 
   private expandEditorToMaximumWidth(): void {
@@ -190,6 +214,7 @@ export class ConfigManagerPanel {
     if (!this.panel) {
       return;
     }
+    this.viewReady = false;
     this.panel.title = t("config.panelTitle");
     this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
   }

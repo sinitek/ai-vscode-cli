@@ -584,6 +584,24 @@
       ]
     },
     {
+      "id": "plugin.rule.chat_config_profile_navigation",
+      "name": "对话配置入口仅定位编辑档案而不激活",
+      "description": "AI 对话配置入口携带点击时选中的 CLI 和档案 ID，宿主等待配置 UI 初始化完成后投递一次导航；首次与复用均按平台和 ID 精确选中，加载前连续请求以最新为准。复用现有 setSelectedConfig 打开编辑器并收起窄屏目录，不应用配置、不切换 CLI，不以激活身份替换下拉选择；无选择、失效档案或禁用 CLI 不误选其他档案。",
+      "status": "active",
+      "aliases": ["配置入口自动打开", "对话配置档案定位", "配置页面导航就绪握手"],
+      "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "对话配置入口自动定位档案"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.8 配置中心"},
+        {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
+        {"path": "src/panelMessageHandlers/session.ts"},
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/configView.ts"},
+        {"path": "media/config/assets/config-app-ui.js"},
+        {"path": "src/test/config/cliPageConfigCoverage.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.all_cli_config_snapshot_sync",
       "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
       "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不批量激活、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",

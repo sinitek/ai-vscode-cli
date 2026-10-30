@@ -5,6 +5,16 @@ import type {
   ConfigPlatform,
   CopyConfigPayload,
 } from "../config/types";
+import type { CliName } from "../cli/types";
+
+export type ConfigNavigationTarget = {
+  cli: CliName;
+  configId: string;
+};
+
+export type ConfigReadyMessage = {
+  type: "config:ready";
+};
 
 export const CONFIG_ACTIONS = [
   "getList",

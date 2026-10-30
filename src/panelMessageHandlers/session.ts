@@ -407,8 +407,12 @@ export function createSessionPanelMessageHandlers(
       await deps.resetConversationTabSession();
     },
 
-    openConfig: () => {
-      deps.getConfigManagerPanel()?.show();
+    openConfig: (message) => {
+      deps.getConfigManagerPanel()?.show(
+        message.cli && message.configId
+          ? { cli: message.cli, configId: message.configId }
+          : undefined,
+      );
       deps.getConfigManagerPanel()?.syncActiveConfig();
     },
 

@@ -138,7 +138,7 @@ export type PanelMessage =
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
   | { type: "openGraphRun"; graphRunId?: string | null; nodeId?: string | null }
-  | { type: "openConfig" }
+  | { type: "openConfig"; cli?: CliName; configId?: string | null }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
   | { type: "uploadFiles"; files: UploadFilePayload[] }

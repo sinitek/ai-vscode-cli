@@ -10143,9 +10143,27 @@ const ConfigManagerLayout = () => {
       closeConfigPanel = () => window.sinitekConfigBridge?.close?.();
 
     c.useEffect(() => {
+      let disposed = false;
+      const handleConfigNavigation = (event) => {
+        const target = event.detail;
+        if (!target || !isConfigPlatformEnabled(target.cli, window.sinitekCliEnabledByName)) return;
+        const store = useConfigStore.getState();
+        const config = store.configs.find(
+          (item) => item.platform === target.cli && item.id === target.configId,
+        );
+        if (!config) return;
+        store.setSelectedConfig(config.id, config.platform);
+        closeMobileNavigation();
+      };
+      window.addEventListener("sinitek-config-navigation", handleConfigNavigation);
       (async () => {
         (await e(), await t(), await e());
+        if (!disposed) window.sinitekConfigBridge?.ready?.();
       })();
+      return () => {
+        disposed = true;
+        window.removeEventListener("sinitek-config-navigation", handleConfigNavigation);
+      };
     }, [e, t]);
 
     c.useEffect(() => {

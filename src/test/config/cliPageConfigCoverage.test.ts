@@ -1564,6 +1564,119 @@ test("config store asset keeps platform order, duplicate names, empty states, an
   assert.match(storeSource, /getConfigsByPlatform: \(n\) => t\(\)\.configs\.filter/);
 });
 
+test("config navigation waits for readiness, keeps the latest target, and is consumed once", async () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+  const navigationMessages = () => harness.panel.webview.postedMessages.filter(
+    (message) => (message as AnyRecord).type === "config:navigate",
+  );
+  manager.show({ cli: "codex", configId: "first" });
+  manager.show({ cli: "claude", configId: "latest" });
+  assert.equal(navigationMessages().length, 0);
+  await dispatchPanelMessage(harness, { type: "config:ready" });
+  assert.deepEqual(navigationMessages(), [
+    { type: "config:navigate", target: { cli: "claude", configId: "latest" } },
+  ]);
+  await dispatchPanelMessage(harness, { type: "config:ready" });
+  manager.show();
+  assert.equal(navigationMessages().length, 1);
+  manager.show({ cli: "grok", configId: "reused" });
+  assert.equal(navigationMessages().length, 2);
+  assert.equal(harness.createCalls.length, 1);
+  manager.reload();
+  manager.show({ cli: "zcode", configId: "after-reload" });
+  assert.equal(navigationMessages().length, 2);
+  await dispatchPanelMessage(harness, { type: "config:ready" });
+  assert.deepEqual(navigationMessages().at(-1), {
+    type: "config:navigate", target: { cli: "zcode", configId: "after-reload" },
+  });
+  harness.disposeHandler?.();
+  manager.show({ cli: "codex", configId: "cancelled" });
+  manager.show();
+  await dispatchPanelMessage(harness, { type: "config:ready" });
+  assert.equal(navigationMessages().length, 3);
+});
+
+function createConfigNavigationHarness() {
+  const source = readProjectFile("media/config/assets/config-app-ui.js");
+  const effect = extractBetween(
+    source,
+    "c.useEffect(() => {\n      let disposed = false;",
+    "\n    c.useEffect(() => {\n      if (!mobileNavigationOpen) return;",
+  );
+  const listeners = new Map<string, (event: AnyRecord) => void>();
+  const selected: unknown[] = [];
+  const initialization: string[] = [];
+  let cleanup: (() => void) | undefined;
+  let finishLoading: (() => void) | undefined;
+  const firstLoad = new Promise<void>((resolve) => { finishLoading = resolve; });
+  let loads = 0;
+  const store = {
+    configs: [
+      { id: "shared", platform: "codex" },
+      { id: "shared", platform: "claude" },
+    ],
+    setSelectedConfig: (id: string, platform: string) => selected.push({ id, platform }),
+  };
+  const fakeWindow: AnyRecord = {
+    sinitekCliEnabledByName: { claude: true },
+    sinitekConfigBridge: { ready: () => initialization.push("ready") },
+    addEventListener: (name: string, listener: (event: AnyRecord) => void) => listeners.set(name, listener),
+    removeEventListener: (name: string) => listeners.delete(name),
+  };
+  vm.runInNewContext(effect, {
+    c: { useEffect: (callback: () => () => void) => { cleanup = callback(); } },
+    e: async () => {
+      initialization.push("load");
+      if (loads++ === 0) await firstLoad;
+    },
+    t: async () => { initialization.push("init"); },
+    window: fakeWindow,
+    useConfigStore: { getState: () => store },
+    isConfigPlatformEnabled: (platform: string, enabled: AnyRecord) => enabled[platform] !== false,
+    closeMobileNavigation: () => initialization.push("close-directory"),
+  });
+  return {
+    selected, initialization, fakeWindow, listeners,
+    finishLoading: () => finishLoading?.(),
+    cleanup: () => cleanup?.(),
+    navigate: (target: unknown) => listeners.get("sinitek-config-navigation")?.({ detail: target }),
+  };
+}
+
+test("config UI opens the exact platform/profile without activation and closes the mobile directory", async () => {
+  const harness = createConfigNavigationHarness();
+  assert.deepEqual(harness.initialization, ["load"]);
+  harness.finishLoading();
+  await delay(0);
+  assert.deepEqual(harness.initialization, ["load", "init", "load", "ready"]);
+  harness.navigate({ cli: "claude", configId: "shared" });
+  assert.deepEqual(harness.selected, [{ id: "shared", platform: "claude" }]);
+  assert.equal(harness.initialization.at(-1), "close-directory");
+  harness.navigate({ cli: "codex", configId: "shared" });
+  assert.deepEqual(harness.selected.at(-1), { id: "shared", platform: "codex" });
+  harness.navigate({ cli: "claude", configId: "deleted" });
+  harness.navigate({ cli: "grok", configId: "shared" });
+  harness.navigate(null);
+  harness.fakeWindow.sinitekCliEnabledByName.claude = false;
+  harness.navigate({ cli: "claude", configId: "shared" });
+  assert.equal(harness.selected.length, 2);
+  await delay(0);
+  assert.equal(harness.selected.length, 2);
+  harness.cleanup();
+  assert.equal(harness.listeners.size, 0);
+});
+
+test("disposed configuration UI does not acknowledge readiness after asynchronous loading", async () => {
+  const harness = createConfigNavigationHarness();
+  harness.cleanup();
+  harness.finishLoading();
+  await delay(0);
+  assert.deepEqual(harness.initialization, ["load", "init", "load"]);
+  assert.equal(harness.listeners.size, 0);
+});
+
 test("configuration UI asset exposes platform switching, empty/error states, and compact selectors", () => {
   const uiSource = readProjectFile("media/config/assets/config-app-ui.js");
   const cssSource = readProjectFile(`media/config/assets/${findAsset(".css")}`);
