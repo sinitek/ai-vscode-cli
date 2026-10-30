@@ -1,4 +1,5 @@
 import { createDiagnosticsPanelMessageHandlers } from "./diagnostics";
+import { createLoopPlusAcceptancePlanPanelMessageHandlers } from "./loopPlusAcceptancePlan";
 import { createPromptPanelMessageHandlers } from "./prompt";
 import { createSessionPanelMessageHandlers } from "./session";
 import { createWorkspacePanelMessageHandlers } from "./workspace";
@@ -34,6 +35,7 @@ export function createPanelMessageHandlerRegistry(
     createDiagnosticsPanelMessageHandlers(deps),
     createSessionPanelMessageHandlers(deps),
     createPromptPanelMessageHandlers(deps),
+    createLoopPlusAcceptancePlanPanelMessageHandlers(deps),
     {
       updateSetting: async (message) => {
         if (message.key) {

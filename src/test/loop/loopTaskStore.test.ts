@@ -514,3 +514,54 @@ test("keeps legacy task paths intact when the communication root is unsafe to mi
 
   fs.unlinkSync(legacyPaths.communicationDir);
 });
+
+test("snapshots the confirmed acceptance plan on the task and normalizes it on read", () => {
+  const baseTask = createLegacyTask();
+  const task: SkillTaskRecord = {
+    ...baseTask,
+    loopPlusAcceptancePlan: {
+      id: "plan-hardening",
+      name: "上线前加严",
+      checks: ["security", "other"],
+      otherText: "确认审计日志不写入密钥",
+      systemDefault: false,
+    },
+  };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const reloaded = readSkillTask(task.taskStoreFile);
+  assert.deepEqual(reloaded.loopPlusAcceptancePlan, {
+    id: "plan-hardening",
+    name: "上线前加严",
+    checks: ["security", "other"],
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  });
+
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [reloaded] });
+  const persisted = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")) as {
+    tasks: Array<{ loopPlusAcceptancePlan?: unknown }>;
+  };
+  assert.deepEqual(persisted.tasks[0].loopPlusAcceptancePlan, {
+    id: "plan-hardening",
+    name: "上线前加严",
+    checks: ["security", "other"],
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  });
+});
+
+test("legacy or corrupt acceptance plan snapshots fall back to the fixed baseline", () => {
+  const baseTask = createLegacyTask();
+  const bareTask = { ...baseTask };
+  loopTaskStore.writeLoopTaskStore(bareTask.taskStoreFile, { tasks: [bareTask] });
+  assert.equal(readSkillTask(bareTask.taskStoreFile).loopPlusAcceptancePlan, undefined);
+
+  const corruptPath = `${bareTask.taskStoreFile}-corrupt.json`;
+  fs.writeFileSync(corruptPath, JSON.stringify({
+    tasks: [{
+      ...baseTask,
+      loopPlusAcceptancePlan: { id: "", name: "坏数据", checks: ["security"], otherText: "" },
+    }],
+  }), "utf8");
+  assert.equal(readSkillTask(corruptPath).loopPlusAcceptancePlan, undefined);
+});

@@ -100,6 +100,10 @@ export const VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY = `      function hum
 
       function applyHumanInteractionHistory(items) {
         state.humanInteractionHistory = Array.isArray(items) ? items : [];
+        if (state.selectedHumanInteractionHistoryId
+          && !state.humanInteractionHistory.some((record) => record.id === state.selectedHumanInteractionHistoryId)) {
+          closeHumanInteractionHistoryDetail();
+        }
         if (elements.humanInteractionHistoryOverlay.classList.contains("visible")) {
           renderHumanInteractionHistoryList();
         }

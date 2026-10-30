@@ -63,6 +63,7 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
 
   assert.match(html, /data-action="supplementTask"[^>]*>补充需求<\/button>/u);
   assert.match(html, /data-action="askMainModel"[^>]*>我要提问<\/button>/u);
+  assert.doesNotMatch(html, /data-action="acceptancePlan"/u);
   assert.ok(html.indexOf('data-action="supplementTask"') < html.indexOf('data-action="askMainModel"'));
   assert.match(html, /class="message user-message no-avatar"/u);
   assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
@@ -905,6 +906,7 @@ test("keeps classic main/sub and debate panels on the round rhythm", () => {
   assert.equal(getStrings().loopPlusActivityPaused.includes("Reviewing"), false);
   assert.equal(getStrings().loopPlusActivityPaused.includes("正在验收"), false);
   assert.match(getStrings().loopPlusActivityPaused, /自动验收已暂停，需要继续/u);
+  assert.equal(getStrings().acceptancePlan, "验收方案");
   assert.equal(getStrings().loopPlusStatusPaused, "自动验收已暂停");
 });
 
@@ -973,6 +975,20 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
     assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
     assert.match(page, /<button[^>]*data-action="stopTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="continueTask"/u);
+    assert.match(page, /data-action="acceptancePlan"[^>]*>验收方案<\/button>/u);
+    const completedPage = buildLoopDebateChatPanelHtml(
+      { cspSource: "self" } as any,
+      createState({
+        mode: "main_sub",
+        loopPlus,
+        task: { ...createState().task, status: "completed", currentRound: 9, canStop: false, canContinue: false },
+      }),
+    );
+    assert.doesNotMatch(completedPage, /data-action="acceptancePlan"/u);
+    assert.match(page, /id="acceptancePlanOverlay"/u);
+    assert.match(page, /id="confirmAcceptancePlan"[^>]*>确认<\/button>/u);
+    assert.match(page, /id="acceptancePlanBaselineCheck"[^>]*disabled/u);
+    assert.match(page, /loopDebateChat:updateAcceptancePlan/u);
   }
 });
 

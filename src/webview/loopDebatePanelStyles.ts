@@ -1,4 +1,5 @@
 import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES } from "./modalComponents";
+import { ACCEPTANCE_PLAN_DIALOG_STYLES } from "./viewContentStyles/overlaysModals";
 export const LOOP_DEBATE_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
@@ -691,4 +692,5 @@ ${DIALOG_SHELL_STYLES}
       }
 
 ${CLARIFICATION_DIALOG_STYLES}
+${ACCEPTANCE_PLAN_DIALOG_STYLES}
 `;

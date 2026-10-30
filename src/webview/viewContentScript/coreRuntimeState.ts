@@ -607,6 +607,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         const loopSubtaskConfigId = typeof payload.loopSubtaskConfigId === "string"
           ? payload.loopSubtaskConfigId.trim()
           : "";
+        const loopPlusAcceptancePlan = typeof normalizeAcceptancePlanSnapshot === "function"
+          ? normalizeAcceptancePlanSnapshot(payload.loopPlusAcceptancePlan)
+          : null;
         return {
           prompt,
           contextOptions: {
@@ -615,6 +618,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           },
           ...(interactiveMode ? { interactiveMode } : {}),
           ...(payload.skipPromptHistory === true ? { skipPromptHistory: true } : {}),
+          ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
           ...(loopMainModel ? { loopMainModel } : {}),
           ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
           ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),

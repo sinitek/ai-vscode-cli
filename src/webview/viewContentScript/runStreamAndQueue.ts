@@ -981,6 +981,34 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         }
       }
 
+      function clearPromptInputAfterSend(prompt) {
+        if (elements.promptInput && elements.promptInput.value.trim() === prompt) {
+          elements.promptInput.value = "";
+        }
+        resetPromptContextForNextPrompt();
+      }
+
+      // 既有排队/冲突/发送逻辑，验收方案确认后与直接发送走完全相同的分支。
+      function dispatchPromptPayload(payload, tabId) {
+        const promptPayload = payload;
+        const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        if (isLoopMainConversationTabRunning(targetTabId)) {
+          queuePromptForLater(promptPayload);
+          clearPromptInputAfterSend(promptPayload.prompt);
+          return "queued";
+        }
+        if (isConversationTabBusy(targetTabId)) {
+          openRunConflictOverlay(promptPayload);
+          return "conflict";
+        }
+        const sent = dispatchPrompt(promptPayload);
+        if (sent) {
+          clearPromptInputAfterSend(promptPayload.prompt);
+          return "sent";
+        }
+        return "failed";
+      }
+
       function sendPrompt() {
         const prompt = elements.promptInput.value.trim();
         if (!prompt) {
@@ -988,21 +1016,20 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         }
         const promptPayload = buildPromptPayload(prompt);
         const activeTabId = getActiveConversationTabId();
-        if (isLoopMainConversationTabRunning(activeTabId)) {
-          queuePromptForLater(promptPayload);
-          elements.promptInput.value = "";
-          resetPromptContextForNextPrompt();
+        // 仅新建 Loop+ 根任务需要先确认验收方案；续跑/恢复/补充与其它模式保持原样。
+        if (
+          typeof isAcceptancePlanRequiredForPayload === "function"
+          && isAcceptancePlanRequiredForPayload(promptPayload, activeTabId)
+        ) {
+          openAcceptancePlanDialog(promptPayload, activeTabId);
           return;
         }
-        if (isConversationTabBusy(activeTabId)) {
-          openRunConflictOverlay(promptPayload);
-          return;
-        }
-        const sent = dispatchPrompt(promptPayload);
-        if (sent) {
-          elements.promptInput.value = "";
-          resetPromptContextForNextPrompt();
-        }
+        dispatchPromptPayload(promptPayload, activeTabId);
+      }
+
+      // 验收方案确认入口：调用方已完成会话校验与快照组装。
+      function sendPromptWithAcceptancePlan(payload, tabId) {
+        return dispatchPromptPayload(payload, tabId);
       }
 
       function insertPromptText(text) {

@@ -1127,6 +1127,9 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (normalizedPayload.skipPromptHistory === true) {
           sendPromptMessage.skipPromptHistory = true;
         }
+        if (normalizedPayload.loopPlusAcceptancePlan) {
+          sendPromptMessage.loopPlusAcceptancePlan = normalizedPayload.loopPlusAcceptancePlan;
+        }
         vscode.postMessage(sendPromptMessage);
         return true;
       }

@@ -29,7 +29,7 @@ import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGloba
 import { t } from "../i18n";
 import { logInfo } from "../logger";
 import { isTimestampWithinHistoryRetention } from "../historyRetention";
-import { loadWorkspaceSettings as loadWorkspaceSettingsFromStore, saveWorkspaceSettings as saveWorkspaceSettingsToStore, type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "../workspaceSettingsStore";
+import { loadWorkspaceSettings as loadWorkspaceSettingsFromStore, saveWorkspaceSettings as saveWorkspaceSettingsToStore, trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type ConversationTabRecordForWorkspaceSettings, type SaveWorkspaceSettingsResult, type WorkspaceSettings } from "../workspaceSettingsStore";
 import type { PanelState, PromptHistoryItem } from "../webview/types";
 import type { ConfigHeartbeatSnapshot } from "../webviewCommandCoordinator";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
@@ -1622,6 +1622,10 @@ function saveWorkspaceSettings(next: WorkspaceSettings): void {
   saveWorkspaceSettingsToStore(next, getWorkspaceSettingsStoreOptions());
 }
 
+function trySaveWorkspaceSettings(next: WorkspaceSettings): SaveWorkspaceSettingsResult {
+  return trySaveWorkspaceSettingsToStore(next, getWorkspaceSettingsStoreOptions());
+}
+
 function loadPromptHistoryStore(): PromptHistoryStore {
   return loadPromptHistoryStoreFromStore(getPromptHistoryStoreOptions());
 }
@@ -1760,6 +1764,7 @@ return {
   buildModelState: wrap(buildModelState),
   loadWorkspaceSettings: wrap(loadWorkspaceSettings),
   saveWorkspaceSettings: wrap(saveWorkspaceSettings),
+  trySaveWorkspaceSettings: wrap(trySaveWorkspaceSettings),
   loadPromptHistoryStore: wrap(loadPromptHistoryStore),
   ensurePromptHistoryStore: wrap(ensurePromptHistoryStore),
   buildPromptHistoryState: wrap(buildPromptHistoryState),

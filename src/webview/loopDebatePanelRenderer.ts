@@ -12,6 +12,8 @@ const STRINGS = {
     supplementTaskTitle: "向当前 Loop 任务补充需求",
     askMainModel: "我要提问",
     askMainModelTitle: "向当前主模型所在会话提问",
+    acceptancePlan: "验收方案",
+    acceptancePlanTitle: "修改当前任务的验收方案，之后的验收立即生效",
     continuePromptDefault: "继续",
     supplementPromptDefault: "",
     supplementDialogTitle: "补充需求",

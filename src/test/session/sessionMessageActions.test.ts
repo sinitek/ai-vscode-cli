@@ -1516,3 +1516,59 @@ test("does not start Loop+ from a Loop+ subtask tab", async () => {
   assert.equal(calls.runPrompt[0].input.taskRole, "subtask");
   assert.equal(calls.wakeMain.length, 1);
 });
+
+test("forwards the confirmed acceptance plan snapshot into the Loop+ run input", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "run loop plus",
+    interactiveMode: "loop_plus",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    loopPlusAcceptancePlan: {
+      id: "plan-hardening",
+      name: "上线前加严",
+      checks: ["security", "other"],
+      otherText: "确认审计日志不写入密钥",
+      systemDefault: false,
+    },
+  }, deps);
+
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.deepEqual(calls.runLoopPrompt[0].input.loopPlusAcceptancePlan, {
+    id: "plan-hardening",
+    name: "上线前加严",
+    checks: ["security", "other"],
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  });
+});
+
+test("ignores acceptance plan payloads outside event-driven Loop+", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  await handlePanelMessageWithDeps({
+    type: "sendPrompt",
+    prompt: "classic loop run",
+    interactiveMode: "loop",
+    contextOptions: {
+      includeCurrentFile: false,
+      includeSelection: false,
+    },
+    tabId: "tab-opencode-smoke",
+    cli: "opencode",
+    loopPlusAcceptancePlan: {
+      id: "plan-hardening",
+      name: "上线前加严",
+      checks: ["security"],
+      otherText: "",
+      systemDefault: false,
+    },
+  }, deps);
+
+  assert.equal(calls.runLoopPrompt.length, 1);
+  assert.equal(calls.runLoopPrompt[0].input.loopPlusAcceptancePlan, undefined);
+});

@@ -12,6 +12,11 @@ import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
+import {
+  buildLoopPlusAcceptancePlanPromptLines,
+  normalizeLoopPlusAcceptancePlanSnapshot,
+  type LoopPlusAcceptancePlanSnapshot,
+} from "../loopPlusAcceptancePlan";
 
 export type LoopPlusMainPromptContext = {
   taskId: string;
@@ -19,6 +24,8 @@ export type LoopPlusMainPromptContext = {
   taskStoreFile: string;
   mainCommunicationFile: string;
   kind: "initial" | "review" | "closeout" | "continue" | "user";
+  /** 任务记录中固化的验收方案快照；缺失时只使用固定基线检查项。 */
+  acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null;
   view: LoopPlusSchedulerView;
   currentEventId: string | null;
   acceptanceEventIds?: readonly string[];
@@ -271,6 +278,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const currentReport = current
     ? `communicationFile of subtask ${current.subtaskId} in the latest task record`
     : "(no current item)";
+  // 只追加用户勾选的审查项与有效的“其它”内容；固定基线检查项始终保留在上面的规则里。
+  const acceptancePlanLines = context.acceptancePlan
+    ? buildLoopPlusAcceptancePlanPromptLines(normalizeLoopPlusAcceptancePlanSnapshot(context.acceptancePlan))
+    : [];
   return [
     `${LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX} Loop+ has no batch barrier and no shared round gate.`,
     "Execution finishing is not review completion. The host owns scheduling state.",
@@ -327,6 +338,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When an event launches new subtasks, list those ids in that review's subtaskIds. Every subtask id must appear in exactly one subtaskIds array. A passed event may launch follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report, the code, or a test or startup you chose to run. You are not required to run either one.",
+    ...acceptancePlanLines,
     "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a new subtask, send blocked, which confirms nothing.",
     "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions.",

@@ -7,6 +7,7 @@ import * as path from "node:path";
 import {
   loadWorkspaceSettings,
   saveWorkspaceSettings,
+  trySaveWorkspaceSettings,
   type WorkspaceSettingsStoreOptions,
 } from "../../workspaceSettingsStore";
 import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
@@ -116,6 +117,81 @@ test("migrates legacy Loop workspace keys and interactive mode", () => {
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyExecutionModeKey), false);
     assert.equal(Object.prototype.hasOwnProperty.call(persisted, legacyMaxRoundsKey), false);
     assert.deepEqual(persisted.interactiveModeByCli, { codex: "loop" });
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("loads acceptance plans and selection, then saves them beside other settings fields", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = createOptions(workspaceSettingsDir);
+  const filePath = path.join(workspaceSettingsDir, "workspace.json");
+  try {
+    fs.writeFileSync(filePath, JSON.stringify({
+      workspaceMemoryEnabled: true,
+      loopPlusAcceptancePlans: [
+        { id: "plan-a", name: " 上线前加严 ", checks: { security: true, other: true }, otherText: " 鉴权边界 ", updatedAt: 5 },
+        { id: "plan-a", name: "重复 ID 应被丢弃", checks: [], otherText: "" },
+        { id: "", name: "缺少 ID", checks: [], otherText: "" },
+      ],
+      loopPlusAcceptancePlanSelection: "plan-a",
+    }), "utf8");
+
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.workspaceMemoryEnabled, true);
+    assert.deepEqual(loaded.loopPlusAcceptancePlans, [{
+      id: "plan-a",
+      name: "上线前加严",
+      checks: ["security", "other"],
+      otherText: "鉴权边界",
+      updatedAt: 5,
+    }]);
+    assert.equal(loaded.loopPlusAcceptancePlanSelection, "plan-a");
+
+    saveWorkspaceSettings(loaded, options);
+    const saved = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    assert.equal(saved.workspaceMemoryEnabled, true);
+    assert.equal(saved.loopPlusAcceptancePlans[0].name, "上线前加严");
+    assert.equal(saved.loopPlusAcceptancePlanSelection, "plan-a");
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("corrupted acceptance plan settings fall back to the system default without breaking other fields", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = createOptions(workspaceSettingsDir);
+  const filePath = path.join(workspaceSettingsDir, "workspace.json");
+  try {
+    fs.writeFileSync(filePath, JSON.stringify({
+      workspaceMemoryEnabled: true,
+      loopPlusAcceptancePlans: "not-an-array",
+      loopPlusAcceptancePlanSelection: { bad: true },
+    }), "utf8");
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.workspaceMemoryEnabled, true);
+    assert.equal(loaded.loopPlusAcceptancePlans, undefined);
+    assert.equal(loaded.loopPlusAcceptancePlanSelection, "system_default");
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("trySaveWorkspaceSettings reports failures instead of silently dropping the write", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = createOptions(workspaceSettingsDir);
+  try {
+    const ok = trySaveWorkspaceSettings({ loopPlusAcceptancePlanSelection: "system_default" }, options);
+    assert.deepEqual(ok, { ok: true });
+
+    const missingStore = trySaveWorkspaceSettings(
+      { loopPlusAcceptancePlanSelection: "system_default" },
+      { ...options, workspaceKey: null },
+    );
+    assert.equal(missingStore.ok, false);
+    if (!missingStore.ok) {
+      assert.match(missingStore.error, /设置存储位置/);
+    }
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
   }

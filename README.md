@@ -7,8 +7,8 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.5.x
-- bugfix & 体验优化
+### 1.6.0
+- Loop+ 模式新增验收方案设置
 
 ### 1.5.0
 - 新增 zcode 支持

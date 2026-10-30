@@ -5,6 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   cleanupHumanInteractionHistory,
+  cleanupHumanInteractionHistoryAcrossWorkspaces,
+  getHumanInteractionHistoryFilePath,
   readHumanInteractionHistory,
   recordHumanInteractionHistory,
 } from "../../humanInteractionHistory";
@@ -77,6 +79,100 @@ test("retention cleanup removes expired history and ignores corrupt files", () =
     assert.equal(fs.existsSync(filePath), false);
     fs.writeFileSync(filePath, "not-json", "utf8");
     assert.deepEqual(readHumanInteractionHistory(options), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace history stays independent and does not import unscoped legacy records", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "human-interaction-history-"));
+  const directoryPath = path.join(root, "human-interaction-history");
+  const firstOptions = { filePath: getHumanInteractionHistoryFilePath(directoryPath, "project-a_123") };
+  const secondOptions = { filePath: getHumanInteractionHistoryFilePath(directoryPath, "project-b_456") };
+  const emptyOptions = { filePath: getHumanInteractionHistoryFilePath(directoryPath, "no-workspace") };
+  try {
+    const legacyOptions = { filePath: path.join(root, "human-interaction-history.json") };
+    const submission = { interactionId: "question-1", status: "completed" as const, values: { mode: "safe" } };
+    const legacyRecord = recordHumanInteractionHistory(createRequest(), submission, legacyOptions);
+    assert.deepEqual(readHumanInteractionHistory(firstOptions), []);
+    assert.equal(fs.existsSync(directoryPath), false);
+
+    const firstRecord = recordHumanInteractionHistory(createRequest(), submission, firstOptions);
+    const secondRecord = recordHumanInteractionHistory(createRequest(), submission, secondOptions, "orchestrator");
+
+    assert.deepEqual(readHumanInteractionHistory(firstOptions).map((record) => record.id), [firstRecord.id]);
+    assert.deepEqual(readHumanInteractionHistory(secondOptions).map((record) => record.id), [secondRecord.id]);
+    assert.deepEqual(readHumanInteractionHistory(emptyOptions), []);
+    assert.deepEqual(readHumanInteractionHistory(legacyOptions).map((record) => record.id), [legacyRecord.id]);
+    assert.equal(path.dirname(firstOptions.filePath), directoryPath);
+    assert.equal(path.basename(firstOptions.filePath), "project-a_123.json");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace history limits do not evict records from other workspaces", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "human-interaction-history-"));
+  const firstOptions = { filePath: getHumanInteractionHistoryFilePath(root, "project-a"), limit: 1 };
+  const secondOptions = { filePath: getHumanInteractionHistoryFilePath(root, "project-b"), limit: 1 };
+  try {
+    const submission = { interactionId: "question-1", status: "completed" as const, values: {} };
+    const secondRecord = recordHumanInteractionHistory(createRequest(), submission, secondOptions, "orchestrator");
+    recordHumanInteractionHistory(createRequest(), submission, firstOptions);
+    const latestRecord = recordHumanInteractionHistory(createRequest(), submission, firstOptions);
+
+    assert.deepEqual(readHumanInteractionHistory(firstOptions).map((record) => record.id), [latestRecord.id]);
+    assert.deepEqual(readHumanInteractionHistory(secondOptions).map((record) => record.id), [secondRecord.id]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("retention cleanup visits all workspace history files and ignores unrelated entries", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "human-interaction-history-"));
+  const directoryPath = path.join(root, "history");
+  const firstOptions = { filePath: getHumanInteractionHistoryFilePath(directoryPath, "project-a") };
+  const secondOptions = { filePath: getHumanInteractionHistoryFilePath(directoryPath, "project-b") };
+  try {
+    cleanupHumanInteractionHistoryAcrossWorkspaces(directoryPath);
+    assert.equal(fs.existsSync(directoryPath), false);
+    const submission = { interactionId: "question-1", status: "completed" as const, values: {} };
+    const expiredRecord = recordHumanInteractionHistory(createRequest(), submission, firstOptions);
+    const retainedRecord = recordHumanInteractionHistory(createRequest(), submission, secondOptions, "orchestrator");
+    expiredRecord.createdAt = 1;
+    retainedRecord.createdAt = 100;
+    fs.writeFileSync(firstOptions.filePath, JSON.stringify({ items: [expiredRecord] }), "utf8");
+    fs.writeFileSync(secondOptions.filePath, JSON.stringify({ items: [retainedRecord, expiredRecord] }), "utf8");
+    fs.writeFileSync(path.join(directoryPath, "notes.txt"), "keep", "utf8");
+    fs.mkdirSync(path.join(directoryPath, "archive.json"));
+
+    cleanupHumanInteractionHistoryAcrossWorkspaces(directoryPath, {
+      isTimestampWithinRetention: (timestamp) => timestamp >= 100,
+    });
+
+    assert.equal(fs.existsSync(firstOptions.filePath), false);
+    assert.deepEqual(readHumanInteractionHistory({
+      ...secondOptions,
+      isTimestampWithinRetention: (timestamp) => timestamp >= 100,
+    }).map((record) => record.id), [retainedRecord.id]);
+    assert.equal(fs.readFileSync(path.join(directoryPath, "notes.txt"), "utf8"), "keep");
+    assert.equal(fs.statSync(path.join(directoryPath, "archive.json")).isDirectory(), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace retention cleanup reports directory errors without throwing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "human-interaction-history-"));
+  const directoryPath = path.join(root, "not-a-directory");
+  const events: string[] = [];
+  try {
+    fs.writeFileSync(directoryPath, "keep", "utf8");
+    cleanupHumanInteractionHistoryAcrossWorkspaces(directoryPath, {
+      logError: (event) => events.push(event),
+    });
+    assert.deepEqual(events, ["human-interaction-history-cleanup-error"]);
+    assert.equal(fs.readFileSync(directoryPath, "utf8"), "keep");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

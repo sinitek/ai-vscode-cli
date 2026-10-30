@@ -504,6 +504,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const result = host().tryRun({
       displayPrompt: input.displayPrompt,
       modelPrompt: input.modelPrompt,
+      ...(input.loopPlusAcceptancePlan ? { loopPlusAcceptancePlan: input.loopPlusAcceptancePlan } : {}),
       model: input.model,
       loopMainModel: input.loopMainModel,
       loopSubtaskModel: input.loopSubtaskModel,

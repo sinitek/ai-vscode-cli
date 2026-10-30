@@ -1,4 +1,5 @@
 import type { ContinueModelChoice } from "../continueModelChoice";
+import type { LoopPlusAcceptancePlan, LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 export type LoopDebateChatPanelParticipant = {
   id: string;
@@ -138,6 +139,10 @@ export type LoopDebateChatPanelState = {
   chatMarkdown: string;
   error?: string | null;
   clarification?: import("../orchestratorClarification").OrchestratorClarification | null;
+  /** Loop+ 群聊可修改的验收方案模板与当前任务快照。 */
+  acceptancePlans?: LoopPlusAcceptancePlan[];
+  acceptancePlanSelection?: string;
+  acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null;
 };
 
 export type LoopDebateChatPanelMessage =
@@ -154,7 +159,11 @@ export type LoopDebateChatPanelMessage =
   | { type: "loopDebateChat:stopTask" }
   | { type: "loopDebateChat:openCommunicationFile"; requestId?: string; path?: string }
   | { type: "loopDebateChat:submitClarification"; interactionId?: string; values?: Record<string, unknown> }
-  | { type: "loopDebateChat:rejectClarification"; interactionId?: string };
+  | { type: "loopDebateChat:rejectClarification"; interactionId?: string }
+  | { type: "saveLoopPlusAcceptancePlan"; planId?: string | null; name?: unknown; checks?: unknown; otherText?: unknown; select?: boolean }
+  | { type: "selectLoopPlusAcceptancePlan"; planId?: unknown }
+  | { type: "deleteLoopPlusAcceptancePlan"; planId?: unknown }
+  | { type: "loopDebateChat:updateAcceptancePlan"; plan?: unknown };
 
 export type LoopCommunicationFilePreviewMessage = {
   type: "loopDebateChat:communicationFile";

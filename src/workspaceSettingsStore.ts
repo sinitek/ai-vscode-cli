@@ -12,6 +12,11 @@ import {
   isLegacyLoopInteractiveMode,
   migrateLegacyLoopJson,
 } from "./loopLegacyMigration";
+import {
+  normalizeLoopPlusAcceptancePlanSelectionId,
+  normalizeLoopPlusAcceptancePlans,
+  type LoopPlusAcceptancePlan,
+} from "./loopPlusAcceptancePlan";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   id: string;
@@ -42,6 +47,10 @@ export type WorkspaceSettings = {
   loopMaxRounds?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
+  /** Loop+ 验收方案模板；“系统默认”是内置基线，不存于此字段。 */
+  loopPlusAcceptancePlans?: LoopPlusAcceptancePlan[];
+  /** 最近一次选中的验收方案 ID；“系统默认”以固定 ID 表示。 */
+  loopPlusAcceptancePlanSelection?: string;
 };
 
 export type WorkspaceSettingsStoreLogger = (event: string, payload?: unknown) => void;
@@ -154,6 +163,7 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
         };
       }
     }
+    normalizeAcceptancePlanSettings(result, parsed as Record<string, unknown>);
     return result;
   } catch (error) {
     options.logError?.("workspace-settings-read-error", { error: String(error) });
@@ -161,17 +171,48 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
   }
 }
 
-export function saveWorkspaceSettings(next: WorkspaceSettings, options: WorkspaceSettingsStoreOptions): void {
+function normalizeAcceptancePlanSettings(result: WorkspaceSettings, parsed: Record<string, unknown>): void {
+  const plans = normalizeLoopPlusAcceptancePlans(parsed.loopPlusAcceptancePlans);
+  if (plans.length > 0) {
+    result.loopPlusAcceptancePlans = plans;
+  }
+  // 只有文件里确实带有验收方案数据时才写回，避免给无关工作区凭空增加字段。
+  if (plans.length > 0 || Object.prototype.hasOwnProperty.call(parsed, "loopPlusAcceptancePlanSelection")) {
+    result.loopPlusAcceptancePlanSelection = normalizeLoopPlusAcceptancePlanSelectionId(
+      parsed.loopPlusAcceptancePlanSelection,
+      plans,
+    );
+  }
+}
+
+export type SaveWorkspaceSettingsResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * 保存工作区设置，并把失败原因交回调用方（例如验收方案保存需要在界面提示中文错误）。
+ * 与 `saveWorkspaceSettings` 共用同一份写入逻辑，不改变既有静默失败语义。
+ */
+export function trySaveWorkspaceSettings(
+  next: WorkspaceSettings,
+  options: WorkspaceSettingsStoreOptions,
+): SaveWorkspaceSettingsResult {
   const filePath = getWorkspaceSettingsFilePath(options);
   if (!filePath) {
-    return;
+    return { ok: false, error: "当前工作区没有可用的设置存储位置。" };
   }
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
+    return { ok: true };
   } catch (error) {
     options.logError?.("workspace-settings-write-error", { error: String(error) });
+    return { ok: false, error: String(error) };
   }
+}
+
+export function saveWorkspaceSettings(next: WorkspaceSettings, options: WorkspaceSettingsStoreOptions): void {
+  trySaveWorkspaceSettings(next, options);
 }
 
 export function getWorkspaceSettingsFilePath(options: WorkspaceSettingsStoreOptions): string | null {

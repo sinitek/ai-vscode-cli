@@ -421,6 +421,12 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               setScheduledTaskError("");
             }
           }
+          if (data.type === "loopPlusAcceptancePlanSaved") {
+            handleAcceptancePlanSavedMessage(data);
+          }
+          if (data.type === "loopPlusAcceptancePlanSelected") {
+            handleAcceptancePlanSelectedMessage(data);
+          }
           if (data.type === "insertPromptPaths" || data.type === "dropPathsResult") {
             const insertText = buildInsertText(data.paths);
             if (insertText) {

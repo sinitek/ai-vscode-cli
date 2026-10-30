@@ -17,6 +17,10 @@ import {
   migrateLegacyLoopJson,
 } from "./loopLegacyMigration";
 import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
+import {
+  normalizeLoopPlusAcceptancePlanSnapshotForStorage,
+  type LoopPlusAcceptancePlanSnapshot,
+} from "./loopPlusAcceptancePlan";
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
@@ -131,6 +135,8 @@ export type LoopTaskRecord = {
   loopPlus?: unknown;
   loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
+  /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
+  loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -852,6 +858,8 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
+  const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
+  const loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(rawAcceptancePlan);
   return {
     id: raw.id,
     cli,
@@ -864,6 +872,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
+    ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
     status,
     createdAt,
     updatedAt,

@@ -39,6 +39,8 @@ import {
   type LoopAskThread,
 } from "./loopAskThread";
 import type { LoopMainModelAnswerResult, LoopMainModelQuestionProgress } from "./loopMainQuestion";
+import type { LoopPlusAcceptancePlan, LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
+import type { LoopPlusAcceptancePlanMutationResult } from "./extensionHost/loopPlusAcceptancePlanHost";
 import * as fs from "fs";
 import { ChatMessage, PanelMessage, type ChatMessageAction } from "./webview/types";
 import { type ConfigItem } from "./config/types";
@@ -799,6 +801,21 @@ type LoopDebateChatPanelDeps = {
   showWarningMessage: (message: string) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
+  readLoopPlusAcceptancePlans?: () => LoopPlusAcceptancePlan[];
+  readLoopPlusAcceptancePlanSelection?: () => string;
+  saveLoopPlusAcceptancePlan?: (input: {
+    planId?: string | null;
+    name: unknown;
+    checks: unknown;
+    otherText?: unknown;
+    select?: boolean;
+  }) => LoopPlusAcceptancePlanMutationResult;
+  selectLoopPlusAcceptancePlan?: (planId: unknown) => { ok: true; selection: string } | { ok: false; error: string };
+  deleteLoopPlusAcceptancePlan?: (planId: unknown) => LoopPlusAcceptancePlanMutationResult;
+  applyLoopPlusAcceptancePlan?: (
+    taskId: string,
+    plan: unknown,
+  ) => { ok: true; plan?: LoopPlusAcceptancePlanSnapshot } | { ok: false; error: string };
   askMainModel?: (
     task: LoopTaskRecord,
     question: string,
@@ -870,8 +887,16 @@ export function buildLoopDebateChatPanelState(
   const originalModels = task.originProfile?.configId
     ? continueModelPairFromLoopRouting(task.modelRouting)
     : emptyContinueModelPair();
+  const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
+    ? {
+      acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
+      acceptancePlanSelection: deps.readLoopPlusAcceptancePlanSelection?.() ?? "system_default",
+      acceptancePlan: task.loopPlusAcceptancePlan ?? null,
+    }
+    : {};
   return {
     ...state,
+    ...acceptancePlanState,
     continueModels: {
       original: originalModels,
       current: resolveCurrentLoopModelPair({
@@ -1809,6 +1834,88 @@ export function createLoopDebateChatPanelCoordinator(deps: LoopDebateChatPanelDe
     }
     if (message.type === "loopDebateChat:openCommunicationFile") {
       openCommunicationFile(taskId, message.requestId, message.path);
+      return;
+    }
+    if (
+      message.type === "saveLoopPlusAcceptancePlan"
+      || message.type === "selectLoopPlusAcceptancePlan"
+      || message.type === "deleteLoopPlusAcceptancePlan"
+    ) {
+      await saveAcceptancePlanMessage(taskId, message);
+      return;
+    }
+    if (message.type === "loopDebateChat:updateAcceptancePlan") {
+      await updateAcceptancePlan(taskId, message.plan);
+    }
+  };
+
+  const postToPanel = (taskId: string, message: unknown): void => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId);
+    const panel = normalizedTaskId ? deps.panelsByTaskId.get(normalizedTaskId) : undefined;
+    panel?.post(message);
+  };
+
+  const saveAcceptancePlanMessage = async (
+    taskId: string,
+    message: Extract<LoopDebateChatPanelMessage, { type: "saveLoopPlusAcceptancePlan" | "selectLoopPlusAcceptancePlan" | "deleteLoopPlusAcceptancePlan" }>,
+  ): Promise<void> => {
+    if (message.type === "deleteLoopPlusAcceptancePlan") {
+      const result = deps.deleteLoopPlusAcceptancePlan?.(message.planId) ?? {
+        ok: false as const,
+        error: "验收方案保存失败，请稍后重试。",
+      };
+      postToPanel(taskId, result.ok
+        ? { type: "loopPlusAcceptancePlanSaved", plan: result.plan, plans: result.plans, selection: result.selection }
+        : { type: "loopPlusAcceptancePlanSaved", error: result.error });
+      if (result.ok) {
+        await deps.postPanelState();
+      }
+      return;
+    }
+    if (message.type === "selectLoopPlusAcceptancePlan") {
+      const result = deps.selectLoopPlusAcceptancePlan?.(message.planId) ?? {
+        ok: false as const,
+        error: "验收方案保存失败，请稍后重试。",
+      };
+      postToPanel(taskId, result.ok
+        ? { type: "loopPlusAcceptancePlanSelected", selection: result.selection }
+        : { type: "loopPlusAcceptancePlanSelected", error: result.error });
+      if (result.ok) {
+        await deps.postPanelState();
+      }
+      return;
+    }
+    const result = deps.saveLoopPlusAcceptancePlan?.({
+      planId: message.planId,
+      name: message.name,
+      checks: message.checks,
+      otherText: message.otherText,
+      select: message.select,
+    }) ?? { ok: false as const, error: "验收方案保存失败，请稍后重试。" };
+    postToPanel(taskId, result.ok
+      ? { type: "loopPlusAcceptancePlanSaved", plan: result.plan, plans: result.plans, selection: result.selection }
+      : { type: "loopPlusAcceptancePlanSaved", error: result.error });
+    if (result.ok) {
+      await deps.postPanelState();
+    }
+  };
+
+  const updateAcceptancePlan = async (taskId: string, plan: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId)
+      ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+    if (!normalizedTaskId) {
+      return;
+    }
+    const result = deps.applyLoopPlusAcceptancePlan?.(normalizedTaskId, plan) ?? {
+      ok: false as const,
+      error: "验收方案更新失败，请稍后重试。",
+    };
+    postToPanel(normalizedTaskId, {
+      type: "loopDebateChat:acceptancePlanUpdated",
+      ...(result.ok ? { plan: result.plan ?? null } : { error: result.error }),
+    });
+    if (result.ok) {
+      await refresh(normalizedTaskId);
     }
   };
 

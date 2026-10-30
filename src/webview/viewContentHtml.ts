@@ -1,3 +1,4 @@
+import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { renderChatModal } from "./modalComponents";
 import { CLI_LIST } from "../cli/types";
 import { getCliDisplayName } from "../cli/installer";
@@ -432,6 +433,33 @@ ${renderChatModal({
             <div id="scheduledTaskList" class="scheduled-task-list"></div>
           </div>
         `,
+      })}
+
+${renderAcceptancePlanDialogs({
+        title: i18n.acceptancePlanTitle,
+        close: i18n.acceptancePlanClose,
+        planAria: i18n.acceptancePlanPlanAria,
+        savePlan: i18n.acceptancePlanSavePlan,
+        deletePlan: i18n.acceptancePlanDeletePlan,
+        deleteTitle: i18n.acceptancePlanDeleteTitle,
+        deleteDesc: i18n.acceptancePlanDeleteDesc,
+        deleteConfirm: i18n.acceptancePlanDeleteConfirm,
+        namePlaceholder: i18n.acceptancePlanNamePlaceholder,
+        baselineTitle: i18n.acceptancePlanBaselineTitle,
+        baselineHint: i18n.acceptancePlanBaselineHint,
+        maintainability: i18n.acceptancePlanCheckMaintainability,
+        security: i18n.acceptancePlanCheckSecurity,
+        performance: i18n.acceptancePlanCheckPerformance,
+        ui: i18n.acceptancePlanCheckUiAesthetics,
+        other: i18n.acceptancePlanOtherLabel,
+        otherTextPlaceholder: i18n.acceptancePlanOtherTextPlaceholder,
+        cancel: i18n.acceptancePlanCancel,
+        confirm: i18n.acceptancePlanConfirm,
+        saveNameTitle: i18n.acceptancePlanSaveNameTitle,
+        saveNameDesc: i18n.acceptancePlanSaveNameDesc,
+        saveNameLabel: i18n.acceptancePlanSaveNameLabel,
+        saveNamePlaceholder: i18n.acceptancePlanSaveNamePlaceholder,
+        saveNameConfirm: i18n.acceptancePlanSaveNameConfirm,
       })}
 
 ${renderChatModal({

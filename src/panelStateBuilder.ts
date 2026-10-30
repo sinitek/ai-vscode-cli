@@ -151,6 +151,8 @@ export type PanelStateBuilderDeps = {
   buildPromptHistoryState: () => PromptHistoryItem[];
   buildHumanInteractionHistoryState?: () => PanelState["humanInteractionHistory"];
   buildScheduledTasksState?: () => ScheduledTaskSummary[];
+  buildLoopPlusAcceptancePlansState?: () => PanelState["loopPlusAcceptancePlans"];
+  getLoopPlusAcceptancePlanSelection?: () => PanelState["loopPlusAcceptancePlanSelection"];
   buildModelState: (activeConfigIdByCli?: Partial<Record<CliName, string | null>>) => PanelState["modelState"];
   buildEditorContextState: () => EditorContextState;
   resolveModelConfigIdForCli: (cli: CliName, configState?: PanelState["configState"]) => string | null;
@@ -273,6 +275,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     promptHistory: deps.buildPromptHistoryState(),
     humanInteractionHistory: deps.buildHumanInteractionHistoryState?.() ?? [],
     scheduledTasks: deps.buildScheduledTasksState?.() ?? [],
+    loopPlusAcceptancePlans: deps.buildLoopPlusAcceptancePlansState?.() ?? [],
+    loopPlusAcceptancePlanSelection: deps.getLoopPlusAcceptancePlanSelection?.(),
     configState: deps.configState,
     configStateByCli: deps.configStateByCli,
     modelState: deps.buildModelState(activeConfigIdByCli),

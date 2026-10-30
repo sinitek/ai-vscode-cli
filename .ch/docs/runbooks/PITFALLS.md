@@ -2874,3 +2874,36 @@
 - `src/interactive/grokRunner.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 - `.ch/docs/exec-plans/completed/2026-10/2026-10-24-grok-stream-whitespace-contract-repair.md`
+
+## Loop+ 验收方案快照在 Webview 发送链路中被归一化白名单丢弃
+
+- 状态：已规避
+- 首次发现：2026-10-29
+- 适用范围：Webview 发送链路新增 payload 字段时的宿主消息转发
+
+### 现象
+- 验收方案弹窗确认后弹窗关闭、输入框清空，看起来已经发送成功，但扩展宿主侧收到的 `sendPrompt` 没有 `loopPlusAcceptancePlan`，任务记录也没有快照，主模型提示里没有附加审查要求。
+- 只有浏览器端 `input` 事件和单元测试覆盖的路由存在，真实点击路径丢字段。
+
+### 触发条件
+- 新增字段只加到了 `PromptPayload` 类型、`normalizePromptPayload` 白名单和 `sendPrompt` 调用处，没有同步 `dispatchPrompt` 里手工拼装的 `sendPromptMessage`。
+- `dispatchPrompt` 不整体透传 payload，而是逐字段显式拷贝，漏掉的字段会被静默丢弃。
+
+### 根因
+- 发送链路是“归一化白名单 + 逐字段显式拼装”两段式，任何一段没跟上都会静默丢字段，类型检查也无法发现（可选字段）。
+
+### 长期规避
+- 新增 prompt payload 字段时同时改三处：`PanelMessage`/`PromptRunInput` 类型、`normalizePromptPayload` 白名单、`dispatchPrompt` 的 `sendPromptMessage` 赋值。
+- 尽量在 `dispatchPrompt` 用显式列表集中透传可选字段，避免散落在多个 `if` 里。
+- 浏览器冒烟必须断言最终 `postMessage` 内容，不能只看弹窗关闭或输入框清空。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/webview/loopPlusAcceptancePlanDialog.test.js dist/test/session/sessionMessageActions.test.js`
+- Chromium 冒烟断言 `sendPrompt` 的 `loopPlusAcceptancePlan` 快照字段（`.tmp/playwright-smoke/loop-plus-acceptance-plan-confirm/`）
+
+### 关联资料
+- `src/webview/viewContentScript/taskListAndUi.ts`
+- `src/webview/viewContentScript/coreRuntimeState.ts`
+- `src/webview/viewContentScript/runStreamAndQueue.ts`
+- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`

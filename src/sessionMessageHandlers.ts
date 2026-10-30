@@ -25,6 +25,7 @@ export type PromptRunInputForPanel = {
   loopSubtaskThinkingMode?: ThinkingMode;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
+  loopPlusAcceptancePlan?: import("./loopPlusAcceptancePlan").LoopPlusAcceptancePlanSnapshot;
   imagePaths?: string[];
   taskRole?: "main" | "subtask";
   loopTaskId?: string;
@@ -98,6 +99,10 @@ export type PanelMessageHandlerDeps = {
   updateStatusBar: () => void;
   getWorkspaceSettings: () => WorkspaceSettings;
   saveWorkspaceSettings: (settings: WorkspaceSettings) => void;
+  /** 设置写回内存缓存（保存失败时不得调用）。 */
+  setWorkspaceSettings?: (settings: WorkspaceSettings) => void;
+  /** 带结果的保存，用于把失败提示回界面。 */
+  saveWorkspaceSettingsWithResult?: (settings: WorkspaceSettings) => { ok: boolean; error?: string };
   addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
   startNewSession: (cli: CliName) => void;
   getConversationTabById: (tabId: string) => ConversationTabRecordForPanel | null;

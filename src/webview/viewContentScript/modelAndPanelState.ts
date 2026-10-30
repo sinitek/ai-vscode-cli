@@ -495,8 +495,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
-        state.humanInteractionHistory = Array.isArray(panelState.humanInteractionHistory) ? panelState.humanInteractionHistory : [];
+        applyHumanInteractionHistory(panelState.humanInteractionHistory);
         state.scheduledTasks = Array.isArray(panelState.scheduledTasks) ? panelState.scheduledTasks : [];
+        state.loopPlusAcceptancePlans = Array.isArray(panelState.loopPlusAcceptancePlans)
+          ? panelState.loopPlusAcceptancePlans
+          : [];
+        state.loopPlusAcceptancePlanSelection = typeof panelState.loopPlusAcceptancePlanSelection === "string"
+          ? panelState.loopPlusAcceptancePlanSelection
+          : "";
         state.configState = panelState.configState || { configs: [], activeConfigId: null };
         state.configStateByCli = panelState.configStateByCli && typeof panelState.configStateByCli === "object"
           ? panelState.configStateByCli

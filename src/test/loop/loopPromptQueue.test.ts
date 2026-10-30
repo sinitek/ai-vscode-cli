@@ -46,14 +46,18 @@ function extractFunctionSource(script: string, name: string): string {
 function createSendPromptHarness(options: {
   loopMainRunning?: boolean;
   tabBusy?: boolean;
+  requiresAcceptancePlan?: boolean;
 }) {
-  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "sendPrompt");
+  const sources = ["clearPromptInputAfterSend", "dispatchPromptPayload", "sendPrompt"]
+    .map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, name))
+    .join("\n");
   const elements = { promptInput: { value: " next task " } };
   const queued: unknown[] = [];
   const conflicts: unknown[] = [];
   const dispatched: unknown[] = [];
+  const opened: unknown[] = [];
   let resetCount = 0;
-  const sendPrompt = new Function(
+  const api = new Function(
     "elements",
     "buildPromptPayload",
     "getActiveConversationTabId",
@@ -63,7 +67,9 @@ function createSendPromptHarness(options: {
     "isConversationTabBusy",
     "openRunConflictOverlay",
     "dispatchPrompt",
-    `${functionSource}; return sendPrompt;`,
+    "isAcceptancePlanRequiredForPayload",
+    "openAcceptancePlanDialog",
+    `${sources}; return { sendPrompt: sendPrompt };`,
   )(
     elements,
     (prompt: string) => ({ prompt }),
@@ -77,8 +83,18 @@ function createSendPromptHarness(options: {
       dispatched.push(payload);
       return true;
     },
-  ) as () => void;
-  return { sendPrompt, elements, queued, conflicts, dispatched, getResetCount: () => resetCount };
+    () => options.requiresAcceptancePlan === true,
+    (payload: unknown) => opened.push(payload),
+  ) as { sendPrompt: () => void };
+  return {
+    sendPrompt: api.sendPrompt,
+    elements,
+    queued,
+    conflicts,
+    dispatched,
+    opened,
+    getResetCount: () => resetCount,
+  };
 }
 
 test("queues a new prompt immediately while the Loop main tab is still running", () => {

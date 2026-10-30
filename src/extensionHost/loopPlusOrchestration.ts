@@ -39,6 +39,10 @@ import {
 } from "./loopPlusPromptBuilders";
 import type { LoopPlusSubtaskChatNotice } from "./loopPlusSubtaskChat";
 import {
+  normalizeLoopPlusAcceptancePlanSnapshotForStorage,
+  type LoopPlusAcceptancePlanSnapshot,
+} from "../loopPlusAcceptancePlan";
+import {
   createLoopPlusDecisionStrategyRegistry,
   loopPlusDecisionStrategyFor,
   type LoopPlusDecisionControlPlan,
@@ -61,6 +65,8 @@ export type LoopPlusPromptTarget = {
 export type LoopPlusRunInput = {
   displayPrompt: string;
   modelPrompt?: string;
+  /** 启动时确认的验收方案快照，写入任务记录后不再随模板编辑变化。 */
+  loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   model?: string;
   loopMainModel?: string;
   loopSubtaskModel?: string;
@@ -227,6 +233,8 @@ type ParentRuntime = {
   launching: Set<string>;
   launchEpoch: Map<string, number>;
   mainGeneration: number;
+  /** 群聊修改验收方案时递增；进行中的验收据此丢弃旧提示并重问。 */
+  acceptancePlanEpoch: number;
   pumpRequested: boolean;
   released: boolean;
   decomposing: boolean;
@@ -497,6 +505,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       launching: new Set<string>(),
       launchEpoch: new Map(),
       mainGeneration: 0,
+      acceptancePlanEpoch: 0,
       pumpRequested: false,
       released: false,
       decomposing: false,
@@ -699,6 +708,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       runtime.decisionCount += 1;
       const generation = runtime.mainGeneration;
+      const acceptancePlanEpoch = runtime.acceptancePlanEpoch;
       const request = buildMainRequest(runtime, step);
       let handle: LoopPlusMainHandle | null = null;
       let content: string | null = null;
@@ -723,6 +733,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       if (runtime.released || runtime.autoPaused || generation !== runtime.mainGeneration || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
         return;
+      }
+      if (acceptancePlanEpoch !== runtime.acceptancePlanEpoch) {
+        runtime.decisionCount -= 1;
+        continue;
       }
       if (failed) {
         const task = deps.readTask(runtime.taskId);
@@ -1648,6 +1662,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       taskStoreFile: task?.taskStoreFile ?? "",
       mainCommunicationFile: task?.mainCommunicationFile ?? "",
       kind: step.kind,
+      acceptancePlan: task?.loopPlusAcceptancePlan ?? null,
       view: runtime.scheduler.wait().view,
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],
@@ -2105,6 +2120,41 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.scheduler.ackUserMessages(step.userMessageCount);
   }
 
+  function applyAcceptancePlan(taskId: string, value: unknown): { ok: true; plan?: LoopPlusAcceptancePlanSnapshot } | { ok: false; error: string } {
+    const task = deps.readTask(taskId);
+    if (!task || resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
+      return { ok: false, error: "只有 Loop+ 任务可以修改验收方案。" };
+    }
+    const plan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(value);
+    const updated = deps.updateTask(taskId, {
+      loopPlusAcceptancePlan: plan,
+      updatedAt: now(),
+    });
+    if (!updated) {
+      return { ok: false, error: "验收方案更新失败，请稍后重试。" };
+    }
+    const runtime = runtimes.get(taskId);
+    const request = runtime?.currentMainRequest;
+    const main = runtime?.currentMain;
+    const previous = normalizeLoopPlusAcceptancePlanSnapshotForStorage(task.loopPlusAcceptancePlan);
+    const unchanged = JSON.stringify(previous ?? null) === JSON.stringify(plan ?? null);
+    if (runtime && !unchanged && request && main && (request.kind === "review" || request.kind === "closeout")) {
+      if (request.kind === "closeout") {
+        runtime.closeoutBudget = Math.max(runtime.closeoutBudget, 1);
+      }
+      runtime.acceptancePlanEpoch += 1;
+      try {
+        main.abort();
+      } catch (error) {
+        deps.log?.("loop-plus-main-abort-failed", {
+          taskId: runtime.taskId,
+          error: errorText(error),
+        });
+      }
+    }
+    return plan ? { ok: true, plan } : { ok: true };
+  }
+
   function submitUserMessage(taskId: string, text: string): boolean {
     const normalized = normalizeId(taskId);
     const trimmed = typeof text === "string" ? text.trim() : "";
@@ -2214,6 +2264,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     hasController,
     reportAttempt,
     submitUserMessage,
+    applyAcceptancePlan,
   };
 }
 

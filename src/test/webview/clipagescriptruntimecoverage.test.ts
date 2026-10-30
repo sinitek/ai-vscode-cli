@@ -1651,6 +1651,58 @@ test("opens human interaction history from the bottom icon and renders automatic
   assert.equal(api.humanInteractionHistoryAnswer({ ...record, values: { mode: "已隐藏" } }, record.formFields[0]), "AI 自动选择");
 });
 
+test("refreshes open interaction history and clears obsolete details when project state changes", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const firstRecord = {
+    id: "project-a-history",
+    interactionId: "question-1",
+    source: "vibe",
+    title: "项目甲的确认",
+    instruction: "请选择项目甲的方案。",
+    formFields: [{ id: "mode", label: "项目甲方案", type: "text" }],
+    status: "completed",
+    timedOut: false,
+    values: { mode: "继续" },
+    createdAt: 1_700_000_000_000,
+  };
+  const firstState = createPanelState({ humanInteractionHistory: [firstRecord] });
+  window.dispatchMessage({ type: "state", payload: firstState });
+  document.getElementById("humanInteractionHistoryButton").click();
+  const list = document.getElementById("humanInteractionHistoryList");
+  list.children[0].click();
+  const detailOverlay = document.getElementById("humanInteractionHistoryDetailOverlay");
+  assert.equal(detailOverlay.classList.contains("visible"), true);
+
+  window.dispatchMessage({ type: "state", payload: firstState });
+  assert.equal(detailOverlay.classList.contains("visible"), true);
+  assert.equal(api.state.selectedHumanInteractionHistoryId, firstRecord.id);
+
+  const secondRecord = {
+    ...firstRecord,
+    id: "project-b-history",
+    title: "项目乙的确认",
+    formFields: [{ id: "mode", label: "项目乙方案", type: "text" }],
+  };
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({ humanInteractionHistory: [secondRecord] }),
+  });
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].children[1].textContent, "项目乙方案");
+  assert.equal(detailOverlay.classList.contains("visible"), false);
+  assert.equal(api.state.selectedHumanInteractionHistoryId, null);
+
+  list.children[0].click();
+  assert.equal(detailOverlay.classList.contains("visible"), true);
+  assert.equal(document.getElementById("humanInteractionHistoryDetailTitle").textContent, "项目乙的确认");
+  window.dispatchMessage({ type: "humanInteractionHistory", items: [] });
+  assert.equal(detailOverlay.classList.contains("visible"), false);
+  assert.equal(api.state.selectedHumanInteractionHistoryId, null);
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].textContent, WEBVIEW_STRINGS.humanInteractionHistoryEmpty);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
 test("distinguishes manual and automatic interaction history with accessible SVG icons", () => {
   const { document, window } = createRuntimeHarness();
   const record = {

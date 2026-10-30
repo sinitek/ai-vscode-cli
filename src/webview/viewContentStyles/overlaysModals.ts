@@ -1,5 +1,208 @@
 import { DIALOG_SHELL_STYLES } from "../modalComponents";
 
+export const ACCEPTANCE_PLAN_DIALOG_STYLES = `
+      [id="acceptancePlanOverlay"] { z-index: 120; }
+      [id="acceptancePlanNameOverlay"],
+      [id="acceptancePlanDeleteOverlay"] { z-index: 130; }
+      .acceptance-plan-delete[hidden] { display: none; }
+      .acceptance-plan-modal {
+        width: min(520px, 90vw);
+        max-height: 85vh;
+      }
+      .acceptance-plan-modal .action-button,
+      .acceptance-plan-name-modal .action-button {
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        padding: 4px 12px;
+        cursor: pointer;
+        font: inherit;
+      }
+      .acceptance-plan-modal .secondary,
+      .acceptance-plan-name-modal .secondary {
+        background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground);
+      }
+      /* 弹窗自身留白交给内容区，避免外层与内容区叠加出 32px 内缩。 */
+      .acceptance-plan-modal > .modal-body,
+      .acceptance-plan-modal:has(.acceptance-plan-actions) > .modal-body,
+      .acceptance-plan-name-modal > .modal-body {
+        padding: 0;
+      }
+      .acceptance-plan-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px 16px 16px;
+      }
+      .acceptance-plan-plan-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: nowrap;
+        min-width: 0;
+      }
+      .acceptance-plan-select {
+        flex: 0 1 250px;
+        width: 250px;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        height: auto;
+        min-height: 36px;
+        line-height: 1.5;
+        border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-widget-border)));
+        border-radius: 6px;
+        background: var(--vscode-dropdown-background, var(--vscode-input-background));
+        color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+        font: inherit;
+        padding: 6px 8px;
+      }
+      .acceptance-plan-select:focus-visible,
+      .acceptance-plan-input:focus-visible,
+      .acceptance-plan-textarea:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 0;
+      }
+      .acceptance-plan-save,
+      .acceptance-plan-delete {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+      }
+      .acceptance-plan-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .acceptance-plan-field > label,
+      .acceptance-plan-name-desc {
+        color: var(--vscode-foreground);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .acceptance-plan-name-desc {
+        margin: 0;
+        color: var(--vscode-descriptionForeground);
+        font-weight: 400;
+      }
+      .acceptance-plan-input,
+      .acceptance-plan-textarea {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 6px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font: inherit;
+        padding: 7px 9px;
+      }
+      .acceptance-plan-textarea {
+        resize: vertical;
+        min-height: 64px;
+      }
+      .acceptance-plan-checks {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+      .acceptance-plan-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        min-width: 0;
+        color: var(--vscode-foreground);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .acceptance-plan-check input[type="checkbox"] {
+        flex: 0 0 auto;
+        margin: 2px 0 0;
+      }
+      .acceptance-plan-check label,
+      .acceptance-plan-check-text {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .acceptance-plan-check-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .acceptance-plan-check-baseline label {
+        font-weight: 600;
+      }
+      .acceptance-plan-check-hint {
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+      }
+      .acceptance-plan-check input[type="checkbox"]:disabled + .acceptance-plan-check-text label {
+        color: var(--vscode-foreground);
+        opacity: 1;
+      }
+      .acceptance-plan-check input[type="checkbox"]:disabled {
+        opacity: 0.7;
+      }
+      .acceptance-plan-other-field {
+        padding-left: 24px;
+      }
+      .acceptance-plan-error {
+        color: var(--vscode-errorForeground);
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .acceptance-plan-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .acceptance-plan-name-modal {
+        width: min(420px, 90vw);
+      }
+      .acceptance-plan-name-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px 16px;
+      }
+      .acceptance-plan-modal.is-saving .acceptance-plan-body {
+        opacity: 0.75;
+      }
+      .acceptance-plan-modal.is-saving .acceptance-plan-input,
+      .acceptance-plan-modal.is-saving .acceptance-plan-select,
+      .acceptance-plan-modal.is-saving .acceptance-plan-textarea {
+        pointer-events: none;
+      }
+      @media (max-width: 560px) {
+        .acceptance-plan-plan-row {
+          flex-wrap: nowrap;
+          gap: 8px;
+        }
+        .acceptance-plan-select {
+          flex: 1 1 auto;
+          width: auto;
+          min-width: 0;
+        }
+        .acceptance-plan-save,
+        .acceptance-plan-delete {
+          flex: 0 0 auto;
+          width: auto;
+          white-space: nowrap;
+        }
+        .acceptance-plan-other-field {
+          padding-left: 16px;
+        }
+      }
+`;
+
 export const OVERLAYS_MODALS_STYLES = `      /* Overlays / Modals */
 ${DIALOG_SHELL_STYLES}
       .scheduled-task-modal {
@@ -119,6 +322,7 @@ ${DIALOG_SHELL_STYLES}
         font-size: 11px;
       }
 
+${ACCEPTANCE_PLAN_DIALOG_STYLES}
       .run-conflict-modal {
         width: 420px;
       }

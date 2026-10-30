@@ -18,8 +18,20 @@ Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列
 
 `dispatch` 决策把 pending 原因归为运行中 `writeFiles` / `conflictGroup` 冲突或 `max_concurrency`。宿主 `loop-plus-dispatched` 日志为每个 pending attempt 记录 `subtaskId`、`attemptId` 和 `blockedBy`，冲突项附带冲突值及对应活动 attempt；异常未分类项使用 `scheduler`。pending 项之间不再报告互相阻塞。
 
+## 验收方案快照
+
+新建 Loop+ 根任务时，Webview 在 `sendPrompt` 前弹出“主模型验收方案”弹窗，把用户确认的复选项和“其它”审查内容作为 `loopPlusAcceptancePlan` 快照随请求提交。宿主只在该请求属于 `loop_plus` 且不是续跑/恢复/补充需求时接受该字段，归一化后连同 `loopTaskId` 一起写入 `LoopTaskRecord.loopPlusAcceptancePlan`；空基线快照不落盘，读不到的旧任务按固定清单处理。
+
+- 方案下拉第一项是「新增方案」（空白草稿），其后是内置「默认方案」和已保存方案。方案名称输入框不显示标签：系统默认预填「默认方案」，新增方案为空，占位文字是「方案名称」。勾选「其它」后的文本域也不显示标签，占位文字是「审查内容」。保存时若名称已存在则覆盖那一条，不再新增第二条；「系统默认」这个名字仍不能占用。已保存的「默认方案」会顶替下拉里的内置项，避免出现两个「默认方案」；删掉后又回到内置项。已保存方案可删除，删除前弹出确认；内置方案没有删除按钮。下拉、「保存」和「删除」始终同一行，窄屏时下拉收缩，按钮不换行。
+
+- 快照与模板解耦：弹窗里的方案是可复用模板，任务记录里的是确认时刻的副本。之后修改或删除模板不改变已启动任务；续跑、恢复、补充需求直接读任务记录里的快照。
+- 提示注入：`initial` / `review` / `closeout` / `continue` / `user` 五类主模型提示共用同一份快照，只在固定验收清单之后追加已勾选审查项与有效“其它”文本，要求逐项给出证据或显式“不适用”。固定清单、调度协议和“主模型不得自行实现或修复被派发工作”的约束不变。
+- 固定基线不可关闭：归一化时强制包含基线项，前端布尔值、旧版数据或可选配置都无法移除。
+- 模板持久化：方案与当前选中项存工作区设置（`loopPlusAcceptancePlans` / `loopPlusAcceptancePlanSelection`），系统默认是内置只读项，不写入存储。只改模板不会改写已启动任务。
+- 群聊修改：Loop+ 群聊顶部「验收方案」打开同一弹窗，确认后把当前复选项写回该任务的 `loopPlusAcceptancePlan`。下一次主模型验收提示立即读取新快照；若复核或收尾正在进行，宿主中止这一轮并按新快照重新提问。空基线会清掉任务上的附加快照。主任务状态为 `completed` 后不再显示该按钮。
+
 ## 事实来源与验证
 
-- 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`
-- 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`
-- 验证：`npm run build`；`node --test dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
+- 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
+- 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
+- 验证：`npm run build`；`node --test dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopPlusAcceptancePlanHost.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/webview/loopPlusAcceptancePlanDialog.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/workspaceSettingsStore.test.js`

@@ -31,6 +31,28 @@ export type HumanInteractionHistoryOptions = {
   logError?: (event: string, payload?: unknown) => void;
 };
 
+export function getHumanInteractionHistoryFilePath(directoryPath: string, workspaceKey: string): string {
+  return path.join(directoryPath, `${workspaceKey}.json`);
+}
+
+export function cleanupHumanInteractionHistoryAcrossWorkspaces(
+  directoryPath: string,
+  options: Omit<HumanInteractionHistoryOptions, "filePath"> = {},
+): void {
+  try {
+    if (!fs.existsSync(directoryPath)) {
+      return;
+    }
+    for (const entry of fs.readdirSync(directoryPath, { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.endsWith(".json")) {
+        cleanupHumanInteractionHistory({ ...options, filePath: path.join(directoryPath, entry.name) });
+      }
+    }
+  } catch (error) {
+    options.logError?.("human-interaction-history-cleanup-error", { error: String(error) });
+  }
+}
+
 export function cleanupHumanInteractionHistory(options: HumanInteractionHistoryOptions): void {
   const items = readHumanInteractionHistory(options);
   try {

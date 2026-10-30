@@ -11,6 +11,8 @@ import * as os from "os";
 import { createHash } from "crypto";
 import {
   cleanupHumanInteractionHistory,
+  cleanupHumanInteractionHistoryAcrossWorkspaces,
+  getHumanInteractionHistoryFilePath,
   readHumanInteractionHistory,
   recordHumanInteractionHistory,
 } from "./humanInteractionHistory";
@@ -527,9 +529,18 @@ import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptR
 import {
   loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
   saveWorkspaceSettings as saveWorkspaceSettingsToStore,
+  trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore,
   type ConversationTabRecordForWorkspaceSettings,
   type WorkspaceSettings,
 } from "./workspaceSettingsStore";
+import { normalizeLoopPlusAcceptancePlanSnapshotForStorage } from "./loopPlusAcceptancePlan";
+import {
+  buildLoopPlusAcceptancePlanSelectionPanelValue,
+  buildLoopPlusAcceptancePlansPanelValue,
+  deleteLoopPlusAcceptancePlan,
+  saveLoopPlusAcceptancePlan,
+  selectLoopPlusAcceptancePlan,
+} from "./extensionHost/loopPlusAcceptancePlanHost";
 import { handlePanelMessageWithDeps } from "./sessionMessageHandlers";
 import {
   buildScheduledTaskSummaries,
@@ -734,6 +745,7 @@ const SESSION_DIR = path.join(DATA_DIR, "sessions");
 const MESSAGE_DIR_ROOT = path.join(DATA_DIR, "messages");
 const WORKSPACE_SETTINGS_DIR = path.join(DATA_DIR, "workspace-settings");
 const PROMPT_HISTORY_DIR = path.join(DATA_DIR, "prompt-history");
+const HUMAN_INTERACTION_HISTORY_DIR = path.join(DATA_DIR, "human-interaction-history");
 const MODEL_STORE_FILE = path.join(DATA_DIR, "models.json");
 const DEFAULT_MODEL_STORE_KEY = "__default__";
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -745,6 +757,7 @@ const AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS = 3 * 60 * 1000;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
+const LEGACY_HUMAN_INTERACTION_HISTORY_FILE = path.join(DATA_DIR, "human-interaction-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
 const LOOP_DEFAULT_MAX_ROUNDS = 20;
 const LOOP_MIN_MAX_ROUNDS = 1;
@@ -1033,7 +1046,7 @@ export function activate(context: vscode.ExtensionContext): void {
     onMessage: async (message) => {
       await handlePanelMessage(message);
     },
-    onRequestHumanInteractionHistory: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
+    onRequestHumanInteractionHistory: () => readHumanInteractionHistory(getHumanInteractionHistoryOptions()),
   });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
@@ -1505,6 +1518,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     updateStatusBar,
     getWorkspaceSettings: () => workspaceSettings,
     saveWorkspaceSettings,
+    setWorkspaceSettings: (settings) => { workspaceSettings = settings; },
+    saveWorkspaceSettingsWithResult: (settings) => trySaveWorkspaceSettingsToStore(settings, getWorkspaceSettingsStoreOptions()),
     addConversationTab,
     startNewSession,
     getConversationTabById,
@@ -1733,8 +1748,10 @@ function buildPanelStateFromConfigState(
     buildSessionState,
     buildConversationTabsState,
     buildPromptHistoryState,
-    buildHumanInteractionHistoryState: () => readHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE }),
+    buildHumanInteractionHistoryState: () => readHumanInteractionHistory(getHumanInteractionHistoryOptions()),
     buildScheduledTasksState,
+    buildLoopPlusAcceptancePlansState: () => buildLoopPlusAcceptancePlansPanelValue(workspaceSettings),
+    getLoopPlusAcceptancePlanSelection: () => buildLoopPlusAcceptancePlanSelectionPanelValue(workspaceSettings),
     buildModelState,
     buildEditorContextState,
     resolveModelConfigIdForCli,
@@ -1785,24 +1802,29 @@ type PendingHumanInteraction = {
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
 
-const HUMAN_INTERACTION_HISTORY_FILE = path.join(os.homedir(), ".sinitek_cli", "human-interaction-history.json");
+function getHumanInteractionHistoryOptions() {
+  return {
+    filePath: getHumanInteractionHistoryFilePath(HUMAN_INTERACTION_HISTORY_DIR, activeWorkspaceKey),
+  };
+}
 
 function recordHumanInteractionResponse(
   request: HumanInteractionRequest,
   submission: HumanInteractionSubmission,
 ): void {
-  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE });
+  recordHumanInteractionHistory(request, submission, getHumanInteractionHistoryOptions());
 }
 
 function recordOrchestratorInteractionResponse(
   request: HumanInteractionRequest,
   submission: HumanInteractionSubmission,
 ): void {
-  recordHumanInteractionHistory(request, submission, { filePath: HUMAN_INTERACTION_HISTORY_FILE }, "orchestrator");
+  recordHumanInteractionHistory(request, submission, getHumanInteractionHistoryOptions(), "orchestrator");
 }
 
 function cleanupHumanInteractionHistoryRetention(): void {
-  cleanupHumanInteractionHistory({ filePath: HUMAN_INTERACTION_HISTORY_FILE });
+  cleanupHumanInteractionHistoryAcrossWorkspaces(HUMAN_INTERACTION_HISTORY_DIR);
+  cleanupHumanInteractionHistory({ filePath: LEGACY_HUMAN_INTERACTION_HISTORY_FILE });
 }
 
 function rememberPendingHumanInteraction(entry: PendingHumanInteraction): void {
@@ -3303,6 +3325,12 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   notifyLoopPlusUserMessage: (taskId, text) => {
     getLoopPlusOrchestrationHost().submitUserMessage(taskId, text);
   },
+  readLoopPlusAcceptancePlans: () => buildLoopPlusAcceptancePlansPanelValue(workspaceSettings),
+  readLoopPlusAcceptancePlanSelection: () => buildLoopPlusAcceptancePlanSelectionPanelValue(workspaceSettings),
+  saveLoopPlusAcceptancePlan: (input) => saveLoopPlusAcceptancePlan(createAcceptancePlanSettingsHost(), input),
+  selectLoopPlusAcceptancePlan: (planId) => selectLoopPlusAcceptancePlan(createAcceptancePlanSettingsHost(), planId),
+  deleteLoopPlusAcceptancePlan: (planId) => deleteLoopPlusAcceptancePlan(createAcceptancePlanSettingsHost(), planId),
+  applyLoopPlusAcceptancePlan: (taskId, plan) => getLoopPlusOrchestrationHost().applyAcceptancePlan(taskId, plan),
   askMainModel: async (task, question, hooks) => {
     let target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
     if (!target && task.sessionId) {
@@ -4431,11 +4459,13 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           mainThinkingMode: prompt.loopMainThinkingMode,
           subtaskThinkingMode: prompt.loopSubtaskThinkingMode,
         });
+        const acceptancePlan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(prompt.loopPlusAcceptancePlan);
         task = persistLoopPlusTaskUpdate(task.id, {
           schedulingMode: "event_driven",
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
           loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
+          ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
           ...(originProfile ? { originProfile } : {}),
           updatedAt: Date.now(),
@@ -4445,6 +4475,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
           loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
+          ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
           ...(originProfile ? { originProfile } : {}),
         };
@@ -4522,6 +4553,19 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
 
 function getLoopPlusOrchestrationHost(): ReturnType<ReturnType<typeof createLoopPlusRuntimeAdapter>["host"]> {
   return getLoopPlusRuntimeAdapter().host();
+}
+
+function createAcceptancePlanSettingsHost() {
+  return {
+    getWorkspaceSettings: () => workspaceSettings,
+    setWorkspaceSettings: (settings: WorkspaceSettings) => {
+      workspaceSettings = settings;
+    },
+    saveWorkspaceSettings: (settings: WorkspaceSettings) => {
+      const result = trySaveWorkspaceSettingsToStore(settings, getWorkspaceSettingsStoreOptions());
+      return result.ok ? { ok: true as const } : { ok: false as const, error: result.error };
+    },
+  };
 }
 
 function stopLoopPlusParent(taskId: string): void {

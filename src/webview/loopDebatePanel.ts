@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
+import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/acceptancePlan";
+import { getWebviewStrings } from "./viewContentStrings";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
@@ -165,6 +168,10 @@ export class LoopDebateChatPanel {
   }
 
   public postCommunicationFilePreview(message: LoopCommunicationFilePreviewMessage): void {
+    this.post(message);
+  }
+
+  public post(message: unknown): void {
     const panel = this.panel;
     if (!panel) {
       return;
@@ -276,6 +283,7 @@ ${renderPanelDialog({
         afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
+      ${state.loopPlus ? renderGroupAcceptancePlanDialogs() : ""}
       ${renderPanelDialog({
         backdropId: "filePreviewBackdrop",
         backdropClassName: "dialog-backdrop file-preview-backdrop",
@@ -1060,6 +1068,20 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          openAskDialog();
 	          return;
 	        }
+	        if (action === "acceptancePlan") {
+	          saveScrollState();
+	          if (typeof openAcceptancePlanDialog === "function") {
+	            const currentPlan = state.taskAcceptancePlan || {
+	              id: "system_default",
+	              name: acceptancePlanStrings.acceptancePlanSystemDefault,
+	              checks: [],
+	              otherText: "",
+	              systemDefault: true,
+	            };
+	            openAcceptancePlanDialog({ prompt: "验收方案" }, "group-chat", currentPlan);
+	          }
+	          return;
+	        }
 	        if (action === "stopTask") {
 	          saveScrollState();
 	          const liveStopButton = actionButton("stopTask");
@@ -1092,6 +1114,23 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        if (message && message.type === "loopDebateChat:askThread") {
 	          applyAskThread(message.thread);
+	          return;
+	        }
+	        if (message && message.type === "loopPlusAcceptancePlanSaved" && typeof handleAcceptancePlanSavedMessage === "function") {
+	          handleAcceptancePlanSavedMessage(message);
+	          return;
+	        }
+	        if (message && message.type === "loopPlusAcceptancePlanSelected" && typeof handleAcceptancePlanSelectedMessage === "function") {
+	          handleAcceptancePlanSelectedMessage(message);
+	          return;
+	        }
+	        if (message && message.type === "loopDebateChat:acceptancePlanUpdated") {
+	          if (typeof state !== "undefined" && state) {
+	            state.taskAcceptancePlan = message.plan || null;
+	          }
+	          if (typeof showToast === "function") {
+	            showToast(message.error || (typeof t === "function" ? t("acceptancePlanUpdated") : ""));
+	          }
 	          return;
 	        }
 	        applyCommunicationFilePreview(message);
@@ -1239,6 +1278,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
           mountGroupChatMarkdown(document);
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
+${state.loopPlus ? renderGroupAcceptancePlanScript(state) : ""}
 	      vscode.postMessage({ type: "loopDebateChat:domReady", generation: PANEL_GENERATION });
 	    </script>
   </body>
@@ -1258,6 +1298,9 @@ function renderPanelActions(
       : "",
     state.task.canSupplement
       ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>`
+      : "",
+    state.loopPlus && state.task.status !== "completed"
+      ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(strings.acceptancePlan)}</button>`
       : "",
     state.task.canContinue && !state.task.canStop
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
@@ -1944,6 +1987,81 @@ function escapeAttribute(value: string): string {
 
 function escapeJsString(value: string): string {
   return JSON.stringify(value).slice(1, -1);
+}
+
+function renderGroupAcceptancePlanDialogs(): string {
+  const strings = getWebviewStrings();
+  return renderAcceptancePlanDialogs({
+    title: strings.acceptancePlanTitle,
+    close: strings.acceptancePlanClose,
+    planAria: strings.acceptancePlanPlanAria,
+    savePlan: strings.acceptancePlanSavePlan,
+    deletePlan: strings.acceptancePlanDeletePlan,
+    deleteTitle: strings.acceptancePlanDeleteTitle,
+    deleteDesc: strings.acceptancePlanDeleteDesc,
+    deleteConfirm: strings.acceptancePlanDeleteConfirm,
+    namePlaceholder: strings.acceptancePlanNamePlaceholder,
+    baselineTitle: strings.acceptancePlanBaselineTitle,
+    baselineHint: strings.acceptancePlanBaselineHint,
+    maintainability: strings.acceptancePlanCheckMaintainability,
+    security: strings.acceptancePlanCheckSecurity,
+    performance: strings.acceptancePlanCheckPerformance,
+    ui: strings.acceptancePlanCheckUiAesthetics,
+    other: strings.acceptancePlanOtherLabel,
+    otherTextPlaceholder: strings.acceptancePlanOtherTextPlaceholder,
+    cancel: strings.acceptancePlanCancel,
+    confirm: strings.acceptancePlanApply,
+    saveNameTitle: strings.acceptancePlanSaveNameTitle,
+    saveNameDesc: strings.acceptancePlanSaveNameDesc,
+    saveNameLabel: strings.acceptancePlanSaveNameLabel,
+    saveNamePlaceholder: strings.acceptancePlanSaveNamePlaceholder,
+    saveNameConfirm: strings.acceptancePlanSaveNameConfirm,
+  });
+}
+
+function renderGroupAcceptancePlanScript(panelState: LoopDebateChatPanelState): string {
+  const dictionary = Object.fromEntries(
+    Object.entries(getWebviewStrings()).filter(([key]) => key.startsWith("acceptancePlan")),
+  );
+  return `
+      const acceptancePlanStrings = ${embedJson(dictionary)};
+      const state = {
+        loopPlusAcceptancePlans: ${embedJson(panelState.acceptancePlans ?? [])},
+        loopPlusAcceptancePlanSelection: ${embedJson(panelState.acceptancePlanSelection || "system_default")},
+        taskAcceptancePlan: ${embedJson(panelState.acceptancePlan ?? null)},
+        interactiveMode: "loop_plus",
+      };
+      function t(key) {
+        return acceptancePlanStrings[key] || key;
+      }
+      const elements = { promptInput: { value: "", focus() {} } };
+      function showToast(message) {
+        const toast = document.getElementById("acceptancePlanToast");
+        if (!toast) {
+          return;
+        }
+        toast.hidden = !message;
+        toast.textContent = message || "";
+      }
+      function getActiveConversationTabId() {
+        return "group-chat";
+      }
+      function getConversationTabSummary() {
+        return { id: "group-chat" };
+      }
+      function resolveDispatchInteractiveMode() {
+        return "loop_plus";
+      }
+      function sendPromptWithAcceptancePlan(payload) {
+        vscode.postMessage({
+          type: "loopDebateChat:updateAcceptancePlan",
+          plan: payload && payload.loopPlusAcceptancePlan,
+        });
+        return "sent";
+      }
+${VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN}
+      bindAcceptancePlanDialogEvents();
+`;
 }
 
 function embedJson(value: unknown): string {

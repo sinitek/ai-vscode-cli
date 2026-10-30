@@ -169,6 +169,9 @@ function harness(options: {
       const task = baseTask(`task-${taskSeq}`, input.snapshot);
       task.rootPrompt = input.rootPrompt;
       task.sessionId = input.sessionId;
+      if (input.prompt.loopPlusAcceptancePlan) {
+        task.loopPlusAcceptancePlan = input.prompt.loopPlusAcceptancePlan;
+      }
       tasks.set(task.id, task);
       return task;
     },
@@ -2626,4 +2629,100 @@ test("clears a pending Loop+ clarification form when the parent stops", async ()
   assert.equal(stopped?.pendingClarification, undefined);
   assert.equal(submitOrchestratorClarification(loopClarificationScope(taskId), interactionId, { scope: "api" }).ok, false);
   assert.equal(env.mains.length, 1);
+});
+
+test("passes the confirmed acceptance plan into the created task and every main prompt", async () => {
+  const env = harness();
+  const run = env.host.tryRun({
+    displayPrompt: "ship the feature",
+    loopPlusAcceptancePlan: {
+      id: "plan-hardening",
+      name: "上线前加严",
+      checks: ["security", "other"],
+      otherText: "确认审计日志不写入密钥",
+      systemDefault: false,
+    },
+  }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains[0].request.kind, "initial");
+  assert.match(env.mains[0].request.modelPrompt, /Additional acceptance reviews from the acceptance plan "上线前加严"/);
+  assert.match(env.mains[0].request.modelPrompt, /Security review: defensive code review only/);
+  assert.match(env.mains[0].request.modelPrompt, /确认审计日志不写入密钥/);
+
+  const stored = env.tasks.get(run.taskId ?? "");
+  assert.deepEqual(stored?.loopPlusAcceptancePlan, {
+    id: "plan-hardening",
+    name: "上线前加严",
+    checks: ["security", "other"],
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  });
+
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const review = env.mains.find((call) => call.request.kind === "review");
+  assert.ok(review, "a review prompt should follow");
+  assert.match(review.request.modelPrompt, /Additional acceptance reviews from the acceptance plan/);
+  assert.match(review.request.modelPrompt, /确认审计日志不写入密钥/);
+});
+
+test("a group-chat acceptance plan change restarts the in-flight review with the new snapshot", async () => {
+  const env = harness();
+  const run = env.host.tryRun({
+    displayPrompt: "ship the feature",
+    loopPlusAcceptancePlan: {
+      id: "plan-security",
+      name: "安全",
+      checks: ["security"],
+      otherText: "",
+      systemDefault: false,
+    },
+  }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const firstReview = env.mains.find((call) => call.request.kind === "review");
+  assert.ok(firstReview);
+  assert.match(firstReview.request.modelPrompt, /Security review: defensive code review only/);
+
+  const applied = env.host.applyAcceptancePlan(run.taskId ?? "", {
+    id: "plan-performance",
+    name: "性能",
+    checks: ["performance"],
+    otherText: "",
+    systemDefault: false,
+  });
+  assert.equal(applied.ok, true);
+  await flush();
+
+  const reviews = env.mains.filter((call) => call.request.kind === "review");
+  assert.equal(reviews.length, 2);
+  assert.match(reviews[1].request.modelPrompt, /Performance review:/);
+  assert.doesNotMatch(reviews[1].request.modelPrompt, /Security review: defensive code review only/);
+  assert.deepEqual(env.tasks.get(run.taskId ?? "")?.loopPlusAcceptancePlan, {
+    id: "plan-performance",
+    name: "性能",
+    checks: ["performance"],
+    otherText: "",
+    systemDefault: false,
+  });
+});
+
+test("a task started without an acceptance plan falls back to the fixed baseline", async () => {
+  const env = harness();
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.doesNotMatch(env.mains[0].request.modelPrompt, /Additional acceptance reviews/);
 });

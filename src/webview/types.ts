@@ -13,6 +13,11 @@ import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
 import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
+import type {
+  LoopPlusAcceptancePlan,
+  LoopPlusAcceptancePlanCheckKey,
+  LoopPlusAcceptancePlanSnapshot,
+} from "../loopPlusAcceptancePlan";
 
 export type ConfigSummary = {
   id: string;
@@ -87,6 +92,8 @@ export type PanelMessage =
       loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
       skipPromptHistory?: boolean;
+      /** 新建 Loop+ 根任务时确认的验收方案快照（仅首轮携带）。 */
+      loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshotPayload;
     }
   | {
       type: "scheduleTask";
@@ -107,6 +114,26 @@ export type PanelMessage =
       files?: UploadFilePayload[];
     }
   | { type: "deleteScheduledTask"; id: string }
+  | {
+      /** 新建或更新一个自定义验收方案。planId 为空表示新建。 */
+      type: "saveLoopPlusAcceptancePlan";
+      planId?: string | null;
+      name: string;
+      checks: LoopPlusAcceptancePlanCheckKey[];
+      otherText?: string;
+      /** 保存后是否同步选中该方案。 */
+      select?: boolean;
+    }
+  | {
+      /** 持久化最近选中的验收方案（不修改方案本身）。 */
+      type: "selectLoopPlusAcceptancePlan";
+      planId: string;
+    }
+  | {
+      /** 删除一个已保存验收方案。内置方案由宿主拒绝。 */
+      type: "deleteLoopPlusAcceptancePlan";
+      planId: string;
+    }
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
@@ -183,6 +210,11 @@ export type ScheduledTaskRecord = {
   executedAt?: number;
   lastError?: string;
 };
+
+/** 验收方案快照在 Webview → Host → 任务记录之间传递的形态。 */
+export type LoopPlusAcceptancePlanSnapshotPayload = LoopPlusAcceptancePlanSnapshot;
+
+export type LoopPlusAcceptancePlanSummary = LoopPlusAcceptancePlan;
 
 export type ScheduledTaskSummary = {
   id: string;
@@ -389,6 +421,10 @@ export type PanelState = {
   promptHistory: PromptHistoryItem[];
   humanInteractionHistory: HumanInteractionHistoryRecord[];
   scheduledTasks: ScheduledTaskSummary[];
+  /** 自定义验收方案模板（不含内置“系统默认”）。 */
+  loopPlusAcceptancePlans?: LoopPlusAcceptancePlanSummary[];
+  /** 最近一次选中的验收方案 ID（含内置“系统默认”）。 */
+  loopPlusAcceptancePlanSelection?: string;
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;

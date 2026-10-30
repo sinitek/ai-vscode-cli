@@ -4,6 +4,7 @@ import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings"
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { normalizeLoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
 import {
   normalizeHistoryRetentionDays,
@@ -546,6 +547,11 @@ export async function handleSendPromptMessage(
   }
   if (loopExecutionMode) {
     promptInput.loopExecutionMode = loopExecutionMode;
+  }
+  if (loopPlusSchedulingMode === "event_driven" && message.loopPlusAcceptancePlan) {
+    promptInput.loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshot(
+      message.loopPlusAcceptancePlan,
+    );
   }
   if (loopSubtaskContext && !shouldRunGraph) {
     promptInput.taskRole = "subtask";

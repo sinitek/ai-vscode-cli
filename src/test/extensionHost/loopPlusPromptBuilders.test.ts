@@ -513,3 +513,55 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
   assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), names);
   assert.equal(completed.acceptance?.checks.every((check) => check.passed === true), true);
 });
+
+test("injects the confirmed acceptance plan into every main prompt kind without touching the fixed checklist", () => {
+  const acceptancePlan = {
+    id: "plan-hardening",
+    name: "上线前加严",
+    checks: ["security", "other"] as const,
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  };
+  const fixedChecklistNames = [
+    "dispatched work",
+    "contracts",
+    "tests",
+    "artifacts",
+    "unauthorized changes",
+    "omissions and regressions",
+  ];
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({
+      kind,
+      acceptancePlan: { ...acceptancePlan, checks: [...acceptancePlan.checks] },
+    }));
+    assert.match(prompt, /Additional acceptance reviews from the acceptance plan "上线前加严"/);
+    assert.match(prompt, /Security review: defensive code review only/);
+    assert.match(prompt, /确认审计日志不写入密钥/);
+    assert.doesNotMatch(prompt, /Maintainability review/);
+    fixedChecklistNames.forEach((name) => {
+      assert.match(prompt, new RegExp(name));
+    });
+    assert.match(prompt, /completed\.acceptance\.checks must include one passed check for each name/);
+    assert.match(prompt, /Do not mark a required test or artifact run as passed without evidence/);
+    assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
+  }
+});
+
+test("a system-default or missing acceptance plan adds no extra review section", () => {
+  const withoutPlan = buildLoopPlusMainModelPrompt(mainContext({ kind: "review" }));
+  assert.doesNotMatch(withoutPlan, /Additional acceptance reviews/);
+
+  const systemPlan = buildLoopPlusMainModelPrompt(mainContext({
+    kind: "review",
+    acceptancePlan: {
+      id: "system_default",
+      name: "系统默认",
+      checks: [],
+      otherText: "",
+      systemDefault: true,
+    },
+  }));
+  assert.doesNotMatch(systemPlan, /Additional acceptance reviews/);
+  assert.equal(systemPlan, withoutPlan);
+});

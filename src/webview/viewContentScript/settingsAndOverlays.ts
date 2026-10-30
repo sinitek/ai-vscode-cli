@@ -1539,6 +1539,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         sendPrompt();
       });
 
+      bindAcceptancePlanDialogEvents();
+
       if (elements.scheduleTaskButton) {
         elements.scheduleTaskButton.addEventListener("click", () => {
           openScheduledTask();

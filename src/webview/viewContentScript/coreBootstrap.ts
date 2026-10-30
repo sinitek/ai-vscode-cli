@@ -196,6 +196,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionHistory: [],
         selectedHumanInteractionHistoryId: null,
         scheduledTasks: [],
+        loopPlusAcceptancePlans: [],
+        loopPlusAcceptancePlanSelection: "",
         debug: false,
         autoAddEditorContextTags: false,
         longTermMemoryEnabled: false,

@@ -12,6 +12,7 @@ import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "./viewContentScript/at
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "./viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_MODEL_MANAGER } from "./viewContentScript/modelManager";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "./viewContentScript/settingsAndOverlays";
+import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/acceptancePlan";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "./viewContentScript/windowMessageDispatch";
 import { CHAT_COPY_SCRIPT } from "./chatCopy";
 import {
@@ -59,6 +60,7 @@ const RUNTIME_SCRIPT_PARTS = [
   VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME,
   VIEW_CONTENT_SCRIPT_EVENT_BINDINGS,
   VIEW_CONTENT_SCRIPT_MODEL_MANAGER,
+  VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN,
   VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
   VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH,
 ];

@@ -52,6 +52,7 @@ import {
 } from "../graph/types";
 import type { GraphMessagesHost } from "./graphMessages";
 import type { ConversationExecutionProfile } from "../webview/types";
+import type { LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 const GRAPH_EXTENSION_INITIAL_PLANNER_MAX_CONCURRENT_NODES = 1;
 const GRAPH_EXTENSION_EXECUTOR_MAX_CONCURRENT_NODES = GRAPH_DEFAULT_MAX_CONCURRENT_NODES;
@@ -75,6 +76,8 @@ export type PromptRunInput = {
   loopSubtaskModelFallback?: string;
   loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
+  /** 新建 Loop+ 根任务时确认的验收方案快照。 */
+  loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   imagePaths?: string[];
   taskRole?: LoopTaskRole;
   loopTaskId?: string;
