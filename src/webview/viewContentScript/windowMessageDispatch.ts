@@ -501,7 +501,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const scopeLabel = data.scope === "project"
               ? t("rulesScopeProject")
               : t("rulesScopeGlobal");
-            const cliLabel = data.scope === "project" && data.cli === "codex" ? "codex/opencode/grok" : data.cli;
+            const cliLabel = formatRuleTargetLabel(data.scope, data.cli);
             setRulesHint(t("rulesHintLoaded", { scope: scopeLabel, cli: cliLabel }));
           }
           if (data.type === "cliRepairIssues") {
@@ -527,7 +527,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               t("rulesHintSaved", {
                 scope: scopeLabel,
                 targets: Array.isArray(data.targets)
-                  ? data.targets.map((target) => data.scope === "project" && target === "codex" ? "codex/opencode/grok" : target).join(", ")
+                  ? data.targets.map((target) => formatRuleTargetLabel(data.scope, target)).join(", ")
                   : "",
               })
             );

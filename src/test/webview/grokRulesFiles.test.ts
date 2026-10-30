@@ -81,6 +81,9 @@ function buildHtml(): string {
 function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) {
   const source = [
     "enabledRuleCliNames",
+    "sharedProjectRuleCliNames",
+    "formatSharedProjectRuleLabel",
+    "formatRuleTargetLabel",
     "collectRuleTargets",
     "setRulesLoadCliOptions",
     "setRuleOptionVisible",
@@ -120,6 +123,10 @@ function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) 
     rulesSaveGrokOption: { style: { display: "" } },
     rulesSaveDsh: { checked: false },
     rulesSaveDshOption: { style: { display: "" } },
+    rulesSaveKimiCode: { checked: false },
+    rulesSaveKimiCodeOption: { style: { display: "" } },
+    rulesSaveZcode: { checked: false },
+    rulesSaveZcodeOption: { style: { display: "" } },
     scopeGlobal: { className: "", setAttribute() { return undefined; } },
     scopeProject: { className: "", setAttribute() { return undefined; } },
   };
@@ -214,6 +221,12 @@ test("checking global grok adds grok to save targets and hint labels stay separa
   assert.equal(elements.rulesSaveGrokOption.style.display, "");
 
   const handlerSource = extractWindowMessageHandlerSource();
+  const labelSource = [
+    "enabledRuleCliNames",
+    "sharedProjectRuleCliNames",
+    "formatSharedProjectRuleLabel",
+    "formatRuleTargetLabel",
+  ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, name)).join("\n");
   const translations: Array<{ key: string; params?: { cli?: string; targets?: string } }> = [];
   const errors: unknown[] = [];
   const handler = new Function(
@@ -221,7 +234,9 @@ test("checking global grok adds grok to save targets and hint labels stay separa
     "elements",
     "t",
     "reportWebviewFailure",
-    `${handlerSource}; return handleWindowMessage;`,
+    "CLI_NAMES",
+    "formatCliDisplayName",
+    `${labelSource}\n${handlerSource}; return handleWindowMessage;`,
   )(
     () => undefined,
     { rulesInput: { value: "" } },
@@ -232,6 +247,8 @@ test("checking global grok adds grok to save targets and hint labels stay separa
     (...args: unknown[]) => {
       errors.push(args);
     },
+    ["codex", "claude", "opencode", "grok"],
+    getCliDisplayName,
   ) as (event: { data: Record<string, unknown> }) => void;
 
   handler({ data: { type: "rulesContent", content: "# grok", scope: "global", cli: "grok" } });
@@ -240,14 +257,14 @@ test("checking global grok adds grok to save targets and hint labels stay separa
   handler({ data: { type: "rulesSaved", scope: "project", targets: ["codex"] } });
 
   assert.deepEqual(errors, []);
-  assert.equal(translations.find((entry) => entry.key === "rulesHintLoaded" && entry.params?.cli === "grok")?.params?.cli, "grok");
+  assert.equal(translations.find((entry) => entry.key === "rulesHintLoaded" && entry.params?.cli === "Grok")?.params?.cli, "Grok");
   assert.equal(
     translations.filter((entry) => entry.key === "rulesHintLoaded").map((entry) => entry.params?.cli).join("|"),
-    "grok|codex/opencode/grok",
+    "Grok|Codex/OpenCode/Grok",
   );
   assert.equal(
     translations.filter((entry) => entry.key === "rulesHintSaved").map((entry) => entry.params?.targets).join("|"),
-    "grok|codex/opencode/grok",
+    "Grok|Codex/OpenCode/Grok",
   );
 });
 
@@ -279,4 +296,29 @@ test("global DSH rules stay separate and project DSH shares one AGENTS file", ()
   assert.equal(elements.rulesSaveDshOption.style.display, "none");
   assert.deepEqual(helpers.collectRuleTargets(), ["codex"]);
   assert.equal(elements.rulesPath.textContent, "路径：/state/project/AGENTS.md");
+});
+
+test("project scope keeps ZCode inside the shared AGENTS target", () => {
+  const html = buildHtml();
+  assert.match(html, /<label id="rulesSaveZcodeOption"><input type="checkbox" id="rulesSaveZcode" \/> ZCode<\/label>/);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveZcodeOption: document\.getElementById\("rulesSaveZcodeOption"\)/);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveZcode: document\.getElementById\("rulesSaveZcode"\)/);
+  const { elements, helpers } = createRulesHelpers(["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
+  elements.rulesSaveCodex.checked = true;
+  elements.rulesSaveZcode.checked = true;
+  helpers.updateRulesScope("project");
+  assert.deepEqual(
+    elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
+    [
+      ["codex", "Codex/OpenCode/Grok/DSH/KimiCode/ZCode"],
+      ["claude", "Claude"],
+    ],
+  );
+  assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "grok"), false);
+  assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "zcode"), false);
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex/OpenCode/Grok/DSH/KimiCode/ZCode");
+  assert.equal(elements.rulesSaveGrokOption.style.display, "none");
+  assert.equal(elements.rulesSaveZcodeOption.style.display, "none");
+  assert.equal(elements.rulesSaveZcode.checked, false);
+  assert.deepEqual(helpers.collectRuleTargets(), ["codex"]);
 });

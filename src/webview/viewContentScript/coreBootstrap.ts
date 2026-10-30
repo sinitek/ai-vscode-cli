@@ -453,6 +453,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         rulesSaveDsh: document.getElementById("rulesSaveDsh"),
         rulesSaveKimiCodeOption: document.getElementById("rulesSaveKimiCodeOption"),
         rulesSaveKimiCode: document.getElementById("rulesSaveKimiCode"),
+        rulesSaveZcodeOption: document.getElementById("rulesSaveZcodeOption"),
+        rulesSaveZcode: document.getElementById("rulesSaveZcode"),
         saveRules: document.getElementById("saveRules"),
         rulesHint: document.getElementById("rulesHint"),
         rulesPath: document.getElementById("rulesPath"),

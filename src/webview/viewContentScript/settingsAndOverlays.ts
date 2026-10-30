@@ -1000,10 +1000,27 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
       }
 
+      function sharedProjectRuleCliNames() {
+        const enabled = enabledRuleCliNames();
+        return ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
+      }
+
+      function formatSharedProjectRuleLabel() {
+        return sharedProjectRuleCliNames().map(formatCliDisplayName).join("/");
+      }
+
+      function formatRuleTargetLabel(scope, target) {
+        const projectGroup = sharedProjectRuleCliNames();
+        if (scope === "project" && projectGroup.length && target === projectGroup[0]) {
+          return formatSharedProjectRuleLabel();
+        }
+        return formatCliDisplayName(target);
+      }
+
       function collectRuleTargets() {
         const enabled = enabledRuleCliNames();
         const targets = [];
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = sharedProjectRuleCliNames();
         if (state.ruleScope === "project") {
           if (elements.rulesSaveCodex.checked && projectGroup.length > 0) {
             targets.push(projectGroup[0]);
@@ -1040,11 +1057,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       function setRulesLoadCliOptions(isGlobal) {
         const currentValue = elements.rulesLoadCli.value;
         const enabled = enabledRuleCliNames();
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = sharedProjectRuleCliNames();
         const options = isGlobal
           ? enabled.map((name) => ({ value: name, label: formatCliDisplayName(name) }))
           : [
-              ...(projectGroup.length ? [{ value: projectGroup[0], label: projectGroup.map(formatCliDisplayName).join("/") }] : []),
+              ...(projectGroup.length ? [{ value: projectGroup[0], label: formatSharedProjectRuleLabel() }] : []),
               ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: formatCliDisplayName("claude") }] : []),
             ];
         elements.rulesLoadCli.innerHTML = "";
@@ -1071,11 +1088,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function syncRulesSaveOptions(isGlobal) {
         const enabled = enabledRuleCliNames();
-        const projectGroup = ["codex", "opencode", "grok", "dsh", "kimi-code", "zcode"].filter((name) => enabled.indexOf(name) >= 0);
+        const projectGroup = sharedProjectRuleCliNames();
         if (elements.rulesSaveCodexLabel) {
           elements.rulesSaveCodexLabel.textContent = isGlobal
             ? formatCliDisplayName("codex")
-            : projectGroup.map(formatCliDisplayName).join("/");
+            : formatSharedProjectRuleLabel();
         }
         setRuleOptionVisible(
           elements.rulesSaveCodexOption,

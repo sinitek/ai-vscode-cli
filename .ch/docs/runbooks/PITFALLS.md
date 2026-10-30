@@ -22,6 +22,17 @@
 - Claude 联网工具空结果与域名检查失败：见本页“Claude 工具调用成功包装不代表获得有效数据”。
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
+- 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
+
+## 项目规则复选框必须接到共享分组
+
+- 状态：已规避
+- 首次发现：2026-10-30
+- 适用范围：规则弹窗的项目规则、新增读取工作区根目录 `AGENTS.md` 的 CLI
+- 现象：项目规则里已经有 `Codex/OpenCode/Grok/DSH/KimiCode/ZCode` 这一组，ZCode 仍单独出现一个复选框。Grok 本身只在这一组里。
+- 根因：这些 CLI 的项目规则文件都是工作区根目录 `AGENTS.md`。分组逻辑会在项目范围隐藏单独复选框，但 ZCode 的 `rulesSaveZcode` / `rulesSaveZcodeOption` 没有放进 Webview `elements`，隐藏调用拿不到节点。
+- 长期规避：新增共享 `AGENTS.md` 的 CLI 时，同时登记加载分组、保存复选框 HTML，以及 `coreBootstrap` 里的元素引用。Claude 继续单独使用 `CLAUDE.md`。全局规则仍按各自家目录文件分开。
+- 验证方式：`node --test dist/test/webview/grokRulesFiles.test.js`。项目范围只应看到共享组和 Claude。
 
 ## 市场 README 图片必须登记为可寻址资产
 
