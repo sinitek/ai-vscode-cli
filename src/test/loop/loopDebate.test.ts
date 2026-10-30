@@ -667,6 +667,11 @@ test("parses main-sub group chat transcript into role-oriented segments", () => 
     "## 子任务发言：子任务 1（implement-ui）",
     "已完成 UI 修改。",
     "",
+    "## 验收结果",
+    "- 安全审查：未通过",
+    "- 其它：通过",
+    "  审查内容：确认审计日志不写入密钥",
+    "",
     "## 任务事件",
     "子任务批次完成。",
     "",
@@ -680,11 +685,15 @@ test("parses main-sub group chat transcript into role-oriented segments", () => 
   assert.equal(parsed.closed, true);
   assert.deepEqual(
     parsed.segments.map((segment) => segment.kind),
-    ["preamble", "rules", "main-turn", "subtask-joined", "subtask-turn", "task-event", "closed"],
+    ["preamble", "rules", "main-turn", "subtask-joined", "subtask-turn", "main-turn", "task-event", "closed"],
   );
   const main = parsed.segments.find((segment) => segment.kind === "main-turn");
   assert.equal(main?.dialogueTurn, 1);
   assert.equal(main?.actorId, "main");
+  const acceptance = parsed.segments.find((segment) => segment.heading === "验收结果");
+  assert.equal(acceptance?.kind, "main-turn");
+  assert.equal(acceptance?.actorTitle, "主任务");
+  assert.match(acceptance?.body ?? "", /安全审查：未通过/);
   const joined = parsed.segments.find((segment) => segment.kind === "subtask-joined");
   assert.equal(joined?.actorTitle, "子任务 1");
   assert.equal(joined?.actorId, "implement-ui");

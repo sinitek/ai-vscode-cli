@@ -108,6 +108,30 @@ test("accepts zero-subtask review and explicit wait without confirming the curre
     reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "passed" }],
   });
 
+  const withResults = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventId: "loop-plus-finish:子任务:a:b",
+    reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "failed" }],
+    subtasks: [],
+    acceptancePlanResults: [
+      { key: "security", passed: false },
+      { key: "other", passed: true },
+    ],
+  }));
+  assert.deepEqual(withResults?.acceptancePlanResults, [
+    { key: "security", passed: false },
+    { key: "other", passed: true },
+  ]);
+  const ignored = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventId: "loop-plus-finish:子任务:a:b",
+    reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "passed" }],
+    subtasks: [],
+    acceptancePlanResults: [{ key: "security" }],
+  }));
+  assert.equal(ignored?.status, "accept");
+  assert.equal(ignored?.acceptancePlanResults, undefined);
+
   const waiting = parseLoopPlusDecision([
     "当前验收后没有新的子任务，仍有任务在执行，所以继续等待。",
     JSON.stringify({ status: "wait" }),

@@ -53,6 +53,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   appendHostMessage: LoopPlusOrchestrationDeps["appendMessage"];
   appendCompletionMessages?: LoopPlusOrchestrationDeps["appendCompletionMessages"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
+  appendAcceptancePlanChat?: LoopPlusOrchestrationDeps["appendAcceptancePlanChat"];
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   appendAttemptReport: (filePath: string, content: string) => void;
   log?: LoopPlusOrchestrationDeps["log"];
@@ -425,6 +426,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         appendMessage: deps.appendHostMessage,
         appendCompletionMessages: deps.appendCompletionMessages,
         appendSubtaskChat: deps.appendSubtaskChat,
+        appendAcceptancePlanChat: deps.appendAcceptancePlanChat,
         runMain,
         startAttempt,
         prepareCommunication: deps.prepareCommunication,

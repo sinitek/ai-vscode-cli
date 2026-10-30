@@ -4,6 +4,7 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
+import { buildLoopPlusAcceptancePlanFeedbackSection } from "../loopPlusAcceptancePlan";
 import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   ORCHESTRATOR_CLARIFICATION_LIMIT,
@@ -168,6 +169,7 @@ export type LoopPlusOrchestrationDeps = {
     communicationFile?: string;
   }) => void;
   appendSubtaskChat?: (target: LoopPlusPromptTarget, notice: LoopPlusSubtaskChatNotice) => void;
+  appendAcceptancePlanChat?: (taskId: string, section: { heading: string; body: string }) => void;
   log?: (event: string, payload?: unknown) => void;
   revealClarification?: (taskId: string) => void;
   clarificationTimeoutMs?: () => number;
@@ -951,6 +953,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       armCloseout() {
         runtime.closeoutBudget = 1;
       },
+      recordAcceptancePlanFeedback(decision: LoopPlusDecision) {
+        recordAcceptancePlanFeedback(runtime, decision);
+      },
       tryFinishParent() {
         return runtime.scheduler.complete().ok;
       },
@@ -986,6 +991,28 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return "stop";
       },
     };
+  }
+
+  function recordAcceptancePlanFeedback(runtime: ParentRuntime, decision: LoopPlusDecision): void {
+    if (!deps.appendAcceptancePlanChat) {
+      return;
+    }
+    const task = deps.readTask(runtime.taskId);
+    const section = buildLoopPlusAcceptancePlanFeedbackSection(
+      task?.loopPlusAcceptancePlan,
+      decision.acceptancePlanResults,
+    );
+    if (!section) {
+      return;
+    }
+    try {
+      deps.appendAcceptancePlanChat(runtime.taskId, section);
+    } catch (error) {
+      deps.log?.("loop-plus-acceptance-feedback-failed", {
+        taskId: runtime.taskId,
+        error: errorText(error),
+      });
+    }
   }
 
   function appendCompletionMessages(runtime: ParentRuntime): void {

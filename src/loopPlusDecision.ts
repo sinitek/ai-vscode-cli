@@ -64,7 +64,14 @@ export type LoopPlusDecision = {
   clarification?: OrchestratorClarification;
   acceptance?: LoopAcceptance;
   requirementCoverage?: LoopAcceptanceCheck[];
+  /** 已勾选审查项和“其它”的逐项结论。缺失表示这次没有做这些验收。 */
+  acceptancePlanResults?: LoopPlusAcceptancePlanResult[];
   estimatedRemainingRounds?: number;
+};
+
+export type LoopPlusAcceptancePlanResult = {
+  key: string;
+  passed: boolean;
 };
 
 export type LoopPlusDecisionOptions = {
@@ -202,6 +209,7 @@ function normalizeAcceptDecision(
     reviews,
     ...(subtasks.length > 0 ? { subtasks } : {}),
     ...(controls.length > 0 ? { controls } : {}),
+    ...acceptancePlanResultFields(raw),
   }, estimatedRemainingRounds);
 }
 
@@ -326,7 +334,38 @@ function normalizeCompletedDecision(
     finalSummary,
     acceptance,
     requirementCoverage,
+    ...acceptancePlanResultFields(raw),
   }, estimatedRemainingRounds);
+}
+
+function acceptancePlanResultFields(
+  raw: Record<string, unknown>,
+): { acceptancePlanResults: LoopPlusAcceptancePlanResult[] } | Record<string, never> {
+  const results = readAcceptancePlanResults(raw.acceptancePlanResults);
+  return results ? { acceptancePlanResults: results } : {};
+}
+
+function readAcceptancePlanResults(value: unknown): LoopPlusAcceptancePlanResult[] | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const results: LoopPlusAcceptancePlanResult[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.key !== "string" || typeof item.passed !== "boolean") {
+      return null;
+    }
+    const key = item.key.trim();
+    if (!key || seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    results.push({ key, passed: item.passed });
+  }
+  return results;
 }
 
 function withEstimatedRemainingRounds(

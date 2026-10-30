@@ -2,9 +2,11 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  type LoopPlusAcceptancePlanSnapshot,
   LOOP_PLUS_ACCEPTANCE_PLAN_MAX_COUNT,
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID,
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME,
+  buildLoopPlusAcceptancePlanFeedbackSection,
   buildLoopPlusAcceptancePlanPromptLines,
   buildLoopPlusAcceptancePlanPromptSection,
   buildSystemLoopPlusAcceptancePlan,
@@ -303,6 +305,34 @@ test("prompt lines inject only selected checks plus valid 其它 content", () =>
   assert.doesNotMatch(text, /Maintainability review/);
   assert.doesNotMatch(text, /Performance review/);
   assert.doesNotMatch(text, /UI aesthetics review/);
+});
+
+test("acceptance feedback lists every selected item only when each verdict is present", () => {
+  const snapshot: LoopPlusAcceptancePlanSnapshot = {
+    id: "plan-a",
+    name: "上线前加严",
+    checks: ["security", "other"],
+    otherText: "确认审计日志不写入密钥",
+    systemDefault: false,
+  };
+  assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, null), null);
+  assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, [
+    { key: "security", passed: true },
+  ]), null);
+  assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(
+    buildSystemLoopPlusAcceptancePlanSnapshot(),
+    [{ key: "security", passed: true }],
+  ), null);
+
+  const section = buildLoopPlusAcceptancePlanFeedbackSection(snapshot, [
+    { key: "security", passed: false },
+    { key: "other", passed: true },
+  ]);
+  assert.equal(section?.heading, "验收结果");
+  assert.match(section?.body ?? "", /安全审查：未通过/);
+  assert.match(section?.body ?? "", /其它：通过/);
+  assert.match(section?.body ?? "", /确认审计日志不写入密钥/);
+  assert.doesNotMatch(section?.body ?? "", /代码可维护性审查/);
 });
 
 test("其它 text is not injected when the checkbox is unchecked", () => {

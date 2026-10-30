@@ -4500,6 +4500,15 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       appendSubtaskChat: (target, notice) => {
         appendLoopPlusSubtaskChat(target, notice);
       },
+      appendAcceptancePlanChat: (taskId, section) => {
+        const task = readLoopTaskRecord(taskId);
+        if (!task || isLoopDebateGroupChatTask(task)) {
+          return;
+        }
+        const chatFile = ensureLoopMainSubChatTranscript(task);
+        appendTextFileEnsuringDir(chatFile, `\n## ${section.heading}\n${section.body.trim()}\n`);
+        refreshOpenLoopGroupChatPanelForTask(task.id);
+      },
       prepareCommunication: (task, subtask, round) => prepareLoopSubtaskCommunicationFile(task, subtask, round, 0),
       appendAttemptReport: (filePath, content) => {
         appendTextFileEnsuringDir(filePath, content);

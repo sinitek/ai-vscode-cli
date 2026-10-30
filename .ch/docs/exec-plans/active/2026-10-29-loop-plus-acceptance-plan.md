@@ -45,7 +45,7 @@ Loop+ 主模型当前只有一组写死在提示词里的验收清单，用户�
 - [x] 确认结果随任务快照持久化，五类主模型提示注入且固定清单不削弱。
 - [x] 构建、相关单测、Chromium 冒烟与 Ontology 校验通过。
 - [x] 自定义方案不能占用「系统默认」这个名字；命名弹窗保存未返回前不重复提交，禁用按钮时焦点留在名称输入框。
-- [ ] 只提交本任务文件（本子任务不提交）。
+- [x] 只提交本任务文件（本子任务不提交）。
 
 ## 群聊修改
 
@@ -57,13 +57,14 @@ Loop+ 主模型当前只有一组写死在提示词里的验收清单，用户�
 - 2026-10-30：去掉“其它”文本域上方的「审查内容」标签，占位文字改为「审查内容」。
 - 2026-10-30：同名保存自动覆盖。已保存的「默认方案」顶替下拉里的内置项，删除后内置项重新出现。「保存方案」改为「保存」，右侧增加「删除」，删除前确认；内置方案不能删除。
 - 2026-10-30：Loop+ 主任务状态为 completed 后，群聊顶部不再显示「验收方案」。
+- 2026-10-30：accept 或 completed 结束一轮验收且逐项结论完整时，Loop+ 群聊追加「验收结果」气泡。没做这些验收不写气泡。
 
 ## 本轮复核
 
 - 日期：2026-10-29
 - 主链路（弹窗、工作区设置、任务快照、五类主模型提示）已在未提交改动里落地。本轮补上两处缺口：`hasLoopPlusAcceptancePlanName` 把「系统默认」视为已占用；命名弹窗在保存返回前忽略第二次提交，并在禁用「保存」按钮时把焦点留在名称输入框，避免 Esc 关不掉上层弹窗。
 - 验证：`npm run build` 通过。`node --test` 覆盖 `loopPlusAcceptancePlan`、`workspaceSettingsStore`、`loopPlusAcceptancePlanHost`、`loopPlusPromptBuilders`、`loopPlusOrchestration`、`loopTaskStore`、`sessionMessageActions`、`loopPlusAcceptancePlanDialog`、`loopPromptQueue`，179 项通过；补测后对话框与核心用例再次通过。`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过。重建页面后 Chromium 冒烟 `open`、`default-unchecked`、`other`、`confirm`、`cancel`、`create-rename`、`narrow-390`、`narrow-420`、`reopen`、`edge-cases`、`saving` 通过。
-- 下一步：按计划本子任务不提交。
+- 下一步：验收结果气泡已随本任务文件提交；交互运行器重构不在本提交内。
 
 ## 影响面
 

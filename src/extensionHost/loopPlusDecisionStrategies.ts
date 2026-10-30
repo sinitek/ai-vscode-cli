@@ -64,6 +64,8 @@ export interface LoopPlusDecisionStrategyPort {
   armCloseout(): void;
   tryFinishParent(): boolean;
   finishParent(decision: LoopPlusDecision): LoopPlusDecisionOutcome;
+  /** 验收已经结束时记录逐项结果。没做验收时由实现自行跳过。 */
+  recordAcceptancePlanFeedback?(decision: LoopPlusDecision): void;
 }
 
 export type LoopPlusDecisionStrategy = (
@@ -248,6 +250,7 @@ function applyAcceptDecision(
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
+  port.recordAcceptancePlanFeedback?.(decision);
   if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
@@ -343,6 +346,7 @@ function applyCompletedDecision(
   ) {
     if (submittedReview) {
       port.markDecisionAccepted();
+      port.recordAcceptancePlanFeedback?.(decision);
     } else {
       port.clearProtocolRetries();
     }
@@ -362,6 +366,7 @@ function applyCompletedDecision(
     return "wait";
   }
   port.markDecisionAccepted();
+  port.recordAcceptancePlanFeedback?.(decision);
   return port.finishParent(decision);
 }
 

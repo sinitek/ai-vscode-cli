@@ -983,6 +983,15 @@ function classifyLoopDebateChatSection(heading: string, body: string): LoopDebat
   if (heading === "任务事件") {
     return { kind: "task-event", heading, body };
   }
+  if (heading === "验收结果") {
+    return {
+      kind: "main-turn",
+      heading,
+      body,
+      actorId: "main",
+      actorTitle: "主任务",
+    };
+  }
   if (heading === "运行时强制收束") {
     return {
       kind: "forced-finalize",
@@ -1039,6 +1048,7 @@ function isLoopDebateChatBoundaryHeading(heading: string): boolean {
     || heading === "任务成功完成"
     || heading === "任务中断"
     || heading === "群聊收束"
+    || heading === "验收结果"
     || heading === "主持人停止说明"
     || /^主任务发言：第\s+\d+\s+轮(?:（.+?）)?$/u.test(heading)
     || /^主任务发言：第\s+\d+\s+轮【.+?】$/u.test(heading)
