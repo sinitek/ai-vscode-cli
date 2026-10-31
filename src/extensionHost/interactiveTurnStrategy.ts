@@ -45,7 +45,7 @@ export type InteractiveTurnAttemptPort = {
   readonly args: string[];
   readonly grokAgentArgs: string[];
   readonly dshModelWire: string | null;
-  readonly dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null;
+  readonly dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome"> | null;
   readonly kimiModelWire: string | null;
   readonly kimiLaunch: Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue"> | null;
   readonly zcodeModelWire: string | null;

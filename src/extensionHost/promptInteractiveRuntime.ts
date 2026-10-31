@@ -91,7 +91,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
-  prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env">>;
+  prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome">>;
   resolveKimiModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   resolveZcodeModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareZcodeInteractiveLaunch?: typeof prepareZcodeInteractiveLaunch;
@@ -264,16 +264,16 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     });
     const debugLogging = getDebugLogging();
     let dshModelWire: string | null = null;
-    let dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env"> | null = null;
+    let dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome"> | null = null;
     if (cli === "dsh") {
       if (!deps.resolveDshModelWireForRun) {
         throw new Error("DSH model wire resolver is not configured.");
       }
       dshModelWire = await deps.resolveDshModelWireForRun(requestedModel);
-      // Keep one isolated DSH_HOME per tab. The UI id changes from local_ to the
-      // ACP UUID after session/new, but the session files stay in the original home.
+      // Keep the tab home for a new session, then bind its ACP session id so a
+      // later tab can find the same persisted DSH session after reload.
       dshLaunch = await (deps.prepareDshInteractiveLaunch ?? prepareDshIsolatedLaunch)({
-        sessionKey: tabId,
+        sessionKey: uiSessionId && !isLocalSessionId(uiSessionId) ? uiSessionId : tabId,
       });
     }
     let kimiModelWire: string | null = null;

@@ -12,7 +12,7 @@
 | Claude | 交互式 + 一次性 | 支持 | `src/interactive/claudeRunner.ts`、`src/interactive/metaStore.ts` |
 | OpenCode | one-shot / 并行 `opencode run --auto [message..]` | 支持统一 UI、配置读取与本地会话存档；当前不走交互 Runner | `src/cli/commandRunner.ts` |
 | Grok Build | 长驻 ACP `grok --no-auto-update agent stdio` | `loadSession` 为真时按 `sessionId/cwd/mcpServers` 续接，否则新建 ACP 会话并保留插件本地记录 | `src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/config/grokConfig.ts` |
-| DeepSeek Harness | 长驻 ACP `dsh --profile acp` | ACP UUID 用 `session/resume` 续接。不发送 `session/load`。插件 `local_` id 不是恢复 id | `src/interactive/dshRunner.ts`、`src/interactive/manager.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/config/dshConfig.ts` |
+| DeepSeek Harness | 长驻 ACP `dsh --profile acp` | ACP UUID 用 `session/resume` 续接。不发送 `session/load`。插件 `local_` id 不是恢复 id；每个会话的 ACP 持久化目录按稳定会话标识复用，不能按关闭后变化的 Tab ID 隔离 | `src/interactive/dshRunner.ts`、`src/interactive/manager.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/extensionHost/dshInteractiveLaunch.ts`、`src/config/dshConfig.ts` |
 | Gemini | 已移除 | 不再作为当前支持 CLI | 历史实现曾涉及 `src/cli/geminiStreamJson.ts`，仅作迁移参考 |
 
 ### 分组切换安装检查

@@ -2,7 +2,7 @@ import { isDshCompletedStopReason, resolveDshHostResumeId } from "../interactive
 import { DshInteractiveRunner } from "../interactive/dshRunner";
 import { normalizeRawStreamContent } from "../promptRunState";
 import { DSH_REASONING_OPTIONS } from "../cli/dshConfigModels";
-import type { DshInteractiveLaunch } from "./dshInteractiveLaunch";
+import { persistDshSessionHome, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 const HIDDEN_DSH_REASONING_VALUES = new Set(["off"]);
@@ -87,6 +87,14 @@ export function createDshInteractiveTurnStrategy(): InteractiveTurnStrategy {
         });
         port.syncInteractiveRunEntry(port.stopFn);
         const started = await runner.start({ requireResume });
+        try {
+          await persistDshSessionHome(launch, started.acpSessionId);
+        } catch (error) {
+          port.logInfo("dsh-session-home-bind-failed", {
+            sessionId: started.acpSessionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         port.updateSessionForNewRun(started.acpSessionId);
         const uiSessionId = port.uiSessionId;
         if (previousSessionId && previousSessionId !== uiSessionId) {

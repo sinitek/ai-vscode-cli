@@ -179,6 +179,7 @@ function createHostHarness(options: {
     prepareDshInteractiveLaunch: async () => ({
       agentArgs: ["--patch", "/tmp/isolated/acp-patch.yaml"],
       env: { DSH_HOME: "/tmp/isolated", SINITEK_DSH_API_KEY: "secret-key" },
+      isolatedHome: "/tmp/isolated",
     }),
     getWorkspaceInteractiveMode: () => "coding",
     getInteractiveRunnerManager: () => manager,
@@ -593,6 +594,58 @@ test("DSH isolated launch copies the patch and keeps the key out of args", async
       process.env.DSH_PERMISSION_MODE = previousPermissionMode;
     }
     await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("DSH isolated launch finds markerless persisted sessions without borrowing an unknown home", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-legacy-session-source-"));
+  const legacyHome = path.join(os.tmpdir(), "sinitek-dsh-acp", `legacy-${process.pid}-${Date.now()}`);
+  const sessionId = "7f2ef8b5-0bc7-4dc0-bf93-7b3af0bc2d11";
+  const unknownSessionId = "3a0f034b-0643-4d55-8ca7-a4f97ea367d1";
+  const previousHome = process.env.DSH_HOME;
+  const previousKey = process.env.SINITEK_DSH_API_KEY;
+  try {
+    process.env.DSH_HOME = home;
+    process.env.SINITEK_DSH_API_KEY = "secret-key-value";
+    const profile = JSON.parse(createDshExampleProfileText());
+    profile.apiKey = "";
+    const activated = await activateDshProfile({
+      profileId: "legacy-session",
+      content: JSON.stringify(profile),
+    });
+    assert.equal(activated.ok, true);
+
+    await fs.mkdir(path.join(legacyHome, "sessions", "--legacy-project--", sessionId), { recursive: true });
+    await fs.writeFile(
+      path.join(legacyHome, "sessions", "--legacy-project--", sessionId, "session.jsonl"),
+      "legacy-session-placeholder\n",
+      "utf8",
+    );
+
+    const recovered = await prepareDshIsolatedLaunch({ sessionKey: sessionId });
+    assert.equal(recovered.isolatedHome, legacyHome);
+    assert.equal(
+      await fs.readFile(path.join(legacyHome, `.sinitek-acp-session-${sessionId}`), "utf8"),
+      sessionId,
+    );
+
+    const unknown = await prepareDshIsolatedLaunch({ sessionKey: unknownSessionId });
+    assert.notEqual(unknown.isolatedHome, legacyHome);
+    assert.equal(await fs.stat(path.join(legacyHome, `.sinitek-acp-session-${unknownSessionId}`)).then(() => true).catch(() => false), false);
+    await fs.rm(unknown.isolatedHome, { recursive: true, force: true });
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.DSH_HOME;
+    } else {
+      process.env.DSH_HOME = previousHome;
+    }
+    if (previousKey === undefined) {
+      delete process.env.SINITEK_DSH_API_KEY;
+    } else {
+      process.env.SINITEK_DSH_API_KEY = previousKey;
+    }
+    await fs.rm(home, { recursive: true, force: true });
+    await fs.rm(legacyHome, { recursive: true, force: true });
   }
 });
 

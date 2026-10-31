@@ -234,14 +234,17 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     const host = createPromptInteractiveRuntimeHost(deps);
     await host.runPromptInteractive(inputFor("Reply with exactly: pong"), targetFor("local_stable_1", "tab-stable"));
     await host.runPromptInteractive(inputFor("Reply with exactly: pong-2"), targetFor(tabSessionId, "tab-stable"));
-    assert.equal(created.length, 2);
+    await host.runPromptInteractive(inputFor("Reply with exactly: pong-3"), targetFor(tabSessionId, "tab-reloaded"));
+    assert.equal(created.length, 3);
     assert.equal(created[0]?.localSessionId ?? null, null);
     assert.equal(created[1]?.localSessionId, ACP_ID);
     assert.equal(registered[0]?.localSessionId, ACP_ID);
     const firstHome = created[0]?.env?.DSH_HOME;
     const secondHome = created[1]?.env?.DSH_HOME;
+    const reloadedHome = created[2]?.env?.DSH_HOME;
     assert.equal(typeof firstHome, "string");
     assert.equal(secondHome, firstHome);
+    assert.equal(reloadedHome, firstHome);
     assert.notEqual(firstHome, configHome);
     assert.equal(String(firstHome).startsWith(path.join(os.tmpdir(), "sinitek-dsh-acp")), true);
     homes.add(String(firstHome));
@@ -267,11 +270,12 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     } as unknown as Parameters<typeof dshRunnerLifecycleStrategy.canReuse>[0], prepared);
     assert.equal(reusable, true);
     assert.equal(starts[1]?.requireResume, true);
+    assert.equal(starts[2]?.requireResume, true);
     await assert.rejects(
       () => host.runPromptInteractive(inputFor("no", "not-configured-model"), targetFor(ACP_ID, "tab-stable")),
       /wire value/,
     );
-    assert.equal(created.length, 2);
+    assert.equal(created.length, 3);
   } finally {
     if (previousHome === undefined) {
       delete process.env.DSH_HOME;

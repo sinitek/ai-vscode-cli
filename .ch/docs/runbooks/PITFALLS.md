@@ -746,6 +746,22 @@
 - `.ch/docs/exec-plans/completed/2026-09/2026-09-20-windows-loop-cli-compat.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
+## DSH 关闭后恢复不能按 Tab ID 选择隔离目录
+
+### 现象
+- DSH 会话在当前 Tab 内可以继续执行，关闭或释放后从历史会话、新 Tab 或 Loop+ 复用时出现 `Invalid params: session is not resumable`。
+
+### 根因
+- ACP 会话持久化在 `<DSH_HOME>/sessions/<project>/<session-id>/`；如果启动时用 Tab ID 作为 `DSH_HOME`，历史会话换 Tab 后会落到新的空目录。`session/close` 本身会刷盘并释放会话，不等于永久删除恢复资格。
+
+### 长期规避
+- 新会话先按 Tab ID 建立临时隔离目录，成功拿到 ACP session ID 后写入绑定标记；后续按 ACP ID 查找原目录。修复前没有标记的目录只在固定的 DSH 会话日志层级做兼容扫描，不读取正文、不跟随符号链接，不为未知 ID 借用目录。
+
+### 验证方式
+- `npm run build`
+- `node --test dist/test/extensionHost/dshInteractiveHostWire.test.js dist/test/extensionHost/dshPluginLiveBoundary.test.js`
+- 使用本机 `dsh` 启动 `session/new`，释放进程后删除绑定标记，再用新 Runner 严格 `session/resume`；不发送模型 prompt。
+
 
 ## 空闲面板自动应用旧配置会抢回其他窗口的切换
 

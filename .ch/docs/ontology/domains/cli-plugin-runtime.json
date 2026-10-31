@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-31",
+  "as_of": "2026-11-01",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -363,6 +363,21 @@
       "source_refs": [
         {"path": "src/extensionHost/dshInteractiveLaunch.ts"},
         {"path": "src/test/extensionHost/dshInteractiveHostWire.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "DeepSeek Harness"}
+      ]
+    },
+    {
+      "id": "plugin.rule.dsh_session_home_survives_tab_reload",
+      "name": "DSH 会话持久化目录跨 Tab 重载保持稳定",
+      "description": "DSH 首次启动可以使用 Tab 标识创建隔离 DSH_HOME；拿到 ACP session ID 后必须在该目录写入稳定绑定。后续同一会话优先按 ACP session ID 找回原隔离目录，不能因关闭 Tab 后生成新的 Tab ID 而切换到空目录；否则 session/resume 会报 session is not resumable。关闭本地 Runner 仍可发送 session/close，问题修复点是恢复时复用原会话持久化目录。",
+      "status": "active",
+      "aliases": ["DSH 会话恢复", "DSH_HOME 稳定绑定", "session is not resumable"],
+      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/extensionHost/dshInteractiveLaunch.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/extensionHost/interactiveTurnDsh.ts"},
+        {"path": "src/test/extensionHost/dshPluginLiveBoundary.test.ts"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "DeepSeek Harness"}
       ]
     },
