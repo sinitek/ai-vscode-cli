@@ -126,7 +126,6 @@ function buildHarness() {
     openCodePrimaryModelSelect: createControl(),
     openCodeSmallModelSelect: createControl(),
     modelSelect: createControl(),
-    loopExecutionModeSelect: createControl(),
   };
   const normalizeInteractiveMode = (value: string) => (
     value === "loop" || value === "graph" || value === "loop_plus" ? value : "coding"
@@ -146,14 +145,12 @@ function buildHarness() {
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${modelFunctionSource}; return syncModelSelectorByInteractiveMode;`,
   )(
     state,
     elements,
     normalizeInteractiveMode,
-    () => "main-sub-multi-agent",
     () => undefined,
   ) as (cli?: string) => void;
   const syncInteractiveModeSelector = new Function(
@@ -270,8 +267,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, true);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
 
   harness.elements.interactiveModeSelect.dispatchChange("loop");
   assert.equal(harness.state.interactiveMode, "loop");
@@ -283,9 +278,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
-  assert.equal(harness.elements.loopExecutionModeSelect.disabled, false);
-  assert.equal(harness.elements.loopExecutionModeSelect.value, "main-sub-multi-agent");
 
   harness.elements.interactiveModeSelect.dispatchChange("coding");
   assert.equal(harness.state.interactiveMode, "coding");
@@ -297,8 +289,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, true);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.elements.interactiveModeSelect.dispatchChange("graph");
@@ -311,8 +301,6 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });
 
@@ -340,7 +328,6 @@ test("switches Codex between coding, Loop, and Graph model layouts and persists 
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.elements.interactiveModeSelect.dispatchChange("graph");
@@ -355,7 +342,6 @@ test("switches Codex between coding, Loop, and Graph model layouts and persists 
   assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.elements.interactiveModeSelect.dispatchChange("coding");
@@ -399,7 +385,7 @@ test("saves automatic compact setting while OpenCode is selected", () => {
   });
 });
 
-test("keeps Loop+ role controls without exposing debate for OpenCode or Codex", () => {
+test("keeps Loop+ role controls for OpenCode and Codex", () => {
   const harness = buildHarness();
 
   harness.elements.interactiveModeSelect.dispatchChange("loop_plus");
@@ -411,8 +397,6 @@ test("keeps Loop+ role controls without exposing debate for OpenCode or Codex", 
   });
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.disabled, true);
 
   harness.state.currentCli = "codex";
   harness.state.interactive = { supported: true, enabled: true };
@@ -431,7 +415,6 @@ test("keeps Loop+ role controls without exposing debate for OpenCode or Codex", 
   assert.equal(harness.elements.codexLoopSubtaskThinkingMode.style.display, "");
   assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.postedMessages.some((message) => (
     message
     && typeof message === "object"

@@ -250,8 +250,6 @@ test("renders a visible collapse icon in the task-list summary", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
 
   assert.match(

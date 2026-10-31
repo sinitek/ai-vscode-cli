@@ -106,49 +106,6 @@ function createSubtask(overrides: Partial<LoopSubtaskRecord> = {}): LoopSubtaskR
   };
 }
 
-function createDebateRound(): NonNullable<LoopTaskRecord["debateRounds"]>[number] {
-  return {
-    loopRound: 2,
-    debateRound: 1,
-    status: "running",
-    startedAt: 10,
-    briefFile: "/tmp/loop-1/brief.md",
-    activeSpeaker: {
-      kind: "participant",
-      id: "blue",
-      title: "蓝队",
-      updatedAt: 10,
-    },
-    participants: [
-      {
-        id: "blue",
-        role: "blue_team",
-        title: "蓝队",
-        status: "running",
-        artifactFile: "/tmp/loop-1/blue.md",
-        updatedAt: 10,
-      },
-      {
-        id: "red",
-        role: "red_team",
-        title: "红队",
-        status: "pending",
-        artifactFile: "/tmp/loop-1/red.md",
-        summary: "已有结论",
-        updatedAt: 11,
-      },
-      {
-        id: "tester",
-        role: "testing",
-        title: "测试",
-        status: "completed",
-        artifactFile: "/tmp/loop-1/tester.md",
-        updatedAt: 9,
-      },
-    ],
-  };
-}
-
 function createTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   return {
     id: "loop-1",
@@ -189,7 +146,6 @@ function createStopTask(status: LoopTaskRecord["status"] = "running"): LoopTaskR
       createSubtask({ id: "done-one", title: "完成", status: "completed", summary: "保持完成" }),
       createSubtask({ id: "skipped-one", title: "跳过", status: "skipped" }),
     ],
-    debateRounds: [createDebateRound()],
   });
 }
 
@@ -203,7 +159,7 @@ function decide(task: LoopTaskRecord, decision: LoopMainDecision, now = NOW) {
 function stop(
   schedulingMode: LoopSchedulingMode | undefined,
   task: LoopTaskRecord,
-  options: { finalSummary?: string; subtaskSummary?: string; participantSummary?: string } = {},
+  options: { finalSummary?: string; subtaskSummary?: string; } = {},
 ) {
   const before = clone(task);
   const result = withoutFilesystemSideEffects(() => transitionLoopTaskStop(schedulingMode, {
@@ -264,7 +220,7 @@ function createRuntimeHost(sideEffects: string[]) {
     appendLoopMainSubChatMainDecision: () => {
       sideEffects.push("appendLoopMainSubChatMainDecision");
     },
-    buildLoopDebateChatMessageAction: () => ({ type: "openLoopGroupChat", taskId: "loop-1" }),
+    buildLoopGroupChatMessageAction: () => ({ type: "openLoopGroupChat", taskId: "loop-1" }),
     runLoopPrompt: async () => undefined,
     isTabRunActive: () => false,
     refreshOpenLoopGroupChatPanelForTask: () => {
@@ -643,16 +599,14 @@ test("ignores a classic or event-driven interrupt when the task is no longer run
   }
 });
 
-test("stops classic and event-driven runs differently across subtasks, clarification, and debate participants", () => {
+test("stops classic and event-driven runs differently across subtasks and clarification", () => {
   const options = {
     finalSummary: "用户已停止",
     subtaskSummary: "子任务已停止",
-    participantSummary: "参与者已停止",
   };
   const classic = stop("classic", createStopTask(), options);
   const eventDriven = stop("event_driven", createStopTask(), options);
   const classicByDefault = stop(undefined, createTask(), options);
-  const participants = classic.patch.debateRounds?.[0].participants ?? [];
   const subtasks = classic.patch.subTasks ?? [];
 
   assert.equal(classic.idempotent, false);
@@ -667,7 +621,6 @@ test("stops classic and event-driven runs differently across subtasks, clarifica
   assert.deepEqual(classic.patch.activeSubtaskIds, []);
   assert.equal(hasOwn(classic.patch, "schedulingMode"), false);
   assert.equal(classic.patch.subTasks, classic.activity.subTasks);
-  assert.equal(classic.patch.debateRounds, classic.activity.debateRounds);
   assert.equal(classicByDefault.preserveActivitySnapshot, false);
   assert.equal(classicByDefault.patch.status, "stopped");
 
@@ -680,15 +633,6 @@ test("stops classic and event-driven runs differently across subtasks, clarifica
   ]);
   assert.equal(subtasks.find((item) => item.id === "done-one")?.updatedAt, 10);
   assert.equal(subtasks.find((item) => item.id === "skipped-one")?.updatedAt, 10);
-  assert.equal(participants.find((item) => item.id === "blue")?.status, "stopped");
-  assert.equal(participants.find((item) => item.id === "blue")?.summary, "参与者已停止");
-  assert.equal(participants.find((item) => item.id === "red")?.status, "stopped");
-  assert.equal(participants.find((item) => item.id === "red")?.summary, "已有结论");
-  assert.equal(participants.find((item) => item.id === "tester")?.status, "completed");
-  assert.equal(participants.find((item) => item.id === "tester")?.updatedAt, 9);
-  assert.equal(classic.patch.debateRounds?.[0].status, "stopped");
-  assert.equal(classic.patch.debateRounds?.[0].activeSpeaker, undefined);
-  assert.equal(classic.patch.debateRounds?.[0].completedAt, NOW);
 
   assert.equal(eventDriven.idempotent, false);
   assert.equal(eventDriven.preserveActivitySnapshot, true);
@@ -702,9 +646,7 @@ test("stops classic and event-driven runs differently across subtasks, clarifica
   assert.equal(hasOwn(eventDriven.patch, "activeSubtaskId"), false);
   assert.equal(hasOwn(eventDriven.patch, "activeSubtaskIds"), false);
   assert.equal(hasOwn(eventDriven.patch, "subTasks"), false);
-  assert.equal(hasOwn(eventDriven.patch, "debateRounds"), false);
   assert.equal(eventDriven.activity.subTasks.find((item) => item.id === "batch-active")?.status, "blocked");
-  assert.equal(eventDriven.activity.debateRounds?.[0].participants.find((item) => item.id === "blue")?.status, "stopped");
   assert.deepEqual(getActiveLoopSubtaskIds(createStopTask()), ["legacy-active", "batch-active"]);
 });
 
@@ -714,7 +656,6 @@ test("ignores a second stop once the task is already completed", () => {
     const result = stop(schedulingMode, task, {
       finalSummary: "不应覆盖",
       subtaskSummary: "不应改子任务",
-      participantSummary: "不应改参与者",
     });
 
     assert.equal(result.idempotent, true, schedulingMode);
@@ -724,8 +665,6 @@ test("ignores a second stop once the task is already completed", () => {
     assert.equal(result.activity.persist, false);
     assert.deepEqual(result.patch, {});
     assert.equal(result.activity.subTasks, task.subTasks);
-    assert.equal(result.activity.debateRounds, task.debateRounds);
-    assert.equal(result.activity.debateRounds?.[0].participants.find((item) => item.id === "blue")?.status, "running");
     assert.equal(result.activity.subTasks.find((item) => item.id === "batch-active")?.status, "running");
   }
 });

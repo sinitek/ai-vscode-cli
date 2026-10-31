@@ -1,7 +1,6 @@
 import {
   CliName,
   InteractiveMode,
-  LoopExecutionMode,
   MacTaskShell,
   OpenCodeThinkingState,
   ThinkingMode,
@@ -89,7 +88,6 @@ export type PanelMessage =
       loopSubtaskCli?: CliName;
       loopSubtaskConfigId?: string;
       lobsterSubtaskModel?: string;
-      loopExecutionMode?: LoopExecutionMode;
       preserveActiveTab?: boolean;
       skipPromptHistory?: boolean;
       /** 新建 Loop+ 根任务时确认的验收方案快照（仅首轮携带）。 */
@@ -108,7 +106,6 @@ export type PanelMessage =
       loopSubtaskModel?: string;
       loopMainThinkingMode?: ThinkingMode;
       loopSubtaskThinkingMode?: ThinkingMode;
-      loopExecutionMode?: LoopExecutionMode;
       loopSubtaskCli?: CliName;
       loopSubtaskConfigId?: string;
       files?: UploadFilePayload[];
@@ -203,7 +200,6 @@ export type ScheduledTaskRecord = {
   loopSubtaskModel?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
-  loopExecutionMode?: LoopExecutionMode;
   loopSubtaskCli?: CliName;
   loopSubtaskConfigId?: string;
   attachments: ScheduledTaskAttachment[];
@@ -392,7 +388,6 @@ export type PanelState = {
   loopPlusDecisionSubtaskMax: number;
   loopPlusMaxAcceptances: number;
   loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
-  loopExecutionModeByCli?: Record<CliName, LoopExecutionMode>;
   debug: boolean;
   isMac: boolean;
   macTaskShell: MacTaskShell;
@@ -433,6 +428,7 @@ export type PanelState = {
   modelState: {
     selectedByCli: Record<CliName, string | null>;
     optionsByCli: Record<CliName, string[]>;
+    configuredDefaultByCli?: Partial<Record<CliName, string | null>>;
     labelsByCli?: Partial<Record<CliName, Record<string, string>>>;
       managedByCli: Record<CliName, string[]>;
       selectedLoopByCli?: Partial<Record<CliName, { main?: string | null; subtask?: string | null }>>;

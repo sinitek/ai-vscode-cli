@@ -41,8 +41,6 @@ export type BuildWebviewStaticHtmlInput = {
   markedScript: string;
   jsonFormatterScript?: string;
   webviewStyles: string;
-  loopExecutionModeMainSubMultiAgent: string;
-  loopExecutionModeDebateMultiAgent: string;
 };
 
 export function buildWebviewStaticHtml(
@@ -56,13 +54,7 @@ export function buildWebviewStaticHtml(
     markedScript,
     jsonFormatterScript = "",
     webviewStyles,
-    loopExecutionModeMainSubMultiAgent,
-    loopExecutionModeDebateMultiAgent,
   } = input;
-  const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT =
-    loopExecutionModeMainSubMultiAgent;
-  const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT =
-    loopExecutionModeDebateMultiAgent;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -276,16 +268,6 @@ ${webviewStyles}    </style>
             </select>
           </div>
           <div class="input-actions">
-            <select
-              id="loopExecutionModeSelect"
-              class="loop-execution-mode-select"
-              aria-label="${i18n.loopExecutionModeSelectAria}"
-              title="${i18n.loopExecutionModeSelectAria}"
-              style="display: none;"
-            >
-              <option value="${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}" selected>${i18n.loopExecutionModeOptionMainSubMultiAgent}</option>
-              <option value="${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}">${i18n.loopExecutionModeOptionDebateMultiAgent}</option>
-            </select>
             <svg id="commonCommandButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}" viewBox="0 0 24 24" fill="currentColor">
               <text x="12" y="17" text-anchor="middle" font-size="15.6" font-family="monospace" font-weight="700">&gt;_</text>
             </svg>

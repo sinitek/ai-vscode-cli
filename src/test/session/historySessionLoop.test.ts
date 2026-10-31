@@ -151,8 +151,6 @@ test("removes the standalone Loop group chat recovery tab", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
 
   assert.doesNotMatch(html, /historyTabLoopGroupChats/);

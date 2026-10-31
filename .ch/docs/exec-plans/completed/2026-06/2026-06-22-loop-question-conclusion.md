@@ -38,7 +38,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopGroupChat.ts`、`src/test/`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/references/`、`.ch/docs/exec-plans/`
 - 配置与脚本：无
 
@@ -52,7 +52,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`、`node --test dist/test/loopDebate.test.js`
+- 最小相关验证：`npm run build`、`node --test dist/test/loop/loopGroupChat.test.js`
 - 扩展验证：`git diff --check`
 
 ## 测试与清单同步

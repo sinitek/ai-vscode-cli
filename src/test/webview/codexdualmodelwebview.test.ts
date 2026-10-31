@@ -283,21 +283,18 @@ function buildVisibilityHarness() {
     openCodePrimaryModelSelect: createVisibilityControl(),
     openCodeSmallModelSelect: createVisibilityControl(),
     modelSelect: createVisibilityControl(),
-    loopExecutionModeSelect: createVisibilityControl(),
   };
   let hideDialogCount = 0;
   const helpers = new Function(
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${functionSource}; return { syncModelSelectorByInteractiveMode, handleCurrentCliSelectionChange };`,
   )(
     state,
     elements,
     (value: string) => (value === "loop" || value === "loop_plus" || value === "graph" ? value : "coding"),
-    () => "main-sub-multi-agent",
     () => { hideDialogCount += 1; },
   ) as {
     syncModelSelectorByInteractiveMode(cli?: string): void;
@@ -320,8 +317,6 @@ test("renders Codex Loop and Graph selectors as Chinese role model rows", () => 
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
   const groupStart = html.indexOf('<div id="codexLoopModelGroup"');
   const groupEnd = html.indexOf('<div id="openCodeModelGroup"', groupStart);
@@ -362,13 +357,11 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
   assert.equal(harness.elements.modelSelect.disabled, true);
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
 
   harness.state.interactiveMode = "graph";
   harness.sync("codex");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
 
   harness.state.currentCli = "opencode";
   harness.state.interactiveMode = "graph";
@@ -391,7 +384,6 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
     assert.equal(harness.elements.codexLoopMainThinkingMode.disabled, false);
     assert.equal(harness.elements.codexLoopSubtaskThinkingMode.disabled, false);
     assert.equal(harness.elements.modelSelect.style.display, "none");
-    assert.equal(harness.elements.loopExecutionModeSelect.style.display, mode === "loop" ? "" : "none");
   }
 });
 
@@ -565,13 +557,12 @@ test("renders and posts DSH Loop and Graph role model and thinking selections", 
   harness.state.selectedLoopThinkingByCli.dsh = { main: "high", subtask: "xhigh" };
 
   harness.updateCodexLoopModelSelectOptions();
+  // DSH 候选只来自配置档案，不再插入空的“默认”占位项。
   assert.deepEqual(optionPairs(harness.elements.codexLoopMainModelSelect), [
-    ["", "默认"],
     ["main-model", "main-model"],
     ["main-fallback", "main-fallback"],
   ]);
   assert.deepEqual(optionPairs(harness.elements.codexLoopSubtaskModelSelect), [
-    ["", "默认"],
     ["subtask-model", "subtask-model"],
     ["subtask-fallback", "subtask-fallback"],
   ]);
@@ -599,6 +590,11 @@ test("renders and posts DSH Loop and Graph role model and thinking selections", 
   assert.equal(harness.state.selectedLoopModelsByCli.dsh.subtask, "subtask-fallback");
   assert.equal(harness.state.selectedLoopThinkingByCli.dsh.main, "max");
   assert.equal(harness.state.selectedLoopThinkingByCli.dsh.subtask, "max");
+  assert.equal(
+    harness.elements.codexLoopMainModelSelect.options.some((option) => option.value === ""),
+    false,
+    "DSH role dropdown must not offer an empty default option",
+  );
   assert.deepEqual(harness.postedMessages, [
     {
       type: "selectCliLoopModel",

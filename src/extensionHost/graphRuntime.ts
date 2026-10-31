@@ -1,5 +1,5 @@
 import { scheduleLogRetentionCleanup, logError, logInfo } from "../logger";
-import type { CliName, LoopExecutionMode, ThinkingMode } from "../cli/types";
+import type { CliName, ThinkingMode } from "../cli/types";
 import type { OpenCodeCanonicalModelRole } from "../cli/opencodeconfigmodels";
 import type { LoopTaskRole } from "../promptRunState";
 import * as configService from "../config/configService";
@@ -74,7 +74,6 @@ export type PromptRunInput = {
   loopSubtaskThinkingMode?: ThinkingMode;
   loopMainModelFallback?: string;
   loopSubtaskModelFallback?: string;
-  loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   /** 新建 Loop+ 根任务时确认的验收方案快照。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;

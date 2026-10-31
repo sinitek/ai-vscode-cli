@@ -1,60 +1,15 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { normalizeLoopContinuePromptForPrompt, formatLoopEstimatedRemainingRounds } from "../../loopPromptBuilders";
 
-import {
-  buildLoopDebateBriefMarkdown,
-  buildLoopDebateConsensusModelPrompt,
-} from "../../loopPromptBuilders";
-import { buildLoopDebatePaths, type LoopDebateParticipantRecord } from "../../loopDebate";
-import type { LoopTaskRecord } from "../../loopTaskStore";
-import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
+test("normalizes Loop continuation prompts without any execution mode", () => {
+  assert.equal(normalizeLoopContinuePromptForPrompt("  补充验证  "), "补充验证");
+  assert.equal(normalizeLoopContinuePromptForPrompt("   "), null);
+  assert.equal(normalizeLoopContinuePromptForPrompt(undefined), null);
+});
 
-function createTask(): LoopTaskRecord {
-  const now = Date.UTC(2026, 6, 15, 8, 0, 0);
-  return {
-    id: "prompt-builder-task",
-    cli: "codex",
-    workspaceKey: "prompt-builder-workspace",
-    taskStoreFile: "/tmp/loop-tasks.json",
-    rootPrompt: "ROOT_OBJECTIVE_MARKER",
-    status: "running",
-    createdAt: now,
-    updatedAt: now,
-    maxRounds: 20,
-    currentRound: 1,
-    communicationDir: "/tmp/loop-communications/prompt-builder-task",
-    mainCommunicationFile: "/tmp/loop-communications/prompt-builder-task/main-task.md",
-    subTasks: [],
-    rounds: [],
-    supplementalRequirements: ["SUPPLEMENTAL_REQUIREMENT_MARKER"],
-    completionRoundSummaries: [],
-    completionRequirementCoverage: [],
-  };
-}
-
-function createParticipants(): LoopDebateParticipantRecord[] {
-  return [
-    { id: "blue", role: "blue_team", title: "Blue", status: "completed", artifactFile: "/tmp/blue.md", updatedAt: 1 },
-    { id: "red", role: "red_team", title: "Red", status: "completed", artifactFile: "/tmp/red.md", updatedAt: 2 },
-  ];
-}
-
-test("keeps Loop debate prompts free of Workflow Skill catalogs and skill IDs", () => {
-  const task = createTask();
-  const paths = buildLoopDebatePaths(task.communicationDir, 1);
-  const brief = buildLoopDebateBriefMarkdown(task, { cli: "codex" }, 1, paths, "CONTINUE_PROMPT_MARKER");
-  const consensus = buildLoopDebateConsensusModelPrompt(task, 1, paths, createParticipants());
-
-  assert.doesNotMatch(brief, /Skill|skillIds|catalog/u);
-  assert.doesNotMatch(consensus, /Skill|skillIds|catalog/u);
-  assert.match(brief, /CONTINUE_PROMPT_MARKER/u);
-  assert.match(consensus, /"subtasks"/u);
-  assert.match(consensus, /高难度或非显而易见的设计关键点/u);
-  assert.match(consensus, /涉及 UI 美化、布局或交互时/u);
-  assert.match(consensus, /不要要求子任务维护任务记录或父任务调度/u);
-  assert.match(consensus, /设计关键点：保持既有对外接口兼容/u);
-  assert.doesNotMatch(consensus, /"status":"sleep"/u);
-  assert.doesNotMatch(consensus, /wakeAfterSeconds|sleepReason|自动睡眠/u);
-  assert.ok(consensus.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
-  assert.doesNotMatch(consensus, /\[final_answer\]/u);
+test("formats finite remaining Loop rounds", () => {
+  assert.equal(formatLoopEstimatedRemainingRounds(2.4), "2");
+  assert.equal(formatLoopEstimatedRemainingRounds(-1), "0");
+  assert.equal(formatLoopEstimatedRemainingRounds(Number.NaN), null);
 });

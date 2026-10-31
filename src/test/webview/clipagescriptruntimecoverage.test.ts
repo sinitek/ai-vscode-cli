@@ -9,9 +9,6 @@ import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "../../webview/viewCont
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
-import { VIEW_CONTENT_SCRIPT_HUMAN_INTERACTION_HISTORY } from "../../webview/viewContentScript/humanInteractionHistory";
-import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
@@ -504,8 +501,6 @@ function createRuntimeHarness(
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
     loopSubtaskMaxThinkingModeDefault: "high",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: "<FINAL>",
   });
   const runtimeFactory = new Function(
@@ -650,7 +645,6 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     autoCompactContextAfterRun: true,
     loopMaxRounds: 99,
     loopSubtaskMaxThinkingMode: "xhigh",
-    loopExecutionModeByCli: { codex: "debate_multi_agent" },
     isMac: true,
     macTaskShell: "bash",
     interactive: { supported: true, enabled: true },
@@ -912,8 +906,6 @@ test("builds the split page runtime script with configured literals", () => {
     loopMaxRoundsMin: 2,
     loopMaxRoundsMax: 9,
     loopSubtaskMaxThinkingModeDefault: "medium",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: "<FINAL>",
   });
 
@@ -3273,7 +3265,7 @@ test("uses the selected foreground mode after a Graph run on the same tab", () =
   assert.equal(loopSendPromptMessage.tabId, "tab-graph");
   assert.equal(loopSendPromptMessage.cli, "codex");
   assert.equal(loopSendPromptMessage.interactiveMode, "loop");
-  assert.equal(loopSendPromptMessage.loopExecutionMode, "debate_multi_agent");
+  assert.equal(Object.prototype.hasOwnProperty.call(loopSendPromptMessage, "loopExecutionMode"), false);
   assert.equal(loopSendPromptMessage.loopMainModel, "gpt-5-main");
   assert.equal(loopSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
 });
@@ -3718,13 +3710,9 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
     loopSubtaskMaxThinkingModeDefault: "high",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: "<FINAL>",
   });
   const functionSource = [
-    "normalizeLoopExecutionMode",
-    "normalizeLoopExecutionModeByCli",
     "normalizeLoopSubtaskMaxThinkingMode",
     "normalizeLoopMaxRounds",
     "normalizeModelNameList",
@@ -3754,12 +3742,8 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "state",
     "CLI_NAMES",
     "t",
-    "LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT",
-    "LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT",
     "LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT",
     `${functionSource}; return {
-      normalizeLoopExecutionMode,
-      normalizeLoopExecutionModeByCli,
       normalizeLoopSubtaskMaxThinkingMode,
       normalizeLoopMaxRounds,
       normalizeModelNameList,
@@ -3774,18 +3758,9 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     state,
     ["codex", "claude", "opencode"],
     (key: string) => key,
-    "main_sub_multi_agent",
-    "debate_multi_agent",
     "high",
   );
 
-  assert.equal(helpers.normalizeLoopExecutionMode("debate_multi_agent"), "debate_multi_agent");
-  assert.equal(helpers.normalizeLoopExecutionMode("bad"), "main_sub_multi_agent");
-  assert.deepEqual(helpers.normalizeLoopExecutionModeByCli({ codex: "bad", claude: "debate_multi_agent" }, null), {
-    codex: "main_sub_multi_agent",
-    claude: "debate_multi_agent",
-    opencode: "main_sub_multi_agent",
-  });
   assert.equal(helpers.normalizeLoopSubtaskMaxThinkingMode("bad"), "high");
   assert.equal(helpers.normalizeLoopMaxRounds("99"), 12);
   assert.deepEqual(helpers.normalizeModelNameList([" GPT ", "gpt", "", 42]), ["GPT"]);
@@ -4668,6 +4643,54 @@ test("ZCode empty configuration shows a disabled configuration hint without mode
     assert.equal(select.children[0].disabled, true);
     assert.equal(select.value, "");
   }
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("DSH dropdowns list only configured models and never offer a default placeholder", () => {
+  const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "dsh"]);
+  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+    window.dispatchMessage({
+      type: "state",
+      payload: createPanelState({
+        currentCli: "dsh",
+        interactiveMode,
+        conversationTabs: { activeTabId: "dsh-tab", tabs: [{ id: "dsh-tab", cli: "dsh" }] },
+        sessionState: { currentSessionId: null, sessions: [] },
+        modelState: {
+          optionsByCli: { dsh: ["deepseek-v4.1-flash", "deepseek-v4.1-pro"] },
+          managedByCli: { dsh: [] },
+          selectedByCli: { dsh: "deepseek-v4.1-flash" },
+        },
+      }),
+    });
+    const select = document.getElementById(interactiveMode === "coding" ? "modelSelect" : "codexLoopMainModelSelect");
+    assert.deepEqual(childValueTextPairs(select), [
+      ["deepseek-v4.1-flash", "deepseek-v4.1-flash"],
+      ["deepseek-v4.1-pro", "deepseek-v4.1-pro"],
+    ], `${interactiveMode} 不能出现“默认”占位项`);
+    // DSH 候选全部来自配置档案，首项即配置里的第一个模型。
+    assert.equal(select.children[0].value, "deepseek-v4.1-flash");
+  }
+
+  // 配置档案里没有模型时只显示禁用的中文配置指引。
+  window.dispatchMessage({
+    type: "state",
+    payload: createPanelState({
+      currentCli: "dsh",
+      interactiveMode: "coding",
+      conversationTabs: { activeTabId: "dsh-tab", tabs: [{ id: "dsh-tab", cli: "dsh" }] },
+      sessionState: { currentSessionId: null, sessions: [] },
+      modelState: {
+        optionsByCli: { dsh: [] },
+        managedByCli: { dsh: [] },
+        selectedByCli: { dsh: null },
+      },
+    }),
+  });
+  const emptySelect = document.getElementById("modelSelect");
+  assert.deepEqual(childValueTextPairs(emptySelect), [["", WEBVIEW_STRINGS.dshNoConfiguredModel]]);
+  assert.equal(emptySelect.children[0].disabled, true);
+  assert.notEqual(WEBVIEW_STRINGS.dshNoConfiguredModel, WEBVIEW_STRINGS.modelOptionDefault);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 

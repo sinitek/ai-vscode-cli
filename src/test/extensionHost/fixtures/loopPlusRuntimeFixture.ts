@@ -255,7 +255,6 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
         workspaceKey: "workspace",
         taskStoreFile: storeFile,
         rootPrompt,
-        executionMode: "main_sub_multi_agent",
         schedulingMode: "event_driven",
         loopPlus: snapshot,
         status: "running",

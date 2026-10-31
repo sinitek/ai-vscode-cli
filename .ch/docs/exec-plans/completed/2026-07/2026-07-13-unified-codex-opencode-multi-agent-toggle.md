@@ -32,7 +32,7 @@ OpenCode 官方文档（2026-07-13 访问）说明主代理可通过 `task` 工�
 
 ## 非目标
 
-- 不新增或改造 Loop 主从/红蓝多智能体编排。
+- 不新增或改造 Loop 主从多智能体编排。
 - 不直接改写 `~/.config/opencode/opencode.json`、`~/.opencode/config.json` 或任何项目 OpenCode 配置。
 - 不覆盖用户在开启状态下已配置的 OpenCode `permission.task` 规则。
 - 不变更 Claude 的行为。
@@ -94,7 +94,7 @@ OpenCode 官方文档（2026-07-13 访问）说明主代理可通过 `task` 工�
 - 2026-07-13：开关最终调整为插件全局设置，写入 `~/.sinitek_cli/settings.json`；旧工作区字段只用于一次兼容迁移，不能覆盖已存在的全局值。
 - 2026-07-13：OpenCode 关闭时通过顶层 `permission.task: "deny"` 禁止主代理调用子代理；该键是 OpenCode 官方 agents 文档列出的 task 工具权限。由于 `OPENCODE_CONFIG` 低于项目配置优先级，同时以官方 `OPENCODE_CONFIG_CONTENT` 内联配置重申该拒绝。
 - 2026-07-13：OpenCode 开启时不主动写 `allow`，而是撤销插件覆盖层对 `task` 的禁止，使用户自己的细粒度权限和 OpenCode 默认行为继续生效；这与 Codex 开启时不额外强制 feature override 的既有语义一致。
-- 2026-07-13：用户可见名称改为“隐式子代理 / Implicit Subagents”，与 Loop 的主从/红蓝多智能体编排区分；内部字段继续使用 `multiAgentEnabled`，并从工作区设置迁入全局工具设置。
+- 2026-07-13：用户可见名称改为“隐式子代理 / Implicit Subagents”，与 Loop 的主从多智能体编排区分；内部字段继续使用 `multiAgentEnabled`，并从工作区设置迁入全局工具设置。
 
 ## 当前结论
 

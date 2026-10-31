@@ -3,7 +3,7 @@ import { t as translate } from "../i18n";
 import {
   buildLoopSubtaskFinishedChatSection,
   buildLoopSubtaskJoinedChatSection,
-} from "../loopDebate";
+} from "../loopGroupChat";
 
 export type LoopPlusSubtaskChatPhase = "started" | "finished";
 export type LoopPlusSubtaskChatRunStatus = "end" | "error" | "stopped";

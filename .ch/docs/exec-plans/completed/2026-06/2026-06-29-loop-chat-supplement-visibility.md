@@ -10,7 +10,7 @@
 
 ## 目标
 
-修正Loop群聊 UI 与运行态规则，让“补充”入口在未完成任务中稳定可见，并继续沿用现有任务记录与主沟通文件链路，保证主任务/主持人在下一轮读取到补充内容。
+修正Loop群聊 UI 与运行态规则，让“补充”入口在未完成任务中稳定可见，并继续沿用现有任务记录与主沟通文件链路，保证主任务在下一轮读取到补充内容。
 
 ## 范围
 
@@ -22,19 +22,19 @@
 ## 非目标
 
 - 不新增独立的群聊发送通道。
-- 不改动主任务/子任务/辩论的核心调度策略。
+- 不改动主任务/子任务的核心调度策略。
 - 不重做群聊面板布局。
 
 ## 验收标准
 
 - [x] Loop群聊面板在未完成且未触发主任务 AI 失败上限的任务上显示“补充”按钮，即使任务当前仍在运行。
-- [x] 点击“补充”后仍把内容写入任务记录与主沟通文件，供下一轮主任务/主持人读取。
+- [x] 点击“补充”后仍把内容写入任务记录与主沟通文件，供下一轮主任务读取。
 - [x] “继续执行”仍只在任务当前未运行且可继续时显示；“中止”仍只在运行中显示。
 - [x] 相关回归测试与 `npm run build` 通过。
 
 ## 影响面
 
-- 代码目录：`src/loopDebate.ts`、`src/webview/loopDebatePanel.ts`、`src/test/loopDebate.test.ts`
+- 代码目录：`src/loopGroupChat.ts`、`src/webview/loopGroupChatPanel.ts`、`src/test/loop/loopGroupChat.test.ts`
 - 文档目录：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - 配置与脚本：无
 
@@ -47,7 +47,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`node --test dist/test/loopDebate.test.js`
+- 最小相关验证：`node --test dist/test/loop/loopGroupChat.test.js`
 - 扩展验证：`npm run build`
 
 ## 测试与清单同步
@@ -69,4 +69,4 @@
 
 ## 当前结论
 
-已完成。根因确认不是功能缺失，而是现有“补充需求”按钮只在 `canContinue=true` 且 `canStop=false` 时显示，导致运行中的Loop任务看不到该入口。现已把“可补充”从“可继续”中拆分，群聊面板对所有未完成且未触发主任务 AI 失败上限的任务显示“补充需求”，继续执行仍只在当前未运行时显示。已同步规格与运行时设计，并完成 `node --test dist/test/loopDebate.test.js` 与 `npm run build` 验证。
+已完成。根因确认不是功能缺失，而是现有“补充需求”按钮只在 `canContinue=true` 且 `canStop=false` 时显示，导致运行中的Loop任务看不到该入口。现已把“可补充”从“可继续”中拆分，群聊面板对所有未完成且未触发主任务 AI 失败上限的任务显示“补充需求”，继续执行仍只在当前未运行时显示。已同步规格与运行时设计，并完成 `node --test dist/test/loop/loopGroupChat.test.js` 与 `npm run build` 验证。

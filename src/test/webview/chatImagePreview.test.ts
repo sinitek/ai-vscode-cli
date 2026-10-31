@@ -177,7 +177,6 @@ test("builds a script-free, escaped preview and enables supported image sources 
   const html = buildWebviewStaticHtml({
     cspSource: "self", nonce: "test", i18n: WEBVIEW_STRINGS, cliOptions: "",
     markedScript: "", webviewStyles: MARKDOWN_STYLES,
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent", loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
   assert.match(html, /img-src self https: http: data:/);
   assert.match(html, /\.chat-image-preview \{[\s\S]*?height: auto;/);

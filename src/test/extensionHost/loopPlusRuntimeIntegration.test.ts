@@ -456,7 +456,6 @@ test("adapter rejects corrupt snapshots, clears live prompts after completion, a
       workspaceKey: "workspace",
       taskStoreFile: fixture.storeFile,
       rootPrompt: "corrupt",
-      executionMode: "main_sub_multi_agent",
       schedulingMode: "event_driven",
       loopPlus: { nope: true },
       status: "running",
@@ -529,7 +528,7 @@ test("adapter rejects corrupt snapshots, clears live prompts after completion, a
   }
 });
 
-test("adapter gives saved Loop+ mode priority and does not capture classic, debate, vibe, or graph entry", async () => {
+test("adapter gives saved Loop+ mode priority and does not capture classic, vibe, or graph entry", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
     const now = Date.now();
@@ -537,7 +536,6 @@ test("adapter gives saved Loop+ mode priority and does not capture classic, deba
       cli: "codex" as const,
       workspaceKey: "workspace",
       taskStoreFile: fixture.storeFile,
-      executionMode: "main_sub_multi_agent" as const,
       status: "running" as const,
       createdAt: now,
       updatedAt: now,
@@ -592,8 +590,7 @@ test("adapter gives saved Loop+ mode priority and does not capture classic, deba
       graphRunId: "graph-1",
     }, { schedulingMode: schedulingModeForInteractiveMode("graph") }, fixture.target), false);
     assert.equal(await fixture.adapter.runEventDriven({
-      ...prompt("debate"),
-      loopExecutionMode: "debate_multi_agent",
+      ...prompt("classic-fallback"),
     }, {}, fixture.target), false);
     assert.equal(await fixture.adapter.runEventDriven(prompt("vibe"), {}, fixture.target), false);
     fixture.queueMain(async (input, tabId) => {
@@ -604,7 +601,7 @@ test("adapter gives saved Loop+ mode priority and does not capture classic, deba
     }, fixture.target), true);
     const created = fixture.readTask(fixture.mainCalls[1].loopTaskId ?? "");
     assert.equal(created?.schedulingMode, "event_driven");
-    assert.equal(created?.executionMode, "main_sub_multi_agent");
+    assert.equal(Object.prototype.hasOwnProperty.call(created, "executionMode"), false);
     assert.equal(created?.status, "completed");
     assert.equal(fixture.adapter.getLivePrompt(created?.id ?? ""), null);
     fixture.setSubtaskConversation(true);

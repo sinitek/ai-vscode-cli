@@ -8,6 +8,9 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
+### 1.6.x
+- bugfix & 体验优化
+
 ### 1.6.0
 - Loop+ 模式新增验收方案设置
 - 优化一个重要逻辑，当打开多个 vscode 时执行任务一瞬间会使用当前所见的配置，之前是可能不一致。

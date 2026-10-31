@@ -55,13 +55,13 @@
 - 单元测试新增/更新：更新 `src/test/scheduledTaskStore.test.ts`，新增执行时模式解析覆盖；更新 `src/test/extensionHost/extensionHostExtractionContracts.test.ts`，锁定扩展执行入口按目标 CLI 当前模式路由。
 - 单元自测结果：`npm run build` 通过；`node --test dist/test/scheduledTaskStore.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js` 23/23 通过；`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过；ontology unittest 9/9 通过；`git diff --check` 通过。
 - 失败处理记录：`npm run test:unit` 共 958 项，957 通过、1 项失败；失败为既有 `src/test/webview/clipagescriptruntimecoverage.test.ts` 中 `Tasklist update` 旧断言，与本次定时任务模式路由改动无关，未修改该既有解析契约。
-- 功能清单：已更新定时任务条目，明确到点按目标 CLI 当时的 `interactiveMode` 和 Loop 子模式配置执行。
+- 功能清单：已更新定时任务条目，明确到点按目标 CLI 当时的 `interactiveMode` 和 Loop 配置执行。
 - 相关文档同步：已更新 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 与 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。
 
 ## 任务列表
 
 - [x] 梳理定时任务创建、存储和执行调用链
-- [x] 实现执行时模式解析和 Loop 子模式读取
+- [x] 实现执行时模式解析和 Loop 配置读取
 - [x] 补回归测试并完成构建验证
 - [x] 同步计划、功能清单和 ontology 收尾记录
 

@@ -14,8 +14,6 @@ function buildStaticHtml(): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
 }
 
@@ -27,8 +25,6 @@ function buildRuntimeScript(): string {
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 100,
     loopSubtaskMaxThinkingModeDefault: "xhigh",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
 }

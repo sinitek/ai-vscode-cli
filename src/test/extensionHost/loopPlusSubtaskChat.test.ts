@@ -6,7 +6,7 @@ import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 
 const { t } = require("../../i18n") as typeof import("../../i18n");
-const { parseLoopDebateChatTranscript } = require("../../loopDebate") as typeof import("../../loopDebate");
+const { parseLoopGroupChatTranscript } = require("../../loopGroupChat") as typeof import("../../loopGroupChat");
 const {
   buildLoopPlusGroupChatSection,
   buildLoopPlusSubtaskParentMessage,
@@ -31,7 +31,7 @@ function notice(overrides: Partial<LoopPlusSubtaskChatNotice> = {}): LoopPlusSub
 
 test("Loop+ completion chat includes the communication file beside the final reply", () => {
   const section = buildLoopPlusGroupChatSection(notice(), "子任务 1：实现执行群聊");
-  const parsed = parseLoopDebateChatTranscript(`## ${section.heading}\n${section.body}\n`);
+  const parsed = parseLoopGroupChatTranscript(`## ${section.heading}\n${section.body}\n`);
   assert.equal(parsed.segments[0]?.kind, "subtask-turn");
   assert.equal(parsed.segments[0]?.actorId, "alpha");
   assert.match(section.body, /已完成修复。/u);
@@ -76,7 +76,7 @@ test("Loop+ join chat records the communication file before the subtask finishes
     assistantContent: null,
     runStatus: undefined,
   }), "子任务 1：实现执行群聊");
-  const parsed = parseLoopDebateChatTranscript(`## ${section.heading}\n${section.body}\n`);
+  const parsed = parseLoopGroupChatTranscript(`## ${section.heading}\n${section.body}\n`);
   assert.equal(parsed.segments[0]?.kind, "subtask-joined");
   assert.ok(section.body.includes(`沟通文件：${filePath}`));
   assert.match(section.body, /状态：running/u);

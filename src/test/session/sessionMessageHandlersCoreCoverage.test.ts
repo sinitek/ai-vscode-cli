@@ -13,7 +13,7 @@ import type {
 import type {
   CliName,
   InteractiveMode,
-  LoopExecutionMode,
+
   MacTaskShell,
   ThinkingMode,
 } from "../../cli/types";
@@ -333,7 +333,6 @@ function createHarness(): HandlerHarness {
     getSelectedCliModel: () => null,
     isInteractiveMode,
     normalizeVisibleInteractiveMode: (mode) => mode,
-    setWorkspaceLoopExecutionModeForCli: () => undefined,
     loadModelStore: () => undefined,
     normalizeLoopMaxRounds: () => 3,
     isCliName,
@@ -358,7 +357,6 @@ function createHarness(): HandlerHarness {
     getActiveConversationTabId: () => state.activeTabId,
     getActiveConversationTab: () => state.activeTabId ? state.tabs.get(state.activeTabId) ?? null : null,
     resolveLoopSubtaskConversationContext: () => null,
-    getWorkspaceLoopExecutionMode: (): LoopExecutionMode => "main_sub_multi_agent",
     buildPromptWithAutoContext: (prompt) => ({ modelPrompt: prompt, contextTags: [] }),
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt, modelPrompt) => modelPrompt,
     resolveCodexImagePathsForPrompt: async () => [],

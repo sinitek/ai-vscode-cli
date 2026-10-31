@@ -30,7 +30,7 @@
 ## 验证计划
 
 - `npm run build`：通过。
-- `node --test --test-reporter=dot dist/test/webview/chatMarkdown.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/loop/loopDebatePanel.test.js`：37 项通过。
+- `node --test --test-reporter=dot dist/test/webview/chatMarkdown.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/loop/loopGroupChatPanel.test.js`：37 项通过。
 - Chromium smoke scenario `raw-svg-bubble-compatibility`：passed；browserErrors、httpErrors、requestFailures 均为 0；截图 `/tmp/raw-svg-bubble-smoke-results/success.png`。验证裸 SVG 和显式围栏图片实际解码、尺寸一致、预览下载调用，且混排及残缺 XML 不误转图片。
 - `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`：通过。
 - `node scripts/check_trailing_whitespace.js` 与 `git diff --check`：通过。

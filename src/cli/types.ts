@@ -41,17 +41,6 @@ export const LOOP_PLUS_DISPLAY_NAME = "Loop+";
 
 export type InteractiveMode = "coding" | "plan" | "loop" | "graph" | typeof LOOP_PLUS_INTERACTIVE_MODE;
 
-export type LoopExecutionMode = "main_sub_multi_agent" | "debate_multi_agent";
-
-export const DEFAULT_LOOP_EXECUTION_MODE: LoopExecutionMode = "main_sub_multi_agent";
-
-export function normalizeLoopExecutionMode(value: unknown): LoopExecutionMode {
-  if (value === "debate_multi_agent") {
-    return "debate_multi_agent";
-  }
-  return DEFAULT_LOOP_EXECUTION_MODE;
-}
-
 export type MacTaskShell = "zsh" | "bash";
 
 export type ThinkingWorkspaceFile = {

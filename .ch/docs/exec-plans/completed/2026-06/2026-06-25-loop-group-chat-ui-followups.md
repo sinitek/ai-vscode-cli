@@ -6,7 +6,7 @@
 
 ## Background
 
-The loop group chat panel needs a small but cross-cutting adjustment. The UI should no longer expose transcript/task-record open buttons, the member roster in main/sub mode should use a generic "members" label instead of red/blue wording, and the panel needs a new "supplement requirement" action that persists extra user requirements so the next loop resume round can see them and adjust planning.
+The loop group chat panel needs a small but cross-cutting adjustment. The UI should no longer expose transcript/task-record open buttons, the member roster should use a clear "members" label, and the panel needs a new "supplement requirement" action that persists extra user requirements so the next loop resume round can see them and adjust planning.
 
 ## Goal
 
@@ -17,7 +17,7 @@ Refine the loop group chat panel so follow-up requirements can be captured from 
 - Add a loop task-level supplemental requirements field and persistence.
 - Add a panel action to capture supplemental requirements and route them into the existing loop resume flow.
 - Remove transcript/task-record buttons from the panel top bar.
-- Use a generic member label for main/sub group chat roster instead of red/blue wording.
+- Use a clear member label for the main/sub group chat roster.
 - Sync product spec and feature inventory entries.
 
 ## Non-Goals
@@ -30,21 +30,21 @@ Refine the loop group chat panel so follow-up requirements can be captured from 
 
 - [x] The loop group chat panel shows a "supplement requirement" action when the task can continue.
 - [x] Submitting supplemental requirements persists them on the loop task record and appends them to the main communication log for auditability.
-- [x] The next resumed main-task or debate brief prompt includes the persisted supplemental requirements.
-- [x] Main/sub roster labeling no longer uses red/blue wording.
+- [x] The next resumed main-task prompt includes the persisted supplemental requirements.
+- [x] Main/sub roster uses the generic "members" label.
 - [x] Transcript/task-record buttons are removed from the panel UI.
 - [x] `npm run build` passes.
 
 ## Impact
 
-- Code directories: `src/extension.ts`, `src/webview/loopDebatePanel.ts`
+- Code directories: `src/extension.ts`, `src/webview/loopGroupChatPanel.ts`
 - Docs: `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/design-docs/vscode-cli-extension-runtime.md`, this execution plan
 - Config and scripts: none
 
 ## Risks and Mitigation
 
 - Risk: supplemental requirements could be captured in UI but missed by the next planning round.
-- Mitigation: persist them on the task record and include them in both classic main-task prompt construction and debate brief generation.
+- Mitigation: persist them on the task record and include them in both classic main-task prompt construction.
 
 ## Verification Plan
 
@@ -69,4 +69,4 @@ Refine the loop group chat panel so follow-up requirements can be captured from 
 
 ## Current Conclusion
 
-Implementation completed. The loop group chat panel now exposes a supplemental-requirement action for resumable tasks, persists those requirements into the loop task record and main communication log, feeds them into both classic and debate resume prompts, removes transcript/task-record top-bar buttons, and uses a generic member label for main/sub tasks. Validation: `npm run build`.
+Implementation completed. The loop group chat panel now exposes a supplemental-requirement action for resumable tasks, persists those requirements into the loop task record and main communication log, feeds them into main-task resume prompts, removes transcript/task-record top-bar buttons, and uses a generic member label for main/sub tasks. Validation: `npm run build`.

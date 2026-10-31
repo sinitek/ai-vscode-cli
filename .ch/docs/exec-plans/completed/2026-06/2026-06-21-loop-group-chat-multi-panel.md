@@ -6,7 +6,7 @@
 
 ## 背景
 
-当前Loop群聊内容区页面由扩展侧单例 `loopDebateChatPanel` 管理。多个Loop任务同时存在时，打开第二个任务会复用并替换第一个任务的群聊页面，导致用户只能同时查看一个Loop群聊 UI。
+当前Loop群聊内容区页面由扩展侧单例 `loopGroupChatPanel` 管理。多个Loop任务同时存在时，打开第二个任务会复用并替换第一个任务的群聊页面，导致用户只能同时查看一个Loop群聊 UI。
 
 ## 目标
 
@@ -35,7 +35,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`, `src/webview/loopDebatePanel.ts`
+- 代码目录：`src/extension.ts`, `src/webview/loopGroupChatPanel.ts`
 - 文档目录：`.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/exec-plans/`
 - 配置与脚本：无配置变更；使用现有 `npm run build`
 
@@ -68,9 +68,9 @@
 
 ## 决策记录
 
-- 2026-06-21：保持 `LoopDebateChatPanel` 为单面板封装，扩展侧用 `Map<taskId, panel>` 管理多实例，避免把 VS Code API 或任务读取逻辑下沉到 webview 层。
+- 2026-06-21：保持 `LoopGroupChatPanel` 为单面板封装，扩展侧用 `Map<taskId, panel>` 管理多实例，避免把 VS Code API 或任务读取逻辑下沉到 webview 层。
 
 ## 当前结论
 
 根因是全局单例群聊 panel 与全局当前 `taskId`。下一步按 `taskId` 隔离生命周期和消息处理。
-已完成：扩展侧改为 `Map<taskId, LoopDebateChatPanel>` 管理多实例，panel dispose 时清理对应任务引用；面板消息回调闭包绑定任务 ID；主动刷新只刷新同一任务已打开页面；群聊页面标题显示任务短 ID 便于区分。`npm run build` 已通过。当前环境未做真实 VS Code 多窗口点击验收。
+已完成：扩展侧改为 `Map<taskId, LoopGroupChatPanel>` 管理多实例，panel dispose 时清理对应任务引用；面板消息回调闭包绑定任务 ID；主动刷新只刷新同一任务已打开页面；群聊页面标题显示任务短 ID 便于区分。`npm run build` 已通过。当前环境未做真实 VS Code 多窗口点击验收。

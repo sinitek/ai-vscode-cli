@@ -1,53 +1,35 @@
 import type { ContinueModelChoice } from "../continueModelChoice";
 import type { LoopPlusAcceptancePlan, LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
-export type LoopDebateChatPanelParticipant = {
+export type LoopGroupChatPanelParticipant = {
   id: string;
   title: string;
   role: string;
   status: string;
-  stance?: string;
   sessionId?: string | null;
   summary?: string;
   updatedAt?: number;
   lastStartedAt?: number | null;
 };
 
-export type LoopDebateChatPanelModeratorDecision = {
-  dialogueTurn: number;
-  action: string;
-  reason: string;
-  sessionId?: string | null;
-  updatedAt?: number;
-};
-
-export type LoopDebateChatPanelActiveSpeaker = {
-  kind: "main" | "subtask" | "participant" | "moderator" | "consensus";
+export type LoopGroupChatPanelActiveSpeaker = {
+  kind: "main" | "subtask";
   id: string;
   title: string;
-  dialogueTurn?: number;
-  finalPass?: boolean;
   updatedAt?: number;
 };
 
-export type LoopDebateChatPanelRound = {
+export type LoopGroupChatPanelRound = {
   key: string;
-  kind?: "debate" | "execution";
+  kind?: "execution";
   label?: string;
   loopRound: number;
-  debateRound: number;
   status: string;
   chatFile?: string;
-  participantRosterSessionId?: string | null;
-  dialogueTurns?: number;
-  activeSpeaker?: LoopDebateChatPanelActiveSpeaker;
+  activeSpeaker?: LoopGroupChatPanelActiveSpeaker;
   startedAt: number;
   completedAt?: number;
-  participants: LoopDebateChatPanelParticipant[];
-  moderatorDecisions: LoopDebateChatPanelModeratorDecision[];
-  consensusSummary?: string;
-  consensusReached?: boolean;
-  openDisagreementCount?: number;
+  participants: LoopGroupChatPanelParticipant[];
 };
 
 export type LoopPlusPanelExecutionItem = {
@@ -118,8 +100,7 @@ export type LoopPlusPanelProjection = {
   error: string;
 };
 
-export type LoopDebateChatPanelState = {
-  mode: "main_sub" | "debate";
+export type LoopGroupChatPanelState = {
   loopPlus?: LoopPlusPanelProjection;
   continueModels?: ContinueModelChoice;
   task: {
@@ -135,7 +116,7 @@ export type LoopDebateChatPanelState = {
     canContinue: boolean;
     canStop: boolean;
   };
-  rounds: LoopDebateChatPanelRound[];
+  rounds: LoopGroupChatPanelRound[];
   chatMarkdown: string;
   error?: string | null;
   clarification?: import("../orchestratorClarification").OrchestratorClarification | null;
@@ -145,28 +126,28 @@ export type LoopDebateChatPanelState = {
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null;
 };
 
-export type LoopDebateChatPanelMessage =
+export type LoopGroupChatPanelMessage =
   | import("./chatImageHost").ChatImageMessage
-  | { type: "loopDebateChat:refresh" }
-  | { type: "loopDebateChat:domReady"; generation?: number }
-  | { type: "loopDebateChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
-  | { type: "loopDebateChat:supplementTask"; prompt?: string }
-  | { type: "loopDebateChat:askMainModel"; prompt?: string }
-  | { type: "loopDebateChat:abortMainModelQuestion" }
-  | { type: "loopDebateChat:openAskDialog" }
-  | { type: "loopDebateChat:closeAskDialog" }
-  | { type: "loopDebateChat:dismissMainModelAnswer" }
-  | { type: "loopDebateChat:stopTask" }
-  | { type: "loopDebateChat:openCommunicationFile"; requestId?: string; path?: string }
-  | { type: "loopDebateChat:submitClarification"; interactionId?: string; values?: Record<string, unknown> }
-  | { type: "loopDebateChat:rejectClarification"; interactionId?: string }
+  | { type: "loopGroupChatChat:refresh" }
+  | { type: "loopGroupChatChat:domReady"; generation?: number }
+  | { type: "loopGroupChatChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
+  | { type: "loopGroupChatChat:supplementTask"; prompt?: string }
+  | { type: "loopGroupChatChat:askMainModel"; prompt?: string }
+  | { type: "loopGroupChatChat:abortMainModelQuestion" }
+  | { type: "loopGroupChatChat:openAskDialog" }
+  | { type: "loopGroupChatChat:closeAskDialog" }
+  | { type: "loopGroupChatChat:dismissMainModelAnswer" }
+  | { type: "loopGroupChatChat:stopTask" }
+  | { type: "loopGroupChatChat:openCommunicationFile"; requestId?: string; path?: string }
+  | { type: "loopGroupChatChat:submitClarification"; interactionId?: string; values?: Record<string, unknown> }
+  | { type: "loopGroupChatChat:rejectClarification"; interactionId?: string }
   | { type: "saveLoopPlusAcceptancePlan"; planId?: string | null; name?: unknown; checks?: unknown; otherText?: unknown; select?: boolean }
   | { type: "selectLoopPlusAcceptancePlan"; planId?: unknown }
   | { type: "deleteLoopPlusAcceptancePlan"; planId?: unknown }
-  | { type: "loopDebateChat:updateAcceptancePlan"; plan?: unknown };
+  | { type: "loopGroupChatChat:updateAcceptancePlan"; plan?: unknown };
 
 export type LoopCommunicationFilePreviewMessage = {
-  type: "loopDebateChat:communicationFile";
+  type: "loopGroupChatChat:communicationFile";
   requestId: string;
   path: string;
   ok: boolean;

@@ -42,7 +42,7 @@
 - 修复后 `npm run build` 通过；初轮 Webview 定向测试 42/42 通过。
 - 完成边界用例后，使用隔离用户目录运行 `HOME="$isolated_home" node --test dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/codexdualmodelwebview.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/config/configApplyQueue.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js`：91/91 通过。
 - `HOME="$isolated_home" npm run test:page`：构建通过，196/196 通过。`isolated_home` 使用 `mktemp -d /tmp/sinitek-model-profile-home.XXXXXX` 创建，不修改真实用户配置。
-- 首轮未隔离用户目录的 `npm run test:page`：190/193 通过；`cliPageConfigCoverage` 两项和 `loopDebatePanel` 一项期待英文，但 `resolveLocale` 优先读取真实工具设置得到中文。分类为环境/夹具隔离问题，同一代码在空用户目录下全部通过，未扩大范围修改这些测试或用户设置。
+- 首轮未隔离用户目录的 `npm run test:page`：190/193 通过；`cliPageConfigCoverage` 两项和 `loopGroupChatPanel` 一项期待英文，但 `resolveLocale` 优先读取真实工具设置得到中文。分类为环境/夹具隔离问题，同一代码在空用户目录下全部通过，未扩大范围修改这些测试或用户设置。
 - 本机 Chromium：以仓库编译后的真实 Webview HTML、脚本和样式，复用单测配置数据并模拟 VS Code 消息桥；选择 A 后先确认 A，再于 250/500/750ms 连续投递 B 快照，检查配置、模型和思考下拉仍为 A。Codex 与 OpenCode 的 Vibe/Loop/Graph，以及 Claude Vibe 共 7 个中英文场景全部通过；console、page、HTTP 与请求失败均为 0。已查看 Codex Loop 中文和 OpenCode Graph 中文截图。
 - 浏览器命令：`node /tmp/sinitek-model-profile-smoke.cjs` 启动临时 loopback 服务，然后按场景执行 `node .agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs --scenario <scenario.json>`；复用本机 Playwright/Chromium 缓存，未安装依赖。结果与截图位于 `/tmp/sinitek-model-profile-smoke/<scenario>/`，任务场景文件已清理。
 - `python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 与 ontology 单测 9/9 通过。

@@ -16,17 +16,15 @@ import type {
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
 } from "../../sessionMessageHandlers";
-import type { CliName, InteractiveMode, LoopExecutionMode, ThinkingMode } from "../../cli/types";
+import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
 import type { ToolSettingsState } from "../../toolSettings";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
-import type { PanelMessage } from "../../webview/types";
 
 type SettingCalls = {
   postPanelState: number;
   savedSettings: WorkspaceSettings[];
   thinkingModes: Array<{ cli: CliName; model: string; mode: ThinkingMode }>;
   interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
-  loopModes: Array<{ cli: CliName; mode: LoopExecutionMode }>;
   selectedModels: Array<{ cli: CliName; model: string | null; configId: string | null }>;
   selectedLoopModels: Array<{ cli: CliName; role: "main" | "subtask"; model: string | null; configId: string | null }>;
   loadedModelStores: number;
@@ -48,7 +46,6 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     savedSettings: [],
     thinkingModes: [],
     interactiveModes: [],
-    loopModes: [],
     selectedModels: [],
     selectedLoopModels: [],
     loadedModelStores: 0,
@@ -88,9 +85,6 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     isInteractiveMode,
     setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => {
       calls.interactiveModes.push({ cli, mode });
-    },
-    setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: LoopExecutionMode) => {
-      calls.loopModes.push({ cli, mode });
     },
     selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => {
       calls.selectedModels.push({ cli, model, configId: configId ?? null });
@@ -205,7 +199,6 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => {
       calls.interactiveModes.push({ cli, mode });
     },
-    getWorkspaceLoopExecutionMode: (): LoopExecutionMode => "debate_multi_agent",
     buildPromptWithAutoContext: (prompt: string) => ({
       modelPrompt: `context:${prompt}`,
       contextTags: ["#file"],
@@ -277,8 +270,6 @@ test("normalizes OpenCode variants and routes valid setting keys while rejecting
   await handleUpdateSettingMessage({ type: "updateSetting", key: "interactiveMode.claude", value: "plan" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "interactiveMode.unknown", value: "coding" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "interactiveMode.codex", value: "not-a-mode" }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopExecutionMode.opencode", value: "unknown-mode" }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopExecutionMode.unknown", value: "debate_multi_agent" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "selectedModel.codex", value: 42 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "selectedModel.claude", value: " claude-model " }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "selectedModel.unknown", value: "ignored" }, deps);
@@ -286,13 +277,22 @@ test("normalizes OpenCode variants and routes valid setting keys while rejecting
   assert.equal(state.workspaceSettings.thinkingMode, "xhigh");
   assert.deepEqual(calls.thinkingModes, [{ cli: "codex", model: "selected-model", mode: "xhigh" }]);
   assert.deepEqual(calls.interactiveModes, [{ cli: "claude", mode: "plan" }]);
-  assert.deepEqual(calls.loopModes, [{ cli: "opencode", mode: "main_sub_multi_agent" }]);
   assert.deepEqual(calls.selectedModels, [
     { cli: "codex", model: null, configId: "config-codex" },
     { cli: "claude", model: " claude-model ", configId: "config-claude" },
   ]);
   assert.equal(calls.loadedModelStores, 2);
-  assert.equal(calls.postPanelState, 10);
+  assert.equal(calls.postPanelState, 8);
+});
+
+test("ignores retired Loop execution mode updates without saving or refreshing", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  for (const key of ["loopExecutionMode.opencode", "loopExecutionMode.unknown"]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value: "debate_multi_agent" }, deps);
+  }
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 0);
 });
 
 test("cleans migrated settings and preserves each global setting contract", async () => {
@@ -474,7 +474,6 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
     tabId: "loop-tab",
     preserveActiveTab: true,
     interactiveMode: "loop",
-    loopExecutionMode: "unexpected" as unknown as LoopExecutionMode,
     model: "codex-model",
   }, deps);
 
@@ -492,7 +491,6 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
       loopMainModel: "codex-model",
       loopSubtaskModel: "codex-model",
       imagePaths: ["/tmp/diagram.png"],
-      loopExecutionMode: "main_sub_multi_agent",
       preloadedUserMessageId: "user-message",
     },
     options: {

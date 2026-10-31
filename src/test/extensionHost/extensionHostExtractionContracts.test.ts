@@ -133,7 +133,7 @@ function assertScheduledTaskPrefersTaskConfig(executeScheduled: ts.FunctionDecla
       ts.forEachChild(node, visit);
       return;
     }
-    const [taskArgument, interactiveArgument, loopModeArgument, ...rest] = node.arguments;
+    const [taskArgument, interactiveArgument, ...rest] = node.arguments;
     matched = rest.length === 0
       && !!taskArgument
       && ts.isIdentifier(taskArgument)
@@ -141,11 +141,7 @@ function assertScheduledTaskPrefersTaskConfig(executeScheduled: ts.FunctionDecla
       && !!interactiveArgument
       && isIdentifierCall(interactiveArgument, "getWorkspaceInteractiveMode")
       && interactiveArgument.arguments.length === 1
-      && isTaskCliAccess(interactiveArgument.arguments[0])
-      && !!loopModeArgument
-      && isIdentifierCall(loopModeArgument, "getWorkspaceLoopExecutionMode")
-      && loopModeArgument.arguments.length === 1
-      && isTaskCliAccess(loopModeArgument.arguments[0]);
+      && isTaskCliAccess(interactiveArgument.arguments[0]);
     if (!matched) {
       ts.forEachChild(node, visit);
     }
@@ -294,12 +290,12 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
 });
 
-test("scheduled tasks resolve their execution mode from the selected task config", () => {
+test("scheduled tasks resolve their interactive mode from the selected task config", () => {
   const extensionSource = readSource("src", "extension.ts");
 
   assert.match(
     extensionSource,
-    /const executionConfig = resolveScheduledTaskExecutionConfigForTask\(\s*task,\s*getWorkspaceInteractiveMode\(task\.cli\),\s*getWorkspaceLoopExecutionMode\(task\.cli\),/,
+    /const executionConfig = resolveScheduledTaskExecutionConfigForTask\(\s*task,\s*getWorkspaceInteractiveMode\(task\.cli\),/,
   );
   assert.match(extensionSource, /const modelPrompt = executionConfig\.interactiveMode === "graph"/);
   assert.match(extensionSource, /if \(executionConfig\.interactiveMode === "loop" \|\| executionConfig\.interactiveMode === "loop_plus"\)/);
@@ -508,7 +504,7 @@ test("Loop orchestration source contract lives in extensionHost/loopOrchestratio
 
   assert.match(loopOrchestrationSource, /export function createLoopOrchestrationHost\(deps: LoopOrchestrationHostDeps\)/);
   assert.match(loopOrchestrationSource, /async function runClassicLoopMainDecision\(/);
-  assert.match(loopOrchestrationSource, /async function runLoopDebateRound\(/);
+  assert.doesNotMatch(loopOrchestrationSource, /runLoopDebate|moderatorLed|debate_multi_agent/);
   assert.match(loopOrchestrationSource, /async function runLoopSubtasksBatchWithRetry\(/);
   assert.match(loopOrchestrationSource, /async function runLoopSubtaskWithRetry\(/);
   const subtaskPromptSource = loopOrchestrationSource.split("function buildLoopSubtaskModelPrompt(")[1]?.split("return {")[0] ?? "";
@@ -520,7 +516,7 @@ test("Loop orchestration source contract lives in extensionHost/loopOrchestratio
   assert.doesNotMatch(subtaskPromptSource, /必须更新任务记录文件/);
   assert.doesNotMatch(subtaskPromptSource, /rootPrompt/);
   assert.doesNotMatch(subtaskPromptSource, /taskStoreFile/);
-  assert.match(loopOrchestrationSource, /return \{[\s\S]*runClassicLoopMainDecision[\s\S]*runLoopDebateRound[\s\S]*runLoopSubtasksBatchWithRetry/);
+  assert.match(loopOrchestrationSource, /return \{[\s\S]*runClassicLoopMainDecision[\s\S]*runLoopSubtasksBatchWithRetry/);
 });
 
 test("Loop orchestration host exposes small helpers through the injected host boundary", () => {

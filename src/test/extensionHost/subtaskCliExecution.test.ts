@@ -28,7 +28,6 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
     workspaceKey: "workspace",
     taskStoreFile: "/tmp/loop-tasks.json",
     rootPrompt: "ship it",
-    executionMode: "main_sub_multi_agent",
     schedulingMode: "classic",
     status: "running",
     createdAt: 1,
@@ -49,7 +48,7 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   };
 }
 
-test("classic Loop and its moderator keep optional SVG guidance in the finalSummary protocol", async () => {
+test("classic Loop keeps optional SVG guidance in the finalSummary protocol", async () => {
   const task = loopTask();
   const prompts: string[] = [];
   const host = createLoopOrchestrationHost({
@@ -70,18 +69,15 @@ test("classic Loop and its moderator keep optional SVG guidance in the finalSumm
     buildLoopRoundSummary: () => "已中断",
   } as never);
 
-  for (const moderatorLed of [false, true]) {
-    const result = await host.runClassicLoopMainDecision({
-      input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
-      target: { tabId: "main-tab", cli: "codex", sessionId: null },
-      task,
-      round: 1,
-      moderatorLed,
-    });
-    assert.equal(result.status, "interrupted");
-    assert.equal(result.runStatus, "stopped");
-  }
-  assert.equal(prompts.length, 2);
+  const result = await host.runClassicLoopMainDecision({
+    input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
+    target: { tabId: "main-tab", cli: "codex", sessionId: null },
+    task,
+    round: 1,
+  });
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.runStatus, "stopped");
+  assert.equal(prompts.length, 1);
   for (const prompt of prompts) {
     assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
     assert.doesNotMatch(prompt, /\[final_answer\]/u);

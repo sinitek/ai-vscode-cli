@@ -2,15 +2,16 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { createHash } from "crypto";
-import { getCliArgs, getCliCommand, getThinkingMode } from "../cli/config";
+import { getCliCommand, getThinkingMode } from "../cli/config";
 import { inspectCodeGraphStatus } from "../cli/codegraphStatus";
 import { getCodeGraphInstallCommand, getCodeGraphInstallSteps, type CodeGraphInstallStep } from "../cli/installer";
-import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "../cli/modelArgs";
-import { CLI_LIST, DEFAULT_LOOP_EXECUTION_MODE, LOOP_PLUS_INTERACTIVE_MODE, normalizeLoopExecutionMode, type CliName, type InteractiveMode, type LoopExecutionMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
+import { resolveOpenCodeModelForConfig } from "../cli/modelArgs";
+import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMode, type OpenCodeThinkingMessageKey, type OpenCodeThinkingState, type ThinkingMode } from "../cli/types";
 import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfigFieldRole, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput, type ParsedOpenCodeConfigModels } from "../cli/opencodeconfigmodels";
 import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
+import { parseCodexConfigModel } from "../cli/codexConfigModel";
 import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { changeKimiCodeConfigModelList, parseKimiCodeConfigModels, resolveKimiCodeConfigModel, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
@@ -22,7 +23,7 @@ import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, 
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
 import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { createCliModelSelectionStrategies } from "./cliModelSelectionStrategies";
-import { buildModelState as buildModelSelectionState, countStoreModels, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectLoopSubtaskCliInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
+import { buildModelState as buildModelSelectionState, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, mergeUniqueModelNames, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectLoopSubtaskCliInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
 import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled } from "../toolSettings";
@@ -93,12 +94,16 @@ const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
 const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
 const kimiCodeModelsByConfigId = new Map<string | null, KimiCodeConfigModels>();
 const zcodeModelsByConfigId = new Map<string | null, ZcodeConfigModels>();
+const codexModelByConfigId = new Map<string | null, string | null>();
 let loadedConfigStates: {
   workspaceKey: string;
   states: NonNullable<PanelState["configStateByCli"]>;
   preferredIds: Partial<Record<CliName, string | null>>;
 } | null = null;
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
+  getCodexConfigModel(configId) {
+    return configId === undefined ? undefined : codexModelByConfigId.get(configId);
+  },
   getGrokConfigModels(configId) {
     if (configId === undefined) {
       return undefined;
@@ -582,35 +587,6 @@ function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode):
   return true;
 }
 
-function getWorkspaceLoopExecutionMode(cli: CliName): LoopExecutionMode {
-  const perCli = workspaceSettings.loopExecutionModeByCli;
-  if (!perCli) {
-    return DEFAULT_LOOP_EXECUTION_MODE;
-  }
-  return normalizeLoopExecutionMode(perCli[cli]);
-}
-
-function setWorkspaceLoopExecutionModeForCli(cli: CliName, mode: LoopExecutionMode): boolean {
-  const normalizedMode = normalizeLoopExecutionMode(mode);
-  if (!workspaceSettings.loopExecutionModeByCli) {
-    workspaceSettings.loopExecutionModeByCli = {};
-  }
-  if (workspaceSettings.loopExecutionModeByCli[cli] === normalizedMode) {
-    return false;
-  }
-  workspaceSettings.loopExecutionModeByCli[cli] = normalizedMode;
-  saveWorkspaceSettings(workspaceSettings);
-  return true;
-}
-
-function buildWorkspaceLoopExecutionModeByCli(): Record<CliName, LoopExecutionMode> {
-  const result = {} as Record<CliName, LoopExecutionMode>;
-  CLI_LIST.forEach((cli) => {
-    result[cli] = getWorkspaceLoopExecutionMode(cli);
-  });
-  return result;
-}
-
 function getGlobalHumanInteractionEnabled(): boolean {
   return resolveGlobalHumanInteractionEnabled(readToolSettings());
 }
@@ -1057,11 +1033,23 @@ async function refreshConfigModels(states: Record<CliName, PanelState["configSta
   };
   const currentState = states[currentCli];
   await Promise.all([
+    refreshCodexConfigModel(currentState),
     refreshGrokConfigModels(currentState),
     refreshKimiCodeConfigModels(currentState),
     refreshZcodeConfigModels(currentState),
     refreshDshConfigModels(currentState),
   ]);
+}
+
+async function refreshCodexConfigModel(configState: PanelState["configState"]): Promise<void> {
+  const configId = resolveConfigModelId("codex", configState);
+  try {
+    const current = await configService.getCurrentConfig("codex");
+    codexModelByConfigId.set(configId, parseCodexConfigModel(current.configContent ?? current.content ?? ""));
+  } catch (error) {
+    codexModelByConfigId.set(configId, null);
+    void logError("codex-config-model-read-failed", { error: errorToMessage(error) });
+  }
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
@@ -1494,6 +1482,21 @@ function buildModelState(
 ): PanelState["modelState"] {
   const state = buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
   const resolvedIds = state.activeConfigIdByCli ?? {};
+  const codexConfigId = resolvedIds.codex ?? null;
+  const codexConfiguredModel = codexModelByConfigId.get(codexConfigId) ?? null;
+  const codexMain = getSelectedLoopCliModel("codex", "main", codexConfigId);
+  const codexSubtask = getSelectedLoopCliModel("codex", "subtask", codexConfigId);
+  state.configuredDefaultByCli = { codex: codexConfiguredModel };
+  state.optionsByCli.codex = getModelOptionsForCli("codex", codexConfigId);
+  state.selectedByCli.codex = getSelectedCliModel("codex", codexConfigId);
+  state.loopOptionsByCli = {
+    ...state.loopOptionsByCli,
+    codex: {
+      main: mergeUniqueModelNames(codexConfiguredModel ? [codexConfiguredModel] : [], state.loopOptionsByCli?.codex?.main ?? []),
+      subtask: mergeUniqueModelNames(codexConfiguredModel ? [codexConfiguredModel] : [], state.loopOptionsByCli?.codex?.subtask ?? []),
+    },
+  };
+  state.selectedLoopByCli = { ...state.selectedLoopByCli, codex: { main: codexMain, subtask: codexSubtask } };
   const configId = resolvedIds.grok ?? null;
   const models = getModelOptionsForCli("grok", configId);
   state.optionsByCli.grok = models;
@@ -1565,6 +1568,10 @@ function buildModelState(
   );
   state.selectedLoopThinkingByCli = {
     ...state.selectedLoopThinkingByCli,
+    codex: {
+      main: getSelectedLoopThinkingMode("codex", "main", codexMain, codexConfigId),
+      subtask: getSelectedLoopThinkingMode("codex", "subtask", codexSubtask, codexConfigId),
+    },
     grok: {
       main: getSelectedLoopThinkingMode("grok", "main", main, configId),
       subtask: getSelectedLoopThinkingMode("grok", "subtask", subtask, configId),
@@ -1694,9 +1701,6 @@ return {
   getEffectiveThinkingMode: wrap(getEffectiveThinkingMode),
   getWorkspaceInteractiveMode: wrap(getWorkspaceInteractiveMode),
   setWorkspaceInteractiveModeForCli: wrap(setWorkspaceInteractiveModeForCli),
-  getWorkspaceLoopExecutionMode: wrap(getWorkspaceLoopExecutionMode),
-  setWorkspaceLoopExecutionModeForCli: wrap(setWorkspaceLoopExecutionModeForCli),
-  buildWorkspaceLoopExecutionModeByCli: wrap(buildWorkspaceLoopExecutionModeByCli),
   getGlobalHumanInteractionEnabled: wrap(getGlobalHumanInteractionEnabled),
   shouldRequireExplicitFinalAnswerForRun: wrap(shouldRequireExplicitFinalAnswerForRun),
   buildLongTermMemoryRuntimeSettings: wrap(buildLongTermMemoryRuntimeSettings),

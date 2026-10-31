@@ -47,7 +47,7 @@ Loop 主任务记录仍为 `running`、但主任务当前没有直接 CLI 进程
 ## 验证计划
 
 - 最小相关验证：Loop 状态控制、会话 tab 运行态、停止按钮脚本测试。
-- 单元自测命令：`npm run build`；`node --test dist/test/loopDebate.test.js dist/test/conversationTabLock.test.js dist/test/loopmaingroupchatbutton.test.js`。
+- 单元自测命令：`npm run build`；`node --test dist/test/loop/loopGroupChat.test.js dist/test/conversationTabLock.test.js dist/test/loopmaingroupchatbutton.test.js`。
 - 扩展验证：必要时运行浏览器 smoke；本次以单元与构建为主。
 
 ## 测试与清单同步

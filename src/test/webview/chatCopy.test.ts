@@ -7,7 +7,7 @@ import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 
 const { buildWebviewRuntimeScript } = require("../../webview/viewContentScript") as typeof import("../../webview/viewContentScript");
-const { buildLoopDebateChatPanelHtml } = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
+const { buildLoopGroupChatPanelHtml } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 const { WEBVIEW_STRINGS } = require("../../webview/viewContentStrings") as typeof import("../../webview/viewContentStrings");
 
 test("copies selected chat text through the Webview copy event", () => {
@@ -185,12 +185,9 @@ test("injects the copy handler into both chat Webviews", () => {
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
     loopSubtaskMaxThinkingModeDefault: "high",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
     finalAnswerTextMarker: "<FINAL>",
   });
-  const groupPanel = buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, {
-    mode: "main_sub",
+  const groupPanel = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, {
     task: {
       id: "copy-task",
       cli: "codex",

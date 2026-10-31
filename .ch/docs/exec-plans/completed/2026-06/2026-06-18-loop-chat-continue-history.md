@@ -6,11 +6,11 @@
 
 ## 背景
 
-Loop群聊面板已经能展示主从/辩论任务过程，但中断未完成的任务需要回到 AI 对话主任务 tab 才能尝试继续。历史记录弹窗也只展示普通会话和提示词，无法直接从历史任务列表重新打开Loop群聊 UI。
+Loop群聊面板已经能展示主从任务过程，但中断未完成的任务需要回到 AI 对话主任务 tab 才能尝试继续。历史记录弹窗也只展示普通会话和提示词，无法直接从历史任务列表重新打开Loop群聊 UI。
 
 ## 目标
 
-在Loop群聊 UI 中为未完成且已中断/需复核的任务提供继续按钮，点击后先显示可编辑确认框，默认填“继续”；用户确认后复用现有Loop主任务恢复链路，并把确认后的文本作为本次继续指令交给主任务/主持人判断下一步。历史记录弹窗新增“Loop群聊” tab，列出保留期内所有Loop群聊任务，并可一键加载打开群聊 UI。
+在Loop群聊 UI 中为未完成且已中断/需复核的任务提供继续按钮，点击后先显示可编辑确认框，默认填“继续”；用户确认后复用现有Loop主任务恢复链路，并把确认后的文本作为本次继续指令交给主任务判断下一步。历史记录弹窗新增“Loop群聊” tab，列出保留期内所有Loop群聊任务，并可一键加载打开群聊 UI。
 
 ## 范围
 
@@ -37,7 +37,7 @@ Loop群聊面板已经能展示主从/辩论任务过程，但中断未完成的
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/webview/loopDebatePanel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`
+- 代码目录：`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/viewContent.ts`、`src/webview/types.ts`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/runbooks/`
 - 配置与脚本：无
 
@@ -51,7 +51,7 @@ Loop群聊面板已经能展示主从/辩论任务过程，但中断未完成的
 ## 验证计划
 
 - 最小相关验证：`npm run build`、`git diff --check`
-- 扩展验证：`node --test dist/test/loopDebate.test.js`；手动打开中断Loop任务群聊，点击继续；打开历史记录弹窗的Loop群聊 tab 并加载历史任务。
+- 扩展验证：`node --test dist/test/loop/loopGroupChat.test.js`；手动打开中断Loop任务群聊，点击继续；打开历史记录弹窗的Loop群聊 tab 并加载历史任务。
 
 ## 测试与清单同步
 
@@ -70,8 +70,8 @@ Loop群聊面板已经能展示主从/辩论任务过程，但中断未完成的
 
 - 2026-06-18：继续按钮复用现有 `runLoopPrompt(..., { resumeTaskId, resumeRequested: true })`，不新增Loop协议。
 - 2026-06-18：历史记录弹窗只负责打开Loop群聊 UI，不直接恢复任务，避免加载历史时产生副作用。
-- 2026-06-18：继续按钮不直接恢复；先在群聊 Webview 内弹出可编辑确认框，确认后的内容作为 `loopContinuePrompt` 注入主任务提示或辩论 brief，避免覆盖任务原始目标。
+- 2026-06-18：继续按钮不直接恢复；先在群聊 Webview 内弹出可编辑确认框，确认后的内容作为 `loopContinuePrompt` 注入主任务提示，避免覆盖任务原始目标。
 
 ## 当前结论
 
-已完成。群聊面板对未完成且当前无运行进程的任务显示“继续执行”，点击后先显示可编辑确认框，每次打开默认填“继续”，用户确认后复用同一 `resumeTaskId` 唤醒主任务/主持人；历史记录弹窗新增“Loop群聊” tab，可从保留期内任务摘要重新打开群聊 UI。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。真实 VS Code Extension Host 手工验收仍建议执行。
+已完成。群聊面板对未完成且当前无运行进程的任务显示“继续执行”，点击后先显示可编辑确认框，每次打开默认填“继续”，用户确认后复用同一 `resumeTaskId` 唤醒主任务；历史记录弹窗新增“Loop群聊” tab，可从保留期内任务摘要重新打开群聊 UI。验证通过：`npm run build`、`node --test dist/test/loop/loopGroupChat.test.js`、`git diff --check`。真实 VS Code Extension Host 手工验收仍建议执行。

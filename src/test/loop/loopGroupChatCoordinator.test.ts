@@ -4,7 +4,7 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { buildLoopDebateChatPanelState, createLoopDebateChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
+const { buildLoopGroupChatPanelState, createLoopGroupChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 import type { LoopTaskRecord } from "../../loopTaskStore";
 
 function createStoppedTask(): LoopTaskRecord {
@@ -14,7 +14,6 @@ function createStoppedTask(): LoopTaskRecord {
     workspaceKey: "workspace",
     taskStoreFile: "/tmp/task-1/loop-tasks.json",
     rootPrompt: "Resume with the latest runtime selection.",
-    executionMode: "main_sub_multi_agent",
     status: "stopped",
     createdAt: 1,
     updatedAt: 2,
@@ -36,11 +35,10 @@ function createStoppedTask(): LoopTaskRecord {
 test("does not recreate a closed main tab while rendering a terminal Loop panel", () => {
   const task = createStoppedTask();
   let createOptions: { createIfMissing?: boolean } | undefined;
-  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
     panelsByTaskId: new Map(),
-    defaultDebateRound: 1,
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
@@ -75,7 +73,7 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
 
-  buildLoopDebateChatPanelState(task, deps);
+  buildLoopGroupChatPanelState(task, deps);
 
   assert.deepEqual(createOptions, { createIfMissing: false });
 });
@@ -86,11 +84,10 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
   const modelCalls: Array<{ cli: string; configId: string | null }> = [];
   const runCalls: Array<{ input: Record<string, unknown>; options: Record<string, unknown> }> = [];
   let continueTargetOptions: { createIfMissing?: boolean } | undefined;
-  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
     panelsByTaskId: new Map(),
-    defaultDebateRound: 1,
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
@@ -133,7 +130,7 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
 
-  const coordinator = createLoopDebateChatPanelCoordinator(deps);
+  const coordinator = createLoopGroupChatPanelCoordinator(deps);
   await coordinator.continueTask(task.id, "继续执行");
 
   assert.deepEqual(configCalls, ["opencode"]);
@@ -155,11 +152,10 @@ test("Loop group chat continuation can keep the recorded main and subtask models
   const patches: Array<Partial<LoopTaskRecord>> = [];
   const warnings: string[] = [];
   const runCalls: Array<Record<string, unknown>> = [];
-  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
     panelsByTaskId: new Map(),
-    defaultDebateRound: 1,
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
@@ -197,10 +193,10 @@ test("Loop group chat continuation can keep the recorded main and subtask models
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
 
-  const coordinator = createLoopDebateChatPanelCoordinator(deps);
+  const coordinator = createLoopGroupChatPanelCoordinator(deps);
   await coordinator.continueTask(task.id, "继续", "original");
 
-  assert.deepEqual(warnings, ["loopDebateChat.originalRuntimeUnavailable"]);
+  assert.deepEqual(warnings, ["loopGroupChatChat.originalRuntimeUnavailable"]);
   assert.equal(runCalls.length, 0);
 
   await coordinator.continueTask(task.id, "继续", "current");
@@ -227,11 +223,10 @@ test("Loop group chat original runtime restores the recorded group, config, mode
   };
   const runCalls: Array<{ input: Record<string, unknown>; options: Record<string, unknown> }> = [];
   const restored: string[] = [];
-  type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+  type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
     panelsByTaskId: new Map(),
-    defaultDebateRound: 1,
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
@@ -269,7 +264,7 @@ test("Loop group chat original runtime restores the recorded group, config, mode
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
 
-  const coordinator = createLoopDebateChatPanelCoordinator(deps);
+  const coordinator = createLoopGroupChatPanelCoordinator(deps);
   await coordinator.continueTask(task.id, "继续", "original");
 
   assert.deepEqual(restored, [task.id]);
@@ -321,11 +316,10 @@ test("previews a communication file from the open Loop group chat", async () => 
     fs.writeFileSync(filePath, "# 标题\n\n- 一条\n<script>alert(1)</script>\n", "utf8");
     task.communicationDir = communicationDir;
     task.mainCommunicationFile = path.join(communicationDir, "main-task.md");
-    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
       panelsByTaskId: new Map(),
-      defaultDebateRound: 1,
       normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       normalizeSupplementalRequirement: () => null,
       appendSupplementalRequirement: (existing) => [...(existing ?? [])],
@@ -356,12 +350,12 @@ test("previews a communication file from the open Loop group chat", async () => 
       pickTask: async () => task,
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
-    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    const coordinator = createLoopGroupChatPanelCoordinator(deps);
     await coordinator.open(task.id);
     assert.equal(typeof messageHandler, "function");
-    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: " ", path: filePath });
-    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: "x".repeat(81), path: filePath });
-    messageHandler?.({ type: "loopDebateChat:openCommunicationFile", requestId: "req-1", path: filePath });
+    messageHandler?.({ type: "loopGroupChatChat:openCommunicationFile", requestId: " ", path: filePath });
+    messageHandler?.({ type: "loopGroupChatChat:openCommunicationFile", requestId: "x".repeat(81), path: filePath });
+    messageHandler?.({ type: "loopGroupChatChat:openCommunicationFile", requestId: "req-1", path: filePath });
     assert.equal(posted.length, 1);
     const message = posted[0] as { ok?: boolean; html?: string; error?: string };
     assert.equal(message.ok, true);
@@ -402,11 +396,10 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
     const task = createStoppedTask();
     task.schedulingMode = "event_driven";
     const notices: string[] = [];
-    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
       panelsByTaskId: new Map(),
-      defaultDebateRound: 1,
       normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       appendSupplementalRequirement: (existing, nextItem) => [...(existing ?? []), nextItem],
@@ -440,16 +433,16 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
       },
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
-    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    const coordinator = createLoopGroupChatPanelCoordinator(deps);
     await coordinator.open(task.id);
     assert.equal(typeof messageHandler, "function");
-    messageHandler?.({ type: "loopDebateChat:supplementTask", prompt: "  please check the running subtask  " });
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "  please check the running subtask  " });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(notices, ["please check the running subtask"]);
 
     notices.length = 0;
     task.schedulingMode = "classic";
-    messageHandler?.({ type: "loopDebateChat:supplementTask", prompt: "classic only" });
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "classic only" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(notices, []);
   } finally {
@@ -492,11 +485,10 @@ test("asks the current main model session and shows the answer without supplemen
     const questions: string[] = [];
     const savedThreads: string[] = [];
     let supplementalCount = 0;
-    type CoordinatorDeps = Parameters<typeof createLoopDebateChatPanelCoordinator>[0];
+    type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
       panelsByTaskId: new Map(),
-      defaultDebateRound: 1,
       normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       appendSupplementalRequirement: (existing, nextItem) => {
@@ -557,17 +549,17 @@ test("asks the current main model session and shows the answer without supplemen
       },
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
-    const coordinator = createLoopDebateChatPanelCoordinator(deps);
+    const coordinator = createLoopGroupChatPanelCoordinator(deps);
     await coordinator.open(task.id);
     const installedHtml = webview.html;
     assert.match(installedHtml, /上次的问题/u);
-    messageHandler?.({ type: "loopDebateChat:domReady", generation: 1 });
-    messageHandler?.({ type: "loopDebateChat:askMainModel", prompt: "  可以合并吗  " });
+    messageHandler?.({ type: "loopGroupChatChat:domReady", generation: 1 });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(questions, ["可以合并吗"]);
     assert.equal(supplementalCount, 0);
     assert.equal(webview.html, installedHtml);
-    const askThreads = posted.filter((message) => message.type === "loopDebateChat:askThread");
+    const askThreads = posted.filter((message) => message.type === "loopGroupChatChat:askThread");
     const latestAsk = askThreads.at(-1)?.thread;
     const askText = latestAsk?.messages?.map((message) => message.content ?? "").join("\n") ?? "";
     assert.match(askText, /可以合并吗/u);
@@ -582,7 +574,7 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(notices.length, 0);
     assert.ok(savedThreads.some((entry) => entry.includes("可以先合并冲突文件。")));
 
-    messageHandler?.({ type: "loopDebateChat:dismissMainModelAnswer" });
+    messageHandler?.({ type: "loopGroupChatChat:dismissMainModelAnswer" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(panel?.getAskThread().dialogOpen, false);
     assert.match(panel?.getAskThread().messages.map((message) => message.content).join("\n") ?? "", /上次的问题/u);

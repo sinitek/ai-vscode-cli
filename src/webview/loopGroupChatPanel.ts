@@ -4,7 +4,7 @@ import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/accepta
 import { getWebviewStrings } from "./viewContentStrings";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
-import { LOOP_DEBATE_PANEL_STYLES } from "./loopDebatePanelStyles";
+import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
 import { CHAT_COPY_SCRIPT } from "./chatCopy";
 import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
@@ -14,45 +14,44 @@ import { getMarkdownStyles } from "./viewContentStyles/markdown";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
-import { parseLoopDebateChatTranscript, type LoopDebateChatSegment } from "../loopDebate";
+import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import {
-  buildLoopDebateChatPanelTitle,
+  buildLoopGroupChatPanelTitle,
   getStrings,
-  type LoopDebateChatPanelStrings,
-} from "./loopDebatePanelRenderer";
+  type LoopGroupChatPanelStrings,
+} from "./loopGroupChatPanelRenderer";
 import type {
   LoopCommunicationFilePreviewMessage,
-  LoopDebateChatPanelActiveSpeaker,
-  LoopDebateChatPanelMessage,
-  LoopDebateChatPanelParticipant,
-  LoopDebateChatPanelRound,
-  LoopDebateChatPanelState,
+  LoopGroupChatPanelActiveSpeaker,
+  LoopGroupChatPanelMessage,
+  LoopGroupChatPanelParticipant,
+  LoopGroupChatPanelRound,
+  LoopGroupChatPanelState,
   LoopPlusPanelProjection,
-} from "./loopDebatePanelTypes";
+} from "./loopGroupChatPanelTypes";
 export type {
   LoopCommunicationFilePreviewMessage,
-  LoopDebateChatPanelActiveSpeaker,
-  LoopDebateChatPanelMessage,
-  LoopDebateChatPanelModeratorDecision,
-  LoopDebateChatPanelParticipant,
-  LoopDebateChatPanelRound,
-  LoopDebateChatPanelState,
+  LoopGroupChatPanelActiveSpeaker,
+  LoopGroupChatPanelMessage,
+  LoopGroupChatPanelParticipant,
+  LoopGroupChatPanelRound,
+  LoopGroupChatPanelState,
   LoopPlusPanelActivity,
   LoopPlusPanelExecutionItem,
   LoopPlusPanelPhase,
   LoopPlusPanelProjection,
   LoopPlusPanelReviewItem,
   LoopPlusPanelSeenAttempt,
-} from "./loopDebatePanelTypes";
+} from "./loopGroupChatPanelTypes";
 
-type LoopDebateChatPanelHandlers = {
-  onMessage: (message: LoopDebateChatPanelMessage) => void;
+type LoopGroupChatPanelHandlers = {
+  onMessage: (message: LoopGroupChatPanelMessage) => void;
   onDispose?: () => void;
 };
 
-export class LoopDebateChatPanel {
+export class LoopGroupChatPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private state: LoopDebateChatPanelState | undefined;
+  private state: LoopGroupChatPanelState | undefined;
   private askThread: LoopAskThread = createEmptyLoopAskThread();
   private domReady = false;
   private htmlInstalled = false;
@@ -61,15 +60,15 @@ export class LoopDebateChatPanel {
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly handlers: LoopDebateChatPanelHandlers,
+    private readonly handlers: LoopGroupChatPanelHandlers,
   ) {}
 
-  public show(state: LoopDebateChatPanelState): void {
+  public show(state: LoopGroupChatPanelState): void {
     const strings = getStrings();
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        "sinitek-cli-tools.loopDebateChat",
-        buildLoopDebateChatPanelTitle(state, strings),
+        "sinitek-cli-tools.loopGroupChatChat",
+        buildLoopGroupChatPanelTitle(state, strings),
         vscode.ViewColumn.Active,
         {
           enableScripts: true,
@@ -77,11 +76,11 @@ export class LoopDebateChatPanel {
           localResourceRoots: [this.extensionUri],
         },
       );
-      this.panel.webview.onDidReceiveMessage(async (message: LoopDebateChatPanelMessage) => {
+      this.panel.webview.onDidReceiveMessage(async (message: LoopGroupChatPanelMessage) => {
         if (isChatImageMessage(message)) {
           return this.imageHost.handleMessage(message);
         }
-        if (message?.type === "loopDebateChat:domReady") {
+        if (message?.type === "loopGroupChatChat:domReady") {
           this.handleDomReady(typeof message.generation === "number" ? message.generation : 0);
           return;
         }
@@ -102,16 +101,16 @@ export class LoopDebateChatPanel {
     this.update(state);
   }
 
-  public update(state: LoopDebateChatPanelState): void {
+  public update(state: LoopGroupChatPanelState): void {
     this.state = state;
     if (!this.panel) {
       return;
     }
-    this.panel.title = buildLoopDebateChatPanelTitle(state, getStrings());
+    this.panel.title = buildLoopGroupChatPanelTitle(state, getStrings());
     this.renderGeneration += 1;
     if (!this.htmlInstalled) {
       this.htmlInstalled = true;
-      this.panel.webview.html = buildLoopDebateChatPanelHtml(
+      this.panel.webview.html = buildLoopGroupChatPanelHtml(
         this.panel.webview,
         state,
         this.askThread,
@@ -141,7 +140,7 @@ export class LoopDebateChatPanel {
       return;
     }
     void this.panel.webview.postMessage(
-      buildLoopDebateChatPanelContentPatch(this.state, this.renderGeneration),
+      buildLoopGroupChatPanelContentPatch(this.state, this.renderGeneration),
     );
   }
 
@@ -158,12 +157,12 @@ export class LoopDebateChatPanel {
       return;
     }
     void this.panel.webview.postMessage({
-      type: "loopDebateChat:askThread",
+      type: "loopGroupChatChat:askThread",
       thread: this.askThread,
     });
   }
 
-  public getState(): LoopDebateChatPanelState | undefined {
+  public getState(): LoopGroupChatPanelState | undefined {
     return this.state;
   }
 
@@ -180,8 +179,8 @@ export class LoopDebateChatPanel {
   }
 }
 
-export type LoopDebateChatPanelContentPatch = {
-  type: "loopDebateChat:contentPatch";
+export type LoopGroupChatPanelContentPatch = {
+  type: "loopGroupChatChat:contentPatch";
   generation: number;
   headingText: string;
   subtitleText: string;
@@ -194,14 +193,14 @@ export type LoopDebateChatPanelContentPatch = {
   continueModelChoiceHtml: string;
 };
 
-export function buildLoopDebateChatPanelContentPatch(
-  state: LoopDebateChatPanelState,
+export function buildLoopGroupChatPanelContentPatch(
+  state: LoopGroupChatPanelState,
   generation: number,
-): LoopDebateChatPanelContentPatch {
+): LoopGroupChatPanelContentPatch {
   const strings = getStrings();
-  const transcript = parseLoopDebateChatTranscript(state.chatMarkdown);
+  const transcript = parseLoopGroupChatTranscript(state.chatMarkdown);
   return {
-    type: "loopDebateChat:contentPatch",
+    type: "loopGroupChatChat:contentPatch",
     generation,
     headingText: state.loopPlus ? strings.titleLoopPlus : strings.title,
     subtitleText: `${getPanelSubtitle(state, strings)} · ${state.task.id}`,
@@ -212,22 +211,22 @@ export function buildLoopDebateChatPanelContentPatch(
     clarificationHtml: renderOrchestratorClarificationDialog(
       state.clarification,
       { requiredTemplate: strings.clarificationRequired },
-      { submit: "loopDebateChat:submitClarification", reject: "loopDebateChat:rejectClarification" },
+      { submit: "loopGroupChatChat:submitClarification", reject: "loopGroupChatChat:rejectClarification" },
     ),
     clarificationInteractionId: state.clarification?.interactionId ?? "",
     continueModelChoiceHtml: renderContinueModelChoice(state, strings),
   };
 }
 
-export function buildLoopDebateChatPanelHtml(
+export function buildLoopGroupChatPanelHtml(
   webview: vscode.Webview,
-  state: LoopDebateChatPanelState,
+  state: LoopGroupChatPanelState,
   askThread: LoopAskThread = createEmptyLoopAskThread(),
   generation = 0,
 ): string {
   const nonce = getNonce();
   const strings = getStrings();
-  const patch = buildLoopDebateChatPanelContentPatch(state, generation);
+  const patch = buildLoopGroupChatPanelContentPatch(state, generation);
   const heading = patch.headingText;
 
   return `<!DOCTYPE html>
@@ -238,7 +237,7 @@ export function buildLoopDebateChatPanelHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(heading)}</title>
     <style>
-${LOOP_DEBATE_PANEL_STYLES}
+${LOOP_GROUP_CHAT_PANEL_STYLES}
 ${getMarkdownStyles(".markdown-body")}
       .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
     </style>
@@ -480,7 +479,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      function requestRefresh() {
 	        saveScrollState();
 	        saveDialogState();
-	        vscode.postMessage({ type: "loopDebateChat:refresh" });
+	        vscode.postMessage({ type: "loopGroupChatChat:refresh" });
 	      }
 
 	      function readContinueModelSource() {
@@ -552,7 +551,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (liveContinueButton) {
 	          liveContinueButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "loopDebateChat:continueTask", prompt, modelSource: readContinueModelSource() });
+	        vscode.postMessage({ type: "loopGroupChatChat:continueTask", prompt, modelSource: readContinueModelSource() });
 	      }
 
 	      function submitSupplementDialog() {
@@ -570,7 +569,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (liveSupplementButton) {
 	          liveSupplementButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "loopDebateChat:supplementTask", prompt });
+	        vscode.postMessage({ type: "loopGroupChatChat:supplementTask", prompt });
 	      }
 
 	      function openSupplementDialog(preservedPrompt) {
@@ -741,7 +740,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      function openAskDialog() {
 	        showAskDialog();
 	        saveAskDialogState();
-	        vscode.postMessage({ type: "loopDebateChat:openAskDialog" });
+	        vscode.postMessage({ type: "loopGroupChatChat:openAskDialog" });
 	        window.setTimeout(() => {
 	          if (askChatInput && !(askThread && askThread.running)) {
 	            askChatInput.focus();
@@ -752,7 +751,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      function closeAskDialog() {
 	        hideAskDialog();
 	        saveAskDialogState();
-	        vscode.postMessage({ type: "loopDebateChat:closeAskDialog" });
+	        vscode.postMessage({ type: "loopGroupChatChat:closeAskDialog" });
 	      }
 
 	      function submitAskChat() {
@@ -766,7 +765,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        askChatInput.value = "";
 	        saveAskDialogState();
-	        vscode.postMessage({ type: "loopDebateChat:askMainModel", prompt: prompt });
+	        vscode.postMessage({ type: "loopGroupChatChat:askMainModel", prompt: prompt });
 	      }
 
 	      function restoreAskDialogState() {
@@ -879,7 +878,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const cachedHtml = existing && existing.path === filePath && typeof existing.html === "string" ? existing.html : "";
 	        showCommunicationFilePreview(filePath, cachedHtml, cachedHtml ? "" : "${escapeJsString(strings.communicationFileLoading)}");
 	        rememberCommunicationFilePreview(filePath, requestId, cachedHtml);
-	        vscode.postMessage({ type: "loopDebateChat:openCommunicationFile", requestId: requestId, path: filePath });
+	        vscode.postMessage({ type: "loopGroupChatChat:openCommunicationFile", requestId: requestId, path: filePath });
 	        if (focusClose !== false && filePreviewClose) {
 	          filePreviewClose.focus();
 	        }
@@ -915,7 +914,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 
 	      function applyCommunicationFilePreview(message) {
 	        const stored = getStoredCommunicationFile();
-	        if (!message || message.type !== "loopDebateChat:communicationFile" || !stored || !stored.open) {
+	        if (!message || message.type !== "loopGroupChatChat:communicationFile" || !stored || !stored.open) {
 	          return;
 	        }
 	        if (stored.requestId !== message.requestId) {
@@ -989,7 +988,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function applyContentPatch(message) {
-	        if (!message || message.type !== "loopDebateChat:contentPatch") {
+	        if (!message || message.type !== "loopGroupChatChat:contentPatch") {
 	          return false;
 	        }
 	        const generation = typeof message.generation === "number" ? message.generation : 0;
@@ -1088,7 +1087,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          if (liveStopButton) {
 	            liveStopButton.disabled = true;
 	          }
-	          vscode.postMessage({ type: "loopDebateChat:stopTask" });
+	          vscode.postMessage({ type: "loopGroupChatChat:stopTask" });
 	          return;
 	        }
 	        if (action === "scrollToBottom") {
@@ -1112,7 +1111,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (applyContentPatch(message)) {
 	          return;
 	        }
-	        if (message && message.type === "loopDebateChat:askThread") {
+	        if (message && message.type === "loopGroupChatChat:askThread") {
 	          applyAskThread(message.thread);
 	          return;
 	        }
@@ -1124,7 +1123,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          handleAcceptancePlanSelectedMessage(message);
 	          return;
 	        }
-	        if (message && message.type === "loopDebateChat:acceptancePlanUpdated") {
+	        if (message && message.type === "loopGroupChatChat:acceptancePlanUpdated") {
 	          if (typeof state !== "undefined" && state) {
 	            state.taskAcceptancePlan = message.plan || null;
 	          }
@@ -1214,7 +1213,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 	      if (askChatAbort) {
 	        askChatAbort.addEventListener("click", () => {
-	          vscode.postMessage({ type: "loopDebateChat:abortMainModelQuestion" });
+	          vscode.postMessage({ type: "loopGroupChatChat:abortMainModelQuestion" });
 	        });
 	      }
 	      if (askChatForm) {
@@ -1279,15 +1278,15 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
 ${state.loopPlus ? renderGroupAcceptancePlanScript(state) : ""}
-	      vscode.postMessage({ type: "loopDebateChat:domReady", generation: PANEL_GENERATION });
+	      vscode.postMessage({ type: "loopGroupChatChat:domReady", generation: PANEL_GENERATION });
 	    </script>
   </body>
 </html>`;
 }
 
 function renderPanelActions(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   return [
     state.task.canStop
@@ -1309,8 +1308,8 @@ function renderPanelActions(
 }
 
 function renderTaskPanel(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const currentRound = state.loopPlus
     ? ""
@@ -1328,18 +1327,18 @@ function renderTaskPanel(
 }
 
 function getPanelSubtitle(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   if (state.loopPlus) {
     return strings.subtitleLoopPlus;
   }
-  return state.mode === "debate" ? strings.debateSubtitle : strings.mainSubSubtitle;
+  return strings.mainSubSubtitle;
 }
 
 function renderLoopPlusPanels(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const projection = state.loopPlus;
   if (!projection) {
@@ -1371,9 +1370,9 @@ function renderLoopPlusPanels(
 }
 
 function loopPlusActivityText(
-  state: LoopDebateChatPanelState,
+  state: LoopGroupChatPanelState,
   projection: Extract<LoopPlusPanelProjection, { ok: true }>,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   switch (projection.activity) {
     case "waiting":
@@ -1399,7 +1398,7 @@ function loopPlusActivityText(
   }
 }
 
-function loopPlusSubtaskLabel(state: LoopDebateChatPanelState, subtaskId: string): string {
+function loopPlusSubtaskLabel(state: LoopGroupChatPanelState, subtaskId: string): string {
   const normalized = subtaskId.trim();
   if (!normalized) {
     return "";
@@ -1439,9 +1438,9 @@ function acceptanceStatusClass(status: string): string {
 }
 
 function renderParticipantStatus(
-  state: LoopDebateChatPanelState,
+  state: LoopGroupChatPanelState,
   status: string,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const label = escapeHtml(formatParticipantStatus(state, status, strings));
   const statusClass = acceptanceStatusClass(status);
@@ -1452,9 +1451,9 @@ function renderParticipantStatus(
 }
 
 function formatParticipantStatus(
-  state: LoopDebateChatPanelState,
+  state: LoopGroupChatPanelState,
   status: string,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   if (!state.loopPlus) {
     return status;
@@ -1503,60 +1502,31 @@ function formatParticipantStatus(
 }
 
 function renderRosterPanel(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   if (state.rounds.length === 0) {
     return "";
   }
-  const debateRound = findLatestPanelRound(state.rounds, "debate");
-  const moderator = state.mode === "debate" && debateRound
-    ? renderModeratorMember(debateRound, strings)
-    : "";
   const rosterParticipants = collectRosterParticipants(state.rounds);
   const participants = rosterParticipants.map((participant) => `<div class="member">
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
-      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${participant.stance ? ` · ${escapeHtml(participant.stance)}` : ""}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
   </div>`).join("");
-  const consensusRound = state.rounds.slice().reverse().find((round) => Boolean(round.consensusSummary));
-  const consensus = consensusRound?.consensusSummary
-    ? `<div class="member-meta">${escapeHtml(strings.consensus)}：${escapeHtml(consensusRound.consensusSummary)}</div>`
-    : "";
-  const openDisagreementCount = state.rounds.reduce((total, round) => (
-    total + (typeof round.openDisagreementCount === "number" ? round.openDisagreementCount : 0)
-  ), 0);
-  const openDisagreements = openDisagreementCount > 0
-    ? `<div class="member-meta">${escapeHtml(strings.openDisagreements)}：${openDisagreementCount}</div>`
-    : "";
   return `<section class="panel">
     <h2>${escapeHtml(strings.participants)}</h2>
-    <div class="roster">${moderator}${participants}</div>
-    ${consensus}
-    ${openDisagreements}
+    <div class="roster">${participants}</div>
   </section>`;
 }
 
-function findLatestPanelRound(
-  rounds: readonly LoopDebateChatPanelRound[],
-  kind: LoopDebateChatPanelRound["kind"],
-): LoopDebateChatPanelRound | null {
-  for (let index = rounds.length - 1; index >= 0; index -= 1) {
-    const round = rounds[index];
-    if (round?.kind === kind) {
-      return round;
-    }
-  }
-  return null;
-}
-
 function collectRosterParticipants(
-  rounds: readonly LoopDebateChatPanelRound[],
-): LoopDebateChatPanelParticipant[] {
-  const participantsByKey = new Map<string, LoopDebateChatPanelParticipant>();
+  rounds: readonly LoopGroupChatPanelRound[],
+): LoopGroupChatPanelParticipant[] {
+  const participantsByKey = new Map<string, LoopGroupChatPanelParticipant>();
   rounds.forEach((round) => {
     round.participants.forEach((participant) => {
       const key = `${participant.role}:${participant.id}`;
@@ -1569,7 +1539,7 @@ function collectRosterParticipants(
   return Array.from(participantsByKey.values());
 }
 
-function memberLastStartedAt(participant: LoopDebateChatPanelParticipant): number | undefined {
+function memberLastStartedAt(participant: LoopGroupChatPanelParticipant): number | undefined {
   if (participant.lastStartedAt === null) {
     return undefined;
   }
@@ -1587,35 +1557,16 @@ function memberLastStartedAt(participant: LoopDebateChatPanelParticipant): numbe
 
 function renderMemberLastStarted(
   startedAt: number | undefined,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const formatted = formatTimestamp(startedAt);
   return `<div class="member-meta" data-member-last-started="${escapeAttribute(formatted)}">${escapeHtml(strings.lastStarted)}：${escapeHtml(formatted || strings.notStarted)}</div>`;
 }
 
-function renderModeratorMember(
-  round: LoopDebateChatPanelRound,
-  strings: LoopDebateChatPanelStrings,
-): string {
-  const decisionStartedAt = round.moderatorDecisions
-    .slice()
-    .reverse()
-    .find((decision) => typeof decision.updatedAt === "number" && Number.isFinite(decision.updatedAt))
-    ?.updatedAt;
-  const startedAt = typeof decisionStartedAt === "number" ? decisionStartedAt : round.startedAt;
-  return `<div class="member">
-    <span class="avatar">${escapeHtml(getAvatarLabel(strings.moderator, "M"))}</span>
-    <div>
-      <div class="member-name">${escapeHtml(strings.moderator)}</div>
-      ${renderMemberLastStarted(startedAt, strings)}
-    </div>
-  </div>`;
-}
-
 function renderTimeline(
-  state: LoopDebateChatPanelState,
-  segments: LoopDebateChatSegment[],
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  segments: LoopGroupChatSegment[],
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
   if (state.error) {
@@ -1633,7 +1584,7 @@ function renderTimeline(
 
 function renderInitialTaskPromptBubble(
   rootPrompt: string,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   if (!rootPrompt.trim()) {
     return "";
@@ -1646,13 +1597,13 @@ function renderInitialTaskPromptBubble(
   }, strings, strings.initialTaskPrompt);
 }
 
-type RuntimeThinkingSpeaker = LoopDebateChatPanelActiveSpeaker & {
+type RuntimeThinkingSpeaker = LoopGroupChatPanelActiveSpeaker & {
   attemptId?: string;
 };
 
 function renderThinkingBubbles(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   return getThinkingSpeakers(state)
     .map((speaker) => renderThinkingBubble(speaker, strings))
@@ -1661,18 +1612,13 @@ function renderThinkingBubbles(
 
 function renderThinkingBubble(
   speaker: RuntimeThinkingSpeaker,
-  strings: LoopDebateChatPanelStrings,
+  strings: LoopGroupChatPanelStrings,
 ): string {
-  const isParticipant = speaker.kind === "participant" || speaker.kind === "main" || speaker.kind === "subtask";
-  const isModerator = speaker.kind === "moderator";
-  const hasAvatar = isParticipant || isModerator;
-  const messageKind = isParticipant ? "participant-turn" : isModerator ? "moderator-turn" : "system";
-  const layoutClass = hasAvatar ? "with-avatar" : "no-avatar";
+  const messageKind = speaker.kind === "main" ? "main-turn" : "subtask-turn";
+  const layoutClass = "with-avatar";
   const tag = getThinkingTag(speaker, strings);
   const text = getThinkingText(speaker, strings);
-  const avatar = hasAvatar
-    ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker.title, speaker.id))}</span>`
-    : "";
+  const avatar = `<span class="avatar">${escapeHtml(getAvatarLabel(speaker.title, speaker.id))}</span>`;
   const attemptAttribute = speaker.attemptId
     ? ` data-thinking-attempt="${escapeAttribute(speaker.attemptId)}"`
     : "";
@@ -1691,7 +1637,7 @@ function renderThinkingBubble(
   </article>`;
 }
 
-function getThinkingSpeakers(state: LoopDebateChatPanelState): RuntimeThinkingSpeaker[] {
+function getThinkingSpeakers(state: LoopGroupChatPanelState): RuntimeThinkingSpeaker[] {
   if (state.loopPlus) {
     return getLoopPlusRuntimeSpeakers(state);
   }
@@ -1699,7 +1645,7 @@ function getThinkingSpeakers(state: LoopDebateChatPanelState): RuntimeThinkingSp
   return speaker ? [speaker] : [];
 }
 
-function getLoopPlusRuntimeSpeakers(state: LoopDebateChatPanelState): RuntimeThinkingSpeaker[] {
+function getLoopPlusRuntimeSpeakers(state: LoopGroupChatPanelState): RuntimeThinkingSpeaker[] {
   const projection = state.loopPlus;
   if (!projection?.ok || projection.activity === "completed") {
     return [];
@@ -1732,7 +1678,7 @@ function getLoopPlusRuntimeSpeakers(state: LoopDebateChatPanelState): RuntimeThi
 }
 
 function loopPlusRunningTitle(
-  state: LoopDebateChatPanelState,
+  state: LoopGroupChatPanelState,
   item: Extract<LoopPlusPanelProjection, { ok: true }>["running"][number],
 ): string {
   const label = loopPlusSubtaskLabel(state, item.subtaskId);
@@ -1743,7 +1689,7 @@ function loopPlusRunningTitle(
   return snapshotTitle || label || item.subtaskId;
 }
 
-function loopPlusMainTitle(state: LoopDebateChatPanelState): string {
+function loopPlusMainTitle(state: LoopGroupChatPanelState): string {
   for (let index = state.rounds.length - 1; index >= 0; index -= 1) {
     const main = state.rounds[index]?.participants.find((participant) => (
       participant.role === "main" || participant.id === "main"
@@ -1756,7 +1702,7 @@ function loopPlusMainTitle(state: LoopDebateChatPanelState): string {
   return "主任务";
 }
 
-function getActiveSpeaker(state: LoopDebateChatPanelState): LoopDebateChatPanelActiveSpeaker | null {
+function getActiveSpeaker(state: LoopGroupChatPanelState): LoopGroupChatPanelActiveSpeaker | null {
   if (state.task.status !== "running") {
     return null;
   }
@@ -1770,8 +1716,8 @@ function getActiveSpeaker(state: LoopDebateChatPanelState): LoopDebateChatPanelA
 }
 
 function getActiveSpeakerFromRound(
-  round: LoopDebateChatPanelRound,
-): LoopDebateChatPanelActiveSpeaker | null {
+  round: LoopGroupChatPanelRound,
+): LoopGroupChatPanelActiveSpeaker | null {
   if (round.status !== "running") {
     return null;
   }
@@ -1784,7 +1730,7 @@ function getActiveSpeakerFromRound(
   }
   const kind = runningParticipant.id === "main"
     ? "main"
-    : (runningParticipant.role === "subtask" ? "subtask" : "participant");
+    : "subtask";
   return {
     kind,
     id: runningParticipant.id,
@@ -1793,42 +1739,17 @@ function getActiveSpeakerFromRound(
   };
 }
 
-function getThinkingTag(
-  speaker: LoopDebateChatPanelActiveSpeaker,
-  strings: LoopDebateChatPanelStrings,
-): string {
-  if (speaker.finalPass) {
-    return strings.finalStance;
-  }
-  if (typeof speaker.dialogueTurn === "number") {
-    const turn = formatTemplate(strings.turnLabel, { turn: speaker.dialogueTurn });
-    return speaker.kind === "moderator" ? `${strings.moderator} · ${turn}` : turn;
-  }
-  if (speaker.kind === "main") {
-    return strings.mainTask;
-  }
-  if (speaker.kind === "subtask") {
-    return strings.subtask;
-  }
-  return speaker.kind === "consensus" ? strings.consensus : strings.thinkingTag;
+function getThinkingTag(speaker: LoopGroupChatPanelActiveSpeaker, strings: LoopGroupChatPanelStrings): string {
+  return speaker.kind === "main" ? strings.mainTask : strings.subtask;
 }
 
-function getThinkingText(
-  speaker: LoopDebateChatPanelActiveSpeaker,
-  strings: LoopDebateChatPanelStrings,
-): string {
-  if (speaker.kind === "consensus") {
-    return strings.consensusThinking;
-  }
-  if (speaker.finalPass) {
-    return formatTemplate(strings.finalStanceThinking, { speaker: speaker.title });
-  }
+function getThinkingText(speaker: LoopGroupChatPanelActiveSpeaker, strings: LoopGroupChatPanelStrings): string {
   return formatTemplate(strings.thinking, { speaker: speaker.title });
 }
 
 function renderSegment(
-  segment: LoopDebateChatSegment,
-  strings: LoopDebateChatPanelStrings,
+  segment: LoopGroupChatSegment,
+  strings: LoopGroupChatPanelStrings,
   tagOverride?: string,
 ): string {
   const speaker = getSegmentSpeaker(segment, strings);
@@ -1836,10 +1757,6 @@ function renderSegment(
   const hasAvatar = segment.kind === "main-turn"
     || segment.kind === "subtask-joined"
     || segment.kind === "subtask-turn"
-    || segment.kind === "participant-joined"
-    || segment.kind === "participant-turn"
-    || segment.kind === "moderator-turn"
-    || segment.kind === "final-stance"
     || segment.kind === "error";
   const avatar = hasAvatar
     ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker, segment.actorId ?? ""))}</span>`
@@ -1857,7 +1774,7 @@ function renderSegment(
   </article>`;
 }
 
-function getSegmentSpeaker(segment: LoopDebateChatSegment, strings: LoopDebateChatPanelStrings): string {
+function getSegmentSpeaker(segment: LoopGroupChatSegment, strings: LoopGroupChatPanelStrings): string {
   if (segment.kind === "user-message") {
     return strings.user;
   }
@@ -1867,16 +1784,13 @@ function getSegmentSpeaker(segment: LoopDebateChatSegment, strings: LoopDebateCh
   if (segment.kind === "subtask-joined" || segment.kind === "subtask-turn") {
     return segment.actorTitle ?? segment.actorId ?? strings.subtask;
   }
-  if (segment.kind === "moderator-turn" || segment.kind === "forced-finalize" || segment.kind === "closed" || segment.kind === "error") {
-    return segment.actorTitle ?? strings.moderator;
-  }
-  if (segment.kind === "participant-joined" || segment.kind === "participant-turn" || segment.kind === "final-stance") {
-    return segment.actorTitle ?? segment.actorId ?? segment.heading;
+  if (segment.kind === "closed" || segment.kind === "error") {
+    return segment.actorTitle ?? strings.mainTask;
   }
   return segment.heading || strings.system;
 }
 
-function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPanelStrings): string {
+function getSegmentTag(segment: LoopGroupChatSegment, strings: LoopGroupChatPanelStrings): string {
   if (segment.kind === "user-message") {
     return strings.supplementalRequirement;
   }
@@ -1889,26 +1803,8 @@ function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPa
   if (segment.kind === "subtask-turn") {
     return strings.subtask;
   }
-  if (segment.kind === "participant-joined") {
-    return strings.participants;
-  }
-  if (segment.kind === "participant-turn" && typeof segment.dialogueTurn === "number") {
-    return formatTemplate(strings.turnLabel, { turn: segment.dialogueTurn });
-  }
-  if (segment.kind === "participant-turn") {
-    return strings.participants;
-  }
   if (segment.kind === "error") {
     return strings.stopped;
-  }
-  if (segment.kind === "moderator-turn" && typeof segment.dialogueTurn === "number") {
-    return `${strings.moderator} · ${formatTemplate(strings.turnLabel, { turn: segment.dialogueTurn })}`;
-  }
-  if (segment.kind === "moderator-turn") {
-    return strings.moderator;
-  }
-  if (segment.kind === "final-stance") {
-    return strings.finalStance;
   }
   if (segment.kind === "closed") {
     return strings.transcriptClosed;
@@ -1916,7 +1812,7 @@ function getSegmentTag(segment: LoopDebateChatSegment, strings: LoopDebateChatPa
   return strings.system;
 }
 
-function renderMessageBody(body: string, strings: LoopDebateChatPanelStrings): string {
+function renderMessageBody(body: string, strings: LoopGroupChatPanelStrings): string {
   if (!body.trim()) {
     return `<pre class="message-text empty">(empty)</pre>`;
   }
@@ -1953,8 +1849,8 @@ function formatTemplate(template: string, params: Record<string, string | number
 }
 
 function renderContinueModelChoice(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   return renderContinueModelChoiceHtml({
     choice: state.continueModels,
@@ -2019,7 +1915,7 @@ function renderGroupAcceptancePlanDialogs(): string {
   });
 }
 
-function renderGroupAcceptancePlanScript(panelState: LoopDebateChatPanelState): string {
+function renderGroupAcceptancePlanScript(panelState: LoopGroupChatPanelState): string {
   const dictionary = Object.fromEntries(
     Object.entries(getWebviewStrings()).filter(([key]) => key.startsWith("acceptancePlan")),
   );
@@ -2054,7 +1950,7 @@ function renderGroupAcceptancePlanScript(panelState: LoopDebateChatPanelState): 
       }
       function sendPromptWithAcceptancePlan(payload) {
         vscode.postMessage({
-          type: "loopDebateChat:updateAcceptancePlan",
+          type: "loopGroupChatChat:updateAcceptancePlan",
           plan: payload && payload.loopPlusAcceptancePlan,
         });
         return "sent";

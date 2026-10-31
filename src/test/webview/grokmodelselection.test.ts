@@ -78,6 +78,7 @@ test("Grok dropdowns expose only configured models and retain Codex default/mana
     selectedModel: "gpt-6.1-sol",
     modelsByCli: { grok: ["grok", "gpt-6.1-sol"], codex: ["gpt-6.1-sol"] },
     modelLabelsByCli: { grok: { grok: "grok-4.7", "gpt-6.1-sol": "gpt-6.1-sol" } },
+    configuredDefaultModelsByCli: { codex: "gpt-6.1-sol" },
   };
   const source = [
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "getModelsForCurrentCli"),
@@ -122,6 +123,9 @@ test("Grok dropdowns expose only configured models and retain Codex default/mana
   assert.deepEqual(optionPairs(modelSelect), [["", WEBVIEW_STRINGS.grokNoConfiguredModel]]);
   state.currentCli = "codex";
   renderer.updateModelSelectOptions();
+  assert.deepEqual(modelSelect.options.map((option) => option.value), ["gpt-6.1-sol", "__manage__"]);
+  state.configuredDefaultModelsByCli.codex = "";
+  renderer.updateModelSelectOptions();
   assert.deepEqual(modelSelect.options.map((option) => option.value), ["", "gpt-6.1-sol", "__manage__"]);
   assert.doesNotMatch(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /modelRefreshButton|grok-model-refresh-row/);
   assert.doesNotMatch(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /modelRefreshButton/);
@@ -129,7 +133,7 @@ test("Grok dropdowns expose only configured models and retain Codex default/mana
   assert.doesNotMatch(INPUT_CONTROLS_STYLES, /model-refresh-button|grok-model-refresh-row/);
 });
 
-test("DSH dropdown exposes ordered configured models without the generic manager", () => {
+test("DSH dropdown exposes ordered configured models without the generic manager or default placeholder", () => {
   const modelSelect = createThinkingSelect();
   const messages: Array<Record<string, unknown>> = [];
   const state = {
@@ -167,7 +171,6 @@ test("DSH dropdown exposes ordered configured models without the generic manager
 
   renderer.updateModelSelectOptions();
   assert.deepEqual(optionPairs(modelSelect), [
-    ["", WEBVIEW_STRINGS.modelOptionDefault],
     ["vendor/first-model", "vendor/first-model"],
     ["vendor/second-model", "vendor/second-model"],
   ]);
@@ -182,6 +185,24 @@ test("DSH dropdown exposes ordered configured models without the generic manager
     configId: "dsh-profile",
   }]);
   assert.equal(modelSelect.options.some((option) => option.value === "__manage__"), false);
+
+  // 无已选模型时直接落到配置里的第一个模型，不提供空的“默认”项。
+  state.selectedModel = "";
+  state.selectedModelsByCli.dsh = "";
+  renderer.updateModelSelectOptions();
+  assert.deepEqual(optionPairs(modelSelect), [
+    ["vendor/first-model", "vendor/first-model"],
+    ["vendor/second-model", "vendor/second-model"],
+  ]);
+  assert.equal(modelSelect.value, "vendor/first-model");
+  assert.equal(modelSelect.options.some((option) => option.value === ""), false);
+
+  // 配置里没有任何模型时只保留禁用的中文配置指引，仍不出现“默认”。
+  state.modelsByCli.dsh = [];
+  renderer.updateModelSelectOptions();
+  assert.deepEqual(optionPairs(modelSelect), [["", WEBVIEW_STRINGS.dshNoConfiguredModel]]);
+  assert.equal((modelSelect.options[0] as { disabled?: boolean }).disabled, true);
+  assert.equal(modelSelect.value, "");
 });
 
 test("Grok label snapshots refresh with their config and clear when models are removed", () => {
@@ -389,7 +410,6 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   const source = [
     "let hidden = false;",
     "function hideAddModelDialog() { hidden = true; }",
-    "function getLoopExecutionModeForCli() { return \"main_sub_multi_agent\"; }",
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "cliSupportsManagedModelSelection"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "cliSupportsModelSelection"),
@@ -410,7 +430,6 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
     openCodePrimaryModelSelect: styleTarget(),
     openCodeSmallModelSelect: Object.assign(styleTarget(), { parentElement: styleTarget() }),
     modelSelect: styleTarget(),
-    loopExecutionModeSelect: styleTarget(),
   };
   const runner = new Function(
     "state",
@@ -448,10 +467,8 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
     assert.equal(elements.codexLoopMainThinkingMode.disabled, false);
     assert.equal(elements.codexLoopSubtaskThinkingMode.disabled, false);
   }
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
   state.interactiveMode = "loop";
   runner.syncModelSelectorByInteractiveMode();
-  assert.equal(elements.loopExecutionModeSelect.style.display, "");
 
   state.interactiveMode = "coding";
   runner.syncModelSelectorByInteractiveMode();

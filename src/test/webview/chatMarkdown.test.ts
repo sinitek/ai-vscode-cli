@@ -8,7 +8,7 @@ installVscodeMock();
 const { CHAT_MARKDOWN_SCRIPT } = require("../../webview/chatMarkdown") as typeof import("../../webview/chatMarkdown");
 const { getMarkedScript } = require("../../webview/markdownAssets") as typeof import("../../webview/markdownAssets");
 const { getWebviewHtml } = require("../../webview/viewContent") as typeof import("../../webview/viewContent");
-const { buildLoopDebateChatPanelHtml } = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
+const { buildLoopGroupChatPanelHtml } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 const { neutralizeInlineScriptEndTags } = require("../../webview/viewContentHtml") as typeof import("../../webview/viewContentHtml");
 const { getMarkdownStyles, MARKDOWN_STYLES } = require("../../webview/viewContentStyles/markdown") as typeof import("../../webview/viewContentStyles/markdown");
 
@@ -115,15 +115,14 @@ test("Loop and Loop+ embed the same renderer as AI chat for initial and patched 
   const shared = neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT);
   assert.ok(getWebviewHtml({ cspSource: "self" }).includes(shared));
   for (const schedulingMode of ["classic", "event_driven"] as const) {
-    const html = buildLoopDebateChatPanelHtml({ cspSource: "self" } as never, {
-      mode: "main_sub",
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, {
       task: {
         id: "md-task", cli: "codex", status: "running", rootPrompt: "验证 Markdown",
         taskStoreFile: "/tmp/md-task.json", mainCommunicationFile: "/tmp/md-task/main.md",
         currentRound: 1, updatedAt: 1, canSupplement: true, canContinue: false, canStop: true,
       },
       loopPlus: schedulingMode === "event_driven" ? { ok: false, schedulingMode, activity: "invalid", phase: "invalid", error: "验证空态" } : undefined,
-      rounds: [{ key: "execution-1", kind: "execution", loopRound: 1, debateRound: 0, status: "running", startedAt: 1, participants: [], moderatorDecisions: [] }],
+      rounds: [{ key: "execution-1", kind: "execution", loopRound: 1, status: "running", startedAt: 1, participants: [] }],
       chatMarkdown: "# 群聊\n\n## 补充需求\n\n**必须验证**\n\n<script>不会执行</script>",
     });
     assert.ok(html.includes(shared));

@@ -54,8 +54,8 @@ Loop 主任务在其子任务被用户中断、随后继续时，可能被同一
 
 ## 测试与清单同步
 
-- 单元测试新增/更新：`src/test/loopSubtaskLifecycle.test.ts` 增加父任务唤醒条件与自动/手动收尾契约；`src/test/loopDebate.test.ts` 增加活动子任务父任务不判 orphaned 回归。
-- 单元自测结果：`npm run build` 通过；`node --test dist/test/loopSubtaskLifecycle.test.js dist/test/loopDebate.test.js dist/test/extensionHostExtractionContracts.test.js dist/test/sessionMessageActionsCoreCoverage.test.js` 通过，68 个测试；ontology validate 通过，ontology unittest 9 个通过；`git diff --check` 通过。
+- 单元测试新增/更新：`src/test/loopSubtaskLifecycle.test.ts` 增加父任务唤醒条件与自动/手动收尾契约；`src/test/loop/loopGroupChat.test.ts` 增加活动子任务父任务不判 orphaned 回归。
+- 单元自测结果：`npm run build` 通过；`node --test dist/test/loopSubtaskLifecycle.test.js dist/test/loop/loopGroupChat.test.js dist/test/extensionHostExtractionContracts.test.js dist/test/sessionMessageActionsCoreCoverage.test.js` 通过，68 个测试；ontology validate 通过，ontology unittest 9 个通过；`git diff --check` 通过。
 - 失败处理记录：隔离 worktree 初次构建因未安装依赖而失败；执行 `npm install --no-package-lock` 后重新构建通过，属于环境问题而非代码失败。
 - 功能清单：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，新增“子任务中断不终止主任务”。
 - 相关文档同步：已同步 `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/references/cli-runtime-reference.md` 和 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。

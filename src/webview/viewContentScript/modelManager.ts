@@ -1,6 +1,7 @@
 // Model manager, model selection, and model persistence handlers.
 export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDeclaredModels(cli = state.currentCli) {
-        return cli === "grok" || cli === "kimi-code" || cli === "zcode";
+        return cli === "grok" || cli === "kimi-code" || cli === "zcode" || cli === "dsh"
+          || (cli === "codex" && Boolean(state.configuredDefaultModelsByCli && state.configuredDefaultModelsByCli.codex));
       }
 
       function getCliLoopModelSelectAria(cli, role) {
@@ -20,6 +21,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function getNoConfiguredModelLabel(cli) {
+        if (cli === "dsh") {
+          return t("dshNoConfiguredModel");
+        }
         if (cli === "zcode") {
           return t("zcodeNoConfiguredModel");
         }
@@ -739,7 +743,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const showCodexLoopModelGroup = isLoopRoleModelMode(cli, interactiveMode);
         const showOpenCodeSubtaskModel = isOpenCodeRoleModelMode(cli, interactiveMode);
         const showSingleModelSelect = supportsModelSelection && !showCodexLoopModelGroup;
-        const showLoopExecutionModeSelect = isLoop;
         const showClaudeSubtaskRoute = cli === "claude" && (
           interactiveMode === "loop" || interactiveMode === "graph" || interactiveMode === "loop_plus"
         );
@@ -779,11 +782,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         if (elements.modelSelect) {
           elements.modelSelect.style.display = showSingleModelSelect ? "" : "none";
           elements.modelSelect.disabled = !showSingleModelSelect;
-        }
-        if (elements.loopExecutionModeSelect) {
-          elements.loopExecutionModeSelect.style.display = showLoopExecutionModeSelect ? "" : "none";
-          elements.loopExecutionModeSelect.disabled = !showLoopExecutionModeSelect;
-          elements.loopExecutionModeSelect.value = getLoopExecutionModeForCli();
         }
         if (typeof updateLoopSubtaskTargetControls === "function") {
           updateLoopSubtaskTargetControls();
@@ -1187,18 +1185,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         });
       }
       syncModelSelectorByInteractiveMode();
-
-      if (elements.loopExecutionModeSelect) {
-        elements.loopExecutionModeSelect.addEventListener("change", (event) => {
-          const nextMode = setLoopExecutionModeForCli(state.currentCli, event.target.value);
-          elements.loopExecutionModeSelect.value = nextMode;
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopExecutionMode." + state.currentCli,
-            value: nextMode,
-          });
-        });
-      }
 
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {

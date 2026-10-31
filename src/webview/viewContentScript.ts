@@ -40,8 +40,6 @@ export type BuildWebviewRuntimeScriptInput = {
   loopPlusMaxAcceptancesMin?: number;
   loopPlusMaxAcceptancesLimit?: number;
   loopSubtaskMaxThinkingModeDefault: string;
-  loopExecutionModeMainSubMultiAgent: string;
-  loopExecutionModeDebateMultiAgent: string;
   finalAnswerTextMarker: string;
 };
 
@@ -90,8 +88,6 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_PLUS_MAX_ACCEPTANCES_MIN}", String(input.loopPlusMaxAcceptancesMin ?? LOOP_PLUS_MAX_ACCEPTANCES_MIN)],
     ["${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}", String(input.loopPlusMaxAcceptancesLimit ?? LOOP_PLUS_MAX_ACCEPTANCES_LIMIT)],
     ["${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}", input.loopSubtaskMaxThinkingModeDefault],
-    ["${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}", input.loopExecutionModeMainSubMultiAgent],
-    ["${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}", input.loopExecutionModeDebateMultiAgent],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(

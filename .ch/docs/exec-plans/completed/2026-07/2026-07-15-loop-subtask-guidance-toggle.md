@@ -40,7 +40,7 @@ Loop 模式原先会向开发类子任务注入内置 Workflow Skill 指引，�
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/loopPromptBuilders.ts`、`src/loopDebateRunner.ts`、`src/cli/`、`src/interactive/`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopPromptBuilders.ts`、`src/extensionHost/loopOrchestration.ts`、`src/cli/`、`src/interactive/`、`src/test/`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/references/`
 - 配置与脚本：移除 Workflow Skill 同步/校验脚本
 

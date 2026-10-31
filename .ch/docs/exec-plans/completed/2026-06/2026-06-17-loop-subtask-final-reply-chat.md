@@ -22,7 +22,6 @@
 ## 非目标
 
 - 不改变主从任务派发、并发执行、重试或自动关闭标签页逻辑。
-- 不改变辩论群聊的参与者发言逻辑。
 - 不把群聊 UI 改为可写交互页面。
 
 ## 验收标准
@@ -34,7 +33,7 @@
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/test/loopDebate.test.ts`
+- 代码目录：`src/extension.ts`、`src/loopGroupChat.ts`、`src/test/loop/loopGroupChat.test.ts`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/design-docs/`、`.ch/docs/references/`
 - 配置与脚本：无
 
@@ -47,7 +46,7 @@
 
 ## 验证计划
 
-- 最小相关验证：`npm run build`，`node --test dist/test/loopDebate.test.js`
+- 最小相关验证：`npm run build`，`node --test dist/test/loop/loopGroupChat.test.js`
 - 扩展验证：手动启动主从Loop任务，确认子任务完成后群聊气泡为最终回复。
 
 ## 测试与清单同步
@@ -70,4 +69,4 @@
 
 ## 当前结论
 
-已完成。`appendLoopMainSubChatSubtaskFinished` 现在对成功完成的子任务写入最终 assistant 回复原文；异常、停止或缺失回复时才显示状态和沟通文件提示。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。
+已完成。`appendLoopMainSubChatSubtaskFinished` 现在对成功完成的子任务写入最终 assistant 回复原文；异常、停止或缺失回复时才显示状态和沟通文件提示。验证通过：`npm run build`、`node --test dist/test/loop/loopGroupChat.test.js`、`git diff --check`。

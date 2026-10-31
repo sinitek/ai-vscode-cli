@@ -11,8 +11,6 @@ import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewCont
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 
-const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
-const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 function extractFunctionSource(script: string, name: string): string {
   const start = script.indexOf(`function ${name}(`);
@@ -72,8 +70,6 @@ function buildHtml(): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    loopExecutionModeDebateMultiAgent: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
   });
 }
 
@@ -111,7 +107,7 @@ function createModeControl(): ModeControl {
   return control;
 }
 
-test("renders Loop+ in both interactive mode selects without disturbing help or debate", () => {
+test("renders Loop+ in both interactive mode selects without extra Loop mode choices", () => {
   assert.equal(WEBVIEW_STRINGS.interactiveModeLoopPlus, "Loop+");
   assert.equal(
     WEBVIEW_STRINGS.interactiveModeLoopPlusHint,
@@ -130,7 +126,7 @@ test("renders Loop+ in both interactive mode selects without disturbing help or 
     assert.ok(select.indexOf('value="loop_plus"') < select.indexOf('value="graph"'));
     assert.match(select, />Loop\+</);
   }
-  assert.match(html, /value="debate_multi_agent"/);
+  assert.doesNotMatch(html, /loopExecutionModeSelect|debate_multi_agent|红蓝辩论/);
   assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
   assert.match(html, /可见队列/);
   assert.match(html, /单个子任务执行结束后立即验收，其它完成进入队列。/);
@@ -151,7 +147,7 @@ test("keeps loop_plus in the browser normalizer and still folds plan and lobster
   assert.equal(normalizeInteractiveMode(""), "coding");
 });
 
-test("restores Loop+, posts the setting, and hides debate without deleting it", () => {
+test("restores Loop+, posts the setting, and keeps role selectors in sync", () => {
   const normalizeInteractiveMode = new Function(
     `${extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode")}; return normalizeInteractiveMode;`,
   )() as (value: string) => string;
@@ -160,11 +156,6 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
     interactiveMode: "loop_plus",
     interactive: { supported: true, enabled: true },
     isRunning: false,
-    loopExecutionModeByCli: {
-      codex: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
-      claude: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
-      opencode: LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    },
   };
   const elements = {
     interactiveModeSelect: createModeControl(),
@@ -177,7 +168,6 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
     openCodePrimaryModelSelect: createModeControl(),
     openCodeSmallModelSelect: createModeControl(),
     modelSelect: createModeControl(),
-    loopExecutionModeSelect: createModeControl(),
     commonCommandButton: createModeControl(),
     commandCompact: createModeControl(),
   };
@@ -196,14 +186,12 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${modelSource}; return syncModelSelectorByInteractiveMode;`,
   )(
     state,
     elements,
     normalizeInteractiveMode,
-    (cli?: string) => state.loopExecutionModeByCli[(cli || state.currentCli) as "codex"],
     () => undefined,
   ) as () => void;
   const syncInteractiveModeSelector = new Function(
@@ -238,14 +226,9 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
   assert.equal(elements.codexLoopModelGroup.style.display, "");
   assert.equal(elements.codexLoopMainThinkingMode.style.display, "");
   assert.equal(elements.codexLoopSubtaskThinkingMode.style.display, "");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
 
   elements.interactiveModeSelect.dispatchChange("loop");
   assert.equal(state.interactiveMode, "loop");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "");
-  assert.equal(elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
-  assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
 
   elements.interactiveModeSelect.dispatchChange("loop_plus");
   assert.deepEqual(posted.at(-1), {
@@ -253,22 +236,18 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
     key: "interactiveMode.codex",
     value: "loop_plus",
   });
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
   assert.equal(posted.some((message) => String(message.key || "").startsWith("loopExecutionMode.")), false);
 
   state.currentCli = "opencode";
   elements.interactiveModeSelect.dispatchChange("loop_plus");
   assert.equal(elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(elements.openCodeSmallModelSelect.parentElement.style.display, "");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
 
   state.currentCli = "claude";
   elements.interactiveModeSelect.dispatchChange("loop_plus");
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
   assert.equal(elements.modelSelect.style.display, "none");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
   assert.deepEqual(posted.at(-1), {
     type: "updateSetting",
     key: "interactiveMode.claude",
@@ -284,7 +263,6 @@ test("restores Loop+, posts the setting, and hides debate without deleting it", 
   });
   elements.interactiveModeSelect.dispatchChange("lobster");
   assert.equal(state.interactiveMode, "coding");
-  assert.equal(state.loopExecutionModeByCli.claude, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
 });
 
 test("switches classic and Loop+ main tabs from loopSchedulingMode without cross-tab pollution", () => {
@@ -295,7 +273,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
       activeTabId: "classic-main",
       tabs: [] as Array<Record<string, string>>,
     },
-    loopExecutionModeByCli: { codex: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT },
   };
   const elements = {
     interactiveModeSelect: createModeControl(),
@@ -308,7 +285,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     openCodePrimaryModelSelect: createModeControl(),
     openCodeSmallModelSelect: createModeControl(),
     modelSelect: createModeControl(),
-    loopExecutionModeSelect: createModeControl(),
     conversationTabs: null as null,
   };
   const classicTab = { id: "classic-main", loopTaskRole: "main", loopTaskId: "task-classic" };
@@ -341,7 +317,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   const api = new Function(
     "state",
     "elements",
-    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     "getActiveConversationTabId",
     "getConversationTabSummary",
@@ -376,7 +351,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   )(
     state,
     elements,
-    () => state.loopExecutionModeByCli.codex,
     () => undefined,
     () => state.conversationTabs.activeTabId,
     (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
@@ -399,8 +373,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   api.renderConversationTabs();
   assert.equal(state.interactiveMode, "loop");
   assert.equal(elements.interactiveModeSelect.value, "loop");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "");
-  assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
 
   state.interactiveMode = "loop_plus";
   elements.interactiveModeSelect.value = "loop_plus";
@@ -413,7 +385,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   assert.equal(state.interactiveMode, "loop_plus");
   assert.equal(elements.interactiveModeSelect.value, "loop_plus");
   assert.equal(elements.codexLoopModelGroup.style.display, "");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
 
   state.conversationTabs.activeTabId = "classic-main";
   api.renderConversationTabs();
@@ -427,7 +398,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   state.conversationTabs.activeTabId = "graph-main";
   assert.equal(api.syncAutoInteractiveModeForActiveTab(), true);
   assert.equal(state.interactiveMode, "graph");
-  assert.equal(elements.loopExecutionModeSelect.style.display, "none");
 });
 
 test("restores each main tab mode from its summary after a fresh page load", () => {
@@ -439,7 +409,6 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       currentCli: "codex",
       interactiveMode: savedMode,
       conversationTabs: { activeTabId, tabs: [classicTab, loopPlusTab] },
-      loopExecutionModeByCli: { codex: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT },
     };
     const elements = {
       interactiveModeSelect: createModeControl(),
@@ -452,13 +421,11 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       openCodePrimaryModelSelect: createModeControl(),
       openCodeSmallModelSelect: createModeControl(),
       modelSelect: createModeControl(),
-      loopExecutionModeSelect: createModeControl(),
       conversationTabs: null as null,
     };
     const api = new Function(
       "state",
       "elements",
-      "getLoopExecutionModeForCli",
       "hideAddModelDialog",
       "getActiveConversationTabId",
       "getConversationTabSummary",
@@ -489,7 +456,6 @@ test("restores each main tab mode from its summary after a fresh page load", () 
     )(
       state,
       elements,
-      () => state.loopExecutionModeByCli.codex,
       () => undefined,
       () => state.conversationTabs.activeTabId,
       (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
@@ -510,7 +476,6 @@ type SendMessage = {
   loopSubtaskModel?: string;
   loopMainThinkingMode?: string;
   loopSubtaskThinkingMode?: string;
-  loopExecutionMode?: string;
   cli?: string;
   model?: string;
   skipPromptHistory?: boolean;
@@ -527,7 +492,6 @@ function buildDispatchHarness() {
     configState: { activeConfigId: "config-1" },
     pendingConfigApply: null as { cli?: string; configId?: string } | null,
     selectedModelsByCli: { codex: "single-model", claude: "claude-model" } as Record<string, string>,
-    loopExecutionModeByCli: { codex: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT },
   };
   const runtime = {
     pendingPromptQueue: [] as Array<Record<string, unknown>>,
@@ -578,7 +542,6 @@ function buildDispatchHarness() {
     "createMessageId",
     "t",
     "cliSupportsModelSelection",
-    "getLoopExecutionModeForCli",
     "getSelectedLoopRoleModelForCli",
     "getSelectedLoopRoleThinkingModeForCli",
     source,
@@ -601,7 +564,6 @@ function buildDispatchHarness() {
     () => "message-id",
     (key: string) => key,
     (cli: string) => cli === "codex",
-    () => state.loopExecutionModeByCli.codex,
     (_cli: string, role: string) => (role === "subtask" ? "saved-sub-model" : "saved-main-model"),
     (_cli: string, role: string) => (role === "subtask" ? "medium" : "high"),
   ) as {
@@ -621,7 +583,7 @@ function buildDispatchHarness() {
   };
 }
 
-test("sends, queues, and flushes Loop+ with role models and without debate", () => {
+test("sends, queues, and flushes Loop+ with role models and no legacy mode", () => {
   const harness = buildDispatchHarness();
   const basePayload = {
     prompt: "review the next result",
@@ -680,7 +642,7 @@ test("sends, queues, and flushes Loop+ with role models and without debate", () 
   const classic = harness.posted.filter((message) => message.type === "sendPrompt").at(-1);
   assert.ok(classic);
   assert.equal(classic.interactiveMode, "loop");
-  assert.equal(classic.loopExecutionMode, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
+  assert.equal(Object.prototype.hasOwnProperty.call(classic, "loopExecutionMode"), false);
   assert.equal(classic.loopMainModel, "saved-main-model");
 
   harness.state.interactiveMode = "coding";
@@ -712,7 +674,7 @@ test("sends, queues, and flushes Loop+ with role models and without debate", () 
   assert.equal(claude.model, undefined);
 });
 
-test("snapshots Loop+ scheduled tasks without debate and keeps classic Loop debate", () => {
+test("snapshots Loop+ scheduled tasks without a legacy Loop mode", () => {
   const state = {
     currentCli: "codex",
     interactiveMode: "loop_plus",
@@ -733,7 +695,6 @@ test("snapshots Loop+ scheduled tasks without debate and keeps classic Loop deba
     "scheduledTaskFiles",
     "vscode",
     "getActiveConversationTabId",
-    "getLoopExecutionModeForCli",
     "buildPromptPayload",
     "setScheduledTaskError",
     "t",
@@ -749,7 +710,6 @@ test("snapshots Loop+ scheduled tasks without debate and keeps classic Loop deba
     [],
     { postMessage: (message: SendMessage) => posted.push(message) },
     () => "tab-scheduled",
-    () => LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
     (prompt: string) => ({
       prompt,
       contextOptions: { includeCurrentFile: true, includeSelection: false },
@@ -770,14 +730,14 @@ test("snapshots Loop+ scheduled tasks without debate and keeps classic Loop deba
   assert.equal(posted[0].loopMainThinkingMode, "xhigh");
   assert.equal(posted[0].loopSubtaskThinkingMode, "low");
   assert.equal(posted[0].model, "single-model");
-  assert.equal(Object.prototype.hasOwnProperty.call(posted[0], "loopExecutionMode") ? posted[0].loopExecutionMode : undefined, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(posted[0], "loopExecutionMode"), false);
   assert.equal(elements.saveScheduledTask.disabled, true);
 
   elements.scheduledTaskMode.value = "loop";
   elements.saveScheduledTask.disabled = false;
   api.saveScheduledTask();
   assert.equal(posted[1].interactiveMode, "loop");
-  assert.equal(posted[1].loopExecutionMode, LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT);
+  assert.equal(Object.prototype.hasOwnProperty.call(posted[1], "loopExecutionMode"), false);
   assert.equal(posted[1].loopMainModel, "main-model");
 
   elements.scheduledTaskMode.value = "plan";
@@ -840,7 +800,6 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
     configState: { activeConfigId: "config-1" },
     pendingConfigApply: null as { cli?: string; configId?: string } | null,
     selectedModelsByCli: { codex: "single-model" } as Record<string, string>,
-    loopExecutionModeByCli: { codex: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT },
     selectedLoopModels: { main: "entry-main", subtask: "entry-sub" },
     selectedLoopThinking: { main: "xhigh", subtask: "low" },
   };
@@ -910,7 +869,6 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
     "createMessageId",
     "t",
     "cliSupportsModelSelection",
-    "getLoopExecutionModeForCli",
     "getSelectedLoopRoleModelForCli",
     "getSelectedLoopRoleThinkingModeForCli",
     source,
@@ -935,7 +893,6 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
     () => "message-id",
     (key: string) => key,
     (cli: string) => cli === "codex",
-    () => state.loopExecutionModeByCli.codex,
     (_cli: string, role: "main" | "subtask") => state.selectedLoopModels[role],
     (_cli: string, role: "main" | "subtask") => state.selectedLoopThinking[role],
   ) as {

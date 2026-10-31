@@ -25,7 +25,7 @@ import type {
   PanelMessageHandlerDeps,
   PromptRunInputForPanel,
 } from "../../sessionMessageHandlers";
-import { CLI_LIST, type CliName, type InteractiveMode, type LoopExecutionMode, type MacTaskShell, type ThinkingMode } from "../../cli/types";
+import { CLI_LIST, type CliName, type InteractiveMode, type MacTaskShell, type ThinkingMode } from "../../cli/types";
 import type { CliEnabledByName, ToolSettingsState } from "../../toolSettings";
 import type { ChatMessage, PanelMessage } from "../../webview/types";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
@@ -73,7 +73,6 @@ type SendPromptHarness = {
     statusUpdates: number;
     activeTabSwitches: string[];
     interactiveModes: Array<{ cli: CliName; mode: InteractiveMode }>;
-    loopExecutionModes: Array<{ cli: CliName; mode: LoopExecutionMode }>;
     promptHistory: Array<{ prompt: string; cli: CliName }>;
     promptTargets: Array<string | null>;
     preloaded: Array<{ input: PromptRunInputForPanel; target: { tabId: string; cli: CliName; sessionId: string | null } }>;
@@ -141,7 +140,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     statusUpdates: 0,
     activeTabSwitches: [],
     interactiveModes: [],
-    loopExecutionModes: [],
     promptHistory: [],
     promptTargets: [],
     preloaded: [],
@@ -164,9 +162,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     const snapshot: WorkspaceSettings = { ...settings };
     if (settings.interactiveModeByCli) {
       snapshot.interactiveModeByCli = { ...settings.interactiveModeByCli };
-    }
-    if (settings.loopExecutionModeByCli) {
-      snapshot.loopExecutionModeByCli = { ...settings.loopExecutionModeByCli };
     }
     calls.savedSettings.push(snapshot);
     state.workspaceSettings = settings;
@@ -264,14 +259,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
       value === "coding" || value === "plan" || value === "loop" || value === "graph" || value === "loop_plus"
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
-    setWorkspaceLoopExecutionModeForCli: (cli, mode) => {
-      calls.loopExecutionModes.push({ cli, mode });
-      state.workspaceSettings.loopExecutionModeByCli = {
-        ...(state.workspaceSettings.loopExecutionModeByCli ?? {}),
-        [cli]: mode,
-      };
-      persistWorkspaceSettings(state.workspaceSettings);
-    },
     loadModelStore: () => undefined,
     normalizeLoopMaxRounds: () => 20,
     isCliName: (value: string): value is CliName => (
@@ -295,7 +282,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     getActiveConversationTabId: () => tab.id,
     getActiveConversationTab: () => tab,
     resolveLoopSubtaskConversationContext: () => null,
-    getWorkspaceLoopExecutionMode: (): LoopExecutionMode => "main_sub_multi_agent",
     buildPromptWithAutoContext: (prompt) => ({ modelPrompt: prompt, contextTags: [] }),
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt, modelPrompt) => modelPrompt,
     resolveCodexImagePathsForPrompt: async () => [],
@@ -492,10 +478,6 @@ test("skips prompt history when a queued prompt was already recorded", async () 
 
 test("routes OpenCode Loop through runLoopPrompt using the generic model as main/subtask fallback", async () => {
   const { deps, calls, state } = createSendPromptHarness();
-  deps.getWorkspaceLoopExecutionMode = (cli) => {
-    assert.equal(cli, "opencode");
-    return "debate_multi_agent";
-  };
   await handlePanelMessageWithDeps({
     type: "sendPrompt",
     prompt: "run the loop",
@@ -527,7 +509,6 @@ test("routes OpenCode Loop through runLoopPrompt using the generic model as main
     loopMainModel: "provider/general-model",
     loopSubtaskModel: "provider/general-model",
     imagePaths: undefined,
-    loopExecutionMode: "debate_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
   assert.equal(calls.wakeMain.length, 0);
@@ -607,7 +588,6 @@ test("routes Codex Loop with explicit main and subtask model payload fields", as
     loopMainThinkingMode: "high",
     loopSubtaskThinkingMode: "low",
     imagePaths: undefined,
-    loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
 });
@@ -633,7 +613,6 @@ test("falls back Codex Loop role models to the legacy generic model payload", as
     loopMainModel: "gpt-5.3-codex",
     loopSubtaskModel: "gpt-5.3-codex",
     imagePaths: undefined,
-    loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
 });
@@ -749,7 +728,6 @@ test("routes OpenCode Loop with selected main and subtask models", async () => {
     loopMainModel: "opencode-main-model",
     loopSubtaskModel: "opencode-subtask-model",
     imagePaths: undefined,
-    loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
 });
@@ -779,25 +757,8 @@ test("falls back OpenCode Loop subtask model to the main model when unset", asyn
     loopMainModel: "opencode-main-model",
     loopSubtaskModel: "opencode-main-model",
     imagePaths: undefined,
-    loopExecutionMode: "main_sub_multi_agent",
     preloadedUserMessageId: "user-preloaded",
   });
-});
-
-test("persists the OpenCode Loop execution mode by CLI", async () => {
-  const { deps, calls, state } = createSendPromptHarness();
-
-  await handlePanelMessageWithDeps({
-    type: "updateSetting",
-    key: "loopExecutionMode.opencode",
-    value: "debate_multi_agent",
-  }, deps);
-
-  assert.deepEqual(calls.loopExecutionModes, [
-    { cli: "opencode", mode: "debate_multi_agent" },
-  ]);
-  assert.equal(state.workspaceSettings.loopExecutionModeByCli?.opencode, "debate_multi_agent");
-  assert.equal(calls.postPanelState, 1);
 });
 
 test("persists the Loop subtask thinking cap globally and clamps ultra", async () => {
@@ -1482,7 +1443,6 @@ test("routes a new Loop+ send through runLoopPrompt as event_driven without a lo
   assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "loop_plus");
   assert.equal(calls.runPrompt.length, 0);
   assert.equal(calls.runGraphPrompt.length, 0);
-  assert.equal(calls.loopExecutionModes.length, 0);
   assert.equal(calls.runLoopPrompt.length, 1);
   assert.equal(calls.runLoopPrompt[0].options.schedulingMode, "event_driven");
   assert.equal(calls.runLoopPrompt[0].options.resumeRequested, false);

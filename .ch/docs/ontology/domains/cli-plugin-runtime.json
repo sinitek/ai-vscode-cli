@@ -129,10 +129,10 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内的多智能体/多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。同一批次的多个子任务按 3 秒间隔错峰启动，已启动且互不冲突的子任务仍可并行运行；子任务局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动的子任务会标记为 skipped；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
+      "description": "插件内固定采用主从多智能体的多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。同一批次的多个子任务按 3 秒间隔错峰启动，已启动且互不冲突的子任务仍可并行运行；子任务局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动的子任务会标记为 skipped；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
-      "implementation_paths": ["src/loopTaskStore.ts", "src/loopDebate.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
+      "implementation_paths": ["src/loopTaskStore.ts", "src/loopGroupChat.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
@@ -282,7 +282,7 @@
     {
       "id": "plugin.relation.scheduled_task_executes_cli",
       "name": "定时任务执行本地 CLI",
-      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按任务选中的 Vibe/Loop/Graph 模式及该模式已保存配置复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 子模式读取任务保存的配置，缺失时回退到目标 CLI 当前配置。",
+      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按任务选中的 Vibe/Loop/Graph 模式及该模式已保存配置复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 固定采用主从协作。",
       "status": "active",
       "from": "plugin.scheduled_task",
       "type": "executes",
@@ -365,7 +365,7 @@
     {
       "id": "plugin.rule.dsh_profile_edit",
       "name": "DSH 配置页与多模型切换",
-      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择，普通对话与 Loop/Graph/Loop+ 主/子模型下拉都不插入空的“默认”占位项，无已选模型时直接选中配置里的第一个模型，profile 没有模型时只显示禁用的中文配置指引；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
       "status": "active",
       "aliases": ["DSH 配置", "acpModel", "SINITEK_DSH_API_KEY"],
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
@@ -602,6 +602,24 @@
       ]
     },
     {
+      "id": "plugin.rule.codex_config_model_default",
+      "name": "Codex 配置模型替代默认占位并与管理列表去重",
+      "description": "当前 Codex config.toml 的根级 model 为非空字符串时，模型下拉以该名称替代空值默认项，与用户管理模型按大小写不敏感规则合并去重，但不把配置模型写入管理列表。用户显式选择优先，普通对话、Loop、Loop+、Graph 主子模型及跨 CLI Codex 子模型使用一致候选和回退语义。配置缺失、空值、非法 TOML 或读取失败时保留原默认行为，不误读嵌套 model。",
+      "status": "active",
+      "aliases": ["Codex 默认模型", "config.toml model", "配置模型去重"],
+      "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/cli/codexConfigModel.ts"},
+        {"path": "src/extensionHost/cliModelSelectionStrategies.ts"},
+        {"path": "src/extensionHost/modelSettings.ts"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/test/cli/codexConfigModel.test.ts"},
+        {"path": "src/test/extensionHost/cliModelSelectionStrategies.test.ts"},
+        {"path": "src/test/webview/grokmodelselection.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.7 模型、思考模式与规则"}
+      ]
+    },
+    {
       "id": "plugin.rule.all_cli_config_snapshot_sync",
       "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
       "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不自动激活首项或后台回写旧选择、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
@@ -624,7 +642,7 @@
     {
       "id": "plugin.rule.task_summary_svg",
       "name": "任务结束总结按需使用 SVG 补充结构化表达",
-      "description": "Vibe、经典 Loop（含主持及红蓝共识）、Loop+ 和 Graph 任务总结统一建议按需以自包含 svg 代码围栏补充流程、架构、依赖、方案对比或交付结果。文字结论和验证证据优先，简单任务、无图示价值或用户要求纯文字时可省略；禁止脚本、事件处理和外部资源。Loop/Loop+ 将图示置于 finalSummary，Graph summary 节点置于 finalAnswer.summary，正确转义 JSON，不在对象外追加图示或新增字段。该协议内建议不引入 final_answer 标记，不额外注入子任务和非 summary 节点。",
+      "description": "Vibe、经典 Loop、Loop+ 和 Graph 任务总结统一建议按需以自包含 svg 代码围栏补充流程、架构、依赖、方案对比或交付结果。文字结论和验证证据优先，简单任务、无图示价值或用户要求纯文字时可省略；禁止脚本、事件处理和外部资源。Loop/Loop+ 将图示置于 finalSummary，Graph summary 节点置于 finalAnswer.summary，正确转义 JSON，不在对象外追加图示或新增字段。该协议内建议不引入 final_answer 标记，不额外注入子任务和非 summary 节点。",
       "status": "active",
       "aliases": ["SVG 总结", "结构化表达", "任务结束总结", "finalSummary", "finalAnswer.summary"],
       "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
@@ -664,13 +682,13 @@
       "aliases": ["Loop", "Loop+", "群聊", "Markdown", "提问回复", "增量渲染"],
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
-        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/webview/chatMarkdown.ts"},
         {"path": "src/webview/markdownAssets.ts"},
         {"path": "src/webview/chatImageHost.ts"},
         {"path": "src/webview/viewContentStyles/markdown.ts"},
         {"path": "src/test/webview/chatMarkdown.test.ts"},
-        {"path": "src/test/loop/loopDebatePanel.test.ts"},
+        {"path": "src/test/loop/loopGroupChatPanel.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
       ]
     },
@@ -1061,7 +1079,7 @@
       "source_refs": [
         {"path": "src/continueModelChoice.ts"},
         {"path": "src/subtaskCliRoute.ts"},
-        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/panelDiagnostics.ts"},
         {"path": "src/extensionHost/graphControls.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
@@ -1133,7 +1151,7 @@
       "source_refs": [
         {"path": "src/loopMainQuestion.ts"},
         {"path": "src/panelDiagnostics.ts"},
-        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },
@@ -1196,7 +1214,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。辩论任务不把这些事件写入红蓝 chat.md。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 主任务和子任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 主任务和子任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1206,7 +1224,7 @@
         {"path": "src/conversationTabRunningFlow.ts"},
         {"path": "src/webview/viewContentScript/messageRendering.ts"},
         {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
-        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/loopTaskStore.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
@@ -1280,7 +1298,7 @@
         {"path": "src/extensionHost/loopPlusAcceptancePlanHost.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
         {"path": "src/webview/viewContentScript/acceptancePlan.ts"},
-        {"path": "src/webview/loopDebatePanel.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/test/core/loopPlusAcceptancePlan.test.ts"},
         {"path": "src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts"},

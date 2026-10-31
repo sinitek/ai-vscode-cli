@@ -6,7 +6,7 @@ import {
 } from "./cli/config";
 import { isInteractiveSupported } from "./cli/config";
 import { t } from "./i18n";
-import { CLI_LIST, CliName, MacTaskShell, normalizeLoopExecutionMode } from "./cli/types";
+import { CLI_LIST, CliName, MacTaskShell } from "./cli/types";
 import { type LoopTaskRole } from "./promptRunState";
 import {
   buildPromptWithAutoContextFromEditor,
@@ -26,10 +26,10 @@ import {
   SessionSummary,
 } from "./webview/types";
 import {
-  type LoopDebateChatPanelRound,
-  type LoopDebateChatPanelState,
+  type LoopGroupChatPanelRound,
+  type LoopGroupChatPanelState,
   type LoopPlusPanelProjection,
-} from "./webview/loopDebatePanel";
+} from "./webview/loopGroupChatPanel";
 import {
   formatGraphEdgeKind,
   formatGraphNodeKind,
@@ -58,17 +58,7 @@ import { getGraphRunControlState } from "./graph/graphRunControl";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
-import {
-  buildLoopGroupChatFinalStatusSection,
-  buildLoopMainSubChatTranscriptFile,
-  buildLoopMainSubSubtaskTurnBody,
-  formatLoopGroupChatMemberName,
-  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
-  LOOP_MAIN_SUB_CHAT_ROUND_KEY,
-  latestLoopGroupChatSubtaskStartedAt,
-  parseLoopDebateChatTranscript,
-  resolveLoopTaskRunControlState,
-} from "./loopDebate";
+import { buildLoopGroupChatFinalStatusSection, buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, formatLoopGroupChatMemberName, LOOP_MAIN_SUB_CHAT_ROUND_KEY, latestLoopGroupChatSubtaskStartedAt, resolveLoopTaskRunControlState } from "./loopGroupChat";
 import {
   resolveLoopSchedulingMode,
   type LoopRoundRecord,
@@ -135,7 +125,6 @@ export type PanelStateBuilderDeps = {
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusMaxAcceptances?: () => number;
   getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
-  buildWorkspaceLoopExecutionModeByCli: () => PanelState["loopExecutionModeByCli"];
   getDebugLogging: typeof getDebugLogging;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
@@ -252,7 +241,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
       deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
     ),
     loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
-    loopExecutionModeByCli: deps.buildWorkspaceLoopExecutionModeByCli(),
     debug: deps.getDebugLogging(),
     isMac: deps.processPlatform === "darwin",
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,
@@ -394,7 +382,7 @@ export function maybeInjectLongTermMemoryForPromptWithEditorContext(
   });
 }
 
-export type LoopDebateChatPanelStateBuilderDeps = {
+export type LoopGroupChatPanelStateBuilderDeps = {
   collectRunningLoopTaskIds: () => ReadonlySet<string>;
   readTextFileIfNonEmpty: (filePath: string) => string | null;
   fileExists: (filePath: string) => boolean;
@@ -756,26 +744,22 @@ function buildGraphRunPanelEvidence(
   return evidence;
 }
 
-export function buildLoopDebateChatPanelStateWithDeps(
+export function buildLoopGroupChatPanelStateWithDeps(
   task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
-): LoopDebateChatPanelState {
+  deps: LoopGroupChatPanelStateBuilderDeps,
+): LoopGroupChatPanelState {
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
   const loopPlus = projectLoopPlusPanel(task);
-  const mode = isLoopDebateGroupChatTask(task) ? "debate" : "main_sub";
-  const rounds = mode === "debate"
-    ? buildLoopDebateWithExecutionChatPanelRounds(task, deps, loopPlus)
-    : buildLoopMainSubChatPanelRounds(task, deps, loopPlus);
-  const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, mode, deps);
+  const rounds = buildLoopMainSubChatPanelRounds(task, deps, loopPlus);
+  const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, deps);
   const missingChatFiles = rounds
     .map((round) => round.chatFile)
     .filter((filePath): filePath is string => Boolean(filePath && !deps.readTextFileIfNonEmpty(filePath)));
   const error = missingChatFiles.length > 0 && !chatMarkdown.trim()
-    ? deps.t("loopDebateChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
+    ? deps.t("loopGroupChatChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
     : null;
   return {
-    mode,
     ...(loopPlus ? { loopPlus } : {}),
     task: {
       id: task.id,
@@ -954,59 +938,13 @@ function copyLoopPlusExecutionItem(
 
 function buildLoopCombinedGroupChatMarkdown(
   task: LoopTaskRecord,
-  rounds: LoopDebateChatPanelRound[],
-  mode: "main_sub" | "debate",
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  rounds: LoopGroupChatPanelRound[],
+  deps: LoopGroupChatPanelStateBuilderDeps,
 ): string {
-  const sources = rounds
-    .map((round) => {
-      const content = round.chatFile ? deps.readTextFileIfNonEmpty(round.chatFile) : null;
-      return content ? { round, content } : null;
-    })
-    .filter((source): source is { round: LoopDebateChatPanelRound; content: string } => Boolean(source));
-  if (sources.length === 0) {
-    return renderLoopGroupChatFinalStatusMarkdown(task);
-  }
-  if (mode === "main_sub" && sources.length === 1) {
-    return appendLoopGroupChatFinalStatusMarkdown(sources[0]?.content ?? "", task);
-  }
-
-  const lines: string[] = [
-    "# Loop 群聊记录",
-    "",
-    `- 任务 ID：${task.id}`,
-    `- CLI：${task.cli}`,
-    `- 任务状态：${task.status}`,
-    `- 当前主任务轮次：${task.currentRound || 0}`,
-    `- 更新时间：${new Date(task.updatedAt).toISOString()}`,
-    "",
-    "## 群聊规则",
-    "- 本页面按群聊消息追加顺序连续展示红蓝对抗和后续任务执行消息。",
-    "- 红蓝对抗不按 UI 轮次分区；主任务轮次、发言批次和执行阶段以系统消息说明。",
-    "- 最大发言批次数只作为防无限循环安全上限，是否追加发言批次由裁判主持人控场决定。",
-  ];
-
-  sources.forEach(({ round, content }) => {
-    lines.push("", "## 任务事件", buildLoopCombinedChatSourceEvent(round));
-    const transcript = parseLoopDebateChatTranscript(content);
-    transcript.segments.forEach((segment) => {
-      if (segment.kind === "preamble") {
-        const preamble = stripLoopChatPreambleTitle(segment.body);
-        if (preamble) {
-          lines.push("", "## 任务事件", preamble);
-        }
-        return;
-      }
-      lines.push("", `## ${segment.heading}`, segment.body.trim());
-    });
-  });
-
-  const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
-  if (finalStatusSection) {
-    lines.push("", `## ${finalStatusSection.heading}`, finalStatusSection.body);
-  }
-
-  return `${lines.join("\n")}\n`;
+  const content = rounds[0]?.chatFile ? deps.readTextFileIfNonEmpty(rounds[0].chatFile) : null;
+  return content
+    ? appendLoopGroupChatFinalStatusMarkdown(content, task)
+    : renderLoopGroupChatFinalStatusMarkdown(task);
 }
 
 function renderLoopGroupChatFinalStatusMarkdown(task: LoopTaskRecord): string {
@@ -1035,118 +973,11 @@ function hasLoopGroupChatFinalStatusSection(markdown: string, heading: string): 
   return new RegExp(`(?:^|\\n)##\\s+${escapedHeading}\\s*(?:\\n|$)`, "u").test(markdown);
 }
 
-function buildLoopCombinedChatSourceEvent(round: LoopDebateChatPanelRound): string {
-  const lines = [
-    `- 来源：${round.label || (round.kind === "debate" ? "红蓝对抗群聊" : "任务执行群聊")}`,
-    `- 状态：${round.status}`,
-    round.chatFile ? `- transcript：${round.chatFile}` : null,
-  ];
-  if (round.kind === "debate") {
-    lines.push(
-      `- 主任务复核轮次：${round.loopRound}`,
-      `- 已完成发言批次数：${round.dialogueTurns ?? 0}`,
-      `- 最大安全发言批次数：${LOOP_DEBATE_MAX_DIALOGUE_TURNS}`,
-      "- 裁判主持人会在每轮发言后决定 continue / finalize / block。",
-    );
-  }
-  if (round.kind === "execution") {
-    lines.push(`- 当前主任务轮次：${round.loopRound}`);
-  }
-  return lines.filter((line): line is string => Boolean(line)).join("\n");
-}
-
-function stripLoopChatPreambleTitle(body: string): string {
-  return body
-    .split(/\r?\n/g)
-    .filter((line, index) => !(index === 0 && /^#\s+/u.test(line.trim())))
-    .join("\n")
-    .trim();
-}
-
-export function isLoopDebateGroupChatTask(task: LoopTaskRecord): boolean {
-  return normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
-    || Boolean(task.debateRounds?.length);
-}
-
-function buildLoopDebateChatPanelRounds(task: LoopTaskRecord): LoopDebateChatPanelRound[] {
-  const debateRounds = Array.isArray(task.debateRounds) ? task.debateRounds : [];
-  return debateRounds
-    .map((round): LoopDebateChatPanelRound => ({
-      key: buildLoopDebateChatRoundKey(round.loopRound, round.debateRound),
-      kind: "debate",
-      loopRound: round.loopRound,
-      debateRound: round.debateRound,
-      status: round.status,
-      chatFile: round.chatFile,
-      participantRosterSessionId: round.participantRosterSessionId,
-      dialogueTurns: round.dialogueTurns,
-      activeSpeaker: round.activeSpeaker ? {
-        kind: round.activeSpeaker.kind,
-        id: round.activeSpeaker.id,
-        title: round.activeSpeaker.title,
-        dialogueTurn: round.activeSpeaker.dialogueTurn,
-        finalPass: round.activeSpeaker.finalPass,
-        updatedAt: round.activeSpeaker.updatedAt,
-      } : undefined,
-      startedAt: round.startedAt,
-      completedAt: round.completedAt,
-      participants: round.participants.map((participant) => ({
-        id: participant.id,
-        title: participant.title,
-        role: participant.role,
-        status: participant.status,
-        stance: participant.stance,
-        sessionId: participant.sessionId,
-        summary: participant.summary,
-        updatedAt: participant.updatedAt,
-      })),
-      moderatorDecisions: (round.moderatorDecisions ?? []).map((decision) => ({
-        dialogueTurn: decision.dialogueTurn,
-        action: decision.action,
-        reason: decision.reason,
-        sessionId: decision.sessionId,
-        updatedAt: decision.updatedAt,
-      })),
-      consensusSummary: round.consensus?.summary,
-      consensusReached: round.consensus?.reached,
-      openDisagreementCount: round.consensus?.openDisagreements?.length,
-    }))
-    .sort((left, right) => (
-      (left.startedAt || 0) - (right.startedAt || 0)
-      || left.loopRound - right.loopRound
-      || left.debateRound - right.debateRound
-    ));
-}
-
-function buildLoopDebateWithExecutionChatPanelRounds(
-  task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
-  loopPlus: LoopPlusPanelProjection | null,
-): LoopDebateChatPanelRound[] {
-  const debateRounds = buildLoopDebateChatPanelRounds(task);
-  const executionChatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
-  const shouldIncludeExecution = deps.fileExists(executionChatFile)
-    || shouldPrioritizeLoopExecutionChatRound(task, deps);
-  if (!shouldIncludeExecution) {
-    return debateRounds;
-  }
-  return [...debateRounds, buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+ 群聊" : "任务执行群聊", deps, loopPlus)];
-}
-
-function shouldPrioritizeLoopExecutionChatRound(
-  task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
-): boolean {
-  return task.subTasks.length > 0
-    || deps.getActiveLoopSubtaskIds(task).length > 0
-    || task.rounds.some((round) => round.role === "subtask");
-}
-
 function buildLoopMainSubChatPanelRounds(
   task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  deps: LoopGroupChatPanelStateBuilderDeps,
   loopPlus: LoopPlusPanelProjection | null,
-): LoopDebateChatPanelRound[] {
+): LoopGroupChatPanelRound[] {
   return [buildLoopMainSubChatPanelRound(task, loopPlus ? "Loop+ 群聊" : "主从群聊", deps, loopPlus)];
 }
 
@@ -1211,19 +1042,18 @@ function resolveLoopMemberLastStartedAt(
 function buildLoopMainSubChatPanelRound(
   task: LoopTaskRecord,
   label: string,
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  deps: LoopGroupChatPanelStateBuilderDeps,
   loopPlus: LoopPlusPanelProjection | null = null,
-): LoopDebateChatPanelRound {
+): LoopGroupChatPanelRound {
   const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
   const joinedAtBySubtaskId = readLoopSubtaskJoinedStartedAt(chatFile, deps);
   if (loopPlus) {
-    const mainTitle = getLoopMainSubChatMainTitle(task);
+    const mainTitle = getLoopMainSubChatMainTitle();
     return {
       key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
       kind: "execution",
       label,
       loopRound: Math.max(1, task.currentRound || 1),
-      debateRound: 0,
       status: loopPlus.ok ? loopPlus.phase : "invalid",
       chatFile,
       startedAt: task.createdAt,
@@ -1262,14 +1092,13 @@ function buildLoopMainSubChatPanelRound(
           ),
         })),
       ],
-      moderatorDecisions: [],
     };
   }
   const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
-  const mainTitle = getLoopMainSubChatMainTitle(task);
+  const mainTitle = getLoopMainSubChatMainTitle();
   const mainStatus = mainRunning ? "running" : task.status;
-  const mainParticipant: LoopDebateChatPanelRound["participants"][number] = {
+  const mainParticipant: LoopGroupChatPanelRound["participants"][number] = {
     id: "main",
     title: mainTitle,
     role: "main",
@@ -1301,20 +1130,18 @@ function buildLoopMainSubChatPanelRound(
     kind: "execution",
     label,
     loopRound: Math.max(1, task.currentRound || 1),
-    debateRound: 0,
     status: task.status,
     chatFile,
     activeSpeaker: buildLoopMainSubChatActiveSpeaker(task, deps),
     startedAt: task.createdAt,
     completedAt: task.status === "completed" ? task.updatedAt : undefined,
     participants: [mainParticipant, ...subtaskParticipants],
-    moderatorDecisions: [],
   };
 }
 
 function readLoopSubtaskJoinedStartedAt(
   chatFile: string,
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  deps: LoopGroupChatPanelStateBuilderDeps,
 ): ReadonlyMap<string, number> {
   if (!chatFile || !deps.fileExists(chatFile)) {
     return new Map();
@@ -1325,8 +1152,8 @@ function readLoopSubtaskJoinedStartedAt(
 
 function buildLoopMainSubChatActiveSpeaker(
   task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
-): LoopDebateChatPanelRound["activeSpeaker"] {
+  deps: LoopGroupChatPanelStateBuilderDeps,
+): LoopGroupChatPanelRound["activeSpeaker"] {
   if (task.status !== "running") {
     return undefined;
   }
@@ -1341,7 +1168,6 @@ function buildLoopMainSubChatActiveSpeaker(
       kind: "subtask",
       id: activeSubtask.id,
       title: getLoopSubtaskDisplayTitle(index, activeSubtask),
-      dialogueTurn: Math.max(1, task.currentRound || 1),
       updatedAt: activeSubtask.updatedAt ?? task.updatedAt,
     };
   }
@@ -1349,8 +1175,7 @@ function buildLoopMainSubChatActiveSpeaker(
     return {
       kind: "main",
       id: "main",
-      title: getLoopMainSubChatMainTitle(task),
-      dialogueTurn: Math.max(1, task.currentRound || 1),
+      title: getLoopMainSubChatMainTitle(),
       updatedAt: task.updatedAt,
     };
   }
@@ -1418,15 +1243,13 @@ function loopPlusMemberStatus(
   return "not_in_snapshot";
 }
 
-export function getLoopMainSubChatMainTitle(task: Pick<LoopTaskRecord, "executionMode">): string {
-  return normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
-    ? "主持人主智能体"
-    : "主任务";
+export function getLoopMainSubChatMainTitle(): string {
+  return "主任务";
 }
 
 export function ensureLoopMainSubChatTranscriptWithDeps(
   task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  deps: LoopGroupChatPanelStateBuilderDeps,
 ): string {
   const chatFile = buildLoopMainSubChatTranscriptFile(task.communicationDir);
   if (deps.fileExists(chatFile)) {
@@ -1438,9 +1261,9 @@ export function ensureLoopMainSubChatTranscriptWithDeps(
 
 function buildInitialLoopMainSubChatTranscript(
   task: LoopTaskRecord,
-  deps: LoopDebateChatPanelStateBuilderDeps,
+  deps: LoopGroupChatPanelStateBuilderDeps,
 ): string {
-  const mainTitle = getLoopMainSubChatMainTitle(task);
+  const mainTitle = getLoopMainSubChatMainTitle();
   const lines: string[] = [
     "# Loop 主从群聊记录",
     "",
@@ -1452,9 +1275,7 @@ function buildInitialLoopMainSubChatTranscript(
     `- 主任务沟通文件：${task.mainCommunicationFile}`,
     "",
     "## 群聊规则",
-    normalizeLoopExecutionMode(task.executionMode) === "debate_multi_agent"
-      ? "- 主持人主智能体负责继承红蓝规划共识，拆分、派发、复核和最终验收。"
-      : "- 主任务负责拆分、派发、复核和最终验收。",
+    "- 主任务负责拆分、派发、复核和最终验收。",
     "- 子任务会在派发和执行时动态加入群聊，并以“子任务 1~N”标记。",
     "- 本页面只读，真实执行仍以任务记录、主任务沟通文件和子任务沟通文件为准。",
     "",
@@ -1507,24 +1328,8 @@ function formatLoopRoundRecordForChat(round: LoopRoundRecord): string {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
-export function buildLoopDebateChatRoundKey(loopRound: number, debateRound: number): string {
-  return `${loopRound}:${debateRound}`;
-}
-
-export function buildLoopDebateChatMessageActionWithRoundKey(
-  taskId: string,
-  defaultDebateRound: number,
-  round?: number,
-): ChatMessageAction {
-  const action: ChatMessageAction = {
-    type: "openLoopGroupChat",
-    taskId,
-    label: "打开 Loop 群聊",
-  };
-  if (typeof round === "number" && Number.isFinite(round)) {
-    action.roundKey = buildLoopDebateChatRoundKey(round, defaultDebateRound);
-  }
-  return action;
+export function buildLoopGroupChatMessageAction(taskId: string): ChatMessageAction {
+  return { type: "openLoopGroupChat", taskId, label: "打开 Loop 群聊" };
 }
 
 export type UserChatMessageInput = {

@@ -5,8 +5,6 @@ import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord } from "../loopTaskStore";
-import { normalizeLoopDebateSessionId } from "../loopDebate";
-import { logError } from "../logger";
 import { buildGraphRunIdsBySessionByCli, listGraphRuns } from "../graph/graphStore";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "./graphRuntime";
@@ -38,7 +36,7 @@ let currentCli = deps.getCurrentCli();
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
 let workspaceSettings = deps.getWorkspaceSettings();
 let activeTaskRun = deps.getActiveTaskRun();
-const loopDebateChatPanelCoordinator = { listGroupChatTasks: deps.getLoopGroupChatTasks };
+const loopGroupChatChatPanelCoordinator = { listGroupChatTasks: deps.getLoopGroupChatTasks };
 const graphNodeRunTargetsByTabId = { get: deps.getGraphNodeRunTarget, delete: deps.deleteGraphNodeRunTarget, set: deps.setGraphNodeRunTarget };
 const parallelRunsByTabId = { get: (tabId: string) => ({ graphRunId: deps.getParallelGraphRunId(tabId) }) };
 const interactiveRunsByTabId = { get: (tabId: string) => ({ graphRunId: deps.getInteractiveGraphRunId(tabId) }) };
@@ -62,7 +60,7 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
   const allSessions: SessionSummary[] = [];
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
   const loopSessionIdsByCli = buildLoopSessionIdsByCli(
-    loopDebateChatPanelCoordinator.listGroupChatTasks()
+    loopGroupChatChatPanelCoordinator.listGroupChatTasks()
   );
   const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
     listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs
@@ -342,7 +340,7 @@ function createLoopSubtaskRunTarget(
   cli: CliName,
   options: { sessionId?: string | null } = {}
 ): PromptRunTarget {
-  const sessionId = normalizeLoopDebateSessionId(options.sessionId);
+  const sessionId = options.sessionId?.trim() || null;
   const state = ensureConversationTabs();
   const tab: ConversationTabRecord = {
     id: createConversationTabId(),

@@ -173,6 +173,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           opencode: [],
         },
         modelLabelsByCli: {},
+        configuredDefaultModelsByCli: {},
         loopModelsByCli: {
           codex: { main: [], subtask: [] },
           claude: { main: [], subtask: [] },
@@ -213,11 +214,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         loopPlusMaxAcceptances: \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT},
         loopSubtaskMaxThinkingMode: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
-        loopExecutionModeByCli: {
-          codex: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-          claude: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-          opencode: "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}",
-        },
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
@@ -361,7 +357,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         claudeLoopSubtaskThinkingMode: document.getElementById("claudeLoopSubtaskThinkingMode"),
         loopSubtaskRouteIssue: document.getElementById("loopSubtaskRouteIssue"),
         openCodeModelIssue: document.getElementById("openCodeModelIssue"),
-        loopExecutionModeSelect: document.getElementById("loopExecutionModeSelect"),
         modelSelect: document.getElementById("modelSelect"),
         debugMode: document.getElementById("debugMode"),
         autoAddEditorContextTags: document.getElementById("autoAddEditorContextTags"),
@@ -552,50 +547,12 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const UPLOAD_MAX_FILES = 10;
       const UPLOAD_MAX_FILE_BYTES = 20 * 1024 * 1024;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
-      const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "\${LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT}";
-      const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "\${LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT}";
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const loopMetaByTabId = Object.create(null);
       const graphMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
-
-      function normalizeLoopExecutionMode(value) {
-        return value === LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT
-          ? LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT
-          : LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT;
-      }
-
-      function normalizeLoopExecutionModeByCli(value, fallbackByCli) {
-        const nextByCli = {};
-        const hasIncomingByCli = Boolean(value && typeof value === "object");
-        CLI_NAMES.forEach((cli) => {
-          const hasIncomingCli = hasIncomingByCli && Object.prototype.hasOwnProperty.call(value, cli);
-          const candidate = hasIncomingCli ? value[cli] : undefined;
-          const fallback = !hasIncomingByCli && fallbackByCli && typeof fallbackByCli === "object"
-            ? fallbackByCli[cli]
-            : undefined;
-          nextByCli[cli] = normalizeLoopExecutionMode(hasIncomingCli ? candidate : fallback);
-        });
-        return nextByCli;
-      }
-
-      function getLoopExecutionModeForCli(cli = state.currentCli) {
-        return normalizeLoopExecutionMode(
-          state.loopExecutionModeByCli && state.loopExecutionModeByCli[cli]
-        );
-      }
-
-      function setLoopExecutionModeForCli(cli, value) {
-        const normalized = normalizeLoopExecutionMode(value);
-        state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
-          state.loopExecutionModeByCli,
-          state.loopExecutionModeByCli
-        );
-        state.loopExecutionModeByCli[cli] = normalized;
-        return normalized;
-      }
 
       function normalizeLoopSubtaskMaxThinkingMode(value) {
         return ["low", "medium", "high", "xhigh"].includes(value)

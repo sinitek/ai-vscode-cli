@@ -35,7 +35,7 @@ Loop 群聊“保持原模型”目前只回放 `modelRouting` 里的模型名�
 
 ## 影响面
 
-- 代码目录：`src/loopTaskStore.ts`、`src/extension.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/panelDiagnostics.ts`、`src/webview/loopDebatePanelRenderer.ts`、`src/i18n.ts`
+- 代码目录：`src/loopTaskStore.ts`、`src/extension.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/i18n.ts`
 - 文档目录：产品规格、功能清单、Loop 设计说明、ontology
 
 ## 风险与缓解
@@ -46,16 +46,16 @@ Loop 群聊“保持原模型”目前只回放 `modelRouting` 里的模型名�
 ## 验证计划
 
 - 最小相关验证：`npm run build` 后运行 Loop 继续选择相关单测。
-- 单元自测命令：`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopDebateCoordinator.test.js dist/test/loop/loopDebatePanel.test.js`
+- 单元自测命令：`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanel.test.js`
 - 扩展验证：不跑全量单测。
 
 ## 测试与清单同步
 
 - 单元测试新增/更新：continue model choice、Loop 群聊 coordinator。
-- 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopDebateCoordinator.test.js` 7/7 通过；Loop 群聊面板相关 2 项通过。`covers Loop debate panel lifecycle` 因本机工具设置语言为中文渲染中文面板，断言仍要求英文文案，与本次改动无关。
+- 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js` 7/7 通过；Loop 群聊面板相关 2 项通过。另有 1 项群聊面板本地化断言与本机工具语言设置不一致，与本次改动无关。
 - 失败处理记录：无。
 - 功能清单：更新 Loop/Graph 模型路由行中的 Loop 续作描述。
-- 相关文档同步：capabilities、loop debate 设计说明、ontology。
+- 相关文档同步：capabilities、ontology。
 
 ## 任务列表
 

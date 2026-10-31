@@ -50,7 +50,7 @@
 ## 验证计划
 
 - 最小相关验证：构建后运行 Webview、Loop、Graph、设置处理与配置页相关测试。
-- 单元自测命令：`npm run build`；`node --test dist/test/core/i18n.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActions.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/loop/loopDebatePanel.test.js dist/test/graph/graphRunPanel.test.js`。
+- 单元自测命令：`npm run build`；`node --test dist/test/core/i18n.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActions.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/graph/graphRunPanel.test.js`。
 - 扩展验证：搜索代码和当前产品文档中的 locale 选择、英文运行时翻译及已删除文件引用。
 
 ## 测试与清单同步

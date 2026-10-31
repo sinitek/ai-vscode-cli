@@ -34,7 +34,7 @@
 │   ├── graph/                # Graph 运行图、调度、边语义与节点控制
 │   ├── shared/               # 跨 CLI/config/Graph 复用的纯工具
 │   ├── trace/                # trace/tool 输出格式化
-│   ├── loopDebate.ts         # Loop 辩论路径、记录与共识校验纯函数
+│   ├── loopGroupChat.ts      # Loop 主从群聊路径、成员与 transcript 纯函数
 │   ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
 │   ├── loopTaskStore.ts      # Loop 任务记录持久化
 │   ├── i18n.ts               # 固定简体中文文案
@@ -68,7 +68,7 @@ cli / interactive / config 服务层
 - 负责渲染聊天面板、配置中心、输入交互和消息协议
 - 不直接访问文件系统，不直接执行 CLI
 - 主对话与 Loop / Loop+ 群聊复用 `chatMarkdown.ts` 的浏览器侧 Markdown、JSON、SVG 和图片交互运行时；`markdownAssets.ts` 统一加载 Marked / JSONFormatter，`viewContentStyles/markdown.ts` 提供可按容器复用的主题样式。
-- `chatImageHost.ts` 在扩展宿主侧统一承接图片解析、预览和下载，由 `viewProvider.ts` 与 `loopDebatePanel.ts` 各自绑定当前 Webview，防止异步结果写入已替换或关闭的页面。
+- `chatImageHost.ts` 在扩展宿主侧统一承接图片解析、预览和下载，由 `viewProvider.ts` 与 `loopGroupChatPanel.ts` 各自绑定当前 Webview，防止异步结果写入已替换或关闭的页面。
 
 #### 扩展编排层
 
@@ -90,7 +90,7 @@ cli / interactive / config 服务层
 - `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps)`。运行身份与 tab 流留在本 host，不补 one-shot 启动超时。当前 1078 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
 - `promptInteractiveRuntime.ts` 承载 interactive attempt 顺序、收口、session adoption、停止、消息持久化、subagent progress、hidden retry 和 final answer 判定。Codex、Claude、Grok 的 runner 生命周期和流事件映射分别在 `interactiveTurnCodex.ts`、`interactiveTurnClaude.ts`、`interactiveTurnGrok.ts`，由 `interactiveTurnStrategy.ts` 的显式注册表提供。工厂签名仍是 `createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntimeHostDeps)`。没有类继承，也没有 DI 容器。当前 1276 行
 - `cliModelSelectionStrategies.ts` 用显式 `Record<CliName, CliModelSelectionStrategy>` 收拢 Codex、Claude、OpenCode、Grok 的普通选择、main/subtask 角色选择、候选、可管理候选、下一份 store、持久化键和展示名。`createCliModelSelectionStrategies` 每次操作接收当前 `CliModelStore`；Grok 配置按原始 config id 现查注入的缓存，缺省存储键也在操作时向注入的 resolver 取值，工厂不捕获 store 或缓存快照。Codex、Claude、OpenCode 委托 `modelSelectionStore` 既有函数。策略不导入 VS Code、配置服务、文件系统、Webview 或日志，也不写盘。`modelSettings.ts` 仍负责活跃配置、读盘缓存、错误日志、`writeModelStore`、deps 同步和 PanelState。用户可见模型选择不变。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-22-cli-model-selection-strategies.md`
-- `loopOrchestration.ts` 承载 Loop 主从与红蓝辩论编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界；当前 3092 行
+- `loopOrchestration.ts` 承载 Loop 主从编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界
 - `openCodeSubagentRuntime.ts` 承载 OpenCode 子代理 server attach / managed startup / ready wait / Basic auth env override / unavailable fallback 和 disabled monitor；当前 201 行
 - `primaryPromptRunController.ts` 集中维护主 Prompt 的运行身份、进程、停止回调、会话目标、消息目标、trace 和任务状态；`extension.ts` 只负责组合根副作用与显式接线，避免 One-shot、上下文压缩、停止和 deactivate 分散读写同一组模块级状态
 - `promptExecutionShared.ts` 只保存提示运行 host 共享的窄类型；当前 59 行
@@ -99,11 +99,13 @@ cli / interactive / config 服务层
 
 #### Loop 生命周期状态转移
 
-- 这是维护性重构：不新增用户可见能力，不改变 Loop/Loop+ 决策协议，也不改变 `LoopTaskRecord` 持久化 schema。已核对 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，终端可见的任务、群聊、澄清和停止行为没有变化，因此不更新功能清单。
+- Loop 固定使用主从多智能体；辩论专属运行器、提示词、数据模型和模式选择入口已移除。群聊共用能力由 `src/loopGroupChat.ts`、`src/loopFinalSummary.ts` 和 `src/webview/loopGroupChatPanel*.ts` 承载，旧持久化模式字段读取时忽略。
+
+- Loop/Loop+ 主决策、停止和运行中断由纯状态转移策略计算；主从调度、群聊、澄清和停止行为保持不变。任务持久化不再保留已停用的执行模式和辩论专属字段。
 - `loopTaskTransitionStrategies` 按主决策 `completed` / `clarify` / `blocked` / `continue` 注册；停止和运行中断只按 `classic` 与 `event_driven` 注册。未知主决策回落到 `continue`。只有 `schedulingMode === "event_driven"` 走 Loop+ 策略，未设置时仍走 classic。不引入 DI 容器、继承层级或新的 mode 旗标。
-- 策略返回下一状态、`LoopTaskRecord` patch、子任务或辩论成员更新，以及 host 可执行标志。模块不导入 VS Code、文件系统、日志或面板 API，也不调用 `buildNextLoopMainAiFailureState`。
+- 策略返回下一状态、`LoopTaskRecord` patch、子任务更新，以及 host 可执行标志。模块不导入 VS Code、文件系统、日志或面板 API，也不调用 `buildNextLoopMainAiFailureState`。
 - host 边界留在 `promptRunRuntime.ts`：`applyLoopMainDecision` 写任务存储，并仅在 `appendDecisionMessages` 时追加沟通文件和子会话消息；`markLoopTaskInterrupted` 先中止澄清，event_driven 再停止 Loop+ 父任务，classic 主任务 error 才由 host 计算失败次数并合并 `loopInterruptFailureLimitPatch`；`markLoopTaskStopped` 在缺失或已完成时直接返回，否则写 patch，并按标志中止澄清、刷新已打开群聊。`createPromptRunRuntimeHost` 的公开方法名不变。
-- 兼容不变量：`completed`、`blocked` 和超限 `clarify` 清空活动子任务；未超限 `clarify` 保持 `running` 并递增 `clarificationCount`；无子任务的 `continue` 进入 `needs-review` 且不追加决策消息；有子任务的 `continue` 保留 `activeSubtaskIds`。classic 停止把活动、running 或 pending 子任务写入 `blocked`，把仍活跃的辩论轮次和参与者写入 `stopped`，并清空活动子任务；event_driven 停止和中断不把活动子任务或辩论快照写入 patch。已完成任务再次停止幂等。策略不拼接路径，Windows、macOS 和 Linux 的既有副作用顺序不变。
+- 兼容不变量：`completed`、`blocked` 和超限 `clarify` 清空活动子任务；未超限 `clarify` 保持 `running` 并递增 `clarificationCount`；无子任务的 `continue` 进入 `needs-review` 且不追加决策消息；有子任务的 `continue` 保留 `activeSubtaskIds`。classic 停止把活动、running 或 pending 子任务写入 `blocked`，并清空活动子任务；event_driven 停止和中断不把活动子任务写入 patch。已完成任务再次停止幂等。策略不拼接路径，Windows、macOS 和 Linux 的既有副作用顺序不变。
 - 回归入口：`src/test/extensionHost/loopTaskStateMachine.test.ts`、`src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`；失败计数算法仍由 `src/test/loop/loopMainFailure.test.ts` 覆盖。先 `npm run build`，再 `node --test dist/test/extensionHost/loopTaskStateMachine.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js`。详细事实来源见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md`。
 
 #### CLI / Interactive / Config 服务层
@@ -135,7 +137,7 @@ cli / interactive / config 服务层
 #### 基础本地资源层
 
 - 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.opencode/` 和 OpenCode 官方全局 MCP 配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`；`~/.gemini/` 仅作历史迁移参考
-- Loop 模式的任务记录位于 `~/.sinitek_cli/loop-tasks/`；主子任务沟通和辩论 artifact 位于 `~/.sinitek_cli/loop-communications/`
+- Loop 模式的任务记录位于 `~/.sinitek_cli/loop-tasks/`；主子任务沟通与群聊 transcript 位于 `~/.sinitek_cli/loop-communications/`
 - Graph 模式的 run store、`graph.json`、`events.jsonl` 和节点 communication artifact 位于 `~/.sinitek_cli/graph-*` 相关目录；新 Graph run 默认 direct 执行，不创建 worktree/checkpoint
 - 首次枚举 Loop 任务时，`src/loopLegacyMigration.ts` 与 `src/loopTaskStore.ts` 会把旧 Lobster 任务存储和通信目录迁入上述 Loop 路径；新写入不再使用旧命名，冲突 artifact 以 `.pre-loop-migration` 后缀保留
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
@@ -158,7 +160,7 @@ cli / interactive / config 服务层
 3. 需要管理外部 CLI 配置或全局 Skills：放 `src/config/`
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，在 `src/extension.ts` 接线；若是提示运行的连续状态机，优先放到 `src/extensionHost/*Runtime.ts` 并由 `extension.ts` 注入依赖
-6. 只是 Loop 辩论记录、路径或共识校验纯函数：放 `src/loopDebate.ts`，不要反向依赖 VS Code API 或 Webview
+6. 只是 Loop 群聊 transcript、成员或路径纯函数：放 `src/loopGroupChat.ts`，不要反向依赖 VS Code API 或 Webview
 7. 只是 Graph 边/调度/节点控制语义：放 `src/graph/` 内的专门模块；跨 scheduler 和 prompt builder 的边语义优先集中到 `graphEdgeSemantics.ts`
 8. Loop 主决策、停止和运行中断的状态计算放 `src/extensionHost/loopTaskStateMachine.ts`；任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数留在 `src/extensionHost/promptRunRuntime.ts`。不要把状态转移模块写成 UI 或数据库层
 

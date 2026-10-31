@@ -2,10 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   CLI_LIST,
-  normalizeLoopExecutionMode,
   type CliName,
   type InteractiveMode,
-  type LoopExecutionMode,
   type ThinkingMode,
 } from "./cli/types";
 import {
@@ -37,7 +35,6 @@ export type WorkspaceSettings = {
   currentCli?: CliName;
   thinkingMode?: ThinkingMode;
   interactiveModeByCli?: Partial<Record<CliName, InteractiveMode>>;
-  loopExecutionModeByCli?: Partial<Record<CliName, LoopExecutionMode>>;
   /** @deprecated After-run context compaction is global; keep only for migration reads. */
   autoCompactContextAfterRun?: boolean;
   /** @deprecated Before-run context compaction is a legacy global migration input. */
@@ -105,15 +102,6 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       if (Object.keys(normalized).length > 0) {
         result.interactiveModeByCli = normalized;
       }
-    }
-    const loopExecutionModeByCli = (parsed as WorkspaceSettings).loopExecutionModeByCli;
-    if (loopExecutionModeByCli && typeof loopExecutionModeByCli === "object") {
-      const normalized: Partial<Record<CliName, LoopExecutionMode>> = {};
-      CLI_LIST.forEach((cli) => {
-        const mode = (loopExecutionModeByCli as Record<string, unknown>)[cli];
-        normalized[cli] = normalizeLoopExecutionMode(mode);
-      });
-      result.loopExecutionModeByCli = normalized;
     }
     const autoCompactContextAfterRun = (parsed as WorkspaceSettings).autoCompactContextAfterRun;
     if (typeof autoCompactContextAfterRun === "boolean") {

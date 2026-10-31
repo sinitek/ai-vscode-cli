@@ -21,8 +21,6 @@ import { TYPING_STATUS_STYLES } from "../../webview/viewContentStyles/typingStat
 
 type StaticHtmlInput = Parameters<typeof buildWebviewStaticHtml>[0];
 
-const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
-const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -46,9 +44,6 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent:
-      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    loopExecutionModeDebateMultiAgent: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
   };
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
@@ -67,8 +62,6 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
     cliOptions,
     markedScript,
     webviewStyles,
-    loopExecutionModeMainSubMultiAgent: "main-mode",
-    loopExecutionModeDebateMultiAgent: "debate-mode",
   });
 
   assert.ok(html.startsWith("<!DOCTYPE html>"));
@@ -89,10 +82,7 @@ test("renders a nonce-protected static shell with supplied resource strings", ()
     html,
     new RegExp(`<select id="currentCli"[^>]*>${escapeRegExp(cliOptions)}</select>`),
   );
-  assert.match(
-    html,
-    /<option value="main-mode" selected>主从多智能体<\/option>\s*<option value="debate-mode">红蓝辩论多智能体<\/option>/,
-  );
+  assert.doesNotMatch(html, /loopExecutionModeSelect|main-mode|debate-mode|红蓝辩论/);
   assert.ok(html.endsWith(`    <script nonce="${nonce}">`));
 });
 
@@ -149,7 +139,6 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="codexLoopSubtaskModelSelect"',
     'id="modelSelect"',
     'id="thinkingMode"',
-    'id="loopExecutionModeSelect"',
     'id="commonCommandButton"',
     'id="pathPickerButton"',
     'id="attachmentButton"',
@@ -168,10 +157,7 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     html,
     /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
   );
-  assert.match(
-    html,
-    /id="loopExecutionModeSelect"[\s\S]*?<option value="main_sub_multi_agent" selected>主从多智能体<\/option>\s*<option value="debate_multi_agent">红蓝辩论多智能体<\/option>/,
-  );
+  assert.doesNotMatch(html, /loopExecutionModeSelect|debate_multi_agent|红蓝辩论/);
 });
 
 test("renders model-selection, Codex role-model, and OpenCode role-model anchors", () => {
@@ -324,8 +310,6 @@ test("只渲染固定中文静态页面文案", () => {
     "执行模式",
     "优点：交互直接、启动快、开销低。",
     "工作区 Harness 骨架",
-    "主从多智能体",
-    "红蓝辩论多智能体",
     "Codex Loop/Graph 主模型选择",
     "Codex Loop/Graph 子模型选择",
     "回放",
@@ -346,8 +330,6 @@ test("keeps required anchors when optional resource inputs are empty", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "",
-    loopExecutionModeDebateMultiAgent: "",
   });
 
   assert.match(
@@ -355,10 +337,7 @@ test("keeps required anchors when optional resource inputs are empty", () => {
     /Content-Security-Policy" content="default-src 'none'; img-src  https: http: data:; style-src  'unsafe-inline'; script-src 'nonce-';"/,
   );
   assert.match(html, /<select id="currentCli" class="cli-select" aria-label="CLI 选择"><\/select>/);
-  assert.match(
-    html,
-    /<option value="" selected>主从多智能体<\/option>\s*<option value="">红蓝辩论多智能体<\/option>/,
-  );
+  assert.doesNotMatch(html, /loopExecutionModeSelect|主从多智能体|红蓝辩论/);
   assert.match(html, /<script nonce="">\s*<\/script>\s*<script nonce="">$/);
   assert.doesNotMatch(html, /undefined|null/);
   assertIncludesAll(html, [
@@ -476,10 +455,7 @@ test("saves scheduled tasks with the selected Vibe/Loop/Graph mode", () => {
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /function getScheduledTaskSelectedMode\(/);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /const selectedMode = getScheduledTaskSelectedMode\(\);/);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /interactiveMode: selectedMode,/);
-  assert.match(
-    VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
-    /loopExecutionMode: selectedMode === "loop" \? getLoopExecutionModeForCli\(targetCli\) : undefined,/,
-  );
+  assert.doesNotMatch(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /loopExecutionMode|getLoopExecutionModeForCli/);
 });
 
 test("shares one modal shell across chat overlays and panel dialogs", () => {

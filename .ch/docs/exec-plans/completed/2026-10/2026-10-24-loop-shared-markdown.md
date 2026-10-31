@@ -50,7 +50,7 @@
 - 最小相关单测 40 项及扩大回归 162 项均通过；最终合并重跑共 202 项通过，0 失败、0 跳过。命令：
 
   ```bash
-  node --test dist/test/loop/loopDebatePanel.test.js dist/test/webview/chatMarkdown.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/webview/viewProvider.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/looppluswebviewintegration.test.js dist/test/loop/loopCommunicationFilePreview.test.js dist/test/loop/loopDebate.test.js dist/test/extensionHost/loopPlusSubtaskChat.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js
+  node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/webview/chatMarkdown.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/jsonTreeMessageRender.test.js dist/test/webview/viewProvider.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/looppluswebviewintegration.test.js dist/test/loop/loopCommunicationFilePreview.test.js dist/test/loop/loopGroupChat.test.js dist/test/extensionHost/loopPlusSubtaskChat.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js
   ```
 
   日志 `/tmp/sinitek-loop-md-final-tests.log`。

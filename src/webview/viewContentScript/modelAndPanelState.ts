@@ -315,6 +315,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         const nextModelsByCli = {};
         const nextModelLabelsByCli = {};
+        const nextConfiguredDefaultModelsByCli = {};
         const nextManagedModelsByCli = {};
         const nextSelectedModelsByCli = {};
         const nextLoopModelsByCli = {};
@@ -343,6 +344,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           );
 
           nextModelsByCli[cli] = preservePrevious ? previousModels : incomingModels;
+          nextConfiguredDefaultModelsByCli[cli] = normalizeModelSelection(
+            preservePrevious
+              ? state.configuredDefaultModelsByCli && state.configuredDefaultModelsByCli[cli]
+              : modelState.configuredDefaultByCli && modelState.configuredDefaultByCli[cli]
+          );
           nextModelLabelsByCli[cli] = preservePrevious
             ? (state.modelLabelsByCli && state.modelLabelsByCli[cli]) || {}
             : (modelState.labelsByCli && modelState.labelsByCli[cli]) || {};
@@ -357,6 +363,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
 
         state.modelsByCli = nextModelsByCli;
         state.modelLabelsByCli = nextModelLabelsByCli;
+        state.configuredDefaultModelsByCli = nextConfiguredDefaultModelsByCli;
         state.managedModelsByCli = nextManagedModelsByCli;
         state.selectedModelsByCli = nextSelectedModelsByCli;
         state.loopModelsByCli = nextLoopModelsByCli;
@@ -578,10 +585,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         );
         state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
           panelState.loopSubtaskMaxThinkingMode
-        );
-        state.loopExecutionModeByCli = normalizeLoopExecutionModeByCli(
-          panelState.loopExecutionModeByCli,
-          state.loopExecutionModeByCli
         );
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;

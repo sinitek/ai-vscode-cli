@@ -6,7 +6,7 @@ import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 
 const {
-  buildLoopDebateChatPanelStateWithDeps,
+  buildLoopGroupChatPanelStateWithDeps,
   projectLoopPlusPanel,
 } = require("../../panelStateBuilder") as typeof import("../../panelStateBuilder");
 const {
@@ -138,7 +138,7 @@ test("projects the current review, FIFO queue, running work, and pending work fr
   const source = task(snapshot);
   const before = JSON.stringify(snapshot);
   const writes = { count: 0 };
-  const state = buildLoopDebateChatPanelStateWithDeps(source, deps(writes));
+  const state = buildLoopGroupChatPanelStateWithDeps(source, deps(writes));
   const projection = state.loopPlus;
 
   assert.equal(JSON.stringify(snapshot), before);
@@ -181,7 +181,7 @@ test("shows waiting instead of a generating main task while only executions are 
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   const dispatched = scheduler.dispatch([spec("D", "d-1")]);
   assert.equal(dispatched.started.length, 1);
-  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot(), {
+  const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), {
     subTasks: [{ id: "D", title: "Delta", status: "completed", updatedAt: 14 }],
   }), deps());
   const projection = state.loopPlus;
@@ -202,7 +202,7 @@ test("shows waiting instead of a generating main task while only executions are 
 
 test("does not present a review queue as complete when nothing is running", () => {
   const snapshot = queueWithoutRunningSnapshot();
-  const state = buildLoopDebateChatPanelStateWithDeps(task(snapshot), deps());
+  const state = buildLoopGroupChatPanelStateWithDeps(task(snapshot), deps());
   const projection = state.loopPlus;
   assert.ok(projection?.ok);
   if (!projection?.ok) {
@@ -293,7 +293,7 @@ test("shows stopped and resumed snapshots without treating them as automatic rev
   assert.notEqual(resumedProjection.phase, "stopped");
 });
 
-test("preserves retry attempt identity and does not change classic main or debate speakers", () => {
+test("preserves retry attempt identity and does not change the classic main speaker", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(scheduler, "A", "a-1");
   const current = scheduler.snapshot().currentReview;
@@ -314,40 +314,16 @@ test("preserves retry attempt identity and does not change classic main or debat
   assert.equal(retriedProjection.running[0]?.attemptId, "a-2");
   assert.equal(retriedState.rounds[0]?.participants.find((item) => item.id === "A")?.status, "running");
 
-  const classic = buildLoopDebateChatPanelStateWithDeps(task(parallelSnapshot(), {
+  const classic = buildLoopGroupChatPanelStateWithDeps(task(parallelSnapshot(), {
     schedulingMode: undefined,
     subTasks: [],
     activeSubtaskIds: [],
   }), deps());
   assert.equal(classic.loopPlus, undefined);
-  assert.equal(classic.mode, "main_sub");
   assert.equal(classic.rounds[0]?.activeSpeaker?.kind, "main");
   assert.equal(classic.rounds[0]?.participants.find((item) => item.id === "main")?.status, "running");
   assert.equal(classic.rounds[0]?.status, "running");
 
-  const debate = buildLoopDebateChatPanelStateWithDeps(task(undefined, {
-    schedulingMode: undefined,
-    loopPlus: undefined,
-    executionMode: "debate_multi_agent",
-    subTasks: [],
-    debateRounds: [{
-      loopRound: 2,
-      debateRound: 1,
-      status: "running",
-      startedAt: 30,
-      briefFile: "/tmp/debate-brief.md",
-      activeSpeaker: { kind: "moderator", id: "moderator", title: "Judge", dialogueTurn: 2, updatedAt: 31 },
-      participants: [],
-      moderatorDecisions: [],
-    }],
-  }), {
-    ...deps(),
-    fileExists: () => false,
-  });
-  assert.equal(debate.loopPlus, undefined);
-  assert.equal(debate.mode, "debate");
-  assert.equal(debate.rounds[0]?.activeSpeaker?.kind, "moderator");
-  assert.equal(debate.rounds.some((round) => round.kind === "execution"), false);
 });
 
 test("distinguishes an idle validated snapshot from a fully closed Loop+ task", () => {
@@ -374,8 +350,8 @@ test("distinguishes an idle validated snapshot from a fully closed Loop+ task", 
   assert.equal(closed.rounds[0]?.completedAt, 20);
 });
 
-function buildState(loopPlus: unknown): ReturnType<typeof buildLoopDebateChatPanelStateWithDeps> {
-  return buildLoopDebateChatPanelStateWithDeps(task(loopPlus), deps());
+function buildState(loopPlus: unknown): ReturnType<typeof buildLoopGroupChatPanelStateWithDeps> {
+  return buildLoopGroupChatPanelStateWithDeps(task(loopPlus), deps());
 }
 
 test("shows needs-review and error as a display pause without hiding the kernel phase or queue", () => {
@@ -387,7 +363,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   const heldSnapshot = heldScheduler.snapshot();
   const heldBefore = JSON.stringify(heldSnapshot);
   const writes = { count: 0 };
-  const held = buildLoopDebateChatPanelStateWithDeps(task(heldSnapshot, {
+  const held = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, {
     status: "needs-review",
     activeSubtaskIds: [],
   }), deps(writes));
@@ -420,7 +396,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(held.task.canContinue, true);
   assert.equal(held.task.canStop, false);
 
-  const continued = buildLoopDebateChatPanelStateWithDeps(task(heldSnapshot, {
+  const continued = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, {
     status: "running",
     activeSubtaskIds: [],
   }), deps());
@@ -445,7 +421,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(queueScheduler.submitReview(current.eventId).ok, true);
   const queueSnapshot = queueScheduler.snapshot();
   const queueBefore = JSON.stringify(queueSnapshot);
-  const queued = buildLoopDebateChatPanelStateWithDeps(task(queueSnapshot, {
+  const queued = buildLoopGroupChatPanelStateWithDeps(task(queueSnapshot, {
     status: "error",
     activeSubtaskIds: [],
   }), deps());
@@ -465,7 +441,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(queued.rounds[0]?.activeSpeaker, undefined);
   assert.equal(queued.rounds[0]?.participants.find((item) => item.id === "main")?.status, "paused");
   assert.equal(queued.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
-  const queueContinued = buildLoopDebateChatPanelStateWithDeps(task(queueSnapshot, {
+  const queueContinued = buildLoopGroupChatPanelStateWithDeps(task(queueSnapshot, {
     status: "running",
     activeSubtaskIds: [],
   }), deps());
@@ -480,7 +456,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
 
   const waitingScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(waitingScheduler.dispatch([spec("D", "d-1")]).started.length, 1);
-  const waitingPaused = buildLoopDebateChatPanelStateWithDeps(task(waitingScheduler.snapshot(), {
+  const waitingPaused = buildLoopGroupChatPanelStateWithDeps(task(waitingScheduler.snapshot(), {
     status: "needs-review",
     activeSubtaskIds: [],
   }), deps());
@@ -495,7 +471,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(waitingPaused.rounds[0]?.activeSpeaker, undefined);
 
   const { stopped } = stoppedAndResumed();
-  const stoppedState = buildLoopDebateChatPanelStateWithDeps(task(stopped, { status: "needs-review" }), deps());
+  const stoppedState = buildLoopGroupChatPanelStateWithDeps(task(stopped, { status: "needs-review" }), deps());
   assert.equal(stoppedState.loopPlus?.ok, true);
   if (!stoppedState.loopPlus?.ok) {
     return;
@@ -507,7 +483,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
 
   const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(completedScheduler.complete().ok, true);
-  const completed = buildLoopDebateChatPanelStateWithDeps(task(completedScheduler.snapshot(), {
+  const completed = buildLoopGroupChatPanelStateWithDeps(task(completedScheduler.snapshot(), {
     status: "error",
   }), deps());
   assert.equal(completed.loopPlus?.ok, true);
@@ -530,40 +506,16 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal("reviewQueue" in missing, false);
   assert.match(broken.error, /Invalid Loop\+ scheduler snapshot/u);
 
-  const classic = buildLoopDebateChatPanelStateWithDeps(task(heldSnapshot, {
+  const classic = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, {
     schedulingMode: undefined,
     status: "needs-review",
     subTasks: [],
     activeSubtaskIds: [],
   }), deps());
   assert.equal(classic.loopPlus, undefined);
-  assert.equal(classic.mode, "main_sub");
   assert.equal(classic.rounds[0]?.activeSpeaker, undefined);
   assert.equal(classic.rounds[0]?.status, "needs-review");
 
-  const debate = buildLoopDebateChatPanelStateWithDeps(task(undefined, {
-    schedulingMode: undefined,
-    status: "running",
-    executionMode: "debate_multi_agent",
-    subTasks: [],
-    debateRounds: [{
-      loopRound: 2,
-      debateRound: 1,
-      status: "running",
-      startedAt: 30,
-      briefFile: "/tmp/debate-brief.md",
-      activeSpeaker: { kind: "moderator", id: "moderator", title: "Judge", dialogueTurn: 2, updatedAt: 31 },
-      participants: [],
-      moderatorDecisions: [],
-    }],
-  }), {
-    ...deps(),
-    fileExists: () => false,
-  });
-  assert.equal(debate.loopPlus, undefined);
-  assert.equal(debate.mode, "debate");
-  assert.equal(debate.rounds[0]?.activeSpeaker?.kind, "moderator");
-  assert.equal(debate.rounds.some((round) => round.kind === "execution"), false);
 });
 
 test("projects a failed reviewed execution as acceptance_failed and keeps a legacy snapshot binary", () => {
@@ -577,7 +529,7 @@ test("projects a failed reviewed execution as acceptance_failed and keeps a lega
   const current = scheduler.snapshot().currentReview;
   assert.ok(current);
   assert.equal(scheduler.submitReview(current.eventId).ok, true);
-  const failed = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
+  const failed = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
   assert.equal(failed.loopPlus?.ok, true);
   if (!failed.loopPlus?.ok) {
     return;
@@ -587,7 +539,7 @@ test("projects a failed reviewed execution as acceptance_failed and keeps a lega
 
   const legacy = scheduler.snapshot();
   delete legacy.seenAttempts.find((item) => item.attemptId === "b-1")?.outcome;
-  const legacyState = buildLoopDebateChatPanelStateWithDeps(task(legacy, {
+  const legacyState = buildLoopGroupChatPanelStateWithDeps(task(legacy, {
     subTasks: [{ id: "B", title: "Bravo", status: "blocked", updatedAt: 12 }],
   }), deps());
   assert.equal(legacyState.loopPlus?.ok, true);
@@ -605,7 +557,7 @@ test("projects a completed repair accept as acceptance_failed", () => {
   const current = scheduler.snapshot().currentReview;
   assert.ok(current);
   assert.equal(scheduler.submitReviewBatch([current.eventId], "failed").ok, true);
-  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
+  const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot()), deps());
   assert.equal(state.loopPlus?.ok, true);
   if (!state.loopPlus?.ok) {
     return;
@@ -620,7 +572,7 @@ test("projects a completed repair accept as acceptance_failed", () => {
   const passedCurrent = passed.snapshot().currentReview;
   assert.ok(passedCurrent);
   assert.equal(passed.submitReviewBatch([passedCurrent.eventId], "passed").ok, true);
-  const passedState = buildLoopDebateChatPanelStateWithDeps(task(passed.snapshot()), deps());
+  const passedState = buildLoopGroupChatPanelStateWithDeps(task(passed.snapshot()), deps());
   assert.equal(passedState.loopPlus?.ok, true);
   if (!passedState.loopPlus?.ok) {
     return;
@@ -638,7 +590,7 @@ test("shows a closed Loop+ subtask as stopped even after an older acceptance", (
   assert.equal(scheduler.submitReview(reviewed.eventId).ok, true);
   assert.equal(scheduler.dispatch([spec("A", "a-2", "Alpha")]).started.length, 1);
   assert.equal(scheduler.applyControls([{ subtaskId: "A", action: "close" }]).ok, true);
-  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot(), {
+  const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), {
     subTasks: [{ id: "A", title: "Alpha", status: "blocked", updatedAt: 12 }],
   }), deps());
   assert.equal(state.loopPlus?.ok, true);

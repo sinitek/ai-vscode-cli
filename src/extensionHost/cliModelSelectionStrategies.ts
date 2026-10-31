@@ -8,6 +8,8 @@ import {
   getModelOptionsForCliFromStore,
   getSelectedCliModelFromStore,
   getSelectedLoopCliModelFromStore,
+  mergeUniqueModelNames,
+  normalizeCliModelName,
   selectCliLoopModelInStore,
   selectCliModelInStore,
   type CliModelStore,
@@ -15,6 +17,7 @@ import {
 } from "../modelSelectionStore";
 
 export type CliModelSelectionStrategyDeps = {
+  getCodexConfigModel?: (configId: string | null | undefined) => string | null | undefined;
   getGrokConfigModels: (configId: string | null | undefined) => GrokConfigModels | undefined;
   resolveDefaultGrokStoreKey: () => string;
   getDshConfigModels?: (configId: string | null | undefined) => DshConfigModels | undefined;
@@ -76,6 +79,43 @@ function createStoreBackedCliModelSelectionStrategy(cli: StoreBackedCliName): Cl
     },
     getModelDisplayName(model) {
       return model;
+    },
+  };
+}
+
+function createCodexCliModelSelectionStrategy(deps: CliModelSelectionStrategyDeps): CliModelSelectionStrategy {
+  const stored = createStoreBackedCliModelSelectionStrategy("codex");
+
+  function resolveModel(model: string | null, configId: string | null): string | null {
+    const configuredModel = normalizeCliModelName(deps.getCodexConfigModel?.(configId));
+    if (!model || model.toLowerCase() === configuredModel?.toLowerCase()) {
+      return configuredModel ?? model;
+    }
+    return model;
+  }
+
+  return {
+    ...stored,
+    getSelectedModel(store, configId) {
+      return resolveModel(stored.getSelectedModel(store, configId), configId);
+    },
+    getSelectedLoopModel(store, role, configId) {
+      const configuredModel = normalizeCliModelName(deps.getCodexConfigModel?.(configId));
+      const roleModel = configId ? normalizeCliModelName(store.selectedLoopByConfigId?.[configId]?.[role]) : null;
+      if (configuredModel && (
+        (!roleModel && !stored.getSelectedModel(store, configId))
+        || roleModel?.toLowerCase() === configuredModel.toLowerCase()
+      )) {
+        return configuredModel;
+      }
+      return resolveModel(stored.getSelectedLoopModel(store, role, configId), configId);
+    },
+    getModelOptions(store, configId) {
+      const configuredModel = normalizeCliModelName(deps.getCodexConfigModel?.(configId));
+      return mergeUniqueModelNames(
+        configuredModel ? [configuredModel] : [],
+        stored.getModelOptions(store, configId),
+      );
     },
   };
 }
@@ -288,7 +328,7 @@ export function createCliModelSelectionStrategies(
   deps: CliModelSelectionStrategyDeps,
 ): Record<CliName, CliModelSelectionStrategy> {
   return {
-    codex: createStoreBackedCliModelSelectionStrategy("codex"),
+    codex: createCodexCliModelSelectionStrategy(deps),
     claude: createStoreBackedCliModelSelectionStrategy("claude"),
     opencode: createStoreBackedCliModelSelectionStrategy("opencode"),
     grok: createGrokCliModelSelectionStrategy(deps),

@@ -225,8 +225,6 @@ test("static subtask rows expose a CLI group for every main CLI and hide Claude 
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main_sub_multi_agent",
-    loopExecutionModeDebateMultiAgent: "debate_multi_agent",
   });
   for (const id of ["codexLoopSubtaskCliSelect", "openCodeLoopSubtaskCliSelect", "claudeLoopSubtaskCliSelect"]) {
     assert.match(html, new RegExp(`id="${id}"[^>]*aria-label="子模型 CLI 分组"`));

@@ -42,9 +42,9 @@
 
 ### Loop 群聊页面
 
-- `src/webview/loopDebatePanel.ts`：Loop 群聊 WebviewPanel 生命周期与 HTML 生成。
-- `src/webview/loopDebatePanelRenderer.ts`：Loop 群聊标题和 i18n 文案。
-- `src/webview/loopDebatePanelStyles.ts`：Loop 群聊样式。
+- `src/webview/loopGroupChatPanel.ts`：Loop 群聊 WebviewPanel 生命周期与 HTML 生成。
+- `src/webview/loopGroupChatPanelRenderer.ts`：Loop 群聊标题和 i18n 文案。
+- `src/webview/loopGroupChatPanelStyles.ts`：Loop 群聊样式。
 
 ## 非目标
 
@@ -62,7 +62,7 @@
 页面测试入口已接入：
 
 - 主面板静态/运行时脚本契约：`loopmaingroupchatbutton`、`opencodedualmodelwebview`、`multiAgentSettingWebview`、`conversationTabPagination`、`subagentProgress`、`historySessionLoop`、`conversationTabLock`、`openCodeThinkingWebview`、`openCodeTaskListOverlay`、`runPromptHistoryWebview`、`opencodeloopmodewebview`、`loopPromptQueue`、`finalAnswerPolicy`、`traceToolTitleLocalization`、`cliPageStaticRenderCoverage`、`clipagescriptruntimecoverage`。
-- Loop 群聊页面：`loopDebatePanel`。
+- Loop 群聊页面：`loopGroupChatPanel`。
 - 配置页面静态资产与协议契约：`configappcompactcontrols`、`configappcompactlayoutstyles`、`claudeConfigVisualEditor`、`codexConfigVisualEditor`、`opencodeconfigvisualeditor`、`opencodeconfigexample`、`opencodeAutoCommandUi`、`cliPageConfigCoverage`。
 
 ## 实施结果
@@ -73,7 +73,7 @@
   - `dist/test/cliPageConfigCoverage.test.js`
 - `test:core` 与 `test:core-coverage` 保持既有核心门禁脚本，不在本任务中修改核心口径。
 - `src/webview/configProtocol.ts` 将协议 action 列表改为运行时 `CONFIG_ACTIONS` 常量，便于页面协议测试和 c8 统计运行时边界。
-- `src/webview/loopDebatePanel.ts` 对 c8 暴露的不可达/冗余防御分支做最小等价清理，不改变用户可见行为：
+- `src/webview/loopGroupChatPanel.ts` 对 c8 暴露的不可达/冗余防御分支做最小等价清理，不改变用户可见行为：
   - `getSegmentSpeaker` 收敛最终 fallback。
   - `getActiveSpeakerFromRound` 移除由调用约束保证不可达的 undefined 分支。
   - `getAvatarLabel` 移除非空归一化之后不可达的兜底。

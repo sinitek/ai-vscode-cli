@@ -971,13 +971,11 @@ test("moves task records between pending and session stores through public bindi
   loopTaskStore.writeLoopTaskStore(patchTask.taskStoreFile, { tasks: [patchTask] });
   const patched = loopTaskStore.updateLoopTaskRecord(patchTask.id, {
     rounds: [{ round: 3, role: "main", status: "end", startedAt: 1, endedAt: 2 }],
-    debateRounds: [{ loopRound: 3, debateRound: 1, status: "consensus", startedAt: Date.now(), briefFile: "brief.md", participants: [] }],
     supplementalRequirements: [" keep this ", " "],
     completionRoundSummaries: [{ round: 3, title: "Round", summary: "Complete" }],
     completionRequirementCoverage: [{ name: "coverage", passed: true }],
   });
   assert.equal(patched?.rounds[0]?.round, 3);
-  assert.equal(patched?.debateRounds?.[0]?.loopRound, 3);
   assert.deepEqual(patched?.supplementalRequirements, ["keep this"]);
   assert.equal(patched?.completionRoundSummaries[0]?.title, "Round");
   assert.equal(patched?.completionRequirementCoverage[0]?.passed, true);

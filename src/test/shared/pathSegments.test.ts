@@ -5,10 +5,6 @@ import * as path from "path";
 
 import { buildGraphRunStoreFile } from "../../graph/graphStore";
 import { sanitizeGraphPathSegment } from "../../graph/types";
-import {
-  buildLoopDebateParticipantTurnArtifactFile,
-  buildLoopDebatePaths,
-} from "../../loopDebate";
 import { buildLoopTaskStoreFile } from "../../loopTaskStore";
 import { sanitizePathSegment } from "../../shared/pathSegments";
 
@@ -74,18 +70,5 @@ test("keeps Graph and Loop store paths compatible after segment reuse", () => {
       "task_one",
       "loop-tasks.json",
     ),
-  );
-});
-
-test("keeps Loop debate artifact paths stable with sanitized participant ids", () => {
-  const paths = buildLoopDebatePaths("/tmp/loop-communications/task-1", 2);
-
-  assert.equal(
-    buildLoopDebateParticipantTurnArtifactFile(paths, "risk/review", 1),
-    "/tmp/loop-communications/task-1/debates/round-2/participants/risk_review-turn-1.md",
-  );
-  assert.equal(
-    buildLoopDebateParticipantTurnArtifactFile(paths, "", 2),
-    "/tmp/loop-communications/task-1/debates/round-2/participants/participant-turn-2.md",
   );
 });

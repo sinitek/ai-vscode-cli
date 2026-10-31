@@ -7,11 +7,11 @@ import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptance
 installVscodeMock();
 
 const {
-  buildLoopDebateChatPanelStateWithDeps,
+  buildLoopGroupChatPanelStateWithDeps,
 } = require("../../panelStateBuilder") as typeof import("../../panelStateBuilder");
 const {
-  buildLoopDebateChatPanelHtml,
-} = require("../../webview/loopDebatePanel") as typeof import("../../webview/loopDebatePanel");
+  buildLoopGroupChatPanelHtml,
+} = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 const {
   createLoopPlusScheduler,
   buildLoopPlusFinishEventId,
@@ -19,7 +19,7 @@ const {
 
 type LoopPlusScheduler = ReturnType<typeof createLoopPlusScheduler>;
 type LoopTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
-type PanelState = ReturnType<typeof buildLoopDebateChatPanelStateWithDeps>;
+type PanelState = ReturnType<typeof buildLoopGroupChatPanelStateWithDeps>;
 
 function spec(subtaskId: string, attemptId: string, title?: string) {
   return {
@@ -83,7 +83,7 @@ function build(loopPlus: unknown, overrides: Partial<LoopTaskRecord> = {}): Pane
 }
 
 function buildWithChat(loopPlus: unknown, overrides: Partial<LoopTaskRecord>, chat: string): PanelState {
-  return buildLoopDebateChatPanelStateWithDeps(task(loopPlus, overrides), {
+  return buildLoopGroupChatPanelStateWithDeps(task(loopPlus, overrides), {
     collectRunningLoopTaskIds: () => new Set<string>(),
     readTextFileIfNonEmpty: () => chat,
     fileExists: () => true,
@@ -97,7 +97,7 @@ function buildWithChat(loopPlus: unknown, overrides: Partial<LoopTaskRecord>, ch
 }
 
 function html(state: PanelState): string {
-  return buildLoopDebateChatPanelHtml({ cspSource: "self" } as any, state);
+  return buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
 }
 
 function countValue(page: string, name: string): string {
@@ -233,25 +233,14 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   assert.doesNotMatch(resumedPage, /正在验收|已全部收口|思考中/u);
 });
 
-test("shows the Loop+ main reviewer animation without reusing a debate active speaker", () => {
+test("shows the Loop+ main reviewer animation in the shared group chat", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(scheduler, "B", "b-1");
-  const state = buildLoopDebateChatPanelStateWithDeps(task(scheduler.snapshot(), {
-    executionMode: "debate_multi_agent",
+  const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), {
     status: "running",
-    debateRounds: [{
-      loopRound: 2,
-      debateRound: 1,
-      status: "running",
-      startedAt: 30,
-      briefFile: "/tmp/debate-brief.md",
-      activeSpeaker: { kind: "moderator", id: "moderator", title: "Judge", dialogueTurn: 2, updatedAt: 31 },
-      participants: [],
-      moderatorDecisions: [],
-    }],
   }), {
     collectRunningLoopTaskIds: () => new Set<string>(),
-    readTextFileIfNonEmpty: () => "# debate\n",
+    readTextFileIfNonEmpty: () => "# Loop+ 群聊\n",
     fileExists: () => false,
     writeTextFileEnsuringDir: () => false,
     getActiveLoopSubtaskIds: () => [],
@@ -259,11 +248,10 @@ test("shows the Loop+ main reviewer animation without reusing a debate active sp
     t: (key: string) => key,
   });
   const page = html(state);
-  assert.equal(state.mode, "debate");
   assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
   assertLoopPlusDetailCardsHidden(page);
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
-  assert.match(page, /主持人主智能体 思考中/u);
+  assert.match(page, /主任务 思考中/u);
   assert.doesNotMatch(page, /data-thinking-kind="moderator"|裁判主持人 思考中|红蓝辩论群聊/u);
   assert.match(page, /事件驱动逐项验收/u);
 });

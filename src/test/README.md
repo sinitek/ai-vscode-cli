@@ -10,7 +10,7 @@
 | `extensionHost` | Extension Host 运行时编排与 Prompt 执行入口 |
 | `graph` | Graph 规划、调度、存储、工作区与运行面板 |
 | `interactive` | Codex/Claude 交互 Runner 与 App Server 协议 |
-| `loop` | Loop 任务、辩论、子任务与 Loop 相关界面 |
+| `loop` | Loop 主从任务、子任务与群聊界面 |
 | `memory` | 长期记忆、索引、召回与运行门禁 |
 | `session` | 会话、Tab、消息处理与提示词历史 |
 | `shared` | 通用工具、工作区脚手架与写入范围校验 |

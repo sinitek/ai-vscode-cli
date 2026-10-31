@@ -1090,9 +1090,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const targetModel = targetCli && cliSupportsModelSelection(targetCli) && state.selectedModelsByCli
           ? state.selectedModelsByCli[targetCli] || ""
           : "";
-        const targetLoopExecutionMode = targetInteractiveMode === "loop"
-          ? getLoopExecutionModeForCli(targetCli)
-          : undefined;
         const sendPromptMessage = {
           type: "sendPrompt",
           prompt,
@@ -1120,9 +1117,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (normalizedPayload.loopSubtaskConfigId) {
           sendPromptMessage.loopSubtaskConfigId = normalizedPayload.loopSubtaskConfigId;
-        }
-        if (targetLoopExecutionMode) {
-          sendPromptMessage.loopExecutionMode = targetLoopExecutionMode;
         }
         if (normalizedPayload.skipPromptHistory === true) {
           sendPromptMessage.skipPromptHistory = true;

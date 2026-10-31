@@ -19,8 +19,6 @@ import { LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT } from "../loopSubtaskThinking";
 const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
 const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
-const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
-const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
 
 
 export function getWebviewHtml(webview: { cspSource: string }): string {
@@ -40,10 +38,6 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     markedScript,
     jsonFormatterScript,
     webviewStyles: WEBVIEW_STYLES,
-    loopExecutionModeMainSubMultiAgent:
-      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    loopExecutionModeDebateMultiAgent:
-      LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
   });
 
   return `${staticHtml}
@@ -60,10 +54,6 @@ ${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     loopPlusMaxAcceptancesMin: LOOP_PLUS_MAX_ACCEPTANCES_MIN,
     loopPlusMaxAcceptancesLimit: LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
     loopSubtaskMaxThinkingModeDefault: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
-    loopExecutionModeMainSubMultiAgent:
-      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    loopExecutionModeDebateMultiAgent:
-      LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   }))}
     </script>

@@ -1,4 +1,4 @@
-import { CliName, InteractiveMode, LoopExecutionMode, MacTaskShell, ThinkingMode, normalizeLoopExecutionMode } from "./cli/types";
+import { CliName, InteractiveMode, MacTaskShell, ThinkingMode } from "./cli/types";
 import { logDebug } from "./logger";
 import { ChatMessage, PanelMessage, PromptContextOptions } from "./webview/types";
 import { type WorkspaceSettings } from "./workspaceSettingsStore";
@@ -23,7 +23,6 @@ export type PromptRunInputForPanel = {
   loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
-  loopExecutionMode?: LoopExecutionMode;
   loopContinuePrompt?: string;
   loopPlusAcceptancePlan?: import("./loopPlusAcceptancePlan").LoopPlusAcceptancePlanSnapshot;
   imagePaths?: string[];
@@ -149,7 +148,6 @@ export type PanelMessageHandlerDeps = {
   ) => void;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
-  setWorkspaceLoopExecutionModeForCli: (cli: CliName, mode: ReturnType<typeof normalizeLoopExecutionMode>) => void;
   loadModelStore: () => void;
   normalizeLoopMaxRounds: (value: unknown) => number;
   isCliName: (value: string) => value is CliName;
@@ -167,7 +165,6 @@ export type PanelMessageHandlerDeps = {
   getActiveConversationTabId: () => string | null;
   getActiveConversationTab: () => ConversationTabRecordForPanel | null;
   resolveLoopSubtaskConversationContext: (cli: CliName, tabId: string | null) => LoopSubtaskConversationContextForPanel | null;
-  getWorkspaceLoopExecutionMode: (cli: CliName) => ReturnType<typeof normalizeLoopExecutionMode>;
   buildPromptWithAutoContext: (prompt: string, options?: PromptContextOptions) => { modelPrompt: string; contextTags: string[] };
   maybeInjectLongTermMemoryForPrompt: (displayPrompt: string, modelPrompt: string, contextTags: string[]) => string;
   resolveCodexImagePathsForPrompt: (prompt: string) => Promise<string[]>;

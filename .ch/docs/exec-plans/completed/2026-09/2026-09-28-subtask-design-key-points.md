@@ -17,7 +17,7 @@ Loop、Loop+ 和 Graph 派发子任务时往往只给粗粒度目标。子会话
 
 ## 范围
 
-- 经典 Loop 主任务、红蓝共识汇总和主持人派发提示。
+- Loop 主任务规划与派发提示。
 - Loop+ 主任务决策提示和示例。
 - Graph planner 规则、节点 `instructions` 持久化、节点提示和运行图详情。
 

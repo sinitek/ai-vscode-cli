@@ -188,16 +188,16 @@
 - 已打开面板每次 `update()` 都重写 `webview.html`。文档重载会重建弹窗 DOM；即使随后用 `getState()` 恢复，连续刷新或输入法组字仍可能把草稿写成空字符串。
 
 ### 长期规避
-- 首次打开才写入 HTML。之后用 `loopDebateChat:contentPatch` 只替换顶栏、侧栏、时间线和模型选择。
+- 首次打开才写入 HTML。之后用 `loopGroupChatChat:contentPatch` 只替换顶栏、侧栏、时间线和模型选择。
 - 不要在补丁里改补充需求、继续执行或我要提问的输入框。同一 `interactionId` 的澄清表单保持原 DOM。
 - 整页重载仍要在写入默认空文案之前恢复已保存草稿。
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/loop/loopDebatePanel.test.js dist/test/loop/loopDebateCoordinator.test.js`
+- `node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js`
 
 ### 关联资料
-- `src/webview/loopDebatePanel.ts`
+- `src/webview/loopGroupChatPanel.ts`
 - `.ch/docs/product-specs/FEATURE_INVENTORY.md`
 
 
@@ -929,7 +929,7 @@
 - 同时存在其他 Loop 主任务或子任务时更容易被误认为是那些任务把已结束任务唤醒。
 
 ### 触发条件与根因
-- Loop 群聊面板可见时每 5 秒发送 `loopDebateChat:refresh`。
+- Loop 群聊面板可见时每 5 秒发送 `loopGroupChatChat:refresh`。
 - 刷新构建面板状态会解析主任务目标；旧实现在找不到主 Tab 时直接创建新 Tab，并绑定原 session。
 - 其他任务的子任务完成只会在该任务自身仍为 `running` 时恢复它自己的主 Tab，不会把 `needs-review` 任务改回运行。
 
@@ -940,10 +940,10 @@
 
 ### 验证方式
 - 运行 `npm run build`。
-- 运行 `node --test dist/test/loop/loopDebateCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js`。
+- 运行 `node --test dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js`。
 
 ### 关联资料
-- `src/webview/loopDebatePanel.ts`
+- `src/webview/loopGroupChatPanel.ts`
 - `src/extensionHost/promptRunRuntime.ts`
 - `src/panelDiagnostics.ts`
 
@@ -1114,7 +1114,7 @@
 ### 现象
 - 开发态和本地 `dist/` 加载正常，但安装新打出的 VSIX 后插件激活失败。
 - VS Code Extension Host 报错：`Cannot find module '@dagrejs/dagre'`，require stack 指向 `dist/webview/graphRunPanel.js -> dist/panelDiagnostics.js -> dist/extension.js`。
-- 2026-09-25 复发：`src/loopCommunicationFilePreview.ts` 在扩展宿主执行 `require("marked")`，安装目录没有 `node_modules/marked`。激活失败报 `Cannot find module 'marked'`，调用栈经过 `dist/loopCommunicationFilePreview.js -> dist/webview/loopDebatePanel.js -> dist/extension.js`。
+- 2026-09-25 复发：`src/loopCommunicationFilePreview.ts` 在扩展宿主执行 `require("marked")`，安装目录没有 `node_modules/marked`。激活失败报 `Cannot find module 'marked'`，调用栈经过 `dist/loopCommunicationFilePreview.js -> dist/webview/loopGroupChatPanel.js -> dist/extension.js`。
 
 ### 触发条件
 - 源码新增了扩展宿主运行时的第三方依赖，并已写入 `package.json` / `package-lock.json`。
@@ -1932,13 +1932,13 @@
 
 ### 现象
 
-- 任务 tab 已不再有主任务、子任务、裁判或参与者 CLI 进程，但任务记录仍为 `running`，关闭和重置会被静默拒绝。
+- 任务 tab 已不再有主任务或子任务 CLI 进程，但任务记录仍为 `running`，关闭和重置会被静默拒绝。
 - 任务记录已经是 `needs-review`、`error` 或 `stopped`，群聊已经显示“任务已中断，需要人工复核或继续”，但尚未异步退出的旧编排所有权仍让主 Tab 显示执行中。
 - 旧 Webview 在重置请求发出时先清空本地消息；扩展端随后因同一锁定条件拒绝操作，用户切回原 tab 后又看到原会话，形成“重置无效”的假成功体验。
 
 ### 触发条件与根因
 
-- Loop 的持久化 `running` 状态原本用于保护主任务与子任务、裁判主持人与参与者之间没有单个 CLI 进程的编排空档。
+- Loop 的持久化 `running` 状态原本用于保护主任务与子任务之间没有单个 CLI 进程的编排空档。
 - 如果编排路径出现未捕获异常，或 Extension Host 已不再拥有该任务的执行上下文，记录没有被写入 `error` / `stopped`，仅用持久化状态判断会把残留记录永久视为运行中。
 - 如果运行所有权能覆盖明确中断终态，或者所有权只用任务 ID Set 表示，终止后立即恢复会出现两类竞态：旧运行仍显示执行中；旧运行的 `finally` 删除同一 task ID 时误删新恢复运行的所有权。子任务处于重试等待期时，缺少派发前终态门禁还会在等待结束后把 stopped 任务重新写回 `running`。
 - 前端乐观清空会话并不能证明“新建空白 Tab + 关闭旧 Tab”已经在扩展端成功完成；前后端锁定状态短暂不同步时会放大这个问题。
@@ -1947,7 +1947,7 @@
 
 - 运行态必须由持久化任务状态和当前 Extension Host 的运行所有权共同判定。`runLoopPrompt` 从任务创建/恢复到收尾期间通过 `loopOrchestrationOwnership` 引用计数维护所有权，并与主、并行和交互 CLI 运行集合合并；`status=running` 且存在所有权时仍要保护编排空档，每个运行只能释放自己的句柄。
 - `needs-review`、`error`、`stopped` 是明确中断终态，必须优先于残留所有权结束视觉运行态和关闭锁；每次主轮次、子任务轮次和重试派发前重新读取 Store，发现中断终态立即返回，禁止复活任务。
-- 任务记录为 `running` 但没有任何当前运行所有权时，收敛为 `stopped`，清空活跃子任务 ID，并把仍为 `pending` / `running` 的子任务和辩论参与者写入终态；不要继续保留关闭锁。
+- 任务记录为 `running` 但没有任何当前运行所有权时，收敛为 `stopped`，清空活跃子任务 ID，并把仍为 `pending` / `running` 的子任务写入终态；不要继续保留关闭锁。
 - `runLoopPrompt` 的未捕获异常必须把仍为 `running` 的任务写成 `error`，然后再释放运行所有权。
 - 重置当前会话只能由扩展端成功完成新建空白 Tab、关闭旧 Tab 后通过 PanelState 和 `setMessages` 更新 Webview；请求发送前不得清空旧 Tab 消息或强制切换交互模式。编辑器上下文的下一次提示意图可以保留，但不能替代成功确认。
 
@@ -1957,23 +1957,23 @@
 - 构造 `status="stopped" / "error" / "needs-review"` 且仍有旧所有权的任务，确认不再显示运行中；同一 task ID 先后获取两份所有权，释放旧句柄后新句柄仍存在。
 - 断言 SessionTabs 在运行态判定后再读取任务状态，避免本轮已经收敛为 `stopped` 却把旧 `running` 回传给 Webview。
 - 断言 Webview 的重置请求只发送消息并保留旧视图，Extension Host 拒绝时不会出现空白会话；成功时由回推状态切换到空白 Tab。
-- 运行 `npm run build && node --test dist/test/session/conversationTabLock.test.js dist/test/loop/loopDebate.test.js dist/test/loop/loopOrchestrationOwnership.test.js dist/test/session/sessionMessageActions.test.js`。
+- 运行 `npm run build && node --test dist/test/session/conversationTabLock.test.js dist/test/loop/loopGroupChat.test.js dist/test/loop/loopOrchestrationOwnership.test.js dist/test/session/sessionMessageActions.test.js`。
 
 ### 关联资料
 
 - `src/extension.ts`
-- `src/loopDebate.ts`
+- `src/loopGroupChat.ts`
 - `src/loopOrchestrationOwnership.ts`
 - `src/sessionTabs.ts`
 - `src/webview/viewContentScript/eventBindings.ts`
 - `src/test/session/conversationTabLock.test.ts`
-- `src/test/loop/loopDebate.test.ts`
+- `src/test/loop/loopGroupChat.test.ts`
 
 ## Loop 编排角色不能复用为模型角色
 
 - 状态：已规避
 - 首次发现：2026-07-12
-- 适用范围：Loop Webview、模型持久化、`sendPrompt`、主从执行、红蓝辩论、续跑与自动唤醒
+- 适用范围：Loop Webview、模型持久化、`sendPrompt`、主从执行、续跑与自动唤醒
 
 ### 现象
 - Codex Loop 同时展示“主任务模型 / 子任务模型”，同一任务不同角色可能收到不同模型。
@@ -1981,12 +1981,12 @@
 - OpenCode 的 `small_model` 容易被误解为 Loop 子任务模型，进而错误删除或映射。
 
 ### 根因
-- 把 Loop 的主任务、子任务、裁判主持人、参与者等编排角色，错误建模成通用模型角色。
+- 把 Loop 的主任务、子任务等编排角色，错误建模成通用模型角色。
 - OpenCode primary/small 是 CLI 自身能力，与 Loop 主从编排无直接对应关系。
 
 ### 长期规避
 - Claude 在 Coding/Loop 均不展示插件侧模型选择。
-- Codex 在 Coding/Loop 复用同一个模型下拉，消息只传 `model`；普通轮次、子任务、裁判、参与者、共识汇总、续跑和唤醒全部沿用该值。
+- Codex 在 Coding/Loop 复用同一个模型下拉，消息只传 `model`；普通轮次、子任务、续跑和唤醒全部沿用该值。
 - OpenCode 在 Coding/Loop 均保留 primary/small 和各自思考力度；所有 Loop 对话角色使用 effective primary，small 只用于 OpenCode 内部请求。
 - 历史 `selectedLoopByConfigId` / `loopRolesByConfigId` 可以继续归一化读取，避免旧文件崩溃，但不得进入 PanelState、Webview payload 或运行时选择。
 
@@ -1999,7 +1999,7 @@
 - `src/webview/viewContentScript/modelManager.ts`
 - `src/sessionMessageActions.ts`
 - `src/extension.ts`
-- `src/loopDebateRunner.ts`
+- `src/extensionHost/loopOrchestration.ts`
 - `src/test/webview/opencodedualmodelwebview.test.ts`
 - `src/test/session/sessionMessageActions.test.ts`
 
@@ -2179,10 +2179,6 @@
 - 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
 
 ## 历史：已移除的 Loop Workflow Skill 选择
-
-- 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
-
-## 历史：已移除的 Loop Workflow Skill 红蓝共识与自动重试
 
 - 状态：已于 2026-07-15 下线。不再加载或注入内置 Workflow Skills，旧兼容字段不触发加载。
 
@@ -2580,12 +2576,12 @@
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/loop/loopDebatePanel.test.js`
+- `node --test dist/test/loop/loopGroupChatPanel.test.js`
 - 用 Chrome 计算样式确认 `hidden` 的 `.model-choice` 为 `display: none`。
 
 ### 关联资料
-- `src/webview/loopDebatePanelStyles.ts`
-- `src/webview/loopDebatePanel.ts`
+- `src/webview/loopGroupChatPanelStyles.ts`
+- `src/webview/loopGroupChatPanel.ts`
 - `src/webview/graphRunPanelStyles.ts`
 
 ## 主任务刷新会在补充需求弹窗恢复前把它写成已关闭
@@ -2599,7 +2595,7 @@
 - “继续执行”仍和“补充需求”共用这套弹窗状态。“我要提问”已改成独立对话弹窗，并用自己的 `askDialog` 状态恢复草稿，不再受这段状态影响。
 
 ### 触发条件
-- 弹窗还开着时，主任务、子任务或主持人状态落盘，宿主调用 `refreshOpenLoopGroupChatPanelForTask`。
+- 弹窗还开着时，主任务或子任务状态落盘，宿主调用 `refreshOpenLoopGroupChatPanelForTask`。
 - 这次刷新会整页重写 Webview HTML。页面可见性变化或卸载也可能赶在下一帧之前发生。
 
 ### 根因
@@ -2615,13 +2611,13 @@
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/loop/loopDebatePanel.test.js`
+- `node --test dist/test/loop/loopGroupChatPanel.test.js`
 - 主任务运行中打开“补充需求”，等待群聊因主任务事件刷新后，弹窗和已输入内容仍在。
 - 在继续弹窗打开期间更改当前主子模型，确认配置摘要更新且说明、选择和焦点保留；原配置不可用时回退新配置。
 
 ### 关联资料
-- `src/webview/loopDebatePanel.ts`
-- `src/test/loop/loopDebatePanel.test.ts`
+- `src/webview/loopGroupChatPanel.ts`
+- `src/test/loop/loopGroupChatPanel.test.ts`
 - `src/extension.ts` 中的 `refreshOpenLoopGroupChatPanelForTask`
 
 ## 建议模板

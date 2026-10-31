@@ -50,13 +50,13 @@ Loop 主任务进入 `needs-review` 后，用户关闭主任务 Tab，Tab 仍会
 ## 验证计划
 
 - 最小相关验证：群聊协调器和主任务运行时测试。
-- 单元自测命令：`npm run build`；`node --test dist/test/loop/loopDebateCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/session/conversationTabLock.test.js`。
+- 单元自测命令：`npm run build`；`node --test dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/session/conversationTabLock.test.js`。
 - 扩展验证：需要在 Extension Development Host 中关闭 `needs-review` 主 Tab，并保持群聊面板打开。
 
 ## 测试与清单同步
 
 - 单元测试新增/更新：群聊渲染不创建 Tab；终态任务默认不创建，显式继续才创建。
-- 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/loopDebateCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/session/conversationTabLock.test.js` 20/20 通过；`git diff --check` 通过。
+- 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/session/conversationTabLock.test.js` 20/20 通过；`git diff --check` 通过。
 - 失败处理记录：无。
 - 功能清单：已同步 Loop 主任务 Tab 生命周期条目。
 - 相关文档同步：已补充 PITFALLS。

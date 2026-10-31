@@ -80,16 +80,13 @@ test("restores loop_plus from workspace settings without collapsing it to Vibe",
       claude: "plan",
       opencode: LEGACY_LOOP_INTERACTIVE_MODE,
     },
-    loopExecutionModeByCli: {
-      codex: "debate_multi_agent",
-    },
   }), "utf8");
 
   const loaded = loadWorkspaceSettings(realOptions);
   assert.equal(loaded.interactiveModeByCli?.codex, "loop_plus");
   assert.equal(loaded.interactiveModeByCli?.claude, "coding");
   assert.equal(loaded.interactiveModeByCli?.opencode, "loop");
-  assert.equal(loaded.loopExecutionModeByCli?.codex, "debate_multi_agent");
+  assert.equal(Object.prototype.hasOwnProperty.call(loaded, "loopExecutionModeByCli"), false);
   saveWorkspaceSettings(loaded, realOptions);
   const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
     interactiveModeByCli?: Record<string, string>;
@@ -125,7 +122,6 @@ test("stores a Loop+ scheduled task without a debate execution mode", () => {
     loopSubtaskModel: "subtask-model",
     loopMainThinkingMode: "high",
     loopSubtaskThinkingMode: "medium",
-    loopExecutionMode: "debate_multi_agent",
   }, 1_700_000_000_000);
   assert.equal(created.interactiveMode, "loop_plus");
   assert.equal(Object.prototype.hasOwnProperty.call(created, "loopExecutionMode"), false);
@@ -137,7 +133,6 @@ test("stores a Loop+ scheduled task without a debate execution mode", () => {
   fs.writeFileSync(storeFile, JSON.stringify({
     tasks: [{
       ...created,
-      loopExecutionMode: "debate_multi_agent",
     }],
   }), "utf8");
   const deps = { ...scheduledDeps, storeFile, logError: () => undefined };
@@ -147,35 +142,33 @@ test("stores a Loop+ scheduled task without a debate execution mode", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(loaded, "loopExecutionMode"), false);
   writeScheduledTaskStore({ tasks: [loaded] }, deps);
   const persisted = JSON.parse(fs.readFileSync(storeFile, "utf8")) as {
-    tasks: Array<{ interactiveMode?: string; loopExecutionMode?: string }>;
+    tasks: Array<{ interactiveMode?: string; }>;
   };
   assert.equal(persisted.tasks[0].interactiveMode, "loop_plus");
   assert.equal(Object.prototype.hasOwnProperty.call(persisted.tasks[0], "loopExecutionMode"), false);
 
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfig("loop_plus", "debate_multi_agent"),
+    resolveScheduledTaskExecutionConfig("loop_plus"),
     { interactiveMode: "loop_plus" },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(
-      { interactiveMode: "loop_plus", loopExecutionMode: "debate_multi_agent" },
+      { interactiveMode: "loop_plus", },
       "loop",
-      "debate_multi_agent",
     ),
     { interactiveMode: "loop_plus" },
   );
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfigForTask({}, "loop_plus", "main_sub_multi_agent"),
+    resolveScheduledTaskExecutionConfigForTask({}, "loop_plus"),
     { interactiveMode: "loop_plus" },
   );
-  assert.equal(
-    normalizeScheduledTaskRecord({
-      ...created,
-      interactiveMode: "loop",
-      loopExecutionMode: "debate_multi_agent",
-    }, scheduledDeps)?.loopExecutionMode,
-    "debate_multi_agent",
-  );
+  const legacy = normalizeScheduledTaskRecord({
+    ...created,
+    interactiveMode: "loop",
+    loopExecutionMode: "debate_multi_agent",
+  }, scheduledDeps);
+  assert.equal(legacy?.interactiveMode, "loop");
+  assert.equal(Object.prototype.hasOwnProperty.call(legacy, "loopExecutionMode"), false);
 });
 
 test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {

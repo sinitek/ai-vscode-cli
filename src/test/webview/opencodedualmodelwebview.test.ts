@@ -231,20 +231,17 @@ function buildVisibilityHarness() {
     openCodePrimaryModelSelect: createVisibilityElement(),
     openCodeSmallModelSelect: createVisibilityElement(),
     modelSelect: createVisibilityElement(),
-    loopExecutionModeSelect: createVisibilityElement(),
   };
   const sync = new Function(
     "state",
     "elements",
     "normalizeInteractiveMode",
-    "getLoopExecutionModeForCli",
     "hideAddModelDialog",
     `${functionSource}; return syncModelSelectorByInteractiveMode;`,
   )(
     state,
     elements,
     (value: string) => value,
-    () => "main-sub-multi-agent",
     () => undefined,
   ) as (cli?: string) => void;
   return { state, elements, sync };
@@ -258,8 +255,6 @@ test("renders OpenCode selectors as labeled main and subtask model rows", () => 
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
   const groupStart = html.indexOf('<div id="openCodeModelGroup"');
   const groupEnd = html.indexOf('<select id="modelSelect"', groupStart);
@@ -509,7 +504,6 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "graph";
@@ -518,7 +512,6 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
   harness.sync("codex");
@@ -531,7 +524,6 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "graph";
@@ -539,7 +531,6 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.interactiveMode = "coding";
@@ -551,6 +542,5 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   harness.state.interactiveMode = "loop";
   harness.sync("claude");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
-  assert.equal(harness.elements.loopExecutionModeSelect.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });

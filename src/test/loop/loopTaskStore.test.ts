@@ -3,10 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import {
-  getLegacyLoopPropertyKey,
-  getLegacyLoopStoragePaths,
-} from "../../loopLegacyMigration";
+import { getLegacyLoopStoragePaths } from "../../loopLegacyMigration";
 
 const originalHome = process.env.HOME;
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-"));
@@ -427,14 +424,11 @@ test("moves legacy task stores and communication artifacts into Loop storage", (
     taskStoreFile: legacyStoreFile,
     communicationDir: legacyCommunicationDir,
     mainCommunicationFile: legacyMainFile,
+    executionMode: "debate_multi_agent",
+    debateRounds: [{ round: 1, status: "running", participants: [] }],
     subTasks: [{
       ...task.subTasks[0],
       communicationFile: legacySubtaskFile,
-    }],
-    debateRounds: [{
-      [getLegacyLoopPropertyKey("loopRound")]: 1,
-      debateRound: 1,
-      status: "completed",
     }],
   };
 
@@ -465,7 +459,15 @@ test("moves legacy task stores and communication artifacts into Loop storage", (
     migrated?.subTasks[0]?.communicationFile,
     path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"),
   );
-  assert.equal((migrated?.debateRounds?.[0] as { loopRound?: number } | undefined)?.loopRound, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "executionMode"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "debateRounds"), false);
+  loopTaskStore.updateLoopTaskRecord(task.id, { finalSummary: "已按主从模式恢复" });
+  const persisted = JSON.parse(fs.readFileSync(expectedStoreFile, "utf8")) as {
+    tasks: Array<Record<string, unknown>>;
+  };
+  assert.equal(persisted.tasks[0].finalSummary, "已按主从模式恢复");
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted.tasks[0], "executionMode"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted.tasks[0], "debateRounds"), false);
 });
 
 test("keeps legacy task paths intact when the communication root is unsafe to migrate", () => {

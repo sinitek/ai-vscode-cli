@@ -109,7 +109,7 @@ test("migrates legacy Loop workspace keys and interactive mode", () => {
     const loaded = loadWorkspaceSettings(options);
 
     assert.equal(loaded.interactiveModeByCli?.codex, "loop");
-    assert.equal(loaded.loopExecutionModeByCli?.codex, "debate_multi_agent");
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "loopExecutionModeByCli"), false);
     assert.equal(loaded.loopMaxRounds, 20);
 
     saveWorkspaceSettings(loaded, options);

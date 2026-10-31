@@ -207,7 +207,6 @@ function createPromptDeps(cli: CliName) {
     isInteractiveMode: (value: unknown) => value === "coding" || value === "loop" || value === "graph" || value === "loop_plus",
     normalizeVisibleInteractiveMode: (mode: "coding" | "loop" | "graph" | "loop_plus") => mode,
     setWorkspaceInteractiveModeForCli: () => undefined,
-    getWorkspaceLoopExecutionMode: () => "main_sub_multi_agent" as const,
     buildPromptWithAutoContext: (prompt: string) => ({ modelPrompt: prompt, contextTags: [] as string[] }),
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt: string, modelPrompt: string) => modelPrompt,
     resolveCodexImagePathsForPrompt: async () => [],

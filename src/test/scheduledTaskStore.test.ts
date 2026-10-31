@@ -52,7 +52,6 @@ function createInput(overrides: Partial<Parameters<typeof createScheduledTaskRec
     loopSubtaskModel: "subtask-model",
     loopMainThinkingMode: "high" as const,
     loopSubtaskThinkingMode: "medium" as const,
-    loopExecutionMode: "debate_multi_agent" as const,
     attachments: [{ name: "report.md", path: "/tmp/report.md" }],
     ...overrides,
   };
@@ -107,7 +106,6 @@ test("creates and upserts normalized task records with attachments and execution
     loopSubtaskModel: "subtask-model",
     loopMainThinkingMode: "high",
     loopSubtaskThinkingMode: "medium",
-    loopExecutionMode: "debate_multi_agent",
     attachments: [{ name: "report.md", path: "/tmp/report.md" }],
   });
 
@@ -120,15 +118,15 @@ test("creates and upserts normalized task records with attachments and execution
 
 test("resolves scheduled execution mode from the mode active at execution time", () => {
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfig("loop", "debate_multi_agent"),
-    { interactiveMode: "loop", loopExecutionMode: "debate_multi_agent" },
+    resolveScheduledTaskExecutionConfig("loop"),
+    { interactiveMode: "loop", },
   );
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfig("graph", "debate_multi_agent"),
+    resolveScheduledTaskExecutionConfig("graph"),
     { interactiveMode: "graph" },
   );
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfig("coding", "debate_multi_agent"),
+    resolveScheduledTaskExecutionConfig("coding"),
     { interactiveMode: "coding" },
   );
 });
@@ -138,31 +136,27 @@ test("prefers the task selected mode and falls back for legacy records", () => {
     resolveScheduledTaskExecutionConfigForTask(
       { interactiveMode: "graph" },
       "loop",
-      "debate_multi_agent",
     ),
     { interactiveMode: "graph" },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(
-      { interactiveMode: "loop", loopExecutionMode: "main_sub_multi_agent" },
+      { interactiveMode: "loop", },
       "coding",
-      "debate_multi_agent",
     ),
-    { interactiveMode: "loop", loopExecutionMode: "main_sub_multi_agent" },
+    { interactiveMode: "loop", },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(
       { interactiveMode: "loop" },
       "coding",
-      "debate_multi_agent",
     ),
-    { interactiveMode: "loop", loopExecutionMode: "debate_multi_agent" },
+    { interactiveMode: "loop", },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(
       {},
       "coding",
-      "debate_multi_agent",
     ),
     { interactiveMode: "coding" },
   );

@@ -512,8 +512,6 @@ test("keeps the search shell, theme tokens, and rerender hook together", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main",
-    loopExecutionModeDebateMultiAgent: "debate",
   });
   assert.match(html, /id="chatSearchButton"[\s\S]*id="newSession"[\s\S]*id="resetSession"/);
   assert.match(html, /id="chatSearchInput"[^>]*placeholder="关键词"/);

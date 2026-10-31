@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { resolveLoopAnswerConclusion } from "../loopDebateFinalSummary";
+import { resolveLoopAnswerConclusion } from "../loopFinalSummary";
 import {
   isLoopMainAiFailureLimitReached,
   LOOP_MAIN_AI_FAILURE_LIMIT,
@@ -36,13 +36,11 @@ export type LoopStopContext = {
   now: number;
   finalSummary?: string;
   subtaskSummary?: string;
-  participantSummary?: string;
 };
 
 export type LoopStopMemberUpdate = {
   persist: boolean;
   subTasks: LoopSubtaskRecord[];
-  debateRounds?: NonNullable<LoopTaskRecord["debateRounds"]>;
 };
 
 export type LoopStopTransition = {
@@ -302,45 +300,10 @@ function stoppedLoopSubtasks(
   });
 }
 
-function stoppedLoopDebateRounds(
-  task: LoopTaskRecord,
-  now: number,
-  participantSummary?: string,
-): LoopTaskRecord["debateRounds"] {
-  return task.debateRounds?.map((round) => {
-    const participants = round.participants.map((participant) => {
-      if (participant.status !== "running" && participant.status !== "pending") {
-        return participant;
-      }
-      return {
-        ...participant,
-        status: "stopped" as const,
-        ...(participant.summary || participantSummary ? { summary: participant.summary || participantSummary } : {}),
-        updatedAt: now,
-      };
-    });
-    const shouldStopRound = round.status === "running"
-      || Boolean(round.activeSpeaker)
-      || round.participants.some((participant) => participant.status === "running" || participant.status === "pending");
-    if (!shouldStopRound) {
-      return { ...round, participants };
-    }
-    return {
-      ...round,
-      status: "stopped" as const,
-      completedAt: round.completedAt ?? now,
-      activeSpeaker: undefined,
-      participants,
-    };
-  });
-}
-
 function stoppedLoopMembers(context: LoopStopContext): LoopStopMemberUpdate {
-  const debateRounds = stoppedLoopDebateRounds(context.task, context.now, context.participantSummary);
   return {
     persist: false,
     subTasks: stoppedLoopSubtasks(context.task, context.now, context.subtaskSummary),
-    ...(debateRounds ? { debateRounds } : {}),
   };
 }
 
@@ -354,7 +317,6 @@ function idempotentLoopStop(task: LoopTaskRecord, preserveActivitySnapshot: bool
     activity: {
       persist: false,
       subTasks: task.subTasks,
-      ...(task.debateRounds ? { debateRounds: task.debateRounds } : {}),
     },
   };
 }
@@ -378,7 +340,6 @@ function applyClassicLoopStop(context: LoopStopContext): LoopStopTransition {
       ...clearedActiveSubtasks(),
       pendingClarification: undefined,
       subTasks: activity.subTasks,
-      ...(activity.debateRounds ? { debateRounds: activity.debateRounds } : {}),
       ...(context.finalSummary ? { finalSummary: context.finalSummary } : {}),
       updatedAt: context.now,
     },

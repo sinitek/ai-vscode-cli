@@ -1,5 +1,5 @@
-import { supportsCliManagedModelSelection } from "./cli/modelArgs";
-import { normalizeLoopExecutionMode, type CliName, type ThinkingMode } from "./cli/types";
+
+import { type CliName, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
@@ -72,14 +72,6 @@ export async function handleUpdateSettingMessage(
     const cliValue = message.key.slice("interactiveMode.".length);
     if (deps.isCliName(cliValue) && deps.isInteractiveMode(message.value)) {
       deps.setWorkspaceInteractiveModeForCli(cliValue, message.value);
-    }
-    await deps.postPanelState();
-    return;
-  }
-  if (message.key.startsWith("loopExecutionMode.")) {
-    const cliValue = message.key.slice("loopExecutionMode.".length);
-    if (deps.isCliName(cliValue)) {
-      deps.setWorkspaceLoopExecutionModeForCli(cliValue, normalizeLoopExecutionMode(message.value));
     }
     await deps.postPanelState();
     return;
@@ -463,13 +455,6 @@ export async function handleSendPromptMessage(
   if (deps.isInteractiveMode(effectiveInteractiveMode)) {
     deps.setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
   }
-  const loopExecutionMode = effectiveInteractiveMode === "loop"
-    ? normalizeLoopExecutionMode(
-        Object.prototype.hasOwnProperty.call(message, "loopExecutionMode")
-          ? message.loopExecutionMode
-          : deps.getWorkspaceLoopExecutionMode(targetCli)
-      )
-    : undefined;
   const contextBuild = deps.buildPromptWithAutoContext(trimmed, message.contextOptions);
   const shouldRunGraph = effectiveInteractiveMode === "graph";
   const modelPromptWithMemory = shouldRunGraph
@@ -544,9 +529,6 @@ export async function handleSendPromptMessage(
   }
   if (shouldRunGraph) {
     promptInput.skipLongTermMemoryPersist = true;
-  }
-  if (loopExecutionMode) {
-    promptInput.loopExecutionMode = loopExecutionMode;
   }
   if (loopPlusSchedulingMode === "event_driven" && message.loopPlusAcceptancePlan) {
     promptInput.loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshot(

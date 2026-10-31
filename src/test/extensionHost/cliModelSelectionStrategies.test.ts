@@ -573,7 +573,7 @@ test("all CLI snapshots preload shared child models without switching or applyin
     assert.ok(state.selectedLoopByCli?.[cli]?.subtask, cli);
   }
   assert.equal(state.selectedByCli.codex, "gpt-5-codex");
-  assert.deepEqual(reads.sort(), ["dsh", "kimi-code", "opencode", "zcode"]);
+  assert.deepEqual(reads.sort(), ["codex", "dsh", "kimi-code", "opencode", "zcode"]);
   assert.equal(host.getLoopSubtaskOpenCodeModels()?.selectedSubtaskRef, "fixture/child");
   assert.equal(apply.mock.callCount(), 0);
   assert.equal(writes.mock.callCount(), 0);
@@ -603,7 +603,7 @@ test("all CLI native defaults load with explicit null identities instead of stal
   for (const cli of CLI_LIST) assert.equal(state.activeConfigIdByCli?.[cli], null);
   for (const cli of ["grok", "dsh", "kimi-code", "zcode"] as const) assert.ok(state.optionsByCli[cli].length, cli);
   assert.deepEqual(state.optionsByCli.grok, ["native"]);
-  assert.deepEqual(reads.sort(), ["dsh", "kimi-code", "opencode", "zcode"]);
+  assert.deepEqual(reads.sort(), ["codex", "dsh", "kimi-code", "opencode", "zcode"]);
   assert.equal(getSaved.mock.callCount(), 0);
   assert.equal(host.getActiveConfigIdForCli("grok"), null);
   assert.equal(host.getLoopSubtaskOpenCodeModels()?.selectedSubtaskRef, "fixture/child");
@@ -635,6 +635,104 @@ test("explicit null model identities never fall back to a stale heartbeat profil
   assert.equal(state.activeConfigIdByCli?.grok, null);
   assert.equal(state.optionsByCli.codex.includes("stale-model"), false);
   assert.equal(state.selectedByCli.codex, null);
+});
+
+test("Codex merges its configured model without changing managed entries or explicit selections", () => {
+  const configured = new Map<string | null, string | null>([["profile", "configured-model"], [null, "native-model"]]);
+  const strategies = createCliModelSelectionStrategies({
+    getCodexConfigModel: (configId) => configured.get(configId ?? null),
+    getGrokConfigModels: () => undefined,
+    resolveDefaultGrokStoreKey: () => PATH_STORE_KEY,
+  });
+  const store = ensureCliModelStore();
+  store.optionsByConfigId.profile = [" CONFIGURED-MODEL ", "manual-model"];
+  const original = JSON.stringify(store);
+  assert.deepEqual(strategies.codex.getModelOptions(store, "profile"), ["configured-model", "manual-model"]);
+  assert.deepEqual(strategies.codex.getManagedModelOptions(store, "profile"), ["CONFIGURED-MODEL", "manual-model"]);
+  assert.equal(strategies.codex.getSelectedModel(store, "profile"), "configured-model");
+  assert.equal(strategies.codex.getSelectedLoopModel(store, "main", "profile"), "configured-model");
+  assert.equal(strategies.codex.getSelectedLoopModel(store, "subtask", "profile"), "configured-model");
+  assert.deepEqual(strategies.codex.getModelOptions(store, null), ["native-model"]);
+  assert.equal(strategies.codex.getSelectedLoopModel(store, "subtask", null), "native-model");
+  assert.equal(JSON.stringify(store), original);
+
+  const selected = strategies.codex.selectModel(store, "manual-model", "profile");
+  assert.equal(strategies.codex.getSelectedModel(selected, "profile"), "manual-model");
+  assert.equal(strategies.codex.getSelectedLoopModel(selected, "main", "profile"), "manual-model");
+  selected.selectedLoopByConfigId.profile = { main: "CONFIGURED-MODEL", subtask: "manual-model" };
+  assert.equal(strategies.codex.getSelectedLoopModel(selected, "main", "profile"), "configured-model");
+  assert.equal(strategies.codex.getSelectedLoopModel(selected, "subtask", "profile"), "manual-model");
+  selected.selectedByConfigId.profile = "CONFIGURED-MODEL";
+  assert.equal(strategies.codex.getSelectedModel(selected, "profile"), "configured-model");
+  configured.set("profile", null);
+  assert.equal(strategies.codex.getSelectedModel(store, "profile"), null);
+  assert.deepEqual(strategies.codex.getModelOptions(store, "profile"), ["CONFIGURED-MODEL", "manual-model"]);
+  assert.equal(strategies.codex.getSelectedModel(store, "other-profile"), null);
+});
+
+test("Codex native model refresh updates panel defaults without writing the managed model store", async (context) => {
+  let codexContent = 'model = "configured-model"';
+  let failRead = false;
+  const errors: unknown[] = [];
+  const writes = context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
+  context.mock.method(configService, "readGrokConfigText", async () => "");
+  context.mock.method(configService, "getCurrentConfig", async (cli: CliName) => {
+    if (cli === "codex") {
+      if (failRead) throw new Error("synthetic config read failure");
+      return { configContent: codexContent, content: 'model = "legacy-content"' };
+    }
+    return { content: nativeConfigContent(cli) };
+  });
+  const states = allCliConfigStates(false);
+  states.codex = { configs: [{ id: "codex-profile", name: "Codex", platform: "codex" }], activeConfigId: "codex-profile" };
+  const store = ensureCliModelStore();
+  store.optionsByConfigId["codex-profile"] = ["CONFIGURED-MODEL", "manual-model"];
+  const { host, readStore } = createHost({
+    store,
+    currentCli: "grok",
+    preferredConfigId: () => null,
+    logError: (event, payload) => { errors.push({ event, payload }); },
+  });
+  const original = JSON.stringify(store);
+  await host.refreshConfigModels(states);
+  const state = host.buildModelState();
+  assert.equal(state.configuredDefaultByCli?.codex, "configured-model");
+  assert.deepEqual(state.optionsByCli.codex, ["configured-model", "manual-model"]);
+  assert.deepEqual(state.managedByCli.codex, ["CONFIGURED-MODEL", "manual-model"]);
+  assert.equal(state.selectedByCli.codex, "configured-model");
+  assert.deepEqual(state.selectedLoopByCli?.codex, { main: "configured-model", subtask: "configured-model" });
+  assert.deepEqual(state.loopOptionsByCli?.codex, {
+    main: ["configured-model", "manual-model"],
+    subtask: ["configured-model", "manual-model"],
+  });
+  assert.equal(JSON.stringify(readStore()), original);
+  assert.equal(writes.mock.callCount(), 0);
+
+  host.selectCliModel("codex", "manual-model", "codex-profile");
+  codexContent = 'model = "updated-model"';
+  await host.refreshConfigModels(states);
+  assert.equal(host.buildModelState().selectedByCli.codex, "manual-model");
+  assert.deepEqual(host.buildModelState().optionsByCli.codex, ["updated-model", "CONFIGURED-MODEL", "manual-model"]);
+  assert.equal(writes.mock.callCount(), 1);
+
+  codexContent = '[profiles.work]\nmodel = "nested-model"';
+  await host.refreshConfigModels(states);
+  assert.equal(host.buildModelState().configuredDefaultByCli?.codex, null);
+  assert.deepEqual(host.buildModelState().optionsByCli.codex, ["CONFIGURED-MODEL", "manual-model"]);
+  assert.equal(host.buildModelState().selectedByCli.codex, "manual-model");
+
+  states.codex = { configs: [], activeConfigId: null };
+  codexContent = 'model = "native-model"';
+  await host.refreshConfigModels(states);
+  assert.equal(host.buildModelState().selectedByCli.codex, "native-model");
+  assert.deepEqual(host.buildModelState().optionsByCli.codex, ["native-model"]);
+  failRead = true;
+  await host.refreshConfigModels(states);
+  assert.equal(host.buildModelState().configuredDefaultByCli?.codex, null);
+  assert.equal(host.buildModelState().selectedByCli.codex, null);
+  assert.deepEqual(host.buildModelState().optionsByCli.codex, []);
+  assert.equal(writes.mock.callCount(), 1);
+  assert.deepEqual(errors, [{ event: "codex-config-model-read-failed", payload: { error: "synthetic config read failure" } }]);
 });
 
 test("separate model settings hosts do not share Grok cache or store updates", (context) => {

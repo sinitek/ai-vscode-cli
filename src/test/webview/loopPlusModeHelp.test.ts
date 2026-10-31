@@ -4,9 +4,6 @@ import { test } from "node:test";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
-const LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT = "main_sub_multi_agent";
-const LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT = "debate_multi_agent";
-
 function buildHtml(): string {
   return buildWebviewStaticHtml({
     cspSource: "vscode-resource://test-authority",
@@ -15,9 +12,6 @@ function buildHtml(): string {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent:
-      LOOP_EXECUTION_MODE_MAIN_SUB_MULTI_AGENT,
-    loopExecutionModeDebateMultiAgent: LOOP_EXECUTION_MODE_DEBATE_MULTI_AGENT,
   });
 }
 

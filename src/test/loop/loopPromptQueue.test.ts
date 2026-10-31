@@ -222,7 +222,6 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "t",
     "resetTaskListForRunStart",
     "cliSupportsModelSelection",
-    "getLoopExecutionModeForCli",
     "vscode",
     `${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
@@ -250,7 +249,6 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     (key: string) => key,
     () => undefined,
     () => false,
-    () => undefined,
     { postMessage: (message: unknown) => posted.push(message) },
   ) as (payload: unknown) => boolean;
 

@@ -102,8 +102,6 @@ test("places the persistent group-chat button in the bottom status row", () => {
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
-    loopExecutionModeMainSubMultiAgent: "main-sub-multi-agent",
-    loopExecutionModeDebateMultiAgent: "debate-multi-agent",
   });
   const promptIndex = html.indexOf('id="runPromptButton"');
   const groupChatIndex = html.indexOf('id="openCurrentLoopGroupChat"');

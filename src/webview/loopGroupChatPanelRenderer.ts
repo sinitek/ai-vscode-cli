@@ -1,13 +1,12 @@
-import type { LoopDebateChatPanelState } from "./loopDebatePanelTypes";
+import type { LoopGroupChatPanelState } from "./loopGroupChatPanelTypes";
 
 const STRINGS = {
     title: "Loop 群聊",
     subtitle: "模拟群聊",
-    debateSubtitle: "红蓝辩论群聊",
     mainSubSubtitle: "主从群聊",
     executionRound: "任务执行群聊",
     continueTask: "继续执行",
-    continueTaskTitle: "让主任务或裁判主持人判断是否继续执行",
+    continueTaskTitle: "让主任务判断是否继续执行",
     supplementTask: "补充需求",
     supplementTaskTitle: "向当前 Loop 任务补充需求",
     askMainModel: "我要提问",
@@ -17,7 +16,7 @@ const STRINGS = {
     continuePromptDefault: "继续",
     supplementPromptDefault: "",
     supplementDialogTitle: "补充需求",
-    supplementDialogDescription: "补充内容会显示在群聊中，并在下一轮提供给主任务或裁判主持人。这不会单独向主模型提问。",
+    supplementDialogDescription: "补充内容会显示在群聊中，并在下一轮提供给主任务。这不会单独向主模型提问。",
     askDialogTitle: "向主模型提问",
     askDialogDescription: "这是当前任务和主模型的单独对话，只有气泡和输入框。回答时只显示等待动画，结束后给出最终答复，不展示思考过程。关闭后再打开会恢复这些气泡；如果还在回答，会继续显示等待动画。不会写成补充需求，也不会推动任务调度。",
     askChatEmpty: "还没有提问。在下方输入后发送。",
@@ -26,7 +25,7 @@ const STRINGS = {
     askChatAbort: "中止",
     askChatWaiting: "正在回答",
     continueDialogTitle: "继续 Loop 任务",
-    continueDialogDescription: "确认后会把这段内容发给主任务或裁判主持人继续判断，可先修改或补充说明。",
+    continueDialogDescription: "确认后会把这段内容发给主任务继续判断，可先修改或补充说明。",
     continuePromptLabel: "消息内容",
     continuePromptRequired: "请输入继续消息。",
     continueModelChoiceLabel: "继续使用的运行配置",
@@ -62,16 +61,10 @@ const STRINGS = {
     subtask: "子任务",
     lastStarted: "最后启动",
     notStarted: "未启动",
-    moderator: "裁判主持人",
-    consensus: "共识",
-    openDisagreements: "未解决分歧",
     noRounds: "暂无群聊记录。",
     noTranscript: "当前暂无群聊 transcript。",
     loadingError: "无法读取群聊 transcript。",
     roundLabel: "第 {round} 轮",
-    debateRoundLabel: "辩论 {round}",
-    turnLabel: "第 {turn} 轮发言",
-    finalStance: "最终立场",
     user: "我",
     initialTaskPrompt: "任务发起",
     supplementalRequirement: "补充需求",
@@ -82,8 +75,6 @@ const STRINGS = {
     startedAt: "开始",
     completedAt: "完成",
     thinking: "{speaker} 思考中",
-    finalStanceThinking: "{speaker} 正在整理最终立场",
-    consensusThinking: "共识汇总器思考中",
     thinkingTag: "思考中",
     scrollToBottomAria: "跳转到最新消息",
     titleLoopPlus: "Loop+ 群聊",
@@ -139,14 +130,14 @@ const STRINGS = {
     communicationFileClose: "关闭",
 } as const;
 
-export type LoopDebateChatPanelStrings = Record<keyof typeof STRINGS, string>;
+export type LoopGroupChatPanelStrings = Record<keyof typeof STRINGS, string>;
 
-export function getStrings(): LoopDebateChatPanelStrings {
+export function getStrings(): LoopGroupChatPanelStrings {
   return STRINGS;
 }
-export function buildLoopDebateChatPanelTitle(
-  state: LoopDebateChatPanelState,
-  strings: LoopDebateChatPanelStrings,
+export function buildLoopGroupChatPanelTitle(
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
 ): string {
   const title = state.loopPlus ? strings.titleLoopPlus : strings.title;
   const taskId = state.task.id.trim();

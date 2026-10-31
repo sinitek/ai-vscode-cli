@@ -24,26 +24,26 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
 
 ## 范围
 
-- 新增 `src/shared/pathSegments.ts`，统一复用 Graph、`loopTaskStore.ts` 和 `loopDebate.ts` 的安全路径片段清洗。
+- 新增 `src/shared/pathSegments.ts`，统一复用 Graph、`loopTaskStore.ts` 和 `loopGroupChat.ts` 的安全路径片段清洗。
 - 新增 `src/shared/writeScope.ts`，统一复用 Graph scheduler 与 `loopParallel.ts` 的写入文件路径、冲突组归一化和父子路径重叠判断。
-- 更新 `src/graph/types.ts`、`src/loopTaskStore.ts`、`src/loopDebate.ts`、`src/loopParallel.ts`、`src/graph/graphScheduler.ts` 的导入或兼容包装。
+- 更新 `src/graph/types.ts`、`src/loopTaskStore.ts`、`src/loopGroupChat.ts`、`src/loopParallel.ts`、`src/graph/graphScheduler.ts` 的导入或兼容包装。
 - 新增或更新 `src/test/pathSegments.test.ts`、`src/test/writeScope.test.ts` 及 Graph/Loop 相关回归测试，覆盖非法字符、空值 fallback、大小写、重复路径、父子路径边界和冲突组归一化。
 - 保留现有路径格式：路径片段只允许 ASCII 字母、数字、`_`、`.`、`-`；非法字符替换为 `_`，空值使用调用方 fallback。
 - 保留现有写入路径格式：反斜杠转正斜杠、折叠重复分隔符、清理前导 `./` 和中间 `/./`、移除末尾 `/`、小写化、过滤空值并去重。
-- 保留 Graph 的 `unscopedWrite` 冲突语义、Loop/Graph 的冲突结果结构、遍历顺序、描述文本、fallback 常量、目录拼接和 debate 标识符归一化。
+- 保留 Graph 的 `unscopedWrite` 冲突语义、Loop/Graph 的冲突结果结构、遍历顺序、描述文本、fallback 常量和目录拼接。
 
 ## 非目标
 
 - 不抽取完整的 Graph/Loop conflict detector、执行分组算法、冲突消息生成或节点/子任务领域类型。
 - 不把 Graph 的未声明写入判定伪装为普通写入范围，或迁移 `isGraphUnscopedWriteNode` 的业务规则。
-- 不合并路径片段清洗、写入文件路径清洗和 debate 标识符归一化三类不同语义。
+- 不合并路径片段清洗和写入文件路径清洗两类不同语义。
 - 不改变 Graph/Loop 的持久化目录、通信 artifact 目录、文件命名、调度流程或用户可见功能。
 - 不替换技术栈、测试框架、核心依赖或无关模块。
 - 不生成、刷新或修改 `.ch/docs/memory/`、generated recall 产物或 Graph 运行态文件。
 
 ## 验收标准
 
-- [completed] Graph、Loop task store 和 Loop debate 的路径片段清洗均委托同一个共享工具，既有导出包装和 fallback 语义保持兼容。
+- [completed] Graph、Loop task store 和 Loop 群聊 的路径片段清洗均委托同一个共享工具，既有导出包装和 fallback 语义保持兼容。
 - [completed] Graph scheduler 与 Loop parallel 的写入文件/冲突组归一化和路径重叠判断均复用共享工具，父子路径边界不误匹配，例如 `src/foo` 不匹配 `src/foobar`。
 - [completed] Graph 特有的 `unscopedWrite` 语义、两套冲突结果结构、遍历顺序和消息格式仍由各自调用方负责。
 - [completed] 共享工具测试覆盖成功路径、非法字符或空值边界、大小写/重复项、父子路径和冲突组归一化；Graph/Loop 回归测试通过。
@@ -53,7 +53,7 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
 ## 影响面
 
 - 代码目录：`src/shared/`、`src/graph/`、`src/loop*.ts`。
-- 测试目录：`src/test/pathSegments.test.ts`、`src/test/writeScope.test.ts`、`src/test/graphScheduler.test.ts`、`src/test/graphStore.test.ts`、`src/test/loopParallel.test.ts`、`src/test/loopTaskStore.test.ts`、`src/test/loopDebate.test.ts`。
+- 测试目录：`src/test/pathSegments.test.ts`、`src/test/writeScope.test.ts`、`src/test/graphScheduler.test.ts`、`src/test/graphStore.test.ts`、`src/test/loopParallel.test.ts`、`src/test/loopTaskStore.test.ts`、`src/test/loop/loopGroupChat.test.ts`。
 - 文档目录：仅新增本 active exec plan；不修改架构、运行手册、产品功能清单或国际化资源，因为行为契约不变。
 - 配置与脚本：不修改 `package.json`、TypeScript 配置或构建脚本。
 
@@ -63,7 +63,7 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
   缓解：先按现有实现建立表格化边界测试，再保持兼容包装并执行 Graph/Loop 回归测试。
 - 风险：父子路径重叠判断可能把同名前缀目录误判为父目录。
   缓解：使用路径分隔符边界判断，并固定覆盖 `src/foo`、`src/foo/bar`、`src/foobar` 三类用例。
-- 风险：把 `unscopedWrite`、debate 标识符或目录布局下沉到共享层会造成过度抽象和语义回归。
+- 风险：把 `unscopedWrite` 或目录布局下沉到共享层会造成过度抽象和语义回归。
   缓解：共享层只接受通用值，不依赖 Graph/Loop；局部规则和兼容导出保留在调用方。
 - 风险：删除既有 helper 导出会影响测试或其他调用方。
   缓解：保留 `sanitizeGraphPathSegment`、`normalizeLoopWriteFiles` 等兼容入口，先迁移实现再考虑后续清理。
@@ -74,7 +74,7 @@ Graph scheduler、Loop parallel 和多个 Loop/Graph 路径构建模块分别维
 
 - 最小相关验证：检查新增共享函数的导出、调用方导入和既有兼容包装；运行 `git diff --check`，确认仅有授权路径变化。
 - 共享工具测试：构建后运行 `node --test dist/test/pathSegments.test.js dist/test/writeScope.test.js`。
-- Graph/Loop 回归测试：构建后运行 `node --test dist/test/graphScheduler.test.js dist/test/graphStore.test.js dist/test/loopParallel.test.js dist/test/loopTaskStore.test.js dist/test/loopDebate.test.js`。
+- Graph/Loop 回归测试：构建后运行 `node --test dist/test/graphScheduler.test.js dist/test/graphStore.test.js dist/test/loopParallel.test.js dist/test/loopTaskStore.test.js dist/test/loop/loopGroupChat.test.js`。
 - 扩展验证：运行 `npm run build`；必要时运行项目统一命令 `npm run test:unit`，由统一验证节点根据耗时和已有测试基线决定是否扩展。
 - 失败处理：按 `.ch/docs/TESTING.md` 区分实现缺陷、断言过期、夹具问题、环境/依赖问题和范围外历史失败；实现或测试修复后重跑最小相关命令，无法运行则记录错误摘要、影响和最小恢复动作。
 

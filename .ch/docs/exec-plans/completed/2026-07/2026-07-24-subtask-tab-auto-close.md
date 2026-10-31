@@ -54,7 +54,7 @@
 
 ## 完成记录
 
-- Loop 子任务、Loop debate 临时 tab 成功结束后固定自动关闭，不再读取或暴露关闭开关；失败、停止或无目标 tab 时不关闭。
+- Loop 子任务 tab 成功结束后固定自动关闭，不再读取或暴露关闭开关；失败、停止或无目标 tab 时不关闭。
 - Graph 节点 runner 结束后在 `finally` 中关闭对应节点 tab，并记录关闭/关闭失败日志；主 Graph tab 的运行态保持图级生命周期不变。
 - 工具设置、PanelState、Webview DOM/state/i18n、settings message 处理、tool/workspace settings normalizer 中移除 `loopAutoCloseSubtaskTabs`。
 - 同步更新当前事实来源文档和兼容入口；历史已完成计划保留旧口径作为历史记录。

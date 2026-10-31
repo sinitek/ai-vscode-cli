@@ -26,7 +26,7 @@ Loop 主任务进入 `stopped`、`error` 或 `needs-review` 后，群聊已展�
 
 ## 非目标
 
-- 不改变 Loop 主任务决策 JSON、子任务并发、重试或辩论协议。
+- 不改变 Loop 主任务决策 JSON、子任务并发或重试协议。
 - 不改变普通 Vibe/Coding 任务的分组、配置和模型选择逻辑。
 - 不改动 CLI 配置文件内容或模型目录管理。
 
@@ -41,8 +41,8 @@ Loop 主任务进入 `stopped`、`error` 或 `needs-review` 后，群聊已展�
 
 ## 影响面
 
-- 代码目录：`src/loopDebate.ts`、`src/loopOrchestrationOwnership.ts`、`src/loopTaskStore.ts`、`src/sessionTabs.ts`、`src/panelDiagnostics.ts`、`src/extension.ts`
-- 测试目录：`src/test/loopDebate.test.ts`、`src/test/loopOrchestrationOwnership.test.ts`、`src/test/loopTaskStore.test.ts`、`src/test/conversationTabLock.test.ts`、`src/test/loopDebateCoordinator.test.ts`
+- 代码目录：`src/loopGroupChat.ts`、`src/loopOrchestrationOwnership.ts`、`src/loopTaskStore.ts`、`src/sessionTabs.ts`、`src/panelDiagnostics.ts`、`src/extension.ts`
+- 测试目录：`src/test/loop/loopGroupChat.test.ts`、`src/test/loopOrchestrationOwnership.test.ts`、`src/test/loopTaskStore.test.ts`、`src/test/conversationTabLock.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`
 - 文档目录：`.ch/docs/product-specs/`、`.ch/docs/design-docs/`、`.ch/docs/references/`、`.ch/docs/runbooks/`、`docs/插件功能清单.md`
 - 配置与脚本：无
 
@@ -61,8 +61,8 @@ Loop 主任务进入 `stopped`、`error` 或 `needs-review` 后，群聊已展�
 
 测试分层、适用性与失败处理统一遵循 `.ch/docs/TESTING.md`。
 
-- 最小相关 unit（命令、结果或不适用理由）：关键回归包含 `loopDebate.test.js`、`loopOrchestrationOwnership.test.js`、`loopTaskStore.test.js`、`conversationTabLock.test.js`、`loopDebateCoordinator.test.js`，随下述相关测试集通过。
-- 模块/统一 unit（命令、结果或等价关系）：`node --test --test-concurrency=1 dist/test/conversationTabLock.test.js dist/test/loopDebate.test.js dist/test/loopDebateCoordinator.test.js dist/test/loopDebatePanel.test.js dist/test/loopOrchestrationOwnership.test.js dist/test/loopPromptQueue.test.js dist/test/loopSubtaskLifecycle.test.js dist/test/loopSubtaskProgress.test.js dist/test/loopTaskStore.test.js dist/test/opencodedualmodelwebview.test.js dist/test/opencodeloopmodewebview.test.js dist/test/opencoderolemodelruntime.test.js dist/test/sessionMessageActions.test.js`，通过，118/118。
+- 最小相关 unit（命令、结果或不适用理由）：关键回归包含 `loopGroupChat.test.js`、`loopOrchestrationOwnership.test.js`、`loopTaskStore.test.js`、`conversationTabLock.test.js`、`loopGroupChatCoordinator.test.js`，随下述相关测试集通过。
+- 模块/统一 unit（命令、结果或等价关系）：`node --test --test-concurrency=1 dist/test/conversationTabLock.test.js dist/test/loop/loopGroupChat.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/loopOrchestrationOwnership.test.js dist/test/loopPromptQueue.test.js dist/test/loopSubtaskLifecycle.test.js dist/test/loopSubtaskProgress.test.js dist/test/loopTaskStore.test.js dist/test/opencodedualmodelwebview.test.js dist/test/opencodeloopmodewebview.test.js dist/test/opencoderolemodelruntime.test.js dist/test/sessionMessageActions.test.js`，通过，118/118。
 - typecheck/build（命令、结果或不适用理由）：`npm run build` 通过；`git diff --check` 通过。
 - Chromium headless smoke（适用性及理由、scenario、命令、退出码、`result.json`/截图、未覆盖风险）：不适用；本次变更是 VS Code Extension Host 编排、Store 迁移和纯状态逻辑，没有独立浏览器运行目标，Webview 只消费既有 PanelState 字段。
 

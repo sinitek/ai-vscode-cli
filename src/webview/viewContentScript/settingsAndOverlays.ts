@@ -409,7 +409,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
             : undefined,
           loopSubtaskThinkingMode: scheduledSubtaskThinking || undefined,
           ...(crossCliRoute ? { loopSubtaskCli: crossCliRoute.subtaskCli, loopSubtaskConfigId: crossCliRoute.subtaskConfigId } : {}),
-          loopExecutionMode: selectedMode === "loop" ? getLoopExecutionModeForCli(targetCli) : undefined,
           files: scheduledTaskFiles,
         });
         if (elements.saveScheduledTask) {

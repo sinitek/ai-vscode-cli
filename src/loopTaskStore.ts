@@ -5,9 +5,7 @@ import {
   CLI_LIST,
   createCliRecord,
   type CliName,
-  type LoopExecutionMode,
   type ThinkingMode,
-  normalizeLoopExecutionMode,
 } from "./cli/types";
 import { isTimestampWithinHistoryRetention } from "./historyRetention";
 import { logError } from "./logger";
@@ -24,7 +22,6 @@ import {
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
-import type { LoopDebateRoundRecord } from "./loopDebate";
 import { sanitizePathSegment } from "./shared/pathSegments";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
@@ -130,7 +127,6 @@ export type LoopTaskRecord = {
   taskStoreFile: string;
   rootPrompt: string;
   taskKind?: LoopTaskKind;
-  executionMode?: LoopExecutionMode;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
   loopPlusMaxAcceptances?: number;
@@ -161,7 +157,6 @@ export type LoopTaskRecord = {
   clarificationCount?: number;
   modelRouting?: LoopTaskModelRouting;
   originProfile?: LoopTaskOriginProfile;
-  debateRounds?: LoopDebateRoundRecord<LoopMainDecision>[];
   completionRoundSummaries: LoopRoundSummary[];
   completionRequirementCoverage: LoopAcceptanceCheck[];
 };
@@ -635,7 +630,6 @@ export function updateLoopTaskRecord(
     status: nextStatus,
     subTasks: Array.isArray(patch.subTasks) ? patch.subTasks : existing.subTasks,
     rounds: Array.isArray(patch.rounds) ? patch.rounds : existing.rounds,
-    debateRounds: Array.isArray(patch.debateRounds) ? patch.debateRounds : existing.debateRounds,
     supplementalRequirements: Array.isArray(patch.supplementalRequirements)
       ? patch.supplementalRequirements.map((item) => String(item).trim()).filter(Boolean)
       : existing.supplementalRequirements,
@@ -848,7 +842,6 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     : [];
   const modelRouting = normalizeLoopTaskModelRouting((raw as { modelRouting?: unknown }).modelRouting);
   const originProfile = normalizeLoopTaskOriginProfile((raw as { originProfile?: unknown }).originProfile);
-  const debateRounds = normalizeLoopDebateRounds((raw as { debateRounds?: unknown }).debateRounds);
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
@@ -867,7 +860,6 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     taskStoreFile,
     rootPrompt: raw.rootPrompt,
     ...(taskKind ? { taskKind } : {}),
-    executionMode: normalizeLoopExecutionMode((raw as { executionMode?: unknown }).executionMode),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
@@ -908,7 +900,6 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     ...(clarificationCount ? { clarificationCount } : {}),
     ...(modelRouting ? { modelRouting } : {}),
     ...(originProfile ? { originProfile } : {}),
-    debateRounds,
     completionRoundSummaries,
     completionRequirementCoverage,
   };
@@ -995,15 +986,6 @@ function normalizeLoopTaskModelRoute(value: unknown): LoopTaskModelRoute | null 
     ...(model ? { model } : {}),
     ...(fallback ? { fallback } : {}),
   };
-}
-
-function normalizeLoopDebateRounds(value: unknown): LoopDebateRoundRecord<LoopMainDecision>[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  return value.filter((item): item is LoopDebateRoundRecord<LoopMainDecision> => (
-    Boolean(item && typeof item === "object" && !Array.isArray(item))
-  ));
 }
 
 function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {

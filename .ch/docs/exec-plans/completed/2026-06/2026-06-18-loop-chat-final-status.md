@@ -34,7 +34,7 @@ Loop群聊任务结束后，群聊 UI 仍可能显示主任务处于执行中；
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/loopDebate.ts`、`src/webview/loopDebatePanel.ts`、`src/test/`
+- 代码目录：`src/extension.ts`、`src/loopGroupChat.ts`、`src/webview/loopGroupChatPanel.ts`、`src/test/`
 - 文档目录：`.ch/docs/exec-plans/`
 - 配置与脚本：无预期变更
 
@@ -73,5 +73,5 @@ Loop群聊任务结束后，群聊 UI 仍可能显示主任务处于执行中；
 验证结果：
 
 - `npm run build` 通过。
-- `node --test dist/test/loopDebate.test.js` 通过。
+- `node --test dist/test/loop/loopGroupChat.test.js` 通过。
 - `git diff --check` 通过。

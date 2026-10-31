@@ -55,7 +55,7 @@ Loop 主任务一次生成多个子任务时，现有调度会在同一执行组
 - 单元自测结果：通过构建、23 项相关 Node 单测和 9 项 ontology 单测。
 - 失败处理记录：无失败；`npm run validate:whitespace` 与 `git diff --check` 均通过。
 - 功能清单：已同步 Loop 子任务错峰启动能力。
-- 相关文档同步：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-debate-multi-agent-mode.md` 和 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。
+- 相关文档同步：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` 和 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。
 
 ## 任务列表
 

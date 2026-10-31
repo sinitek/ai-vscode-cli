@@ -10,7 +10,7 @@ Vibe 已允许最终回复绘制 SVG，但没有明确建议用图示补充任�
 
 ## 范围与非目标
 
-- 覆盖 Vibe 通用最终回复、经典 Loop（含主持及红蓝共识）、Loop+ 主任务和 Graph summary 节点。
+- 覆盖 Vibe 通用最终回复、Loop 主任务、Loop+ 主任务和 Graph summary 节点。
 - 复用现有 SVG 渲染能力；不新增配置、不改 Webview、不改变调度或验收协议。
 
 ## 验收标准
@@ -43,10 +43,10 @@ Vibe 已允许最终回复绘制 SVG，但没有明确建议用图示补充任�
 
 ## 测试与清单同步
 
-- 单元测试：已覆盖 Vibe 及隐藏重试、经典 Loop 主任务及主持模式、红蓝共识、Loop+ 全部主任务唤醒类型和 Graph summary；验证可选文案、JSON 字段及转义约束、机器协议标记 opt-out、子任务及非 summary 节点排除范围。
+- 单元测试：已覆盖 Vibe 及隐藏重试、Loop 主任务、Loop+ 全部主任务唤醒类型和 Graph summary；验证可选文案、JSON 字段及转义约束、机器协议标记 opt-out、子任务及非 summary 节点排除范围。
 - `npm run build`：通过。
 - `node --test dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/subtaskCliExecution.test.js dist/test/loop/loopPromptBuilders.test.js dist/test/graph/graphPromptBuilders.test.js`：38 项全部通过。
-- `node --test dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/loop/loopDebate.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js`：69 项全部通过。
+- `node --test dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/loop/loopGroupChat.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js`：69 项全部通过。
 - `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`：通过，58 条规则。
 - `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'`：9 项全部通过。
 - `git diff --check`：通过；变更范围的尾部空白检查通过。

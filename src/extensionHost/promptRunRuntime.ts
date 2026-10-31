@@ -23,14 +23,14 @@ import {
   transitionLoopTaskStop,
   upsertLoopTransitionSubtask,
 } from "./loopTaskStateMachine";
-import { resolveLoopAnswerConclusion } from "../loopDebate";
-import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopDebateFinalSummary";
+import { resolveLoopAnswerConclusion } from "../loopGroupChat";
+import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
-import { appendLoopRound, bindLoopTaskToSession, buildLoopSubtaskCommunicationFile, getLoopCommunicationPaths, getLoopTaskStoreSessionFile, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopTaskStoreSessionFile, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
-import { buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
+import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
-import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskPromptResumeCandidate, isLoopTaskResumable, isLoopTaskSessionCompatible } from "../panelDiagnostics";
+import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskPromptResumeCandidate, isLoopTaskSessionCompatible } from "../panelDiagnostics";
 import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
 
@@ -208,7 +208,7 @@ export type PromptRunRuntimeHostDeps = {
   readTaskStore: () => TaskStore;
   writeTaskStore: (store: TaskStore) => void;
   appendLoopMainSubChatMainDecision: (task: LoopTaskRecord, decision: LoopMainDecision, subtasks?: LoopSubtaskRecord[]) => void;
-  buildLoopDebateChatMessageAction: (taskId: string, round?: number) => ChatMessageAction;
+  buildLoopGroupChatMessageAction: (taskId: string, round?: number) => ChatMessageAction;
   runLoopPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
@@ -223,7 +223,7 @@ export type PromptRunRuntimeHostDeps = {
 
 export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
-const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopDebateChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
+const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopGroupChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
 const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_PARALLEL_SUBTASK_MAX = 6;
 const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
@@ -995,7 +995,6 @@ function markLoopTaskStopped(
   options: {
     finalSummary?: string;
     subtaskSummary?: string;
-    participantSummary?: string;
   } = {},
 ): LoopTaskRecord | null {
   const task = readLoopTaskRecord(taskId);
@@ -1007,7 +1006,6 @@ function markLoopTaskStopped(
     now: Date.now(),
     finalSummary: options.finalSummary,
     subtaskSummary: options.subtaskSummary,
-    participantSummary: options.participantSummary,
   });
   if (transition.idempotent) {
     return task;
@@ -1026,7 +1024,6 @@ function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
   return markLoopTaskStopped(taskId, {
     finalSummary: "用户已从 Loop 群聊中止任务。",
     subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
-    participantSummary: "用户已从 Loop 群聊中止该参与者任务。",
   });
 }
 

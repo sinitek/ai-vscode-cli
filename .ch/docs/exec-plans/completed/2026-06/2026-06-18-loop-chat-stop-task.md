@@ -10,7 +10,7 @@ Loop群聊 UI 已支持未完成任务的继续入口，但运行中的Loop任�
 
 ## 目标
 
-在Loop群聊 UI 中，当同一Loop任务存在运行中的主任务、子任务或相关辩论/共识任务时显示“中止”按钮；点击后停止该Loop任务关联的所有运行 tab，并把任务标记为 stopped。任务不在运行且未完成时显示“继续执行”按钮。两类按钮互斥出现。
+在Loop群聊 UI 中，当同一Loop任务存在运行中的主任务或子任务时显示“中止”按钮；点击后停止该Loop任务关联的所有运行 tab，并把任务标记为 stopped。任务不在运行且未完成时显示“继续执行”按钮。两类按钮互斥出现。
 
 ## 范围
 
@@ -34,7 +34,7 @@ Loop群聊 UI 已支持未完成任务的继续入口，但运行中的Loop任�
 
 ## 影响面
 
-- 代码目录：`src/extension.ts`、`src/webview/loopDebatePanel.ts`
+- 代码目录：`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`
 - 文档目录：`.ch/docs/design-docs/`、`.ch/docs/product-specs/`、`.ch/docs/runbooks/`
 - 配置与脚本：无
 
@@ -48,7 +48,7 @@ Loop群聊 UI 已支持未完成任务的继续入口，但运行中的Loop任�
 ## 验证计划
 
 - 最小相关验证：`npm run build`、`git diff --check`
-- 扩展验证：`node --test dist/test/loopDebate.test.js`
+- 扩展验证：`node --test dist/test/loop/loopGroupChat.test.js`
 
 ## 测试与清单同步
 
@@ -69,4 +69,4 @@ Loop群聊 UI 已支持未完成任务的继续入口，但运行中的Loop任�
 
 ## 当前结论
 
-已完成。群聊面板在同一Loop任务存在运行进程时只显示“中止”，点击后按 `loopTaskId` 停止 active / parallel / interactive 运行，任务记录更新为 `stopped` 并刷新群聊；未完成且无运行进程时只显示“继续执行”。验证通过：`npm run build`、`node --test dist/test/loopDebate.test.js`、`git diff --check`。真实 VS Code Extension Host 手工验收仍建议执行。
+已完成。群聊面板在同一Loop任务存在运行进程时只显示“中止”，点击后按 `loopTaskId` 停止 active / parallel / interactive 运行，任务记录更新为 `stopped` 并刷新群聊；未完成且无运行进程时只显示“继续执行”。验证通过：`npm run build`、`node --test dist/test/loop/loopGroupChat.test.js`、`git diff --check`。真实 VS Code Extension Host 手工验收仍建议执行。

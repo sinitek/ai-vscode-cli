@@ -36,7 +36,7 @@
 - 不在 Phase 1 引入 React Flow、图拖拽编辑器或完整低代码 workflow 编辑器。
 - 不引入 Mastra、Inngest、Trigger.dev、Temporal、数据库服务或云端队列作为默认运行时。
 - 不把 Graph 等同于 CodeGraph、调用图、知识图谱或 LangGraph 框架。
-- 不迁移或重写现有 Loop task store、Loop 辩论、群聊、睡眠唤醒和主从多智能体逻辑。
+- 不迁移或重写现有 Loop task store、群聊、睡眠唤醒和主从多智能体逻辑。
 - 不允许用户上传任意脚本作为节点直接执行；可执行节点仍通过受控 CLI / prompt / 工具链路。
 - 不在功能尚未实现前更新 `FEATURE_INVENTORY.md` 声称 Graph 已可用；只在实现完成并验证后同步清单。
 

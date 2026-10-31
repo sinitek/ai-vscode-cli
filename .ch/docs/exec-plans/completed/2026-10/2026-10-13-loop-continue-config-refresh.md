@@ -23,15 +23,15 @@
 
 ## 影响面与风险
 
-- 代码：`src/webview/loopDebatePanel.ts`。
-- 测试：`src/test/loop/loopDebatePanel.test.ts`。
+- 代码：`src/webview/loopGroupChatPanel.ts`。
+- 测试：`src/test/loop/loopGroupChatPanel.test.ts`。
 - 文档：功能清单、能力说明、ontology 和现有弹窗刷新排障记录。
 - 风险：替换单选区域时重置选项或丢失 hidden；通过保留状态与回归用例约束，不整页重载。
 - 回滚：撤销本任务对 Webview 局部刷新逻辑的修改。
 
 ## 验证计划与进展
 
-- 单元自测：`npm run build`；`node --test dist/test/loop/loopDebatePanel.test.js dist/test/loop/loopDebateCoordinator.test.js dist/test/loop/continueModelChoice.test.js`。
+- 单元自测：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/continueModelChoice.test.js`。
 - 浏览器：使用已有临时 Playwright 安装与 headless Chromium，加载实际生成的 Webview HTML，模拟 VS Code 消息桥验证配置刷新和状态保留；不启动 CLI 或改写用户配置。
 - 文档：ontology 校验与单测；`git diff --check`。
 - 当前阶段：实现、回归测试、浏览器验证及文档同步完成。
@@ -45,10 +45,10 @@
 ## 验证结果
 
 - `npm run build`：通过。首次编译在新增测试的自引用夹具类型上报 TS7023，明确返回类型后重跑通过，属于本任务测试实现缺陷，已修复。
-- `node --test dist/test/loop/loopDebatePanel.test.js dist/test/loop/loopDebateCoordinator.test.js dist/test/loop/continueModelChoice.test.js`：32/32 通过，其中新增 6 条回归用例。
-- `node --test dist/test/core/panelDiagnostics.test.js dist/test/loop/loopDebate.test.js dist/test/graph/graphRunPanel.test.js`：66/66 通过。
-- 使用已有 `/tmp/iop-playwright/node_modules/playwright` 与缓存 Chromium，运行任务临时脚本加载实际 `LoopDebateChatPanel` 生成的 HTML，并注入 VS Code 消息桥。5 类检查全部通过：打开立即刷新、最新主子模型更新、说明/选择/焦点保留、原配置失效回退、补充需求区域隐藏与草稿保留；浏览器 console/page error 为 0。截图人工检查通过。任务临时脚本已移除，结果与截图移到仓库外的 `/tmp/sinitek-loop-continue-config-smoke/result.json` / `/tmp/sinitek-loop-continue-config-smoke/screenshot.png`，不提交运行产物。
-- Impeccable 机械检测：`node /Users/fangjiawei/.codex/skills/impeccable/scripts/detect.mjs --json src/webview/loopDebatePanel.ts` 返回 `[]`。
+- `node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/continueModelChoice.test.js`：32/32 通过，其中新增 6 条回归用例。
+- `node --test dist/test/core/panelDiagnostics.test.js dist/test/loop/loopGroupChat.test.js dist/test/graph/graphRunPanel.test.js`：66/66 通过。
+- 使用已有 `/tmp/iop-playwright/node_modules/playwright` 与缓存 Chromium，运行任务临时脚本加载实际 `LoopGroupChatPanel` 生成的 HTML，并注入 VS Code 消息桥。5 类检查全部通过：打开立即刷新、最新主子模型更新、说明/选择/焦点保留、原配置失效回退、补充需求区域隐藏与草稿保留；浏览器 console/page error 为 0。截图人工检查通过。任务临时脚本已移除，结果与截图移到仓库外的 `/tmp/sinitek-loop-continue-config-smoke/result.json` / `/tmp/sinitek-loop-continue-config-smoke/screenshot.png`，不提交运行产物。
+- Impeccable 机械检测：`node /Users/fangjiawei/.codex/skills/impeccable/scripts/detect.mjs --json src/webview/loopGroupChatPanel.ts` 返回 `[]`。
 - 定向空白校验与 `git diff --check`：通过。
 - ontology `--validate`：仍有 15 条失效 `source_refs`，均指向仓库已有缺失的三份设计文档。与 `git show HEAD:.ch/docs/ontology/domains/cli-plugin-runtime.json` 逐条对比，当前和 HEAD 的缺失引用完全一致，本次没有新增失效引用。ontology 单测 8/9 通过，唯一失败为依赖该全量校验的 `test_validate_current_ontology`，分类为历史文档失败，本次不做范围外修复。
 - 未运行全量单测或 Extension Development Host：本次仅修改共享 Webview 的局部更新逻辑，已覆盖 98 条相关测试和真实 Chromium 脚本执行；未修改 CLI、用户配置或宿主业务路由，不启动真实任务。

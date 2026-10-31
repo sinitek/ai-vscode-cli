@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import type { CliName, InteractiveMode, LoopExecutionMode, ThinkingMode } from "./cli/types";
+import type { CliName, InteractiveMode, ThinkingMode } from "./cli/types";
 import type { PromptContextOptions, ScheduledTaskAttachment, ScheduledTaskRecord, ScheduledTaskStatus, ScheduledTaskSummary } from "./webview/types";
 
 export const SCHEDULED_TASK_STORE_FILE = path.join(os.homedir(), ".sinitek_cli", "scheduled-tasks.json");
@@ -31,33 +31,25 @@ export type ScheduledTaskInput = {
   loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
-  loopExecutionMode?: LoopExecutionMode;
   attachments?: ScheduledTaskAttachment[];
 };
 
 export type ScheduledTaskExecutionConfig = {
   interactiveMode: InteractiveMode;
-  loopExecutionMode?: LoopExecutionMode;
 };
 
 export function resolveScheduledTaskExecutionConfig(
   interactiveMode: InteractiveMode,
-  loopExecutionMode: LoopExecutionMode,
 ): ScheduledTaskExecutionConfig {
-  if (interactiveMode === "loop") {
-    return { interactiveMode, loopExecutionMode };
-  }
   return { interactiveMode };
 }
 
 export function resolveScheduledTaskExecutionConfigForTask(
-  task: Pick<ScheduledTaskRecord, "interactiveMode" | "loopExecutionMode">,
+  task: Pick<ScheduledTaskRecord, "interactiveMode">,
   fallbackInteractiveMode: InteractiveMode,
-  fallbackLoopExecutionMode: LoopExecutionMode,
 ): ScheduledTaskExecutionConfig {
   const interactiveMode = task.interactiveMode ?? fallbackInteractiveMode;
-  const loopExecutionMode = task.loopExecutionMode ?? fallbackLoopExecutionMode;
-  return resolveScheduledTaskExecutionConfig(interactiveMode, loopExecutionMode);
+  return resolveScheduledTaskExecutionConfig(interactiveMode);
 }
 
 export function createScheduledTaskRecord(
@@ -97,9 +89,6 @@ export function createScheduledTaskRecord(
     ...(normalizeOptionalString(input.loopSubtaskConfigId) ? { loopSubtaskConfigId: normalizeOptionalString(input.loopSubtaskConfigId) } : {}),
     ...(input.loopMainThinkingMode ? { loopMainThinkingMode: input.loopMainThinkingMode } : {}),
     ...(input.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: input.loopSubtaskThinkingMode } : {}),
-    ...(input.interactiveMode !== "loop_plus" && input.loopExecutionMode
-      ? { loopExecutionMode: input.loopExecutionMode }
-      : {}),
     attachments: Array.isArray(input.attachments) ? input.attachments.map((attachment) => ({
       name: attachment.name,
       path: attachment.path,
@@ -244,9 +233,6 @@ export function normalizeScheduledTaskRecord(
       : {}),
     ...(typeof raw.loopSubtaskThinkingMode === "string" && (!deps.isThinkingMode || deps.isThinkingMode(raw.loopSubtaskThinkingMode))
       ? { loopSubtaskThinkingMode: raw.loopSubtaskThinkingMode }
-      : {}),
-    ...(interactiveMode !== "loop_plus" && typeof raw.loopExecutionMode === "string"
-      ? { loopExecutionMode: raw.loopExecutionMode }
       : {}),
     attachments,
     ...(executedAt ? { executedAt } : {}),

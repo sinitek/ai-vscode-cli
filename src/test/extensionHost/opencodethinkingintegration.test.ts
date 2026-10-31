@@ -92,7 +92,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getGlobalHumanInteractionEnabled: () => true,
     getGlobalLoopMaxRounds: () => 1,
     getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
-    buildWorkspaceLoopExecutionModeByCli: () => ({ codex: "main_sub_multi_agent", claude: "main_sub_multi_agent", opencode: "main_sub_multi_agent", grok: "main_sub_multi_agent", dsh: "main_sub_multi_agent", "kimi-code": "main_sub_multi_agent", zcode: "main_sub_multi_agent" }),
     getDebugLogging: () => false,
     getMacTaskShell: () => "zsh",
     getEffectiveThinkingMode: () => "off",

@@ -1,6 +1,6 @@
 import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES } from "./modalComponents";
 import { ACCEPTANCE_PLAN_DIALOG_STYLES } from "./viewContentStyles/overlaysModals";
-export const LOOP_DEBATE_PANEL_STYLES = `      :root {
+export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
       }
@@ -482,18 +482,13 @@ ${DIALOG_SHELL_STYLES}
         background: var(--vscode-editorWidget-background);
         overflow: hidden;
       }
-      .message.moderator-turn .bubble,
       .message.main-turn .bubble,
-      .message.closed .bubble,
-      .message.forced-finalize .bubble {
+      .message.closed .bubble {
         border-color: var(--vscode-focusBorder);
         background: var(--vscode-peekViewResult-background, var(--vscode-editorWidget-background));
       }
       .message.subtask-joined .bubble {
         background: var(--vscode-sideBar-background);
-      }
-      .message.final-stance .bubble {
-        border-color: var(--vscode-charts-green, var(--vscode-focusBorder));
       }
       .message.error .bubble {
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));

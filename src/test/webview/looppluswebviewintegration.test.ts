@@ -3,7 +3,6 @@ import { test } from "node:test";
 import * as vm from "node:vm";
 
 import { getWebviewStrings } from "../../webview/viewContentStrings";
-import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
@@ -12,7 +11,6 @@ import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewCont
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
 
-const LOOP_EXECUTION_MODE_DEBATE = "debate_multi_agent";
 
 type RoleMessage = {
   id: string;
@@ -50,7 +48,6 @@ type BrowserState = {
   loopModelsByCli: Record<string, { main: string[]; subtask: string[] }>;
   selectedLoopModelsByCli: Record<string, { main: string; subtask: string }>;
   selectedLoopThinkingByCli: Record<string, { main: string; subtask: string }>;
-  loopExecutionModeByCli: Record<string, string>;
 };
 
 type RuntimeState = {
@@ -69,7 +66,6 @@ type PostedMessage = {
   loopSubtaskModel?: string;
   loopMainThinkingMode?: string;
   loopSubtaskThinkingMode?: string;
-  loopExecutionMode?: string;
   model?: string;
   tabId?: string;
   skipPromptHistory?: boolean;
@@ -347,7 +343,6 @@ function createState(activeTabId: string): BrowserState {
     },
     selectedLoopModelsByCli: { codex: { main: "entry-main", subtask: "entry-sub" } },
     selectedLoopThinkingByCli: { codex: { main: "xhigh", subtask: "low" } },
-    loopExecutionModeByCli: { codex: LOOP_EXECUTION_MODE_DEBATE },
   };
 }
 
@@ -453,11 +448,6 @@ function browserScript(): string {
     "}",
     "function isTabRunning(tabId) { return runningTabIds.has(tabId); }",
     "function syncConversationTabRunningFlowWatch() {}",
-    "function getLoopExecutionModeForCli(cli) {",
-    "  var targetCli = cli || state.currentCli;",
-    "  var value = state.loopExecutionModeByCli && state.loopExecutionModeByCli[targetCli];",
-    "  return value === \"debate_multi_agent\" ? value : \"main_sub_multi_agent\";",
-    "}",
     "function hideAddModelDialog() {}",
     "function showToast() {}",
     "function updateQueueIndicator() {}",
@@ -511,7 +501,6 @@ function loadBrowser(activeTabId: string): {
   messages: FakeElement;
   elements: {
     interactiveModeSelect: FakeElement;
-    loopExecutionModeSelect: FakeElement;
     codexLoopModelGroup: FakeElement;
     modelSelect: FakeElement;
     promptInput: { value: string };
@@ -525,7 +514,6 @@ function loadBrowser(activeTabId: string): {
   const messages = new FakeElement("div");
   const emptyState = new FakeElement("div");
   const interactiveModeSelect = control();
-  const loopExecutionModeSelect = control();
   const codexLoopModelGroup = control();
   const modelSelect = control();
   const promptInput = { value: "" };
@@ -537,7 +525,6 @@ function loadBrowser(activeTabId: string): {
     messages,
     emptyState,
     interactiveModeSelect,
-    loopExecutionModeSelect,
     codexLoopModelGroup,
     codexLoopMainModelSelect: control(),
     codexLoopMainThinkingMode: control(),
@@ -717,16 +704,11 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
   show("classic-main");
   assert.equal(state.interactiveMode, "loop");
   assert.equal(browser.elements.interactiveModeSelect.value, "loop");
-  assert.equal(browser.elements.loopExecutionModeSelect.style.display, "");
-  assert.equal(browser.elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE);
   assert.deepEqual(renderedBadges(messages), []);
   assert.equal(visibleMessageNodes(messages).length, 3);
 
   show("plus-main");
   assert.equal(state.interactiveMode, "loop_plus");
-  assert.equal(browser.elements.loopExecutionModeSelect.style.display, "none");
-  assert.equal(browser.elements.loopExecutionModeSelect.value, LOOP_EXECUTION_MODE_DEBATE);
-  assert.equal(state.loopExecutionModeByCli.codex, LOOP_EXECUTION_MODE_DEBATE);
   assert.deepEqual(renderedBadges(messages), []);
   const plusMainNodes = visibleMessageNodes(messages);
   assert.equal(plusMainNodes.length, 2);
@@ -740,7 +722,6 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
 
   show("graph-main");
   assert.equal(state.interactiveMode, "graph");
-  assert.equal(browser.elements.loopExecutionModeSelect.style.display, "none");
   assert.equal(browser.elements.codexLoopModelGroup.style.display, "");
   assert.deepEqual(renderedBadges(messages), []);
   assert.equal(visibleMessageNodes(messages).length, 2);
@@ -833,7 +814,7 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
   assert.deepEqual(renderedBadges(messages), []);
 });
 
-test("keeps Loop+ busy-send payload while classic debate, Graph priority, and Vibe stay unchanged", () => {
+test("keeps Loop+ busy-send payload while classic Loop, Graph, and Vibe stay unchanged", () => {
   const browser = loadBrowser("plus-main");
   const { api, state, posted } = browser;
   const entry = {
@@ -900,7 +881,7 @@ test("keeps Loop+ busy-send payload while classic debate, Graph priority, and Vi
   const classicSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
   assert.ok(classicSend);
   assert.equal(classicSend.interactiveMode, "loop");
-  assert.equal(classicSend.loopExecutionMode, LOOP_EXECUTION_MODE_DEBATE);
+  assert.equal(Object.prototype.hasOwnProperty.call(classicSend, "loopExecutionMode"), false);
   assert.equal(classicSend.loopMainModel, "changed-main");
   assert.equal(classicSend.loopMainThinkingMode, "max");
 

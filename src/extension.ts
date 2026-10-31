@@ -1,10 +1,5 @@
 import * as vscode from "vscode";
-import {
-  formatOrchestratorClarificationAnswer,
-  loopClarificationScope,
-  waitForOrchestratorClarification,
-  abortOrchestratorClarification,
-} from "./orchestratorClarification";
+import { formatOrchestratorClarificationAnswer, loopClarificationScope, waitForOrchestratorClarification } from "./orchestratorClarification";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -16,34 +11,8 @@ import {
   readHumanInteractionHistory,
   recordHumanInteractionHistory,
 } from "./humanInteractionHistory";
-import {
-  CONFIG_NAMESPACE,
-  getAutoOpenPanel,
-  getDefaultCli,
-  getRememberSelectedCli,
-  getAutoAddEditorContextTags,
-  getDebugLogging,
-  getMacTaskShell,
-  getCliCommand,
-  getCliArgs,
-  isInteractiveSupported,
-  getThinkingMode,
-  getThinkingWorkspaceFiles,
-} from "./cli/config";
-import {
-  buildCliArgs,
-  buildOpenCodeRunFailureMessage,
-  buildProcessLabel,
-  captureCliOutput,
-  createOpenCodeStreamActivityTracker,
-  parseOpenCodeRunOutput,
-  resolveCliCommand,
-  runCli,
-  runCliStream,
-  startOpenCodeServer,
-  isCliCommandAvailable,
-  type RunProcess,
-} from "./cli/commandRunner";
+import { CONFIG_NAMESPACE, getAutoOpenPanel, getDefaultCli, getAutoAddEditorContextTags, getDebugLogging, getMacTaskShell, getCliCommand, getCliArgs, isInteractiveSupported, getThinkingWorkspaceFiles } from "./cli/config";
+import { buildOpenCodeRunFailureMessage, buildProcessLabel, captureCliOutput, parseOpenCodeRunOutput, runCli, runCliStream, startOpenCodeServer, isCliCommandAvailable, type RunProcess } from "./cli/commandRunner";
 import {
   beginCliCommandAutoRepair,
   buildRepairedCliCommand,
@@ -54,49 +23,17 @@ import {
   waitForCliCommandAutoRepair,
 } from "./cli/cliCommandRepair";
 import { createPromptAutoRepairController } from "./extensionHost/promptAutoRepair";
-import { resolveOpenCodeModelForConfig, supportsCliManagedModelSelection } from "./cli/modelArgs";
-import {
-  CliName,
-  CLI_LIST,
-  DEFAULT_LOOP_EXECUTION_MODE,
-  InteractiveMode,
-  LoopExecutionMode,
-  MacTaskShell,
-  OpenCodeThinkingMessageKey,
-  OpenCodeThinkingState,
-  ThinkingMode,
-  ThinkingWorkspaceFile,
-  normalizeLoopExecutionMode,
-} from "./cli/types";
-import {
-  resolveOpenCodeThinkingCapability,
-  type OpenCodeThinkingCapability,
-} from "./cli/openCodeModelCapabilities";
+import { CliName, CLI_LIST, InteractiveMode, OpenCodeThinkingMessageKey, OpenCodeThinkingState, ThinkingMode, ThinkingWorkspaceFile } from "./cli/types";
+import { type OpenCodeThinkingCapability } from "./cli/openCodeModelCapabilities";
 import type { OpenCodeTaskListItem } from "./cli/openCodeTaskList";
-import {
-  resolveOpenCodeOneShotWatchdogTimeoutMs,
-} from "./cli/opencodewatchdog";
 import {
   createOpenCodeSubagentMonitor,
   OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
   resolveOpenCodeSubagentConnection,
   waitForOpenCodeServerReady,
 } from "./cli/openCodeSubagentMonitor";
-import {
-  appendOpenCodeFinalTextToTabStream,
-  consumeOpenCodeTabStreamChunk,
-  createOpenCodeTabStreamState,
-  type OpenCodeTabStreamAction,
-} from "./openCodeTabStream";
-import {
-  applyOpenCodeRuntimeModelOverlay,
-  normalizeOpenCodeModelRole,
-  parseOpenCodeConfigModels,
-  toOpenCodeConfigFieldRole,
-  validateOpenCodeModelOverride,
-  type OpenCodeCanonicalModelRole,
-  type OpenCodeModelRoleInput,
-} from "./cli/opencodeconfigmodels";
+import { appendOpenCodeFinalTextToTabStream, consumeOpenCodeTabStreamChunk, createOpenCodeTabStreamState } from "./openCodeTabStream";
+import { applyOpenCodeRuntimeModelOverlay, normalizeOpenCodeModelRole, parseOpenCodeConfigModels, validateOpenCodeModelOverride, type OpenCodeCanonicalModelRole, type OpenCodeModelRoleInput } from "./cli/opencodeconfigmodels";
 import { isCodeGraphWorkspaceIndexed } from "./cli/codegraphStatus";
 import { isOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
 import { parseGrokConfigModels } from "./cli/grokConfigModels";
@@ -110,45 +47,10 @@ import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
 import { GraphRunPanel } from "./webview/graphRunPanel";
-import {
-  buildWorkspacePathItems,
-  buildTempFilePath,
-  cleanupTempDir,
-  ensureTempDir,
-  exportRunStreamRecordsToJsonl,
-  exportSessionHistoryMessagesToTxt,
-  removeScheduledTaskAttachments,
-  saveScheduledTaskAttachments,
-  saveUploadedFiles,
-  startTempCleanup,
-} from "./webview/panelFileActions";
-import {
-  ChatMessage,
-  ChatMessageAction,
-  EditorContextState,
-  PanelMessage,
-  PanelState,
-  PromptContextOptions,
-  ConversationTabSummary,
-  PromptHistoryItem,
-  ScheduledTaskRecord,
-  SessionSummary,
-} from "./webview/types";
-import {
-  initLogger,
-  logCliRaw,
-  logCliStream,
-  logCliInteractiveStart,
-  logCliInteractiveOutput,
-  logDebug,
-  logEssential,
-  logError,
-  logInfo,
-  sanitizeEnv,
-  scheduleLogRetentionCleanup,
-  setDebugLogging,
-} from "./logger";
-import { buildErrorDetail, showErrorWithActions } from "./errorDisplay";
+import { buildWorkspacePathItems, removeScheduledTaskAttachments, saveScheduledTaskAttachments, startTempCleanup } from "./webview/panelFileActions";
+import { ChatMessage, ChatMessageAction, PanelMessage, PanelState, ScheduledTaskRecord } from "./webview/types";
+import { initLogger, logDebug, logEssential, logError, logInfo, scheduleLogRetentionCleanup, setDebugLogging } from "./logger";
+import { showErrorWithActions } from "./errorDisplay";
 import { appendBoundedUtf8Text } from "./boundedText";
 import {
   buildHiddenRetryFailureMessage,
@@ -160,46 +62,18 @@ import {
   resolveOpenCodeSuccessfulExitOutcome,
   shouldRecoverOpenCodeLoopMainSessionInFreshSession,
 } from "./openCodeRunCompletion";
-import {
-  createSubagentProgressController,
-  type SubagentProgressController,
-  type SubagentProgressLabels,
-} from "./subagentProgress";
+import { createSubagentProgressController, type SubagentProgressLabels } from "./subagentProgress";
 import {
   createLoopSubtaskProgressMonitor,
   mapLoopRunStatusToSubagentStatus,
 } from "./loopSubtaskProgress";
-import {
-  getEffectiveLoopSubtaskMaxThinkingMode,
-  resolveLoopSubtaskThinkingMode,
-} from "./loopSubtaskThinking";
-import {
-  buildNextLoopMainAiFailureState,
-  buildResetLoopMainAiFailureState,
-  isLoopMainAiFailureLimitReached,
-  LOOP_MAIN_AI_FAILURE_LIMIT,
-  normalizeLoopMainAiFailureCount,
-} from "./loopMainFailure";
+import { buildResetLoopMainAiFailureState } from "./loopMainFailure";
 import { ConfigManagerPanel } from "./webview/configPanel";
-import {
-  LoopDebateChatPanel,
-  type LoopDebateChatPanelRound,
-} from "./webview/loopDebatePanel";
+import { LoopGroupChatPanel } from "./webview/loopGroupChatPanel";
 import * as configService from "./config/configService";
 import { createConfigApplyQueue, type ConfigApplyResult } from "./config/configApplyQueue";
-import { ConfigItem, ConfigPlatform, CurrentConfig } from "./config/types";
-import { stripCodexSkillsBlock } from "./config/codexSkills";
-import { stripManagedClaudeSkillRules } from "./config/claudeSkills";
-import { stripManagedOpenCodeSkillRules } from "./config/geminiSkills";
 import { InteractiveRunnerManager } from "./interactive/manager";
-import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
-import {
-  decideCodexThreadForSelection,
-  normalizeCodexRunSelection,
-  type CodexRunSelection,
-} from "./interactive/codexThreadSelection";
-import { isCodexRetryProgressTraceKind } from "./interactive/codexRunnerRuntime";
-import { extractTaskListItemsFromForwardedCodexEvent } from "./interactive/codexAppServerProtocol";
+import { type CodexRunSelection } from "./interactive/codexThreadSelection";
 import {
   collectInteractiveSessionKeys,
   collectReferencedInteractiveSessionKeys,
@@ -213,12 +87,7 @@ import {
 } from "./interactive/metaStore";
 import { getHistoryRetentionDays, isTimestampWithinHistoryRetention } from "./historyRetention";
 import { isLocalSessionId } from "./interactive/sessionHistoryRepair";
-import {
-  buildLoopSubtaskExecutionPlan,
-  describeLoopExecutionPlan,
-  normalizeLoopWriteFiles,
-  type LoopSubtaskExecutionPlan,
-} from "./loopParallel";
+import { buildLoopSubtaskExecutionPlan } from "./loopParallel";
 import {
   createLoopSubtaskExecutionRoot,
   isLoopSubtaskLinkFailedError,
@@ -234,50 +103,7 @@ import {
   resolveOpenCodeHomeDir,
   resolveZcodeGlobalRulesPath,
 } from "./shared/userHomePaths";
-import {
-  buildLoopAnswerConclusionMarkdown,
-  buildLoopDebateNeedsReviewSummary,
-  buildLoopDebateModeratorArtifactFile,
-  buildLoopFinalSummaryMarkdown,
-  buildLoopGroupChatFinalStatusSection,
-  buildLoopMainSubChatTranscriptFile,
-  buildLoopMainSubSubtaskTurnBody,
-  buildLoopDebateParticipantArtifactFile,
-  buildLoopDebateParticipantTurnArtifactFile,
-  buildLoopDebatePaths,
-  formatLoopGroupChatMemberName,
-  findLatestLoopDebateModeratorSessionId,
-  findLatestLoopDebateParticipantSessionId,
-  LOOP_MAIN_SUB_CHAT_ROUND_KEY,
-  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
-  LOOP_DEBATE_MAX_BATCH_SPEAKERS,
-  LOOP_DEBATE_MODERATOR_ID,
-  LOOP_DEBATE_MODERATOR_TITLE,
-  LOOP_DEBATE_BLUE_TEAM_ROLE,
-  LOOP_DEBATE_PARTICIPANT_ROLES,
-  LOOP_DEBATE_RED_TEAM_ROLE,
-  isLoopDebateAdversarialParticipantRole,
-  normalizeLoopDebateSessionId,
-  normalizeLoopDebateModeratorAction,
-  normalizeLoopDebateSpeakerIds,
-  normalizeLoopDebateParticipantStance,
-  parseLoopDebateChatTranscript,
-  resolveLoopAnswerConclusion,
-  isLoopTaskRunOrphaned,
-  resolveLoopTaskRunControlState,
-  selectDefaultLoopDebateOpeningSpeakerIds,
-  validateLoopDebateConsensus,
-  type LoopDebateActiveSpeakerRecord,
-  type LoopDebateConsensusRecord,
-  type LoopDebateDisagreementRecord,
-  type LoopDebateModeratorDecisionRecord,
-  type LoopDebateParticipantRecord,
-  type LoopDebateParticipantRole,
-  type LoopDebateParticipantStance,
-  type LoopDebatePaths,
-  type LoopDebateRoundRecord,
-  type LoopDebateRoundStatus,
-} from "./loopDebate";
+import { buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, formatLoopGroupChatMemberName, resolveLoopAnswerConclusion, isLoopTaskRunOrphaned, resolveLoopTaskRunControlState } from "./loopGroupChat";
 import {
   readConversationTabRunningFlowLoopPlus,
   selectActiveConversationTabRunningFlowIds,
@@ -291,78 +117,18 @@ import {
   writeLoopAskThreadFile,
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
-import {
-  LOOP_DEBATE_MAX_PARTICIPANTS,
-  LOOP_DEBATE_MIN_PARTICIPANTS,
-  buildLoopDebateBriefMarkdown,
-  buildLoopDebateChatTurnMarkdown,
-  buildLoopDebateDialogueClosedMarkdown,
-  buildLoopDebateDialogueTurnChatEventMarkdown,
-  buildLoopDebateFinalParticipantMarkdown,
-  buildLoopDebateInitialChatMarkdown,
-  buildLoopDebateModeratorTurnMarkdown,
-  buildLoopDebateParticipantRosterChatMarkdown,
-  buildLoopDebateRuntimeForcedFinalizeMarkdown,
-  type LoopDebateParticipantDefinition,
-} from "./loopPromptBuilders";
-import {
-  runLoopDebateConsensusSummary,
-  runLoopDebateModerator,
-  runLoopDebateParticipantBatch,
-  runLoopDebateParticipantRoster,
-  type LoopDebateParticipantBatchRunItem,
-  type LoopDebateRunnerDeps,
-  type LoopDebateSessionState,
-} from "./loopDebateRunner";
-import {
-  appendLoopRound,
-  bindLoopTaskToSession,
-  bindLoopTaskToRuntimeTarget,
-  buildLoopSessionIdsByCli,
-  buildLoopTaskStoreFile,
-  buildLoopSubtaskCommunicationFile,
-  cleanupLoopCommunicationRetention,
-  cleanupLoopTaskStoreRetention,
-  ensureLoopCommunicationFiles,
-  ensureLoopTaskMaxRoundsAtLeast,
-  getLoopCommunicationPaths,
-  getLoopTaskStoreSessionFile,
-  listLoopTaskStoreFiles,
-  prepareLoopSubtaskCommunicationFile,
-  readLoopTaskRecord,
-  readLoopTaskStore,
-  normalizeLoopTaskOriginProfile,
-  updateLoopTaskRecord,
-  writeLoopTaskStore,
-  type LoopAcceptance,
-  type LoopAcceptanceCheck,
-  type LoopMainDecision,
-  type LoopRoundRecord,
-  type LoopRoundSummary,
-  type LoopSubtaskDecision,
-  type LoopSubtaskRecord,
-  type LoopTaskRecord,
-  type LoopTaskStore,
-} from "./loopTaskStore";
+import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { parseCliName, planBoundSubtaskConfigApply } from "./subtaskCliRoute";
 import { createLoopOrchestrationOwnershipTracker } from "./loopOrchestrationOwnership";
-import {
-  finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps,
-  type LoopSubtaskCompletionOptions,
-} from "./loopSubtaskLifecycle";
 import {
   LoopMainAutoCompactFlights,
   mergeCompactTranscriptIntoLive,
   settleAutoCompactAfterPrompt,
   type LoopMainAutoCompactReservation,
 } from "./loopMainAutoCompact";
-import {
-  buildGraphRunIdsBySessionByCli,
-  listGraphRuns,
-  readGraphRunRecord,
-} from "./graph/graphStore";
+import { readGraphRunRecord } from "./graph/graphStore";
 import type { GraphRunControlSource } from "./graph/graphRunControl";
 import type { GraphAutoWakeAttemptResult } from "./graph/graphAutoWake";
 import {
@@ -391,64 +157,17 @@ import {
   type HumanInteractionSubmission,
 } from "./humanInteraction";
 import { persistPromptRunSummary } from "./memory/memoryConsolidator";
-import { resolveWorkspaceMemoryPaths } from "./memory/memoryPaths";
-import {
-  getLongTermMemoryRuntimeDisableReason,
-  isLongTermMemoryRuntimeEnabled,
-  isMemoryRuntimeOperationAllowed,
-  type MemoryRuntimeGateSettings,
-} from "./memory/runtimeGate";
-import { ensureWorkspaceHarnessScaffold, isWorkspaceHarnessInstalled } from "./workspaceScaffold";
+import { isMemoryRuntimeOperationAllowed } from "./memory/runtimeGate";
+import { isWorkspaceHarnessInstalled } from "./workspaceScaffold";
 import {
   type ContextCompactionOptions,
   isAutoContextCompactionCli,
   runContextCompactionWithDeps,
 } from "./contextCompactionRunner";
-import {
-  buildHiddenRetryPrompt,
-  buildRuntimeModelPrompt,
-  buildThinkingPrompt,
-  collectCodexImagePathsFromPrompt,
-  normalizePromptContextTags,
-  redactPromptArg,
-  resolveRecordedExecutionModel,
-} from "./promptRuntime";
-import {
-  createTraceLineFilterState,
-  formatCodexExecSegmentForDisplay,
-  formatTraceSegmentForDisplay,
-  getTraceSegmentKind,
-  isTraceSegmentStart,
-  normalizeTraceContentForDisplay,
-  resetTraceLineFilterState,
-  resolveTraceKind,
-  resolveTraceMerge,
-  shouldIgnoreTraceLine,
-  type TraceDisplayResult,
-  type TraceMessageKind,
-} from "./traceDisplay";
-import {
-  getLatestSessionIdFromRecords,
-  getSessionKey,
-  writeSessionFile,
-  type SessionStore,
-} from "./sessionStore";
-import {
-  buildConversationTabSessionLookupKey,
-  createSessionTabsController,
-  findConversationTabForLoopResume,
-  getConversationTabSessionIdForCli,
-  isConversationTabExecutionLocked,
-  resolveConversationTabAutoInteractiveMode,
-  sanitizeConversationTabRecordForWorkspaceSettings,
-  sanitizeConversationTabSessionIdMap,
-  setConversationTabSessionIdForCli,
-  switchConversationTabCli,
-  type ConversationTabRecord,
-  type ConversationTabsState,
-  type PendingSessionDraft,
-  type SessionTabsController,
-} from "./sessionTabs";
+import { buildHiddenRetryPrompt, buildThinkingPrompt, collectCodexImagePathsFromPrompt, resolveRecordedExecutionModel } from "./promptRuntime";
+import { createTraceLineFilterState, formatCodexExecSegmentForDisplay, formatTraceSegmentForDisplay, getTraceSegmentKind, isTraceSegmentStart, normalizeTraceContentForDisplay, resetTraceLineFilterState, resolveTraceKind, resolveTraceMerge, shouldIgnoreTraceLine, type TraceMessageKind } from "./traceDisplay";
+import { getSessionKey, writeSessionFile, type SessionStore } from "./sessionStore";
+import { createSessionTabsController, getConversationTabSessionIdForCli, isConversationTabExecutionLocked, resolveConversationTabAutoInteractiveMode, switchConversationTabCli, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "./sessionTabs";
 import {
   createSessionLifecycleController,
   extractSessionId,
@@ -456,39 +175,7 @@ import {
   type ProcessTitleState,
   type SessionLifecycleController,
 } from "./sessionLifecycle";
-import {
-  buildModelState as buildModelSelectionState,
-  countStoreModels,
-  createEmptyModelSelectionStoreState,
-  deleteCliModelFromStore,
-  ensureCliModelStore as ensureCliModelSelectionStore,
-  getEffectiveCliArgs as getEffectiveCliArgsFromStore,
-  getManagedModelOptionsForCliFromStore,
-  getManagedModelOptionsForConfigFromStore,
-  getModelOptionsForCliFromStore,
-  getLoopModelOptionsForCliFromStore,
-  getModelOptionsForConfigFromStore,
-  getOpenCodeRoleModelFromStore,
-  getOpenCodeRoleVariantFromStore,
-  getOpenCodeVariantFromStore,
-  getSelectedCliModelFromStore,
-  getSelectedLoopCliModelFromStore,
-  getSelectedLoopThinkingModeFromStore,
-  loadModelStore as loadModelSelectionStore,
-  normalizeCliModelName,
-  moveCliModelInStore,
-  readModelStore as readModelSelectionStore,
-  renameCliModelInStore,
-  selectCliModelInStore,
-  selectCliLoopModelInStore,
-  setSelectedLoopThinkingModeInStore,
-  setOpenCodeRoleModelInStore,
-  setOpenCodeRoleVariantInStore,
-  setOpenCodeVariantInStore,
-  summarizeModelStoreByConfigId,
-  writeModelStore as writeModelSelectionStore,
-  type CliModelStore,
-} from "./modelSelectionStore";
+import { countStoreModels, createEmptyModelSelectionStoreState, getManagedModelOptionsForConfigFromStore, getLoopModelOptionsForCliFromStore, getModelOptionsForConfigFromStore, getOpenCodeRoleVariantFromStore, normalizeCliModelName, summarizeModelStoreByConfigId, type CliModelStore } from "./modelSelectionStore";
 import { createGraphControlsHost, type GraphControlsHost } from "./extensionHost/graphControls";
 import {
   createLoopPlusPersistedTaskRefresher,
@@ -506,7 +193,6 @@ import type { InteractiveTabRun } from "./extensionHost/promptExecutionShared";
 import {
   createLoopOrchestrationHost,
   getLoopSubtaskLaunchDelayMs,
-  LOOP_DEBATE_DEFAULT_DEBATE_ROUND,
   LOOP_PARALLEL_SUBTASK_MAX,
   LOOP_SUBTASK_RETRY_MAX_RETRIES,
 } from "./extensionHost/loopOrchestration";
@@ -526,13 +212,7 @@ import {
   type PromptRunTarget,
 } from "./extensionHost/graphRuntime";
 import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptRunController";
-import {
-  loadWorkspaceSettings as loadWorkspaceSettingsFromStore,
-  saveWorkspaceSettings as saveWorkspaceSettingsToStore,
-  trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore,
-  type ConversationTabRecordForWorkspaceSettings,
-  type WorkspaceSettings,
-} from "./workspaceSettingsStore";
+import { trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type WorkspaceSettings } from "./workspaceSettingsStore";
 import { normalizeLoopPlusAcceptancePlanSnapshotForStorage } from "./loopPlusAcceptancePlan";
 import {
   buildLoopPlusAcceptancePlanSelectionPanelValue,
@@ -554,146 +234,11 @@ import {
   writeScheduledTaskStore,
 } from "./scheduledTaskStore";
 import { registerExtensionCommands } from "./commandRegistry";
-import {
-  buildEditorContextState,
-  isOpenCodeThinkingRequestCurrent,
-  buildLoopMainResumeText,
-  buildLoopSubtaskBatchCompletedText,
-  buildLoopSubtaskBatchStartedText,
-  buildLoopSubtaskExecutionGroupStartedText,
-  buildLoopSubtaskRetryText as buildLoopSubtaskRetryTextWithLimit,
-  buildLoopSubtaskStartedText,
-  buildLoopTaskCompletedText,
-  buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit,
-  buildLoopTaskResumedText,
-  buildLoopTaskStartedText,
-  buildPanelStateWithDeps,
-  buildSessionLabelFromPrompt,
-  buildUserChatMessage,
-  ensureLoopMainSubChatTranscriptWithDeps,
-  formatLoopEstimatedRemainingRounds,
-  formatLoopWriteFiles,
-  buildPromptWithAutoContext as buildPromptWithAutoContextFromPanelStateBuilder,
-  getLatestAssistantResponseForLongTermMemory,
-  getLoopMainSubChatMainTitle,
-  getLoopSubtaskDisplayTitle,
-  isCliName,
-  isLoopDebateGroupChatTask,
-  maybeInjectLongTermMemoryForPromptWithEditorContext,
-  normalizeLoopRound,
-  normalizeLoopSubtaskId,
-  normalizeLoopTaskId,
-  resolveLoopConversationTabContextFromMessages,
-  resolveLoopRunConversationTabContext,
-  resolveLoopSubtaskConversationContextFromMessages,
-  shouldUseFallbackSessionLabel as shouldUseFallbackSessionLabelWithSet,
-  type LoopConversationTabContext,
-  type LoopSubtaskConversationContext,
-} from "./panelStateBuilder";
-import {
-  appendHiddenRetryErrorTraceMessage,
-  buildHiddenRetryLimitMessage,
-  buildHiddenRetryQueuedMessage,
-  buildHiddenRetryStartedMessage,
-  collectRecentLoopTaskIdsFromMessages,
-  createHiddenRetryErrorTraceMessage,
-  createLoopDebateChatPanelCoordinator,
-  createPanelDiagnosticsInspector,
-  detectLoopVerificationSignals,
-  formatLoopVerificationState,
-  getAttemptFailureMessage,
-  getErrorInfo,
-  hasCompleteLoopCompletionMessages,
-  HIDDEN_RETRY_MAX_RETRIES,
-  isAbortErrorInfo,
-  isCompleteLoopFinalSummaryContent,
-  isHiddenRetryEligibleAttempt,
-  isLoopAnswerConclusionMessageForTask,
-  isLoopFinalSummaryMessageForTask,
-  isLoopResumePrompt,
-  isLoopTaskResumable,
-  isLoopTaskSessionCompatible,
-  normalizeLoopResumePrompt,
-  waitForHiddenRetryDelay,
-} from "./panelDiagnostics";
-import {
-  applyConfigOrder,
-  buildCliCommandNotFoundMessage,
-  buildCodexImageSupportWarningKey,
-  buildLoopCompletedConclusionAndSummaryMarkdown,
-  buildLoopDebateConsensusReachedText,
-  buildLoopDebateConsensusStartedText,
-  buildLoopDebateDialogueTurnStartedText,
-  buildLoopDebateFinalStanceStartedText,
-  buildLoopDebateModeratorFinishedText,
-  buildLoopDebateModeratorStartedText,
-  buildLoopDebateNeedsReviewText,
-  buildLoopDebateParticipantFinishedText,
-  buildLoopDebateParticipantRosterFailedText,
-  buildLoopDebateParticipantRosterFinishedText,
-  buildLoopDebateParticipantRosterStartedText,
-  buildLoopDebateParticipantStartedText,
-  buildLoopDebateParticipantsCollectedText,
-  buildLoopDebateRerunText,
-  buildLoopDebateReuseText,
-  buildLoopDebateStartedText,
-  buildLoopRoundSummary,
-  buildLoopSupplementalRequirementsLines,
-  createConfigHeartbeatCoordinator,
-  getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings,
-  loadConfigStateWithDeps,
-  loadConfigStateByCli,
-  matchesActiveConfig,
-  normalizeCliInstallStatus,
-  normalizeJson,
-  normalizeLoopSupplementalRequirement,
-  probeCodexImageSupportStatus,
-  resolveLoopResumeRound,
-  resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState,
-  type CodexImageSupportStatus,
-  type ConfigHeartbeatSnapshot,
-} from "./webviewCommandCoordinator";
-import {
-  buildPromptHistoryState as buildPromptHistoryStateFromStore,
-  clearPromptHistoryStore,
-  cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces,
-  collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup,
-  deletePromptHistoryFile as deletePromptHistoryStoreFile,
-  ensurePromptHistoryStore as ensurePromptHistoryStoreState,
-  getPromptHistoryFilePath as getPromptHistoryStoreFilePath,
-  loadPromptHistoryStore as loadPromptHistoryStoreFromStore,
-  readPromptHistoryFile as readPromptHistoryStoreFile,
-  recordPromptHistoryInStore,
-  writePromptHistoryFile as writePromptHistoryStoreFile,
-  type PromptHistoryStore,
-} from "./promptHistoryStore";
-import {
-  appendAssistantChunkToStore,
-  appendMessageToStore,
-  buildTaskRunCompletionText as buildTaskRunCompletionTextWithLabels,
-  cleanupTaskStoreRetention as cleanupTaskStoreRetentionWithDeps,
-  getActiveAssistantContent as getActiveAssistantContentFromStore,
-  isInteractiveMode,
-  isLoopTaskRole,
-  isMacTaskShell,
-  isThinkingMode,
-  isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit,
-  isLoopTaskCompleted,
-  normalizeVisibleInteractiveMode,
-  normalizeRawStreamContent,
-  readTaskStore as readTaskStoreWithDeps,
-  resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps,
-  resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps,
-  sendPanelMessageWithActiveTab,
-  writeTaskStore as writeTaskStoreWithDeps,
-  type LoopTaskRole,
-  type LoopTaskStatus,
-  type RunActivity,
-  type TaskRunDraft,
-  type TaskRunRecord,
-  type TaskRunStatus,
-  type TaskStore,
-} from "./promptRunState";
+import { buildEditorContextState, buildLoopMainResumeText, buildLoopSubtaskBatchCompletedText, buildLoopSubtaskBatchStartedText, buildLoopSubtaskExecutionGroupStartedText, buildLoopSubtaskRetryText as buildLoopSubtaskRetryTextWithLimit, buildLoopSubtaskStartedText, buildLoopTaskCompletedText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, buildLoopTaskResumedText, buildLoopTaskStartedText, buildPanelStateWithDeps, buildSessionLabelFromPrompt, buildUserChatMessage, ensureLoopMainSubChatTranscriptWithDeps, formatLoopEstimatedRemainingRounds, buildPromptWithAutoContext as buildPromptWithAutoContextFromPanelStateBuilder, getLatestAssistantResponseForLongTermMemory, getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, isCliName, maybeInjectLongTermMemoryForPromptWithEditorContext, normalizeLoopTaskId, resolveLoopConversationTabContextFromMessages, resolveLoopRunConversationTabContext, shouldUseFallbackSessionLabel as shouldUseFallbackSessionLabelWithSet, type LoopConversationTabContext } from "./panelStateBuilder";
+import { appendHiddenRetryErrorTraceMessage, buildHiddenRetryLimitMessage, buildHiddenRetryQueuedMessage, buildHiddenRetryStartedMessage, createLoopGroupChatPanelCoordinator, createPanelDiagnosticsInspector, getAttemptFailureMessage, getErrorInfo, HIDDEN_RETRY_MAX_RETRIES, isAbortErrorInfo, isHiddenRetryEligibleAttempt, isLoopResumePrompt, normalizeLoopResumePrompt, waitForHiddenRetryDelay } from "./panelDiagnostics";
+import { buildCliCommandNotFoundMessage, buildCodexImageSupportWarningKey, buildLoopCompletedConclusionAndSummaryMarkdown, buildLoopRoundSummary, buildLoopSupplementalRequirementsLines, createConfigHeartbeatCoordinator, getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings, loadConfigStateWithDeps, loadConfigStateByCli, normalizeCliInstallStatus, normalizeLoopSupplementalRequirement, probeCodexImageSupportStatus, resolveLoopResumeRound, resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState, type CodexImageSupportStatus } from "./webviewCommandCoordinator";
+import { type PromptHistoryStore } from "./promptHistoryStore";
+import { appendAssistantChunkToStore, appendMessageToStore, buildTaskRunCompletionText as buildTaskRunCompletionTextWithLabels, cleanupTaskStoreRetention as cleanupTaskStoreRetentionWithDeps, isInteractiveMode, isLoopTaskRole, isMacTaskShell, isThinkingMode, isLoopTaskCompleted, normalizeVisibleInteractiveMode, normalizeRawStreamContent, readTaskStore as readTaskStoreWithDeps, sendPanelMessageWithActiveTab, writeTaskStore as writeTaskStoreWithDeps, type LoopTaskRole, type RunActivity, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "./promptRunState";
 let currentCli: CliName;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
@@ -709,7 +254,7 @@ let promptHistoryStore: PromptHistoryStore;
 let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
-const loopDebateChatPanelsByTaskId = new Map<string, LoopDebateChatPanel>();
+const loopGroupChatChatPanelsByTaskId = new Map<string, LoopGroupChatPanel>();
 const graphRunPanelsByRunId = new Map<string, GraphRunPanel>();
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
@@ -1353,7 +898,6 @@ async function schedulePromptTask(
       loopSubtaskThinkingMode: isThinkingMode(message.loopSubtaskThinkingMode)
         ? normalizeThinkingModeForCli(message.loopSubtaskCli ?? cli, message.loopSubtaskThinkingMode)
         : undefined,
-      loopExecutionMode: message.loopExecutionMode,
       attachments: attachmentResult.attachments,
     });
     upsertScheduledTask(store, task, Date.now());
@@ -1429,7 +973,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
   const executionConfig = resolveScheduledTaskExecutionConfigForTask(
     task,
     getWorkspaceInteractiveMode(task.cli),
-    getWorkspaceLoopExecutionMode(task.cli),
   );
   const displayPrompt = buildScheduledAttachmentPrompt(task);
   const contextBuild = buildPromptWithAutoContextFromPanelStateBuilder(displayPrompt, task.contextOptions);
@@ -1459,7 +1002,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
     ...(task.loopSubtaskConfigId ? { loopSubtaskConfigId: task.loopSubtaskConfigId } : {}),
     ...(task.loopMainThinkingMode ? { loopMainThinkingMode: task.loopMainThinkingMode } : {}),
     ...(task.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: task.loopSubtaskThinkingMode } : {}),
-    ...(executionConfig.loopExecutionMode ? { loopExecutionMode: executionConfig.loopExecutionMode } : {}),
     ...(imagePaths.length ? { imagePaths } : {}),
     ...(executionConfig.interactiveMode === "graph" ? { skipLongTermMemoryPersist: true } : {}),
     throwOnError: true,
@@ -1557,7 +1099,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     setSelectedLoopThinkingMode,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
-    setWorkspaceLoopExecutionModeForCli,
+
     loadModelStore: () => { modelStore = loadModelStore(); },
     normalizeLoopMaxRounds,
     isCliName,
@@ -1579,7 +1121,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getActiveConversationTabId,
     getActiveConversationTab,
     resolveLoopSubtaskConversationContext,
-    getWorkspaceLoopExecutionMode,
+
     buildPromptWithAutoContext: buildPromptWithAutoContextFromPanelStateBuilder,
     maybeInjectLongTermMemoryForPrompt: (displayPrompt, modelPrompt, contextTags) => (
       maybeInjectLongTermMemoryForPromptWithEditorContext(displayPrompt, modelPrompt, contextTags, {
@@ -1733,7 +1275,7 @@ function buildPanelStateFromConfigState(
     getGlobalLoopPlusDecisionSubtaskMax,
     getGlobalLoopPlusMaxAcceptances,
     getGlobalLoopSubtaskMaxThinkingMode,
-    buildWorkspaceLoopExecutionModeByCli,
+
     getDebugLogging,
     getCliEnabledByName: () => readToolSettings().cliEnabledByName,
     getMacTaskShell,
@@ -1952,10 +1494,10 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
   });
 }
 
-const promptRunRuntimeHost = createPromptRunRuntimeHost({ getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopDebateChatMessageAction: (taskId, round) => buildLoopDebateChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeConversationTabAndRefreshPanel(tabId), handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
+const promptRunRuntimeHost = createPromptRunRuntimeHost({ getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopGroupChatMessageAction: (taskId, round) => buildLoopGroupChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeConversationTabAndRefreshPanel(tabId), handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
 const modelSettingsHost = createModelSettingsHost({ getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatCoordinator.getSnapshot(), getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
-const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getWorkspaceLoopExecutionMode, setWorkspaceLoopExecutionModeForCli, buildWorkspaceLoopExecutionModeByCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getGlobalLoopPlusMaxAcceptances, getGlobalLoopSubtaskMaxThinkingMode, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, selectLoopSubtaskCli, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
+const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getGlobalLoopPlusMaxAcceptances, getGlobalLoopSubtaskMaxThinkingMode, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, selectLoopSubtaskCli, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
   selectCliModelFromStore(cli, model, configId);
@@ -1977,54 +1519,17 @@ async function updateOpenCodeRoleModelForConfig(
 ): Promise<string | null> {
   return updateOpenCodeRoleModelForConfigFromStore(role, model, configId);
 }
-const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopDebateChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
+const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopGroupChatChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
 const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, normalizeChatGraphRunId, resolveGraphRunIdFromMessages, resolveSessionGraphRunIdFromMessages, resolveConversationTabGraphRunId, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, createGraphNodeRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
-  LOOP_DEBATE_BLUE_TEAM_ROLE,
-  LOOP_DEBATE_MAX_BATCH_SPEAKERS,
-  LOOP_DEBATE_MAX_DIALOGUE_TURNS,
-  LOOP_DEBATE_MAX_PARTICIPANTS,
-  LOOP_DEBATE_MIN_PARTICIPANTS,
-  LOOP_DEBATE_MODERATOR_ID,
-  LOOP_DEBATE_PARTICIPANT_ROLES,
-  LOOP_DEBATE_RED_TEAM_ROLE,
+
   appendLoopRound,
   appendMessageToStore,
   appendSystemMessageForLoop,
   applyLoopMainDecision,
   bindLoopTaskToSession,
   buildLoopCompletedConclusionAndSummaryMarkdown,
-  buildLoopDebateBriefMarkdown,
-  buildLoopDebateChatTurnMarkdown,
-  buildLoopDebateConsensusReachedText,
-  buildLoopDebateConsensusStartedText,
-  buildLoopDebateDialogueClosedMarkdown,
-  buildLoopDebateDialogueTurnChatEventMarkdown,
-  buildLoopDebateDialogueTurnStartedText,
-  buildLoopDebateFinalParticipantMarkdown,
-  buildLoopDebateFinalStanceStartedText,
-  buildLoopDebateInitialChatMarkdown,
-  buildLoopDebateModeratorArtifactFile,
-  buildLoopDebateModeratorFinishedText,
-  buildLoopDebateModeratorStartedText,
-  buildLoopDebateModeratorTurnMarkdown,
-  buildLoopDebateNeedsReviewSummary,
-  buildLoopDebateNeedsReviewText,
-  buildLoopDebateParticipantArtifactFile,
-  buildLoopDebateParticipantFinishedText,
-  buildLoopDebateParticipantRosterChatMarkdown,
-  buildLoopDebateParticipantRosterFailedText,
-  buildLoopDebateParticipantRosterFinishedText,
-  buildLoopDebateParticipantRosterStartedText,
-  buildLoopDebateParticipantStartedText,
-  buildLoopDebateParticipantsCollectedText,
-  buildLoopDebatePaths,
-  buildLoopDebateRerunText,
-  buildLoopDebateReuseText,
-  buildLoopDebateRuntimeForcedFinalizeMarkdown,
-  buildLoopDebateStartedText,
-  buildLoopMainSubChatTranscriptFile,
   buildLoopMainSubSubtaskTurnBody,
   buildLoopRoundSummary,
   buildLoopSubtaskBatchCompletedText,
@@ -2044,32 +1549,22 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   createSubagentProgressController,
   ensureLoopMainSubChatTranscript,
   errorToMessage,
-  extractJsonObjectText,
   finalizeLoopSubtaskRun,
-  findLatestLoopDebateModeratorSessionId,
-  findLatestLoopDebateParticipantSessionId,
   formatLoopEstimatedRemainingRounds,
   formatLoopGroupChatMemberName,
   getActiveLoopSubtaskIds,
   getLastLoopAssistantContent,
   getLoopCommunicationPaths,
-  getLoopDecisionSubtasks,
   getLoopMainSubChatMainTitle,
   getLoopMessagesForTarget,
   getLoopRoundRunStatus,
   getLoopSubtaskDisplayTitle,
-  isLoopDebateAdversarialParticipantRole,
   isLoopTaskExecutionInterrupted,
   logError,
   mapLoopRunStatusToSubagentStatus,
   markLoopSubtaskRunFinished,
   markLoopTaskInterrupted,
   normalizeLoopContinuePromptForPrompt,
-  normalizeLoopDebateModeratorAction,
-  normalizeLoopDebateParticipantStance,
-  normalizeLoopDebateSessionId,
-  normalizeLoopDebateSpeakerIds,
-  normalizeLoopExecutionMode,
   parseLoopMainDecision,
   persistLoopMessagesForTarget,
   prepareLoopSubtaskCommunicationFile,
@@ -2080,17 +1575,11 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   resolvePromptRunModelForRole,
   resolvePromptRunTargetSessionId,
   resolvePromptRunThinkingModeForRole,
-  runLoopDebateConsensusSummary,
-  runLoopDebateModerator,
-  runLoopDebateParticipantBatch,
-  runLoopDebateParticipantRoster,
   runPrompt,
-  selectDefaultLoopDebateOpeningSpeakerIds,
   sendPanelMessage,
   switchVisibleConversationTabForLoop,
   t,
   updateLoopTaskRecord,
-  validateLoopDebateConsensus,
 });
 
 const { runPromptParallel } = createPromptParallelRuntimeHost({
@@ -3178,20 +2667,20 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
 }> {
   const profile = normalizeLoopTaskOriginProfile(task.originProfile);
   if (!profile) {
-    return { ok: false, message: t("loopDebateChat.originalRuntimeUnavailable") };
+    return { ok: false, message: t("loopGroupChatChat.originalRuntimeUnavailable") };
   }
   try {
     const config = await configService.getConfigById(task.cli, profile.configId);
     if (!config) {
-      return { ok: false, message: t("loopDebateChat.originalConfigMissing", { configId: profile.configId }) };
+      return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: profile.configId }) };
     }
     const applied = await applyConfigById(task.cli, profile.configId);
     if (applied !== "applied") {
-      return { ok: false, message: t("loopDebateChat.originalConfigMissing", { configId: profile.configId }) };
+      return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: profile.configId }) };
     }
     const prepared = prepareLoopOriginContinuationTarget(task);
     if (!prepared?.tabId) {
-      return { ok: false, message: t("loopDebateChat.continueUnavailable") };
+      return { ok: false, message: t("loopGroupChatChat.continueUnavailable") };
     }
     await switchVisibleConversationTabForLoop(prepared.tabId);
     const mainModel = task.modelRouting?.main.model ?? null;
@@ -3244,11 +2733,11 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
       }
       const subtaskConfig = await configService.getConfigById(boundSubtaskCli, subtaskConfigId);
       if (!subtaskConfig) {
-        return { ok: false, message: t("loopDebateChat.originalConfigMissing", { configId: subtaskConfigId }) };
+        return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
       }
       const subtaskApplied = await applyConfigById(boundSubtaskCli, subtaskConfigId);
       if (subtaskApplied !== "applied") {
-        return { ok: false, message: t("loopDebateChat.originalConfigMissing", { configId: subtaskConfigId }) };
+        return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
       }
       if (boundSubtaskCli === "opencode") {
         if (subtaskModel) {
@@ -3279,10 +2768,9 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
   }
 }
 
-const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
+const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   getExtensionUri: () => extensionUri,
-  panelsByTaskId: loopDebateChatPanelsByTaskId,
-  defaultDebateRound: LOOP_DEBATE_DEFAULT_DEBATE_ROUND,
+  panelsByTaskId: loopGroupChatChatPanelsByTaskId,
   normalizeTaskId: normalizeLoopTaskId,
   normalizeSupplementalRequirement: normalizeLoopSupplementalRequirement,
   appendSupplementalRequirement: appendLoopSupplementalRequirement,
@@ -3338,7 +2826,7 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
     }
     return askLoopMainModelSession({
       question,
-      modelPrompt: t("loopDebateChat.askModelPrompt", { question }),
+      modelPrompt: t("loopGroupChatChat.askModelPrompt", { question }),
       target,
       isTabRunActive,
       readMessages: (promptTarget) => {
@@ -3354,10 +2842,10 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
       runPrompt,
       onProgress: hooks?.onProgress,
       isAborted: hooks?.isAborted,
-      unavailableMessage: t("loopDebateChat.askUnavailable"),
-      busyMessage: t("loopDebateChat.askBusy"),
-      emptyMessage: t("loopDebateChat.askEmpty"),
-      failedMessage: (detail) => t("loopDebateChat.askFailed", { detail }),
+      unavailableMessage: t("loopGroupChatChat.askUnavailable"),
+      busyMessage: t("loopGroupChatChat.askBusy"),
+      emptyMessage: t("loopGroupChatChat.askEmpty"),
+      failedMessage: (detail) => t("loopGroupChatChat.askFailed", { detail }),
     });
   },
   abortMainModelRun: (task) => {
@@ -3388,7 +2876,7 @@ const loopDebateChatPanelCoordinator = createLoopDebateChatPanelCoordinator({
   ),
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
-  pickTask: pickLoopDebateTask,
+  pickTask: pickLoopGroupChatTask,
   t,
 });
 
@@ -3568,7 +3056,7 @@ async function openGraphRunPanel(arg?: unknown): Promise<void> {
 }
 
 async function openLoopGroupChatPanel(arg?: unknown): Promise<void> {
-  await loopDebateChatPanelCoordinator.open(arg);
+  await loopGroupChatChatPanelCoordinator.open(arg);
 }
 
 function normalizeLoopContinuePrompt(value: unknown): string {
@@ -3582,7 +3070,7 @@ function normalizeLoopContinuePromptForPrompt(value: unknown): string | null {
 }
 
 function refreshOpenLoopGroupChatPanelForTask(taskId: string): void {
-  loopDebateChatPanelCoordinator.refreshOpenPanelForTask(taskId);
+  loopGroupChatChatPanelCoordinator.refreshOpenPanelForTask(taskId);
 }
 
 function resolveActiveConversationLoopTaskId(): string | null {
@@ -3593,7 +3081,7 @@ function resolveActiveConversationLoopTaskId(): string | null {
   return resolveConversationTabLoopContext(activeTab).loopTaskId;
 }
 
-async function pickLoopDebateTask(tasks: LoopTaskRecord[]): Promise<LoopTaskRecord | null> {
+async function pickLoopGroupChatTask(tasks: LoopTaskRecord[]): Promise<LoopTaskRecord | null> {
   const items = tasks.map((task) => ({
     label: task.rootPrompt.split(/\r?\n/g)[0]?.slice(0, 80) || task.id,
     description: `${task.status} · ${task.cli} · ${task.id}`,
@@ -3601,7 +3089,7 @@ async function pickLoopDebateTask(tasks: LoopTaskRecord[]): Promise<LoopTaskReco
     task,
   }));
   const selection = await vscode.window.showQuickPick(items, {
-    placeHolder: t("loopDebateChat.selectTask"),
+    placeHolder: t("loopGroupChatChat.selectTask"),
     matchOnDescription: true,
     matchOnDetail: true,
   });
@@ -3609,7 +3097,7 @@ async function pickLoopDebateTask(tasks: LoopTaskRecord[]): Promise<LoopTaskReco
 }
 
 function listLoopGroupChatTasks(): LoopTaskRecord[] {
-  return loopDebateChatPanelCoordinator.listGroupChatTasks();
+  return loopGroupChatChatPanelCoordinator.listGroupChatTasks();
 }
 
 function stopLoopRunsForTask(taskId: string): void {
@@ -3652,8 +3140,8 @@ function resolvePrimaryLoopTaskId(): string | null {
       : null);
 }
 
-function buildLoopDebateChatMessageAction(taskId: string, round?: number): ChatMessageAction {
-  return loopDebateChatPanelCoordinator.buildMessageAction(taskId, round);
+function buildLoopGroupChatMessageAction(taskId: string, round?: number): ChatMessageAction {
+  return loopGroupChatChatPanelCoordinator.buildMessageAction(taskId, round);
 }
 
 function buildLoopTaskNeedsReviewText(task: LoopTaskRecord): string {
@@ -4479,9 +3967,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           ...(modelRouting ? { modelRouting } : {}),
           ...(originProfile ? { originProfile } : {}),
         };
-        if (!isLoopDebateGroupChatTask(task)) {
-          ensureLoopMainSubChatTranscript(task);
-        }
+        ensureLoopMainSubChatTranscript(task);
         return readLoopTaskRecord(task.id) ?? task;
       },
       updateTask: (taskId, patch) => persistLoopPlusTaskUpdate(taskId, patch),
@@ -4490,7 +3976,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           taskRole: "main",
           loopTaskId: taskId,
           merge: false,
-          actions: [buildLoopDebateChatMessageAction(taskId)],
+          actions: [buildLoopGroupChatMessageAction(taskId)],
         });
       },
       appendCompletionMessages: (target, task) => {
@@ -4502,7 +3988,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       },
       appendAcceptancePlanChat: (taskId, section) => {
         const task = readLoopTaskRecord(taskId);
-        if (!task || isLoopDebateGroupChatTask(task)) {
+        if (!task) {
           return;
         }
         const chatFile = ensureLoopMainSubChatTranscript(task);
@@ -4551,7 +4037,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         const content = kind === "nested"
           ? t("run.loopPlusNestedRefused")
           : kind === "original-unavailable"
-            ? t("loopDebateChat.originalRuntimeUnavailable")
+            ? t("loopGroupChatChat.originalRuntimeUnavailable")
             : t("run.loopResumeUnavailableStartNew");
         appendSystemMessageForLoop(target, content);
       },
@@ -4651,7 +4137,7 @@ function appendLoopPlusSubtaskChat(
   notice: LoopPlusSubtaskChatNotice,
 ): void {
   const task = readLoopTaskRecord(notice.taskId);
-  if (task && !isLoopDebateGroupChatTask(task)) {
+  if (task) {
     const index = task.subTasks.findIndex((subtask) => subtask.id === notice.subtaskId);
     const recorded = index >= 0 ? task.subTasks[index] : undefined;
     const displayTitle = getLoopSubtaskDisplayTitle(index, {
@@ -4668,7 +4154,7 @@ function appendLoopPlusSubtaskChat(
     loopRound: notice.round,
     loopSubtaskId: notice.subtaskId,
     merge: false,
-    actions: [buildLoopDebateChatMessageAction(notice.taskId)],
+    actions: [buildLoopGroupChatMessageAction(notice.taskId)],
   });
 }
 
@@ -4922,7 +4408,7 @@ async function runLoopPromptOrchestration(
           loopTaskId: task.id,
           loopRound: round,
           merge: false,
-          actions: [buildLoopDebateChatMessageAction(task.id, round)],
+          actions: [buildLoopGroupChatMessageAction(task.id, round)],
         }
       ));
       void logInfo("loop-task-resumed", {
@@ -4944,7 +4430,7 @@ async function runLoopPromptOrchestration(
   if (!task) {
     if (resumeRequested) {
       appendSystemMessageForLoop(target, preserveLoopOrigin
-        ? t("loopDebateChat.originalRuntimeUnavailable")
+        ? t("loopGroupChatChat.originalRuntimeUnavailable")
         : t("run.loopResumeUnavailableStartNew"));
       void logInfo("loop-task-resume-not-found", {
         tabId: target.tabId,
@@ -4958,7 +4444,6 @@ async function runLoopPromptOrchestration(
     const initialSessionId = resolveLoopTaskSessionId(target);
     task = createLoopTaskRecord(target.cli, input.displayPrompt, {
       sessionId: initialSessionId,
-      executionMode: input.loopExecutionMode,
     });
     const modelRouting = loopModelRoutingFromPromptInput(input, { mainCli: target.cli });
     const originProfile = captureLoopOriginProfile({
@@ -4982,15 +4467,13 @@ async function runLoopPromptOrchestration(
         ...(originProfile ? { originProfile } : {}),
       };
     }
-    if (!isLoopDebateGroupChatTask(task)) {
-      ensureLoopMainSubChatTranscript(task);
-    }
+    ensureLoopMainSubChatTranscript(task);
     appendSystemMessageForLoop(target, buildLoopTaskStartedText(task), (
       {
         taskRole: "main",
         loopTaskId: task.id,
         merge: false,
-        actions: [buildLoopDebateChatMessageAction(task.id)],
+        actions: [buildLoopGroupChatMessageAction(task.id)],
       }
     ));
   }
@@ -5039,7 +4522,7 @@ async function runLoopPromptOrchestration(
           loopTaskId: resumed.id,
           loopRound: round,
           merge: false,
-          actions: [buildLoopDebateChatMessageAction(resumed.id, round)],
+          actions: [buildLoopGroupChatMessageAction(resumed.id, round)],
         }
       ));
       void logInfo("loop-task-completed-without-final-summary-resumed", {
@@ -5051,31 +4534,18 @@ async function runLoopPromptOrchestration(
       continue;
     }
 
-    const executionMode = normalizeLoopExecutionMode(latest.executionMode);
-    const shouldRunPlanningDebate = executionMode === "debate_multi_agent"
-      && shouldRunLoopPlanningDebate(latest, round);
     let decisionRunResult: Awaited<ReturnType<LoopOrchestrationHost["runClassicLoopMainDecision"]>>;
     try {
-      decisionRunResult = shouldRunPlanningDebate
-        ? await runLoopDebateRound({
+      decisionRunResult = await runClassicLoopMainDecision({
             input,
             target,
             task: latest,
             round,
-          })
-        : await runClassicLoopMainDecision({
-            input,
-            target,
-            task: latest,
-            round,
-            moderatorLed: executionMode === "debate_multi_agent",
           });
     } catch (error) {
       void logError("loop-main-decision-run-error", {
         taskId: latest.id,
         round,
-        executionMode,
-        shouldRunPlanningDebate,
         error: errorToMessage(error),
       });
       markLoopTaskInterrupted(latest.id, "error", target, {
@@ -5182,16 +4652,8 @@ function runClassicLoopMainDecision(...args: Parameters<LoopOrchestrationHost["r
   return requireLoopOrchestrationHost().runClassicLoopMainDecision(...args);
 }
 
-function runLoopDebateRound(...args: Parameters<LoopOrchestrationHost["runLoopDebateRound"]>): ReturnType<LoopOrchestrationHost["runLoopDebateRound"]> {
-  return requireLoopOrchestrationHost().runLoopDebateRound(...args);
-}
-
 function runLoopSubtasksBatchWithRetry(...args: Parameters<LoopOrchestrationHost["runLoopSubtasksBatchWithRetry"]>): ReturnType<LoopOrchestrationHost["runLoopSubtasksBatchWithRetry"]> {
   return requireLoopOrchestrationHost().runLoopSubtasksBatchWithRetry(...args);
-}
-
-function shouldRunLoopPlanningDebate(...args: Parameters<LoopOrchestrationHost["shouldRunLoopPlanningDebate"]>): ReturnType<LoopOrchestrationHost["shouldRunLoopPlanningDebate"]> {
-  return requireLoopOrchestrationHost().shouldRunLoopPlanningDebate(...args);
 }
 
 function writeTextFileEnsuringDir(...args: Parameters<LoopOrchestrationHost["writeTextFileEnsuringDir"]>): ReturnType<LoopOrchestrationHost["writeTextFileEnsuringDir"]> {
@@ -6316,7 +5778,6 @@ function createLoopTaskRecord(
   rootPrompt: string,
   options: {
     sessionId?: string | null;
-    executionMode?: LoopExecutionMode;
   } = {}
 ): LoopTaskRecord {
   const now = Date.now();
@@ -6325,7 +5786,6 @@ function createLoopTaskRecord(
   const sessionId = typeof options.sessionId === "string" && options.sessionId.trim()
     ? options.sessionId
     : null;
-  const executionMode = normalizeLoopExecutionMode(options.executionMode);
   const taskStoreFile = buildLoopTaskStoreFile(cli, activeWorkspaceKey, sessionId, id);
   ensureLoopCommunicationFiles(id, rootPrompt);
   const record: LoopTaskRecord = {
@@ -6334,7 +5794,6 @@ function createLoopTaskRecord(
     workspaceKey: activeWorkspaceKey,
     taskStoreFile,
     rootPrompt,
-    executionMode,
     status: "running",
     createdAt: now,
     updatedAt: now,
