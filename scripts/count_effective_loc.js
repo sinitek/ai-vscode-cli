@@ -52,10 +52,9 @@ const REGEX_PREFIX_KEYWORDS = new Set([
 ]);
 const EMPTY_COUNTS = Object.freeze({
   files: 0,
-  physical: 0,
+  lines: 0,
   blank: 0,
   comment: 0,
-  effective: 0,
 });
 
 function main(argv = process.argv.slice(2)) {
@@ -115,8 +114,8 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`用法: node scripts/count_effective_loc.js [--json] [--by-file] [目录 ...]
 
-默认统计仓库内 src 与 media 的有效代码行数。
-有效行 = 去掉空行和注释后的代码行；源码与单测分开汇总，最后再合计。
+默认统计仓库内 src 与 media 的代码行数。
+行数会去掉空行和注释；源码与单测分开汇总，最后再合计。
 会跳过第三方目录、压缩/生成文件、二进制和非代码文件。
 
   --json      输出 JSON
@@ -200,8 +199,8 @@ function collectReport(rootPaths) {
   }
 
   files.sort((left, right) => {
-    if (right.effective !== left.effective) {
-      return right.effective - left.effective;
+    if (right.lines !== left.lines) {
+      return right.lines - left.lines;
     }
     return left.path.localeCompare(right.path);
   });
@@ -281,10 +280,9 @@ function analyzeContent(content, language, extension) {
 function summarizeLineKinds(kinds) {
   const counts = createCounts();
   counts.files = 1;
-  counts.physical = kinds.length;
   for (const kind of kinds) {
     if (kind === "code") {
-      counts.effective += 1;
+      counts.lines += 1;
     } else if (kind === "blank" || kind === "comment") {
       counts[kind] += 1;
     }
@@ -761,10 +759,9 @@ function createCounts() {
 
 function addCounts(target, source) {
   target.files += source.files;
-  target.physical += source.physical;
+  target.lines += source.lines;
   target.blank += source.blank;
   target.comment += source.comment;
-  target.effective += source.effective;
 }
 
 function sumCounts(left, right) {
@@ -803,10 +800,10 @@ function toPosix(filePath) {
 }
 
 function printReport(report, byFile) {
-  console.log("有效代码行数（已排除空行、注释、第三方与压缩文件）");
+  console.log("代码行数（已排除空行、注释、第三方与压缩文件）");
   console.log("");
   const rows = [
-    ["范围", "分类", "文件", "物理行", "有效行"],
+    ["范围", "分类", "文件", "行数"],
   ];
   for (const root of report.roots) {
     const group = report.groups[root];
@@ -828,8 +825,7 @@ function formatCountRow(scope, kind, counts) {
     scope,
     kind,
     String(counts.files),
-    String(counts.physical),
-    String(counts.effective),
+    String(counts.lines),
   ];
 }
 
@@ -849,12 +845,11 @@ function printFileTable(files) {
     return;
   }
   const rows = [
-    ["有效行", "物理行", "范围", "分类", "路径"],
+    ["行数", "范围", "分类", "路径"],
   ];
   for (const file of files) {
     rows.push([
-      String(file.effective),
-      String(file.physical),
+      String(file.lines),
       file.root,
       file.kind === "test" ? "单测" : "源码",
       file.path,

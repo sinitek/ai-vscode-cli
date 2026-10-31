@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Python entry point for the repository's effective LOC report."""
+"""Python entry point for the repository's code line count report."""
 
 import subprocess
 import sys

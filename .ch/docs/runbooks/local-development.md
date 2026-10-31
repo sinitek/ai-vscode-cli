@@ -89,13 +89,13 @@ python run_dev.py --code "C:\Program Files\Microsoft VS Code\bin\code.cmd"
 
 如果脚本找不到 `code` 命令，会在安装依赖前退出，并提示配置 PATH 或通过 `--code` 指定命令路径。
 
-### 7. 统计有效代码行数
+### 7. 统计代码行数
 
 ```bash
 npm run stats:loc
 ```
 
-默认统计 `src` 与 `media`。有效行会去掉空行和注释，源码与单测分开汇总后再合计；第三方目录、压缩/生成文件、二进制和非代码文件会被跳过。可加 `--by-file` 看每个文件，或 `--json` 做机器可读输出：
+默认统计 `src` 与 `media`。行数会去掉空行和注释，源码与单测分开汇总后再合计；第三方目录、压缩/生成文件、二进制和非代码文件会被跳过。可加 `--by-file` 看每个文件，或 `--json` 做机器可读输出：
 
 ```bash
 node scripts/count_effective_loc.js --by-file
