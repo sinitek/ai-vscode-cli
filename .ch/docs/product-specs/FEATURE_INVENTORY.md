@@ -134,6 +134,10 @@ AI 对话面板已选择 CLI 和配置档案时，点击“配置”会在“携
 
 AI 对话助手切换到 ZCode 且配置命令不可用时，复用其他 CLI 的“一键安装”提示；点击后创建并显示 VS Code 终端，在 Windows、macOS、Linux 统一执行 `npm install -g zcode-app-cli@latest`，清空安装检测缓存，不误跳设置或网页。命令已可用时不重复提示或安装；取消不执行命令，“打开设置”仍定位 `sinitek-cli-tools.commands.zcode`。实际安装结果以终端输出为准。实现见 `src/cli/installer.ts`、`src/extension.ts`，回归见 `src/test/cli/installer.test.ts`、`src/test/extensionHost/cliInstallation.test.ts`。
 
+## 配置页复制当前 CLI 档案
+
+配置中心左侧列表的「复制配置」只在当前 CLI 内创建副本。确认框提供可编辑的新配置名称，默认填入「原名称_副本」，与已有名称冲突时继续编号。名称为空或与当前 CLI 已有档案重名时不创建副本，也不再选择目标 CLI。实现见 `media/config/assets/config-app-ui.js`、`media/config/assets/config-app-store.js`；回归见 `src/test/config/configappcompactcontrols.test.ts`、`src/test/config/cliPageConfigCoverage.test.ts`。
+
 ## 配置页复制安装命令
 
 配置中心每个 CLI 分组的「安装」按钮只复制 `getCliInstallCommand` 按当前系统解析出的一键安装命令，不在配置页执行安装。ZCode 为 `npm install -g zcode-app-cli@latest`；Grok 在 Windows 复制官方 PowerShell 脚本，在 macOS/Linux 复制官方 shell 脚本；其余 CLI 复制各自的 npm 命令。实现见 `src/cli/installer.ts`、`src/webview/configView.ts`、`media/config/assets/config-app-ui.js`，回归见 `src/test/cli/installer.test.ts`、`src/test/config/cliPageConfigCoverage.test.ts`。

@@ -43,6 +43,11 @@ test("renders a leftmost radio group for activation without changing config acti
   assert.match(listPanel, /onClick: \(\) => R\(T, "安装命令"\),\s+children: "安装"/);
   assert.match(listPanel, /onClick: \(\) => R\(U, "启动命令"\),\s+children: "执行"/);
   assert.match(listPanel, /icon: be\.jsx\(zH, \{\}\),\s+onClick: \(ae\) => V\(ae, F\),\s+title: "复制配置"/);
+  assert.match(listPanel, /title: "复制配置"[\s\S]*?htmlFor: "copy-config-name-input"[\s\S]*?children: "配置名称"/);
+  assert.match(listPanel, /id: "copy-config-name-input"[\s\S]*?placeholder: "请输入复制后的配置名称"[\s\S]*?defaultValue: suggestedName/);
+  assert.match(listPanel, /const name = resolveSameCliCopyName\(raw, liveNames\);\s+const Q = await f\(L\.id, name\);/);
+  assert.doesNotMatch(listPanel, /从 \$\{L\.name\} 复制到/);
+  assert.doesNotMatch(listPanel, /copyTargetPlatform/);
   assert.match(listPanel, /icon: be\.jsx\(FH, \{\}\),\s+onClick: \(ae\) => W\(ae, F\),\s+title: "重命名"/);
   assert.match(listPanel, /icon: be\.jsx\(AH, \{\}\),\s+onClick: \(ae\) => A\(ae, F\),\s+title: "删除配置"/);
 });

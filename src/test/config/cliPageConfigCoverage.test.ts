@@ -110,6 +110,7 @@ globalThis.__store = {
   storeJson,
   readJson,
   createCopyName,
+  resolveSameCliCopyName,
   createEmptyOrder,
   loadStoredOrder,
   mergeOrderWithConfigs,
@@ -1707,6 +1708,9 @@ test("config store asset keeps platform order, duplicate names, empty states, an
     utils.createCopyName("Gateway", ["Gateway_副本", "Gateway_副本2"]),
     "Gateway_副本3",
   );
+  assert.equal(utils.resolveSameCliCopyName("  工作副本  ", ["Gateway"]), "工作副本");
+  assert.throws(() => utils.resolveSameCliCopyName("   ", ["Gateway"]), /配置名称不能为空/);
+  assert.throws(() => utils.resolveSameCliCopyName("Gateway", ["Gateway"]), /配置名称已存在/);
 
   const configs = [
     { id: "codex-b", platform: "codex" },

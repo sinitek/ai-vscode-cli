@@ -154,6 +154,16 @@ const CONFIG_STORAGE_KEYS = {
     }
     throw new Error(`不支持的配置平台: ${platform}`);
   },
+  resolveSameCliCopyName = (requestedName, existingNames) => {
+    const name = typeof requestedName === "string" ? requestedName.trim() : "";
+    if (!name) {
+      throw new Error("配置名称不能为空");
+    }
+    if ((existingNames || []).includes(name)) {
+      throw new Error("配置名称已存在");
+    }
+    return name;
+  },
 
 // Config store
   useConfigStore = QH((e, t) => ({
@@ -286,38 +296,34 @@ const CONFIG_STORAGE_KEYS = {
       const o = t(),
         l = o.configs.find((v) => v.id === n);
       if (!l) throw new Error("配置不存在");
-      const s = r ?? l.platform,
-        u = o.configs
-          .filter((v) => v.platform === s)
-          .map((v) => v.name),
-        f = createCopyName(l.name, u);
-      let m;
-      if (s === l.platform) {
-        const v = Date.now();
-        m = { ...l, id: createConfigId(), name: f, createdAt: v, updatedAt: v };
-        await saveConfigItem(m);
-      } else {
-        m = await copyConfigItem({
-          sourcePlatform: l.platform,
-          sourceId: l.id,
-          targetPlatform: s,
-          name: f,
-        });
-      }
-      const v = [...o.configs, m],
-        p = appendOrderForConfigs([m], o.configOrders);
+      const existingNames = o.configs
+        .filter((v) => v.platform === l.platform)
+        .map((v) => v.name);
+      const name = resolveSameCliCopyName(r, existingNames);
+      const now = Date.now();
+      const copied = {
+        ...l,
+        id: createConfigId(),
+        name,
+        platform: l.platform,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await saveConfigItem(copied);
+      const configs = [...o.configs, copied];
+      const orders = appendOrderForConfigs([copied], o.configOrders);
       return (
         e({
-          configs: v,
-          configOrders: p,
-          selectedConfigId: m.id,
-          selectedConfigPlatform: m.platform,
+          configs,
+          configOrders: orders,
+          selectedConfigId: copied.id,
+          selectedConfigPlatform: copied.platform,
         }),
-        storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, p),
-        saveConfigOrder(m.platform, p).catch((h) =>
+        storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, orders),
+        saveConfigOrder(copied.platform, orders).catch((h) =>
           console.error("同步配置顺序失败:", h)
         ),
-        m
+        copied
       );
     },
     setActiveConfig: (n, r) => {

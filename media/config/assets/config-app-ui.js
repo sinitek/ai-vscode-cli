@@ -832,40 +832,50 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             },
           }));
       },
-      V = async (k, L) => {
+      V = (k, L) => {
         k.stopPropagation();
-        const G = [
-          { label: configPlatformLabel(L.platform), value: L.platform },
-        ];
-        const Y = G[0].label;
-        let copyTargetPlatform = L.platform;
+        const existingNames = e
+          .filter((item) => item.platform === L.platform)
+          .map((item) => item.name);
+        const suggestedName = createCopyName(L.name, existingNames);
         xr.confirm({
           title: "复制配置",
           content: be.jsxs("div", {
             style: { display: "flex", flexDirection: "column", gap: "8px" },
             children: [
-              be.jsx("div", { children: `从 ${L.name} 复制到 ${Y}` }),
-              be.jsx($l, {
-                defaultValue: G[G.length - 1].value,
-                onChange: (K) => {
-                  copyTargetPlatform = K || L.platform;
-                },
-                options: G,
-                allowClear: !1,
-                showSearch: !1,
-                style: { width: "100%" },
-                getPopupContainer: (K) => K.parentElement || document.body,
+              be.jsx("label", {
+                htmlFor: "copy-config-name-input",
+                children: "配置名称",
+              }),
+              be.jsx(zi, {
+                id: "copy-config-name-input",
+                placeholder: "请输入复制后的配置名称",
+                defaultValue: suggestedName,
+                autoFocus: true,
+                onFocus: (event) => event.target?.select?.(),
               }),
             ],
           }),
           okText: "确认",
           cancelText: "取消",
           onOk: async () => {
+            const raw = document.getElementById("copy-config-name-input")?.value;
             try {
-              const Q = await f(L.id, copyTargetPlatform);
-              (o(Q.id, Q.platform), Kt.success(`已复制配置: ${Q.name}`));
+              const liveNames = useConfigStore.getState().configs
+                .filter((item) => item.platform === L.platform)
+                .map((item) => item.name);
+              const name = resolveSameCliCopyName(raw, liveNames);
+              const Q = await f(L.id, name);
+              o(Q.id, Q.platform);
+              Kt.success(`已复制配置: ${Q.name}`);
             } catch (Q) {
-              return (Kt.error(`复制失败: ${Q}`), Promise.reject(Q));
+              const message = Q instanceof Error ? Q.message : String(Q);
+              Kt.error(
+                message === "配置名称不能为空" || message === "配置名称已存在"
+                  ? message
+                  : `复制失败: ${message}`,
+              );
+              return Promise.reject(Q);
             }
           },
         });
