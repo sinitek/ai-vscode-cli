@@ -21,7 +21,7 @@
 
 ## 验证与文档
 
-- 按 .ch/docs/TESTING.md 从新增单测扩大到经典及 Loop+/Graph 相关回归，执行 npm run build。
+- 按 .ch/docs/TESTING.md 从新增单测扩大到经典及 Loop+ 相关回归，执行 npm run build。
 - 同步能力清单、模式规格、设计及 ontology；对既有范围外失败记录证据，不扩大修复。
 - 真实 CLI 会话续接差异与临时执行目录边界需明确记录未覆盖风险。
 
@@ -34,13 +34,13 @@
 - CLI、配置不兼容或旧记录缺失有效绑定时新建会话并记录原因；路由未指定配置时补齐目标 CLI 当前配置，并传给实际执行，避免缺省值与真实绑定误判不兼容。
 - 真实执行入口补存实际会话和配置；适配器不得用缺省配置覆盖实际执行配置。停止前保存已有绑定，旧 attempt 迟到结束不由适配器覆盖新绑定。
 - 同一来源子任务或会话串行运行，初次尚未取得 sessionId 的任务也锁定自身身份；不同独立任务仍可并发。主提示要求等待来源完成，运行中调整使用控制重派。
-- 保留经典 Loop 汇报驱动和按用户、项目要求独立派发验证；保留 Loop+ 验收与调度门槛，不改变 Graph 执行策略。
+- 保留经典 Loop 汇报驱动和按用户、项目要求独立派发验证；保留 Loop+ 验收与调度门槛。
 
 ## 已执行验证
 
 - `npm run build`：最终通过，TypeScript 构建成功。
 - 最小回归：`node --test dist/test/extensionHost/subtaskCliExecution.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopSubtaskSession.test.js`，39/39 通过。
-- 核心保护回归：以下实际测试文件组合共 324/324 通过，日志 `/tmp/loop-session-reuse-tests.log`：
+- 核心保护回归：相关测试文件组合通过，日志 `/tmp/loop-session-reuse-tests.log`：
 
 ```sh
 node --test \
@@ -62,9 +62,7 @@ node --test \
   dist/test/loop/loopPlusDecision.test.js \
   dist/test/loop/loopPlusScheduler.test.js \
   dist/test/core/loopPlusAcceptancePlan.test.js \
-  dist/test/extensionHost/loopTaskStateMachine.test.js \
-  dist/test/extensionHost/graphRuntime.test.js \
-  dist/test/graph/graphExtensionRuntime.test.js
+  dist/test/extensionHost/loopTaskStateMachine.test.js
 ```
 
 - 路由补充：`node --test dist/test/loop/subtaskCliRoute.test.js`，5/5 通过。

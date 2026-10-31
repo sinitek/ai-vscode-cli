@@ -31,8 +31,7 @@
 │   ├── interactive/          # Codex / Claude 交互 Runner 与会话映射
 │   ├── webview/              # 聊天面板、配置中心、前后端协议
 │   ├── config/               # 本地配置档案；配置中心 Skills 管理 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局目录，不再提供 MCP 管理
-│   ├── graph/                # Graph 运行图、调度、边语义与节点控制
-│   ├── shared/               # 跨 CLI/config/Graph 复用的纯工具
+│   ├── shared/               # 跨 CLI/config/Loop 复用的纯工具
 │   ├── trace/                # trace/tool 输出格式化
 │   ├── loopGroupChat.ts      # Loop 主从群聊路径、成员与 transcript 纯函数
 │   ├── loopSubtaskExecutionRoot.ts # Loop 子任务规则隔离执行根
@@ -76,7 +75,7 @@ cli / interactive / config 服务层
 - 以 `src/extension.ts` 为核心
 - 负责命令注册、状态管理、消息分发、会话与标签页编排
 - 不应承载具体 CLI 协议细节和配置文件读写实现
-- 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Graph/Loop/session/model/config host 装配和跨运行时生命周期适配；Webview 消息所需的 VS Code 能力在此组装为显式端口
+- 当前 `src/extension.ts` 是组合根，保留 activate/deactivate、命令与视图注册、Loop/session/model/config host 装配和跨运行时生命周期适配；Webview 消息所需的 VS Code 能力在此组装为显式端口
 - `src/sessionMessageRouter.ts` 只负责类型安全的消息到处理器分派和领域 Registry 合并，不承载业务分支
 - `src/panelMessageHandlers/` 按 diagnostics、session、prompt、workspace 领域拆分消息处理器；每个处理器通过 `Pick<PanelMessageHandlerDeps, ...>` 声明最小依赖，避免接收完整组合根依赖
 - `src/sessionMessageHandlers.ts` 保留兼容的统一入口，仅负责初始化会话存储、记录调试日志并调用 Router；新增消息应进入对应领域 Registry，而不是继续堆积条件分支
@@ -88,7 +87,7 @@ cli / interactive / config 服务层
 - `promptAutoRepair.ts` 在统一 `runPrompt` 分流外管理任务级命令修复与单次新会话重放，按 Tab 处理取消和任务替代；复用 `cliCommandRepair.ts` 的命令发现及组合根持久化，第二次执行关闭各 runtime 的 hidden retry，旧会话历史由生命周期层保留。
 - `openCodePromptRunTemplate.ts` 用显式端口 Template Method 固定 OpenCode attempt 顺序。`runOpenCodePromptTemplate` 接收 `OpenCodePromptRunPorts`，由 one-shot 与 parallel 工厂在调用点构造端口；不使用类继承、DI 容器或 `mode` 旗标。当前 705 行
 - `promptOneShotRuntime.ts` 承载 OpenCode one-shot 运行、JSONL stream 解析、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDeps)`。运行身份（`getActiveRunId() === runId`）和启动空闲超时留在本 host。当前 1193 行
-- `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps)`。运行身份与 tab 流留在本 host，不补 one-shot 启动超时。当前 1078 行。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 与 Graph 追踪字段
+- `promptParallelRuntime.ts` 承载 OpenCode parallel tab 运行、tab 定向 JSONL stream 映射、hidden retry、fresh-session recovery、任务列表、子代理进度消费、长期记忆触发和自动压缩触发。attempt 顺序交给上述模板；工厂签名仍是 `createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostDeps)`。运行身份与 tab 流留在本 host，不补 one-shot 启动超时。parallel 终态 `TaskRunRecord` 通过统一 helper 写入，`end` / `error` / `stopped` 均保留 Loop 追踪字段
 - `promptInteractiveRuntime.ts` 承载 interactive attempt 顺序、收口、session adoption、停止、消息持久化、subagent progress、hidden retry 和 final answer 判定。Codex、Claude、Grok 的 runner 生命周期和流事件映射分别在 `interactiveTurnCodex.ts`、`interactiveTurnClaude.ts`、`interactiveTurnGrok.ts`，由 `interactiveTurnStrategy.ts` 的显式注册表提供。工厂签名仍是 `createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntimeHostDeps)`。没有类继承，也没有 DI 容器。当前 1276 行
 - `cliModelSelectionStrategies.ts` 用显式 `Record<CliName, CliModelSelectionStrategy>` 收拢 Codex、Claude、OpenCode、Grok 的普通选择、main/subtask 角色选择、候选、可管理候选、下一份 store、持久化键和展示名。`createCliModelSelectionStrategies` 每次操作接收当前 `CliModelStore`；Grok 配置按原始 config id 现查注入的缓存，缺省存储键也在操作时向注入的 resolver 取值，工厂不捕获 store 或缓存快照。Codex、Claude、OpenCode 委托 `modelSelectionStore` 既有函数。策略不导入 VS Code、配置服务、文件系统、Webview 或日志，也不写盘。`modelSettings.ts` 仍负责活跃配置、读盘缓存、错误日志、`writeModelStore`、deps 同步和 PanelState。用户可见模型选择不变。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-22-cli-model-selection-strategies.md`
 - `loopOrchestration.ts` 承载 Loop 主从编排 host，依赖注入类型必须显式、可搜索，不使用宽泛 `Record<string, any>` 作为事实边界
@@ -113,7 +112,7 @@ cli / interactive / config 服务层
 
 - AI 面板首次构建和配置保存后的刷新统一通过 `loadConfigStateByCli` 并行读取七个 CLI 的档案列表与激活身份；心跳传入的当前 CLI 快照复用为种子。`PanelState.configState` 保留当前分组兼容字段，`configStateByCli` 只携带各分组的档案摘要和身份，不下发原始配置或凭据。单个分组读取失败不阻断其他分组。
 - `modelSettings.refreshConfigModels` 刷新 Grok、DSH、KimiCode、ZCode 的配置派生模型；缺少保存档案时仍读取本机原生配置。跨 CLI 的 OpenCode 子模型从本机配置元数据解析，不为其他 CLI 启动进程或能力探测。明确的空身份不能回退到旧心跳身份；新应用的工作区配置优先于旧快照。
-- Loop、Loop+、Graph 共用 `modelState` 的分组身份、角色模型和子模型路由，不要求先访问目标 CLI。配置页各分组统一采用宿主确认的激活身份；激活档案保存后应用并等待面板刷新，未激活档案保存只刷新、不切换配置或主 CLI。跨 CLI 派发仍要求有效档案绑定，真实缺失或无效配置不伪装成可用。
+- Loop、Loop+ 共用 `modelState` 的分组身份、角色模型和子模型路由，不要求先访问目标 CLI。配置页各分组统一采用宿主确认的激活身份；激活档案保存后应用并等待面板刷新，未激活档案保存只刷新、不切换配置或主 CLI。跨 CLI 派发仍要求有效档案绑定，真实缺失或无效配置不伪装成可用。
 - Webview 根据 `configStateByCli` 区分尚未加载与已加载但缺少档案；后一种状态显示缺少可用配置，读取错误显示失败原因，不再无限显示“正在同步”。
 - `src/cli/`：一次性执行与命令解析；配置化 CLI command string 的拆分边界在 `src/cli/commandResolution.ts`，`commandRunner.ts`、MCP 命令调用等路径只复用该结果
 - `src/cli/cliRunArgStrategies.ts` 用显式 `Record<CliName, CliRunArgStrategy>` 注册 Codex、Claude、OpenCode、Grok、DSH 的启动参数差异。`buildCliArgs` 仍从 `commandRunner.ts` 导出。参数顺序留在外观函数：基础参数、按 `includeThinkingArgs` 拼接 thinking、模型、隔离、`applyBeforePrompt`，空 prompt 立即返回，否则 `appendPrompt`。各平台各自实现差异，没有类继承，也没有 DI 容器。DSH 策略只保留明确 `--patch`，不把 one-shot prompt 写成已验证启动参数。`wc -l` 当前 `cliRunArgStrategies.ts` 为 219 行，`commandRunner.ts` 为 528 行。事实来源见 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md`
@@ -129,17 +128,10 @@ cli / interactive / config 服务层
 - `src/shared/`：跨服务层复用、无 VS Code 依赖的纯工具；当前包含 strict/jsonc JSON object 解析等后端共用逻辑
 - 这一层负责和本地 CLI、SDK、home 目录配置打交道，但不负责 UI 渲染
 
-#### Graph 编排层
-
-- 位于 `src/graph/`
-- 负责 Graph run 类型、store、communications、events、scheduler、edge semantics、prompt builders、node lifecycle 和 run control
-- `src/graph/graphEdgeSemantics.ts` 是 active structural/blocking edge 与 rework trigger edge 的共享语义边界，scheduler 和 prompt topology 必须复用它，避免节点上下游、review scope 与调度 gate 口径漂移
-
 #### 基础本地资源层
 
 - 包括 `~/.sinitek_cli/`、`~/.codex/`、`~/.claude/`、`~/.opencode/` 和 OpenCode 官方全局 MCP 配置 `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json`；`~/.gemini/` 仅作历史迁移参考
 - Loop 模式的任务记录位于 `~/.sinitek_cli/loop-tasks/`；主子任务沟通与群聊 transcript 位于 `~/.sinitek_cli/loop-communications/`
-- Graph 模式的 run store、`graph.json`、`events.jsonl` 和节点 communication artifact 位于 `~/.sinitek_cli/graph-*` 相关目录；新 Graph run 默认 direct 执行，不创建 worktree/checkpoint
 - 首次枚举 Loop 任务时，`src/loopLegacyMigration.ts` 与 `src/loopTaskStore.ts` 会把旧 Lobster 任务存储和通信目录迁入上述 Loop 路径；新写入不再使用旧命名，冲突 artifact 以 `.pre-loop-migration` 后缀保留
 - 属于运行时依赖或本地状态，不属于 UI 和业务编排层
 
@@ -148,11 +140,13 @@ cli / interactive / config 服务层
 经典 Loop 与 Loop+ 支持连续子任务会话复用：主模型通过 `continueFromSubtaskId` 声明来源；Loop+ 验收失败的修补项按 review 关联自动继承原子任务会话，控制重派续接原子任务。真实 CLI/config/session 绑定保存在子任务记录，关闭 Tab 不清除绑定；仅同一父任务且 CLI、配置兼容时恢复。共享来源与会话串行执行，独立任务仍新建会话。隔离工作目录与 CLI 会话身份是不同边界，细节见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
 
 - 经典 Loop 主任务和子任务均以真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则；子任务首次运行与手动续跑使用同一策略。主任务只拆分、派发、协调并信任子任务汇报判断完成，不检查实现细节、不亲自验收或测试。用户或项目规则要求的验收、测试、构建等检查另派独立子任务，均无要求时默认不做。Loop+ 保持既有事件驱动验收。
-- `src/loopSubtaskExecutionRoot.ts` 为 Loop+ 和 Graph 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区。Windows 使用目录 junction 与文件 hardlink，跨盘时把临时根放到工作区 `.sinitek-loop-tmp`。结束或创建失败时，只非递归移除本次登记且身份匹配的链接，再移除空临时根；根目录或链接被替换、存在未知内容或清理失败时保留现场并记录日志，不递归删除执行根，也不把成功任务改判失败。
-- 隔离子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 仅加载 `user` settings（保留用户级 MCP / 搜索工具），OpenCode 使用 `--pure`。该隔离策略不再用于经典 Loop；Loop+ 和 Graph 的自包含派发及验证规则保持不变。
+- `src/loopSubtaskExecutionRoot.ts` 为 Loop+ 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区。Windows 使用目录 junction 与文件 hardlink，跨盘时把临时根放到工作区 `.sinitek-loop-tmp`。结束或创建失败时，只非递归移除本次登记且身份匹配的链接，再移除空临时根；根目录或链接被替换、存在未知内容或清理失败时保留现场并记录日志，不递归删除执行根，也不把成功任务改判失败。
+- 隔离子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 仅加载 `user` settings（保留用户级 MCP / 搜索工具），OpenCode 使用 `--pure`。该隔离策略不再用于经典 Loop；Loop+ 的自包含派发及验证规则保持不变。
 - 不再分发、加载或注入 Loop Workflow Skill 快照，也没有对应的工具设置开关。
 
-- 子任务可以绑定另一个 CLI 分组当前选中配置。路由身份在 `src/subtaskCliRoute.ts`，可选 `cli` / `configId` 扩展现有 Loop `modelRouting.subtask` 与 Graph `modelRouting.executor`。经典 Loop 用该 CLI 创建独立子 Tab；Loop+ attempt 的 `targetCli` 使用同一绑定；Graph 只让 executor 节点切换执行 CLI，plan / summary 仍走 planner。主任务 target、会话和存储归属不变。跨 CLI 不回退主模型、主配置、主会话、主思考档或 OpenCode variant。
+- 子任务可以绑定另一个 CLI 分组当前选中配置。路由身份在 `src/subtaskCliRoute.ts`，扩展现有 Loop `modelRouting.subtask`。经典 Loop 用该 CLI 创建独立子 Tab；Loop+ attempt 的 `targetCli` 使用同一绑定。主任务 target、会话和存储归属不变。跨 CLI 不回退主模型、主配置、主会话、主思考档或 OpenCode variant。
+
+共享提示运行类型集中在 `src/promptRunTypes.ts`；主/子模型及思考力度解析由 `src/extensionHost/promptRunModels.ts` 提供，Vibe、Loop 和 Loop+ 复用，避免依赖某个编排模式的实现。
 
 ## 3. 扩展规则
 
@@ -164,8 +158,7 @@ cli / interactive / config 服务层
 4. 只是面板交互、展示或协议字段：放 `src/webview/`
 5. 需要打通整条链路时，在 `src/extension.ts` 接线；若是提示运行的连续状态机，优先放到 `src/extensionHost/*Runtime.ts` 并由 `extension.ts` 注入依赖
 6. 只是 Loop 群聊 transcript、成员或路径纯函数：放 `src/loopGroupChat.ts`，不要反向依赖 VS Code API 或 Webview
-7. 只是 Graph 边/调度/节点控制语义：放 `src/graph/` 内的专门模块；跨 scheduler 和 prompt builder 的边语义优先集中到 `graphEdgeSemantics.ts`
-8. Loop 主决策、停止和运行中断的状态计算放 `src/extensionHost/loopTaskStateMachine.ts`；任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数留在 `src/extensionHost/promptRunRuntime.ts`。不要把状态转移模块写成 UI 或数据库层
+7. Loop 主决策、停止和运行中断的状态计算放 `src/extensionHost/loopTaskStateMachine.ts`；任务存储、沟通文件、聊天消息、clarification abort、群聊刷新、日志和主任务失败计数留在 `src/extensionHost/promptRunRuntime.ts`。不要把状态转移模块写成 UI 或数据库层
 
 ### 新增文档时怎么放
 

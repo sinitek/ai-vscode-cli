@@ -403,7 +403,6 @@ test("production stop closures keep internal cancel off the parent gate", async 
     harness.noteTab(fixture.target.tabId, { taskRole: "main", loopTaskId: taskId });
     harness.noteTask({ id: "classic-task", schedulingMode: "classic", status: "running" });
     harness.noteTab("classic-tab", { taskRole: "main", loopTaskId: "classic-task" });
-    harness.attachGraph("graph-tab", "graph-1");
     let classicStops = 0;
     harness.attachInteractive("classic-tab", {
       loopTaskId: "classic-task",
@@ -436,7 +435,6 @@ test("production stop closures keep internal cancel off the parent gate", async 
     assert.equal((fixture.readTask(taskId)?.loopPlus as { parentStopped?: boolean }).parentStopped, false);
     assert.deepEqual(harness.parentStopIds, []);
     assert.equal(classicStops, 0);
-    assert.deepEqual(harness.graphStops, []);
 
     harness.cancelInvocation(fixture.target.tabId);
     harness.cancelInvocation(fixture.target.tabId);
@@ -450,10 +448,6 @@ test("production stop closures keep internal cancel off the parent gate", async 
     assert.deepEqual(harness.parentStopIds, []);
     assert.equal(fixture.parkedSubtaskIds().includes("B"), true);
 
-    harness.preemptActivePromptRun("graph-tab");
-    assert.deepEqual(harness.graphStops, ["graph-tab"]);
-    harness.preemptActivePromptRun("graph-tab");
-    assert.deepEqual(harness.graphStops, ["graph-tab"]);
     assert.equal((fixture.readTask(taskId)?.loopPlus as { parentStopped?: boolean }).parentStopped, false);
 
     harness.stopRunForTab("classic-tab");
@@ -486,16 +480,6 @@ test("production stop closures keep internal cancel off the parent gate", async 
     assert.equal(primaryStops, 1);
     assert.deepEqual(harness.parentStopIds, []);
     assert.equal(fixture.parkedSubtaskIds().includes("B"), true);
-    harness.attachPrimary("graph-primary", {
-      loopTaskId: taskId,
-      taskRole: "main",
-      graphRunId: "graph-primary-run",
-      onStop: () => {
-        primaryStops += 1;
-      },
-    });
-    harness.stopRunForTab("graph-primary");
-    assert.equal(primaryStops, 2);
     assert.deepEqual(harness.parentStopIds, []);
     assert.equal(fixture.readTask(taskId)?.status, "running");
 
@@ -505,7 +489,6 @@ test("production stop closures keep internal cancel off the parent gate", async 
     assert.equal(fixture.parkedSubtaskIds().includes("B"), false);
     assert.equal((fixture.readTask(taskId)?.loopPlus as { parentStopped?: boolean }).parentStopped, true);
     assert.equal(classicStops, 1);
-    assert.deepEqual(harness.graphStops, ["graph-tab", "graph-primary:graph-primary-run"]);
     running.catch(() => undefined);
   } finally {
     fixture.dispose();
@@ -535,7 +518,6 @@ test("user main-tab stop closes the gate before aborting every Loop+ runner", as
     await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "both running");
     const taskId = fixture.mainCalls[0].loopTaskId ?? "";
     harness.noteTab(fixture.target.tabId, { taskRole: "main", loopTaskId: taskId });
-    harness.attachGraph("graph-tab", "graph-2");
     harness.noteTask({ id: "classic-task", schedulingMode: undefined, status: "running" });
     harness.noteTab("classic-tab", { taskRole: "main", loopTaskId: "classic-task" });
     harness.attachParallel("classic-tab", {
@@ -561,11 +543,9 @@ test("user main-tab stop closes the gate before aborting every Loop+ runner", as
     assert.equal((fixture.readTask(taskId)?.loopPlus as { parentStopped?: boolean }).parentStopped, true);
     assert.deepEqual(fixture.parkedSubtaskIds(), []);
     assert.equal(harness.stoppedTabs.includes("classic-tab"), false);
-    assert.deepEqual(harness.graphStops, []);
     assert.equal(fixture.hostMessages.includes("loop-plus-stopped"), true);
     harness.stopRunForTab(fixture.target.tabId);
     assert.equal(harness.stoppedTabs.includes("classic-tab"), false);
-    assert.deepEqual(harness.graphStops, []);
     running.catch(() => undefined);
   } finally {
     fixture.dispose();

@@ -28,7 +28,7 @@ Loop+ 原来每次只确认一个 `currentReview`。验收队列里其余完成�
 
 ## 非目标
 
-- 不改变经典 Loop、Graph、Vibe。
+- 不改变经典 Loop、Vibe。
 - 不把执行中才到达的事项塞进已经发给模型的那一轮。
 - 不把 Loop+ 写成已经整体上线，因此不改 `FEATURE_INVENTORY.md`。
 

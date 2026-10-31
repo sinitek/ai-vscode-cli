@@ -31,7 +31,7 @@ Loop+ 原先只有一组子模型。已有改动增加了 `taskType=backend/fron
 ## 非目标
 
 - 不重构 Loop+ 调度、批次屏障或验收队列。
-- 不改变经典 Loop、Graph、普通聊天和 OpenCode 官方 `small_model`。
+- 不改变经典 Loop、普通聊天和 OpenCode 官方 `small_model`。
 - 不把提示词说成强制只读沙箱。
 - 不因为模型名相同而拒绝合法配置。
 - 不修改父任务 `loop-tasks.json`、active ids、调度快照或其它 attempt 报告。

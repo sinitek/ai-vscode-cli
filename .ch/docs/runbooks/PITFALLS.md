@@ -56,7 +56,7 @@
 
 - 状态：已规避
 - 首次发现：2026-10-29
-- 适用范围：七个 CLI 的配置保存同步、Loop／Loop+／Graph 共用子模型入口
+- 适用范围：七个 CLI 的配置保存同步、Loop／Loop+ 共用子模型入口
 - 现象：面板刚打开就切到多模型模式时，目标 CLI 显示正在同步或配置未加载；保存其他 CLI 的激活档案后仍显示旧模型。
 - 根因：面板只完整加载当前 CLI，其他分组依赖历史身份；原生模型缓存没有档案 ID 时直接跳过。配置编辑器还重复匹配文本，Grok／KimiCode／DSH 误用 Codex 匹配规则，ZCode 主模型的共享控件注册另有遗漏。
 - 长期规避：并行读取所有 CLI 的独立快照后刷新模型缓存；空身份保留 null，不能借用旧心跳。配置页统一使用宿主身份，只对激活档案自动应用。新增主 CLI 复用共享角色能力判定，不再复制容易漏项的名单。跨 CLI 没有有效档案时仍阻止派发，不自动创建档案或启动进程。
@@ -105,7 +105,7 @@
 
 - 状态：已规避，外部工具恢复需观察
 - 首次发现：2026-10-20
-- 适用范围：Claude 分组、普通会话、Loop/Graph 子任务和会话续聊
+- 适用范围：Claude 分组、普通会话、Loop/Loop+ 子任务和会话续聊
 - 现象：上海天气任务连续 WebSearch 后提示无法查询，宿主仍记录该回合完成；并非权限拒绝。另在多个公开站点实测 WebFetch 均因无法验证域名安全而失败，同 URL 的 Bash/curl 正常。
 - 根因：空搜索包装没有可用来源与天气数据；网络工具失败不等于 `allowedTools` 缺失。手工 CLI 使用定制 curl 提示成功，不代表该提示已进入插件实际 Runner。即使 curl 成功，原始 JSON 太大而仅返回预览时，模型仍可能在未读日预报字段的情况下猜测错误的最低最高温；命令退出成功不能作为答案正确的证据。当前接入的工具集合也不包含 Glob/Grep，ToolSearch 无匹配不能推导其他环境均没有该工具。
 - 长期规避：联网兼容提示在 `src/cli/claudeToolPolicy.ts` 统一构建并注入每轮 SDK 输入及单次调用；当前环境的 WebSearch/WebFetch 禁用并改用 curl。天气命令解析完整 JSON 后仅输出可核对字段，避免输出被截断；无解析器时读完整输出，不能凭预览猜测。解析脚本自身也执行成功/错误响应回归，不能依赖模型自动修正示例代码。缺失的文件搜索工具用 rg 或平台命令替代，已正常工作的原生工具不禁用；替代不绕过权限或 plan。工具恢复时重新做原生调用验证后再调整策略，不把临时兼容结论当永久能力表。
@@ -444,9 +444,9 @@
 - `vsce package` 默认通过 `npm list` 探测生产依赖。
 
 ### 根因
-- pnpm 用符号链接和虚拟 store 组织依赖，顶层没有 npm 那种 hoist 结果，例如 `@dagrejs/graphlib` 不在 `node_modules/@dagrejs/graphlib`。
+- pnpm 用符号链接和虚拟 store 组织依赖，顶层没有 npm 那种 hoist 结果，顶层依赖与 npm 的扁平布局不同。
 - npm 把这些链接包当成本地包，把它们的 `devDependencies` 也算进 `npm list`，于是 vsce 直接失败。
-- 只加 `--no-dependencies` 不够：Graph 运行时仍要求 VSIX 内包含 `node_modules/@dagrejs/dagre` 和 `node_modules/@dagrejs/graphlib`。
+- 只加 `--no-dependencies` 不够：宿主仍依赖实际运行时包，必须审计 VSIX 内的依赖和传递依赖。
 
 ### 长期规避
 - 导出脚本检测到 pnpm 布局时，复制源码到临时目录再安装：有 pnpm 则 `pnpm install --node-linker=hoisted`，否则 `npm install`，再调用 `vsce package`。
@@ -455,7 +455,7 @@
 
 ### 验证方式
 - 在已有 pnpm `node_modules` 的工作区执行 `python3 scripts/export_vscode_extension.py`。
-- 确认生成 `dist/sinitek-cli-tools-<version>.vsix`，且 ZIP 中包含 `extension/dist/extension.js` 与 `extension/node_modules/@dagrejs/(dagre|graphlib)/package.json`。
+- 确认生成 `dist/sinitek-cli-tools-<version>.vsix`，且 ZIP 中包含 `extension/dist/extension.js` 与 `extension/node_modules/marked/package.json`。
 
 ### 关联资料
 - `scripts/export_vscode_extension.py`
@@ -833,7 +833,7 @@
 
 - 状态：已规避，需随 Codex app-server 启动/停止策略变化复核
 - 首次发现：2026-08-20
-- 适用范围：`src/interactive/codexRunner.ts`、Codex app-server、Loop/Graph 子任务、Extension Host 停止与 reload
+- 适用范围：`src/interactive/codexRunner.ts`、Codex app-server、Loop/Loop+ 子任务、Extension Host 停止与 reload
 
 ### 现象
 - 插件长时间使用后，Codex 运行开始报 `spawn /Users/fangjiawei/.npm-global/bin/codex EAGAIN`。
@@ -1003,7 +1003,7 @@
 ### 长期规避
 - Codex Vibe/coding 且全局 `humanInteractionEnabled=true` 时，`codexRunner` 启动 app-server 必须追加 `--enable default_mode_request_user_input`。
 - 同一条件下，app-server `initialize.capabilities.experimentalApi` 必须为 `true`，并继续只在 `promptInteractiveRuntime` 可处理结构化人工交互时开启。
-- Loop/Graph 和关闭全局人工交互开关时不启用该 Codex Default mode user-input 能力，避免非 Vibe 编排误弹窗。
+- Loop/Loop+ 和关闭全局人工交互开关时不启用该 Codex Default mode user-input 能力，避免非 Vibe 编排误弹窗。
 
 ### 验证方式
 - 运行 `npm run build`。
@@ -1049,70 +1049,6 @@
 - `src/extensionHost/sessionTabs.ts`
 - `src/test/session/sessionPersistenceWiring.test.ts`
 
-## Graph 全量验证节点不能默认硬阻断交付收束
-
-- 状态：已规避，需随 Graph planner / scheduler / summary 变更复核
-- 首次发现：2026-08-02
-- 适用范围：Graph AI planner、验证节点规划、scheduler 结构依赖、summary 未解决事项
-
-### 现象
-- Graph 运行中相关 focused 回归已经通过，但 `npm run test:unit` 等完整单测失败少量历史/范围外 subtests 后，整个 run 进入 `needs-review`，后续 review / summary 未执行。
-- 用户看到的是“Graph 中断”，而不是“相关验证已通过，全量验证存在遗留失败”。
-
-### 触发条件与根因
-- AI planner 把完整单测节点规划成普通 blocking `depends_on`，并让 review/summary 结构依赖该节点。
-- 完整单测节点 `maxAttempts=1` 且失败后没有可用 `if_fail` 返工路径，scheduler 后续无可运行节点，宿主 idle 后置为 `needs-review`。
-- 全量测试输出常引用 `dist/test/*.test.js`，如果失败分类不映射回 `src/test/*.test.ts`，会误判真实修复范围。
-
-### 长期规避
-- 完整单测、全仓测试、全量 lint 等覆盖面大且可能包含历史/范围外失败的验证节点，默认规划为 `blocking:false` advisory 节点，并用 `evidence_for` 连到 review/summary。
-- 相关 focused 验证仍必须使用普通 blocking dependency 或 `if_pass`，确保真实相关失败能阻断交付。
-- Summary 必须把 advisory failed 节点列入 unresolved，不能把失败命令描述为已成功通过。
-- failure classifier 必须把 `dist/test/*.test.js` 候选映射回 `src/test/*.test.ts`，再判断是否需要测试适配或源码返工。
-
-### 验证方式
-- 覆盖 failed `blocking:false` 结构依赖可继续调度 review/summary，但 `if_pass` 仍不满足。
-- 覆盖 planner/store 保留 `blocking:false`，prompt 明确完整单测默认 advisory。
-- 覆盖 `dist/test/webview/codexdualmodelwebview.test.js` 能映射到 `src/test/webview/codexdualmodelwebview.test.ts`。
-- 运行 `npm run build` 与 `node --test dist/test/graph*.test.js`。
-
-### 关联资料
-- `src/graph/types.ts`
-- `src/graph/graphScheduler.ts`
-- `src/graph/graphPromptBuilders.ts`
-- `src/graph/graphFailureClassification.ts`
-- `.ch/docs/exec-plans/completed/2026-08/2026-08-02-graph-advisory-validation.md`
-
-## Graph Tab 元数据不能覆盖前台模式选择
-
-- 状态：已规避，需随 Graph / Loop / Vibe 入口变更复核
-- 首次发现：2026-07-31
-- 适用范围：AI 对话 Webview 模式选择、Graph tab 恢复元数据、前台发送与后台队列分发
-
-### 现象
-- 同一 conversation tab 先执行 Graph 后，用户切换到 Vibe/coding 或 Loop 再发送新提示，仍会被自动按 Graph 执行。
-- 视觉上模式选择已经改变，但运行路径没有跟随用户当前选择。
-
-### 触发条件与根因
-- Graph run 会在 tab 上保留 `graphRunId` / `openGraphRun` 等元数据，用于展示图入口、状态和历史恢复。
-- 前台发送路径若先根据 tab 元数据调用 auto mode 解析，再读取当前 UI 模式，就会把普通前台输入误判为 Graph 续跑。
-
-### 长期规避
-- 前台发送没有显式 `interactiveMode` 时，必须以当前 `state.interactiveMode` 为权威。
-- Graph 元数据只能用于图入口、展示、历史恢复，以及后台派发或 Graph 续跑的自动归类，不能覆盖用户在同一 tab 中切换后的 Vibe/coding 或 Loop 前台发送。
-- 修改 `resolveDispatchInteractiveMode`、tab 自动模式、队列出队或 Graph 恢复逻辑时，要同时覆盖“Graph 后切 Vibe”和“Graph 后切 Loop”回归测试。
-
-### 验证方式
-- 在带 `graphRunId` 的 active tab 上断言前台 `dispatchPrompt` 会随 `state.interactiveMode="coding"` 发送 coding/Vibe，并随 `state.interactiveMode="loop"` 发送 Loop。
-- 保留后台派发 Graph tab 自动使用 `graph` 的覆盖。
-- 运行 `npm run build` 与 `node --test dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/graph/graphMainWebview.test.js`。
-
-### 关联资料
-- `src/webview/viewContentScript/taskListAndUi.ts`
-- `src/test/webview/clipagescriptruntimecoverage.test.ts`
-- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
-- `.ch/docs/references/cli-runtime-reference.md`
-
 ## VSIX 新增运行时依赖必须同步 `.vscodeignore` 放行
 
 - 状态：已规避，需发布时检查
@@ -1121,7 +1057,6 @@
 
 ### 现象
 - 开发态和本地 `dist/` 加载正常，但安装新打出的 VSIX 后插件激活失败。
-- VS Code Extension Host 报错：`Cannot find module '@dagrejs/dagre'`，require stack 指向 `dist/webview/graphRunPanel.js -> dist/panelDiagnostics.js -> dist/extension.js`。
 - 2026-09-25 复发：`src/loopCommunicationFilePreview.ts` 在扩展宿主执行 `require("marked")`，安装目录没有 `node_modules/marked`。激活失败报 `Cannot find module 'marked'`，调用栈经过 `dist/loopCommunicationFilePreview.js -> dist/webview/loopGroupChatPanel.js -> dist/extension.js`。
 
 ### 触发条件
@@ -1130,23 +1065,21 @@
 
 ### 根因
 - `vsce package` 按 `.vscodeignore` 生成安装包；`package.json.dependencies` 只能表达依赖关系，不能覆盖显式 ignore 规则。
-- 因此 `dist/*.js` 中保留的 `require("@dagrejs/dagre")` 在用户安装目录找不到实际包，插件在激活阶段直接失败。
+- 因此 `dist/*.js` 中保留的 `require("marked")` 在用户安装目录找不到实际包，插件在激活阶段直接失败。
 
 ### 长期规避
 - 新增任何扩展宿主运行时依赖时，必须同时检查 `package.json.dependencies`、`.vscodeignore` 放行规则和实际 VSIX ZIP 清单。
-- 对有传递依赖的 scope 包，优先放行整个作用域，例如 `!node_modules/@dagrejs/**`，避免只带主包漏掉子依赖。
+- 对有传递依赖的包，明确放行实际运行时依赖及其传递依赖，避免只带主包漏掉子依赖。
 - 单元测试至少覆盖关键依赖的声明和 `.vscodeignore` 放行；发布前仍必须以实际 VSIX 解包验证为准。
 
 ### 验证方式
-- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/graph/graphRunPanel.test.js dist/test/loop/loopCommunicationFilePreview.test.js`。
+- 执行 `npm run build` 和相关定向测试，例如 `node --test dist/test/loop/loopCommunicationFilePreview.test.js`。
 - 执行 `python3 scripts/export_vscode_extension.py` 后，用 Python ZIP 审计确认主依赖和传递依赖都进入包。
 - 可进一步解包到临时目录并加载对应 `dist` 模块，确认不会再因缺少依赖抛错。
 
 ### 关联资料
 - `.vscodeignore`
 - `package.json`
-- `src/webview/graphRunPanel.ts`
-- `src/test/graph/graphRunPanel.test.ts`
 - `scripts/export_vscode_extension.py`
 
 ## VSIX 打包脚本不能只依赖全局 `vsce`
@@ -1333,38 +1266,6 @@
 - `src/contextCompactionRunner.ts`
 - `src/test/interactive/codexThreadSelection.test.ts`
 - `.ch/docs/exec-plans/completed/2026-08/2026-08-25-codex-app-server-provider-resume.md`
-
-## Codex Graph 子任务报 `spawn <codex> ENOENT` 不一定是命令丢失
-
-- 状态：已规避，需随 Codex interactive runner 复用策略复核
-- 首次发现：2026-07-24
-- 适用范围：Codex app-server interactive runner、Graph 节点执行、Loop/Graph 子任务临时执行根
-
-### 现象
-- Graph 节点运行日志显示 `spawn /Users/.../.npm-global/bin/codex ENOENT`，但同一终端里 `codex --version` 正常，symlink 和目标 `codex.js` 都存在。
-- 插件日志中同一个 Graph run 的后续节点快速失败，但 Graph store 曾继续把节点记为 passed 并生成 `Graph run completed`。
-
-### 触发条件与根因
-- 早期 Graph 节点通过 `taskRole="subtask"` 创建临时执行根，节点结束后会清理该目录。2026-07-24 起 Graph 节点改为使用 run 级独立 git worktree；Loop 子任务仍可能使用临时执行根。
-- `InteractiveRunnerManager` 只按 session/config/model 等维度复用 Codex runner，未把 `command`、`args`、`cwd` 作为 runner 身份的一部分时，后续 Graph 节点可能复用仍指向已删除临时 `cwd` 的旧 runner。
-- Node `spawn` 在 `cwd` 不存在时也会报 `ENOENT`，错误文本仍形如 `spawn <command> ENOENT`，容易误判为 CLI 可执行文件缺失。
-- Graph executor 如果不要求 `runPrompt` 错误回传，会把已展示到 UI 的节点执行失败吞掉，导致 kernel 收到 passed 结果并继续 summary。
-
-### 长期规避
-- Codex runner 缓存身份必须同时包含 `command`、`args` 和 `cwd`；任何执行根变化都要重建 runner。
-- Graph 节点调用 `runPrompt` 必须使用内部错误回传路径，并在节点结束后解析 communication file 的 `## JSON`；CLI 启动失败、最终答复失败、artifact 缺失/非法或 runner 异常要进入 `failed/blocked/needs-review`，不能继续生成 completed summary。
-- 排查 `spawn <cli> ENOENT` 时同时检查 `cwd` 是否存在，不能只检查 `command -v` 或 symlink。
-
-### 验证方式
-- 断言 `InteractiveRunnerManager` 在相同 session/config/model 但不同 `cwd` 时不会复用 Codex runner。
-- 断言 Graph 节点执行路径设置错误回传，`runPrompt` interactive 失败时会 throw 给 Graph kernel；断言 artifact JSON 的 failed/blocked 不会被 executor 改写成 passed。
-- 用真实日志核对：失败 run 的 `codex-app-server-spawn.cwd` 指向临时执行根，且该根可能已被清理。
-
-### 关联资料
-- `src/interactive/manager.ts`
-- `src/extension.ts`
-- `src/test/interactive/codexThreadSelection.test.ts`
-- `src/test/graph/graphExtensionRuntime.test.ts`
 
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能把 `turn.completed` 当成最终回复气泡
 
@@ -2325,96 +2226,6 @@
 ### 验证方式
 - 执行 `npm run build && node --test dist/test/cli/commandResolution.test.js`，再执行 `npm test`。
 
-## Graph tab 识别不能只依赖完成消息
-
-- 状态：已规避
-- 首次发现：2026-07-24
-- 适用范围：Graph runtime、tab 运行状态、Webview Graph 图标和“打开 Graph 图”入口
-
-### 现象
-- Graph 任务开始运行后，conversation tab 仍显示为普通 tab，底部运行状态行没有“打开 Graph 图”按钮；等 Graph run 结束或再次追加带 `openGraphRun` action 的系统消息后，tab 才显示地图图标和 Graph 入口。
-
-### 触发条件
-- Graph run 创建时先通过系统消息写入 `openGraphRun` action，但随后 Graph 节点用现有 `runPrompt` 在同一 tab 运行。
-- 节点启动发出的 `runStatus:start` 没有携带 `graphRunId` / `graphNodeId`，Webview 将该 start 状态视为普通运行并清掉运行时 Graph meta。
-
-### 根因
-- Webview 的 Graph tab 标识依赖 `graphRunId`。Graph started/completed 消息能提供该 id，但运行中的节点 start 状态也会参与 tab 元数据同步；如果 start payload 缺少 Graph id，就会覆盖掉刚识别出的 Graph tab。
-
-### 长期规避
-- 任何 Graph 节点执行路径调用 `runPrompt` 时，都必须把 `graphRunId` / `graphNodeId` 透传到 tab 级 `runStatus:start` 和 assistant message metadata。
-- 新增 Graph 运行状态入口时，不能只验证最终系统消息；必须验证任务运行中 tab label、Graph 图按钮和自动 Graph mode 选择都已经生效。
-
-### 验证方式
-- 执行 `npm run build`。
-- 执行 `node --test dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphMainWebview.test.js dist/test/core/openCodeTabStream.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/loop/loopmaingroupchatbutton.test.js`。
-
-## Graph planned parallel 节点不能被未声明 scope 隐式串行化
-
-- 状态：已规避，需随 Graph scheduler / planner 并发语义变化复核
-- 首次发现：2026-08-29
-- 适用范围：Graph scheduler、Graph runtime、AI planner 并行 DAG、review/test/summary 节点调度
-
-### 现象
-- AI planner 已生成 4 个同层并行 `review` 节点且 `plannedGraph.maxConcurrent=4`，但运行日志中节点仍按单个或少量串行执行。
-- 看起来像 executor 并发数没有生效，实际是 scheduler 在 batch selection 阶段提前把 ready 节点延后。
-
-### 触发条件与根因
-- 多个 ready 节点属于写入类节点，但没有声明 `writeFiles` 或 `conflictGroup`。
-- 旧 scheduler 把这类节点归为隐式 `unscopedWrite` 全局冲突组，因此即使 DAG 和 `maxConcurrent` 允许并行，也只选中一个写入类节点。
-- runtime 还有次要触发点：一次成功推进 tick 没有失败或阻塞节点时，也可能用空触发列表误追加 `replan-*`。
-
-### 长期规避
-- Graph 调度冲突只应来自显式 `conflictGroup` 或重叠 `writeFiles`；未声明 scope 的 ready 节点不应被 scheduler 自动当作全局写锁。
-- 会修改文件的节点仍必须在 planner prompt / 节点约束中声明 `writeFiles` 或 `conflictGroup`；未声明 scope 的节点必须被视为不写文件。
-- 动态 replan 只在 failed/blocked 触发节点存在，或真正 idle/no-progress 时尝试；普通成功推进 tick 不得追加 `replan-*`。
-
-### 验证方式
-- 执行 `node --test dist/test/graph/graphScheduler.test.js dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphPlanner.test.js`。
-- 检查 `graphScheduler` 回归用例中 4 个无 `writeFiles` 的 planned parallel `review` 节点会全部进入 `selectedNodeIds`。
-- 检查 `graphExtensionRuntime` 回归用例中成功推进 `review -> summary` 后不会生成 `replan-*` 节点。
-
-## Graph 重构后验证节点不能无写入授权地承担测试契约迁移
-
-- 状态：已规避，需随 Graph planner / failure classification 变更复核
-- 首次发现：2026-08-02
-- 适用范围：Graph planner、Graph test/review 节点、source-contract / canonical source 测试、重构/迁移/拆模块任务
-
-### 现象
-- Graph run `graph_msg_1785661781962_abd923233c4068` 执行到 `test-schema-definitions` 后失败并进入 `needs-review`，attempts 达到 2/2。
-- 失败看起来像 SQL schema 实现继续出错，但实际测试 `apps/server/test/performance/performance-observation-schema.test.js` 仍读取旧 `apps/server/src/db.js` 文本 source-contract，查找已经迁入 `apps/server/src/db/schema/observability.js` 的 SQL 定义。
-- `test-schema-definitions` 节点没有测试文件 `writeFiles` 授权，只能重复失败，Retry 也不能新增授权范围。
-
-### 触发条件
-- 重构、迁移或拆模块移动 canonical source，例如把 SQL 常量从聚合文件移到子模块。
-- 现有测试用 source-contract、文本快照、路径断言或 “canonical source” 读取旧文件，而 planner 只规划实现节点和只读验证节点。
-- 验证节点没有声明受影响测试文件的 `writeFiles`，`if_fail` / `review_feedback` 又只回到原实现节点。
-
-### 根因
-- planner 过去没有把“实现迁移”和“测试契约迁移”拆成两个有写入授权的节点。
-- runtime 过去只保留 `lastError`，缺少 `missing_write_scope` / `stale_test_contract` 分类与 recommendedWriteFiles，主 tab 难以看出失败应返工到测试适配节点。
-
-### 长期规避
-- planner 遇到重构/迁移/拆模块时，必须检查 source-contract、文本快照、路径断言和测试 canonical source；风险存在时规划独立 test adaptation / 契约更新节点，并声明具体测试 `writeFiles`。
-- 验证节点发现旧测试契约失败时，应通过 `if_fail` / `review_feedback` 返工到测试适配节点，而不是只回到原实现节点。
-- runtime 需要把该类失败分类为 `missing_write_scope`，signals 保留 `stale_test_contract`，recommendedRecovery 使用 `add_rework_node`，recommendedWriteFiles 指向需要授权的测试文件；不得建议单纯 Retry 作为主要恢复路径。
-- needs-review / idle 文案必须展示 category、confidence、signals、recommendedRecovery、recommendedWriteFiles 和 nodeDraft，确保主任务或用户不用翻 artifact 才能理解下一步。
-
-### 验证方式
-- 用 `test-schema-definitions` 失败样本文本验证分类结果：category 为 `missing_write_scope`，signals 包含 `stale_test_contract`，recommendedWriteFiles 包含 `apps/server/test/performance/performance-observation-schema.test.js`。
-- 检查 planner prompt 覆盖 stale/source-contract/writeFiles/test adaptation 要求。
-- 执行 `node --test dist/test/graph/graphFailureClassification.test.js dist/test/graph/graphNodeLifecycle.test.js dist/test/graph/graphStore.test.js dist/test/graph/graphNodeArtifact.test.js dist/test/graph/graphExtensionRuntime.test.js dist/test/graph/graphPromptBuilders.test.js`，并在需要时执行 `npm run build`。
-
-### 关联资料
-- `.ch/docs/design-docs/graph-orchestration-mode.md`
-- `.ch/docs/product-specs/FEATURE_INVENTORY.md`
-- `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
-- `src/graph/graphFailureClassification.ts`
-- `src/graph/graphPromptBuilders.ts`
-- `src/extension.ts`
-- `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-1-planner-stale-contract-guards.md`
-- `/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1785666611389_ecabb047f2973/subtasks/round-2-graph-failure-classification-core.md`
-
 ## 同版本 VSIX 强装后人工交互弹窗可能卡在运行时 / webview 版本边界
 
 - 状态：需部署时检查
@@ -2562,7 +2373,7 @@
 
 - 状态：已规避
 - 首次发现：2026-09-25
-- 适用范围：Loop / Loop+ 群聊面板、Graph 运行图面板、使用 `hidden` 切换可见性的 Webview
+- 适用范围：Loop / Loop+ 群聊面板、使用 `hidden` 切换可见性的 Webview
 
 ### 现象
 - Loop 与 Loop+ 群聊点击“补充需求”时，确认框仍然显示“继续使用的运行配置 / 主子模型”选择。
@@ -2589,7 +2400,6 @@
 ### 关联资料
 - `src/webview/loopGroupChatPanelStyles.ts`
 - `src/webview/loopGroupChatPanel.ts`
-- `src/webview/graphRunPanelStyles.ts`
 
 ## 主任务刷新会在补充需求弹窗恢复前把它写成已关闭
 
@@ -2834,31 +2644,26 @@
 
 - 状态：已规避
 - 首次发现：2026-09-30
-- 适用范围：经典 Loop、Loop+、Graph planner / replanner
+- 适用范围：经典 Loop、Loop+
 
 ### 现象
-- Graph tick 把 `clarify` 算进完成节点后，plan 节点看起来已经通过，运行图却不再等用户。
-- 子任务或非 plan 节点返回 `clarify` 时弹出了主任务表单。
+- 子任务返回 `clarify` 时弹出了主任务表单。
 - 群聊提交一次澄清后，补充要求里出现两份相同答案，或正在运行的主任务和冷恢复同时继续。
 
 ### 根因
-- `clarify` 只表示主任务要等用户。Graph plan 节点应回到 `ready`，真正的等待信号是 `pendingClarification`，不是 `passed`。
 - Loop+ 的 `applyClarifyDecision` 只是策略表占位并返回 `stop`。真正等待发生在 consumer 解析到 `clarify` 时。
 - 进程内 waiter 还在时，面板提交只能 resolve waiter；只有 waiter 已经不在时，才把答案写入补充要求并冷恢复。
 
 ### 长期规避
-- 非 plan 节点的 `clarify` 按失败处理，不保存表单。
 - 同一任务最多主动澄清 8 次。拒绝进入 `needs-review`，停止必须清表单并 abort waiter。
 - 热恢复不要再写一次答案，冷恢复不要只 resolve 一个已经不存在的 waiter。
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/core/orchestratorClarification.test.js dist/test/graph/graphKernel.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
+- `node --test dist/test/core/orchestratorClarification.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
 
 ### 关联资料
 - `src/orchestratorClarification.ts`
-- `src/graph/graphKernel.ts`
-- `src/graph/graphNodeLifecycle.ts`
 - `src/panelDiagnostics.ts`
 
 ## Grok 分类器不能按 trim 丢弃纯空白分块

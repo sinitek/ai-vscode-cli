@@ -38,8 +38,6 @@ REQUIRED_ENTRIES = (
     "media/config/monaco-editor/0.52.2/min/vs/editor/editor.main.js",
     "media/config/monaco-editor/0.52.2/min/vs/editor/editor.main.css",
     "media/workspace-scaffold/AGENTS.md",
-    "node_modules/@dagrejs/dagre/package.json",
-    "node_modules/@dagrejs/graphlib/package.json",
     "node_modules/marked/package.json",
     "node_modules/json-formatter-js/dist/json-formatter.umd.js",
 )

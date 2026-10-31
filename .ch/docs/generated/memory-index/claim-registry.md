@@ -70,6 +70,10 @@
 | `claim-8c096bea456f` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-95f7080633c3` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-99e09c088baf` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
+| `claim-8f87a372ef80` | `decision` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-10-16` |
+| `claim-91d370254f8a` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
+| `claim-bc1a7d3cf073` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
+| `claim-d304525ec6d2` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-04d77e38d577` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-279d99a97043` | `decision` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-10-16` |
 | `claim-87536ae79419` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
@@ -108,8 +112,10 @@
 | `claim-b9597eb2f15d` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-c5443e62b9df` | `risk` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-09-19` |
 | `claim-2435e8e9d987` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-13` |
+| `claim-422b79a6047d` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-13` |
 | `claim-6d9f2766d40e` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-721fae53d0e0` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
+| `claim-809cc098c81b` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-9571c70b7dfd` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-d3161b121ee2` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-d44b9f5288e6` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-13` |
@@ -1052,6 +1058,62 @@
 - Quote hash: `sha256:68c7abb973b2f4177d406260d6ab50276a605646651ae275c5620d87337edda9`
 - Review after: `2026-09-01`
 
+### claim-8f87a372ef80
+
+- Text: scaffold 中的 `project.*` Ontology 记录是模板占位；已有真实项目业务域时，不应把占位域复制进当前仓库。
+- Type: `decision`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/MEMORY.md`
+- Source anchor: `3.8 Harness scaffold 与记忆保护`
+- Source span: `heading:3.8 Harness scaffold 与记忆保护`
+- Source observation: `mem-c1d7e714b7`
+- Content hash: `sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Quote hash: `sha256:4d6e36bee1219129f070d6c5cd12795898a02ec52c6943688c36d65607e308c7`
+- Review after: `2026-10-16`
+
+### claim-91d370254f8a
+
+- Text: 不删除、移动或重排现有 `exec-plans/active/`、`exec-plans/completed/` 计划；只同步计划规则、模板字段和归档约定。
+- Type: `instruction`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/MEMORY.md`
+- Source anchor: `3.8 Harness scaffold 与记忆保护`
+- Source span: `heading:3.8 Harness scaffold 与记忆保护`
+- Source observation: `mem-c1d7e714b7`
+- Content hash: `sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Quote hash: `sha256:d05161e1f92cb5a4d43848f41cee243c2cf19bba83f83f79eaf831b9ff4132d1`
+- Review after: `2026-09-01`
+
+### claim-bc1a7d3cf073
+
+- Text: 不用 scaffold 的 `memory/` 文件覆盖当前仓库已有热区正文、front matter、历史条目或来源链接。
+- Type: `instruction`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/MEMORY.md`
+- Source anchor: `3.8 Harness scaffold 与记忆保护`
+- Source span: `heading:3.8 Harness scaffold 与记忆保护`
+- Source observation: `mem-c1d7e714b7`
+- Content hash: `sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Quote hash: `sha256:4176254f2c516509888a2bebb412fd256c0f9f998e862786eeaa987955d2fa9f`
+- Review after: `2026-09-01`
+
+### claim-d304525ec6d2
+
+- Text: 不重建或覆盖未提交的 `.ch/docs/generated/memory-index/.local/` 任务级召回文件；如需生成新召回包，应先确认当前工作面没有未提交修改。
+- Type: `instruction`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/MEMORY.md`
+- Source anchor: `3.8 Harness scaffold 与记忆保护`
+- Source span: `heading:3.8 Harness scaffold 与记忆保护`
+- Source observation: `mem-c1d7e714b7`
+- Content hash: `sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Quote hash: `sha256:df77dc322925823823027ab639e6b676c8c686be2c42c604182e6956f10d1c53`
+- Review after: `2026-09-01`
+
 ### claim-04d77e38d577
 
 - Text: `LESSONS_LEARNED.md` 中如果已经上提成稳定设计、runbook 或 skill，应改成短链接或删除重复条目。
@@ -1584,6 +1646,20 @@
 - Quote hash: `sha256:4ee4c6d17882b91506753bbd686aba47d26b4886f8e85f923ae8842b1a23b37d`
 - Review after: `2026-10-13`
 
+### claim-422b79a6047d
+
+- Text: `.ch/docs/generated/memory-index/` 是可重建的共享索引，`.local/` 是任务级召回工作面；两者都不能反向覆盖原始热区记忆或执行计划。
+- Type: `instruction`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/memory/README.md`
+- Source anchor: `使用原则`
+- Source span: `heading:使用原则`
+- Source observation: `mem-431f2548e1`
+- Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
+- Quote hash: `sha256:8730d5183a73e03c604ce5684cbfe375b547566a7f2901b7da0c0d16af4bbbfb`
+- Review after: `2026-10-13`
+
 ### claim-6d9f2766d40e
 
 - Text: 如果一条信息只适用于单次任务，不要写进热区，优先写到当前 `exec plan`。
@@ -1610,6 +1686,20 @@
 - Source observation: `mem-431f2548e1`
 - Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
 - Quote hash: `sha256:9642aadf513e7cbd45b9f2ccc82f4ad8afcf4c00a20b0de94906b2df9c64a283`
+- Review after: `2026-10-28`
+
+### claim-809cc098c81b
+
+- Text: 同步 `media/workspace-scaffold` 时，不得用模板热区替换本仓库已有记忆；模板只补充规则入口和缺失结构。
+- Type: `fact`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/memory/README.md`
+- Source anchor: `使用原则`
+- Source span: `heading:使用原则`
+- Source observation: `mem-431f2548e1`
+- Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
+- Quote hash: `sha256:9dd12887c753b15f0745dbfdc7ebf4f00ac609e9e4062ba3ce26c0db85c88bb6`
 - Review after: `2026-10-28`
 
 ### claim-9571c70b7dfd

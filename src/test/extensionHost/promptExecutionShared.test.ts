@@ -14,10 +14,9 @@ test("classic and legacy Loop subtasks load project instructions on initial exec
   }
 });
 
-test("Loop+, Graph, unknown tasks and non-subtasks retain their execution policy", () => {
+test("Loop+, unknown tasks and non-subtasks retain their execution policy", () => {
   const input = { taskRole: "subtask" as const, loopTaskId: "task" };
   assert.equal(shouldUseClassicLoopProjectInstructions(input, { schedulingMode: "event_driven" }), false);
-  assert.equal(shouldUseClassicLoopProjectInstructions({ ...input, graphRunId: "graph" }, { schedulingMode: "classic" }), false);
   assert.equal(shouldUseClassicLoopProjectInstructions(input, null), false);
   assert.equal(shouldUseClassicLoopProjectInstructions({ taskRole: "subtask" }, { schedulingMode: "classic" }), false);
   assert.equal(shouldUseClassicLoopProjectInstructions({ ...input, taskRole: "main" }, { schedulingMode: "classic" }), false);

@@ -506,7 +506,7 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.state.interactiveMode = "graph";
+  harness.state.interactiveMode = "loop_plus";
   harness.sync("opencode");
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodePrimaryModelSelect.disabled, false);
@@ -526,7 +526,7 @@ test("keeps OpenCode dual models, Codex role models, and Claude no model across 
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.disabled, false);
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.state.interactiveMode = "graph";
+  harness.state.interactiveMode = "loop_plus";
   harness.sync("codex");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);

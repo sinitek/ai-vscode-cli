@@ -51,7 +51,7 @@ import { createSubagentProgressController, type SubagentProgressLabels } from ".
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import { buildCliCommandNotFoundMessage } from "../webviewCommandCoordinator";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type {
   OpenCodeRuntimePreparation,
   OpenCodeRuntimePreparationInput,
@@ -168,8 +168,6 @@ type PromptOneShotRuntimeHostDeps = {
       loopTaskId?: string;
       loopRound?: number;
       loopSubtaskId?: string;
-      graphRunId?: string;
-      graphNodeId?: string;
     },
   ) => void;
   startTraceMessage: (cli: CliName) => void;
@@ -624,8 +622,6 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           loopTaskId: input.loopTaskId,
           loopRound: input.loopRound,
           loopSubtaskId: input.loopSubtaskId,
-          graphRunId: input.graphRunId,
-          graphNodeId: input.graphNodeId,
         });
         setActiveMessageTarget(prepared.messageTarget);
         setActiveSessionId(target.sessionId);

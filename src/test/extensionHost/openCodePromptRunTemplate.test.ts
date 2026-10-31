@@ -2,7 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { runOpenCodePromptTemplate } from "../../extensionHost/openCodePromptRunTemplate";
 import type { OpenCodePromptRunPorts } from "../../extensionHost/openCodePromptRunTemplate";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 
 type RecordedPort = OpenCodePromptRunPorts & {
   events: string[];

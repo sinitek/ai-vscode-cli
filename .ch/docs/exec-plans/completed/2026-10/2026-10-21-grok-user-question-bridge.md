@@ -15,7 +15,7 @@ Grok 的 `ask_user_question` 向 ACP 客户端发送 `_x.ai/ask_user_question`�
 ## 目标与范围
 
 - 将 Grok 原生提问桥接到已有人工交互表单，支持按问题顺序返回单选、多选和补充回答。
-- 复用 Vibe 人工交互开关、超时和拒绝/停止生命周期，禁止给 Loop/Graph 子流程额外打开表单。
+- 复用 Vibe 人工交互开关、超时和拒绝/停止生命周期，禁止给 Loop 子流程额外打开表单。
 - 错误摘要保留错误码和具体消息，补充适配器、runner、宿主回归测试。
 - 同步功能清单、运行时参考、踩坑和 ontology。
 
@@ -62,7 +62,7 @@ Tasklist:
 - `npm run build`：通过，沿用项目现有 TypeScript target 和依赖。
 - 最小相关集合：132 项中 131 项通过，1 项历史失败；新增的适配器、ACP、runner、宿主及错误摘要回归均通过。
 - 扩大到全部 `grok*.test.js`、宿主桥接/策略、共享人工交互、Codex prompt runtime：`node --test --test-skip-pattern='^Grok session updates enter the existing assistant, thinking, and tool channels$' dist/test/interactive/grok*.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/extensionHost/interactiveTurnStrategy.test.js dist/test/core/humanInteraction.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js`，176 项通过、0 失败；明确排除下述历史断言。
-- 历史失败分类：`Grok session updates enter the existing assistant, thinking, and tool channels` 期望 `Hello world`，实际为保留尾部空格的 `Hello world   `。通过内存加载 `git show HEAD` 的原始 Grok/Codex turn strategy 和 prompt runtime，同一测试仍失败；未修改该无关断言或既有空白保留行为。证据位于本机 `/tmp/sinitek-grok-head-baseline.log`。
+- 历史失败分类：`Grok session updates enter the existing assistant, thinking, and tool channels` 期望 `Hello world`，实际为保留尾部空格的 `Hello world`。通过内存加载 `git show HEAD` 的原始 Grok/Codex turn strategy 和 prompt runtime，同一测试仍失败；未修改该无关断言或既有空白保留行为。证据位于本机 `/tmp/sinitek-grok-head-baseline.log`。
 - 实施中发现的测试环境兼容问题：测试首次使用 `Object.hasOwn` 超出现有 TS target，已改为既有兼容写法，未升级基础设施；错误摘要合并时的空字符串回退回归已修复，长日志首尾测试恢复通过。
 - 本机真实 Grok：在临时私有 `GROK_HOME` 和临时工作区中启动真实 `grok agent stdio`，用户原配置只复制、不修改；收到 `_x.ai/ask_user_question`，通过新增适配器返回 Linux 答案，CLI 回传 `AskUserQuestion.UserAnswered`，明确包含 Linux，并将工具标记为 `completed`。验证后清理进程和临时目录，未将配置或会话写入仓库。
 - 真实验证边界：首轮等待完整模型回合在 120 秒后超时；后续将验收收窄为原生提问/回答/工具完成链路并成功，不据此声称后续模型完整答复或 VS Code 内人工点击已经验证。没有修改 Webview 代码，沿用已有表单渲染与主题，本轮未启动浏览器。

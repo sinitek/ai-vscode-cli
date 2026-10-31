@@ -157,4 +157,4 @@ round-2 新增断言 `assert.notEqual(kimiStat.mode & 0o777, 0o600)` 把默认�
 
 ### round-3 范围说明
 
-本次实际修改文件：`src/config/configService.ts`、`src/test/config/configService.test.ts`、`ARCHITECTURE.md`、本计划，未超出建议范围。工作树中既有的 ZCode、Webview、Graph、Loop、extension、ontology/功能清单等并行改动未纳入、未覆盖、未回滚，与本修复无关。FEATURE_INVENTORY 与 ontology 仍不更新：前缀拼接方式为内部实现细节，无用户可见行为及语义变化。
+本次实际修改文件：`src/config/configService.ts`、`src/test/config/configService.test.ts`、`ARCHITECTURE.md`、本计划，未超出建议范围。工作树中既有的 ZCode、Webview、Loop、extension、ontology/功能清单等并行改动未纳入、未覆盖、未回滚，与本修复无关。FEATURE_INVENTORY 与 ontology 仍不更新：前缀拼接方式为内部实现细节，无用户可见行为及语义变化。

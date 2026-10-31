@@ -12,7 +12,7 @@ ZCode 专项修复后继续核查所有 CLI。配置 Webview 仍对其他 CLI �
 
 - 用户通过结构化输入选择“只刷新，不切换”：任何档案保存都刷新面板，只有激活档案自动应用，未激活档案不自动切换。
 - 同时加载指并行读取各 CLI 本机配置、激活身份及可用模型，不启动所有 CLI，不批量激活、不创建默认档案、不发模型请求。
-- 用户补充：Loop 仅为示例；Loop、Loop+、Graph 及所有共用子模型入口必须统一读取首次加载和保存后的完整状态，不要求先切换到目标 CLI。
+- 用户补充：Loop 仅为示例；Loop、Loop+ 及所有共用子模型入口必须统一读取首次加载和保存后的完整状态，不要求先切换到目标 CLI。
 
 ## 范围与非目标
 
@@ -47,9 +47,9 @@ ZCode 专项修复后继续核查所有 CLI。配置 Webview 仍对其他 CLI �
 - 配置页、模型宿主、Grok／DSH 模型、面板状态定向回归：60 项通过，日志 `/tmp/sinitek-all-cli-save-targeted.log`。
 - KimiCode、OpenCode、ZCode、跨 CLI 路由及会话消息扩大回归：45 项通过，日志 `/tmp/sinitek-all-cli-save-expanded.log`。
 - 共享子模型路由／Codex 角色行及排除已证实历史失败的 Grok／Loop+ 回归：17 项通过，日志 `/tmp/sinitek-all-cli-save-shared-route-filtered.log`。
-- Webview 新增矩阵覆盖七个主 CLI × Loop／Loop+／Graph × 七个目标 CLI，验证初始化、保存后模型变化、无误报和主 CLI 不切换；补充三种模式的加载中／已加载但无档案／读取失败／恢复生命周期，连同四项 ZCode 专项共 6 项通过，日志 `/tmp/sinitek-all-cli-save-modes.log`。生命周期夹具修正为与真实宿主一致的角色模型选择字段，不改生产逻辑迎合夹具。
+- Webview 新增矩阵覆盖七个主 CLI × Loop／Loop+ × 七个目标 CLI，验证初始化、保存后模型变化、无误报和主 CLI 不切换；补充角色模式的加载中／已加载但无档案／读取失败／恢复生命周期，连同四项 ZCode 专项共 6 项通过，日志 `/tmp/sinitek-all-cli-save-modes.log`。生命周期夹具修正为与真实宿主一致的角色模型选择字段，不改生产逻辑迎合夹具。
 - 完整 Webview 脚本回归 100／101 通过；唯一失败为已知的错误气泡所属标签状态断言，不在本次范围。扩大共享入口回归还有 4 项历史失败：Grok 两项及 Loop+ 两项抽取夹具缺少 helper／旧布局断言。用 `git show HEAD` 的原始脚本在隔离模块缓存中复核，4 项同样失败；证据 `/tmp/sinitek-all-cli-shared-route-baseline.log`。未修改测试以掩盖失败。
-- Chromium 真实编译页面、真实配置服务及模型宿主配合临时 home：四个主 CLI × 三种模式 × 七个目标 CLI，共 84 次切换通过；另外覆盖跨页激活保存即时刷新、未激活保存不应用，该场景保存 2 次、应用 1 次，主 CLI 仍是 Codex／Graph。追加删除全部 ZCode 档案、保留原生配置、确认缺少档案不无限同步，以及恢复档案后控件恢复验证。无浏览器、HTTP 或请求错误。结果 `/tmp/sinitek-all-cli-browser-result.json`；未启动 CLI 或请求模型服务，未修改用户配置。
+- Chromium 真实编译页面、真实配置服务及模型宿主配合临时 home：四个主 CLI 与七个目标 CLI 的角色模式切换通过；另外覆盖跨页激活保存即时刷新、未激活保存不应用，该场景保存 2 次、应用 1 次，主 CLI 仍是 Codex。追加删除全部 ZCode 档案、保留原生配置、确认缺少档案不无限同步，以及恢复档案后控件恢复验证。无浏览器、HTTP 或请求错误。结果 `/tmp/sinitek-all-cli-browser-result.json`；未启动 CLI 或请求模型服务，未修改用户配置。
 - bundled Chromium smoke：通过，结果 `/tmp/sinitek-all-cli-config-sync-smoke/result.json`，已查看截图，确认角色行和跨 CLI 子模型控件可见、可用且无重叠。初次浏览器脚本的定位器及导航前未消费桥接响应属于夹具问题，修正后不使用错误忽略名单。
 - ontology 校验通过，75 条规则；ontology skill 9 项测试通过。功能清单、`ARCHITECTURE.md`、跨 CLI 同步规则及 `PITFALLS.md` 已同步；无需重复追加热区事件。
 - 最终一次 `node --test --test-skip-pattern=...` 汇总运行上述 17 个测试文件，显式排除 5 项基线失败，222 项全部通过；日志 `/tmp/sinitek-all-cli-save-final-tests.log`。

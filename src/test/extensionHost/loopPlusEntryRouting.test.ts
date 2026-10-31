@@ -161,10 +161,8 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(runner.includes("stopParallelRunForTab("), true);
   assert.equal(runner.includes("stopActiveRun()"), true);
   const cancel = functionBody(extensionSource, "cancelLoopPlusInvocation");
-  assert.equal(cancel.includes("includeGraph: false"), true);
   assert.equal(cancel.includes("stopLoopPlusParent("), false);
   assert.equal(cancel.includes("markLoopTaskStoppedByUser("), false);
-  assert.equal(cancel.includes("stopGraphRunForConversationTab("), false);
   const preempt = functionBody(extensionSource, "preemptActivePromptRun");
   assert.equal(preempt.includes("cancelLoopPlusInvocation("), true);
   assert.equal(preempt.indexOf("cancelLoopPlusInvocation(") < preempt.indexOf("stopRunForTab("), true);

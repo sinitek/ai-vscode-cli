@@ -6,7 +6,6 @@ import {
   ThinkingMode,
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
-import type { GraphRunStatus } from "../graph/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
 import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
@@ -143,7 +142,6 @@ export type PanelMessage =
   | { type: "stopRun" }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
-  | { type: "openGraphRun"; graphRunId?: string | null; nodeId?: string | null }
   | { type: "openConfig"; cli?: CliName; configId?: string | null }
   | { type: "resolveDropPaths"; uris: string[] }
   | { type: "pickWorkspacePath" }
@@ -260,8 +258,6 @@ export type SessionSummary = {
   lastUsedAt: number;
   cli: CliName;
   isLoopSession: boolean;
-  isGraphSession: boolean;
-  graphRunId: string | null;
   isOpenInConversationTabs: boolean;
   openConversationTabId: string | null;
   firstPrompt?: string;
@@ -281,9 +277,6 @@ export type ConversationTabSummary = {
   loopTaskStatus?: LoopTaskStatus;
   loopSchedulingMode?: "classic" | "event_driven";
   loopMainTabCloseLocked?: boolean;
-  graphRunId?: string;
-  graphRunStatus?: GraphRunStatus;
-  graphRunBlocked?: boolean;
 };
 
 export type PromptHistoryItem = {
@@ -301,12 +294,7 @@ export type ChatMessageAction =
       roundKey?: string | null;
       label?: string;
     }
-  | {
-      type: "openGraphRun";
-      graphRunId: string;
-      nodeId?: string | null;
-      label?: string;
-    };
+  ;
 
 export type ConversationExecutionProfile = {
   configId: string;
@@ -332,11 +320,8 @@ export type ChatMessage = {
   loopAsk?: boolean;
   loopRound?: number;
   loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
   loopAnswerConclusion?: boolean;
   loopFinalSummary?: boolean;
-  graphFinalSummary?: boolean;
   codexFinalAnswer?: boolean;
   subagentProvider?: "opencode" | "codex" | "loop";
   subagentId?: string;

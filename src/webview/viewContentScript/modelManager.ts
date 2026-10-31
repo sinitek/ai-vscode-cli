@@ -287,14 +287,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       function isLoopRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
         const normalizedMode = normalizeInteractiveMode(interactiveMode);
         return cliSupportsLoopRoleModelSelection(cli) && (
-          normalizedMode === "loop" || normalizedMode === "graph" || normalizedMode === "loop_plus"
+          normalizedMode === "loop" || normalizedMode === "loop_plus"
         );
       }
 
       function isOpenCodeRoleModelMode(cli = state.currentCli, interactiveMode = state.interactiveMode) {
         const normalizedMode = normalizeInteractiveMode(interactiveMode);
         return cli === "opencode" && (
-          normalizedMode === "loop" || normalizedMode === "graph" || normalizedMode === "loop_plus"
+          normalizedMode === "loop" || normalizedMode === "loop_plus"
         );
       }
 
@@ -677,7 +677,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function shouldShowSubtaskRouteIssue(interactiveMode) {
-        return interactiveMode === "loop" || interactiveMode === "graph" || interactiveMode === "loop_plus";
+        return interactiveMode === "loop" || interactiveMode === "loop_plus";
       }
 
       function getLoopSubtaskOpenCodeModelState() {
@@ -840,7 +840,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         }
         const route = getLoopSubtaskRoute();
         const mode = normalizeInteractiveMode(state.interactiveMode);
-        const active = mode === "loop" || mode === "graph" || mode === "loop_plus";
+        const active = mode === "loop" || mode === "loop_plus";
         const loopPlus = mode === "loop_plus";
         const subtaskMode = getLoopSubtaskMode();
         const showSplitRows = loopPlus && subtaskMode === "split";
@@ -1032,7 +1032,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const showOpenCodeSubtaskModel = isOpenCodeRoleModelMode(cli, interactiveMode);
         const showSingleModelSelect = supportsModelSelection && !showCodexLoopModelGroup;
         const showClaudeSubtaskRoute = cli === "claude" && (
-          interactiveMode === "loop" || interactiveMode === "graph" || interactiveMode === "loop_plus"
+          interactiveMode === "loop" || interactiveMode === "loop_plus"
         );
         if (elements.codexLoopModelGroup) {
           elements.codexLoopModelGroup.style.display = showCodexLoopModelGroup ? "" : "none";

@@ -172,18 +172,10 @@ function assertScheduledModeDispatch(executeScheduled: ts.FunctionDeclaration): 
   }
   assert.equal(hasIdentifierCall(loopBranch.thenStatement, "schedulingModeForInteractiveMode"), true);
   assert.equal(hasIdentifierCall(loopBranch.thenStatement, "runLoopPrompt"), true);
-  assert.equal(hasIdentifierCall(loopBranch.thenStatement, "runGraphPrompt"), false);
-  const graphBranch = loopBranch.elseStatement;
-  if (!graphBranch || !ts.isIfStatement(graphBranch)) {
-    assert.fail("scheduled graph branch must stay on the loop else-if");
+  if (!loopBranch.elseStatement) {
+    assert.fail("scheduled non-loop execution must keep the default prompt branch");
   }
-  assert.equal(referencesInteractiveMode(graphBranch.expression, "graph"), true);
-  assert.equal(hasIdentifierCall(graphBranch.thenStatement, "runGraphPrompt"), true);
-  assert.equal(hasIdentifierCall(graphBranch.thenStatement, "runLoopPrompt"), false);
-  if (!graphBranch.elseStatement) {
-    assert.fail("scheduled non-loop/non-graph execution must keep the default prompt branch");
-  }
-  assert.equal(hasIdentifierCall(graphBranch.elseStatement, "runPrompt"), true);
+  assert.equal(hasIdentifierCall(loopBranch.elseStatement, "runPrompt"), true);
 }
 
 function assertLoopPlusOrchestrationChain(extensionFile: ts.SourceFile, adapterFile: ts.SourceFile): void {
@@ -297,9 +289,7 @@ test("scheduled tasks resolve their interactive mode from the selected task conf
     extensionSource,
     /const executionConfig = resolveScheduledTaskExecutionConfigForTask\(\s*task,\s*getWorkspaceInteractiveMode\(task\.cli\),/,
   );
-  assert.match(extensionSource, /const modelPrompt = executionConfig\.interactiveMode === "graph"/);
   assert.match(extensionSource, /if \(executionConfig\.interactiveMode === "loop" \|\| executionConfig\.interactiveMode === "loop_plus"\)/);
-  assert.match(extensionSource, /else if \(executionConfig\.interactiveMode === "graph"\)/);
   assert.match(extensionSource, /runEventDrivenLoopPrompt/);
   const extensionFile = parseTypeScript("extension.ts", extensionSource);
   const adapterFile = parseTypeScript(

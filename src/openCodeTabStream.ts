@@ -13,7 +13,7 @@ export const OPENCODE_TAB_STREAM_JSONL_BUFFER_MAX_BYTES = 64 * 1024;
 
 export type OpenCodeTabStreamMetadata = Pick<
   ChatMessage,
-  "taskRole" | "loopTaskId" | "loopRound" | "loopSubtaskId" | "graphRunId" | "graphNodeId"
+  "taskRole" | "loopTaskId" | "loopRound" | "loopSubtaskId"
 >;
 
 export type OpenCodeTabStreamState = {

@@ -545,7 +545,7 @@ export async function handleSendPromptMessage(
     ? deps.normalizeVisibleInteractiveMode(message.interactiveMode)
     : undefined;
   const requestedLoopFamily = requestedInteractiveMode === "loop" || requestedInteractiveMode === "loop_plus";
-  const requestedSubtaskRouteMode = requestedLoopFamily || requestedInteractiveMode === "graph";
+  const requestedSubtaskRouteMode = requestedLoopFamily;
 
   const requestedTabId = typeof message.tabId === "string" && message.tabId
     ? message.tabId
@@ -622,14 +622,11 @@ export async function handleSendPromptMessage(
     deps.setWorkspaceInteractiveModeForCli(targetCli, effectiveInteractiveMode);
   }
   const contextBuild = deps.buildPromptWithAutoContext(trimmed, message.contextOptions);
-  const shouldRunGraph = effectiveInteractiveMode === "graph";
-  const modelPromptWithMemory = shouldRunGraph
-    ? contextBuild.modelPrompt
-    : deps.maybeInjectLongTermMemoryForPrompt(
-        trimmed,
-        contextBuild.modelPrompt,
-        contextBuild.contextTags,
-      );
+  const modelPromptWithMemory = deps.maybeInjectLongTermMemoryForPrompt(
+    trimmed,
+    contextBuild.modelPrompt,
+    contextBuild.contextTags,
+  );
   const imagePaths = targetCli === "codex"
     ? await deps.resolveCodexImagePathsForPrompt(trimmed)
     : [];
@@ -660,10 +657,10 @@ export async function handleSendPromptMessage(
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
   const loopPlusSchedulingMode = schedulingModeForInteractiveMode(effectiveInteractiveMode);
   const shouldRunLoop = effectiveInteractiveMode === "loop" || loopPlusSchedulingMode === "event_driven";
-  const includeLoopModels = shouldRunLoop || shouldRunGraph || isLoopSubtaskContinuation;
+  const includeLoopModels = shouldRunLoop || isLoopSubtaskContinuation;
   const promptModels = resolvePromptRoleModels(promptMessage, targetCli, activeConfigId, deps, {
     includeLoopModels,
-    subtaskContinuation: isLoopSubtaskContinuation && !shouldRunGraph,
+    subtaskContinuation: isLoopSubtaskContinuation,
   });
   const promptThinkingModes = resolvePromptRoleThinkingModes(promptMessage, targetCli, activeConfigId, deps, {
     includeLoopModels,
@@ -720,15 +717,12 @@ export async function handleSendPromptMessage(
   if (promptModels.loopSubtaskMode) {
     promptInput.loopSubtaskMode = promptModels.loopSubtaskMode;
   }
-  if (shouldRunGraph) {
-    promptInput.skipLongTermMemoryPersist = true;
-  }
   if (loopPlusSchedulingMode === "event_driven" && message.loopPlusAcceptancePlan) {
     promptInput.loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshot(
       message.loopPlusAcceptancePlan,
     );
   }
-  if (loopSubtaskContext && !shouldRunGraph) {
+  if (loopSubtaskContext) {
     promptInput.taskRole = "subtask";
     promptInput.loopTaskId = loopSubtaskContext.taskId;
     promptInput.loopRound = loopSubtaskContext.round;
@@ -770,11 +764,6 @@ export async function handleSendPromptMessage(
       resumeRequested: loopResumeRequested,
       ...(loopPlusSchedulingMode ? { schedulingMode: loopPlusSchedulingMode } : {}),
     });
-  } else if (shouldRunGraph) {
-    if (!deps.runGraphPrompt) {
-      throw new Error("Graph prompt runner is not available.");
-    }
-    await deps.runGraphPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
   } else {
     await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
     if (loopSubtaskContext && promptTargetTabId) {

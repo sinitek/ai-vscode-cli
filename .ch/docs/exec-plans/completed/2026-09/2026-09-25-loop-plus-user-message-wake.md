@@ -29,7 +29,7 @@ Loop+ 群聊的“我要说话”此前只把文本写入 `supplementalRequireme
 
 ## 非目标
 
-- 不改变经典 Loop、Graph、Vibe 的补充消息语义。
+- 不改变经典 Loop、Vibe 的补充消息语义。
 - 不把用户消息混进验收队列，也不让模型直接改调度状态。
 - 不在父任务已停止、已完成或主任务连续失败达到上限时自动重启。
 - 不把 Loop+ 写成已经整体上线，因此不改 `FEATURE_INVENTORY.md` 和能力总表。

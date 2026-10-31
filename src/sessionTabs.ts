@@ -98,14 +98,10 @@ export function resolveAutoInteractiveModeForLoopTask(
 }
 
 export function resolveConversationTabAutoInteractiveMode(input: {
-  hasGraphRun: boolean;
   taskRole: LoopConversationTabContext["taskRole"];
   loopTaskId: LoopConversationTabContext["loopTaskId"];
   schedulingMode?: unknown;
 }): InteractiveMode {
-  if (input.hasGraphRun) {
-    return "graph";
-  }
   return resolveAutoInteractiveModeForLoopTask(input.taskRole, input.loopTaskId, input.schedulingMode);
 }
 

@@ -6,7 +6,7 @@ import path = require("path");
 
 import type { CliName } from "../../cli/types";
 import type { LoopTaskRecord } from "../../loopTaskStore";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { installVscodeMock } from "../vscodeMock";
 import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
@@ -14,8 +14,6 @@ import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerPro
 installVscodeMock();
 
 const { createLoopOrchestrationHost } = require("../../extensionHost/loopOrchestration") as typeof import("../../extensionHost/loopOrchestration");
-const { createGraphRuntimeHost } = require("../../extensionHost/graphRuntime") as typeof import("../../extensionHost/graphRuntime");
-const { createGraphMessagesHost } = require("../../extensionHost/graphMessages") as typeof import("../../extensionHost/graphMessages");
 const {
   createLoopPlusRuntimeFixture,
   waitForLoopPlus,
@@ -262,163 +260,5 @@ test("Loop+ attempt target uses the bound sub CLI while the main target stays un
     running.catch(() => undefined);
   } finally {
     fixture.dispose();
-  }
-});
-
-test("Graph executor nodes use the sub CLI and plan nodes stay on the main CLI", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "graph-subtask-cli-"));
-  const created: Array<{ cli: CliName; tabId: string }> = [];
-  const prompts: PromptRunInput[] = [];
-  const closed: string[] = [];
-  const systemMessages: Array<{ tabId: string; content: string }> = [];
-  try {
-    const host = createGraphRuntimeHost({
-      getActiveWorkspaceKey: () => "workspace",
-      getActiveConversationTabId: () => "main-tab",
-      resolvePromptRunTarget: () => ({ tabId: "main-tab", cli: "codex", sessionId: "main-session" }),
-      resolveGraphRunSessionId: (target: { sessionId: string | null }) => target.sessionId,
-      getActiveConfigIdForCli: (cli: string) => `${cli}-config`,
-      getSelectedCliModel: () => "selected-model",
-      getSelectedLoopCliModel: () => "stored-subtask",
-      getSelectedLoopThinkingMode: () => "low",
-      normalizeThinkingModeForCli: (_cli: string, mode: "low") => mode,
-      getEffectiveThinkingMode: () => "medium",
-      getGlobalLoopSubtaskMaxThinkingMode: () => "high",
-      isThinkingMode: () => true,
-      resolveOpenCodeRoleModelsForConfig: () => ({ main: null, subtask: null, fallback: {} }),
-      createMessageId: () => "message-1",
-      resolveWorkspaceCwd: () => root,
-      postPanelState: async () => undefined,
-      persistGraphRunTickState: (run: unknown) => run,
-      scheduleGraphRunAutoWake: () => undefined,
-      sendRunStatusForTab: () => undefined,
-      createGraphNodeRunTarget: (cli: CliName, graphRunId: string, graphNodeId: string) => {
-        const target = { tabId: `${graphRunId}:${graphNodeId}:${cli}`, cli, sessionId: null };
-        created.push(target);
-        return target;
-      },
-      runPrompt: async (input: PromptRunInput) => {
-        prompts.push(input);
-        if (!input.graphNodeId) {
-          return;
-        }
-        const artifact = path.join(root, "nodes", "nodes", `${input.graphNodeId}.md`);
-        fs.mkdirSync(path.dirname(artifact), { recursive: true });
-        const artifactBody = [
-          "## JSON",
-          "```json",
-          JSON.stringify({
-            status: "passed",
-            summary: `${input.graphNodeId} passed`,
-          }),
-          "```",
-          "",
-        ].join("\n");
-        fs.writeFileSync(artifact, artifactBody);
-      },
-      closeConversationTabAndRefreshPanel: async (tabId: string) => {
-        closed.push(tabId);
-      },
-      errorToMessage: (error: unknown) => error instanceof Error ? error.message : String(error),
-      messages: createGraphMessagesHost({
-        getGraphNodeRunTarget: () => undefined,
-        getLoopMessagesForTarget: () => [],
-        appendSystemMessageForLoop: (target, content) => {
-          systemMessages.push({ tabId: target.tabId, content });
-        },
-        appendMessageToStore: (messages, message) => { messages.push(message); },
-        sendPanelMessage: () => undefined,
-        persistLoopMessagesForTarget: () => undefined,
-        createMessageId: () => "message-1",
-      }),
-    } as never);
-    const baseRun = {
-      id: `graph-subtask-cli-${process.pid}-executor`,
-      workspaceKey: "workspace",
-      cli: "codex" as const,
-      sessionId: "main-session",
-      rootPrompt: "Do the work",
-      status: "running" as const,
-      createdAt: 1,
-      updatedAt: 1,
-      graphVersion: 1,
-      runStoreFile: path.join(root, "run.json"),
-      nodes: [{
-        id: "implement-1",
-        title: "Implement",
-        kind: "implement" as const,
-        status: "pending" as const,
-        ownerRole: "executor",
-        maxAttempts: 1,
-        attempts: 0,
-        dependsOn: [],
-        unlocks: [],
-      }],
-      edges: [],
-      activeNodeIds: [],
-      maxConcurrent: 1,
-      eventsFile: path.join(root, "events.jsonl"),
-      communicationDir: path.join(root, "nodes"),
-      mainCommunicationFile: path.join(root, "main.md"),
-      graphFile: path.join(root, "graph.json"),
-      executionMode: "direct" as const,
-      directExecution: { cwd: root },
-      modelRouting: {
-        planner: { model: "planner-model" },
-        executor: { cli: "grok" as const, configId: "grok-config", model: "grok-executor" },
-      },
-    };
-    const mainTarget = { tabId: "main-tab", cli: "codex" as const, sessionId: "main-session" };
-    const executorOutcome = await host.tickGraphRunToPause(baseRun as never, {
-      displayPrompt: "Do the work",
-      modelPrompt: "Do the work",
-      contextTags: [],
-      loopMainModel: "planner-model",
-      loopSubtaskCli: "grok",
-      loopSubtaskConfigId: "grok-config",
-      loopSubtaskModel: "grok-executor",
-    }, mainTarget);
-    assert.equal(mainTarget.cli, "codex");
-    assert.equal(mainTarget.sessionId, "main-session");
-    assert.equal(created.some((target) => target.cli === "grok" && target.tabId.includes("implement-1")), true);
-    assert.equal(prompts.some((input) => input.graphNodeId === "implement-1" && input.loopSubtaskCli === "grok" && input.loopSubtaskConfigId === "grok-config" && input.model === "grok-executor"), true);
-    assert.equal(closed.some((tabId) => tabId.includes("implement-1:grok")), true);
-    assert.equal(executorOutcome.run.cli, "codex");
-    assert.ok(systemMessages.some((message) => message.tabId === mainTarget.tabId && message.content.includes("implement-1")));
-    assert.equal(systemMessages.some((message) => created.some((target) => target.tabId === message.tabId)), false);
-
-    created.length = 0;
-    prompts.length = 0;
-    systemMessages.length = 0;
-    const planRun = {
-      ...baseRun,
-      id: `graph-subtask-cli-${process.pid}-plan`,
-      eventsFile: path.join(root, "plan-events.jsonl"),
-      nodes: [{
-        id: "plan-1",
-        title: "Plan",
-        kind: "plan" as const,
-        status: "pending" as const,
-        ownerRole: "planner",
-        maxAttempts: 1,
-        attempts: 0,
-        dependsOn: [],
-        unlocks: [],
-      }],
-    };
-    await host.tickGraphRunToPause(planRun as never, {
-      displayPrompt: "Plan",
-      modelPrompt: "Plan",
-      contextTags: [],
-      loopSubtaskCli: "grok",
-      loopSubtaskConfigId: "grok-config",
-    }, mainTarget);
-    assert.equal(created.some((target) => target.cli === "codex" && target.tabId.includes("plan-1")), true);
-    assert.equal(created.some((target) => target.cli === "grok"), false);
-    assert.equal(prompts.some((input) => input.graphNodeId === "plan-1" && input.loopSubtaskCli === "grok"), false);
-    assert.ok(systemMessages.some((message) => message.tabId === mainTarget.tabId && message.content.includes("plan-1")));
-    assert.equal(systemMessages.some((message) => created.some((target) => target.tabId === message.tabId)), false);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
   }
 });

@@ -294,7 +294,7 @@ function buildVisibilityHarness() {
   )(
     state,
     elements,
-    (value: string) => (value === "loop" || value === "loop_plus" || value === "graph" ? value : "coding"),
+    (value: string) => (value === "loop" || value === "loop_plus" ? value : "coding"),
     () => { hideDialogCount += 1; },
   ) as {
     syncModelSelectorByInteractiveMode(cli?: string): void;
@@ -309,7 +309,7 @@ function buildVisibilityHarness() {
   };
 }
 
-test("renders Codex Loop and Graph selectors as Chinese role model rows", () => {
+test("renders Codex Loop and Loop+ selectors as Chinese role model rows", () => {
   const html = buildWebviewStaticHtml({
     cspSource: "vscode-webview:",
     nonce: "test",
@@ -330,16 +330,16 @@ test("renders Codex Loop and Graph selectors as Chinese role model rows", () => 
   assert.match(group, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
   assert.match(group, /<label class="open-code-model-label" for="codexLoopSubtaskCliSelect">子模型<\/label>/);
   assert.match(group, /aria-label="子模型 CLI 分组"/);
-  assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Graph 主模型选择"/);
-  assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Graph 子模型选择"/);
+  assert.match(group, /id="codexLoopMainModelSelect"[^>]*aria-label="Codex Loop\/Loop\+ 主模型选择"/);
+  assert.match(group, /id="codexLoopSubtaskModelSelect"[^>]*title="Codex Loop\/Loop\+ 子模型选择"/);
   assert.doesNotMatch(group, /openCodePrimaryThinkingMode|openCodeSmallThinkingMode|openCodeModelIssue/);
   assert.match(html, /<label class="open-code-model-label" for="codexLoopMainModelSelect">主模型<\/label>/);
   assert.match(html, /<label class="open-code-model-label" for="codexLoopSubtaskCliSelect">子模型<\/label>/);
-  assert.match(html, /aria-label="Codex Loop\/Graph 主模型选择"/);
-  assert.match(html, /aria-label="Codex Loop\/Graph 子模型选择"/);
+  assert.match(html, /aria-label="Codex Loop\/Loop\+ 主模型选择"/);
+  assert.match(html, /aria-label="Codex Loop\/Loop\+ 子模型选择"/);
 });
 
-test("shows Codex role selectors only in Loop and Graph while preserving OpenCode dual layout", () => {
+test("shows Codex role selectors only in Loop and Loop+ while preserving OpenCode dual layout", () => {
   const harness = buildVisibilityHarness();
 
   harness.state.currentCli = "codex";
@@ -358,13 +358,13 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
   assert.equal(harness.elements.modelSelect.style.display, "none");
   assert.equal(harness.elements.modelSelect.disabled, true);
 
-  harness.state.interactiveMode = "graph";
+  harness.state.interactiveMode = "loop_plus";
   harness.sync("codex");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.currentCli = "opencode";
-  harness.state.interactiveMode = "graph";
+  harness.state.interactiveMode = "loop_plus";
   harness.sync("opencode");
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "none");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, true);
@@ -375,7 +375,7 @@ test("shows Codex role selectors only in Loop and Graph while preserving OpenCod
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
   harness.state.currentCli = "dsh";
-  for (const mode of ["loop", "loop_plus", "graph"]) {
+  for (const mode of ["loop", "loop_plus"]) {
     harness.state.interactiveMode = mode;
     harness.sync("dsh");
     assert.equal(harness.elements.codexLoopModelGroup.style.display, "", `${mode} shows DSH role selectors`);
@@ -536,7 +536,7 @@ test("posts Codex role model and thinking changes with role, cli, and config id"
   ]);
 });
 
-test("renders and posts DSH Loop and Graph role model and thinking selections", () => {
+test("renders and posts DSH Loop and Loop+ role model and thinking selections", () => {
   const harness = buildCodexModelHarness();
   harness.state.currentCli = "dsh";
   harness.state.modelsByCli.dsh = ["main-model", "subtask-model"];

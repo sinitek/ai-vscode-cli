@@ -678,8 +678,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const hasQueuedPrompts = Boolean(runtimeState && runtimeState.pendingPromptQueue.length > 0);
         const hasRunStatusSummary = Boolean(runtimeState && String(runtimeState.lastRunStatusMessage || "").trim().length > 0);
         const hasCurrentLoopGroupChat = typeof getActiveLoopMainTaskId === "function" && Boolean(getActiveLoopMainTaskId());
-        const hasCurrentGraphRun = typeof getActiveGraphRunId === "function" && Boolean(getActiveGraphRunId());
-        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary || hasCurrentLoopGroupChat || hasCurrentGraphRun;
+        const shouldShowRunRow = state.isRunning || hasPrompt || hasStreamRecords || hasQueuedPrompts || hasRunStatusSummary || hasCurrentLoopGroupChat;
 
         elements.runWait.style.display = shouldShowRunRow ? "flex" : "none";
 
@@ -879,7 +878,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (
           targetInteractiveMode === "loop"
-          || targetInteractiveMode === "graph"
+
           || targetInteractiveMode === "loop_plus"
         ) {
           return true;
@@ -951,7 +950,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const includeRoleModels = shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab);
         const includeSubtaskRoute = includeRoleModels
           || targetInteractiveMode === "loop"
-          || targetInteractiveMode === "graph"
+
           || targetInteractiveMode === "loop_plus"
           || Boolean(targetTab && targetTab.loopTaskRole === "subtask");
         let nextPayload = normalizedPayload;
@@ -1243,9 +1242,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const autoMode = typeof resolveAutoInteractiveModeForTab === "function"
           ? resolveAutoInteractiveModeForTab(targetTab)
           : "";
-        if (autoMode === "graph") {
-          return "graph";
-        }
         return isBackgroundDispatch ? undefined : state.interactiveMode;
       }
 

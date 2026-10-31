@@ -11,7 +11,7 @@ import type { CliName } from "../../cli/types";
 import type { GrokChild, GrokSpawn, GrokStreamHandlers } from "../../interactive/grokRunner";
 import type { InteractiveRunnerManager } from "../../interactive/manager";
 import type { ChatMessage } from "../../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { PromptInteractiveRuntimeHostDeps } from "../../extensionHost/promptInteractiveRuntime";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 import { parseGrokToml } from "../../config/grokToml";

@@ -63,7 +63,7 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
     value === "codex" || value === "claude" || value === "opencode"
   );
   const isInteractiveMode = (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop" || value === "graph"
+    value === "coding" || value === "plan" || value === "loop"
   );
   const isThinkingMode = (value: unknown): value is ThinkingMode => (
     value === "off" || value === "on" || value === "low" || value === "medium"
@@ -123,7 +123,6 @@ type PromptCalls = {
     input: PromptRunInputForPanel;
     options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean };
   }>;
-  runGraphPrompt: Array<{ input: PromptRunInputForPanel; targetTabId: string | null | undefined }>;
   wakeMain: Array<{
     context: LoopSubtaskConversationContextForPanel;
     tabId: string;
@@ -154,7 +153,6 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     preloaded: [],
     runPrompt: [],
     runLoopPrompt: [],
-    runGraphPrompt: [],
     wakeMain: [],
   };
   const state = { currentCli: initialCli, workspaceSettings: {} as WorkspaceSettings };
@@ -170,7 +168,7 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     value === "codex" || value === "claude" || value === "opencode"
   );
   const isInteractiveMode = (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop" || value === "graph"
+    value === "coding" || value === "plan" || value === "loop"
   );
 
   const deps = {
@@ -226,9 +224,6 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
       resumeTaskId?: string | null;
       resumeRequested?: boolean;
     }) => { calls.runLoopPrompt.push({ input, options }); },
-    runGraphPrompt: async (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => {
-      calls.runGraphPrompt.push({ input, targetTabId: options?.targetTabId });
-    },
     runPrompt: async (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => {
       calls.runPrompt.push({ input, targetTabId: options?.targetTabId });
     },
@@ -497,45 +492,6 @@ test("routes Loop prompts with explicit mode and resume metadata without replaci
       targetTabId: "loop-tab",
       resumeTaskId: "resumed-task",
       resumeRequested: true,
-    },
-  }]);
-});
-
-test("routes Graph prompts with Codex main and subtask model payloads", async () => {
-  const { deps, calls, tabs } = createPromptHarness("codex");
-  tabs.set("graph-tab", {
-    id: "graph-tab",
-    cli: "codex",
-    sessionId: "graph-session",
-    sessionIdByCli: { codex: "graph-session" },
-    createdAt: 6,
-  });
-  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
-    ? "planner-main"
-    : "executor-subtask";
-
-  await handleSendPromptMessage({
-    type: "sendPrompt",
-    prompt: "plan then execute",
-    tabId: "graph-tab",
-    interactiveMode: "graph",
-    model: "fallback-model",
-  }, deps);
-
-  assert.equal(calls.runPrompt.length, 0);
-  assert.equal(calls.runLoopPrompt.length, 0);
-  assert.deepEqual(calls.runGraphPrompt, [{
-    targetTabId: "graph-tab",
-    input: {
-      displayPrompt: "plan then execute",
-      modelPrompt: "context:plan then execute",
-      contextTags: ["#file"],
-      model: "planner-main",
-      loopMainModel: "planner-main",
-      loopSubtaskModel: "executor-subtask",
-      imagePaths: ["/tmp/diagram.png"],
-      skipLongTermMemoryPersist: true,
-      preloadedUserMessageId: "user-message",
     },
   }]);
 });

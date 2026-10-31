@@ -4,7 +4,7 @@ import type { CliName } from "../cli/types";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput } from "./graphRuntime";
+import type { PromptRunInput } from "../promptRunTypes";
 
 export type PromptRunExecutionOptions = {
   cwd?: string;
@@ -12,12 +12,11 @@ export type PromptRunExecutionOptions = {
 };
 
 export function shouldUseClassicLoopProjectInstructions(
-  input: Pick<PromptRunInput, "taskRole" | "loopTaskId" | "graphRunId">,
+  input: Pick<PromptRunInput, "taskRole" | "loopTaskId">,
   task: Pick<LoopTaskRecord, "schedulingMode"> | null,
 ): boolean {
   return input.taskRole === "subtask"
     && Boolean(input.loopTaskId)
-    && !input.graphRunId
     && task !== null
     && (task.schedulingMode === "classic" || task.schedulingMode === undefined);
 }
@@ -36,8 +35,6 @@ export type InteractiveTabRun = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
 };
 
 export type OpenCodeRuntimePreparationInput = {

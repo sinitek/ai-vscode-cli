@@ -62,7 +62,7 @@
 
 ## 追加验收：模型下拉显示字段（2026-10-18）
 
-- 按用户补充要求，普通及 Loop/Loop+/Graph 主从下拉改为显示每项配置的 `model`，不使用 `name`；缺失、空白或非字符串时回退配置表键。内部选择值与 `--model` 保持配置表键，避免同名 API 模型的不同连接被合并或误选。
+- 按用户补充要求，普通及 Loop/Loop+ 主从下拉改为显示每项配置的 `model`，不使用 `name`；缺失、空白或非字符串时回退配置表键。内部选择值与 `--model` 保持配置表键，避免同名 API 模型的不同连接被合并或误选。
 - 解析器输出独立标签映射，经宿主 `labelsByCli` 传给 Webview；刷新、档案隔离、空配置清理与暂态快照保留同步处理标签。不改运行器或用户配置，无新增文案，无需新增 i18n 键。
 - `npm run build` 通过；首次新增测试的类型断言换行导致 TS1005，已修正并重跑通过。`node --test dist/test/cli/grokConfigModels.test.js dist/test/extensionHost/grokConfigModels.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/webview/grokmodelselection.test.js dist/test/webview/codexdualmodelwebview.test.js` 为 29/29 通过；`npm run test:page` 为 242/242 通过；`git diff --check` 通过。
 - Chromium 使用真实下拉渲染函数和状态处理函数的隔离夹具，验证普通/主/子显示、相同模型名保留独立配置键、选择与刷新；并只读解析本机实际配置，逐项校验 DOM 显示映射，未写配置、未发起付费模型调用。结构化 smoke 通过，无浏览器、HTTP 或请求错误；这不是完整 VS Code 宿主验收。
@@ -74,9 +74,9 @@
 - 用户要求替代前两轮的手动刷新交互：移除模型下拉左侧 SVG、元素绑定、点击监听、移动逻辑、专用布局样式和废弃文案；普通与主从下拉均不保留占位。
 - CodeGraph 定位配置中心 `onConfigChanged` 与面板推送链路，当前文件 stale 后直接核对源码。根因是 `save` 仅保存档案并触发未等待的通知，激活配置随后 `apply` 写盘却未触发通知，模型候选可能仍来自旧文件。
 - `ConfigManagerPanel` 的变更回调支持 `void | Promise<void>`，保存、应用及其他既有变更通知均等待完成；成功应用到磁盘后才通知，扩展回调返回 `postPanelState()` 的 Promise。继续保留未激活档案不自动应用、应用失败不伪造更新的语义，不修改用户实际配置。
-- 新回归在临时 `GROK_HOME` 中执行真实档案保存和配置应用，以阻塞屏障验证模型同步结束前没有成功应答；同步后读取 `sol → gpt-6.1-sol`，失败应用不增加通知且不覆盖有效配置。普通/Loop/Loop+/Graph 原有行切换和标签显示回归保留，并断言刷新 DOM、脚本绑定和样式均已移除。
+- 新回归在临时 `GROK_HOME` 中执行真实档案保存和配置应用，以阻塞屏障验证模型同步结束前没有成功应答；同步后读取 `sol → gpt-6.1-sol`，失败应用不增加通知且不覆盖有效配置。普通/Loop/Loop+ 原有行切换和标签显示回归保留，并断言刷新 DOM、脚本绑定和样式均已移除。
 - `npm run build` 通过；新增测试最初的回调返回类型推断与消息 unknown 类型导致构建失败，已显式声明回调类型、收窄响应并重跑通过。相关测试命令 `node --test dist/test/cli/grokConfigModels.test.js dist/test/extensionHost/grokConfigModels.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/webview/grokmodelselection.test.js dist/test/webview/codexdualmodelwebview.test.js dist/test/config/cliPageConfigCoverage.test.js` 为 47/47 通过，`npm run test:page` 为 243/243 通过，`git diff --check` 通过。
-- Chromium 使用真实静态对话 HTML、样式、模型状态/渲染函数，以及真实 `ConfigManagerPanel` 保存/应用和隔离磁盘配置的 IPC 夹具：点击保存后无需刷新即可显示新模型，普通及主从候选更新、旧项清除、切换 Loop/Loop+/Graph 无刷新按钮，结构化 smoke 通过；无浏览器、HTTP 或请求错误，截图已复核。这不是完整 VS Code 宿主验收，没有发起真实付费模型调用。
+- Chromium 使用真实静态对话 HTML、样式、模型状态/渲染函数，以及真实 `ConfigManagerPanel` 保存/应用和隔离磁盘配置的 IPC 夹具：点击保存后无需刷新即可显示新模型，普通及主从候选更新、旧项清除、切换 Loop/Loop+ 无刷新按钮，结构化 smoke 通过；无浏览器、HTTP 或请求错误，截图已复核。这不是完整 VS Code 宿主验收，没有发起真实付费模型调用。
 - 证据：`/tmp/sinitek-grok-save-sync-{build,focused,related,page,ontology,ontology-tests,smoke}.log`、`/tmp/sinitek-grok-save-sync-smoke/result.json` 与 `success.png`。Impeccable detector 对本轮 UI 目标执行一次为 `[]`。预览端口 19390 已停止，临时 `GROK_HOME`、脚本和场景已清理。
 - 已同步能力清单、runtime reference、runbook 与 ontology，前述手动刷新描述以本节为准。Ontology 仍为 15 处既有失效来源引用、测试 8/9，未扩大修复；本轮未重跑全量运行时测试。无新架构边界，无需改 `ARCHITECTURE.md`；保存时序经验归入 runbook，不新增重复热区记忆。未打包安装或重载用户窗口，保留全部既有修改与并行版本变更。
 

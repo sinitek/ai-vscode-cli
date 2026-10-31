@@ -39,8 +39,6 @@ export type PromptRunInputForPanel = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
   skipLongTermMemoryPersist?: boolean;
 };
 
@@ -176,7 +174,6 @@ export type PanelMessageHandlerDeps = {
   appendUserMessageForCli: (cli: CliName, sessionId: string | null, content: string, options?: { merge?: boolean }) => void;
   runContextCompactionCommand: () => Promise<void>;
   openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
-  openGraphRunPanel: (arg?: unknown) => Promise<void>;
   getActiveConversationTabId: () => string | null;
   getActiveConversationTab: () => ConversationTabRecordForPanel | null;
   resolveLoopSubtaskConversationContext: (cli: CliName, tabId: string | null) => LoopSubtaskConversationContextForPanel | null;
@@ -188,7 +185,6 @@ export type PanelMessageHandlerDeps = {
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
   preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
   runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
-  runGraphPrompt?: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   maybeWakeLoopMainAfterSubtaskContinuation: (
     context: LoopSubtaskConversationContextForPanel,

@@ -39,7 +39,7 @@ export type OpenCodeThinkingState = {
 export const LOOP_PLUS_INTERACTIVE_MODE = "loop_plus" as const;
 export const LOOP_PLUS_DISPLAY_NAME = "Loop+";
 
-export type InteractiveMode = "coding" | "plan" | "loop" | "graph" | typeof LOOP_PLUS_INTERACTIVE_MODE;
+export type InteractiveMode = "coding" | "plan" | "loop" | typeof LOOP_PLUS_INTERACTIVE_MODE;
 
 export type MacTaskShell = "zsh" | "bash";
 

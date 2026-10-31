@@ -29,7 +29,6 @@ type TabSummary = {
   loopTaskId?: string;
   loopSchedulingMode?: string;
   loopTaskRunning?: boolean;
-  graphRunId?: string;
 };
 
 type BrowserState = {
@@ -312,14 +311,6 @@ function createTabs(): TabSummary[] {
       loopSchedulingMode: "classic",
     },
     { id: "spaced-main", cli: "codex", loopTaskRole: "main", loopTaskId: "task-spaced", loopSchedulingMode: " event_driven " },
-    {
-      id: "graph-main",
-      cli: "codex",
-      loopTaskRole: "main",
-      loopTaskId: "task-graph",
-      loopSchedulingMode: "event_driven",
-      graphRunId: "graph-1",
-    },
     { id: "vibe-tab", cli: "codex" },
   ];
 }
@@ -361,11 +352,9 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "shouldHideSystemRunStatusMessage"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeLoopTaskRole"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeLoopTaskId"],
-    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeGraphRunId"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getActiveConversationTabId"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getConversationTabSummary"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getLoopMetaForTabSummary"],
-    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getGraphMetaForTabSummary"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLoopMainTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isLoopMainTabCloseLocked"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isConversationTabRunning"],
@@ -434,7 +423,6 @@ function browserScript(): string {
     "var thinkingBubbleResizeObserver = null;",
     "var conversationRuntimeByTabId = Object.create(null);",
     "var loopMetaByTabId = Object.create(null);",
-    "var graphMetaByTabId = Object.create(null);",
     "var TAB_RUNTIME_DEFAULT_KEY = \"__default__\";",
     "function formatTemplate(template, params) {",
     "  if (!params) return template;",
@@ -588,7 +576,7 @@ function message(partial: RoleMessage): RoleMessage {
   return partial;
 }
 
-test("omits task role labels across classic, Loop+, and Graph history and tab refresh", () => {
+test("omits task role labels across classic and Loop+ history and tab refresh", () => {
   const browser = loadBrowser("classic-main");
   const { api, state, messages } = browser;
   const plusSubtask = message({
@@ -690,10 +678,6 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
   api.getConversationRuntimeState("plus-main").messages = [plusSubtask, plusMain];
   api.getConversationRuntimeState("plus-sub").messages = [plusSubtask];
   api.getConversationRuntimeState("classic-sub").messages = [classicSubtask];
-  api.getConversationRuntimeState("graph-main").messages = [
-    { ...plusMain, id: "graph-main-message", loopTaskId: "task-graph" },
-    { ...classicSubtask, id: "graph-subtask-message", loopTaskId: "task-graph" },
-  ];
 
   const show = (tabId: string) => {
     state.conversationTabs.activeTabId = tabId;
@@ -720,21 +704,14 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
   assert.deepEqual(renderedBadges(messages), []);
   assert.equal(visibleMessageNodes(messages).length, 1);
 
-  show("graph-main");
-  assert.equal(state.interactiveMode, "graph");
-  assert.equal(browser.elements.codexLoopModelGroup.style.display, "");
-  assert.deepEqual(renderedBadges(messages), []);
-  assert.equal(visibleMessageNodes(messages).length, 2);
-
   show("vibe-tab");
   assert.equal(
     api.resolveAutoInteractiveModeForTab(state.conversationTabs.tabs.find((tab) => tab.id === "vibe-tab") || null),
     "coding",
   );
-  assert.equal(state.interactiveMode, "graph");
+  assert.equal(state.interactiveMode, "coding");
   assert.equal(state.conversationTabs.tabs.find((tab) => tab.id === "plus-main")?.loopSchedulingMode, "event_driven");
   assert.equal(state.conversationTabs.tabs.find((tab) => tab.id === "classic-main")?.loopSchedulingMode, "classic");
-  assert.equal(state.conversationTabs.tabs.find((tab) => tab.id === "graph-main")?.graphRunId, "graph-1");
 
   show("classic-main");
   show("plus-main");
@@ -814,7 +791,7 @@ test("omits task role labels across classic, Loop+, and Graph history and tab re
   assert.deepEqual(renderedBadges(messages), []);
 });
 
-test("keeps Loop+ busy-send payload while classic Loop, Graph, and Vibe stay unchanged", () => {
+test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged", () => {
   const browser = loadBrowser("plus-main");
   const { api, state, posted } = browser;
   const entry = {
@@ -952,29 +929,6 @@ test("keeps Loop+ busy-send payload while classic Loop, Graph, and Vibe stay unc
   assert.equal(Object.prototype.hasOwnProperty.call(vibe, "loopMainThinkingMode"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(vibe, "loopExecutionMode"), false);
 
-  state.conversationTabs.activeTabId = "graph-main";
-  state.interactiveMode = "loop_plus";
-  api.resetAutoInteractiveModeMemoryForTest();
-  api.renderConversationTabs();
-  assert.equal(state.interactiveMode, "graph");
-  state.selectedLoopModelsByCli.codex = { main: "entry-main", subtask: "entry-sub" };
-  state.selectedLoopThinkingByCli.codex = { main: "xhigh", subtask: "low" };
-  assert.equal(api.dispatchPrompt({
-    prompt: "graph first",
-    contextOptions: { includeCurrentFile: false, includeSelection: false },
-  }), true);
-  const graph = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.ok(graph);
-  assert.equal(graph.interactiveMode, "graph");
-  assert.equal(graph.loopMainModel, "entry-main");
-  assert.equal(graph.loopSubtaskThinkingMode, "low");
-  assert.equal(Object.prototype.hasOwnProperty.call(graph, "loopExecutionMode"), false);
-
-  posted.length = 0;
-  api.queuePromptForLater({ prompt: "", contextOptions: { includeCurrentFile: true, includeSelection: true } });
-  api.openRunConflictOverlay({ prompt: "", contextOptions: { includeCurrentFile: true, includeSelection: true } });
-  assert.equal(posted.filter((message) => message.type === "sendPrompt").length, 0);
-  assert.equal(api.getConversationRuntimeState("graph-main").pendingPromptQueue.length, 0);
 });
 
 test("hides Loop+ protocol prompts from message bubbles", () => {

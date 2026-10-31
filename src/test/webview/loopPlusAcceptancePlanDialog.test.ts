@@ -769,7 +769,7 @@ test("sendPrompt opens the acceptance plan instead of sending for a new Loop+ ro
   assert.equal(harness.sandbox.elements.promptInput.value, "实现任务", "cancel path leaves the input intact");
 });
 
-test("sendPrompt keeps classic, graph, and continuation sending unchanged", () => {
+test("sendPrompt keeps classic, Loop+, and continuation sending unchanged", () => {
   const harness = createSendPromptSandbox({ required: false });
   harness.api.sendPrompt();
   assert.equal(harness.captured.opened.length, 0);

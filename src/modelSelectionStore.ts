@@ -37,7 +37,7 @@ export type CliModelStore = {
   selectedLoopFrontendModelByConfigId: Record<string, string>;
   selectedLoopFrontendThinkingByConfigId: Record<string, Record<string, ThinkingMode>>;
   selectedLoopSubtaskCliByConfigId: Record<string, CliName>;
-  /** Loop+ 子-前端 CLI，按主配置档案隔离。经典 Loop / Graph 不读取。 */
+  /** Loop+ 子-前端 CLI，按主配置档案隔离。经典 Loop 不读取。 */
   selectedLoopFrontendCliByConfigId: Record<string, CliName>;
   /** Loop+ 子-全栈 CLI，按主配置档案隔离，不写入子-后端或子-前端槽。 */
   selectedLoopFullstackCliByConfigId: Record<string, CliName>;

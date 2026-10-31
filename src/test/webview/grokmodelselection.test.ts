@@ -350,7 +350,7 @@ test("Grok thinking options keep xhigh, max, ultra, and saved off", () => {
   assert.equal(codingOff.state.thinkingMode, "off");
   assert.deepEqual(codingOff.messages, []);
 
-  for (const mode of ["loop", "graph", "loop_plus"]) {
+  for (const mode of ["loop", "loop_plus"]) {
     const savedMax = buildThinkingSync("grok", "max", mode);
     savedMax.syncThinkingOptions();
     assert.equal(savedMax.thinking.style.display, "none");
@@ -406,7 +406,7 @@ function styleTarget() {
   return { style: { display: "" }, disabled: false, value: "" };
 }
 
-test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select in coding", () => {
+test("Grok uses role model rows in Loop and Loop+, and the single select in coding", () => {
   const source = [
     "let hidden = false;",
     "function hideAddModelDialog() { hidden = true; }",
@@ -453,7 +453,7 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
   assert.equal(elements.codexLoopMainThinkingMode.style.display, "none");
 
-  for (const mode of ["loop", "graph", "loop_plus"]) {
+  for (const mode of ["loop", "loop_plus"]) {
     state.interactiveMode = mode;
     runner.syncModelSelectorByInteractiveMode();
     assert.equal(runner.isLoopRoleModelMode("grok", mode), true);
@@ -481,9 +481,9 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.equal(runner.isLoopRoleModelMode("codex", "coding"), false);
   assert.equal(elements.modelSelect.style.display, "");
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
-  state.interactiveMode = "graph";
+  state.interactiveMode = "loop_plus";
   runner.syncModelSelectorByInteractiveMode();
-  assert.equal(runner.isLoopRoleModelMode("codex", "graph"), true);
+  assert.equal(runner.isLoopRoleModelMode("codex"), true);
   assert.equal(elements.codexLoopModelGroup.style.display, "");
   assert.equal(elements.modelSelect.style.display, "none");
 
@@ -495,9 +495,9 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
 
   state.currentCli = "opencode";
-  state.interactiveMode = "graph";
+  state.interactiveMode = "loop_plus";
   runner.syncModelSelectorByInteractiveMode();
-  assert.equal(runner.isLoopRoleModelMode("opencode", "graph"), false);
+  assert.equal(runner.isLoopRoleModelMode("opencode"), false);
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
   assert.equal(elements.openCodeModelGroup.style.display, "");
   assert.equal(elements.openCodePrimaryModelSelect.disabled, false);
@@ -509,7 +509,7 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
   assert.equal(elements.modelSelect.style.display, "");
   assert.equal(elements.modelSelect.disabled, false);
   assert.equal(elements.codexLoopModelGroup.style.display, "none");
-  for (const mode of ["loop", "loop_plus", "graph"]) {
+  for (const mode of ["loop", "loop_plus"]) {
     state.interactiveMode = mode;
     runner.syncModelSelectorByInteractiveMode();
     assert.equal(runner.isLoopRoleModelMode("dsh", mode), true);
@@ -520,10 +520,10 @@ test("Grok uses role model rows in Loop, Loop+, and Graph, and the single select
 
   assert.equal(WEBVIEW_STRINGS.codexLoopMainModelLabel, "主模型");
   assert.equal(WEBVIEW_STRINGS.codexLoopSubtaskModelLabel, "子模型");
-  assert.equal(WEBVIEW_STRINGS.grokLoopMainModelSelectAria, "Grok Loop/Graph 主模型选择");
-  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskModelSelectAria, "Grok Loop/Graph 子模型选择");
-  assert.equal(WEBVIEW_STRINGS.grokLoopMainThinkingModeAria, "Grok Loop/Graph 主模型思考模式");
-  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskThinkingModeAria, "Grok Loop/Graph 子模型思考模式");
+  assert.equal(WEBVIEW_STRINGS.grokLoopMainModelSelectAria, "Grok Loop/Loop+ 主模型选择");
+  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskModelSelectAria, "Grok Loop/Loop+ 子模型选择");
+  assert.equal(WEBVIEW_STRINGS.grokLoopMainThinkingModeAria, "Grok Loop/Loop+ 主模型思考模式");
+  assert.equal(WEBVIEW_STRINGS.grokLoopSubtaskThinkingModeAria, "Grok Loop/Loop+ 子模型思考模式");
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "selectCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "addCliModel"/);
   assert.match(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, /type: "renameCliModel"/);

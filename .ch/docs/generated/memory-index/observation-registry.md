@@ -11,7 +11,7 @@
 - Source kind: `memory_doc`
 - Content hash: `c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
 - Concepts: `general`
-- Files: `.ch/docs/generated/`, `.ch/docs/ontology/`
+- Files: `.ch/docs/generated/`, `.ch/docs/generated/memory-index/.local/`, `.ch/docs/ontology/`
 
 Subtitle: operational_hot_zone / memory-rules
 

@@ -204,7 +204,7 @@ support_efforts = ["low", "medium", "high", "xhigh", "max"]
 
 - Kimi Code 支持插件侧模型选择，候选唯一来自当前激活的 `config.toml`。
 - 选择按配置档案和角色（main / subtask）分别持久化。子任务没有单独选择时，先回落到「普通对话里选中的模型」，普通对话也没选过才回落到配置的 `default_model`；这与 Grok 的回落顺序一致，不会凭空继承别的 CLI 的模型。
-- Loop 主任务、主持/复核与续跑使用主模型和主任务思考力度；Loop 子任务使用子模型和子任务思考力度；Graph planner 与最终 `summary` 节点用主模型，其它执行节点用子模型。
+- Loop 主任务、主持/复核与续跑使用主模型和主任务思考力度；Loop 子任务使用子模型和子任务思考力度。
 - 跨 CLI 子路由使用目标 CLI 自己的配置与模型，不继承主 CLI 的模型。
 - 这份主从分工由插件调度实现，不是 Kimi Code 自身的字段；Kimi 的 `config.toml` 里只有 `default_model`，没有「子模型」字段。
 

@@ -1,5 +1,5 @@
 import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 
 type PromptAutoRepairOptions = {
   execute: (input: PromptRunInput, target: PromptRunTarget) => Promise<void>;

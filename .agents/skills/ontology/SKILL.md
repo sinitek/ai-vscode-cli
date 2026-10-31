@@ -11,7 +11,7 @@ description: Use before implementing or reviewing tasks that involve repository 
 
 使用本 skill：
 
-- 任务涉及 VS Code 插件能力、本地 CLI 调用、会话、配置档案、Loop、Graph、workspace scaffold、长期记忆或 harness 规则。
+- 任务涉及 VS Code 插件能力、本地 CLI 调用、会话、配置档案、Loop、Loop+、workspace scaffold、长期记忆或 harness 规则。
 - 需要确认“谁负责、谁能看/改/运行、什么状态可流转、一次请求跨哪些模块”。
 - 需要从业务名词快速定位产品规格、架构、实现路径、测试入口和接口/数据契约。
 - 完成业务或 harness 语义变更后，需要判断 `.ch/docs/ontology/` 是否同步更新。

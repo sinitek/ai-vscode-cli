@@ -13,7 +13,7 @@
 
 ## 范围与非目标
 
-- 覆盖 Vibe 人工交互与 Loop、Loop+、Graph 主任务澄清。
+- 覆盖 Vibe 人工交互与 Loop、Loop+ 主任务澄清。
 - 全局持久化记录，沿用历史保留天数清理，保护密码字段。
 - 新增底部 SVG 入口、历史列表和只读详情。
 - 不从历史重新提交、不恢复未完成弹窗，不记录未实际等待的请求。
@@ -44,4 +44,4 @@
 
 ## 当前结论
 
-已实现全局历史存储、底部 SVG 入口、按需刷新列表和只读详情；Vibe、经典 Loop、Loop+ 与 Graph 均已接入。`npm run build` 通过，197 项相关测试全部通过；Ontology 校验通过（domains=2、concepts=17、relations=16、rules=65、workflows=2、documents=3），`git diff --check` 通过。未启动 Extension Development Host 做手工点击验证。
+已实现全局历史存储、底部 SVG 入口、按需刷新列表和只读详情；Vibe、经典 Loop、Loop+ 均已接入。`npm run build` 通过，197 项相关测试全部通过；Ontology 校验通过（domains=2、concepts=17、relations=16、rules=65、workflows=2、documents=3），`git diff --check` 通过。未启动 Extension Development Host 做手工点击验证。

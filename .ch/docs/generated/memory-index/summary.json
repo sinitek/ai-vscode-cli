@@ -1,19 +1,19 @@
 {
   "active_plans": [],
-  "claim_count": 121,
+  "claim_count": 127,
   "claim_stats": {
     "by_confidence": {
       "high": 8,
-      "medium": 113
+      "medium": 119
     },
     "by_status": {
-      "active": 121
+      "active": 127
     },
     "by_type": {
-      "decision": 11,
-      "fact": 26,
+      "decision": 12,
+      "fact": 27,
       "hypothesis": 1,
-      "instruction": 72,
+      "instruction": 76,
       "preference": 4,
       "risk": 7
     }
@@ -944,6 +944,62 @@
       "text": "涉及稳定项目事实、用户偏好、设计约束、runbook、skill 的改动，默认仍由可 review 的 Markdown 变更显式落地。"
     },
     {
+      "claim_id": "claim-8f87a372ef80",
+      "claim_type": "decision",
+      "confidence": "medium",
+      "content_hash": "sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "quote_hash": "sha256:4d6e36bee1219129f070d6c5cd12795898a02ec52c6943688c36d65607e308c7",
+      "review_after": "2026-10-16",
+      "source_anchor": "3.8 Harness scaffold 与记忆保护",
+      "source_observation_id": "mem-c1d7e714b7",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_span": "heading:3.8 Harness scaffold 与记忆保护",
+      "status": "active",
+      "text": "scaffold 中的 `project.*` Ontology 记录是模板占位；已有真实项目业务域时，不应把占位域复制进当前仓库。"
+    },
+    {
+      "claim_id": "claim-91d370254f8a",
+      "claim_type": "instruction",
+      "confidence": "medium",
+      "content_hash": "sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "quote_hash": "sha256:d05161e1f92cb5a4d43848f41cee243c2cf19bba83f83f79eaf831b9ff4132d1",
+      "review_after": "2026-09-01",
+      "source_anchor": "3.8 Harness scaffold 与记忆保护",
+      "source_observation_id": "mem-c1d7e714b7",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_span": "heading:3.8 Harness scaffold 与记忆保护",
+      "status": "active",
+      "text": "不删除、移动或重排现有 `exec-plans/active/`、`exec-plans/completed/` 计划；只同步计划规则、模板字段和归档约定。"
+    },
+    {
+      "claim_id": "claim-bc1a7d3cf073",
+      "claim_type": "instruction",
+      "confidence": "medium",
+      "content_hash": "sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "quote_hash": "sha256:4176254f2c516509888a2bebb412fd256c0f9f998e862786eeaa987955d2fa9f",
+      "review_after": "2026-09-01",
+      "source_anchor": "3.8 Harness scaffold 与记忆保护",
+      "source_observation_id": "mem-c1d7e714b7",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_span": "heading:3.8 Harness scaffold 与记忆保护",
+      "status": "active",
+      "text": "不用 scaffold 的 `memory/` 文件覆盖当前仓库已有热区正文、front matter、历史条目或来源链接。"
+    },
+    {
+      "claim_id": "claim-d304525ec6d2",
+      "claim_type": "instruction",
+      "confidence": "medium",
+      "content_hash": "sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "quote_hash": "sha256:df77dc322925823823027ab639e6b676c8c686be2c42c604182e6956f10d1c53",
+      "review_after": "2026-09-01",
+      "source_anchor": "3.8 Harness scaffold 与记忆保护",
+      "source_observation_id": "mem-c1d7e714b7",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_span": "heading:3.8 Harness scaffold 与记忆保护",
+      "status": "active",
+      "text": "不重建或覆盖未提交的 `.ch/docs/generated/memory-index/.local/` 任务级召回文件；如需生成新召回包，应先确认当前工作面没有未提交修改。"
+    },
+    {
       "claim_id": "claim-04d77e38d577",
       "claim_type": "instruction",
       "confidence": "medium",
@@ -1476,6 +1532,20 @@
       "text": "热区记忆只保留**高密度、高复用、短时必须先读**的信息。"
     },
     {
+      "claim_id": "claim-422b79a6047d",
+      "claim_type": "instruction",
+      "confidence": "medium",
+      "content_hash": "sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "quote_hash": "sha256:8730d5183a73e03c604ce5684cbfe375b547566a7f2901b7da0c0d16af4bbbfb",
+      "review_after": "2026-10-13",
+      "source_anchor": "使用原则",
+      "source_observation_id": "mem-431f2548e1",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_span": "heading:使用原则",
+      "status": "active",
+      "text": "`.ch/docs/generated/memory-index/` 是可重建的共享索引，`.local/` 是任务级召回工作面；两者都不能反向覆盖原始热区记忆或执行计划。"
+    },
+    {
       "claim_id": "claim-6d9f2766d40e",
       "claim_type": "fact",
       "confidence": "medium",
@@ -1502,6 +1572,20 @@
       "source_span": "heading:使用原则",
       "status": "active",
       "text": "长期记忆文档默认应带统一 front matter，具体字段见 `.ch/docs/MEMORY.md`。"
+    },
+    {
+      "claim_id": "claim-809cc098c81b",
+      "claim_type": "fact",
+      "confidence": "medium",
+      "content_hash": "sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "quote_hash": "sha256:9dd12887c753b15f0745dbfdc7ebf4f00ac609e9e4062ba3ce26c0db85c88bb6",
+      "review_after": "2026-10-28",
+      "source_anchor": "使用原则",
+      "source_observation_id": "mem-431f2548e1",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_span": "heading:使用原则",
+      "status": "active",
+      "text": "同步 `media/workspace-scaffold` 时，不得用模板热区替换本仓库已有记忆；模板只补充规则入口和缺失结构。"
     },
     {
       "claim_id": "claim-9571c70b7dfd",
@@ -1714,7 +1798,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-08-29T02:14:18+00:00",
+  "generated_at": "2026-10-31T12:05:20+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1733,13 +1817,14 @@
       ],
       "last_verified_at": "2026-07-18",
       "memory_type": "memory_rules",
-      "modified_at": "2026-08-24T05:35:11+00:00",
+      "modified_at": "2026-10-02T03:18:59+00:00",
       "path": ".ch/docs/MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
       "read_tokens": 19,
       "references": [
         ".ch/docs/generated/",
+        ".ch/docs/generated/memory-index/.local/",
         ".ch/docs/ontology/"
       ],
       "source_of_truth": ".ch/docs/MEMORY.md",
@@ -1782,14 +1867,21 @@
         "维护规则",
         "当前事件"
       ],
-      "last_verified_at": "template-fill-when-adopted",
+      "last_verified_at": "2026-10-24",
       "memory_type": "event_memory",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-10-31T12:05:20+00:00",
       "path": ".ch/docs/memory/EVENT_MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L2 event_memory",
       "read_tokens": 18,
-      "references": [],
+      "references": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md",
+        ".ch/docs/runbooks/PITFALLS.md",
+        ".ch/docs/runbooks/kimi-code-config.md",
+        "src/interactive/grokAppServerProtocol.ts",
+        "src/test/interactive/grokAppServerProtocol.test.ts"
+      ],
       "source_of_truth": ".ch/docs/memory/EVENT_MEMORY.md",
       "starter": true,
       "status": "active",
@@ -1873,7 +1965,7 @@
     },
     {
       "category": "hot-memory",
-      "freshness": "fresh",
+      "freshness": "stale",
       "headings": [
         "热区记忆面",
         "文件分工",
@@ -1886,7 +1978,7 @@
       ],
       "last_verified_at": "2026-08-29",
       "memory_type": "memory_index_rules",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-10-02T03:18:59+00:00",
       "path": ".ch/docs/memory/README.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -1914,7 +2006,7 @@
       ],
       "last_verified_at": "template-fill-when-adopted",
       "memory_type": "rolling_summary",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-09-27T06:12:11+00:00",
       "path": ".ch/docs/memory/ROLLING_SUMMARY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L1 rolling_summary",
@@ -1975,10 +2067,11 @@
       ],
       "files": [
         ".ch/docs/generated/",
+        ".ch/docs/generated/memory-index/.local/",
         ".ch/docs/ontology/"
       ],
       "id": "mem-c1d7e714b7",
-      "modified_at": "2026-08-24T05:35:11+00:00",
+      "modified_at": "2026-10-02T03:18:59+00:00",
       "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
       "private_stripped": false,
       "read_tokens": 39,
@@ -2006,7 +2099,7 @@
         ".ch/docs/generated/memory-index/.local/"
       ],
       "id": "mem-431f2548e1",
-      "modified_at": "2026-08-29T02:14:18+00:00",
+      "modified_at": "2026-10-02T03:18:59+00:00",
       "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
       "private_stripped": false,
       "read_tokens": 46,

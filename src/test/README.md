@@ -8,7 +8,6 @@
 | `config` | 配置服务、MCP、配置中心与配置页控件 |
 | `core` | 跨模块运行时、诊断、重试与会话基础能力 |
 | `extensionHost` | Extension Host 运行时编排与 Prompt 执行入口 |
-| `graph` | Graph 规划、调度、存储、工作区与运行面板 |
 | `interactive` | Codex/Claude 交互 Runner 与 App Server 协议 |
 | `loop` | Loop 主从任务、子任务与群聊界面 |
 | `memory` | 长期记忆、索引、召回与运行门禁 |

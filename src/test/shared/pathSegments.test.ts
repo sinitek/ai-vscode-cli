@@ -3,8 +3,6 @@ import assert = require("node:assert/strict");
 import * as os from "os";
 import * as path from "path";
 
-import { buildGraphRunStoreFile } from "../../graph/graphStore";
-import { sanitizeGraphPathSegment } from "../../graph/types";
 import { buildLoopTaskStoreFile } from "../../loopTaskStore";
 import { sanitizePathSegment } from "../../shared/pathSegments";
 
@@ -12,37 +10,15 @@ test("sanitizes invalid path characters consistently and preserves case", () => 
   const value = " Workspace/A\\B:Run-42.Test ";
 
   assert.equal(sanitizePathSegment(value, "fallback"), "Workspace_A_B_Run-42.Test");
-  assert.equal(sanitizeGraphPathSegment(value, "fallback"), "Workspace_A_B_Run-42.Test");
 });
 
 test("uses the supplied fallback for empty and nullish path segments", () => {
   for (const value of [undefined, null, "", "   "]) {
     assert.equal(sanitizePathSegment(value, "fallback"), "fallback");
-    assert.equal(sanitizeGraphPathSegment(value, "graph-fallback"), "graph-fallback");
   }
 });
 
-test("keeps Graph and Loop store paths compatible after segment reuse", () => {
-  const graphFile = buildGraphRunStoreFile(
-    "codex",
-    "Workspace/A",
-    "session\\one",
-    "run:one",
-    { baseDir: "/tmp/graph-path-segments" },
-  );
-  assert.equal(
-    graphFile,
-    path.join(
-      "/tmp/graph-path-segments",
-      "graph-runs",
-      "Workspace_A",
-      "codex",
-      "session_one",
-      "run_one",
-      "graph-runs.json",
-    ),
-  );
-
+test("keeps Loop store paths compatible after segment reuse", () => {
   const loopFile = buildLoopTaskStoreFile("codex", "Workspace/A", "session\\one", "task:one");
   assert.equal(
     loopFile,

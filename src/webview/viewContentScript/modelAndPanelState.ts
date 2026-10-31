@@ -716,7 +716,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         syncRunningStateForActiveTab();
         renderConversationTabs();
         syncOpenCurrentLoopGroupChatButton();
-        syncOpenCurrentGraphRunButton();
         renderSessionList();
         renderPromptHistoryList();
         renderScheduledTaskList();

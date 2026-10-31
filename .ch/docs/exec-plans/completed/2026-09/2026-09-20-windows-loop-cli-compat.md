@@ -26,7 +26,6 @@
 ## 非目标
 
 - 不宣称真实 Windows E2E 已跑
-- 不改 Graph worktree 默认执行模式
 - 不解决 Codex 上游 `\\?\` 长路径 / 项目信任 TOML key 差异
 - 不改 Windows `taskkill /F` 的停止语义
 

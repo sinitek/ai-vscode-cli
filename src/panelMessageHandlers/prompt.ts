@@ -16,7 +16,6 @@ type PromptPanelMessageDeps = Pick<
   | "getCurrentSessionId"
   | "runContextCompactionCommand"
   | "openLoopGroupChatPanel"
-  | "openGraphRunPanel"
   | "getActiveConversationTabId"
   | "stopRunForTab"
 >;
@@ -79,13 +78,6 @@ export function createPromptPanelMessageHandlers(
       await deps.openLoopGroupChatPanel({
         taskId: typeof message.taskId === "string" ? message.taskId : undefined,
         roundKey: typeof message.roundKey === "string" ? message.roundKey : undefined,
-      });
-    },
-
-    openGraphRun: async (message) => {
-      await deps.openGraphRunPanel({
-        graphRunId: typeof message.graphRunId === "string" ? message.graphRunId : undefined,
-        nodeId: typeof message.nodeId === "string" ? message.nodeId : undefined,
       });
     },
 

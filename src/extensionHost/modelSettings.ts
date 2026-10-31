@@ -34,7 +34,7 @@ import { isTimestampWithinHistoryRetention } from "../historyRetention";
 import { loadWorkspaceSettings as loadWorkspaceSettingsFromStore, saveWorkspaceSettings as saveWorkspaceSettingsToStore, trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type ConversationTabRecordForWorkspaceSettings, type SaveWorkspaceSettingsResult, type WorkspaceSettings } from "../workspaceSettingsStore";
 import type { PanelState, PromptHistoryItem } from "../webview/types";
 import type { ConfigHeartbeatSnapshot } from "../webviewCommandCoordinator";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
 import { isCliName } from "../panelStateBuilder";

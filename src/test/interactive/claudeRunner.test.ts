@@ -180,7 +180,7 @@ for (const scenario of [
   { mode: "coding", isolated: false, sessionId: null },
   { mode: "coding", isolated: false, sessionId: "resumed-network-session" },
   { mode: "loop", isolated: true, sessionId: null },
-  { mode: "graph", isolated: true, sessionId: null },
+  { mode: "loop_plus", isolated: true, sessionId: null },
   { mode: "plan", isolated: false, sessionId: null },
 ] as const) {
   test(`applies Claude network policy to every ${scenario.mode} turn (isolated=${scenario.isolated}, resumed=${Boolean(scenario.sessionId)})`, async (t) => {

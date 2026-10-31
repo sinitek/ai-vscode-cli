@@ -7,7 +7,6 @@ import {
   loopModelRoutingFromPromptInput,
   promptModelsFromContinuePair,
   resolveLoopContinueModelPair,
-  selectGraphContinueModelRouting,
 } from "../../continueModelChoice";
 import { normalizeLoopTaskModelRouting, normalizeLoopTaskOriginProfile } from "../../loopTaskStore";
 
@@ -40,40 +39,6 @@ test("continue model choice keeps recorded models or switches to the current Loo
     original: { main: null, subtask: null },
     current,
   }), current);
-});
-
-test("continue model routing ignores empty records and keeps Graph routing unless current is chosen", () => {
-  assert.equal(normalizeLoopTaskModelRouting({ main: {}, subtask: { model: "  " } }), undefined);
-  assert.deepEqual(normalizeLoopTaskModelRouting({
-    main: { model: " gpt-main ", fallback: " main fallback " },
-    subtask: { model: "gpt-subtask" },
-  }), {
-    main: { model: "gpt-main", fallback: "main fallback" },
-    subtask: { model: "gpt-subtask" },
-  });
-  assert.deepEqual(loopModelRoutingFromPromptInput({
-    model: "single-model",
-    loopSubtaskModel: "subtask-model",
-  }), {
-    main: { model: "single-model" },
-    subtask: { model: "subtask-model" },
-  });
-
-  const existing = {
-    planner: { role: "main" as const, model: "original-main" },
-    executor: { role: "subtask" as const, model: "original-subtask" },
-  };
-  const current = {
-    planner: { role: "main" as const, model: "current-main" },
-    executor: { role: "subtask" as const, model: "current-subtask" },
-  };
-  assert.equal(selectGraphContinueModelRouting(existing, current, "original"), existing);
-  assert.equal(selectGraphContinueModelRouting(existing, current, null), existing);
-  assert.equal(selectGraphContinueModelRouting(existing, {
-    planner: { role: "main" },
-    executor: { role: "subtask" },
-  }, "current"), existing);
-  assert.equal(selectGraphContinueModelRouting(existing, current, "current"), current);
 });
 
 test("new Loop tasks snapshot the prompt main and subtask models", () => {

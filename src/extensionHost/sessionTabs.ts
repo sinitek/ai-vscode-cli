@@ -5,10 +5,8 @@ import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord } from "../loopTaskStore";
-import { buildGraphRunIdsBySessionByCli, listGraphRuns } from "../graph/graphStore";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
-import type { PromptRunTarget } from "./graphRuntime";
-import type { GraphRunRecord } from "../graph/types";
+import type { PromptRunTarget } from "../promptRunTypes";
 
 export type ExtensionSessionTabsHostDeps = {
   getSessionTabsController: () => SessionTabsController;
@@ -16,10 +14,10 @@ export type ExtensionSessionTabsHostDeps = {
   getSessionStore: () => SessionStore; setSessionStore: (store: SessionStore) => void;
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void; getActiveWorkspaceKey: () => string;
   getWorkspaceSettings: () => { currentCli?: CliName }; saveWorkspaceSettings: (settings: any) => void;
-  getLoopGroupChatTasks: () => any[]; getGraphNodeRunTarget: (tabId: string) => { graphRunId: string; graphNodeId: string } | undefined; deleteGraphNodeRunTarget: (tabId: string) => void; setGraphNodeRunTarget: (tabId: string, value: { graphRunId: string; graphNodeId: string }) => void;
-  getPrimaryRunTabId: () => string | null; getActiveTaskRun: () => { graphRunId?: string; cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null; getParallelGraphRunId: (tabId: string) => string | undefined; getInteractiveGraphRunId: (tabId: string) => string | undefined;
+  getLoopGroupChatTasks: () => any[];
+  getPrimaryRunTabId: () => string | null; getActiveTaskRun: () => { cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null;
   getLiveMessagesForTab: (tabId: string) => ChatMessage[] | null; getPendingSessionDraft: (tabId: string, cli?: CliName) => PendingSessionDraft; getActiveTabIdForRun: () => string | null; getActiveSessionId: () => string | null; persistSessionStore: (store: SessionStore) => Promise<void>; getSessionStoreKey: (workspaceKey?: string) => string; loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[]; saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
-  buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean; isGraphRunBlockedForMainTab: (run: GraphRunRecord) => boolean;
+  buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
@@ -37,10 +35,7 @@ let activeWorkspaceKey = deps.getActiveWorkspaceKey();
 let workspaceSettings = deps.getWorkspaceSettings();
 let activeTaskRun = deps.getActiveTaskRun();
 const loopGroupChatChatPanelCoordinator = { listGroupChatTasks: deps.getLoopGroupChatTasks };
-const graphNodeRunTargetsByTabId = { get: deps.getGraphNodeRunTarget, delete: deps.deleteGraphNodeRunTarget, set: deps.setGraphNodeRunTarget };
-const parallelRunsByTabId = { get: (tabId: string) => ({ graphRunId: deps.getParallelGraphRunId(tabId) }) };
-const interactiveRunsByTabId = { get: (tabId: string) => ({ graphRunId: deps.getInteractiveGraphRunId(tabId) }) };
-const { getLiveMessagesForTab, loadSessionMessages, saveSessionMessages, buildSessionLabelFromPrompt, shouldUseFallbackSessionLabel, isGraphRunBlockedForMainTab, isTabRunActive, isLoopMainTabCloseLocked, postPanelState, updateStatusBar, maybePromptInstallOnCliGroupSwitch, sendSessionMessagesToPanel, getInteractiveSessionBindingsForTab, disposeInteractiveRunnerIfUnused, setWorkspaceInteractiveModeForCli, extractSessionId, isLocalSessionId, migrateLocalSessionToTargetSession, adoptSessionId, logInfo } = deps;
+const { getLiveMessagesForTab, loadSessionMessages, saveSessionMessages, buildSessionLabelFromPrompt, shouldUseFallbackSessionLabel, isTabRunActive, isLoopMainTabCloseLocked, postPanelState, updateStatusBar, maybePromptInstallOnCliGroupSwitch, sendSessionMessagesToPanel, getInteractiveSessionBindingsForTab, disposeInteractiveRunnerIfUnused, setWorkspaceInteractiveModeForCli, extractSessionId, isLocalSessionId, migrateLocalSessionToTargetSession, adoptSessionId, logInfo } = deps;
 const getPrimaryRunTabId = deps.getPrimaryRunTabId;
 const saveWorkspaceSettings = deps.saveWorkspaceSettings;
 const { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } = deps.activeData;
@@ -61,9 +56,6 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
   const loopSessionIdsByCli = buildLoopSessionIdsByCli(
     loopGroupChatChatPanelCoordinator.listGroupChatTasks()
-  );
-  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
-    listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs
   );
   let shouldPersist = false;
   for (const item of CLI_LIST) {
@@ -87,12 +79,8 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         buildConversationTabSessionLookupKey(item, record.id)
       ) ?? null;
       const isLoopSession = loopSessionIdsByCli[item].has(record.id);
-      const storedGraphRunId = graphRunIdsBySessionByCli[item].get(record.id) ?? null;
-      const graphRunId = storedGraphRunId
-        ?? resolveSessionGraphRunIdFromMessages(item, record.id);
       const taskRole = resolveHistorySessionTaskRole({
         isLoopMainSession: isLoopSession,
-        isGraphMainSession: Boolean(storedGraphRunId),
         messages: loadSessionMessages(item, record.id),
       });
       allSessions.push({
@@ -102,8 +90,6 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         lastUsedAt: record.lastUsedAt,
         cli: item,
         isLoopSession,
-        isGraphSession: Boolean(graphRunId),
-        graphRunId,
         isOpenInConversationTabs: Boolean(openConversationTabId),
         openConversationTabId,
         firstPrompt,
@@ -125,77 +111,6 @@ function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | nu
   const messages = loadSessionMessages(cli, sessionId);
   const first = messages.find((message) => message.role === "user" && message.content.trim());
   return first ? first.content : null;
-}
-
-function normalizeChatGraphRunId(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-type GraphRunSessionLookupByCli = ReturnType<typeof buildGraphRunIdsBySessionByCli>;
-
-function resolveGraphRunIdFromMessages(messages: readonly ChatMessage[]): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const directGraphRunId = normalizeChatGraphRunId(message.graphRunId);
-    if (directGraphRunId) {
-      return directGraphRunId;
-    }
-    const actions = Array.isArray(message.actions) ? message.actions : [];
-    for (let actionIndex = actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
-      const action = actions[actionIndex];
-      if (action.type !== "openGraphRun") {
-        continue;
-      }
-      const actionGraphRunId = normalizeChatGraphRunId(action.graphRunId);
-      if (actionGraphRunId) {
-        return actionGraphRunId;
-      }
-    }
-  }
-  return null;
-}
-
-function resolveSessionGraphRunIdFromMessages(cli: CliName, sessionId: string): string | null {
-  return resolveGraphRunIdFromMessages(loadSessionMessages(cli, sessionId));
-}
-
-function resolveConversationTabGraphRunId(
-  tab: ConversationTabRecord | null,
-  graphRunIdsBySessionByCli?: GraphRunSessionLookupByCli,
-): string | null {
-  if (!tab) {
-    return null;
-  }
-  const graphNodeTarget = graphNodeRunTargetsByTabId.get(tab.id);
-  const graphNodeRunId = normalizeChatGraphRunId(graphNodeTarget?.graphRunId);
-  if (graphNodeRunId) {
-    return graphNodeRunId;
-  }
-  if (getPrimaryRunTabId() === tab.id) {
-    const activeGraphRunId = normalizeChatGraphRunId(activeTaskRun?.graphRunId);
-    if (activeGraphRunId) {
-      return activeGraphRunId;
-    }
-  }
-  const parallelGraphRunId = normalizeChatGraphRunId(parallelRunsByTabId.get(tab.id)?.graphRunId);
-  if (parallelGraphRunId) {
-    return parallelGraphRunId;
-  }
-  const interactiveGraphRunId = normalizeChatGraphRunId(interactiveRunsByTabId.get(tab.id)?.graphRunId);
-  if (interactiveGraphRunId) {
-    return interactiveGraphRunId;
-  }
-  const liveMessages = getLiveMessagesForTab(tab.id);
-  const liveGraphRunId = liveMessages ? resolveGraphRunIdFromMessages(liveMessages) : null;
-  if (liveGraphRunId) {
-    return liveGraphRunId;
-  }
-  const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
-  if (sessionId) {
-    const storedGraphRunId = normalizeChatGraphRunId(graphRunIdsBySessionByCli?.[tab.cli]?.get(sessionId));
-    return storedGraphRunId ?? resolveSessionGraphRunIdFromMessages(tab.cli, sessionId);
-  }
-  return resolveGraphRunIdFromMessages(getPendingSessionDraft(tab.id, tab.cli).messages);
 }
 
 function ensureLatestSessionForCli(cli: CliName): void {
@@ -226,12 +141,6 @@ function buildConversationTabsState(): {
   tabs: ConversationTabSummary[];
 } {
   const tabState = sessionTabsController.buildConversationTabsState();
-  const tabsById = new Map(ensureConversationTabs().tabs.map((tab) => [tab.id, tab]));
-  const graphRuns = listGraphRuns({ workspaceKey: activeWorkspaceKey }).runs;
-  const graphRunsById = new Map(graphRuns.map((run) => [run.id, run]));
-  const graphRunIdsBySessionByCli = buildGraphRunIdsBySessionByCli(
-    graphRuns,
-  );
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
@@ -241,18 +150,7 @@ function buildConversationTabsState(): {
           readLoopTaskRecord(summary.loopTaskId)?.schedulingMode,
         )
         : summary;
-      const graphRunId = normalizeChatGraphRunId(withSchedulingMode.graphRunId)
-        ?? resolveConversationTabGraphRunId(tabsById.get(withSchedulingMode.id) ?? null, graphRunIdsBySessionByCli);
-      if (!graphRunId) {
-        return withSchedulingMode;
-      }
-      const graphRun = graphRunsById.get(graphRunId) ?? null;
-      return {
-        ...withSchedulingMode,
-        graphRunId,
-        graphRunStatus: graphRun?.status,
-        graphRunBlocked: graphRun ? isGraphRunBlockedForMainTab(graphRun) : undefined,
-      };
+      return withSchedulingMode;
     }),
   };
 }
@@ -360,32 +258,6 @@ function createLoopSubtaskRunTarget(
   };
 }
 
-function createGraphNodeRunTarget(
-  cli: CliName,
-  graphRunId: string,
-  graphNodeId: string,
-): PromptRunTarget {
-  const sessionId = null;
-  const state = ensureConversationTabs();
-  const tab: ConversationTabRecord = {
-    id: createConversationTabId(),
-    cli,
-    sessionId,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
-    createdAt: Date.now(),
-  };
-  state.tabs.push(tab);
-  graphNodeRunTargetsByTabId.set(tab.id, { graphRunId, graphNodeId });
-  persistConversationTabsToWorkspaceSettings();
-  void logInfo("graph-node-session-created", { cli, tabId: tab.id, graphRunId, graphNodeId });
-  void postPanelState();
-  return {
-    tabId: tab.id,
-    cli,
-    sessionId,
-  };
-}
-
 function addConversationTab(
   cli: CliName,
   sessionId: string | null,
@@ -408,7 +280,6 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
     return;
   }
   const previousActiveTabId = getActiveConversationTabId();
-  graphNodeRunTargetsByTabId.delete(tabId);
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
   const next = closeConversationTab(tabId);
@@ -618,10 +489,6 @@ return {
   cleanupSessionRetentionAcrossWorkspaces: wrap(cleanupSessionRetentionAcrossWorkspaces),
   buildSessionState: wrap(buildSessionState),
   resolveSessionFirstPrompt: wrap(resolveSessionFirstPrompt),
-  normalizeChatGraphRunId: wrap(normalizeChatGraphRunId),
-  resolveGraphRunIdFromMessages: wrap(resolveGraphRunIdFromMessages),
-  resolveSessionGraphRunIdFromMessages: wrap(resolveSessionGraphRunIdFromMessages),
-  resolveConversationTabGraphRunId: wrap(resolveConversationTabGraphRunId),
   ensureLatestSessionForCli: wrap(ensureLatestSessionForCli),
   getLatestSessionId: wrap(getLatestSessionId),
   getCurrentSessionId: wrap(getCurrentSessionId),
@@ -640,7 +507,6 @@ return {
   setActiveConversationTab: wrap(setActiveConversationTab),
   switchVisibleConversationTabForLoop: wrap(switchVisibleConversationTabForLoop),
   createLoopSubtaskRunTarget: wrap(createLoopSubtaskRunTarget),
-  createGraphNodeRunTarget: wrap(createGraphNodeRunTarget),
   addConversationTab: wrap(addConversationTab),
   closeConversationTab: wrap(closeConversationTab),
   closeConversationTabAndRefreshPanel: wrap(closeConversationTabAndRefreshPanel),

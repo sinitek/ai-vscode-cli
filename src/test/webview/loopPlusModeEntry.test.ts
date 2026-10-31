@@ -121,9 +121,9 @@ test("renders Loop+ in both interactive mode selects without extra Loop mode cho
     assert.match(select, /value="coding"/);
     assert.match(select, /value="loop"/);
     assert.match(select, /value="loop_plus"/);
-    assert.match(select, /value="graph"/);
+    assert.doesNotMatch(select, /value="graph"/);
+    assert.equal((select.match(/<option /g) || []).length, 3);
     assert.ok(select.indexOf('value="loop"') < select.indexOf('value="loop_plus"'));
-    assert.ok(select.indexOf('value="loop_plus"') < select.indexOf('value="graph"'));
     assert.match(select, />Loop\+</);
   }
   assert.doesNotMatch(html, /loopExecutionModeSelect|debate_multi_agent|红蓝辩论/);
@@ -139,7 +139,7 @@ test("keeps loop_plus in the browser normalizer and still folds plan and lobster
 
   assert.equal(normalizeInteractiveMode("loop_plus"), "loop_plus");
   assert.equal(normalizeInteractiveMode("loop"), "loop");
-  assert.equal(normalizeInteractiveMode("graph"), "graph");
+  assert.equal(normalizeInteractiveMode("graph"), "coding");
   assert.equal(normalizeInteractiveMode("coding"), "coding");
   assert.equal(normalizeInteractiveMode("plan"), "coding");
   assert.equal(normalizeInteractiveMode("lobster"), "coding");
@@ -306,14 +306,7 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     loopTaskId: "task-plus",
     loopSchedulingMode: "event_driven",
   };
-  const graphTab = {
-    id: "graph-main",
-    loopTaskRole: "main",
-    loopTaskId: "task-graph",
-    loopSchedulingMode: "event_driven",
-    graphRunId: "graph-1",
-  };
-  state.conversationTabs.tabs = [classicTab, loopPlusTab, unknownTab, subtaskTab, graphTab];
+  state.conversationTabs.tabs = [classicTab, loopPlusTab, unknownTab, subtaskTab];
   const api = new Function(
     "state",
     "elements",
@@ -343,9 +336,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
       "  }",
       "  return { taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId };",
       "}",
-      "function getGraphMetaForTabSummary(tab) {",
-      "  return tab && tab.graphRunId ? { graphRunId: tab.graphRunId } : null;",
-      "}",
       "return { resolveAutoInteractiveModeForTab, applyAutoInteractiveModeForTab, syncAutoInteractiveModeForActiveTab, renderConversationTabs, syncModelSelectorByInteractiveMode };",
     ].join("\n"),
   )(
@@ -367,7 +357,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   assert.equal(api.resolveAutoInteractiveModeForTab({ ...classicTab, loopSchedulingMode: "classic" }), "loop");
   assert.equal(api.resolveAutoInteractiveModeForTab(unknownTab), "loop");
   assert.equal(api.resolveAutoInteractiveModeForTab(subtaskTab), "coding");
-  assert.equal(api.resolveAutoInteractiveModeForTab(graphTab), "graph");
   assert.equal(api.resolveAutoInteractiveModeForTab({}), "coding");
 
   api.renderConversationTabs();
@@ -395,9 +384,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
   assert.equal(api.syncAutoInteractiveModeForActiveTab(), true);
   assert.equal(state.interactiveMode, "coding");
 
-  state.conversationTabs.activeTabId = "graph-main";
-  assert.equal(api.syncAutoInteractiveModeForActiveTab(), true);
-  assert.equal(state.interactiveMode, "graph");
 });
 
 test("restores each main tab mode from its summary after a fresh page load", () => {
@@ -450,7 +436,6 @@ test("restores each main tab mode from its summary after a fresh page load", () 
         "  if (!tab || !tab.loopTaskId || (tab.loopTaskRole !== \"main\" && tab.loopTaskRole !== \"subtask\")) return null;",
         "  return { taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId };",
         "}",
-        "function getGraphMetaForTabSummary() { return null; }",
         "return { renderConversationTabs };",
       ].join("\n"),
     )(
@@ -773,13 +758,12 @@ test("keeps loop_plus and role fields in the base prompt normalizer", () => {
     loopMainThinkingMode: "low",
   });
   assert.deepEqual(normalizePromptPayload({
-    prompt: "build graph",
+    prompt: "旧模式安全回退",
     interactiveMode: "graph",
     contextOptions: { includeCurrentFile: false, includeSelection: false },
   }), {
-    prompt: "build graph",
+    prompt: "旧模式安全回退",
     contextOptions: { includeCurrentFile: false, includeSelection: false },
-    interactiveMode: "graph",
   });
   assert.deepEqual(normalizePromptPayload({
     prompt: "run",
@@ -1017,7 +1001,6 @@ test("labels scheduled Loop+ tasks with the existing Loop+ copy", () => {
   const labels: Record<string, string> = {
     interactiveModeLoopPlus: "Loop+",
     interactiveModeLoop: "Loop",
-    interactiveModeGraph: "Graph",
     interactiveModeCoding: "Vibe",
     scheduledTaskStatusPending: "Pending",
     scheduledTaskDelete: "Delete",
@@ -1067,7 +1050,7 @@ test("labels scheduled Loop+ tasks with the existing Loop+ copy", () => {
 
   assert.equal(api.scheduledTaskModeLabel("loop_plus"), "Loop+");
   assert.equal(api.scheduledTaskModeLabel("loop"), "Loop");
-  assert.equal(api.scheduledTaskModeLabel("graph"), "Graph");
+  assert.equal(api.scheduledTaskModeLabel("graph"), "");
   assert.equal(api.scheduledTaskModeLabel("coding"), "Vibe");
   assert.equal(api.scheduledTaskModeLabel("plan"), "");
   api.renderScheduledTaskList();

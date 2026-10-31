@@ -23,7 +23,7 @@ DSH 配置页目前把 provider、baseURL、apiKey 和默认模型等 profile �
 
 ## 非目标
 
-- 不修改 DSH 运行时启动、ACP 模型切换或 Loop/Graph 路由逻辑。
+- 不修改 DSH 运行时启动、ACP 模型切换或 Loop 路由逻辑。
 - 不开放未被当前 DSH 契约验证的顶层字段（如 `headers`、`thinkingBudgets`、`transport`）。
 - 不把真实密钥或用户端点写入仓库。
 

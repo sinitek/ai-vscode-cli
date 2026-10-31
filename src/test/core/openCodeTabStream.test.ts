@@ -21,8 +21,6 @@ function createContext() {
       loopTaskId: "loop-1",
       loopRound: 2,
       loopSubtaskId: "subtask-1",
-      graphRunId: "graph-1",
-      graphNodeId: "node-1",
     },
   };
 }
@@ -61,8 +59,6 @@ test("turns parallel OpenCode JSONL text into tab-scoped assistant bubble action
         loopTaskId: "loop-1",
         loopRound: 2,
         loopSubtaskId: "subtask-1",
-        graphRunId: "graph-1",
-        graphNodeId: "node-1",
       },
     },
     {
@@ -138,8 +134,6 @@ test("filters OpenCode step-start placeholders while preserving tool traces and 
         loopTaskId: "loop-1",
         loopRound: 2,
         loopSubtaskId: "subtask-1",
-        graphRunId: "graph-1",
-        graphNodeId: "node-1",
       },
     },
     {

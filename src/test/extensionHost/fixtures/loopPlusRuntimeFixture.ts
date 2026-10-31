@@ -4,7 +4,7 @@ import path = require("path");
 import vm = require("vm");
 import ts = require("typescript");
 import type { ChatMessage } from "../../../webview/types";
-import type { PromptRunInput } from "../../../extensionHost/graphRuntime";
+import type { PromptRunInput } from "../../../promptRunTypes";
 import type { LoopTaskRecord } from "../../../loopTaskStore";
 import type { TaskRunRecord, TaskRunStatus } from "../../../promptRunState";
 import type { LoopPlusPromptTarget } from "../../../extensionHost/loopPlusOrchestration";
@@ -553,10 +553,8 @@ export type LoopPlusExtensionStopHarness = {
   noteTask: (task: LoopPlusNotedTask) => void;
   attachInteractive: (tabId: string, spec: { loopTaskId?: string; taskRole?: "main" | "subtask"; onStop?: () => void }) => void;
   attachParallel: (tabId: string, spec: { loopTaskId?: string; taskRole?: "main" | "subtask"; onStop?: () => void }) => void;
-  attachPrimary: (tabId: string, spec: { loopTaskId?: string; taskRole?: "main" | "subtask"; graphRunId?: string | null; graphNodeId?: string | null; onStop?: () => void }) => void;
-  attachGraph: (tabId: string, graphRunId: string) => void;
+  attachPrimary: (tabId: string, spec: { loopTaskId?: string; taskRole?: "main" | "subtask"; onStop?: () => void }) => void;
   stoppedTabs: string[];
-  graphStops: string[];
   fallbackTaskIds: string[];
   parentStopIds: string[];
 };
@@ -656,10 +654,8 @@ export function createLoopPlusExtensionStopHarness(options: {
   const interactiveRunsByTabId = new Map<string, LoopPlusStopRunner>();
   const parallelRunsByTabId = new Map<string, LoopPlusStopRunner>();
   const contexts = new Map<string, LoopPlusStopContext>();
-  const graphTabs = new Map<string, string>();
   const extraTasks = new Map<string, LoopPlusNotedTask>();
   const stoppedTabs: string[] = [];
-  const graphStops: string[] = [];
   const fallbackTaskIds: string[] = [];
   const parentStopIds: string[] = [];
   const primary: { tabId: string | null; onStop: (() => void) | null } = { tabId: null, onStop: null };
@@ -685,18 +681,8 @@ export function createLoopPlusExtensionStopHarness(options: {
     "  stoppedTabs.push(tabId);",
     "  if (onStop) onStop();",
     "}",
-    "function stopGraphRunForConversationTab(tabId) {",
-    "  const graphRunId = graphTabs.get(tabId);",
-    "  if (!graphRunId) return false;",
-    "  graphTabs.delete(tabId);",
-    "  graphStops.push(tabId);",
-    "  return true;",
-    "}",
-    "function stopGraphRunFromConversationTab(graphRunId, tabId) {",
-    "  graphStops.push(String(tabId) + ':' + String(graphRunId));",
-    "}",
     "function getConversationTabById(tabId) {",
-    "  if (!contexts.has(tabId) && !graphTabs.has(tabId)) return null;",
+    "  if (!contexts.has(tabId)) return null;",
     "  return { id: tabId, cli: 'codex' };",
     "}",
     "function resolveConversationTabLoopContext(tab) {",
@@ -740,9 +726,6 @@ export function createLoopPlusExtensionStopHarness(options: {
   const sandbox = {
     shouldCloseLoopPlusParentGateBeforeAbort,
     normalizeLoopTaskId,
-    normalizeChatGraphRunId: (value: unknown): string | null => (
-      typeof value === "string" && value.trim() ? value.trim() : null
-    ),
     resolveLoopRunConversationTabContext,
     resolveLoopConversationTabContextFromMessages,
     interactiveRunsByTabId,
@@ -751,8 +734,6 @@ export function createLoopPlusExtensionStopHarness(options: {
     activeTaskRun: null as {
       loopTaskId?: string;
       taskRole?: "main" | "subtask";
-      graphRunId?: string | null;
-      graphNodeId?: string | null;
     } | null,
     activeMessageTarget: null as unknown[] | null,
     primaryPromptRunController: {
@@ -774,13 +755,11 @@ export function createLoopPlusExtensionStopHarness(options: {
     },
     parentStopIds,
     fallbackTaskIds,
-    graphStops,
     stoppedTabs,
     hostProvider: () => options.getHost(),
     readLiveTask: (taskId: string) => options.readTask?.(taskId) ?? null,
     extraTasks,
     contexts,
-    graphTabs,
     primary,
   };
   const context = vm.createContext(sandbox);
@@ -828,15 +807,9 @@ export function createLoopPlusExtensionStopHarness(options: {
       sandbox.activeTaskRun = {
         loopTaskId: spec.loopTaskId,
         taskRole: spec.taskRole,
-        graphRunId: spec.graphRunId ?? null,
-        graphNodeId: spec.graphNodeId ?? null,
       };
     },
-    attachGraph: (tabId, graphRunId) => {
-      graphTabs.set(tabId, graphRunId);
-    },
     stoppedTabs,
-    graphStops,
     fallbackTaskIds,
     parentStopIds,
   };

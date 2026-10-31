@@ -9,7 +9,7 @@ import type { CliName, ThinkingMode } from "../cli/types";
 import { parseCliName } from "../subtaskCliRoute";
 import { resolveStoredLoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { ChatMessage, ChatMessageAction } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
 import { normalizeLoopWriteFiles } from "../loopParallel";

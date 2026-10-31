@@ -11,7 +11,6 @@ function createHost(initial: {
   state: ConversationTabsState;
   currentCli: CliName;
   modes: Partial<Record<CliName, InteractiveMode>>;
-  graphTabIds?: Set<string>;
   onRestore?: (tabId: string) => Promise<void>;
 }) {
   let currentCli = initial.currentCli;
@@ -67,13 +66,8 @@ function createHost(initial: {
     getWorkspaceSettings: () => settings,
     saveWorkspaceSettings: () => undefined,
     getLoopGroupChatTasks: () => [],
-    getGraphNodeRunTarget: () => undefined,
-    deleteGraphNodeRunTarget: () => undefined,
-    setGraphNodeRunTarget: () => undefined,
     getPrimaryRunTabId: () => null,
     getActiveTaskRun: () => null,
-    getParallelGraphRunId: () => undefined,
-    getInteractiveGraphRunId: () => undefined,
     getLiveMessagesForTab: () => null,
     getPendingSessionDraft: (tabId, cli = currentCli) => pendingDrafts[`${tabId}::${cli}`] ??= { messages: [], label: null, firstPrompt: null },
     getActiveTabIdForRun: () => null,
@@ -84,7 +78,6 @@ function createHost(initial: {
     saveSessionMessages: () => undefined,
     buildSessionLabelFromPrompt: () => null,
     shouldUseFallbackSessionLabel: () => false,
-    isGraphRunBlockedForMainTab: () => false,
     isTabRunActive: () => false,
     isLoopMainTabCloseLocked: () => false,
     postPanelState: async () => {
@@ -101,9 +94,7 @@ function createHost(initial: {
     getInteractiveSessionBindingsForTab: () => [],
     disposeInteractiveRunnerIfUnused: () => undefined,
     setWorkspaceInteractiveModeForCli: (cli, mode) => { modes[cli] = mode; return true; },
-    resolveAutoInteractiveModeForConversationTab: (tab) => initial.graphTabIds?.has(tab?.id ?? "")
-      ? "graph"
-      : contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
+    resolveAutoInteractiveModeForConversationTab: (tab) => contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
     extractSessionId: () => null,
     isLocalSessionId: () => false,
     migrateLocalSessionToTargetSession: () => undefined,
@@ -151,23 +142,6 @@ test("closing an active Grok tab publishes the fallback Codex configuration", as
   assert.deepEqual(env.restoredTabIds, ["codex-tab"]);
   assert.deepEqual(env.postedClis, ["codex"]);
   assert.deepEqual(env.postedTabIds, ["codex-tab"]);
-});
-
-test("closing a Graph node tab restores the main tab Graph mode and preserves an unrelated mode", async () => {
-  const state: ConversationTabsState = {
-    activeTabId: "node-tab",
-    tabs: [
-      { id: "main-tab", cli: "codex", sessionId: "main", sessionIdByCli: { codex: "main" }, createdAt: 1 },
-      { id: "node-tab", cli: "claude", sessionId: "node", sessionIdByCli: { claude: "node" }, createdAt: 2 },
-      { id: "vibe-tab", cli: "opencode", sessionId: "vibe", sessionIdByCli: { opencode: "vibe" }, createdAt: 3 },
-    ],
-  };
-  const env = createHost({ state, currentCli: "claude", modes: { codex: "graph", claude: "loop_plus" }, graphTabIds: new Set(["main-tab"]) });
-  await env.host.closeConversationTabAndRefreshPanel("node-tab");
-  assert.equal(env.currentCli(), "codex");
-  assert.equal(env.modes.codex, "graph");
-  assert.equal(env.modes.claude, "loop_plus");
-  assert.deepEqual(env.restoredTabIds, ["main-tab"]);
 });
 
 test("closing a background tab does not restore configuration for the unchanged active tab", async () => {

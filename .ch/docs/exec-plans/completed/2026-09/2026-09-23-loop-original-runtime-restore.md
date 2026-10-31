@@ -21,7 +21,6 @@ Loop 群聊“保持原模型”目前只回放 `modelRouting` 里的模型名�
 
 ## 非目标
 
-- 不改变 Graph 继续选择。
 - 不冻结配置档案正文；档案被删或模型已不在该档案中时明确失败。
 - 主任务 Tab 直接发送继续仍使用当前 Tab 的 CLI 和配置。
 
@@ -54,7 +53,7 @@ Loop 群聊“保持原模型”目前只回放 `modelRouting` 里的模型名�
 - 单元测试新增/更新：continue model choice、Loop 群聊 coordinator。
 - 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js` 7/7 通过；Loop 群聊面板相关 2 项通过。另有 1 项群聊面板本地化断言与本机工具语言设置不一致，与本次改动无关。
 - 失败处理记录：无。
-- 功能清单：更新 Loop/Graph 模型路由行中的 Loop 续作描述。
+- 功能清单：更新 Loop 模型路由行中的 Loop 续作描述。
 - 相关文档同步：capabilities、ontology。
 
 ## 任务列表
@@ -66,8 +65,8 @@ Loop 群聊“保持原模型”目前只回放 `modelRouting` 里的模型名�
 
 ## 决策记录
 
-- 2026-09-23：原配置以 `originProfile.configId` 为门槛；只恢复档案选择，不快照档案正文。Graph 不在本次范围。
+- 2026-09-23：原配置以 `originProfile.configId` 为门槛；只恢复档案选择，不快照档案正文。
 
 ## 当前结论
 
-已完成。Graph 继续选择未改。
+已完成。

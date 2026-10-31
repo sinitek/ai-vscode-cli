@@ -82,7 +82,7 @@ function createRoleVisibilityHarness(cli: string) {
   )(
     state, elements, { body: { classList: { toggle() {} } }, querySelector: () => null },
     () => route, (value: string) => value, () => state.subtaskMode,
-    (currentCli: string, mode: string) => !["opencode", "claude"].includes(currentCli) && ["loop", "graph", "loop_plus"].includes(mode),
+    (currentCli: string, mode: string) => !["opencode", "claude"].includes(currentCli) && ["loop", "loop_plus"].includes(mode),
     (key: string) => WEBVIEW_STRINGS[key as keyof typeof WEBVIEW_STRINGS] || key,
     (control: any, value: string) => { control.value = value; control.tabIndex = 0; },
     (control: any, visible: boolean) => { control.style.display = visible ? "" : "none"; control.disabled = !visible; },
@@ -96,14 +96,14 @@ function createRoleVisibilityHarness(cli: string) {
 }
 
 for (const cli of ["codex", "opencode", "claude", "grok", "dsh", "kimi-code", "zcode"]) {
-  test(`${cli}: switching from Loop+ fullstack restores the classic Loop and Graph subtask controls`, () => {
+  test(`${cli}: switching from Loop+ fullstack restores the classic Loop subtask controls`, () => {
     const { state, elements, prefix, update } = createRoleVisibilityHarness(cli);
     const subtask = elements[`${prefix}SubtaskCliSelect`];
     const fullstack = elements[`${prefix}FullstackCliSelect`];
     const frontend = elements[`${prefix}FrontendCliSelect`];
     const model = elements[cli === "opencode" ? "openCodeSmallModelSelect" : `${prefix}SubtaskModelSelect`];
     const thinking = elements[cli === "opencode" ? "openCodeSmallThinkingMode" : `${prefix}SubtaskThinkingMode`];
-    for (const mode of ["loop", "graph", "loop"]) {
+    for (const mode of ["loop", "loop"]) {
       state.interactiveMode = "loop_plus";
       update();
       assert.equal(subtask.parentElement.hidden, true);

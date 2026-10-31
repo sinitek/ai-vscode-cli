@@ -12,7 +12,7 @@ import type { CliName } from "../../cli/types";
 import type { GrokInteractiveRunner, GrokStreamHandlers } from "../../interactive/grokRunner";
 import type { InteractiveRunnerManager } from "../../interactive/manager";
 import type { ChatMessage } from "../../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 
 const { GrokInteractiveRunner: GrokRunner } = require("../../interactive/grokRunner") as typeof import("../../interactive/grokRunner");
@@ -598,8 +598,8 @@ test("Grok native questions use the existing tab-bound human interaction form", 
   assert.ok(messages.some((message) => message.role === "user" && message.content.includes("Linux") && message.content.includes("Windows")));
 });
 
-test("Grok native questions respect disabled interaction and Loop or Graph ownership", async () => {
-  for (const input of [{ enabled: false }, { enabled: true, loopTaskId: "loop-one" }, { enabled: true, graphRunId: "graph-one" }]) {
+test("Grok native questions respect disabled interaction and Loop ownership", async () => {
+  for (const input of [{ enabled: false }, { enabled: true, loopTaskId: "loop-one" }]) {
     const harness = createHostHarness({
       humanInteractionEnabled: input.enabled,
       behavior: async (_prompt, handlers) => {
@@ -608,7 +608,7 @@ test("Grok native questions respect disabled interaction and Loop or Graph owner
         handlers.onComplete?.({ stopReason: "end_turn" });
       },
     });
-    await harness.host.runPromptInteractive({ ...inputFor("继续"), loopTaskId: input.loopTaskId, graphRunId: input.graphRunId }, targetFor("local-session"));
+    await harness.host.runPromptInteractive({ ...inputFor("继续"), loopTaskId: input.loopTaskId, }, targetFor("local-session"));
     assert.equal(harness.humanRequests.length, 0);
   }
 });

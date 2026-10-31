@@ -2,7 +2,6 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { installVscodeMock } from "../vscodeMock";
 import type { CliName, ThinkingMode } from "../../cli/types";
-import type { GraphRunRecord } from "../../graph/types";
 import type { PanelMessageHandlerDeps } from "../../sessionMessageHandlers";
 import type { PanelMessage } from "../../webview/types";
 
@@ -33,7 +32,7 @@ const {
   handleSendPromptMessage,
   handleUpdateSettingMessage,
 } = require("../../sessionMessageActions") as typeof import("../../sessionMessageActions");
-const { createGraphRuntimeHost } = require("../../extensionHost/graphRuntime") as typeof import("../../extensionHost/graphRuntime");
+const { createPromptRunModelsHost } = require("../../extensionHost/promptRunModels") as typeof import("../../extensionHost/promptRunModels");
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
   if (cli === "grok") {
@@ -186,12 +185,10 @@ test("stores Grok loop role models per config and keeps Codex, OpenCode, and Cla
 function createPromptDeps(cli: CliName) {
   const calls: {
     runLoop: Array<Record<string, unknown>>;
-    runGraph: Array<Record<string, unknown>>;
     runPrompt: Array<Record<string, unknown>>;
     thinking: unknown[][];
   } = {
     runLoop: [],
-    runGraph: [],
     runPrompt: [],
     thinking: [],
   };
@@ -204,8 +201,8 @@ function createPromptDeps(cli: CliName) {
     getActiveConversationTabId: () => "tab-1",
     getConversationTabById: () => null,
     resolveLoopSubtaskConversationContext: () => null,
-    isInteractiveMode: (value: unknown) => value === "coding" || value === "loop" || value === "graph" || value === "loop_plus",
-    normalizeVisibleInteractiveMode: (mode: "coding" | "loop" | "graph" | "loop_plus") => mode,
+    isInteractiveMode: (value: unknown) => value === "coding" || value === "loop" || value === "loop_plus",
+    normalizeVisibleInteractiveMode: (mode: "coding" | "loop" | "loop_plus") => mode,
     setWorkspaceInteractiveModeForCli: () => undefined,
     buildPromptWithAutoContext: (prompt: string) => ({ modelPrompt: prompt, contextTags: [] as string[] }),
     maybeInjectLongTermMemoryForPrompt: (_displayPrompt: string, modelPrompt: string) => modelPrompt,
@@ -230,9 +227,6 @@ function createPromptDeps(cli: CliName) {
     runLoopPrompt: async (input: Record<string, unknown>) => {
       calls.runLoop.push(input);
     },
-    runGraphPrompt: async (input: Record<string, unknown>) => {
-      calls.runGraph.push(input);
-    },
     runPrompt: async (input: Record<string, unknown>) => {
       calls.runPrompt.push(input);
     },
@@ -242,7 +236,7 @@ function createPromptDeps(cli: CliName) {
   return { deps: deps as unknown as PanelMessageHandlerDeps, calls };
 }
 
-test("Grok Loop, Loop+, and Graph prompts carry role models and keep off thinking", async () => {
+test("Grok Loop and Loop+ prompts carry role models and keep off thinking", async () => {
   for (const interactiveMode of ["loop", "loop_plus"] as const) {
     const { deps, calls } = createPromptDeps("grok");
     await handleSendPromptMessage({
@@ -258,17 +252,6 @@ test("Grok Loop, Loop+, and Graph prompts carry role models and keep off thinkin
     assert.equal(calls.runLoop[0]?.loopMainThinkingMode, "off");
     assert.equal(calls.runLoop[0]?.loopSubtaskThinkingMode, "off");
   }
-
-  const graph = createPromptDeps("grok");
-  await handleSendPromptMessage({
-    type: "sendPrompt",
-    prompt: "run graph",
-    interactiveMode: "graph",
-    loopMainThinkingMode: "off",
-  } as Extract<PanelMessage, { type: "sendPrompt" }>, graph.deps);
-  assert.equal(graph.calls.runGraph[0]?.loopMainModel, "grok-main");
-  assert.equal(graph.calls.runGraph[0]?.loopSubtaskModel, "grok-sub");
-  assert.equal(graph.calls.runGraph[0]?.loopMainThinkingMode, "off");
 
   const coding = createPromptDeps("grok");
   await handleSendPromptMessage({
@@ -317,11 +300,7 @@ test("Grok Loop, Loop+, and Graph prompts carry role models and keep off thinkin
   }, codexThinking.deps);
   assert.deepEqual(codexThinking.calls.thinking[0], ["codex", "subtask", "codex-sub", "low", "codex-config"]);
 
-  const host = createGraphRuntimeHost({
-    getActiveWorkspaceKey: () => "workspace",
-    getActiveConversationTabId: () => "tab-1",
-    resolvePromptRunTarget: () => null,
-    resolveGraphRunSessionId: () => null,
+  const host = createPromptRunModelsHost({
     getActiveConfigIdForCli: (cli) => `${cli}-config`,
     getSelectedCliModel: (cli) => cli === "claude" ? "claude-sonnet" : `${cli}-selected`,
     getSelectedLoopCliModel: (_cli, role) => role === "main" ? "stored-main" : "stored-sub",
@@ -331,38 +310,6 @@ test("Grok Loop, Loop+, and Graph prompts carry role models and keep off thinkin
     getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     isThinkingMode,
     resolveOpenCodeRoleModelsForConfig: () => ({ main: "opencode-main", subtask: "opencode-sub", fallback: {} }),
-    createMessageId: () => "message-1",
-    resolveWorkspaceCwd: () => undefined,
-    postPanelState: async () => undefined,
-    persistGraphRunTickState: (run) => run,
-    scheduleGraphRunAutoWake: () => undefined,
-    sendRunStatusForTab: () => undefined,
-    createGraphNodeRunTarget: (cli) => ({ tabId: "node-tab", cli, sessionId: null }),
-    runPrompt: async () => undefined,
-    closeConversationTabAndRefreshPanel: async () => undefined,
-    errorToMessage: (error) => String(error),
-    messages: {} as import("../../extensionHost/graphMessages").GraphMessagesHost,
-  });
-  const routedRun = {
-    modelRouting: {
-      planner: { role: "main", model: "planner-grok", fallback: "planner fallback" },
-      executor: { role: "subtask", model: "executor-grok", fallback: "executor fallback" },
-    },
-  } as GraphRunRecord;
-  assert.deepEqual(host.resolveGraphResumePromptModels(routedRun, "grok", "grok-config"), {
-    model: "planner-grok",
-    loopMainModel: "planner-grok",
-    loopSubtaskModel: "executor-grok",
-    loopMainModelFallback: "planner fallback",
-    loopSubtaskModelFallback: "executor fallback",
-  });
-  assert.deepEqual(host.resolveGraphResumePromptModels({} as GraphRunRecord, "grok", "grok-config"), {
-    model: "stored-main",
-    loopMainModel: "stored-main",
-    loopSubtaskModel: "stored-sub",
-  });
-  assert.deepEqual(host.resolveGraphResumePromptModels({} as GraphRunRecord, "claude", "claude-config"), {
-    model: "claude-sonnet",
   });
   assert.equal(host.resolvePromptRunThinkingModeForRole({
     displayPrompt: "p",

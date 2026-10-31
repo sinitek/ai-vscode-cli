@@ -40,11 +40,6 @@ type SentLoopPromptRun = {
   options: Parameters<PanelMessageHandlerDeps["runLoopPrompt"]>[1];
 };
 
-type SentGraphPromptRun = {
-  input: PromptRunInputForPanel;
-  options?: Parameters<NonNullable<PanelMessageHandlerDeps["runGraphPrompt"]>>[1];
-};
-
 type WakeLoopMainCall = {
   context: Parameters<PanelMessageHandlerDeps["maybeWakeLoopMainAfterSubtaskContinuation"]>[0];
   options: Parameters<PanelMessageHandlerDeps["maybeWakeLoopMainAfterSubtaskContinuation"]>[1];
@@ -78,7 +73,6 @@ type SendPromptHarness = {
     preloaded: Array<{ input: PromptRunInputForPanel; target: { tabId: string; cli: CliName; sessionId: string | null } }>;
     runPrompt: SentPromptRun[];
     runLoopPrompt: SentLoopPromptRun[];
-    runGraphPrompt: SentGraphPromptRun[];
     wakeMain: WakeLoopMainCall[];
     stoppedTabs: Array<string | null>;
     toolSettingsPatches: Array<Partial<ToolSettingsState>>;
@@ -145,7 +139,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     preloaded: [],
     runPrompt: [],
     runLoopPrompt: [],
-    runGraphPrompt: [],
     wakeMain: [],
     stoppedTabs: [],
     toolSettingsPatches: [],
@@ -256,7 +249,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     getSelectedCliModel: () => null,
     getSelectedLoopCliModel: () => null,
     isInteractiveMode: (value: unknown): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "loop" || value === "graph" || value === "loop_plus"
+      value === "coding" || value === "plan" || value === "loop" || value === "loop_plus"
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
@@ -278,7 +271,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     appendUserMessageForCli: () => undefined,
     runContextCompactionCommand: async () => undefined,
     openLoopGroupChatPanel: async () => undefined,
-    openGraphRunPanel: async () => undefined,
     getActiveConversationTabId: () => tab.id,
     getActiveConversationTab: () => tab,
     resolveLoopSubtaskConversationContext: () => null,
@@ -299,9 +291,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     },
     runLoopPrompt: async (input, options) => {
       calls.runLoopPrompt.push({ input, options });
-    },
-    runGraphPrompt: async (input, options) => {
-      calls.runGraphPrompt.push({ input, options });
     },
     runPrompt: async (input, options) => {
       calls.runPrompt.push({ input, options });
@@ -515,51 +504,6 @@ test("routes OpenCode Loop through runLoopPrompt using the generic model as main
   assert.equal(calls.postPanelState, 1);
 });
 
-test("routes OpenCode Graph through runGraphPrompt using the generic model as planner/executor fallback", async () => {
-  const { deps, calls, state } = createSendPromptHarness();
-  let memoryInjectionCalls = 0;
-  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
-    memoryInjectionCalls += 1;
-    return `${modelPrompt}:memory`;
-  };
-
-  await handlePanelMessageWithDeps({
-    type: "sendPrompt",
-    prompt: "run the graph",
-    interactiveMode: "graph",
-    contextOptions: {
-      includeCurrentFile: false,
-      includeSelection: false,
-    },
-    tabId: "tab-opencode-smoke",
-    cli: "opencode",
-    model: "provider/general-model",
-  }, deps);
-
-  assert.equal(state.currentCli, "opencode");
-  assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "graph");
-  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "graph" }]);
-  assert.deepEqual(calls.promptHistory, [{ prompt: "run the graph", cli: "opencode" }]);
-  assert.equal(calls.runPrompt.length, 0);
-  assert.equal(calls.runLoopPrompt.length, 0);
-  assert.equal(calls.runGraphPrompt.length, 1);
-  assert.equal(memoryInjectionCalls, 0);
-  assert.deepEqual(calls.runGraphPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
-  assert.deepEqual(calls.runGraphPrompt[0].input, {
-    displayPrompt: "run the graph",
-    modelPrompt: "run the graph",
-    contextTags: [],
-    model: "provider/general-model",
-    loopMainModel: "provider/general-model",
-    loopSubtaskModel: "provider/general-model",
-    imagePaths: undefined,
-    skipLongTermMemoryPersist: true,
-    preloadedUserMessageId: "user-preloaded",
-  });
-  assert.equal(calls.wakeMain.length, 0);
-  assert.equal(calls.postPanelState, 1);
-});
-
 test("routes Codex Loop with explicit main and subtask model payload fields", async () => {
   const { deps, calls } = createSendPromptHarness("codex");
   const message = {
@@ -617,53 +561,8 @@ test("falls back Codex Loop role models to the legacy generic model payload", as
   });
 });
 
-test("routes Codex Graph with planner and execution model payload fields", async () => {
-  const { deps, calls } = createSendPromptHarness("codex");
-  let memoryInjectionCalls = 0;
-  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
-    memoryInjectionCalls += 1;
-    return `${modelPrompt}:memory`;
-  };
-  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
-    ? "stored-main-model"
-    : "stored-subtask-model";
-  deps.getSelectedLoopThinkingMode = (_cli, role) => role === "main"
-    ? "high"
-    : "low";
-
-  await handlePanelMessageWithDeps({
-    type: "sendPrompt",
-    prompt: "run codex graph",
-    interactiveMode: "graph",
-    contextOptions: {
-      includeCurrentFile: false,
-      includeSelection: false,
-    },
-    tabId: "tab-opencode-smoke",
-    cli: "codex",
-  }, deps);
-
-  assert.equal(calls.runPrompt.length, 0);
-  assert.equal(calls.runLoopPrompt.length, 0);
-  assert.equal(calls.runGraphPrompt.length, 1);
-  assert.equal(memoryInjectionCalls, 0);
-  assert.deepEqual(calls.runGraphPrompt[0].input, {
-    displayPrompt: "run codex graph",
-    modelPrompt: "run codex graph",
-    contextTags: [],
-    model: "stored-main-model",
-    loopMainModel: "stored-main-model",
-    loopSubtaskModel: "stored-subtask-model",
-    loopMainThinkingMode: "high",
-    loopSubtaskThinkingMode: "low",
-    imagePaths: undefined,
-    skipLongTermMemoryPersist: true,
-    preloadedUserMessageId: "user-preloaded",
-  });
-});
-
-test("routes DSH role models and thinking modes through Loop, Loop+, and Graph", async () => {
-  for (const interactiveMode of ["loop", "loop_plus", "graph"] as const) {
+test("routes DSH role models and thinking modes through Loop and Loop+", async () => {
+  for (const interactiveMode of ["loop", "loop_plus"] as const) {
     const { deps, calls, state } = createSendPromptHarness("dsh");
     state.currentCli = "dsh";
     deps.isCliName = (value: string): value is CliName => (
@@ -687,7 +586,7 @@ test("routes DSH role models and thinking modes through Loop, Loop+, and Graph",
       cli: "dsh",
     }, deps);
 
-    const dispatch = interactiveMode === "graph" ? calls.runGraphPrompt[0] : calls.runLoopPrompt[0];
+    const dispatch = calls.runLoopPrompt[0];
     assert.ok(dispatch, `${interactiveMode} dispatches to its orchestration runner`);
     assert.equal(dispatch.input.model, "dsh-main");
     assert.equal(dispatch.input.loopMainModel, "dsh-main");
@@ -1107,53 +1006,6 @@ test("forces a manual Codex Loop subtask continuation through the subtask model 
   }]);
 });
 
-test("routes Graph from a Loop subtask tab without Loop wake or subtask metadata", async () => {
-  const { deps, calls } = createSendPromptHarness();
-  let memoryInjectionCalls = 0;
-  deps.maybeInjectLongTermMemoryForPrompt = (_displayPrompt, modelPrompt) => {
-    memoryInjectionCalls += 1;
-    return `${modelPrompt}:memory`;
-  };
-  deps.resolveLoopSubtaskConversationContext = () => ({
-    taskId: "task-opencode-loop",
-    subtaskId: "subtask-routing",
-    round: 2,
-  });
-  deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
-    ? "opencode-planner-model"
-    : "opencode-executor-model";
-
-  await handlePanelMessageWithDeps({
-    type: "sendPrompt",
-    prompt: "start a graph from here",
-    interactiveMode: "graph",
-    contextOptions: {
-      includeCurrentFile: false,
-      includeSelection: false,
-    },
-    tabId: "tab-opencode-smoke",
-    cli: "opencode",
-  }, deps);
-
-  assert.deepEqual(calls.interactiveModes, [{ cli: "opencode", mode: "graph" }]);
-  assert.equal(calls.runPrompt.length, 0);
-  assert.equal(calls.runLoopPrompt.length, 0);
-  assert.equal(calls.runGraphPrompt.length, 1);
-  assert.equal(memoryInjectionCalls, 0);
-  assert.deepEqual(calls.runGraphPrompt[0].input, {
-    displayPrompt: "start a graph from here",
-    modelPrompt: "start a graph from here",
-    contextTags: [],
-    model: "opencode-planner-model",
-    loopMainModel: "opencode-planner-model",
-    loopSubtaskModel: "opencode-executor-model",
-    imagePaths: undefined,
-    skipLongTermMemoryPersist: true,
-    preloadedUserMessageId: "user-preloaded",
-  });
-  assert.equal(calls.wakeMain.length, 0);
-});
-
 test("saves and clears OpenCode role models through the active config", async () => {
   const { deps, calls } = createSendPromptHarness();
   const updates: Array<{ role: "primary" | "small"; value: string | null; configId: string | null }> = [];
@@ -1442,7 +1294,6 @@ test("routes a new Loop+ send through runLoopPrompt as event_driven without a lo
 
   assert.equal(state.workspaceSettings.interactiveModeByCli?.opencode, "loop_plus");
   assert.equal(calls.runPrompt.length, 0);
-  assert.equal(calls.runGraphPrompt.length, 0);
   assert.equal(calls.runLoopPrompt.length, 1);
   assert.equal(calls.runLoopPrompt[0].options.schedulingMode, "event_driven");
   assert.equal(calls.runLoopPrompt[0].options.resumeRequested, false);

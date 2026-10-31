@@ -24,7 +24,6 @@ function renderInteractiveModeSelect(
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="loop">${i18n.interactiveModeLoop}</option>
             <option value="loop_plus" title="${i18n.interactiveModeLoopPlusHint}">${i18n.interactiveModeLoopPlus}</option>
-            <option value="graph">${i18n.interactiveModeGraph}</option>
           </select>`;
 }
 
@@ -190,9 +189,6 @@ ${webviewStyles}    </style>
         </button>
         <button id="openCurrentLoopGroupChat" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentLoopGroupChatAria}" title="${i18n.openCurrentLoopGroupChatAria}">
           ${i18n.openCurrentLoopGroupChatLabel}
-        </button>
-        <button id="openCurrentGraphRun" class="run-prompt-button" style="display: none;" aria-label="${i18n.openCurrentGraphRunAria}" title="${i18n.openCurrentGraphRunAria}">
-          ${i18n.openCurrentGraphRunLabel}
         </button>
         <button id="queueIndicator" class="run-queue-indicator" style="display: none;" aria-label="${i18n.queueIndicatorAria}">
           ${i18n.queueIndicatorLabel}
@@ -928,13 +924,6 @@ ${renderChatModal({
               <ul>
                 <li>${i18n.helpModeLoopPlusBest}</li>
                 <li>${i18n.helpModeLoopPlusPros}</li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpModeGraphTitle}</h4>
-              <ul>
-                <li>${i18n.helpModeGraphBest}</li>
-                <li>${i18n.helpModeGraphPros}</li>
               </ul>
             </div>
           </div>

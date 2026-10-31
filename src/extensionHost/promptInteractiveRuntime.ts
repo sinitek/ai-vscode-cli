@@ -57,7 +57,7 @@ import {
   type TraceMessageKind,
 } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
 import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import { prepareKimiInteractiveLaunch, type KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
@@ -144,8 +144,6 @@ export type PromptInteractiveRuntimeHostDeps = {
     message?: string;
     prompt?: string;
     startedAt?: number;
-    graphRunId?: string;
-    graphNodeId?: string;
   }) => void;
   shouldAutoCompactContextAfterRunForTarget: (target: PromptRunTarget) => boolean;
   shouldRequireExplicitFinalAnswerForRun: (input: PromptRunInput) => boolean;
@@ -255,7 +253,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const includeFinalAnswerInstruction = !input.loopTaskId;
     const humanInteractionEnabledForVibeRun = interactiveMode === "coding"
       && !input.loopTaskId
-      && !input.graphRunId
       && getGlobalHumanInteractionEnabled();
     const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
       includeSuffix: false,
@@ -833,8 +830,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
-        graphRunId: input.graphRunId,
-        graphNodeId: input.graphNodeId,
       };
       appendTaskRun(taskRecord);
       appendSystemMessageForTab(
@@ -1118,8 +1113,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     sendRunStatusForTab(tabId, "start", {
       prompt,
       startedAt,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
     });
 
     interactiveRunsByTabId.set(tabId, {
@@ -1136,8 +1129,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       loopTaskId: input.loopTaskId,
       loopRound: input.loopRound,
       loopSubtaskId: input.loopSubtaskId,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
     });
 
     const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode"): Promise<"continue" | "return"> => {

@@ -198,7 +198,7 @@ test("prompt payload carries a cross-CLI route, blocks a missing config, and kee
 
   state.activeConfigIdByCli.opencode = null;
   api.handleLoopSubtaskCliChange("opencode");
-  const blocked = api.applyCodexLoopRoleModelsToPromptPayload(basePayload, "codex", "graph", null);
+  const blocked = api.applyCodexLoopRoleModelsToPromptPayload(basePayload, "codex", "loop", null);
   assert.equal(api.getLoopSubtaskRoute().configPending, true);
   assert.equal(blocked.loopSubtaskRouteBlocked, undefined);
   assert.equal(blocked.loopSubtaskCli, "opencode");

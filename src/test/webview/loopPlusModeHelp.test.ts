@@ -51,8 +51,7 @@ test("渲染简洁准确的中文模式说明", () => {
   const chinese = helpModesPanel(buildHtml());
 
   assert.ok(
-    chinese.indexOf(">Loop<") < chinese.indexOf(">Loop+<") &&
-      chinese.indexOf(">Loop+<") < chinese.indexOf(">Graph<"),
+    chinese.indexOf(">Loop<") < chinese.indexOf(">Loop+<"),
   );
 
   for (const snippet of [
@@ -69,8 +68,6 @@ test("渲染简洁准确的中文模式说明", () => {
     "实现、契约、测试、产物、无关改动",
     "需要时可以自行测试或启动应用，但不强制。",
     "默认 100，最大 999",
-    "明确依赖、并行执行和证据可视化",
-    "调度与恢复边界清楚",
   ]) {
     assert.ok(chinese.includes(snippet), `Missing Chinese help snippet: ${snippet}`);
   }
@@ -93,7 +90,8 @@ test("使用说明仅保留默认选中的模式说明页签", () => {
       assert.match(select, /value="coding"/);
       assert.match(select, /value="loop"/);
       assert.match(select, /value="loop_plus"/);
-      assert.match(select, /value="graph"/);
+      assert.doesNotMatch(select, /value="graph"/);
+      assert.equal((select.match(/<option /g) || []).length, 3);
     }
   }
 

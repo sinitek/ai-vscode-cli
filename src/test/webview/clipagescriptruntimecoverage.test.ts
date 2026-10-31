@@ -2544,11 +2544,10 @@ test("groups live instructions across hidden thinking until that thinking become
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 
-test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups", () => {
+test("keeps Loop and Loop+ control bubbles outside collapsed instruction groups", () => {
   const scenarios = [
     { mode: "loop", title: "Loop", action: { type: "openLoopGroupChat", taskId: "loop-task", roundKey: "1" } },
     { mode: "loop_plus", title: "Loop+", action: { type: "openLoopGroupChat", taskId: "loop-plus-task" } },
-    { mode: "graph", title: "Graph", action: { type: "openGraphRun", graphRunId: "graph-run", nodeId: "node-1" } },
   ];
   for (const scenario of scenarios) {
     const { api, document, window, posted } = createRuntimeHarness();
@@ -2558,8 +2557,8 @@ test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction
       type: "setMessages",
       tabId: "tab-1",
       messages: [
-        { id: "before-1", role: "trace", content: "exec pwd", loopTaskId: "task", graphRunId: "run" },
-        { id: "before-2", role: "trace", content: "exec ls", loopTaskId: "task", graphRunId: "run" },
+        { id: "before-1", role: "trace", content: "exec pwd", loopTaskId: "task", },
+        { id: "before-2", role: "trace", content: "exec ls", loopTaskId: "task", },
         { id: "started", role: "system", content: `已开始 ${scenario.title} 任务：task\n记录文件：任务记录`, createdAt: 1_700_000_000_000, actions: [scenario.action] },
         { id: "middle-1", role: "trace", content: "exec git status" },
         { id: "middle-2", role: "assistant", content: "继续检查实现。" },
@@ -2591,9 +2590,6 @@ test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction
     assert.ok(actionMessage);
     if ("taskId" in scenario.action) {
       assert.equal(actionMessage.taskId, scenario.action.taskId);
-    } else {
-      assert.equal(actionMessage.graphRunId, scenario.action.graphRunId);
-      assert.equal(actionMessage.nodeId, scenario.action.nodeId);
     }
     api.renderMessages();
     assertControlBubblesVisible();
@@ -2613,7 +2609,7 @@ test("does not exempt ordinary instruction bubbles with empty or invalid task ac
   api.state.onlyShowFinalResults = false;
   api.state.messages = [
     { id: "empty-actions", role: "trace", content: "exec pwd", actions: [] },
-    { id: "invalid-actions", role: "assistant", content: "普通指令。", actions: [{ type: "openLoopGroupChat", taskId: " " }, { type: "openGraphRun", graphRunId: "" }, null] },
+    { id: "invalid-actions", role: "assistant", content: "普通指令。", actions: [{ type: "openLoopGroupChat", taskId: " " }, null] },
   ];
   api.renderMessages();
   const messages = document.getElementById("messages");
@@ -3279,168 +3275,6 @@ test("rejects attachment selections over webview limits before reading", async (
   assert.equal(posted.some((message) => message && message.type === "uploadFiles"), false);
   assert.match(document.getElementById("toast").textContent, /附件数量过多/);
   assert.ok(api.state.messages.some((message: any) => /附件数量过多/.test(message.content)));
-});
-
-test("dispatches background prompts for Graph tabs as Graph runs", () => {
-  const harness = createRuntimeHarness();
-  const { api, posted, window } = harness;
-
-  window.dispatchMessage({
-    type: "state",
-    payload: createPanelState({
-      conversationTabs: {
-        activeTabId: "tab-1",
-        tabs: [
-          { id: "tab-1", cli: "codex" },
-          { id: "tab-2", cli: "opencode" },
-        ],
-      },
-      interactiveMode: "coding",
-    }),
-  });
-  window.dispatchMessage({
-    type: "appendMessage",
-    tabId: "tab-2",
-    message: {
-      id: "graph-started",
-      role: "system",
-      content: "Graph run started",
-      createdAt: Date.now(),
-      actions: [{ type: "openGraphRun", graphRunId: "graph-1" }],
-    },
-  });
-
-  const beforeDispatch = posted.length;
-  assert.equal(api.dispatchPrompt({ prompt: "continue graph task" }, {
-    tabId: "tab-2",
-    preserveActiveTab: true,
-  }), true);
-  const sendPromptMessage = posted
-    .slice(beforeDispatch)
-    .find((message) => message && message.type === "sendPrompt");
-
-  assert.ok(sendPromptMessage);
-  assert.equal(sendPromptMessage.tabId, "tab-2");
-  assert.equal(sendPromptMessage.cli, "opencode");
-  assert.equal(sendPromptMessage.interactiveMode, "graph");
-  assert.equal(sendPromptMessage.preserveActiveTab, true);
-});
-
-test("uses the selected foreground mode after a Graph run on the same tab", () => {
-  const harness = createRuntimeHarness();
-  const { api, posted, window } = harness;
-
-  window.dispatchMessage({
-    type: "state",
-    payload: createPanelState({
-      conversationTabs: {
-        activeTabId: "tab-graph",
-        tabs: [{ id: "tab-graph", cli: "codex", graphRunId: "graph-1" }],
-      },
-      interactiveMode: "coding",
-    }),
-  });
-
-  const beforeCodingDispatch = posted.length;
-  assert.equal(api.dispatchPrompt({ prompt: "switch to vibe" }), true);
-  const codingSendPromptMessage = posted
-    .slice(beforeCodingDispatch)
-    .find((message) => message && message.type === "sendPrompt");
-
-  assert.ok(codingSendPromptMessage);
-  assert.equal(codingSendPromptMessage.tabId, "tab-graph");
-  assert.equal(codingSendPromptMessage.cli, "codex");
-  assert.equal(codingSendPromptMessage.interactiveMode, "coding");
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainModel"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskModel"), false);
-
-  window.dispatchMessage({
-    type: "state",
-    payload: createPanelState({
-      conversationTabs: {
-        activeTabId: "tab-graph",
-        tabs: [{ id: "tab-graph", cli: "codex", graphRunId: "graph-1" }],
-      },
-      interactiveMode: "loop",
-    }),
-  });
-
-  const beforeLoopDispatch = posted.length;
-  assert.equal(api.dispatchPrompt({ prompt: "switch to loop" }), true);
-  const loopSendPromptMessage = posted
-    .slice(beforeLoopDispatch)
-    .find((message) => message && message.type === "sendPrompt");
-
-  assert.ok(loopSendPromptMessage);
-  assert.equal(loopSendPromptMessage.tabId, "tab-graph");
-  assert.equal(loopSendPromptMessage.cli, "codex");
-  assert.equal(loopSendPromptMessage.interactiveMode, "loop");
-  assert.equal(Object.prototype.hasOwnProperty.call(loopSendPromptMessage, "loopExecutionMode"), false);
-  assert.equal(loopSendPromptMessage.loopMainModel, "gpt-5-main");
-  assert.equal(loopSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
-});
-
-test("dispatches Codex Graph prompts with role models and strips stale role models from coding sends", () => {
-  const harness = createRuntimeHarness();
-  const { api, posted, window } = harness;
-
-  window.dispatchMessage({
-    type: "state",
-    payload: createPanelState({
-      conversationTabs: {
-        activeTabId: "tab-1",
-        tabs: [{ id: "tab-1", cli: "codex" }],
-      },
-      interactiveMode: "graph",
-    }),
-  });
-
-  const beforeGraphDispatch = posted.length;
-  assert.equal(api.dispatchPrompt({ prompt: "run graph" }), true);
-  const graphSendPromptMessage = posted
-    .slice(beforeGraphDispatch)
-    .find((message) => message && message.type === "sendPrompt");
-  assert.ok(graphSendPromptMessage);
-  assert.equal(graphSendPromptMessage.cli, "codex");
-  assert.equal(graphSendPromptMessage.interactiveMode, "graph");
-  assert.equal(graphSendPromptMessage.model, "gpt-5-main");
-  assert.equal(graphSendPromptMessage.loopMainModel, "gpt-5-main");
-  assert.equal(graphSendPromptMessage.loopSubtaskModel, "gpt-5-subtask");
-  assert.equal(graphSendPromptMessage.loopMainThinkingMode, "high");
-  assert.equal(graphSendPromptMessage.loopSubtaskThinkingMode, "low");
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(graphSendPromptMessage, "loopExecutionMode"),
-    false,
-  );
-
-  window.dispatchMessage({
-    type: "state",
-    payload: createPanelState({
-      conversationTabs: {
-        activeTabId: "tab-1",
-        tabs: [{ id: "tab-1", cli: "codex" }],
-      },
-      interactiveMode: "coding",
-    }),
-  });
-
-  const beforeCodingDispatch = posted.length;
-  assert.equal(api.dispatchPrompt({
-    prompt: "run coding",
-    loopMainModel: "stale-main",
-    loopSubtaskModel: "stale-subtask",
-  }), true);
-  const codingSendPromptMessage = posted
-    .slice(beforeCodingDispatch)
-    .find((message) => message && message.type === "sendPrompt");
-  assert.ok(codingSendPromptMessage);
-  assert.equal(codingSendPromptMessage.cli, "codex");
-  assert.equal(codingSendPromptMessage.interactiveMode, "coding");
-  assert.equal(codingSendPromptMessage.model, "gpt-5");
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainModel"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskModel"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopMainThinkingMode"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(codingSendPromptMessage, "loopSubtaskThinkingMode"), false);
 });
 
 test("reports runtime render and window-dispatch failures through the vscode bridge", () => {
@@ -4235,8 +4069,6 @@ test("routes window message handler branches without a real webview", () => {
     "syncConversationControlsForActiveTab",
     "renderMessages",
     "updateLoopMetaForTabFromMessage",
-    "updateGraphMetaForTabFromMessage",
-    "updateGraphMetaForTabFromRunStatus",
     "renderConversationTabs",
     "getConversationRuntimeState",
     "isHiddenRetryQueuedMessage",
@@ -4289,8 +4121,6 @@ test("routes window message handler branches without a real webview", () => {
     () => calls.push("syncControls"),
     () => calls.push("render"),
     () => true,
-    () => false,
-    () => false,
     () => calls.push("tabs"),
     () => ({ pendingPromptQueue: [{ prompt: "queued" }], suppressQueueFlushOnce: false, lastRunStatusMessage: "", activeRunActivity: "" }),
     (content: string) => /retry/.test(content),
@@ -4364,12 +4194,13 @@ test("routes window message handler branches without a real webview", () => {
   assert.ok(calls.includes("state"));
   assert.ok(calls.includes("editor"));
   assert.ok(calls.includes("setMessages"));
+  assert.ok(calls.includes("syncMessage"));
+  assert.ok(calls.includes("resetStream"));
+  assert.ok(calls.includes("rulesHint"));
   assert.ok(calls.includes("append"));
   assert.ok(calls.includes("delta"));
   assert.ok(calls.includes("stream"));
   assert.ok(calls.includes("trace"));
-  assert.ok(calls.includes("syncMessage"));
-  assert.ok(calls.includes("resetStream"));
   assert.ok(calls.includes("flush"));
   assert.ok(calls.includes("insert"));
   assert.ok(calls.includes("streamExport"));
@@ -4377,7 +4208,6 @@ test("routes window message handler branches without a real webview", () => {
   assert.ok(calls.includes("historyExport"));
   assert.ok(calls.includes("configError"));
   assert.ok(calls.includes("taskList"));
-  assert.ok(calls.includes("rulesHint"));
 
   handler({ data: { type: "state", payload: { fail: true } } });
   assert.ok(!calls.includes("unreachable"));
@@ -4583,7 +4413,7 @@ test("ZCode model dropdown displays modelId while keeping provider-qualified sel
 test("ZCode model selectors follow interaction modes and recover after CLI switches", () => {
   const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
   const models = readZcodeConfigModels(createZcodeExampleText());
-  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+  for (const interactiveMode of ["coding", "loop", "loop_plus"]) {
     const roleMode = interactiveMode !== "coding";
     window.dispatchMessage({
       type: "state",
@@ -4607,7 +4437,7 @@ test("ZCode model selectors follow interaction modes and recover after CLI switc
     assert.equal(document.getElementById("codexLoopModelGroup").style.display, roleMode ? "" : "none");
     const mainSelect = document.getElementById("codexLoopMainModelSelect");
     assert.equal(mainSelect.disabled, !roleMode);
-    assert.equal(mainSelect.getAttribute("aria-label"), "ZCode Loop/Graph 主模型选择");
+    assert.equal(mainSelect.getAttribute("aria-label"), "ZCode Loop/Loop+ 主模型选择");
     assert.deepEqual(childValueTextPairs(mainSelect), [[models.defaultModel, ZCODE_EXAMPLE_MODEL_ID]]);
     assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, !roleMode);
     window.dispatchMessage({
@@ -4624,7 +4454,7 @@ test("ZCode model selectors follow interaction modes and recover after CLI switc
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 
-test("all CLI child routes initialize and refresh in loop, loop+ and graph without visiting target CLIs", () => {
+test("all CLI child routes initialize and refresh in Loop and Loop+ without visiting target CLIs", () => {
   const activeConfigIdByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, `${cli}-profile`]));
   const optionsByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, cli === "claude" ? [] : [`synthetic-${cli}`]]));
   const selectedByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, optionsByCli[cli][0] ?? ""]));
@@ -4635,7 +4465,7 @@ test("all CLI child routes initialize and refresh in loop, loop+ and graph witho
     selectedMainRef: "fixture/child", selectedSubtaskRef: "fixture/child", issues: [],
   };
   for (const mainCli of CLI_LIST) {
-    for (const mode of ["loop", "loop_plus", "graph"]) {
+    for (const mode of ["loop", "loop_plus"]) {
       const { document, window, api, posted } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
       for (const targetCli of CLI_LIST) {
         const payload = createPanelState({
@@ -4693,7 +4523,7 @@ test("all CLI child routes initialize and refresh in loop, loop+ and graph witho
 });
 
 test("shared child routes distinguish loading, missing profiles and read failures in every role mode", () => {
-  for (const mode of ["loop", "loop_plus", "graph"]) {
+  for (const mode of ["loop", "loop_plus"]) {
     const { document, window, api } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
     const payload = createPanelState({
       interactiveMode: mode,
@@ -4734,7 +4564,7 @@ test("shared child routes distinguish loading, missing profiles and read failure
 
 test("ZCode empty configuration shows a disabled configuration hint without model management", () => {
   const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "zcode"]);
-  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+  for (const interactiveMode of ["coding", "loop", "loop_plus"]) {
     window.dispatchMessage({
       type: "state",
       payload: createPanelState({
@@ -4760,7 +4590,7 @@ test("ZCode empty configuration shows a disabled configuration hint without mode
 
 test("DSH dropdowns list only configured models and never offer a default placeholder", () => {
   const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "dsh"]);
-  for (const interactiveMode of ["coding", "loop", "graph", "loop_plus"]) {
+  for (const interactiveMode of ["coding", "loop", "loop_plus"]) {
     window.dispatchMessage({
       type: "state",
       payload: createPanelState({

@@ -29,7 +29,7 @@
 
 - 阶段 7 文档收尾不修改 `src`，不删除仍被端口调用的 host 逻辑。
 - 不合并 `LoopMainDecision` 与 `LoopPlusDecision`。
-- 不新增 DI 容器，不修改 `src/extension.ts` 组合根，不继续拆 `loopOrchestration.ts` 或 `graphRunPanel.ts`。
+- 不新增 DI 容器，不修改 `src/extension.ts` 组合根，不继续拆 `loopOrchestration.ts`。
 - 不统一技能根列表、家目录、`/etc` 判断、`toShortDescription` 和配置写回。
 - 不改变 JSON 扫描算法，不把扫描并进 `parseJsonObjectText`。
 - 不把 one-shot 与 parallel 收成 `mode` 旗标。不删除 one-shot 启动超时，也不给 parallel 补上这份超时。
@@ -65,7 +65,7 @@
 - 风险：Template Method 用全局 active run 或 `mode` 旗标，parallel 多 tab 被 one-shot 的单运行身份覆盖。
 - 缓解：`isRunActive` 与流处理是必填端口。parallel 继续使用 `parallelRunsByTabId`。不继承 `Partial` deps 断言。
 - 风险：阶段 7 收尾时顺手合并两套 Loop 决策、新增 DI 容器，或把 one-shot / parallel 收成 `mode` 旗标。
-- 缓解：非目标不放宽。历史行号继续只作锚点。阶段 7 只改三份文档，不回滚阶段 4、5、6 的工作区实现，不继续拆 `src/extension.ts`、`loopOrchestration.ts` 或 `graphRunPanel.ts`。
+- 缓解：非目标不放宽。历史行号继续只作锚点。阶段 7 只改三份文档，不回滚阶段 4、5、6 的工作区实现，不继续拆 `src/extension.ts`、`loopOrchestration.ts`。
 - 回滚：本次只改 `ARCHITECTURE.md` 与两份维护性文档。阶段 4、5、6 的代码各自回滚自己的写范围，不在本次文档回写里动 `src`。
 
 ## 验证计划

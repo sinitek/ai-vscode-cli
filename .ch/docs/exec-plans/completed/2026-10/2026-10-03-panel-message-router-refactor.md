@@ -30,7 +30,7 @@
 
 - 不修改 VS Code、TypeScript、Node 或现有第三方依赖版本。
 - 不修改 `PanelMessage` 的消息字段和 Webview 协议。
-- 不改变 CLI 执行、Loop、Graph、会话持久化等业务规则。
+- 不改变 CLI 执行、Loop、会话持久化等业务规则。
 - 不在本次任务中重写所有运行时 Host。
 
 ## 验收标准

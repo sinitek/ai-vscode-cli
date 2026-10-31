@@ -8,7 +8,7 @@ import type { ClaudeStreamHandlers } from "../../interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "../../interactive/manager";
 import type { TaskRunRecord, TaskRunStatus } from "../../promptRunState";
 import type { ChatMessage } from "../../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
 
@@ -25,8 +25,6 @@ type RunStatusEvent = {
   status: "start" | "end" | "error" | "stopped";
   message?: string;
   prompt?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
 };
 
 type PersistedMessages = {
@@ -287,8 +285,6 @@ function createPromptInput(overrides: Partial<PromptRunInput> = {}): PromptRunIn
     displayPrompt: "run interactive task",
     modelPrompt: "run interactive task",
     contextTags: ["ctx"],
-    graphRunId: "graph-run-1",
-    graphNodeId: "node-1",
     ...overrides,
   };
 }
@@ -378,7 +374,7 @@ test("ZCode default config is resolved before launch and its runner completes th
 test("interactive runtime host completes a successful Codex runner turn", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {
-      assert.equal(handlers.requestUserInputEnabled, false);
+      assert.equal(handlers.requestUserInputEnabled, true);
       harness.setCodexThreadId("thread-success");
       handlers.onThreadId("thread-success");
       handlers.onTrace("thinking trace", "thinking");
@@ -403,8 +399,6 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.ok(finalMessage);
   assert.equal(finalMessage.content, "[final_answer] completed");
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
-  assert.equal(harness.runStatusEvents[0]?.graphRunId, "graph-run-1");
-  assert.equal(harness.runStatusEvents[0]?.graphNodeId, "node-1");
   assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
   assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
   assert.equal(harness.activeRunsByTabId.size, 0);
@@ -457,7 +451,7 @@ test("interactive runtime host enables Codex default-mode user input for Vibe ru
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-human-input", sessionId: "session-human-input" }),
   );
 
@@ -476,7 +470,7 @@ test("interactive runtime host keeps Codex user input disabled when the global f
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-human-input-off", sessionId: "session-human-input-off" }),
   );
 
@@ -502,7 +496,7 @@ test("interactive runtime host retries Codex completion-like text without an exp
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-grok-final", sessionId: "session-grok-final" }),
   );
   const messages = await waitForSessionMessage(
@@ -552,7 +546,7 @@ test("interactive runtime host retries Codex thinking-only completed turns witho
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-grok-thinking", sessionId: "session-grok-thinking" }),
   );
   const messages = await waitForSessionMessage(
@@ -586,7 +580,7 @@ test("interactive runtime host retries Codex commentary completed turns without 
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-glm-final", sessionId: "session-glm-final" }),
   );
   const messages = await waitForSessionMessage(
@@ -649,8 +643,6 @@ test("interactive runtime host submits Codex human interaction answers in Vibe m
     createPromptInput({
       displayPrompt: "needs human context",
       modelPrompt: "needs human context",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ tabId: "tab-human", sessionId: "session-human" }),
   );
@@ -704,8 +696,6 @@ test("interactive runtime host converts explicit natural clarification replies i
     createPromptInput({
       displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
       modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ tabId: "tab-natural-human", sessionId: "session-natural-human" }),
   );
@@ -737,7 +727,7 @@ test("interactive runtime host accepts a Claude greeting when the result succeed
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-hi", sessionId: "session-claude-hi" }),
   );
 
@@ -764,7 +754,7 @@ test("interactive runtime host accepts a finished Claude greeting without a resu
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-no-result", sessionId: "session-claude-no-result" }),
   );
 
@@ -785,7 +775,7 @@ test("interactive runtime host does not treat a bare Claude greeting as complete
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-no-signal", sessionId: "session-claude-no-signal" }),
   );
   await waitForSessionMessage(
@@ -807,7 +797,7 @@ test("interactive runtime host accepts a Claude marker when no native completion
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-marker", sessionId: "session-claude-marker" }),
   );
 
@@ -832,7 +822,7 @@ test("interactive runtime host accepts a Codex phase-null reply after it is prom
   });
 
   await harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ tabId: "tab-phase-null", sessionId: "session-phase-null" }),
   );
 
@@ -853,7 +843,7 @@ test("interactive runtime host retries a Claude error result even when assistant
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-error", sessionId: "session-claude-error" }),
   );
   await waitForSessionMessage(
@@ -877,7 +867,7 @@ test("interactive runtime host does not accept a Claude result that ends on a to
   });
 
   const runPromise = harness.host.runPromptInteractive(
-    createPromptInput({ graphRunId: undefined, graphNodeId: undefined }),
+    createPromptInput({ }),
     createTarget({ cli: "claude", tabId: "tab-claude-tool", sessionId: "session-claude-tool" }),
   );
   await waitForSessionMessage(
@@ -925,8 +915,6 @@ test("interactive runtime host converts Claude natural clarification replies int
     createPromptInput({
       displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
       modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ cli: "claude", tabId: "tab-claude-natural-human", sessionId: "session-claude-natural-human" }),
   );
@@ -983,8 +971,6 @@ test("interactive runtime host preserves lettered natural clarification options"
     createPromptInput({
       displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
       modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ tabId: "tab-natural-options", sessionId: "session-natural-options" }),
   );
@@ -1038,8 +1024,6 @@ test("interactive runtime host stops when natural-language human interaction is 
     createPromptInput({
       displayPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
       modelPrompt: "写一首诗，你来问我一些要求帮你更精准写出我想要的诗",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ tabId: "tab-natural-stop", sessionId: "session-natural-stop" }),
   );
@@ -1084,8 +1068,6 @@ test("interactive runtime host stops when Codex human interaction is rejected", 
     createPromptInput({
       displayPrompt: "reject human context",
       modelPrompt: "reject human context",
-      graphRunId: undefined,
-      graphNodeId: undefined,
     }),
     createTarget({ tabId: "tab-human-stop", sessionId: "session-human-stop" }),
   );

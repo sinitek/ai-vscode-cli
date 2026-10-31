@@ -44,12 +44,8 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
             syncTabErrorFromMessage(eventTabId, data.message);
             const loopMetaChanged = updateLoopMetaForTabFromMessage(eventTabId, data.message);
-            const graphMetaChanged = updateGraphMetaForTabFromMessage(eventTabId, data.message);
-            if (loopMetaChanged || graphMetaChanged) {
+            if (loopMetaChanged) {
               renderConversationTabs();
-            }
-            if (graphMetaChanged && typeof syncOpenCurrentGraphRunButton === "function") {
-              syncOpenCurrentGraphRunButton();
             }
             const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
             let statusSummaryUpdated = false;
@@ -154,10 +150,6 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           if (data.type === "runStatus") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
-            const graphMetaChanged = updateGraphMetaForTabFromRunStatus(targetTabId, data);
-            if (graphMetaChanged) {
-              renderConversationTabs();
-            }
             const runtimeState = getConversationRuntimeState(targetTabId);
             const shouldHandleActiveTabEvent = shouldHandleTabScopedEvent(data);
             let queuePausedNotice = "";

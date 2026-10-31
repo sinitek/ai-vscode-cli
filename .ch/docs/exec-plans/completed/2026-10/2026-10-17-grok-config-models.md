@@ -10,7 +10,7 @@ Grok TOML 已支持多个 `model.<id>`，但对话模型候选仍来自手工管
 
 ## 范围与非目标
 
-- 增加配置驱动的模型解析、默认与失效选择回退、普通与 Loop/Graph 角色选择。
+- 增加配置驱动的模型解析、默认与失效选择回退、普通与 Loop 角色选择。
 - Grok 下拉只展示配置模型，左侧 SVG 按钮重新读取配置；不改变 Codex / OpenCode 交互。
 - 配置可视化新增、编辑、删除多个模型，保留未展示字段，提供中英文文案。
 - 不升级依赖、不改密钥、不覆盖用户现有配置；真实调用使用仓库外临时 Grok home。
@@ -51,13 +51,13 @@ Grok TOML 已支持多个 `model.<id>`，但对话模型候选仍来自手工管
 - 最小相关回归命令：`node --test dist/test/cli/grokConfigModels.test.js dist/test/cli/grokmodelselection.test.js dist/test/webview/grokmodelselection.test.js dist/test/config/grokConfigPage.test.js dist/test/config/grokConfigMapping.test.js dist/test/extensionHost/grokConfigModels.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/interactive/grokRunner.test.js`，52/52 通过。
 - `npm run test:page`：242/242 通过。
 - `npm run test:unit`，最终构建后再用 `node scripts/run_unit_tests.js` 复核：1566 项，1562 通过、4 项历史失败。`cliCommandRepair.test.ts` 三项断言仍按三个 CLI 计数；`grokCliEnum.test.ts` 将包含规则选择器的全页 Grok option 数量断言为 1，实际为 2。以 `git archive HEAD src tsconfig.json package.json media` 提取独立临时源码、复用依赖并构建，运行这两个测试文件同样四项失败，归类为历史断言问题，不在本任务扩大修复。
-- 功能清单及详细能力文档已同步，CLI runtime reference 与 ontology 已描述配置驱动候选及所选模型鉴权。`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 仍报告 15 个既有缺失 `source_refs`，涉及仓库已不存在的运行时、Graph 与 Loop+ 设计文档；HEAD 含同样引用且对应文件不在 HEAD，本次未新增该问题。
+- 功能清单及详细能力文档已同步，CLI runtime reference 与 ontology 已描述配置驱动候选及所选模型鉴权。校验发现既有缺失 `source_refs`；HEAD 含同样引用且对应文件不在 HEAD，本次未新增该问题。
 - 稳定兼容经验已写入 `.ch/docs/runbooks/grok-model-config.md` 并从 `PITFALLS.md` 链接；无需重复写入 `ROLLING_SUMMARY.md` 或 `EVENT_MEMORY.md`。
 
 ## 浏览器与真实调用
 
 - 采用真实配置页/Webview HTML 与项目资源，在仓库外本地预览服务中使用无密钥 IPC 夹具，不写用户档案。
-- `node /tmp/sinitek-grok-browser-check.cjs`：新增、编辑、切换、设置默认、删除确认、保存、重复名称拒绝及未知 TOML 字段保留通过；普通选择刷新后保留有效选择、移除失效选择后回退、Graph 主从均无“默认/管理”通过。
+- `node /tmp/sinitek-grok-browser-check.cjs`：新增、编辑、切换、设置默认、删除确认、保存、重复名称拒绝及未知 TOML 字段保留通过；普通选择刷新后保留有效选择、移除失效选择后回退通过。
 - `PLAYWRIGHT_MODULE_PATH=<本机缓存路径>/playwright/index.mjs node .agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs --scenario /tmp/sinitek-grok-smoke.json`：通过，无浏览器错误、HTTP 错误或请求失败。桌面与 390px 窄屏截图人工复核通过，主模型下拉左侧 SVG 刷新按钮与下拉同排。
 - Grok Build 1.0.62 的真实 `GrokInteractiveRunner` 使用临时 `GROK_HOME`，保留另一个默认模型，显式选择非默认 `gpt-6.1-sol`；ACP `session/new` 确认 `currentModelId=gpt-6.1-sol`，`session/prompt` 回复 `GROK_SOL_MODEL_OK`，进程正常退出。未修改用户正式配置与凭据。
 - 真实验证发现当前接口的 Responses SSE 包含 `response.metadata`，此版本 Grok 拒绝解析并返回 `-32603`。仅在临时配置中将该模型设为 `api_backend = "chat_completions"` 后完整调用成功；不能将非流式 Responses 成功等同于 ACP 流式兼容。具体排查与配置方式见 runbook。

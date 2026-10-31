@@ -338,7 +338,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         runWaitTime: document.getElementById("runWaitTime"),
         runPromptButton: document.getElementById("runPromptButton"),
         openCurrentLoopGroupChat: document.getElementById("openCurrentLoopGroupChat"),
-        openCurrentGraphRun: document.getElementById("openCurrentGraphRun"),
         queueIndicator: document.getElementById("queueIndicator"),
         queueCount: document.getElementById("queueCount"),
         scrollToBottomWrap: document.getElementById("scrollToBottomWrap"),
@@ -580,7 +579,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const loopMetaByTabId = Object.create(null);
-      const graphMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
 

@@ -26,7 +26,7 @@ export type KimiInteractiveLaunch = {
  */
 export async function prepareKimiInteractiveLaunch(input: {
   parentEnv?: NodeJS.ProcessEnv;
-  interactiveMode: "coding" | "plan" | "loop" | "graph" | "loop_plus";
+  interactiveMode: "coding" | "plan" | "loop" | "loop_plus";
   selectedModel: string | null;
   thinkingMode: string;
 }): Promise<KimiInteractiveLaunch> {

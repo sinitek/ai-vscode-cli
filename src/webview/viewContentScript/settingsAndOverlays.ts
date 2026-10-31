@@ -123,40 +123,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         vscode.postMessage({ type: "openLoopGroupChat", taskId });
       }
 
-      function getActiveGraphRunId() {
-        const conversationTabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
-          ? state.conversationTabs
-          : { activeTabId: null, tabs: [] };
-        const activeTab = conversationTabs.tabs.find((tab) => tab && tab.id === conversationTabs.activeTabId);
-        const meta = typeof getGraphMetaForTabSummary === "function"
-          ? getGraphMetaForTabSummary(activeTab)
-          : null;
-        return meta && typeof meta.graphRunId === "string" ? meta.graphRunId.trim() : "";
-      }
-
-      function syncOpenCurrentGraphRunButton() {
-        if (!elements.openCurrentGraphRun) {
-          return;
-        }
-        const graphRunId = getActiveGraphRunId();
-        elements.openCurrentGraphRun.style.display = graphRunId ? "inline-flex" : "none";
-        elements.openCurrentGraphRun.disabled = !graphRunId;
-        if (elements.runWait) {
-          elements.runWait.classList.toggle("has-current-graph-run", Boolean(graphRunId));
-        }
-        if (typeof updateRunWait === "function") {
-          updateRunWait();
-        }
-      }
-
-      function openCurrentGraphRun() {
-        const graphRunId = getActiveGraphRunId();
-        if (!graphRunId) {
-          return;
-        }
-        vscode.postMessage({ type: "openGraphRun", graphRunId });
-      }
-
       function syncCommonCommandOptions() {
         if (!elements.commonCommandButton) {
           return;
@@ -220,9 +186,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         if (mode === "loop_plus") {
           return t("interactiveModeLoopPlus");
-        }
-        if (mode === "graph") {
-          return t("interactiveModeGraph");
         }
         if (mode === "coding") {
           return t("interactiveModeCoding");
@@ -375,7 +338,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           ? state.selectedLoopModelsByCli[targetCli]
           : {};
         const subtaskRoute = typeof getLoopSubtaskRoute === "function" ? getLoopSubtaskRoute() : null;
-        const scheduleUsesSubtaskRoute = selectedMode === "loop" || selectedMode === "graph" || selectedMode === "loop_plus";
+        const scheduleUsesSubtaskRoute = selectedMode === "loop" || selectedMode === "loop_plus";
         if (scheduleUsesSubtaskRoute && subtaskRoute && subtaskRoute.crossCli && (subtaskRoute.unavailableReason || !subtaskRoute.subtaskConfigId)) {
           setScheduledTaskError(subtaskRoute.unavailableReason || t("loopSubtaskRouteMissingConfig"));
           return;
@@ -1416,16 +1379,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
-      if (elements.openCurrentGraphRun) {
-        elements.openCurrentGraphRun.addEventListener("click", () => {
-          openCurrentGraphRun();
-        });
-      }
-
       if (elements.conversationTabs) {
         elements.conversationTabs.addEventListener("click", () => {
           window.setTimeout(syncOpenCurrentLoopGroupChatButton, 0);
-          window.setTimeout(syncOpenCurrentGraphRunButton, 0);
         });
       }
 

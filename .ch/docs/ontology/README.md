@@ -31,7 +31,7 @@
 
 | Domain ID | 中文名称 | 主要内容 |
 | --- | --- | --- |
-| `cli-plugin-runtime` | VS Code CLI 插件运行时 | 扩展宿主、聊天面板、本地 CLI、会话、配置档案和 Loop/Graph 执行 |
+| `cli-plugin-runtime` | VS Code CLI 插件运行时 | 扩展宿主、聊天面板、本地 CLI、会话、配置档案和 Loop/Loop+ 执行 |
 | `harness-governance` | Harness 治理 | AGENTS 规则、skills、执行计划、记忆、ontology 和 workspace scaffold |
 
 当前仓库已经有真实业务域，因此不复制 scaffold 的 `project-system` 占位域；新业务概念应进入最贴近其 bounded context 的真实 domain 文件。

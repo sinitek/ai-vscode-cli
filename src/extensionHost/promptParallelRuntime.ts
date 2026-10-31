@@ -21,7 +21,7 @@ import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunSta
 import type { SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type {
   OpenCodeRuntimePreparation,
   OpenCodeRuntimePreparationInput,
@@ -46,8 +46,6 @@ type PromptParallelTabRun = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
 };
 
 type PromptParallelRuntimeRequiredHostDeps = {
@@ -157,8 +155,6 @@ type PromptParallelRuntimeRequiredHostDeps = {
     message?: string;
     prompt?: string;
     startedAt?: number;
-    graphRunId?: string;
-    graphNodeId?: string;
   }) => void;
   shouldAutoCompactContextAfterRunForTarget: (target: PromptRunTarget) => boolean;
   shouldRecoverOpenCodeLoopMainSessionInFreshSession: typeof import("../openCodeRunCompletion").shouldRecoverOpenCodeLoopMainSessionInFreshSession;
@@ -280,8 +276,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
-        graphRunId: input.graphRunId,
-        graphNodeId: input.graphNodeId,
       },
     };
     let attemptSubagentMonitor: OpenCodeSubagentMonitor | null = null;
@@ -325,8 +319,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
-        graphRunId: input.graphRunId,
-        graphNodeId: input.graphNodeId,
       });
     };
 
@@ -447,8 +439,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
-        graphRunId: input.graphRunId,
-        graphNodeId: input.graphNodeId,
       };
     };
 
@@ -661,8 +651,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         sendRunStatusForTab(target.tabId, "start", {
           prompt,
           startedAt,
-          graphRunId: input.graphRunId,
-          graphNodeId: input.graphNodeId,
         });
         subagentProgress = createSubagentProgressController({
           labels: buildSubagentProgressLabels(),

@@ -106,7 +106,6 @@ test("VSIX excludes developer artifacts without excluding embedded workspace sca
     "media/config/monaco-editor/0.52.2/min/vs/editor/editor.main.js",
     "media/workspace-scaffold/AGENTS.md",
     "media/workspace-scaffold/.ch/docs/README.md",
-    "node_modules/@dagrejs/dagre/dist/dagre.js",
     "node_modules/@iarna/toml/toml.js",
     "media/config/assets/config-source-editor.css",
     "node_modules/marked/lib/marked.cjs",
@@ -178,4 +177,8 @@ test("VSIX Python export audits current runtime assets rather than removed marke
   }
   assert.ok(entries.includes("media/config/assets/config-app-ui.js"));
   assert.doesNotMatch(requiredBlock, /mcp_marketplace|official_skills_catalog/);
+  assert.doesNotMatch(requiredBlock, /@dagrejs/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest.dependencies, "@dagrejs/dagre"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest.dependencies, "@dagrejs/graphlib"), false);
 });

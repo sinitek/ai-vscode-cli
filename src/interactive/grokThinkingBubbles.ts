@@ -9,7 +9,6 @@ export type GrokThinkingBubbleMessage = {
   codexFinalAnswer?: boolean;
   loopAnswerConclusion?: boolean;
   loopFinalSummary?: boolean;
-  graphFinalSummary?: boolean;
   subagentId?: string;
   actions?: readonly unknown[];
 };
@@ -32,7 +31,6 @@ function isGrokThinkingRunMember(message: GrokThinkingBubbleMessage | undefined)
     message.codexFinalAnswer === true
     || message.loopAnswerConclusion === true
     || message.loopFinalSummary === true
-    || message.graphFinalSummary === true
   ) {
     return false;
   }

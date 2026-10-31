@@ -26,7 +26,7 @@
 ## 影响面与风险
 
 - 脚本与配置：`export_vscode_extension.sh`、`.vscodeignore`、新增平台规则脚本。
-- 测试：新增打包规则单测，复用 Graph、Markdown、Claude runner 与 scaffold 回归。
+- 测试：新增打包规则单测，复用 Markdown、Claude runner 与 scaffold 回归。
 - 文档：本地开发手册、功能清单、打包陷阱；本体按新增发布边界判断同步。
 - 风险：vsce 的否定规则优先于排除规则，SDK 广泛否定模式会让平台裁剪失效；通过实际 vsce 文件列表验证。
 - 风险：跨平台打包缺少对应 sharp 依赖；提前校验并失败，不用宿主平台依赖冒充目标平台资源。
@@ -35,7 +35,7 @@
 ## 验证计划
 
 - 最小验证：脚本语法检查、目标规则和缺失资源单元测试。
-- 构建与回归：`npm run build`；新增测试、Claude runner、Graph 面板、Markdown 预览、scaffold 测试。
+- 构建与回归：`npm run build`；新增测试、Claude runner、Markdown 预览、scaffold 测试。
 - 真实验证：运行通用导出与 `--target current` 导出，检查 VSIX manifest、解包加载依赖、SDK CLI `--version` 和 rg `--version`。
 - 对比验证：原始包与瘦身包中保留文件按内容摘要比较，确认只删除明确范围内的开发或其他平台文件。
 
@@ -48,12 +48,12 @@
 | macOS ARM64 平台包 | 20,502,325 | 19.55 | 49.29% | 1240 |
 
 - `npm run build`、`bash -n export_vscode_extension.sh`、`node --check scripts/vsix_target.js` 均通过。
-- 相关单测：`node --test dist/test/shared/vsixPackaging.test.js dist/test/interactive/claudeRunner.test.js dist/test/graph/graphRunPanel.test.js dist/test/loop/loopCommunicationFilePreview.test.js dist/test/shared/workspaceScaffoldSkillPaths.test.js`，63/63 通过，其中新增打包回归 13 项。
+- 相关单测：`node --test dist/test/shared/vsixPackaging.test.js dist/test/interactive/claudeRunner.test.js dist/test/loop/loopCommunicationFilePreview.test.js dist/test/shared/workspaceScaffoldSkillPaths.test.js`，63/63 通过，其中新增打包回归 13 项。
 - 全量单测：`node scripts/run_unit_tests.js`，1887 项中 1873 通过、14 失败。原始 HEAD 在仓库外独立副本中复测（仅复用依赖并补齐本机 ignored lockfile）为 1874 项中 1860 通过、同样 14 失败，失败名称集合完全一致，无新增失败。
 - 真实导出：`./export_vscode_extension.sh --target current` 与 `./export_vscode_extension.sh` 均通过；`unzip -tq` 两个归档通过。
 - SHA-256 对比：通用包删除 308 个开发文件，平台包额外删除 9 个其他平台文件；所有保留的 `dist`、`media`、运行时依赖和 manifest `package.json` 内容与原包逐文件一致，无新增包内文件。仅归档内容类型及平台标记 XML 元数据按预期变化。
 - 平台标记：通用包无 `TargetPlatform`，定向包明确为 `darwin-arm64`。
-- 解包隔离加载通过：Claude SDK `query`、Dagre 实际布局、marked 渲染、Zod、cross-spawn、yauzl、sharp/libvips 与原生 ripgrep binding。
+- 解包隔离加载通过：Claude SDK `query`、marked 渲染、Zod、cross-spawn、yauzl、sharp/libvips 与原生 ripgrep binding。
 - 真实子进程：解包 SDK `cli.js --version` 返回 `2.1.12 (Claude Code)`，目标 `rg --version` 返回 `ripgrep 14.1.1`。
 - 缺依赖失败验证：本机运行 `--target win32-x64` 在构建前明确拒绝缺失的 Windows sharp 依赖；不产出误标平台包，不改变本机依赖。
 - Ontology 校验及其 9 项 Python 单测通过；改动文件空白校验、`git diff --check` 通过。

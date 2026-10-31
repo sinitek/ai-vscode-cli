@@ -11,7 +11,7 @@ import type { CliName } from "../../cli/types";
 import type { DshStreamHandlers } from "../../interactive/dshRunner";
 import type { DshRunnerCreateOptions } from "../../interactive/runnerLifecycleTypes";
 import type { ChatMessage } from "../../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 
 const { createPromptInteractiveRuntimeHost } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");

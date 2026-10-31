@@ -18,12 +18,6 @@ test("keeps classic Loop as the default and maps only a saved event-driven main 
   assert.equal(resolveAutoInteractiveModeForLoopTask("main", "task-1", undefined), "loop");
   assert.equal(resolveAutoInteractiveModeForLoopTask("main", "task-1", "event_driven"), "loop_plus");
   assert.equal(resolveAutoInteractiveModeForLoopTask("subtask", "task-1", "event_driven"), "coding");
-  assert.equal(resolveConversationTabAutoInteractiveMode({
-    hasGraphRun: true,
-    taskRole: "main",
-    loopTaskId: "task-1",
-    schedulingMode: "event_driven",
-  }), "graph");
 });
 
 test("switches classic and Loop+ main tabs from each task record and restores without downgrade", () => {
@@ -41,7 +35,6 @@ test("switches classic and Loop+ main tabs from each task record and restores wi
       { id: "classic-tab", cli: "codex", sessionId: "classic-session", sessionIdByCli: { codex: "classic-session" }, createdAt: 1 },
       { id: "plus-tab", cli: "codex", sessionId: "plus-session", sessionIdByCli: { codex: "plus-session" }, createdAt: 2 },
       { id: "sub-tab", cli: "codex", sessionId: "sub-session", sessionIdByCli: { codex: "sub-session" }, createdAt: 3 },
-      { id: "graph-tab", cli: "codex", sessionId: "graph-session", sessionIdByCli: { codex: "graph-session" }, createdAt: 4 },
       { id: "unknown-tab", cli: "codex", sessionId: "unknown-session", sessionIdByCli: { codex: "unknown-session" }, createdAt: 5 },
     ],
   };
@@ -49,7 +42,6 @@ test("switches classic and Loop+ main tabs from each task record and restores wi
     if (tabId === "classic-tab") return { taskRole: "main", loopTaskId: "classic" };
     if (tabId === "plus-tab") return { taskRole: "main", loopTaskId: "plus" };
     if (tabId === "sub-tab") return { taskRole: "subtask", loopTaskId: "plus" };
-    if (tabId === "graph-tab") return { taskRole: "main", loopTaskId: "plus" };
     if (tabId === "unknown-tab") return { taskRole: "main", loopTaskId: "unknown" };
     return {};
   };
@@ -73,7 +65,6 @@ test("switches classic and Loop+ main tabs from each task record and restores wi
     resolveAutoInteractiveModeForConversationTab: (tab) => {
       const context = tab ? contextFor(tab.id) : {};
       return resolveConversationTabAutoInteractiveMode({
-        hasGraphRun: tab?.id === "graph-tab",
         taskRole: context.taskRole,
         loopTaskId: context.loopTaskId,
         schedulingMode: context.loopTaskId ? persisted[context.loopTaskId as keyof typeof persisted] : undefined,
@@ -93,9 +84,8 @@ test("switches classic and Loop+ main tabs from each task record and restores wi
   controller.setActiveConversationTab("classic-tab");
   controller.setActiveConversationTab("plus-tab");
   controller.setActiveConversationTab("sub-tab");
-  controller.setActiveConversationTab("graph-tab");
   controller.setActiveConversationTab("unknown-tab");
-  assert.deepEqual(modes, ["loop", "loop_plus", "loop", "loop_plus", "coding", "graph", "loop"]);
+  assert.deepEqual(modes, ["loop", "loop_plus", "loop", "loop_plus", "coding", "loop"]);
   assert.deepEqual(persisted, persistedCopy);
 
   const summaries = new Map(controller.buildConversationTabsState().tabs.map((tab) => [tab.id, tab]));

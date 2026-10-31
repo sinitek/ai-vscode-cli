@@ -1,10 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
-import type { GraphModelRole } from "../graph/types";
 import type { I18nKey } from "../i18n";
 import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { resolveStoredSubtaskExecution } from "../subtaskCliRoute";
 import type { SubagentProgressController, SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { LoopTaskRole, TaskRunStatus } from "../promptRunState";
@@ -111,12 +110,12 @@ type LoopOrchestrationRequiredHostDeps =
     normalizeLoopContinuePromptForPrompt: (value: unknown) => string | null;
     refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
     resolveLoopTaskSessionId: (target: PromptRunTarget) => string | null;
-    resolvePromptRunModelForRole: (input: PromptRunInput, role: GraphModelRole) => string | undefined;
+    resolvePromptRunModelForRole: (input: PromptRunInput, role: LoopTaskRole) => string | undefined;
     resolvePromptRunTargetSessionId: (target: PromptRunTarget) => string | null;
     resolvePromptRunThinkingModeForRole: (
       input: PromptRunInput,
       cli: CliName,
-      role: GraphModelRole,
+      role: LoopTaskRole,
       model: string | undefined,
       options?: { applySubtaskCap?: boolean; configId?: string | null },
     ) => ThinkingMode | undefined;

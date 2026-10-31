@@ -10,7 +10,7 @@ import {
 } from "../loopMainAutoCompact";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type {
   OpenCodeRuntimePreparation,
   OpenCodeRuntimePreparationInput,
@@ -317,7 +317,7 @@ export async function runOpenCodePromptTemplate(
   const runtimePreparation = await ports.prepareOpenCodeRuntime({
     role: input.taskRole === "subtask" ? "subtask" : "main",
     model: input.model ?? null,
-    requiresSubtaskModel: Boolean(input.loopTaskId || input.graphRunId),
+    requiresSubtaskModel: Boolean(input.loopTaskId),
   });
   const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? ports.getEffectiveThinkingMode(runCli, runtimeModel);
@@ -325,9 +325,7 @@ export async function runOpenCodePromptTemplate(
   const shouldAutoCompactAfterRun = ports.shouldAutoCompactContextAfterRunForTarget(target);
   ports.preparePendingLabel(runCli, target.tabId, prompt);
   const includeFinalAnswerInstruction = !input.loopTaskId;
-  const humanInteractionEnabled = !input.loopTaskId
-    && !input.graphRunId
-    && ports.readGlobalHumanInteractionEnabled();
+  const humanInteractionEnabled = !input.loopTaskId && ports.readGlobalHumanInteractionEnabled();
   const thinkingPrompt = ports.buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
     includeFinalAnswerInstruction,
     includeHumanInteractionInstruction: humanInteractionEnabled,

@@ -1,14 +1,14 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-29",
+  "as_of": "2026-10-31",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
-    "description": "描述插件如何在 VS Code 中承载 AI 对话面板、调用本地 CLI、管理会话和配置，并编排 Loop/Graph 等执行模式。",
+    "description": "描述插件如何在 VS Code 中承载 AI 对话面板、调用本地 CLI、管理会话和配置，并编排 Loop/Loop+ 等执行模式。",
     "bounded_context": "VS Code 扩展入口到本地 CLI 执行、会话状态和用户可见结果的运行链路",
     "status": "active",
-    "aliases": ["VS Code 插件", "CLI 插件", "AI 对话", "本地 CLI", "Loop", "Graph"],
+    "aliases": ["VS Code 插件", "CLI 插件", "AI 对话", "本地 CLI", "Loop", "Loop+"],
     "source_refs": [
       {"path": "ARCHITECTURE.md"},
       {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
@@ -54,7 +54,7 @@
       "id": "plugin.local_cli",
       "name": "本地 AI CLI",
       "kind": "resource",
-      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build、DeepSeek-Harness、Kimi Code 和 ZCode；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh、kimi-code、zcode。ZCode 0.17.0 走独立 ZCode Protocol（zcode app-server --stdio），不是 ACP，也不是 JSON-RPC 2.0；免审批是 --mode yolo；思考只下发 session 快照 advertised 的 thoughtLevel；session/compact 是原生压缩。GLM 自定义供应商使用 openai-chat-completions 与调用方给定的模型 ID、Base URL。配置页「安装」只复制 getCliInstallCommand 的同一条命令，不在配置页执行安装。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置、graph 和命令面板不再维护排除 grok 的平行名单。",
+      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build、DeepSeek-Harness、Kimi Code 和 ZCode；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh、kimi-code、zcode。ZCode 0.17.0 走独立 ZCode Protocol（zcode app-server --stdio），不是 ACP，也不是 JSON-RPC 2.0；免审批是 --mode yolo；思考只下发 session 快照 advertised 的 thoughtLevel；session/compact 是原生压缩。GLM 自定义供应商使用 openai-chat-completions 与调用方给定的模型 ID、Base URL。配置页「安装」只复制 getCliInstallCommand 的同一条命令，不在配置页执行安装。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
       "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "kimi-code", "kimi", "zcode", "local CLI"],
       "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts", "src/interactive/dshAppServerProtocol.ts", "src/extensionHost/interactiveTurnDsh.ts", "src/interactive/kimiRunner.ts", "src/interactive/kimiAppServerProtocol.ts", "src/extensionHost/interactiveTurnKimi.ts", "src/extensionHost/kimiInteractiveLaunch.ts", "src/interactive/zcodeRunner.ts", "src/interactive/zcodeAppServerProtocol.ts", "src/extensionHost/interactiveTurnZcode.ts", "src/config/zcodeConfig.ts"],
@@ -90,7 +90,7 @@
       "id": "plugin.config_profile",
       "name": "CLI 配置档案",
       "kind": "configuration",
-      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序是 Claude、Codex、OpenCode、Grok、DSH、Kimi Code、ZCode；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills；DSH 使用 ${DSH_HOME:-~/.dsh}/skills，Kimi Code 使用 ${KIMI_CODE_HOME:-~/.kimi-code}/skills，ZCode 默认为 ~/.zcode/skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。配置列表「复制配置」只在当前 CLI 内创建副本，弹窗输入可修改的新名称，默认使用原名称加「_副本」并避开重名；空名称和同 CLI 重名拒绝创建，不选择目标 CLI。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Graph 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。Kimi Code 配置页在 DSH 之后，用户配置是 $KIMI_CODE_HOME/config.toml（默认 ~/.kimi-code/config.toml），打开档案默认使用 TOML 源码模式；查看范例后一键导入会更新当前 TOML 草稿，用户保存后才应用。可视化字段集只含 default_model、default_permission_mode、model.provider、model.model、model.max_context_size、provider.type、provider.base_url、provider.api_key、provider.api_key_env；思考、Loop、显示名和能力声明不进入表单。保存经 commitKimiCodeText 自动补思考声明，其它未展示字段原样保留，非法 TOML 或空文本不覆盖上一份有效内容。Skills 与市场目标是七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。",
+      "description": "插件管理 Codex、Claude、OpenCode、Grok Build 等本地配置、全局 Skills 和模型/思考力度设置的编辑与持久化边界。配置页平台顺序是 Claude、Codex、OpenCode、Grok、DSH、Kimi Code、ZCode；空顺序为 []，空 active id 为 null，旧存档缺少 grok 时补空且不打乱原顺序。Grok 用户配置是 $GROK_HOME/config.toml，默认为 ~/.grok/config.toml。文本模式编辑完整 TOML，空文本和非法 TOML 不覆盖上一份有效内容。可视化复用 Codex 配置行、问号 tooltip 和主题语义色，只映射 models.default、models.default_reasoning_effort 以及 model.<id> 的 model、base_url、api_key、api_backend、env_key、context_window、reasoning_summary、compaction_at_tokens，并保留未展示字段。api_key 是密钥本身，不知道时保留空字符串，不从 Codex auth.json 复制；env_key 只是环境变量名。内容为空、加载中、解析错误或无效时禁用保存。不读取 ~/.grok/settings.json。配置中心不再提供 MCP 管理，也不会从配置页改写已有 MCP 配置。配置页可从 LobeHub Skills 市场搜索并下载技能，多选后用 yauzl 安装到 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode，同名目录会先删除再安装；各 CLI 弹层仍可打开、删除和复制这些目录。OpenCode 使用 ${XDG_CONFIG_HOME:-~/.config}/opencode/skills 而不是 ~/.opencode/skills，Grok 使用 ${GROK_HOME:-~/.grok}/skills 且不包含 bundled skills；DSH 使用 ${DSH_HOME:-~/.dsh}/skills，Kimi Code 使用 ${KIMI_CODE_HOME:-~/.kimi-code}/skills，ZCode 默认为 ~/.zcode/skills。复制按钮打开目标 CLI 多选弹窗，排除当前 CLI，复用单目标复制接口；同名不覆盖，部分失败仅重试失败目标，不重复复制成功目标。配置列表「复制配置」只在当前 CLI 内创建副本，弹窗输入可修改的新名称，默认使用原名称加「_副本」并避开重名；空名称和同 CLI 重名拒绝创建，不选择目标 CLI。 Grok 模型候选唯一来自当前 config.toml 的 model.<配置名> 表，普通及 Loop/Loop+ 角色下拉显示各项 model 字段（缺失、空白或非字符串时回退配置表键），不使用 name，不含默认或管理；选择与执行仍用配置表键，相同 model 的配置不合并。模型下拉无刷新图标；保存激活档案并成功应用到磁盘后，等待 onConfigChanged 重新读取文件并推送模型与显示名，再返回成功应答；保存未激活档案不改运行配置，应用失败不通知成功。运行前复核配置。可视化采用左侧模型列表、右侧参数编辑，支持新增、编辑和删除多个模型；新增通过单名称弹窗输入，model 与表键默认使用该名称，复制当前项除可选 name 外的其他全部参数；name 非必需，不提供可视化输入或范例，新项不生成，旧模型原值保留，取消或输入无效不新增；每行名称右侧删除 SVG 确认后仅删除该行，删除未选中项保留当前选择。新增仅替换 model 并省略新项的 name，无当前项时回退默认或首项、无模型时用空模板，管理默认引用并保留隐藏字段；模型选择按配置档案隔离，无档案时按配置文件路径隔离。DSH 配置页在 Grok 之后。JSON 与可视化编辑同一份完整 JSON，无效 JSON 不覆盖有效可视化状态。已接受的额外顶层字段和模型对象字段会保留。未验证字段、密钥字段和 retryPolicy 未建模键在验证阶段拒绝。运行 patch 只写已验证字段。provider 只读。baseURL、模型 id 和 apiKeyEnv 可编辑；apiKeyEnv 只能是 SINITEK_DSH_API_KEY，密钥值拒绝且不落盘。配置范例模型 id 默认是 deepseek-v4.1-flash；模型 id 按 endpoint 要求原样使用，不自动迁移、增删前缀。models 按已安装 schema 保持有序数组，支持新增、编辑、删除和当前 acpModel 选择。详情区不显示激活状态，激活动作仍走 activateDshProfile。不改 settings.yaml、.credentials.yaml 和 config.toml。Kimi Code 配置页在 DSH 之后，用户配置是 $KIMI_CODE_HOME/config.toml（默认 ~/.kimi-code/config.toml），打开档案默认使用 TOML 源码模式；查看范例后一键导入会更新当前 TOML 草稿，用户保存后才应用。可视化字段集只含 default_model、default_permission_mode、model.provider、model.model、model.max_context_size、provider.type、provider.base_url、provider.api_key、provider.api_key_env；思考、Loop、显示名和能力声明不进入表单。保存经 commitKimiCodeText 自动补思考声明，其它未展示字段原样保留，非法 TOML 或空文本不覆盖上一份有效内容。Skills 与市场目标是七个，顺序保持 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode。",
       "status": "active",
       "aliases": ["配置中心", "profile", "MCP", "Skills"],
       "implementation_paths": ["src/config", "media/config/assets", "src/config/cliGlobalSkills.ts", "src/config/lobehubSkillMarket.ts", "src/shared/userHomePaths.ts", "src/extensionHost/cliModelSelectionStrategies.ts", "src/config/dshConfig.ts", "src/cli/dshConfigModels.ts"],
@@ -139,23 +139,10 @@
       ]
     },
     {
-      "id": "plugin.graph_run",
-      "name": "Graph 运行图",
-      "kind": "aggregate",
-      "description": "插件中的可视化 DAG 执行模式，负责任务规划、节点调度、可视化状态、证据和续跑控制。",
-      "status": "active",
-      "aliases": ["Graph", "DAG", "运行图"],
-      "implementation_paths": ["src/graph"],
-      "source_refs": [
-        {"path": "ARCHITECTURE.md", "anchor": "Graph 编排层"},
-        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
-      ]
-    },
-    {
       "id": "plugin.scheduled_task",
       "name": "AI 对话定时任务",
       "kind": "aggregate",
-      "description": "由 AI 对话面板创建的一次性提示词执行记录，绑定工作区、CLI、对话 Tab 和可选执行配置；创建时可选择 Vibe、Loop 或 Graph，到期后由扩展宿主按任务选中的模式及该模式已保存配置路由执行链，旧任务缺少模式字段时回退到目标 CLI 当前 interactiveMode。状态按 pending、running、completed、failed、cancelled 流转，扩展重启时 running 恢复为 pending。",
+      "description": "由 AI 对话面板创建的一次性提示词执行记录，绑定工作区、CLI、对话 Tab 和可选执行配置；创建时可选择 Vibe、Loop 或 Loop+，到期后由扩展宿主按任务选中的模式及该模式已保存配置路由执行链，旧任务缺少模式字段时回退到目标 CLI 当前 interactiveMode。状态按 pending、running、completed、failed、cancelled 流转，扩展重启时 running 恢复为 pending。",
       "status": "active",
       "aliases": ["定时任务", "scheduled task", "schedule prompt"],
       "lifecycle": ["pending", "running", "completed", "failed", "cancelled"],
@@ -255,17 +242,6 @@
       "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"}]
     },
     {
-      "id": "plugin.relation.graph_executes_cli",
-      "name": "Graph 节点执行本地 CLI",
-      "description": "Graph planner、执行节点和 summary 节点通过模型路由选择 CLI 角色并记录节点证据。",
-      "status": "active",
-      "from": "plugin.graph_run",
-      "type": "executes",
-      "to": "plugin.local_cli",
-      "cardinality": "N:N",
-      "source_refs": [{"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3 执行模式"}]
-    },
-    {
       "id": "plugin.relation.panel_creates_scheduled_task",
       "name": "对话面板创建定时任务",
       "description": "用户从发送区左侧的定时入口填写时间、提示词和附件后，由 Webview 发送协议消息，扩展宿主校验并持久化一次性任务。",
@@ -282,7 +258,7 @@
     {
       "id": "plugin.relation.scheduled_task_executes_cli",
       "name": "定时任务执行本地 CLI",
-      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按任务选中的 Vibe/Loop/Graph 模式及该模式已保存配置复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 固定采用主从协作。",
+      "description": "到达 scheduledAt 后，调度器按当前工作区筛选 pending 任务，并按任务选中的 Vibe/Loop/Loop+ 模式及该模式已保存配置复用对应 Prompt 执行链调用任务绑定的 CLI；Loop 固定采用主从协作。",
       "status": "active",
       "from": "plugin.scheduled_task",
       "type": "executes",
@@ -320,19 +296,6 @@
   ],
   "rules": [
     {
-      "id": "plugin.rule.visible_instruction_continuity",
-      "name": "指令折叠按面板可见连续顺序分组",
-      "description": "先过滤不可见消息，再将连续两个及以上指令气泡默认折叠。隐藏思考占位、空回复、空最终标记和其他隐藏消息不打断分组且不计数；可见的用户、系统通知、思考、最终答复及有效操作入口仍独立分隔。历史恢复、重绘与实时追加一致，隐藏思考出现真实正文后重新分组，原始消息顺序和内容保持不变。",
-      "status": "active",
-      "applies_to": ["plugin.chat_panel"],
-      "source_refs": [
-        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
-        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "appendVisibleMessageEntries"},
-        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups visually consecutive instructions across hidden historical messages"},
-        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups live instructions across hidden thinking until that thinking becomes visible"}
-      ]
-    },
-    {
       "id": "plugin.rule.codex_config_visual_current_schema",
       "name": "Codex 可视化配置按当前官方根级与 features 契约",
       "description": "Codex 可视化编辑器只按当前 config.toml 契约处理新配置：model_context_window 与 model_auto_compact_token_limit 是根级整数 token 参数，不属于 model_providers；公共区默认 Provider 紧随默认模型；sandbox_mode、approval_policy、web_search 仅提供官方字符串枚举下拉，approval_policy 不再提供已废弃的 untrusted；[features] 仅把官方布尔开关映射为 true 复选框，置于 Provider 工作区下方，以四列单元格展示，每项包含复选框、标签和 SVG 问号，并在悬停或聚焦时即时显示中文说明。复杂 granular 审批和非布尔 feature 配置不由表单猜测，用户应在 TOML 源码模式编辑；本任务不做旧配置版本迁移。",
@@ -352,24 +315,12 @@
       "status": "active",
       "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离，不改变经典汇报驱动或 Loop+ 验收门槛。",
       "source_refs": [
-        {
-          "path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"
-        },
-        {
-          "path": "src/loopSubtaskSession.ts"
-        },
-        {
-          "path": "src/extensionHost/loopOrchestration.ts"
-        },
-        {
-          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
-        },
-        {
-          "path": "src/test/loop/loopSubtaskSession.test.ts"
-        },
-        {
-          "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"
-        }
+        {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"},
+        {"path": "src/loopSubtaskSession.ts"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
+        {"path": "src/test/loop/loopSubtaskSession.test.ts"},
+        {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"}
       ]
     },
     {
@@ -418,7 +369,7 @@
     {
       "id": "plugin.rule.dsh_profile_edit",
       "name": "DSH 配置页与多模型切换",
-      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择，普通对话与 Loop/Graph/Loop+ 主/子模型下拉都不插入空的“默认”占位项，无已选模型时直接选中配置里的第一个模型，profile 没有模型时只显示禁用的中文配置指引；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
+      "description": "DSH 配置页首次打开及切换档案默认进入 JSON 模式；JSON 与可视化编辑同一份完整配置，无效 JSON 不覆盖上一份有效可视化状态。可视化沿用左侧有序模型列表、右侧详情布局，apiKeyEnv 不展示；profile 可省略该字段，保存后 profile 和运行 patch 自动补为 SINITEK_DSH_API_KEY。可选公共字段 displayName、timeoutMs、streamIdleTimeoutMs、retryPolicy 不在可视化中展示或新范例中生成，已有 JSON 配置仍保留。已接受的额外顶层字段和模型对象字段会保留。非根级 apiKey、其它密钥字段和 retryPolicy 未建模键在验证阶段拒绝。根级 apiKey 可直接保存，配置中心导入同样保留该字段，非根级密钥字段仍拒绝导入；apiKey 仅存于用户可读权限的配置目录和备份，运行 patch 不写入该字段；启动时只注入 DSH 子进程环境，未填写时使用外部 SINITEK_DSH_API_KEY。provider 只读，api 通过官方支持的三协议下拉选择，baseURL、模型 id 和可选 apiKey 可编辑。默认范例模型 id 为 deepseek-v4.1-flash，不附加 subcoco/ 前缀；模型 id 按服务端点要求原样配置，不自动增删前缀。models 按安装 schema 保持有序，acpModel 下拉严格来自该列表。聊天面板只展示 profile 已配置模型并按配置 id 持久化选择，普通对话与 Loop/Loop+ 主/子模型下拉都不插入空的“默认”占位项，无已选模型时直接选中配置里的第一个模型，profile 没有模型时只显示禁用的中文配置指引；执行时解析成当前已配置 provider wire，ACP 确认模型切换后才运行。未列入模型数组或未被当前 ACP 广告的 id 不能执行。配置页提供“查看范例”和“一键导入”；范例显式包含空 apiKey，导入成功覆盖 JSON 文本、可视化草稿、默认模型和编辑模式，失败保留范例抽屉并显示错误。空 profile 从 JSON 切换到可视化时生成可编辑草稿，但保存仍执行完整必填校验。详情区不显示激活状态；保存已激活档案和列表激活动作仍走 activateDshProfile。启动前读取 activation marker 指向的 config_<id>.json，以当前激活档案重建 active-profile.json 与 active-patch.yaml，防止配置档案和激活快照漂移；仅有已应用档案和 patch、缺少 activation marker 时也恢复执行，显式外部 patchSourcePath 不受影响。不改 settings.yaml、.credentials.yaml 和 config.toml。",
       "status": "active",
       "aliases": ["DSH 配置", "acpModel", "SINITEK_DSH_API_KEY"],
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
@@ -458,7 +409,7 @@
     {
       "id": "plugin.rule.dsh_reasoning_effort",
       "name": "DSH 思考力度按模型能力展示并经 ACP 确认",
-      "description": "DSH Vibe、Loop、Loop+ 与 Graph 的思考力度选择按当前 profile 中所选模型声明的 reasoningEfforts 展示；默认验证模型声明 DeepSeek low=low、medium=medium、high=high、xhigh=xhigh、max=max 并声明对应 compat，未声明时禁用该角色选择器，off、空 value 和未纳入 DeepSeek 契约的值不进入面板。Loop 角色选择按 configId、角色和模型独立保存。选项标签直接显示 ACP 原始 value，不翻译成中文；下一次执行前由 runner 检查当前 ACP configOptions，并通过 session/set_config_option 确认后应用，只下发当前 ACP 已公布且属于契约的标量值，并以确认后的 currentValue 为准。旧四档及 off 结构读取时补齐 medium；若当前 ACP 未公布 medium，则不会发送。",
+      "description": "DSH Vibe、Loop 和 Loop+ 的思考力度选择按当前 profile 中所选模型声明的 reasoningEfforts 展示；默认验证模型声明 DeepSeek low=low、medium=medium、high=high、xhigh=xhigh、max=max 并声明对应 compat，未声明时禁用该角色选择器，off、空 value 和未纳入 DeepSeek 契约的值不进入面板。Loop 角色选择按 configId、角色和模型独立保存。选项标签直接显示 ACP 原始 value，不翻译成中文；下一次执行前由 runner 检查当前 ACP configOptions，并通过 session/set_config_option 确认后应用，只下发当前 ACP 已公布且属于契约的标量值，并以确认后的 currentValue 为准。旧四档及 off 结构读取时补齐 medium；若当前 ACP 未公布 medium，则不会发送。",
       "status": "active",
       "aliases": ["DSH thinking", "DSH reasoning_effort", "DeepSeek 思考力度"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
@@ -467,7 +418,6 @@
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/cli/dshConfigModels.ts"},
         {"path": "src/extensionHost/modelSettings.ts"},
-        {"path": "src/extensionHost/graphRuntime.ts"},
         {"path": "src/modelSelectionStore.ts"},
         {"path": "src/sessionMessageActions.ts"},
         {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
@@ -475,7 +425,6 @@
         {"path": "src/interactive/dshRunner.ts"},
         {"path": "src/extensionHost/interactiveTurnDsh.ts"},
         {"path": "src/test/extensionHost/dshModelSelection.test.ts"},
-        {"path": "src/test/graph/graphExtensionRuntime.test.ts"},
         {"path": "src/test/webview/codexdualmodelwebview.test.ts"},
         {"path": "src/test/interactive/dshRunner.test.ts"},
         {"path": "src/test/webview/openCodeThinkingWebview.test.ts"}
@@ -609,7 +558,7 @@
     {
       "id": "plugin.rule.zcode_config_model_selection",
       "name": "ZCode 对话模型选择来自配置且入口可见",
-      "description": "ZCode 普通对话显示可用的单模型下拉，Loop、Graph、Loop+ 显示主／子模型行和 ZCode 无障碍名称。模型候选来自当前 provider_config.json，不提供任意添加模型的管理弹窗，也不插入默认占位项；空配置显示中文配置指引。界面仅显示原始 modelId，保留模型自身命名空间，选项值与执行仍使用 providerId/modelId。模型 ID 必须匹配服务实际提供的模型，范例不代表服务能力；真实配置和保存档案须同步维护，防止切换档案恢复错误模型。回归需同时验证可见性、禁用状态、选项、切换和选择消息。",
+      "description": "ZCode 普通对话显示可用的单模型下拉，Loop、Loop+ 显示主／子模型行和 ZCode 无障碍名称。模型候选来自当前 provider_config.json，不提供任意添加模型的管理弹窗，也不插入默认占位项；空配置显示中文配置指引。界面仅显示原始 modelId，保留模型自身命名空间，选项值与执行仍使用 providerId/modelId。模型 ID 必须匹配服务实际提供的模型，范例不代表服务能力；真实配置和保存档案须同步维护，防止切换档案恢复错误模型。回归需同时验证可见性、禁用状态、选项、切换和选择消息。",
       "status": "active",
       "aliases": ["ZCode 模型下拉", "ZCode 多模型", "ZCode 配置模型"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel", "plugin.config_profile"],
@@ -672,7 +621,7 @@
     {
       "id": "plugin.rule.codex_config_model_default",
       "name": "Codex 配置模型替代默认占位并与管理列表去重",
-      "description": "当前 Codex config.toml 的根级 model 为非空字符串时，模型下拉以该名称替代空值默认项，与用户管理模型按大小写不敏感规则合并去重，但不把配置模型写入管理列表。用户显式选择优先，普通对话、Loop、Loop+、Graph 主子模型及跨 CLI Codex 子模型使用一致候选和回退语义。配置缺失、空值、非法 TOML 或读取失败时保留原默认行为，不误读嵌套 model。",
+      "description": "当前 Codex config.toml 的根级 model 为非空字符串时，模型下拉以该名称替代空值默认项，与用户管理模型按大小写不敏感规则合并去重，但不把配置模型写入管理列表。用户显式选择优先，普通对话、Loop、Loop+ 主子模型及跨 CLI Codex 子模型使用一致候选和回退语义。配置缺失、空值、非法 TOML 或读取失败时保留原默认行为，不误读嵌套 model。",
       "status": "active",
       "aliases": ["Codex 默认模型", "config.toml model", "配置模型去重"],
       "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli"],
@@ -690,10 +639,10 @@
     {
       "id": "plugin.rule.all_cli_config_snapshot_sync",
       "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
-      "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不自动激活首项或后台回写旧选择、不启动所有 CLI 或发送模型请求。Loop、Loop+、Graph 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
+      "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不自动激活首项或后台回写旧选择、不启动所有 CLI 或发送模型请求。Loop、Loop+ 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
       "status": "active",
-      "aliases": ["配置保存统一刷新", "所有 CLI 默认配置加载", "子模型配置未加载", "Loop+ Graph 子模型初始化", "已加载空档案不无限同步"],
-      "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli", "plugin.loop_task", "plugin.graph_run"],
+      "aliases": ["配置保存统一刷新", "所有 CLI 默认配置加载", "子模型配置未加载", "Loop+ 子模型初始化", "已加载空档案不无限同步"],
+      "applies_to": ["plugin.config_profile", "plugin.chat_panel", "plugin.local_cli", "plugin.loop_task"],
       "source_refs": [
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "所有 CLI 配置与子模型同步"},
@@ -710,16 +659,15 @@
     {
       "id": "plugin.rule.task_summary_svg",
       "name": "任务结束总结按需使用 SVG 补充结构化表达",
-      "description": "Vibe、经典 Loop、Loop+ 和 Graph 任务总结统一建议按需以自包含 svg 代码围栏补充流程、架构、依赖、方案对比或交付结果。文字结论和验证证据优先，简单任务、无图示价值或用户要求纯文字时可省略；禁止脚本、事件处理和外部资源。Loop/Loop+ 将图示置于 finalSummary，Graph summary 节点置于 finalAnswer.summary，正确转义 JSON，不在对象外追加图示或新增字段。该协议内建议不引入 final_answer 标记，不额外注入子任务和非 summary 节点。",
+      "description": "Vibe、经典 Loop 和 Loop+ 任务总结统一建议按需以自包含 svg 代码围栏补充流程、架构、依赖、方案对比或交付结果。文字结论和验证证据优先，简单任务、无图示价值或用户要求纯文字时可省略；禁止脚本、事件处理和外部资源。Loop/Loop+ 将图示置于 finalSummary，正确转义 JSON，不在对象外追加图示或新增字段。该协议内建议不引入 final_answer 标记，不额外注入子任务和非 summary 节点。",
       "status": "active",
       "aliases": ["SVG 总结", "结构化表达", "任务结束总结", "finalSummary", "finalAnswer.summary"],
-      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
         {"path": "src/finalAnswerProtocol.ts"},
         {"path": "src/loopPromptBuilders.ts"},
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
-        {"path": "src/graph/graphPromptBuilders.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
       ]
     },
@@ -841,15 +789,28 @@
       ]
     },
     {
-      "id": "plugin.rule.task_control_bubbles_stay_visible",
-      "name": "任务通知与群聊运行图入口不参与指令折叠",
-      "description": "普通消息视图中，系统通知和带有效 openLoopGroupChat / openGraphRun 操作的气泡不参与指令折叠。Loop、Loop+、Graph 任务启动、状态通知及操作入口独立显示正文、时间和按钮，并切断前后普通指令分组；历史恢复、重绘和实时追加一致。普通工具或回复仅带 loopTaskId / graphRunId 不豁免折叠，空或无效操作也不豁免。仅看结果筛选规则不变。",
+      "id": "plugin.rule.visible_instruction_continuity",
+      "name": "指令折叠按面板可见连续顺序分组",
+      "description": "先过滤不可见消息，再将连续两个及以上指令气泡默认折叠。隐藏思考占位、空回复、空最终标记和其他隐藏消息不打断分组且不计数；可见的用户、系统通知、思考、最终答复及有效操作入口仍独立分隔。历史恢复、重绘与实时追加一致，隐藏思考出现真实正文后重新分组，原始消息顺序和内容保持不变。",
       "status": "active",
-      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "appendVisibleMessageEntries"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups visually consecutive instructions across hidden historical messages"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups live instructions across hidden thinking until that thinking becomes visible"}
+      ]
+    },
+    {
+      "id": "plugin.rule.task_control_bubbles_stay_visible",
+      "name": "任务通知与群聊入口不参与指令折叠",
+      "description": "普通消息视图中，系统通知和带有效 openLoopGroupChat 操作的气泡不参与指令折叠。Loop、Loop+ 任务启动、状态通知及操作入口独立显示正文、时间和按钮，并切断前后普通指令分组；历史恢复、重绘和实时追加一致。普通工具或回复仅带 loopTaskId 不豁免折叠，空或无效操作也不豁免。仅看结果筛选规则不变。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "isInstructionBubble"},
-        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups"}
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "keeps Loop and Loop+ control bubbles outside collapsed instruction groups"}
       ]
     },
     {
@@ -981,7 +942,7 @@
       "name": "CLI 子进程必须完整跟踪并清理",
       "description": "本地 CLI 运行时必须跟踪所有活跃子进程；Codex app-server 与 Grok Build ACP 等会派生后代进程的运行应使用独立进程组并在停止、取消、扩展停用和 spawn error 时收口 promise、pipe 和进程组，避免残留资源导致 EAGAIN。Grok 回合停止优先发送 session/cancel，进程退出仍先关 stdin，再 SIGTERM，最后 SIGKILL。",
       "status": "active",
-      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.loop_task"],
       "source_refs": [
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": ".ch/docs/runbooks/PITFALLS.md", "anchor": "Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN"},
@@ -1004,7 +965,7 @@
     {
       "id": "plugin.rule.grok_structured_user_question_bridge",
       "name": "Grok 原生提问复用人工交互生命周期",
-      "description": "Grok ACP 的 _x.ai/ask_user_question（兼容 x.ai/ask_user_question）在 humanInteractionEnabled 开启的 Vibe/coding 普通任务中接入现有人工交互表单。单选、多选与其他回答按问题原文映射回传 outcome=accepted 和 answers；超时要求模型自行选择最佳方案继续。关闭交互、无活跃处理器及 Loop/Graph 请求返回 outcome=cancelled，不弹窗。跨会话与非法参数拒绝处理。用户拒绝返回取消并停止宿主任务，不进入 hidden retry；停止后的迟到回答不影响下一回合。工具错误同时保留通用 error 与具体 message。",
+      "description": "Grok ACP 的 _x.ai/ask_user_question（兼容 x.ai/ask_user_question）在 humanInteractionEnabled 开启的 Vibe/coding 普通任务中接入现有人工交互表单。单选、多选与其他回答按问题原文映射回传 outcome=accepted 和 answers；超时要求模型自行选择最佳方案继续。关闭交互、无活跃处理器及 Loop/Loop+ 请求返回 outcome=cancelled，不弹窗。跨会话与非法参数拒绝处理。用户拒绝返回取消并停止宿主任务，不进入 hidden retry；停止后的迟到回答不影响下一回合。工具错误同时保留通用 error 与具体 message。",
       "aliases": ["ask_user_question", "_x.ai/ask_user_question", "Grok 人工交互"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],
@@ -1020,7 +981,7 @@
     {
       "id": "plugin.rule.codex_default_mode_user_input_feature",
       "name": "Codex Default mode 结构化人工交互需显式启用",
-      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 15 分钟、范围 1–1440（最长 24 小时）。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；优先采用有效默认值，否则采用首个可选项继续。Vibe 与 Loop/Loop+/Graph 主任务澄清结束后写入全局只读历史，底部历史入口旁的列表显示首题前 50 字和触发时间，左侧人物 / 机器人 SVG 区分人工操作与 AI 超时自动选择，悬停提示和读屏标签保留用户选择、AI 自动选择或已拒绝状态；详情勾选用户或 AI 自动选择的实际选项。最多 500 条并沿用历史保留期，密码答案和密码默认值不保存明文。",
+      "description": "Codex Vibe/coding 且全局 humanInteractionEnabled=true 时，插件启动 app-server 必须追加 `--enable default_mode_request_user_input`，并在 initialize capabilities 中设置 `experimentalApi=true`；否则 Codex Default mode 会在模型工具层拒绝 `request_user_input`，不会把请求交给插件表单。人工交互超时 `humanInteractionTimeoutMinutes` 默认 15 分钟、范围 1–1440（最长 24 小时）。到时未提交关闭弹窗，但不视为拒绝，也不终止任务；优先采用有效默认值，否则采用首个可选项继续。Vibe 与 Loop/Loop+ 主任务澄清结束后写入全局只读历史，底部历史入口旁的列表显示首题前 50 字和触发时间，左侧人物 / 机器人 SVG 区分人工操作与 AI 超时自动选择，悬停提示和读屏标签保留用户选择、AI 自动选择或已拒绝状态；详情勾选用户或 AI 自动选择的实际选项。最多 500 条并沿用历史保留期，密码答案和密码默认值不保存明文。",
       "aliases": ["request_user_input", "default_mode_request_user_input", "experimentalApi", "人工交互"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
@@ -1139,37 +1100,34 @@
       ]
     },
     {
-      "id": "plugin.rule.loop_graph_continue_model_choice",
-      "name": "Loop 与 Graph 继续时可选择主子模型",
-      "description": "Loop 群聊、Loop+ 群聊和 Graph 运行图点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务或 run 已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop / Loop+ 继续弹窗打开时立即刷新当前主子模型，弹窗打开期间继续应用配置补丁并保留说明、选择、焦点和显隐；原配置不可用时回退新配置。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案、子 CLI、对应配置和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会重新读取当前子 CLI 分组所选配置，并写回完整 Loop modelRouting 或 Graph modelRouting，用于后续续跑；未记录原模型时不能伪造成保持原模型。Claude 没有模型字符串时仍是有效子路由，继续摘要用默认模型区分，不能把无模型当成无路由，也不能补成主 CLI 的模型。主任务 Tab 直接继续、Graph 自动唤醒、Retry 和 Feedback 不弹出该选择。",
+      "id": "plugin.rule.loop_continue_model_choice",
+      "name": "Loop 与 Loop+ 继续时可选择主子模型",
+      "description": "Loop 与 Loop+ 群聊点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop / Loop+ 继续弹窗打开时立即刷新当前主子模型，弹窗打开期间继续应用配置补丁并保留说明、选择、焦点和显隐；原配置不可用时回退新配置。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案、子 CLI、对应配置和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会重新读取当前子 CLI 分组所选配置，并写回完整 Loop modelRouting，用于后续续跑；未记录原模型时不能伪造成保持原模型。Claude 没有模型字符串时仍是有效子路由，继续摘要用默认模型区分，不能把无模型当成无路由，也不能补成主 CLI 的模型。主任务 Tab 直接继续 不弹出该选择。",
       "status": "active",
-      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/continueModelChoice.ts"},
         {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/panelDiagnostics.ts"},
-        {"path": "src/extensionHost/graphControls.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
     {
-      "id": "plugin.rule.loop_graph_cross_cli_subtask",
-      "name": "Loop 与 Graph 子任务可绑定另一个 CLI",
-      "description": "Loop、Loop+ 和 Graph 的子任务可以选择另一个 CLI 分组当前选中配置下的模型，并只用该 CLI 执行。宿主预先加载具有激活配置的 Grok/DSH 模型，首次选择跨 CLI 子路由不依赖已保存的子路由或先切换主 CLI。角色路由用可选 cli 与 configId 扩展现有记录，请求链使用 loopSubtaskCli 与 loopSubtaskConfigId。缺省跟随主 CLI。Vibe（coding）不执行子任务路由；普通发送忽略残留路由字段并清理请求，Webview 不显示子任务配置告警。Loop、Loop+、Graph 与子任务续跑的跨 CLI 路由若缺少目标配置 ID，宿主读取目标 CLI 当前激活配置；暂时缺失时每隔 3 秒等待配置应用、刷新面板并重查，最多重试 3 次，成功后才派发并附上配置 ID，耗尽后明确失败。显式跨 CLI 配置缺失、读取失败、非法 CLI 或与执行目标不一致时失败，不能静默改跑主 CLI，也不能回退主模型、主 configId、主 sessionId、主思考档或 OpenCode variant。子 CLI 选择按主配置保存，不改主 CLI、主配置、主模型或目标 CLI 的主模型角色。Claude 没有模型选择，但仍可作为主 CLI 或子 CLI；未指定模型时使用目标 CLI 自己的默认。Claude 子任务继续使用 bypassPermissions；Claude 交互请求显式启用任务跟踪工具，保证任务列表观测不依赖默认模型能力；隔离项目指令时保留 user settings，以免屏蔽用户级 MCP / 搜索工具。经典 Loop 创建目标 CLI 的独立子 Tab；Loop+ attempt 的 targetCli 使用绑定子路由；Graph 只有 executor 节点切换执行 CLI，plan 与 summary 仍用 planner。主任务的 CLI、会话、任务存储归属、workspaceKey 和父子关联保持不变。",
+      "id": "plugin.rule.loop_cross_cli_subtask",
+      "name": "Loop 与 Loop+ 子任务可绑定另一个 CLI",
+      "description": "Loop 和 Loop+ 的子任务可以选择另一个 CLI 分组当前选中配置下的模型，并只用该 CLI 执行。宿主预先加载具有激活配置的 Grok/DSH 模型，首次选择跨 CLI 子路由不依赖已保存的子路由或先切换主 CLI。角色路由用可选 cli 与 configId 扩展现有记录，请求链使用 loopSubtaskCli 与 loopSubtaskConfigId。缺省跟随主 CLI。Vibe（coding）不执行子任务路由；普通发送忽略残留路由字段并清理请求，Webview 不显示子任务配置告警。Loop、Loop+ 与子任务续跑的跨 CLI 路由若缺少目标配置 ID，宿主读取目标 CLI 当前激活配置；暂时缺失时每隔 3 秒等待配置应用、刷新面板并重查，最多重试 3 次，成功后才派发并附上配置 ID，耗尽后明确失败。显式跨 CLI 配置缺失、读取失败、非法 CLI 或与执行目标不一致时失败，不能静默改跑主 CLI，也不能回退主模型、主 configId、主 sessionId、主思考档或 OpenCode variant。子 CLI 选择按主配置保存，不改主 CLI、主配置、主模型或目标 CLI 的主模型角色。Claude 没有模型选择，但仍可作为主 CLI 或子 CLI；未指定模型时使用目标 CLI 自己的默认。Claude 子任务继续使用 bypassPermissions；Claude 交互请求显式启用任务跟踪工具，保证任务列表观测不依赖默认模型能力；隔离项目指令时保留 user settings，以免屏蔽用户级 MCP / 搜索工具。经典 Loop 创建目标 CLI 的独立子 Tab；Loop+ attempt 的 targetCli 使用绑定子路由；主任务的 CLI、会话、任务存储归属、workspaceKey 和父子关联保持不变。",
       "status": "active",
-      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.local_cli", "plugin.config_profile"],
+      "applies_to": ["plugin.loop_task", "plugin.local_cli", "plugin.config_profile"],
       "source_refs": [
         {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/sessionMessageActions.ts"},
         {"path": "src/modelSelectionStore.ts"},
         {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "src/loopTaskStore.ts"},
-        {"path": "src/graph/types.ts"},
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
-        {"path": "src/extensionHost/graphRuntime.ts"},
         {"path": "src/extensionHost/promptRunRuntime.ts"},
         {"path": "src/interactive/claudeRunner.ts"},
         {"path": "src/interactive/claudeTaskList.ts"},
@@ -1208,7 +1166,7 @@
       "name": "Claude 当前接入的工具故障命令替代与完整结果核验",
       "description": "Claude SDK 的每轮输入与 CLI 单次调用统一附加工具兼容提示，保留原始需求并透传给委派任务，原生 /compact 不追加。当前接入实测 WebSearch 空结果、WebFetch 域名检查失败，SDK 禁用二者并提示用 Bash/curl 查询公开数据；天气命令用已安装 Node 解析完整 JSON 并输出精简字段，核对日期和最低最高温，不能从截断预览猜测。Glob/Grep 未暴露时先经 ToolSearch 确认，再用 rg 或平台命令替代。已验证可用的文件、Notebook、任务、子代理工具继续优先原生调用；替代不能绕过权限、plan 或用户授权范围，不能伪造工具及子代理成功，其他未验证工具不能一概判定不可用。allowedTools 是免审规则与任务工具 opt-in，不是完整工具白名单。",
       "status": "active",
-      "applies_to": ["plugin.local_cli", "plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.local_cli", "plugin.loop_task"],
       "source_refs": [
         {"path": "src/cli/claudeToolPolicy.ts"},
         {"path": "src/cli/cliRunArgStrategies.ts"},
@@ -1246,13 +1204,12 @@
     {
       "id": "plugin.rule.orchestrator_clarification_form",
       "name": "主任务主动澄清表单",
-      "description": "经典 Loop、Loop+ 和 Graph planner/replanner 对需求有疑惑或认为方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊或 Graph 运行图弹出 1 到 8 个字段的表单。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时不进入 needs-review，而是要求模型自行选择最佳方案继续。三种模式开始或恢复执行时自动打开群聊或运行图，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务和非 plan 节点不能弹这个表单。它不替代补充需求，也不进入我要提问。",
+      "description": "经典 Loop 和 Loop+ 主任务对需求有歧义或方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊弹出 1 到 8 个字段的表单，合法选项由宿主校验。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时要求模型自行选择最佳方案继续。开始或恢复执行时自动打开群聊，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务不能弹出该表单；它不替代补充需求，也不进入我要提问。",
       "status": "active",
-      "applies_to": ["plugin.loop_task", "plugin.graph_run", "plugin.chat_panel"],
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/orchestratorClarification.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
-        {"path": "src/extensionHost/graphRuntime.ts"},
         {"path": "src/webview/orchestratorClarificationDialog.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3 执行模式"}
       ]
@@ -1483,25 +1440,23 @@
     {
       "id": "plugin.rule.subtask_design_key_points",
       "name": "子任务派发必须带上高难度设计关键点",
-      "description": "Loop+ 和 Graph 派发子任务或执行节点时，不能只给粗粒度目标。子会话看不到父规划推理。Loop+ 必须把高难度或非显而易见的设计关键点写进子任务 prompt。Graph planner 必须把具体任务说明和这些关键点写进执行节点 instructions，宿主会放进节点提示并在运行图详情展示。没有这类关键点时不要编造。经典 Loop 仅要求自包含的背景、目标、范围和既有要求，由子任务按项目规则自主实施，不额外强制设计流程。",
+      "description": "Loop+ 派发子任务时不能只给粗粒度目标。子会话看不到父规划推理，主模型必须把高难度或非显而易见的设计关键点写进子任务 prompt，没有时不编造。经典 Loop 要求自包含的背景、目标、范围和既有要求，由子任务按项目规则自主实施，不额外强制设计流程。",
       "status": "active",
-      "applies_to": ["plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.loop_task"],
       "source_refs": [
         {"path": "src/subtaskDesignBriefPolicy.ts"},
-        {"path": "src/graph/graphNodeInstructions.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
     {
       "id": "plugin.rule.subtask_creation_user_bubble",
       "name": "子任务创建只生成正常提示词气泡",
-      "description": "Loop、Loop+ 和 Graph 子任务创建时，子会话由统一 runPrompt 路径生成正常样式的 user 提示词气泡，不再额外写入系统样式的提示词副本或启动说明。正常消息保留任务、轮次、子任务元数据，Graph 保留运行及节点绑定。主任务会话的派发、进度、异常和完成消息不变，不全局隐藏系统消息，不改写历史记录。",
+      "description": "Loop 和 Loop+ 子任务创建时，子会话由统一 runPrompt 路径生成正常样式的 user 提示词气泡，不再额外写入系统样式的提示词副本或启动说明。正常消息保留任务、轮次、子任务元数据。主任务会话的派发、进度、异常和完成消息不变，不全局隐藏系统消息，不改写历史记录。",
       "status": "active",
-      "applies_to": ["plugin.chat_panel", "plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
         {"path": "src/extensionHost/loopOrchestration.ts", "anchor": "runLoopSubtaskWithRetry"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts", "anchor": "runStartedAttempt"},
-        {"path": "src/extensionHost/graphRuntime.ts", "anchor": "createGraphNodeRunTarget"},
         {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts", "anchor": "normal user prompt bubble"},
         {"path": "src/test/extensionHost/subtaskCliExecution.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"}
@@ -1510,13 +1465,12 @@
     {
       "id": "plugin.rule.child_write_scope_advisory",
       "name": "子模型写入范围只是建议",
-      "description": "Loop、Loop+ 和 Graph 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、graph.json、events、其他子任务或节点的沟通文件。Loop+ 和 Graph 主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过；经典 Loop 按子任务汇报协调，不增加主模型验收。",
+      "description": "Loop 和 Loop+ 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、events、其他子任务的沟通文件。Loop+ 主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过；经典 Loop 按子任务汇报协调，不增加主模型验收。",
       "status": "active",
-      "applies_to": ["plugin.loop_task", "plugin.graph_run"],
+      "applies_to": ["plugin.loop_task"],
       "source_refs": [
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
-        {"path": "src/graph/graphPromptBuilders.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
@@ -1538,7 +1492,7 @@
     {
       "id": "plugin.rule.loop_execution_root_safe_cleanup",
       "name": "Loop 临时执行根仅按登记身份非递归拆链",
-      "description": "Loop+ 和 Graph 隔离子任务的临时根通过链接写回真实工作区，不能作为目录树递归删除。经典 Loop 不再创建临时隔离根。宿主登记执行根和链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。未知内容、根或链接身份变化以及占用均保留现场并记录清理跳过事件，清理失败不改变已成功的任务结果。创建失败和正常收尾共用这条约束，不自动清扫旧残留根。",
+      "description": "Loop+ 隔离子任务的临时根通过链接写回真实工作区，不能作为目录树递归删除。经典 Loop 不再创建临时隔离根。宿主登记执行根和链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。未知内容、根或链接身份变化以及占用均保留现场并记录清理跳过事件，清理失败不改变已成功的任务结果。创建失败和正常收尾共用这条约束，不自动清扫旧残留根。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -1571,7 +1525,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩只处理主任务会话，子任务派发使用独立会话，两者同时进行，不再等压缩结束后才派发。下一次使用同一主任务会话的运行会先等待这次压缩结束。子任务、普通对话和 Graph 仍在当前运行结束后再压缩。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩只处理主任务会话，子任务派发使用独立会话，两者同时进行，不再等压缩结束后才派发。下一次使用同一主任务会话的运行会先等待这次压缩结束。子任务和普通对话 仍在当前运行结束后再压缩。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [

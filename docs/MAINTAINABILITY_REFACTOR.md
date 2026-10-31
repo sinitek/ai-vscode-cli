@@ -118,8 +118,8 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 
 1. 非 `opencode` 直接抛错。
 2. 空 `displayPrompt` 返回。
-3. `prepareOpenCodeRuntime`，`role` 在 `taskRole === "subtask"` 时为 `subtask`，否则 `main`；`requiresSubtaskModel` 为 `loopTaskId || graphRunId`。
-4. 组装 thinking prompt 与 hidden retry prompt。`includeFinalAnswerInstruction` 在有 `loopTaskId` 时关闭。人类交互只在没有 `loopTaskId`、没有 `graphRunId` 且全局开关打开时启用。
+3. `prepareOpenCodeRuntime`，`role` 在 `taskRole === "subtask"` 时为 `subtask`，否则 `main`；`requiresSubtaskModel` 为 `loopTaskId`。
+4. 组装 thinking prompt 与 hidden retry prompt。`includeFinalAnswerInstruction` 在有 `loopTaskId` 时关闭。人类交互只在没有 `loopTaskId` 且全局开关打开时启用。
 5. 按 session 或 pending draft 取消息，未预置用户消息时追加用户气泡。
 6. `while (true)`：fresh-session recovery 标志、hidden retry 延迟、`prepareOpenCodeSubagentRuntime`、监视器不可用时只提示一次、`runCliStream`。
 7. 退出码 0 时 `parseOpenCodeRunOutput`，再处理自然语言人类交互、`resolveOpenCodeSuccessfulExitOutcome`、缺最终结论时的重试，以及 `shouldRecoverOpenCodeLoopMainSessionInFreshSession`。
@@ -161,7 +161,7 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 容器或 service locator 会：
 
 - 把 Template Method 必须显式列出的端口变成运行时查找，缺钩子要到真正跑 OpenCode 才暴露。parallel 现有的 `Partial` 再断言已经是这个方向的漏洞，不能再用容器放大。
-- 让 classic Loop、Loop+、Graph、one-shot、parallel 共用一个组装图。这和“协议不合并、host 按文件拆开”相反。
+- 让 classic Loop、Loop+、one-shot、parallel 共用一个组装图。这和“协议不合并、host 按文件拆开”相反。
 - 不消除任何一份重复实现，只把构造挪走。单测也会从“传入 fake 端口”变成“启动容器”。
 
 依赖继续用函数参数和端口对象表达。不引入 inversify、tsyringe 或自研容器，也不把 `extension.ts` 改成第二套组合根。
@@ -226,7 +226,7 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 - 没有删除仍被端口调用的 host 逻辑，没有改 `src`，没有更新功能清单，没有改任务记录、active ids 或 loopPlus 快照。
 - 不合并 `normalizeLoopMainDecision` 与 `normalizeLoopPlusDecision`，不新增 DI 容器，不把 one-shot / parallel 收成 `mode` 旗标。
 
-这不再是“未提交草稿、不能算阶段完成”。当前工作区里的上述实现就是阶段 4、5、6 的交付。阶段 7 只承认这些交付并回写文档，不授权再改 `src/extension.ts`、`loopOrchestration.ts` 或 `graphRunPanel.ts`。行为差异的行号继续以历史锚点保留，避免工作区再前移时把锚点改丢。
+这不再是“未提交草稿、不能算阶段完成”。当前工作区里的上述实现就是阶段 4、5、6 的交付。阶段 7 只承认这些交付并回写文档，不授权再改 `src/extension.ts`、`loopOrchestration.ts`。行为差异的行号继续以历史锚点保留，避免工作区再前移时把锚点改丢。
 
 ## 验证命令
 
@@ -241,7 +241,7 @@ git diff --name-only -- ARCHITECTURE.md docs/MAINTAINABILITY_REFACTOR.md .ch/doc
 git diff --name-only -- src
 ```
 
-阶段 7 回写 `ARCHITECTURE.md` 与上述两份维护性文档，不改 `src`。`git diff --name-only -- src` 里若仍能看到阶段 4、5、6 落地时留下的路径，那不属于本次文档回写，不得回滚，也不得再拆 `src/extension.ts`、`loopOrchestration.ts` 或 `graphRunPanel.ts`。
+阶段 7 回写 `ARCHITECTURE.md` 与上述两份维护性文档，不改 `src`。`git diff --name-only -- src` 里若仍能看到阶段 4、5、6 落地时留下的路径，那不属于本次文档回写，不得回滚，也不得再拆 `src/extension.ts`、`loopOrchestration.ts`。
 
 阶段 4、5、6 的测试命令记录在下方，供实现复核使用；本次文档收尾不重跑构建：
 

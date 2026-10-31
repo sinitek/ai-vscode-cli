@@ -21,7 +21,7 @@
 - 用户或项目规则要求的验证单独派发给子模型；没有要求不主动增加。
 - 编码子任务按项目规则自主实施，不注入额外设计或强制验证流程。
 - completed 不再要求 acceptance、requirementCoverage 或 roundSummaries；继续兼容历史字段。
-- 经典子任务首次启动及续跑使用真实工作区与项目规则，Loop+ 和 Graph 执行策略不变。
+- 经典子任务首次启动及续跑使用真实工作区与项目规则，Loop+ 执行策略不变。
 - 新增回归、相关构建与测试通过；同步能力清单、架构和 ontology。
 
 ## 影响面与风险
@@ -44,7 +44,7 @@
 - 经典子任务按真实工作区项目规则自主实施，取消额外设计和实施步骤注入；首次派发及手动续跑共用中央入口策略。
 - completed 只要求非空 finalSummary，历史 acceptance、roundSummaries、requirementCoverage 继续兼容但不阻断完成。
 - 沟通模板、自动汇报、主任务决策记录和最终总结均区分模式，经典不再虚构主模型验收通过或要求补齐未要求的测试证据。
-- Loop+ 和 Graph 的验收、执行隔离、模型路由及生命周期保持原有机制；未覆盖或回滚工作区既有修改。
+- Loop+ 的验收、执行隔离、模型路由及生命周期保持原有机制；未覆盖或回滚工作区既有修改。
 - 已同步 ARCHITECTURE.md、能力规格、FEATURE_INVENTORY.md、CLI 运行时参考与 ontology；无需更新 ROLLING_SUMMARY 或 EVENT_MEMORY。
 
 ## 验证命令与结果
@@ -56,10 +56,10 @@
 node --test dist/test/extensionHost/promptExecutionShared.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/extensionHost/subtaskCliExecution.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/loop/subtaskDesignBriefPolicy.test.js dist/test/loop/loopTaskStore.test.js dist/test/loop/loopFinalSummary.test.js dist/test/loop/loopGroupChat.test.js dist/test/webview/loopPlusModeHelp.test.js
 ```
 
-- Loop+/Graph 核心保护回归：201/201 通过，日志 `/tmp/loop-plus-protection-tests.log`。
+- Loop+ 核心保护回归：通过，日志 `/tmp/loop-plus-protection-tests.log`。
 
 ```sh
-node --test dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusRuntimeWiring.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopTaskStateMachine.test.js dist/test/extensionHost/graphRuntime.test.js dist/test/graph/graphExtensionRuntime.test.js
+node --test dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusRuntimeWiring.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopTaskStateMachine.test.js
 ```
 
 - 续跑、隔离及全栈扩展回归：48/49 通过，日志 `/tmp/classic-loop-lifecycle-protection-tests.log`；唯一失败分类为范围外的既有工作区文案与断言不一致。

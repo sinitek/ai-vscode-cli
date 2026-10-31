@@ -119,7 +119,6 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
     'id="runContextTokens"',
     'id="runPromptButton"',
     'id="openCurrentLoopGroupChat"',
-    'id="openCurrentGraphRun"',
     'id="queueIndicator"',
     'id="queueCount"',
     'id="scrollToBottomButton"',
@@ -151,11 +150,11 @@ test("renders the main conversation, Loop, task-list, and input DOM anchors", ()
   ]);
   assert.match(
     html,
-    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="interactiveModeSelect"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>/,
   );
   assert.match(
     html,
-    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>\s*<option value="graph">Graph<\/option>/,
+    /<select id="scheduledTaskMode" class="interactive-mode-select"[\s\S]*?<option value="coding">Vibe<\/option>\s*<option value="loop">Loop<\/option>\s*<option value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。">Loop\+<\/option>/,
   );
   assert.doesNotMatch(html, /loopExecutionModeSelect|debate_multi_agent|红蓝辩论/);
 });
@@ -175,13 +174,13 @@ test("renders model-selection, Codex role-model, and OpenCode role-model anchors
     'for="codexLoopMainModelSelect"',
     'id="codexLoopMainModelSelect" class="model-select"',
     'id="codexLoopMainThinkingMode" class="thinking-select"',
-    'aria-label="Codex Loop/Graph 主模型选择"',
+    'aria-label="Codex Loop/Loop+ 主模型选择"',
     'for="codexLoopSubtaskCliSelect"',
     'id="codexLoopSubtaskCliSelect"',
     'aria-label="子模型 CLI 分组"',
     'id="codexLoopSubtaskModelSelect" class="model-select"',
     'id="codexLoopSubtaskThinkingMode" class="thinking-select"',
-    'aria-label="Codex Loop/Graph 子模型选择"',
+    'aria-label="Codex Loop/Loop+ 子模型选择"',
     'for="openCodePrimaryModelSelect"',
     'id="openCodePrimaryModelSelect" class="model-select"',
     'id="openCodePrimaryThinkingMode" class="thinking-select"',
@@ -305,13 +304,12 @@ test("只渲染固定中文静态页面文案", () => {
     "单个子任务执行结束后立即验收，其它完成进入队列。",
     "Vibe",
     "Loop",
-    "Graph",
     "右键文件或目录，在菜单中单击“加入到携宁 CLI 引用”即可引用",
     "执行模式",
     "优点：交互直接、启动快、开销低。",
     "工作区 Harness 骨架",
-    "Codex Loop/Graph 主模型选择",
-    "Codex Loop/Graph 子模型选择",
+    "Codex Loop/Loop+ 主模型选择",
+    "Codex Loop/Loop+ 子模型选择",
     "回放",
     "导出 JSONL",
     "等待回放内容...",
@@ -420,7 +418,6 @@ test("concatenates all static style modules and keeps key selectors available", 
     ".message.trace",
     ".run-wait {",
     ".run-wait.has-current-loop-group-chat",
-    ".run-wait.has-current-graph-run",
     ".run-context-tokens {",
     ".run-prompt-button {",
     ".input-area {",
@@ -451,7 +448,7 @@ test("reuses the AI chat interactive mode select for scheduled tasks", () => {
   );
 });
 
-test("saves scheduled tasks with the selected Vibe/Loop/Graph mode", () => {
+test("saves scheduled tasks with the selected Vibe/Loop/Loop+ mode", () => {
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /function getScheduledTaskSelectedMode\(/);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /const selectedMode = getScheduledTaskSelectedMode\(\);/);
   assert.match(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /interactiveMode: selectedMode,/);

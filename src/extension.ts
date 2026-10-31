@@ -46,7 +46,6 @@ import {
 import { getCliDisplayName, getCliInstallCommand } from "./cli/installer";
 import { t } from "./i18n";
 import { CliBridgeViewProvider } from "./webview/viewProvider";
-import { GraphRunPanel } from "./webview/graphRunPanel";
 import { buildWorkspacePathItems, removeScheduledTaskAttachments, saveScheduledTaskAttachments, startTempCleanup } from "./webview/panelFileActions";
 import { ChatMessage, ChatMessageAction, PanelMessage, PanelState, ScheduledTaskRecord } from "./webview/types";
 import { initLogger, logDebug, logEssential, logError, logInfo, scheduleLogRetentionCleanup, setDebugLogging } from "./logger";
@@ -130,15 +129,6 @@ import {
   settleAutoCompactAfterPrompt,
   type LoopMainAutoCompactReservation,
 } from "./loopMainAutoCompact";
-import { readGraphRunRecord } from "./graph/graphStore";
-import type { GraphRunControlSource } from "./graph/graphRunControl";
-import type { GraphAutoWakeAttemptResult } from "./graph/graphAutoWake";
-import {
-  type GraphModelRole,
-  type GraphNodeRecord,
-  type GraphRunModelRoutingRecord,
-  type GraphRunRecord,
-} from "./graph/types";
 import {
   isCliEnabled,
   listEnabledClis,
@@ -178,7 +168,6 @@ import {
   type SessionLifecycleController,
 } from "./sessionLifecycle";
 import { countStoreModels, createEmptyModelSelectionStoreState, getManagedModelOptionsForConfigFromStore, getLoopModelOptionsForCliFromStore, getModelOptionsForConfigFromStore, getOpenCodeRoleVariantFromStore, normalizeCliModelName, summarizeModelStoreByConfigId, type CliModelStore } from "./modelSelectionStore";
-import { createGraphControlsHost, type GraphControlsHost } from "./extensionHost/graphControls";
 import {
   createLoopPlusPersistedTaskRefresher,
   createPromptRunRuntimeHost,
@@ -207,13 +196,8 @@ import {
 } from "./extensionHost/loopPlusSubtaskChat";
 import { createModelSettingsHost, schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { createExtensionSessionTabsHost } from "./extensionHost/sessionTabs";
-import { createGraphMessagesHost, type GraphRuntimeMessageKey } from "./extensionHost/graphMessages";
-import {
-  createGraphRuntimeHost,
-  type GraphRuntimeHost,
-  type PromptRunInput,
-  type PromptRunTarget,
-} from "./extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
+import { createPromptRunModelsHost } from "./extensionHost/promptRunModels";
 import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptRunController";
 import { trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type WorkspaceSettings } from "./workspaceSettingsStore";
 import { normalizeLoopPlusAcceptancePlanSnapshotForStorage } from "./loopPlusAcceptancePlan";
@@ -258,7 +242,6 @@ let modelStore: CliModelStore;
 let workspaceSettings: WorkspaceSettings = {};
 let configManagerPanel: ConfigManagerPanel | undefined;
 const loopGroupChatChatPanelsByTaskId = new Map<string, LoopGroupChatPanel>();
-const graphRunPanelsByRunId = new Map<string, GraphRunPanel>();
 let activeWorkspaceKey: string;
 let pendingWorkspaceKey: string | null = null;
 let lastResolvedWorkspaceCwd: string | undefined;
@@ -277,7 +260,6 @@ const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 const promptAutoRepairController = createPromptAutoRepairController();
 let isExtensionDeactivating = false;
-const graphNodeRunTargetsByTabId = new Map<string, { graphRunId: string; graphNodeId: string }>();
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
@@ -399,8 +381,6 @@ type ParallelTabRun = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
-  graphRunId?: string;
-  graphNodeId?: string;
 };
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
 type CliInstallStatus = {
@@ -573,7 +553,6 @@ export function activate(context: vscode.ExtensionContext): void {
   repairSupersededLocalSessions({ notifyPanel: false });
   syncCurrentSessionWithActiveTab();
   ensureCurrentCliIsEnabled();
-  initializeGraphAutoWakeScheduler(context);
   void initLogger().then(() => {
     scheduleLogRetentionCleanup();
   });
@@ -644,7 +623,6 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       ensureWorkspaceSessionStore();
-      restoreGraphAutoWakeSchedules();
       void postPanelState();
     })
   );
@@ -669,7 +647,6 @@ export function deactivate(): void {
   void restoreMarketplaceUpdateCheck();
   scheduledTaskScheduler?.stop();
   scheduledTaskScheduler = null;
-  graphControlsHost.disposeGraphAutoWakeScheduler();
   stopAllRuns();
 }
 function stopAllRuns(): void {
@@ -983,18 +960,16 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
   );
   const displayPrompt = buildScheduledAttachmentPrompt(task);
   const contextBuild = buildPromptWithAutoContextFromPanelStateBuilder(displayPrompt, task.contextOptions);
-  const modelPrompt = executionConfig.interactiveMode === "graph"
-    ? contextBuild.modelPrompt
-    : maybeInjectLongTermMemoryForPromptWithEditorContext(
-        displayPrompt,
-        contextBuild.modelPrompt,
-        contextBuild.contextTags,
-        {
-          runtimeSettings: buildLongTermMemoryRuntimeSettings(),
-          memoryPaths: getActiveWorkspaceMemoryPaths(),
-          logError: (event, payload) => { void logError(event, payload); },
-        },
-      );
+  const modelPrompt = maybeInjectLongTermMemoryForPromptWithEditorContext(
+    displayPrompt,
+    contextBuild.modelPrompt,
+    contextBuild.contextTags,
+    {
+      runtimeSettings: buildLongTermMemoryRuntimeSettings(),
+      memoryPaths: getActiveWorkspaceMemoryPaths(),
+      logError: (event, payload) => { void logError(event, payload); },
+    },
+  );
   const imagePaths = task.cli === "codex"
     ? await resolveCodexImagePathsForPrompt(displayPrompt)
     : [];
@@ -1010,7 +985,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
     ...(task.loopMainThinkingMode ? { loopMainThinkingMode: task.loopMainThinkingMode } : {}),
     ...(task.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: task.loopSubtaskThinkingMode } : {}),
     ...(imagePaths.length ? { imagePaths } : {}),
-    ...(executionConfig.interactiveMode === "graph" ? { skipLongTermMemoryPersist: true } : {}),
     throwOnError: true,
   };
   const target = resolvePromptRunTarget(targetTabId);
@@ -1026,8 +1000,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
       resumeRequested: false,
       ...(loopPlusSchedulingMode ? { schedulingMode: loopPlusSchedulingMode } : {}),
     });
-  } else if (executionConfig.interactiveMode === "graph") {
-    await runGraphPrompt(preparedInput, { targetTabId });
   } else {
     await runPrompt(preparedInput, { targetTabId });
   }
@@ -1130,7 +1102,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     appendUserMessageForCli,
     runContextCompactionCommand,
     openLoopGroupChatPanel,
-    openGraphRunPanel,
     getActiveConversationTabId,
     getActiveConversationTab,
     resolveLoopSubtaskConversationContext,
@@ -1149,7 +1120,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     resolvePromptRunTarget,
     preloadUserMessageForPrompt,
     runLoopPrompt,
-    runGraphPrompt,
     runPrompt,
     maybeWakeLoopMainAfterSubtaskContinuation,
     resolveLoopResumeTaskFromPrompt,
@@ -1532,8 +1502,8 @@ async function updateOpenCodeRoleModelForConfig(
 ): Promise<string | null> {
   return updateOpenCodeRoleModelForConfigFromStore(role, model, configId);
 }
-const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopGroupChatChatPanelCoordinator.listGroupChatTasks(), getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId), deleteGraphNodeRunTarget: (tabId) => { graphNodeRunTargetsByTabId.delete(tabId); }, setGraphNodeRunTarget: (tabId, value) => { graphNodeRunTargetsByTabId.set(tabId, value); }, getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getParallelGraphRunId: (tabId) => parallelRunsByTabId.get(tabId)?.graphRunId, getInteractiveGraphRunId: (tabId) => interactiveRunsByTabId.get(tabId)?.graphRunId, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isGraphRunBlockedForMainTab: (run) => isGraphRunBlockedForMainTab(run), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
-const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, normalizeChatGraphRunId, resolveGraphRunIdFromMessages, resolveSessionGraphRunIdFromMessages, resolveConversationTabGraphRunId, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, createGraphNodeRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
+const sessionTabsHost = createExtensionSessionTabsHost({ getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopGroupChatChatPanelCoordinator.listGroupChatTasks(), getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
+const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
   getActiveConfigIdForCli,
@@ -2900,7 +2870,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     if (!target?.tabId) {
       return;
     }
-    stopLoopPlusInvocationRunner(target.tabId, { includeGraph: false });
+    stopLoopPlusInvocationRunner(target.tabId);
   },
   readAskThread: (task) => {
     const dir = task.communicationDir.trim();
@@ -2926,181 +2896,6 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   pickTask: pickLoopGroupChatTask,
   t,
 });
-
-
-const graphMessagesHost = createGraphMessagesHost({
-  getGraphNodeRunTarget: (tabId) => graphNodeRunTargetsByTabId.get(tabId),
-  getLoopMessagesForTarget,
-  appendSystemMessageForLoop,
-  appendMessageToStore,
-  sendPanelMessage,
-  persistLoopMessagesForTarget,
-  createMessageId,
-});
-
-let graphRuntimeHost: GraphRuntimeHost;
-
-const graphControlsHost: GraphControlsHost = createGraphControlsHost({
-  getExtensionUri: () => extensionUri,
-  panelsByRunId: graphRunPanelsByRunId,
-  getActiveWorkspaceKey: () => activeWorkspaceKey,
-  getCurrentCli: () => currentCli,
-  postPanelState,
-  resolvePromptRunTarget,
-  findConversationTabIdBySession,
-  getActiveConversationTab,
-  addConversationTab,
-  switchVisibleConversationTabForLoop,
-  isTabRunActive,
-  getActiveConfigIdForCli,
-  stopParallelRunForTab,
-  getParallelRunsByTabId: () => parallelRunsByTabId,
-  getInteractiveRunsByTabId: () => interactiveRunsByTabId,
-  isPrimaryRunActive,
-  getActiveTaskRun: () => primaryPromptRunController.activeTaskRun,
-  stopActiveRun,
-  showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
-  showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
-  errorToMessage,
-  messages: graphMessagesHost,
-  runtime: {
-    resolveGraphResumePromptModels: (run, cli, configId) => graphRuntimeHost.resolveGraphResumePromptModels(run, cli, configId),
-    resolveCurrentLoopModelPair: (cli, configId) => graphRuntimeHost.resolveCurrentLoopModelPair(cli, configId),
-    buildCurrentGraphModelRouting: (cli, configId) => graphRuntimeHost.buildCurrentGraphModelRouting(cli, configId),
-    applyGraphRunModelRouting: (run) => graphRuntimeHost.applyGraphRunModelRouting(run),
-    hydrateOpenCodePromptRoleModels: (input, cli) => graphRuntimeHost.hydrateOpenCodePromptRoleModels(input, cli),
-    tickGraphRunToPause: (run, input, target) => graphRuntimeHost.tickGraphRunToPause(run, input, target),
-    sendGraphMainRunTerminalStatus: (target, run) => graphRuntimeHost.sendGraphMainRunTerminalStatus(target, run),
-  },
-  t,
-});
-
-graphRuntimeHost = createGraphRuntimeHost({
-  getActiveWorkspaceKey: () => activeWorkspaceKey,
-  getActiveConversationTabId,
-  resolvePromptRunTarget,
-  resolveGraphRunSessionId: (target) => {
-    const tab = getConversationTabById(target.tabId);
-    return tab ? getConversationTabSessionIdForCli(tab, target.cli) : target.sessionId;
-  },
-  getActiveConfigIdForCli,
-  getSelectedCliModel,
-  getSelectedLoopCliModel,
-  getSelectedLoopThinkingMode,
-  getSelectedLoopSubtaskCli,
-  normalizeThinkingModeForCli,
-  getEffectiveThinkingMode,
-  getGlobalLoopSubtaskMaxThinkingMode,
-  isThinkingMode,
-  resolveOpenCodeRoleModelsForConfig,
-  createMessageId,
-  resolveWorkspaceCwd,
-  postPanelState,
-  persistGraphRunTickState: graphControlsHost.persistGraphRunTickState,
-  scheduleGraphRunAutoWake: graphControlsHost.scheduleGraphRunAutoWake,
-  sendRunStatusForTab,
-  createGraphNodeRunTarget,
-  runPrompt,
-  closeConversationTabAndRefreshPanel,
-  errorToMessage,
-  messages: graphMessagesHost,
-  revealClarification: (graphRunId) => { void openGraphRunPanel(graphRunId); },
-  recordInteractionHistory: recordOrchestratorInteractionResponse,
-});
-
-function initializeGraphAutoWakeScheduler(context: vscode.ExtensionContext): void {
-  graphControlsHost.initializeGraphAutoWakeScheduler(context);
-}
-
-function restoreGraphAutoWakeSchedules(): void {
-  graphControlsHost.restoreGraphAutoWakeSchedules();
-}
-
-function scheduleGraphRunAutoWake(run: GraphRunRecord): void {
-  graphControlsHost.scheduleGraphRunAutoWake(run);
-}
-
-function cancelGraphRunAutoWake(graphRunId: string): void {
-  graphControlsHost.cancelGraphRunAutoWake(graphRunId);
-}
-
-function attemptGraphRunAutoWake(graphRunId: string): GraphAutoWakeAttemptResult {
-  return graphControlsHost.attemptGraphRunAutoWake(graphRunId);
-}
-
-async function continueGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.continueGraphRunFromPanel(graphRunId);
-}
-
-async function supplementGraphRunFromPanel(
-  graphRunId: string,
-  prompt: string,
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.supplementGraphRunFromPanel(graphRunId, prompt);
-}
-
-async function retryGraphNodeFromPanel(
-  graphRunId: string,
-  nodeId: string,
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.retryGraphNodeFromPanel(graphRunId, nodeId);
-}
-
-async function skipGraphNodeFromPanel(
-  graphRunId: string,
-  nodeId: string,
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.skipGraphNodeFromPanel(graphRunId, nodeId);
-}
-
-async function feedbackGraphNodeFromPanel(
-  graphRunId: string,
-  nodeId: string,
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.feedbackGraphNodeFromPanel(graphRunId, nodeId);
-}
-
-async function stopGraphRunFromPanel(graphRunId: string): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.stopGraphRunFromPanel(graphRunId);
-}
-
-async function continueGraphRunFromStore(
-  graphRunId: string,
-  options: {
-    source: GraphRunControlSource;
-    reason: string;
-    preferredTargetTabId?: string | null;
-  },
-): Promise<{ ok: boolean; changed: boolean; message: string; run?: GraphRunRecord | null }> {
-  return graphControlsHost.continueGraphRunFromStore(graphRunId, options);
-}
-
-function persistGraphRunTickState(nextRun: GraphRunRecord): GraphRunRecord {
-  return graphControlsHost.persistGraphRunTickState(nextRun);
-}
-
-function refreshOpenGraphRunPanelForRun(graphRunId: string): void {
-  graphControlsHost.refreshOpenGraphRunPanelForRun(graphRunId);
-}
-
-function resolveGraphRunExistingPromptTarget(run: GraphRunRecord): PromptRunTarget | null {
-  return graphControlsHost.resolveGraphRunExistingPromptTarget(run);
-}
-
-function stopActiveCliRunsForGraphRun(graphRunId: string): number {
-  return graphControlsHost.stopActiveCliRunsForGraphRun(graphRunId);
-}
-
-function graphRuntimeMessage(
-  key: GraphRuntimeMessageKey,
-  params: Record<string, string | number | undefined> = {},
-): string {
-  return graphMessagesHost.graphRuntimeMessage(key, params);
-}
-
-async function openGraphRunPanel(arg?: unknown): Promise<void> {
-  await graphControlsHost.openGraphRunPanel(arg);
-}
 
 async function openLoopGroupChatPanel(arg?: unknown): Promise<void> {
   await loopGroupChatChatPanelCoordinator.open(arg);
@@ -3216,49 +3011,34 @@ function ensureLoopMainSubChatTranscript(task: LoopTaskRecord): string {
   });
 }
 
-function resolvePromptRunModelForRole(input: PromptRunInput, role: GraphModelRole): string | undefined {
-  return graphRuntimeHost.resolvePromptRunModelForRole(input, role);
+const promptRunModelsHost = createPromptRunModelsHost({
+  getActiveConfigIdForCli,
+  getSelectedCliModel,
+  getSelectedLoopCliModel,
+  getSelectedLoopThinkingMode,
+  normalizeThinkingModeForCli,
+  getEffectiveThinkingMode,
+  getGlobalLoopSubtaskMaxThinkingMode,
+  isThinkingMode,
+  resolveOpenCodeRoleModelsForConfig,
+});
+
+function resolvePromptRunModelForRole(input: PromptRunInput, role: LoopTaskRole): string | undefined {
+  return promptRunModelsHost.resolvePromptRunModelForRole(input, role);
 }
 
 function resolvePromptRunThinkingModeForRole(
   input: PromptRunInput,
   cli: CliName,
-  role: GraphModelRole,
+  role: LoopTaskRole,
   model: string | undefined,
   options: { applySubtaskCap?: boolean; configId?: string | null } = {},
 ): ThinkingMode | undefined {
-  return graphRuntimeHost.resolvePromptRunThinkingModeForRole(input, cli, role, model, options);
-}
-
-function resolvePromptRunModelFallback(input: PromptRunInput, role: GraphModelRole): string {
-  return graphRuntimeHost.resolvePromptRunModelFallback(input, role);
-}
-
-function buildGraphRunModelRouting(input: PromptRunInput): GraphRunModelRoutingRecord {
-  return graphRuntimeHost.buildGraphRunModelRouting(input);
-}
-
-function applyGraphNodeModelRoute(
-  node: GraphNodeRecord,
-  route: GraphRunModelRoutingRecord["planner"],
-): GraphNodeRecord {
-  return graphRuntimeHost.applyGraphNodeModelRoute(node, route);
-}
-
-function applyGraphRunModelRouting(run: GraphRunRecord): GraphRunRecord {
-  return graphRuntimeHost.applyGraphRunModelRouting(run);
-}
-
-function resolveGraphResumePromptModels(
-  run: GraphRunRecord,
-  cli: CliName,
-  configId: string | null,
-): Pick<PromptRunInput, "model" | "loopMainModel" | "loopSubtaskModel" | "loopMainModelFallback" | "loopSubtaskModelFallback"> {
-  return graphRuntimeHost.resolveGraphResumePromptModels(run, cli, configId);
+  return promptRunModelsHost.resolvePromptRunThinkingModeForRole(input, cli, role, model, options);
 }
 
 async function hydrateOpenCodePromptRoleModels(input: PromptRunInput, cli: CliName): Promise<PromptRunInput> {
-  return graphRuntimeHost.hydrateOpenCodePromptRoleModels(input, cli);
+  return promptRunModelsHost.hydrateOpenCodePromptRoleModels(input, cli);
 }
 
 function logCliStartup(payload: {
@@ -3526,7 +3306,6 @@ function resolveAutoInteractiveModeForConversationTab(
   }
   const context = resolveConversationTabLoopContext(tab);
   return resolveConversationTabAutoInteractiveMode({
-    hasGraphRun: Boolean(resolveConversationTabGraphRunId(tab)),
     taskRole: context.taskRole,
     loopTaskId: context.loopTaskId,
     schedulingMode: context.loopTaskId
@@ -3650,8 +3429,6 @@ function sendRunStatusForTab(
     message?: string;
     prompt?: string;
     startedAt?: number;
-    graphRunId?: string;
-    graphNodeId?: string;
   } = {}
 ): void {
   if (status === "start") {
@@ -3665,8 +3442,6 @@ function sendRunStatusForTab(
     message: options.message,
     prompt: status === "start" ? options.prompt : undefined,
     startedAt: status === "start" ? options.startedAt : undefined,
-    graphRunId: status === "start" ? options.graphRunId : undefined,
-    graphNodeId: status === "start" ? options.graphNodeId : undefined,
     tabId,
   });
 }
@@ -3783,8 +3558,6 @@ function stopParallelRunForTab(tabId: string, message?: string): boolean {
     loopTaskId: run.loopTaskId,
     loopRound: run.loopRound,
     loopSubtaskId: run.loopSubtaskId,
-    graphRunId: run.graphRunId,
-    graphNodeId: run.graphNodeId,
   };
   appendTaskRun(taskRecord);
   sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
@@ -3793,7 +3566,7 @@ function stopParallelRunForTab(tabId: string, message?: string): boolean {
   return true;
 }
 
-function stopLoopPlusInvocationRunner(tabId: string, options: { includeGraph: boolean }): boolean {
+function stopLoopPlusInvocationRunner(tabId: string): boolean {
   const interactiveRun = interactiveRunsByTabId.get(tabId);
   if (interactiveRun) {
     interactiveRun.stop();
@@ -3803,16 +3576,7 @@ function stopLoopPlusInvocationRunner(tabId: string, options: { includeGraph: bo
     return true;
   }
   if (getPrimaryRunTabId() === tabId) {
-    const graphRunId = options.includeGraph && !primaryPromptRunController.activeTaskRun?.graphNodeId
-      ? normalizeChatGraphRunId(primaryPromptRunController.activeTaskRun?.graphRunId)
-      : null;
     stopActiveRun();
-    if (graphRunId) {
-      void stopGraphRunFromConversationTab(graphRunId, tabId);
-    }
-    return true;
-  }
-  if (options.includeGraph && stopGraphRunForConversationTab(tabId)) {
     return true;
   }
   return false;
@@ -3822,7 +3586,7 @@ function cancelLoopPlusInvocation(tabId: string | null): boolean {
   if (!tabId) {
     return false;
   }
-  return stopLoopPlusInvocationRunner(tabId, { includeGraph: false });
+  return stopLoopPlusInvocationRunner(tabId);
 }
 
 function stopRunForTab(tabId: string | null): void {
@@ -3842,7 +3606,7 @@ function stopRunForTab(tabId: string | null): void {
   })) {
     stopLoopPlusParent(parentStop.taskId);
   }
-  if (stopLoopPlusInvocationRunner(tabId, { includeGraph: true })) {
+  if (stopLoopPlusInvocationRunner(tabId)) {
     return;
   }
 
@@ -3860,36 +3624,6 @@ function stopRunForTab(tabId: string | null): void {
     markLoopTaskStoppedByUser(loopTaskId);
     void postPanelState();
   }
-}
-
-function stopGraphRunForConversationTab(tabId: string): boolean {
-  if (graphNodeRunTargetsByTabId.has(tabId)) {
-    return false;
-  }
-  const tab = getConversationTabById(tabId);
-  const graphRunId = resolveConversationTabGraphRunId(tab);
-  if (!graphRunId) {
-    return false;
-  }
-  const lookup = readGraphRunRecord(graphRunId);
-  if (!lookup.run || lookup.run.status === "completed" || lookup.run.status === "stopped") {
-    return false;
-  }
-  void stopGraphRunFromConversationTab(graphRunId, tabId);
-  return true;
-}
-
-async function stopGraphRunFromConversationTab(graphRunId: string, tabId: string): Promise<void> {
-  const result = await stopGraphRunFromPanel(graphRunId);
-  if (!result.ok) {
-    void vscode.window.showWarningMessage(result.message);
-    return;
-  }
-  void logInfo("graph-run-stopped-from-conversation-tab", {
-    graphRunId,
-    tabId,
-    changed: result.changed,
-  });
 }
 
 function stopOtherRunsExceptTab(tabId: string | null): void {
@@ -4326,40 +4060,6 @@ async function runLoopPrompt(
     ownership.release?.();
     await postPanelState();
   }
-}
-
-async function runGraphPrompt(
-  input: PromptRunInput,
-  options: { targetTabId?: string | null } = {}
-): Promise<void> {
-  return graphRuntimeHost.runGraphPrompt(input, options);
-}
-
-async function runGraphPromptOrchestration(
-  input: PromptRunInput,
-  options: { targetTabId?: string | null } = {}
-): Promise<GraphRunRecord | null> {
-  return graphRuntimeHost.runGraphPromptOrchestration(input, options);
-}
-
-async function tickGraphRunToPause(
-  initialRun: GraphRunRecord,
-  input: PromptRunInput,
-  target: PromptRunTarget,
-): Promise<{ run: GraphRunRecord; progressed: boolean }> {
-  return graphRuntimeHost.tickGraphRunToPause(initialRun, input, target);
-}
-
-function sendGraphMainRunTerminalStatus(target: PromptRunTarget, run: GraphRunRecord): void {
-  graphRuntimeHost.sendGraphMainRunTerminalStatus(target, run);
-}
-
-function isGraphRunBlockedForMainTab(run: GraphRunRecord): boolean {
-  return graphRuntimeHost.isGraphRunBlockedForMainTab(run);
-}
-
-function selectGraphBlockedAttentionNode(run: GraphRunRecord): GraphNodeRecord | null {
-  return graphRuntimeHost.selectGraphBlockedAttentionNode(run);
 }
 
 async function waitForLoopTaskClarification(task: LoopTaskRecord, target: PromptRunTarget): Promise<boolean> {
@@ -5014,7 +4714,7 @@ async function runPrompt(
         } else {
           await runPromptOneShot(attemptInput, attemptTarget, executionOptions);
         }
-        if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId && !attemptInput.graphRunId) {
+        if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);
           const sessionId = resolvePromptRunTargetSessionId(attemptTarget)
             ?? getLatestLoopRoundRunRecord(attemptInput.loopTaskId, attemptInput.loopRound ?? 1, "subtask", attemptInput.loopSubtaskId)?.sessionId;
@@ -5615,8 +5315,6 @@ function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
     loopTaskId: primaryPromptRunController.activeTaskRun?.loopTaskId,
     loopRound: primaryPromptRunController.activeTaskRun?.loopRound,
     loopSubtaskId: primaryPromptRunController.activeTaskRun?.loopSubtaskId,
-    graphRunId: primaryPromptRunController.activeTaskRun?.graphRunId,
-    graphNodeId: primaryPromptRunController.activeTaskRun?.graphNodeId,
   };
   appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   primaryPromptRunController.activeMessageIndex = primaryPromptRunController.activeMessageTarget.length - 1;
@@ -5718,7 +5416,7 @@ function startTaskRun(
   cli: CliName,
   sessionId: string | null,
   prompt: string,
-  options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string; graphRunId?: string; graphNodeId?: string } = {}
+  options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string } = {}
 ): void {
   primaryPromptRunController.activeTaskRun = {
     id: runId,
@@ -5730,8 +5428,6 @@ function startTaskRun(
     loopTaskId: options.loopTaskId,
     loopRound: options.loopRound,
     loopSubtaskId: options.loopSubtaskId,
-    graphRunId: options.graphRunId,
-    graphNodeId: options.graphNodeId,
   };
 }
 
@@ -5771,8 +5467,6 @@ function sendRunStatus(
     prompt: status === "start" ? primaryPromptRunController.activeTaskRun?.prompt : undefined,
     startedAt: status === "start" ? primaryPromptRunController.activeTaskRun?.startedAt : undefined,
     activity: status === "start" ? options.activity : undefined,
-    graphRunId: status === "start" ? primaryPromptRunController.activeTaskRun?.graphRunId : undefined,
-    graphNodeId: status === "start" ? primaryPromptRunController.activeTaskRun?.graphNodeId : undefined,
   });
 }
 

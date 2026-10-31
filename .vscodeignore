@@ -11,7 +11,6 @@ dist/**/*.map
 node_modules/**/.cache/**
 node_modules/@anthropic-ai/claude-agent-sdk/*.d.ts
 node_modules/@anthropic-ai/claude-agent-sdk/bun.lock
-!node_modules/@dagrejs/**
 !node_modules/cross-spawn/**
 !node_modules/@iarna/toml/**
 !node_modules/isexe/**

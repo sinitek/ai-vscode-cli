@@ -169,7 +169,6 @@ test("Loop and Loop+ main tabs do not keep or show a stale task list", () => {
   const setMessagesForTab = new Function(
     "getConversationRuntimeState",
     "updateLoopMetaForTabFromMessages",
-    "updateGraphMetaForTabFromMessages",
     "ensureRuntimeTaskList",
     "isConversationTabBusy",
     "isLoopMainTaskListTab",
@@ -183,7 +182,6 @@ test("Loop and Loop+ main tabs do not keep or show a stale task list", () => {
     `${extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "setMessagesForTab")}; return setMessagesForTab;`,
   )(
     () => runtimeState,
-    () => false,
     () => false,
     (state: typeof runtimeState) => state.taskList,
     () => true,

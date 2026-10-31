@@ -148,8 +148,6 @@ function createOneShotRuntimeHarness(options: {
       loopTaskId: input.loopTaskId,
       loopRound: input.loopRound,
       loopSubtaskId: input.loopSubtaskId,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
     }),
     captureSessionFromBuffer: options.captureSessionFromBuffer ?? (() => undefined),
     cancelHumanInteractionForTab: (tabId, statusText) => {

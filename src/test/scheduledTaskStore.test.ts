@@ -29,7 +29,7 @@ const storeDeps = {
     value === "codex" || value === "claude" || value === "opencode"
   ),
   isInteractiveMode: (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop" || value === "graph"
+    value === "coding" || value === "plan" || value === "loop" || value === "loop_plus"
   ),
   isThinkingMode: (value: unknown): value is ThinkingMode => (
     value === "off" || value === "on" || value === "low" || value === "medium"
@@ -122,8 +122,8 @@ test("resolves scheduled execution mode from the mode active at execution time",
     { interactiveMode: "loop", },
   );
   assert.deepEqual(
-    resolveScheduledTaskExecutionConfig("graph"),
-    { interactiveMode: "graph" },
+    resolveScheduledTaskExecutionConfig("loop_plus"),
+    { interactiveMode: "loop_plus" },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfig("coding"),
@@ -134,10 +134,10 @@ test("resolves scheduled execution mode from the mode active at execution time",
 test("prefers the task selected mode and falls back for legacy records", () => {
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(
-      { interactiveMode: "graph" },
+      { interactiveMode: "loop_plus" },
       "loop",
     ),
-    { interactiveMode: "graph" },
+    { interactiveMode: "loop_plus" },
   );
   assert.deepEqual(
     resolveScheduledTaskExecutionConfigForTask(

@@ -9,7 +9,7 @@
 
 ## 背景
 
-定时任务目前在创建时保存 `interactiveMode` 和 Loop 执行配置，任务到期后直接使用持久化旧值。用户切换当前 CLI 的模式后，任务可能仍按创建时的 Loop/Graph 模式执行。
+定时任务目前在创建时保存 `interactiveMode` 和 Loop 执行配置，任务到期后直接使用持久化旧值。用户切换当前 CLI 的模式后，任务可能仍按创建时的 Loop 模式执行。
 
 ## 目标
 
@@ -23,13 +23,12 @@
 
 ## 非目标
 
-- 不改变立即发送、Loop/Graph 本身的调度语义。
+- 不改变立即发送、Loop 本身的调度语义。
 - 不迁移定时任务存储格式，不新增重复执行能力。
 
 ## 验收标准
 
 - [x] 任务创建后切换目标 CLI 到 `loop`，到期执行进入 Loop。
-- [x] 任务创建后切换目标 CLI 到 `graph`，到期执行进入 Graph。
 - [x] 到期时 Loop 执行子模式使用当前配置，旧记录字段仅保留用于历史数据兼容。
 - [x] 相关构建和单元测试通过。
 
@@ -71,6 +70,6 @@
 
 ## 当前结论
 
-后续说明：2026-09-19 起，定时任务改为按创建时选中的 Vibe/Loop/Graph 及该模式已保存配置执行；执行时工作区模式仅作为旧任务缺字段时的回退。详见 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md`。
+后续说明：2026-09-19 起，定时任务改为按创建时选中的 Vibe/Loop 及该模式已保存配置执行；执行时工作区模式仅作为旧任务缺字段时的回退。详见 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md`。
 
 已完成：`executeScheduledTask` 在任务进入 running 后按 `task.cli` 读取 workspace 当前 `interactiveMode` 与 Loop 执行子模式；任务记录旧字段继续保留以兼容历史数据。构建、相关回归测试和 ontology 校验通过；全量单测仅保留一个范围外的既有 Tasklist 断言失败。本计划可归档。

@@ -5,7 +5,8 @@ import { test } from "node:test";
 import * as vm from "node:vm";
 import * as ts from "typescript";
 import type { CliName } from "../../cli/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
+import { shouldUseClassicLoopProjectInstructions } from "../../extensionHost/promptExecutionShared";
 import { createPromptAutoRepairController } from "../../extensionHost/promptAutoRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
@@ -55,6 +56,8 @@ function createHarness(options: {
     isExtensionDeactivating: false,
     activeWorkspaceKey: "test-workspace",
     promptAutoRepairController: createPromptAutoRepairController(),
+    shouldUseClassicLoopProjectInstructions,
+    readLoopTaskRecord: () => null,
     getActiveConversationTabId: () => tab.id,
     resolvePromptRunTarget: () => ({ tabId: tab.id, cli: tab.cli, sessionId: tab.sessionId }),
     getConversationTabById: () => tab,

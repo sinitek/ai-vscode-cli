@@ -6,19 +6,19 @@
 
 ## 背景与目标
 
-Vibe 已允许最终回复绘制 SVG，但没有明确建议用图示补充任务总结；Loop、Loop+ 和 Graph 的总结使用独立机器协议，需要在不破坏协议的前提下提供相同建议。
+Vibe 已允许最终回复绘制 SVG，但没有明确建议用图示补充任务总结；Loop、Loop+ 的总结使用独立机器协议，需要在不破坏协议的前提下提供相同建议。
 
 ## 范围与非目标
 
-- 覆盖 Vibe 通用最终回复、Loop 主任务、Loop+ 主任务和 Graph summary 节点。
+- 覆盖 Vibe 通用最终回复、Loop 主任务、Loop+ 主任务。
 - 复用现有 SVG 渲染能力；不新增配置、不改 Webview、不改变调度或验收协议。
 
 ## 验收标准
 
 - 四种模式均建议在有表达价值时以 SVG 补充文字总结，简单任务和用户要求纯文字时可省略。
 - SVG 使用自包含的 `svg` 代码围栏，无脚本、事件处理器或外部资源。
-- Loop/Loop+ 仅将图示放入 `finalSummary`，Graph 放入 `finalAnswer.summary`；JSON 正确转义，不新增协议字段或在 JSON 外追加图示。
-- 子任务和 Graph 非 summary 节点不额外注入总结图示建议；机器协议仍不注入 `[final_answer]`。
+- Loop/Loop+ 仅将图示放入 `finalSummary`；JSON 正确转义，不新增协议字段或在 JSON 外追加图示。
+- 子任务不额外注入总结图示建议；机器协议仍不注入 `[final_answer]`。
 - 构建、相关回归测试和 ontology 校验通过，功能清单与能力规格同步。
 
 ## 影响面
@@ -43,9 +43,9 @@ Vibe 已允许最终回复绘制 SVG，但没有明确建议用图示补充任�
 
 ## 测试与清单同步
 
-- 单元测试：已覆盖 Vibe 及隐藏重试、Loop 主任务、Loop+ 全部主任务唤醒类型和 Graph summary；验证可选文案、JSON 字段及转义约束、机器协议标记 opt-out、子任务及非 summary 节点排除范围。
+- 单元测试：已覆盖 Vibe 及隐藏重试、Loop 主任务、Loop+ 全部主任务唤醒类型；验证可选文案、JSON 字段及转义约束、机器协议标记 opt-out、子任务排除范围。
 - `npm run build`：通过。
-- `node --test dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/subtaskCliExecution.test.js dist/test/loop/loopPromptBuilders.test.js dist/test/graph/graphPromptBuilders.test.js`：38 项全部通过。
+- `node --test dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/subtaskCliExecution.test.js dist/test/loop/loopPromptBuilders.test.js`：38 项全部通过。
 - `node --test dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/loop/loopGroupChat.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/webview/chatImagePreview.test.js dist/test/webview/chatImageResource.test.js`：69 项全部通过。
 - `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`：通过，58 条规则。
 - `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'`：9 项全部通过。

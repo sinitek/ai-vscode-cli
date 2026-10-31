@@ -160,7 +160,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
           const loopMetaChanged = updateLoopMetaForTabFromMessages(tabId, runtimeState.messages);
-          const graphMetaChanged = updateGraphMetaForTabFromMessages(tabId, runtimeState.messages);
           const taskListState = ensureRuntimeTaskList(runtimeState);
           const loopMainTab = typeof isLoopMainTaskListTab === "function" && isLoopMainTaskListTab(tabId);
           const shouldPreserveExternalTaskList = Boolean(
@@ -179,7 +178,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
               renderMessages();
             }
           }
-          if (loopMetaChanged || graphMetaChanged) {
+          if (loopMetaChanged) {
             renderConversationTabs();
           }
         } catch (error) {
@@ -232,9 +231,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           return true;
         }
         if (current.loopFinalSummary === true) {
-          return true;
-        }
-        if (current.graphFinalSummary === true) {
           return true;
         }
         if (current.codexFinalAnswer === true) {
@@ -568,7 +564,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         const interactiveMode = payload.interactiveMode === "loop"
           || payload.interactiveMode === "loop_plus"
           || payload.interactiveMode === "coding"
-          || payload.interactiveMode === "graph"
           ? payload.interactiveMode
           : undefined;
         const normalizeModelValue = (value) => typeof value === "string" ? value.trim() : "";

@@ -1,7 +1,7 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
 import { createPromptAutoRepairController } from "../../extensionHost/promptAutoRepair";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 
 const missingCommand = (): Error => Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
 
@@ -23,8 +23,6 @@ function createHarness(options: { repaired?: boolean; failures?: Error[]; repair
     loopTaskId: "loop-task",
     loopRound: 2,
     loopSubtaskId: "subtask",
-    graphRunId: "graph-run",
-    graphNodeId: "graph-node",
     executionCwd: "/tmp/original-workspace",
     throwOnError: true,
   };

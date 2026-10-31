@@ -1,5 +1,4 @@
 import type { CliName } from "./cli/types";
-import type { GraphRunModelRoutingRecord } from "./graph/types";
 import type { LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import type { LoopTaskModelRouting } from "./loopTaskStore";
 import {
@@ -90,21 +89,6 @@ export function continueModelPairFromLoopRouting(
       : {}),
     ...(routing?.subtaskFullstack?.configId ? { fullstackConfigId: routing.subtaskFullstack.configId } : {}),
     ...(routing?.subtask.fallback === "invalid-subtask-cli" || routing?.subtaskFrontend?.fallback === "invalid-subtask-cli" || routing?.subtaskFullstack?.fallback === "invalid-subtask-cli"
-      ? { unavailableReason: "子模型 CLI 分组无效，不能派发子任务。" }
-      : {}),
-  };
-}
-
-export function continueModelPairFromGraphRouting(
-  routing: GraphRunModelRoutingRecord | null | undefined,
-): ContinueModelPair {
-  const subtaskCli = parseCliName(routing?.executor.cli) ?? null;
-  return {
-    main: normalizeContinueModelName(routing?.planner.model),
-    subtask: normalizeContinueModelName(routing?.executor.model),
-    ...(subtaskCli ? { subtaskCli } : {}),
-    ...(routing?.executor.configId ? { subtaskConfigId: routing.executor.configId } : {}),
-    ...(routing?.executor.fallback === "invalid-subtask-cli"
       ? { unavailableReason: "子模型 CLI 分组无效，不能派发子任务。" }
       : {}),
   };
@@ -369,17 +353,6 @@ export function shouldApplyCurrentContinueModels(
   current: ContinueModelPair,
 ): boolean {
   return modelSource === "current" && hasContinueModel(current);
-}
-
-export function selectGraphContinueModelRouting(
-  existing: GraphRunModelRoutingRecord | undefined,
-  current: GraphRunModelRoutingRecord,
-  modelSource: ContinueModelSource | null,
-): GraphRunModelRoutingRecord | undefined {
-  if (!shouldApplyCurrentContinueModels(modelSource, continueModelPairFromGraphRouting(current))) {
-    return existing;
-  }
-  return current;
 }
 
 export function renderContinueModelChoiceHtml(options: {

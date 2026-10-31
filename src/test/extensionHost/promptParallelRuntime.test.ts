@@ -7,7 +7,7 @@ import type { CliAttemptResult } from "../../panelDiagnostics";
 import type { TaskRunRecord, TaskRunStatus } from "../../promptRunState";
 import type { SubagentProgressStatus } from "../../subagentProgress";
 import type { ChatMessage } from "../../webview/types";
-import type { PromptRunInput, PromptRunTarget } from "../../extensionHost/graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 
 installVscodeMock();
 
@@ -26,8 +26,6 @@ type RunCliStream = NonNullable<PromptParallelRuntimeDeps["runCliStream"]>;
 type RunCliStreamHandlers = Parameters<RunCliStream>[2];
 type OpenCodeRunOutput = ReturnType<NonNullable<PromptParallelRuntimeDeps["parseOpenCodeRunOutput"]>>;
 
-const GRAPH_RUN_ID = "graph-run-1";
-const GRAPH_NODE_ID = "node-1";
 const TAB_ID = "tab-1";
 
 type RunStatusEvent = {
@@ -37,8 +35,6 @@ type RunStatusEvent = {
     message?: string;
     prompt?: string;
     startedAt?: number;
-    graphRunId?: string;
-    graphNodeId?: string;
   };
 };
 
@@ -51,8 +47,6 @@ function createPromptInput(overrides: Partial<PromptRunInput> = {}): PromptRunIn
     loopTaskId: "loop-task-1",
     loopRound: 1,
     loopSubtaskId: "loop-subtask-1",
-    graphRunId: GRAPH_RUN_ID,
-    graphNodeId: GRAPH_NODE_ID,
     ...overrides,
   };
 }
@@ -174,8 +168,6 @@ function createParallelRuntimeHarness(options: {
       loopTaskId: input.loopTaskId,
       loopRound: input.loopRound,
       loopSubtaskId: input.loopSubtaskId,
-      graphRunId: input.graphRunId,
-      graphNodeId: input.graphNodeId,
     }),
     cancelHumanInteractionForTab: () => undefined,
     consumeOpenCodeTabStreamChunk,
@@ -274,26 +266,6 @@ function createParallelRuntimeHarness(options: {
   };
 }
 
-test("records graph metadata when a parallel OpenCode run succeeds", async () => {
-  const harness = createParallelRuntimeHarness({
-    runCliStream: createAsyncRunCliStreamStub((handlers) => handlers.onExit(0)),
-  });
-
-  await harness.host.runPromptParallel(createPromptInput(), createTarget());
-
-  assert.equal(harness.taskRuns.length, 1);
-  assert.equal(harness.taskRuns[0]?.status, "end");
-  assert.equal(harness.taskRuns[0]?.graphRunId, GRAPH_RUN_ID);
-  assert.equal(harness.taskRuns[0]?.graphNodeId, GRAPH_NODE_ID);
-  assert.equal(harness.taskRuns[0]?.loopTaskId, "loop-task-1");
-  assert.equal(harness.runStatusEvents[0]?.status, "start");
-  assert.equal(harness.runStatusEvents[0]?.options?.graphRunId, GRAPH_RUN_ID);
-  assert.equal(harness.runStatusEvents[0]?.options?.graphNodeId, GRAPH_NODE_ID);
-  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
-  assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
-  assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
-});
-
 test("rejects unsupported parallel runtime CLIs before starting a run", async () => {
   const harness = createParallelRuntimeHarness();
 
@@ -333,33 +305,4 @@ test("parallel automatic repair retry has no further transient error retries", a
   await harness.host.runPromptParallel(createPromptInput({ cliCommandRepairAttempted: true }), createTarget());
   assert.equal(attempts, 1);
   assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
-});
-
-test("records graph metadata when a parallel OpenCode run fails without retry", async () => {
-  const harness = createParallelRuntimeHarness({
-    runCliStream: createAsyncRunCliStreamStub((handlers) => {
-      handlers.onStderr("provider unavailable");
-      handlers.onExit(1);
-    }),
-    parseOpenCodeRunOutput: () => ({
-      finalText: null,
-      errorText: null,
-      statusText: null,
-      hasStructuredFinalAnswer: false,
-    }),
-  });
-
-  await harness.host.runPromptParallel(createPromptInput(), createTarget());
-
-  assert.equal(harness.taskRuns.length, 1);
-  assert.equal(harness.taskRuns[0]?.status, "error");
-  assert.equal(harness.taskRuns[0]?.graphRunId, GRAPH_RUN_ID);
-  assert.equal(harness.taskRuns[0]?.graphNodeId, GRAPH_NODE_ID);
-  assert.equal(harness.taskRuns[0]?.loopSubtaskId, "loop-subtask-1");
-  assert.equal(harness.runStatusEvents.at(-1)?.status, "error");
-  assert.deepEqual(harness.memoryPersistStatuses, []);
-  assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
-  assert.ok(harness.persistedMessages.at(-1)?.messages.some((message) => (
-    message.role === "system" && message.content.includes("provider unavailable")
-  )));
 });

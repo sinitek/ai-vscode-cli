@@ -123,11 +123,11 @@ ACP 模型线值是 `JSON.stringify([provider, model])`，默认没有空格。�
 
 插件 `resolveDshConfigModel` 只在 `selectedModel` 缺失或空白时回退已配置默认模型。显式未知模型和错误 provider/model 线值返回 null，不静默改成默认模型。配置 id `deepseek-v4.1-flash` 可被原样映射为 `JSON.stringify(["sinitek-custom","deepseek-v4.1-flash"])`；`subcoco/deepseek-v4.1-flash` 等自定义 id 也按配置原样映射。只有 ACP 当前广告的值才会下发。
 
-### Loop、Loop+ 与 Graph 角色选择
+### Loop 和 Loop+ 角色选择
 
 - DSH 复用现有主模型/子模型控件，候选均来自当前活动 profile 的有序 `models`；主角色和子角色可独立选择，不引入 profile 外模型。
 - 思考力度按各角色当前模型在 profile 中声明的 `reasoningEfforts` 显示。未声明能力的模型禁用该角色选择器；配置选择按 `configId`、角色和模型隔离保存。
-- Loop、Loop+ 和 Graph 都将选中角色模型及力度传给对应 DSH ACP turn。profile 声明只控制可选项；运行前仍须由 DSH runner 检查当前 ACP `configOptions`，并通过 `session/set_config_option` 确认后应用。
+- Loop 和 Loop+ 都将选中角色模型及力度传给对应 DSH ACP turn。profile 声明只控制可选项；运行前仍须由 DSH runner 检查当前 ACP `configOptions`，并通过 `session/set_config_option` 确认后应用。
 
 ## 5. 原生 ACP 实测
 

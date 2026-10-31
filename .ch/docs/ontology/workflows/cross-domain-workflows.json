@@ -10,7 +10,7 @@
       "description": "一次涉及插件运行时的非平凡变更，应先读取规则和 ontology，再用执行计划记录范围，最终验证并按记忆规则收尾。",
       "status": "active",
       "domains": ["cli-plugin-runtime", "harness-governance"],
-      "trigger": "用户请求新增、修复或调整插件运行时、CLI 调用、会话、Loop/Graph 或配置能力。",
+      "trigger": "用户请求新增、修复或调整插件运行时、CLI 调用、会话、Loop/Loop+ 或配置能力。",
       "outcome": "代码、测试、文档和 ontology 状态一致，执行计划记录验证结果。",
       "source_refs": [
         {"path": "AGENTS.md"},

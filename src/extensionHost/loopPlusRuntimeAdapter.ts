@@ -3,7 +3,7 @@ import type { ThinkingMode } from "../cli/types";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { LoopTaskRecord } from "../loopTaskStore";
-import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import {
   createLoopPlusOrchestrationHost,
   type LoopPlusAttemptHandle,

@@ -25,7 +25,7 @@
 
 ## 非目标
 
-- 不改变 CLI 协议、Loop/Loop+、Graph 或 Webview 协议。
+- 不改变 CLI 协议、Loop/Loop+ 或 Webview 协议。
 - 不把并行运行和 interactive tab 运行合并到主运行控制器。
 - 不引入 DI 容器、框架或新依赖。
 - 不修改用户可见功能，因此不更新功能清单。

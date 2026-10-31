@@ -32,8 +32,8 @@ test("serializes subtasks that declare the same write file", () => {
 
 test("serializes subtasks that declare parent and child write paths", () => {
   const plan = buildLoopSubtaskExecutionPlan([
-    { id: "parent", writeFiles: ["src/graph"] },
-    { id: "child", writeFiles: ["src/graph/graphScheduler.ts"] },
+    { id: "parent", writeFiles: ["src/shared"] },
+    { id: "child", writeFiles: ["src/shared/writeScope.ts"] },
     { id: "independent", writeFiles: ["src/cli/types.ts"] },
   ]);
 

@@ -41,10 +41,6 @@ export function loopClarificationScope(taskId: string): string {
   return `loop:${taskId}`;
 }
 
-export function graphClarificationScope(graphRunId: string): string {
-  return `graph:${graphRunId}`;
-}
-
 export function parseOrchestratorClarification(
   value: unknown,
   fallbackInteractionId: string,

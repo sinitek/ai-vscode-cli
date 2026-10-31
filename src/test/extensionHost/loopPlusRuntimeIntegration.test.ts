@@ -575,7 +575,7 @@ test("adapter rejects corrupt snapshots, clears live prompts after completion, a
   }
 });
 
-test("adapter gives saved Loop+ mode priority and does not capture classic, vibe, or graph entry", async () => {
+test("adapter gives saved Loop+ mode priority and does not capture classic or vibe entry", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
     const now = Date.now();
@@ -632,10 +632,6 @@ test("adapter gives saved Loop+ mode priority and does not capture classic, vibe
     assert.equal(await fixture.adapter.runEventDriven(prompt("classic manual"), {
       schedulingMode: schedulingModeForInteractiveMode("loop"),
     }, fixture.target), false);
-    assert.equal(await fixture.adapter.runEventDriven({
-      ...prompt("graph"),
-      graphRunId: "graph-1",
-    }, { schedulingMode: schedulingModeForInteractiveMode("graph") }, fixture.target), false);
     assert.equal(await fixture.adapter.runEventDriven({
       ...prompt("classic-fallback"),
     }, {}, fixture.target), false);
@@ -1106,7 +1102,6 @@ test("report failure pauses without simulating a user parent stop", async () => 
     assert.deepEqual(harness.parentStopIds, []);
     assert.deepEqual(harness.fallbackTaskIds, []);
     assert.deepEqual(harness.stoppedTabs, [fixture.target.tabId]);
-    assert.equal(harness.graphStops.length, 0);
     assert.equal(fixture.hostMessages.includes("loop-plus-report-failed"), true);
     assert.equal(fixture.hostMessages.includes("loop-plus-stopped"), false);
     assert.equal((paused?.subTasks ?? []).some((item) => item.id === "D"), false);

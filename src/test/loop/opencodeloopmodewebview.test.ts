@@ -128,7 +128,7 @@ function buildHarness() {
     modelSelect: createControl(),
   };
   const normalizeInteractiveMode = (value: string) => (
-    value === "loop" || value === "graph" || value === "loop_plus" ? value : "coding"
+    value === "loop" || value === "loop_plus" ? value : "coding"
   );
   const modelFunctionSource = [
     "cliSupportsManagedModelSelection",
@@ -291,12 +291,12 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.openCodeSmallModelSelect.parentElement.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.elements.interactiveModeSelect.dispatchChange("graph");
-  assert.equal(harness.state.interactiveMode, "graph");
+  harness.elements.interactiveModeSelect.dispatchChange("loop_plus");
+  assert.equal(harness.state.interactiveMode, "loop_plus");
   assert.deepEqual(harness.postedMessages[2], {
     type: "updateSetting",
     key: "interactiveMode.opencode",
-    value: "graph",
+    value: "loop_plus",
   });
   assert.equal(harness.elements.openCodeModelGroup.style.display, "");
   assert.equal(harness.elements.openCodeSmallModelSelect.disabled, false);
@@ -304,7 +304,7 @@ test("switches OpenCode between coding and Loop model layouts and persists the m
   assert.equal(harness.elements.modelSelect.style.display, "none");
 });
 
-test("switches Codex between coding, Loop, and Graph model layouts and persists the mode", () => {
+test("switches Codex between coding, Loop, and Loop+ model layouts and persists the mode", () => {
   const harness = buildHarness();
   harness.state.currentCli = "codex";
   harness.state.interactive = { supported: true, enabled: true };
@@ -330,12 +330,12 @@ test("switches Codex between coding, Loop, and Graph model layouts and persists 
   assert.equal(harness.elements.openCodeModelGroup.style.display, "none");
   assert.equal(harness.elements.modelSelect.style.display, "none");
 
-  harness.elements.interactiveModeSelect.dispatchChange("graph");
-  assert.equal(harness.state.interactiveMode, "graph");
+  harness.elements.interactiveModeSelect.dispatchChange("loop_plus");
+  assert.equal(harness.state.interactiveMode, "loop_plus");
   assert.deepEqual(harness.postedMessages[1], {
     type: "updateSetting",
     key: "interactiveMode.codex",
-    value: "graph",
+    value: "loop_plus",
   });
   assert.equal(harness.elements.codexLoopModelGroup.style.display, "");
   assert.equal(harness.elements.codexLoopMainModelSelect.disabled, false);

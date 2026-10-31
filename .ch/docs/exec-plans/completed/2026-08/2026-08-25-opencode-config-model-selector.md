@@ -26,7 +26,7 @@ OpenCode 配置页的主模型仍使用文本组合框，和同组单选下拉�
 
 ## 非目标
 
-- 不移除 OpenCode 运行时 Loop/Graph 的子模型角色。
+- 不移除 OpenCode 运行时 Loop 的子模型角色。
 - 不更换 UI 框架、CLI 版本或模型供应商。
 
 ## 验收标准

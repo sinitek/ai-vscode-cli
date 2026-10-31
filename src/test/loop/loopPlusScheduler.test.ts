@@ -416,12 +416,12 @@ test("uses loopParallel conflict rules for running tasks and reserves pending wr
 
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
   scheduler.dispatch([
-    spec("parent", ["src/graph"]),
+    spec("parent", ["src/shared"]),
     spec("grouped", ["src/grouped.ts"], "model-store"),
     spec("editor", ["src/extension.ts"]),
   ]);
   const admitted = scheduler.dispatch([
-    spec("child", ["./src/graph/graphScheduler.ts"]),
+    spec("child", ["./src/shared/writeScope.ts"]),
     spec("same-group", ["src/other-group.ts"], "MODEL-store"),
     spec("windows", ["SRC\\Extension.ts"]),
     spec("clear", ["docs/readme.md"]),
@@ -437,8 +437,8 @@ test("uses loopParallel conflict rules for running tasks and reserves pending wr
   assert.equal(clear?.admission, "started");
 
   const directoryPlan = buildLoopSubtaskExecutionPlan([
-    { id: "parent-1", writeFiles: ["src/graph"] },
-    { id: "child-1", writeFiles: ["./src/graph/graphScheduler.ts"] },
+    { id: "parent-1", writeFiles: ["src/shared"] },
+    { id: "child-1", writeFiles: ["./src/shared/writeScope.ts"] },
   ]);
   const groupPlan = buildLoopSubtaskExecutionPlan([
     { id: "grouped-1", conflictGroup: "model-store" },

@@ -44,7 +44,7 @@ const scheduledDeps = {
     value === "codex" || value === "claude" || value === "opencode"
   ),
   isInteractiveMode: (value: unknown): value is InteractiveMode => (
-    value === "coding" || value === "plan" || value === "loop" || value === "graph"
+    value === "coding" || value === "plan" || value === "loop" || value === "loop_plus"
   ),
   isThinkingMode: (value: unknown): value is ThinkingMode => value === "high" || value === "medium",
 };
@@ -57,12 +57,13 @@ test("keeps loop_plus visible and preserves plan-to-coding plus legacy loop migr
   assert.equal(LOOP_PLUS_INTERACTIVE_MODE, "loop_plus");
   assert.equal(LOOP_PLUS_DISPLAY_NAME, "Loop+");
   assert.equal(isInteractiveMode("loop_plus"), true);
+  assert.equal(isInteractiveMode("graph"), false);
   assert.equal(normalizeVisibleInteractiveMode("loop_plus"), "loop_plus");
   assert.notEqual(normalizeVisibleInteractiveMode("loop_plus"), "coding");
   assert.equal(normalizeVisibleInteractiveMode("plan"), "coding");
   assert.equal(normalizeVisibleInteractiveMode(LEGACY_LOOP_INTERACTIVE_MODE), "loop");
   assert.equal(normalizeVisibleInteractiveMode("loop"), "loop");
-  assert.equal(normalizeVisibleInteractiveMode("graph"), "graph");
+  assert.equal(normalizeVisibleInteractiveMode("graph"), "coding");
   assert.equal(normalizeVisibleInteractiveMode("vibe"), "coding");
   assert.equal(normalizeVisibleInteractiveMode(undefined), "coding");
 });
@@ -108,6 +109,38 @@ test("restores loop_plus from workspace settings without collapsing it to Vibe",
   const staleLoaded = loadWorkspaceSettings(staleOptions);
   assert.equal(staleLoaded.interactiveModeByCli?.codex, "loop_plus");
   assert.equal(staleLoaded.interactiveModeByCli?.claude, "plan");
+});
+
+test("丢弃旧 Graph 配置与定时任务模式，保留 Loop 和 Loop+", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(testHome, "retired-mode-"));
+  const options = createWorkspaceOptions(workspaceSettingsDir, {
+    isInteractiveMode,
+    normalizeVisibleInteractiveMode,
+  });
+  const filePath = path.join(workspaceSettingsDir, "workspace.json");
+  fs.writeFileSync(filePath, JSON.stringify({
+    interactiveModeByCli: { codex: "graph", claude: "loop", opencode: "loop_plus" },
+  }), "utf8");
+  const loaded = loadWorkspaceSettings(options);
+  assert.equal(loaded.interactiveModeByCli?.codex, undefined);
+  assert.equal(normalizeVisibleInteractiveMode(loaded.interactiveModeByCli?.codex), "coding");
+  assert.equal(loaded.interactiveModeByCli?.claude, "loop");
+  assert.equal(loaded.interactiveModeByCli?.opencode, "loop_plus");
+  saveWorkspaceSettings(loaded, options);
+  const persisted = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted.interactiveModeByCli, "codex"), false);
+
+  const validTask = createScheduledTaskRecord({
+    id: "retired-mode", prompt: "旧任务", scheduledAt: 1_700_000_060_000,
+    cli: "codex", workspaceKey: "retired-mode", interactiveMode: "loop_plus",
+  }, 1_700_000_000_000);
+  const legacyTask = normalizeScheduledTaskRecord({ ...validTask, interactiveMode: "graph" }, {
+    ...scheduledDeps, isInteractiveMode,
+  });
+  assert.ok(legacyTask);
+  assert.equal(legacyTask.interactiveMode, undefined);
+  assert.deepEqual(resolveScheduledTaskExecutionConfigForTask(legacyTask, "coding"), { interactiveMode: "coding" });
+  assert.deepEqual(resolveScheduledTaskExecutionConfigForTask(legacyTask, "loop_plus"), { interactiveMode: "loop_plus" });
 });
 
 test("stores a Loop+ scheduled task without a debate execution mode", () => {
