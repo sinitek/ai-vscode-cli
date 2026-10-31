@@ -70,12 +70,12 @@
 
 - 代码目录：`src/config/configService.ts`
 - 测试目录：`src/test/config/configService.test.ts`
-- 文档目录：`ARCHITECTURE.md`、`.ch/docs/exec-plans/active/2026-10-29-config-backup-registry.md`（完成后归档至 `.ch/docs/exec-plans/completed/2026-10/`）
+- 文档目录：`ARCHITECTURE.md`、`.ch/docs/exec-plans/completed/2026-10/2026-10-29-config-backup-registry.md`
 
 ## 风险与缓解
 
 - 风险：时间戳共享与文件顺序在重构中漂移。缓解：现有 `configService.test.ts` 的 runtime backups 测试逐文件名断言，再补共享时间戳用例。
-- 风险：并行 ZCode 上下文压缩改动同处工作树。缓解：开工基线已记录 16 个 dirty 文件（`src/contextCompactionRunner.ts`、`src/interactive/zcodeRunner.ts`、`src/interactive/zcodeAppServerProtocol.ts`、`src/webview/viewContentScript/*`、`src/webview/viewContentStrings.ts`、`docs/zcode-guide.md`、FEATURE_INVENTORY、ontology、`active/2026-10-29-zcode-context-compaction.md` 等），本次仅检查自身增量；测试失败若来自这些变更，保留证据并分类。
+- 风险：并行 ZCode 上下文压缩改动同处工作树。缓解：开工基线已记录 16 个 dirty 文件（`src/contextCompactionRunner.ts`、`src/interactive/zcodeRunner.ts`、`src/interactive/zcodeAppServerProtocol.ts`、`src/webview/viewContentScript/*`、`src/webview/viewContentStrings.ts`、`docs/zcode-guide.md`、FEATURE_INVENTORY、ontology、`completed/2026-10/2026-10-29-zcode-context-compaction.md` 等），本次仅检查自身增量；测试失败若来自这些变更，保留证据并分类。
 
 ## 验证计划
 

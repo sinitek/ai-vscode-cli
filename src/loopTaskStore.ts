@@ -23,8 +23,10 @@ import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
+import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
+import { normalizeLoopSubtaskSession, readLoopContinuationSource, type LoopSubtaskSession } from "./loopSubtaskSession";
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -46,19 +48,53 @@ export type LoopTaskRole = "main" | "subtask";
 export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
 export type LoopRunStatus = "end" | "error" | "stopped";
 export type LoopTaskKind = "development" | "non_development";
+/** Loop+ 子任务实施分类。与 LoopTaskRole、LoopTaskKind 无关。 */
+export type LoopPlusTaskType = "backend" | "frontend" | "general";
 export type LoopSchedulingMode = "classic" | "event_driven";
 export type LoopPlusMainPhase = "decomposing";
+export type { LoopSubtaskMode } from "./loopPlusSubtaskMode";
+
+export const LOOP_PLUS_TASK_TYPES = ["backend", "frontend", "general"] as const;
+
+export function parseLoopPlusTaskType(value: unknown): LoopPlusTaskType | undefined {
+  return value === "backend" || value === "frontend" || value === "general" ? value : undefined;
+}
+
+/**
+ * 显式分类与旧记录缺字段必须区分。
+ * 空值或缺字段返回 undefined，调用方按原子模型/后端路由兼容。
+ * 非空未知值或错误数据类型返回 null，调用方必须拒绝。
+ */
+export function readLoopPlusTaskTypeField(value: unknown): LoopPlusTaskType | undefined | null {
+  if (value == null) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return parseLoopPlusTaskType(trimmed) ?? null;
+}
 
 export function resolveLoopSchedulingMode(value: unknown): LoopSchedulingMode {
   return typeof value === "string" && value.trim() === "event_driven" ? "event_driven" : "classic";
 }
 
 export type LoopSubtaskRecord = {
+  continueFromSubtaskId?: string;
+  executionSession?: LoopSubtaskSession;
   id: string;
   title: string;
   prompt?: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  /** Loop+ 实施分类。缺失表示旧记录，启动时走后端/原子模型路由。 */
+  taskType?: LoopPlusTaskType;
+  /** reprompt 显式声明本次交付包含编码。不从标题或正文猜测。 */
+  codingDelivery?: boolean;
   skillIds?: string[];
   skillGuidance?: string;
   status: "pending" | "running" | "completed" | "skipped" | "blocked";
@@ -88,11 +124,14 @@ export type LoopRoundSummary = {
 };
 
 export type LoopSubtaskDecision = {
+  continueFromSubtaskId?: string;
   id?: string;
   title: string;
   prompt: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  taskType?: LoopPlusTaskType;
+  codingDelivery?: boolean;
   skillIds?: string[];
 };
 
@@ -133,6 +172,10 @@ export type LoopTaskRecord = {
   loopPlusMainPhase?: LoopPlusMainPhase;
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
+  /** 新建或续跑时绑定的子任务模式。缺失时由迁移规则解释，不随输入区事后改写。 */
+  loopSubtaskMode?: LoopSubtaskMode;
+  /** 记录里的模式是非法非空值。执行必须拒绝，不能猜成 fullstack 或 split。 */
+  loopSubtaskModeInvalid?: boolean;
   status: LoopTaskStatus;
   createdAt: number;
   updatedAt: number;
@@ -170,15 +213,24 @@ export type LoopTaskModelRoute = {
 
 export type LoopTaskModelRouting = {
   main: LoopTaskModelRoute;
+  /** 子-后端。旧任务的唯一子模型也写在这里。 */
   subtask: LoopTaskModelRoute;
+  /** 子-前端。缺失时 Loop+ 前端任务不能启动，旧缺分类任务不读取此字段。 */
+  subtaskFrontend?: LoopTaskModelRoute;
+  /** 子-全栈。fullstack 模式的编码使用这一路；与后端、前端槽分开保存。 */
+  subtaskFullstack?: LoopTaskModelRoute;
 };
 
 export type LoopTaskOriginProfile = {
   configId: string;
   mainThinkingMode?: ThinkingMode;
   subtaskThinkingMode?: ThinkingMode;
+  subtaskFrontendThinkingMode?: ThinkingMode;
+  subtaskFullstackThinkingMode?: ThinkingMode;
   mainOpenCodeVariant?: string;
   subtaskOpenCodeVariant?: string;
+  subtaskFrontendOpenCodeVariant?: string;
+  subtaskFullstackOpenCodeVariant?: string;
 };
 
 export type LoopTaskStore = {
@@ -559,7 +611,9 @@ export function prepareLoopSubtaskCommunicationFile(
         `- 创建时间：${new Date().toISOString()}`,
         ``,
         `## 执行报告`,
-        `请在本节写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。`,
+        task.schedulingMode === "event_driven"
+          ? `请在本节写清：执行目标、实际修改/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议。`
+          : `请在本节写清：完成情况、实际修改/操作、涉及文件、结果、遗留问题和给主任务的建议。遵循项目既有规则自主完成工作；用户或项目规则要求的验收、测试由主任务独立派发，本次属于该验证任务时如实汇报执行结果，否则说明相关要求，供主任务安排。没有相关要求时不额外增加验收或测试。`,
         ``,
         `## 待主任务确认`,
         `- 当前状态：无`,
@@ -794,7 +848,7 @@ function preserveLoopPlusSnapshot(value: unknown): unknown {
   }
 }
 
-function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
+export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
   }
@@ -853,6 +907,7 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
   );
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
   const loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(rawAcceptancePlan);
+  const loopSubtaskMode = readLoopSubtaskModeField((raw as { loopSubtaskMode?: unknown }).loopSubtaskMode);
   return {
     id: raw.id,
     cli,
@@ -865,6 +920,8 @@ function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTask
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
+    ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
+    ...(loopSubtaskMode === null ? { loopSubtaskModeInvalid: true } : {}),
     status,
     createdAt,
     updatedAt,
@@ -909,15 +966,19 @@ export function normalizeLoopTaskModelRouting(value: unknown): LoopTaskModelRout
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
-  const raw = value as { main?: unknown; subtask?: unknown };
+  const raw = value as { main?: unknown; subtask?: unknown; subtaskFrontend?: unknown; subtaskFullstack?: unknown };
   const main = normalizeLoopTaskModelRoute(raw.main);
   const subtask = normalizeLoopTaskModelRoute(raw.subtask);
-  if (!main && !subtask) {
+  const subtaskFrontend = normalizeLoopTaskModelRoute(raw.subtaskFrontend);
+  const subtaskFullstack = normalizeLoopTaskModelRoute(raw.subtaskFullstack);
+  if (!main && !subtask && !subtaskFrontend && !subtaskFullstack) {
     return undefined;
   }
   return {
     main: main ?? {},
     subtask: subtask ?? {},
+    ...(subtaskFrontend ? { subtaskFrontend } : {}),
+    ...(subtaskFullstack ? { subtaskFullstack } : {}),
   };
 }
 
@@ -929,8 +990,12 @@ export function normalizeLoopTaskOriginProfile(value: unknown): LoopTaskOriginPr
     configId?: unknown;
     mainThinkingMode?: unknown;
     subtaskThinkingMode?: unknown;
+    subtaskFrontendThinkingMode?: unknown;
+    subtaskFullstackThinkingMode?: unknown;
     mainOpenCodeVariant?: unknown;
     subtaskOpenCodeVariant?: unknown;
+    subtaskFrontendOpenCodeVariant?: unknown;
+    subtaskFullstackOpenCodeVariant?: unknown;
   };
   const configId = typeof raw.configId === "string" ? raw.configId.trim() : "";
   if (!configId) {
@@ -938,14 +1003,22 @@ export function normalizeLoopTaskOriginProfile(value: unknown): LoopTaskOriginPr
   }
   const mainThinkingMode = normalizeLoopOriginThinkingMode(raw.mainThinkingMode);
   const subtaskThinkingMode = normalizeLoopOriginThinkingMode(raw.subtaskThinkingMode);
+  const subtaskFrontendThinkingMode = normalizeLoopOriginThinkingMode(raw.subtaskFrontendThinkingMode);
+  const subtaskFullstackThinkingMode = normalizeLoopOriginThinkingMode(raw.subtaskFullstackThinkingMode);
   const mainOpenCodeVariant = normalizeLoopOriginVariant(raw.mainOpenCodeVariant);
   const subtaskOpenCodeVariant = normalizeLoopOriginVariant(raw.subtaskOpenCodeVariant);
+  const subtaskFrontendOpenCodeVariant = normalizeLoopOriginVariant(raw.subtaskFrontendOpenCodeVariant);
+  const subtaskFullstackOpenCodeVariant = normalizeLoopOriginVariant(raw.subtaskFullstackOpenCodeVariant);
   return {
     configId,
     ...(mainThinkingMode ? { mainThinkingMode } : {}),
     ...(subtaskThinkingMode ? { subtaskThinkingMode } : {}),
+    ...(subtaskFrontendThinkingMode ? { subtaskFrontendThinkingMode } : {}),
+    ...(subtaskFullstackThinkingMode ? { subtaskFullstackThinkingMode } : {}),
     ...(mainOpenCodeVariant ? { mainOpenCodeVariant } : {}),
     ...(subtaskOpenCodeVariant ? { subtaskOpenCodeVariant } : {}),
+    ...(subtaskFrontendOpenCodeVariant ? { subtaskFrontendOpenCodeVariant } : {}),
+    ...(subtaskFullstackOpenCodeVariant ? { subtaskFullstackOpenCodeVariant } : {}),
   };
 }
 
@@ -1001,12 +1074,20 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     : "pending";
   const skillIds = normalizeLoopSkillIds((raw as { skillIds?: unknown }).skillIds);
   const skillGuidance = normalizeLoopSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
+  const taskType = readLoopPlusTaskTypeField((raw as { taskType?: unknown }).taskType);
+  const codingDelivery = (raw as { codingDelivery?: unknown }).codingDelivery === true;
+  const continueFromSubtaskId = readLoopContinuationSource(raw.continueFromSubtaskId);
+  const executionSession = normalizeLoopSubtaskSession(raw.executionSession);
   return {
     id: raw.id,
     title: raw.title,
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
+    ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
+    ...(executionSession ? { executionSession } : {}),
     conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
     writeFiles: normalizeLoopWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
+    ...(taskType ? { taskType } : {}),
+    ...(codingDelivery ? { codingDelivery } : {}),
     ...(skillIds && skillGuidance ? { skillIds, skillGuidance } : {}),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,

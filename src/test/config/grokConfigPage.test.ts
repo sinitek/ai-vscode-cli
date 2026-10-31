@@ -121,6 +121,15 @@ model = "other-api"
   return { state: sandbox, confirmations, render, find };
 }
 
+test("Grok 公共默认参数位于模型工作区上方", () => {
+  const harness = createGrokVisualEditorHarness();
+  const tree = harness.render();
+  assert.equal(tree.props.className, "grok-visual-editor");
+  assert.equal(tree.props.children[0].props["data-testid"], "grok-common-parameters");
+  assert.equal(tree.props.children[1].props.className, "grok-model-workspace");
+  assert.equal(editorNodes(tree).filter((node) => node.props["data-testid"] === "grok-common-parameters").length, 1);
+});
+
 test("Grok add dialog validates one name, supports cancellation, and sets model without an optional name", () => {
   const harness = createGrokVisualEditorHarness();
   const sidebar = harness.find("className", "grok-model-sidebar");

@@ -46,8 +46,14 @@ test("appends grok after the existing CLI enum and builds the official stdio com
   const grokSelectIds = [
     "currentCli",
     "codexLoopSubtaskCliSelect",
+    "codexLoopFullstackCliSelect",
+    "codexLoopFrontendCliSelect",
     "openCodeLoopSubtaskCliSelect",
+    "openCodeLoopFullstackCliSelect",
+    "openCodeLoopFrontendCliSelect",
     "claudeLoopSubtaskCliSelect",
+    "claudeLoopFullstackCliSelect",
+    "claudeLoopFrontendCliSelect",
     "rulesLoadCli",
   ];
   for (const id of grokSelectIds) {

@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { normalizeLoopWriteFiles } from "./loopParallel";
+import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import {
@@ -7,10 +8,12 @@ import {
   LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES,
 } from "./loopPlusAcceptancePlan";
 export { LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH, LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
-import type {
-  LoopAcceptance,
-  LoopAcceptanceCheck,
-  LoopSubtaskDecision,
+import {
+  readLoopPlusTaskTypeField,
+  type LoopAcceptance,
+  type LoopAcceptanceCheck,
+  type LoopPlusTaskType,
+  type LoopSubtaskDecision,
 } from "./loopTaskStore";
 
 export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
@@ -49,6 +52,9 @@ export type LoopPlusControlDecision = {
   title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  /** 省略时 reprompt 保留原子任务分类。 */
+  taskType?: LoopPlusTaskType;
+  codingDelivery?: boolean;
 };
 
 export type LoopPlusAcceptReview = {
@@ -461,6 +467,10 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
   const title = readOptionalText(value.title);
   const conflictGroup = readOptionalText(value.conflictGroup);
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
+  const classification = readLoopPlusWorkClassification(value);
+  if (classification === null) {
+    return null;
+  }
   if (value.action === "close") {
     return {
       id,
@@ -468,6 +478,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
       ...(title ? { title } : {}),
       ...(conflictGroup ? { conflictGroup } : {}),
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
+      ...classification,
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
@@ -481,6 +492,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     ...(title ? { title } : {}),
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
+    ...classification,
   };
 }
 
@@ -536,13 +548,46 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
   const conflictGroup = readOptionalText(value.conflictGroup);
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
   const skillIds = normalizeSkillIds(value.skillIds);
+  const continueFromSubtaskId = readLoopContinuationSource(value.continueFromSubtaskId);
+  if (continueFromSubtaskId === null) {
+    return null;
+  }
+  const classification = readLoopPlusWorkClassification(value);
+  if (classification === null) {
+    return null;
+  }
   return {
     id,
     title,
     prompt,
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
+    ...classification,
+    ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(skillIds.length > 0 ? { skillIds } : {}),
+  };
+}
+
+function readLoopPlusWorkClassification(
+  value: Record<string, unknown>,
+): { taskType?: LoopPlusTaskType; codingDelivery?: boolean } | null {
+  const taskType = hasOwn(value, "taskType")
+    ? readLoopPlusTaskTypeField(value.taskType)
+    : undefined;
+  if (taskType === null) {
+    return null;
+  }
+  if (hasOwn(value, "codingDelivery") && typeof value.codingDelivery !== "boolean") {
+    return null;
+  }
+  const codingDelivery = value.codingDelivery === true;
+  const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
+  if (taskType === "general" && (writeFiles.length > 0 || codingDelivery)) {
+    return null;
+  }
+  return {
+    ...(taskType ? { taskType } : {}),
+    ...(codingDelivery ? { codingDelivery } : {}),
   };
 }
 

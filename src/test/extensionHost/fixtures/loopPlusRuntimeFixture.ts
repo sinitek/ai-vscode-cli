@@ -83,7 +83,7 @@ export async function waitForLoopPlus(predicate: () => boolean, label: string): 
   throw new Error(`timed out: ${label}`);
 }
 
-export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number } = {}): LoopPlusRuntimeFixture {
+export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number; configId?: string | null } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
   const { readLoopTaskStore, writeLoopTaskStore } = require("../../../loopTaskStore") as typeof import("../../../loopTaskStore");
@@ -239,13 +239,14 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
   }
 
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+    getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     launchDelayMs: () => 0,
     delay: async () => undefined,
     readTask,
     createTask: ({ cli, rootPrompt, sessionId, snapshot }) => {
       taskSequence += 1;
-      const taskId = `loop-plus-${taskSequence}`;
+      const taskId = `${path.basename(rootDir)}-${taskSequence}`;
       const now = Date.now();
       const communicationDir = path.join(rootDir, "comm", taskId);
       fs.mkdirSync(communicationDir, { recursive: true });
@@ -365,11 +366,11 @@ export function createLoopPlusRuntimeFixture(options: { maxConcurrency?: number 
         },
       };
     },
-    createSubtaskTarget: (cli) => {
+    createSubtaskTarget: (cli, options) => {
       const created = {
         tabId: subtaskTabOverride ?? nextId("subtab"),
         cli,
-        sessionId: null,
+        sessionId: options?.sessionId ?? null,
       };
       createdSubtaskTargets.push(created);
       return created;

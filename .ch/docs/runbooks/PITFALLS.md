@@ -2171,8 +2171,7 @@
 - `src/cli/commandRunner.ts`
 - `src/extension.ts`
 - `src/test/cli/opencodeCommandRunner.test.ts`
-- `.ch/docs/references/cli-runtime-reference.md`
-- `.ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-workspace-cwd.md`
+- `.ch/docs/references/cli-runtime-reference.md`（OpenCode 段“cwd 是权威执行目录、child env `PWD` 必须收敛”条目）
 
 ## 历史：已移除的 Loop Workflow Skill 根分类
 
@@ -2294,7 +2293,7 @@
 - `src/extension.ts`
 - `src/test/core/panelDiagnostics.test.ts`
 - `src/test/interactive/codexRunnerRuntime.test.ts`
-- `.ch/docs/exec-plans/completed/2026-07/2026-07-14-codex-402-terminal-retry.md`
+- `.ch/docs/references/cli-runtime-reference.md`（Codex 段“可见错误走结构化 `error` trace、计费终态直接收口”条目）
 
 ## Loop 自动睡眠与定时唤醒已下线
 
@@ -2868,9 +2867,9 @@
 - 宿主旧断言把 `Hello `、`world` 和三个空格期望成 `Hello world`。这个期望不能证明协议应该丢空白。
 
 ### 长期规避
-- 非空字符串原样进入 assistant 或 thinking。空字符串、非文本和无效内容仍忽略。数组文本按原顺序拼接。
+- 只有空字符串才可忽略；非空字符串（包括纯空格、换行、制表符）原样进入 assistant 或 thinking。非文本和无效内容仍忽略。数组文本按原顺序拼接。
 - 不在分类器里缓冲、补空格、统一 trim、去重或清理尾部。
-- 避免纯空白气泡留在展示层。落盘 `sanitizeMessages` 仍可去掉整段没有可见字符的消息，但不能提前删掉流式增量。
+- 避免纯空白气泡留在展示层：展示层另行隐藏纯空白气泡，协议层不得提前丢增量。落盘 `sanitizeMessages` 仍可去掉整段没有可见字符的消息，但不能提前删掉流式增量。
 
 ### 验证方式
 - `npm run build`
@@ -2879,8 +2878,10 @@
 ### 关联资料
 - `src/interactive/grokAppServerProtocol.ts`
 - `src/interactive/grokRunner.ts`
+- `src/test/interactive/grokAppServerProtocol.test.ts`（“preserves Grok assistant and thinking text across chunk boundaries”覆盖空白 chunk 原样保留、空字符串忽略）
+- `src/test/extensionHost/grokCliHostWire.test.ts`
+- `.ch/docs/references/cli-runtime-reference.md`（Grok Build 段 `agent_message_chunk` / `agent_thought_chunk` 归类与空 chunk 约定）
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
-- `.ch/docs/exec-plans/completed/2026-10/2026-10-24-grok-stream-whitespace-contract-repair.md`
 
 ## Loop+ 验收方案快照在 Webview 发送链路中被归一化白名单丢弃
 

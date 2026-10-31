@@ -58,7 +58,7 @@ Graph Phase 1 已完成最小运行内核：用户可在 Webview 选择 Graph，
   - Phase 2B：`src/webview/graphRunPanelTypes.ts`、`src/panelStateBuilder.ts`、`src/panelDiagnostics.ts`、`src/webview/graphRunPanel.ts`、`src/webview/graphRunPanelStyles.ts`、`src/webview/graphRunPanelRenderer.ts`。
   - Phase 2C/2D：已涉及 Graph store/control/auto wake、extension runtime、panel coordinator 和 session handler。
 - 文档目录：
-  - 本执行计划：`.ch/docs/exec-plans/active/2026-07-23-graph-phase2-recovery-visualization.md`。
+  - 本执行计划：`.ch/docs/exec-plans/completed/2026-07/2026-07-23-graph-phase2-recovery-visualization.md`。
   - 已按实际能力同步设计文档、产品规格和功能清单。
 - 配置与脚本：
   - 不新增 npm 依赖，不修改 package scripts。

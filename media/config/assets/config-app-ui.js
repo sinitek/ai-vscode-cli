@@ -5827,6 +5827,7 @@ const renderZcodeVisualEditor = (state, setState, options = {}) => {
         children: [
           be.jsx("strong", { children: "公共参数" }),
           be.jsxs("div", {
+            className: "config-visual-form-grid",
             children: [
               renderSelect(
                 "协议",
@@ -7092,7 +7093,7 @@ const ConfigEditorPanel = () => {
         model_supports_reasoning_summaries: "声明当前模型是否支持 reasoning summaries。",
         name: "Provider 展示名称。",
         base_url: "Provider API Base URL。",
-        wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。",
+        wire_api: "Codex 当前仅支持 Responses API（responses）。旧协议值仅兼容保留，不代表当前 CLI 支持；可在 TOML 源码中迁移。",
         requires_openai_auth: "Provider 是否需要 OpenAI auth。",
         OPENAI_API_KEY: "OpenAI 或兼容服务 API Key。",
         OPENAI_BASE_URL: "通过环境变量覆盖 OpenAI Base URL。",
@@ -7204,10 +7205,11 @@ const ConfigEditorPanel = () => {
         const T = Array.isArray(L) ? L : [],
           value = H || "";
         return be.jsxs("label", {
+          className: "config-visual-field",
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: 3,
+            gap: 5,
             minWidth: 0,
             ...(U.fullWidth ? { width: "100%", gridColumn: "1 / -1" } : {}),
           },
@@ -7243,7 +7245,8 @@ const ConfigEditorPanel = () => {
         setClaudeVisualState((H) => (H ? claudeVisualUpdatePermissions(H, W) : H)),
       renderClaudeField = (W, H, k, L = "", U = {}) =>
         be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          className: "config-visual-field",
+          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
           children: [
             renderConfigFieldLabel(W, U.help),
             be.jsx(zi, {
@@ -7271,7 +7274,8 @@ const ConfigEditorPanel = () => {
       },
       renderClaudeListField = (W, H, k, L, U = 3, T = {}) =>
         be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          className: "config-visual-field",
+          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
           children: [
             renderConfigFieldLabel(W, T.help),
             be.jsx(Qa, {
@@ -7329,8 +7333,7 @@ const ConfigEditorPanel = () => {
           ],
           gridStyle = {
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
-            gap: "5px",
+            gap: "10px 12px",
           };
         return be.jsxs("div", {
           style: { display: "flex", flexDirection: "column", gap: "6px" },
@@ -7356,6 +7359,7 @@ const ConfigEditorPanel = () => {
                 "model sets the session default; fallbackModel supports up to three entries; availableModels restricts selection.",
               ),
               be.jsxs("div", {
+                className: "config-visual-form-grid",
                 style: gridStyle,
                 children: [
                   renderClaudeField(
@@ -7395,6 +7399,7 @@ const ConfigEditorPanel = () => {
                 "Set model names for Haiku, Sonnet, and Opus tiers, and Claude Code subagents.",
               ),
               be.jsxs("div", {
+                className: "config-visual-form-grid",
                 style: gridStyle,
                 children: [
                   renderClaudeField(
@@ -7431,6 +7436,7 @@ const ConfigEditorPanel = () => {
                 "Use API Key or Auth Token as required by your provider. Secrets remain in the local settings file.",
               ),
               be.jsxs("div", {
+                className: "config-visual-form-grid",
                 style: gridStyle,
                 children: [
                   renderClaudeField(
@@ -7460,6 +7466,7 @@ const ConfigEditorPanel = () => {
               claudeText("常用行为", "Common behavior"),
               "",
               be.jsxs("div", {
+                className: "config-visual-form-grid",
                 style: gridStyle,
                 children: [
                   renderClaudeField(
@@ -7560,6 +7567,7 @@ const ConfigEditorPanel = () => {
                 "Enter one rule per line using Claude Code Tool or Tool(specifier) syntax.",
               ),
               be.jsxs("div", {
+                className: "config-visual-form-grid",
                 style: gridStyle,
                 children: [
                   renderClaudeSelect(
@@ -7665,7 +7673,8 @@ const ConfigEditorPanel = () => {
       },
       renderOpenCodeField = (W, H, k, L, U = {}) =>
         be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+          className: "config-visual-field",
+          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
           children: [
             renderConfigFieldLabel(W, U.help),
             be.jsx(zi, {
@@ -7742,16 +7751,16 @@ const ConfigEditorPanel = () => {
                 be.jsxs("div", {
                   style: {
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-                    gap: "5px",
+                    gap: "10px 12px",
                   },
+                  className: "config-visual-form-grid",
                   children: [
                     renderOpenCodeSelect(
                       claudeText("主模型 model", "Main model"),
                       openCodeVisualState.primaryModel,
                       (L) => setOpenCodeVisualState((U) => (U ? { ...U, primaryModel: L } : U)),
                       k.map((L) => ({ value: L, label: L })),
-                      { placeholder: "provider/model", fullWidth: !0 },
+                      { placeholder: "provider/model" },
                     ),
                     renderOpenCodeSelect(
                       claudeText("共享设置 share", "Sharing mode"),
@@ -7901,9 +7910,9 @@ const ConfigEditorPanel = () => {
                         be.jsxs("div", {
                           style: {
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-                            gap: "5px",
+                            gap: "10px 12px",
                           },
+                          className: "config-visual-form-grid",
                           children: [
                             renderOpenCodeField("Provider id", W.id, (L) => updateSelectedOpenCodeProvider({ id: L }), "例如 myAPI"),
                             renderOpenCodeField("名称", W.name, (L) => updateSelectedOpenCodeProvider({ name: L }), "Provider 名称"),
@@ -8033,9 +8042,9 @@ const ConfigEditorPanel = () => {
                                 be.jsxs("div", {
                                   style: {
                                     display: "grid",
-                                    gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-                                    gap: "5px",
+                                    gap: "10px 12px",
                                   },
+                                  className: "config-visual-form-grid",
                                   children: [
                                     renderOpenCodeField("模型 id", H.id, (L) => updateSelectedOpenCodeModel({ id: L }), "模型标识"),
                                     renderOpenCodeField("模型名称", H.name, (L) => updateSelectedOpenCodeModel({ name: L }), "列表中显示的名称"),
@@ -8121,16 +8130,16 @@ const ConfigEditorPanel = () => {
             H ? codexVisualUpdateProvider(H, selectedCodexProvider.id, W) : H,
           );
       },
-      confirmDeleteCodexProvider = () => {
-        if (!selectedCodexProvider) return;
+      confirmDeleteCodexProvider = (provider = selectedCodexProvider) => {
+        if (!provider) return;
         xr.confirm({
           title: "删除 Provider",
-          content: `确定删除 ${selectedCodexProvider.name || selectedCodexProvider.id} 吗？`,
+          content: `确定删除 ${provider.name || provider.id} 吗？`,
           okText: "删除",
           cancelText: "取消",
           onOk: () =>
             setCodexVisualState((W) =>
-              W ? codexVisualDeleteProvider(W, selectedCodexProvider.id) : W,
+              W ? codexVisualDeleteProvider(W, provider.id) : W,
             ),
         });
       },
@@ -8138,7 +8147,8 @@ const ConfigEditorPanel = () => {
         (() => {
           const { suffix: T, ...Y } = U;
           return be.jsxs("label", {
-            style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
+            className: "config-visual-field",
+            style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
             children: [
               renderConfigFieldLabel(W, U.help),
               T
@@ -8180,20 +8190,6 @@ const ConfigEditorPanel = () => {
             : L;
         return renderConfigSelect(W, H, k, T, U);
       },
-      renderCodexTextArea = (W, H, k, L, U = {}) =>
-        be.jsxs("label", {
-          style: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 },
-          children: [
-            renderConfigFieldLabel(W, U.help),
-            be.jsx(Qa, {
-              value: H || "",
-              onChange: (T) => k(T.target.value),
-              placeholder: L,
-              rows: U.rows || 4,
-              style: { fontFamily: "monospace", fontSize: "12px", resize: "vertical" },
-            }),
-          ],
-        }),
       renderCodexSection = (W, H, k) =>
         be.jsxs("section", {
           style: {
@@ -8242,8 +8238,7 @@ const ConfigEditorPanel = () => {
           selectedId = grokVisualState.selectedModelId || "",
           gridStyle = {
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-            gap: "5px",
+            gap: "10px 12px",
           },
           blankOption = { value: "", label: claudeText("跟随默认", "Use default") },
           addGrokModel = () => {
@@ -8261,8 +8256,32 @@ const ConfigEditorPanel = () => {
           };
         return be.jsxs("div", {
           "data-grok-fields": grokVisualFieldIds.join(" "),
-          className: "grok-model-workspace",
+          className: "grok-visual-editor",
           children: [
+            be.jsxs("section", {
+              className: "cli-common-parameters",
+              "data-testid": "grok-common-parameters",
+              children: [
+                be.jsx("strong", { children: "公共参数" }),
+                renderCodexSelect(
+                  claudeText("默认模型", "Default model"),
+                  grokVisualState.defaultModel,
+                  (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultModel: W }) : H)),
+                  [blankOption, ...Array.from(new Set([...modelIds, grokVisualState.defaultModel].filter(Boolean))).map((value) => ({ value, label: value }))],
+                  { help: claudeText("写入 [models].default。", "Writes [models].default.") },
+                ),
+                renderCodexSelect(
+                  claudeText("默认思考档", "Default reasoning effort"),
+                  grokVisualState.defaultReasoningEffort,
+                  (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultReasoningEffort: W }) : H)),
+                  [blankOption, ...GROK_VISUAL_REASONING_EFFORTS.map((W) => ({ value: W, label: W }))],
+                  { help: claudeText("只允许 none、minimal、low、medium、high、xhigh、max。", "Only none, minimal, low, medium, high, xhigh, or max.") },
+                ),
+              ],
+            }),
+            be.jsxs("div", {
+              className: "grok-model-workspace",
+              children: [
             be.jsxs("aside", {
               className: "grok-model-sidebar",
               "aria-label": claudeText("模型管理", "Model management"),
@@ -8382,36 +8401,11 @@ const ConfigEditorPanel = () => {
             be.jsxs("div", {
               className: "grok-model-detail",
               children: [
-                renderCodexSection(
-                  claudeText("全局默认", "Global defaults"),
-                  "",
-                  be.jsxs("div", {
-                    style: gridStyle,
-                    children: [
-                      renderCodexSelect(
-                        claudeText("默认模型", "Default model"),
-                        grokVisualState.defaultModel,
-                        (W) => setGrokVisualState((H) => (H ? grokVisualUpdateState(H, { defaultModel: W }) : H)),
-                        [blankOption, ...Array.from(new Set([...modelIds, grokVisualState.defaultModel].filter(Boolean))).map((value) => ({ value, label: value }))],
-                        { help: claudeText("写入 [models].default。", "Writes [models].default.") },
-                      ),
-                      renderCodexSelect(
-                        claudeText("默认思考档", "Default reasoning effort"),
-                        grokVisualState.defaultReasoningEffort,
-                        (W) =>
-                          setGrokVisualState((H) =>
-                            H ? grokVisualUpdateState(H, { defaultReasoningEffort: W }) : H,
-                          ),
-                        [blankOption, ...GROK_VISUAL_REASONING_EFFORTS.map((W) => ({ value: W, label: W }))],
-                        { help: claudeText("只允许 none、minimal、low、medium、high、xhigh、max。", "Only none, minimal, low, medium, high, xhigh, or max.") },
-                      ),
-                    ],
-                  }),
-                ),
                 selectedId ? renderCodexSection(
                   selectedId,
                   claudeText("编辑此模型的参数；未展示的 TOML 字段会保留。", "Edit this model's settings; hidden TOML fields are preserved."),
                   be.jsxs("div", {
+                    className: "config-visual-form-grid",
                     style: gridStyle,
                     children: [
                       renderCodexField(
@@ -8482,6 +8476,8 @@ const ConfigEditorPanel = () => {
                 }),
               ],
             }),
+              ],
+            }),
           ],
         });
       },
@@ -8503,8 +8499,7 @@ const ConfigEditorPanel = () => {
           selectedId = kimiCodeVisualState.selectedModelId || "",
           gridStyle = {
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-            gap: "5px",
+            gap: "10px 12px",
           },
           blankOption = { value: "", label: "跟随默认" },
           update = (patch) =>
@@ -8536,6 +8531,7 @@ const ConfigEditorPanel = () => {
               children: [
                 be.jsx("strong", { children: "公共参数" }),
                   be.jsxs("div", {
+                    className: "config-visual-form-grid",
                     style: gridStyle,
                     children: [
                       renderCodexSelect(
@@ -8655,6 +8651,7 @@ const ConfigEditorPanel = () => {
                       selectedId,
                       "编辑此模型的参数；未展示的 TOML 字段会保留。",
                       be.jsxs("div", {
+                        className: "config-visual-form-grid",
                         style: gridStyle,
                         children: [
                           renderCodexField(
@@ -8695,6 +8692,7 @@ const ConfigEditorPanel = () => {
                       "连接参数",
                       "写入当前模型引用的 [providers.<名称>]；未展示的字段会保留在 TOML 源码中。",
                       be.jsxs("div", {
+                        className: "config-visual-form-grid",
                         style: gridStyle,
                         children: [
                           renderCodexSelect(
@@ -8815,199 +8813,132 @@ const ConfigEditorPanel = () => {
             { value: "", label: "跟随默认" },
             { value: "true", label: "true" },
             { value: "false", label: "false" },
-          ],
-          k = {
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
-            gap: "5px",
-          };
+          ];
         return be.jsxs("div", {
-          style: {
-            display: "flex",
-            gap: "6px",
-            alignItems: "stretch",
-            flexWrap: "wrap",
-            minHeight: 420,
-          },
+          className: "codex-visual-editor",
           children: [
-            be.jsxs("div", {
-              style: {
-                width: `${CONFIG_PROVIDER_CARD_WIDTH_PX}px`,
-                minWidth: `${CONFIG_PROVIDER_CARD_MIN_WIDTH_PX}px`,
-                maxWidth: "100%",
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "6px",
-                padding: "5px",
-              },
+            be.jsxs("section", {
+              className: "cli-common-parameters",
+              "data-testid": "codex-common-parameters",
               children: [
-                be.jsxs("div", {
-                  style: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-                  children: [
-                    be.jsx("strong", { children: "Provider" }),
-                    be.jsx(xn, {
-                      size: "small",
-                      onClick: () =>
-                        setCodexVisualState((L) =>
-                          L ? codexVisualAddProvider(L) : codexVisualCreateState("", ""),
-                        ),
-                      children: "新增",
-                    }),
+                be.jsx("strong", { children: "公共配置" }),
+                renderCodexField("默认模型 model", codexVisualState.model, (L) => updateCodexVisualState({ model: L }), "gpt-5.1-codex", { help: getConfigFieldHelp("model") }),
+                renderCodexSelect(
+                  "默认 Provider",
+                  codexVisualState.modelProvider,
+                  (L) => updateCodexVisualState({ modelProvider: L }),
+                  [
+                    { value: "", label: "未设置" },
+                    ...codexVisualState.providers.map((L) => ({ value: L.id, label: L.id })),
                   ],
+                  { help: getConfigFieldHelp("model_provider") },
+                ),
+                renderCodexSelect(
+                  "approval_policy",
+                  codexVisualState.approvalPolicy,
+                  (L) => updateCodexVisualState({ approvalPolicy: L }),
+                  ["", "untrusted", "on-request", "never"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                ),
+                renderCodexSelect(
+                  "sandbox_mode",
+                  codexVisualState.sandboxMode,
+                  (L) => updateCodexVisualState({ sandboxMode: L }),
+                  ["", "read-only", "workspace-write", "danger-full-access"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                ),
+                renderCodexSelect(
+                  "model_reasoning_effort",
+                  codexVisualState.reasoningEffort,
+                  (L) => updateCodexVisualState({ reasoningEffort: L }),
+                  ["", ...CODEX_VISUAL_REASONING_EFFORT_OPTIONS].map((L) => ({ value: L, label: L || "跟随默认" })),
+                ),
+                renderCodexSelect(
+                  "web_search",
+                  codexVisualState.webSearch,
+                  (L) => updateCodexVisualState({ webSearch: L }),
+                  ["", "disabled", "cached", "indexed", "live"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                ),
+                be.jsx("div", {
+                  className: "dsh-common-parameter-note",
+                  children: "少用高级参数仍保留在 TOML 配置中，可切换到源码模式查看或修改。",
                 }),
-                codexVisualState.providers.length > 0
-                  ? codexVisualState.providers.map((L) =>
-                      be.jsx(
-                        xn,
-                        {
-                          type: L.id === codexVisualState.selectedProviderId ? "primary" : "default",
-                          onClick: () => selectCodexProvider(L.id),
-                          style: { width: "100%", textAlign: "left", overflow: "hidden" },
-                          children: L.name || L.id,
-                        },
-                        L.id,
-                      ),
-                    )
-                  : be.jsx("div", {
-                      style: {
-                        padding: "10px 2px",
-                        textAlign: "center",
-                        color: "var(--text-color-secondary)",
-                      },
-                      children: "暂无 Provider，请新增",
-                    }),
               ],
             }),
             be.jsxs("div", {
-              style: {
-                flex: "1 1 420px",
-                minWidth: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: "6px",
-              },
+              className: "grok-model-workspace codex-provider-workspace",
+              "data-testid": "codex-provider-workspace",
               children: [
-                renderCodexSection(
-                  "核心配置",
-                  "编辑 ~/.codex/config.toml 中稳定常用字段；未展示的 TOML 字段会保留。",
-                  be.jsxs("div", {
-                    style: k,
-                    children: [
-                      renderCodexField("model", codexVisualState.model, (L) => updateCodexVisualState({ model: L }), "gpt-5.1-codex"),
-                      renderCodexSelect(
-                        "model_provider",
-                        codexVisualState.modelProvider,
-                        (L) => updateCodexVisualState({ modelProvider: L }),
-                        [
-                          { value: "", label: "未设置" },
-                          ...codexVisualState.providers.map((L) => ({ value: L.id, label: L.id })),
-                        ],
-                      ),
-                      renderCodexSelect(
-                        "approval_policy",
-                        codexVisualState.approvalPolicy,
-                        (L) => updateCodexVisualState({ approvalPolicy: L }),
-                        ["", "untrusted", "on-request", "never"].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexSelect(
-                        "sandbox_mode",
-                        codexVisualState.sandboxMode,
-                        (L) => updateCodexVisualState({ sandboxMode: L }),
-                        ["", "read-only", "workspace-write", "danger-full-access"].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexSelect(
-                        "model_reasoning_effort",
-                        codexVisualState.reasoningEffort,
-                        (L) => updateCodexVisualState({ reasoningEffort: L }),
-                        ["", ...CODEX_VISUAL_REASONING_EFFORT_OPTIONS].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexSelect(
-                        "model_reasoning_summary",
-                        codexVisualState.reasoningSummary,
-                        (L) => updateCodexVisualState({ reasoningSummary: L }),
-                        ["", "auto", "concise", "detailed", "none"].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexSelect(
-                        "model_verbosity",
-                        codexVisualState.verbosity,
-                        (L) => updateCodexVisualState({ verbosity: L }),
-                        ["", "low", "medium", "high"].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexTextArea(
-                        "developer_instructions",
-                        codexVisualState.developerInstructions,
-                        (L) => updateCodexVisualState({ developerInstructions: L }),
-                        "为 Codex 追加 developer instructions",
-                        { rows: 4 },
-                      ),
-                    ],
-                  }),
-                ),
-                renderCodexSection(
-                  "开关与工具",
-                  "",
-                  be.jsxs("div", {
-                    style: k,
-                    children: [
-                      renderCodexSelect(
-                        "web_search",
-                        codexVisualState.webSearch,
-                        (L) => updateCodexVisualState({ webSearch: L }),
-                        ["", "disabled", "cached", "indexed", "live"].map((L) => ({
-                          value: L,
-                          label: L || "跟随默认",
-                        })),
-                      ),
-                      renderCodexSelect("disable_response_storage", codexVisualState.disableResponseStorage, (L) => updateCodexVisualState({ disableResponseStorage: L }), H),
-                      renderCodexSelect("hide_agent_reasoning", codexVisualState.hideAgentReasoning, (L) => updateCodexVisualState({ hideAgentReasoning: L }), H),
-                      renderCodexSelect("model_supports_reasoning_summaries", codexVisualState.supportsReasoningSummaries, (L) => updateCodexVisualState({ supportsReasoningSummaries: L }), H),
-                    ],
-                  }),
-                ),
-                W
-                  ? renderCodexSection(
-                      "Provider 配置",
-                      "Provider 写入 [model_providers.<id>]；未展示的字段会保留在 TOML 源码中。",
-                      be.jsxs(be.Fragment, {
-                        children: [
+                be.jsxs("aside", {
+                  className: "grok-model-sidebar",
+                  "data-testid": "codex-provider-list",
+                  "aria-label": "Provider 列表",
+                  children: [
+                    be.jsxs("div", {
+                      className: "grok-model-list-header",
+                      children: [
+                        be.jsx("strong", { children: "Provider 列表" }),
+                        be.jsx(xn, {
+                          size: "small",
+                          "data-testid": "codex-add-provider",
+                          onClick: () =>
+                            setCodexVisualState((L) =>
+                              L ? codexVisualAddProvider(L) : codexVisualCreateState("", ""),
+                            ),
+                          children: "新增",
+                        }),
+                      ],
+                    }),
+                    codexVisualState.providers.length > 0
+                      ? be.jsx("div", {
+                          className: "grok-model-list",
+                          role: "group",
+                          "aria-label": "Provider 列表",
+                          children: codexVisualState.providers.map((provider) =>
+                            be.jsxs("div", {
+                              className: "grok-model-row",
+                              children: [
+                                be.jsx(xn, {
+                                  className: "grok-model-select",
+                                  type: provider.id === codexVisualState.selectedProviderId ? "primary" : "default",
+                                  "aria-pressed": provider.id === codexVisualState.selectedProviderId,
+                                  "data-codex-provider-id": provider.id,
+                                  title: provider.id,
+                                  onClick: () => selectCodexProvider(provider.id),
+                                  children: provider.name || provider.id,
+                                }),
+                                be.jsx(xn, {
+                                  className: "grok-model-delete",
+                                  type: "text",
+                                  size: "small",
+                                  danger: !0,
+                                  icon: be.jsx(AH, {}),
+                                  "data-codex-delete-provider-id": provider.id,
+                                  "aria-label": `删除 Provider ${provider.name || provider.id}`,
+                                  title: `删除 Provider ${provider.name || provider.id}`,
+                                  onClick: (event) => {
+                                    event.stopPropagation();
+                                    confirmDeleteCodexProvider(provider);
+                                  },
+                                }),
+                              ],
+                            }, provider.id),
+                          ),
+                        })
+                      : be.jsx("div", {
+                          role: "status",
+                          style: { padding: "8px 4px", color: "var(--text-color-secondary)", fontSize: "12px" },
+                          children: "暂无 Provider，请新增。",
+                        }),
+                  ],
+                }),
+                be.jsxs("div", {
+                  className: "grok-model-detail codex-provider-detail",
+                  children: [
+                    W
+                      ? renderCodexSection(
+                          "Provider 配置",
+                          "编辑当前 Provider；未展示的 TOML 字段会保留。",
                           be.jsxs("div", {
-                            style: {
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                              gap: "4px",
-                              marginBottom: "5px",
-                            },
-                            children: [
-                              be.jsx("strong", { children: W.name || W.id }),
-                              be.jsx(xn, {
-                                size: "small",
-                                danger: !0,
-                                onClick: confirmDeleteCodexProvider,
-                                children: "删除 Provider",
-                              }),
-                            ],
-                          }),
-                          be.jsxs("div", {
-                            style: k,
+                            className: "config-visual-form-grid",
                             children: [
                               renderCodexField("Provider id", W.id, (L) => updateSelectedCodexProvider({ id: L }), "openai"),
                               renderCodexField("name", W.name, (L) => updateSelectedCodexProvider({ name: L }), "OpenAI"),
@@ -9024,10 +8955,13 @@ const ConfigEditorPanel = () => {
                               renderCodexSelect("requires_openai_auth", W.requiresOpenaiAuth, (L) => updateSelectedCodexProvider({ requiresOpenaiAuth: L }), H),
                             ],
                           }),
-                        ],
-                      }),
-                    )
-                  : null,
+                        )
+                      : be.jsx("div", {
+                          role: "status",
+                          children: "从左侧选择或新增 Provider。",
+                        }),
+                  ],
+                }),
               ],
             }),
           ],

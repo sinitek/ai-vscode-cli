@@ -21,8 +21,17 @@ export type PromptRunInputForPanel = {
   loopSubtaskModel?: string;
   loopSubtaskCli?: CliName;
   loopSubtaskConfigId?: string;
+  loopSubtaskFrontendCli?: CliName;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendModel?: string;
+  loopSubtaskFullstackCli?: CliName;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackModel?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
+  loopSubtaskFrontendThinkingMode?: ThinkingMode;
+  loopSubtaskFullstackThinkingMode?: ThinkingMode;
+  loopSubtaskMode?: import("./loopPlusSubtaskMode").LoopSubtaskMode;
   loopContinuePrompt?: string;
   loopPlusAcceptancePlan?: import("./loopPlusAcceptancePlan").LoopPlusAcceptancePlanSnapshot;
   imagePaths?: string[];
@@ -76,6 +85,12 @@ export type PanelMessageHandlerDeps = {
   selectCliModel: (cli: CliName, model: string | null, configId?: string | null) => void;
   selectCliLoopModel?: (cli: CliName, role: "main" | "subtask", model: string | null, configId?: string | null) => void;
   selectLoopSubtaskCli?: (configId: string | null, cli: CliName | null) => void;
+  selectLoopFrontendCli?: (configId: string | null, cli: CliName | null) => void;
+  selectLoopFullstackCli?: (configId: string | null, cli: CliName | null) => boolean;
+  selectLoopSubtaskMode?: (configId: string | null, mode: import("./loopPlusSubtaskMode").LoopSubtaskMode) => boolean;
+  setLoopRoleExplicitModel?: (configId: string | null, role: "frontend" | "fullstack", model: string) => boolean;
+  setLoopRoleThinking?: (configId: string | null, role: "frontend" | "fullstack", model: string | null, thinkingMode: ThinkingMode | null) => boolean;
+  seedLoopFullstackRole?: (configId: string | null) => boolean;
   refreshOpenCodeSubtaskRouteModels?: () => Promise<void>;
   updateOpenCodeRoleModel?: (
     role: "primary" | "small",

@@ -780,6 +780,10 @@ type LoopGroupChatPanelDeps = {
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   getSelectedLoopCliModel?: (cli: CliName, role: "main" | "subtask", configId?: string | null) => string | null;
   getSelectedLoopSubtaskCli?: (configId: string | null) => CliName | null;
+  getSelectedLoopFrontendCli?: (configId: string | null) => CliName | null;
+  getSelectedLoopFullstackCli?: (configId: string | null) => CliName | null;
+  getSelectedLoopSubtaskMode?: (configId: string | null) => "fullstack" | "split" | null;
+  getLoopRoleExplicitModel?: (configId: string | null, role: "frontend" | "fullstack") => { configured: boolean; model: string };
   captureCurrentLoopOriginProfile?: (input: {
     cli: CliName;
     configId: string | null;
@@ -788,6 +792,14 @@ type LoopGroupChatPanelDeps = {
     subtaskCli?: CliName | null;
     subtaskConfigId?: string | null;
     subtaskThinkingMode?: ThinkingMode;
+    frontendModel?: string | null;
+    frontendCli?: CliName | null;
+    frontendConfigId?: string | null;
+    fullstackModel?: string | null;
+    fullstackCli?: CliName | null;
+    fullstackConfigId?: string | null;
+    subtaskFrontendThinkingMode?: ThinkingMode;
+    subtaskFullstackThinkingMode?: ThinkingMode;
   }) => LoopTaskOriginProfile | null;
   restoreOriginalLoopRuntime?: (task: LoopTaskRecord) => Promise<LoopOriginRestoreResult>;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
@@ -903,6 +915,7 @@ export function buildLoopGroupChatPanelState(
         getSelectedCliModel: deps.getSelectedCliModel,
         getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
         getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
+        getSelectedLoopFrontendCli: deps.getSelectedLoopFrontendCli,
         getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
       }),
     },
@@ -1450,8 +1463,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         modelPrompt: resumePrompt,
         contextTags: [],
         ...promptModelsFromContinuePair(originalModels),
+        ...(task.loopSubtaskMode ? { loopSubtaskMode: task.loopSubtaskMode } : {}),
         ...(profile.mainThinkingMode ? { loopMainThinkingMode: profile.mainThinkingMode } : {}),
         ...(profile.subtaskThinkingMode ? { loopSubtaskThinkingMode: profile.subtaskThinkingMode } : {}),
+        ...(profile.subtaskFrontendThinkingMode ? { loopSubtaskFrontendThinkingMode: profile.subtaskFrontendThinkingMode } : {}),
+        ...(profile.subtaskFullstackThinkingMode ? { loopSubtaskFullstackThinkingMode: profile.subtaskFullstackThinkingMode } : {}),
         loopContinuePrompt: resumePrompt,
       }, {
         targetTabId: restored.target.tabId,
@@ -1483,6 +1499,10 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       getSelectedCliModel: deps.getSelectedCliModel,
       getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
       getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
+      getSelectedLoopFrontendCli: deps.getSelectedLoopFrontendCli,
+      getSelectedLoopFullstackCli: deps.getSelectedLoopFullstackCli,
+      getSelectedLoopSubtaskMode: deps.getSelectedLoopSubtaskMode,
+      getLoopRoleExplicitModel: deps.getLoopRoleExplicitModel,
       getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
     });
     if (currentModels.unavailableReason) {
@@ -1504,9 +1524,16 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
           subtaskModel: currentModels.subtask,
           subtaskCli: currentModels.subtaskCli,
           subtaskConfigId: currentModels.subtaskConfigId,
+          frontendModel: currentModels.frontend,
+          frontendCli: currentModels.frontendCli,
+          frontendConfigId: currentModels.frontendConfigId,
+          fullstackModel: currentModels.fullstack,
+          fullstackCli: currentModels.fullstackCli,
+          fullstackConfigId: currentModels.fullstackConfigId,
         }) ?? undefined;
         deps.updateTaskRecord(task.id, {
           modelRouting: nextRouting,
+          ...(currentModels.loopSubtaskMode ? { loopSubtaskMode: currentModels.loopSubtaskMode } : {}),
           ...(originProfile ? { originProfile } : {}),
           updatedAt: Date.now(),
         });

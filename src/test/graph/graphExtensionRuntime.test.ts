@@ -274,6 +274,7 @@ test("Graph runtime host resolves role-specific models, fallbacks, and thinking 
   assert.deepEqual(host.resolveCurrentLoopModelPair("codex", "config-1"), {
     main: "stored-main",
     subtask: "stored-subtask",
+    loopSubtaskMode: "fullstack",
   });
 });
 

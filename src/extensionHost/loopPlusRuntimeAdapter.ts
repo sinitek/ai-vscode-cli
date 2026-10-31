@@ -1,3 +1,4 @@
+import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import type { ThinkingMode } from "../cli/types";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
@@ -42,6 +43,7 @@ export type LoopPlusInvocationQuery = {
 
 export type LoopPlusRuntimeAdapterDeps = {
   maxConcurrency?: number;
+  getActiveConfigIdForCli?: (cli: LoopPlusPromptTarget["cli"]) => string | null;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
   acceptanceLimit?: LoopPlusOrchestrationDeps["acceptanceLimit"];
@@ -69,7 +71,7 @@ export type LoopPlusRuntimeAdapterDeps = {
     model: string | undefined,
   ) => ThinkingMode | undefined;
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
-  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"]) => LoopPlusPromptTarget;
+  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   cancelInvocation: (tabId: string) => void;
   resolveSessionId: (target: LoopPlusPromptTarget) => string | null;
@@ -195,6 +197,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       loopSubtaskConfigId: prompt.loopSubtaskConfigId,
       loopMainThinkingMode: prompt.loopMainThinkingMode,
       loopSubtaskThinkingMode: prompt.loopSubtaskThinkingMode,
+      loopSubtaskFrontendCli: prompt.loopSubtaskFrontendCli,
+      loopSubtaskFrontendConfigId: prompt.loopSubtaskFrontendConfigId,
+      loopSubtaskFrontendModel: prompt.loopSubtaskFrontendModel,
+      loopSubtaskFrontendThinkingMode: prompt.loopSubtaskFrontendThinkingMode,
+      loopSubtaskFullstackCli: prompt.loopSubtaskFullstackCli,
+      loopSubtaskFullstackConfigId: prompt.loopSubtaskFullstackConfigId,
+      loopSubtaskFullstackModel: prompt.loopSubtaskFullstackModel,
+      loopSubtaskFullstackThinkingMode: prompt.loopSubtaskFullstackThinkingMode,
+      loopSubtaskMode: prompt.loopSubtaskMode,
     });
   }
 
@@ -214,11 +225,14 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     displayPrompt: string,
     modelPrompt: string,
     cli: PromptRunTarget["cli"],
+    executionRole?: "backend" | "frontend" | "general",
+    execution?: { configId: string | null; model?: string; thinkingMode?: ThinkingMode },
   ): PromptRunInput {
     const task = deps.readTask(taskId);
     const binding: LoopPlusPromptRoleBinding = resolveLoopPlusPromptRoleBinding({
       role,
       task,
+      executionRole,
       live: livePrompts.get(taskId) ?? null,
     });
     const promptInput: PromptRunInput = {
@@ -230,8 +244,16 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       loopSubtaskModel: binding.loopSubtaskModel,
       ...(binding.loopSubtaskCli ? { loopSubtaskCli: binding.loopSubtaskCli } : {}),
       ...(binding.loopSubtaskConfigId ? { loopSubtaskConfigId: binding.loopSubtaskConfigId } : {}),
+      ...(binding.loopSubtaskFrontendCli ? { loopSubtaskFrontendCli: binding.loopSubtaskFrontendCli } : {}),
+      ...(binding.loopSubtaskFrontendConfigId ? { loopSubtaskFrontendConfigId: binding.loopSubtaskFrontendConfigId } : {}),
+      ...(binding.loopSubtaskFrontendModel ? { loopSubtaskFrontendModel: binding.loopSubtaskFrontendModel } : {}),
+      ...(binding.loopSubtaskFullstackCli ? { loopSubtaskFullstackCli: binding.loopSubtaskFullstackCli } : {}),
+      ...(binding.loopSubtaskFullstackConfigId ? { loopSubtaskFullstackConfigId: binding.loopSubtaskFullstackConfigId } : {}),
+      ...(binding.loopSubtaskFullstackModel ? { loopSubtaskFullstackModel: binding.loopSubtaskFullstackModel } : {}),
       loopMainThinkingMode: binding.loopMainThinkingMode,
       loopSubtaskThinkingMode: binding.loopSubtaskThinkingMode,
+      loopSubtaskFrontendThinkingMode: binding.loopSubtaskFrontendThinkingMode,
+      loopSubtaskFullstackThinkingMode: binding.loopSubtaskFullstackThinkingMode,
       taskRole: role,
       loopTaskId: taskId,
       loopRound: 1,
@@ -241,8 +263,24 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       promptInput,
       cli,
       role,
-      role === "subtask" ? binding.loopSubtaskModel : binding.model,
+      role === "subtask"
+        ? (executionRole === "general" ? binding.loopMainModel : binding.model)
+        : binding.model,
     );
+    if (role === "subtask" && execution && executionRole !== "general") {
+      if (execution.model) {
+        promptInput.model = execution.model;
+        promptInput.loopSubtaskModel = execution.model;
+      }
+      if (execution.configId) {
+        promptInput.loopSubtaskConfigId = execution.configId;
+      }
+      if (execution.thinkingMode) {
+        promptInput.thinkingModeOverride = execution.thinkingMode;
+      }
+    } else if (role === "subtask" && execution?.thinkingMode && executionRole === "general") {
+      promptInput.thinkingModeOverride = execution.thinkingMode;
+    }
     return promptInput;
   }
 
@@ -317,12 +355,18 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
   }
 
   function startAttempt(request: LoopPlusAttemptRequest): LoopPlusAttemptHandle {
-    const subtaskTarget = deps.createSubtaskTarget(request.targetCli);
+    const task = deps.readTask(request.taskId);
+    const configId = request.execution?.configId ?? deps.getActiveConfigIdForCli?.(request.targetCli) ?? null;
+    const continuation = resolveLoopSubtaskSession(task ?? { subTasks: [] }, { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
+    const subtaskTarget = deps.createSubtaskTarget(request.targetCli, { sessionId: continuation.sessionId });
+    deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
     let closeTabAfterAbort = false;
     let interrupted = false;
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
-      const result = await runStartedAttempt();
+      const result = await withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
+        taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
+      });
       interrupted = result.outcome === "stopped";
       if (result.outcome === "completed" || closeTabAfterAbort) {
         await closeLoopPlusSubtaskTab(
@@ -340,6 +384,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         if (aborted) {
           return;
         }
+        persistSession();
         aborted = true;
         closeTabAfterAbort = options?.closeTab === true;
         deps.cancelInvocation(subtaskTarget.tabId);
@@ -349,7 +394,20 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       },
     };
 
+    function persistSession(sessionId = deps.resolveSessionId(subtaskTarget)): void {
+      const latest = deps.readTask(request.taskId);
+      if (!sessionId || !latest) {
+        return;
+      }
+      const recorded = latest.subTasks.find((item) => item.id === request.subtaskId)?.executionSession;
+      const recordedConfigId = recorded?.cli === request.targetCli && recorded.sessionId === sessionId ? recorded.configId : configId;
+      deps.updateTask(latest.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, request.subtaskId, { cli: request.targetCli, sessionId, configId: recordedConfigId }) });
+    }
+
     async function runStartedAttempt(): Promise<LoopPlusAttemptResult> {
+      if (aborted) {
+        return { outcome: "stopped", detail: "stopped" };
+      }
       const rootResult = await withLoopPlusExecutionRoot(
         () => deps.createExecutionRoot(),
         async (executionRoot): Promise<AttemptExecution> => {
@@ -359,7 +417,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
             request.prompt,
             request.modelPrompt,
             request.targetCli,
+            request.execution?.role,
+            request.execution,
           );
+          if (continuation.sessionId) {
+            promptInput.modelPrompt += "\n本次续接此前子任务会话。只完成本轮新指令并写入本轮沟通文件，不重复旧任务；执行目录以本轮宿主提供的 cwd 为准，不继续使用历史临时目录。";
+          }
+          if (configId) {
+            promptInput.loopSubtaskConfigId = configId;
+          }
           promptInput.loopRound = request.round;
           promptInput.loopSubtaskId = request.subtaskId;
           const root = executionRoot as { cwd?: string; dispose: () => void } | null;
@@ -384,6 +450,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         "subtask",
         request.subtaskId,
       );
+      if (!aborted) {
+        persistSession();
+      }
       const outcome = resolveAttemptOutcome({
         aborted,
         thrown: rootResult.value.thrown,
@@ -514,6 +583,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       loopSubtaskConfigId: input.loopSubtaskConfigId,
       loopMainThinkingMode: input.loopMainThinkingMode,
       loopSubtaskThinkingMode: input.loopSubtaskThinkingMode,
+      loopSubtaskFrontendCli: input.loopSubtaskFrontendCli,
+      loopSubtaskFrontendConfigId: input.loopSubtaskFrontendConfigId,
+      loopSubtaskFrontendModel: input.loopSubtaskFrontendModel,
+      loopSubtaskFrontendThinkingMode: input.loopSubtaskFrontendThinkingMode,
+      loopSubtaskFullstackCli: input.loopSubtaskFullstackCli,
+      loopSubtaskFullstackConfigId: input.loopSubtaskFullstackConfigId,
+      loopSubtaskFullstackModel: input.loopSubtaskFullstackModel,
+      loopSubtaskFullstackThinkingMode: input.loopSubtaskFullstackThinkingMode,
+      loopSubtaskMode: input.loopSubtaskMode,
     }, target, {
       resumeTaskId,
       resumeRequested,

@@ -73,6 +73,15 @@ test("parses a dispatch with one through six self-contained Chinese prompts", ()
   assert.equal(full?.subtasks?.some((item) => item.id === "ignored-because-array-wins"), false);
 });
 
+
+test("Loop+ preserves continuation sources and rejects malformed source fields", () => {
+  const candidate = { id: "repair", title: "修补", prompt: "根据此前子任务的执行上下文，修复验收反馈中的具体问题并汇报处理结果。".repeat(5), continueFromSubtaskId: " previous " };
+  assert.equal(normalizeLoopPlusDecision({ status: "dispatch", subtasks: [candidate] })?.subtasks?.[0].continueFromSubtaskId, "previous");
+  for (const value of [false, {}, 1, " "]) {
+    assert.equal(normalizeLoopPlusDecision({ status: "dispatch", subtasks: [{ ...candidate, continueFromSubtaskId: value }] }), null);
+  }
+});
+
 test("accepts a singular subtask and skips illustrative JSON before the decision", () => {
   const decision = {
     status: "dispatch",

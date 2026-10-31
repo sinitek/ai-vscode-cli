@@ -59,7 +59,7 @@ test("halves core inline spacing across the config list and editor cards", () =>
   assert.match(listPanel, /style: \{ height: "100%", padding: "4px", overflow: "auto" \}/);
   assert.match(listPanel, /className: "config-list-toolbar",[\s\S]*?gap: "4px",\s+marginBottom: "4px"/);
 
-  assert.match(editorPanel, /renderOpenCodeField =[\s\S]*?gap: 3,[\s\S]*?padding: "8px"/);
+  assert.match(editorPanel, /renderOpenCodeField =[\s\S]*?className: "config-visual-field",[\s\S]*?gap: 5,[\s\S]*?padding: "8px"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-claude",[\s\S]*?padding: "8px"[\s\S]*?gap: "8px"[\s\S]*?marginBottom: "6px"[\s\S]*?gap: 6/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-opencode",[\s\S]*?padding: "8px"[\s\S]*?bodyStyle: \{[\s\S]*?padding: "8px",\s+gap: "8px"/);
   assert.match(editorPanel, /className: "config-editor-shell config-editor-codex",[\s\S]*?padding: "8px"[\s\S]*?bodyStyle: \{[\s\S]*?padding: "8px",\s+gap: "8px"/);

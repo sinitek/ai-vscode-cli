@@ -74,6 +74,42 @@ function readSkillTask(filePath: string): SkillTaskRecord {
   return task;
 }
 
+test("subtask continuation and execution session survive storage while malformed bindings are dropped", () => {
+  const task = createLegacyTask();
+  const session = { cli: "codex" as const, sessionId: "thread-retained", configId: "profile-a" };
+  task.subTasks[0].continueFromSubtaskId = "previous";
+  task.subTasks[0].executionSession = session;
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const restored = loopTaskStore.readLoopTaskStore(task.taskStoreFile).tasks[0];
+  assert.equal(restored.subTasks[0].continueFromSubtaskId, "previous");
+  assert.deepEqual(restored.subTasks[0].executionSession, session);
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].subTasks[0].executionSession.cli = "invalid-cli";
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw), "utf8");
+  assert.equal(loopTaskStore.readLoopTaskStore(task.taskStoreFile).tasks[0].subTasks[0].executionSession, undefined);
+});
+
+test("classic and legacy reports are lightweight while Loop+ keeps its verification report template", () => {
+  for (const schedulingMode of [undefined, "classic", "event_driven"] as const) {
+    const task = { ...createLegacyTask(), schedulingMode };
+    loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+    const communicationFile = loopTaskStore.prepareLoopSubtaskCommunicationFile(task, task.subTasks[0], 1, 0);
+    const content = fs.readFileSync(communicationFile, "utf8");
+    if (schedulingMode === "event_driven") {
+      assert.match(content, /执行目标、实际修改\/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议/u);
+      assert.doesNotMatch(content, /没有相关要求时不额外增加验收或测试/u);
+    } else {
+      assert.match(content, /完成情况、实际修改\/操作、涉及文件、结果、遗留问题/u);
+      assert.match(content, /用户或项目规则要求的验收、测试由主任务独立派发/u);
+      assert.match(content, /没有相关要求时不额外增加验收或测试/u);
+      assert.doesNotMatch(content, /涉及文件、验证命令与结果/u);
+    }
+    fs.appendFileSync(communicationFile, "\n已汇报的结果\n");
+    loopTaskStore.prepareLoopSubtaskCommunicationFile(task, task.subTasks[0], 1, 0);
+    assert.ok(fs.readFileSync(communicationFile, "utf8").endsWith("\n已汇报的结果\n"));
+  }
+});
+
 test("accepts optional skill IDs on subtask decisions without changing legacy decisions", () => {
   const legacyDecision: SkillSubtaskDecision = {
     title: "Legacy decision",

@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
 import { parseCliName } from "../subtaskCliRoute";
+import { resolveStoredLoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { ChatMessage, ChatMessageAction } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "./graphRuntime";
 import { t } from "../i18n";
@@ -33,6 +34,7 @@ import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
 import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskPromptResumeCandidate, isLoopTaskSessionCompatible } from "../panelDiagnostics";
 import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
+import { readLoopContinuationSource } from "../loopSubtaskSession";
 
 export type LoopPlusPromptRoleBinding = {
   model?: string;
@@ -42,6 +44,16 @@ export type LoopPlusPromptRoleBinding = {
   loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
+  loopSubtaskFrontendModel?: string;
+  loopSubtaskFrontendCli?: CliName;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendThinkingMode?: ThinkingMode;
+  loopSubtaskFullstackModel?: string;
+  loopSubtaskFullstackCli?: CliName;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackThinkingMode?: ThinkingMode;
+  /** 本次子任务实际执行角色。缺省保持原有子模型绑定。 */
+  executionRole?: "backend" | "frontend" | "general";
 };
 
 export function createLoopPlusPersistedTaskRefresher<TPatch>(deps: {
@@ -134,7 +146,8 @@ function normalizeLoopPlusModelName(value: unknown): string | undefined {
 
 export function resolveLoopPlusPromptRoleBinding(input: {
   role: "main" | "subtask";
-  task: Pick<LoopTaskRecord, "cli" | "modelRouting" | "originProfile"> | null;
+  task: Pick<LoopTaskRecord, "cli" | "modelRouting" | "originProfile" | "loopSubtaskMode" | "loopSubtaskModeInvalid"> | null;
+  executionRole?: "backend" | "frontend" | "general";
   live?: {
     model?: string;
     loopMainModel?: string;
@@ -143,6 +156,14 @@ export function resolveLoopPlusPromptRoleBinding(input: {
     loopSubtaskConfigId?: string;
     loopMainThinkingMode?: ThinkingMode;
     loopSubtaskThinkingMode?: ThinkingMode;
+    loopSubtaskFrontendModel?: string;
+    loopSubtaskFrontendCli?: CliName;
+    loopSubtaskFrontendConfigId?: string;
+    loopSubtaskFrontendThinkingMode?: ThinkingMode;
+    loopSubtaskFullstackModel?: string;
+    loopSubtaskFullstackCli?: CliName;
+    loopSubtaskFullstackConfigId?: string;
+    loopSubtaskFullstackThinkingMode?: ThinkingMode;
   } | null;
 }): LoopPlusPromptRoleBinding {
   const live = input.live ?? null;
@@ -156,17 +177,78 @@ export function resolveLoopPlusPromptRoleBinding(input: {
   const subtaskModel = normalizeLoopPlusModelName(live?.loopSubtaskModel)
     ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtask.model)
     ?? (crossCli ? undefined : mainModel);
+  const frontendCli = parseCliName(live?.loopSubtaskFrontendCli) ?? parseCliName(input.task?.modelRouting?.subtaskFrontend?.cli);
+  const frontendCrossCli = Boolean(frontendCli && input.task?.cli && frontendCli !== input.task.cli);
+  const frontendConfigId = normalizeLoopPlusModelName(live?.loopSubtaskFrontendConfigId)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtaskFrontend?.configId);
+  const frontendModel = normalizeLoopPlusModelName(live?.loopSubtaskFrontendModel)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtaskFrontend?.model);
+  const fullstackCli = parseCliName(live?.loopSubtaskFullstackCli) ?? parseCliName(input.task?.modelRouting?.subtaskFullstack?.cli);
+  const fullstackCrossCli = Boolean(fullstackCli && input.task?.cli && fullstackCli !== input.task.cli);
+  const fullstackConfigId = normalizeLoopPlusModelName(live?.loopSubtaskFullstackConfigId)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtaskFullstack?.configId);
+  const fullstackModel = normalizeLoopPlusModelName(live?.loopSubtaskFullstackModel)
+    ?? normalizeLoopPlusModelName(input.task?.modelRouting?.subtaskFullstack?.model);
+  const fullstackThinking = live?.loopSubtaskFullstackThinkingMode ?? input.task?.originProfile?.subtaskFullstackThinkingMode;
+  const storedMode = resolveStoredLoopSubtaskMode({
+    loopSubtaskMode: input.task?.loopSubtaskMode,
+    loopSubtaskModeInvalid: input.task?.loopSubtaskModeInvalid,
+    frontendRoute: input.task?.modelRouting?.subtaskFrontend,
+  });
+  const legacyAtomic = storedMode === "fullstack"
+    && !input.task?.loopSubtaskMode
+    && !input.task?.modelRouting?.subtaskFullstack;
+  const role = input.executionRole;
+  const selectedModel = role === "general"
+    ? mainModel
+    : role === "frontend"
+      ? frontendModel
+      : subtaskModel;
   const binding: LoopPlusPromptRoleBinding = {
-    model: input.role === "subtask" ? subtaskModel : mainModel,
+    model: input.role === "subtask" ? selectedModel : mainModel,
     loopMainModel: mainModel,
     loopSubtaskModel: subtaskModel,
     ...(crossCli && subtaskCli ? { loopSubtaskCli: subtaskCli } : {}),
     ...(subtaskConfigId ? { loopSubtaskConfigId: subtaskConfigId } : {}),
+    ...(frontendModel ? { loopSubtaskFrontendModel: frontendModel } : {}),
+    ...(frontendCrossCli && frontendCli ? { loopSubtaskFrontendCli: frontendCli } : {}),
+    ...(frontendConfigId ? { loopSubtaskFrontendConfigId: frontendConfigId } : {}),
+    ...(fullstackModel ? { loopSubtaskFullstackModel: fullstackModel } : {}),
+    ...(fullstackCrossCli && fullstackCli ? { loopSubtaskFullstackCli: fullstackCli } : {}),
+    ...(fullstackConfigId ? { loopSubtaskFullstackConfigId: fullstackConfigId } : {}),
     loopMainThinkingMode: live?.loopMainThinkingMode ?? input.task?.originProfile?.mainThinkingMode,
-    loopSubtaskThinkingMode: crossCli
-      ? (live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode)
-      : (live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode),
+    loopSubtaskThinkingMode: live?.loopSubtaskThinkingMode ?? input.task?.originProfile?.subtaskThinkingMode,
+    loopSubtaskFrontendThinkingMode: live?.loopSubtaskFrontendThinkingMode ?? input.task?.originProfile?.subtaskFrontendThinkingMode,
+    loopSubtaskFullstackThinkingMode: fullstackThinking,
+    ...(role ? { executionRole: role } : {}),
   };
+  if (input.role === "subtask" && storedMode === "fullstack" && !legacyAtomic && role !== "general") {
+    binding.model = fullstackModel;
+    binding.loopSubtaskModel = fullstackModel;
+    if (fullstackCrossCli && fullstackCli) {
+      binding.loopSubtaskCli = fullstackCli;
+    } else {
+      delete binding.loopSubtaskCli;
+    }
+    binding.loopSubtaskConfigId = fullstackConfigId ?? normalizeLoopPlusModelName(input.task?.originProfile?.configId);
+    binding.loopSubtaskThinkingMode = fullstackThinking;
+    return binding;
+  }
+  if (input.role === "subtask" && role === "general") {
+    binding.model = mainModel;
+    delete binding.loopSubtaskCli;
+    binding.loopSubtaskConfigId = normalizeLoopPlusModelName(input.task?.originProfile?.configId);
+  } else if (input.role === "subtask" && role === "frontend") {
+    binding.model = frontendModel;
+    if (frontendCrossCli && frontendCli) {
+      binding.loopSubtaskCli = frontendCli;
+    } else {
+      delete binding.loopSubtaskCli;
+    }
+    binding.loopSubtaskConfigId = frontendConfigId ?? normalizeLoopPlusModelName(input.task?.originProfile?.configId);
+    binding.loopSubtaskModel = frontendModel;
+    binding.loopSubtaskThinkingMode = binding.loopSubtaskFrontendThinkingMode;
+  }
   return binding;
 }
 
@@ -405,23 +487,16 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       ? raw.finalSummary.trim()
       : "";
     const roundSummaries = normalizeLoopRoundSummaries((raw as { roundSummaries?: unknown }).roundSummaries);
-    if (
-      !acceptance?.passed
-      || !acceptance.checks.every((check) => check.passed)
-      || requirementCoverage.length === 0
-      || !requirementCoverage.every((item) => item.passed)
-      || !finalSummary
-      || !roundSummaries
-    ) {
+    if (!finalSummary) {
       return null;
     }
     return {
       status: "completed",
       ...(answerConclusion ? { answerConclusion } : {}),
       finalSummary,
-      requirementCoverage,
-      roundSummaries,
-      acceptance,
+      ...(requirementCoverage.length > 0 ? { requirementCoverage } : {}),
+      ...(roundSummaries ? { roundSummaries } : {}),
+      ...(acceptance ? { acceptance } : {}),
       estimatedRemainingRounds: 0,
     };
   }
@@ -457,7 +532,7 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
   return {
     status: "continue",
-    acceptance: acceptance ?? { passed: false, checks: [] },
+    ...(acceptance ? { acceptance } : {}),
     subtask: subtasks[0],
     subtasks,
     parallelReason: typeof (raw as { parallelReason?: unknown }).parallelReason === "string"
@@ -512,6 +587,7 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
     conflictGroup?: unknown;
     writeFiles?: unknown;
     skillIds?: unknown;
+    continueFromSubtaskId?: unknown;
   };
   const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
   const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
@@ -524,6 +600,10 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
   const conflictGroup = typeof subtask.conflictGroup === "string" && subtask.conflictGroup.trim()
     ? subtask.conflictGroup.trim()
     : undefined;
+  const continueFromSubtaskId = readLoopContinuationSource(subtask.continueFromSubtaskId);
+  if (continueFromSubtaskId === null) {
+    return null;
+  }
   const writeFiles = normalizeLoopWriteFiles(subtask.writeFiles);
   const skillIds = Array.isArray(subtask.skillIds)
     ? subtask.skillIds
@@ -538,6 +618,7 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
     conflictGroup,
     writeFiles: writeFiles.length > 0 ? writeFiles : undefined,
     ...(skillIds.length > 0 ? { skillIds } : {}),
+    ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
   };
 }
 
@@ -639,8 +720,11 @@ function applyLoopMainDecision(
 function appendLoopMainDecisionSummary(task: LoopTaskRecord, decision: LoopMainDecision): void {
   try {
     fs.mkdirSync(path.dirname(task.mainCommunicationFile), { recursive: true });
+    const decisionHeading = task.schedulingMode === "event_driven"
+      ? (decision.status === "completed" ? "最终验收" : "复核结论")
+      : (decision.status === "completed" ? "完成结论" : "进度判断");
     const lines: string[] = [
-      `## 主任务${decision.status === "completed" ? "最终验收" : "复核结论"}`,
+      `## 主任务${decisionHeading}`,
       `- 时间：${new Date().toISOString()}`,
       `- 状态：${decision.status}`,
     ];
@@ -918,7 +1002,9 @@ function appendLoopSubtaskCompletionAutoLog(
     lines.push(`- 输出摘要：${summary}`);
   }
   if (verification.unitTest === "unknown" || verification.build === "unknown") {
-    lines.push("- 备注：当前记录未明确声明全部验证结果，主任务复核时需重点确认。");
+    lines.push(task.schedulingMode === "event_driven"
+      ? "- 备注：当前记录未明确声明全部验证结果，主任务复核时需重点确认。"
+      : "- 备注：主任务依据子任务汇报判断完成；仅当用户或项目规则要求时，另派独立子任务完成相关验证。");
   }
 
   try {

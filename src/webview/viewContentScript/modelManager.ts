@@ -523,6 +523,159 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         return { mainCli, mainConfigId, subtaskCli, crossCli, subtaskConfigId, configPending, unavailableReason };
       }
 
+      function getLoopFrontendRoute() {
+        const mainCli = state.currentCli;
+        const mainConfigId = getActiveConfigIdForStateCli(mainCli);
+        const stored = mainConfigId && state.selectedLoopFrontendCliByConfigId
+          ? state.selectedLoopFrontendCliByConfigId[mainConfigId]
+          : "";
+        const names = typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
+        const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
+        const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
+        const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
+        const crossCli = Boolean(subtaskCli) && subtaskCli !== mainCli;
+        const subtaskConfigId = crossCli ? getActiveConfigIdForStateCli(subtaskCli) : mainConfigId;
+        const targetConfigLoaded = state.configStateByCli && Object.prototype.hasOwnProperty.call(state.configStateByCli, subtaskCli);
+        const configPending = crossCli && !subtaskConfigId && !targetConfigLoaded;
+        let unavailableReason = "";
+        if (state.modelIssuesByCli && state.modelIssuesByCli[subtaskCli]) {
+          unavailableReason = state.modelIssuesByCli[subtaskCli];
+        } else if (crossCli && !subtaskConfigId) {
+          unavailableReason = t("loopSubtaskRouteMissingConfig");
+        }
+        return { mainCli, mainConfigId, subtaskCli, crossCli, subtaskConfigId, configPending, unavailableReason };
+      }
+
+      function getLoopSubtaskMode() {
+        const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
+        const stored = mainConfigId && state.selectedLoopSubtaskModeByConfigId
+          ? state.selectedLoopSubtaskModeByConfigId[mainConfigId]
+          : "";
+        return stored === "split" ? "split" : "fullstack";
+      }
+
+      function getLoopNamedRoute(role) {
+        const mainCli = state.currentCli;
+        const mainConfigId = getActiveConfigIdForStateCli(mainCli);
+        const map = role === "fullstack" ? state.selectedLoopFullstackCliByConfigId : state.selectedLoopFrontendCliByConfigId;
+        const stored = mainConfigId && map ? map[mainConfigId] : "";
+        const names = typeof getEnabledCliNames === "function"
+          ? getEnabledCliNames()
+          : (Array.isArray(CLI_NAMES) ? CLI_NAMES : ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]);
+        const storedEnabled = stored && names.indexOf(stored) >= 0 ? stored : "";
+        const mainEnabled = names.indexOf(mainCli) >= 0 ? mainCli : "";
+        const subtaskCli = storedEnabled || mainEnabled || names[0] || "";
+        const crossCli = Boolean(subtaskCli) && subtaskCli !== mainCli;
+        const subtaskConfigId = crossCli ? getActiveConfigIdForStateCli(subtaskCli) : mainConfigId;
+        const targetConfigLoaded = state.configStateByCli && Object.prototype.hasOwnProperty.call(state.configStateByCli, subtaskCli);
+        const configPending = crossCli && !subtaskConfigId && !targetConfigLoaded;
+        let unavailableReason = "";
+        if (state.modelIssuesByCli && state.modelIssuesByCli[subtaskCli]) {
+          unavailableReason = state.modelIssuesByCli[subtaskCli];
+        } else if (crossCli && !subtaskConfigId) {
+          unavailableReason = t("loopSubtaskRouteMissingConfig");
+        }
+        return { mainCli, mainConfigId, subtaskCli, crossCli, subtaskConfigId, configPending, unavailableReason, role };
+      }
+
+      function readExplicitRoleModel(configId, role) {
+        const bucket = configId && state.loopRoleExplicitModelByConfigId
+          ? state.loopRoleExplicitModelByConfigId[configId]
+          : null;
+        if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, role)) {
+          return null;
+        }
+        return typeof bucket[role] === "string" ? bucket[role] : "";
+      }
+
+      function handleLoopNamedCliChange(role, nextCli) {
+        const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
+        if (!mainConfigId || !nextCli) {
+          return;
+        }
+        const key = role === "fullstack" ? "selectedLoopFullstackCliByConfigId" : "selectedLoopFrontendCliByConfigId";
+        if (!state[key] || typeof state[key] !== "object") {
+          state[key] = {};
+        }
+        state[key][mainConfigId] = nextCli;
+        vscode.postMessage({
+          type: "updateSetting",
+          key: (role === "fullstack" ? "selectedLoopFullstackCli." : "selectedLoopFrontendCli.") + mainConfigId,
+          value: nextCli,
+        });
+        if (typeof updateLoopSubtaskTargetControls === "function") {
+          updateLoopSubtaskTargetControls();
+        }
+      }
+
+      function handleLoopRoleModelChange(role, rawValue) {
+        const route = getLoopNamedRoute(role);
+        if (!route || route.subtaskCli === "claude" || route.unavailableReason) {
+          return;
+        }
+        const value = typeof normalizeModelSelection === "function" ? normalizeModelSelection(rawValue) : String(rawValue || "").trim();
+        const configId = route.subtaskConfigId || route.mainConfigId;
+        if (!configId) {
+          return;
+        }
+        if (!state.loopRoleExplicitModelByConfigId || typeof state.loopRoleExplicitModelByConfigId !== "object") {
+          state.loopRoleExplicitModelByConfigId = {};
+        }
+        const current = state.loopRoleExplicitModelByConfigId[configId] || {};
+        current[role] = value;
+        state.loopRoleExplicitModelByConfigId[configId] = current;
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "loopRoleExplicitModel",
+          value: { configId, role, model: value },
+        });
+      }
+
+      function handleLoopRoleThinkingChange(role, rawValue) {
+        const route = getLoopNamedRoute(role);
+        if (!route || route.unavailableReason) {
+          return;
+        }
+        const value = normalizeSubtaskThinkingValue(route.subtaskCli, rawValue) || "medium";
+        const configId = route.subtaskConfigId || route.mainConfigId;
+        const explicit = readExplicitRoleModel(configId, role);
+        const model = explicit == null ? "" : explicit;
+        const thinkingMap = role === "fullstack" ? "selectedLoopFullstackThinkingByConfigId" : "selectedLoopFrontendThinkingByConfigId";
+        if (!state[thinkingMap] || typeof state[thinkingMap] !== "object") {
+          state[thinkingMap] = {};
+        }
+        const byModel = state[thinkingMap][configId] || {};
+        byModel[model || "__default__"] = value;
+        state[thinkingMap][configId] = byModel;
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "loopRoleThinking",
+          value: { configId, role, model, thinkingMode: value },
+        });
+      }
+
+      function handleLoopFrontendCliChange(nextCli) {
+        const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
+        if (!mainConfigId || !nextCli) {
+          return;
+        }
+        if (!state.selectedLoopFrontendCliByConfigId || typeof state.selectedLoopFrontendCliByConfigId !== "object") {
+          state.selectedLoopFrontendCliByConfigId = {};
+        }
+        state.selectedLoopFrontendCliByConfigId[mainConfigId] = nextCli;
+        state.pendingLoopFrontendCliSelection = { configId: mainConfigId, cli: nextCli };
+        vscode.postMessage({
+          type: "updateSetting",
+          key: "selectedLoopFrontendCli." + mainConfigId,
+          value: nextCli,
+        });
+        if (typeof updateLoopSubtaskTargetControls === "function") {
+          updateLoopSubtaskTargetControls();
+        }
+      }
+
       function shouldShowSubtaskRouteIssue(interactiveMode) {
         return interactiveMode === "loop" || interactiveMode === "graph" || interactiveMode === "loop_plus";
       }
@@ -688,48 +841,183 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         const route = getLoopSubtaskRoute();
         const mode = normalizeInteractiveMode(state.interactiveMode);
         const active = mode === "loop" || mode === "graph" || mode === "loop_plus";
+        const loopPlus = mode === "loop_plus";
+        const subtaskMode = getLoopSubtaskMode();
+        const showSplitRows = loopPlus && subtaskMode === "split";
+        const showFullstackRow = loopPlus && subtaskMode !== "split";
         const showModel = active && route.subtaskCli !== "claude";
         const showThinking = active;
+        const showFrontendRow = showSplitRows;
+        if (document.body) {
+          document.body.classList.toggle("loop-plus-roles", loopPlus);
+        }
+        if (elements.loopPlusFullstackToggle) {
+          const box = elements.loopPlusFullstackToggle;
+          if (!state.pendingLoopSubtaskMode) {
+            box.checked = subtaskMode !== "split";
+          }
+          box.disabled = false;
+        }
         const rows = [
-          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: isLoopRoleModelMode(state.currentCli, mode) },
-          { cli: elements.openCodeLoopSubtaskCliSelect, model: elements.openCodeSmallModelSelect, thinking: elements.openCodeSmallThinkingMode, enabled: active && state.currentCli === "opencode" },
-          { cli: elements.claudeLoopSubtaskCliSelect, model: elements.claudeLoopSubtaskModelSelect, thinking: elements.claudeLoopSubtaskThinkingMode, enabled: active && state.currentCli === "claude" },
+          { cli: elements.codexLoopFullstackCliSelect, model: elements.codexLoopFullstackModelSelect, thinking: elements.codexLoopFullstackThinkingMode, enabled: showFullstackRow && isLoopRoleModelMode(state.currentCli, mode), role: "fullstack" },
+          { cli: elements.openCodeLoopFullstackCliSelect, model: elements.openCodeFullstackModelSelect, thinking: elements.openCodeFullstackThinkingMode, enabled: showFullstackRow && state.currentCli === "opencode", role: "fullstack" },
+          { cli: elements.claudeLoopFullstackCliSelect, model: elements.claudeLoopFullstackModelSelect, thinking: elements.claudeLoopFullstackThinkingMode, enabled: showFullstackRow && state.currentCli === "claude", role: "fullstack" },
+          { cli: elements.codexLoopSubtaskCliSelect, model: elements.codexLoopSubtaskModelSelect, thinking: elements.codexLoopSubtaskThinkingMode, enabled: (!loopPlus && isLoopRoleModelMode(state.currentCli, mode)) || (showSplitRows && isLoopRoleModelMode(state.currentCli, mode)), role: "backend" },
+          { cli: elements.openCodeLoopSubtaskCliSelect, model: elements.openCodeSmallModelSelect, thinking: elements.openCodeSmallThinkingMode, enabled: (!loopPlus && active && state.currentCli === "opencode") || (showSplitRows && state.currentCli === "opencode"), role: "backend" },
+          { cli: elements.claudeLoopSubtaskCliSelect, model: elements.claudeLoopSubtaskModelSelect, thinking: elements.claudeLoopSubtaskThinkingMode, enabled: (!loopPlus && active && state.currentCli === "claude") || (showSplitRows && state.currentCli === "claude"), role: "backend" },
+          { cli: elements.codexLoopFrontendCliSelect, model: elements.codexLoopFrontendModelSelect, thinking: elements.codexLoopFrontendThinkingMode, enabled: showFrontendRow && isLoopRoleModelMode(state.currentCli, mode), role: "frontend" },
+          { cli: elements.openCodeLoopFrontendCliSelect, model: elements.openCodeFrontendModelSelect, thinking: elements.openCodeFrontendThinkingMode, enabled: showFrontendRow && state.currentCli === "opencode", role: "frontend" },
+          { cli: elements.claudeLoopFrontendCliSelect, model: elements.claudeLoopFrontendModelSelect, thinking: elements.claudeLoopFrontendThinkingMode, enabled: showFrontendRow && state.currentCli === "claude", role: "frontend" },
         ];
         rows.forEach((row) => {
+          const rowElement = row.cli && row.cli.parentElement;
+          if (rowElement) {
+            const visible = row.enabled;
+            rowElement.hidden = !visible;
+            rowElement.style.display = visible ? "" : "none";
+          }
+          if (row.role === "backend" && row.cli && showFrontendRow) {
+            const label = row.cli.parentElement && row.cli.parentElement.querySelector("label");
+            if (label && typeof t === "function") {
+              label.textContent = t("loopPlusBackendModelLabel");
+            }
+            row.cli.title = t("loopPlusBackendCliSelectAria");
+            row.cli.setAttribute("aria-label", t("loopPlusBackendCliSelectAria"));
+          } else if (row.role === "backend" && row.cli && !showFrontendRow) {
+            const label = row.cli.parentElement && row.cli.parentElement.querySelector("label");
+            if (label && typeof t === "function") {
+              label.textContent = t("codexLoopSubtaskModelLabel");
+            }
+            row.cli.title = t("loopSubtaskCliSelectAria");
+            row.cli.setAttribute("aria-label", t("loopSubtaskCliSelectAria"));
+          }
           if (row.cli) {
-            fillSubtaskCliSelect(row.cli, route.subtaskCli);
+            const named = row.role === "frontend" || row.role === "fullstack";
+            fillSubtaskCliSelect(row.cli, named ? getLoopNamedRoute(row.role).subtaskCli : route.subtaskCli);
             row.cli.disabled = !row.enabled;
+            if (!row.enabled) {
+              row.cli.tabIndex = -1;
+            }
           }
           if (!row.enabled) {
             return;
           }
           setRouteControlVisible(row.model, showModel);
           setRouteControlVisible(row.thinking, showThinking);
-          if (showModel) {
-            populateSubtaskModelSelect(row.model, route);
+          const activeRoute = row.role === "frontend" || row.role === "fullstack"
+            ? getLoopNamedRoute(row.role)
+            : route;
+          const roleShowModel = row.enabled && activeRoute.subtaskCli !== "claude";
+          const roleShowThinking = row.enabled;
+          if (roleShowModel) {
+            populateSubtaskModelSelect(row.model, activeRoute);
+            if ((row.role === "frontend" || row.role === "fullstack") && row.model && !isSelectFocused(row.model)) {
+              const explicit = readExplicitRoleModel(activeRoute.subtaskConfigId || activeRoute.mainConfigId, row.role);
+              if (explicit != null) {
+                row.model.value = explicit;
+              }
+            }
           } else if (row.model && !isSelectFocused(row.model)) {
             row.model.innerHTML = "";
           }
-          if (showThinking) {
-            populateSubtaskThinkingSelect(row.thinking, route);
+          if (roleShowThinking) {
+            populateSubtaskThinkingSelect(row.thinking, activeRoute);
+            if ((row.role === "frontend" || row.role === "fullstack") && row.thinking && !isSelectFocused(row.thinking)) {
+              const configId = activeRoute.subtaskConfigId || activeRoute.mainConfigId;
+              const explicit = readExplicitRoleModel(configId, row.role);
+              const thinkingMap = row.role === "fullstack" ? state.selectedLoopFullstackThinkingByConfigId : state.selectedLoopFrontendThinkingByConfigId;
+              const storedThinking = thinkingMap && configId && thinkingMap[configId]
+                ? thinkingMap[configId][(explicit || "__default__")]
+                : "";
+              if (storedThinking) {
+                row.thinking.value = storedThinking;
+              }
+            }
           }
+          setRouteControlVisible(row.model, roleShowModel);
+          setRouteControlVisible(row.thinking, roleShowThinking);
           if (row.model) {
-            row.model.disabled = !showModel || Boolean(route.unavailableReason);
+            row.model.disabled = !roleShowModel || Boolean(activeRoute.unavailableReason);
           }
           if (row.thinking) {
-            row.thinking.disabled = Boolean(route.unavailableReason);
+            row.thinking.disabled = !roleShowThinking || Boolean(activeRoute.unavailableReason);
+          }
+          if (row.role === "frontend" && row.model && typeof t === "function") {
+            row.model.title = t("loopPlusFrontendModelSelectAria");
+            row.model.setAttribute("aria-label", t("loopPlusFrontendModelSelectAria"));
+          }
+          if (row.role === "frontend" && row.thinking && typeof t === "function") {
+            row.thinking.title = t("loopPlusFrontendThinkingModeAria");
+            row.thinking.setAttribute("aria-label", t("loopPlusFrontendThinkingModeAria"));
+          }
+          if (row.role === "backend" && showFrontendRow && row.model && typeof t === "function") {
+            row.model.title = t("loopPlusBackendModelSelectAria");
+            row.model.setAttribute("aria-label", t("loopPlusBackendModelSelectAria"));
+          }
+          if (row.role === "backend" && showFrontendRow && row.thinking && typeof t === "function") {
+            row.thinking.title = t("loopPlusBackendThinkingModeAria");
+            row.thinking.setAttribute("aria-label", t("loopPlusBackendThinkingModeAria"));
+          }
+          if (row.role === "fullstack" && row.model && typeof t === "function") {
+            row.model.title = t("loopPlusFullstackModelSelectAria");
+            row.model.setAttribute("aria-label", t("loopPlusFullstackModelSelectAria"));
+          }
+          if (row.role === "fullstack" && row.thinking && typeof t === "function") {
+            row.thinking.title = t("loopPlusFullstackThinkingModeAria");
+            row.thinking.setAttribute("aria-label", t("loopPlusFullstackThinkingModeAria"));
+          }
+          if (row.role === "fullstack" && row.cli && typeof t === "function") {
+            row.cli.title = t("loopPlusFullstackCliSelectAria");
+            row.cli.setAttribute("aria-label", t("loopPlusFullstackCliSelectAria"));
           }
         });
+        if (typeof t === "function") {
+          const mainLabel = loopPlus ? t("loopPlusMainModelLabel") : "";
+          ["codexLoopMainModelSelect", "openCodePrimaryModelSelect"].forEach((id) => {
+            const label = document.querySelector('label[for="' + id + '"]');
+            if (!label) {
+              return;
+            }
+            if (loopPlus) {
+              label.textContent = mainLabel;
+            } else if (id === "openCodePrimaryModelSelect") {
+              label.textContent = t("openCodePrimaryModelLabel");
+            } else {
+              label.textContent = t("codexLoopMainModelLabel");
+            }
+          });
+        }
+        if (loopPlus && showFullstackRow) {
+          const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
+          const seeded = Boolean(mainConfigId && state.loopFullstackRoleSeededByConfigId && state.loopFullstackRoleSeededByConfigId[mainConfigId]);
+          const hasCli = Boolean(mainConfigId && state.selectedLoopFullstackCliByConfigId && state.selectedLoopFullstackCliByConfigId[mainConfigId]);
+          if (mainConfigId && !seeded && !hasCli && state.pendingFullstackSeed !== mainConfigId) {
+            state.pendingFullstackSeed = mainConfigId;
+            vscode.postMessage({
+              type: "updateSetting",
+              key: "seedLoopFullstackRole." + mainConfigId,
+              value: true,
+            });
+          }
+        }
+        if (typeof hideLoopRoleHelpTooltip === "function") {
+          hideLoopRoleHelpTooltip();
+        }
+        const frontendRoute = showFrontendRow && typeof getLoopFrontendRoute === "function" ? getLoopFrontendRoute() : null;
         if (elements.loopSubtaskRouteIssue) {
+          const frontendIssue = frontendRoute && frontendRoute.configPending
+            ? t("loopSubtaskRouteConfigSyncing")
+            : frontendRoute && frontendRoute.unavailableReason;
           const routeIssue = !shouldShowSubtaskRouteIssue(mode)
             ? ""
             : route.configPending
               ? t("loopSubtaskRouteConfigSyncing")
-              : route.unavailableReason;
+              : route.unavailableReason || frontendIssue || "";
           elements.loopSubtaskRouteIssue.textContent = routeIssue;
           elements.loopSubtaskRouteIssue.style.display = routeIssue ? "inline" : "none";
         }
         state.loopSubtaskRoute = route;
+        state.loopFrontendRoute = frontendRoute;
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
@@ -1132,6 +1420,82 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           handleLoopSubtaskCliChange(event.target.value);
         });
       });
+      [
+        elements.codexLoopFrontendCliSelect,
+        elements.openCodeLoopFrontendCliSelect,
+        elements.claudeLoopFrontendCliSelect,
+      ].forEach((selectElement) => {
+        if (!selectElement) {
+          return;
+        }
+        selectElement.addEventListener("change", (event) => {
+          handleLoopFrontendCliChange(event.target.value);
+        });
+      });
+      if (elements.codexLoopFrontendModelSelect) {
+        elements.codexLoopFrontendModelSelect.addEventListener("change", (event) => {
+          handleLoopRoleModelChange("frontend", event.target.value);
+        });
+      }
+      if (elements.openCodeFrontendModelSelect) {
+        elements.openCodeFrontendModelSelect.addEventListener("change", (event) => {
+          handleLoopRoleModelChange("frontend", event.target.value);
+        });
+      }
+      if (elements.codexLoopFullstackModelSelect) {
+        elements.codexLoopFullstackModelSelect.addEventListener("change", (event) => {
+          handleLoopRoleModelChange("fullstack", event.target.value);
+        });
+      }
+      if (elements.openCodeFullstackModelSelect) {
+        elements.openCodeFullstackModelSelect.addEventListener("change", (event) => {
+          handleLoopRoleModelChange("fullstack", event.target.value);
+        });
+      }
+      if (elements.codexLoopFrontendThinkingMode) {
+        elements.codexLoopFrontendThinkingMode.addEventListener("change", (event) => {
+          handleLoopRoleThinkingChange("frontend", event.target.value);
+        });
+      }
+      if (elements.codexLoopFullstackThinkingMode) {
+        elements.codexLoopFullstackThinkingMode.addEventListener("change", (event) => {
+          handleLoopRoleThinkingChange("fullstack", event.target.value);
+        });
+      }
+      [
+        elements.codexLoopFullstackCliSelect,
+        elements.openCodeLoopFullstackCliSelect,
+        elements.claudeLoopFullstackCliSelect,
+      ].forEach((selectElement) => {
+        if (!selectElement) {
+          return;
+        }
+        selectElement.addEventListener("change", (event) => {
+          handleLoopNamedCliChange("fullstack", event.target.value);
+        });
+      });
+      if (elements.loopPlusFullstackToggle) {
+        elements.loopPlusFullstackToggle.addEventListener("change", (event) => {
+          const checked = Boolean(event.target.checked);
+          const mainConfigId = getActiveConfigIdForStateCli(state.currentCli);
+          const mode = checked ? "fullstack" : "split";
+          if (!state.selectedLoopSubtaskModeByConfigId || typeof state.selectedLoopSubtaskModeByConfigId !== "object") {
+            state.selectedLoopSubtaskModeByConfigId = {};
+          }
+          if (mainConfigId) {
+            state.selectedLoopSubtaskModeByConfigId[mainConfigId] = mode;
+            state.pendingLoopSubtaskMode = { configId: mainConfigId, mode };
+            vscode.postMessage({
+              type: "updateSetting",
+              key: "loopSubtaskMode." + mainConfigId,
+              value: mode,
+            });
+          }
+          if (typeof updateLoopSubtaskTargetControls === "function") {
+            updateLoopSubtaskTargetControls();
+          }
+        });
+      }
       if (elements.claudeLoopSubtaskModelSelect) {
         elements.claudeLoopSubtaskModelSelect.addEventListener("change", (event) => {
           handleLoopSubtaskModelChange(event.target.value);

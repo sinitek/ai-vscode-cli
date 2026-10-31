@@ -48,7 +48,7 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   };
 }
 
-test("classic Loop keeps optional SVG guidance in the finalSummary protocol", async () => {
+test("classic Loop trusts reports, delegates only required verification and keeps optional SVG guidance", async () => {
   const task = loopTask();
   const prompts: string[] = [];
   const host = createLoopOrchestrationHost({
@@ -81,10 +81,23 @@ test("classic Loop keeps optional SVG guidance in the finalSummary protocol", as
   for (const prompt of prompts) {
     assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
     assert.doesNotMatch(prompt, /\[final_answer\]/u);
+    assert.match(prompt, /相信子任务汇报的结果/u);
+    assert.match(prompt, /主任务不验收子任务产物，不检查代码、文档或实现细节/u);
+    assert.match(prompt, /不运行或重复运行测试、构建、启动和其它验证/u);
+    assert.match(prompt, /只有用户明确要求或项目既有规则要求[\s\S]*独立的验收或测试子任务/u);
+    assert.match(prompt, /两者都未要求时默认不做/u);
+    assert.match(prompt, /用户未提但项目规则要求的任务完成后测试同样必须独立派发，不能遗漏/u);
+    assert.match(prompt, /原始目标以及用户或项目规则要求的独立验收、测试任务都已完成时，返回 completed/u);
+    assert.match(prompt, /子任务遵循项目既有规则自主完成工作/u);
+    assert.match(prompt, /不要求 acceptance、requirementCoverage 或 roundSummaries/u);
+    assert.doesNotMatch(prompt, /主模型必须先把可执行界面设计写进 prompt|派发时禁止只给粗粒度目标/u);
   }
 });
 
-test("classic Loop creates the subtask tab on the bound CLI and keeps the main target", async () => {
+for (const sameCli of [false, true]) {
+for (const reuseSession of [false, true]) {
+  const subtaskCli = sameCli ? "codex" : "claude";
+test(`classic Loop ${reuseSession ? "restores a continuous task session" : "creates a fresh task session"} on ${subtaskCli}`, async () => {
   const created: PromptRunTarget[] = [];
   const systemMessages: Array<{ tabId: string; content: string }> = [];
   const prompts: Array<{ input: PromptRunInput; targetTabId?: string }> = [];
@@ -92,11 +105,13 @@ test("classic Loop creates the subtask tab on the bound CLI and keeps the main t
   const task = loopTask({
     modelRouting: {
       main: { model: "gpt-main" },
-      subtask: { cli: "claude", configId: "claude-config" },
+      subtask: { cli: subtaskCli, ...(sameCli ? {} : { configId: "claude-config" }) },
     },
     originProfile: { configId: "codex-config", subtaskThinkingMode: "high" },
+    subTasks: reuseSession ? [{ id: "previous", title: "此前任务", status: "completed", executionSession: { cli: subtaskCli, configId: "claude-config", sessionId: "claude-previous" } }] : [],
   });
   const host = createLoopOrchestrationHost({
+    getActiveConfigIdForCli: () => "claude-config",
     t: (key: string) => key,
     appendSystemMessageForLoop: (target: PromptRunTarget, content: string) => {
       systemMessages.push({ tabId: target.tabId, content });
@@ -109,8 +124,8 @@ test("classic Loop creates the subtask tab on the bound CLI and keeps the main t
     buildSubagentProgressLabels: () => ({ title: "subtask", waiting: "waiting", completed: "done", failed: "failed", interrupted: "stopped" }),
     createSubagentProgressController: () => ({ getMessage: () => null, update: () => undefined }),
     createLoopSubtaskProgressMonitor: () => ({ start: () => undefined, sync: () => undefined, finish: () => undefined }),
-    createLoopSubtaskRunTarget: (cli: CliName) => {
-      const target = { tabId: `sub-${cli}`, cli, sessionId: null };
+    createLoopSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null }) => {
+      const target = { tabId: `sub-${cli}`, cli, sessionId: options?.sessionId ?? null };
       created.push(target);
       return target;
     },
@@ -146,25 +161,34 @@ test("classic Loop creates the subtask tab on the bound CLI and keeps the main t
     target: parent,
     task,
     round: 1,
-    subtasks: [{ id: "sub-1", title: "Implement", prompt: "do the work", status: "pending" }],
+    subtasks: [{ ...(reuseSession ? { continueFromSubtaskId: "previous" } : {}), id: "sub-1", title: "Implement", prompt: "do the work", status: "pending" }],
   });
 
   assert.equal(status[0]?.status, "end");
   assert.equal(parent.cli, "codex");
   assert.equal(parent.sessionId, "main-session");
   assert.equal(created.length, 1);
-  assert.equal(created[0]?.cli, "claude");
-  assert.equal(created[0]?.tabId, "sub-claude");
+  assert.equal(created[0]?.cli, subtaskCli);
+  assert.equal(created[0]?.sessionId, reuseSession ? "claude-previous" : null);
+  assert.equal(created[0]?.tabId, `sub-${subtaskCli}`);
   assert.notEqual(prompts[0]?.targetTabId, parent.tabId);
-  assert.equal(prompts[0]?.input.loopSubtaskCli, "claude");
+  assert.equal(prompts[0]?.input.loopSubtaskCli, sameCli ? undefined : "claude");
   assert.equal(prompts[0]?.input.loopSubtaskConfigId, "claude-config");
   assert.equal(prompts[0]?.input.loopSubtaskModel, undefined);
-  assert.equal(prompts[0]?.input.loopSubtaskThinkingMode, "high");
+  assert.equal(prompts[0]?.input.loopSubtaskThinkingMode, sameCli ? undefined : "high");
   assert.equal(prompts[0]?.input.taskRole, "subtask");
   assert.equal(prompts[0]?.input.loopSubtaskId, "sub-1");
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /遵循用户要求和项目既有规则，自主选择完成任务的方法/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /主任务将信任你的汇报判断整体进度/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /验收、测试由主任务另行安排独立子任务/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /否则报告相关要求，供主任务安排/u);
+  assert.doesNotMatch(prompts[0]?.input.modelPrompt ?? "", /如果当前子任务写了界面设计，按该设计实现/u);
   assert.ok(systemMessages.some((message) => message.tabId === parent.tabId && message.content === "started"));
   assert.equal(systemMessages.some((message) => message.tabId === created[0]?.tabId), false);
 });
+
+}
+}
 
 test("classic Loop refuses a missing cross-CLI config instead of running the main CLI", async () => {
   const created: CliName[] = [];

@@ -129,7 +129,7 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内固定采用主从多智能体的多轮任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。同一批次的多个子任务按 3 秒间隔错峰启动，已启动且互不冲突的子任务仍可并行运行；子任务局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动的子任务会标记为 skipped；父任务在所有 activeSubtaskIds 对应子任务完成后才可继续复核，用户从群聊或主任务 Tab 发起停止时仍统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
+      "description": "插件内采用主从多智能体的任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。经典 Loop 主任务仅拆分、派发、协调并信任子任务汇报判断完成，不亲自验收测试；用户或项目规则要求的验证另派独立子任务，均无要求时默认不做。经典子任务加载真实工作区规则并自主实施。经典同批子任务按 3 秒间隔错峰启动，互不冲突的任务仍可并行；局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动项标记 skipped；所有 activeSubtaskIds 对应子任务结束后才继续判断进度。Loop+ 保持事件驱动验收。用户停止统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
       "implementation_paths": ["src/loopTaskStore.ts", "src/loopGroupChat.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
@@ -320,6 +320,33 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.loop_subtask_session_reuse",
+      "name": "Loop 连续任务与验收修补复用子会话",
+      "applies_to": ["plugin.loop_task", "plugin.cli_session"],
+      "status": "active",
+      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离，不改变经典汇报驱动或 Loop+ 验收门槛。",
+      "source_refs": [
+        {
+          "path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"
+        },
+        {
+          "path": "src/loopSubtaskSession.ts"
+        },
+        {
+          "path": "src/extensionHost/loopOrchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+        },
+        {
+          "path": "src/test/loop/loopSubtaskSession.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.missing_cli_install_dialog",
       "name": "缺失 CLI 使用模态安装确认",
       "description": "切换到命令不可用的 Codex、Claude、OpenCode、Grok、DSH、KimiCode 或 ZCode 分组时，共享安装入口使用 VS Code 模态对话框，避免普通通知只进入铃铛。对话框提供一键安装、打开设置和取消，仅明确选择安装后才显示终端并执行平台对应命令；取消不执行命令，已安装时不出现缺失安装提示。上下文切换确认与安装确认独立，检测和命令注册规则保持不变。",
@@ -372,7 +399,7 @@
       "source_refs": [
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-dsh-config-import-visual-empty.md"},
+        {"path": ".ch/docs/references/dsh-custom-provider-contract.md", "anchor": "配置页字段分区"},
         {"path": "src/cli/dshConfigModels.ts"},
         {"path": "src/config/dshConfig.ts"},
         {"path": "media/config/assets/config-app-ui.js"},
@@ -1116,6 +1143,26 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_role_model_routing",
+      "name": "Loop+ 按全栈或拆分模式绑定子模型",
+      "description": "Loop+ 只有一个 loopSubtaskMode：fullstack 或 split。新界面和新任务缺省 fullstack。fullstack 下 backend、frontend 和未归类编码都使用子-全栈的 CLI、configId、模型和思考力度；split 下 frontend 使用子-前端，backend 及其它编码使用子-后端。general 在两种模式下都是独立只读分析，读取主模型完整配置，不能携带编码交付。三套配置分别保存，切换模式不覆盖。首次缺少全栈角色时从原子模型初始化一次。没有模式且没有独立前端子路由的旧任务按 fullstack 沿用原子模型；已有前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝。子配置失败不回退主模型编码。主模型只编排和验收。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/loopPlusSubtaskMode.ts"},
+        {"path": "src/subtaskCliRoute.ts"},
+        {"path": "src/loopTaskStore.ts"},
+        {"path": "src/modelSelectionStore.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/webview/viewContentHtml.ts"},
+        {"path": "src/test/loop/loopPlusSubtaskMode.test.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-role-model-routing.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.claude_tool_fallback",
       "name": "Claude 当前接入的工具故障命令替代与完整结果核验",
       "description": "Claude SDK 的每轮输入与 CLI 单次调用统一附加工具兼容提示，保留原始需求并透传给委派任务，原生 /compact 不追加。当前接入实测 WebSearch 空结果、WebFetch 域名检查失败，SDK 禁用二者并提示用 Bash/curl 查询公开数据；天气命令用已安装 Node 解析完整 JSON 并输出精简字段，核对日期和最低最高温，不能从截断预览猜测。Glob/Grep 未暴露时先经 ToolSearch 确认，再用 rg 或平台命令替代。已验证可用的文件、Notebook、任务、子代理工具继续优先原生调用；替代不能绕过权限、plan 或用户授权范围，不能伪造工具及子代理成功，其他未验证工具不能一概判定不可用。allowedTools 是免审规则与任务工具 opt-in，不是完整工具白名单。",
@@ -1395,7 +1442,7 @@
     {
       "id": "plugin.rule.subtask_design_key_points",
       "name": "子任务派发必须带上高难度设计关键点",
-      "description": "Loop、Loop+ 和 Graph 派发子任务或执行节点时，不能只给粗粒度目标。子会话看不到父规划推理。经典 Loop 与 Loop+ 必须把高难度或非显而易见的设计关键点写进子任务 prompt。Graph planner 必须把具体任务说明和这些关键点写进执行节点 instructions，宿主会放进节点提示并在运行图详情展示。没有这类关键点时不要编造。",
+      "description": "Loop+ 和 Graph 派发子任务或执行节点时，不能只给粗粒度目标。子会话看不到父规划推理。Loop+ 必须把高难度或非显而易见的设计关键点写进子任务 prompt。Graph planner 必须把具体任务说明和这些关键点写进执行节点 instructions，宿主会放进节点提示并在运行图详情展示。没有这类关键点时不要编造。经典 Loop 仅要求自包含的背景、目标、范围和既有要求，由子任务按项目规则自主实施，不额外强制设计流程。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run"],
       "source_refs": [
@@ -1422,7 +1469,7 @@
     {
       "id": "plugin.rule.child_write_scope_advisory",
       "name": "子模型写入范围只是建议",
-      "description": "Loop、Loop+ 和 Graph 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、graph.json、events、其他子任务或节点的沟通文件。主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过。",
+      "description": "Loop、Loop+ 和 Graph 的 writeFiles 用于并发冲突判断，也作为子模型的建议写入范围。它不是硬性写入白名单。子模型完成任务确实需要时可以修改建议范围之外的工作区文件，并在沟通文件说明原因。仍然不要修改任务记录、调度状态、snapshot、graph.json、events、其他子任务或节点的沟通文件。Loop+ 和 Graph 主模型验收时，建议范围外的改动只在完成任务确实需要时通过，无关改动仍然不通过；经典 Loop 按子任务汇报协调，不增加主模型验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.graph_run"],
       "source_refs": [
@@ -1450,7 +1497,7 @@
     {
       "id": "plugin.rule.loop_execution_root_safe_cleanup",
       "name": "Loop 临时执行根仅按登记身份非递归拆链",
-      "description": "Loop 子任务临时根通过链接写回真实工作区，不能作为目录树递归删除。宿主登记执行根和链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。未知内容、根或链接身份变化以及占用均保留现场并记录清理跳过事件，清理失败不改变已成功的任务结果。创建失败和正常收尾共用这条约束，不自动清扫旧残留根。",
+      "description": "Loop+ 和 Graph 隔离子任务的临时根通过链接写回真实工作区，不能作为目录树递归删除。经典 Loop 不再创建临时隔离根。宿主登记执行根和链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。未知内容、根或链接身份变化以及占用均保留现场并记录清理跳过事件，清理失败不改变已成功的任务结果。创建失败和正常收尾共用这条约束，不自动清扫旧残留根。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -1459,6 +1506,25 @@
         {"path": "ARCHITECTURE.md", "anchor": "Loop 子任务执行隔离"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3.1 Loop 子任务项目规则隔离"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Windows"}
+      ]
+    },
+    {
+      "id": "plugin.rule.classic_loop_report_driven",
+      "name": "经典 Loop 信任汇报并按用户或项目要求独立验证",
+      "description": "经典 Loop 主任务只拆分、派发、协调并依据子任务汇报判断目标完成，不检查实现细节、不亲自验收、不运行测试、构建或启动验证。用户明确要求或项目既有规则要求的验收、测试和任务完成后检查，必须另派独立子模型任务并按汇报收口；用户未提不能忽略项目规则，两者均未要求时默认不增加验证。经典子任务首次派发与手动续跑均使用真实工作区加载项目规则，自主实施，不注入额外设计或强制实施流程。completed 只要求非空 finalSummary；acceptance、requirementCoverage 和 roundSummaries 可选兼容，不再是完成门槛。轻量总结不虚构验收通过。Loop+ 全栈及原有模式的隔离、验收、调度和完成门槛不变。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.extension_host"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts", "anchor": "normalizeLoopMainDecision"},
+        {"path": "src/extensionHost/promptExecutionShared.ts"},
+        {"path": "src/extension.ts", "anchor": "useClassicLoopProjectInstructions"},
+        {"path": "src/loopFinalSummary.ts"},
+        {"path": "src/test/extensionHost/loopMainDecisionParsing.test.ts"},
+        {"path": "src/test/extensionHost/promptExecutionShared.test.ts"},
+        {"path": "src/test/loop/loopFinalSummary.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3.1 Loop 子任务项目规则隔离"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "经典 Loop 采用汇报驱动"}
       ]
     },
     {

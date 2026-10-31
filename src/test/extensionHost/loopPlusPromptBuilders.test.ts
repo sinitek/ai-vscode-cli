@@ -169,6 +169,10 @@ test("generated protocol examples satisfy the current parser and live event id",
     assert.ok(subtask.title.trim());
     assert.ok(subtask.prompt.length >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH);
     assert.match(subtask.prompt, /write scope/i);
+    if (subtask.taskType === "general") {
+      assert.equal(subtask.writeFiles, undefined);
+      return;
+    }
     assert.ok(subtask.writeFiles && subtask.writeFiles.length > 0);
     subtask.writeFiles?.forEach((file) => {
       assert.equal(file.startsWith("/"), false);
@@ -392,7 +396,7 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(prompt.includes(`Current review eventId: ${accept.reviewEventId}`), false);
   assert.equal(parseExample(examples, "wait").status, "wait");
   assert.equal(parseExample(examples, "blocked").status, "blocked");
-  assert.equal(parseExample(examples, "dispatch").subtasks?.length, 1);
+  assert.equal(parseExample(examples, "dispatch").subtasks?.length, 3);
 });
 
 test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
@@ -492,6 +496,15 @@ test("asks the main task to judge a batch of new user messages before launching"
 
 test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence text", () => {
   const mainPrompt = buildLoopPlusMainModelPrompt(mainContext());
+  assert.match(mainPrompt, /Loop\+ subtask mode: split/);
+  assert.match(mainPrompt, /Frontend coding uses the frontend sub-model/);
+  const fullstackPrompt = buildLoopPlusMainModelPrompt(mainContext({
+    loopSubtaskMode: "fullstack",
+    routingSummary: "mode=fullstack coding=dsh / fullstack-model analysis=codex / main-model",
+  }));
+  assert.match(fullstackPrompt, /Loop\+ subtask mode: fullstack/);
+  assert.match(fullstackPrompt, /Do not split coding into frontend and backend only to choose different models/);
+  assert.match(fullstackPrompt, /mode=fullstack coding=dsh \/ fullstack-model/);
   assert.match(mainPrompt, /When the task changes UI appearance, layout, or interaction/);
   const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
     subtask: {

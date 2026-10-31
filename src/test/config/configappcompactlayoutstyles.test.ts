@@ -152,3 +152,25 @@ test("OpenCode effort multiselect fills the visual editor field width", () => {
   );
   assert.match(effortMultiselect, /\bwidth:\s*100% !important;/);
 });
+
+test("所有 CLI 公共参数使用统一双栏，窄屏收为单栏", () => {
+  for (const selector of [".cli-common-parameters", ".config-visual-form-grid"]) {
+    assert.match(rule(css, `\n${selector}`), /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    assert.match(rule(css, `\n${selector}`), /gap:\s*10px 12px/);
+  }
+  assert.match(css, /\.dsh-common-parameters,\s*\.cli-common-parameters\s*\{/);
+  const responsive = mediaSource("(max-width: 700px)");
+  assert.match(responsive, /\.dsh-common-parameters,\s*\.cli-common-parameters,\s*\.config-visual-form-grid\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(rule(css, ".config-visual-field"), /gap:\s*5px/);
+  assert.match(css, /\.config-visual-field \.ant-input,[\s\S]*?min-height:\s*32px/);
+  const source = fs.readFileSync(path.join(process.cwd(), "media", "config", "assets", "config-app-ui.js"), "utf8");
+  const editors = ["renderClaudeVisualEditor", "renderOpenCodeVisualEditor", "renderGrokVisualEditor", "renderKimiCodeVisualEditor", "renderCodexVisualEditor"];
+  for (let index = 0; index < editors.length; index += 1) {
+    const start = source.indexOf(`${editors[index]} =`);
+    const end = index + 1 < editors.length ? source.indexOf(`${editors[index + 1]} =`, start) : source.indexOf("const renderFixedEditorModeTabs", start);
+    assert.ok(start >= 0 && end > start, editors[index]);
+    assert.match(source.slice(start, end), /className: "config-visual-form-grid"/, editors[index]);
+  }
+  assert.match(source, /"data-testid": "zcode-common-parameters",[\s\S]*?className: "config-visual-form-grid"/);
+  assert.match(source, /"data-testid": "dsh-common-parameters",[\s\S]*?renderCodexField\(/);
+});

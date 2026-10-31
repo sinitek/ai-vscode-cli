@@ -59,6 +59,53 @@ function currentEventId(promptText: string): string {
   return match[1];
 }
 
+for (const configId of [null, "active-profile"]) {
+for (const continuationKind of ["repair", "follow-up"] as const) {
+  test(`Loop+ ${continuationKind} with ${configId ?? "no profile"} restores the original session after its tab was closed`, async () => {
+    const fixture = createLoopPlusRuntimeFixture({ configId });
+    let taskId = "";
+    try {
+      fixture.queueMain((input, tabId) => {
+        taskId = input.loopTaskId ?? "";
+        fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+      });
+      fixture.queueMain((input, tabId) => {
+        assert.ok(fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId));
+        assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "A")?.executionSession?.sessionId, "original-subtask-thread");
+        fixture.publish(input, tabId, { status: "end", content: decision({
+          status: "accept", reviewEventId: currentEventId(input.displayPrompt),
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: continuationKind === "repair" ? "failed" : "passed", subtaskIds: ["B"] }],
+          subtasks: [{ ...subtask("B", "src/a.ts"), ...(continuationKind === "follow-up" ? { continueFromSubtaskId: "A" } : {}) }],
+        }) });
+      });
+      fixture.queueMain((input, tabId) => {
+        fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+      });
+      fixture.setAttemptAction((input, tabId) => {
+        const target = fixture.createdSubtaskTargets.find((item) => item.tabId === tabId);
+        assert.ok(target);
+        if (input.loopSubtaskId === "A") {
+          assert.equal(target.sessionId, null);
+          target.sessionId = "original-subtask-thread";
+        } else {
+          assert.equal(target.sessionId, "original-subtask-thread");
+        }
+        fixture.publish(input, tabId, { status: "end", content: `${input.loopSubtaskId} 已执行并汇报` });
+      });
+      await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+      assert.equal(fixture.readTask(taskId)?.status, "completed");
+      assert.equal(fixture.createdSubtaskTargets.length, 2);
+      assert.equal(fixture.attemptCalls[1]?.loopSubtaskConfigId ?? null, configId);
+      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "B")?.executionSession?.configId, configId);
+      assert.notEqual(fixture.createdSubtaskTargets[0].tabId, fixture.createdSubtaskTargets[1].tabId);
+      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "B")?.executionSession?.sessionId, "original-subtask-thread");
+    } finally {
+      fixture.dispose();
+    }
+  });
+}
+}
+
 function prompt(text = "ship the feature") {
   return {
     displayPrompt: text,

@@ -1,5 +1,7 @@
 # Loop+ 子任务调度
 
+会话连续性：每次 attempt 可以新建展示 Tab，但不必新建 CLI 会话。验收失败 review 关联的修补项自动续接原子任务，主模型也可用 `continueFromSubtaskId` 显式选择连续工作来源；控制重派保留原子任务来源。持久化绑定、配置兼容、串行执行及边界见 [Loop 子任务会话复用](loop-subtask-session-reuse.md)，原有调度和验收条件保持不变。
+
 ## 调度边界
 
 Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列和可恢复快照；extension host 只启动 scheduler 返回的 `started` 项。生产并发上限为 6，单次决定的派发上限由独立设置约束。扩展宿主按每次实际启动间隔约 3 秒错峰，错峰队列不改变 scheduler 的准入状态。
@@ -18,6 +20,16 @@ Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列
 
 `dispatch` 决策把 pending 原因归为运行中 `writeFiles` / `conflictGroup` 冲突或 `max_concurrency`。宿主 `loop-plus-dispatched` 日志为每个 pending attempt 记录 `subtaskId`、`attemptId` 和 `blockedBy`，冲突项附带冲突值及对应活动 attempt；异常未分类项使用 `scheduler`。pending 项之间不再报告互相阻塞。
 
+## 角色模型与子任务模式
+
+Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任务和输入区缺省 `fullstack`。全栈勾选时只展示并启用「子-全栈」，backend、frontend 和未归类编码都用这一套 CLI、configId、模型和思考力度。取消勾选才展示「子-后端」「子-前端」：frontend 走前端子模型，backend 和其它编码走后端子模型。两种模式下 `general` 都是独立只读分析，读取主 CLI、主档案、`modelRouting.main` 和 `originProfile.mainThinkingMode`，不能携带 `writeFiles` 或 `codingDelivery`。
+
+三套配置分别落在 `loopSubtask*`、`loopSubtaskFrontend*`、`loopSubtaskFullstack*`，以及 `modelRouting.subtask` / `subtaskFrontend` / `subtaskFullstack`。切换模式只改变显隐和路由，不互相覆盖。全栈角色第一次缺失时从原子模型完整配置初始化一次，并用 `loopFullstackRoleSeededByConfigId` 记住，避免来回切换重拷贝。空模型字符串表示用户选择 CLI 默认模型，与整组配置缺失区分。
+
+模式和三套配置随发送、排队、`PromptRunInput`、根任务记录和续跑保存。已运行任务绑定创建时的快照。原配置续跑保留原模式和各组配置；当前配置续跑改用当前模式。没有模式、也没有独立前端子路由的旧任务按 fullstack 沿用原子模型，执行不变。已经保存前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝，不猜测。子配置不可用时失败，不回退主模型编码。用户可以把子角色设成与主角色相同的模型名。
+
+主模型提示注入当前模式、可用角色和编码约束。fullstack 不再要求为了选模型把所有编码拆成前后端。提示词不是只读沙箱。经典 Loop、Graph、普通聊天和 OpenCode `small_model` 不读这个开关。
+
 ## 验收方案快照
 
 新建 Loop+ 根任务时，Webview 在 `sendPrompt` 前弹出“主模型验收方案”弹窗，把用户确认的复选项和“其它”审查内容作为 `loopPlusAcceptancePlan` 快照随请求提交。宿主只在该请求属于 `loop_plus` 且不是续跑/恢复/补充需求时接受该字段，归一化后连同 `loopTaskId` 一起写入 `LoopTaskRecord.loopPlusAcceptancePlan`；空基线快照不落盘，读不到的旧任务按固定清单处理。
@@ -34,6 +46,6 @@ Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列
 
 ## 事实来源与验证
 
-- 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
+- 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
 - 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
 - 验证：`npm run build`；`node --test dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopPlusAcceptancePlanHost.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/webview/loopPlusAcceptancePlanDialog.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/workspaceSettingsStore.test.js`

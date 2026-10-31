@@ -393,8 +393,8 @@ test("visual editor style stays aligned with OpenCode cards", () => {
   const visualSource = source.slice(visualRenderStart, visualRenderEnd);
   assert.match(
     visualSource,
-    /gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(240px, 100%\), 1fr\)\)"/,
-    "Claude field layout should keep its existing responsive width",
+    /className: "config-visual-form-grid"/,
+    "Claude 字段应复用统一的双栏栅格",
   );
   assert.doesNotMatch(
     visualSource,

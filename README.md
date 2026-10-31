@@ -8,8 +8,9 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.6.x
-- bugfix & 体验优化
+### 1.7.0
+- Loop+ 支持全栈和前后端不同模型两种配置
+- Loop/Loop+ 任务优化逻辑提高效率
 
 ### 1.6.0
 - Loop+ 模式新增验收方案设置

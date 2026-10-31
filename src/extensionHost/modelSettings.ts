@@ -23,7 +23,8 @@ import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, 
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
 import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { createCliModelSelectionStrategies } from "./cliModelSelectionStrategies";
-import { buildModelState as buildModelSelectionState, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, mergeUniqueModelNames, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectLoopSubtaskCliInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type ModelSelectionStoreState } from "../modelSelectionStore";
+import { buildModelState as buildModelSelectionState, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getLoopRoleExplicitModelFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedLoopFullstackCliFromStore, getSelectedLoopFullstackThinkingFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopSubtaskModeFromStore, getSelectedLoopFrontendCliFromStore, selectLoopFrontendCliInStore, selectLoopFullstackCliInStore, selectLoopSubtaskModeInStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, loopFullstackRoleNeedsSeed, markLoopFullstackRoleSeededInStore, mergeUniqueModelNames, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectLoopSubtaskCliInStore, setLoopRoleExplicitModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopFrontendThinkingInStore, setSelectedLoopFullstackThinkingInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type LoopPlusConfigRole, type ModelSelectionStoreState } from "../modelSelectionStore";
+import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
 import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled } from "../toolSettings";
@@ -1399,6 +1400,85 @@ function selectLoopSubtaskCli(configId: string | null | undefined, cli: CliName 
   writeModelStore(modelStore);
 }
 
+function getSelectedLoopFrontendCli(configId: string | null | undefined): CliName | null {
+  return getSelectedLoopFrontendCliFromStore(modelStore, configId);
+}
+
+function selectLoopFrontendCli(configId: string | null | undefined, cli: CliName | null): void {
+  modelStore = selectLoopFrontendCliInStore(modelStore, configId, cli);
+  writeModelStore(modelStore);
+}
+
+function commitModelStore(next: CliModelStore): boolean {
+  const previous = modelStore;
+  modelStore = next;
+  writeModelStore(next);
+  if (deps.getModelSelectionStoreState().lastWriteError) {
+    modelStore = previous;
+    return false;
+  }
+  return true;
+}
+
+function selectLoopFullstackCli(configId: string | null | undefined, cli: CliName | null): boolean {
+  return commitModelStore(selectLoopFullstackCliInStore(modelStore, configId, cli));
+}
+
+function selectLoopSubtaskMode(configId: string | null | undefined, mode: LoopSubtaskMode): boolean {
+  return commitModelStore(selectLoopSubtaskModeInStore(modelStore, configId, mode));
+}
+
+function setLoopRoleExplicitModel(configId: string | null | undefined, role: LoopPlusConfigRole, model: string): boolean {
+  return commitModelStore(setLoopRoleExplicitModelInStore(modelStore, configId, role, model));
+}
+
+function setLoopRoleThinking(
+  configId: string | null | undefined,
+  role: LoopPlusConfigRole,
+  model: string | null,
+  thinkingMode: ThinkingMode | null,
+): boolean {
+  const next = role === "frontend"
+    ? setSelectedLoopFrontendThinkingInStore(modelStore, configId, model, thinkingMode)
+    : setSelectedLoopFullstackThinkingInStore(modelStore, configId, model, thinkingMode);
+  return commitModelStore(next);
+}
+
+function seedLoopFullstackRole(mainConfigId: string | null | undefined): boolean {
+  if (!mainConfigId || !loopFullstackRoleNeedsSeed(modelStore, mainConfigId)) {
+    if (mainConfigId && getSelectedLoopFullstackCli(mainConfigId) && !modelStore.loopFullstackRoleSeededByConfigId?.[mainConfigId]) {
+      return commitModelStore(markLoopFullstackRoleSeededInStore(modelStore, mainConfigId));
+    }
+    return true;
+  }
+  const subtaskCli = getSelectedLoopSubtaskCli(mainConfigId) ?? deps.getCurrentCli();
+  const sameCli = subtaskCli === deps.getCurrentCli();
+  const targetConfigId = sameCli ? mainConfigId : getActiveConfigIdForCli(subtaskCli);
+  const model = getSelectedLoopCliModel(subtaskCli, "subtask", targetConfigId);
+  const thinking = getSelectedLoopThinkingMode(subtaskCli, "subtask", model, targetConfigId);
+  let next = selectLoopFullstackCliInStore(modelStore, mainConfigId, subtaskCli);
+  if (targetConfigId) {
+    next = setLoopRoleExplicitModelInStore(next, targetConfigId, "fullstack", model ?? "");
+    if (thinking) {
+      next = setSelectedLoopFullstackThinkingInStore(next, targetConfigId, model, thinking);
+    }
+  }
+  next = markLoopFullstackRoleSeededInStore(next, mainConfigId);
+  return commitModelStore(next);
+}
+
+function getSelectedLoopFullstackCli(configId: string | null | undefined): CliName | null {
+  return getSelectedLoopFullstackCliFromStore(modelStore, configId);
+}
+
+function getSelectedLoopSubtaskMode(configId: string | null | undefined): LoopSubtaskMode {
+  return getSelectedLoopSubtaskModeFromStore(modelStore, configId);
+}
+
+function getLoopRoleExplicitModel(configId: string | null | undefined, role: LoopPlusConfigRole): { configured: boolean; model: string } {
+  return getLoopRoleExplicitModelFromStore(modelStore, configId, role);
+}
+
 function openCodeModelsFromParsed(
   parsed: ReturnType<typeof parseOpenCodeConfigModels>,
   configId: string | null,
@@ -1737,6 +1817,16 @@ return {
   getSelectedLoopThinkingMode: wrap(getSelectedLoopThinkingMode),
   getSelectedLoopSubtaskCli: wrap(getSelectedLoopSubtaskCli),
   selectLoopSubtaskCli: wrap(selectLoopSubtaskCli),
+  selectLoopFrontendCli: wrap(selectLoopFrontendCli),
+  getSelectedLoopFrontendCli: wrap(getSelectedLoopFrontendCli),
+  selectLoopFullstackCli: wrap(selectLoopFullstackCli),
+  getSelectedLoopFullstackCli: wrap(getSelectedLoopFullstackCli),
+  selectLoopSubtaskMode: wrap(selectLoopSubtaskMode),
+  getSelectedLoopSubtaskMode: wrap(getSelectedLoopSubtaskMode),
+  setLoopRoleExplicitModel: wrap(setLoopRoleExplicitModel),
+  setLoopRoleThinking: wrap(setLoopRoleThinking),
+  seedLoopFullstackRole: wrap(seedLoopFullstackRole),
+  getLoopRoleExplicitModel: wrap(getLoopRoleExplicitModel),
   refreshLoopSubtaskOpenCodeModels: wrap(refreshLoopSubtaskOpenCodeModels),
   getLoopSubtaskOpenCodeModels: wrap(getLoopSubtaskOpenCodeModels),
   getManagedModelOptionsForCli: wrap(getManagedModelOptionsForCli),

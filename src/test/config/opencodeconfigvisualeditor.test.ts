@@ -511,7 +511,7 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
     /renderConfigSelect = \([\s\S]*?U\.fullWidth \? \{ width: "100%", gridColumn: "1 \/ -1" \} : \{\}/,
   );
   assert.match(openCodeVisualSource, /renderOpenCodeSelect\([\s\S]*?openCodeVisualState\.primaryModel[\s\S]*?k\.map\(\(L\) => \(\{ value: L, label: L \}\)\)/);
-  assert.match(openCodeVisualSource, /openCodeVisualState\.primaryModel[\s\S]*?fullWidth: !0/);
+  assert.doesNotMatch(openCodeVisualSource, /fullWidth: !0/, "主模型与其他参数统一为半宽字段");
   assert.doesNotMatch(claudeSelectSource, /U\.fullWidth/);
   assert.doesNotMatch(openCodeVisualSource, /renderOpenCodeCombobox\([\s\S]*?openCodeVisualState\.primaryModel/);
   assert.doesNotMatch(openCodeVisualSource, /openCodeVisualState\.smallModel/);
@@ -532,8 +532,8 @@ test("visual editor keeps sensitive input and narrow layouts usable", () => {
   );
   assert.match(
     openCodeVisualSource,
-    /Provider 配置[\s\S]*?gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(210px, 100%\), 1fr\)\)"/,
-    "OpenCode provider configuration form should keep its existing responsive grid",
+    /Provider 配置[\s\S]*?className: "config-visual-form-grid"/,
+    "OpenCode Provider 参数应复用统一的双栏栅格",
   );
   assert.match(source, /flex: "1 1 360px"/, "model form should keep a flexible narrow-width basis");
   const visualRenderStart = source.indexOf("renderOpenCodeField =");

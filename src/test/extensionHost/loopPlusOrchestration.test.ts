@@ -2455,6 +2455,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
   assert.equal(restarted.length, 2);
   assert.equal(restarted[1].request.prompt, nextPrompt);
   assert.equal(restarted[1].request.title, "beta");
+  assert.equal(restarted[1].request.continueFromSubtaskId, "beta");
   assert.deepEqual(restarted[1].request.writeFiles, ["src/beta-next.ts"]);
   assert.equal(snapshot.running.some((item) => item.attemptId === restarted[1].request.attemptId), true);
   assert.equal(env.reports.some((item) => item.attemptId === alpha.request.attemptId), false);

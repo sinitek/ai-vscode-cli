@@ -364,6 +364,17 @@ function matchesSelector(element: FakeElement, selector: string): boolean {
   if (classMatches.some((className) => !element.classList.contains(className))) {
     return false;
   }
+  const idMatch = selector.match(/#([a-zA-Z0-9_-]+)/);
+  if (idMatch && element.id !== idMatch[1]) {
+    return false;
+  }
+  const attributeMatches = selector.matchAll(/\[([^\]=]+)(?:="([^"]*)")?\]/g);
+  for (const match of attributeMatches) {
+    const value = match[1] === "open" && element.open ? "" : element.getAttribute(match[1]);
+    if (value === null || (match[2] !== undefined && value !== match[2])) {
+      return false;
+    }
+  }
   if (selector.includes("[open]") && !element.open) {
     return false;
   }
@@ -391,6 +402,7 @@ function normalizeEvent(event: any, target: FakeElement): any {
 
 function createFakeDocument(): any {
   const elements = new Map<string, FakeElement>();
+  const listeners: Record<string, Listener[]> = {};
   const document = {
     body: new FakeElement("body", "body"),
     documentElement: new FakeElement("html", "html"),
@@ -402,6 +414,25 @@ function createFakeDocument(): any {
     },
     createElement(tagName: string): FakeElement {
       return new FakeElement(tagName);
+    },
+    querySelector(selector: string): FakeElement | null {
+      return document.querySelectorAll(selector)[0] || null;
+    },
+    querySelectorAll(selector: string): FakeElement[] {
+      const matches = new Set<FakeElement>();
+      for (const root of [document.documentElement, document.body, ...elements.values()]) {
+        if (matchesSelector(root, selector)) {
+          matches.add(root);
+        }
+        root.querySelectorAll(selector).forEach((element) => matches.add(element));
+      }
+      return [...matches];
+    },
+    addEventListener(type: string, listener: Listener): void {
+      (listeners[type] ||= []).push(listener);
+    },
+    dispatchEvent(event: any): void {
+      (listeners[event.type] || []).forEach((listener) => listener(event));
     },
     execCommand(command: string): boolean {
       return command === "copy";
@@ -4537,6 +4568,7 @@ test("all CLI child routes initialize and refresh in loop, loop+ and graph witho
             optionsByCli, managedByCli: optionsByCli, selectedByCli, loopOptionsByCli, selectedLoopByCli,
             activeConfigIdByCli,
             selectedLoopSubtaskCliByConfigId: { [activeConfigIdByCli[mainCli]]: targetCli },
+            selectedLoopSubtaskModeByConfigId: { [activeConfigIdByCli[mainCli]]: "split" },
           },
           openCodeModels,
           loopSubtaskOpenCodeModels: openCodeModels,
@@ -4593,6 +4625,7 @@ test("shared child routes distinguish loading, missing profiles and read failure
         managedByCli: {},
         activeConfigIdByCli: { codex: "cfg-1", zcode: null },
         selectedLoopSubtaskCliByConfigId: { "cfg-1": "zcode" },
+        selectedLoopSubtaskModeByConfigId: { "cfg-1": "split" },
       },
     });
     window.dispatchMessage({ type: "state", payload });

@@ -144,9 +144,11 @@ cli / interactive / config 服务层
 
 #### Loop 子任务执行隔离
 
-- Loop 主任务保持真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则。
-- `src/loopSubtaskExecutionRoot.ts` 为每个 Loop 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区。Windows 使用目录 junction 与文件 hardlink，跨盘时把临时根放到工作区 `.sinitek-loop-tmp`。结束或创建失败时，只非递归移除本次登记且身份匹配的链接，再移除空临时根；根目录或链接被替换、存在未知内容或清理失败时保留现场并记录日志，不递归删除执行根，也不把成功任务改判失败。
-- 子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 使用空 `settingSources`，OpenCode 使用 `--pure`。子任务只遵循主任务传入的自包含授权、沟通文件与最小必要验证要求。
+经典 Loop 与 Loop+ 支持连续子任务会话复用：主模型通过 `continueFromSubtaskId` 声明来源；Loop+ 验收失败的修补项按 review 关联自动继承原子任务会话，控制重派续接原子任务。真实 CLI/config/session 绑定保存在子任务记录，关闭 Tab 不清除绑定；仅同一父任务且 CLI、配置兼容时恢复。共享来源与会话串行执行，独立任务仍新建会话。隔离工作目录与 CLI 会话身份是不同边界，细节见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
+
+- 经典 Loop 主任务和子任务均以真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则；子任务首次运行与手动续跑使用同一策略。主任务只拆分、派发、协调并信任子任务汇报判断完成，不检查实现细节、不亲自验收或测试。用户或项目规则要求的验收、测试、构建等检查另派独立子任务，均无要求时默认不做。Loop+ 保持既有事件驱动验收。
+- `src/loopSubtaskExecutionRoot.ts` 为 Loop+ 和 Graph 子任务创建临时根目录，只链接可工作内容，隐藏根 `AGENTS.md`、`CLAUDE.md`、`.agents`、`.claude`、`.codex`；写入仍通过链接回到真实工作区。Windows 使用目录 junction 与文件 hardlink，跨盘时把临时根放到工作区 `.sinitek-loop-tmp`。结束或创建失败时，只非递归移除本次登记且身份匹配的链接，再移除空临时根；根目录或链接被替换、存在未知内容或清理失败时保留现场并记录日志，不递归删除执行根，也不把成功任务改判失败。
+- 隔离子任务调用还叠加 CLI 级隔离：Codex 使用 `--ignore-rules`，Claude SDK 仅加载 `user` settings（保留用户级 MCP / 搜索工具），OpenCode 使用 `--pure`。该隔离策略不再用于经典 Loop；Loop+ 和 Graph 的自包含派发及验证规则保持不变。
 - 不再分发、加载或注入 Loop Workflow Skill 快照，也没有对应的工具设置开关。
 
 - 子任务可以绑定另一个 CLI 分组当前选中配置。路由身份在 `src/subtaskCliRoute.ts`，可选 `cli` / `configId` 扩展现有 Loop `modelRouting.subtask` 与 Graph `modelRouting.executor`。经典 Loop 用该 CLI 创建独立子 Tab；Loop+ attempt 的 `targetCli` 使用同一绑定；Graph 只让 executor 节点切换执行 CLI，plan / summary 仍走 planner。主任务 target、会话和存储归属不变。跨 CLI 不回退主模型、主配置、主会话、主思考档或 OpenCode variant。

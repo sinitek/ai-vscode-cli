@@ -14,7 +14,10 @@ import {
   type OpenCodeModelRoleInput,
 } from "./cli/opencodeconfigmodels";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
+import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliName } from "./subtaskCliRoute";
+
+export type LoopPlusConfigRole = "frontend" | "fullstack";
 
 export type LoopTaskRoleForModelSelection = "main" | "subtask";
 
@@ -30,7 +33,21 @@ export type CliModelStore = {
   openCodeVariantByConfigAndModel: Record<string, Record<string, string>>;
   openCodeVariantByConfigModelAndRole: Record<string, Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>>;
   selectedLoopByConfigId: Record<string, Partial<Record<LoopTaskRoleForModelSelection, string>>>;
+  /** Loop+ 子-前端在目标档案上的模型。不写入 subtask 槽，避免覆盖子-后端。 */
+  selectedLoopFrontendModelByConfigId: Record<string, string>;
+  selectedLoopFrontendThinkingByConfigId: Record<string, Record<string, ThinkingMode>>;
   selectedLoopSubtaskCliByConfigId: Record<string, CliName>;
+  /** Loop+ 子-前端 CLI，按主配置档案隔离。经典 Loop / Graph 不读取。 */
+  selectedLoopFrontendCliByConfigId: Record<string, CliName>;
+  /** Loop+ 子-全栈 CLI，按主配置档案隔离，不写入子-后端或子-前端槽。 */
+  selectedLoopFullstackCliByConfigId: Record<string, CliName>;
+  selectedLoopFullstackThinkingByConfigId: Record<string, Record<string, ThinkingMode>>;
+  /** 显式模型值。空字符串表示用户选择了 CLI 默认模型，与整组配置缺失区分。 */
+  loopRoleExplicitModelByConfigId: Record<string, Partial<Record<LoopPlusConfigRole, string>>>;
+  /** Loop+ 子任务模式，按主配置档案隔离。缺省 fullstack，不覆盖其它档案。 */
+  selectedLoopSubtaskModeByConfigId: Record<string, LoopSubtaskMode>;
+  /** 全栈角色已从原子模型初始化过。再次切换模式不得重拷贝。 */
+  loopFullstackRoleSeededByConfigId: Record<string, true>;
   loopRolesByConfigId: Record<string, Record<string, { main: boolean; subtask: boolean }>>;
   openCodeRoleModelsByConfigId: Record<string, Partial<Record<OpenCodeCanonicalModelRole, string>>>;
 };
@@ -164,7 +181,15 @@ export function ensureCliModelStore(
     openCodeVariantByConfigAndModel: {},
     openCodeVariantByConfigModelAndRole: {},
     selectedLoopByConfigId: {},
+    selectedLoopFrontendModelByConfigId: {},
+    selectedLoopFrontendThinkingByConfigId: {},
     selectedLoopSubtaskCliByConfigId: {},
+    selectedLoopFrontendCliByConfigId: {},
+    selectedLoopFullstackCliByConfigId: {},
+    selectedLoopFullstackThinkingByConfigId: {},
+    loopRoleExplicitModelByConfigId: {},
+    selectedLoopSubtaskModeByConfigId: {},
+    loopFullstackRoleSeededByConfigId: {},
     loopRolesByConfigId: {},
     openCodeRoleModelsByConfigId: {},
   };
@@ -208,12 +233,114 @@ export function ensureCliModelStore(
       }
     }
   }
+  const storedFrontendModelByConfigId = store?.selectedLoopFrontendModelByConfigId;
+  if (storedFrontendModelByConfigId && typeof storedFrontendModelByConfigId === "object") {
+    for (const [configId, rawModel] of Object.entries(storedFrontendModelByConfigId)) {
+      const model = normalizeCliModelName(rawModel);
+      if (configId && model) {
+        normalized.selectedLoopFrontendModelByConfigId[configId] = model;
+      }
+    }
+  }
+  const storedFrontendThinkingByConfigId = store?.selectedLoopFrontendThinkingByConfigId;
+  if (storedFrontendThinkingByConfigId && typeof storedFrontendThinkingByConfigId === "object") {
+    for (const [configId, rawByModel] of Object.entries(storedFrontendThinkingByConfigId)) {
+      if (!configId || !rawByModel || typeof rawByModel !== "object") {
+        continue;
+      }
+      const nextByModel: Record<string, ThinkingMode> = {};
+      for (const [rawModel, rawMode] of Object.entries(rawByModel)) {
+        const model = normalizeCliModelName(rawModel) ?? (rawModel === "__default__" ? "__default__" : null);
+        if (model && isKnownThinkingMode(rawMode)) {
+          nextByModel[model] = rawMode;
+        }
+      }
+      if (Object.keys(nextByModel).length > 0) {
+        normalized.selectedLoopFrontendThinkingByConfigId[configId] = nextByModel;
+      }
+    }
+  }
   const storedSubtaskCliByConfigId = store?.selectedLoopSubtaskCliByConfigId;
   if (storedSubtaskCliByConfigId && typeof storedSubtaskCliByConfigId === "object") {
     for (const [configId, rawCli] of Object.entries(storedSubtaskCliByConfigId)) {
       const cli = parseCliName(rawCli);
       if (configId && cli) {
         normalized.selectedLoopSubtaskCliByConfigId[configId] = cli;
+      }
+    }
+  }
+  const storedFrontendCliByConfigId = store?.selectedLoopFrontendCliByConfigId;
+  if (storedFrontendCliByConfigId && typeof storedFrontendCliByConfigId === "object") {
+    for (const [configId, rawCli] of Object.entries(storedFrontendCliByConfigId)) {
+      const cli = parseCliName(rawCli);
+      if (configId && cli) {
+        normalized.selectedLoopFrontendCliByConfigId[configId] = cli;
+      }
+    }
+  }
+  const storedFullstackCliByConfigId = store?.selectedLoopFullstackCliByConfigId;
+  if (storedFullstackCliByConfigId && typeof storedFullstackCliByConfigId === "object") {
+    for (const [configId, rawCli] of Object.entries(storedFullstackCliByConfigId)) {
+      const cli = parseCliName(rawCli);
+      if (configId && cli) {
+        normalized.selectedLoopFullstackCliByConfigId[configId] = cli;
+      }
+    }
+  }
+  const storedFullstackThinkingByConfigId = store?.selectedLoopFullstackThinkingByConfigId;
+  if (storedFullstackThinkingByConfigId && typeof storedFullstackThinkingByConfigId === "object") {
+    for (const [configId, rawByModel] of Object.entries(storedFullstackThinkingByConfigId)) {
+      if (!configId || !rawByModel || typeof rawByModel !== "object") {
+        continue;
+      }
+      const nextByModel: Record<string, ThinkingMode> = {};
+      for (const [rawModel, rawMode] of Object.entries(rawByModel)) {
+        const model = normalizeCliModelName(rawModel) ?? (rawModel === "__default__" ? "__default__" : null);
+        if (model && isKnownThinkingMode(rawMode)) {
+          nextByModel[model] = rawMode;
+        }
+      }
+      if (Object.keys(nextByModel).length > 0) {
+        normalized.selectedLoopFullstackThinkingByConfigId[configId] = nextByModel;
+      }
+    }
+  }
+  const storedExplicitModels = store?.loopRoleExplicitModelByConfigId;
+  if (storedExplicitModels && typeof storedExplicitModels === "object") {
+    for (const [configId, rawRoles] of Object.entries(storedExplicitModels)) {
+      if (!configId || !rawRoles || typeof rawRoles !== "object") {
+        continue;
+      }
+      const nextRoles: Partial<Record<LoopPlusConfigRole, string>> = {};
+      for (const role of ["frontend", "fullstack"] as const) {
+        if (!Object.prototype.hasOwnProperty.call(rawRoles, role)) {
+          continue;
+        }
+        const rawModel = rawRoles[role];
+        if (typeof rawModel !== "string") {
+          continue;
+        }
+        nextRoles[role] = rawModel.trim();
+      }
+      if (Object.keys(nextRoles).length > 0) {
+        normalized.loopRoleExplicitModelByConfigId[configId] = nextRoles;
+      }
+    }
+  }
+  const storedModes = store?.selectedLoopSubtaskModeByConfigId;
+  if (storedModes && typeof storedModes === "object") {
+    for (const [configId, rawMode] of Object.entries(storedModes)) {
+      const mode = readLoopSubtaskModeField(rawMode);
+      if (configId && mode) {
+        normalized.selectedLoopSubtaskModeByConfigId[configId] = mode;
+      }
+    }
+  }
+  const storedSeeded = store?.loopFullstackRoleSeededByConfigId;
+  if (storedSeeded && typeof storedSeeded === "object") {
+    for (const [configId, rawSeeded] of Object.entries(storedSeeded)) {
+      if (configId && rawSeeded === true) {
+        normalized.loopFullstackRoleSeededByConfigId[configId] = true;
       }
     }
   }
@@ -837,6 +964,255 @@ export function selectLoopSubtaskCliInStore(
   return nextStore;
 }
 
+export function getSelectedLoopFrontendModelFromStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+): string | null {
+  if (!configId) {
+    return null;
+  }
+  const normalized = ensureCliModelStore(store);
+  return normalized.selectedLoopFrontendModelByConfigId[configId] ?? null;
+}
+
+export function selectLoopFrontendModelInStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  model: string | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!configId) {
+    return nextStore;
+  }
+  const normalizedModel = normalizeCliModelName(model);
+  if (!normalizedModel) {
+    delete nextStore.selectedLoopFrontendModelByConfigId[configId];
+    return nextStore;
+  }
+  nextStore.selectedLoopFrontendModelByConfigId[configId] = normalizedModel;
+  return nextStore;
+}
+
+export function getSelectedLoopFrontendThinkingFromStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  model: string | null | undefined,
+): ThinkingMode | null {
+  if (!configId) {
+    return null;
+  }
+  const normalized = ensureCliModelStore(store);
+  const key = normalizeCliModelName(model) ?? "__default__";
+  return normalized.selectedLoopFrontendThinkingByConfigId[configId]?.[key] ?? null;
+}
+
+export function setSelectedLoopFrontendThinkingInStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  model: string | null | undefined,
+  thinkingMode: ThinkingMode | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!configId) {
+    return nextStore;
+  }
+  const key = normalizeCliModelName(model) ?? "__default__";
+  const current = { ...(nextStore.selectedLoopFrontendThinkingByConfigId[configId] ?? {}) };
+  if (thinkingMode && isKnownThinkingMode(thinkingMode)) {
+    current[key] = thinkingMode;
+  } else {
+    delete current[key];
+  }
+  if (Object.keys(current).length > 0) {
+    nextStore.selectedLoopFrontendThinkingByConfigId[configId] = current;
+  } else {
+    delete nextStore.selectedLoopFrontendThinkingByConfigId[configId];
+  }
+  return nextStore;
+}
+
+export function getSelectedLoopFrontendCliFromStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): CliName | null {
+  if (!mainConfigId) {
+    return null;
+  }
+  const normalized = ensureCliModelStore(store);
+  return normalized.selectedLoopFrontendCliByConfigId[mainConfigId] ?? null;
+}
+
+export function selectLoopFrontendCliInStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+  cli: CliName | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!mainConfigId) {
+    return nextStore;
+  }
+  if (!cli) {
+    delete nextStore.selectedLoopFrontendCliByConfigId[mainConfigId];
+    return nextStore;
+  }
+  nextStore.selectedLoopFrontendCliByConfigId[mainConfigId] = cli;
+  return nextStore;
+}
+
+export function getSelectedLoopFullstackCliFromStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): CliName | null {
+  if (!mainConfigId) {
+    return null;
+  }
+  return ensureCliModelStore(store).selectedLoopFullstackCliByConfigId[mainConfigId] ?? null;
+}
+
+export function selectLoopFullstackCliInStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+  cli: CliName | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!mainConfigId) {
+    return nextStore;
+  }
+  if (!cli) {
+    delete nextStore.selectedLoopFullstackCliByConfigId[mainConfigId];
+    return nextStore;
+  }
+  nextStore.selectedLoopFullstackCliByConfigId[mainConfigId] = cli;
+  return nextStore;
+}
+
+export function getSelectedLoopSubtaskModeFromStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): LoopSubtaskMode {
+  if (!mainConfigId) {
+    return "fullstack";
+  }
+  return ensureCliModelStore(store).selectedLoopSubtaskModeByConfigId[mainConfigId] ?? "fullstack";
+}
+
+export function selectLoopSubtaskModeInStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+  mode: LoopSubtaskMode,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!mainConfigId) {
+    return nextStore;
+  }
+  nextStore.selectedLoopSubtaskModeByConfigId[mainConfigId] = mode;
+  return nextStore;
+}
+
+export function getLoopRoleExplicitModelFromStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  role: LoopPlusConfigRole,
+): { configured: boolean; model: string } {
+  if (!configId) {
+    return { configured: false, model: "" };
+  }
+  const bucket = ensureCliModelStore(store).loopRoleExplicitModelByConfigId[configId];
+  if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, role)) {
+    return { configured: false, model: "" };
+  }
+  return { configured: true, model: bucket[role] ?? "" };
+}
+
+export function setLoopRoleExplicitModelInStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  role: LoopPlusConfigRole,
+  model: string,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!configId) {
+    return nextStore;
+  }
+  const current = { ...(nextStore.loopRoleExplicitModelByConfigId[configId] ?? {}) };
+  current[role] = model.trim();
+  nextStore.loopRoleExplicitModelByConfigId[configId] = current;
+  if (role === "frontend") {
+    if (current.frontend) {
+      nextStore.selectedLoopFrontendModelByConfigId[configId] = current.frontend;
+    } else {
+      delete nextStore.selectedLoopFrontendModelByConfigId[configId];
+    }
+  }
+  return nextStore;
+}
+
+export function getSelectedLoopFullstackThinkingFromStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  model: string | null | undefined,
+): ThinkingMode | null {
+  if (!configId) {
+    return null;
+  }
+  const key = normalizeCliModelName(model) ?? "__default__";
+  return ensureCliModelStore(store).selectedLoopFullstackThinkingByConfigId[configId]?.[key] ?? null;
+}
+
+export function setSelectedLoopFullstackThinkingInStore(
+  store: CliModelStore | undefined,
+  configId: string | null | undefined,
+  model: string | null | undefined,
+  thinkingMode: ThinkingMode | null,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!configId) {
+    return nextStore;
+  }
+  const key = normalizeCliModelName(model) ?? "__default__";
+  const current = { ...(nextStore.selectedLoopFullstackThinkingByConfigId[configId] ?? {}) };
+  if (thinkingMode && isKnownThinkingMode(thinkingMode)) {
+    current[key] = thinkingMode;
+  } else {
+    delete current[key];
+  }
+  if (Object.keys(current).length > 0) {
+    nextStore.selectedLoopFullstackThinkingByConfigId[configId] = current;
+  } else {
+    delete nextStore.selectedLoopFullstackThinkingByConfigId[configId];
+  }
+  return nextStore;
+}
+
+export function markLoopFullstackRoleSeededInStore(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): CliModelStore {
+  const nextStore = ensureCliModelStore(store);
+  if (!mainConfigId) {
+    return nextStore;
+  }
+  nextStore.loopFullstackRoleSeededByConfigId[mainConfigId] = true;
+  return nextStore;
+}
+
+export function loopFullstackRoleNeedsSeed(
+  store: CliModelStore | undefined,
+  mainConfigId: string | null | undefined,
+): boolean {
+  if (!mainConfigId) {
+    return false;
+  }
+  const normalized = ensureCliModelStore(store);
+  if (normalized.loopFullstackRoleSeededByConfigId[mainConfigId]) {
+    return false;
+  }
+  if (normalized.selectedLoopFullstackCliByConfigId[mainConfigId]) {
+    return false;
+  }
+  return true;
+}
+
 export function setCliModelLoopRoleInStore(
   store: CliModelStore,
   cli: CliName,
@@ -1208,6 +1584,27 @@ export function buildModelState(
     managedByCli,
     ...(Object.keys(ensureCliModelStore(store).selectedLoopSubtaskCliByConfigId).length > 0
       ? { selectedLoopSubtaskCliByConfigId: { ...ensureCliModelStore(store).selectedLoopSubtaskCliByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopFrontendCliByConfigId).length > 0
+      ? { selectedLoopFrontendCliByConfigId: { ...ensureCliModelStore(store).selectedLoopFrontendCliByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopFullstackCliByConfigId).length > 0
+      ? { selectedLoopFullstackCliByConfigId: { ...ensureCliModelStore(store).selectedLoopFullstackCliByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopSubtaskModeByConfigId).length > 0
+      ? { selectedLoopSubtaskModeByConfigId: { ...ensureCliModelStore(store).selectedLoopSubtaskModeByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).loopRoleExplicitModelByConfigId).length > 0
+      ? { loopRoleExplicitModelByConfigId: { ...ensureCliModelStore(store).loopRoleExplicitModelByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopFullstackThinkingByConfigId).length > 0
+      ? { selectedLoopFullstackThinkingByConfigId: { ...ensureCliModelStore(store).selectedLoopFullstackThinkingByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).selectedLoopFrontendThinkingByConfigId).length > 0
+      ? { selectedLoopFrontendThinkingByConfigId: { ...ensureCliModelStore(store).selectedLoopFrontendThinkingByConfigId } }
+      : {}),
+    ...(Object.keys(ensureCliModelStore(store).loopFullstackRoleSeededByConfigId).length > 0
+      ? { loopFullstackRoleSeededByConfigId: { ...ensureCliModelStore(store).loopFullstackRoleSeededByConfigId } }
       : {}),
     activeConfigIdByCli: resolvedActiveConfigIdByCli,
     ...(Object.keys(selectedLoopByCli).length > 0 ? { selectedLoopByCli } : {}),

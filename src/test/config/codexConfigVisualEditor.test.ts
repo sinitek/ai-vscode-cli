@@ -357,10 +357,8 @@ test("visual labels expose tooltip help and enum values", () => {
     source,
     /"model_reasoning_effort"[\s\S]*?\["", \.\.\.CODEX_VISUAL_REASONING_EFFORT_OPTIONS\]\.map/,
   );
-  assert.match(source, /"model_verbosity"[\s\S]*?\["", "low", "medium", "high"\]\.map/);
-  assert.match(source, /renderCodexTextArea\([\s\S]*?"developer_instructions"/);
   assert.match(source, /web_search[\s\S]*?\["", "disabled", "cached", "indexed", "live"\]\.map/);
-  assert.match(source, /wire_api: "Provider 使用的 wire API。新配置仅提供 responses；旧值会保留直到明确迁移。"/);
+  assert.match(source, /wire_api: "Codex 当前仅支持 Responses API（responses）。旧协议值仅兼容保留，不代表当前 CLI 支持；可在 TOML 源码中迁移。"/);
   assert.doesNotMatch(source, /env_key: "从 \.env 读取 API Key 的环境变量名。"/);
   const codexStart = source.indexOf("renderCodexVisualEditor = () =>");
   const codexEnd = source.indexOf("\n    return O", codexStart);
@@ -371,25 +369,131 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.doesNotMatch(codexVisualSource, /renderCodexSelect\("tools\.web_search"/);
 });
 
-test("Codex provider list uses reduced shared card width", () => {
+test("Codex 公共区在顶部，Provider 使用共享列表和双栏详情", () => {
   const source = loadUiSource();
   const codexStart = source.indexOf("renderCodexVisualEditor = () =>");
-  const codexEnd = source.indexOf("\n    return O", codexStart);
+  const codexEnd = source.indexOf("\n    const renderFixedEditorModeTabs", codexStart);
   assert.notEqual(codexStart, -1, "Codex visual editor should exist");
   assert.notEqual(codexEnd, -1, "Codex visual editor should terminate before editor return");
   const codexVisualSource = source.slice(codexStart, codexEnd);
 
-  assert.match(source, /const CONFIG_PROVIDER_CARD_ORIGINAL_WIDTH_PX = 220;/);
-  assert.match(source, /const CONFIG_PROVIDER_CARD_ORIGINAL_MIN_WIDTH_PX = 190;/);
-  assert.match(source, /const CONFIG_PROVIDER_CARD_WIDTH_SCALE = 0\.6;/);
-  assert.match(
-    codexVisualSource,
-    /width: `\$\{CONFIG_PROVIDER_CARD_WIDTH_PX\}px`,\s+minWidth: `\$\{CONFIG_PROVIDER_CARD_MIN_WIDTH_PX\}px`,/,
-    "Codex provider card should use the 60% shared width constants",
-  );
-  assert.match(
-    codexVisualSource,
-    /gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(210px, 100%\), 1fr\)\)"/,
-    "Codex provider fields should keep their existing responsive grid",
-  );
+  assert.ok(codexVisualSource.indexOf('"codex-common-parameters"') < codexVisualSource.indexOf('"codex-provider-workspace"'));
+  assert.match(codexVisualSource, /className: "grok-model-workspace codex-provider-workspace"/);
+  assert.match(codexVisualSource, /className: "grok-model-row"/);
+  assert.match(codexVisualSource, /className: "config-visual-form-grid"/);
+  assert.match(codexVisualSource, /"data-codex-delete-provider-id": provider\.id/);
+  assert.match(codexVisualSource, /icon: be\.jsx\(AH, \{\}\)/);
+  assert.doesNotMatch(codexVisualSource, /renderCodex(?:Select|Field|TextArea)\("(?:model_verbosity|developer_instructions|disable_response_storage|hide_agent_reasoning|model_supports_reasoning_summaries|model_reasoning_summary)"/);
+});
+
+type VisualNode = { type: unknown; props: Record<string, any> };
+
+function visualNodes(value: unknown): VisualNode[] {
+  if (Array.isArray(value)) return value.flatMap(visualNodes);
+  if (!value || typeof value !== "object" || !("props" in value)) return [];
+  const node = value as VisualNode;
+  return [node, ...visualNodes(node.props.children)];
+}
+
+function createCodexEditorHarness(content: string) {
+  const source = loadUiSource();
+  const utils = loadVisualUtils();
+  const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
+  const confirmations: Record<string, any>[] = [];
+  const sandbox: Record<string, any> = {
+    be: { jsx, jsxs: jsx }, xn: "Button", AH: "DeleteIcon",
+    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    codexVisualState: utils.createState(content), codexVisualError: "",
+    getConfigFieldHelp: (label: string) => label,
+    CODEX_VISUAL_REASONING_EFFORT_OPTIONS: ["low", "medium", "high", "xhigh"],
+    renderCodexField: (label: string, value: string, onChange: unknown) => jsx("Field", { label, value, onChange }),
+    renderCodexSelect: (label: string, value: string, onChange: unknown, options: unknown[]) => jsx("Select", { label, value, onChange, options }),
+    renderCodexSection: (title: string, description: string, children: unknown) => jsx("Section", { title, description, children }),
+    codexVisualAddProvider: utils.addProvider, codexVisualCreateState: utils.createState,
+    codexVisualDeleteProvider: utils.deleteProvider,
+    setCodexVisualState: (update: any) => { sandbox.codexVisualState = typeof update === "function" ? update(sandbox.codexVisualState) : update; },
+    updateCodexVisualState: (patch: any) => { sandbox.codexVisualState = utils.updateState(sandbox.codexVisualState, patch); },
+    selectCodexProvider: (id: string) => { sandbox.codexVisualState = { ...sandbox.codexVisualState, selectedProviderId: id }; },
+    updateSelectedCodexProvider: (patch: any) => { sandbox.codexVisualState = utils.updateProvider(sandbox.codexVisualState, sandbox.codexVisualState.selectedProviderId, patch); },
+  };
+  Object.defineProperty(sandbox, "selectedCodexProvider", {
+    get: () => sandbox.codexVisualState?.providers.find((provider: any) => provider.id === sandbox.codexVisualState.selectedProviderId),
+  });
+  const confirmStart = source.indexOf("confirmDeleteCodexProvider =");
+  const confirmEnd = source.indexOf("renderCodexField =", confirmStart);
+  const renderStart = source.indexOf("renderCodexVisualEditor = () =>");
+  const renderEnd = source.indexOf("\n    const renderFixedEditorModeTabs", renderStart);
+  assert.ok(confirmStart >= 0 && confirmEnd > confirmStart && renderEnd > renderStart);
+  vm.runInNewContext(`const ${source.slice(confirmStart, confirmEnd).replace(/,\s*$/, ";")}\nconst ${source.slice(renderStart, renderEnd)}\nglobalThis.render = renderCodexVisualEditor;`, sandbox);
+  const render = () => sandbox.render() as VisualNode;
+  const find = (property: string, value: unknown) => {
+    const node = visualNodes(render()).find((candidate) => candidate.props[property] === value);
+    assert.ok(node, `缺少 ${property}=${value}`);
+    return node;
+  };
+  return { sandbox, utils, confirmations, render, find };
+}
+
+test("Codex Provider 列表支持选中、新增、取消删除和确认删除非选中项", () => {
+  const harness = createCodexEditorHarness('model_provider = "first"\n[model_providers.first]\nname = "首项"\n[model_providers.second]\nname = "次项"\n');
+  assert.equal(harness.render().props.children[0].props["data-testid"], "codex-common-parameters");
+  harness.find("data-codex-provider-id", "second").props.onClick();
+  assert.equal(harness.sandbox.codexVisualState.selectedProviderId, "second");
+  assert.equal(harness.find("data-codex-provider-id", "second").props["aria-pressed"], true);
+  assert.equal(harness.find("label", "Provider id").props.value, "second");
+  let stopped = false;
+  harness.find("data-codex-delete-provider-id", "first").props.onClick({ stopPropagation: () => { stopped = true; } });
+  assert.equal(stopped, true);
+  assert.equal(harness.sandbox.codexVisualState.providers.length, 2);
+  harness.find("data-codex-delete-provider-id", "first").props.onClick({ stopPropagation() {} });
+  harness.confirmations.at(-1)!.onOk();
+  assert.equal(harness.sandbox.codexVisualState.providers.length, 1);
+  assert.equal(harness.sandbox.codexVisualState.providers[0].id, "second");
+  assert.equal(harness.sandbox.codexVisualState.selectedProviderId, "second");
+  harness.find("data-testid", "codex-add-provider").props.onClick();
+  assert.equal(harness.sandbox.codexVisualState.providers.length, 2);
+  assert.notEqual(harness.sandbox.codexVisualState.selectedProviderId, "second");
+});
+
+test("Codex 空列表可新增，解析错误显示可恢复提示", () => {
+  const harness = createCodexEditorHarness("");
+  assert.match(JSON.stringify(harness.render()), /暂无 Provider，请新增/);
+  harness.find("data-testid", "codex-add-provider").props.onClick();
+  assert.equal(harness.sandbox.codexVisualState.providers.length, 1);
+  assert.deepEqual(Array.from(harness.find("label", "wire_api").props.options, (option: any) => option.value), ["", "responses"]);
+  harness.sandbox.codexVisualState = null;
+  assert.match(JSON.stringify(harness.render()), /切换到 TOML 源码修复/);
+});
+
+test("Codex 精简表单编辑后保留高级参数、旧协议和未知字段", () => {
+  const content = `model = "old"
+model_provider = "gateway"
+model_verbosity = "high"
+model_reasoning_summary = "detailed"
+developer_instructions = "保留指令"
+disable_response_storage = true
+hide_agent_reasoning = false
+model_supports_reasoning_summaries = true
+[model_providers.gateway]
+name = "原始名称"
+wire_api = "chat"
+env_key = "CUSTOM_API_KEY"
+request_max_retries = 7
+stream_max_retries = 6
+stream_idle_timeout_ms = 90000
+[model_providers.gateway.http_headers]
+"X-Custom" = "preserved"
+[custom_root]
+enabled = true
+`;
+  const harness = createCodexEditorHarness(content);
+  harness.find("label", "默认模型 model").props.onChange("updated");
+  harness.find("label", "name").props.onChange("新名称");
+  const serialized = harness.utils.serializeState(harness.sandbox.codexVisualState);
+  assert.equal(serialized.ok, true);
+  const expected = harness.utils.parseContent(content).state.source;
+  expected.model = "updated";
+  expected.model_providers.gateway.name = "新名称";
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.utils.parseContent(serialized.content).state.source)), JSON.parse(JSON.stringify(expected)));
+  assert.equal(harness.sandbox.codexVisualState.providers[0].wireApi, "chat");
 });

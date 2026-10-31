@@ -27,7 +27,9 @@ import {
   type LoopPlusSchedulerSnapshot,
 } from "../loopPlusScheduler";
 import type { CliName, ThinkingMode } from "../cli/types";
-import { resolveStoredSubtaskExecution } from "../subtaskCliRoute";
+import { formatSubtaskRouteSummary, resolveLoopPlusRoleExecution } from "../subtaskCliRoute";
+import { resolveStoredLoopSubtaskMode, type LoopSubtaskMode } from "../loopPlusSubtaskMode";
+import type { LoopPlusTaskType } from "../loopTaskStore";
 import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import {
   resolveLoopSchedulingMode,
@@ -54,6 +56,9 @@ import {
   type LoopPlusDecisionStrategyPort,
 } from "./loopPlusDecisionStrategies";
 
+import { inheritLoopPlusRepairSessions } from "../loopSubtaskSession";
+import type { LoopPlusReviewItem } from "../loopPlusScheduler";
+
 export const LOOP_PLUS_MAX_CONCURRENCY = 6;
 const DECISION_SAFETY_LIMIT = 200;
 const PROTOCOL_RETRY_LIMIT = 2;
@@ -78,6 +83,15 @@ export type LoopPlusRunInput = {
   loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
+  loopSubtaskFrontendCli?: CliName;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendModel?: string;
+  loopSubtaskFrontendThinkingMode?: ThinkingMode;
+  loopSubtaskFullstackCli?: CliName;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackModel?: string;
+  loopSubtaskFullstackThinkingMode?: ThinkingMode;
+  loopSubtaskMode?: import("../loopPlusSubtaskMode").LoopSubtaskMode;
 };
 
 export type LoopPlusRunOptions = {
@@ -113,6 +127,7 @@ export type LoopPlusMainHandle = {
 };
 
 export type LoopPlusAttemptRequest = {
+  continueFromSubtaskId?: string;
   taskId: string;
   subtaskId: string;
   attemptId: string;
@@ -124,6 +139,13 @@ export type LoopPlusAttemptRequest = {
   communicationFile?: string;
   round: number;
   targetCli: LoopPlusPromptTarget["cli"];
+  /** 本次实际执行使用的角色配置。general 使用主模型配置，仍是独立子任务。 */
+  execution?: {
+    role: "backend" | "frontend" | "general";
+    configId: string | null;
+    model?: string;
+    thinkingMode?: ThinkingMode;
+  };
 };
 
 export type LoopPlusAttemptResult = {
@@ -473,6 +495,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           id: subtask.id,
           title: subtask.title,
           prompt: subtask.prompt ?? subtask.title,
+          continueFromSubtaskId: subtask.continueFromSubtaskId,
           conflictGroup: subtask.conflictGroup,
           writeFiles: subtask.writeFiles,
         },
@@ -1064,7 +1087,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
       createDecisionPort(runtime),
       step,
-      decision,
+      inheritLoopPlusRepairSessions(decision, [snapshot.currentReview, ...snapshot.reviewQueue].filter((event): event is LoopPlusReviewItem => event !== null)),
     );
   }
 
@@ -1404,7 +1427,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         round: LOOP_PLUS_ATTEMPT_ROUND,
         communicationFile,
       });
-      const subtaskExecution = resolveLoopPlusAttemptExecution(runtime);
+      const subtaskExecution = resolveLoopPlusAttemptExecution(runtime, decision);
       if (subtaskExecution.unavailableReason) {
         applyFinish(runtime, {
           subtaskId: record.subtaskId,
@@ -1414,21 +1437,31 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         });
         return;
       }
+      const executionRole = subtaskExecution.role ?? "backend";
       const request: LoopPlusAttemptRequest = {
         taskId: runtime.taskId,
         subtaskId: record.subtaskId,
+        continueFromSubtaskId: decision.continueFromSubtaskId,
         attemptId: record.attemptId,
         title: decision.title,
         prompt: decision.prompt,
         modelPrompt: buildLoopPlusSubtaskModelPrompt({
           subtask: decision,
           communicationFile: communicationFile ?? "",
+          executionRole,
+          loopSubtaskMode: subtaskExecution.mode,
         }),
         writeFiles: record.writeFiles,
         conflictGroup: record.conflictGroup ?? undefined,
         communicationFile,
         round: LOOP_PLUS_ATTEMPT_ROUND,
         targetCli: subtaskExecution.cli,
+        execution: {
+          role: executionRole,
+          configId: subtaskExecution.configId,
+          ...(subtaskExecution.model ? { model: subtaskExecution.model } : {}),
+          ...(subtaskExecution.thinkingMode ? { thinkingMode: subtaskExecution.thinkingMode } : {}),
+        },
       };
       let handle: LoopPlusAttemptHandle;
       try {
@@ -1480,15 +1513,52 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
 
-  function resolveLoopPlusAttemptExecution(runtime: ParentRuntime) {
+  function resolveLoopPlusAttemptExecution(
+    runtime: ParentRuntime,
+    decision: { taskType?: LoopPlusTaskType; writeFiles?: string[]; codingDelivery?: boolean },
+  ) {
     const task = deps.readTask(runtime.taskId);
-    return resolveStoredSubtaskExecution({
+    return resolveLoopPlusRoleExecution({
       mainCli: runtime.cli,
-      route: task?.modelRouting?.subtask,
-      routeFallback: task?.modelRouting?.subtask.fallback,
+      taskType: decision.taskType,
+      writeFiles: decision.writeFiles,
+      codingDelivery: decision.codingDelivery,
+      loopSubtaskMode: task?.loopSubtaskMode,
+      loopSubtaskModeInvalid: task?.loopSubtaskModeInvalid,
+      mainRoute: task?.modelRouting?.main,
+      backendRoute: task?.modelRouting?.subtask,
+      frontendRoute: task?.modelRouting?.subtaskFrontend,
+      fullstackRoute: task?.modelRouting?.subtaskFullstack,
+      originProfile: task?.originProfile,
       prompt: runtime.prompt,
-      originThinkingMode: task?.originProfile?.subtaskThinkingMode,
     });
+  }
+
+  function describeLoopPlusRouting(task: LoopTaskRecord | null): { mode?: LoopSubtaskMode; summary: string } {
+    const mode = resolveStoredLoopSubtaskMode({
+      loopSubtaskMode: task?.loopSubtaskMode,
+      loopSubtaskModeInvalid: task?.loopSubtaskModeInvalid,
+      frontendRoute: task?.modelRouting?.subtaskFrontend,
+    });
+    if (!mode) {
+      return { summary: "stored loopSubtaskMode is invalid; do not dispatch coding" };
+    }
+    const analysis = formatSubtaskRouteSummary(task?.modelRouting?.main, "main unrecorded");
+    if (mode === "fullstack") {
+      const legacyAtomic = !task?.loopSubtaskMode && !task?.modelRouting?.subtaskFullstack;
+      const coding = formatSubtaskRouteSummary(
+        legacyAtomic ? task?.modelRouting?.subtask : task?.modelRouting?.subtaskFullstack,
+        legacyAtomic ? "legacy subtask unrecorded" : "fullstack unrecorded",
+      );
+      return {
+        mode,
+        summary: `mode=fullstack coding=${coding} analysis=${analysis}${legacyAtomic ? " legacyAtomic=yes" : ""}`,
+      };
+    }
+    return {
+      mode,
+      summary: `mode=split backend=${formatSubtaskRouteSummary(task?.modelRouting?.subtask, "backend unrecorded")} frontend=${formatSubtaskRouteSummary(task?.modelRouting?.subtaskFrontend, "frontend unrecorded")} analysis=${analysis}`,
+    };
   }
 
   function abandonUnstarted(runtime: ParentRuntime, record: LoopPlusExecutionRecord): void {
@@ -1699,6 +1769,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
 
   function buildMainRequest(runtime: ParentRuntime, step: MainStep): LoopPlusMainRequest {
     const task = deps.readTask(runtime.taskId);
+    const routing = describeLoopPlusRouting(task);
     const prompt = buildLoopPlusMainModelPrompt({
       taskId: runtime.taskId,
       rootPrompt: task?.rootPrompt ?? runtime.prompt.displayPrompt,
@@ -1719,6 +1790,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       subtaskMax: decisionSubtaskMax(),
       acceptedCount: reviewedAcceptanceCount(runtime),
       acceptanceLimit: acceptanceLimitFor(runtime),
+      ...(routing.mode ? { loopSubtaskMode: routing.mode } : {}),
+      routingSummary: routing.summary,
     });
     return {
       taskId: runtime.taskId,
@@ -1809,8 +1882,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         id: subtaskId,
         title: meta.decision.title,
         prompt: meta.decision.prompt,
+        continueFromSubtaskId: meta.decision.continueFromSubtaskId,
+        ...(previous?.executionSession ? { executionSession: previous.executionSession } : {}),
         conflictGroup: meta.decision.conflictGroup,
         writeFiles: meta.decision.writeFiles,
+        ...(meta.decision.taskType ? { taskType: meta.decision.taskType } : {}),
+        ...(meta.decision.codingDelivery ? { codingDelivery: true } : {}),
         status: active,
         summary: meta.summary ?? previous?.summary,
         communicationFile: meta.communicationFile ?? previous?.communicationFile,
@@ -2064,6 +2141,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const title = control.title ?? meta?.decision.title ?? control.id;
       const writeFiles = control.writeFiles ?? meta?.decision.writeFiles ?? [];
       const conflictGroup = control.conflictGroup ?? meta?.decision.conflictGroup;
+      const taskType = control.taskType ?? meta?.decision.taskType;
+      const codingDelivery = control.taskType ? control.codingDelivery : (control.codingDelivery ?? meta?.decision.codingDelivery);
       commands.push({
         subtaskId: control.id,
         action: "reprompt",
@@ -2073,6 +2152,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           title,
           writeFiles,
           ...(conflictGroup ? { conflictGroup } : {}),
+          ...(taskType ? { taskType } : {}),
+          ...(codingDelivery ? { codingDelivery } : {}),
         },
       });
     }
@@ -2106,8 +2187,15 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         id: closed.subtaskId,
         title,
         prompt,
+        continueFromSubtaskId: closed.subtaskId,
         conflictGroup: control?.conflictGroup ?? previous?.decision.conflictGroup,
         writeFiles: control?.writeFiles ?? previous?.decision.writeFiles,
+        ...(control?.taskType || (!control?.taskType && previous?.decision.taskType)
+          ? { taskType: control?.taskType ?? previous?.decision.taskType }
+          : {}),
+        ...((control?.taskType ? control.codingDelivery : (control?.codingDelivery ?? previous?.decision.codingDelivery))
+          ? { codingDelivery: true }
+          : {}),
       },
       communicationFile: previous?.communicationFile,
       summary: action === "close"

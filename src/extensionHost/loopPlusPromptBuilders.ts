@@ -11,6 +11,7 @@ import { LOOP_MAIN_STALE_TASK_LIST_RULE_EN } from "../loopMainTaskListPolicy";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
+import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 import {
   buildLoopPlusAcceptancePlanPromptLines,
@@ -36,11 +37,16 @@ export type LoopPlusMainPromptContext = {
   subtaskMax?: number;
   acceptedCount?: number;
   acceptanceLimit?: number;
+  /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
+  loopSubtaskMode?: LoopSubtaskMode;
+  routingSummary?: string;
 };
 
 export type LoopPlusSubtaskPromptContext = {
   subtask: LoopSubtaskDecision;
   communicationFile: string;
+  executionRole?: "backend" | "frontend" | "general";
+  loopSubtaskMode?: LoopSubtaskMode;
 };
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
@@ -138,10 +144,28 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
   const planFeedback = planResults.length > 0 ? { acceptancePlanResults: planResults } : {};
   const subtask = {
     id: "example-subtask",
-    title: "Example self-contained subtask",
+    title: "Example backend coding subtask",
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
+    taskType: "backend",
     conflictGroup: "example-scope",
     writeFiles: ["src/example-scope.ts"],
+  };
+  const frontendSubtask = {
+    id: "example-frontend-subtask",
+    title: "Example frontend coding subtask",
+    prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
+    taskType: "frontend",
+    writeFiles: ["src/webview/example-panel.ts"],
+  };
+  const analysisSubtask = {
+    id: "example-analysis-subtask",
+    title: "Example read-only analysis",
+    prompt: [
+      "Investigate the failing path and report evidence only. The suggested write scope is read-only.",
+      "Do not edit implementation, tests, or scripts. If a code change is required, return that finding to the main model for a new frontend or backend task.",
+      "Record the files read and the conclusion in the attempt report.",
+    ].join(" "),
+    taskType: "general",
   };
   const completed: Record<string, unknown> = {
     status: "completed",
@@ -194,7 +218,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
       status: "dispatch",
       value: {
         status: "dispatch",
-        subtasks: [subtask],
+        subtasks: [analysisSubtask, subtask, frontendSubtask],
       },
     },
     {
@@ -366,7 +390,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
-    "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, suggested write scope, and verification. writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
+    ...loopPlusModeRuleLines(context),
+    "- writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
     "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId, acceptance (exactly passed or failed), and a short reason no longer than 50 characters explaining the evidence-backed result. A missing, extra, reordered review, or missing reason rejects the decision.",
@@ -378,7 +403,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report, the code, or a test or startup you chose to run. You are not required to run either one.",
     ...acceptancePlanLines,
-    "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a new subtask, send blocked, which confirms nothing.",
+    "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a subtask, send blocked, which confirms nothing.",
+    "- Decide whether each next subtask continues an earlier subtask. Set continueFromSubtaskId to that earlier subtask id for follow-up work; omit it for independent work. Wait for that source to finish; use controls.reprompt to redirect work that is still running. The host restores only a session recorded under this parent with the same CLI and configuration. Do not run two tasks concurrently on one source session.",
+    "- Repairs linked by failed reviews[*].subtaskIds automatically inherit the failed event's subtask session. Prefer that original session for acceptance-failure fixes, not a fresh context. A new attempt or conversation tab does not imply a new CLI session. Missing sessions or incompatible CLI/configuration are recorded and fall back to a fresh session.",
     "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is a concise evidence-backed reason of no more than 50 characters.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
@@ -404,18 +431,60 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   ].join("\n");
 }
 
+function loopPlusModeRuleLines(context: LoopPlusMainPromptContext): string[] {
+  const mode = context.loopSubtaskMode === "fullstack" ? "fullstack" : "split";
+  const summary = context.routingSummary
+    ? ["- Active route snapshot: " + context.routingSummary]
+    : [];
+  const shared = [
+    "- Each subtask needs a title, a unique id, taskType, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, suggested write scope, and verification. taskType is exactly backend, frontend, or general. backend and frontend are coding tasks. general is read-only analysis and must not include writeFiles or codingDelivery. A missing or unknown taskType, a wrong data type, or general combined with writeFiles or codingDelivery is rejected.",
+    "- Do not classify by title keywords or file extensions. The main model only orchestrates and reviews and must not implement coding itself. Analysis uses an independent executor with the main model configuration, returns findings, and hands coding back for a new dispatch. A failed or missing sub-model configuration fails the attempt. Do not code with the main model. The user may set a sub-role to the same model name as the main role; the constraint is the selected role configuration and duty.",
+  ];
+  if (mode === "fullstack") {
+    return [
+      "- Loop+ subtask mode: fullstack. Every coding task uses the fullstack sub-model. Do not split coding into frontend and backend only to choose different models. Split only when the work itself has a separate boundary.",
+      ...shared,
+      "- taskType backend, frontend, and any coding without a more specific type all execute on the fullstack sub-model. general stays read-only analysis on the main model configuration in both modes.",
+      ...summary,
+    ];
+  }
+  return [
+    "- Loop+ subtask mode: split. Frontend coding uses the frontend sub-model. Backend coding and any other coding use the backend sub-model. general stays read-only analysis on the main model configuration.",
+    ...shared,
+    "- Split mixed analysis and coding into a general task plus separate frontend or backend tasks. Coding that cannot be split uses frontend for UI implementation and backend for every other code change.",
+    ...summary,
+  ];
+}
+
 export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptContext): string {
   const files = context.subtask.writeFiles && context.subtask.writeFiles.length > 0
     ? context.subtask.writeFiles.join(", ")
     : "(not declared; edit the workspace files this attempt requires)";
+  const role = context.executionRole
+    ?? (context.subtask.taskType === "frontend" || context.subtask.taskType === "general"
+      ? context.subtask.taskType
+      : "backend");
+  const fullstackCoding = context.loopSubtaskMode === "fullstack" && role !== "general";
+  const roleLine = role === "general"
+    ? "Execution role: general. Deliver findings, evidence, and recommendations only. Do not modify implementation, tests, scripts, or other code. If a fix is required, say so and stop; the main model will dispatch a coding task."
+    : fullstackCoding
+      ? "Execution role: coding under fullstack mode. Implement with the fullstack sub-model configuration. Backend, frontend, and other coding share this sub-model. Do not switch to the main model."
+      : role === "frontend"
+        ? "Execution role: frontend. Implement the requested UI or client code with the frontend sub-model configuration. Do not switch to another role."
+        : "Execution role: backend. Implement the requested code with the backend sub-model configuration. Do not switch to another role.";
   return [
     `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Complete only this attempt and write its report.`,
     `Attempt report file: ${context.communicationFile}`,
-    `Suggested write scope: ${files}`,
-    "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
+    roleLine,
+    `Suggested write scope: ${role === "general" ? "(read only)" : files}`,
+    role === "general"
+      ? "This attempt is analysis only. A prompt instruction is not a sandbox; still do not edit files."
+      : "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
     "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
     "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",
-    "If the subtask instructions include a UI design, implement that design. Do not redesign layout, color, or interaction.",
+    role === "frontend"
+      ? "If the subtask instructions include a UI design, implement that design. Do not redesign layout, color, or interaction."
+      : "If the subtask instructions include a UI design, implement that design only when this attempt is the frontend coding task. Do not redesign layout, color, or interaction.",
     "",
     "Subtask instructions:",
     context.subtask.prompt,

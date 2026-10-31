@@ -1604,18 +1604,63 @@ input[type="file"]::file-selector-button {
   gap: 12px;
 }
 
-.dsh-common-parameters {
+.dsh-common-parameters,
+.cli-common-parameters {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
+  align-items: start;
+  gap: 10px 12px;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
 }
 
 .dsh-common-parameters > strong,
+.cli-common-parameters > strong,
 .dsh-common-parameter-note {
   grid-column: 1 / -1;
+}
+
+.dsh-common-parameters > .config-visual-form-grid,
+.cli-common-parameters > .config-visual-form-grid {
+  grid-column: 1 / -1;
+}
+
+.config-visual-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.config-visual-field {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.config-visual-field .ant-input,
+.config-visual-field .ant-input-number,
+.config-visual-field .ant-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.config-visual-field .ant-input,
+.config-visual-field .ant-input-number,
+.config-visual-field .ant-select-single .ant-select-selector {
+  min-height: 32px;
+}
+
+.codex-visual-editor,
+.grok-visual-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .dsh-common-parameter-note {
@@ -1708,7 +1753,9 @@ input[type="file"]::file-selector-button {
 }
 
 @media (max-width: 700px) {
-  .dsh-common-parameters {
+  .dsh-common-parameters,
+  .cli-common-parameters,
+  .config-visual-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

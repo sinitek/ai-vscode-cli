@@ -183,6 +183,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .input-actions {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 10px;
         width: 100%;
         justify-content: flex-end;
@@ -190,6 +191,68 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       }
       .input-actions .loop-execution-mode-select {
         margin-right: auto;
+      }
+      .loop-fullstack-toggle {
+        display: none;
+        align-items: center;
+        gap: 4px;
+        margin-right: auto;
+        min-width: 0;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+      }
+      .loop-plus-roles .loop-fullstack-toggle {
+        display: inline-flex;
+      }
+      .loop-fullstack-toggle input {
+        margin: 0;
+      }
+      .loop-role-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .open-code-model-row.loop-subtask-route-row .loop-role-label {
+        flex: 0 0 52px;
+        min-width: 52px;
+      }
+      .loop-plus-roles .open-code-model-row.loop-subtask-route-row .loop-role-label,
+      .loop-plus-roles .loop-role-label {
+        flex: 0 0 72px;
+        width: 72px;
+        min-width: 72px;
+      }
+      .loop-role-help {
+        display: none;
+        width: 12px;
+        height: 12px;
+        flex: 0 0 12px;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: help;
+      }
+      .loop-plus-roles .loop-role-help {
+        display: inline-flex;
+      }
+      .loop-role-help:hover,
+      .loop-role-help:focus-visible {
+        color: var(--vscode-foreground);
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 1px;
+      }
+      .loop-role-help-tooltip {
+        position: fixed;
+        transform: none;
+        z-index: 80;
+        white-space: normal;
+        max-width: min(240px, calc(100vw - 16px));
+        overflow-wrap: anywhere;
+        pointer-events: none;
       }
       .input-model-row {
         display: flex;
@@ -406,5 +469,15 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
 
       /* Helper Classes */
       .hidden-input { display: none; }
+
+      .loop-plus-roles .codex-loop-model-row,
+      .loop-plus-roles .open-code-model-group > .open-code-model-row {
+        grid-template-columns: 72px minmax(92px, 1fr) calc(70px * 1.15);
+      }
+      .loop-plus-roles .loop-role-label > .open-code-model-label {
+        flex: 0 1 auto;
+        width: auto;
+        min-width: 0;
+      }
 
 `;

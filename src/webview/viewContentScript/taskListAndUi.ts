@@ -906,6 +906,45 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function applyCodexLoopRoleModelsToPromptPayload(normalizedPayload, targetCli, targetInteractiveMode, targetTab) {
+        function finishLoopPlusPromptPayload(payload, targetInteractiveMode) {
+        if (!payload || targetInteractiveMode !== "loop_plus") {
+          return payload;
+        }
+        const mode = typeof getLoopSubtaskMode === "function" ? getLoopSubtaskMode() : "fullstack";
+        const next = { ...payload, loopSubtaskMode: mode };
+        if (typeof getLoopNamedRoute !== "function") {
+          return next;
+        }
+        ["fullstack", "frontend"].forEach((role) => {
+          const route = getLoopNamedRoute(role);
+          if (!route || !route.subtaskCli || route.unavailableReason) {
+            return;
+          }
+          const prefix = role === "fullstack" ? "loopSubtaskFullstack" : "loopSubtaskFrontend";
+          if (route.crossCli) {
+            next[prefix + "Cli"] = route.subtaskCli;
+          }
+          if (route.subtaskConfigId) {
+            next[prefix + "ConfigId"] = route.subtaskConfigId;
+          }
+          const explicit = typeof readExplicitRoleModel === "function"
+            ? readExplicitRoleModel(route.subtaskConfigId || route.mainConfigId, role)
+            : null;
+          if (explicit) {
+            next[prefix + "Model"] = explicit;
+          }
+          const thinkingMap = role === "fullstack" ? state.selectedLoopFullstackThinkingByConfigId : state.selectedLoopFrontendThinkingByConfigId;
+          const configId = route.subtaskConfigId || route.mainConfigId;
+          const thinking = thinkingMap && configId && thinkingMap[configId]
+            ? thinkingMap[configId][explicit || "__default__"]
+            : "";
+          if (thinking) {
+            next[prefix + "ThinkingMode"] = thinking;
+          }
+        });
+        return next;
+      }
+
         if (!normalizedPayload) {
           return normalizedPayload;
         }
@@ -941,41 +980,41 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           return withoutRoute;
         }
         if (normalizedPayload.loopSubtaskCli || normalizedPayload.loopSubtaskConfigId) {
-          return {
+          return finishLoopPlusPromptPayload({
             ...nextPayload,
             ...(normalizedPayload.loopSubtaskCli ? { loopSubtaskCli: normalizedPayload.loopSubtaskCli } : {}),
             ...(normalizedPayload.loopSubtaskConfigId ? { loopSubtaskConfigId: normalizedPayload.loopSubtaskConfigId } : {}),
             ...(normalizedPayload.loopSubtaskModel ? { loopSubtaskModel: normalizedPayload.loopSubtaskModel } : {}),
             ...(normalizedPayload.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: normalizedPayload.loopSubtaskThinkingMode } : {}),
-          };
+          }, targetInteractiveMode);
         }
         if (typeof getLoopSubtaskRoute !== "function") {
-          return nextPayload;
+          return finishLoopPlusPromptPayload(nextPayload, targetInteractiveMode);
         }
         const route = getLoopSubtaskRoute();
         if (!route || !route.crossCli) {
           if (targetCli === "claude" && typeof readLoopSubtaskThinkingSelection === "function") {
             const thinking = readLoopSubtaskThinkingSelection({ subtaskCli: "claude", crossCli: false });
-            return thinking ? { ...nextPayload, loopSubtaskThinkingMode: thinking } : nextPayload;
+            return finishLoopPlusPromptPayload(thinking ? { ...nextPayload, loopSubtaskThinkingMode: thinking } : nextPayload, targetInteractiveMode);
           }
           if ((targetCli === "grok" || targetCli === "opencode" || targetCli === "kimi-code" || targetCli === "zcode") && typeof readLoopSubtaskModelSelection === "function") {
             const model = readLoopSubtaskModelSelection({ subtaskCli: targetCli, crossCli: false });
             const thinking = (targetCli === "grok" || targetCli === "kimi-code" || targetCli === "zcode") && typeof readLoopSubtaskThinkingSelection === "function"
               ? readLoopSubtaskThinkingSelection({ subtaskCli: targetCli, crossCli: false })
               : "";
-            return {
+            return finishLoopPlusPromptPayload({
               ...nextPayload,
               ...(model ? { loopSubtaskModel: model } : {}),
               ...(thinking ? { loopSubtaskThinkingMode: thinking } : {}),
-            };
+            }, targetInteractiveMode);
           }
-          return nextPayload;
+          return finishLoopPlusPromptPayload(nextPayload, targetInteractiveMode);
         }
         if ((route.unavailableReason && !route.configPending) || (!route.subtaskConfigId && !route.configPending)) {
-          return {
+          return finishLoopPlusPromptPayload({
             ...nextPayload,
             loopSubtaskRouteBlocked: route.unavailableReason || (typeof t === "function" ? t("loopSubtaskRouteMissingConfig") : "目标 CLI 没有可用配置，不能派发子任务。"),
-          };
+          }, targetInteractiveMode);
         }
         const model = typeof readLoopSubtaskModelSelection === "function" ? readLoopSubtaskModelSelection(route) : "";
         const thinking = route.subtaskCli !== "opencode" && typeof readLoopSubtaskThinkingSelection === "function"
@@ -996,7 +1035,46 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         } else {
           delete routed.loopSubtaskThinkingMode;
         }
-        return routed;
+        const withFrontend = typeof attachLoopPlusFrontendRoute === "function"
+          ? attachLoopPlusFrontendRoute(routed, targetInteractiveMode)
+          : routed;
+        return finishLoopPlusPromptPayload(withFrontend, targetInteractiveMode);
+      }
+
+      function attachLoopPlusFrontendRoute(payload, targetInteractiveMode) {
+        if (!payload || targetInteractiveMode !== "loop_plus" || typeof getLoopFrontendRoute !== "function") {
+          return payload;
+        }
+        const route = getLoopFrontendRoute();
+        if (!route) {
+          return payload;
+        }
+        if ((route.unavailableReason && !route.configPending) || (route.crossCli && !route.subtaskConfigId && !route.configPending)) {
+          return {
+            ...payload,
+            loopSubtaskRouteBlocked: route.unavailableReason || (typeof t === "function" ? t("loopSubtaskRouteMissingConfig") : "目标 CLI 没有可用配置，不能派发子任务。"),
+          };
+        }
+        const model = typeof readLoopSubtaskModelSelection === "function" ? readLoopSubtaskModelSelection(route) : "";
+        const thinking = route.subtaskCli !== "opencode" && typeof readLoopSubtaskThinkingSelection === "function"
+          ? readLoopSubtaskThinkingSelection(route)
+          : "";
+        const next = { ...payload };
+        if (route.crossCli) {
+          next.loopSubtaskFrontendCli = route.subtaskCli;
+          if (route.subtaskConfigId) {
+            next.loopSubtaskFrontendConfigId = route.subtaskConfigId;
+          }
+        } else if (model) {
+          next.loopSubtaskFrontendModel = model;
+        }
+        if (route.crossCli && model) {
+          next.loopSubtaskFrontendModel = model;
+        }
+        if (thinking) {
+          next.loopSubtaskFrontendThinkingMode = thinking;
+        }
+        return next;
       }
 
       function snapshotPromptPayloadForQueue(payload) {
@@ -1117,6 +1195,33 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         if (normalizedPayload.loopSubtaskConfigId) {
           sendPromptMessage.loopSubtaskConfigId = normalizedPayload.loopSubtaskConfigId;
+        }
+        if (normalizedPayload.loopSubtaskFrontendCli) {
+          sendPromptMessage.loopSubtaskFrontendCli = normalizedPayload.loopSubtaskFrontendCli;
+        }
+        if (normalizedPayload.loopSubtaskFrontendConfigId) {
+          sendPromptMessage.loopSubtaskFrontendConfigId = normalizedPayload.loopSubtaskFrontendConfigId;
+        }
+        if (normalizedPayload.loopSubtaskFrontendModel) {
+          sendPromptMessage.loopSubtaskFrontendModel = normalizedPayload.loopSubtaskFrontendModel;
+        }
+        if (normalizedPayload.loopSubtaskFrontendThinkingMode) {
+          sendPromptMessage.loopSubtaskFrontendThinkingMode = normalizedPayload.loopSubtaskFrontendThinkingMode;
+        }
+        if (normalizedPayload.loopSubtaskMode) {
+          sendPromptMessage.loopSubtaskMode = normalizedPayload.loopSubtaskMode;
+        }
+        if (normalizedPayload.loopSubtaskFullstackCli) {
+          sendPromptMessage.loopSubtaskFullstackCli = normalizedPayload.loopSubtaskFullstackCli;
+        }
+        if (normalizedPayload.loopSubtaskFullstackConfigId) {
+          sendPromptMessage.loopSubtaskFullstackConfigId = normalizedPayload.loopSubtaskFullstackConfigId;
+        }
+        if (normalizedPayload.loopSubtaskFullstackModel) {
+          sendPromptMessage.loopSubtaskFullstackModel = normalizedPayload.loopSubtaskFullstackModel;
+        }
+        if (normalizedPayload.loopSubtaskFullstackThinkingMode) {
+          sendPromptMessage.loopSubtaskFullstackThinkingMode = normalizedPayload.loopSubtaskFullstackThinkingMode;
         }
         if (normalizedPayload.skipPromptHistory === true) {
           sendPromptMessage.skipPromptHistory = true;

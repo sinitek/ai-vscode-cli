@@ -360,6 +360,63 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         });
       }
 
+      function hideLoopRoleHelpTooltip() {
+        const tooltip = document.getElementById("loopRoleHelpTooltip");
+        if (!tooltip) {
+          return;
+        }
+        tooltip.hidden = true;
+        tooltip.textContent = "";
+        document.querySelectorAll(".loop-role-help[aria-describedby]").forEach((button) => {
+          button.removeAttribute("aria-describedby");
+        });
+      }
+
+      function showLoopRoleHelpTooltip(button) {
+        const tooltip = document.getElementById("loopRoleHelpTooltip");
+        if (!tooltip || !button || button.offsetParent === null) {
+          hideLoopRoleHelpTooltip();
+          return;
+        }
+        const text = button.getAttribute("data-help") || "";
+        tooltip.textContent = text;
+        tooltip.hidden = false;
+        tooltip.style.left = "0px";
+        tooltip.style.top = "0px";
+        const rect = button.getBoundingClientRect();
+        const tipRect = tooltip.getBoundingClientRect();
+        const margin = 8;
+        let left = rect.right + 6;
+        let top = rect.top - tipRect.height - 6;
+        if (left + tipRect.width > window.innerWidth - margin) {
+          left = Math.max(margin, window.innerWidth - margin - tipRect.width);
+        }
+        if (top < margin) {
+          top = Math.min(window.innerHeight - margin - tipRect.height, rect.bottom + 6);
+        }
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+        button.setAttribute("aria-describedby", "loopRoleHelpTooltip");
+      }
+
+      document.querySelectorAll(".loop-role-help").forEach((button) => {
+        button.addEventListener("pointerenter", () => showLoopRoleHelpTooltip(button));
+        button.addEventListener("pointerleave", hideLoopRoleHelpTooltip);
+        button.addEventListener("focus", () => showLoopRoleHelpTooltip(button));
+        button.addEventListener("blur", hideLoopRoleHelpTooltip);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          hideLoopRoleHelpTooltip();
+        }
+      });
+      window.addEventListener("scroll", hideLoopRoleHelpTooltip, true);
+      window.addEventListener("resize", hideLoopRoleHelpTooltip);
+
       // Model selection management
       const MODEL_MANAGE_OPTION_VALUE = "__manage__";
       let editingModelName = "";

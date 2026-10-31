@@ -1,0 +1,42 @@
+{
+  "generator": "repo-indexer",
+  "version": "0.1.0",
+  "generated_at": "2026-10-31T11:02:46+00:00",
+  "mode": "quick",
+  "repo_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+  "output_dir": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/generated/repo-index",
+  "git_head": "9c0a89c155b6f52c684edb0bb91e9d3ff9517c96",
+  "focus_paths": [],
+  "sources": [
+    ".ch/docs/README.md",
+    ".ch/docs/SECURITY.md",
+    ".ch/docs/TESTING.md",
+    ".ch/docs/exec-plans/README.md",
+    ".ch/docs/product-specs/index.md",
+    ".ch/docs/runbooks/README.md",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "README.md",
+    "package.json"
+  ],
+  "watched_patterns": [
+    "AGENTS.md",
+    "**/AGENTS.md",
+    "README.md",
+    "ARCHITECTURE.md",
+    ".ch/docs/**",
+    "package.json",
+    "pyproject.toml",
+    "Makefile",
+    "justfile",
+    ".github/workflows/**"
+  ],
+  "files": [
+    "index.md",
+    "repo-map.md",
+    "commands.md",
+    "context-entrypoints.md",
+    "manifest.json",
+    "summary.json"
+  ]
+}

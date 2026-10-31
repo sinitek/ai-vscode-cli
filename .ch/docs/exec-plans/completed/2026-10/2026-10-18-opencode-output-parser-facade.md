@@ -12,7 +12,7 @@
 
 `src/cli/commandRunner.ts` 在实施前为 1532 行，同时负责 VS Code terminal、spawn、runtime overlay、进程终止，以及 OpenCode JSONL、可见事件、活动跟踪、session/message id、export 文档解释和失败文案。主审已比较方向并采纳外观拆分。CodeGraph 对 `commandRunner.ts` 明确 stale，调用关系只作候选，实施以当前源码为准。
 
-实施前基线（真实仓库 `/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli`）：`git diff` 为空。`git status --short` 只有当时位于 active 的未跟踪 Grok 任务计划（现已归档为 `.ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-task-list.md`）。该文件不属于本次范围，原样保留。
+实施前基线（真实仓库 `/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli`）：`git diff` 为空。`git status --short` 只有当时位于 active 的未跟踪 Grok 任务临时计划。该文件不属于本次范围，原样保留；该临时计划已在后续目录整理中删除，此处只保留历史基线事实，不保留已失效路径。
 
 ## 目标
 

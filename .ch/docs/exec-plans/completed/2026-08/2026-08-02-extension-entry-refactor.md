@@ -42,7 +42,7 @@
 
 ## 本轮写入范围
 
-- `update-extension-exec-plan` 授权写入：`.ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`。
+- `update-extension-exec-plan` 授权写入：`.ch/docs/exec-plans/completed/2026-08/2026-08-02-extension-entry-refactor.md`。
 - `implement-cohesive-extraction` 授权写入：`src/extension.ts`、`src/extensionHost/**`；不得修改测试或文档。
 - `adapt-extension-contract-tests` 授权写入：`src/test/**`；不得越权修改实现。
 - `test-focused-extension-refactor` 授权写入：`dist/**`；不得修改 `src` 源码或测试。
@@ -100,7 +100,7 @@
 - 最小相关验证：
   - `wc -l src/extension.ts src/extensionHost/promptOneShotRuntime.ts src/extensionHost/promptInteractiveRuntime.ts src/extensionHost/promptExecutionShared.ts`
   - `wc -l src/extension.ts src/extensionHost/openCodeSubagentRuntime.ts src/extensionHost/promptExecutionShared.ts`
-  - `git diff --check -- src/extension.ts src/extensionHost .ch/docs/exec-plans/active/2026-08-02-extension-entry-refactor.md`
+  - `git diff --check -- src/extension.ts src/extensionHost .ch/docs/exec-plans/completed/2026-08/2026-08-02-extension-entry-refactor.md`
 - 单元自测命令：
   - `npm run build`
   - `npm run build && node --test dist/test/opencodeCommandRunner.test.js dist/test/extensionHostExtractionContracts.test.js dist/test/promptOneShotRuntime.test.js dist/test/promptInteractiveRuntime.test.js`

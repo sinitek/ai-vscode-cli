@@ -86,6 +86,97 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key.startsWith("loopSubtaskMode.")) {
+    const configId = message.key.slice("loopSubtaskMode.".length).trim();
+    const mode = message.value === "split" ? "split" : message.value === "fullstack" ? "fullstack" : null;
+    if (!configId || !mode || !deps.selectLoopSubtaskMode) {
+      await deps.postPanelState();
+      return;
+    }
+    const saved = deps.selectLoopSubtaskMode(configId, mode);
+    deps.loadModelStore();
+    if (!saved) {
+      deps.showWebviewError?.("模型配置", "全栈模式保存失败，已恢复原来的选择。");
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key.startsWith("seedLoopFullstackRole.")) {
+    const configId = message.key.slice("seedLoopFullstackRole.".length).trim();
+    if (configId && deps.seedLoopFullstackRole) {
+      const saved = deps.seedLoopFullstackRole(configId);
+      deps.loadModelStore();
+      if (!saved) {
+        deps.showWebviewError?.("模型配置", "子-全栈配置初始化失败，已恢复原来的选择。");
+      }
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key.startsWith("selectedLoopFullstackCli.")) {
+    const configId = message.key.slice("selectedLoopFullstackCli.".length).trim();
+    const cli = typeof message.value === "string" ? parseCliName(message.value) : null;
+    if (configId && cli && deps.selectLoopFullstackCli) {
+      const saved = deps.selectLoopFullstackCli(configId, cli);
+      deps.loadModelStore();
+      if (!saved) {
+        deps.showWebviewError?.("模型配置", "子-全栈 CLI 保存失败，已恢复原来的选择。");
+      }
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "loopRoleExplicitModel" && message.value && typeof message.value === "object") {
+    const payload = message.value as { configId?: unknown; role?: unknown; model?: unknown };
+    const role = payload.role === "frontend" || payload.role === "fullstack" ? payload.role : null;
+    const configId = typeof payload.configId === "string" ? payload.configId.trim() : "";
+    if (configId && role && deps.setLoopRoleExplicitModel && typeof payload.model === "string") {
+      const saved = deps.setLoopRoleExplicitModel(configId, role, payload.model);
+      deps.loadModelStore();
+      if (!saved) {
+        deps.showWebviewError?.("模型配置", "子模型保存失败，已恢复原来的选择。");
+      }
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "loopRoleThinking" && message.value && typeof message.value === "object") {
+    const payload = message.value as { configId?: unknown; role?: unknown; model?: unknown; thinkingMode?: unknown };
+    const role = payload.role === "frontend" || payload.role === "fullstack" ? payload.role : null;
+    const configId = typeof payload.configId === "string" ? payload.configId.trim() : "";
+    const model = typeof payload.model === "string" && payload.model.trim() ? payload.model.trim() : null;
+    if (configId && role && deps.setLoopRoleThinking && deps.isThinkingMode(payload.thinkingMode)) {
+      const saved = deps.setLoopRoleThinking(configId, role, model, payload.thinkingMode);
+      deps.loadModelStore();
+      if (!saved) {
+        deps.showWebviewError?.("模型配置", "思考力度保存失败，已恢复原来的选择。");
+      }
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key.startsWith("selectedLoopFrontendCli.")) {
+    const configId = message.key.slice("selectedLoopFrontendCli.".length).trim();
+    const cli = typeof message.value === "string" ? parseCliName(message.value) : null;
+    if (configId && cli) {
+      deps.selectLoopFrontendCli?.(configId, cli);
+      deps.loadModelStore();
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key.startsWith("selectedLoopFrontendModel.")) {
+    const configId = message.key.slice("selectedLoopFrontendModel.".length).trim();
+    if (configId && deps.setLoopRoleExplicitModel && typeof message.value === "string") {
+      const saved = deps.setLoopRoleExplicitModel(configId, "frontend", message.value);
+      deps.loadModelStore();
+      if (!saved) {
+        deps.showWebviewError?.("模型配置", "子-前端模型保存失败，已恢复原来的选择。");
+      }
+    }
+    await deps.postPanelState();
+    return;
+  }
   if (message.key.startsWith("selectedLoopModel.")) {
     const [, cliValue, roleValue] = message.key.split(".");
     const cli = typeof cliValue === "string" && deps.isCliName(cliValue) ? cliValue : null;
@@ -275,6 +366,13 @@ function resolvePromptRoleModels(
   loopSubtaskModel?: string;
   loopSubtaskCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
   loopSubtaskConfigId?: string;
+  loopSubtaskFrontendCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendModel?: string;
+  loopSubtaskFullstackCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackModel?: string;
+  loopSubtaskMode?: "fullstack" | "split";
 } {
   const subtaskCli = parseCliName(message.loopSubtaskCli);
   const crossCli = Boolean(subtaskCli && subtaskCli !== targetCli);
@@ -320,6 +418,58 @@ function resolvePromptRoleModels(
     ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
     ...(crossCli && subtaskCli ? { loopSubtaskCli: subtaskCli } : {}),
     ...(subtaskConfigId ? { loopSubtaskConfigId: subtaskConfigId } : {}),
+    ...readFrontendPromptRoute(message),
+    ...readFullstackPromptRoute(message),
+  };
+}
+
+function readRoleRouteFields(
+  cliValue: unknown,
+  configValue: unknown,
+  modelValue: unknown,
+): { cli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>; configId?: string; model?: string } {
+  const cli = parseCliName(cliValue);
+  const configId = typeof configValue === "string" && configValue.trim() ? configValue.trim() : undefined;
+  const model = normalizePromptModel(modelValue);
+  return {
+    ...(cli ? { cli } : {}),
+    ...(configId ? { configId } : {}),
+    ...(model ? { model } : {}),
+  };
+}
+
+function readFrontendPromptRoute(
+  message: Extract<PanelMessage, { type: "sendPrompt" }>,
+): {
+  loopSubtaskFrontendCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendModel?: string;
+} {
+  const route = readRoleRouteFields(message.loopSubtaskFrontendCli, message.loopSubtaskFrontendConfigId, message.loopSubtaskFrontendModel);
+  return {
+    ...(route.cli ? { loopSubtaskFrontendCli: route.cli } : {}),
+    ...(route.configId ? { loopSubtaskFrontendConfigId: route.configId } : {}),
+    ...(route.model ? { loopSubtaskFrontendModel: route.model } : {}),
+  };
+}
+
+function readFullstackPromptRoute(
+  message: Extract<PanelMessage, { type: "sendPrompt" }>,
+): {
+  loopSubtaskFullstackCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackModel?: string;
+  loopSubtaskMode?: "fullstack" | "split";
+} {
+  const route = readRoleRouteFields(message.loopSubtaskFullstackCli, message.loopSubtaskFullstackConfigId, message.loopSubtaskFullstackModel);
+  const mode = message.loopSubtaskMode === "split" || message.loopSubtaskMode === "fullstack"
+    ? message.loopSubtaskMode
+    : undefined;
+  return {
+    ...(route.cli ? { loopSubtaskFullstackCli: route.cli } : {}),
+    ...(route.configId ? { loopSubtaskFullstackConfigId: route.configId } : {}),
+    ...(route.model ? { loopSubtaskFullstackModel: route.model } : {}),
+    ...(mode ? { loopSubtaskMode: mode } : {}),
   };
 }
 
@@ -335,8 +485,13 @@ function resolvePromptRoleThinkingModes(
     loopSubtaskModel?: string;
     loopSubtaskCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
     loopSubtaskConfigId?: string;
+    loopSubtaskFrontendCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+    loopSubtaskFrontendConfigId?: string;
+    loopSubtaskFrontendModel?: string;
+    loopSubtaskFullstackCli?: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>;
+    loopSubtaskFullstackModel?: string;
   }
-): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode } {
+): { loopMainThinkingMode?: ThinkingMode; loopSubtaskThinkingMode?: ThinkingMode; loopSubtaskFrontendThinkingMode?: ThinkingMode; loopSubtaskFullstackThinkingMode?: ThinkingMode } {
   const thinkingSubtaskCli = promptModels.loopSubtaskCli ?? targetCli;
   const includeSubtaskThinking = thinkingSubtaskCli === "codex"
     || thinkingSubtaskCli === "grok"
@@ -361,9 +516,20 @@ function resolvePromptRoleThinkingModes(
       ?? deps.getSelectedLoopThinkingMode?.(thinkingSubtaskCli, "subtask", subtaskModel, subtaskThinkingConfigId)
       ?? undefined
     : undefined;
+  const frontendCli = promptModels.loopSubtaskFrontendCli;
+  const frontendThinking = frontendCli
+    && (frontendCli === "codex" || frontendCli === "grok" || frontendCli === "claude" || frontendCli === "dsh" || frontendCli === "kimi-code")
+    ? normalizePromptThinkingMode(message.loopSubtaskFrontendThinkingMode, frontendCli, deps)
+      ?? deps.getSelectedLoopThinkingMode?.(frontendCli, "subtask", promptModels.loopSubtaskFrontendModel, promptModels.loopSubtaskFrontendConfigId ?? null)
+      ?? undefined
+    : normalizePromptThinkingMode(message.loopSubtaskFrontendThinkingMode, targetCli, deps);
+  const fullstackCli = promptModels.loopSubtaskFullstackCli ?? targetCli;
+  const fullstackThinking = normalizePromptThinkingMode(message.loopSubtaskFullstackThinkingMode, fullstackCli, deps);
   return {
     ...(loopMainThinkingMode ? { loopMainThinkingMode } : {}),
     ...(loopSubtaskThinkingMode ? { loopSubtaskThinkingMode } : {}),
+    ...(frontendThinking ? { loopSubtaskFrontendThinkingMode: frontendThinking } : {}),
+    ...(fullstackThinking ? { loopSubtaskFullstackThinkingMode: fullstackThinking } : {}),
   };
 }
 
@@ -526,6 +692,33 @@ export async function handleSendPromptMessage(
   }
   if (promptThinkingModes.loopSubtaskThinkingMode) {
     promptInput.loopSubtaskThinkingMode = promptThinkingModes.loopSubtaskThinkingMode;
+  }
+  if (promptModels.loopSubtaskFrontendCli) {
+    promptInput.loopSubtaskFrontendCli = promptModels.loopSubtaskFrontendCli;
+  }
+  if (promptModels.loopSubtaskFrontendConfigId) {
+    promptInput.loopSubtaskFrontendConfigId = promptModels.loopSubtaskFrontendConfigId;
+  }
+  if (promptModels.loopSubtaskFrontendModel) {
+    promptInput.loopSubtaskFrontendModel = promptModels.loopSubtaskFrontendModel;
+  }
+  if (promptThinkingModes.loopSubtaskFrontendThinkingMode) {
+    promptInput.loopSubtaskFrontendThinkingMode = promptThinkingModes.loopSubtaskFrontendThinkingMode;
+  }
+  if (promptModels.loopSubtaskFullstackCli) {
+    promptInput.loopSubtaskFullstackCli = promptModels.loopSubtaskFullstackCli;
+  }
+  if (promptModels.loopSubtaskFullstackConfigId) {
+    promptInput.loopSubtaskFullstackConfigId = promptModels.loopSubtaskFullstackConfigId;
+  }
+  if (promptModels.loopSubtaskFullstackModel) {
+    promptInput.loopSubtaskFullstackModel = promptModels.loopSubtaskFullstackModel;
+  }
+  if (promptThinkingModes.loopSubtaskFullstackThinkingMode) {
+    promptInput.loopSubtaskFullstackThinkingMode = promptThinkingModes.loopSubtaskFullstackThinkingMode;
+  }
+  if (promptModels.loopSubtaskMode) {
+    promptInput.loopSubtaskMode = promptModels.loopSubtaskMode;
   }
   if (shouldRunGraph) {
     promptInput.skipLongTermMemoryPersist = true;

@@ -41,6 +41,6 @@ starter 默认不预置事件。接入真实项目后，从第一条真正影响
 
 | 日期 | 类型 | 事件 | 结果/原因 | 可复用结论 | 来源 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-10-24 | 失败原因 / 成功方案 | Grok 分类器用 `trim()` 丢弃纯空白 `agent_message_chunk` 和 `agent_thought_chunk` | 分块边界把 `Hello` + 空格 + `world` 收成 `Helloworld`，换行和缩进同样丢失。撤销该判断后，非空文本原样保留 | 空字符串才可忽略。宿主期望不能反过来定义丢空白。展示层负责隐藏纯空白气泡 | `.ch/docs/exec-plans/completed/2026-10/2026-10-24-grok-stream-whitespace-contract-repair.md`；`.ch/docs/runbooks/PITFALLS.md` |
+| 2026-10-24 | 失败原因 / 成功方案 | Grok 分类器用 `trim()` 丢弃纯空白 `agent_message_chunk` 和 `agent_thought_chunk` | 分块边界把 `Hello` + 空格 + `world` 收成 `Helloworld`，换行和缩进同样丢失。撤销该判断后，非空文本原样保留 | 空字符串才可忽略。宿主期望不能反过来定义丢空白。展示层负责隐藏纯空白气泡 | `.ch/docs/runbooks/PITFALLS.md` 的“Grok 分类器不能按 trim 丢弃纯空白分块”；`src/interactive/grokAppServerProtocol.ts`；`src/test/interactive/grokAppServerProtocol.test.ts` |
 | 2026-10-27 | 失败原因 / 成功方案 | Kimi 默认配置精简掉 `capabilities` / `support_efforts` 后，界面仍请求 `high`，ACP 报 `available: (none)` | 保存链路只补缺失的 `thinking` 能力与五档列表，默认配置和范例同步带声明；隔离官方 ACP 实测 `high` 与完整六值广告 | UI 可选值依赖配置声明时，精简范例不能删除隐式前置条件；补齐应放在统一提交契约并保留显式限制 | `.ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md`；`.ch/docs/runbooks/kimi-code-config.md` |
 | 2026-10-27 | 失败原因 / 成功方案 | Kimi 新增配置模型后，长驻 ACP runner 仍缓存旧模型广告，下一轮可能报 `model ... is not advertised` | 配置写入按 `KIMI_CODE_HOME` 推进修订号；旧 runner 不再复用，新 runner 恢复原 ACP 会话后取得新广告。官方 2.3.2 隔离验证新增别名生效且 session ID 不变 | ACP 的配置广告是进程启动快照；会话内动态切换不能替代配置变更后的进程失效与恢复 | `.ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md`；`.ch/docs/runbooks/kimi-code-config.md` |

@@ -394,6 +394,45 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           }
         }
         state.selectedLoopSubtaskCliByConfigId = incomingSubtaskCli;
+        const incomingFrontendCli = modelState.selectedLoopFrontendCliByConfigId && typeof modelState.selectedLoopFrontendCliByConfigId === "object"
+          ? { ...modelState.selectedLoopFrontendCliByConfigId }
+          : {};
+        const pendingFrontendCli = state.pendingLoopFrontendCliSelection;
+        if (pendingFrontendCli && pendingFrontendCli.configId) {
+          const incomingCli = incomingFrontendCli[pendingFrontendCli.configId] || "";
+          if (incomingCli === pendingFrontendCli.cli) {
+            state.pendingLoopFrontendCliSelection = null;
+          } else {
+            incomingFrontendCli[pendingFrontendCli.configId] = pendingFrontendCli.cli;
+          }
+        }
+        state.selectedLoopFrontendCliByConfigId = incomingFrontendCli;
+        state.selectedLoopFullstackCliByConfigId = modelState.selectedLoopFullstackCliByConfigId && typeof modelState.selectedLoopFullstackCliByConfigId === "object"
+          ? { ...modelState.selectedLoopFullstackCliByConfigId }
+          : {};
+        state.selectedLoopSubtaskModeByConfigId = modelState.selectedLoopSubtaskModeByConfigId && typeof modelState.selectedLoopSubtaskModeByConfigId === "object"
+          ? { ...modelState.selectedLoopSubtaskModeByConfigId }
+          : {};
+        state.loopRoleExplicitModelByConfigId = modelState.loopRoleExplicitModelByConfigId && typeof modelState.loopRoleExplicitModelByConfigId === "object"
+          ? { ...modelState.loopRoleExplicitModelByConfigId }
+          : {};
+        state.selectedLoopFrontendThinkingByConfigId = modelState.selectedLoopFrontendThinkingByConfigId && typeof modelState.selectedLoopFrontendThinkingByConfigId === "object"
+          ? { ...modelState.selectedLoopFrontendThinkingByConfigId }
+          : {};
+        state.selectedLoopFullstackThinkingByConfigId = modelState.selectedLoopFullstackThinkingByConfigId && typeof modelState.selectedLoopFullstackThinkingByConfigId === "object"
+          ? { ...modelState.selectedLoopFullstackThinkingByConfigId }
+          : {};
+        state.loopFullstackRoleSeededByConfigId = modelState.loopFullstackRoleSeededByConfigId && typeof modelState.loopFullstackRoleSeededByConfigId === "object"
+          ? { ...modelState.loopFullstackRoleSeededByConfigId }
+          : {};
+        if (state.pendingLoopSubtaskMode && state.pendingLoopSubtaskMode.configId) {
+          const incomingMode = state.selectedLoopSubtaskModeByConfigId[state.pendingLoopSubtaskMode.configId] || "fullstack";
+          if (incomingMode === state.pendingLoopSubtaskMode.mode) {
+            state.pendingLoopSubtaskMode = null;
+          } else {
+            state.pendingLoopSubtaskMode = null;
+          }
+        }
         state.activeConfigIdByCli = modelState.activeConfigIdByCli && typeof modelState.activeConfigIdByCli === "object"
           ? modelState.activeConfigIdByCli
           : {};

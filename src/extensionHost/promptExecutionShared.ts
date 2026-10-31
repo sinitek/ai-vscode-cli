@@ -1,13 +1,26 @@
 import type { OpenCodeSubagentConnection } from "../cli/openCodeSubagentMonitor";
 import type { OpenCodeCanonicalModelRole, OpenCodeModelRoleInput } from "../cli/opencodeconfigmodels";
 import type { CliName } from "../cli/types";
+import type { LoopTaskRecord } from "../loopTaskStore";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
+import type { PromptRunInput } from "./graphRuntime";
 
 export type PromptRunExecutionOptions = {
   cwd?: string;
   isolateProjectInstructions?: boolean;
 };
+
+export function shouldUseClassicLoopProjectInstructions(
+  input: Pick<PromptRunInput, "taskRole" | "loopTaskId" | "graphRunId">,
+  task: Pick<LoopTaskRecord, "schedulingMode"> | null,
+): boolean {
+  return input.taskRole === "subtask"
+    && Boolean(input.loopTaskId)
+    && !input.graphRunId
+    && task !== null
+    && (task.schedulingMode === "classic" || task.schedulingMode === undefined);
+}
 
 export type InteractiveTabRun = {
   runId: string;

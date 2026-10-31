@@ -72,6 +72,15 @@ export type PromptRunInput = {
   loopSubtaskConfigId?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
+  loopSubtaskFrontendCli?: CliName;
+  loopSubtaskFrontendConfigId?: string;
+  loopSubtaskFrontendModel?: string;
+  loopSubtaskFrontendThinkingMode?: ThinkingMode;
+  loopSubtaskFullstackCli?: CliName;
+  loopSubtaskFullstackConfigId?: string;
+  loopSubtaskFullstackModel?: string;
+  loopSubtaskFullstackThinkingMode?: ThinkingMode;
+  loopSubtaskMode?: import("../loopPlusSubtaskMode").LoopSubtaskMode;
   loopMainModelFallback?: string;
   loopSubtaskModelFallback?: string;
   loopContinuePrompt?: string;

@@ -7,7 +7,7 @@
 - claimed_at：
 - claim_ttl：
 - 当前阶段：第 1–7 阶段完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md` 与两份维护性文档，不改 `src`。
-- 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件仍留在 `active/`，不在本次收尾中搬迁。
+- 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件收尾时曾留在 `active/`，之后已归档到 `.ch/docs/exec-plans/completed/2026-09/`。
 
 ## 背景
 
@@ -39,7 +39,7 @@
 ## 验收标准
 
 - [x] `docs/MAINTAINABILITY_REFACTOR.md` 存在，并用中文写明上述符号的异同与四个设计理由。
-- [x] `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` 存在，包含范围、非目标、验收、风险、验证和阶段。
+- [x] `.ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md` 存在，包含范围、非目标、验收、风险、验证和阶段。
 - [x] 后续第 4、5、6 阶段的写范围互不重叠，第 7 阶段不与它们并行。
 - [x] 本轮没有为了设计去改 `src`。
 - [x] 阶段 4、5 的文档回写没有为了同步状态去改 `src`。
@@ -79,9 +79,9 @@
 ```bash
 test -f ARCHITECTURE.md
 test -f docs/MAINTAINABILITY_REFACTOR.md
-test -f .ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md
+test -f .ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md
 wc -l src/extensionHost/promptOneShotRuntime.ts src/extensionHost/promptParallelRuntime.ts src/extensionHost/openCodePromptRunTemplate.ts src/extension.ts src/extensionHost/promptInteractiveRuntime.ts src/extensionHost/loopOrchestration.ts src/extensionHost/openCodeSubagentRuntime.ts src/extensionHost/promptExecutionShared.ts
-git diff --name-only -- ARCHITECTURE.md docs/MAINTAINABILITY_REFACTOR.md .ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md
+git diff --name-only -- ARCHITECTURE.md docs/MAINTAINABILITY_REFACTOR.md .ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md
 git diff --name-only -- src
 ```
 

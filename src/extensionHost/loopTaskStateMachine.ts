@@ -123,6 +123,7 @@ export function upsertLoopTransitionSubtask(
     id,
     title: subtask.title,
     prompt: subtask.prompt,
+    continueFromSubtaskId: subtask.continueFromSubtaskId,
     conflictGroup: subtask.conflictGroup,
     writeFiles: subtask.writeFiles,
     status: "running",

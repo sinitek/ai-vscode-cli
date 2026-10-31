@@ -1,0 +1,221 @@
+{
+  "top_level_entries": [
+    {
+      "path": ".agents",
+      "entry_type": "directory",
+      "purpose": "仓库级 skills 与代理工作流扩展"
+    },
+    {
+      "path": ".ch",
+      "entry_type": "directory",
+      "purpose": "仓库知识系统与执行文档"
+    },
+    {
+      "path": "docs",
+      "entry_type": "directory",
+      "purpose": "说明文档与设计/运维资料"
+    },
+    {
+      "path": "media",
+      "entry_type": "directory",
+      "purpose": "未自动识别用途；请结合相邻 README / AGENTS.md 判断"
+    },
+    {
+      "path": "scripts",
+      "entry_type": "directory",
+      "purpose": "自动化脚本"
+    },
+    {
+      "path": "src",
+      "entry_type": "directory",
+      "purpose": "主要源码目录"
+    },
+    {
+      "path": "AGENTS.md",
+      "entry_type": "file",
+      "purpose": "仓库级规则与导航入口"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "entry_type": "file",
+      "purpose": "架构边界与模块职责说明"
+    },
+    {
+      "path": "LICENSE",
+      "entry_type": "file",
+      "purpose": "未自动识别用途；请结合相邻 README / AGENTS.md 判断"
+    },
+    {
+      "path": "package-lock.json",
+      "entry_type": "file",
+      "purpose": "未自动识别用途；请结合相邻 README / AGENTS.md 判断"
+    },
+    {
+      "path": "package.json",
+      "entry_type": "file",
+      "purpose": "Node 项目脚本与依赖入口"
+    },
+    {
+      "path": "README.md",
+      "entry_type": "file",
+      "purpose": "项目概览与快速启动入口"
+    },
+    {
+      "path": "run_dev.py",
+      "entry_type": "file",
+      "purpose": "未自动识别用途；请结合相邻 README / AGENTS.md 判断"
+    },
+    {
+      "path": "tsconfig.json",
+      "entry_type": "file",
+      "purpose": "未自动识别用途；请结合相邻 README / AGENTS.md 判断"
+    }
+  ],
+  "entry_docs": [
+    {
+      "path": "AGENTS.md",
+      "kind": "rules",
+      "reason": "仓库级工作规则与入口"
+    },
+    {
+      "path": "README.md",
+      "kind": "overview",
+      "reason": "项目概览与常用入口"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "kind": "doc",
+      "reason": "架构边界与模块职责"
+    },
+    {
+      "path": ".ch/docs/README.md",
+      "kind": "overview",
+      "reason": "文档系统总入口"
+    },
+    {
+      "path": ".ch/docs/exec-plans/README.md",
+      "kind": "overview",
+      "reason": "复杂任务计划与收尾机制"
+    },
+    {
+      "path": ".ch/docs/TESTING.md",
+      "kind": "doc",
+      "reason": "测试与验证基线"
+    },
+    {
+      "path": ".ch/docs/SECURITY.md",
+      "kind": "doc",
+      "reason": "安全基线与约束"
+    },
+    {
+      "path": ".ch/docs/product-specs/index.md",
+      "kind": "spec-index",
+      "reason": "产品规格与功能清单入口"
+    },
+    {
+      "path": ".ch/docs/runbooks/README.md",
+      "kind": "overview",
+      "reason": "运行与排障手册入口"
+    }
+  ],
+  "local_agents": [
+    ".agents/skills/AGENTS.md",
+    ".ch/docs/AGENTS.md",
+    "media/workspace-scaffold/.agents/skills/AGENTS.md",
+    "media/workspace-scaffold/AGENTS.md"
+  ],
+  "detected_stacks": [
+    "node"
+  ],
+  "commands": {
+    "dev": [],
+    "test": [
+      {
+        "category": "test",
+        "command": "npm run test",
+        "source": "package.json",
+        "detail": "npm run test:unit"
+      }
+    ],
+    "build": [
+      {
+        "category": "build",
+        "command": "npm run build",
+        "source": "package.json",
+        "detail": "npm run clean && tsc -p ./"
+      }
+    ],
+    "lint": [],
+    "check": [],
+    "cli": [],
+    "other": [
+      {
+        "category": "other",
+        "command": "npm run clean",
+        "source": "package.json",
+        "detail": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+      },
+      {
+        "category": "other",
+        "command": "npm run compile",
+        "source": "package.json",
+        "detail": "npm run build"
+      },
+      {
+        "category": "other",
+        "command": "npm run stats:loc",
+        "source": "package.json",
+        "detail": "node scripts/count_effective_loc.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run test:core",
+        "source": "package.json",
+        "detail": "npm run build && node --test dist/test/loop/loopTaskStore.test.js dist/test/loop/loopTaskStoreCoreCoverage.test.js dist/test/loop/loopMainFailure.test.js dist/test/loop/loopLegacyMigration.test.js dist/test/cli/opencodeCommandRunner.test.js dist/test/cli/commandRunnerCoreBranches.test.js dist/test/cli/commandRunnerCoverage.test.js dist/test/extensionHost/opencodethinkingintegration.test.js dist/test/session/sessionStoreCoreCoverage.test.js dist/test/session/sessionLifecycleCoreCoverage.test.js dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/promptRuntimeCoreCoverage.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run test:core-coverage",
+        "source": "package.json",
+        "detail": "npm run build && c8 --all --check-coverage --statements 100 --lines 100 --functions 100 --branches 100 --reports-dir=node_modules/.cache/sinitek-cli-core-coverage --temp-directory=node_modules/.cache/sinitek-cli-core-coverage/tmp --include=dist/loopTaskStore.js --include=dist/loopMainFailure.js --include=dist/cli/commandRunner.js --include=dist/sessionStore.js --include=dist/sessionLifecycle.js --include=dist/sessionMessageActions.js --include=dist/sessionMessageHandlers.js --include=dist/sessionMessageRouter.js --include=dist/promptRuntime.js node --test dist/test/loop/loopTaskStore.test.js dist/test/loop/loopTaskStoreCoreCoverage.test.js dist/test/loop/loopMainFailure.test.js dist/test/loop/loopLegacyMigration.test.js dist/test/cli/opencodeCommandRunner.test.js dist/test/cli/commandRunnerCoreBranches.test.js dist/test/cli/commandRunnerCoverage.test.js dist/test/extensionHost/opencodethinkingintegration.test.js dist/test/session/sessionStoreCoreCoverage.test.js dist/test/session/sessionLifecycleCoreCoverage.test.js dist/test/extensionHost/promptRuntime.test.js dist/test/extensionHost/promptRuntimeCoreCoverage.test.js dist/test/session/sessionMessageActions.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run test:page",
+        "source": "package.json",
+        "detail": "npm run build && node --test dist/test/loop/loopmaingroupchatbutton.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/multiAgentSettingWebview.test.js dist/test/session/conversationTabPagination.test.js dist/test/core/subagentProgress.test.js dist/test/session/historySessionLoop.test.js dist/test/session/conversationTabLock.test.js dist/test/webview/openCodeThinkingWebview.test.js dist/test/webview/openCodeTaskListOverlay.test.js dist/test/webview/runPromptHistoryWebview.test.js dist/test/loop/opencodeloopmodewebview.test.js dist/test/loop/loopPromptQueue.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/webview/traceToolTitleLocalization.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/config/configappcompactcontrols.test.js dist/test/config/configappcompactlayoutstyles.test.js dist/test/config/claudeConfigVisualEditor.test.js dist/test/config/codexConfigVisualEditor.test.js dist/test/config/opencodeconfigvisualeditor.test.js dist/test/config/opencodeconfigexample.test.js dist/test/config/opencodeAutoCommandUi.test.js dist/test/config/zcodeConfig.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/config/cliPageConfigCoverage.test.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run test:page-coverage",
+        "source": "package.json",
+        "detail": "npm run build && c8 --all --check-coverage --statements 100 --lines 100 --functions 100 --branches 100 --reports-dir=node_modules/.cache/sinitek-cli-page-coverage --temp-directory=node_modules/.cache/sinitek-cli-page-coverage/tmp --include=dist/webview/viewContent.js --include=dist/webview/viewContentHtml.js --include=dist/webview/viewContentStrings.js --include=dist/webview/viewContentScript.js --include=dist/webview/viewProvider.js --include=dist/webview/configPanel.js --include=dist/webview/configProtocol.js --include=dist/webview/configView.js --include=dist/webview/loopGroupChatPanel.js --include=dist/webview/loopGroupChatPanelRenderer.js --include=dist/webview/loopGroupChatPanelStyles.js --include=dist/webview/viewContentScript/attachmentsAndTime.js --include=dist/webview/viewContentScript/coreBootstrap.js --include=dist/webview/viewContentScript/coreRuntimeState.js --include=dist/webview/viewContentScript/eventBindings.js --include=dist/webview/viewContentScript/historyPanels.js --include=dist/webview/viewContentScript/messageRendering.js --include=dist/webview/viewContentScript/modelAndPanelState.js --include=dist/webview/viewContentScript/modelManager.js --include=dist/webview/viewContentScript/runStreamAndQueue.js --include=dist/webview/viewContentScript/settingsAndOverlays.js --include=dist/webview/viewContentScript/taskListAndUi.js --include=dist/webview/viewContentScript/traceRendering.js --include=dist/webview/viewContentScript/windowMessageDispatch.js --include=dist/webview/viewContentStyles.js --include=dist/webview/viewContentStyles/base.js --include=dist/webview/viewContentStyles/chatArea.js --include=dist/webview/viewContentStyles/headerTabs.js --include=dist/webview/viewContentStyles/inputControls.js --include=dist/webview/viewContentStyles/markdown.js --include=dist/webview/viewContentStyles/messages.js --include=dist/webview/viewContentStyles/overlaysModals.js --include=dist/webview/viewContentStyles/systemTrace.js --include=dist/webview/viewContentStyles/tasklist.js --include=dist/webview/viewContentStyles/toastMisc.js --include=dist/webview/viewContentStyles/typingStatus.js node --test dist/test/loop/loopmaingroupchatbutton.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/multiAgentSettingWebview.test.js dist/test/session/conversationTabPagination.test.js dist/test/core/subagentProgress.test.js dist/test/session/historySessionLoop.test.js dist/test/session/conversationTabLock.test.js dist/test/webview/openCodeThinkingWebview.test.js dist/test/webview/openCodeTaskListOverlay.test.js dist/test/webview/runPromptHistoryWebview.test.js dist/test/loop/opencodeloopmodewebview.test.js dist/test/loop/loopPromptQueue.test.js dist/test/webview/finalAnswerPolicy.test.js dist/test/webview/traceToolTitleLocalization.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/config/configappcompactcontrols.test.js dist/test/config/configappcompactlayoutstyles.test.js dist/test/config/claudeConfigVisualEditor.test.js dist/test/config/codexConfigVisualEditor.test.js dist/test/config/opencodeconfigvisualeditor.test.js dist/test/config/opencodeconfigexample.test.js dist/test/config/opencodeAutoCommandUi.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/config/cliPageConfigCoverage.test.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run test:unit",
+        "source": "package.json",
+        "detail": "npm run build && node scripts/run_unit_tests.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run validate:whitespace",
+        "source": "package.json",
+        "detail": "node scripts/check_trailing_whitespace.js"
+      },
+      {
+        "category": "other",
+        "command": "npm run vscode:prepublish",
+        "source": "package.json",
+        "detail": "npm run build"
+      },
+      {
+        "category": "other",
+        "command": "npm run watch",
+        "source": "package.json",
+        "detail": "tsc -watch -p ./"
+      }
+    ]
+  },
+  "focus_paths": []
+}

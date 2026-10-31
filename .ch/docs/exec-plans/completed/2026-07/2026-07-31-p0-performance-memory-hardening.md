@@ -63,7 +63,7 @@
 
 | 子任务 ID | 标题 | 状态 | 主要写入范围 | 说明 |
 | --- | --- | --- | --- | --- |
-| `p0-exec-plan-inventory` | 建立 P0 优化执行计划与状态矩阵 | completed | `.ch/docs/exec-plans/active/2026-07-31-p0-performance-memory-hardening.md`、本沟通文件 | 本子任务只写计划与报告，不改产品代码 |
+| `p0-exec-plan-inventory` | 建立 P0 优化执行计划与状态矩阵 | completed | `.ch/docs/exec-plans/completed/2026-07/2026-07-31-p0-performance-memory-hardening.md`、本沟通文件 | 本子任务只写计划与报告，不改产品代码 |
 | `p0-lifecycle-stop-guard` | 修复 P0 生命周期停止与 Claude 取消护栏 | completed | `src/interactive/claudeRunner.ts`、`src/extension.ts`、生命周期相关测试 | 承接 P0-1/P0-2；通过 noEmit 与源码级检查 |
 | `p0-webview-stream-attachments` | 修复 P0 Webview 流式渲染与附件边界 | completed | `src/webview/viewContentScript/*`、`src/webview/panelFileActions.ts`、i18n 与相关测试 | 承接 P0-4/P0-5/P0-6；通过 noEmit 与 diff check |
 | `p0-opencode-output-incremental` | 修复 P0 OpenCode 输出有界与增量 activity 检测 | completed | `src/extension.ts`、`src/cli/commandRunner.ts`、`src/openCodeTabStream.ts`、OpenCode 相关测试 | 承接 P0-3；最终 dist 单测已通过 |

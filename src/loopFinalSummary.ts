@@ -19,6 +19,7 @@ export type LoopFinalSummaryRoundSummary = {
 
 export type LoopFinalSummaryTask = {
   id: string;
+  schedulingMode?: "classic" | "event_driven";
   sessionId?: string | null;
   finalSummary?: string | null;
   answerConclusion?: string | null;
@@ -169,6 +170,7 @@ export function buildLoopFinalSummaryMarkdown(
     ? decision.requirementCoverage
     : (Array.isArray(task.completionRequirementCoverage) ? task.completionRequirementCoverage : []);
   const acceptanceChecks = Array.isArray(decision?.acceptance?.checks) ? decision.acceptance?.checks ?? [] : [];
+  const reportDriven = task.schedulingMode !== "event_driven" && !decision?.acceptance;
   const answerConclusion = resolveLoopAnswerConclusion(task, decision);
   const finalSummary = resolveLoopOverallFinalSummary(task, decision);
   const lines: string[] = [
@@ -177,45 +179,53 @@ export function buildLoopFinalSummaryMarkdown(
     `- 任务 ID：${task.id}`,
     `- 会话 ID：${task.sessionId ?? "unknown"}`,
     `- 生成时间：${new Date().toISOString()}`,
-    `- 验收状态：${decision?.acceptance?.passed === false ? "未通过" : "通过"}`,
+    reportDriven
+      ? "- 完成依据：子任务汇报（未进行主模型验收）"
+      : `- 验收状态：${decision?.acceptance?.passed === false ? "未通过" : "通过"}`,
     "",
     "## 问题回答结论",
     answerConclusion,
   ];
 
-  lines.push("");
-  lines.push("## 子任务完成摘要");
-  if (roundSummaries.length === 0) {
-    lines.push("- 无可用的子任务摘要。");
-  } else {
-    roundSummaries.forEach((item) => {
-      const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
-      lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("## 验收结果");
-  if (decision?.acceptance?.summary) {
-    lines.push(decision.acceptance.summary);
-  }
-  if (acceptanceChecks.length > 0) {
+  if (!reportDriven || roundSummaries.length > 0) {
     lines.push("");
-    acceptanceChecks.forEach((check) => {
-      const detail = check.detail ? `（${check.detail}）` : "";
-      lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
-    });
+    lines.push("## 子任务完成摘要");
+    if (roundSummaries.length === 0) {
+      lines.push("- 无可用的子任务摘要。");
+    } else {
+      roundSummaries.forEach((item) => {
+        const subtaskSuffix = item.subtaskId ? `（${item.subtaskId}）` : "";
+        lines.push(`- 第 ${item.round} 轮 ${item.title}${subtaskSuffix}：${item.summary}`);
+      });
+    }
   }
 
-  lines.push("");
-  lines.push("## 用户需求覆盖");
-  if (requirementCoverage.length === 0) {
-    lines.push("- 无可用的需求覆盖项。");
-  } else {
-    requirementCoverage.forEach((item) => {
-      const detail = item.detail ? `（${item.detail}）` : "";
-      lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
-    });
+  if (!reportDriven) {
+    lines.push("");
+    lines.push("## 验收结果");
+    if (decision?.acceptance?.summary) {
+      lines.push(decision.acceptance.summary);
+    }
+    if (acceptanceChecks.length > 0) {
+      lines.push("");
+      acceptanceChecks.forEach((check) => {
+        const detail = check.detail ? `（${check.detail}）` : "";
+        lines.push(`- ${check.name}：${check.passed ? "通过" : "未通过"}${detail}`);
+      });
+    }
+  }
+
+  if (!reportDriven || requirementCoverage.length > 0) {
+    lines.push("");
+    lines.push("## 用户需求覆盖");
+    if (requirementCoverage.length === 0) {
+      lines.push("- 无可用的需求覆盖项。");
+    } else {
+      requirementCoverage.forEach((item) => {
+        const detail = item.detail ? `（${item.detail}）` : "";
+        lines.push(`- ${item.name}：${item.passed ? "已覆盖" : "未覆盖"}${detail}`);
+      });
+    }
   }
 
   lines.push("");

@@ -28,9 +28,32 @@ function renderInteractiveModeSelect(
           </select>`;
 }
 
-function renderLoopSubtaskCliSelect(i18n: WebviewHtmlStrings, id: string): string {
+function renderLoopSubtaskCliSelect(i18n: WebviewHtmlStrings, id: string, ariaLabel = i18n.loopSubtaskCliSelectAria): string {
   const options = CLI_LIST.map((cli) => `<option value="${cli}">${getCliDisplayName(cli)}</option>`).join("");
-  return `<select id="${id}" class="cli-select loop-subtask-cli-select" aria-label="${i18n.loopSubtaskCliSelectAria}" title="${i18n.loopSubtaskCliSelectAria}">${options}</select>`;
+  return `<select id="${id}" class="cli-select loop-subtask-cli-select" aria-label="${ariaLabel}" title="${ariaLabel}">${options}</select>`;
+}
+
+function renderLoopRoleHelpButton(help: string, ariaLabel: string): string {
+  return `<button type="button" class="loop-role-help" data-help="${help}" aria-label="${ariaLabel}"><svg class="loop-role-help-icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><circle cx="6" cy="6" r="4.25"></circle><path d="M4.7 4.6a1.35 1.35 0 1 1 2.15 1.1c-.45.28-.75.55-.75 1.15"></path><circle cx="6" cy="8.55" r="0.35" fill="currentColor" stroke="none"></circle></svg></button>`;
+}
+
+function renderLoopRoleLabel(forId: string, text: string, help: string, helpAria: string): string {
+  return `<span class="loop-role-label"><label class="open-code-model-label" for="${forId}">${text}</label>${renderLoopRoleHelpButton(help, helpAria)}</span>`;
+}
+
+function renderLoopPlusFrontendRouteRow(i18n: WebviewHtmlStrings, ids: {
+  cli: string;
+  model: string;
+  thinking: string;
+  modelDescribedBy?: string;
+}): string {
+  const describedBy = ids.modelDescribedBy ? ` aria-describedby="${ids.modelDescribedBy}"` : "";
+  return `<div class="open-code-model-row loop-subtask-route-row loop-plus-frontend-route-row" data-loop-plus-role="frontend" hidden>
+                ${renderLoopRoleLabel(ids.cli, i18n.loopPlusFrontendModelLabel, i18n.loopPlusFrontendHelp, i18n.loopPlusFrontendHelpAria)}
+                ${renderLoopSubtaskCliSelect(i18n, ids.cli, i18n.loopPlusFrontendCliSelectAria)}
+                <select id="${ids.model}" class="model-select" aria-label="${i18n.loopPlusFrontendModelSelectAria}"${describedBy} title="${i18n.loopPlusFrontendModelSelectAria}"></select>
+                <select id="${ids.thinking}" class="thinking-select" aria-label="${i18n.loopPlusFrontendThinkingModeAria}" title="${i18n.loopPlusFrontendThinkingModeAria}"></select>
+              </div>`;
 }
 
 export type BuildWebviewStaticHtmlInput = {
@@ -211,20 +234,31 @@ ${webviewStyles}    </style>
           <div class="input-model-row">
             <div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">
               <div class="open-code-model-row codex-loop-model-row">
-                <label class="open-code-model-label" for="codexLoopMainModelSelect">${i18n.codexLoopMainModelLabel}</label>
+                ${renderLoopRoleLabel("codexLoopMainModelSelect", i18n.codexLoopMainModelLabel, i18n.loopPlusMainHelp, i18n.loopPlusMainHelpAria)}
                 <select id="codexLoopMainModelSelect" class="model-select" aria-label="${i18n.codexLoopMainModelSelectAria}" title="${i18n.codexLoopMainModelSelectAria}"></select>
                 <select id="codexLoopMainThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopMainThinkingModeAria}" title="${i18n.codexLoopMainThinkingModeAria}"></select>
               </div>
+              <div class="open-code-model-row codex-loop-model-row loop-subtask-route-row loop-plus-fullstack-route-row" data-loop-plus-role="fullstack" hidden>
+                ${renderLoopRoleLabel("codexLoopFullstackCliSelect", i18n.loopPlusFullstackModelLabel, i18n.loopPlusFullstackHelp, i18n.loopPlusFullstackHelpAria)}
+                ${renderLoopSubtaskCliSelect(i18n, "codexLoopFullstackCliSelect", i18n.loopPlusFullstackCliSelectAria)}
+                <select id="codexLoopFullstackModelSelect" class="model-select" aria-label="${i18n.loopPlusFullstackModelSelectAria}" title="${i18n.loopPlusFullstackModelSelectAria}"></select>
+                <select id="codexLoopFullstackThinkingMode" class="thinking-select" aria-label="${i18n.loopPlusFullstackThinkingModeAria}" title="${i18n.loopPlusFullstackThinkingModeAria}"></select>
+              </div>
               <div class="open-code-model-row codex-loop-model-row loop-subtask-route-row">
-                <label class="open-code-model-label" for="codexLoopSubtaskCliSelect">${i18n.codexLoopSubtaskModelLabel}</label>
+                ${renderLoopRoleLabel("codexLoopSubtaskCliSelect", i18n.codexLoopSubtaskModelLabel, i18n.loopPlusBackendHelp, i18n.loopPlusBackendHelpAria)}
                 ${renderLoopSubtaskCliSelect(i18n, "codexLoopSubtaskCliSelect")}
                 <select id="codexLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}"></select>
                 <select id="codexLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.codexLoopSubtaskThinkingModeAria}" title="${i18n.codexLoopSubtaskThinkingModeAria}"></select>
               </div>
+              ${renderLoopPlusFrontendRouteRow(i18n, {
+                cli: "codexLoopFrontendCliSelect",
+                model: "codexLoopFrontendModelSelect",
+                thinking: "codexLoopFrontendThinkingMode",
+              })}
             </div>
             <div id="openCodeModelGroup" class="open-code-model-group" style="display: none;">
               <div class="open-code-model-row">
-                <label class="open-code-model-label" for="openCodePrimaryModelSelect">${i18n.openCodePrimaryModelLabel}</label>
+                ${renderLoopRoleLabel("openCodePrimaryModelSelect", i18n.openCodePrimaryModelLabel, i18n.loopPlusMainHelp, i18n.loopPlusMainHelpAria)}
                 <select id="openCodePrimaryModelSelect" class="model-select" aria-label="${i18n.openCodePrimaryModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodePrimaryModelSelectAria}"></select>
                 <select id="openCodePrimaryThinkingMode" class="thinking-select" aria-label="${i18n.openCodePrimaryThinkingModeAria}" title="${i18n.openCodePrimaryThinkingModeAria}">
                   <option value="off">${i18n.thinkingOptionOff}</option>
@@ -236,20 +270,44 @@ ${webviewStyles}    </style>
                   <option value="ultra">${i18n.thinkingOptionUltra}</option>
                 </select>
               </div>
-              <div class="open-code-model-row loop-subtask-route-row">
-                <label class="open-code-model-label" for="openCodeLoopSubtaskCliSelect">${i18n.openCodeSmallModelLabel}</label>
+              <div class="open-code-model-row loop-subtask-route-row loop-plus-fullstack-route-row" data-loop-plus-role="fullstack" hidden>
+                ${renderLoopRoleLabel("openCodeLoopFullstackCliSelect", i18n.loopPlusFullstackModelLabel, i18n.loopPlusFullstackHelp, i18n.loopPlusFullstackHelpAria)}
+                ${renderLoopSubtaskCliSelect(i18n, "openCodeLoopFullstackCliSelect", i18n.loopPlusFullstackCliSelectAria)}
+                <select id="openCodeFullstackModelSelect" class="model-select" aria-label="${i18n.loopPlusFullstackModelSelectAria}" title="${i18n.loopPlusFullstackModelSelectAria}"></select>
+                <select id="openCodeFullstackThinkingMode" class="thinking-select" aria-label="${i18n.loopPlusFullstackThinkingModeAria}" title="${i18n.loopPlusFullstackThinkingModeAria}" style="display: none;"></select>
+              </div>
+              <div class="open-code-model-row loop-subtask-route-row" data-loop-plus-role="backend">
+                ${renderLoopRoleLabel("openCodeLoopSubtaskCliSelect", i18n.openCodeSmallModelLabel, i18n.loopPlusBackendHelp, i18n.loopPlusBackendHelpAria)}
                 ${renderLoopSubtaskCliSelect(i18n, "openCodeLoopSubtaskCliSelect")}
                 <select id="openCodeSmallModelSelect" class="model-select" aria-label="${i18n.openCodeSmallModelSelectAria}" aria-describedby="openCodeModelIssue" title="${i18n.openCodeSmallModelSelectAria}"></select>
                 <select id="openCodeSmallThinkingMode" class="thinking-select" aria-label="${i18n.openCodeSmallThinkingModeAria}" title="${i18n.openCodeSmallThinkingModeAria}" style="display: none;"></select>
               </div>
+              ${renderLoopPlusFrontendRouteRow(i18n, {
+                cli: "openCodeLoopFrontendCliSelect",
+                model: "openCodeFrontendModelSelect",
+                thinking: "openCodeFrontendThinkingMode",
+                modelDescribedBy: "openCodeModelIssue",
+              })}
               <span id="openCodeModelIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
             </div>
             <div id="claudeLoopSubtaskGroup" class="open-code-model-group" style="display: none;">
-              <div class="open-code-model-row loop-subtask-route-row">
-                <label class="open-code-model-label" for="claudeLoopSubtaskCliSelect">${i18n.codexLoopSubtaskModelLabel}</label>
+              <div class="open-code-model-row loop-subtask-route-row loop-plus-fullstack-route-row" data-loop-plus-role="fullstack" hidden>
+                ${renderLoopRoleLabel("claudeLoopFullstackCliSelect", i18n.loopPlusFullstackModelLabel, i18n.loopPlusFullstackHelp, i18n.loopPlusFullstackHelpAria)}
+                ${renderLoopSubtaskCliSelect(i18n, "claudeLoopFullstackCliSelect", i18n.loopPlusFullstackCliSelectAria)}
+                <select id="claudeLoopFullstackModelSelect" class="model-select" aria-label="${i18n.loopPlusFullstackModelSelectAria}" title="${i18n.loopPlusFullstackModelSelectAria}" style="display: none;"></select>
+                <select id="claudeLoopFullstackThinkingMode" class="thinking-select" aria-label="${i18n.loopPlusFullstackThinkingModeAria}" title="${i18n.loopPlusFullstackThinkingModeAria}" style="display: none;"></select>
+              </div>
+              <div class="open-code-model-row loop-subtask-route-row" data-loop-plus-role="backend">
+                ${renderLoopRoleLabel("claudeLoopSubtaskCliSelect", i18n.codexLoopSubtaskModelLabel, i18n.loopPlusBackendHelp, i18n.loopPlusBackendHelpAria)}
                 ${renderLoopSubtaskCliSelect(i18n, "claudeLoopSubtaskCliSelect")}
                 <select id="claudeLoopSubtaskModelSelect" class="model-select" aria-label="${i18n.codexLoopSubtaskModelSelectAria}" title="${i18n.codexLoopSubtaskModelSelectAria}" style="display: none;"></select>
                 <select id="claudeLoopSubtaskThinkingMode" class="thinking-select" aria-label="${i18n.thinkingModeAria}" title="${i18n.thinkingModeAria}" style="display: none;"></select>
+              </div>
+              <div class="open-code-model-row loop-subtask-route-row loop-plus-frontend-route-row" data-loop-plus-role="frontend" hidden>
+                ${renderLoopRoleLabel("claudeLoopFrontendCliSelect", i18n.loopPlusFrontendModelLabel, i18n.loopPlusFrontendHelp, i18n.loopPlusFrontendHelpAria)}
+                ${renderLoopSubtaskCliSelect(i18n, "claudeLoopFrontendCliSelect", i18n.loopPlusFrontendCliSelectAria)}
+                <select id="claudeLoopFrontendModelSelect" class="model-select" aria-label="${i18n.loopPlusFrontendModelSelectAria}" title="${i18n.loopPlusFrontendModelSelectAria}" style="display: none;"></select>
+                <select id="claudeLoopFrontendThinkingMode" class="thinking-select" aria-label="${i18n.loopPlusFrontendThinkingModeAria}" title="${i18n.loopPlusFrontendThinkingModeAria}" style="display: none;"></select>
               </div>
             </div>
             <span id="loopSubtaskRouteIssue" class="open-code-model-issue" role="status" aria-live="polite" style="display: none;"></span>
@@ -268,6 +326,10 @@ ${webviewStyles}    </style>
             </select>
           </div>
           <div class="input-actions">
+            <label id="loopPlusFullstackToggleLabel" class="loop-fullstack-toggle" for="loopPlusFullstackToggle">
+              <input id="loopPlusFullstackToggle" type="checkbox" checked />
+              <span>${i18n.loopPlusFullstackToggle}</span>
+            </label>
             <svg id="commonCommandButton" class="icon icon-action" role="button" tabindex="0" title="${i18n.commonCommandButton}" aria-label="${i18n.commonCommandButton}" viewBox="0 0 24 24" fill="currentColor">
               <text x="12" y="17" text-anchor="middle" font-size="15.6" font-family="monospace" font-weight="700">&gt;_</text>
             </svg>
@@ -881,6 +943,7 @@ ${renderChatModal({
 
     </div>
 
+    <div id="loopRoleHelpTooltip" class="header-hover-tooltip loop-role-help-tooltip" role="tooltip" hidden></div>
     <script nonce="${nonce}">
       ${neutralizeInlineScriptEndTags(markedScript)}
     </script>
