@@ -56,7 +56,7 @@ Loop、Loop+ 和 Graph 子任务创建时，子会话只保留正常样式的用
 
 | 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AI 对话 / 模型 | 任务期间保持模型管理弹窗 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#31-对话入口与基础导航` | `src/webview/viewContentScript/modelManager.ts`、`src/webview/viewContentScript/eventBindings.ts` | `npm run build`；`node --test dist/test/webview/codexdualmodelwebview.test.js` | 任务执行、流式消息和面板状态刷新不会关闭已打开的 Codex 管理模型弹窗；用户显式切换到不支持该弹窗的 CLI 时关闭。 |
+| AI 对话 / 模型 | 任务期间保持模型管理弹窗 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#31-对话入口与基础导航` | `src/webview/viewContentScript/modelManager.ts`、`src/webview/viewContentScript/eventBindings.ts` | `npm run build`；`node --test dist/test/webview/modelManagerIme.test.js dist/test/webview/codexdualmodelwebview.test.js` | 任务执行、流式消息和面板状态刷新不会关闭已打开的 Codex 管理模型弹窗；用户显式切换到不支持该弹窗的 CLI 时关闭。模型名称输入兼容中文输入法，组合输入期间、229 回车码和组合结束后 150ms 内不触发添加或重命名，普通回车仍提交。 |
 
 ## VSIX 瘦身与平台定向导出
 

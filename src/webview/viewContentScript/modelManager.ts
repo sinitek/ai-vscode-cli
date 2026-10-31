@@ -822,6 +822,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         }
       }
 
+      function shouldSubmitModelInputOnEnter(event, isComposing, lastCompositionEndAt, now = Date.now()) {
+        return event.key === "Enter"
+          && !event.isComposing
+          && !isComposing
+          && event.keyCode !== 229
+          && event.which !== 229
+          && now - lastCompositionEndAt > 150;
+      }
+
       function confirmAddModel() {
         if (!cliSupportsManagedModelSelection()) {
           return;
@@ -861,6 +870,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       if (elements.addModelOverlay) {
+        let modelInputIsComposing = false;
+        let modelInputLastCompositionEndAt = 0;
         elements.closeAddModel.addEventListener("click", hideAddModelDialog);
         elements.cancelAddModel.addEventListener("click", hideAddModelDialog);
         if (elements.clearModelEdit) {
@@ -872,8 +883,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
             hideAddModelDialog();
           }
         });
+        elements.modelInput.addEventListener("compositionstart", () => {
+          modelInputIsComposing = true;
+        });
+        elements.modelInput.addEventListener("compositionend", () => {
+          modelInputIsComposing = false;
+          modelInputLastCompositionEndAt = Date.now();
+        });
         elements.modelInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
+          if (shouldSubmitModelInputOnEnter(event, modelInputIsComposing, modelInputLastCompositionEndAt)) {
             event.preventDefault();
             confirmAddModel();
           } else if (event.key === "Escape") {
