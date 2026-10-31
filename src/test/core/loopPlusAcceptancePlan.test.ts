@@ -7,6 +7,7 @@ import {
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID,
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME,
   buildLoopPlusAcceptancePlanFeedbackSection,
+  buildLoopPlusAcceptanceFeedbackSection,
   buildLoopPlusAcceptancePlanPromptLines,
   buildLoopPlusAcceptancePlanPromptSection,
   buildSystemLoopPlusAcceptancePlan,
@@ -325,14 +326,86 @@ test("acceptance feedback lists every selected item only when each verdict is pr
   ), null);
 
   const section = buildLoopPlusAcceptancePlanFeedbackSection(snapshot, [
-    { key: "security", passed: false },
-    { key: "other", passed: true },
+    { key: "security", passed: false, reason: "错误日志仍输出明文令牌" },
+    { key: "other", passed: true, reason: "审计日志已脱敏，未写入密钥" },
   ]);
   assert.equal(section?.heading, "验收结果");
   assert.match(section?.body ?? "", /安全审查：未通过/);
   assert.match(section?.body ?? "", /其它：通过/);
-  assert.match(section?.body ?? "", /确认审计日志不写入密钥/);
+  assert.match(section?.body ?? "", /原因：审计日志已脱敏，未写入密钥/);
+  assert.doesNotMatch(section?.body ?? "", /审查内容：/);
   assert.doesNotMatch(section?.body ?? "", /代码可维护性审查/);
+});
+
+test("acceptance feedback includes default and per-event reasons within 50 characters", () => {
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    reviews: [{ eventId: "event-a", acceptance: "failed", reason: "测试断言失败，需先修复" }],
+    checks: [{ name: "tests", passed: false, detail: "测试断言失败" }],
+    snapshot: {
+      id: "plan-a",
+      name: "上线前加严",
+      checks: ["security"],
+      otherText: "",
+      systemDefault: false,
+    },
+    planResults: [{ key: "security", passed: true, reason: "未发现输入信任边界问题" }],
+  });
+  assert.equal(section?.heading, "验收结果");
+  assert.match(section?.body ?? "", /验收事件 1：未通过/);
+  assert.match(section?.body ?? "", /默认验收·测试验证：未通过/);
+  assert.match(section?.body ?? "", /安全审查：通过/);
+  assert.match(section?.body ?? "", /原因：测试断言失败/);
+  assert.equal(
+    (section?.body.match(/原因：([^\n]+)/gu) ?? []).every((line) => Array.from(line.slice(3)).length <= 50),
+    true,
+  );
+  assert.equal(buildLoopPlusAcceptanceFeedbackSection({
+    reviews: [{ eventId: "event-a", acceptance: "passed" }],
+  }), null);
+});
+
+test("acceptance feedback preserves the chosen reason language without translation", () => {
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    reviews: [{ eventId: "event-a", acceptance: "failed", reason: "The empty-input regression still fails." }],
+    checks: [{ name: "tests", passed: false, detail: "Empty-input assertion fails." }],
+  });
+  assert.match(section?.body ?? "", /原因：The empty-input regression still fails\./u);
+  assert.match(section?.body ?? "", /原因：Empty-input assertion fails\./u);
+});
+
+test("default acceptance feedback works without optional reviews and rejects invalid reasons", () => {
+  for (const snapshot of [undefined, buildSystemLoopPlusAcceptancePlanSnapshot()]) {
+    const section = buildLoopPlusAcceptanceFeedbackSection({
+      snapshot,
+      checks: [{ name: "artifacts", passed: true, detail: "仅调整提示词，无独立可运行产物" }],
+    });
+    assert.match(section?.body ?? "", /默认验收·产物可运行性：通过/);
+    assert.match(section?.body ?? "", /原因：仅调整提示词，无独立可运行产物/);
+  }
+  for (const reason of [undefined, "  ", "字".repeat(51)]) {
+    assert.equal(buildLoopPlusAcceptanceFeedbackSection({
+      checks: [{ name: "tests", passed: false, detail: reason }],
+    }), null);
+  }
+  assert.ok(buildLoopPlusAcceptanceFeedbackSection({
+    checks: [{ name: "tests", passed: true, detail: "😀".repeat(50) }],
+  }));
+});
+
+test("feedback never writes a partial bubble or fabricates reasons for selected reviews", () => {
+  const snapshot: LoopPlusAcceptancePlanSnapshot = {
+    id: "plan-a", name: "加严", checks: ["security", "performance"], otherText: "", systemDefault: false,
+  };
+  const checks = [{ name: "tests", passed: true, detail: "回归用例通过" }];
+  for (const planResults of [
+    undefined,
+    [{ key: "security", passed: true, reason: "输入已校验" }],
+    [{ key: "performance", passed: true, reason: "无重复请求" }, { key: "security", passed: true, reason: "输入已校验" }],
+    [{ key: "security", passed: true }, { key: "performance", passed: true, reason: "无重复请求" }],
+  ]) {
+    assert.equal(buildLoopPlusAcceptanceFeedbackSection({ snapshot, checks, planResults }), null);
+    assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, planResults), null);
+  }
 });
 
 test("其它 text is not injected when the checkbox is unchecked", () => {

@@ -14,6 +14,7 @@ import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 import {
   buildLoopPlusAcceptancePlanPromptLines,
+  listLoopPlusAcceptancePlanFeedbackItems,
   normalizeLoopPlusAcceptancePlanSnapshot,
   type LoopPlusAcceptancePlanSnapshot,
 } from "../loopPlusAcceptancePlan";
@@ -75,6 +76,15 @@ const LOOP_PLUS_ACCEPTANCE_CHECKS: Array<{ name: string; detail: string }> = [
   },
 ];
 
+const LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES = [
+  "需求中的新增分支均已实现，代码见任务报告",
+  "导出接口与约定一致，未改变调用方参数",
+  "报告中的新增及回归用例全部通过",
+  "产物启动成功，启动结果见任务报告",
+  "范围外改动仅为接入新接口，无无关修改",
+  "空值与失败分支均有覆盖，未发现回归",
+];
+
 function formatExecution(record: LoopPlusExecutionRecord): string {
   const files = record.writeFiles.length > 0 ? record.writeFiles.join(", ") : "(none)";
   const group = record.conflictGroup ? ` group=${record.conflictGroup}` : "";
@@ -112,7 +122,20 @@ function acceptanceEventIds(context: LoopPlusMainPromptContext): string[] {
   return single ? [single] : [];
 }
 
-function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
+function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null): string {
+  const planReasons = {
+    maintainability: "复用既有模块，未引入重复实现",
+    security: "输入和路径均有校验，未泄露敏感信息",
+    performance: "未增加无界循环或重复请求",
+    ui_aesthetics: "沿用主题样式，布局无溢出",
+    other: "已逐项核对用户审查要求，无遗漏",
+  };
+  const planResults = listLoopPlusAcceptancePlanFeedbackItems(acceptancePlan).map((item) => ({
+    key: item.key,
+    passed: true,
+    reason: planReasons[item.key],
+  }));
+  const planFeedback = planResults.length > 0 ? { acceptancePlanResults: planResults } : {};
   const subtask = {
     id: "example-subtask",
     title: "Example self-contained subtask",
@@ -127,10 +150,10 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
     acceptance: {
       passed: true,
       summary: "All acceptance checks passed.",
-      checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check) => ({
+      checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check, index) => ({
         name: check.name,
         passed: true,
-        detail: check.detail,
+        detail: LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[index],
       })),
     },
     requirementCoverage: [
@@ -140,6 +163,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
         detail: "Each original requirement is covered with passing evidence.",
       },
     ],
+    ...planFeedback,
   };
   if (eventIds.length === 1) {
     completed.reviewEventId = eventIds[0];
@@ -156,6 +180,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
     return {
       reviewEventId,
       acceptance: launchesRepair ? "failed" : "passed",
+      reason: launchesRepair ? "用例失败，需先修复断言" : "实现符合需求且验证证据通过",
       ...(launchesRepair ? { subtaskIds: [subtask.id] } : {}),
     };
   });
@@ -178,6 +203,17 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[]): string {
         status: "accept",
         ...acceptConfirmation,
         reviews: acceptReviews,
+        acceptance: {
+          passed: !repairExample,
+          checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check, index) => ({
+            name: check.name,
+            passed: !(repairExample && check.name === "tests"),
+            detail: repairExample && check.name === "tests"
+              ? "当前批次有用例失败，已派发修复任务"
+              : LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[index],
+          })),
+        },
+        ...planFeedback,
         subtasks: repairExample ? [subtask] : [],
       },
     },
@@ -333,15 +369,18 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Each subtask needs a title, a unique id, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, suggested write scope, and verification. writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
-    "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId and acceptance, which is exactly passed or failed. A missing, extra, or reordered review rejects the decision.",
+    "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId, acceptance (exactly passed or failed), and a short reason no longer than 50 characters explaining the evidence-backed result. A missing, extra, reordered review, or missing reason rejects the decision.",
+    "- accept.acceptance is required and must report the default checks dispatched work, contracts, tests, artifacts, unauthorized changes, and omissions and regressions. Each check has passed and a concise evidence-backed detail no longer than 50 characters; failed checks are allowed while repair work is launched.",
+    "- Every accept.reviews reason must briefly summarize the evidence-backed result of the default acceptance checklist for that event, no more than 50 characters. Do not reuse generic filler; name the decisive evidence or failed criterion.",
+    "- Write each acceptance reason and check detail in the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory. Keep each within 50 characters, state the decisive evidence, failure, or not-applicable reason, and never invent evidence or use a bare passed/failed claim.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
     "- When an event launches new subtasks, list those ids in that review's subtaskIds. Every subtask id must appear in exactly one subtaskIds array. A passed event may launch follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence in the attempt report, the code, or a test or startup you chose to run. You are not required to run either one.",
     ...acceptancePlanLines,
     "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a new subtask, send blocked, which confirms nothing.",
-    "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed. The host also records it failed.",
-    "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions.",
+    "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
+    "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is a concise evidence-backed reason of no more than 50 characters.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
@@ -361,7 +400,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
-    buildLoopPlusProtocolExamples(batchIds),
+    buildLoopPlusProtocolExamples(batchIds, context.acceptancePlan),
   ].join("\n");
 }
 

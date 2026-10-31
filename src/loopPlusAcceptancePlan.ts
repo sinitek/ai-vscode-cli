@@ -11,6 +11,24 @@ export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID = "system_default";
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME = "系统默认";
 /** 从系统默认另存时预填的方案名；用户可在弹窗里改完再保存。 */
 export const LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME = "默认方案";
+export const LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH = 50;
+export const LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES = [
+  "dispatched work",
+  "contracts",
+  "tests",
+  "artifacts",
+  "unauthorized changes",
+  "omissions and regressions",
+] as const;
+
+const DEFAULT_ACCEPTANCE_CHECK_LABELS: Readonly<Record<string, string>> = {
+  "dispatched work": "实现完整性",
+  contracts: "契约一致性",
+  tests: "测试验证",
+  artifacts: "产物可运行性",
+  "unauthorized changes": "改动合理性",
+  "omissions and regressions": "回归与边界检查",
+};
 
 export const LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_KEYS = [
   "maintainability",
@@ -425,9 +443,9 @@ export function buildLoopPlusAcceptancePlanPromptLines(snapshot: LoopPlusAccepta
   const feedbackItems = listLoopPlusAcceptancePlanFeedbackItems(normalized);
   if (feedbackItems.length > 0) {
     lines.push(
-      "On accept and completed, include acceptancePlanResults only when you actually performed every review above. It must list exactly these keys in order: "
+      "On accept and completed, include acceptancePlanResults for every selected review above. It must list exactly these keys in order: "
       + feedbackItems.map((item) => item.key).join(", ")
-      + ". Each object is {\"key\":\"<key>\",\"passed\":true or false}. passed is true only when that review passes. If any review was not performed, omit acceptancePlanResults entirely.",
+      + ". Include exactly these results even when a review is not applicable or evidence is unavailable. Each object is {\"key\":\"<key>\",\"passed\":true or false,\"reason\":\"short reason\"}. reason must explain the evidence-backed result or limitation in no more than 50 characters. passed is true only when that review passes.",
     );
   }
   return lines;
@@ -467,6 +485,26 @@ export function listLoopPlusAcceptancePlanFeedbackItems(
 export type LoopPlusAcceptancePlanFeedbackResult = {
   key: string;
   passed: boolean;
+  reason?: string;
+};
+
+export type LoopPlusAcceptanceFeedbackReview = {
+  eventId: string;
+  acceptance: "passed" | "failed";
+  reason?: string;
+};
+
+export type LoopPlusAcceptanceFeedbackCheck = {
+  name: string;
+  passed: boolean;
+  detail?: string;
+};
+
+export type LoopPlusAcceptanceFeedbackInput = {
+  snapshot?: LoopPlusAcceptancePlanSnapshot | null;
+  reviews?: readonly LoopPlusAcceptanceFeedbackReview[];
+  checks?: readonly LoopPlusAcceptanceFeedbackCheck[];
+  planResults?: readonly LoopPlusAcceptancePlanFeedbackResult[];
 };
 
 /**
@@ -477,27 +515,63 @@ export function buildLoopPlusAcceptancePlanFeedbackSection(
   snapshot: LoopPlusAcceptancePlanSnapshot | null | undefined,
   results: readonly LoopPlusAcceptancePlanFeedbackResult[] | null | undefined,
 ): { heading: string; body: string } | null {
-  const items = listLoopPlusAcceptancePlanFeedbackItems(snapshot);
-  if (items.length === 0 || !results || results.length !== items.length) {
-    return null;
-  }
-  const normalized = normalizeLoopPlusAcceptancePlanSnapshot(snapshot);
+  return buildLoopPlusAcceptanceFeedbackSection({ snapshot, planResults: results ?? undefined });
+}
+
+export function buildLoopPlusAcceptanceFeedbackSection(
+  input: LoopPlusAcceptanceFeedbackInput,
+): { heading: string; body: string } | null {
   const lines: string[] = [];
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    const result = results[index];
-    if (!result || result.key !== item.key || typeof result.passed !== "boolean") {
+  for (const [index, review] of (input.reviews ?? []).entries()) {
+    const reason = normalizeFeedbackReason(review.reason);
+    if (!reason) {
       return null;
     }
-    lines.push(`- ${item.label}：${result.passed ? "通过" : "未通过"}`);
-    if (item.key === "other" && normalized.otherText) {
-      lines.push(`  审查内容：${normalized.otherText}`);
+    lines.push(`- 验收事件 ${index + 1}：${review.acceptance === "passed" ? "通过" : "未通过"}`);
+    lines.push(`  原因：${reason}`);
+  }
+  for (const check of input.checks ?? []) {
+    const reason = normalizeFeedbackReason(check.detail);
+    if (!reason) {
+      return null;
     }
+    lines.push(`- 默认验收·${DEFAULT_ACCEPTANCE_CHECK_LABELS[check.name] ?? check.name}：${check.passed ? "通过" : "未通过"}`);
+    lines.push(`  原因：${reason}`);
+  }
+  const items = listLoopPlusAcceptancePlanFeedbackItems(input.snapshot);
+  if ((input.planResults?.length ?? 0) !== items.length) {
+    return null;
+  }
+  if (items.length > 0) {
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      const result = input.planResults?.[index];
+      if (!result || result.key !== item.key || typeof result.passed !== "boolean") {
+        return null;
+      }
+      const reason = normalizeFeedbackReason(result.reason);
+      if (!reason) {
+        return null;
+      }
+      lines.push(`- ${item.label}：${result.passed ? "通过" : "未通过"}`);
+      lines.push(`  原因：${reason}`);
+    }
+  }
+  if (lines.length === 0) {
+    return null;
   }
   return {
     heading: "验收结果",
     body: lines.join("\n"),
   };
+}
+
+function normalizeFeedbackReason(value: string | undefined): string | null {
+  const normalized = typeof value === "string" ? value.replace(/\s+/gu, " ").trim() : "";
+  if (!normalized || Array.from(normalized).length > LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH) {
+    return null;
+  }
+  return normalized;
 }
 
 export function buildLoopPlusAcceptancePlanPromptSection(snapshot: LoopPlusAcceptancePlanSnapshot | null | undefined): string {

@@ -14,7 +14,7 @@ import {
 import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
-import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import {
   loopClarificationScope,
   submitOrchestratorClarification,
@@ -84,7 +84,7 @@ function completedDecision(extra: Record<string, unknown> = {}): string {
     status: "completed",
     answerConclusion: "finished",
     finalSummary: "everything passed",
-    acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     requirementCoverage: [{ name: "scope", passed: true }],
     ...extra,
   });
@@ -144,6 +144,7 @@ function harness(options: {
   const logs: Array<{ event: string; payload?: unknown }> = [];
   const abortedAttemptIds: string[] = [];
   const closeTabAttemptIds: string[] = [];
+  const acceptanceFeedback: Array<{ taskId: string; heading: string; body: string }> = [];
   let activeMains = 0;
   let maxMains = 0;
   let taskSeq = 0;
@@ -160,6 +161,9 @@ function harness(options: {
     ...(options.now ? { now: options.now } : {}),
     prepareCommunication: options.prepareCommunication,
     appendSubtaskChat: options.appendSubtaskChat,
+    appendAcceptancePlanChat: (taskId, section) => {
+      acceptanceFeedback.push({ taskId, ...section });
+    },
     readTask: (taskId) => {
       options.beforeReadTask?.();
       return tasks.get(taskId) ?? null;
@@ -261,6 +265,7 @@ function harness(options: {
     logs,
     abortedAttemptIds,
     closeTabAttemptIds,
+    acceptanceFeedback,
     target,
     maxMains: () => maxMains,
     activeMains: () => activeMains,
@@ -279,6 +284,55 @@ test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current 
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "event_driven" }, "classic"), "event_driven");
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "classic" }, "event_driven"), "classic");
   assert.equal(resolveLoopPlusEntry({}, "event_driven"), "classic");
+});
+
+test("accept feedback requires reasons before commit and shows default and selected review evidence", async () => {
+  for (const passed of [true, false]) {
+    const env = harness();
+    const run = env.host.tryRun({
+      displayPrompt: "ship the feature",
+      loopPlusAcceptancePlan: { id: "plan-a", name: "安全加严", checks: ["security"], otherText: "", systemDefault: false },
+    }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+    await flush();
+    env.attempts[0].resolve({ outcome: "completed", detail: "用例命令及结果已写入报告" });
+    await flush();
+    const eventId = env.mains[1].request.reviewEventId;
+    const checks = loopPlusAcceptanceChecksFixture().map((check) => check.name === "tests"
+      ? { ...check, passed, detail: passed ? "报告中的回归用例全部通过" : "报告中的回归断言失败" } : check);
+    const decision = {
+      status: "accept", reviewEventId: eventId,
+      reviews: [{ reviewEventId: eventId, acceptance: passed ? "passed" : "failed", reason: passed ? "回归通过且实现符合需求" : "回归断言失败，尚未满足需求" }],
+      acceptance: { passed, checks },
+      acceptancePlanResults: [{ key: "security", passed: true, reason: "输入已校验，日志无敏感信息" }],
+    };
+    env.mains[1].resolve(JSON.stringify({ ...decision, reviews: [{ reviewEventId: eventId, acceptance: passed ? "passed" : "failed" }] }));
+    await flush();
+    assert.equal(env.acceptanceFeedback.length, 0);
+    assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, eventId);
+    env.mains[env.mains.length - 1].resolve(JSON.stringify(decision));
+    await flush();
+    assert.equal(env.acceptanceFeedback.length, 1);
+    const feedback = env.acceptanceFeedback[0];
+    assert.equal(feedback.taskId, run.taskId);
+    assert.equal(feedback.heading, "验收结果");
+    assert.match(feedback.body, passed ? /默认验收·测试验证：通过/ : /默认验收·测试验证：未通过/);
+    assert.match(feedback.body, passed ? /原因：回归通过且实现符合需求/ : /原因：回归断言失败，尚未满足需求/);
+    assert.match(feedback.body, /安全审查：通过\n  原因：输入已校验，日志无敏感信息/);
+    assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
+  }
+});
+
+test("completed feedback includes default reasons even without an acceptance plan snapshot", async () => {
+  const env = harness();
+  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(completedDecision());
+  await flush();
+  assert.equal(env.acceptanceFeedback.length, 1);
+  assert.equal((env.acceptanceFeedback[0].body.match(/默认验收·/gu) ?? []).length, 6);
+  assert.equal((env.acceptanceFeedback[0].body.match(/原因：/gu) ?? []).length, 6);
 });
 
 test("uses the configured Loop+ dispatch subtask maximum", async () => {
@@ -536,7 +590,7 @@ test("does not complete from a stale review after another finish joins the batch
     reviewEventId: alphaEventId,
     answerConclusion: "finished",
     finalSummary: "everything passed",
-    acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     requirementCoverage: [{ name: "scope", passed: true }],
   }));
   await flush();
@@ -1480,7 +1534,7 @@ test("releases the controller when loop plus completes and ignores late callback
     status: "completed",
     answerConclusion: "finished",
     finalSummary: "everything passed",
-    acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     requirementCoverage: [{ name: "scope", passed: true }],
   }));
   await flush();

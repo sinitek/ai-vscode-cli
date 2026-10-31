@@ -2,6 +2,7 @@ import assert = require("node:assert/strict");
 import test = require("node:test");
 
 import { installVscodeMock } from "../vscodeMock";
+import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptancePlan";
 
 installVscodeMock();
 
@@ -378,6 +379,22 @@ test("shows one execution animation for every running Loop+ subtask without pret
   assert.equal(page.match(/data-thinking-kind="subtask"/gu)?.length, 2);
   assert.equal(page.match(/data-thinking-kind="subtask"[^>]*>[\s\S]*?<span class="typing-dots"/gu)?.length, 2);
   assert.doesNotMatch(page, /data-thinking-kind="main"|主任务 思考中|正在验收/u);
+});
+
+test("renders short default and optional acceptance reasons in the group chat bubble", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    checks: [{ name: "tests", passed: false, detail: "新增断言失败，需要修复空值分支" }],
+    snapshot: { id: "plan-a", name: "安全加严", checks: ["security"], otherText: "", systemDefault: false },
+    planResults: [{ key: "security", passed: true, reason: "输入边界已校验，日志不含令牌" }],
+  });
+  assert.ok(section);
+  const page = html(buildWithChat(scheduler.snapshot(), {}, `# Loop+ chat\n\n## ${section.heading}\n\n${section.body}\n`));
+  assert.match(page, /默认验收·测试验证：未通过/u);
+  assert.match(page, /原因：新增断言失败，需要修复空值分支/u);
+  assert.match(page, /安全审查：通过/u);
+  assert.match(page, /原因：输入边界已校验，日志不含令牌/u);
+  assert.doesNotMatch(page, /默认验收·tests/u);
 });
 
 test("shows acceptance passed or failed instead of reviewed attempts", () => {

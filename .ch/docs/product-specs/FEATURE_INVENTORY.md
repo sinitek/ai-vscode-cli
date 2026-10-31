@@ -18,6 +18,8 @@ Loop、Loop+ 和 Graph 子任务创建时，子会话只保留正常样式的用
 
 配置页面所有 CLI 分组的内置范例均不包含 `subcoco`，原有该名称统一替换为 `default`。KimiCode 范例的 Provider 定义、模型引用、表单占位提示及无模型可复制时的新增模型回退 Provider 均使用 `default`；不迁移或改写用户已有配置。
 
+Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六项默认验收和已选择的附加验收给出不超过 50 字的证据型原因，语言按任务、证据和上下文选择，不强制中文；缺失或超长原因不落地。Loop+ 群聊验收结果气泡逐项展示通过/未通过及原因。实现见 `src/loopPlusDecision.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`；回归见 `src/test/loop/loopPlusDecision.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
+
 配置中心应用配置档案时，同一 CLI 的运行时写入按请求顺序串行执行，Codex 的 `config.toml` 与 `auth.json` 必须来自同一档案；快速切换不得产生跨档案文件混合，写入后读回不一致时提示“未成功更新配置”。不同 CLI 分组可独立应用。实现见 `src/config/configService.ts`；回归见 `src/test/config/configService.test.ts`。
 
 ## Grok 原生人工交互补充

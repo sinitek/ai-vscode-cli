@@ -14,6 +14,7 @@ import {
   resolveLoopPlusMaxAcceptances,
   type LoopPlusDecision,
 } from "../../loopPlusDecision";
+import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
 const CHINESE_PROMPT = [
   "背景：独立实现 Loop+ 的模式存储和决策协议，不改经典 Loop 的整批屏障。",
@@ -200,6 +201,104 @@ test("accept records each review verdict and the subtasks that review launches",
   rejected.forEach((value) => {
     assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
   });
+});
+
+test("strict acceptance feedback mode parses short reasons and rejects missing reasons", () => {
+  const accepted = parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventId: "event-reason",
+    reviews: [{ reviewEventId: "event-reason", acceptance: "passed", reason: "测试通过" }],
+    acceptance: {
+      passed: true,
+      checks: ["dispatched work", "contracts", "tests", "artifacts", "unauthorized changes", "omissions and regressions"]
+        .map((name) => ({ name, passed: true, detail: "测试通过" })),
+    },
+    subtasks: [],
+  }), { requireAcceptanceFeedback: true });
+  assert.equal(accepted?.reviews?.[0]?.reason, "测试通过");
+  assert.equal(accepted?.acceptance?.checks[0]?.detail, "测试通过");
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "accept",
+    reviewEventId: "event-reason",
+    reviews: [{ reviewEventId: "event-reason", acceptance: "passed" }],
+    subtasks: [],
+  }), { requireAcceptanceFeedback: true }), null);
+});
+
+test("strict feedback rejects missing, non-text and overlong reasons for every result type", () => {
+  const checks = loopPlusAcceptanceChecksFixture();
+  const base = {
+    status: "accept", reviewEventId: "event-a",
+    reviews: [{ reviewEventId: "event-a", acceptance: "passed", reason: "用例已通过" }],
+    acceptance: { passed: true, checks },
+  };
+  const options = { requireAcceptanceFeedback: true };
+  for (const reason of [undefined, "", "  ", 123, "字".repeat(51), "😀".repeat(51)]) {
+    assert.equal(normalizeLoopPlusDecision({ ...base, reviews: [{ ...base.reviews[0], reason }] }, options), null);
+    assert.equal(normalizeLoopPlusDecision({
+      ...base, acceptance: { passed: true, checks: checks.map((check, index) => index === 0 ? { ...check, detail: reason } : check) },
+    }, options), null);
+    assert.equal(normalizeLoopPlusDecision({
+      ...base, acceptancePlanResults: [{ key: "security", passed: true, reason }],
+    }, { ...options, acceptancePlanKeys: ["security"] }), null);
+  }
+  assert.ok(normalizeLoopPlusDecision({
+    ...base, reviews: [{ ...base.reviews[0], reason: "😀".repeat(50) }],
+  }, options));
+});
+
+test("strict feedback requires each default check once but accepts a different order", () => {
+  const base = {
+    status: "accept", reviewEventId: "event-a",
+    reviews: [{ reviewEventId: "event-a", acceptance: "failed", reason: "回归断言失败" }],
+  };
+  const checks = loopPlusAcceptanceChecksFixture();
+  const options = { requireAcceptanceFeedback: true };
+  for (const invalidChecks of [[], checks.slice(1), [...checks.slice(1), checks[1]]]) {
+    assert.equal(normalizeLoopPlusDecision({ ...base, acceptance: { passed: false, checks: invalidChecks } }, options), null);
+  }
+  const reversed = checks.slice().reverse().map((check) => check.name === "tests"
+    ? { ...check, passed: false, detail: "回归断言失败" } : check);
+  const parsed = normalizeLoopPlusDecision({ ...base, acceptance: { passed: false, checks: reversed } }, options);
+  assert.equal(parsed?.acceptance?.checks.find((check) => check.name === "tests")?.passed, false);
+});
+
+test("strict feedback requires all selected plan results and accepts concise failure reasons", () => {
+  const base = withLoopPlusAcceptReviews({ status: "accept", reviewEventId: "event-a" });
+  const options = { requireAcceptanceFeedback: true, acceptancePlanKeys: ["security", "performance"] };
+  const results = [
+    { key: "security", passed: false, reason: "错误日志仍输出令牌" },
+    { key: "performance", passed: true, reason: "未增加重复请求" },
+  ];
+  for (const acceptancePlanResults of [undefined, [], results.slice(1), results.slice().reverse(), [results[0], results[0]], [...results, { key: "other", passed: true, reason: "无遗漏" }]]) {
+    assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults }, options), null);
+  }
+  assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: results }, options)?.acceptancePlanResults?.[0]?.reason, "错误日志仍输出令牌");
+  assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: results }, {
+    requireAcceptanceFeedback: true, acceptancePlanKeys: [],
+  }), null);
+});
+
+test("completed feedback requires short default reasons without truncating requirement coverage", () => {
+  const detail = "需求覆盖证据".repeat(20);
+  const base = {
+    ...completedFields(),
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    requirementCoverage: [{ name: "原始需求", passed: true, detail }],
+  };
+  const options = { requireAcceptanceFeedback: true };
+  assert.equal(normalizeLoopPlusDecision(base, options)?.requirementCoverage?.[0]?.detail, detail);
+  for (const reason of [undefined, "", "字".repeat(51)]) {
+    assert.equal(normalizeLoopPlusDecision({
+      ...base, acceptance: { passed: true, checks: base.acceptance.checks.map((check) => ({ ...check, detail: reason })) },
+    }, options), null);
+  }
+});
+
+test("feedback fixtures never overwrite an existing failed check", () => {
+  const acceptance = { passed: false, checks: [{ name: "tests", passed: false, detail: "测试失败" }] };
+  const fixture = withLoopPlusAcceptReviews({ status: "completed", acceptance });
+  assert.deepEqual(fixture.acceptance, acceptance);
 });
 
 test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown status", () => {

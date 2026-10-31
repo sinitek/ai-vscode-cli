@@ -2,6 +2,11 @@ import { createHash } from "crypto";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
+import {
+  LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH,
+  LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES,
+} from "./loopPlusAcceptancePlan";
+export { LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH, LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
 import type {
   LoopAcceptance,
   LoopAcceptanceCheck,
@@ -49,6 +54,7 @@ export type LoopPlusControlDecision = {
 export type LoopPlusAcceptReview = {
   reviewEventId: string;
   acceptance: "passed" | "failed";
+  reason?: string;
   subtaskIds?: string[];
 };
 
@@ -72,10 +78,13 @@ export type LoopPlusDecision = {
 export type LoopPlusAcceptancePlanResult = {
   key: string;
   passed: boolean;
+  reason?: string;
 };
 
 export type LoopPlusDecisionOptions = {
   subtaskMax?: number;
+  acceptancePlanKeys?: readonly string[];
+  requireAcceptanceFeedback?: boolean;
 };
 
 export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
@@ -140,7 +149,7 @@ export function normalizeLoopPlusDecision(
     case "dispatch":
       return normalizeDispatchDecision(value, estimatedRemainingRounds, subtaskMax);
     case "accept":
-      return normalizeAcceptDecision(value, estimatedRemainingRounds, subtaskMax);
+      return normalizeAcceptDecision(value, estimatedRemainingRounds, subtaskMax, options);
     case "wait":
       return normalizeWaitDecision(value, estimatedRemainingRounds, subtaskMax);
     case "steer":
@@ -150,7 +159,7 @@ export function normalizeLoopPlusDecision(
     case "clarify":
       return normalizeClarifyDecision(value, estimatedRemainingRounds, subtaskMax);
     case "completed":
-      return normalizeCompletedDecision(value, estimatedRemainingRounds, subtaskMax);
+      return normalizeCompletedDecision(value, estimatedRemainingRounds, subtaskMax, options);
     default:
       return null;
   }
@@ -183,6 +192,7 @@ function normalizeAcceptDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
+  options?: LoopPlusDecisionOptions,
 ): LoopPlusDecision | null {
   const reviewEvents = readReviewConfirmation(raw, true);
   if (!reviewEvents) {
@@ -199,8 +209,19 @@ function normalizeAcceptDecision(
   const eventIds = reviewEvents.reviewEventIds ?? (
     reviewEvents.reviewEventId ? [reviewEvents.reviewEventId] : []
   );
-  const reviews = readAcceptReviews(raw, eventIds, subtasks);
+  const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
+  const reviews = readAcceptReviews(raw, eventIds, subtasks, requireAcceptanceFeedback);
   if (!reviews) {
+    return null;
+  }
+  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
+  if (!matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
+    return null;
+  }
+  const acceptance = hasOwn(raw, "acceptance")
+    ? normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback)
+    : undefined;
+  if (requireAcceptanceFeedback && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
     return null;
   }
   return withEstimatedRemainingRounds({
@@ -209,7 +230,8 @@ function normalizeAcceptDecision(
     reviews,
     ...(subtasks.length > 0 ? { subtasks } : {}),
     ...(controls.length > 0 ? { controls } : {}),
-    ...acceptancePlanResultFields(raw),
+    ...(acceptance ? { acceptance } : {}),
+    ...(acceptancePlanResults ? { acceptancePlanResults } : {}),
   }, estimatedRemainingRounds);
 }
 
@@ -298,6 +320,7 @@ function normalizeCompletedDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
+  options?: LoopPlusDecisionOptions,
 ): LoopPlusDecision | null {
   if (hasOwn(raw, "controls") || hasOwn(raw, "reviews")) {
     return null;
@@ -312,18 +335,22 @@ function normalizeCompletedDecision(
   }
   const answerConclusion = readOptionalText(raw.answerConclusion);
   const finalSummary = readOptionalText(raw.finalSummary);
-  const acceptance = normalizeAcceptance(raw.acceptance);
+  const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
+  const acceptance = normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback);
   const requirementCoverage = normalizeAcceptanceChecks(raw.requirementCoverage);
+  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
   if (
     !answerConclusion
     || !finalSummary
     || !acceptance
+    || (requireAcceptanceFeedback && !hasDefaultAcceptanceChecks(acceptance))
     || acceptance.passed !== true
     || acceptance.checks.length === 0
     || acceptance.checks.some((check) => check.passed !== true)
     || !requirementCoverage
     || requirementCoverage.length === 0
     || requirementCoverage.some((item) => item.passed !== true)
+    || !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)
   ) {
     return null;
   }
@@ -334,18 +361,17 @@ function normalizeCompletedDecision(
     finalSummary,
     acceptance,
     requirementCoverage,
-    ...acceptancePlanResultFields(raw),
+    ...(acceptancePlanResults ? { acceptancePlanResults } : {}),
   }, estimatedRemainingRounds);
 }
 
-function acceptancePlanResultFields(
-  raw: Record<string, unknown>,
-): { acceptancePlanResults: LoopPlusAcceptancePlanResult[] } | Record<string, never> {
-  const results = readAcceptancePlanResults(raw.acceptancePlanResults);
-  return results ? { acceptancePlanResults: results } : {};
+function hasDefaultAcceptanceChecks(acceptance: LoopAcceptance): boolean {
+  const names = new Set(acceptance.checks.map((check) => check.name));
+  return acceptance.checks.length === LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.length
+    && LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.every((name) => names.has(name));
 }
 
-function readAcceptancePlanResults(value: unknown): LoopPlusAcceptancePlanResult[] | null {
+function readAcceptancePlanResults(value: unknown, requireReason = false): LoopPlusAcceptancePlanResult[] | null {
   if (value === undefined) {
     return null;
   }
@@ -359,13 +385,33 @@ function readAcceptancePlanResults(value: unknown): LoopPlusAcceptancePlanResult
       return null;
     }
     const key = item.key.trim();
-    if (!key || seen.has(key)) {
+    const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
+    if (!key || seen.has(key) || (requireReason && !reason)) {
       return null;
     }
     seen.add(key);
-    results.push({ key, passed: item.passed });
+    results.push({
+      key,
+      passed: item.passed,
+      ...(reason ? { reason } : {}),
+    });
   }
   return results;
+}
+
+function matchesAcceptancePlanKeys(
+  results: readonly LoopPlusAcceptancePlanResult[] | null,
+  expectedKeys?: readonly string[],
+): boolean {
+  if (!expectedKeys) {
+    return true;
+  }
+  if (expectedKeys.length === 0) {
+    return !results || results.length === 0;
+  }
+  return Boolean(results)
+    && results?.length === expectedKeys.length
+    && expectedKeys.every((key, index) => results?.[index]?.key === key);
 }
 
 function withEstimatedRemainingRounds(
@@ -510,11 +556,11 @@ function normalizeSkillIds(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function normalizeAcceptance(value: unknown): LoopAcceptance | null {
+function normalizeAcceptance(value: unknown, requireReason = false): LoopAcceptance | null {
   if (!isRecord(value)) {
     return null;
   }
-  const checks = normalizeAcceptanceChecks(value.checks);
+  const checks = normalizeAcceptanceChecks(value.checks, requireReason);
   if (!checks) {
     return null;
   }
@@ -526,7 +572,7 @@ function normalizeAcceptance(value: unknown): LoopAcceptance | null {
   };
 }
 
-function normalizeAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] | null {
+function normalizeAcceptanceChecks(value: unknown, requireReason = false): LoopAcceptanceCheck[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -539,7 +585,10 @@ function normalizeAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] | null
     if (!name) {
       return null;
     }
-    const detail = readOptionalText(item.detail);
+    const detail = requireReason ? readRequiredShortReason(item.detail) : readOptionalText(item.detail);
+    if (requireReason && !detail) {
+      return null;
+    }
     checks.push({
       name,
       passed: item.passed,
@@ -582,6 +631,7 @@ function readAcceptReviews(
   raw: Record<string, unknown>,
   eventIds: readonly string[],
   subtasks: readonly LoopSubtaskDecision[],
+  requireReason = false,
 ): LoopPlusAcceptReview[] | null {
   if (!hasOwn(raw, "reviews") || !Array.isArray(raw.reviews) || raw.reviews.length !== eventIds.length) {
     return null;
@@ -600,6 +650,10 @@ function readAcceptReviews(
     if (item.acceptance !== "passed" && item.acceptance !== "failed") {
       return null;
     }
+    const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
+    if (requireReason && !reason) {
+      return null;
+    }
     const subtaskIds = readAcceptSubtaskIds(item);
     if (!subtaskIds) {
       return null;
@@ -608,6 +662,7 @@ function readAcceptReviews(
     reviews.push({
       reviewEventId,
       acceptance: item.acceptance,
+      ...(reason ? { reason } : {}),
       ...(subtaskIds.length > 0 ? { subtaskIds } : {}),
     });
   }
@@ -616,6 +671,22 @@ function readAcceptReviews(
     return null;
   }
   return reviews;
+}
+
+function readShortReason(value: unknown): string | undefined {
+  const normalized = readOptionalText(value);
+  if (!normalized) {
+    return undefined;
+  }
+  return Array.from(normalized).slice(0, LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH).join("");
+}
+
+function readRequiredShortReason(value: unknown): string | null {
+  const normalized = readOptionalText(value);
+  if (!normalized || Array.from(normalized).length > LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH) {
+    return null;
+  }
+  return normalized;
 }
 
 function readAcceptSubtaskIds(review: Record<string, unknown>): string[] | null {

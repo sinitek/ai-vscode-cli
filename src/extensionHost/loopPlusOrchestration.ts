@@ -4,7 +4,10 @@ import {
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
-import { buildLoopPlusAcceptancePlanFeedbackSection } from "../loopPlusAcceptancePlan";
+import {
+  buildLoopPlusAcceptanceFeedbackSection,
+  listLoopPlusAcceptancePlanFeedbackItems,
+} from "../loopPlusAcceptancePlan";
 import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   ORCHESTRATOR_CLARIFICATION_LIMIT,
@@ -761,7 +764,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         runtime.decisionCount -= 1;
         continue;
       }
-      const decision = parseLoopPlusDecision(content, { subtaskMax: decisionSubtaskMax() });
+      const task = deps.readTask(runtime.taskId);
+      const acceptancePlanKeys = listLoopPlusAcceptancePlanFeedbackItems(task?.loopPlusAcceptancePlan)
+        .map((item) => item.key);
+      const decision = parseLoopPlusDecision(content, {
+        subtaskMax: decisionSubtaskMax(),
+        acceptancePlanKeys,
+        requireAcceptanceFeedback: true,
+      });
       if (decision?.status === "clarify") {
         const outcome = await waitForLoopPlusClarification(runtime, decision);
         if (outcome === "stop") {
@@ -998,10 +1008,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return;
     }
     const task = deps.readTask(runtime.taskId);
-    const section = buildLoopPlusAcceptancePlanFeedbackSection(
-      task?.loopPlusAcceptancePlan,
-      decision.acceptancePlanResults,
-    );
+    const section = buildLoopPlusAcceptanceFeedbackSection({
+      snapshot: task?.loopPlusAcceptancePlan,
+      reviews: (decision.reviews ?? []).map((review) => ({
+        eventId: review.reviewEventId,
+        acceptance: review.acceptance,
+        reason: review.reason,
+      })),
+      checks: decision.acceptance?.checks,
+      planResults: decision.acceptancePlanResults,
+    });
     if (!section) {
       return;
     }

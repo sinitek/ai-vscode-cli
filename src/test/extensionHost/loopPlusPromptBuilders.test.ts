@@ -94,6 +94,39 @@ function parseExample(examples: Map<string, string>, status: string): LoopPlusDe
   return decision as LoopPlusDecision;
 }
 
+test("acceptance reason language follows the task and conversation instead of forcing Chinese", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({ rootPrompt: "Verify the exported API and regression tests." }));
+  assert.match(prompt, /language that best matches the task, evidence, and surrounding conversation/u);
+  assert.match(prompt, /Chinese is not mandatory/u);
+  assert.match(prompt, /Keep each within 50 characters/u);
+  assert.doesNotMatch(prompt, /Write every acceptance reason and check detail in Simplified Chinese/u);
+});
+
+test("all acceptance examples satisfy strict feedback for default and custom plans", () => {
+  const plans: LoopPlusMainPromptContext["acceptancePlan"][] = [undefined, {
+    id: "plan-custom", name: "上线审查", checks: ["security", "other"],
+    otherText: "确认日志脱敏", systemDefault: false,
+  }];
+  for (const acceptancePlan of plans) {
+    for (const eventIds of [[], ["event-a"], ["event-a", "event-b"]]) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ acceptancePlan, acceptanceEventIds: eventIds }));
+      const examples = extractProtocolExamples(prompt);
+      for (const status of ["accept", "completed"]) {
+        const parsed = parseLoopPlusDecision(examples.get(status), {
+          requireAcceptanceFeedback: true,
+          acceptancePlanKeys: acceptancePlan ? ["security", "other"] : [],
+        });
+        assert.equal(parsed?.status, status);
+      }
+      if (eventIds.length > 1) {
+        const accepted = parseExample(examples, "accept");
+        assert.equal(accepted.acceptance?.passed, false);
+        assert.equal(accepted.acceptance?.checks.find((check) => check.name === "tests")?.passed, false);
+      }
+    }
+  }
+});
+
 test("Loop+ suggests optional SVG in the main finalSummary without changing subtask prompts", () => {
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
     const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
@@ -145,7 +178,8 @@ test("generated protocol examples satisfy the current parser and live event id",
 
   const accept = parseExample(examples, "accept");
   assert.equal(accept.reviewEventId, "event-live-42");
-  assert.deepEqual(accept.reviews, [{ reviewEventId: "event-live-42", acceptance: "passed" }]);
+  assert.deepEqual(accept.reviews, [{ reviewEventId: "event-live-42", acceptance: "passed", reason: "实现符合需求且验证证据通过" }]);
+  assert.ok(accept.acceptance);
   assert.ok(!accept.subtasks || accept.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
 
   const waiting = parseExample(examples, "wait");
@@ -384,8 +418,8 @@ test("a multi-event acceptance batch is confirmed in order and includes the user
   const parsed = parseLoopPlusDecision(JSON.stringify(accept));
   assert.deepEqual(parsed?.reviewEventIds, ["event-live-42", "event-queued-7"]);
   assert.deepEqual(parsed?.reviews, [
-    { reviewEventId: "event-live-42", acceptance: "passed" },
-    { reviewEventId: "event-queued-7", acceptance: "failed", subtaskIds: ["example-subtask"] },
+    { reviewEventId: "event-live-42", acceptance: "passed", reason: "实现符合需求且验证证据通过" },
+    { reviewEventId: "event-queued-7", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["example-subtask"] },
   ]);
   assert.equal(parseLoopPlusDecision(JSON.stringify({
     ...accept,

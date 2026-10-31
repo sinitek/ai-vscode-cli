@@ -19,7 +19,7 @@ const {
   selectLoopPlusInvocationRun,
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
 
-import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
 function longPrompt(id: string, file: string): string {
   return `Implement ${id} without editing the parent task record or scheduler snapshot. Write scope: ${file}. Report only the attempt result.`;
@@ -45,7 +45,7 @@ function completedDecision(reviewEventId?: string | null): string {
     ...(reviewEventId ? { reviewEventId } : {}),
     answerConclusion: "finished",
     finalSummary: "everything passed",
-    acceptance: { passed: true, checks: [{ name: "scope", passed: true }] },
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     requirementCoverage: [{ name: "scope", passed: true }],
   });
 }
@@ -350,7 +350,7 @@ test("adapter appends main-task completion messages only after Loop+ is persiste
           status: "completed",
           answerConclusion: "主任务已完成。",
           finalSummary: "已完成实现并通过验收。",
-          acceptance: { passed: true, checks: [{ name: "范围", passed: true }] },
+          acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
           requirementCoverage: [{ name: "范围", passed: true }],
         }),
       });
