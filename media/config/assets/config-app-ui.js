@@ -4297,55 +4297,295 @@ const CodexConfigVisualEditorUtils = Object.freeze({
 // CODEX_VISUAL_EDITOR_UTILS_END
 
 const { TextArea: Qa } = zi;
+
+const CONFIG_JSON_LANGUAGE = "config-json";
+const CONFIG_TOML_LANGUAGE = "config-toml";
+const CONFIG_SOURCE_THEME = "sinitek-config";
+let configSourceLanguagesReady = false;
+
+function configSourceLanguageId(format) {
+  return format === "toml" ? CONFIG_TOML_LANGUAGE : CONFIG_JSON_LANGUAGE;
+}
+
+function cssColorToMonaco(variableName, fallback) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+  const probe = document.createElement("span");
+  probe.style.backgroundColor = raw || fallback;
+  document.body.appendChild(probe);
+  const computed = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  const match = computed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (!match) return fallback;
+  const hex = [match[1], match[2], match[3]].map((part) => Number(part).toString(16).padStart(2, "0")).join("");
+  if (match[4] !== undefined && Number(match[4]) < 1) {
+    return `#${hex}${Math.round(Number(match[4]) * 255).toString(16).padStart(2, "0")}`;
+  }
+  return `#${hex}`;
+}
+
+function applyConfigSourceTheme(monaco) {
+  const background = cssColorToMonaco("--vscode-editor-background", "#1e1e1e");
+  const foreground = cssColorToMonaco("--vscode-editor-foreground", "#d4d4d4");
+  const red = parseInt(background.slice(1, 3), 16);
+  const green = parseInt(background.slice(3, 5), 16);
+  const blue = parseInt(background.slice(5, 7), 16);
+  const dark = (red * 299 + green * 587 + blue * 114) / 1000 < 150;
+  const token = (variableName, fallback) => cssColorToMonaco(variableName, fallback).replace("#", "").slice(0, 6);
+  monaco.editor.defineTheme(CONFIG_SOURCE_THEME, {
+    base: dark ? "vs-dark" : "vs",
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: token("--vscode-descriptionForeground", dark ? "#6a9955" : "#008000") },
+      { token: "string", foreground: token("--vscode-debugTokenExpression-string", dark ? "#ce9178" : "#a31515") },
+      { token: "key", foreground: token("--vscode-symbolIcon-propertyForeground", dark ? "#9cdcfe" : "#0451a5") },
+      { token: "number", foreground: token("--vscode-debugTokenExpression-number", dark ? "#b5cea8" : "#098658") },
+      { token: "keyword", foreground: token("--vscode-debugTokenExpression-boolean", dark ? "#569cd6" : "#0000ff") },
+    ],
+    colors: {
+      "editor.background": background,
+      "editor.foreground": foreground,
+      "editor.selectionBackground": cssColorToMonaco("--vscode-editor-selectionBackground", dark ? "#264f78" : "#add6ff"),
+      "editor.inactiveSelectionBackground": cssColorToMonaco("--vscode-editor-inactiveSelectionBackground", dark ? "#3a3d41" : "#e5ebf1"),
+      "editor.lineHighlightBackground": cssColorToMonaco("--vscode-editor-lineHighlightBackground", dark ? "#2a2d2e" : "#f5f5f5"),
+      "editorCursor.foreground": cssColorToMonaco("--vscode-editorCursor-foreground", foreground),
+      "editorLineNumber.foreground": cssColorToMonaco("--vscode-editorLineNumber-foreground", dark ? "#858585" : "#237893"),
+      "editorGutter.background": cssColorToMonaco("--vscode-editorGutter-background", background),
+    },
+  });
+  monaco.editor.setTheme(CONFIG_SOURCE_THEME);
+}
+
+function ensureConfigSourceLanguages(monaco) {
+  if (configSourceLanguagesReady) return;
+  monaco.languages.register({ id: CONFIG_JSON_LANGUAGE, aliases: ["JSON"] });
+  monaco.languages.setLanguageConfiguration(CONFIG_JSON_LANGUAGE, {
+    comments: { lineComment: "//", blockComment: ["/*", "*/"] },
+    brackets: [["{", "}"], ["[", "]"]],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: '"', close: '"' },
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: '"', close: '"' },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider(CONFIG_JSON_LANGUAGE, {
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, "comment"],
+        [/\/\*/, "comment", "@comment"],
+        [/"(?:[^"\\]|\\.)*"(?=\s*:)/, "key"],
+        [/"/, "string", "@string"],
+        [/-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/, "number"],
+        [/\b(?:true|false|null)\b/, "keyword"],
+        [/[{}\[\],:]/, "delimiter"],
+      ],
+      string: [
+        [/[^\\"]+/, "string"],
+        [/\\./, "string"],
+        [/"/, "string", "@pop"],
+      ],
+      comment: [
+        [/[^/*]+/, "comment"],
+        [/\*\//, "comment", "@pop"],
+        [/[/*]/, "comment"],
+      ],
+    },
+  });
+  monaco.languages.register({ id: CONFIG_TOML_LANGUAGE, aliases: ["TOML"] });
+  monaco.languages.setLanguageConfiguration(CONFIG_TOML_LANGUAGE, {
+    comments: { lineComment: "#" },
+    brackets: [["[", "]"], ["{", "}"]],
+    autoClosingPairs: [
+      { open: "[", close: "]" },
+      { open: "{", close: "}" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+    surroundingPairs: [
+      { open: "[", close: "]" },
+      { open: "{", close: "}" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider(CONFIG_TOML_LANGUAGE, {
+    tokenizer: {
+      root: [
+        [/#.*$/, "comment"],
+        [/\[\[?/, "delimiter", "@table"],
+        [/"""/, "string", "@mlstring"],
+        [/'''/, "string", "@mlliteral"],
+        [/"/, "string", "@string"],
+        [/'/, "string", "@literal"],
+        [/\b(?:true|false)\b/, "keyword"],
+        [/[+-]?(?:\d{4}-\d{2}-\d{2}(?:[T ][0-9:.+-]+)?|(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/, "number"],
+        [/[A-Za-z0-9_.-]+(?=\s*=)/, "key"],
+        [/[=,{}[\]]/, "delimiter"],
+      ],
+      table: [
+        [/\]\]/, "delimiter", "@pop"],
+        [/\]/, "delimiter", "@pop"],
+        [/"/, "string", "@string"],
+        [/'/, "string", "@literal"],
+        [/[A-Za-z0-9_.-]+/, "key"],
+        [/\./, "delimiter"],
+      ],
+      string: [
+        [/[^\\"]+/, "string"],
+        [/\\./, "string"],
+        [/"/, "string", "@pop"],
+      ],
+      literal: [
+        [/[^']+/, "string"],
+        [/'/, "string", "@pop"],
+      ],
+      mlstring: [
+        [/"""/, "string", "@pop"],
+        [/[^"]+|"/, "string"],
+      ],
+      mlliteral: [
+        [/'''/, "string", "@pop"],
+        [/[^']+|'/, "string"],
+      ],
+    },
+  });
+  applyConfigSourceTheme(monaco);
+  configSourceLanguagesReady = true;
+}
+
 const ConfigSourceEditor = ({ value = "", onChange, format = "json", rows = 10, style, ...props }) => {
-  const textareaRef = c.useRef(null);
+  const hostRef = c.useRef(null);
   const editorRef = c.useRef(null);
   const changeRef = c.useRef(onChange);
+  const valueRef = c.useRef(value);
+  const formatRef = c.useRef(format);
+  const propsRef = c.useRef(props);
   changeRef.current = onChange;
+  valueRef.current = value;
+  formatRef.current = format;
+  propsRef.current = props;
+  const monacoReady = typeof window !== "undefined" && window.monaco && window.monaco.editor;
+  const [fallback, setFallback] = c.useState(!monacoReady && Boolean(window.sinitekMonacoFailed));
   c.useEffect(() => {
-    if (!window.CodeMirror || !textareaRef.current) return;
-    const editor = window.CodeMirror.fromTextArea(textareaRef.current, {
-      mode: format === "toml" ? "toml" : { name: "javascript", json: true },
-      theme: "sinitek",
-      lineNumbers: true,
-      lineWrapping: true,
-      indentUnit: 2,
-      tabSize: 2,
-      placeholder: props.placeholder,
-      screenReaderLabel: props["aria-label"] || `${format.toUpperCase()} 配置源码`,
-      readOnly: Boolean(props.readOnly || props.disabled),
-    });
+    if (fallback || (window.monaco && window.monaco.editor)) return undefined;
+    const timer = window.setTimeout(() => setFallback(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [fallback]);
+  c.useEffect(() => {
+    if (fallback || !hostRef.current || editorRef.current || !window.monaco || !window.monaco.editor) return undefined;
+    const monaco = window.monaco;
+    let editor = null;
+    let themeObserver = null;
+    try {
+      ensureConfigSourceLanguages(monaco);
+      const fontProbe = document.createElement("span");
+      fontProbe.style.fontFamily = "var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)";
+      document.body.appendChild(fontProbe);
+      const fontFamily = getComputedStyle(fontProbe).fontFamily;
+      fontProbe.remove();
+      editor = monaco.editor.create(hostRef.current, {
+        value: String(valueRef.current ?? ""),
+        language: configSourceLanguageId(formatRef.current),
+        theme: CONFIG_SOURCE_THEME,
+        readOnly: Boolean(propsRef.current.readOnly || propsRef.current.disabled),
+        domReadOnly: Boolean(propsRef.current.disabled),
+        automaticLayout: true,
+        fixedOverflowWidgets: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        wordWrap: "on",
+        fontSize: 13,
+        fontFamily,
+        lineHeight: 22,
+        tabSize: 2,
+        insertSpaces: true,
+        padding: { top: 8, bottom: 8 },
+        ariaLabel: propsRef.current["aria-label"] || `${String(formatRef.current).toUpperCase()} 配置源码`,
+        contextmenu: true,
+        mouseWheelZoom: false,
+        folding: true,
+        bracketPairColorization: { enabled: true },
+        selectOnLineNumbers: true,
+        selectionHighlight: true,
+        roundedSelection: false,
+        links: false,
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        parameterHints: { enabled: false },
+        hover: { enabled: false },
+        stickyScroll: { enabled: false },
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, alwaysConsumeMouseWheel: false },
+      });
+    } catch (error) {
+      editor?.dispose();
+      editor = null;
+      setFallback(true);
+      return undefined;
+    }
     editorRef.current = editor;
-    editor.on("change", () => {
-      const next = editor.getValue();
-      editor.save();
-      changeRef.current?.({ target: { value: next } });
+    editor.layout();
+    const subscription = editor.onDidChangeModelContent(() => {
+      changeRef.current?.({ target: { value: editor.getValue() } });
     });
-    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => editor.refresh()) : null;
-    observer?.observe(editor.getWrapperElement().parentElement);
-    editor.refresh();
+    themeObserver = new MutationObserver(() => applyConfigSourceTheme(monaco));
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    const frame = window.requestAnimationFrame(() => editor.layout());
     return () => {
-      observer?.disconnect();
-      editor.toTextArea();
+      window.cancelAnimationFrame(frame);
+      themeObserver.disconnect();
+      subscription.dispose();
+      editor.dispose();
       editorRef.current = null;
     };
-  }, []);
-  c.useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && editor.getValue() !== value) editor.setValue(value);
-  }, [value]);
+  }, [fallback]);
   c.useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.setOption("mode", format === "toml" ? "toml" : { name: "javascript", json: true });
-    editor.setOption("readOnly", Boolean(props.readOnly || props.disabled));
-    editor.refresh();
-  }, [format, props.readOnly, props.disabled]);
+    const next = String(value ?? "");
+    if (editor.getValue() !== next) editor.setValue(next);
+  }, [value]);
+  c.useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = window.monaco;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    const language = configSourceLanguageId(format);
+    if (model && model.getLanguageId() !== language) monaco.editor.setModelLanguage(model, language);
+    editor.updateOptions({
+      readOnly: Boolean(props.readOnly || props.disabled),
+      domReadOnly: Boolean(props.disabled),
+      ariaLabel: props["aria-label"] || `${String(format).toUpperCase()} 配置源码`,
+    });
+  }, [format, props.readOnly, props.disabled, props["aria-label"]]);
+  const editorStyle = { minHeight: Math.max(200, Number(rows) * 22), ...style };
+  if (fallback) {
+    return be.jsx("div", {
+      className: "config-source-editor",
+      style: editorStyle,
+      "data-format": format,
+      "data-editor": "textarea",
+      children: be.jsx("textarea", {
+        ...props,
+        rows,
+        value: String(value ?? ""),
+        spellCheck: false,
+        onChange,
+      }),
+    });
+  }
   return be.jsx("div", {
     className: "config-source-editor",
-    style,
+    style: editorStyle,
     "data-format": format,
-    children: be.jsx("textarea", { ...props, rows, ref: textareaRef, defaultValue: value, onChange }),
+    "data-editor": "monaco",
+    "data-testid": props["data-testid"],
+    children: be.jsx("div", { ref: hostRef, className: "config-source-monaco" }),
   });
 };
 

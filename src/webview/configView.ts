@@ -303,13 +303,18 @@ export function getConfigViewHtml(
   const configBaseUri = webview
     .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "config"))
     .toString();
-  const codeMirrorFiles = ["lib/codemirror.js", "mode/javascript/javascript.js", "mode/toml/toml.js", "addon/display/placeholder.js"];
-  const codeMirrorUris = codeMirrorFiles.map((file) => webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "node_modules", "codemirror", ...file.split("/"))
-  ).toString());
-  const codeMirrorCssUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, "node_modules", "codemirror", "lib", "codemirror.css")
-  );
+  const monacoVsFsPath = path.join(extensionUri.fsPath, "media", "config", "monaco-editor", "0.52.2", "min", "vs");
+  for (const file of ["loader.js", "editor/editor.main.js", "editor/editor.main.css"]) {
+    if (!fs.existsSync(path.join(monacoVsFsPath, file))) {
+      throw new Error(`Missing Monaco asset: ${file}`);
+    }
+  }
+  const monacoVsUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "config", "monaco-editor", "0.52.2", "min", "vs")
+  ).toString();
+  const monacoCssUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "config", "monaco-editor", "0.52.2", "min", "vs", "editor", "editor.main.css")
+  ).toString();
   const sourceEditorCssUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, ...ASSETS_DIR, "config-source-editor.css")
   );
@@ -328,7 +333,7 @@ export function getConfigViewHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${t("config.appTitle")}</title>
     <link rel="stylesheet" href="${cssUri}" />
-    <link rel="stylesheet" href="${codeMirrorCssUri}" />
+    <link rel="stylesheet" href="${monacoCssUri}" />
     <link rel="stylesheet" href="${sourceEditorCssUri}" />
     <style nonce="${nonce}">
       ${CONFIG_VSCODE_THEME_STYLES}
@@ -1002,21 +1007,50 @@ export function getConfigViewHtml(
       }
 
       function loadScript(src) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const script = document.createElement("script");
           script.src = src;
           script.nonce = ${JSON.stringify(nonce)};
           script.async = false;
           script.onload = () => resolve();
+          script.onerror = () => reject(new Error(src));
           document.body.appendChild(script);
         });
       }
 
+      function loadMonaco() {
+        if (window.monaco && window.monaco.editor) return Promise.resolve(window.monaco);
+        const monacoVs = ${JSON.stringify(monacoVsUri)};
+        return loadScript(monacoVs + "/loader.js").then(() => new Promise((resolve, reject) => {
+          const amdRequire = window.require;
+          if (!amdRequire || typeof amdRequire.config !== "function") {
+            reject(new Error("Monaco loader 未就绪"));
+            return;
+          }
+          amdRequire.config({
+            paths: { vs: monacoVs },
+            "vs/css": { disabled: true },
+            cspNonce: ${JSON.stringify(nonce)},
+            preferScriptTags: true,
+          });
+          amdRequire(["vs/editor/editor.main"], (api) => {
+            if (api && api.editor) window.monaco = api;
+            if (window.monaco && window.monaco.editor) resolve(window.monaco);
+            else reject(new Error("Monaco editor API 未导出"));
+          }, (error) => reject(error || new Error("Monaco editor.main 加载失败")));
+        }));
+      }
+
       function loadConfigManagerApp() {
-        const appScripts = ${JSON.stringify([...codeMirrorUris, ...appUris])};
-        loadScript(${JSON.stringify(jsUri.toString())}).then(() =>
+        const appScripts = ${JSON.stringify(appUris)};
+        loadScript(${JSON.stringify(jsUri.toString())}).then(() => loadMonaco().catch((error) => {
+          window.sinitekMonacoFailed = true;
+          postConfigDebug({ event: "monacoLoadFailed", error: String(error && error.message || error) });
+        })).then(() =>
           appScripts.reduce((chain, src) => chain.then(() => loadScript(src)), Promise.resolve())
-        );
+        ).catch((error) => {
+          postConfigDebug({ event: "configAppLoadFailed", error: String(error && error.message || error) });
+        });
       }
 
       syncActiveConfigIds().finally(() => {

@@ -35,6 +35,8 @@ REQUIRED_ENTRIES = (
     "media/config/assets/config-app-store.js",
     "media/config/assets/config-app-ui.js",
     "media/config/monaco-editor/0.52.2/min/vs/loader.js",
+    "media/config/monaco-editor/0.52.2/min/vs/editor/editor.main.js",
+    "media/config/monaco-editor/0.52.2/min/vs/editor/editor.main.css",
     "media/workspace-scaffold/AGENTS.md",
     "node_modules/@dagrejs/dagre/package.json",
     "node_modules/@dagrejs/graphlib/package.json",

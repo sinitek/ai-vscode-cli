@@ -310,8 +310,11 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   assert.match(html, new RegExp(`loadScript\\("webview-test://.*/${escapeRegExp(jsAsset)}"\\)`));
     assert.match(html, /config-app-ui\.js\?v=/);
     assert.match(html, /config-source-editor\.css/);
-    assert.match(html, /node_modules\/codemirror\/lib\/codemirror\.js/);
-    assert.match(html, /node_modules\/codemirror\/mode\/toml\/toml\.js/);
+    assert.match(html, /monaco-editor\/0\.52\.2\/min\/vs";/);
+    assert.match(html, /monacoVs \+ "\/loader\.js"/);
+    assert.match(html, /monaco-editor\/0\.52\.2\/min\/vs\/editor\/editor\.main\.css/);
+    assert.match(html, /preferScriptTags: true/);
+    assert.doesNotMatch(html, /codemirror/);
   assert.match(html, /const configBase = "webview-test:\/\/.*\/media\/config";/);
   assert.match(html, /const downloadsDir = ".*Downloads";/);
   assert.match(html, /history\.replaceState\(null, "", configBase \+ "\/index\.html"\)/);
@@ -329,11 +332,8 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
     "config-app-store.js",
     "config-app-ui.js",
     "config-source-editor.css",
-    "node_modules/codemirror/lib/codemirror.css",
-    "node_modules/codemirror/lib/codemirror.js",
-    "node_modules/codemirror/mode/javascript/javascript.js",
-    "node_modules/codemirror/mode/toml/toml.js",
-    "node_modules/codemirror/addon/display/placeholder.js",
+    "monaco-editor/0.52.2/min/vs",
+    "monaco-editor/0.52.2/min/vs/editor/editor.main.css",
     "media/config",
   ]) {
     assert.ok(uris.some((uri) => uri.includes(expected)), `webview URI should include ${expected}`);
@@ -358,6 +358,13 @@ test("config page copies the one-click install command for every CLI", () => {
   assert.match(ui, /onClick: \(\) => R\(T, "安装命令"\)/);
   assert.doesNotMatch(ui, /DEFAULT_INSTALL_COMMANDS/);
   assert.doesNotMatch(ui, /terminal\.sendText|一键安装/);
+  assert.doesNotMatch(ui, /CodeMirror/);
+  assert.match(ui, /monaco\.editor\.create/);
+  assert.match(ui, /setMonarchTokensProvider\(CONFIG_JSON_LANGUAGE/);
+  assert.match(ui, /setMonarchTokensProvider\(CONFIG_TOML_LANGUAGE/);
+  const editorCss = readProjectFile("media/config/assets/config-source-editor.css");
+  assert.match(editorCss, /\.monaco-editor textarea\.inputarea:not\(\.ime-input\)/);
+  assert.match(editorCss, /\.monaco-editor textarea\.inputarea\.ime-input/);
 });
 
 test("config view reports missing hashed and app assets without touching user data", () => {
@@ -379,6 +386,25 @@ test("config view reports missing hashed and app assets without touching user da
   assert.throws(
     () => getConfigViewHtml(harness.webview as any, { fsPath: tempRoot } as any),
     /Missing config manager asset: config-app-ui\.js/,
+  );
+
+  fs.writeFileSync(path.join(assetsDir, "config-app-ui.js"), "", "utf8");
+  fs.writeFileSync(path.join(assetsDir, "config-source-editor.css"), "", "utf8");
+  assert.throws(
+    () => getConfigViewHtml(harness.webview as any, { fsPath: tempRoot } as any),
+    /Missing Monaco asset: loader\.js/,
+  );
+  const monacoDir = path.join(tempRoot, "media", "config", "monaco-editor", "0.52.2", "min", "vs");
+  fs.mkdirSync(path.join(monacoDir, "editor"), { recursive: true });
+  fs.writeFileSync(path.join(monacoDir, "loader.js"), "", "utf8");
+  assert.throws(
+    () => getConfigViewHtml(harness.webview as any, { fsPath: tempRoot } as any),
+    /Missing Monaco asset: editor\/editor\.main\.js/,
+  );
+  fs.writeFileSync(path.join(monacoDir, "editor", "editor.main.js"), "", "utf8");
+  assert.throws(
+    () => getConfigViewHtml(harness.webview as any, { fsPath: tempRoot } as any),
+    /Missing Monaco asset: editor\/editor\.main\.css/,
   );
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
