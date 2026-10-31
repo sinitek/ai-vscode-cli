@@ -308,7 +308,10 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
   assert.match(html, /\.skills-manager-modal \.ant-modal\s*\{[\s\S]*width:\s*min\(1180px,\s*calc\(100vw - 24px\)\) !important/);
   assert.match(html, /\.skills-manager-content > div:last-child[\s\S]*max-height:\s*none !important/);
   assert.match(html, new RegExp(`loadScript\\("webview-test://.*/${escapeRegExp(jsAsset)}"\\)`));
-  assert.match(html, /config-app-ui\.js\?v=/);
+    assert.match(html, /config-app-ui\.js\?v=/);
+    assert.match(html, /config-source-editor\.css/);
+    assert.match(html, /node_modules\/codemirror\/lib\/codemirror\.js/);
+    assert.match(html, /node_modules\/codemirror\/mode\/toml\/toml\.js/);
   assert.match(html, /const configBase = "webview-test:\/\/.*\/media\/config";/);
   assert.match(html, /const downloadsDir = ".*Downloads";/);
   assert.match(html, /history\.replaceState\(null, "", configBase \+ "\/index\.html"\)/);
@@ -325,6 +328,12 @@ test("config view HTML wires assets, CSP, bridge globals, and startup sequencing
     "config-app-api.js",
     "config-app-store.js",
     "config-app-ui.js",
+    "config-source-editor.css",
+    "node_modules/codemirror/lib/codemirror.css",
+    "node_modules/codemirror/lib/codemirror.js",
+    "node_modules/codemirror/mode/javascript/javascript.js",
+    "node_modules/codemirror/mode/toml/toml.js",
+    "node_modules/codemirror/addon/display/placeholder.js",
     "media/config",
   ]) {
     assert.ok(uris.some((uri) => uri.includes(expected)), `webview URI should include ${expected}`);
@@ -1205,6 +1214,8 @@ test("ZCode save applies only the active profile and waits for runtime model ref
       o: () => "active",
       zcodeEditorMode: "json",
       zcodeTextDraft: updated,
+      validateConfigJsonForSave: (text: string) => { JSON.parse(text); return true; },
+      showConfigSaveError: (message: unknown) => errors.push(String(message)),
       ZcodeConfigVisualEditorUtils: { parseContent: () => ({ ok: true, state: {} }) },
       setZcodeTextDraft: () => undefined,
       setZcodeVisualState: () => undefined,

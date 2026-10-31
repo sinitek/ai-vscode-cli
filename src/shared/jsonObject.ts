@@ -53,15 +53,18 @@ function stripJsonComments(content: string): string {
     if (current === "/" && next === "*") {
       result += "  ";
       index += 2;
+      let closed = false;
       while (index < content.length) {
         if (content[index] === "*" && content[index + 1] === "/") {
           result += "  ";
           index += 1;
+          closed = true;
           break;
         }
         result += content[index] === "\n" || content[index] === "\r" ? content[index] : " ";
         index += 1;
       }
+      if (!closed) throw new SyntaxError("JSONC 块注释未闭合。");
       continue;
     }
 

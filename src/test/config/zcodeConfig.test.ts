@@ -435,7 +435,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
   for (const mode of ["visual", "json"]) {
     const sandbox: AnyRecord = {
       be: { jsx: element, jsxs: element, Fragment: "fragment" },
-      aa: "card", xn: "button", Pv: "icon", Ya: "icon", Qa: "textarea", RE: "drawer",
+      aa: "card", xn: "button", Pv: "icon", Ya: "icon", Qa: "textarea", ConfigSourceEditor: "textarea", RE: "drawer",
       O: { id: "zcode-test", name: "ZCode" },
       Nk: { "zcode-config": example }, S: null, I: null,
       configListLoading: false, zcodeEditorMode: mode,

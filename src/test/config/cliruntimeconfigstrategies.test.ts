@@ -323,6 +323,14 @@ test("OpenCode runtime strategy returns only content and preserves skills priori
     content: undefined,
     openCodeSkills: [],
   });
+  await strategy.apply({
+    content: `{
+      // JSONC must remain applicable when Skills are merged.
+      "model": "raw",
+      "provider": { "gateway": { "models": { "main": {}, }, }, },
+    }`,
+    openCodeSkills: [{ name: "native", path: "/tmp/native", enabled: false }],
+  });
 
   assert.equal(writes[0]?.config, "not json");
   assert.equal(writes[0]?.env, undefined);
@@ -330,6 +338,7 @@ test("OpenCode runtime strategy returns only content and preserves skills priori
   assert.doesNotMatch(writes[1]?.config ?? "", /legacy/);
   assert.match(writes[2]?.config ?? "", /legacy/);
   assert.match(writes[3]?.config ?? "", /"enabled": true/);
+  assert.match(writes[4]?.config ?? "", /"disabled": \[\s*"native"/);
 });
 
 test("OpenCode skill merge failure does not write", async () => {

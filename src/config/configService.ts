@@ -30,7 +30,7 @@ import {
   type ConfigPathPlatform,
   type LegacyConfigPlatformInput,
 } from "./configPaths";
-import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
+import { isPlainObject, parseJsonObjectText, type JsonObjectParseMode } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath } from "../shared/userHomePaths";
 import {
@@ -47,6 +47,7 @@ import {
   writeKimiCodeConfigText,
 } from "./kimiCodeConfig";
 import { commitDshDocument } from "../cli/dshConfigModels";
+import { assertConfigSourceFormat } from "./configSourceValidation";
 import {
   activateDshProfile,
   readDshActiveProfileText,
@@ -666,10 +667,14 @@ function normalizeKimiCodeConfigFields(config: ConfigItem): void {
   delete config.grokSkills;
 }
 
-function readJsonObjectText(value: string | undefined, fallback = "{}"): Record<string, unknown> {
+function readJsonObjectText(
+  value: string | undefined,
+  fallback = "{}",
+  mode: JsonObjectParseMode = "strict",
+): Record<string, unknown> {
   const text = typeof value === "string" && value.trim().length > 0 ? value : fallback;
   try {
-    return parseJsonObjectText(text, { mode: "strict" });
+    return parseJsonObjectText(text, { mode });
   } catch {
     return {};
   }
@@ -915,7 +920,7 @@ function extractMcpConfig(source: ConfigItem): Record<string, unknown> {
   const config =
     source.platform === "claude"
       ? readJsonObjectText(source.mcpContent, "{}")
-      : readJsonObjectText(source.content, "{}");
+      : readJsonObjectText(source.content, "{}", source.platform === "opencode" ? "jsonc" : "strict");
   const servers = isPlainObject(config.mcpServers)
     ? config.mcpServers
     : isPlainObject(config.mcp)
@@ -940,7 +945,7 @@ function cloneOpenCodeSkillsFromSource(source: ConfigItem): ConfigItem["openCode
 }
 
 function buildOpenCodeConfigFromSource(source: ConfigItem): Pick<ConfigItem, "content" | "openCodeSkills"> {
-  const content = readJsonObjectText(source.content, "{}");
+  const content = readJsonObjectText(source.content, "{}", source.platform === "opencode" ? "jsonc" : "strict");
   if (isPlainObject(content.mcpServers) && !isPlainObject(content.mcp)) {
     content.mcp = content.mcpServers;
     delete content.mcpServers;
@@ -1038,8 +1043,8 @@ function isLegacyCrossMigratedOpenCodeConfig(config: Partial<ConfigItem>): boole
 
 export async function saveConfig(config: ConfigItem): Promise<void> {
   const configDir = getConfigDir(config.platform);
-  await ensureDir(configDir);
   const configToSave: ConfigItem = { ...config, platform: normalizeConfigPlatform(config.platform) };
+  assertConfigSourceFormat(configToSave);
 
   if (configToSave.platform === "codex") {
     normalizeCodexConfigFields(configToSave);
@@ -1095,6 +1100,7 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   delete legacyConfig.geminiSkills;
 
   const filePath = getConfigFilePath(configToSave.platform, config.id);
+  await ensureDir(configDir);
   if (configToSave.platform === "dsh") {
     await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
     await fs.chmod(configDir, 0o700);

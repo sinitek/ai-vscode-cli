@@ -417,7 +417,7 @@ export function parseOpenCodeConfigModels(
   let parsed: Record<string, unknown>;
   try {
     parsed = parseJsonObjectText(text, {
-      mode: "strict",
+      mode: "jsonc",
       rootErrorMessage: "OpenCode config must be a JSON object.",
     });
   } catch (error) {

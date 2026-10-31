@@ -50,6 +50,27 @@ test("rejects unavailable runtime role models before writing a file", () => {
   assert.match(result.issues[0]?.message ?? "", /not an available model/u);
 });
 
+test("creates runtime overlays from OpenCode JSONC configuration", () => {
+  const result = createOpenCodeRuntimeConfigOverlay({
+    configContent: `{
+      // Keep the official JSONC syntax supported.
+      "model": "provider/default",
+      "provider": {
+        "provider": { "models": { "default": {}, "selected": {}, }, },
+      },
+    }`,
+    primaryModel: "provider/selected",
+    smallModel: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(result.overlay);
+  const overlay = result.overlay!;
+  const parsed = JSON.parse(fs.readFileSync(overlay.configPath, "utf8")) as Record<string, unknown>;
+  assert.equal(parsed.model, "provider/selected");
+  overlay.cleanup();
+});
+
 
 test("writes independent OpenCode reasoning effort overlays for both role models", () => {
   const result = createOpenCodeRuntimeConfigOverlay({

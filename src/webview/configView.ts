@@ -303,6 +303,19 @@ export function getConfigViewHtml(
   const configBaseUri = webview
     .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "config"))
     .toString();
+  const codeMirrorFiles = ["lib/codemirror.js", "mode/javascript/javascript.js", "mode/toml/toml.js", "addon/display/placeholder.js"];
+  const codeMirrorUris = codeMirrorFiles.map((file) => webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "codemirror", ...file.split("/"))
+  ).toString());
+  const codeMirrorCssUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "node_modules", "codemirror", "lib", "codemirror.css")
+  );
+  const sourceEditorCssUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, ...ASSETS_DIR, "config-source-editor.css")
+  );
+  if (!fs.existsSync(path.join(assetsFsPath, "config-source-editor.css"))) {
+    throw new Error("Missing config manager asset: config-source-editor.css");
+  }
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -315,6 +328,8 @@ export function getConfigViewHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${t("config.appTitle")}</title>
     <link rel="stylesheet" href="${cssUri}" />
+    <link rel="stylesheet" href="${codeMirrorCssUri}" />
+    <link rel="stylesheet" href="${sourceEditorCssUri}" />
     <style nonce="${nonce}">
       ${CONFIG_VSCODE_THEME_STYLES}
       html,
@@ -998,7 +1013,7 @@ export function getConfigViewHtml(
       }
 
       function loadConfigManagerApp() {
-        const appScripts = ${JSON.stringify(appUris)};
+        const appScripts = ${JSON.stringify([...codeMirrorUris, ...appUris])};
         loadScript(${JSON.stringify(jsUri.toString())}).then(() =>
           appScripts.reduce((chain, src) => chain.then(() => loadScript(src)), Promise.resolve())
         );

@@ -107,6 +107,11 @@ test("VSIX excludes developer artifacts without excluding embedded workspace sca
     "media/workspace-scaffold/AGENTS.md",
     "media/workspace-scaffold/.ch/docs/README.md",
     "node_modules/@dagrejs/dagre/dist/dagre.js",
+    "node_modules/@iarna/toml/toml.js",
+    "node_modules/codemirror/lib/codemirror.js",
+    "node_modules/codemirror/mode/javascript/javascript.js",
+    "node_modules/codemirror/mode/toml/toml.js",
+    "media/config/assets/config-source-editor.css",
     "node_modules/marked/lib/marked.cjs",
     "node_modules/json-formatter-js/dist/json-formatter.umd.js",
   ];

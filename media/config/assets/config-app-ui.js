@@ -4297,6 +4297,145 @@ const CodexConfigVisualEditorUtils = Object.freeze({
 // CODEX_VISUAL_EDITOR_UTILS_END
 
 const { TextArea: Qa } = zi;
+const ConfigSourceEditor = ({ value = "", onChange, format = "json", rows = 10, style, ...props }) => {
+  const textareaRef = c.useRef(null);
+  const editorRef = c.useRef(null);
+  const changeRef = c.useRef(onChange);
+  changeRef.current = onChange;
+  c.useEffect(() => {
+    if (!window.CodeMirror || !textareaRef.current) return;
+    const editor = window.CodeMirror.fromTextArea(textareaRef.current, {
+      mode: format === "toml" ? "toml" : { name: "javascript", json: true },
+      theme: "sinitek",
+      lineNumbers: true,
+      lineWrapping: true,
+      indentUnit: 2,
+      tabSize: 2,
+      placeholder: props.placeholder,
+      screenReaderLabel: props["aria-label"] || `${format.toUpperCase()} 配置源码`,
+      readOnly: Boolean(props.readOnly || props.disabled),
+    });
+    editorRef.current = editor;
+    editor.on("change", () => {
+      const next = editor.getValue();
+      editor.save();
+      changeRef.current?.({ target: { value: next } });
+    });
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => editor.refresh()) : null;
+    observer?.observe(editor.getWrapperElement().parentElement);
+    editor.refresh();
+    return () => {
+      observer?.disconnect();
+      editor.toTextArea();
+      editorRef.current = null;
+    };
+  }, []);
+  c.useEffect(() => {
+    const editor = editorRef.current;
+    if (editor && editor.getValue() !== value) editor.setValue(value);
+  }, [value]);
+  c.useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.setOption("mode", format === "toml" ? "toml" : { name: "javascript", json: true });
+    editor.setOption("readOnly", Boolean(props.readOnly || props.disabled));
+    editor.refresh();
+  }, [format, props.readOnly, props.disabled]);
+  return be.jsx("div", {
+    className: "config-source-editor",
+    style,
+    "data-format": format,
+    children: be.jsx("textarea", { ...props, rows, ref: textareaRef, defaultValue: value, onChange }),
+  });
+};
+
+function showConfigSaveError(error) {
+  xr.error({
+    title: "配置保存失败",
+    content: be.jsx("pre", { className: "config-save-error", children: error instanceof Error ? error.message : String(error) }),
+    okText: "返回修改",
+    centered: true,
+  });
+}
+
+function parseConfigJsonText(source, jsonc = false) {
+  const text = String(source || "").replace(/^\uFEFF/, "").trim();
+  if (!jsonc) return JSON.parse(text);
+  let normalized = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const current = text[index];
+    const next = text[index + 1];
+    if (inString) {
+      normalized += current;
+      if (escaped) escaped = false;
+      else if (current === "\\") escaped = true;
+      else if (current === '"') inString = false;
+      continue;
+    }
+    if (current === '"') {
+      inString = true;
+      normalized += current;
+      continue;
+    }
+    if (current === "/" && next === "/") {
+      normalized += "  ";
+      index += 2;
+      while (index < text.length && text[index] !== "\n" && text[index] !== "\r") {
+        normalized += " ";
+        index += 1;
+      }
+      if (index < text.length) normalized += text[index];
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      normalized += "  ";
+      index += 2;
+      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) {
+        normalized += text[index] === "\n" || text[index] === "\r" ? text[index] : " ";
+        index += 1;
+      }
+      if (index >= text.length) throw new SyntaxError("JSONC 块注释未闭合。");
+      normalized += "  ";
+      index += 1;
+      continue;
+    }
+    normalized += current;
+  }
+  let result = "";
+  for (let index = 0; index < normalized.length; index += 1) {
+    const current = normalized[index];
+    if (inString) {
+      result += current;
+      if (escaped) escaped = false;
+      else if (current === "\\") escaped = true;
+      else if (current === '"') inString = false;
+      continue;
+    }
+    if (current === '"') inString = true;
+    if (current === ",") {
+      let nextIndex = index + 1;
+      while (nextIndex < normalized.length && /\s/.test(normalized[nextIndex])) nextIndex += 1;
+      if (normalized[nextIndex] === "}" || normalized[nextIndex] === "]") continue;
+    }
+    result += current;
+  }
+  return JSON.parse(result);
+}
+
+function validateConfigJsonForSave(source, file, jsonc = false) {
+  const text = String(source || "");
+  try {
+    const value = parseConfigJsonText(text, jsonc);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("配置根节点必须是对象。");
+    return true;
+  } catch (error) {
+    showConfigSaveError(`${file}：JSON 格式错误：${error.message}`);
+    return false;
+  }
+}
+
 const GROK_VISUAL_FIELD_IDS = Object.freeze([
   "models.default",
   "models.default_reasoning_effort",
@@ -6027,7 +6166,7 @@ const ConfigEditorPanel = () => {
       },
       M = (W) => {
         try {
-          const H = JSON.parse(W);
+          const H = parseConfigJsonText(W);
           return JSON.stringify(H, null, 2);
         } catch {
           throw new Error("JSON格式不正确");
@@ -6284,20 +6423,17 @@ const ConfigEditorPanel = () => {
           if (!claudeVisualState) {
             const H =
               claudeVisualError || "当前 JSON 尚未成功加载到可视化编辑器，请切换到 JSON 模式修复";
-            setClaudeVisualError(H), Kt.error(H);
+            setClaudeVisualError(H), showConfigSaveError(H);
             return;
           }
           const H = claudeVisualSerializeState(claudeVisualState);
           if (!H.ok) {
-            setClaudeVisualError(H.error), Kt.error(H.error);
+            setClaudeVisualError(H.error), showConfigSaveError(H.error);
             return;
           }
           W = H.content;
         } else {
-          if (!_(l)) {
-            Kt.error("JSON格式不正确");
-            return;
-          }
+          if (!validateConfigJsonForSave(l, "settings.json")) return;
           W = M(l);
         }
         try {
@@ -6310,7 +6446,7 @@ const ConfigEditorPanel = () => {
           Kt.success("保存成功");
           await A({ content: W });
         } catch (W) {
-          Kt.error("保存失败: " + W);
+          showConfigSaveError("保存失败: " + W);
         }
       },
       saveOpenCodeSettingsCard = async () => {
@@ -6323,21 +6459,18 @@ const ConfigEditorPanel = () => {
           if (!openCodeVisualState) {
             const H =
               openCodeVisualError || "当前 JSON 尚未成功加载到可视化编辑器，请切换到 JSON 模式修复";
-            setOpenCodeVisualError(H), Kt.error(H);
+            setOpenCodeVisualError(H), showConfigSaveError(H);
             return;
           }
           const H = openCodeVisualSerializeState(openCodeVisualState);
           if (!H.ok) {
-            setOpenCodeVisualError(H.error), Kt.error(H.error);
+            setOpenCodeVisualError(H.error), showConfigSaveError(H.error);
             return;
           }
           W = H.content;
         } else {
-          if (!_(l)) {
-            Kt.error("JSON格式不正确");
-            return;
-          }
-          W = M(l);
+          if (!validateConfigJsonForSave(l, "config.json", true)) return;
+          W = l;
         }
         try {
           await openCodeVisualRunSaveFlow({
@@ -6353,7 +6486,7 @@ const ConfigEditorPanel = () => {
             applyActiveConfig: (H) => A({ content: H }),
           });
         } catch (H) {
-          Kt.error("保存失败: " + H);
+          showConfigSaveError("保存失败: " + H);
         }
       },
       saveCodexConfigCard = async () => {
@@ -6367,26 +6500,17 @@ const ConfigEditorPanel = () => {
             if (!codexVisualState) {
               const k =
                 codexVisualError || "当前 TOML 尚未成功加载到可视化编辑器，请切换到 TOML 源码修复";
-              setCodexVisualError(k), Kt.error(k);
+              setCodexVisualError(k), showConfigSaveError(k);
               return;
             }
             const k = codexVisualSerializeState(codexVisualState);
             if (!k.ok) {
-              setCodexVisualError(k.error), Kt.error(k.error);
+              setCodexVisualError(k.error), showConfigSaveError(k.error);
               return;
             }
             W = k.content;
-          } else {
-            const k = codexVisualParseContent(m);
-            if (!k.ok) {
-              setCodexVisualError(k.error), Kt.error(k.error);
-              return;
-            }
           }
-          if (!_(p)) {
-            Kt.error("auth.json格式不正确");
-            return;
-          }
+          if (!validateConfigJsonForSave(p, "auth.json")) return;
           const k = M(p);
           await r(O.id, { content: W, configContent: W, authContent: k });
           v(W), h(k);
@@ -6395,7 +6519,7 @@ const ConfigEditorPanel = () => {
           Kt.success("保存成功");
           await A({ configContent: W, authContent: k });
         } catch (W) {
-          Kt.error("保存失败: " + W);
+          showConfigSaveError("保存失败: " + W);
         }
       },
       saveCodexAuthCard = async () => {
@@ -6403,10 +6527,7 @@ const ConfigEditorPanel = () => {
           Kt.warning("请先选择一个配置");
           return;
         }
-        if (!_(p)) {
-          Kt.error("auth.json格式不正确");
-          return;
-        }
+        if (!validateConfigJsonForSave(p, "auth.json")) return;
         try {
           const W = M(p);
           await r(O.id, { content: m, configContent: m, authContent: W });
@@ -6414,14 +6535,12 @@ const ConfigEditorPanel = () => {
           Kt.success("保存成功");
           await A({ configContent: m, authContent: W });
         } catch (W) {
-          Kt.error("保存失败: " + W);
+          showConfigSaveError("保存失败: " + W);
         }
       },
       grokSaveDisabled =
         configListLoading ||
-        !String(grokTextDraft || "").trim() ||
-        Boolean(grokVisualError) ||
-        (grokEditorMode === "visual" && (!grokVisualState || Boolean(grokVisualState.fieldError))),
+        !String(grokTextDraft || "").trim(),
       saveGrokConfigCard = async () => {
         if (!O || O.platform !== "grok") {
           Kt.warning("请先选择一个配置");
@@ -6434,17 +6553,18 @@ const ConfigEditorPanel = () => {
             const H = grokVisualSerializeState(grokVisualState);
             if (!H.ok || !String(H.content || "").trim()) {
               const k = H.ok ? GROK_EMPTY_TEXT_ERROR : H.error;
-              setGrokVisualError(k), Kt.error(k);
+              setGrokVisualError(k), showConfigSaveError(k);
               return;
             }
             W = H.content;
           } else if (!String(grokTextDraft || "").trim() || grokTextDraft !== grokValidContent) {
             setGrokVisualError(grokVisualError || GROK_EMPTY_TEXT_ERROR);
+            showConfigSaveError(`config.toml：TOML 格式或字段错误：${grokVisualError || GROK_EMPTY_TEXT_ERROR}`);
             return;
           }
           const kimiCodeCompleted = kimiCodeVisualCompleteConfigText(W);
           if (!kimiCodeCompleted.ok) {
-            setKimiCodeVisualError(kimiCodeCompleted.error), Kt.error(kimiCodeCompleted.error);
+            setKimiCodeVisualError(kimiCodeCompleted.error), showConfigSaveError(kimiCodeCompleted.error);
             return;
           }
           W = kimiCodeCompleted.content;
@@ -6455,14 +6575,12 @@ const ConfigEditorPanel = () => {
           Kt.success("保存成功");
           await A({ content: W, configContent: W });
         } catch (W) {
-          Kt.error("保存失败: " + W);
+          showConfigSaveError("保存失败: " + W);
         }
       },
       kimiCodeSaveDisabled =
         configListLoading ||
-        !String(kimiCodeTextDraft || "").trim() ||
-        Boolean(kimiCodeVisualError) ||
-        (kimiCodeEditorMode === "visual" && (!kimiCodeVisualState || Boolean(kimiCodeVisualState.fieldError))),
+        !String(kimiCodeTextDraft || "").trim(),
       syncKimiCodeVisualContent = (W, H = "visual", k = !1) => {
         if (!String(W || "").trim()) {
           setKimiCodeVisualError(KIMI_CODE_EMPTY_TEXT_ERROR), k && Kt.error(KIMI_CODE_EMPTY_TEXT_ERROR);
@@ -6535,12 +6653,13 @@ const ConfigEditorPanel = () => {
             const H = kimiCodeVisualSerializeState(kimiCodeVisualState);
             if (!H.ok || !String(H.content || "").trim()) {
               const k = H.ok ? KIMI_CODE_EMPTY_TEXT_ERROR : H.error;
-              setKimiCodeVisualError(k), Kt.error(k);
+              setKimiCodeVisualError(k), showConfigSaveError(k);
               return;
             }
             W = H.content;
           } else if (!String(kimiCodeTextDraft || "").trim() || kimiCodeTextDraft !== kimiCodeValidContent) {
             setKimiCodeVisualError(kimiCodeVisualError || KIMI_CODE_EMPTY_TEXT_ERROR);
+            showConfigSaveError(`config.toml：TOML 格式或字段错误：${kimiCodeVisualError || KIMI_CODE_EMPTY_TEXT_ERROR}`);
             return;
           }
           await r(O.id, { content: W, configContent: W });
@@ -6550,7 +6669,7 @@ const ConfigEditorPanel = () => {
           Kt.success("保存成功");
           await A({ content: W, configContent: W });
         } catch (W) {
-          Kt.error("保存失败: " + W);
+          showConfigSaveError("保存失败: " + W);
         }
       },
       syncZcodeVisualContent = (content, nextMode = "json", showToast = !1) => {
@@ -6621,13 +6740,13 @@ const ConfigEditorPanel = () => {
         const source = dshEditorMode === "json" ? dshText : dshUiSerializeRaw(dshVisual || {});
         if (dshUiContainsProfileSecret(source)) {
           setDshFieldError(DSH_UI_SECRET_ERROR);
-          Kt.error(DSH_UI_SECRET_ERROR);
+          showConfigSaveError(DSH_UI_SECRET_ERROR);
           return;
         }
         const parsed = readDshUiDocument(dshEditorMode === "json" ? dshText : dshUiSerializeRaw(dshVisual || {}));
         if (!parsed.ok) {
           setDshFieldError(parsed.error);
-          Kt.error(parsed.error);
+          showConfigSaveError(parsed.error);
           return;
         }
         const content = parsed.content;
@@ -6643,7 +6762,7 @@ const ConfigEditorPanel = () => {
           const message = error instanceof Error ? error.message : String(error);
           const safeMessage = dshUiContainsSecret(message) ? DSH_UI_SECRET_ERROR : message;
           setDshFieldError(safeMessage);
-          Kt.error("保存失败: " + safeMessage);
+          showConfigSaveError("保存失败: " + safeMessage);
         } finally {
           setDshBusy(!1);
         }
@@ -8852,7 +8971,7 @@ const ConfigEditorPanel = () => {
                       },
                       children: "JSON 模式编辑同一份完整配置。JSON 无效时不会覆盖最后一次有效的可视化状态。",
                     }),
-                    be.jsx(Qa, {
+                    be.jsx(ConfigSourceEditor, {
                       "data-testid": "dsh-json-editor",
                       value: dshText,
                       disabled: controlsDisabled,
@@ -9285,7 +9404,7 @@ const ConfigEditorPanel = () => {
                                     "Advanced JSON mode preserves every Claude Code field. Invalid JSON does not overwrite the last valid visual state.",
                                   ),
                                 }),
-                                be.jsx(Qa, {
+                                be.jsx(ConfigSourceEditor, {
                                   value: l,
                                   onChange: (H) => (s(H.target.value), setClaudeVisualError("")),
                                   placeholder: claudeText("请输入 JSON 配置", "Enter JSON configuration"),
@@ -9460,7 +9579,7 @@ const ConfigEditorPanel = () => {
                                   children:
                                     "高级 JSON 模式会保留所有 OpenCode 字段；修改完成后可切回可视化，JSON 无效时不会覆盖当前可视化状态。",
                                 }),
-                                be.jsx(Qa, {
+                                be.jsx(ConfigSourceEditor, {
                                   value: l,
                                   onChange: (W) => (s(W.target.value), setOpenCodeVisualError("")),
                                   placeholder: "请输入 JSON 配置",
@@ -9606,7 +9725,8 @@ const ConfigEditorPanel = () => {
                           : null,
                         grokEditorMode === "visual"
                           ? renderGrokVisualEditor()
-                          : be.jsx(Qa, {
+                          : be.jsx(ConfigSourceEditor, {
+                              format: "toml",
                               value: grokTextDraft,
                               onChange: (W) => onGrokTextChange(W.target.value),
                               placeholder: "请输入TOML配置",
@@ -9665,11 +9785,12 @@ const ConfigEditorPanel = () => {
                           size: "small",
                           icon: be.jsx(Pv, {}),
                           "data-testid": "zcode-save-config",
-                          disabled: Boolean(zcodeVisualError)
-                            || configListLoading
+                          disabled: configListLoading
                             || (zcodeEditorMode === "visual" && !zcodeVisualState)
                             || (zcodeEditorMode === "json" && !String(zcodeTextDraft || "").trim()),
                           onClick: async () => {
+                            try {
+                            if (zcodeEditorMode === "json" && !validateConfigJsonForSave(zcodeTextDraft, "provider_config.json")) return;
                             const serialized = zcodeEditorMode === "json"
                               ? ZcodeConfigVisualEditorUtils.parseContent(zcodeTextDraft).ok
                                 ? { ok: true, content: zcodeTextDraft }
@@ -9677,7 +9798,7 @@ const ConfigEditorPanel = () => {
                               : ZcodeConfigVisualEditorUtils.serializeState(zcodeVisualState);
                             if (!serialized.ok) {
                               setZcodeVisualError(serialized.error);
-                              Kt.error(serialized.error);
+                              showConfigSaveError(serialized.error);
                               return;
                             }
                             await r(O.id, { content: serialized.content, configContent: serialized.content });
@@ -9686,6 +9807,9 @@ const ConfigEditorPanel = () => {
                             if (parsed.ok) setZcodeVisualState(parsed.state);
                             Kt.success("保存成功");
                             await A({ content: serialized.content, configContent: serialized.content });
+                            } catch (error) {
+                              showConfigSaveError(error);
+                            }
                           },
                           children: "保存",
                         }),
@@ -9718,7 +9842,7 @@ const ConfigEditorPanel = () => {
                             renderSelect: renderConfigSelect,
                             Button: xn,
                           })
-                          : be.jsx(Qa, {
+                          : be.jsx(ConfigSourceEditor, {
                             value: zcodeTextDraft,
                             "aria-label": "ZCode JSON 配置",
                             onChange: (event) => {
@@ -9851,7 +9975,8 @@ const ConfigEditorPanel = () => {
                           : null,
                         kimiCodeEditorMode === "visual"
                           ? renderKimiCodeVisualEditor()
-                          : be.jsx(Qa, {
+                          : be.jsx(ConfigSourceEditor, {
+                              format: "toml",
                               value: kimiCodeTextDraft,
                               onChange: (W) => onKimiCodeTextChange(W.target.value),
                               placeholder: "请输入TOML配置",
@@ -10027,7 +10152,8 @@ const ConfigEditorPanel = () => {
                           },
                           children: "配置文件路径: ~/.codex/config.toml",
                         }),
-                        be.jsx(Qa, {
+                        be.jsx(ConfigSourceEditor, {
+                          format: "toml",
                           value: m,
                           onChange: (W) => v(W.target.value),
                           placeholder: "请输入TOML配置",
@@ -10080,7 +10206,7 @@ const ConfigEditorPanel = () => {
                           },
                           children: "配置文件路径: ~/.codex/auth.json",
                         }),
-                        be.jsx(Qa, {
+                        be.jsx(ConfigSourceEditor, {
                           value: p,
                           onChange: (W) => h(W.target.value),
                           placeholder: "请输入JSON配置",

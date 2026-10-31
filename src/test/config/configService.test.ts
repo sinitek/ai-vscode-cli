@@ -48,6 +48,55 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
+test("invalid JSON or TOML cannot overwrite a saved profile or runtime configuration", async () => {
+  await withTempHome(async (homeDir) => {
+    const service = loadConfigService();
+    for (const platform of ["claude", "codex", "opencode", "grok", "kimi-code"] as const) {
+      const content = ["claude", "opencode"].includes(platform) ? "{}" : 'model = "example"\n';
+      const config = { id: "syntax-preservation", name: "格式保护", platform, content, createdAt: 1, updatedAt: 1 };
+      await service.saveConfig(config);
+      const profilePath = path.join(homeDir, platform === "kimi-code" ? ".kimi-code" : `.${platform}`, "__config", `${config.id}.json`);
+      const previous = await fs.readFile(profilePath, "utf8");
+      await assert.rejects(service.saveConfig({ ...config, content: "invalid syntax" }), /格式错误/);
+      assert.equal(await fs.readFile(profilePath, "utf8"), previous);
+    }
+    const runtime = path.join(homeDir, ".codex", "config.toml");
+    await fs.writeFile(runtime, 'model = "runtime-original"\n');
+    await assert.rejects(service.saveConfig({ id: "syntax-preservation", name: "格式保护", platform: "codex", content: 'model = "valid"', authContent: "[", createdAt: 1, updatedAt: 2 }), /auth\.json/);
+    assert.equal(await fs.readFile(runtime, "utf8"), 'model = "runtime-original"\n');
+  });
+});
+
+test("OpenCode JSONC saves unchanged and invalid JSON cannot overwrite it", async () => {
+  await withTempHome(async () => {
+    const service = loadConfigService();
+    const source = `{
+  // Keep source comments intact.
+  "provider": {
+    "gateway": { "models": { "main": {}, }, },
+  },
+}`;
+    const config = {
+      id: "jsonc-preservation",
+      name: "JSONC 保留",
+      platform: "opencode" as const,
+      content: source,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    await service.saveConfig(config);
+    assert.equal((await service.getConfigById("opencode", config.id))?.content, source);
+    await assert.rejects(service.saveConfig({ ...config, content: '{ "provider": [ }' }), /格式错误/);
+    assert.equal((await service.getConfigById("opencode", config.id))?.content, source);
+    const copied = await service.copyConfig({ sourcePlatform: "opencode", sourceId: config.id, targetPlatform: "opencode" });
+    assert.deepEqual(JSON.parse(copied.content ?? "{}"), { provider: { gateway: { models: { main: {} } } } });
+    await service.applyConfig("opencode", { content: source, openCodeSkills: [] });
+    const applied = await service.getCurrentConfig("opencode");
+    assert.deepEqual(JSON.parse(applied.content ?? "{}").provider, { gateway: { models: { main: {} } } });
+  });
+});
+
 test("Codex runtime config only manages ~/.codex/config.toml and auth.json", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();

@@ -3,7 +3,7 @@ import { isPlainObject, parseJsonObjectText } from "../shared/jsonObject";
 
 function parseOpenCodeConfig(content: string): Record<string, unknown> {
   const parsed = parseJsonObjectText(content, {
-    mode: "strict",
+    mode: "jsonc",
     rootErrorMessage: "OpenCode config must be a JSON object.",
   });
   return { ...parsed };

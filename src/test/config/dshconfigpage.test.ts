@@ -142,6 +142,7 @@ function createDshEditorHarness(options: { active?: boolean; baseURL?: string; c
     Kt: { error: (value: string) => { sandbox.lastError = value; } },
     Pv: "SaveIcon",
     Qa: "TextArea",
+    ConfigSourceEditor: "TextArea",
     o: () => (options.active ? "profile-a" : null),
     O: { id: "profile-a", name: "DSH 配置", platform: "dsh" },
     dshEditorMode: "json",

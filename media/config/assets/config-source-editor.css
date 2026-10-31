@@ -1,0 +1,77 @@
+.config-source-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 200px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+  background: var(--vscode-editor-background);
+}
+.config-source-editor:focus-within {
+  border-color: var(--vscode-focusBorder);
+}
+.config-source-editor > textarea {
+  width: 100%;
+  min-height: inherit;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+.config-source-editor .CodeMirror {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.6;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+.config-source-editor .CodeMirror-gutters {
+  background: var(--vscode-editorGutter-background, var(--vscode-editor-background));
+  border-color: var(--vscode-editorWidget-border, var(--vscode-widget-border, transparent));
+}
+.config-source-editor .CodeMirror-linenumber {
+  color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground));
+}
+.config-source-editor .CodeMirror-cursor {
+  border-left-color: var(--vscode-editorCursor-foreground, var(--vscode-editor-foreground));
+}
+.config-source-editor .CodeMirror-selected {
+  background: var(--vscode-editor-inactiveSelectionBackground, var(--vscode-editor-selectionBackground));
+}
+.config-source-editor .CodeMirror-focused .CodeMirror-selected {
+  background: var(--vscode-editor-selectionBackground);
+}
+.config-source-editor .CodeMirror-placeholder,
+.config-source-editor .cm-comment {
+  color: var(--vscode-descriptionForeground);
+}
+.config-source-editor .cm-string,
+.config-source-editor .cm-string-2 {
+  color: var(--vscode-debugTokenExpression-string, var(--vscode-charts-orange, var(--vscode-editor-foreground)));
+}
+.config-source-editor .cm-property,
+.config-source-editor .cm-def,
+.config-source-editor .cm-variable {
+  color: var(--vscode-symbolIcon-propertyForeground, var(--vscode-textLink-foreground));
+}
+.config-source-editor .cm-number {
+  color: var(--vscode-debugTokenExpression-number, var(--vscode-charts-green));
+}
+.config-source-editor .cm-atom,
+.config-source-editor .cm-keyword {
+  color: var(--vscode-debugTokenExpression-boolean, var(--vscode-charts-purple));
+}
+.config-source-editor .cm-error {
+  color: var(--vscode-editorError-foreground);
+  text-decoration: underline wavy var(--vscode-editorError-foreground);
+}
+.config-save-error {
+  margin: 0;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, monospace);
+}

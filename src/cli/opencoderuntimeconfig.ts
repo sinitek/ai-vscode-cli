@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
 import { removePathBestEffort } from "../shared/fsCleanup";
+import { parseJsonObjectText } from "../shared/jsonObject";
 import {
   applyOpenCodeRuntimeModelOverlay,
   type OpenCodeConfigModelIssue,
@@ -35,9 +36,12 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
   /** @deprecated Use subtaskVariant. */
   smallVariant?: string | null;
 }): OpenCodeRuntimeConfigOverlayResult {
-  let parsedConfig: unknown;
+  let parsedConfig: Record<string, unknown>;
   try {
-    parsedConfig = JSON.parse(input.configContent);
+    parsedConfig = parseJsonObjectText(input.configContent, {
+      mode: "jsonc",
+      rootErrorMessage: "OpenCode config must be a JSON object.",
+    });
   } catch (error) {
     return {
       ok: false,
@@ -49,19 +53,8 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
       }],
     };
   }
-  if (!parsedConfig || typeof parsedConfig !== "object" || Array.isArray(parsedConfig)) {
-    return {
-      ok: false,
-      overlay: null,
-      issues: [{
-        code: "invalid-json",
-        severity: "error",
-        message: "OpenCode config must be a JSON object.",
-      }],
-    };
-  }
   const applied = applyOpenCodeRuntimeModelOverlay(
-    parsedConfig as Record<string, unknown>,
+    parsedConfig,
     {
       main: input.mainModel ?? input.primaryModel,
       subtask: input.subtaskModel ?? input.smallModel,

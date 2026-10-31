@@ -121,6 +121,21 @@ test("reports invalid JSON, exact refs, missing providers, and missing models", 
   assert.equal(missingModel.issues[0].role, "main");
 });
 
+test("accepts OpenCode JSONC comments and trailing commas", () => {
+  const parsed = parseOpenCodeConfigModels(`{
+    // Keep this note in the source editor.
+    "model": "gateway/main",
+    "provider": {
+      "gateway": {
+        "models": { "main": {}, },
+      },
+    },
+  }`);
+
+  assert.equal(parsed.mainModelRef, "gateway/main");
+  assert.deepEqual(parsed.issues, []);
+});
+
 test("applies provider and model filters without inferring adapter capabilities", () => {
   const parsed = parseOpenCodeConfigModels(JSON.stringify({
     model: "active/main",

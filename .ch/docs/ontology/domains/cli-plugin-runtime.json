@@ -966,6 +966,25 @@
       ]
     },
     {
+      "id": "plugin.rule.config_source_editor_validation",
+      "name": "配置源码着色与保存格式校验",
+      "description": "配置中心源码模式使用本地 CodeMirror 对 JSON 和 TOML 提供语法着色；Claude、DSH、ZCode 使用严格 JSON，OpenCode 源码支持 JSONC 注释和尾逗号、可视化仍限严格 JSON，Codex、Grok、Kimi Code 使用 TOML，Codex auth.json 使用 JSON。保存前 Webview 与扩展宿主统一校验格式，非法内容通过“配置保存失败”弹窗告知文件、格式和解析位置，不覆盖档案或运行配置；OpenCode 模型读取、运行 overlay、Skills 合并和档案复制同步解析 JSONC，既有 CLI 字段校验继续生效。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "media/config/assets/config-app-ui.js"},
+        {"path": "src/config/configSourceValidation.ts"},
+        {"path": "src/config/configService.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-config-source-editor.md"},
+        {"path": "src/shared/jsonObject.ts"},
+        {"path": "src/cli/opencodeconfigmodels.ts"},
+        {"path": "src/cli/opencoderuntimeconfig.ts"},
+        {"path": "src/config/geminiSkills.ts"},
+        {"path": "src/test/config/configSourceValidation.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.config_apply_serializes_runtime_writes",
       "name": "同一 CLI 配置应用串行写入运行文件",
       "description": "配置中心通过同一 applyConfig 入口应用同一 CLI 的档案时，运行时文件写入按 CLI 串行排队；Codex 的 config.toml 与 auth.json 必须来自同一档案，写入后读回不一致时失败并提示“未成功更新配置”。不同 CLI 分组可独立应用，快速切换不得产生跨档案文件混合。",
