@@ -507,8 +507,15 @@ export type LoopPlusAcceptanceFeedbackInput = {
   planResults?: readonly LoopPlusAcceptancePlanFeedbackResult[];
 };
 
+type AcceptanceFeedbackRow = {
+  content: string;
+  passed: boolean;
+  reason: string;
+};
+
 /**
- * 验收已经结束且每一项都有明确通过/未通过时，生成群聊段落。
+ * 验收已经结束且每一项都有明确通过/未通过时，生成群聊两列表格。
+ * 第一列是审查内容，第二列是审查结果（通过或未通过，以及原因）。
  * 快照为空、结果缺失或某项没做，返回 null，调用方不写气泡。
  */
 export function buildLoopPlusAcceptancePlanFeedbackSection(
@@ -521,22 +528,28 @@ export function buildLoopPlusAcceptancePlanFeedbackSection(
 export function buildLoopPlusAcceptanceFeedbackSection(
   input: LoopPlusAcceptanceFeedbackInput,
 ): { heading: string; body: string } | null {
-  const lines: string[] = [];
+  const rows: AcceptanceFeedbackRow[] = [];
   for (const [index, review] of (input.reviews ?? []).entries()) {
     const reason = normalizeFeedbackReason(review.reason);
     if (!reason) {
       return null;
     }
-    lines.push(`- 验收事件 ${index + 1}：${review.acceptance === "passed" ? "通过" : "未通过"}`);
-    lines.push(`  原因：${reason}`);
+    rows.push({
+      content: `验收事件 ${index + 1}`,
+      passed: review.acceptance === "passed",
+      reason,
+    });
   }
   for (const check of input.checks ?? []) {
     const reason = normalizeFeedbackReason(check.detail);
     if (!reason) {
       return null;
     }
-    lines.push(`- 默认验收·${DEFAULT_ACCEPTANCE_CHECK_LABELS[check.name] ?? check.name}：${check.passed ? "通过" : "未通过"}`);
-    lines.push(`  原因：${reason}`);
+    rows.push({
+      content: `默认验收·${DEFAULT_ACCEPTANCE_CHECK_LABELS[check.name] ?? check.name}`,
+      passed: check.passed,
+      reason,
+    });
   }
   const items = listLoopPlusAcceptancePlanFeedbackItems(input.snapshot);
   if ((input.planResults?.length ?? 0) !== items.length) {
@@ -553,17 +566,32 @@ export function buildLoopPlusAcceptanceFeedbackSection(
       if (!reason) {
         return null;
       }
-      lines.push(`- ${item.label}：${result.passed ? "通过" : "未通过"}`);
-      lines.push(`  原因：${reason}`);
+      rows.push({ content: item.label, passed: result.passed, reason });
     }
   }
-  if (lines.length === 0) {
+  if (rows.length === 0) {
     return null;
   }
   return {
     heading: "验收结果",
-    body: lines.join("\n"),
+    body: renderAcceptanceFeedbackTable(rows),
   };
+}
+
+function renderAcceptanceFeedbackTable(rows: readonly AcceptanceFeedbackRow[]): string {
+  const lines = [
+    "| 审查内容 | 审查结果 |",
+    "| --- | --- |",
+  ];
+  for (const row of rows) {
+    const result = `${row.passed ? "通过" : "未通过"}。原因：${row.reason}`;
+    lines.push(`| ${escapeMarkdownTableCell(row.content)} | ${escapeMarkdownTableCell(result)} |`);
+  }
+  return lines.join("\n");
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\\/gu, "\\\\").replace(/\|/gu, "\\|");
 }
 
 function normalizeFeedbackReason(value: string | undefined): string | null {

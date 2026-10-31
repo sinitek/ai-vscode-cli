@@ -111,6 +111,30 @@ test("raw SVG compatibility preserves image size and entity validation", () => {
   }
 });
 
+test("Loop+ acceptance feedback renders as a two-column review table", () => {
+  const { buildLoopPlusAcceptanceFeedbackSection } = require("../../loopPlusAcceptancePlan") as typeof import("../../loopPlusAcceptancePlan");
+  const render = loadRenderer();
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    reviews: [{ eventId: "event-a", acceptance: "passed", reason: "报告完整，代码核对四处重复规则" }],
+    checks: [{ name: "dispatched work", passed: true, detail: "报告已写入，含范围与验证命令" }],
+  });
+  assert.ok(section);
+  const html = render(section.body);
+  assert.match(html, /<th>审查内容<\/th>/u);
+  assert.match(html, /<th>审查结果<\/th>/u);
+  assert.match(html, /<td>验收事件 1<\/td>\s*<td>通过。原因：报告完整，代码核对四处重复规则<\/td>/u);
+  assert.match(html, /<td>默认验收·实现完整性<\/td>\s*<td>通过。原因：报告已写入，含范围与验证命令<\/td>/u);
+  assert.equal((html.match(/<tr>/gu) ?? []).length, 3);
+  assert.doesNotMatch(html, /<ul>|<li>/u);
+  const piped = buildLoopPlusAcceptanceFeedbackSection({
+    checks: [{ name: "tests", passed: false, detail: "断言含 | 竖线" }],
+  });
+  assert.ok(piped);
+  const pipedHtml = render(piped.body);
+  assert.equal((pipedHtml.match(/<td>/gu) ?? []).length, 2);
+  assert.match(pipedHtml, /<td>未通过。原因：断言含 \| 竖线<\/td>/u);
+});
+
 test("Loop and Loop+ embed the same renderer as AI chat for initial and patched bubbles", () => {
   const shared = neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT);
   assert.ok(getWebviewHtml({ cspSource: "self" }).includes(shared));
