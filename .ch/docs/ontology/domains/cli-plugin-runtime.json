@@ -320,6 +320,19 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.codex_config_visual_current_schema",
+      "name": "Codex 可视化配置按当前官方根级与 features 契约",
+      "description": "Codex 可视化编辑器只按当前 config.toml 契约处理新配置：model_context_window 与 model_auto_compact_token_limit 是根级整数 token 参数，不属于 model_providers；公共区默认 Provider 紧随默认模型；sandbox_mode、approval_policy、web_search 仅提供官方字符串枚举下拉，approval_policy 不再提供已废弃的 untrusted；[features] 仅把官方布尔开关映射为 true 复选框，置于 Provider 工作区下方，以四列单元格展示，每项包含复选框、标签和 SVG 问号，并在悬停或聚焦时即时显示中文说明。复杂 granular 审批和非布尔 feature 配置不由表单猜测，用户应在 TOML 源码模式编辑；本任务不做旧配置版本迁移。",
+      "status": "active",
+      "aliases": ["Codex 配置参数层级", "Codex features 复选框", "Codex 官方配置枚举"],
+      "applies_to": ["plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "media/config/assets/config-app-ui.js", "anchor": "CodexConfigVisualEditorUtils"},
+        {"path": "src/test/config/codexConfigVisualEditor.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "七类 CLI 可视化配置"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_subtask_session_reuse",
       "name": "Loop 连续任务与验收修补复用子会话",
       "applies_to": ["plugin.loop_task", "plugin.cli_session"],

@@ -3852,6 +3852,9 @@ const codexVisualClone = (value) =>
 const codexVisualManagedRootKeys = Object.freeze([
   "model",
   "model_provider",
+  "model_context_window",
+  "model_auto_compact_token_limit",
+  "features",
   "approval_policy",
   "sandbox_mode",
   "model_reasoning_effort",
@@ -3873,6 +3876,39 @@ const CODEX_VISUAL_REASONING_EFFORT_OPTIONS = Object.freeze([
   "max",
   "ultra",
 ]);
+
+const CODEX_VISUAL_APPROVAL_POLICY_OPTIONS = Object.freeze(["on-request", "never"]);
+const CODEX_VISUAL_SANDBOX_MODE_OPTIONS = Object.freeze(["read-only", "workspace-write", "danger-full-access"]);
+const CODEX_VISUAL_WEB_SEARCH_OPTIONS = Object.freeze(["disabled", "cached", "indexed", "live"]);
+const CODEX_VISUAL_FEATURE_OPTIONS = Object.freeze([
+  "enable_request_compression", "fast_mode", "goals", "hooks", "memories", "multi_agent",
+  "prefer_mxc", "prevent_idle_sleep", "remote_plugin", "shell_snapshot", "shell_tool",
+  "skill_mcp_dependency_install", "ultrafast_mode", "unified_exec",
+]);
+const CODEX_VISUAL_FEATURE_HELP = Object.freeze({
+  enable_request_compression: "启用请求压缩。",
+  fast_mode: "启用 Fast mode。是否可用仍取决于当前模型和账户。",
+  goals: "启用 Goals 功能，用于持久化目标和自动继续。",
+  hooks: "启用 Codex hooks 生命周期钩子。",
+  memories: "启用 Memories 功能。",
+  multi_agent: "启用多智能体协作工具。",
+  prefer_mxc: "在支持时优先使用 MXC 执行路径。",
+  prevent_idle_sleep: "运行期间阻止计算机进入睡眠。",
+  remote_plugin: "启用远程插件目录。",
+  shell_snapshot: "为重复命令创建 shell 环境快照，以提高执行速度。",
+  shell_tool: "启用命令执行工具。",
+  skill_mcp_dependency_install: "允许为 Skill 提示并安装缺失的 MCP 依赖。",
+  ultrafast_mode: "启用 Ultrafast mode。是否可用仍取决于当前模型和账户。",
+  unified_exec: "启用可恢复的统一命令执行。",
+});
+
+const codexVisualValidateInteger = (value, label) => {
+  if (value === "" || value === void 0) return "";
+  const text = String(value).trim();
+  return /^-?\d+$/.test(text) && Number.isSafeInteger(Number(text))
+    ? ""
+    : `${label} 必须是可安全表示的整数 token 数，留空则使用 Codex 默认值`;
+};
 
 const codexVisualManagedProviderKeys = Object.freeze([
   "name",
@@ -4127,17 +4163,28 @@ const codexVisualCreateState = (configContent) => {
     providers = Object.entries(providersSource)
       .filter(([, value]) => codexVisualIsRecord(value))
       .map(([id, value]) => codexVisualCreateProvider(id, value));
+  for (const key of ["model_context_window", "model_auto_compact_token_limit"]) {
+    if (source[key] !== void 0 && (typeof source[key] !== "number" || !Number.isSafeInteger(source[key])))
+      throw new Error(`${key} 必须是整数 token 数`);
+  }
+  for (const key of ["approval_policy", "sandbox_mode", "web_search"]) {
+    if (source[key] !== void 0 && typeof source[key] !== "string")
+      throw new Error(`${key} 必须是官方支持的字符串枚举`);
+  }
   return {
     source,
     model: codexVisualReadString(source.model),
     modelProvider: codexVisualReadString(source.model_provider),
-    approvalPolicy: codexVisualReadEnum(source.approval_policy),
-    sandboxMode: codexVisualReadString(source.sandbox_mode),
+    contextWindow: source.model_context_window === void 0 ? "" : String(source.model_context_window),
+    autoCompactTokenLimit: source.model_auto_compact_token_limit === void 0 ? "" : String(source.model_auto_compact_token_limit),
+    features: codexVisualClone(source.features ?? {}),
+    approvalPolicy: source.approval_policy ?? "",
+    sandboxMode: source.sandbox_mode ?? "",
     reasoningEffort: codexVisualReadEnum(source.model_reasoning_effort),
     reasoningSummary: codexVisualReadEnum(source.model_reasoning_summary),
     verbosity: codexVisualReadEnum(source.model_verbosity),
     developerInstructions: codexVisualReadText(source.developer_instructions),
-    webSearch: codexVisualReadEnum(source.web_search),
+    webSearch: source.web_search ?? "",
     disableResponseStorage: codexVisualReadOptionalBoolean(source.disable_response_storage),
     hideAgentReasoning: codexVisualReadOptionalBoolean(source.hide_agent_reasoning),
     supportsReasoningSummaries: codexVisualReadOptionalBoolean(source.model_supports_reasoning_summaries),
@@ -4161,11 +4208,27 @@ const codexVisualParseContent = (configContent) => {
 const codexVisualValidateState = (state) => {
   if (!state || !codexVisualIsRecord(state)) return "Codex 可视化配置不可用，请切换到 TOML 源码修复";
   const source = codexVisualIsRecord(state.source) ? state.source : {};
+  for (const [value, options, label] of [
+    [state.approvalPolicy, CODEX_VISUAL_APPROVAL_POLICY_OPTIONS, "approval_policy"],
+    [state.sandboxMode, CODEX_VISUAL_SANDBOX_MODE_OPTIONS, "sandbox_mode"],
+    [state.webSearch, CODEX_VISUAL_WEB_SEARCH_OPTIONS, "web_search"],
+  ]) {
+    if (value !== "" && !options.includes(value)) return `${label} 必须使用官方支持的选项：${options.join("、")}；请在 TOML 源码中修复`;
+  }
+  for (const [value, label] of [
+    [state.contextWindow, "model_context_window"],
+    [state.autoCompactTokenLimit, "model_auto_compact_token_limit"],
+  ]) {
+    const error = codexVisualValidateInteger(value, label);
+    if (error) return error;
+  }
+  if (!codexVisualIsRecord(state.features)) return "features 必须是 TOML 表，请在 TOML 源码中修复";
+  for (const [name, enabled] of Object.entries(state.features)) {
+    if (typeof enabled !== "boolean") return `features.${name} 必须是布尔值 true 或 false`;
+  }
   for (const [value, allowedValues, sourceValue, label] of [
-    [state.approvalPolicy, ["untrusted", "on-request", "never"], source.approval_policy, "approval_policy"],
     [state.reasoningEffort, CODEX_VISUAL_REASONING_EFFORT_OPTIONS, source.model_reasoning_effort, "model_reasoning_effort"],
     [state.verbosity, ["low", "medium", "high"], source.model_verbosity, "model_verbosity"],
-    [state.webSearch, ["disabled", "cached", "indexed", "live"], source.web_search, "web_search"],
   ]) {
     const error = codexVisualValidateEnum(value, allowedValues, sourceValue, label);
     if (error) return error;
@@ -4198,6 +4261,13 @@ const codexVisualSerializeState = (state) => {
     ["model_provider", state.modelProvider],
     ["sandbox_mode", state.sandboxMode],
   ].forEach(([key, value]) => codexVisualSetString(config, key, value));
+  for (const [key, value] of [
+    ["model_context_window", state.contextWindow],
+    ["model_auto_compact_token_limit", state.autoCompactTokenLimit],
+  ]) {
+    value === "" || value === void 0 ? delete config[key] : (config[key] = Number(value));
+  }
+  Object.keys(state.features).length ? (config.features = codexVisualClone(state.features)) : delete config.features;
   codexVisualSetEnum(config, "approval_policy", state.approvalPolicy);
   codexVisualSetEnum(config, "model_reasoning_effort", state.reasoningEffort);
   codexVisualSetEnum(config, "model_reasoning_summary", state.reasoningSummary);
@@ -4283,6 +4353,7 @@ const CodexConfigVisualEditorUtils = Object.freeze({
   managedRootKeys: codexVisualManagedRootKeys,
   managedProviderKeys: codexVisualManagedProviderKeys,
   reasoningEffortOptions: CODEX_VISUAL_REASONING_EFFORT_OPTIONS,
+  featureOptions: CODEX_VISUAL_FEATURE_OPTIONS,
   parseToml: codexVisualParseToml,
   stringifyToml: codexVisualStringifyToml,
   createState: codexVisualCreateState,
@@ -7081,13 +7152,15 @@ const ConfigEditorPanel = () => {
         "Snapshot": "Whether snapshots are enabled. When unset, the CLI default applies.",
         model: "Codex CLI 默认模型名称。",
         model_provider: "Codex 使用的默认模型供应商。",
-        approval_policy: "控制命令执行前的审批策略。复杂 granular table 仅在 TOML 源码中保留。",
+        approval_policy: "控制工具执行审批：on-request 按需请求批准，never 从不请求批准。细粒度 granular 策略在 TOML 源码中配置。",
         sandbox_mode: "控制 Codex CLI 文件系统沙箱范围。",
+        model_context_window: "模型上下文窗口的 token 数；写入 config.toml 根级，不属于 model_providers。留空沿用 Codex 自动识别值。",
+        model_auto_compact_token_limit: "触发自动压缩的 token 阈值；写入 config.toml 根级。留空沿用 Codex 默认值，不自动按上下文窗口推算。",
         model_reasoning_effort: "控制模型推理强度。",
         model_reasoning_summary: "控制推理摘要展示方式。",
         model_verbosity: "控制模型输出详略程度；仅适用于支持该能力的模型与 Responses 模式。",
         developer_instructions: "为 Codex 追加 developer instructions；多行内容会按 TOML 字符串往返保存。",
-        web_search: "选择 web_search mode。旧 boolean 或复杂值会保留在 TOML，直到明确迁移。",
+        web_search: "选择联网搜索模式：disabled 禁用，cached 使用缓存，indexed 使用索引搜索，live 实时搜索。",
         disable_response_storage: "是否禁用响应存储。",
         hide_agent_reasoning: "是否隐藏 agent reasoning。",
         model_supports_reasoning_summaries: "声明当前模型是否支持 reasoning summaries。",
@@ -8178,6 +8251,10 @@ const ConfigEditorPanel = () => {
           });
         })(),
       renderCodexSelect = (W, H, k, L, U = {}) => {
+        if (U.strict) {
+          const { strict, ...options } = U;
+          return renderConfigSelect(W, H, k, L, options);
+        }
         const T = L.some((Z) => Z.value === H)
           ? L
           : H
@@ -8833,17 +8910,21 @@ const ConfigEditorPanel = () => {
                   ],
                   { help: getConfigFieldHelp("model_provider") },
                 ),
+                renderCodexField("model_context_window", codexVisualState.contextWindow, (value) => updateCodexVisualState({ contextWindow: value }), "留空使用 Codex 默认值", { inputMode: "numeric", suffix: "tokens" }),
+                renderCodexField("model_auto_compact_token_limit", codexVisualState.autoCompactTokenLimit, (value) => updateCodexVisualState({ autoCompactTokenLimit: value }), "留空使用 Codex 默认值", { inputMode: "numeric", suffix: "tokens" }),
                 renderCodexSelect(
                   "approval_policy",
                   codexVisualState.approvalPolicy,
                   (L) => updateCodexVisualState({ approvalPolicy: L }),
-                  ["", "untrusted", "on-request", "never"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  ["", ...CODEX_VISUAL_APPROVAL_POLICY_OPTIONS].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  { strict: !0 },
                 ),
                 renderCodexSelect(
                   "sandbox_mode",
                   codexVisualState.sandboxMode,
                   (L) => updateCodexVisualState({ sandboxMode: L }),
-                  ["", "read-only", "workspace-write", "danger-full-access"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  ["", ...CODEX_VISUAL_SANDBOX_MODE_OPTIONS].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  { strict: !0 },
                 ),
                 renderCodexSelect(
                   "model_reasoning_effort",
@@ -8855,7 +8936,8 @@ const ConfigEditorPanel = () => {
                   "web_search",
                   codexVisualState.webSearch,
                   (L) => updateCodexVisualState({ webSearch: L }),
-                  ["", "disabled", "cached", "indexed", "live"].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  ["", ...CODEX_VISUAL_WEB_SEARCH_OPTIONS].map((L) => ({ value: L, label: L || "跟随默认" })),
+                  { strict: !0 },
                 ),
                 be.jsx("div", {
                   className: "dsh-common-parameter-note",
@@ -8964,6 +9046,105 @@ const ConfigEditorPanel = () => {
                 }),
               ],
             }),
+            renderCodexSection(
+              "功能开关 [features]",
+              "勾选写入 true，取消写入 false；标为“未设置”的开关沿用 Codex 默认值。此表属于公共配置，不随 Provider 切换。",
+              be.jsx("div", {
+                role: "table",
+                className: "codex-feature-grid",
+                "data-testid": "codex-features",
+                style: {
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gap: "6px 8px",
+                  width: "100%",
+                },
+                children: CODEX_VISUAL_FEATURE_OPTIONS.map((feature) => {
+                  const description = CODEX_VISUAL_FEATURE_HELP[feature];
+                  return be.jsxs("div", {
+                    role: "cell",
+                    className: "codex-feature-cell",
+                    "data-codex-feature-cell": feature,
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      minWidth: 0,
+                      padding: "5px 6px",
+                      border: "1px solid var(--border-color)",
+                      borderRadius: "4px",
+                    },
+                    children: [
+                      be.jsx("input", {
+                        type: "checkbox",
+                        checked: codexVisualState.features?.[feature] === !0,
+                        "data-codex-feature": feature,
+                        "aria-label": `功能开关 ${feature}`,
+                        onChange: (event) => updateCodexVisualState({
+                          features: { ...codexVisualState.features, [feature]: event.target.checked },
+                        }),
+                      }),
+                      be.jsx("span", {
+                        style: { minWidth: 0, overflowWrap: "anywhere" },
+                        children: feature,
+                      }),
+                      be.jsxs("span", {
+                        tabIndex: 0,
+                        role: "img",
+                        "aria-label": description,
+                        style: { position: "relative", display: "inline-flex", flex: "0 0 auto", cursor: "help" },
+                        onMouseEnter: () => { hideConfigFieldHelpTooltip(); setConfigFieldHelpTooltipKey(feature); },
+                        onMouseLeave: hideConfigFieldHelpTooltip,
+                        onFocus: () => { hideConfigFieldHelpTooltip(); setConfigFieldHelpTooltipKey(feature); },
+                        onBlur: hideConfigFieldHelpTooltip,
+                        children: [
+                          be.jsxs("svg", {
+                            viewBox: "0 0 16 16",
+                            width: "14",
+                            height: "14",
+                            "aria-hidden": true,
+                            focusable: "false",
+                            style: { display: "block", color: "var(--text-color-secondary)" },
+                            children: [
+                              be.jsx("circle", { cx: "8", cy: "8", r: "6.5", fill: "none", stroke: "currentColor", strokeWidth: "1.4" }),
+                              be.jsx("path", { d: "M6.4 6.2a1.7 1.7 0 1 1 2.7 1.4c-.7.5-1.1.8-1.1 1.7", fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeWidth: "1.4" }),
+                              be.jsx("circle", { cx: "8", cy: "11.6", r: "0.8", fill: "currentColor" }),
+                            ],
+                          }),
+                          configFieldHelpTooltipKey === feature
+                            ? be.jsx("span", {
+                                role: "tooltip",
+                                style: {
+                                  position: "absolute",
+                                  left: "50%",
+                                  bottom: "calc(100% + 6px)",
+                                  transform: "translateX(-50%)",
+                                  zIndex: 20,
+                                  width: "max-content",
+                                  maxWidth: "260px",
+                                  padding: "5px 7px",
+                                  border: "1px solid var(--border-color)",
+                                  borderRadius: "6px",
+                                  background: "var(--background-color)",
+                                  color: "var(--text-color)",
+                                  boxShadow: "0 4px 14px var(--shadow-color)",
+                                  fontSize: "12px",
+                                  lineHeight: 1.45,
+                                  whiteSpace: "pre-wrap",
+                                  pointerEvents: "none",
+                                },
+                                children: description,
+                              })
+                            : null,
+                        ],
+                      }),
+                      codexVisualState.features?.[feature] === void 0
+                        ? be.jsx("span", { className: "dsh-common-parameter-note", children: "未设置" }) : null,
+                    ],
+                  }, feature);
+                }),
+              }),
+            ),
           ],
         });
       };

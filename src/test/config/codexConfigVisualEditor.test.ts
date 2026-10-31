@@ -55,20 +55,21 @@ test("visual parser loads TOML fields and provider mapping", () => {
   const utils = loadVisualUtils();
   const configWithRootFields = extractCodexConfigExample().replace(
     "\n[model_providers.codex]",
-    '\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\nweb_search = true\n[model_providers.codex]',
+    '\nmodel_context_window = 128000\nmodel_auto_compact_token_limit = 100000\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\nweb_search = "cached"\n[features]\nfast_mode = true\n[model_providers.codex]',
   );
-  const parsed = utils.parseContent(`${configWithRootFields}\n[tools]\nweb_search = true\n[features]\nweb_search = false\n`);
+  const parsed = utils.parseContent(configWithRootFields);
 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.state.model, "gpt-5.1-codex");
   assert.equal(parsed.state.modelProvider, "codex");
+  assert.equal(parsed.state.contextWindow, "128000");
+  assert.equal(parsed.state.autoCompactTokenLimit, "100000");
   assert.equal(parsed.state.approvalPolicy, "on-request");
   assert.equal(parsed.state.sandboxMode, "workspace-write");
   assert.equal(parsed.state.reasoningEffort, "high");
   assert.equal(parsed.state.reasoningSummary, "detailed");
-  assert.match(parsed.state.webSearch, /__sinitek_codex_compatibility__/);
-  assert.equal(parsed.state.toolsWebSearch, undefined);
-  assert.equal(parsed.state.featuresWebSearch, undefined);
+  assert.equal(parsed.state.webSearch, "cached");
+  assert.equal(parsed.state.features.fast_mode, true);
   assert.equal(parsed.state.providers.length, 1);
   assert.equal(parsed.state.providers[0].id, "codex");
   assert.equal(parsed.state.providers[0].source.wire_api, "responses");
@@ -183,69 +184,62 @@ test("Codex visual max option follows xhigh and serializes for new configs", () 
   );
 });
 
-test("Codex visual saves preserve legacy values and complex approval or web-search objects", () => {
+test("Codex visual serializes current root parameters and feature switches", () => {
   const utils = loadVisualUtils();
   let state = utils.createState(
     `model = "gpt-5"
-approval_policy = "on-failure"
-model_reasoning_effort = "max"
-web_search = true
-
-[tools.web_search]
-max_context_size_bytes = 2048
-allowed_domains = ["docs.example.com"]
+model_context_window = 128000
+model_auto_compact_token_limit = 100000
+approval_policy = "on-request"
+sandbox_mode = "danger-full-access"
+web_search = "cached"
 
 [features]
-web_search = false
+fast_mode = true
 
 [model_providers.gateway]
 name = "Gateway"
-wire_api = "chat"
+wire_api = "responses"
 `,
     "",
   );
 
-  assert.equal(state.approvalPolicy, "on-failure");
-  assert.equal(state.reasoningEffort, "max");
-  assert.match(state.webSearch, /__sinitek_codex_compatibility__/);
-  assert.equal(state.providers[0].wireApi, "chat");
+  assert.equal(state.contextWindow, "128000");
+  assert.equal(state.autoCompactTokenLimit, "100000");
+  assert.equal(state.approvalPolicy, "on-request");
+  assert.equal(state.webSearch, "cached");
+  assert.equal(state.features.fast_mode, true);
+  assert.equal(state.providers[0].wireApi, "responses");
 
-  state = utils.updateState(state, { model: "gpt-5.1-codex" });
+  state = utils.updateState(state, {
+    model: "gpt-5.1-codex",
+    contextWindow: "200000",
+    autoCompactTokenLimit: "150000",
+    features: { fast_mode: true, hooks: true },
+  });
   const serialized = utils.serializeState(state);
   assert.equal(serialized.ok, true);
   const config = utils.parseToml(serialized.content);
-  assert.equal(config.approval_policy, "on-failure");
-  assert.equal(config.model_reasoning_effort, "max");
-  assert.equal(config.web_search, true);
-  assert.equal(config.tools.web_search.max_context_size_bytes, 2048);
-  assert.deepEqual(JSON.parse(JSON.stringify(config.tools.web_search.allowed_domains)), ["docs.example.com"]);
-  assert.equal(config.features.web_search, false);
-  assert.equal(config.model_providers.gateway.wire_api, "chat");
+  assert.equal(config.model_context_window, 200000);
+  assert.equal(config.model_auto_compact_token_limit, 150000);
+  assert.equal(config.approval_policy, "on-request");
+  assert.equal(config.sandbox_mode, "danger-full-access");
+  assert.equal(config.web_search, "cached");
+  assert.equal(config.features.fast_mode, true);
+  assert.equal(config.features.hooks, true);
+  assert.equal(config.model_providers.gateway.wire_api, "responses");
 
-  const newState = utils.updateState(utils.createState("", ""), {
-    approvalPolicy: "on-failure",
-    reasoningEffort: "max",
-  });
+  const newState = utils.updateState(utils.createState("", ""), { approvalPolicy: "untrusted" });
   const rejected = utils.serializeState(newState);
   assert.equal(rejected.ok, false);
   assert.match(rejected.error, /approval_policy/);
 
-  let complexState = utils.createState(
-    `[approval_policy]
-default = "on-request"
-
-[tools.web_search]
-max_context_size_bytes = 2048
-allowed_domains = ["docs.example.com"]
-`,
-    "",
-  );
-  assert.match(complexState.approvalPolicy, /__sinitek_codex_compatibility__/);
-  complexState = utils.updateState(complexState, { model: "gpt-5.1-codex" });
-  const complex = utils.parseToml(utils.serializeState(complexState).content);
-  assert.equal(complex.approval_policy.default, "on-request");
-  assert.equal(complex.tools.web_search.max_context_size_bytes, 2048);
-  assert.deepEqual(JSON.parse(JSON.stringify(complex.tools.web_search.allowed_domains)), ["docs.example.com"]);
+  const invalidType = utils.parseContent('model_context_window = 1.5\n');
+  assert.equal(invalidType.ok, false);
+  assert.match(invalidType.error, /model_context_window/);
+  const invalidWebSearch = utils.parseContent('web_search = true\n');
+  assert.equal(invalidWebSearch.ok, false);
+  assert.match(invalidWebSearch.error, /web_search/);
 });
 
 test("invalid TOML cannot replace the last valid visual state", () => {
@@ -345,8 +339,8 @@ test("visual labels expose tooltip help and enum values", () => {
   assert.match(source, /title: getConfigFieldHelp\(W, H\)/);
   assert.match(source, /role: "tooltip"/);
   assert.match(source, /formatConfigEnumHelp\(getConfigFieldHelp\(W, U\.help\)/);
-  assert.match(source, /approval_policy: "控制命令执行前的审批策略。复杂 granular table 仅在 TOML 源码中保留。"/);
-  assert.match(source, /"untrusted"/);
+  assert.match(source, /approval_policy: "控制工具执行审批：on-request 按需请求批准，never 从不请求批准。细粒度 granular 策略在 TOML 源码中配置。"/);
+  assert.doesNotMatch(source, /\["", "untrusted", "on-request", "never"\]/);
   assert.match(source, /"on-request"/);
   assert.match(source, /"never"/);
   assert.match(source, /sandbox_mode: "控制 Codex CLI 文件系统沙箱范围。"/);
@@ -357,7 +351,14 @@ test("visual labels expose tooltip help and enum values", () => {
     source,
     /"model_reasoning_effort"[\s\S]*?\["", \.\.\.CODEX_VISUAL_REASONING_EFFORT_OPTIONS\]\.map/,
   );
-  assert.match(source, /web_search[\s\S]*?\["", "disabled", "cached", "indexed", "live"\]\.map/);
+  assert.match(source, /CODEX_VISUAL_WEB_SEARCH_OPTIONS/);
+  assert.match(source, /model_context_window/);
+  assert.match(source, /model_auto_compact_token_limit/);
+  assert.match(source, /"data-testid": "codex-features"/);
+  assert.match(source, /CODEX_VISUAL_FEATURE_HELP/);
+  assert.match(source, /viewBox: "0 0 16 16"/);
+  assert.match(source, /onMouseEnter: \(\) => \{ hideConfigFieldHelpTooltip\(\); setConfigFieldHelpTooltipKey\(feature\); \}/);
+  assert.match(source, /onMouseLeave: hideConfigFieldHelpTooltip/);
   assert.match(source, /wire_api: "Codex 当前仅支持 Responses API（responses）。旧协议值仅兼容保留，不代表当前 CLI 支持；可在 TOML 源码中迁移。"/);
   assert.doesNotMatch(source, /env_key: "从 \.env 读取 API Key 的环境变量名。"/);
   const codexStart = source.indexOf("renderCodexVisualEditor = () =>");
@@ -378,6 +379,12 @@ test("Codex 公共区在顶部，Provider 使用共享列表和双栏详情", ()
   const codexVisualSource = source.slice(codexStart, codexEnd);
 
   assert.ok(codexVisualSource.indexOf('"codex-common-parameters"') < codexVisualSource.indexOf('"codex-provider-workspace"'));
+  assert.ok(codexVisualSource.indexOf('"codex-provider-workspace"') < codexVisualSource.indexOf('"codex-features"'));
+  assert.ok(codexVisualSource.indexOf('"默认模型 model"') < codexVisualSource.indexOf('"默认 Provider"'));
+  assert.ok(codexVisualSource.indexOf('"默认 Provider"') < codexVisualSource.indexOf('"model_context_window"'));
+  assert.match(codexVisualSource, /gridTemplateColumns: "repeat\(4, minmax\(0, 1fr\)\)"/);
+  assert.match(codexVisualSource, /role: "table"/);
+  assert.match(codexVisualSource, /role: "cell"/);
   assert.match(codexVisualSource, /className: "grok-model-workspace codex-provider-workspace"/);
   assert.match(codexVisualSource, /className: "grok-model-row"/);
   assert.match(codexVisualSource, /className: "config-visual-form-grid"/);
@@ -406,6 +413,29 @@ function createCodexEditorHarness(content: string) {
     codexVisualState: utils.createState(content), codexVisualError: "",
     getConfigFieldHelp: (label: string) => label,
     CODEX_VISUAL_REASONING_EFFORT_OPTIONS: ["low", "medium", "high", "xhigh"],
+    CODEX_VISUAL_APPROVAL_POLICY_OPTIONS: ["on-request", "never"],
+    CODEX_VISUAL_SANDBOX_MODE_OPTIONS: ["read-only", "workspace-write", "danger-full-access"],
+    CODEX_VISUAL_WEB_SEARCH_OPTIONS: ["disabled", "cached", "indexed", "live"],
+    CODEX_VISUAL_FEATURE_OPTIONS: ["enable_request_compression", "fast_mode", "goals", "hooks", "memories", "multi_agent", "prefer_mxc", "prevent_idle_sleep", "remote_plugin", "shell_snapshot", "shell_tool", "skill_mcp_dependency_install", "ultrafast_mode", "unified_exec"],
+    CODEX_VISUAL_FEATURE_HELP: {
+      enable_request_compression: "启用请求压缩。",
+      fast_mode: "启用 Fast mode。是否可用仍取决于当前模型和账户。",
+      goals: "启用 Goals 功能，用于持久化目标和自动继续。",
+      hooks: "启用 Codex hooks 生命周期钩子。",
+      memories: "启用 Memories 功能。",
+      multi_agent: "启用多智能体协作工具。",
+      prefer_mxc: "在支持时优先使用 MXC 执行路径。",
+      prevent_idle_sleep: "运行期间阻止计算机进入睡眠。",
+      remote_plugin: "启用远程插件目录。",
+      shell_snapshot: "为重复命令创建 shell 环境快照，以提高执行速度。",
+      shell_tool: "启用命令执行工具。",
+      skill_mcp_dependency_install: "允许为 Skill 提示并安装缺失的 MCP 依赖。",
+      ultrafast_mode: "启用 Ultrafast mode。是否可用仍取决于当前模型和账户。",
+      unified_exec: "启用可恢复的统一命令执行。",
+    },
+    configFieldHelpTooltipKey: "",
+    setConfigFieldHelpTooltipKey: (key: string) => { sandbox.configFieldHelpTooltipKey = key; },
+    hideConfigFieldHelpTooltip: () => { sandbox.configFieldHelpTooltipKey = ""; },
     renderCodexField: (label: string, value: string, onChange: unknown) => jsx("Field", { label, value, onChange }),
     renderCodexSelect: (label: string, value: string, onChange: unknown, options: unknown[]) => jsx("Select", { label, value, onChange, options }),
     renderCodexSection: (title: string, description: string, children: unknown) => jsx("Section", { title, description, children }),
@@ -465,7 +495,31 @@ test("Codex 空列表可新增，解析错误显示可恢复提示", () => {
   assert.match(JSON.stringify(harness.render()), /切换到 TOML 源码修复/);
 });
 
-test("Codex 精简表单编辑后保留高级参数、旧协议和未知字段", () => {
+test("Codex features 使用复选框并序列化布尔值", () => {
+  const harness = createCodexEditorHarness("[features]\nfast_mode = true\n");
+  const checkbox = harness.find("data-codex-feature", "fast_mode");
+  assert.equal(checkbox.props.type, "checkbox");
+  assert.equal(checkbox.props.checked, true);
+  const cell = harness.find("data-codex-feature-cell", "fast_mode");
+  assert.equal(cell.props.role, "cell");
+  const helpIcon = visualNodes(cell).find((node) => node.props.role === "img");
+  assert.ok(helpIcon, "feature should expose an SVG help icon");
+  assert.equal(helpIcon.props.tabIndex, 0);
+  helpIcon.props.onMouseEnter();
+  assert.equal(harness.sandbox.configFieldHelpTooltipKey, "fast_mode");
+  const tooltip = visualNodes(harness.render()).find((node) => node.props.role === "tooltip");
+  assert.ok(tooltip, "feature help should appear immediately on hover");
+  assert.match(String(tooltip.props.children), /Fast mode/);
+  helpIcon.props.onMouseLeave();
+  assert.equal(harness.sandbox.configFieldHelpTooltipKey, "");
+  checkbox.props.onChange({ target: { checked: false } });
+  assert.equal(harness.sandbox.codexVisualState.features.fast_mode, false);
+  const serialized = harness.utils.serializeState(harness.sandbox.codexVisualState);
+  assert.equal(serialized.ok, true);
+  assert.equal(harness.utils.parseToml(serialized.content).features.fast_mode, false);
+});
+
+test("Codex 精简表单编辑后保留未展示字段和 Provider 配置", () => {
   const content = `model = "old"
 model_provider = "gateway"
 model_verbosity = "high"
