@@ -396,7 +396,12 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(prompt.includes(`Current review eventId: ${accept.reviewEventId}`), false);
   assert.equal(parseExample(examples, "wait").status, "wait");
   assert.equal(parseExample(examples, "blocked").status, "blocked");
-  assert.equal(parseExample(examples, "dispatch").subtasks?.length, 3);
+  const dispatch = parseExample(examples, "dispatch");
+  assert.equal(dispatch.subtasks?.length, 1);
+  assert.notEqual(dispatch.subtasks?.[0]?.taskType, "general");
+  assert.match(prompt, /Do the decomposition, repository reasoning, and ordinary read-only thinking in this main decision/);
+  assert.match(prompt, /Do not dispatch a general subtask just to think/);
+  assert.match(prompt, /Use taskType general only for independently deliverable read-only evidence or genuinely parallel analysis/);
 });
 
 test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
