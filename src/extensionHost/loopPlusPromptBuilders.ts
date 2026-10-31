@@ -147,8 +147,20 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
     title: "Example backend coding subtask",
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
     taskType: "backend",
-    conflictGroup: "example-scope",
-    writeFiles: ["src/example-scope.ts"],
+    conflictGroup: "example-backend-scope",
+    writeFiles: ["src/example-backend.ts"],
+  };
+  const parallelFrontendSubtask = {
+    id: "example-frontend-subtask",
+    title: "Example independent frontend coding subtask",
+    prompt: [
+      "Implement this self-contained frontend subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
+      "Design key point: keep the public UI contract stable and reuse the existing component boundary; do not modify the backend example scope.",
+      "Record the command and result in the attempt report.",
+    ].join(" "),
+    taskType: "frontend",
+    conflictGroup: "example-frontend-scope",
+    writeFiles: ["src/example-frontend.ts"],
   };
   const completed: Record<string, unknown> = {
     status: "completed",
@@ -201,7 +213,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
       status: "dispatch",
       value: {
         status: "dispatch",
-        subtasks: [subtask],
+        subtasks: [subtask, parallelFrontendSubtask],
       },
     },
     {
@@ -373,8 +385,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
-    "- Do the decomposition, repository reasoning, and ordinary read-only thinking in this main decision. Do not dispatch a general subtask just to think, inspect files, make a plan, or explain work. If the request is answer-only/read-only and needs no separate evidence report or parallel analysis, return completed directly with no subtasks.",
-    "- Use taskType general only for independently deliverable read-only evidence or genuinely parallel analysis that is worth a separate attempt. For one coherent coding task, dispatch one coding subtask; do not prepend or append a general analysis subtask merely to plan it.",
+    "- Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default. Do not dispatch general for a small or medium question, a single analysis track, ordinary inspection, making a plan, or explaining work. If the request is answer-only/read-only and needs no separate evidence report or parallel analysis, return completed directly with no subtasks.",
+    "- Dispatch general subtasks only when the thinking workload is large enough to split into at least two independent analysis tracks, each needing substantial investigation, and parallel execution has a clear material benefit in wall-clock time or coverage. If so, dispatch at least two general subtasks together with distinct evidence scopes; general is read-only and never carries coding delivery.",
+    "- For coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks when their writeFiles and conflictGroup scopes do not overlap and they can be verified separately. Keep one coding subtask when the work shares files or has a strict dependency; never split just to increase the count.",
     ...loopPlusModeRuleLines(context),
     "- writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
@@ -423,11 +436,11 @@ function loopPlusModeRuleLines(context: LoopPlusMainPromptContext): string[] {
     : [];
   const shared = [
     "- Each subtask needs a title, a unique id, taskType, and a prompt of at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters that states its own goal, suggested write scope, and verification. taskType is exactly backend, frontend, or general. backend and frontend are coding tasks. general is read-only analysis and must not include writeFiles or codingDelivery. A missing or unknown taskType, a wrong data type, or general combined with writeFiles or codingDelivery is rejected.",
-    "- Do not classify by title keywords or file extensions. The main model performs ordinary planning and non-deliverable analysis itself, then orchestrates and reviews; it must not implement coding. Use general only for independently deliverable evidence or genuinely parallel analysis, not as a default thinking step. A failed or missing sub-model configuration fails the attempt. Do not code with the main model. The user may set a sub-role to the same model name as the main role; the constraint is the selected role configuration and duty.",
+    "- Do not classify by title keywords or file extensions. The main model performs ordinary planning and non-deliverable analysis itself, then orchestrates and reviews; it must not implement coding. Follow the large parallel-analysis rule before using general, and prefer independent coding or writing subtasks when their scopes do not conflict. A failed or missing sub-model configuration fails the attempt. Do not code with the main model. The user may set a sub-role to the same model name as the main role; the constraint is the selected role configuration and duty.",
   ];
   if (mode === "fullstack") {
     return [
-      "- Loop+ subtask mode: fullstack. Every coding task uses the fullstack sub-model. Do not split coding into frontend and backend only to choose different models. Split only when the work itself has a separate boundary.",
+      "- Loop+ subtask mode: fullstack. Every coding task uses the fullstack sub-model. Do not split coding into frontend and backend only to choose different models. When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel; keep shared or dependent work together.",
       ...shared,
       "- taskType backend, frontend, and any coding without a more specific type all execute on the fullstack sub-model. general stays read-only analysis on the main model configuration in both modes.",
       ...summary,
@@ -436,7 +449,7 @@ function loopPlusModeRuleLines(context: LoopPlusMainPromptContext): string[] {
   return [
     "- Loop+ subtask mode: split. Frontend coding uses the frontend sub-model. Backend coding and any other coding use the backend sub-model. general stays read-only analysis on the main model configuration.",
     ...shared,
-    "- Keep ordinary analysis in the main decision. Split analysis from coding only when the analysis is independently deliverable or genuinely parallel; coding that cannot be split uses frontend for UI implementation and backend for every other code change.",
+    "- Keep ordinary analysis in the main decision and follow the large parallel-analysis rule for general. When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel; keep shared or dependent work together. Coding that cannot be split uses frontend for UI implementation and backend for every other code change.",
     ...summary,
   ];
 }

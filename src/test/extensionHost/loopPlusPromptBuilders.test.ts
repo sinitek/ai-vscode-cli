@@ -397,11 +397,13 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(parseExample(examples, "wait").status, "wait");
   assert.equal(parseExample(examples, "blocked").status, "blocked");
   const dispatch = parseExample(examples, "dispatch");
-  assert.equal(dispatch.subtasks?.length, 1);
-  assert.notEqual(dispatch.subtasks?.[0]?.taskType, "general");
-  assert.match(prompt, /Do the decomposition, repository reasoning, and ordinary read-only thinking in this main decision/);
-  assert.match(prompt, /Do not dispatch a general subtask just to think/);
-  assert.match(prompt, /Use taskType general only for independently deliverable read-only evidence or genuinely parallel analysis/);
+  assert.equal(dispatch.subtasks?.length, 2);
+  assert.deepEqual(dispatch.subtasks?.map((subtask) => subtask.taskType), ["backend", "frontend"]);
+  assert.equal(new Set(dispatch.subtasks?.map((subtask) => subtask.conflictGroup)).size, 2);
+  assert.match(prompt, /Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default/);
+  assert.match(prompt, /large enough to split into at least two independent analysis tracks/);
+  assert.match(prompt, /dispatch at least two general subtasks together/);
+  assert.match(prompt, /prefer one dispatch containing multiple independent coding subtasks/);
 });
 
 test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
@@ -509,6 +511,7 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
   }));
   assert.match(fullstackPrompt, /Loop\+ subtask mode: fullstack/);
   assert.match(fullstackPrompt, /Do not split coding into frontend and backend only to choose different models/);
+  assert.match(fullstackPrompt, /When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel/);
   assert.match(fullstackPrompt, /mode=fullstack coding=dsh \/ fullstack-model/);
   assert.match(mainPrompt, /When the task changes UI appearance, layout, or interaction/);
   const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({

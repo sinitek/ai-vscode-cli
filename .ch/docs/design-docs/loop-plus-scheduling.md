@@ -22,7 +22,7 @@ Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列
 
 ## 角色模型与子任务模式
 
-Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任务和输入区缺省 `fullstack`。全栈勾选时只展示并启用「子-全栈」，backend、frontend 和未归类编码都用这一套 CLI、configId、模型和思考力度。取消勾选才展示「子-后端」「子-前端」：frontend 走前端子模型，backend 和其它编码走后端子模型。主模型在当前决策中自行完成拆分、仓库推理和普通只读思考；单一编码边界只派一个编码子任务，不为规划额外派 `general`。只有可独立交付的只读证据或确实值得并行的分析才派 `general`，它读取主 CLI、主档案、`modelRouting.main` 和 `originProfile.mainThinkingMode`，不能携带 `writeFiles` 或 `codingDelivery`。纯回答/只读请求若不需要独立证据或并行分析，主模型直接 `completed`，不创建子任务。
+Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任务和输入区缺省 `fullstack`。全栈勾选时只展示并启用「子-全栈」，backend、frontend 和未归类编码都用这一套 CLI、configId、模型和思考力度。取消勾选才展示「子-后端」「子-前端」：frontend 走前端子模型，backend 和其它编码走后端子模型。主模型默认自行完成拆分、仓库推理和普通只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。编码/写入任务（包括代码、测试、文档、配置和脚本）优先按互不冲突且可分别验收的交付边界一次拆成多个子任务并行；存在共享文件或强依赖时保持单任务，不为增加数量而拆分。`general` 读取主 CLI、主档案、`modelRouting.main` 和 `originProfile.mainThinkingMode`，不能携带 `writeFiles` 或 `codingDelivery`。纯回答/只读请求若不需要独立证据或并行分析，主模型直接 `completed`，不创建子任务。
 
 三套配置分别落在 `loopSubtask*`、`loopSubtaskFrontend*`、`loopSubtaskFullstack*`，以及 `modelRouting.subtask` / `subtaskFrontend` / `subtaskFullstack`。切换模式只改变显隐和路由，不互相覆盖。全栈角色第一次缺失时从原子模型完整配置初始化一次，并用 `loopFullstackRoleSeededByConfigId` 记住，避免来回切换重拷贝。空模型字符串表示用户选择 CLI 默认模型，与整组配置缺失区分。
 
