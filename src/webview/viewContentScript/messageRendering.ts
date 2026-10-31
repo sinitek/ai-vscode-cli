@@ -391,16 +391,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           instructionRun = [];
         };
         entries.forEach((entry) => {
-          const thinking = isThinkingBubbleMessage(entry.message, entry.index);
-          const shown = visibleSet.has(entry.message);
-          if (thinking) {
-            flushInstructionRun();
-            if (shown) {
-              elements.messages.appendChild(createMessageElement(entry.message, entry.index));
-            }
-            return;
-          }
-          if (!shown) {
+          if (!visibleSet.has(entry.message)) {
             return;
           }
           if (isInstructionBubble(entry.message, entry.index)) {

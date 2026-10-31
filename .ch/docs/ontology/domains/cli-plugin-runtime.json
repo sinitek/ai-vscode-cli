@@ -320,6 +320,19 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.visible_instruction_continuity",
+      "name": "指令折叠按面板可见连续顺序分组",
+      "description": "先过滤不可见消息，再将连续两个及以上指令气泡默认折叠。隐藏思考占位、空回复、空最终标记和其他隐藏消息不打断分组且不计数；可见的用户、系统通知、思考、最终答复及有效操作入口仍独立分隔。历史恢复、重绘与实时追加一致，隐藏思考出现真实正文后重新分组，原始消息顺序和内容保持不变。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.6 输出渲染与任务观测"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "appendVisibleMessageEntries"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups visually consecutive instructions across hidden historical messages"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts", "anchor": "groups live instructions across hidden thinking until that thinking becomes visible"}
+      ]
+    },
+    {
       "id": "plugin.rule.codex_config_visual_current_schema",
       "name": "Codex 可视化配置按当前官方根级与 features 契约",
       "description": "Codex 可视化编辑器只按当前 config.toml 契约处理新配置：model_context_window 与 model_auto_compact_token_limit 是根级整数 token 参数，不属于 model_providers；公共区默认 Provider 紧随默认模型；sandbox_mode、approval_policy、web_search 仅提供官方字符串枚举下拉，approval_policy 不再提供已废弃的 untrusted；[features] 仅把官方布尔开关映射为 true 复选框，置于 Provider 工作区下方，以四列单元格展示，每项包含复选框、标签和 SVG 问号，并在悬停或聚焦时即时显示中文说明。复杂 granular 审批和非布尔 feature 配置不由表单猜测，用户应在 TOML 源码模式编辑；本任务不做旧配置版本迁移。",

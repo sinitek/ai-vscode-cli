@@ -2465,6 +2465,85 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   assert.equal(reopened.querySelector("summary").textContent, "(3) command five");
 });
 
+test("groups visually consecutive instructions across hidden historical messages", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const messages = [
+    { id: "cmd-1", role: "trace", content: "exec pwd" },
+    { id: "blank-thinking", role: "assistant", kind: "thinking", content: " \n\t" },
+    { id: "cmd-2", role: "trace", content: "exec ls" },
+    { id: "empty-thinking-trace", role: "trace", kind: "thinking", content: "" },
+    { id: "heading-only-thinking", role: "trace", content: "thinking\n \t" },
+    { id: "empty-assistant", role: "assistant", content: " " },
+    { id: "empty-final", role: "assistant", content: "<FINAL> \n", codexFinalAnswer: true },
+    { id: "cmd-3", role: "trace", content: "exec npm test" },
+  ];
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages });
+
+  const messageList = document.getElementById("messages");
+  const group = messageList.querySelector("details.instruction-group");
+  assert.equal(messageList.children.length, 1);
+  assert.equal(group?.open, false);
+  assert.equal(group?.dataset.instructionCount, "3");
+  assert.deepEqual(
+    group?.querySelector(".instruction-group-body").children.map((node: any) => node.dataset.messageId),
+    ["cmd-1", "cmd-2", "cmd-3"],
+  );
+  assert.deepEqual(api.state.messages.map((message: any) => message.id), messages.map((message) => message.id));
+
+  group.querySelector("summary").click();
+  api.renderMessages();
+  const redrawn = messageList.querySelector("details.instruction-group");
+  assert.equal(redrawn.open, true);
+  assert.equal(redrawn.querySelector("summary").textContent, "收起 (3)");
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("groups live instructions across hidden thinking until that thinking becomes visible", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const append = (message: Record<string, unknown>) => window.dispatchMessage({
+    type: "appendMessage", tabId: "tab-1", message,
+  });
+  append({ id: "cmd-1", role: "trace", content: "exec pwd" });
+  append({ id: "thinking-placeholder", role: "assistant", kind: "thinking", content: "" });
+  window.dispatchMessage({
+    type: "assistantDelta", tabId: "tab-1", id: "thinking-placeholder", kind: "thinking", content: " \n",
+  });
+  append({ id: "cmd-2", role: "trace", content: "exec ls" });
+
+  const messageList = document.getElementById("messages");
+  const group = messageList.querySelector("details.instruction-group");
+  assert.equal(messageList.children.length, 1);
+  assert.equal(group?.open, false);
+  assert.equal(group?.dataset.instructionCount, "2");
+  group.querySelector("summary").click();
+  append({ id: "empty-trace", role: "trace", kind: "thinking", content: "thinking\n " });
+  append({ id: "cmd-3", role: "trace", content: "exec npm test" });
+  const extended = messageList.querySelector("details.instruction-group");
+  assert.equal(extended.open, true);
+  assert.equal(extended.dataset.instructionCount, "3");
+
+  window.dispatchMessage({
+    type: "assistantDelta", tabId: "tab-1", id: "thinking-placeholder", kind: "thinking", content: "检查测试结果。",
+  });
+  assert.equal(messageList.children.length, 3);
+  assert.deepEqual(
+    messageList.children.slice(0, 2).map((node: any) => node.dataset.messageId),
+    ["cmd-1", "thinking-placeholder"],
+  );
+  assert.ok(messageList.children[1].querySelector(".thinking-bubble"));
+  const remaining = messageList.querySelector("details.instruction-group");
+  assert.equal(remaining.dataset.instructionCount, "2");
+  assert.deepEqual(
+    remaining.querySelector(".instruction-group-body").children.map((node: any) => node.dataset.messageId),
+    ["cmd-2", "cmd-3"],
+  );
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
 test("keeps Loop, Loop+, and Graph control bubbles outside collapsed instruction groups", () => {
   const scenarios = [
     { mode: "loop", title: "Loop", action: { type: "openLoopGroupChat", taskId: "loop-task", roundKey: "1" } },
