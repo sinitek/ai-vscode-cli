@@ -59,6 +59,18 @@
         "title": "CLI Bridge: 打开 Loop 群聊"
       }
     ],
+    "customEditors": [
+      {
+        "viewType": "sinitek-cli-tools.configManager",
+        "displayName": "携宁 CLI 配置",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.sinitek-cli-config"
+          }
+        ]
+      }
+    ],
     "menus": {
       "explorer/context": [
         {

@@ -14,6 +14,7 @@
 
 ## 当前有效条目
 
+- 原生配置浮层不能直接使用公开 `vscode.openWith` 的负数 ViewColumn：见本页“原生模态编辑器必须隔离内部入口并保留回退”。
 - 本地图片不能直接作为普通 URL 在 Webview 预览：见本页“本地图片由扩展宿主读取，不复用 Webview 私有 URI”。
 - 聊天图片按钮继承全局固定高度会裁切图片：见本页“图片预览按钮必须覆盖全局控件高度”。
 - 只有 viewBox 的 SVG 在自适应图片按钮内可能缩为零尺寸：见本页“SVG 图片需提供可确定的固有尺寸”。
@@ -23,6 +24,13 @@
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
+
+## 原生模态编辑器必须隔离内部入口并保留回退
+
+- 状态：已规避；本机 VS Code 1.144.0 核对。
+- 现象与根因：公开 `vscode.openWith` 会转换 ViewColumn，不能直接透传模态编辑器组 `-4` 和内部 `modal` 尺寸选项，结果可能仍在普通编辑器中打开。
+- 长期规避：只在 `configPanel.ts` 中封装 `_workbench.openWith(resource, viewType, [-4, options])`，先探测模态能力和用户的 `workbench.editor.useModal`，失败回退独立 VS Code 窗口；不依赖内部命令永久稳定，不改用户全局设置。
+- 验证方式：`npm run build` 与 `node --test dist/test/config/cliPageConfigCoverage.test.js`；真实宿主分别检查浮层及兼容回退，重复打开不得用 Active ViewColumn 将已有窗口移回主工作台。
 
 ## 项目规则复选框必须接到共享分组
 

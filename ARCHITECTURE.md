@@ -66,6 +66,7 @@ cli / interactive / config 服务层
 
 - 位于 `src/webview/`
 - 负责渲染聊天面板、配置中心、输入交互和消息协议
+- `configPanel.ts` 注册只读自定义编辑器承载配置 UI，优先调用 VS Code 内部模态编辑器；能力不可用或失败时回退独立 VS Code 窗口，窗口命令失败则保留编辑器页。`configView.ts` 按宿主模式隐藏原生浮层内重复标题和关闭按钮；不改变配置协议、档案导航或工作台全局布局。
 - 不直接访问文件系统，不直接执行 CLI
 - 主对话与 Loop / Loop+ 群聊复用 `chatMarkdown.ts` 的浏览器侧 Markdown、JSON、SVG 和图片交互运行时；`markdownAssets.ts` 统一加载 Marked / JSONFormatter，`viewContentStyles/markdown.ts` 提供可按容器复用的主题样式。
 - `chatImageHost.ts` 在扩展宿主侧统一承接图片解析、预览和下载，由 `viewProvider.ts` 与 `loopGroupChatPanel.ts` 各自绑定当前 Webview，防止异步结果写入已替换或关闭的页面。

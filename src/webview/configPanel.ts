@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { getConfigViewHtml } from "./configView";
+import { getConfigViewHtml, type ConfigViewHostMode } from "./configView";
 import {
   ConfigCloseMessage,
   ConfigRequestMessage,
@@ -26,48 +26,169 @@ type ConfigManagerHandlers = {
   getActiveConfigId?: (cli: CliName) => Promise<string | null>;
 };
 
-const CONFIG_MAXIMIZE_EDITOR_COMMAND = "workbench.action.maximizeEditorHideSidebar";
-const CONFIG_RESTORE_EDITOR_GROUP_COMMAND = "workbench.action.toggleMaximizeEditorGroup";
-const CONFIG_TOGGLE_PRIMARY_SIDE_BAR_COMMAND = "workbench.action.toggleSidebarVisibility";
-const CONFIG_TOGGLE_SECONDARY_SIDE_BAR_COMMAND = "workbench.action.toggleAuxiliaryBar";
+const CONFIG_MANAGER_VIEW_TYPE = "sinitek-cli-tools.configManager";
+const CONFIG_MANAGER_URI = vscode.Uri.parse(
+  "sinitek-config:/sinitek-cli-config.sinitek-cli-config",
+);
+const CONFIG_MODAL_EDITOR_GROUP = -4;
+const CONFIG_INTERNAL_OPEN_COMMAND = "_workbench.openWith";
+const CONFIG_MODAL_CAPABILITY_COMMAND = "workbench.action.closeModalEditor";
+const CONFIG_NEW_WINDOW_COMMAND = "workbench.action.moveEditorToNewWindow";
+const CONFIG_MODAL_WIDTH = 1600;
+const CONFIG_MODAL_HEIGHT = 900;
 
-export class ConfigManagerPanel {
+export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
   private panel: vscode.WebviewPanel | undefined;
   private viewReady = false;
   private pendingNavigation: ConfigNavigationTarget | undefined;
-  private editorWidthExpanded = false;
-  private editorWidthRequest = 0;
-  private editorWidthTask: Promise<boolean> | undefined;
+  private customEditorRegistration: vscode.Disposable | undefined;
+  private nativeModalOpenTask: Promise<void> | undefined;
+  private nativeModalUnavailable = false;
+  private panelMode: ConfigViewHostMode = "window";
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly handlers: ConfigManagerHandlers = {}
   ) {}
 
+  public registerCustomEditorProvider(): vscode.Disposable | undefined {
+    if (this.customEditorRegistration) {
+      return this.customEditorRegistration;
+    }
+    const registerCustomEditorProvider = vscode.window.registerCustomEditorProvider;
+    if (typeof registerCustomEditorProvider !== "function") {
+      return undefined;
+    }
+    this.customEditorRegistration = registerCustomEditorProvider.call(
+      vscode.window,
+      CONFIG_MANAGER_VIEW_TYPE,
+      this,
+      {
+        webviewOptions: {
+          enableFindWidget: true,
+          retainContextWhenHidden: true,
+        },
+        supportsMultipleEditorsPerDocument: false,
+      },
+    );
+    return this.customEditorRegistration;
+  }
+
+  public openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
+    return {
+      uri,
+      dispose: () => undefined,
+    };
+  }
+
+  public resolveCustomEditor(
+    _document: vscode.CustomDocument,
+    webviewPanel: vscode.WebviewPanel,
+  ): void {
+    webviewPanel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.extensionUri],
+    };
+    this.attachPanel(webviewPanel, "native-modal");
+  }
+
   public show(target?: ConfigNavigationTarget): void {
     this.pendingNavigation = target;
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Active, false);
-      this.expandEditorToMaximumWidth();
+      if (this.panelMode === "native-modal") {
+        void this.openNativeModal();
+      } else {
+        this.panel.reveal(this.panel.viewColumn, false);
+      }
       this.postCliEnabled();
       this.postPendingNavigation();
       return;
     }
 
-    this.panel = vscode.window.createWebviewPanel(
-      "sinitek-cli-tools.configManager",
+    if (!this.nativeModalUnavailable && this.customEditorRegistration) {
+      void this.openNativeModal();
+      return;
+    }
+    this.openWindowPanel();
+  }
+
+  private async openNativeModal(): Promise<void> {
+    if (this.nativeModalOpenTask) {
+      return this.nativeModalOpenTask;
+    }
+    this.nativeModalOpenTask = (async () => {
+      try {
+        const commands = await vscode.commands.getCommands(true);
+        const modalMode = vscode.workspace.getConfiguration("workbench.editor").get<string>("useModal");
+        if (!commands.includes(CONFIG_MODAL_CAPABILITY_COMMAND) || modalMode === "off") {
+          throw new Error("当前 VS Code 未启用原生模态编辑器");
+        }
+        await vscode.commands.executeCommand(
+          CONFIG_INTERNAL_OPEN_COMMAND,
+          CONFIG_MANAGER_URI,
+          CONFIG_MANAGER_VIEW_TYPE,
+          [CONFIG_MODAL_EDITOR_GROUP, {
+            preserveFocus: false,
+            pinned: true,
+            modal: {
+              maximized: false,
+              size: { width: CONFIG_MODAL_WIDTH, height: CONFIG_MODAL_HEIGHT },
+            },
+          }],
+        );
+        if (!this.panel) {
+          throw new Error("原生模态编辑器未加载配置页面");
+        }
+      } catch (error: unknown) {
+        this.nativeModalUnavailable = true;
+        void logInfo("config-native-modal-open-failed", {
+          command: CONFIG_INTERNAL_OPEN_COMMAND,
+          viewType: CONFIG_MANAGER_VIEW_TYPE,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.openWindowPanel();
+      }
+    })().finally(() => {
+      this.nativeModalOpenTask = undefined;
+    });
+    return this.nativeModalOpenTask;
+  }
+
+  private openWindowPanel(): void {
+    const panel = this.panel ?? vscode.window.createWebviewPanel(
+      CONFIG_MANAGER_VIEW_TYPE,
       t("config.panelTitle"),
       vscode.ViewColumn.Active,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [this.extensionUri],
-      }
+      },
     );
+    if (this.panel !== panel) {
+      this.attachPanel(panel, "window");
+    }
+    if (this.panelMode !== "window") {
+      this.panelMode = "window";
+      this.reload();
+    }
+    void vscode.commands.executeCommand(CONFIG_NEW_WINDOW_COMMAND).then(undefined, (error: unknown) => {
+      void logInfo("config-window-open-failed", {
+        command: CONFIG_NEW_WINDOW_COMMAND,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
 
-    this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
-    this.expandEditorToMaximumWidth();
-
+  private attachPanel(
+    panel: vscode.WebviewPanel,
+    mode: ConfigViewHostMode,
+  ): void {
+    this.panel = panel;
+    this.panelMode = mode;
+    this.viewReady = false;
+    panel.title = t("config.panelTitle");
+    panel.webview.html = getConfigViewHtml(panel.webview, this.extensionUri, mode);
     this.panel.webview.onDidReceiveMessage(
       (
         message:
@@ -110,11 +231,13 @@ export class ConfigManagerPanel {
         void this.handleRequest(message as ConfigRequestMessage);
       });
 
-    this.panel.onDidDispose(() => {
+    panel.onDidDispose(() => {
+      if (this.panel !== panel) {
+        return;
+      }
       this.panel = undefined;
       this.viewReady = false;
       this.pendingNavigation = undefined;
-      this.restoreEditorWidth();
     });
   }
 
@@ -125,72 +248,6 @@ export class ConfigManagerPanel {
     const target = this.pendingNavigation;
     this.pendingNavigation = undefined;
     void this.panel.webview.postMessage({ type: "config:navigate", target });
-  }
-
-  private expandEditorToMaximumWidth(): void {
-    if (!this.panel) {
-      return;
-    }
-    const request = ++this.editorWidthRequest;
-    this.editorWidthTask = this.applyMaximumEditorWidth(request);
-  }
-
-  private async applyMaximumEditorWidth(request: number): Promise<boolean> {
-    if (!this.panel || request !== this.editorWidthRequest) {
-      return false;
-    }
-    try {
-      await vscode.commands.executeCommand(CONFIG_MAXIMIZE_EDITOR_COMMAND);
-    } catch (error: unknown) {
-      void logInfo("config-editor-width-expand-failed", {
-        command: CONFIG_MAXIMIZE_EDITOR_COMMAND,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-    if (!this.panel || request !== this.editorWidthRequest) {
-      return true;
-    }
-    this.editorWidthExpanded = true;
-    return true;
-  }
-
-  private restoreEditorWidth(): void {
-    const request = ++this.editorWidthRequest;
-    const pending = this.editorWidthTask ?? Promise.resolve(false);
-    const alreadyExpanded = this.editorWidthExpanded;
-    this.editorWidthExpanded = false;
-    void this.finishEditorWidthRestore(request, pending, alreadyExpanded);
-  }
-
-  private async finishEditorWidthRestore(
-    request: number,
-    pending: Promise<boolean>,
-    alreadyExpanded: boolean,
-  ): Promise<void> {
-    const hidSideBars = await pending;
-    if (request !== this.editorWidthRequest || (!alreadyExpanded && !hidSideBars)) {
-      return;
-    }
-    await this.runEditorWidthRestore();
-  }
-
-  private async runEditorWidthRestore(): Promise<void> {
-    const commands = [
-      CONFIG_RESTORE_EDITOR_GROUP_COMMAND,
-      CONFIG_TOGGLE_PRIMARY_SIDE_BAR_COMMAND,
-      CONFIG_TOGGLE_SECONDARY_SIDE_BAR_COMMAND,
-    ];
-    for (const command of commands) {
-      try {
-        await vscode.commands.executeCommand(command);
-      } catch (error: unknown) {
-        void logInfo("config-editor-width-restore-failed", {
-          command,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
   }
 
   public syncActiveConfig(): void {
@@ -216,7 +273,7 @@ export class ConfigManagerPanel {
     }
     this.viewReady = false;
     this.panel.title = t("config.panelTitle");
-    this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri);
+    this.panel.webview.html = getConfigViewHtml(this.panel.webview, this.extensionUri, this.panelMode);
   }
 
   private async handleRequest(message: ConfigRequestMessage): Promise<void> {

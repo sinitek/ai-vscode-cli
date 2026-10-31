@@ -582,6 +582,10 @@ export function activate(context: vscode.ExtensionContext): void {
     onConfigChanged: () => postPanelState(),
     getActiveConfigId: async (cli) => (await loadConfigState(cli)).activeConfigId,
   });
+  const configEditorRegistration = configManagerPanel.registerCustomEditorProvider();
+  if (configEditorRegistration) {
+    context.subscriptions.push(configEditorRegistration);
+  }
   startTempCleanup(context);
   startHistoryArtifactRetentionCleanup(context);
   startConfigHeartbeat(context);

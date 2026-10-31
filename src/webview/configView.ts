@@ -8,6 +8,8 @@ import { CLI_LIST } from "../cli/types";
 
 const ASSETS_DIR = ["media", "config", "assets"];
 
+export type ConfigViewHostMode = "native-modal" | "window";
+
 const CONFIG_VSCODE_THEME_STYLES = `
 :root {
   color-scheme: var(--vscode-color-scheme, normal);
@@ -88,6 +90,28 @@ body {
   height: calc(100vh - 72px) !important;
   min-height: 0 !important;
   overflow: hidden !important;
+}
+
+body[data-config-host="native-modal"] .config-app-header,
+body[data-config-host="native-modal"] .config-app-title,
+body[data-config-host="native-modal"] .config-app-close-button {
+  display: none !important;
+}
+
+body[data-config-host="native-modal"] .config-app-workspace {
+  height: 100vh !important;
+}
+
+@media (max-width: 920px) {
+  body[data-config-host="native-modal"] .config-app-header {
+    display: flex !important;
+    height: 52px !important;
+    padding: 6px 7px !important;
+  }
+
+  body[data-config-host="native-modal"] .config-app-workspace {
+    height: calc(100vh - 52px) !important;
+  }
 }
 
 .config-app-sidebar,
@@ -271,7 +295,8 @@ function findAssetFile(assetsPath: string, extension: string): string {
 
 export function getConfigViewHtml(
   webview: vscode.Webview,
-  extensionUri: vscode.Uri
+  extensionUri: vscode.Uri,
+  hostMode: ConfigViewHostMode = "window",
 ): string {
   const nonce = getNonce();
   const downloadsDir = path.join(os.homedir(), "Downloads");
@@ -347,7 +372,7 @@ export function getConfigViewHtml(
       }
     </style>
   </head>
-  <body>
+  <body data-config-host="${hostMode}">
     <div id="root"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();

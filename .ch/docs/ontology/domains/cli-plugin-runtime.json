@@ -629,6 +629,21 @@
       ]
     },
     {
+      "id": "plugin.rule.config_native_modal_host",
+      "name": "配置中心优先原生宽浮层并兼容窗口回退",
+      "description": "配置中心复用只读自定义编辑器与既有配置协议，优先在 VS Code 原生宽浮层中非最大化打开，不嵌入聊天 Webview；原生模式隐藏配置页重复标题与关闭按钮并保留窄屏目录入口。能力不可用、用户禁用或打开失败时回退独立 VS Code 窗口，窗口命令失败则保留编辑器页；重复打开复用实例及最新档案导航，不切换侧栏、Zen Mode、全屏或编辑器组最大化，不修改用户全局设置。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.extension_host"],
+      "source_refs": [
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/configView.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "package.json"},
+        {"path": "src/test/config/cliPageConfigCoverage.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.8 配置中心"}
+      ]
+    },
+    {
       "id": "plugin.rule.codex_config_model_default",
       "name": "Codex 配置模型替代默认占位并与管理列表去重",
       "description": "当前 Codex config.toml 的根级 model 为非空字符串时，模型下拉以该名称替代空值默认项，与用户管理模型按大小写不敏感规则合并去重，但不把配置模型写入管理列表。用户显式选择优先，普通对话、Loop、Loop+、Graph 主子模型及跨 CLI Codex 子模型使用一致候选和回退语义。配置缺失、空值、非法 TOML 或读取失败时保留原默认行为，不误读嵌套 model。",

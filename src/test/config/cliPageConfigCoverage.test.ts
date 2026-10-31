@@ -75,12 +75,13 @@ function createConfigWebview() {
   };
 }
 
-function renderConfigHtml(): { html: string; uris: string[] } {
+function renderConfigHtml(hostMode?: "native-modal" | "window"): { html: string; uris: string[] } {
   const { getConfigViewHtml } = require("../../webview/configView") as typeof import("../../webview/configView");
   const harness = createConfigWebview();
   const html = getConfigViewHtml(
     harness.webview as any,
     { fsPath: repoRoot } as any,
+    hostMode,
   );
   return { html, uris: harness.uris };
 }
@@ -187,11 +188,21 @@ type PanelHarness = {
   externalUrls: string[];
   messageHandler?: MessageHandler;
   disposeHandler?: () => void;
-  maximizeCommandError?: Error;
+  windowCommandError?: Error;
+  nativeCommandError?: Error;
+  nativeOpenHook?: () => Promise<void>;
+  skipNativeResolve?: boolean;
+  supportedCommands: string[];
+  modalMode?: string;
+  registrationCalls: unknown[][];
+  registeredProvider?: AnyRecord;
+  registrationDisposeCount: number;
   disposeCount: number;
   panel: {
     title: string;
+    viewColumn?: number;
     webview: {
+      options?: unknown;
       html: string;
       cspSource: string;
       postedMessages: unknown[];
@@ -212,6 +223,9 @@ function installConfigPanelHarness(): PanelHarness {
     createCalls: [],
     commandCalls: [],
     externalUrls: [],
+    supportedCommands: ["workbench.action.closeModalEditor"],
+    registrationCalls: [],
+    registrationDisposeCount: 0,
     disposeCount: 0,
     revealCount: 0,
     panel: {
@@ -252,13 +266,33 @@ function installConfigPanelHarness(): PanelHarness {
     harness.createCalls.push(args);
     return harness.panel;
   };
+  vscode.window.registerCustomEditorProvider = (...args: unknown[]) => {
+    harness.registrationCalls.push(args);
+    harness.registeredProvider = args[1] as AnyRecord;
+    return { dispose: () => { harness.registrationDisposeCount += 1; } };
+  };
+  vscode.commands.getCommands = async () => harness.supportedCommands;
   vscode.commands.executeCommand = async (...args: unknown[]) => {
     harness.commandCalls.push(args);
-    if (args[0] === "workbench.action.maximizeEditorHideSidebar" && harness.maximizeCommandError) {
-      throw harness.maximizeCommandError;
+    if (args[0] === "workbench.action.moveEditorToNewWindow" && harness.windowCommandError) {
+      throw harness.windowCommandError;
+    }
+    if (args[0] === "_workbench.openWith") {
+      await harness.nativeOpenHook?.();
+      if (harness.nativeCommandError) {
+        throw harness.nativeCommandError;
+      }
+      if (!harness.skipNativeResolve && !harness.messageHandler) {
+        const document = harness.registeredProvider?.openCustomDocument(args[1]);
+        harness.registeredProvider?.resolveCustomEditor(document, harness.panel);
+      }
     }
     return undefined;
   };
+  vscode.workspace.getConfiguration = () => ({
+    get: (key: string, fallback?: unknown) => key === "useModal" ? harness.modalMode : fallback,
+    inspect: () => ({}),
+  });
   vscode.env.openExternal = async (uri: { toString?: () => string }) => {
     harness.externalUrls.push(uri.toString ? uri.toString() : String(uri));
     return true;
@@ -815,7 +849,7 @@ test("config manager panel creates a safe webview and handles non-config host me
     0,
   );
   assert.equal(
-    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.moveEditorToNewWindow").length,
     1,
   );
 
@@ -830,8 +864,8 @@ test("config manager panel creates a safe webview and handles non-config host me
     0,
   );
   assert.equal(
-    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
-    2,
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.moveEditorToNewWindow").length,
+    1,
   );
 
   manager.syncActiveConfig();
@@ -863,15 +897,15 @@ test("config manager panel creates a safe webview and handles non-config host me
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
-    1,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleSidebarVisibility").length,
-    1,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleAuxiliaryBar").length,
-    1,
+    0,
   );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.filter((message) => (message as AnyRecord).type === "config:syncActive").length, 1);
@@ -895,16 +929,126 @@ test("config manager panel closes when the webview requests it", async () => {
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
-    1,
+    0,
   );
   manager.syncActiveConfig();
   assert.equal(harness.panel.webview.postedMessages.length, 0);
 });
 
-test("config manager panel stays in the editor when maximizing width fails", async () => {
+test("config manager opens a wide non-maximized native modal using the internal command", async () => {
   const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
-  harness.maximizeCommandError = new Error("editor maximize is unavailable");
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+  const registration = manager.registerCustomEditorProvider();
+  assert.equal(manager.registerCustomEditorProvider(), registration);
+  assert.equal(harness.registrationCalls.length, 1);
+  assert.equal(harness.registrationCalls[0][0], "sinitek-cli-tools.configManager");
+  assert.deepEqual(harness.registrationCalls[0][2], {
+    webviewOptions: { enableFindWidget: true, retainContextWhenHidden: true },
+    supportsMultipleEditorsPerDocument: false,
+  });
+
+  manager.show({ cli: "codex", configId: "profile-a" });
+  await delay(0);
+  const nativeCall = harness.commandCalls.find((call) => call[0] === "_workbench.openWith");
+  assert.ok(nativeCall);
+  assert.equal(nativeCall[2], "sinitek-cli-tools.configManager");
+  assert.deepEqual(nativeCall[3], [-4, {
+    preserveFocus: false,
+    pinned: true,
+    modal: { maximized: false, size: { width: 1600, height: 900 } },
+  }]);
+  assert.equal(harness.createCalls.length, 0);
+  assert.equal((harness.panel.webview.options as AnyRecord).enableScripts, true);
+  assert.ok(harness.panel.webview.html.includes("window.electronAPI"));
+  assert.match(harness.panel.webview.html, /<body data-config-host="native-modal">/);
+  manager.reload();
+  assert.match(harness.panel.webview.html, /<body data-config-host="native-modal">/);
+  harness.messageHandler?.({ type: "config:ready" });
+  assert.ok(harness.panel.webview.postedMessages.some((message) => (
+    (message as AnyRecord).type === "config:navigate"
+    && (message as AnyRecord).target.configId === "profile-a"
+  )));
+
+  manager.show({ cli: "claude", configId: "profile-b" });
+  await delay(0);
+  assert.equal(harness.commandCalls.filter((call) => call[0] === "_workbench.openWith").length, 2);
+  assert.equal(harness.revealCount, 0);
+  assert.equal(harness.createCalls.length, 0);
+  harness.messageHandler?.({ type: "config:close" });
+  assert.equal(harness.disposeCount, 1);
+  assert.ok(harness.commandCalls.every((call) => call[0] === "_workbench.openWith"));
+  registration?.dispose();
+  assert.equal(harness.registrationDisposeCount, 1);
+});
+
+test("config manager coalesces native modal opens and navigates to the latest request", async () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  let releaseOpen: (() => void) | undefined;
+  harness.nativeOpenHook = () => new Promise<void>((resolve) => { releaseOpen = resolve; });
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+  manager.registerCustomEditorProvider();
+  manager.show({ cli: "codex", configId: "profile-a" });
+  manager.show({ cli: "claude", configId: "profile-b" });
+  await delay(0);
+  assert.equal(harness.commandCalls.length, 1);
+  releaseOpen?.();
+  await delay(0);
+  harness.messageHandler?.({ type: "config:ready" });
+  const navigations = harness.panel.webview.postedMessages.filter((message) => (message as AnyRecord).type === "config:navigate");
+  assert.deepEqual(navigations, [{ type: "config:navigate", target: { cli: "claude", configId: "profile-b" } }]);
+});
+
+test("config manager falls back to a VS Code window for unavailable, disabled, failed or unresolved modals", async () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  for (const failureMode of ["unavailable", "disabled", "failed", "unresolved"] as const) {
+    const harness = installConfigPanelHarness();
+    if (failureMode === "unavailable") harness.supportedCommands = [];
+    if (failureMode === "disabled") harness.modalMode = "off";
+    if (failureMode === "failed") harness.nativeCommandError = new Error("unsupported modal group");
+    if (failureMode === "unresolved") harness.skipNativeResolve = true;
+    const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+    manager.registerCustomEditorProvider();
+    manager.show({ cli: "codex", configId: "profile-a" });
+    await delay(0);
+    assert.equal(harness.createCalls.length, 1, failureMode);
+    assert.match(harness.panel.webview.html, /<body data-config-host="window">/);
+    manager.reload();
+    assert.match(harness.panel.webview.html, /<body data-config-host="window">/);
+    assert.equal(harness.commandCalls.filter((call) => call[0] === "workbench.action.moveEditorToNewWindow").length, 1, failureMode);
+    harness.messageHandler?.({ type: "config:ready" });
+    assert.ok(harness.panel.webview.postedMessages.some((message) => (message as AnyRecord).type === "config:navigate"));
+    harness.panel.viewColumn = 2;
+    manager.show();
+    assert.deepEqual(harness.commandCalls[harness.commandCalls.length - 1], ["reveal", 2, false]);
+  }
+});
+
+test("native configuration hides duplicate chrome, fills the host, and keeps narrow directory access", () => {
+  const { html } = renderConfigHtml("native-modal");
+  assert.match(html, /<body data-config-host="native-modal">/);
+  assert.match(html, /body\[data-config-host="native-modal"\] \.config-app-header,[\s\S]*?\.config-app-title,[\s\S]*?\.config-app-close-button \{\s*display: none !important;/);
+  assert.match(html, /body\[data-config-host="native-modal"\] \.config-app-workspace \{\s*height: 100vh !important;/);
+  assert.match(html, /@media \(max-width: 920px\) \{\s*body\[data-config-host="native-modal"\] \.config-app-header \{\s*display: flex !important;/);
+  assert.match(renderConfigHtml().html, /<body data-config-host="window">/);
+});
+
+test("config manager tolerates an unavailable custom editor registration API", () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  const vscode = require("vscode") as AnyRecord;
+  vscode.window.registerCustomEditorProvider = undefined;
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+  assert.equal(manager.registerCustomEditorProvider(), undefined);
+  manager.show();
+  assert.equal(harness.createCalls.length, 1);
+});
+
+test("config manager panel stays usable in the editor when opening a window fails", async () => {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const harness = installConfigPanelHarness();
+  harness.windowCommandError = new Error("editor window is unavailable");
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
 
   manager.show();
@@ -919,8 +1063,8 @@ test("config manager panel stays in the editor when maximizing width fails", asy
     0,
   );
   assert.equal(
-    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
-    2,
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.moveEditorToNewWindow").length,
+    1,
   );
 
   harness.disposeHandler?.();
@@ -935,7 +1079,7 @@ test("config manager panel stays in the editor when maximizing width fails", asy
   );
 });
 
-test("config manager panel opens at the maximum editor width and restores splits on close", async () => {
+test("config manager panel falls back to an editor window without changing the workbench layout", async () => {
   const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
   const harness = installConfigPanelHarness();
   const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
@@ -948,7 +1092,7 @@ test("config manager panel opens at the maximum editor width and restores splits
   assert.deepEqual(
     openedCommands.filter((command) => command !== "reveal"),
     [
-      "workbench.action.maximizeEditorHideSidebar",
+      "workbench.action.moveEditorToNewWindow",
     ],
   );
 
@@ -959,8 +1103,8 @@ test("config manager panel opens at the maximum editor width and restores splits
     0,
   );
   assert.equal(
-    harness.commandCalls.filter((call) => call[0] === "workbench.action.maximizeEditorHideSidebar").length,
-    2,
+    harness.commandCalls.filter((call) => call[0] === "workbench.action.moveEditorToNewWindow").length,
+    1,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleCenteredLayout").length,
@@ -976,15 +1120,15 @@ test("config manager panel opens at the maximum editor width and restores splits
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleMaximizeEditorGroup").length,
-    1,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleSidebarVisibility").length,
-    1,
+    0,
   );
   assert.equal(
     harness.commandCalls.filter((call) => call[0] === "workbench.action.toggleAuxiliaryBar").length,
-    1,
+    0,
   );
   manager.syncActiveConfig();
 });
