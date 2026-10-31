@@ -856,37 +856,9 @@ ${renderChatModal({
           wrapperClassName: "session-actions",
         },
         contentHtml: `          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
-            <button id="helpTabInstall" class="help-tab active" role="tab" aria-selected="true">${i18n.helpTabInstall}</button>
-            <button id="helpTabModes" class="help-tab" role="tab" aria-selected="false">${i18n.helpTabModes}</button>
+            <button id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes">${i18n.helpTabModes}</button>
           </div>
-          <div id="helpPanelInstall" class="help-panel active" role="tabpanel">
-            <div class="help-section">
-              <h4>${i18n.helpInstallTitle}</h4>
-              <ul>
-                <li>Codex：<code>npm i -g @openai/codex</code></li>
-                <li>Claude：<code>npm install -g @anthropic-ai/claude-code</code></li>
-                <li>OpenCode：<code>npm install -g opencode-ai</code></li>
-                <li>Grok：macOS / Linux <code>curl -fsSL https://x.ai/cli/install.sh | bash</code>；Windows PowerShell <code>irm https://x.ai/cli/install.ps1 | iex</code></li>
-                <li>DSH：<code>npm install -g @deepseek-ai/dsh</code></li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpInstallWindowsPowerShellTitle}</h4>
-              <ul>
-                <li>${i18n.helpInstallWindowsPowerShellNote}</li>
-                <li>${i18n.helpInstallWindowsPowerShellWinget}<code>winget install --id Microsoft.PowerShell --source winget</code></li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpRemoveEnvTitle}</h4>
-              <ul>
-                <li>${i18n.helpRemoveEnvItem1}</li>
-                <li>${i18n.helpRemoveEnvItemMac}</li>
-                <li>${i18n.helpRemoveEnvItemWin}</li>
-              </ul>
-            </div>
-          </div>
-          <div id="helpPanelModes" class="help-panel" role="tabpanel">
+          <div id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes">
             <div class="help-section">
               <h4>${i18n.helpModesGeneralTitle}</h4>
               <ul>

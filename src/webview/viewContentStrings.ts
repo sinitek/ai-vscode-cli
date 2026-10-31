@@ -379,7 +379,6 @@ export const WEBVIEW_STRINGS = {
     helpClose: "关闭",
     helpTabsLabel: "使用说明",
     helpTabModes: "模式说明",
-    helpTabInstall: "安装",
     helpModesGeneralTitle: "如何选择",
     helpModesGeneralItem:
       "选择能安全完成任务的最轻模式：Vibe 做直接处理，Loop 按轮次协作，Loop+ 按事件验收，Graph 处理依赖复杂的流程。",
@@ -395,17 +394,6 @@ export const WEBVIEW_STRINGS = {
     helpModeGraphTitle: "Graph",
     helpModeGraphBest: "适合：复杂任务，需要明确依赖、并行执行和证据可视化。",
     helpModeGraphPros: "优点：依赖和进度直观，调度与恢复边界清楚。",
-    helpInstallTitle: "安装",
-    helpInstallWindowsPowerShellTitle: "Windows 先安装 PowerShell",
-    helpInstallWindowsPowerShellNote: "Windows 必须先安装 PowerShell，再执行上面的 npm 命令。macOS 不需要这一步。Grok 请使用对应系统列出的安装命令。",
-    helpInstallWindowsPowerShellWinget: "使用 winget 安装：",
-    helpRemoveEnvTitle: "移除系统环境变量配置",
-    helpRemoveEnvItem1:
-      "使用该工具前需清理对 CLI 的系统级环境变量修改，避免与配置文件冲突。",
-    helpRemoveEnvItemMac:
-      "macOS：检查并移除 ~/.zprofile、~/.zshrc 或 ~/.bash_profile 中相关设置。",
-    helpRemoveEnvItemWin:
-      "Windows：通过“系统属性 > 高级 > 环境变量”删除为 CLI 手动添加的相关设置。",
     noConfigOption: "暂无配置",
     historyEmptySessions: "暂无会话历史",
     historyNoMatchingSessions: "没有匹配的历史会话。",

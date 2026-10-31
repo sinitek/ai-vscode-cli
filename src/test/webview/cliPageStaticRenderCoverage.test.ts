@@ -293,11 +293,9 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="configApplyErrorOverlay"',
     'id="configApplyErrorContent"',
     'id="helpOverlay"',
-    'id="helpTabInstall"',
     'id="helpTabModes"',
-    'id="helpPanelInstall"',
     'id="helpPanelModes"',
-    'id="helpPanelInstall" class="help-panel active"',
+    'id="helpPanelModes" class="help-panel active"',
   ]);
   assert.doesNotMatch(html, /id="languageSelect"/);
   assert.doesNotMatch(html, /toolSettingsGlobal(?:Tab|Panel)|toolSettingsCleanup(?:Tab|Panel)/u);
@@ -335,8 +333,9 @@ test("只渲染固定中文静态页面文案", () => {
     "等待回放内容...",
   ]);
   assert.doesNotMatch(html, /AI Chat|automatic conflict resolution|没有自动解冲突/u);
-  assert.match(html, /id="helpTabInstall"/);
-  assert.match(html, /id="helpPanelInstall" class="help-panel active"/);
+  assert.doesNotMatch(html, /id="help(?:Tab|Panel)Install"/);
+  assert.match(html, /id="helpTabModes" class="help-tab active"/);
+  assert.match(html, /id="helpPanelModes" class="help-panel active"/);
   assert.doesNotMatch(html, /按住 Shift|Shift while dragging|拖拽文件/);
 });
 

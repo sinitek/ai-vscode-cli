@@ -983,17 +983,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         syncResetSessionAvailability();
       }
 
-      function setHelpTab(tab) {
-        const isModes = tab === "modes";
-        const isInstall = !isModes;
-        elements.helpTabModes.classList.toggle("active", isModes);
-        elements.helpTabInstall.classList.toggle("active", isInstall);
-        elements.helpTabModes.setAttribute("aria-selected", String(isModes));
-        elements.helpTabInstall.setAttribute("aria-selected", String(isInstall));
-        elements.helpPanelModes.classList.toggle("active", isModes);
-        elements.helpPanelInstall.classList.toggle("active", isInstall);
-      }
-
       function setRulesHint(message) {
         elements.rulesHint.textContent = message || "";
       }
@@ -1285,7 +1274,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       elements.helpButton.addEventListener("click", () => {
-        setHelpTab("install");
         openHelp();
       });
 
@@ -1498,14 +1486,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       elements.closeQueue.addEventListener("click", () => {
         closeQueueOverlay();
-      });
-
-      elements.helpTabModes.addEventListener("click", () => {
-        setHelpTab("modes");
-      });
-
-      elements.helpTabInstall.addEventListener("click", () => {
-        setHelpTab("install");
       });
 
       elements.loadRules.addEventListener("click", () => {

@@ -6,6 +6,8 @@
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
+AI 对话面板的“使用说明”弹窗仅保留默认选中的“模式说明”页签，展示如何选择及 Vibe、Loop、Loop+、Graph 的适用场景和优点；不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
+
 AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底；超过 75px 时保留当前阅读位置，可通过“回到底部”按钮恢复跟随。聊天搜索结果锚定时不自动置底。执行流面板保留独立的 50px 自动跟随阈值。
 
 AI 对话最终答复及普通助手气泡中的 Markdown 表格显示完整单元格边框、表头底色和斑马行，颜色使用 VS Code 主题变量；宽表在气泡内横向滚动。Loop / Loop+ 群聊复用同一套表格样式。实现见 `src/webview/viewContentStyles/markdown.ts`、`src/webview/chatMarkdown.ts`；回归见 `src/test/webview/chatMarkdown.test.ts`。

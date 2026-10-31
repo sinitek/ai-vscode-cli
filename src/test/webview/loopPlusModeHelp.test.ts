@@ -79,22 +79,14 @@ test("渲染简洁准确的中文模式说明", () => {
   }
 });
 
-test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
+test("使用说明仅保留默认选中的模式说明页签", () => {
   const chineseHtml = buildHtml();
 
   for (const html of [chineseHtml]) {
     assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
-    assert.match(html, /id="helpTabInstall"/);
-    assert.match(html, /id="helpTabModes"/);
-    assert.match(html, /id="helpPanelInstall" class="help-panel active"/);
-    assert.equal(html.split("npm i -g @openai/codex").length - 1, 1);
-    assert.match(html, /npm install -g @anthropic-ai\/claude-code/);
-    assert.match(html, /npm install -g opencode-ai/);
-    assert.match(html, /DSH：<code>npm install -g @deepseek-ai\/dsh<\/code>/);
-    assert.match(html, /Grok：macOS \/ Linux <code>curl -fsSL https:\/\/x\.ai\/cli\/install\.sh \| bash<\/code>/);
-    assert.match(html, /Windows PowerShell <code>irm https:\/\/x\.ai\/cli\/install\.ps1 \| iex<\/code>/);
-    assert.match(html, /winget install --id Microsoft\.PowerShell --source winget/);
-    assert.doesNotMatch(html, /安装加速|Install Acceleration|registry\.npmmirror\.com|Windows 安装|macOS 安装|Windows Install|macOS Install/);
+    assert.match(html, /id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes"/);
+    assert.match(html, /id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes"/);
+    assert.doesNotMatch(html, /helpTabInstall|helpPanelInstall|npm i(?:nstall)? -g|winget install|移除系统环境变量配置/);
     assert.doesNotMatch(html, /help-section[^>]*style=/);
     const selects = interactiveModeSelects(html);
     assert.equal(selects.length, 2);
@@ -108,6 +100,5 @@ test("不再声称 Graph 无法处理冲突并保留帮助面板结构", () => {
     }
   }
 
-  assert.match(chineseHtml, /Windows 必须先安装 PowerShell，再执行上面的 npm 命令/);
   assert.doesNotMatch(chineseHtml, /准备成本和界面复杂度最高|目前还没有图编辑器|缺点：/);
 });
