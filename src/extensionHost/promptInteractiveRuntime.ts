@@ -9,6 +9,7 @@ import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand,
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
+import { containsFinalAnswerTextMarker } from "../finalAnswerProtocol";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
 import {
   buildNaturalLanguageHumanInteractionRequest,
@@ -62,7 +63,7 @@ import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecu
 import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import { prepareKimiInteractiveLaunch, type KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
 import { prepareZcodeInteractiveLaunch, type ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
-import { createInteractiveTurnStrategies } from "./interactiveTurnStrategy";
+import { createInteractiveTurnStrategies, type InteractiveAssistantChunkOptions } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
   id?: string;
@@ -366,6 +367,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     applyProcessTitle(runId, cli, processSessionId);
 
     let assistantMessageId: string | undefined;
+    const assistantMessagesByItemId = new Map<string, string>();
     let activeThinkingMessageId: string | undefined;
     let activeThinkingItemId: string | undefined;
     let assistantMessageIndex: number | null = null;
@@ -570,8 +572,18 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
     const ensureAssistantMessage = (
       kind?: ChatMessage["kind"],
-      options: { forceNew?: boolean; codexFinalAnswer?: boolean; reasoningItemId?: string } = {}
+      options: InteractiveAssistantChunkOptions & { forceNew?: boolean } = {}
     ): void => {
+      const assistantItemId = kind !== "thinking" ? String(options.assistantItemId || "").trim() : "";
+      const existingMessageId = assistantItemId ? assistantMessagesByItemId.get(assistantItemId) : undefined;
+      const existingIndex = existingMessageId
+        ? messageTarget.findIndex((message) => message.id === existingMessageId && message.role === "assistant")
+        : -1;
+      if (existingIndex >= 0) {
+        assistantMessageId = existingMessageId;
+        assistantMessageIndex = existingIndex;
+        return;
+      }
       const continuation = resolveCodexAssistantMessageContinuation({
         messages: messageTarget,
         activeMessageId: assistantMessageId,
@@ -579,7 +591,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         activeThinkingItemId,
         kind: kind === "thinking" ? "thinking" : "normal",
         reasoningItemId: options.reasoningItemId,
-        forceNew: options.forceNew,
+        forceNew: options.forceNew || Boolean(assistantItemId),
       });
       activeThinkingMessageId = continuation.thinkingMessageId;
       activeThinkingItemId = continuation.thinkingItemId;
@@ -605,6 +617,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopSubtaskId: input.loopSubtaskId,
       };
       appendMessageToStore(messageTarget, message);
+      if (assistantItemId) {
+        assistantMessagesByItemId.set(assistantItemId, assistantMessageId);
+      }
       assistantMessageIndex = messageTarget.length - 1;
       if (kind === "thinking") {
         activeThinkingMessageId = assistantMessageId;
@@ -617,10 +632,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const appendAssistantChunkForTab = (
       chunk: string,
       kind?: ChatMessage["kind"],
-      options: { codexFinalAnswer?: boolean; reasoningItemId?: string } = {}
+      options: InteractiveAssistantChunkOptions = {}
     ): void => {
       const marksCodexFinalAnswer = options.codexFinalAnswer === true;
       if (!chunk && !marksCodexFinalAnswer) {
+        return;
+      }
+      if (!chunk && options.assistantItemId && !assistantMessagesByItemId.has(options.assistantItemId)) {
         return;
       }
       let assistantChunk = chunk;
@@ -664,14 +682,17 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         && last.role === "assistant"
         && last.id === assistantMessageId
         && last.codexFinalAnswer !== true
+        && !containsFinalAnswerTextMarker(last.content)
         && String(last.content || "").trim()
       );
       const previousThinkingMessageId = activeThinkingMessageId;
       const previousThinkingItemId = activeThinkingItemId;
-      if (assistantChunk) {
+      if (assistantChunk || (marksCodexFinalAnswer && options.assistantItemId
+        && assistantMessagesByItemId.has(options.assistantItemId))) {
         ensureAssistantMessage(kind, {
           forceNew: forceNewFinalAnswer,
           codexFinalAnswer: marksCodexFinalAnswer,
+          assistantItemId: options.assistantItemId,
           reasoningItemId: options.reasoningItemId,
         });
       }

@@ -442,16 +442,18 @@ function createFakeDocument(): any {
   return document;
 }
 
-function createFakeWindow(): any {
+function createFakeWindow(deferAnimationFrames = false): any {
   const listeners: Record<string, Listener[]> = {};
   let nextTimerId = 1;
   const timers = new Map<number, Listener>();
   const timerDelays = new Map<number, number>();
+  const animationFrames = new Map<number, Listener>();
   return {
     innerHeight: 720,
     listeners,
     timers,
     timerDelays,
+    animationFrames,
     addEventListener(type: string, listener: Listener): void {
       (listeners[type] ||= []).push(listener);
     },
@@ -482,11 +484,16 @@ function createFakeWindow(): any {
       timerDelays.delete(id);
     },
     requestAnimationFrame(listener: Listener): number {
-      listener();
-      return nextTimerId++;
+      const id = nextTimerId++;
+      if (deferAnimationFrames) {
+        animationFrames.set(id, listener);
+      } else {
+        listener();
+      }
+      return id;
     },
-    cancelAnimationFrame(): void {
-      return undefined;
+    cancelAnimationFrame(id: number): void {
+      animationFrames.delete(id);
     },
   };
 }
@@ -504,9 +511,10 @@ function createRuntimeHarness(
   markedOverride?: unknown,
   fileReaderOverride?: unknown,
   cliListOverride?: string[],
+  deferAnimationFrames = false,
 ) {
   const document = createFakeDocument();
-  const fakeWindow = createFakeWindow();
+  const fakeWindow = createFakeWindow(deferAnimationFrames);
   const posted: any[] = [];
   const vscode = {
     getState: () => ({ onlyShowFinalResults: true }),
@@ -3051,6 +3059,108 @@ for (const { messageKind, completionStatus } of streamCompletionCases) {
     }
   });
 }
+
+for (const messageKind of ["normal", "thinking"] as const) {
+  for (const completionStatus of ["idle", "end", "error", "stopped"] as const) {
+    test(`delayed assistant animation frames preserve ${messageKind} Markdown after ${completionStatus}`, (testContext) => {
+      const marked = {
+        Renderer: class {
+          code(): string { return ""; }
+          html(): string { return ""; }
+        },
+        parse(value: string): string {
+          return `<p>${value.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")}</p>`;
+        },
+      };
+      const { api, document, window } = createRuntimeHarness(marked, undefined, undefined, true);
+      testContext.after(() => window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" }));
+      window.dispatchMessage({ type: "state", payload: createPanelState() });
+      api.state.onlyShowFinalResults = false;
+      window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: 2_000 });
+      const appendContent = (content: string) => window.dispatchMessage({
+        type: "assistantDelta", tabId: "tab-1", id: "delayed-final", content, kind: messageKind,
+        ...(messageKind === "normal" ? { codexFinalAnswer: true } : {}),
+      });
+      appendContent("结论：");
+      appendContent("**已完成**");
+      assert.ok(window.animationFrames.size > 0);
+      const idleTimerId = Array.from(window.timers.keys()).find((timerId) => window.timerDelays.get(timerId) === 3000);
+      assert.ok(idleTimerId);
+      const idleRender = window.timers.get(idleTimerId);
+      window.timers.delete(idleTimerId);
+      idleRender?.();
+      const assertFormatted = () => {
+        const messages = document.getElementById("messages");
+        assert.equal(messages.querySelector(".assistant-message-content-streaming"), null);
+        const bubble = messages.querySelector(".bubble");
+        assert.ok(bubble);
+        assert.match((bubble.querySelector(".thinking-bubble-viewport") || bubble).innerHTML, /<strong>已完成<\/strong>/);
+        if (messageKind === "normal") {
+          assert.match(bubble.innerHTML, /assistant-message-content-final/);
+        }
+      };
+      assertFormatted();
+      if (completionStatus !== "idle") {
+        window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: completionStatus });
+        assertFormatted();
+      }
+      const delayedFrames = Array.from(window.animationFrames.values()) as Listener[];
+      window.animationFrames.clear();
+      delayedFrames.forEach((renderFrame) => renderFrame());
+      assertFormatted();
+    });
+  }
+}
+
+test("stale assistant frames cannot consume a resumed render after idle formatting", (testContext) => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, undefined, true);
+  testContext.after(() => window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end" }));
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const appendContent = (content: string) => window.dispatchMessage({
+    type: "assistantDelta", tabId: "tab-1", id: "resumed-final", content, codexFinalAnswer: true,
+  });
+  appendContent("最初正文");
+  appendContent("及最后一段");
+  const staleFrames = Array.from(window.animationFrames.values()) as Listener[];
+  window.animationFrames.clear();
+  const formatAfterIdle = () => {
+    const timerId = Array.from(window.timers.keys()).find((id) => window.timerDelays.get(id) === 3000);
+    assert.ok(timerId);
+    const render = window.timers.get(timerId);
+    window.timers.delete(timerId);
+    render?.();
+  };
+  formatAfterIdle();
+  appendContent("，继续补充");
+  staleFrames.forEach((renderFrame) => renderFrame());
+  const messages = document.getElementById("messages");
+  assert.equal(messages.querySelector(".assistant-message-content-streaming"), null);
+  const resumedFrames = Array.from(window.animationFrames.values()) as Listener[];
+  window.animationFrames.clear();
+  resumedFrames.forEach((renderFrame) => renderFrame());
+  assert.match(messages.querySelector(".assistant-message-content-streaming")?.textContent || "", /最初正文及最后一段，继续补充/);
+  formatAfterIdle();
+  assert.equal(messages.querySelector(".assistant-message-content-streaming"), null);
+  assert.equal(api.state.messages.filter((message: any) => message.role === "assistant").length, 1);
+});
+
+test("completion flush invalidates orphaned assistant frames without an idle timer", () => {
+  const frames = { "orphaned-final": {} };
+  const cleared: string[] = [];
+  let renderCount = 0;
+  const flush = new Function(
+    "assistantDeltaRenderTimers", "assistantStreamingMarkdownPending", "assistantStreamingRenderFrames",
+    "clearAssistantDeltaRenderTimer", "renderMessages",
+    `${extractFunctionSource(VIEW_CONTENT_SCRIPT_TRACE_RENDERING, "flushAssistantDeltaMarkdownRenders")}; return flushAssistantDeltaMarkdownRenders;`,
+  )({}, {}, frames, (id: string) => cleared.push(id), () => { renderCount += 1; });
+  flush();
+  assert.deepEqual(cleared, ["orphaned-final"]);
+  assert.deepEqual(frames, {});
+  assert.equal(renderCount, 1);
+  flush();
+  assert.equal(renderCount, 1);
+});
 
 test("batches assistant delta markdown rendering while streaming", () => {
   let markdownParseCount = 0;

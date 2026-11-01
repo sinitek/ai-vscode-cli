@@ -7,6 +7,8 @@ import {
   extractCodexWaitTimeoutPayload,
   extractCodexEventTurnId,
   isCodexFinalAnswerPhase,
+  isCodexFinalAnswerAgentMessage,
+  normalizeCodexExecItemType,
   isCodexContextCompactionCompletedNotification,
   isCodexSubagentThreadEvent,
   shouldSettleObservedCodexPrimaryTurn,
@@ -15,6 +17,7 @@ import {
 import {
   buildAppServerRequestResolution,
   buildForwardedRawEvent,
+  extractCodexAgentMessageText,
   buildTurnFailureMessage,
   type JsonRpcResolution,
 } from "./codexAppServerProtocol";
@@ -44,6 +47,7 @@ import {
   emitCodexTodoListUpdate,
   handleCodexItemEvent,
   handleCodexReasoningNotification,
+  isCodexPrimaryToolItemType,
   type CodexAssistantDeltaMeta as CodexRuntimeAssistantDeltaMeta,
   type CodexReasoningBufferState,
   type CodexRuntimeTraceKind,
@@ -57,6 +61,9 @@ import {
   type CodexAppServerConnection,
   type CodexAppServerListener,
 } from "./codexAppServerPool";
+import { containsFinalAnswerTextMarker, FINAL_ANSWER_TEXT_MARKER } from "../finalAnswerProtocol";
+
+const CODEX_FINAL_MESSAGE_COMPLETION_GRACE_MS = 1_000;
 
 export type CodexTraceKind = CodexRuntimeTraceKind;
 
@@ -159,6 +166,8 @@ type CodexRunnerOperation = {
   sawPrimaryAssistantOutput: boolean;
   settled: boolean;
   threadCompacted: boolean;
+  finalAnswerItemId?: string;
+  finalAnswerCompletionTimer?: ReturnType<typeof setTimeout>;
   resolve: () => void;
   reject: (error: Error) => void;
   done: Promise<void>;
@@ -630,11 +639,88 @@ export class CodexInteractiveRunner {
       return;
     }
     operation.settled = true;
+    if (operation.finalAnswerCompletionTimer) {
+      clearTimeout(operation.finalAnswerCompletionTimer);
+      operation.finalAnswerCompletionTimer = undefined;
+    }
     if (error) {
       operation.reject(error);
       return;
     }
     operation.resolve();
+  }
+
+  private scheduleFinalAnswerCompletion(
+    operation: CodexRunnerOperation,
+    threadId: string,
+    turnId: string,
+    completionSource = "item/completed",
+  ): void {
+    if (!threadId || !turnId || operation.settled) {
+      return;
+    }
+    if (operation.finalAnswerCompletionTimer) {
+      clearTimeout(operation.finalAnswerCompletionTimer);
+    }
+    operation.finalAnswerCompletionTimer = setTimeout(() => {
+      if (this.activeOperation !== operation || operation.settled) {
+        return;
+      }
+      logInfo("codex-final-answer-completion-fallback", { threadId, turnId, completionSource });
+      this.captureSupersededTurns();
+      this.settleActive();
+      if (this.connection) {
+        void this.connection.request(this.listenerId, "turn/interrupt", { threadId, turnId })
+          .catch(() => undefined);
+      }
+    }, CODEX_FINAL_MESSAGE_COMPLETION_GRACE_MS);
+  }
+
+  private observeFinalAnswerBoundary(
+    operation: CodexRunnerOperation,
+    method: string,
+    params: Record<string, unknown>,
+  ): void {
+    if (operation.kind !== "turn" || operation.finalAnswerCompletionTimer || !operation.finalAnswerItemId) {
+      return;
+    }
+    const threadId = String(params.threadId || params.thread_id || this.options.threadId || "").trim();
+    if (isCodexSubagentThreadEvent(threadId, this.options.threadId)) {
+      return;
+    }
+    const turnId = extractCodexEventTurnId(params) || operation.activeTurnId;
+    if (this.isSupersededTurn(turnId)) {
+      return;
+    }
+    const text = operation.assistantBuffers.get(operation.finalAnswerItemId) || "";
+    if (!text.replace(FINAL_ANSWER_TEXT_MARKER, "").trim()) {
+      return;
+    }
+    const item = params.item && typeof params.item === "object"
+      ? params.item as Record<string, unknown>
+      : {};
+    const itemType = normalizeCodexExecItemType(item.type);
+    const itemId = String(params.itemId || item.id || "").trim();
+    const nextAgentMessage = (
+      (method === "item/agentMessage/delta" && Boolean(params.delta))
+      || (method === "item/started" && itemType === "agent_message")
+      || (method === "item/completed" && itemType === "agent_message"
+        && Boolean(extractCodexAgentMessageText(item).trim()))
+    ) && Boolean(itemId) && itemId !== operation.finalAnswerItemId;
+    const nextActivity = method.startsWith("item/reasoning/")
+      || method.endsWith("/requestApproval")
+      || method === "item/tool/call"
+      || ((method === "item/started" || method === "item/completed")
+        && (itemType === "reasoning" || isCodexPrimaryToolItemType(itemType)));
+    const error = params.error && typeof params.error === "object"
+      ? params.error as Record<string, unknown>
+      : {};
+    const retryMessage = String(params.message || error.message || error.additionalDetails || "").trim();
+    const reconnectAfterAnswer = method === "error"
+      && /^(?:reconnecting|retrying)\b/i.test(retryMessage);
+    if (nextAgentMessage || nextActivity || reconnectAfterAnswer) {
+      this.scheduleFinalAnswerCompletion(operation, threadId, turnId, method);
+    }
   }
 
   private throwIfSuperseded(abortGeneration: number, disposeGeneration: number): void {
@@ -687,13 +773,18 @@ export class CodexInteractiveRunner {
     params: unknown,
   ): Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined {
     const operation = this.activeOperation;
-    this.forwardEvent({ method, params });
-    if (!operation || operation.kind !== "turn") {
+    if (operation && !operation.settled) {
+      this.observeFinalAnswerBoundary(operation, method, params && typeof params === "object"
+        ? params as Record<string, unknown>
+        : {});
+    }
+    if (!operation || operation.settled || operation.finalAnswerCompletionTimer || operation.kind !== "turn") {
       return buildAppServerRequestResolution(
         method,
         t("codex.appServerUnsupportedRequest", { method: method || "unknown" }),
       );
     }
+    this.forwardEvent({ method, params });
     return operation.handlers.onRequest?.({ method, params })
       ?? buildAppServerRequestResolution(
         method,
@@ -748,11 +839,29 @@ export class CodexInteractiveRunner {
 
   private handleNotification(message: Record<string, unknown>): void {
     const operation = this.activeOperation;
-    if (!operation) {
+    if (!operation || operation.settled) {
+      return;
+    }
+    const method = String(message.method || "").trim();
+    const params = message.params && typeof message.params === "object"
+      ? message.params as Record<string, unknown>
+      : {};
+    const eventThreadId = String(params.threadId || params.thread_id || "").trim();
+    if (
+      !isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)
+      && this.isSupersededTurn(extractCodexEventTurnId(params))
+    ) {
+      return;
+    }
+    this.observeFinalAnswerBoundary(operation, method, params);
+    if (
+      operation.finalAnswerCompletionTimer
+      && method !== "turn/completed"
+      && method !== "thread/tokenUsage/updated"
+    ) {
       return;
     }
     this.forwardEvent(message);
-    const method = String(message.method || "").trim();
     if (operation.kind === "compact" && isCodexContextCompactionCompletedNotification(message, this.options.threadId ?? undefined)) {
       operation.threadCompacted = true;
       this.settleActive();
@@ -844,6 +953,10 @@ export class CodexInteractiveRunner {
       const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
       if (bufferKey) {
         operation.assistantBuffers.set(bufferKey, `${operation.assistantBuffers.get(bufferKey) ?? ""}${delta}`);
+        if (!isSubagentDelta && (isCodexFinalAnswerPhase(params.phase)
+          || containsFinalAnswerTextMarker(operation.assistantBuffers.get(bufferKey)))) {
+          operation.finalAnswerItemId = itemId;
+        }
       }
       if (delta && operation.observer) {
         if (isSubagentDelta) {
@@ -855,7 +968,10 @@ export class CodexInteractiveRunner {
         } else {
           operation.observer.emit(
             delta,
-            isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : undefined,
+            {
+              ...(itemId ? { assistantItemId: itemId } : {}),
+              ...(isCodexFinalAnswerPhase(params.phase) ? { codexFinalAnswer: true } : {}),
+            },
           );
           if (Object.prototype.hasOwnProperty.call(params, "phase")) {
             operation.observer.observeAgentMessagePhase(params.phase);
@@ -1077,6 +1193,26 @@ export class CodexInteractiveRunner {
           detail: failure.detail,
         }),
       });
+      const item = params.item && typeof params.item === "object"
+        ? params.item as Record<string, unknown>
+        : null;
+      const finalText = extractCodexAgentMessageText(item);
+      if (
+        operation.kind === "turn"
+        && !operation.settled
+        && method === "item/completed"
+        && !isCodexSubagentThreadEvent(String(params.threadId || ""), this.options.threadId)
+        && item
+        && normalizeCodexExecItemType(item.type) === "agent_message"
+        && finalText.replace(FINAL_ANSWER_TEXT_MARKER, "").trim()
+        && (isCodexFinalAnswerAgentMessage(item) || containsFinalAnswerTextMarker(finalText))
+      ) {
+        this.scheduleFinalAnswerCompletion(
+          operation,
+          String(params.threadId || this.options.threadId || "").trim(),
+          extractCodexEventTurnId(params) || operation.activeTurnId,
+        );
+      }
     }
   }
 }

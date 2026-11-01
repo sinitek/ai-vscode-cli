@@ -311,6 +311,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         assistantDeltaRenderTimers[messageId] = setTimeout(() => {
           delete assistantDeltaRenderTimers[messageId];
+          delete assistantStreamingRenderFrames[messageId];
           const renderedIndex = state.messages.findIndex((item) => item && item.id === messageId);
           if (renderedIndex === -1) {
             delete assistantStreamingMarkdownPending[messageId];
@@ -340,6 +341,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         const messageIds = new Set([
           ...Object.keys(assistantDeltaRenderTimers),
           ...Object.keys(assistantStreamingMarkdownPending),
+          ...Object.keys(assistantStreamingRenderFrames),
         ]);
         messageIds.forEach((messageId) => {
           clearAssistantDeltaRenderTimer(messageId);
@@ -354,9 +356,10 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (!messageId || assistantStreamingRenderFrames[messageId]) {
           return;
         }
-        assistantStreamingRenderFrames[messageId] = true;
+        const renderToken = {};
+        assistantStreamingRenderFrames[messageId] = renderToken;
         const renderFrame = () => {
-          if (!assistantStreamingRenderFrames[messageId]) {
+          if (assistantStreamingRenderFrames[messageId] !== renderToken) {
             return;
           }
           delete assistantStreamingRenderFrames[messageId];

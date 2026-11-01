@@ -6,6 +6,7 @@ import * as os from "os";
 import * as path from "path";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
+import type { CodexAssistantDeltaMeta } from "../../interactive/codexRunnerRuntime";
 
 installVscodeMock();
 
@@ -608,6 +609,110 @@ test("Codex runner sends request_user_input answers in the per-question schema",
     crossSpawn.spawn = originalSpawn;
   }
 });
+
+const finalMessageBoundaries = ["completed", "tool", "reasoning", "next-message", "request", "reconnect"] as const;
+for (const [finalBoundary, nativeFinalPhase] of finalMessageBoundaries.flatMap((boundary) =>
+  [true, false].map((native) => [boundary, native] as const))) {
+  test(`Codex runner settles ${nativeFinalPhase ? "native" : "marker"} final messages at ${finalBoundary} without a turn completion`, { timeout: 8_000 }, async () => {
+    const originalSpawn = crossSpawn.spawn;
+    const child = createFakeChild();
+    const requests: Array<{ method?: string; params?: Record<string, unknown> }> = [];
+    const send = (method: string, params: Record<string, unknown>) => child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
+    const turns: string[] = [];
+    let input = "";
+    child.stdin.on("data", (chunk: Buffer | string) => {
+      input += String(chunk);
+      const lines = input.split(/\r?\n/u);
+      input = lines.pop() ?? "";
+      for (const line of lines.filter((value) => value.trim())) {
+        const request = JSON.parse(line);
+        requests.push(request);
+        let result: Record<string, unknown> = {};
+        if (request.method === "thread/start" || request.method === "thread/resume") {
+          result = { thread: { id: "parent-thread" } };
+        } else if (request.method === "turn/start") {
+          const turnId = `final-turn-${turns.length + 1}`;
+          turns.push(turnId);
+          result = { turn: { id: turnId, status: "inProgress" } };
+        }
+        child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: request.id, result })}\n`);
+      }
+    });
+    crossSpawn.spawn = (): unknown => child;
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({ command: process.execPath, args: [], thinkingMode: "medium", interactiveMode: "coding", threadId: null });
+    const assistant: Array<{ chunk: string; itemId?: string }> = [];
+    const traces: string[] = [];
+    const handlers = {
+      ...createHandlers(),
+      onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => assistant.push({ chunk, itemId: meta?.assistantItemId }),
+      onTrace: (content: string) => traces.push(content),
+    };
+    try {
+      let settled = false;
+      const run = runner.runStreamed("task", handlers).then(() => { settled = true; });
+      for (let attempts = 0; attempts < 100 && turns.length < 1; attempts += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.equal(turns.length, 1);
+      const primary = { threadId: "parent-thread", turnId: turns[0] };
+      const prefix = nativeFinalPhase ? "**完整" : "[final_answer]\n";
+      const suffix = nativeFinalPhase ? "结论**" : "**完整结论**";
+      const text = prefix + suffix;
+      send("item/agentMessage/delta", { ...primary, itemId: "answer", delta: prefix, ...(nativeFinalPhase ? { phase: "final_answer" } : {}) });
+      await new Promise((resolve) => setTimeout(resolve, 1_050));
+      assert.equal(settled, false, "a final prefix must not truncate an unfinished message");
+      send("item/agentMessage/delta", { ...primary, itemId: "answer", delta: suffix, ...(nativeFinalPhase ? { phase: "final_answer" } : {}) });
+      send("item/started", { threadId: "child-thread", turnId: "child-turn", item: { id: "child-tool", type: "web_search", query: "ignored child" } });
+      send("item/completed", { threadId: "child-thread", turnId: "child-turn", item: { id: "child-final", type: "agent_message", phase: "final_answer", text } });
+      send("item/completed", { ...primary, item: { id: "empty", type: "agent_message", phase: "final_answer", text: "" } });
+      await new Promise((resolve) => setTimeout(resolve, 1_050));
+      assert.equal(settled, false);
+      assert.equal(requests.some((request) => request.method === "turn/interrupt"), false);
+      if (finalBoundary === "completed") {
+        send("item/completed", { ...primary, item: { id: "answer", type: "agent_message", ...(nativeFinalPhase ? { phase: "final_answer" } : {}), text } });
+      } else if (finalBoundary === "tool") {
+        send("item/started", { ...primary, item: { id: "next-search", type: "web_search", query: "should not continue searching" } });
+      } else if (finalBoundary === "reasoning") {
+        send("item/reasoning/textDelta", { ...primary, itemId: "next-reasoning", delta: "should not reason again" });
+      } else if (finalBoundary === "next-message") {
+        send("item/agentMessage/delta", { ...primary, itemId: "replacement-answer", delta: "should not restart the answer" });
+      } else if (finalBoundary === "request") {
+        child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: "late-request", method: "item/commandExecution/requestApproval", params: { ...primary, itemId: "late-command", command: "ignored" } })}\n`);
+      } else {
+        send("error", { ...primary, willRetry: true, error: { message: "Reconnecting... 1/5" } });
+      }
+      send("item/agentMessage/delta", { ...primary, itemId: "late", delta: "不应继续输出" });
+      send("item/started", { ...primary, item: { id: "late-tool", type: "command_execution", command: "ignored" } });
+      await new Promise<void>((resolve, reject) => {
+        const completionTimeout = setTimeout(() => reject(new Error("final answer did not settle")), 1_500);
+        run.then(() => { clearTimeout(completionTimeout); resolve(); }, (error) => { clearTimeout(completionTimeout); reject(error); });
+      });
+      assert.equal(assistant.map((entry) => entry.chunk).join(""), text);
+      assert.ok(assistant.every((entry) => entry.itemId === "answer"));
+      assert.deepEqual(assistant.filter((entry) => entry.chunk).map((entry) => entry.itemId), ["answer", "answer"]);
+      assert.deepEqual(traces, []);
+      assert.equal(requests.filter((request) => request.method === "turn/interrupt").length, 1);
+      assert.deepEqual(requests.find((request) => request.method === "turn/interrupt")?.params, primary);
+      const nextRun = runner.runStreamed("next task", handlers);
+      for (let attempts = 0; attempts < 100 && turns.length < 2; attempts += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.equal(turns.length, 2);
+      send("item/reasoning/textDelta", { ...primary, itemId: "late-thinking", delta: "上一轮迟到的思考" });
+      send("item/agentMessage/delta", { ...primary, itemId: "late", delta: "上一轮迟到的答复" });
+      send("turn/completed", { threadId: "parent-thread", turn: { id: turns[0], status: "completed" } });
+      send("item/agentMessage/delta", { threadId: "parent-thread", turnId: turns[1], itemId: "next-answer", delta: "下一轮完整答复", phase: "final_answer" });
+      send("turn/completed", { threadId: "parent-thread", turn: { id: turns[1], status: "completed" } });
+      await nextRun;
+      assert.equal(assistant.map((entry) => entry.chunk).join(""), text + "下一轮完整答复");
+      assert.deepEqual(assistant.filter((entry) => entry.chunk).map((entry) => entry.itemId), ["answer", "answer", "next-answer"]);
+    } finally {
+      runner.dispose();
+      crossSpawn.spawn = originalSpawn;
+    }
+  });
+}
 
 test("Codex runner emits primary completed callback only for completed turns", async () => {
   const originalSpawn = crossSpawn.spawn;

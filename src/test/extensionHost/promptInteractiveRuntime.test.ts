@@ -423,6 +423,103 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
 });
 
+test("interactive runtime host reuses a final bubble when its native final phase arrives late", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("[final_answer] **最终结论**", { assistantItemId: "answer-1" });
+      handlers.onAssistantDelta("：正文完整。", { assistantItemId: "answer-1", codexFinalAnswer: true });
+      handlers.onAssistantDelta("", { assistantItemId: "answer-1", codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+
+  const replies = (harness.messagesBySession.get("session-1") ?? [])
+    .filter((message) => message.role === "assistant" && message.kind !== "thinking");
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].content, "[final_answer] **最终结论**：正文完整。");
+  assert.equal(replies[0].codexFinalAnswer, true);
+  const appended = harness.panelMessages.filter((message) => message.type === "appendMessage"
+    && (message.message as ChatMessage)?.role === "assistant");
+  assert.equal(appended.length, 1);
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+});
+
+test("interactive runtime host promotes a partial native message without splitting its text", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("**最终", { assistantItemId: "answer-1" });
+      handlers.onAssistantDelta("结论**：正文完整。", { assistantItemId: "answer-1", codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+
+  const replies = (harness.messagesBySession.get("session-1") ?? [])
+    .filter((message) => message.role === "assistant" && message.kind !== "thinking");
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].content, "**最终结论**：正文完整。");
+  assert.equal(replies[0].codexFinalAnswer, true);
+});
+
+test("interactive runtime host keeps a separate final bubble after a different commentary item", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("我先核对资料。", { assistantItemId: "commentary-1" });
+      handlers.onAssistantDelta("[final_answer] **最终结论**", { assistantItemId: "answer-1", codexFinalAnswer: true });
+      handlers.onAssistantDelta("：正文完整。", { assistantItemId: "answer-1", codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+
+  const replies = (harness.messagesBySession.get("session-1") ?? [])
+    .filter((message) => message.role === "assistant" && message.kind !== "thinking");
+  assert.deepEqual(replies.map((message) => message.content), ["我先核对资料。", "[final_answer] **最终结论**：正文完整。"]);
+  assert.equal(replies.filter((message) => message.codexFinalAnswer).length, 1);
+});
+
+test("interactive runtime host reuses marker final bubbles without native item metadata", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("[final_answer] **最终结论**");
+      handlers.onAssistantDelta("：正文完整。", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+
+  const replies = (harness.messagesBySession.get("session-1") ?? [])
+    .filter((message) => message.role === "assistant" && message.kind !== "thinking");
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].content, "[final_answer] **最终结论**：正文完整。");
+  assert.equal(replies[0].codexFinalAnswer, true);
+});
+
+test("interactive runtime host targets the original native reply across trace and thinking updates", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("**最终结论**", { assistantItemId: "answer-1" });
+      handlers.onTrace("检索完成", "normal");
+      handlers.onAssistantDelta("核对原始资料。", { kind: "thinking", reasoningItemId: "reasoning-1" });
+      handlers.onAssistantDelta("", { assistantItemId: "empty-answer", codexFinalAnswer: true });
+      handlers.onAssistantDelta("：正文完整。", { assistantItemId: "answer-1", codexFinalAnswer: true });
+      handlers.onAssistantDelta("", { assistantItemId: "answer-1", codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+
+  const messages = harness.messagesBySession.get("session-1") ?? [];
+  const replies = messages.filter((message) => message.role === "assistant" && message.kind !== "thinking");
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].content, "**最终结论**：正文完整。");
+  assert.equal(replies[0].codexFinalAnswer, true);
+  const thinking = messages.find((message) => message.kind === "thinking");
+  assert.equal(thinking?.content, "核对原始资料。");
+  assert.notEqual(thinking?.codexFinalAnswer, true);
+});
+
 test("interactive automatic repair retry does not enter the general hidden retry loop", async () => {
   let attempts = 0;
   const failure = new Error("temporary provider failure");

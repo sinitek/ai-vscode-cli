@@ -55,6 +55,7 @@ export type CodexRuntimeTraceMeta = {
 
 export type CodexAssistantDeltaMeta = {
   codexFinalAnswer?: boolean;
+  assistantItemId?: string;
   kind?: "thinking";
   reasoningItemId?: string;
 };
@@ -210,6 +211,7 @@ export function createCodexTurnAssistantObserver(
   let observedFinalAnswer = false;
   let lastPhase: CodexAgentMessagePhase | null = null;
   let toolActivityAfterLastAgentMessage = false;
+  let lastAssistantItemId: string | undefined;
 
   const emit: CodexRuntimeItemEventHandlers["onAssistantDelta"] = (chunk, meta) => {
     if (meta?.kind === "thinking") {
@@ -219,6 +221,7 @@ export function createCodexTurnAssistantObserver(
     if (chunk.trim()) {
       observedNonEmptyText = true;
     }
+    lastAssistantItemId = meta?.assistantItemId;
     if (meta?.codexFinalAnswer === true) {
       observedFinalAnswer = true;
       lastPhase = "final_answer";
@@ -252,7 +255,10 @@ export function createCodexTurnAssistantObserver(
         return false;
       }
       observedFinalAnswer = true;
-      onAssistantDelta("", { codexFinalAnswer: true });
+      onAssistantDelta("", {
+        codexFinalAnswer: true,
+        ...(lastAssistantItemId ? { assistantItemId: lastAssistantItemId } : {}),
+      });
       return true;
     },
   };
@@ -867,8 +873,11 @@ export function handleCodexItemEvent(options: {
       const previousText = itemId ? (assistantBuffers.get(itemId) ?? "") : "";
       const delta = extractDelta(previousText, nextText);
       const codexFinalAnswer = isCodexFinalAnswerAgentMessage(item);
-      if (delta || codexFinalAnswer) {
-        handlers.onAssistantDelta(delta, codexFinalAnswer ? { codexFinalAnswer: true } : undefined);
+      if (delta || (codexFinalAnswer && Boolean(nextText.trim() || previousText.trim()))) {
+        handlers.onAssistantDelta(delta, {
+          ...(itemId ? { assistantItemId: itemId } : {}),
+          ...(codexFinalAnswer ? { codexFinalAnswer: true } : {}),
+        });
       }
       handlers.onPrimaryAgentMessageCompleted?.(item.phase ?? null);
       if (itemId) {

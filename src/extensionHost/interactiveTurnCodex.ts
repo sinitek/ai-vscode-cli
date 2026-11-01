@@ -80,6 +80,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             }
             port.appendAssistantChunkForTab(chunk, undefined, {
               codexFinalAnswer: meta?.codexFinalAnswer === true,
+              assistantItemId: meta?.assistantItemId,
             });
             port.appendDebugStdout(chunk);
           },

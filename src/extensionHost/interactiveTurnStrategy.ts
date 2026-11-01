@@ -32,6 +32,7 @@ export type InteractiveTraceMessageOptions = {
 
 export type InteractiveAssistantChunkOptions = {
   codexFinalAnswer?: boolean;
+  assistantItemId?: string;
   reasoningItemId?: string;
 };
 
