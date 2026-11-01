@@ -584,7 +584,7 @@ function renderAcceptanceFeedbackTable(rows: readonly AcceptanceFeedbackRow[]): 
     "| --- | --- |",
   ];
   for (const row of rows) {
-    const result = `${row.passed ? "通过" : "未通过"}。原因：${row.reason}`;
+    const result = `${row.passed ? "✅" : "❌"} ${row.reason}`;
     lines.push(`| ${escapeMarkdownTableCell(row.content)} | ${escapeMarkdownTableCell(result)} |`);
   }
   return lines.join("\n");
