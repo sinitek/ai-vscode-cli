@@ -17,6 +17,7 @@ import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContent
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
 import { MESSAGE_BLOCK_STYLES } from "../../webview/viewContentStyles/messages";
+import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 
 const TEXT_NODE = 3;
 const ELEMENT_NODE = 1;
@@ -518,6 +519,11 @@ test("keeps the search shell, theme tokens, and rerender hook together", () => {
   assert.match(html, /id="chatSearchCount"[^>]*>0\/0</);
   assert.match(HEADER_TABS_STYLES, /\.chat-search-bar \{[\s\S]*var\(--vscode-editorWidget-background/);
   assert.match(HEADER_TABS_STYLES, /\.chat-search-bar \{[^}]*width: 50vw;/);
+  assert.match(html, /id="historySearchInput"[^>]*type="text"/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.history-search-input \{[^}]*background: var\(--vscode-editorWidget-background, var\(--vscode-editor-background\)\);/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.history-search-input \{[^}]*color: var\(--vscode-editorWidget-foreground, var\(--vscode-foreground\)\);/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.history-search-input:focus \{[^}]*var\(--vscode-focusBorder/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.history-search-input::placeholder \{[^}]*var\(--vscode-input-placeholderForeground, var\(--vscode-descriptionForeground\)\);/);
   assert.match(MESSAGE_BLOCK_STYLES, /mark\.chat-search-hit \{[\s\S]*background: #fff2a8;[\s\S]*color: #000000;/);
   assert.match(MESSAGE_BLOCK_STYLES, /mark\.chat-search-hit\.is-active \{[\s\S]*background: #fff2a8;[\s\S]*color: #000000;/);
   assert.doesNotMatch(HEADER_TABS_STYLES.slice(HEADER_TABS_STYLES.indexOf(".chat-search-bar")), /#[0-9a-fA-F]{3,8}/);

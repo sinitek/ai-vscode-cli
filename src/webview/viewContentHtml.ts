@@ -383,7 +383,7 @@ ${renderChatModal({
             <button id="historyTabSessions" class="help-tab active" role="tab" aria-selected="true">${i18n.historyTabSessions}</button>
           </div>
           <div class="history-search-row">
-            <input id="historySearchInput" class="history-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="${i18n.historySearchPlaceholder}" aria-label="${i18n.historySearchAriaLabel}" />
+            <input id="historySearchInput" class="history-search-input" type="text" autocomplete="off" spellcheck="false" placeholder="${i18n.historySearchPlaceholder}" aria-label="${i18n.historySearchAriaLabel}" />
           </div>
           <div id="historyPanelPrompts" class="history-panel prompts" role="tabpanel">
             <div class="prompt-history-toolbar">

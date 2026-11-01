@@ -765,6 +765,24 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       .history-search-input {
         width: 100%;
         box-sizing: border-box;
+        height: 34px;
+        margin: 0;
+        padding: 4px 10px;
+        border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border));
+        border-radius: 6px;
+        outline: none;
+        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+        font: inherit;
+        font-size: 13px;
+        line-height: 24px;
+      }
+      .history-search-input:focus {
+        border-color: var(--vscode-focusBorder);
+      }
+      .history-search-input::placeholder {
+        color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+        opacity: 1;
       }
       .history-panel {
         display: none;
