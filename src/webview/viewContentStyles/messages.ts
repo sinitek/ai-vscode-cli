@@ -164,7 +164,8 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         overflow-y: visible;
       }
       .thinking-bubble-toggle,
-      .thinking-bubble-collapse {
+      .thinking-bubble-collapse,
+      .instruction-group-collapse {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -188,21 +189,25 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         justify-self: center;
       }
       .thinking-bubble-toggle[hidden],
-      .thinking-bubble-collapse[hidden] {
+      .thinking-bubble-collapse[hidden],
+      .instruction-group-collapse[hidden] {
         display: none;
       }
       .thinking-bubble-toggle:hover,
-      .thinking-bubble-collapse:hover {
+      .thinking-bubble-collapse:hover,
+      .instruction-group-collapse:hover {
         background: var(--vscode-toolbar-hoverBackground);
         color: var(--vscode-foreground);
       }
       .thinking-bubble-toggle:focus-visible,
-      .thinking-bubble-collapse:focus-visible {
+      .thinking-bubble-collapse:focus-visible,
+      .instruction-group-collapse:focus-visible {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }
       .thinking-bubble-toggle svg,
-      .thinking-bubble-collapse svg {
+      .thinking-bubble-collapse svg,
+      .instruction-group-collapse svg {
         width: 16px;
         height: 16px;
       }
@@ -256,6 +261,13 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         margin-top: 12px;
       }
       .instruction-group:not([open]) > .instruction-group-body {
+        display: none;
+      }
+      .instruction-group-collapse {
+        margin: 6px auto 0;
+        display: flex;
+      }
+      .instruction-group:not([open]) > .instruction-group-collapse {
         display: none;
       }
 

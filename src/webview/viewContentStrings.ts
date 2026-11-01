@@ -27,6 +27,7 @@ export const WEBVIEW_STRINGS = {
     instructionGroupCollapsed: "({count}) {title}",
     instructionGroupCollapsedUntitled: "已折叠",
     instructionGroupExpanded: "收起 ({count})",
+    instructionGroupCollapse: "收起指令气泡",
     thinkingBubbleExpand: "展开全部思考内容",
     thinkingBubbleCollapse: "收起思考内容，显示最新五行",
     resultOnlyLabel: "仅看结果",

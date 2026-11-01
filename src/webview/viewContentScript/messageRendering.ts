@@ -286,6 +286,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           Boolean(group.open),
           instructionGroupLatestTitle(group)
         );
+        const collapseButton = group.querySelector(".instruction-group-collapse");
+        if (collapseButton) {
+          collapseButton.hidden = !group.open;
+        }
       }
 
       function refreshInstructionGroupSummaryForMessage(wrapper) {
@@ -330,18 +334,28 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         if (!summary || typeof summary.addEventListener !== "function") {
           return;
         }
-        summary.addEventListener("click", (event) => {
-          if (event && typeof event.preventDefault === "function") {
-            event.preventDefault();
-          }
-          group.open = !group.open;
+        const setOpen = (open) => {
+          group.open = open;
           if (group.open) {
             group.setAttribute("open", "");
           } else if (typeof group.removeAttribute === "function") {
             group.removeAttribute("open");
           }
           syncInstructionGroupSummary(group);
+        };
+        summary.addEventListener("click", (event) => {
+          if (event && typeof event.preventDefault === "function") {
+            event.preventDefault();
+          }
+          setOpen(!group.open);
         });
+        const collapseButton = group.querySelector(".instruction-group-collapse");
+        if (collapseButton) {
+          collapseButton.addEventListener("click", () => {
+            setOpen(false);
+            summary.focus({ preventScroll: true });
+          });
+        }
       }
 
       function createInstructionGroupElement(entries) {
@@ -364,10 +378,19 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         group.appendChild(summary);
         const body = document.createElement("div");
         body.className = "instruction-group-body";
+        body.id = "instruction-content-" + key;
         entries.forEach((entry) => {
           body.appendChild(createMessageElement(entry.message, entry.index));
         });
         group.appendChild(body);
+        const collapseButton = document.createElement("button");
+        collapseButton.type = "button";
+        collapseButton.className = "instruction-group-collapse";
+        collapseButton.title = t("instructionGroupCollapse");
+        collapseButton.setAttribute("aria-label", collapseButton.title);
+        collapseButton.setAttribute("aria-controls", body.id);
+        collapseButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 14 6-6 6 6"/></svg>';
+        group.appendChild(collapseButton);
         syncInstructionGroupSummary(group);
         bindInstructionGroupToggle(group);
         return group;

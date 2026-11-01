@@ -2465,6 +2465,56 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   assert.equal(reopened.querySelector("summary").textContent, "(3) command five");
 });
 
+test("expanded instruction groups collapse from their bottom icon and stay collapsed after rerendering", () => {
+  for (const count of [2, 3]) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createPanelState() });
+    api.state.onlyShowFinalResults = false;
+    api.state.messages = [{ id: "cmd-1", role: "trace", content: "exec command-1" }];
+    api.renderMessages();
+    const messages = document.getElementById("messages");
+    assert.equal(messages.querySelector(".instruction-group-collapse"), null);
+
+    for (let index = 2; index <= count; index += 1) {
+      api.state.messages.push({ id: `cmd-${index}`, role: "trace", content: `exec command-${index}` });
+    }
+    api.renderMessages();
+    const group = messages.querySelector("details.instruction-group");
+    const body = group.querySelector(".instruction-group-body");
+    const collapseButton = group.querySelector(".instruction-group-collapse");
+    assert.equal(collapseButton.hidden, true);
+    assert.equal(collapseButton.type, "button");
+    assert.equal(collapseButton.getAttribute("aria-label"), WEBVIEW_STRINGS.instructionGroupCollapse);
+    assert.equal(collapseButton.title, WEBVIEW_STRINGS.instructionGroupCollapse);
+    assert.equal(collapseButton.getAttribute("aria-controls"), body.id);
+    assert.match(collapseButton.innerHTML, /<path d="m6 14 6-6 6 6"/);
+    assert.equal(group.children[group.children.length - 1], collapseButton);
+    assert.equal(body.children.length, count);
+
+    group.querySelector("summary").click();
+    assert.equal(collapseButton.hidden, false);
+    api.renderMessages();
+    const redrawn = messages.querySelector("details.instruction-group");
+    assert.equal(redrawn.open, true);
+    assert.equal(redrawn.querySelector(".instruction-group-collapse").hidden, false);
+    redrawn.querySelector(".instruction-group-collapse").click();
+    assert.equal(redrawn.open, false);
+    assert.equal(redrawn.getAttribute("open"), null);
+    assert.equal(redrawn.querySelector(".instruction-group-collapse").hidden, true);
+    assert.equal(redrawn.querySelector("summary").textContent, `(${count}) 执行命令： command-${count}`);
+    assert.equal(redrawn.querySelector("summary").focused, true);
+
+    api.renderMessages();
+    const collapsed = messages.querySelector("details.instruction-group");
+    assert.equal(collapsed.open, false);
+    assert.equal(collapsed.querySelector(".instruction-group-collapse").hidden, true);
+    collapsed.querySelector("summary").click();
+    assert.equal(collapsed.open, true);
+    assert.equal(collapsed.querySelector(".instruction-group-collapse").hidden, false);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  }
+});
+
 test("groups visually consecutive instructions across hidden historical messages", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
