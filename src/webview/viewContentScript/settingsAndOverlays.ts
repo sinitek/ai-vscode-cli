@@ -1217,7 +1217,19 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.promptHistoryFavoritesOnly.addEventListener("change", (event) => {
           state.promptHistoryFavoritesOnly = Boolean(event.target.checked);
           persistWebviewUiState();
-          renderPromptHistoryList();
+          setPromptHistoryPage(1);
+        });
+      }
+
+      if (elements.promptHistoryPrevPage) {
+        elements.promptHistoryPrevPage.addEventListener("click", () => {
+          setPromptHistoryPage(state.promptHistoryPage - 1);
+        });
+      }
+
+      if (elements.promptHistoryNextPage) {
+        elements.promptHistoryNextPage.addEventListener("click", () => {
+          setPromptHistoryPage(state.promptHistoryPage + 1);
         });
       }
 
@@ -1225,7 +1237,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.historySearchInput.addEventListener("input", (event) => {
           state.historySearchQuery = String(event.target.value || "");
           renderSessionList();
-          renderPromptHistoryList();
+          setPromptHistoryPage(1);
         });
       }
 

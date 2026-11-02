@@ -1972,6 +1972,157 @@ test("renders prompt history favorites and filters to favorite prompts", () => {
   assert.equal(list.children[0].textContent, "暂无收藏提示词");
 });
 
+test("paginates prompt history in groups of 50 and resets scroll and expansion when changing pages", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const promptHistory = Array.from({ length: 101 }, (_value, index) => ({
+    id: "prompt-" + (index + 1),
+    prompt: "history prompt " + (index + 1),
+    cli: "codex",
+    createdAt: 1_700_000_000_000 - index,
+  }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+
+  const list = document.getElementById("promptHistoryList");
+  const previous = document.getElementById("promptHistoryPrevPage");
+  const next = document.getElementById("promptHistoryNextPage");
+  const pageInfo = document.getElementById("promptHistoryPageInfo");
+  assert.equal(list.children.length, 50);
+  assert.equal(pageInfo.textContent, "第 1 / 3 页 · 共 101 条");
+  assert.equal(previous.disabled, true);
+  assert.equal(next.disabled, false);
+
+  list.children[0].querySelectorAll("button").find((button: FakeElement) => button.textContent === "查看")?.click();
+  assert.equal(api.state.promptHistoryExpandedId, "prompt-1");
+  list.scrollTop = 500;
+  next.click();
+  assert.equal(api.state.promptHistoryPage, 2);
+  assert.equal(api.state.promptHistoryExpandedId, null);
+  assert.equal(list.scrollTop, 0);
+  assert.equal(list.children.length, 50);
+  assert.equal(list.children[0].querySelector(".prompt-preview")?.textContent, "history prompt 51");
+  assert.equal(pageInfo.textContent, "第 2 / 3 页 · 共 101 条");
+  assert.equal(previous.disabled, false);
+
+  next.click();
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].querySelector(".prompt-preview")?.textContent, "history prompt 101");
+  assert.equal(pageInfo.textContent, "第 3 / 3 页 · 共 101 条");
+  assert.equal(next.disabled, true);
+  previous.click();
+  assert.equal(api.state.promptHistoryPage, 2);
+  assert.equal(list.children.length, 50);
+});
+
+test("applies prompt history search and favorite filters before pagination and resets their page", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const promptHistory = Array.from({ length: 121 }, (_value, index) => ({
+    id: "prompt-" + (index + 1),
+    prompt: (index >= 60 ? "target prompt " : "other prompt ") + (index + 1),
+    cli: "codex",
+    createdAt: 1_700_000_000_000 - index,
+    favorite: index < 60,
+  }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+
+  const list = document.getElementById("promptHistoryList");
+  const next = document.getElementById("promptHistoryNextPage");
+  const pageInfo = document.getElementById("promptHistoryPageInfo");
+  const search = document.getElementById("historySearchInput");
+  const favoritesOnly = document.getElementById("promptHistoryFavoritesOnly");
+  next.click();
+  next.click();
+  assert.equal(api.state.promptHistoryPage, 3);
+
+  search.value = "target";
+  search.dispatchEvent({ type: "input", target: search });
+  assert.equal(api.state.promptHistoryPage, 1);
+  assert.equal(list.children.length, 50);
+  assert.equal(list.children[0].querySelector(".prompt-preview")?.textContent, "target prompt 61");
+  assert.equal(pageInfo.textContent, "第 1 / 2 页 · 共 61 条");
+  next.click();
+  assert.equal(list.children.length, 11);
+  assert.equal(list.children[0].querySelector(".prompt-preview")?.textContent, "target prompt 111");
+
+  favoritesOnly.checked = true;
+  favoritesOnly.dispatchEvent({ type: "change", target: favoritesOnly });
+  assert.equal(api.state.promptHistoryPage, 1);
+  assert.equal(list.children[0].textContent, "没有匹配的历史提示词。");
+  assert.equal(pageInfo.textContent, "第 1 / 1 页 · 共 0 条");
+  assert.equal(next.disabled, true);
+
+  search.value = "";
+  search.dispatchEvent({ type: "input", target: search });
+  assert.equal(list.children.length, 50);
+  assert.equal(pageInfo.textContent, "第 1 / 2 页 · 共 60 条");
+  next.click();
+  assert.equal(list.children.length, 10);
+});
+
+test("disables prompt history pagination for empty and single-page results", () => {
+  const { api, document, window } = createRuntimeHarness();
+  for (const count of [0, 1, 50]) {
+    const promptHistory = Array.from({ length: count }, (_value, index) => ({
+      id: "prompt-" + index,
+      prompt: "history prompt " + index,
+      cli: "codex",
+      createdAt: 1_700_000_000_000 - index,
+    }));
+    window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+
+    assert.equal(api.state.promptHistoryPage, 1);
+    assert.equal(document.getElementById("promptHistoryList").querySelectorAll(".prompt-item").length, count);
+    assert.equal(document.getElementById("promptHistoryPageInfo").textContent, "第 1 / 1 页 · 共 " + count + " 条");
+    assert.equal(document.getElementById("promptHistoryPrevPage").disabled, true);
+    assert.equal(document.getElementById("promptHistoryNextPage").disabled, true);
+  }
+});
+
+test("keeps the current prompt history page on state sync and clamps it after records are removed", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const promptHistory = Array.from({ length: 101 }, (_value, index) => ({
+    id: "prompt-" + (index + 1),
+    prompt: "history prompt " + (index + 1),
+    cli: "codex",
+    createdAt: 1_700_000_000_000 - index,
+  }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+  document.getElementById("promptHistoryNextPage").click();
+  document.getElementById("promptHistoryNextPage").click();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+  assert.equal(api.state.promptHistoryPage, 3);
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory: promptHistory.slice(0, 51) }) });
+  assert.equal(api.state.promptHistoryPage, 2);
+  assert.equal(document.getElementById("promptHistoryList").children.length, 1);
+  assert.equal(document.getElementById("promptHistoryPageInfo").textContent, "第 2 / 2 页 · 共 51 条");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory: [] }) });
+  assert.equal(api.state.promptHistoryPage, 1);
+  assert.equal(document.getElementById("promptHistoryPageInfo").textContent, "第 1 / 1 页 · 共 0 条");
+});
+
+test("returns to the remaining favorite page when its last prompt is unfavorited", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const promptHistory = Array.from({ length: 51 }, (_value, index) => ({
+    id: "prompt-" + (index + 1),
+    prompt: "favorite prompt " + (index + 1),
+    cli: "codex",
+    createdAt: 1_700_000_000_000 - index,
+    favorite: true,
+  }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory }) });
+  const favoritesOnly = document.getElementById("promptHistoryFavoritesOnly");
+  favoritesOnly.checked = true;
+  favoritesOnly.dispatchEvent({ type: "change", target: favoritesOnly });
+  document.getElementById("promptHistoryNextPage").click();
+  document.getElementById("promptHistoryList").children[0].querySelector("button.prompt-favorite-button")?.click();
+
+  assert.equal(api.state.promptHistoryPage, 1);
+  assert.equal(document.getElementById("promptHistoryList").children.length, 50);
+  assert.equal(document.getElementById("promptHistoryPageInfo").textContent, "第 1 / 1 页 · 共 50 条");
+  assert.equal(document.getElementById("promptHistoryNextPage").disabled, true);
+  assert.equal(document.getElementById("promptHistorySummary").textContent, "已收藏 50/51");
+});
+
 test("expands and collapses prompt history only from the view button", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({

@@ -1179,6 +1179,22 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         color: var(--vscode-descriptionForeground);
         font-size: 12px;
       }
+      .prompt-history-pagination {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+        padding-top: 10px;
+        border-top: 1px solid var(--vscode-widget-border);
+      }
+      .prompt-history-page-info {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
       .prompt-item {
         padding: 10px;
         border: 1px solid var(--vscode-widget-border);

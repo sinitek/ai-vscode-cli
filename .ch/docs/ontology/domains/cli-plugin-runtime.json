@@ -1577,6 +1577,35 @@
       ]
     },
     {
+      "id": "plugin.rule.prompt_history_reuse",
+      "name": "历史提示词去重与复用置顶",
+      "description": "历史提示词写入按去除首尾空白后的完整正文跨 CLI 判重，大小写和内部空白差异仍分别保留。重复提交不新增记录，保留原 ID 和收藏状态，更新 createdAt 与最近使用的 CLI 并置顶且持久化；已有多条同正文记录在复用时合并，沿用最新记录 ID，任一副本已收藏则保留收藏。不改变当前会话提示词展示、数量上限、保留期和队列执行防重复记录规则。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/promptHistoryStore.ts", "anchor": "recordPromptHistoryInStore"},
+        {"path": "src/test/session/promptHistoryStore.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "历史提示词去重与复用置顶"}
+      ]
+    },
+    {
+      "id": "plugin.rule.prompt_history_pagination",
+      "name": "历史提示词每页五十条分页",
+      "description": "历史记录弹窗的历史提示词每页最多显示 50 条，底部展示上一页、下一页、当前页、总页数及过滤后总条数。搜索和仅收藏先过滤完整列表再分页，条件变化回到第一页；翻页重置滚动和展开状态，普通状态同步保持页码，数据缩减自动收敛到有效页。空列表及首尾页禁用相应按钮。不改变存储去重、保留期、数量上限、收藏豁免、历史会话列表或当前会话提示词弹层。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/historyPanels.ts", "anchor": "renderPromptHistoryList"},
+        {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
+        {"path": "src/webview/viewContentHtml.ts", "anchor": "promptHistoryPageInfo"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": "src/test/webview/cliPageStaticRenderCoverage.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "历史提示词每页 50 条分页"}
+      ]
+    },
+    {
       "id": "plugin.rule.local_skill_zip_layout",
       "name": "本地技能 ZIP 布局与命名",
       "description": "Skills 市场本地 ZIP 安装支持两种布局：唯一顶层项为含 SKILL.md 的技能目录时，目录名作为技能名并剥离外层目录；ZIP 根直接含 SKILL.md 时，ZIP 文件名去掉 .zip 后作为技能名并安装根内容。安装前拒绝无效布局、路径穿越、符号链接、加密条目和超限归档。",

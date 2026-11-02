@@ -48,6 +48,17 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("renders accessible prompt history pagination below the scrollable list", () => {
+  const html = buildHtml();
+  const promptPanel = html.split('id="historyPanelPrompts"')[1].split('id="historyPanelSessions"')[0];
+  assert.match(promptPanel, /id="promptHistoryList"[\s\S]*<nav class="prompt-history-pagination" aria-label="历史提示词分页">/);
+  assert.match(promptPanel, /id="promptHistoryPrevPage"[^>]*type="button"[^>]*disabled>上一页<\/button>/);
+  assert.match(promptPanel, /id="promptHistoryNextPage"[^>]*type="button"[^>]*disabled>下一页<\/button>/);
+  assert.match(promptPanel, /id="promptHistoryPageInfo"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.prompt-history-pagination\s*\{[^}]*flex-shrink:\s*0/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.prompt-history-page-info\s*\{[^}]*color:\s*var\(--vscode-descriptionForeground\)/);
+});
+
 test("separates scheduled task submission and management into accessible tabs", () => {
   const html = buildHtml();
   assert.match(html, /id="scheduledTaskSubmitTab"[^>]*role="tab"[^>]*aria-selected="true"[^>]*aria-controls="scheduledTaskSubmitPanel"[^>]*tabindex="0">提交<\/button>/);

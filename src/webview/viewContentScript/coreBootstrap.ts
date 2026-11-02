@@ -268,6 +268,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         ruleScope: "global",
         historyTab: "sessions",
         historySearchQuery: "",
+        promptHistoryPage: 1,
         promptHistoryExpandedId: null,
         promptHistoryFavoritesOnly: Boolean(persistedWebviewState.promptHistoryFavoritesOnly),
         historySessionMessages: {
@@ -455,6 +456,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         promptHistoryFavoritesOnly: document.getElementById("promptHistoryFavoritesOnly"),
         promptHistorySummary: document.getElementById("promptHistorySummary"),
         promptHistoryList: document.getElementById("promptHistoryList"),
+        promptHistoryPrevPage: document.getElementById("promptHistoryPrevPage"),
+        promptHistoryNextPage: document.getElementById("promptHistoryNextPage"),
+        promptHistoryPageInfo: document.getElementById("promptHistoryPageInfo"),
         sessionList: document.getElementById("sessionList"),
         historyMessagesOverlay: document.getElementById("historyMessagesOverlay"),
         closeHistoryMessages: document.getElementById("closeHistoryMessages"),
@@ -582,6 +586,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const UPLOAD_MAX_FILES = 10;
       const UPLOAD_MAX_FILE_BYTES = 20 * 1024 * 1024;
       const CONVERSATION_TAB_PAGE_SIZE = 5;
+      const PROMPT_HISTORY_PAGE_SIZE = 50;
       const runningTabStartedAtById = Object.create(null);
       const erroredTabIds = new Set();
       const loopMetaByTabId = Object.create(null);

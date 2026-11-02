@@ -391,6 +391,15 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         });
       }
 
+      function setPromptHistoryPage(page) {
+        state.promptHistoryPage = page;
+        state.promptHistoryExpandedId = null;
+        renderPromptHistoryList();
+        if (elements.promptHistoryList) {
+          elements.promptHistoryList.scrollTop = 0;
+        }
+      }
+
       function renderPromptHistoryList() {
         if (!elements.promptHistoryList) {
           return;
@@ -408,6 +417,24 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         const items = state.promptHistoryFavoritesOnly
           ? searchedItems.filter((item) => isPromptHistoryFavorite(item))
           : searchedItems;
+        const pageCount = Math.max(1, Math.ceil(items.length / PROMPT_HISTORY_PAGE_SIZE));
+        state.promptHistoryPage = Math.min(Math.max(1, state.promptHistoryPage || 1), pageCount);
+        if (elements.promptHistoryPrevPage) {
+          elements.promptHistoryPrevPage.disabled = state.promptHistoryPage <= 1;
+        }
+        if (elements.promptHistoryNextPage) {
+          elements.promptHistoryNextPage.disabled = state.promptHistoryPage >= pageCount;
+        }
+        if (elements.promptHistoryPageInfo) {
+          elements.promptHistoryPageInfo.textContent = "第 " + state.promptHistoryPage
+            + " / " + pageCount + " 页 · 共 " + items.length + " 条";
+        }
+        const pageStart = (state.promptHistoryPage - 1) * PROMPT_HISTORY_PAGE_SIZE;
+        const pageItems = items.slice(pageStart, pageStart + PROMPT_HISTORY_PAGE_SIZE);
+        const expandedId = state.promptHistoryExpandedId;
+        if (expandedId && !pageItems.some((item) => item.id === expandedId)) {
+          state.promptHistoryExpandedId = null;
+        }
         if (!items.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
@@ -419,11 +446,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           elements.promptHistoryList.appendChild(empty);
           return;
         }
-        const expandedId = state.promptHistoryExpandedId;
-        if (expandedId && !items.some((item) => item.id === expandedId)) {
-          state.promptHistoryExpandedId = null;
-        }
-        items.forEach((item) => {
+        pageItems.forEach((item) => {
           const wrapper = document.createElement("div");
           wrapper.className = "prompt-item";
           const isFavorite = isPromptHistoryFavorite(item);

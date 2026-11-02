@@ -112,12 +112,14 @@ export function recordPromptHistoryInStore(
   const nextStore = store
     ? ensurePromptHistoryStore(store, options)
     : loadPromptHistoryStore(options);
+  const matchingItems = nextStore.items.filter((item) => item.prompt === normalized);
+  nextStore.items = nextStore.items.filter((item) => item.prompt !== normalized);
   nextStore.items.unshift({
-    id: createPromptHistoryId(),
+    id: matchingItems[0]?.id ?? createPromptHistoryId(),
     prompt: normalized,
     createdAt: Date.now(),
     cli,
-    favorite: false,
+    favorite: matchingItems.some((item) => item.favorite === true),
   });
   nextStore.items = limitPromptHistoryItems(nextStore.items, options.promptHistoryLimit);
   writePromptHistoryFile(nextStore, options);

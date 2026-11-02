@@ -394,6 +394,11 @@ ${renderChatModal({
               <div id="promptHistorySummary" class="prompt-history-summary"></div>
             </div>
             <div id="promptHistoryList" class="prompt-list"></div>
+            <nav class="prompt-history-pagination" aria-label="历史提示词分页">
+              <button id="promptHistoryPrevPage" class="secondary" type="button" disabled>上一页</button>
+              <div id="promptHistoryPageInfo" class="prompt-history-page-info" aria-live="polite" aria-atomic="true"></div>
+              <button id="promptHistoryNextPage" class="secondary" type="button" disabled>下一页</button>
+            </nav>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
             <div id="sessionList" class="session-list"></div>
