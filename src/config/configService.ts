@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { t } from "../i18n";
 import { createCliRuntimeConfigStrategies } from "./cliRuntimeConfigStrategies";
+import { retryRuntimeConfigApply } from "./runtimeConfigVerification";
 import {
   OpenCodeConfigModelIssueCode,
   OpenCodeModelRole,
@@ -1235,7 +1236,7 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
 
 export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
-  return enqueueConfigApply(normalizedPlatform, async () => {
+  return enqueueConfigApply(normalizedPlatform, () => retryRuntimeConfigApply(async () => {
     const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
     if (normalizedPlatform === "dsh" && profileId) {
       const result = await activateDshProfile({
@@ -1248,7 +1249,7 @@ export async function applyConfig(platform: LegacyConfigPlatformInput, payload: 
       return;
     }
     await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
-  });
+  }));
 }
 
 export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {

@@ -1063,12 +1063,17 @@
     {
       "id": "plugin.rule.config_apply_serializes_runtime_writes",
       "name": "同一 CLI 配置应用串行写入运行文件",
-      "description": "配置中心通过同一 applyConfig 入口应用同一 CLI 的档案时，运行时文件写入按 CLI 串行排队；Codex 的 config.toml 与 auth.json 必须来自同一档案，写入后读回不一致时失败并提示“未成功更新配置”。不同 CLI 分组可独立应用，快速切换不得产生跨档案文件混合。",
+      "description": "配置中心及任务启动前通过同一 applyConfig 入口应用同一 CLI 的档案时，同一进程内运行时文件写入按 CLI 串行排队，Codex 的 config.toml 与 auth.json 配对校验，不同 CLI 可独立应用。读回按 JSON/TOML 结构和值校验，OpenCode 支持 JSONC，忽略格式、对象键序、注释和换行差异，数组顺序、实际字段差异及 Claude MCP 顶层浅合并边界保持严格。仅校验冲突在当前队列内最多完整应用3次，重试前等待25/50毫秒；DSH激活也有界恢复。持续冲突仍提示“未成功更新配置”并指出CLI和文件，不泄漏配置值；其它错误直接失败。不提供跨进程文件锁。",
       "status": "active",
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
         {"path": "src/config/configService.ts"},
+        {"path": "src/config/runtimeConfigVerification.ts"},
+        {"path": "src/config/dshConfig.ts"},
         {"path": "src/test/config/configService.test.ts"},
+        {"path": "src/test/config/runtimeConfigVerification.test.ts"},
+        {"path": "src/test/config/dshConfig.test.ts"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },

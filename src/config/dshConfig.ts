@@ -8,6 +8,7 @@ import {
 } from "../cli/dshConfigModels";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveDshHomeDir } from "../shared/userHomePaths";
+import { assertRuntimeConfigApplied, retryRuntimeConfigApply } from "./runtimeConfigVerification";
 
 export const DSH_PROFILE_DIR_NAME = "__config";
 export const DSH_ACTIVE_FILE = "active.json";
@@ -104,9 +105,9 @@ export async function writeDshAppliedProfile(content: string, paths: DshConfigPa
   await ensurePrivateConfigDir(paths.configDir);
   await writeFileAtomically(paths.patchPath, serializeDshPatchYaml(committed.document), { mode: 0o600 });
   await writeFileAtomically(paths.appliedProfilePath, committed.content, { mode: 0o600 });
-  if (await fs.readFile(paths.appliedProfilePath, "utf8") !== committed.content) {
-    throw new Error("未成功更新配置");
-  }
+  assertRuntimeConfigApplied(committed.content, await fs.readFile(paths.appliedProfilePath, "utf8"), {
+    cli: "DSH", file: DSH_ACTIVE_PROFILE_FILE, format: "JSON",
+  });
   await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);
 }
 
@@ -133,12 +134,14 @@ export async function activateDshProfile(options: {
     activatedAt: options.now ?? Date.now(),
   }, null, 2)}\n`;
   try {
-    await ensurePrivateConfigDir(paths.configDir);
-    await writeFileAtomically(paths.patchPath, serializeDshPatchYaml(committed.document), { mode: 0o600 });
-    await writeFileAtomically(paths.appliedProfilePath, committed.content, { mode: 0o600 });
-    if (await fs.readFile(paths.appliedProfilePath, "utf8") !== committed.content) {
-      throw new Error("未成功更新配置");
-    }
+    await retryRuntimeConfigApply(async () => {
+      await ensurePrivateConfigDir(paths.configDir);
+      await writeFileAtomically(paths.patchPath, serializeDshPatchYaml(committed.document), { mode: 0o600 });
+      await writeFileAtomically(paths.appliedProfilePath, committed.content, { mode: 0o600 });
+      assertRuntimeConfigApplied(committed.content, await fs.readFile(paths.appliedProfilePath, "utf8"), {
+        cli: "DSH", file: DSH_ACTIVE_PROFILE_FILE, format: "JSON",
+      });
+    });
     await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);
     await writeFileAtomically(paths.activePath, marker, { mode: 0o600 });
     await assertForbiddenFilesUnchanged(paths.homeDir, forbiddenBefore);

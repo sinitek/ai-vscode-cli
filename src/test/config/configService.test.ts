@@ -195,6 +195,56 @@ test("Codex concurrent profile switches are serialized without mixing runtime fi
   });
 });
 
+test("Codex apply retries a transient runtime overwrite before dispatch", async (context) => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const configPath = path.join(homeDir, ".codex", "config.toml");
+    const originalReadFile = fs.readFile;
+    let configReads = 0;
+    context.mock.method(fs, "readFile", async (...args: Parameters<typeof fs.readFile>) => {
+      if (args[0] === configPath) {
+        configReads += 1;
+        if (configReads === 1) {
+          await fs.writeFile(configPath, 'model = "other-window"\n', "utf8");
+        }
+      }
+      return originalReadFile(...args);
+    });
+
+    const payload = { content: 'model = "task-profile"\n', authContent: '{"mode":"test"}' };
+    await configService.applyConfig("codex", payload);
+
+    assert.equal(configReads, 2);
+    assert.deepEqual(await configService.readCodexConfig(), { config: payload.content, auth: payload.authContent });
+  });
+});
+
+test("Codex persistent verification failure does not block the next queued apply", async (context) => {
+  await withTempHome(async (homeDir) => {
+    const configService = loadConfigService();
+    const configPath = path.join(homeDir, ".codex", "config.toml");
+    const originalReadFile = fs.readFile;
+    let configReads = 0;
+    context.mock.method(fs, "readFile", async (...args: Parameters<typeof fs.readFile>) => {
+      if (args[0] === configPath) {
+        configReads += 1;
+        if (configReads <= 3) {
+          await fs.writeFile(configPath, 'model = "other-window"\n', "utf8");
+        }
+      }
+      return originalReadFile(...args);
+    });
+
+    const failed = configService.applyConfig("codex", { content: 'model = "first"\n', authContent: "{}" });
+    const recovered = configService.applyConfig("codex", { content: 'model = "next"\n', authContent: "{}" });
+
+    await assert.rejects(failed, /未成功更新配置.*Codex.*config\.toml/);
+    await recovered;
+    assert.equal(configReads, 4);
+    assert.equal(await fs.readFile(configPath, "utf8"), 'model = "next"\n');
+  });
+});
+
 test("Codex backup writes config and auth files without backing up .env", async () => {
   await withTempHome(async (homeDir) => {
     const configService = loadConfigService();

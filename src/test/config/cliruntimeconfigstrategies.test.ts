@@ -370,6 +370,72 @@ test("runtime strategies reject a successful no-op writer after read-back verifi
   );
 });
 
+test("Codex verification accepts equivalent TOML and reordered auth JSON", async () => {
+  const ports = createPorts();
+  ports.codex.writeCodexConfig = async () => undefined;
+  ports.codex.readCodexConfig = async () => ({
+    config: "# normalized by CLI\r\nmodel='new'\r\n[features]\r\nskills=true\r\n",
+    auth: '{"tokens":{"second":"two","first":"one"},"mode":"test"}',
+  });
+
+  await strategiesFrom(ports).codex.apply({
+    content: 'model = "new"\n\n[features]\nskills = true\n',
+    authContent: '{"mode":"test","tokens":{"first":"one","second":"two"}}',
+  });
+});
+
+test("Claude MCP verification ignores nested key order but preserves shallow patch rules", async () => {
+  const ports = createPorts();
+  ports.claude.writeClaudeConfig = async () => undefined;
+  ports.claude.writeClaudeMcpConfig = async () => undefined;
+  ports.claude.readClaudeConfig = async () => "{}";
+  ports.claude.readClaudeMcpConfig = async () => JSON.stringify({
+    unrelated: true,
+    mcpServers: { local: { args: ["first", "second"], command: "node" } },
+  });
+
+  await strategiesFrom(ports).claude.apply({
+    content: "{}",
+    mcpContent: '{"mcpServers":{"local":{"command":"node","args":["first","second"]}}}',
+  });
+});
+
+test("OpenCode verification accepts equivalent JSONC but reports the file for real differences", async () => {
+  const ports = createPorts();
+  ports.opencode.writeOpenCodeConfig = async () => undefined;
+  ports.opencode.readOpenCodeConfig = async () => ({
+    config: '{ // formatted by CLI\n "settings": {"second": 2, "first": 1,}, "model": "test/new",\n}',
+    env: "",
+  });
+  const strategy = strategiesFrom(ports).opencode;
+
+  await strategy.apply({ content: '{"model":"test/new","settings":{"first":1,"second":2}}' });
+  await assert.rejects(
+    () => strategy.apply({ content: '{"model":"test/other","settings":{"first":1,"second":2}}' }),
+    /未成功更新配置.*OpenCode.*config\.json/,
+  );
+});
+
+test("Claude MCP verification rejects reordered arrays without exposing configuration values", async () => {
+  const ports = createPorts();
+  ports.claude.writeClaudeConfig = async () => undefined;
+  ports.claude.writeClaudeMcpConfig = async () => undefined;
+  ports.claude.readClaudeConfig = async () => "{}";
+  ports.claude.readClaudeMcpConfig = async () => '{"mcpServers":{"local":{"args":["second","first"]}},"private":"synthetic-secret"}';
+
+  await assert.rejects(
+    () => strategiesFrom(ports).claude.apply({
+      content: "{}",
+      mcpContent: '{"mcpServers":{"local":{"args":["first","second"]}},"private":"synthetic-secret"}',
+    }),
+    (error: Error) => {
+      assert.match(error.message, /未成功更新配置.*Claude.*\.claude\.json/);
+      assert.equal(error.message.includes("synthetic-secret"), false);
+      return true;
+    },
+  );
+});
+
 test("Grok strategy rejects blank or invalid content without writing", async () => {
   const calls: string[] = [];
   let stored = VALID_GROK_TOML;

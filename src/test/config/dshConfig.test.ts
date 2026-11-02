@@ -98,6 +98,35 @@ test("activation records success only after the patch write and leaves failure i
   await fs.rm(otherHome, { recursive: true, force: true });
 });
 
+test("DSH activation retries a transient conflict before recording the active profile", async (context) => {
+  const home = await tempHome();
+  const paths = resolveDshConfigPaths({ DSH_HOME: home }, home, "linux");
+  const originalReadFile = fs.readFile;
+  let profileReads = 0;
+  context.mock.method(fs, "readFile", async (...args: Parameters<typeof fs.readFile>) => {
+    if (args[0] === paths.appliedProfilePath) {
+      profileReads += 1;
+      if (profileReads === 1) {
+        await assert.rejects(fs.access(paths.activePath), { code: "ENOENT" });
+        await fs.writeFile(paths.appliedProfilePath, '{"acpModel":"other-window"}', "utf8");
+      }
+    }
+    return originalReadFile(...args);
+  });
+
+  try {
+    const result = await activateDshProfile({
+      profileId: "task-profile", content: createDshExampleProfileText(), paths, now: 40,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(profileReads, 2);
+    assert.equal((await readDshActivation(paths)).activeProfileId, "task-profile");
+    assert.equal(JSON.parse(await readDshActiveProfileText(paths)).acpModel, DSH_VERIFIED_MODEL_ID);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test("direct apiKey stays in private profile storage and is omitted from runtime patch", async () => {
   const home = await tempHome();
   const paths = resolveDshConfigPaths({ DSH_HOME: home }, home, "linux");
