@@ -112,9 +112,13 @@ function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) 
   const elements = {
     rulesLoadCli,
     rulesPath: { textContent: "" },
+    rulesSaveLabel: { textContent: "保存覆盖到：" },
     rulesSaveCodex: { checked: false },
+    rulesSaveCodexOption: { style: { display: "" } },
     rulesSaveCodexLabel: { textContent: "codex" },
     rulesSaveClaude: { checked: false },
+    rulesSaveClaudeOption: { style: { display: "" } },
+    rulesSaveClaudeLabel: { textContent: "Claude" },
     rulesSaveOpenCode: { checked: false },
     rulesSaveOpenCodeOption: { style: { display: "" } },
     rulesSaveGrok: { checked: false },
@@ -134,6 +138,7 @@ function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) 
       return { value: "", textContent: "" };
     },
   };
+  const strings = getWebviewStrings();
   const helpers = new Function(
     "state",
     "elements",
@@ -142,7 +147,7 @@ function createRulesHelpers(cliNames = ["codex", "claude", "opencode", "grok"]) 
     "CLI_NAMES",
     "formatCliDisplayName",
     `${source}; return { collectRuleTargets, setRulesLoadCliOptions, syncRulesSaveOptions, updateRulesPath, updateRulesScope };`,
-  )(state, elements, document, (key: string) => key === "rulesPathPrefix" ? "路径：" : key, cliNames, getCliDisplayName) as {
+  )(state, elements, document, (key: string) => strings[key as keyof typeof strings] || key, cliNames, getCliDisplayName) as {
     collectRuleTargets: () => string[];
     setRulesLoadCliOptions: (isGlobal: boolean) => void;
     syncRulesSaveOptions: (isGlobal: boolean) => void;
@@ -157,9 +162,14 @@ test("global rules loader includes an independent grok file option", () => {
   const selectMatch = html.match(/<select id="rulesLoadCli"[\s\S]*?<\/select>/);
   assert.ok(selectMatch, "rulesLoadCli select should exist");
   const selectHtml = selectMatch[0];
+  assert.match(selectHtml, /aria-label="加载规则文件"/);
   assert.match(selectHtml, /<option value="grok">Grok<\/option>/);
   assert.match(html, /<label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" \/> Grok<\/label>/);
   assert.match(html, /<span id="rulesSaveCodexLabel">Codex<\/span>/);
+  assert.match(html, /<span id="rulesSaveClaudeLabel">Claude<\/span>/);
+  assert.match(html, /class="rules-checkboxes" role="group" aria-labelledby="rulesSaveLabel"/);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveLabel: document\.getElementById\("rulesSaveLabel"\)/);
+  assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveClaudeLabel: document\.getElementById\("rulesSaveClaudeLabel"\)/);
   assert.equal(html.split('id="rulesSaveGrok"').length - 1, 1);
   assert.doesNotMatch(html, /~\/\.grok|[A-Za-z]:\\/);
   assert.doesNotMatch(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /~\/\.grok|[A-Za-z]:\\/);
@@ -195,19 +205,84 @@ test("project scope keeps one shared AGENTS target and does not submit grok sepa
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "Codex/OpenCode/Grok"],
-      ["claude", "Claude"],
+      ["codex", "AGENTS.md"],
+      ["claude", "CLAUDE.md"],
     ],
   );
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "grok"), false);
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "opencode"), false);
-  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex/OpenCode/Grok");
+  assert.equal(elements.rulesSaveLabel.textContent, "文件名：");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "AGENTS.md");
+  assert.equal(elements.rulesSaveClaudeLabel.textContent, "CLAUDE.md");
   assert.equal(elements.rulesSaveOpenCodeOption.style.display, "none");
   assert.equal(elements.rulesSaveOpenCode.checked, false);
   assert.equal(elements.rulesSaveGrokOption.style.display, "none");
   assert.equal(elements.rulesSaveGrok.checked, false);
   assert.deepEqual(helpers.collectRuleTargets(), ["codex"]);
   assert.equal(elements.rulesPath.textContent, "路径：/state/project/AGENTS.md");
+});
+
+test("switching rule scopes restores global labels and preserves selected file targets", () => {
+  const { elements, helpers } = createRulesHelpers();
+  elements.rulesSaveCodex.checked = true;
+  elements.rulesSaveClaude.checked = true;
+
+  helpers.updateRulesScope("project");
+  assert.equal(elements.rulesSaveLabel.textContent, "文件名：");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "AGENTS.md");
+  assert.equal(elements.rulesSaveClaudeLabel.textContent, "CLAUDE.md");
+  assert.deepEqual(helpers.collectRuleTargets(), ["codex", "claude"]);
+  assert.deepEqual(
+    elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
+    [["codex", "AGENTS.md"], ["claude", "CLAUDE.md"]],
+  );
+  elements.rulesLoadCli.value = "claude";
+  helpers.updateRulesPath("claude");
+  assert.equal(elements.rulesPath.textContent, "路径：/state/project/CLAUDE.md");
+
+  helpers.updateRulesScope("global");
+  assert.equal(elements.rulesSaveLabel.textContent, "保存覆盖到：");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex");
+  assert.equal(elements.rulesSaveClaudeLabel.textContent, "Claude");
+  assert.deepEqual(helpers.collectRuleTargets(), ["codex", "claude"]);
+  assert.equal(elements.rulesLoadCli.value, "claude");
+  assert.deepEqual(
+    elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
+    [["codex", "Codex"], ["claude", "Claude"], ["opencode", "OpenCode"], ["grok", "Grok"]],
+  );
+});
+
+test("project file labels stay stable when Codex is disabled", () => {
+  const { elements, helpers } = createRulesHelpers(["opencode", "claude"]);
+  elements.rulesSaveCodex.checked = true;
+  elements.rulesSaveClaude.checked = true;
+
+  helpers.updateRulesScope("project");
+  assert.deepEqual(
+    elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
+    [["opencode", "AGENTS.md"], ["claude", "CLAUDE.md"]],
+  );
+  assert.equal(elements.rulesLoadCli.value, "opencode");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "AGENTS.md");
+  assert.equal(elements.rulesSaveClaudeLabel.textContent, "CLAUDE.md");
+  assert.equal(elements.rulesSaveCodexOption.style.display, "");
+  assert.equal(elements.rulesSaveClaudeOption.style.display, "");
+  assert.deepEqual(helpers.collectRuleTargets(), ["opencode", "claude"]);
+});
+
+test("project file targets stay hidden and unchecked when no CLI is enabled", () => {
+  const { elements, helpers } = createRulesHelpers([]);
+  elements.rulesSaveCodex.checked = true;
+  elements.rulesSaveClaude.checked = true;
+
+  helpers.updateRulesScope("project");
+  assert.deepEqual(elements.rulesLoadCli.children, []);
+  assert.equal(elements.rulesLoadCli.value, "");
+  assert.equal(elements.rulesSaveCodexOption.style.display, "none");
+  assert.equal(elements.rulesSaveClaudeOption.style.display, "none");
+  assert.equal(elements.rulesSaveCodex.checked, false);
+  assert.equal(elements.rulesSaveClaude.checked, false);
+  assert.deepEqual(helpers.collectRuleTargets(), []);
 });
 
 test("checking global grok adds grok to save targets and hint labels stay separate", () => {
@@ -285,8 +360,8 @@ test("global DSH rules stay separate and project DSH shares one AGENTS file", ()
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "Codex/OpenCode/Grok/DSH"],
-      ["claude", "Claude"],
+      ["codex", "AGENTS.md"],
+      ["claude", "CLAUDE.md"],
     ],
   );
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "dsh"), false);
@@ -308,13 +383,13 @@ test("project scope keeps ZCode inside the shared AGENTS target", () => {
   assert.deepEqual(
     elements.rulesLoadCli.children.map((option) => [option.value, option.textContent]),
     [
-      ["codex", "Codex/OpenCode/Grok/DSH/KimiCode/ZCode"],
-      ["claude", "Claude"],
+      ["codex", "AGENTS.md"],
+      ["claude", "CLAUDE.md"],
     ],
   );
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "grok"), false);
   assert.equal(elements.rulesLoadCli.children.some((option) => option.value === "zcode"), false);
-  assert.equal(elements.rulesSaveCodexLabel.textContent, "Codex/OpenCode/Grok/DSH/KimiCode/ZCode");
+  assert.equal(elements.rulesSaveCodexLabel.textContent, "AGENTS.md");
   assert.equal(elements.rulesSaveGrokOption.style.display, "none");
   assert.equal(elements.rulesSaveZcodeOption.style.display, "none");
   assert.equal(elements.rulesSaveZcode.checked, false);

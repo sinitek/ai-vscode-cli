@@ -525,10 +525,10 @@ ${renderChatModal({
           <div id="rulesPath" class="rules-path"></div>
           <textarea id="rulesInput" class="rules-textarea" rows="10" placeholder="${i18n.rulesInputPlaceholder}"></textarea>
           <div class="rules-row rules-save-row">
-            <span>${i18n.rulesSaveLabel}</span>
-            <div class="rules-checkboxes" role="group" aria-label="${i18n.rulesSaveGroupLabel}">
+            <span id="rulesSaveLabel">${i18n.rulesSaveLabel}</span>
+            <div class="rules-checkboxes" role="group" aria-labelledby="rulesSaveLabel">
               <label id="rulesSaveCodexOption"><input type="checkbox" id="rulesSaveCodex" /> <span id="rulesSaveCodexLabel">${getCliDisplayName("codex")}</span></label>
-              <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> ${getCliDisplayName("claude")}</label>
+              <label id="rulesSaveClaudeOption"><input type="checkbox" id="rulesSaveClaude" /> <span id="rulesSaveClaudeLabel">${getCliDisplayName("claude")}</span></label>
               <label id="rulesSaveOpenCodeOption"><input type="checkbox" id="rulesSaveOpenCode" /> ${getCliDisplayName("opencode")}</label>
               <label id="rulesSaveGrokOption"><input type="checkbox" id="rulesSaveGrok" /> ${getCliDisplayName("grok")}</label>
               <label id="rulesSaveDshOption"><input type="checkbox" id="rulesSaveDsh" /> ${getCliDisplayName("dsh")}</label>

@@ -1016,8 +1016,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         const options = isGlobal
           ? enabled.map((name) => ({ value: name, label: formatCliDisplayName(name) }))
           : [
-              ...(projectGroup.length ? [{ value: projectGroup[0], label: formatSharedProjectRuleLabel() }] : []),
-              ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: formatCliDisplayName("claude") }] : []),
+              ...(projectGroup.length ? [{ value: projectGroup[0], label: "AGENTS.md" }] : []),
+              ...(enabled.indexOf("claude") >= 0 ? [{ value: "claude", label: "CLAUDE.md" }] : []),
             ];
         elements.rulesLoadCli.innerHTML = "";
         options.forEach((option) => {
@@ -1047,7 +1047,12 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (elements.rulesSaveCodexLabel) {
           elements.rulesSaveCodexLabel.textContent = isGlobal
             ? formatCliDisplayName("codex")
-            : formatSharedProjectRuleLabel();
+            : "AGENTS.md";
+        }
+        if (elements.rulesSaveClaudeLabel) {
+          elements.rulesSaveClaudeLabel.textContent = isGlobal
+            ? formatCliDisplayName("claude")
+            : "CLAUDE.md";
         }
         setRuleOptionVisible(
           elements.rulesSaveCodexOption,
@@ -1066,6 +1071,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         );
         setRuleOptionVisible(
           elements.rulesSaveGrokOption,
+        if (elements.rulesSaveLabel) {
+          elements.rulesSaveLabel.textContent = isGlobal ? t("rulesSaveLabel") : t("rulesFileNameLabel");
+        }
           elements.rulesSaveGrok,
           isGlobal && enabled.indexOf("grok") >= 0,
         );
