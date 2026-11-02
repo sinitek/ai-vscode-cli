@@ -331,8 +331,8 @@ test("acceptance feedback lists every selected item only when each verdict is pr
   ]);
   assert.equal(section?.heading, "验收结果");
   assert.match(section?.body ?? "", /\| 审查内容 \| 审查结果 \|/);
-  assert.match(section?.body ?? "", /\| 安全审查 \| 未通过。原因：错误日志仍输出明文令牌 \|/);
-  assert.match(section?.body ?? "", /\| 其它 \| 通过。原因：审计日志已脱敏，未写入密钥 \|/);
+  assert.match(section?.body ?? "", /\| 安全审查 \| ❌ 错误日志仍输出明文令牌 \|/);
+  assert.match(section?.body ?? "", /\| 其它 \| ✅ 审计日志已脱敏，未写入密钥 \|/);
   assert.doesNotMatch(section?.body ?? "", /审查内容：/);
   assert.doesNotMatch(section?.body ?? "", /代码可维护性审查/);
   assert.doesNotMatch(section?.body ?? "", /^- /mu);
@@ -352,10 +352,10 @@ test("acceptance feedback includes default and per-event reasons within 50 chara
     planResults: [{ key: "security", passed: true, reason: "未发现输入信任边界问题" }],
   });
   assert.equal(section?.heading, "验收结果");
-  assert.match(section?.body ?? "", /\| 验收事件 1 \| 未通过。原因：测试断言失败，需先修复 \|/);
-  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| 未通过。原因：测试断言失败 \|/);
-  assert.match(section?.body ?? "", /\| 安全审查 \| 通过。原因：未发现输入信任边界问题 \|/);
-  const reasons = [...(section?.body.matchAll(/原因：([^|\n]+)/gu) ?? [])].map((match) => match[1].trim());
+  assert.match(section?.body ?? "", /\| 验收事件 1 \| ❌ 测试断言失败，需先修复 \|/);
+  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ 测试断言失败 \|/);
+  assert.match(section?.body ?? "", /\| 安全审查 \| ✅ 未发现输入信任边界问题 \|/);
+  const reasons = [...(section?.body.matchAll(/\| [✅❌] ([^|\n]+) \|$/gmu) ?? [])].map((match) => match[1].trim());
   assert.equal(reasons.length, 3);
   assert.equal(reasons.every((reason) => Array.from(reason).length <= 50), true);
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({
@@ -368,8 +368,8 @@ test("acceptance feedback preserves the chosen reason language without translati
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "The empty-input regression still fails." }],
     checks: [{ name: "tests", passed: false, detail: "Empty-input assertion fails." }],
   });
-  assert.match(section?.body ?? "", /\| 验收事件 1 \| 未通过。原因：The empty-input regression still fails\. \|/u);
-  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| 未通过。原因：Empty-input assertion fails\. \|/u);
+  assert.match(section?.body ?? "", /\| 验收事件 1 \| ❌ The empty-input regression still fails\. \|/u);
+  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ Empty-input assertion fails\. \|/u);
 });
 
 test("default acceptance feedback works without optional reviews and rejects invalid reasons", () => {
@@ -378,7 +378,7 @@ test("default acceptance feedback works without optional reviews and rejects inv
       snapshot,
       checks: [{ name: "artifacts", passed: true, detail: "仅调整提示词，无独立可运行产物" }],
     });
-    assert.match(section?.body ?? "", /\| 默认验收·产物可运行性 \| 通过。原因：仅调整提示词，无独立可运行产物 \|/);
+    assert.match(section?.body ?? "", /\| 默认验收·产物可运行性 \| ✅ 仅调整提示词，无独立可运行产物 \|/);
   }
   for (const reason of [undefined, "  ", "字".repeat(51)]) {
     assert.equal(buildLoopPlusAcceptanceFeedbackSection({

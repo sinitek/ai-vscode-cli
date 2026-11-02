@@ -318,12 +318,12 @@ test("accept feedback requires reasons before commit and shows default and selec
     assert.equal(feedback.taskId, run.taskId);
     assert.equal(feedback.heading, "验收结果");
     assert.match(feedback.body, passed
-      ? /\| 默认验收·测试验证 \| 通过。原因：报告中的回归用例全部通过 \|/
-      : /\| 默认验收·测试验证 \| 未通过。原因：报告中的回归断言失败 \|/);
+      ? /\| 默认验收·测试验证 \| ✅ 报告中的回归用例全部通过 \|/
+      : /\| 默认验收·测试验证 \| ❌ 报告中的回归断言失败 \|/);
     assert.match(feedback.body, passed
-      ? /\| 验收事件 1 \| 通过。原因：回归通过且实现符合需求 \|/
-      : /\| 验收事件 1 \| 未通过。原因：回归断言失败，尚未满足需求 \|/);
-    assert.match(feedback.body, /\| 安全审查 \| 通过。原因：输入已校验，日志无敏感信息 \|/);
+      ? /\| 验收事件 1 \| ✅ 回归通过且实现符合需求 \|/
+      : /\| 验收事件 1 \| ❌ 回归断言失败，尚未满足需求 \|/);
+    assert.match(feedback.body, /\| 安全审查 \| ✅ 输入已校验，日志无敏感信息 \|/);
     assert.match(feedback.body, /\| 审查内容 \| 审查结果 \|/);
     assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
   }
@@ -337,7 +337,7 @@ test("completed feedback includes default reasons even without an acceptance pla
   await flush();
   assert.equal(env.acceptanceFeedback.length, 1);
   assert.equal((env.acceptanceFeedback[0].body.match(/默认验收·/gu) ?? []).length, 6);
-  assert.equal((env.acceptanceFeedback[0].body.match(/原因：/gu) ?? []).length, 6);
+  assert.equal((env.acceptanceFeedback[0].body.match(/\| ✅ [^|\n]+ \|$/gmu) ?? []).length, 6);
 });
 
 test("uses the configured Loop+ dispatch subtask maximum", async () => {

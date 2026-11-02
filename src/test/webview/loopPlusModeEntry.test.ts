@@ -121,6 +121,7 @@ test("renders Loop+ in both interactive mode selects without extra Loop mode cho
     assert.match(select, /value="coding"/);
     assert.match(select, /value="loop"/);
     assert.match(select, /value="loop_plus"/);
+    assert.match(select, /value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。"/u);
     assert.doesNotMatch(select, /value="graph"/);
     assert.equal((select.match(/<option /g) || []).length, 3);
     assert.ok(select.indexOf('value="loop"') < select.indexOf('value="loop_plus"'));
@@ -128,7 +129,6 @@ test("renders Loop+ in both interactive mode selects without extra Loop mode cho
   }
   assert.doesNotMatch(html, /loopExecutionModeSelect|debate_multi_agent|红蓝辩论/);
   assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
-  assert.match(html, /可见队列/);
   assert.match(html, /单个子任务执行结束后立即验收，其它完成进入队列。/);
 });
 
