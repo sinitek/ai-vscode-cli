@@ -758,17 +758,21 @@
 
 ### 现象
 - DSH 会话在当前 Tab 内可以继续执行，关闭或释放后从历史会话、新 Tab 或 Loop+ 复用时出现 `Invalid params: session is not resumable`。
+- 普通 Vibe 正常、只有 Loop+ 子模型验收修复失败时，即使 session ID 和 HOME 相同，也可能报 `Invalid params: session cwd does not match`。
 
 ### 根因
 - ACP 会话持久化在 `<DSH_HOME>/sessions/<project>/<session-id>/`；如果启动时用 Tab ID 作为 `DSH_HOME`，历史会话换 Tab 后会落到新的空目录。`session/close` 本身会刷盘并释放会话，不等于永久删除恢复资格。
+- DSH `0.2.1-rc.2` 恢复还检查 canonical cwd。Loop+ 每轮随机执行根不同且前轮已清理，与 Vibe 保持工作区 cwd 的行为不同；仅稳定 HOME 不足以保证续接。
 
 ### 长期规避
 - 新会话先按 Tab ID 建立临时隔离目录，成功拿到 ACP session ID 后写入绑定标记；后续按 ACP ID 查找原目录。修复前没有标记的目录只在固定的 DSH 会话日志层级做兼容扫描，不读取正文、不跟随符号链接，不为未知 ID 借用目录。
+- Loop+ DSH 实际使用会话 HOME 下稳定的真实执行根，Windows 跨盘则放真实工作区同卷临时父目录；每轮重新链接工作区、按身份清理链接并保留空 cwd。不得通过不隔离项目规则、递归清空目录或静默新建会话来绕过恢复错误。旧随机 cwd 会话明确要求新建不复用的子任务，未知文件保留现场。
 
 ### 验证方式
 - `npm run build`
 - `node --test dist/test/extensionHost/dshInteractiveHostWire.test.js dist/test/extensionHost/dshPluginLiveBoundary.test.js`
 - 使用本机 `dsh` 启动 `session/new`，释放进程后删除绑定标记，再用新 Runner 严格 `session/resume`；不发送模型 prompt。
+- `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js` 显式调用本机真实 DSH，检查 cwd 对照和失败验收后的上下文、文件修复；前置条件与清理范围见 `.ch/docs/runbooks/local-development.md`。
 
 
 ## 空闲面板自动应用旧配置会抢回其他窗口的切换

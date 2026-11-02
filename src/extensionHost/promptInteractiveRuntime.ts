@@ -1229,6 +1229,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           zcodeModelWire,
           zcodeLaunch,
           cwd,
+          workspaceCwd: executionOptions.isolateProjectInstructions ? resolveWorkspaceCwd() : undefined,
           thinkingMode,
           interactiveMode,
           selectedModel,

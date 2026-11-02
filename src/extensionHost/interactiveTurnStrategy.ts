@@ -52,6 +52,7 @@ export type InteractiveTurnAttemptPort = {
   readonly zcodeModelWire: string | null;
   readonly zcodeLaunch: Pick<ZcodeInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelRef" | "thinkingValue"> | null;
   readonly cwd: string | undefined;
+  readonly workspaceCwd?: string;
   readonly thinkingMode: ThinkingMode;
   readonly interactiveMode: InteractiveMode;
   readonly selectedModel: string | null;

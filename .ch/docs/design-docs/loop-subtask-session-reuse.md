@@ -20,6 +20,16 @@
 
 ## 执行边界与验证
 
+### DSH 的会话目录与 cwd
+
+DSH ACP 恢复同时依赖原 `DSH_HOME` 和持久化会话的 canonical cwd，不只检查 session ID。Loop+ 外层仍为每个 attempt 创建并清理隔离根，但 DSH 实际从该会话隔离 HOME 下的 `loop-workspace` 真实目录执行；同一会话关闭 Tab、释放进程或验收失败后重新派发，均复用这一 cwd。普通 Vibe 继续使用真实工作区，不增加这层目录。
+
+每次 DSH 隔离执行前，通过现有执行根工具重新链接本轮工作区入口，继续隐藏项目规则和 Skills；完成、启动失败、模型失败或结算失败后，按身份逐项清理本轮链接，仅保留空的稳定 cwd。不能递归删除、清空未知文件或用符号链接替换稳定根。目录非空、被替换或包含未知产物时保留现场并拒绝自动覆盖。Windows 的隔离 HOME 与工作区跨盘时，稳定 cwd 放在真实工作区的 `.sinitek-loop-tmp/dsh-<隔离HOME目录名>` 下，避免依赖跨盘硬链接或额外符号链接权限；其余平台优先放在隔离 HOME 中。
+
+修复前绑定随机临时 cwd 的旧 DSH Loop+ 会话不做静默迁移：原协议拒绝 cwd 不一致时明确提示重新派发不复用旧会话的新子任务，不创建替代会话伪装恢复成功，不修改用户已有会话日志。该兼容边界与找回旧 `DSH_HOME` 的兼容扫描是两回事。
+
+自动回归见 `src/test/extensionHost/dshLoopSessionResume.test.ts`、`src/test/loop/loopSubtaskExecutionRoot.test.ts` 和 DSH host 边界测试。`src/test/extensionHost/dshLoopSessionResumeLive.test.ts` 提供显式 opt-in 的本机真实验证：协议对照检查 cwd 约束，脚本主模型触发验收失败，真实 DSH 子模型在原 Tab 关闭且进程销毁后恢复原上下文并修复文件。它不是图形 Extension Development Host 点击验收，也不是主模型推理质量评测；调用方式与配置读取边界见本地开发 runbook。
+
 经典 Loop 继续读取真实工作区规则、按汇报完成且不由主模型验收。Loop+ 的验收条件、次数限制、隔离执行目录、停止与恢复协议不变。续接上下文时必须使用本轮宿主指定的执行目录与沟通文件，不重复旧任务或使用已清理的历史临时目录。
 
 实现入口：`src/loopSubtaskSession.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。

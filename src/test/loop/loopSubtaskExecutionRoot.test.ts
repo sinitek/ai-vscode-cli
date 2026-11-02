@@ -177,6 +177,98 @@ test("dispose never invokes recursive removal", (context) => {
   assert.equal(fixture.failures.length, 0);
 });
 
+test("persistent execution roots keep their identity while refreshing workspace links", (context) => {
+  const fixture = createFixture(context);
+  fs.writeFileSync(path.join(fixture.workspaceRoot, "AGENTS.md"), "hidden");
+  const persistentCwd = path.join(fixture.workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME, "dsh-stable");
+  const firstOuter = fixture.createRoot();
+  const first = createLoopSubtaskExecutionRoot(firstOuter.cwd, { persistentCwd });
+  const identity = fs.lstatSync(first.cwd, { bigint: true });
+  assert.equal(fs.existsSync(path.join(first.cwd, "AGENTS.md")), false);
+  fs.writeFileSync(path.join(first.cwd, "src", "app.ts"), "draft");
+  first.dispose();
+  firstOuter.dispose();
+  assert.deepEqual(fs.readdirSync(persistentCwd), []);
+  assert.equal(fs.existsSync(firstOuter.cwd), false);
+
+  fs.mkdirSync(path.join(fixture.workspaceRoot, "added"));
+  const secondOuter = fixture.createRoot();
+  const second = createLoopSubtaskExecutionRoot(secondOuter.cwd, { persistentCwd });
+  assert.notEqual(firstOuter.cwd, secondOuter.cwd);
+  assert.equal(fs.lstatSync(second.cwd, { bigint: true }).ino, identity.ino);
+  assert.equal(fs.lstatSync(second.cwd, { bigint: true }).birthtimeNs, identity.birthtimeNs);
+  assert.equal(fs.readFileSync(path.join(second.cwd, "src", "app.ts"), "utf8"), "draft");
+  assert.equal(fs.statSync(path.join(second.cwd, "added")).isDirectory(), true);
+  assert.equal(fs.existsSync(path.join(second.cwd, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME)), false);
+  fs.writeFileSync(path.join(second.cwd, "src", "app.ts"), "repaired");
+  second.dispose();
+  second.dispose();
+  secondOuter.dispose();
+  assert.deepEqual(fs.readdirSync(persistentCwd), []);
+  assert.equal(fs.readFileSync(path.join(fixture.workspaceRoot, "src", "app.ts"), "utf8"), "repaired");
+  assert.equal(fixture.failures.length, 0);
+});
+
+test("persistent execution roots preserve unknown files and refuse to overwrite them on resume", (context) => {
+  const fixture = createFixture(context);
+  const persistentCwd = path.join(fixture.workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME, "dsh-unknown");
+  const executionRoot = createLoopSubtaskExecutionRoot(fixture.workspaceRoot, { persistentCwd });
+  const unknown = path.join(executionRoot.cwd, "new-file.txt");
+  fs.writeFileSync(unknown, "keep");
+  executionRoot.dispose();
+  assert.deepEqual(fs.readdirSync(persistentCwd), ["new-file.txt"]);
+  assert.throws(() => createLoopSubtaskExecutionRoot(fixture.workspaceRoot, { persistentCwd }), /已保留现场/);
+  assert.equal(fs.readFileSync(unknown, "utf8"), "keep");
+  assert.equal(fixture.failures.length, 1);
+});
+
+test("persistent execution roots reject symlink directories without touching their targets", (context) => {
+  const fixture = createFixture(context);
+  const parent = path.join(fixture.workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME);
+  fs.mkdirSync(parent);
+  const persistentCwd = path.join(parent, "replaced");
+  fs.symlinkSync(fixture.workspaceRoot, persistentCwd, process.platform === "win32" ? "junction" : "dir");
+  assert.throws(() => createLoopSubtaskExecutionRoot(fixture.workspaceRoot, { persistentCwd }), /真实目录/);
+  assert.equal(fs.readFileSync(path.join(fixture.workspaceRoot, "src", "app.ts"), "utf8"), "source");
+  removeDirectoryLink(persistentCwd);
+});
+
+test("failed persistent root setup removes only its own links and keeps an empty cwd", (context) => {
+  const fixture = createFixture(context);
+  const persistentCwd = path.join(fixture.workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME, "dsh-failed");
+  const originalSymlink = fs.symlinkSync;
+  context.mock.method(fs, "symlinkSync", (sourcePath: fs.PathLike, targetPath: fs.PathLike, type?: fs.symlink.Type) => {
+    if (path.basename(String(targetPath)) === "src") {
+      throw Object.assign(new Error("denied"), { code: "EPERM" });
+    }
+    originalSymlink(sourcePath, targetPath, type);
+  });
+  assert.throws(() => createLoopSubtaskExecutionRoot(fixture.workspaceRoot, { persistentCwd }), /Failed to link/);
+  assert.deepEqual(fs.readdirSync(persistentCwd), []);
+  assert.equal(fs.readFileSync(path.join(fixture.workspaceRoot, "package.json"), "utf8"), "original");
+});
+
+test("Windows persistent execution roots refresh nested junctions and hardlinks safely", (context) => {
+  const fixture = createFixture(context);
+  const persistentCwd = path.join(fixture.workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME, "dsh-windows");
+  withWindowsLinks(context, (junctionRemovals) => {
+    for (const value of ["draft", "repaired"]) {
+      const outer = fixture.createRoot();
+      const inner = createLoopSubtaskExecutionRoot(outer.cwd, { persistentCwd });
+      fs.writeFileSync(path.join(inner.cwd, "src", "app.ts"), value);
+      fs.writeFileSync(path.join(inner.cwd, "package.json"), value);
+      inner.dispose();
+      assert.deepEqual(fs.readdirSync(persistentCwd), []);
+      outer.dispose();
+      assert.equal(fs.existsSync(outer.cwd), false);
+      assert.equal(fs.readFileSync(path.join(fixture.workspaceRoot, "src", "app.ts"), "utf8"), value);
+      assert.equal(fs.readFileSync(path.join(fixture.workspaceRoot, "package.json"), "utf8"), value);
+    }
+    assert.equal(junctionRemovals.filter((target) => target === path.join(persistentCwd, "src")).length, 2);
+  });
+  assert.equal(fixture.failures.length, 0);
+});
+
 test("dispose is repeatable and tolerates an already removed execution root", (context) => {
   const fixture = createFixture(context);
   const executionRoot = fixture.createRoot();

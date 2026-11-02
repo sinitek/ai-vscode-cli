@@ -55,6 +55,19 @@ node --test \
   dist/test/loop/loopSubtaskThinking.test.js
 ```
 
+#### DSH Loop+ 真实会话续接验证
+
+已有可用的本机 DSH、激活档案和凭据后，构建并显式启用真实测试（会向当前配置的模型服务发送两个子任务请求，可能产生费用）：
+
+```bash
+npm run build
+SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js
+```
+
+PowerShell 先设置 `$env:SINITEK_DSH_LOOP_LIVE='1'`，再运行相同 `node --test` 命令；结束后用 `Remove-Item Env:SINITEK_DSH_LOOP_LIVE` 取消。可选 `SINITEK_DSH_COMMAND` 指向要测试的 DSH 可执行文件。未显式开启时这些测试默认跳过。
+
+测试只读取本机激活的 `active-profile.json` 和 `active-patch.yaml`，凭据仅注入新 DSH 子进程环境；会话、文件和 HOME 全部使用独立临时目录并在测试后清理，不改用户配置或已有会话。第一项真实协议测试确认换 cwd 拒绝、原 cwd 恢复；第二项用生产 Loop+ 调度适配器和 DSH 执行策略，以脚本主模型触发失败验收，再销毁原进程，让真实 DSH 续接并凭上一轮仅在上下文中提供的校验码修复文件。输出只记录断言结果，不输出配置、凭据或模型正文。图形 Extension Development Host 点击和真实主模型决策不在此用例范围内。
+
 ### 6. 一键启动开发主机（Windows / macOS / Linux）
 
 需要 Python 3.9+、Node.js/npm 和 VS Code。Windows 运行：

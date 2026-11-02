@@ -231,6 +231,9 @@
 
 ### DeepSeek Harness
 
+- Loop+ 复用 DSH 会话时，除找回原隔离 `DSH_HOME` 外还须保持 canonical cwd。实际 DSH 执行根为 `<隔离HOME>/loop-workspace`；Windows 跨盘改用真实工作区 `.sinitek-loop-tmp` 下按隔离 HOME 标识的稳定目录。每轮重新挂载并清理工作区链接，保留空目录身份，不放开项目规则隔离。普通 Vibe cwd 不变。旧版随机 cwd 会话恢复失败时明确报错，不静默新建；具体边界见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
+- `dsh-loop-execution-root` 记录 DSH 实际稳定 `cwd` 和外层本轮 `attemptCwd`；通用启动日志中的随机隔离根不是传给 DSH 的最终 cwd，排障应对照这两个字段。
+
 - 命令顺序是 `codex`、`claude`、`opencode`、`grok`、`dsh`。交互主路径固定为 `dsh --profile acp`。`args.dsh` 只接受明确的 `--patch`。
 - 默认范例模型 id 是无前缀的 `deepseek-v4.1-flash`，ACP 线值为 `JSON.stringify(["sinitek-custom","deepseek-v4.1-flash"])`。模型 id 按 endpoint 原样配置，`models[].id` 与 `acpModel` 必须一致，并且对应 wire 必须出现在当前 `configOptions` 中；插件不会自动增删 `subcoco/` 等前缀。其它自定义 id（包括带命名空间的 id）同样可用，前提是 endpoint 支持且 ACP 广告。
 - 未配置模型不能执行。未出现在已配置模型和当前 `configOptions` 中的 id 不得当成可执行模型。官方路由握手接受任意字符串的结果不能搬到 `sinitek-custom`。

@@ -19,6 +19,7 @@ const { prepareDshIsolatedLaunch } = require("../../extensionHost/dshInteractive
 const { dshRunnerLifecycleStrategy } = require("../../interactive/runnerLifecycleStrategies") as typeof import("../../interactive/runnerLifecycleStrategies");
 const { DshInteractiveRunner } = require("../../interactive/dshRunner") as typeof import("../../interactive/dshRunner");
 const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
+const { createLoopSubtaskExecutionRoot } = require("../../loopSubtaskExecutionRoot") as typeof import("../../loopSubtaskExecutionRoot");
 const { activateSavedDshConfig, saveConfig } = require("../../config/configService") as typeof import("../../config/configService");
 const { readDshActivation, resolveDshConfigPaths } = require("../../config/dshConfig") as typeof import("../../config/dshConfig");
 const {
@@ -111,8 +112,10 @@ function protocolCode(error: unknown): string {
     : "";
 }
 
-test("DSH host reuses one isolated home and remembers the ACP session id", async () => {
+for (const isolateProjectInstructions of [false, true]) {
+test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home and cwd after a tab reload`, async () => {
   const configHome = await fs.mkdtemp(path.join(os.tmpdir(), "dsh-plugin-config-"));
+  const workspaceCwd = await fs.mkdtemp(path.join(os.tmpdir(), "dsh-plugin-workspace-"));
   const previousHome = process.env.DSH_HOME;
   process.env.DSH_HOME = configHome;
   const created: DshRunnerCreateOptions[] = [];
@@ -207,7 +210,7 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     resolveCodexInteractiveSelection: () => null,
     resolveInteractiveMappedId: (_cli: CliName, sessionId: string) => mapped.get(sessionId) ?? null,
     resolveInteractiveSessionForResume: async (_cli: CliName, sessionId: string | null) => sessionId,
-    resolveWorkspaceCwd: () => "/workspace",
+    resolveWorkspaceCwd: () => workspaceCwd,
     requestHumanInteraction: async () => ({
       interactionId: "interaction",
       tabId: "tab-stable",
@@ -232,9 +235,25 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     const activation = await readDshActivation(resolveDshConfigPaths());
     assert.equal(activation.activeProfileId, "dsh_plugin_profile");
     const host = createPromptInteractiveRuntimeHost(deps);
-    await host.runPromptInteractive(inputFor("Reply with exactly: pong"), targetFor("local_stable_1", "tab-stable"));
-    await host.runPromptInteractive(inputFor("Reply with exactly: pong-2"), targetFor(tabSessionId, "tab-stable"));
-    await host.runPromptInteractive(inputFor("Reply with exactly: pong-3"), targetFor(tabSessionId, "tab-reloaded"));
+    await fs.mkdir(path.join(workspaceCwd, "src"));
+    await fs.writeFile(path.join(workspaceCwd, "AGENTS.md"), "project rules");
+    const run = async (tabId: string) => {
+      const root = isolateProjectInstructions ? createLoopSubtaskExecutionRoot(workspaceCwd) : null;
+      try {
+        await host.runPromptInteractive(inputFor("Reply with exactly: pong"), targetFor(tabSessionId, tabId), {
+          cwd: root?.cwd,
+          isolateProjectInstructions,
+        });
+      } finally {
+        root?.dispose();
+      }
+      if (isolateProjectInstructions) {
+        assert.deepEqual(await fs.readdir(String(created[created.length - 1].cwd)), []);
+      }
+    };
+    await run("tab-stable");
+    await run("tab-stable");
+    await run("tab-reloaded");
     assert.equal(created.length, 3);
     assert.equal(created[0]?.localSessionId ?? null, null);
     assert.equal(created[1]?.localSessionId, ACP_ID);
@@ -248,6 +267,9 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     assert.notEqual(firstHome, configHome);
     assert.equal(String(firstHome).startsWith(path.join(os.tmpdir(), "sinitek-dsh-acp")), true);
     homes.add(String(firstHome));
+    assert.equal(created[0]?.cwd, created[1]?.cwd);
+    assert.equal(created[0]?.cwd, created[2]?.cwd);
+    assert.equal(created[0]?.cwd === workspaceCwd, !isolateProjectInstructions);
     const firstCreate = created[0];
     const secondCreate = created[1];
     assert.ok(firstCreate);
@@ -284,8 +306,10 @@ test("DSH host reuses one isolated home and remembers the ACP session id", async
     }
     await Promise.all([...homes].map((home) => fs.rm(home, { recursive: true, force: true })));
     await fs.rm(configHome, { recursive: true, force: true });
+    await fs.rm(workspaceCwd, { recursive: true, force: true });
   }
 });
+}
 
 async function bounded<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;

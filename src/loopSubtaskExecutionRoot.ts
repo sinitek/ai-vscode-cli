@@ -39,10 +39,13 @@ type LoopSubtaskLinkedEntry = {
  * Presents the workspace through a temporary root that omits repository rules
  * and skill directories while preserving writes through top-level links.
  */
-export function createLoopSubtaskExecutionRoot(workspaceCwd: string): LoopSubtaskExecutionRoot {
+export function createLoopSubtaskExecutionRoot(
+  workspaceCwd: string,
+  options: { persistentCwd?: string } = {},
+): LoopSubtaskExecutionRoot {
   const workspaceRoot = path.resolve(workspaceCwd);
   const entries = fs.readdirSync(workspaceRoot, { withFileTypes: true });
-  const { cwd, localTempRoot } = createExecutionRootDir(workspaceRoot);
+  const { cwd, localTempRoot } = createExecutionRootDir(workspaceRoot, options.persistentCwd);
   const linkedEntries: LoopSubtaskLinkedEntry[] = [];
   const rootIdentity = fs.lstatSync(cwd, { bigint: true });
 
@@ -62,14 +65,14 @@ export function createLoopSubtaskExecutionRoot(workspaceCwd: string): LoopSubtas
       }
     }
   } catch (error) {
-    disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries);
+    disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd));
     throw error;
   }
 
   return {
     cwd,
     dispose: () => {
-      disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries);
+      disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd));
     },
   };
 }
@@ -82,10 +85,19 @@ export function isLoopSubtaskLinkFailedError(error: unknown): error is LoopSubta
   );
 }
 
-function createExecutionRootDir(workspaceRoot: string): {
+function createExecutionRootDir(workspaceRoot: string, persistentCwd?: string): {
   cwd: string;
   localTempRoot: string | null;
 } {
+  if (persistentCwd) {
+    const cwd = path.resolve(persistentCwd);
+    fs.mkdirSync(cwd, { recursive: true });
+    const stat = fs.lstatSync(cwd);
+    if (stat.isSymbolicLink() || !stat.isDirectory() || fs.readdirSync(cwd).length > 0) {
+      throw new Error("隔离执行目录不是空的真实目录，已保留现场并停止恢复。");
+    }
+    return { cwd, localTempRoot: null };
+  }
   const osTmp = os.tmpdir();
   if (process.platform !== "win32" || isSameVolumePath(osTmp, workspaceRoot)) {
     return {
@@ -106,6 +118,7 @@ function disposeExecutionRoot(
   localTempRoot: string | null,
   rootIdentity: fs.BigIntStats,
   linkedEntries: LoopSubtaskLinkedEntry[],
+  preserveDirectory = false,
 ): void {
   try {
     assertExecutionRootIdentity(cwd, rootIdentity);
@@ -133,6 +146,12 @@ function disposeExecutionRoot(
   }
   try {
     assertExecutionRootIdentity(cwd, rootIdentity);
+    if (preserveDirectory) {
+      if (fs.readdirSync(cwd).length > 0) {
+        throw new Error("隔离执行目录包含未知内容，已保留现场并跳过清理");
+      }
+      return;
+    }
     fs.rmdirSync(cwd);
     if (localTempRoot) {
       removeEmptyDirBestEffort(localTempRoot);

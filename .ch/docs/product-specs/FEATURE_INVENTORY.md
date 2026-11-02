@@ -343,3 +343,9 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 ## 2026-11-01 DSH 会话恢复修复
 
 本次为既有 DSH ACP 会话续接能力的兼容性修复，不新增用户功能：会话关闭、进程释放或历史会话在新 Tab 加载后，按稳定 ACP session ID 找回原隔离 `DSH_HOME`；修复前创建且没有会话标记的持久化目录按 DSH 原生会话日志布局兼容发现，未知 ID 不借用其它会话目录。实现与回归见 `src/extensionHost/dshInteractiveLaunch.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/test/extensionHost/dshInteractiveHostWire.test.ts`、`src/test/extensionHost/dshPluginLiveBoundary.test.ts`。
+
+## 2026-11-02 Loop+ DSH 验收修复续接
+
+修复 DSH 作为 Loop+ 子模型时，原子任务结束、Tab 关闭、主模型验收失败后，修复任务虽然继承相同 session ID 与 `DSH_HOME`，却因每轮随机 cwd 被 ACP 拒绝的问题。同一 DSH 会话改用稳定的隔离执行根，每轮重建并安全清理工作区链接，保留空目录；普通 Vibe 和其他 CLI 不变。Windows 跨盘使用真实工作区同卷目录。旧版随机 cwd 会话不能安全迁移时明确提示重新派发新子任务，不创建替代会话丢失上下文。未知文件或替换目录均保留并拒绝覆盖。
+
+实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
