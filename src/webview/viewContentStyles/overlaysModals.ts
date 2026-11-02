@@ -208,12 +208,23 @@ ${DIALOG_SHELL_STYLES}
       .scheduled-task-modal {
         width: 560px;
       }
+      .scheduled-task-tabs {
+        margin-bottom: 12px;
+      }
       .scheduled-task-body {
         padding: 0 16px 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
         overflow: auto;
+      }
+      .scheduled-task-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .scheduled-task-panel[hidden] {
+        display: none;
       }
       .scheduled-task-field {
         display: flex;
@@ -223,8 +234,7 @@ ${DIALOG_SHELL_STYLES}
       .scheduled-task-field .interactive-mode-select {
         align-self: flex-start;
       }
-      .scheduled-task-field label,
-      .scheduled-task-list-heading {
+      .scheduled-task-field label {
         color: var(--vscode-foreground);
         font-size: 12px;
         font-weight: 600;
@@ -282,7 +292,7 @@ ${DIALOG_SHELL_STYLES}
         display: flex;
         flex-direction: column;
         gap: 8px;
-        max-height: 220px;
+        max-height: min(440px, 55vh);
         overflow: auto;
       }
       .scheduled-task-empty {

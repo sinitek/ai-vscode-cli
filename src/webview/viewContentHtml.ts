@@ -447,30 +447,37 @@ ${renderChatModal({
           id: "closeScheduledTask",
           label: i18n.scheduledTaskClose,
         },
-        contentHtml: `          <div class="scheduled-task-body">
-            <div class="scheduled-task-field">
-              <label for="scheduledTaskTime">${i18n.scheduledTaskTimeLabel}</label>
-              <input id="scheduledTaskTime" class="scheduled-task-input" type="datetime-local" />
+        contentHtml: `          <div class="tool-settings-tabs scheduled-task-tabs" role="tablist" aria-label="${i18n.scheduledTaskTitle}">
+            <button id="scheduledTaskSubmitTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="scheduledTaskSubmitPanel" tabindex="0">${i18n.scheduledTaskSubmitTab}</button>
+            <button id="scheduledTaskListTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="scheduledTaskListPanel" tabindex="-1">${i18n.scheduledTaskListTab}</button>
+          </div>
+          <div class="scheduled-task-body">
+            <div id="scheduledTaskSubmitPanel" class="scheduled-task-panel" role="tabpanel" aria-labelledby="scheduledTaskSubmitTab">
+              <div class="scheduled-task-field">
+                <label for="scheduledTaskTime">${i18n.scheduledTaskTimeLabel}</label>
+                <input id="scheduledTaskTime" class="scheduled-task-input" type="datetime-local" />
+              </div>
+              <div class="scheduled-task-field">
+                <label for="scheduledTaskMode">${i18n.scheduledTaskModeLabel}</label>
+                ${renderInteractiveModeSelect(i18n, { id: "scheduledTaskMode", ariaLabel: i18n.scheduledTaskModeAria })}
+              </div>
+              <div class="scheduled-task-field">
+                <label for="scheduledTaskPrompt">${i18n.scheduledTaskPromptLabel}</label>
+                <textarea id="scheduledTaskPrompt" class="scheduled-task-prompt" rows="5" placeholder="${i18n.scheduledTaskPromptPlaceholder}"></textarea>
+              </div>
+              <div class="scheduled-task-field">
+                <label for="scheduledTaskAttachmentInput">${i18n.scheduledTaskAttachmentsLabel}</label>
+                <input id="scheduledTaskAttachmentInput" class="scheduled-task-file-input" type="file" multiple />
+                <div id="scheduledTaskAttachments" class="scheduled-task-attachments"></div>
+              </div>
+              <div id="scheduledTaskError" class="scheduled-task-error" role="alert" style="display: none;"></div>
+              <div class="scheduled-task-actions">
+                <button id="saveScheduledTask" class="action-button">${i18n.scheduledTaskSave}</button>
+              </div>
             </div>
-            <div class="scheduled-task-field">
-              <label for="scheduledTaskMode">${i18n.scheduledTaskModeLabel}</label>
-              ${renderInteractiveModeSelect(i18n, { id: "scheduledTaskMode", ariaLabel: i18n.scheduledTaskModeAria })}
+            <div id="scheduledTaskListPanel" class="scheduled-task-panel" role="tabpanel" aria-labelledby="scheduledTaskListTab" hidden>
+              <div id="scheduledTaskList" class="scheduled-task-list"></div>
             </div>
-            <div class="scheduled-task-field">
-              <label for="scheduledTaskPrompt">${i18n.scheduledTaskPromptLabel}</label>
-              <textarea id="scheduledTaskPrompt" class="scheduled-task-prompt" rows="5" placeholder="${i18n.scheduledTaskPromptPlaceholder}"></textarea>
-            </div>
-            <div class="scheduled-task-field">
-              <label for="scheduledTaskAttachmentInput">${i18n.scheduledTaskAttachmentsLabel}</label>
-              <input id="scheduledTaskAttachmentInput" class="scheduled-task-file-input" type="file" multiple />
-              <div id="scheduledTaskAttachments" class="scheduled-task-attachments"></div>
-            </div>
-            <div id="scheduledTaskError" class="scheduled-task-error" role="alert" style="display: none;"></div>
-            <div class="scheduled-task-actions">
-              <button id="saveScheduledTask" class="action-button">${i18n.scheduledTaskSave}</button>
-            </div>
-            <div class="scheduled-task-list-heading">${i18n.scheduledTaskManageTitle}</div>
-            <div id="scheduledTaskList" class="scheduled-task-list"></div>
           </div>
         `,
       })}

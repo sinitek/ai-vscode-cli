@@ -48,6 +48,17 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("separates scheduled task submission and management into accessible tabs", () => {
+  const html = buildHtml();
+  assert.match(html, /id="scheduledTaskSubmitTab"[^>]*role="tab"[^>]*aria-selected="true"[^>]*aria-controls="scheduledTaskSubmitPanel"[^>]*tabindex="0">提交<\/button>/);
+  assert.match(html, /id="scheduledTaskListTab"[^>]*role="tab"[^>]*aria-selected="false"[^>]*aria-controls="scheduledTaskListPanel"[^>]*tabindex="-1">列表<\/button>/);
+  const submitPanel = html.split('id="scheduledTaskSubmitPanel"')[1].split('id="scheduledTaskListPanel"')[0];
+  assertIncludesAll(submitPanel, ['id="scheduledTaskTime"', 'id="scheduledTaskPrompt"', 'id="saveScheduledTask"']);
+  assert.ok(!submitPanel.includes('id="scheduledTaskList"'));
+  assert.match(html, /id="scheduledTaskListPanel"[^>]*role="tabpanel"[^>]*aria-labelledby="scheduledTaskListTab" hidden>\s*<div id="scheduledTaskList"/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.scheduled-task-panel\[hidden\]\s*\{\s*display: none;/);
+});
+
 test("renders a nonce-protected static shell with supplied resource strings", () => {
   const nonce = "nonce-static-render";
   const cspSource = "vscode-resource://sinitek-cli-webview";

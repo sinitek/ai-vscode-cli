@@ -268,7 +268,29 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
+      function setScheduledTaskTab(scope, focusTab = false) {
+        const showList = scope === "list";
+        const tabs = [
+          [elements.scheduledTaskSubmitTab, elements.scheduledTaskSubmitPanel, !showList],
+          [elements.scheduledTaskListTab, elements.scheduledTaskListPanel, showList],
+        ];
+        tabs.forEach(([tab, panel, active]) => {
+          if (tab) {
+            tab.classList.toggle("active", active);
+            tab.setAttribute("aria-selected", String(active));
+            tab.tabIndex = active ? 0 : -1;
+            if (active && focusTab) {
+              tab.focus();
+            }
+          }
+          if (panel) {
+            panel.hidden = !active;
+          }
+        });
+      }
+
       function openScheduledTask() {
+        setScheduledTaskTab("submit");
         setScheduledTaskError("");
         if (elements.scheduledTaskPrompt) {
           elements.scheduledTaskPrompt.value = elements.promptInput.value || "";
@@ -1044,6 +1066,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       function syncRulesSaveOptions(isGlobal) {
         const enabled = enabledRuleCliNames();
         const projectGroup = sharedProjectRuleCliNames();
+        if (elements.rulesSaveLabel) {
+          elements.rulesSaveLabel.textContent = isGlobal ? t("rulesSaveLabel") : t("rulesFileNameLabel");
+        }
         if (elements.rulesSaveCodexLabel) {
           elements.rulesSaveCodexLabel.textContent = isGlobal
             ? formatCliDisplayName("codex")
@@ -1071,9 +1096,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         );
         setRuleOptionVisible(
           elements.rulesSaveGrokOption,
-        if (elements.rulesSaveLabel) {
-          elements.rulesSaveLabel.textContent = isGlobal ? t("rulesSaveLabel") : t("rulesFileNameLabel");
-        }
           elements.rulesSaveGrok,
           isGlobal && enabled.indexOf("grok") >= 0,
         );
@@ -1496,6 +1518,26 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       if (elements.closeScheduledTask) {
         elements.closeScheduledTask.addEventListener("click", closeScheduledTask);
       }
+      [elements.scheduledTaskSubmitTab, elements.scheduledTaskListTab].forEach((tab, index) => {
+        if (!tab) {
+          return;
+        }
+        tab.addEventListener("click", () => setScheduledTaskTab(index === 0 ? "submit" : "list"));
+        tab.addEventListener("keydown", (event) => {
+          let scope;
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            scope = index === 0 ? "list" : "submit";
+          } else if (event.key === "Home") {
+            scope = "submit";
+          } else if (event.key === "End") {
+            scope = "list";
+          } else {
+            return;
+          }
+          event.preventDefault();
+          setScheduledTaskTab(scope, true);
+        });
+      });
       if (elements.saveScheduledTask) {
         elements.saveScheduledTask.addEventListener("click", saveScheduledTask);
       }

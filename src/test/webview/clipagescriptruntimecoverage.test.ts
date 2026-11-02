@@ -716,6 +716,115 @@ function postedTabActions(posted: Array<{ type?: string }>, start: number): Arra
   ));
 }
 
+test("scheduled task tabs preserve the form draft and show the empty list separately", () => {
+  const { api } = createRuntimeHarness();
+  const { elements } = api;
+  elements.scheduleTaskButton.click();
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, false);
+  assert.equal(elements.scheduledTaskListPanel.hidden, true);
+  assert.equal(elements.scheduledTaskSubmitTab.getAttribute("aria-selected"), "true");
+
+  elements.scheduledTaskPrompt.value = "稍后执行的任务";
+  elements.scheduledTaskTime.value = "2099-01-01T10:30";
+  elements.scheduledTaskMode.value = "loop_plus";
+  elements.scheduledTaskListTab.click();
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, true);
+  assert.equal(elements.scheduledTaskListPanel.hidden, false);
+  assert.equal(elements.scheduledTaskListTab.classList.contains("active"), true);
+  assert.equal(elements.scheduledTaskListTab.getAttribute("aria-selected"), "true");
+  assert.equal(elements.scheduledTaskSubmitTab.getAttribute("aria-selected"), "false");
+  assert.equal(elements.scheduledTaskList.children[0].textContent, WEBVIEW_STRINGS.scheduledTaskEmpty);
+
+  elements.scheduledTaskSubmitTab.click();
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, false);
+  assert.equal(elements.scheduledTaskListPanel.hidden, true);
+  assert.equal(elements.scheduledTaskPrompt.value, "稍后执行的任务");
+  assert.equal(elements.scheduledTaskTime.value, "2099-01-01T10:30");
+  assert.equal(elements.scheduledTaskMode.value, "loop_plus");
+
+  elements.scheduledTaskListTab.click();
+  elements.closeScheduledTask.click();
+  elements.scheduleTaskButton.click();
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, false);
+  assert.equal(elements.scheduledTaskListPanel.hidden, true);
+});
+
+test("scheduled task tabs support arrow, Home and End keys without intercepting other keys", () => {
+  const { api } = createRuntimeHarness();
+  const { elements } = api;
+  elements.scheduleTaskButton.click();
+  for (const key of ["ArrowRight", "ArrowLeft", "End"]) {
+    assert.equal(elements.scheduledTaskSubmitTab.dispatchEvent({ type: "keydown", key }), false);
+    assert.equal(elements.scheduledTaskListTab.tabIndex, 0);
+    assert.equal(elements.scheduledTaskSubmitTab.tabIndex, -1);
+    assert.equal(elements.scheduledTaskListTab.focused, true);
+    assert.equal(elements.scheduledTaskListTab.dispatchEvent({ type: "keydown", key: "Home" }), false);
+    assert.equal(elements.scheduledTaskSubmitTab.tabIndex, 0);
+    assert.equal(elements.scheduledTaskListTab.tabIndex, -1);
+    assert.equal(elements.scheduledTaskSubmitTab.focused, true);
+  }
+  elements.scheduledTaskListTab.click();
+  for (const key of ["ArrowRight", "ArrowLeft"]) {
+    elements.scheduledTaskListTab.dispatchEvent({ type: "keydown", key });
+    assert.equal(elements.scheduledTaskSubmitPanel.hidden, false);
+    elements.scheduledTaskListTab.click();
+  }
+  assert.equal(elements.scheduledTaskListTab.dispatchEvent({ type: "keydown", key: "Tab" }), true);
+  assert.equal(elements.scheduledTaskListPanel.hidden, false);
+});
+
+test("scheduled task list stays selected when host updates arrive and retains delete behavior", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  const { elements } = api;
+  elements.scheduleTaskButton.click();
+  elements.scheduledTaskListTab.click();
+  const tasks = [
+    { id: "pending-task", prompt: "等待执行", scheduledAt: Date.now(), status: "pending", cli: "codex" },
+    { id: "running-task", prompt: "执行中", scheduledAt: Date.now(), status: "running", cli: "codex" },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({ scheduledTasks: tasks }) });
+  assert.equal(elements.scheduledTaskListPanel.hidden, false);
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, true);
+  assert.equal(elements.scheduledTaskList.children.length, 2);
+  const deleteButtons = elements.scheduledTaskList.querySelectorAll(".scheduled-task-delete");
+  assert.equal(deleteButtons.length, 1);
+  deleteButtons[0].click();
+  assert.deepEqual(posted.at(-1), { type: "deleteScheduledTask", id: "pending-task" });
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({ scheduledTasks: [] }) });
+  assert.equal(elements.scheduledTaskListPanel.hidden, false);
+  assert.equal(elements.scheduledTaskList.children[0].textContent, WEBVIEW_STRINGS.scheduledTaskEmpty);
+});
+
+test("scheduled task validation and save errors stay in the submission panel", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  const { elements } = api;
+  elements.scheduleTaskButton.click();
+  elements.scheduledTaskPrompt.value = "";
+  elements.saveScheduledTask.click();
+  assert.equal(elements.scheduledTaskError.textContent, WEBVIEW_STRINGS.scheduledTaskPromptRequired);
+  assert.equal(posted.some((message) => message.type === "scheduleTask"), false);
+
+  elements.scheduledTaskPrompt.value = "保存后执行";
+  elements.scheduledTaskTime.value = "2099-01-01T10:30";
+  elements.saveScheduledTask.click();
+  assert.equal(posted.at(-1).type, "scheduleTask");
+  assert.equal(elements.saveScheduledTask.disabled, true);
+  window.dispatchMessage({ type: "scheduledTaskSaved", error: "保存失败，请重试" });
+  assert.equal(elements.saveScheduledTask.disabled, false);
+  assert.equal(elements.scheduledTaskError.textContent, "保存失败，请重试");
+  elements.scheduledTaskListTab.click();
+  elements.scheduledTaskSubmitTab.click();
+  assert.equal(elements.scheduledTaskPrompt.value, "保存后执行");
+  assert.equal(elements.scheduledTaskError.textContent, "保存失败，请重试");
+
+  window.dispatchMessage({ type: "scheduledTaskSaved" });
+  assert.equal(elements.scheduledTaskSubmitPanel.hidden, false);
+  assert.equal(elements.scheduledTaskOverlay.classList.contains("visible"), true);
+  assert.equal(elements.scheduledTaskPrompt.value, "");
+  assert.equal(elements.scheduledTaskError.textContent, "");
+});
+
 test("configuration button forwards the selected CLI and profile rather than the active profile", () => {
   const { api, posted } = createRuntimeHarness();
   for (const cli of ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"]) {
