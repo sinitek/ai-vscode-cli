@@ -68,6 +68,8 @@ cli / interactive / config 服务层
 - `configPanel.ts` 注册只读自定义编辑器承载配置 UI，优先调用 VS Code 内部模态编辑器；能力不可用或失败时回退独立 VS Code 窗口，窗口命令失败则保留编辑器页。`configView.ts` 按宿主模式隐藏原生浮层内重复标题和关闭按钮；不改变配置协议、档案导航或工作台全局布局。
 - 不直接访问文件系统，不直接执行 CLI
 - 主对话与 Loop / Loop+ 群聊复用 `chatMarkdown.ts` 的浏览器侧 Markdown、JSON、SVG 和图片交互运行时；`markdownAssets.ts` 统一加载 Marked / JSONFormatter，`viewContentStyles/markdown.ts` 提供可按容器复用的主题样式。
+- 主对话实时追加、合并和工具更新使用 `messageRendering.ts` 的增量协调路径，复用原文、元信息及展示上下文未变的消息节点和指令组；`messageId` 索引只保存当前可见 DOM，移除消息、完整重绘和切换 CLI / Tab 时清理。完整重绘入口仍用于历史恢复等既有流程，不减少气泡、不截断历史或回放，也不改变折叠、筛选和导出契约。
+- 消息节点复用必须核对 CLI、Tab、消息索引、流式纯文本状态及相邻工具引起的思考展示变化；元信息快照覆盖操作入口等嵌套字段。流式节点显式记录实际的纯文本展示状态，不能只依据 Markdown 定时器是否挂起，否则同步/延迟动画帧与结束收口交错时可能错误复用纯文本，遗漏最终 Markdown。
 - `chatImageHost.ts` 在扩展宿主侧统一承接图片解析、预览和下载，由 `viewProvider.ts` 与 `loopGroupChatPanel.ts` 各自绑定当前 Webview，防止异步结果写入已替换或关闭的页面。
 
 #### 扩展编排层

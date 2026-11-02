@@ -4,11 +4,12 @@
 
 ## 任务启动前的配置应用与读回校验
 
-- 统一任务入口在交互式、一次性、并行派发和命令修复重试前重新应用任务档案，档案 ID 未变化也会写入。因此“未成功更新配置”既可能出现在配置中心，也可能阻止任务启动。
+- 统一任务入口在交互式、一次性、并行派发和命令修复重试前尽力重新应用任务档案，档案 ID 未变化也会写入。任务前重写不是启动成功的必要条件：等待中的配置应用失败或重写抛错时，只追加一条中文警告，并记录 `task-config-rewrite-skipped`，继续使用当前可用运行配置派发，不提交虚假的激活成功状态。
 - `configService.applyConfig` 保持同一进程内按 CLI 串行写入。`runtimeConfigVerification.ts` 优先比较原文，不同再按 JSON / TOML 的结构和值判断；OpenCode 使用 JSONC 解析。对象键顺序、格式、注释或换行差异不算失败，数组顺序与实际字段差异仍算失败。Claude MCP 仅允许无关的顶层字段保留，不递归放宽嵌套对象校验。
 - 读回校验冲突最多完整应用 3 次，重试前分别等待 25 / 50 毫秒，且重试不离开当前 CLI 队列。DSH 档案激活在提交激活标记前同样有限重试。权限、文件写入、档案格式校验等其它错误不重试。
-- 持续不一致仍阻止启动，错误只指出 CLI、文件名和可能的并发覆盖，不附带配置值或认证信息。排查时先停止其它窗口或 CLI 的配置写入，再重新激活档案并重试。这里没有跨进程锁，也不保证校验结束后文件不会再被其它进程修改。
-- 回归入口：`src/test/config/runtimeConfigVerification.test.ts`、`src/test/config/cliruntimeconfigstrategies.test.ts`、`src/test/config/configService.test.ts`、`src/test/config/dshConfig.test.ts`。本行为不需要界面改版。
+- 配置服务仍对持续不一致、权限和写入错误返回失败；配置中心及用户显式切换保持失败回滚与成功后提交。任务入口捕获重写失败后跳过本次任务后续重写，包含命令修复重试，下一次新任务可以重新尝试。警告明确当前运行配置可能与所选档案不一致；写入失败不承诺运行文件自动回滚，必要时停止其它配置写入后重新激活档案。这里没有跨进程锁，也不保证校验结束后文件不会再被其它进程修改。
+- 新选择使重写请求变为 `superseded`、主动取消、缺失绑定子任务档案或实际 OpenCode 配置预检失败仍按原有逻辑处理；真实 CLI 运行错误不被降级吞掉。重写失败后成功执行的子任务，其会话绑定的配置 ID 留空，不把失败的目标档案记录为已成功应用。
+- 回归入口：`src/test/extensionHost/promptSessionHealth.test.ts`、`src/test/config/runtimeConfigVerification.test.ts`、`src/test/config/cliruntimeconfigstrategies.test.ts`、`src/test/config/configService.test.ts`、`src/test/config/dshConfig.test.ts`。本行为不需要界面改版。
 
 ## 1. 当前支持矩阵
 

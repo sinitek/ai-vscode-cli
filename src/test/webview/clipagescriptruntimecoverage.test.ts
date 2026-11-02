@@ -248,6 +248,10 @@ class FakeElement {
   }
 
   insertBefore<T extends FakeElement>(child: T, before: FakeElement | null): T {
+    if (child === before) {
+      return child;
+    }
+    child.parentNode?.removeChild(child);
     child.parentNode = this;
     const index = before ? this.children.indexOf(before) : -1;
     if (index >= 0) {
@@ -571,6 +575,7 @@ function createRuntimeHarness(
         dispatchPrompt,
         formatDateTime,
         formatDateTimeWithMs,
+        findRenderedMessageElement,
         getActiveConversationRuntimeState,
         getConversationRuntimeState,
         getAssistantMessageContentForDisplay,
@@ -593,6 +598,7 @@ function createRuntimeHarness(
         setMessagesForTab,
         shouldHideParsedTaskListMessage,
         stripParsedTaskListContentFromText,
+        renderedMessageCacheSize: () => renderedMessagesById.size,
         forceRenderMarkdownFailure: () => {
           renderMarkdown = () => { throw new Error("markdown failed"); };
           renderMessages();
@@ -2731,6 +2737,162 @@ test("collapses two or more consecutive instruction bubbles until toggled", () =
   reopened.querySelector("summary").click();
   assert.equal(reopened.open, false);
   assert.equal(reopened.querySelector("summary").textContent, "(3) command five");
+});
+
+test("live appends reuse every unchanged history bubble and expanded instruction group without dropping messages", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const history = Array.from({ length: 60 }, (_, index) => ({
+    id: `history-${index}`,
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `完整历史正文 ${index}`,
+    ...(index % 2 === 1 ? { codexFinalAnswer: true } : {}),
+  }));
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    ...history,
+    { id: "command-1", role: "trace", content: "exec first", merge: false },
+    { id: "command-2", role: "trace", content: "exec second", merge: false },
+  ] });
+  const messages = document.getElementById("messages");
+  const historicalNodes = history.map((message) => api.findRenderedMessageElement(message.id));
+  const group = messages.querySelector("details.instruction-group");
+  const firstCommand = api.findRenderedMessageElement("command-1");
+  group.querySelector("summary").click();
+  window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message: {
+    id: "command-3", role: "trace", content: "exec third", merge: false,
+  } });
+  assert.equal(messages.querySelectorAll(".message").length, 63);
+  assert.equal(api.renderedMessageCacheSize(), 63);
+  history.forEach((message, index) => {
+    assert.equal(api.findRenderedMessageElement(message.id), historicalNodes[index]);
+    assert.equal(api.state.messages[index].content, message.content);
+  });
+  assert.equal(messages.querySelector("details.instruction-group"), group);
+  assert.equal(api.findRenderedMessageElement("command-1"), firstCommand);
+  assert.equal(group.open, true);
+  assert.equal(group.dataset.instructionCount, "3");
+  assert.equal(group.querySelector("summary").textContent, "收起 (3)");
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("trace updates replace only the changed bubble and keep its instruction group and neighbours", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: "user-1", role: "user", content: "检查全部输出" },
+    { id: "command-1", role: "trace", content: "exec first", merge: false },
+    { id: "command-2", role: "trace", content: "exec second", merge: false },
+  ] });
+  const userNode = api.findRenderedMessageElement("user-1");
+  const firstCommand = api.findRenderedMessageElement("command-1");
+  const secondCommand = api.findRenderedMessageElement("command-2");
+  const group = document.getElementById("messages").querySelector("details.instruction-group");
+  window.dispatchMessage({ type: "traceSegment", tabId: "tab-1", id: "command-2", content: "exec changed", merge: false });
+  assert.equal(api.findRenderedMessageElement("user-1"), userNode);
+  assert.equal(api.findRenderedMessageElement("command-1"), firstCommand);
+  assert.notEqual(api.findRenderedMessageElement("command-2"), secondCommand);
+  assert.equal(document.getElementById("messages").querySelector("details.instruction-group"), group);
+  assert.match(group.querySelector("summary").textContent, /changed/);
+  assert.equal(group.querySelector(".instruction-group-body").children.length, 2);
+  assert.equal(document.getElementById("messages").querySelectorAll(".message").length, 3);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("incremental rendering invalidates context and metadata while preserving all visible message identities", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages = [
+    { id: "user-1", role: "user", content: "第一条" },
+    { id: "narration", role: "assistant", content: "准备执行下一步" },
+  ];
+  api.renderMessages();
+  const userNode = api.findRenderedMessageElement("user-1");
+  const narration = api.findRenderedMessageElement("narration");
+  window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message: {
+    id: "tool-1", role: "trace", content: "exec pwd", merge: false,
+  } });
+  assert.equal(api.findRenderedMessageElement("user-1"), userNode);
+  assert.notEqual(api.findRenderedMessageElement("narration"), narration);
+  assert.ok(api.findRenderedMessageElement("narration").querySelector(".thinking-bubble"));
+  api.state.messages[1].codexFinalAnswer = true;
+  api.renderMessages({ incremental: true });
+  assert.equal(api.findRenderedMessageElement("narration").querySelector(".thinking-bubble"), null);
+  assert.equal(api.findRenderedMessageElement("narration").classList.contains("message-final-summary"), true);
+  api.state.messages[1].actions = [{ type: "openLoopGroupChat", taskId: "new-task", label: "打开群聊" }];
+  api.renderMessages({ incremental: true });
+  assert.ok(api.findRenderedMessageElement("narration").querySelector(".message-actions"));
+  api.state.messages[1].actions[0].label = "更新后的群聊入口";
+  api.renderMessages({ incremental: true });
+  assert.equal(api.findRenderedMessageElement("narration").querySelector(".message-action-link").textContent, "更新后的群聊入口");
+  api.state.messages = [api.state.messages[2], api.state.messages[0], api.state.messages[1]];
+  api.renderMessages({ incremental: true });
+  assert.deepEqual(document.getElementById("messages").children.map((node: FakeElement) => node.dataset.messageId), ["tool-1", "user-1", "narration"]);
+  assert.equal(api.findRenderedMessageElement("tool-1"), document.getElementById("messages").children[0]);
+  assert.equal(api.findRenderedMessageElement("user-1"), document.getElementById("messages").children[1]);
+  assert.equal(document.getElementById("messages").querySelectorAll(".message").length, 3);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("message lookup caches are bounded to visible messages and reset across filters and tabs", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: "shared-id", role: "user", content: "第一个标签" },
+    { id: "command-1", role: "trace", content: "exec pwd" },
+  ] });
+  const firstTabNode = api.findRenderedMessageElement("shared-id");
+  const querySelectorAll = document.getElementById("messages").querySelectorAll;
+  document.getElementById("messages").querySelectorAll = () => { throw new Error("unexpected DOM traversal"); };
+  assert.equal(api.findRenderedMessageElement("shared-id"), firstTabNode);
+  document.getElementById("messages").querySelectorAll = querySelectorAll;
+  api.state.onlyShowFinalResults = true;
+  api.renderMessages({ incremental: true });
+  assert.equal(api.findRenderedMessageElement("command-1"), null);
+  assert.equal(api.renderedMessageCacheSize(), 1);
+  api.state.onlyShowFinalResults = false;
+  api.state.conversationTabs.activeTabId = "tab-2";
+  api.state.currentCli = "claude";
+  api.state.messages = [{ id: "shared-id", role: "user", content: "第二个标签" }];
+  api.renderMessages({ incremental: true });
+  assert.notEqual(api.findRenderedMessageElement("shared-id"), firstTabNode);
+  assert.match(api.findRenderedMessageElement("shared-id").querySelector(".bubble").innerHTML, /第二个标签/);
+  assert.equal(api.renderedMessageCacheSize(), 1);
+  api.state.messages = [];
+  api.renderMessages({ incremental: true });
+  assert.equal(api.renderedMessageCacheSize(), 0);
+  assert.equal(api.findRenderedMessageElement("shared-id"), null);
+  assert.equal(document.getElementById("messages").children.length, 0);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("incremental reconciliation preserves duplicate IDs and recovers its indexes after a rendering error", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  api.state.messages = [
+    { id: "duplicate", role: "user", content: "完整第一条" },
+    { id: "duplicate", role: "user", content: "完整第二条" },
+  ];
+  api.renderMessages();
+  const messages = document.getElementById("messages");
+  api.renderMessages({ incremental: true });
+  assert.equal(messages.querySelectorAll(".message").length, 2);
+  assert.match(messages.children[0].querySelector(".bubble").innerHTML, /完整第一条/);
+  assert.match(messages.children[1].querySelector(".bubble").innerHTML, /完整第二条/);
+  assert.equal(api.findRenderedMessageElement("duplicate"), messages.children[0]);
+  const insertBefore = messages.insertBefore;
+  messages.insertBefore = () => { throw new Error("test insertion failure"); };
+  api.renderMessages();
+  assert.equal(api.renderedMessageCacheSize(), 0);
+  messages.insertBefore = insertBefore;
+  api.renderMessages({ incremental: true });
+  assert.equal(messages.querySelectorAll(".message").length, 2);
+  assert.ok(api.findRenderedMessageElement("duplicate"));
+  assert.equal(posted.filter((message) => message.type === "webviewError").length, 1);
 });
 
 test("expanded instruction groups collapse from their bottom icon and stay collapsed after rerendering", () => {

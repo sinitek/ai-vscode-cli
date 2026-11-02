@@ -1063,12 +1063,14 @@
     {
       "id": "plugin.rule.config_apply_serializes_runtime_writes",
       "name": "同一 CLI 配置应用串行写入运行文件",
-      "description": "配置中心及任务启动前通过同一 applyConfig 入口应用同一 CLI 的档案时，同一进程内运行时文件写入按 CLI 串行排队，Codex 的 config.toml 与 auth.json 配对校验，不同 CLI 可独立应用。读回按 JSON/TOML 结构和值校验，OpenCode 支持 JSONC，忽略格式、对象键序、注释和换行差异，数组顺序、实际字段差异及 Claude MCP 顶层浅合并边界保持严格。仅校验冲突在当前队列内最多完整应用3次，重试前等待25/50毫秒；DSH激活也有界恢复。持续冲突仍提示“未成功更新配置”并指出CLI和文件，不泄漏配置值；其它错误直接失败。不提供跨进程文件锁。",
+      "description": "配置中心及任务启动前通过同一 applyConfig 入口应用同一 CLI 的档案时，同一进程内运行时文件写入按 CLI 串行排队，Codex 的 config.toml 与 auth.json 配对校验，不同 CLI 可独立应用。读回按 JSON/TOML 结构和值校验，OpenCode 支持 JSONC，忽略格式、对象键序、注释和换行差异，数组顺序、实际字段差异及 Claude MCP 顶层浅合并边界保持严格。仅校验冲突在当前队列内最多完整应用3次，重试前等待25/50毫秒；DSH激活也有界恢复。配置服务对持续冲突及其它错误返回失败，配置中心和显式切换不伪装成功；任务入口捕获重写失败后警告并继续使用当前可用配置，不提交激活成功。不提供跨进程文件锁或失败自动回滚。",
       "status": "active",
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
         {"path": "src/config/configService.ts"},
         {"path": "src/config/runtimeConfigVerification.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/test/extensionHost/promptSessionHealth.test.ts"},
         {"path": "src/config/dshConfig.ts"},
         {"path": "src/test/config/configService.test.ts"},
         {"path": "src/test/config/runtimeConfigVerification.test.ts"},
@@ -1080,7 +1082,7 @@
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
-      "description": "七个 CLI 的显式档案切换在宿主完成 applyConfig 并提交 activeConfigIdByCli 后生效；发送与队列出队等待提交，最新选择覆盖旧请求，失败回滚并阻止派发。待提交时模型与思考只接受 activeConfigId 匹配 selectedConfigId 的快照，提交结束后跟随宿主激活状态。首次加载、心跳及空闲刷新不自动激活首项或回写旧档案，避免覆盖其他窗口或配置中心的切换。统一任务入口在交互式、一次性、并行派发和命令修复重试前重新应用任务档案，ID 相同也重写；绑定子任务档案优先于执行快照及当前激活身份，无身份时启动阶段选择有序首项，无档案则兼容原生配置。应用失败或被新请求替代时不启动；OpenCode 应用后再校验。不引入长期文件锁，不保证跨进程同时启动原子性或迁移运行中进程，旧扩展窗口需重载。",
+      "description": "七个 CLI 的显式档案切换在宿主完成 applyConfig 并提交 activeConfigIdByCli 后生效；发送与队列出队等待提交，最新选择覆盖旧请求，失败回滚。待提交时模型与思考只接受 activeConfigId 匹配 selectedConfigId 的快照，提交结束后跟随宿主激活状态。首次加载、心跳及空闲刷新不自动激活首项或回写旧档案。统一任务入口在三种执行路由和命令修复重试前尽力重写任务档案，绑定子任务档案优先于执行快照及当前激活身份，无身份时启动阶段选择有序首项，无档案则兼容原生配置。等待中的应用失败或重写抛错时警告并继续派发，本次任务后续重写跳过，下一次新任务可重试；不提交激活成功，失败重写后的子任务会话绑定配置 ID 留空。被新请求替代、主动取消、缺失绑定档案及实际 OpenCode 配置预检失败仍按原有逻辑处理，真实 CLI 错误不吞。不引入长期锁，不保证跨进程原子性、失败自动回滚或运行中进程迁移。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
       "source_refs": [

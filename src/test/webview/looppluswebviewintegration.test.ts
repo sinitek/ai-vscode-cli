@@ -167,6 +167,12 @@ class FakeElement {
     this.parentElement = null;
   }
 
+  removeChild<T extends FakeElement>(child: T): T {
+    this.detach(child);
+    child.parentElement = null;
+    return child;
+  }
+
   querySelector(selector: string): FakeElement | null {
     const className = selector.startsWith(".") ? selector.slice(1) : selector;
     for (const child of this.children) {
@@ -378,8 +384,12 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "captureOpenInstructionGroupKeys"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "bindInstructionGroupToggle"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createInstructionGroupElement"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "reconcileMessageChildren"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "appendVisibleMessageEntries"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "forceCollapseToolResultBubbles"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "messageRenderState"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "rememberRenderedMessage"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getOrCreateMessageElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderMessages"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"],
@@ -420,6 +430,9 @@ function browserScript(): string {
     "var traceCollapsibleOpenKeys = new Set();",
     "var instructionGroupOpenKeys = new Set();",
     "var thinkingBubbleViewStates = new Map();",
+    "var renderedMessagesById = new Map();",
+    "var renderedInstructionGroupsByKey = new Map();",
+    "var renderedConversationKey = \"\";",
     "var thinkingBubbleResizeObserver = null;",
     "var conversationRuntimeByTabId = Object.create(null);",
     "var loopMetaByTabId = Object.create(null);",
@@ -449,6 +462,8 @@ function browserScript(): string {
     "function getAssistantMessageContentForDisplay(message) { return String(message && message.content || \"\"); }",
     "function normalizeMessageActions() { return []; }",
     "function isThinkingLikeMessage() { return false; }",
+    "function isAssistantMarkdownRenderPending() { return false; }",
+    "function isPreToolAssistantNarration() { return false; }",
     "function safelyRenderMessageContent(message) { return String(message && message.content || \"\"); }",
     "function formatDateTime() { return \"\"; }",
     "function isFinalAssistantSummaryMessage() { return false; }",

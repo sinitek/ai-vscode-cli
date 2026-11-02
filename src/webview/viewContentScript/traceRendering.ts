@@ -219,12 +219,12 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
               const prefix = last.content ? "\\n" : "";
               last.content = last.content + prefix + message.content;
             }
-            renderMessages();
+            renderMessages({ incremental: true });
             return;
           }
           state.messages.push(message);
           assistantRedirects[message.id] = message.id;
-          renderMessages();
+          renderMessages({ incremental: true });
           return;
         }
         const sameRole = last && last.role === message.role;
@@ -234,11 +234,11 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (sameRole && sameTraceKind && allowMerge) {
           const prefix = last.content ? "\\n" : "";
           last.content = last.content + prefix + (message.content || "");
-          renderMessages();
+          renderMessages({ incremental: true });
           return;
         }
         state.messages.push(message);
-        renderMessages();
+        renderMessages({ incremental: true });
       }
 
       function isDuplicateSystemStatusMessage(content) {
@@ -326,7 +326,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
           const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
           if (!updateRenderedAssistantMessage(message, renderedIndex)) {
-            renderMessages();
+            renderMessages({ incremental: true });
             return;
           }
           updateTaskList();
@@ -348,7 +348,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           delete assistantStreamingRenderFrames[messageId];
         });
         if (messageIds.size > 0) {
-          renderMessages();
+          renderMessages({ incremental: true });
         }
       }
 
@@ -375,7 +375,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
           if (!updateRenderedAssistantMessageStreaming(message, renderedIndex)) {
             scheduleAssistantDeltaMarkdownRender(message.id);
-            renderMessages();
+            renderMessages({ incremental: true });
             return;
           }
           elements.emptyState.style.display = state.messages.length === 0 ? "block" : "none";
@@ -451,7 +451,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           || (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target))
         ) {
           clearAssistantDeltaRenderTimer(target.id);
-          renderMessages();
+          renderMessages({ incremental: true });
           return;
         }
         const renderedTarget = findRenderedMessageElement(target.id);
@@ -462,7 +462,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           && messageElementIsInsideInstructionGroup(renderedTarget);
         if (requiresFullRender || !renderedTarget || thinkingInsideInstructionGroup) {
           scheduleAssistantDeltaMarkdownRender(target.id);
-          renderMessages();
+          renderMessages({ incremental: true });
           return;
         }
         if (shouldDeferAssistantMarkdownWhileStreaming(target, targetIndex) && !isToolResultLikeMessage(target)) {
@@ -505,7 +505,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             changed = true;
           }
           if (changed) {
-            renderMessages();
+            renderMessages({ incremental: true });
           }
           return;
         }

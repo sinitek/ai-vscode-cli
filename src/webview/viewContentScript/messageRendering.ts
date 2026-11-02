@@ -1,5 +1,8 @@
 // Message rendering and conversation tab helpers.
 export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleViewStates = new Map();
+      var renderedMessagesById = new Map();
+      var renderedInstructionGroupsByKey = new Map();
+      var renderedConversationKey = "";
       var thinkingBubbleResizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver((entries) => entries.forEach((entry) => syncThinkingBubbleViewport(entry.target, false)))
         : null;
@@ -281,11 +284,14 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           ? group.dataset.instructionCount
           : (typeof group.getAttribute === "function" ? group.getAttribute("data-instruction-count") : "0");
         const count = Number(rawCount);
-        summary.textContent = instructionGroupSummaryText(
+        const summaryText = instructionGroupSummaryText(
           Number.isFinite(count) ? count : 0,
           Boolean(group.open),
           instructionGroupLatestTitle(group)
         );
+        if (summary.textContent !== summaryText) {
+          summary.textContent = summaryText;
+        }
         const collapseButton = group.querySelector(".instruction-group-collapse");
         if (collapseButton) {
           collapseButton.hidden = !group.open;
@@ -358,7 +364,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         }
       }
 
-      function createInstructionGroupElement(entries) {
+      function createInstructionGroupElement(entries, reuseMessages) {
         const key = instructionGroupStorageKey(entries[0]);
         const open = instructionGroupOpenKeys.has(key);
         const group = document.createElement("details");
@@ -380,7 +386,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         body.className = "instruction-group-body";
         body.id = "instruction-content-" + key;
         entries.forEach((entry) => {
-          body.appendChild(createMessageElement(entry.message, entry.index));
+          body.appendChild(reuseMessages
+            ? getOrCreateMessageElement(entry.message, entry.index)
+            : createMessageElement(entry.message, entry.index));
         });
         group.appendChild(body);
         const collapseButton = document.createElement("button");
@@ -396,35 +404,90 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return group;
       }
 
-      function appendVisibleMessageEntries(entries) {
-        const visibleMessages = getVisibleMessages();
-        const visibleSet = new Set(visibleMessages.map((entry) => entry.message));
+      function reconcileMessageChildren(parent, children) {
+        children.forEach((child, index) => {
+          const current = parent.children[index] || null;
+          if (current !== child) {
+            parent.insertBefore(child, current);
+          }
+        });
+        while (parent.children.length > children.length) {
+          parent.removeChild(parent.children[children.length]);
+        }
+      }
+
+      function appendVisibleMessageEntries(entries, reuseMessages) {
+        const children = [];
+        const visibleIds = new Set();
+        const groupKeys = new Set();
         let instructionRun = [];
         const flushInstructionRun = () => {
           if (!instructionRun.length) {
             return;
           }
           if (instructionRun.length >= 2) {
-            elements.messages.appendChild(createInstructionGroupElement(instructionRun));
+            const key = instructionRun[0].index;
+            let group = reuseMessages ? renderedInstructionGroupsByKey.get(key) : null;
+            if (group && group.dataset.instructionGroupKey === instructionGroupStorageKey(instructionRun[0])) {
+              const body = group.querySelector(".instruction-group-body");
+              const previousLatest = body.children[body.children.length - 1];
+              const messageElements = instructionRun.map((entry) => (
+                getOrCreateMessageElement(entry.message, entry.index)
+              ));
+              const count = String(instructionRun.length);
+              const countChanged = group.dataset.instructionCount !== count;
+              reconcileMessageChildren(body, messageElements);
+              if (countChanged) {
+                group.setAttribute("data-instruction-count", count);
+              }
+              if (countChanged || previousLatest !== messageElements[messageElements.length - 1]) {
+                syncInstructionGroupSummary(group);
+              }
+            } else {
+              group = createInstructionGroupElement(instructionRun, reuseMessages);
+            }
+            renderedInstructionGroupsByKey.set(key, group);
+            groupKeys.add(key);
+            children.push(group);
           } else {
             instructionRun.forEach((entry) => {
-              elements.messages.appendChild(createMessageElement(entry.message, entry.index));
+              children.push(reuseMessages
+                ? getOrCreateMessageElement(entry.message, entry.index)
+                : createMessageElement(entry.message, entry.index));
             });
           }
           instructionRun = [];
         };
         entries.forEach((entry) => {
-          if (!visibleSet.has(entry.message)) {
-            return;
+          if (entry.message.id) {
+            visibleIds.add(entry.message.id);
           }
           if (isInstructionBubble(entry.message, entry.index)) {
             instructionRun.push(entry);
             return;
           }
           flushInstructionRun();
-          elements.messages.appendChild(createMessageElement(entry.message, entry.index));
+          children.push(reuseMessages
+            ? getOrCreateMessageElement(entry.message, entry.index)
+            : createMessageElement(entry.message, entry.index));
         });
         flushInstructionRun();
+        reconcileMessageChildren(elements.messages, children);
+        renderedMessagesById.forEach((record, messageId) => {
+          if (!visibleIds.has(messageId)) {
+            const bubble = record.element.querySelector(".bubble");
+            if (bubble) {
+              rememberThinkingBubbleViewState(bubble);
+            }
+            renderedMessagesById.delete(messageId);
+            thinkingBubbleViewStates.delete(String(messageId));
+          }
+        });
+        renderedInstructionGroupsByKey.forEach((_group, key) => {
+          if (!groupKeys.has(key)) {
+            renderedInstructionGroupsByKey.delete(key);
+          }
+        });
       }
 
       function forceCollapseToolResultBubbles() {
@@ -689,7 +752,52 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return wrapper;
       }
 
-      function createMessageElement(message, index) {
+      function messageRenderState(message, index, streaming) {
+        return {
+          content: message.content,
+          metadata: JSON.stringify({ ...message, content: undefined }),
+          context: JSON.stringify([
+            state.currentCli,
+            getActiveConversationTabId(),
+            index,
+            streaming === true || isAssistantMarkdownRenderPending(message),
+            isPreToolAssistantNarration(message, index),
+          ]),
+        };
+      }
+
+      function rememberRenderedMessage(message, index, element, renderState) {
+        if (message && message.id) {
+          const previous = renderedMessagesById.get(message.id);
+          if (!previous || previous.index === index
+            || state.messages.findIndex((item) => item && item.id === message.id) === index) {
+            renderedMessagesById.set(message.id, {
+              element,
+              index,
+              ...(renderState || messageRenderState(message, index)),
+            });
+          }
+        }
+      }
+
+      function getOrCreateMessageElement(message, index) {
+        const previous = message.id ? renderedMessagesById.get(message.id) : null;
+        const renderState = messageRenderState(message, index);
+        if (previous) {
+          if (previous.content === renderState.content
+            && previous.metadata === renderState.metadata
+            && previous.context === renderState.context) {
+            return previous.element;
+          }
+          const bubble = previous.element.querySelector(".bubble");
+          if (bubble) {
+            rememberThinkingBubbleViewState(bubble);
+          }
+        }
+        return createMessageElement(message, index, renderState);
+      }
+
+      function createMessageElement(message, index, renderState) {
         const wrapper = document.createElement("div");
         applyMessageElementClasses(wrapper, message, index);
         if (message && message.id) {
@@ -719,6 +827,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           wrapper.appendChild(taskRoleBadge);
         }
         wrapper.appendChild(bubble);
+        rememberRenderedMessage(message, index, wrapper, renderState);
         return wrapper;
       }
 
@@ -726,22 +835,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         if (!messageId || !elements.messages) {
           return null;
         }
-        const queue = [elements.messages];
-        while (queue.length) {
-          const node = queue.shift();
-          const children = node && node.children ? Array.from(node.children) : [];
-          for (let index = 0; index < children.length; index += 1) {
-            const child = children[index];
-            if (!child) {
-              continue;
-            }
-            if (child.dataset && child.dataset.messageId === messageId) {
-              return child;
-            }
-            queue.push(child);
-          }
+        const record = renderedMessagesById.get(messageId);
+        const element = record ? record.element : null;
+        let current = element;
+        while (current && current !== elements.messages) {
+          current = current.parentNode || current.parentElement;
         }
-        return null;
+        return current === elements.messages ? element : null;
       }
 
       function updateRenderedAssistantMessage(message, index) {
@@ -782,6 +882,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           refreshChatSearchHighlights();
         }
         refreshInstructionGroupSummaryForMessage(wrapper);
+        rememberRenderedMessage(message, index, wrapper);
         return true;
       }
 
@@ -859,27 +960,35 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           refreshChatSearchHighlights();
         }
         refreshInstructionGroupSummaryForMessage(wrapper);
+        rememberRenderedMessage(message, index, wrapper, messageRenderState(message, index, true));
         return true;
       }
 
-      function renderMessages() {
+      function renderMessages(options = {}) {
         try {
+          const conversationKey = JSON.stringify([state.currentCli, getActiveConversationTabId()]);
+          const visibleMessages = getVisibleMessages();
+          const visibleIds = visibleMessages.map((entry) => entry.message.id).filter(Boolean);
+          const reuseMessages = options.incremental === true
+            && renderedConversationKey === conversationKey
+            && new Set(visibleIds).size === visibleIds.length;
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
           const previousScrollTop = elements.chatArea ? elements.chatArea.scrollTop : 0;
           const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
           captureOpenTraceCollapsibleKeys();
           captureOpenInstructionGroupKeys();
           thinkingBubbleViewStates.clear();
-          elements.messages.querySelectorAll(".bubble").forEach(rememberThinkingBubbleViewState);
-          if (thinkingBubbleResizeObserver) {
-            thinkingBubbleResizeObserver.disconnect();
+          if (!reuseMessages) {
+            elements.messages.querySelectorAll(".bubble").forEach(rememberThinkingBubbleViewState);
+            if (thinkingBubbleResizeObserver) {
+              thinkingBubbleResizeObserver.disconnect();
+            }
+            renderedMessagesById.clear();
+            renderedInstructionGroupsByKey.clear();
+            elements.messages.innerHTML = "";
           }
-          elements.messages.innerHTML = "";
-          const visibleMessages = getVisibleMessages();
-          const transcriptEntries = Array.isArray(state.messages)
-            ? state.messages.map((message, index) => ({ message, index }))
-            : visibleMessages;
-          appendVisibleMessageEntries(transcriptEntries);
+          renderedConversationKey = conversationKey;
+          appendVisibleMessageEntries(visibleMessages, reuseMessages);
 
           forceCollapseToolResultBubbles();
           elements.emptyState.style.display = visibleMessages.length === 0 ? "block" : "none";
@@ -895,6 +1004,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
             refreshChatSearchHighlights();
           }
         } catch (error) {
+          renderedMessagesById.clear();
+          renderedInstructionGroupsByKey.clear();
+          renderedConversationKey = "";
+          if (thinkingBubbleResizeObserver) {
+            thinkingBubbleResizeObserver.disconnect();
+          }
           reportWebviewFailure("renderMessages-failed", error, {
             activeTabId: getActiveConversationTabId(),
             messageCount: Array.isArray(state.messages) ? state.messages.length : -1,
