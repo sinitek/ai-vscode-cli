@@ -168,7 +168,8 @@ body[data-config-host="native-modal"] .config-app-workspace {
   max-height: calc(100vh - 24px) !important;
 }
 
-.config-app-theme .ant-btn-primary {
+.config-app-theme .ant-btn-primary,
+.config-standard-action-button.ant-btn-primary {
   background: var(--vscode-button-background) !important;
   border-color: var(--vscode-button-border, transparent) !important;
   color: var(--vscode-button-foreground) !important;
@@ -177,7 +178,10 @@ body[data-config-host="native-modal"] .config-app-workspace {
 
 .config-app-theme .ant-btn-primary:hover,
 .config-app-theme .ant-btn-primary:focus-visible,
-.config-app-theme .ant-btn-primary:active {
+.config-app-theme .ant-btn-primary:active,
+.config-standard-action-button.ant-btn-primary:hover,
+.config-standard-action-button.ant-btn-primary:focus-visible,
+.config-standard-action-button.ant-btn-primary:active {
   background: var(--vscode-button-hoverBackground, var(--vscode-button-background)) !important;
   border-color: var(--vscode-focusBorder, var(--vscode-button-border, transparent)) !important;
   color: var(--vscode-button-foreground) !important;

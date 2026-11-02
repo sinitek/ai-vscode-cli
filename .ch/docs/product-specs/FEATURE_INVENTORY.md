@@ -10,7 +10,7 @@ Loop / Loop+ 连续子任务会话复用：主模型用 `continueFromSubtaskId` 
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
-AI 对话面板的“使用说明”弹窗仅保留默认选中的“模式说明”页签，展示如何选择及 Vibe、Loop、Loop+ 的适用场景和优点；不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
+AI 对话面板的“使用说明”弹窗仅保留默认选中的“模式说明”页签，以三条简短说明介绍 Vibe、Loop、Loop+ 的任务执行方式，并主推 Loop+；不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 
 AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底；超过 75px 时保留当前阅读位置，可通过“回到底部”按钮恢复跟随。聊天搜索结果锚定时不自动置底。执行流面板保留独立的 50px 自动跟随阈值。
 
@@ -22,6 +22,8 @@ Loop 和 Loop+ 子任务创建时，子会话只保留正常样式的用户提�
 
 配置页面所有 CLI 分组的内置范例均不包含 `subcoco`，原有该名称统一替换为 `default`。KimiCode 范例的 Provider 定义、模型引用、表单占位提示及无模型可复制时的新增模型回退 Provider 均使用 `default`；不迁移或改写用户已有配置。
 
+七类 CLI 的“查看范例 → 一键导入”先弹出配置填写窗口，`base_url`、`api_key`、模型名称三项必填，密钥输入遮蔽；取消或校验失败不修改草稿，关闭后不保留输入。确认后按各 CLI 的 JSON/TOML 结构更新地址、密钥及全部关联模型字段：Claude 包含默认各档模型与子代理模型；Codex 的 config/auth 两个范例入口均同步更新 `config.toml` 与 `auth.json`；OpenCode 将主/小模型引用指向同一输入模型并保留一份模型定义；Grok、KimiCode 同步修改模型表键与默认引用；DSH 同步模型列表和 `acpModel`；ZCode 同步默认选择和供应商模型列表。导入成功后统一切到源码页签：Claude、OpenCode、DSH、ZCode 为 JSON；Codex（含 auth 范例入口）、Grok、KimiCode 为 TOML。范例其他参数保留，导入只更新当前草稿，仍需手动保存，不改变“新增配置”行为。实现见 `media/config/assets/config-app-ui.js`；回归见 `src/test/config/cliExampleImport.test.ts`。
+
 Loop+ 输入区工具栏最左侧有原生复选框「全栈」，默认勾选，并按主配置持久化。勾选时模型行是「主-思考」和「子-全栈」，所有编码使用子-全栈的 CLI、档案、模型和思考力度；取消后才显示「子-后端」「子-前端」并按职责路由。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行收益明显时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的边界并行派发多个子任务；共享文件或有强依赖时保持单任务。编码不能回退主模型。每个可见角色标签右侧有问号，悬停或键盘聚焦立即显示说明；模型行下方不再展示「分析可用主模型，编码必须使用对应子模型」的路由提示文案。经典 Loop、Loop+ 和普通聊天不显示该开关，主标签仍是「主模型」。实现见 `src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/modelSelectionStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts`；回归见 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`。
 
 Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六项默认验收和已选择的附加验收给出不超过 50 字的证据型原因，语言按任务、证据和上下文选择，不强制中文；缺失或超长原因不落地。Loop+ 群聊验收结果气泡用两列表格展示，第一列是审查内容，第二列是审查结果（通过或未通过，并附原因）。实现见 `src/loopPlusDecision.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`；回归见 `src/test/loop/loopPlusDecision.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
@@ -29,6 +31,8 @@ Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六�
 配置中心应用配置档案时，同一 CLI 的运行时写入按请求顺序串行执行，Codex 的 `config.toml` 与 `auth.json` 必须来自同一档案；快速切换不得产生跨档案文件混合，写入后读回不一致时提示“未成功更新配置”。不同 CLI 分组可独立应用。实现见 `src/config/configService.ts`；回归见 `src/test/config/configService.test.ts`。
 
 AI 对话面板读取 Codex 当前 `config.toml` 的根级 `model` 作为配置默认模型：有值时替代空值“默认”项，并与 `~/.sinitek_cli/models.json` 中的用户管理模型按大小写不敏感规则去重；用户显式选择优先，配置缺失或读取失败时保持旧行为。实现见 `src/cli/codexConfigModel.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`、`src/extensionHost/modelSettings.ts`、`src/webview/viewContentScript/modelManager.ts`；回归见 `src/test/cli/codexConfigModel.test.ts`、`src/test/extensionHost/cliModelSelectionStrategies.test.ts`、`src/test/webview/grokmodelselection.test.ts`。
+
+七类 CLI 的八个“查看范例”入口和共享“一键导入”按钮统一复用“保存”的主按钮、小尺寸及 `config-standard-action-button` 样式；查看显示眼睛图标，导入显示闪电图标，装饰图标不改变中文读屏名称。标准主按钮在抽屉中也沿用相同的 VS Code 主题颜色和交互规则。仅统一外观，不改变范例弹窗、草稿导入、源码页签和手动保存流程。实现见 `media/config/assets/config-app-ui.js`、`src/webview/configView.ts`；回归见 `src/test/config/configappcompactcontrols.test.ts`。
 
 ## Grok 原生人工交互补充
 

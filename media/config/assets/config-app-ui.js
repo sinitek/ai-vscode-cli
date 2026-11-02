@@ -6157,6 +6157,190 @@ const Nk = {
     "zcode-config": { title: "ZCode provider_config.json", content: ps.zcode.config },
   };
 
+const validateCliExampleImport = (values) => {
+  const errors = {};
+  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
+    const value = String(values[key] || "").trim();
+    if (!value) errors[key] = `请填写 ${label}`;
+    else if (/[\u0000-\u001f\u007f]/.test(value)) errors[key] = `${label} 不能包含换行或控制字符`;
+  }
+  if (!errors.base_url) {
+    try {
+      const address = new URL(values.base_url.trim());
+      if (!["http:", "https:"].includes(address.protocol) || !address.hostname || address.username || address.password) {
+        errors.base_url = "请填写不含用户名和密码的 HTTP 或 HTTPS 地址";
+      }
+    } catch {
+      errors.base_url = "请填写有效的 HTTP 或 HTTPS 地址";
+    }
+  }
+  return errors;
+};
+
+const buildCliExampleImport = (exampleKey, values) => {
+  const errors = validateCliExampleImport(values);
+  if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+  const baseUrl = values.base_url.trim();
+  const apiKey = values.api_key.trim();
+  const model = values.model.trim();
+  const example = Nk[exampleKey];
+  if (!example) throw new Error("不支持的配置范例");
+  switch (exampleKey) {
+    case "claude-settings": {
+      const document = JSON.parse(example.content);
+      document.model = model;
+      Object.assign(document.env, {
+        ANTHROPIC_AUTH_TOKEN: apiKey,
+        ANTHROPIC_BASE_URL: baseUrl,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+        CLAUDE_CODE_SUBAGENT_MODEL: model,
+      });
+      return { content: JSON.stringify(document, null, 2) };
+    }
+    case "codex-config":
+    case "codex-auth": {
+      const document = g1(ps.codex.config);
+      document.model = model;
+      document.model_providers[document.model_provider].base_url = baseUrl;
+      const auth = JSON.parse(ps.codex.auth);
+      auth.OPENAI_API_KEY = apiKey;
+      return { configContent: Ik(document), authContent: JSON.stringify(auth, null, 2) };
+    }
+    case "opencode-settings": {
+      if (model.includes("/")) throw new Error("OpenCode 模型名称不能包含 /，请填写不带供应商前缀的模型 ID");
+      const document = JSON.parse(example.content);
+      const providerId = document.model.split("/")[0];
+      const provider = document.provider[providerId];
+      const mainModel = document.model.slice(providerId.length + 1);
+      const modelConfig = provider.models[mainModel];
+      provider.options.baseURL = baseUrl;
+      provider.options.apiKey = apiKey;
+      provider.models = { [model]: { ...modelConfig, name: model } };
+      document.model = `${providerId}/${model}`;
+      document.small_model = document.model;
+      return { content: JSON.stringify(document, null, 2) };
+    }
+    case "grok-config": {
+      const document = g1(example.content);
+      const modelConfig = document.model[document.models.default];
+      document.models.default = model;
+      document.model = { [model]: { ...modelConfig, model, base_url: baseUrl, api_key: apiKey } };
+      return { content: Ik(document) };
+    }
+    case "dsh-config": {
+      const document = JSON.parse(example.content);
+      document.baseURL = baseUrl;
+      document.apiKey = apiKey;
+      document.models = [{ ...document.models[0], id: model, name: model }];
+      document.acpModel = model;
+      return { content: JSON.stringify(document, null, 2) };
+    }
+    case "kimi-code-config": {
+      const document = g1(example.content);
+      const modelConfig = document.models[document.default_model];
+      const provider = document.providers[modelConfig.provider];
+      provider.base_url = baseUrl;
+      provider.api_key = apiKey;
+      document.models = { [model]: { ...modelConfig, model } };
+      document.default_model = model;
+      return { content: Ik(document) };
+    }
+    case "zcode-config": {
+      const document = JSON.parse(example.content);
+      const config = document.config;
+      config.defaultModelSelection.modelId = model;
+      for (const rule of config.providerConfigRules.providerRules) {
+        rule.config.api.baseUrl = baseUrl;
+        rule.config.access.apiKey = apiKey;
+        rule.config.personalModelIds = [model];
+      }
+      return { content: JSON.stringify(document, null, 2) };
+    }
+    default:
+      throw new Error("不支持的配置范例");
+  }
+};
+
+const CliExampleImportModal = ({ onClose, onImport }) => {
+  const [values, setValues] = c.useState({ base_url: "", api_key: "", model: "" });
+  const [errors, setErrors] = c.useState({});
+  const baseUrlInputRef = c.useRef(null);
+  const submit = () => {
+    const nextErrors = validateCliExampleImport(values);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    try {
+      onImport(values);
+    } catch (error) {
+      setErrors({ import: error instanceof Error ? error.message : String(error) });
+    }
+  };
+  return be.jsx(xr, {
+    title: "填写范例导入配置",
+    open: !0,
+    width: 480,
+    rootClassName: "cli-example-import-modal",
+    afterOpenChange: (open) => { if (open) baseUrlInputRef.current?.focus(); },
+    onCancel: onClose,
+    onOk: submit,
+    okText: "确认导入",
+    cancelText: "取消",
+    maskClosable: !1,
+    children: be.jsxs("div", {
+      className: "grok-model-dialog-content",
+      children: [
+        be.jsx("p", {
+          className: "grok-model-copy-hint",
+          children: "三项均为必填。导入会替换当前范例的地址、密钥和全部模型引用，确认后仍需保存。",
+        }),
+        ...[
+          ["base_url", "base_url", "例如 https://api.example.com/v1"],
+          ["api_key", "api_key", "请输入 API 密钥"],
+          ["model", "模型名称", "例如 got-6.1-sol"],
+        ].map(([key, label, placeholder]) => be.jsxs("label", {
+          className: "config-visual-field",
+          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+          children: [
+            be.jsx("span", { children: `${label}（必填）` }),
+            be.jsx(zi, {
+              ref: key === "base_url" ? baseUrlInputRef : void 0,
+              type: key === "api_key" ? "password" : "text",
+              value: values[key],
+              placeholder,
+              required: !0,
+              autoComplete: "off",
+              spellCheck: !1,
+              "aria-label": label,
+              "aria-invalid": Boolean(errors[key]),
+              "aria-describedby": errors[key] ? `cli-example-${key}-error` : void 0,
+              status: errors[key] ? "error" : void 0,
+              onChange: (event) => {
+                setValues({ ...values, [key]: event.target.value });
+                setErrors({ ...errors, [key]: "", import: "" });
+              },
+              onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) submit(); },
+            }),
+            errors[key] ? be.jsx("div", {
+              id: `cli-example-${key}-error`,
+              role: "alert",
+              className: "grok-model-action-error",
+              children: errors[key],
+            }) : null,
+          ],
+        }, key)),
+        errors.import ? be.jsx("div", {
+          role: "alert",
+          className: "grok-model-action-error",
+          children: errors.import,
+        }) : null,
+      ],
+    }),
+  });
+
+};
+
 // Config editor panel
 const ConfigEditorPanel = () => {
     const {
@@ -6225,6 +6409,7 @@ const ConfigEditorPanel = () => {
       [dshBusy, setDshBusy] = c.useState(!1),
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
+      [exampleImportOpen, setExampleImportOpen] = c.useState(!1),
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null;
     c.useEffect(() => {
@@ -6233,6 +6418,8 @@ const ConfigEditorPanel = () => {
       };
     }, []);
     c.useEffect(() => {
+      setExampleImportOpen(!1);
+      y(null);
       setGrokAddModelOpen(!1);
       setGrokNewModelId("");
       setGrokModelActionError("");
@@ -6653,30 +6840,31 @@ const ConfigEditorPanel = () => {
         setGrokTextDraft(H.content), setGrokValidContent(H.content), setGrokVisualError(""), setGrokEditorMode("toml");
       },
       N = (W) => y(W),
-      z = () => y(null),
-      D = () => {
+      z = () => { setExampleImportOpen(!1); y(null); },
+      D = () => setExampleImportOpen(!0),
+      importCliExample = (values) => {
         if (!(!I || !S)) {
+          const imported = buildCliExampleImport(S, values);
           switch (S) {
             case "claude-settings":
-              syncClaudeVisualContent(I.content, "visual", !0);
+              if (!syncClaudeVisualContent(imported.content, "json", !0)) return;
               break;
 		            case "opencode-settings":
-			              syncOpenCodeVisualContent(I.content, "visual", !0);
+			              if (!syncOpenCodeVisualContent(imported.content, "json", !0)) return;
 			              break;
             case "codex-config":
-              syncCodexVisualContent(ps.codex.config, "visual", !0);
-              break;
             case "codex-auth":
-              h(I.content);
+              if (!syncCodexVisualContent(imported.configContent, "toml", !0)) return;
+              h(imported.authContent);
               break;
             case "grok-config":
-              syncGrokVisualContent(I.content, "visual", !0);
+              if (!syncGrokVisualContent(imported.content, "toml", !0)) return;
               break;
             case "kimi-code-config":
-              if (!syncKimiCodeVisualContent(I.content, "toml", !0)) return;
+              if (!syncKimiCodeVisualContent(imported.content, "toml", !0)) return;
               break;
             case "dsh-config": {
-	            const H = readDshUiDocument(I.content);
+	            const H = readDshUiDocument(imported.content);
 	            if (!H.ok) {
 	              setDshFieldError(H.error);
 	              Kt.error("范例导入失败: " + H.error);
@@ -6690,8 +6878,8 @@ const ConfigEditorPanel = () => {
             break;
           }
             case "zcode-config":
-              importZcodeExample();
-              return;
+              if (!syncZcodeVisualContent(imported.content, "json", !0)) return;
+              break;
           }
           (Kt.success("已导入范例内容，请确认后保存"), z());
         }
@@ -6710,7 +6898,10 @@ const ConfigEditorPanel = () => {
                   be.jsx("div", {
                     style: { marginBottom: 12, textAlign: "right" },
                     children: be.jsx(xn, {
+                      className: "config-standard-action-button",
                       type: "primary",
+                      size: "small",
+                      icon: be.jsx(KH, { "aria-hidden": !0 }),
                       onClick: D,
                       children: "一键导入",
                     }),
@@ -6729,6 +6920,10 @@ const ConfigEditorPanel = () => {
                     },
                     children: I.content,
                   }),
+                  exampleImportOpen ? be.jsx(CliExampleImportModal, {
+                    onClose: () => setExampleImportOpen(!1),
+                    onImport: importCliExample,
+                  }) : null,
                 ],
               })
             : null,
@@ -7036,12 +7231,6 @@ const ConfigEditorPanel = () => {
         setZcodeTextDraft(serialized.content);
         setZcodeVisualError("");
         setZcodeEditorMode("json");
-      },
-      importZcodeExample = () => {
-        const example = Nk["zcode-config"]?.content || ZcodeConfigVisualEditorUtils.createExampleText();
-        if (!syncZcodeVisualContent(example, "json", !0)) return;
-        Kt.success("已导入范例内容，请确认后保存");
-        z();
       },
       switchDshEditorMode = (nextMode) => {
         if (dshBusy || configListLoading || nextMode === dshEditorMode) return;
@@ -9308,7 +9497,10 @@ const ConfigEditorPanel = () => {
                   children: [
                     be.jsxs("strong", { children: [be.jsx(Ya, {}), " profile.json"] }),
                     be.jsx(xn, {
+                      className: "config-standard-action-button",
+                      type: "primary",
                       size: "small",
+                      icon: be.jsx(KD, { "aria-hidden": !0 }),
                       onClick: () => N("dsh-config"),
                       children: "查看范例",
                     }),
@@ -9741,7 +9933,10 @@ const ConfigEditorPanel = () => {
                                   ],
                                 }),
                                 be.jsx(xn, {
+                                  className: "config-standard-action-button",
+                                  type: "primary",
                                   size: "small",
+                                  icon: be.jsx(KD, { "aria-hidden": !0 }),
                                   onClick: () => N("claude-settings"),
                                   children: "查看范例",
                                 }),
@@ -9909,7 +10104,10 @@ const ConfigEditorPanel = () => {
                               children: [
                                 be.jsxs("span", { children: [be.jsx(Ya, {}), " config.json"] }),
                                 be.jsx(xn, {
+                                  className: "config-standard-action-button",
+                                  type: "primary",
                                   size: "small",
+                                  icon: be.jsx(KD, { "aria-hidden": !0 }),
                                   onClick: () => N("opencode-settings"),
                                   children: "查看范例",
                                 }),
@@ -10071,7 +10269,10 @@ const ConfigEditorPanel = () => {
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                             be.jsx(xn, {
+                              className: "config-standard-action-button",
+                              type: "primary",
                               size: "small",
+                              icon: be.jsx(KD, { "aria-hidden": !0 }),
                               onClick: () => N("grok-config"),
                               children: "查看范例",
                             }),
@@ -10198,7 +10399,14 @@ const ConfigEditorPanel = () => {
                           style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " provider_config.json"] }),
-                            be.jsx(xn, { size: "small", onClick: () => N("zcode-config"), children: "查看范例" }),
+                            be.jsx(xn, {
+                              className: "config-standard-action-button",
+                              type: "primary",
+                              size: "small",
+                              icon: be.jsx(KD, { "aria-hidden": !0 }),
+                              onClick: () => N("zcode-config"),
+                              children: "查看范例",
+                            }),
                           ],
                         }),
                         be.jsx("div", { style: { marginBottom: "4px", color: "var(--text-color-secondary)", fontSize: "12px" }, children: "配置文件路径: ~/.zcode/v2/provider_config.json" }),
@@ -10321,7 +10529,10 @@ const ConfigEditorPanel = () => {
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                             be.jsx(xn, {
+                              className: "config-standard-action-button",
+                              type: "primary",
                               size: "small",
+                              icon: be.jsx(KD, { "aria-hidden": !0 }),
                               onClick: () => N("kimi-code-config"),
                               children: "查看范例",
                             }),
@@ -10479,7 +10690,10 @@ const ConfigEditorPanel = () => {
                               children: [
                                 be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                                 be.jsx(xn, {
+                                  className: "config-standard-action-button",
+                                  type: "primary",
                                   size: "small",
+                                  icon: be.jsx(KD, { "aria-hidden": !0 }),
                                   onClick: () => N("codex-config"),
                                   children: "查看范例",
                                 }),
@@ -10563,7 +10777,10 @@ const ConfigEditorPanel = () => {
                                   children: [be.jsx(Ya, {}), " auth.json"],
                                 }),
                                 be.jsx(xn, {
+                                  className: "config-standard-action-button",
+                                  type: "primary",
                                   size: "small",
+                                  icon: be.jsx(KD, { "aria-hidden": !0 }),
                                   onClick: () => N("codex-auth"),
                                   children: "查看范例",
                                 }),

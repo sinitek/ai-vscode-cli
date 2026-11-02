@@ -412,8 +412,8 @@ test("ZCode editor uses the shared card header and imports its example into JSON
   assert.match(zcodeEditor, /"data-testid": "zcode-save-config"/);
   assert.match(zcodeEditor, /onClick: \(\) => N\("zcode-config"\)/);
   assert.doesNotMatch(zcodeEditor, /zcode-import-example|一键导入/);
-  assert.match(source, /case "zcode-config":\s*importZcodeExample\(\);\s*return;/);
-  assert.match(source, /importZcodeExample = \(\) => \{[\s\S]*?syncZcodeVisualContent\(example, "json", !0\)/);
+  assert.match(source, /case "zcode-config":\s*if \(!syncZcodeVisualContent\(imported\.content, "json", !0\)\) return;/);
+  assert.match(source, /const imported = buildCliExampleImport\(S, values\)/);
   assert.match(source, /Kt\.success\("已导入范例内容，请确认后保存"\)/);
   assert.match(source, /renderField\("API Key"[\s\S]*?type: "password"/);
   assert.match(zcodeEditor, /className: "config-editor-fixed-actions"[\s\S]*?children: "保存"/);
@@ -427,7 +427,6 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
   const editorEnd = source.indexOf(': O.platform === "kimi-code"', editorStart);
   const editor = source.slice(editorStart, editorEnd).trim();
   const drawerHandlers = extractBetween(source, 'N = (W) => y(W),', '      A = async (W) =>').replace(/,\s*$/, ";");
-  const importHandler = extractBetween(source, 'importZcodeExample = () => {', '      switchDshEditorMode =').replace(/,\s*$/, ";");
   const { utils } = loadZcodeVisualUi();
   const example = { title: "ZCode provider_config.json", content: createZcodeExampleText() };
   const element = (type: unknown, props: AnyRecord) => ({ type, props });
@@ -435,9 +434,13 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
   for (const mode of ["visual", "json"]) {
     const sandbox: AnyRecord = {
       be: { jsx: element, jsxs: element, Fragment: "fragment" },
-      aa: "card", xn: "button", Pv: "icon", Ya: "icon", Qa: "textarea", ConfigSourceEditor: "textarea", RE: "drawer",
+      aa: "card", xn: "button", Pv: "icon", Ya: "icon", KD: "view-icon", KH: "import-icon", Qa: "textarea", ConfigSourceEditor: "textarea", RE: "drawer",
       O: { id: "zcode-test", name: "ZCode" },
       Nk: { "zcode-config": example }, S: null, I: null,
+      exampleImportOpen: false,
+      CliExampleImportModal: "import-modal",
+      setExampleImportOpen: (open: boolean) => { sandbox.exampleImportOpen = open; },
+      buildCliExampleImport: () => ({ content: example.content }),
       configListLoading: false, zcodeEditorMode: mode,
       zcodeVisualError: "", zcodeVisualState: null, zcodeTextDraft: "",
       renderConfigEditorCardTitle: () => null,
@@ -457,7 +460,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
         return true;
       },
     };
-    vm.runInNewContext(`const ${drawerHandlers}\nconst ${importHandler}\nglobalThis.render = () => (${editor});`, sandbox);
+    vm.runInNewContext(`const ${drawerHandlers}\nglobalThis.render = () => (${editor});`, sandbox);
     const drawer = () => {
       const node = findNode(sandbox.render(), (candidate) => candidate.type === "drawer");
       assert.ok(node, "ZCode must mount the shared example drawer");
@@ -481,6 +484,17 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
     const importButton = findNode(drawer(), (node) => node.props?.children === "一键导入");
     assert.ok(importButton);
     importButton.props.onClick();
+    assert.equal(sandbox.exampleImportOpen, true);
+    assert.equal(sandbox.zcodeTextDraft, "", "Opening the import dialog must not change the draft");
+    const modal = findNode(drawer(), (node) => node.type === "import-modal");
+    assert.ok(modal);
+    modal.props.onClose();
+    assert.equal(sandbox.exampleImportOpen, false);
+    assert.equal(drawer().props.open, true);
+    importButton.props.onClick();
+    const confirmedModal = findNode(drawer(), (node) => node.type === "import-modal");
+    assert.ok(confirmedModal);
+    confirmedModal.props.onImport({ base_url: "https://api.example.com/v1", api_key: "example-import-key", model: "example-model" });
     assert.equal(sandbox.zcodeTextDraft, example.content);
     assert.equal(sandbox.zcodeEditorMode, "json");
     assert.equal(drawer().props.open, false);

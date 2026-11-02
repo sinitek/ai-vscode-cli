@@ -900,30 +900,10 @@ ${renderChatModal({
           </div>
           <div id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes">
             <div class="help-section">
-              <h4>${i18n.helpModesGeneralTitle}</h4>
               <ul>
-                <li>${i18n.helpModesGeneralItem}</li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpModeVibeTitle}</h4>
-              <ul>
-                <li>${i18n.helpModeVibeBest}</li>
-                <li>${i18n.helpModeVibePros}</li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpModeLoopTitle}</h4>
-              <ul>
-                <li>${i18n.helpModeLoopBest}</li>
-                <li>${i18n.helpModeLoopPros}</li>
-              </ul>
-            </div>
-            <div class="help-section">
-              <h4>${i18n.helpModeLoopPlusTitle}</h4>
-              <ul>
-                <li>${i18n.helpModeLoopPlusBest}</li>
-                <li>${i18n.helpModeLoopPlusPros}</li>
+                <li>${i18n.helpModeVibe}</li>
+                <li>${i18n.helpModeLoop}</li>
+                <li>${i18n.helpModeLoopPlus}</li>
               </ul>
             </div>
           </div>

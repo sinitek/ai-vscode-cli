@@ -86,7 +86,7 @@ test("Kimi Code 默认使用 TOML 源码模式，一键导入会写入当前草�
   assert.doesNotMatch(ui, /setKimiCodeEditorMode\("visual"\)/);
   assert.match(
     ui,
-    /case "kimi-code-config":\s*if \(!syncKimiCodeVisualContent\(I\.content, "toml", !0\)\) return;/,
+    /case "kimi-code-config":\s*if \(!syncKimiCodeVisualContent\(imported\.content, "toml", !0\)\) return;/,
     "范例必须进入 Kimi TOML 草稿，导入失败不能继续提示成功",
   );
 });

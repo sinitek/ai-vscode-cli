@@ -14,6 +14,7 @@
 
 ## 当前有效条目
 
+- 配置页抽屉按钮不能只依赖应用根节点的主题作用域：见本页“配置页标准按钮必须覆盖 Portal 作用域”。
 - 原生配置浮层不能直接使用公开 `vscode.openWith` 的负数 ViewColumn：见本页“原生模态编辑器必须隔离内部入口并保留回退”。
 - 本地图片不能直接作为普通 URL 在 Webview 预览：见本页“本地图片由扩展宿主读取，不复用 Webview 私有 URI”。
 - 聊天图片按钮继承全局固定高度会裁切图片：见本页“图片预览按钮必须覆盖全局控件高度”。
@@ -24,6 +25,13 @@
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
+
+## 配置页标准按钮必须覆盖 Portal 作用域
+
+- 状态：已规避；首次发现：2026-11-02。
+- 现象与根因：Ant Drawer 通过 Portal 挂在应用根节点之外；只复制“保存”的 Button 属性，仍会漏掉 `.config-app-theme .ant-btn-primary` 的 VS Code 主题覆盖，退回旧的全局主按钮颜色。
+- 长期规避：复用 `config-standard-action-button`，由 `src/webview/configView.ts` 将标准主按钮与应用内主按钮放在同组主题规则中，覆盖默认、hover、focus-visible、active；不要给抽屉根节点加带有全屏布局约束的 `config-app-theme`。
+- 验证方式：`src/test/config/configappcompactcontrols.test.ts` 覆盖同组主题选择器；Chromium 在配置加载和过渡结束后比较实际 `getComputedStyle`，覆盖桌面与窄屏，而非只比 className。带中文文字的装饰图标设置 `aria-hidden`，确保按钮的中文无障碍名称不变。
 
 ## 原生模态编辑器必须隔离内部入口并保留回退
 

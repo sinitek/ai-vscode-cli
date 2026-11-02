@@ -52,6 +52,39 @@ test("renders a leftmost radio group for activation without changing config acti
   assert.match(listPanel, /icon: be\.jsx\(AH, \{\}\),\s+onClick: \(ae\) => A\(ae, F\),\s+title: "删除配置"/);
 });
 
+test("七类 CLI 的范例与导入按钮沿用保存样式，并显示查看和导入图标", () => {
+  const source = loadUiSource();
+  const editorPanel = extractSection(source, "const ConfigEditorPanel =", "// Config manager layout");
+  const viewButtons = [...editorPanel.matchAll(/be\.jsx\(xn, \{((?:[^{}]|\{[^{}]*\})*?)children: "查看范例",?\s*\}\)/g)];
+  const importButtons = [...editorPanel.matchAll(/be\.jsx\(xn, \{((?:[^{}]|\{[^{}]*\})*?)children: "一键导入",?\s*\}\)/g)];
+  const saveButtons = [...editorPanel.matchAll(/be\.jsx\(xn, \{((?:[^{}]|\{[^{}]*\})*?)children: "保存",?\s*\}\)/g)];
+
+  assert.equal(viewButtons.length, 8);
+  assert.equal(importButtons.length, 1);
+  assert.ok(saveButtons.length > 0);
+  for (const button of [...viewButtons, ...importButtons, ...saveButtons]) {
+    assert.match(button[1], /className: "config-standard-action-button"/);
+    assert.match(button[1], /type: "primary"/);
+    assert.match(button[1], /size: "small"/);
+  }
+  for (const button of viewButtons) {
+    assert.match(button[1], /icon: be\.jsx\(KD, \{ "aria-hidden": !0 \}\)/);
+  }
+  assert.deepEqual(viewButtons.map((button) => button[1].match(/N\("([^"]+)"\)/)?.[1]).sort(), [
+    "claude-settings", "codex-auth", "codex-config", "dsh-config", "grok-config", "kimi-code-config", "opencode-settings", "zcode-config",
+  ]);
+  assert.match(importButtons[0][1], /icon: be\.jsx\(KH, \{ "aria-hidden": !0 \}\)/);
+  assert.match(importButtons[0][1], /onClick: D/);
+
+  const hostSource = fs.readFileSync(path.join(process.cwd(), "src/webview/configView.ts"), "utf8");
+  const primaryStyle = hostSource.match(/\.config-app-theme \.ant-btn-primary,\s*\.config-standard-action-button\.ant-btn-primary \{([^}]+)\}/);
+  assert.ok(primaryStyle, "抽屉中的标准主按钮必须与保存按钮共享主题规则");
+  assert.match(primaryStyle[1], /background: var\(--vscode-button-background\) !important/);
+  assert.match(primaryStyle[1], /border-color: var\(--vscode-button-border, transparent\) !important/);
+  assert.match(primaryStyle[1], /color: var\(--vscode-button-foreground\) !important/);
+  assert.match(hostSource, /\.config-standard-action-button\.ant-btn-primary:hover,\s*\.config-standard-action-button\.ant-btn-primary:focus-visible,\s*\.config-standard-action-button\.ant-btn-primary:active \{/);
+});
+
 test("halves core inline spacing across the config list and editor cards", () => {
   const source = loadUiSource();
   const listPanel = extractSection(source, "const ConfigListPanel =", "const CLI_GLOBAL_SKILL_TARGETS =");

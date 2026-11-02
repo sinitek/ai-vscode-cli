@@ -141,6 +141,7 @@ function createDshEditorHarness(options: { active?: boolean; baseURL?: string; c
     xr: { confirm: (options: Record<string, unknown>) => { sandbox.deleteConfirmation = options; } },
     Kt: { error: (value: string) => { sandbox.lastError = value; } },
     Pv: "SaveIcon",
+    KD: "ViewIcon",
     Qa: "TextArea",
     ConfigSourceEditor: "TextArea",
     o: () => (options.active ? "profile-a" : null),
@@ -620,7 +621,7 @@ test("DSH editor edits the same JSON in text and visual modes without an activat
   assert.match(list, /emptyText: "暂无配置"/);
   assert.match(ui, /config-mobile-directory-button/);
   assert.match(ui, /"dsh-config": \{ title: "DSH profile JSON", content: ps\.dsh\.config \}/);
-  assert.match(ui, /case "dsh-config": \{[\s\S]*?readDshUiDocument\(I\.content\)/);
+  assert.match(ui, /case "dsh-config": \{[\s\S]*?readDshUiDocument\(imported\.content\)/);
   assert.match(ui, /else if \(O\.platform === "dsh"\) \{[\s\S]*?if \(dshUiContainsProfileSecret\(W\)\)/);
   assert.match(ui, /onClick: \(\) => N\("dsh-config"\),[\s\S]*?children: "查看范例"/);
   assert.match(ui, /dshUiContainsProfileSecret\(source\)/);

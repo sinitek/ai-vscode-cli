@@ -43,34 +43,19 @@ function interactiveModeSelects(html: string): string[] {
 
 test("使用固定中文帮助文案", () => {
   assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
-  assert.equal(WEBVIEW_STRINGS.helpModeLoopPlusTitle, "Loop+");
+  assert.equal(WEBVIEW_STRINGS.helpModeVibe, "Vibe 模式，直接执行目标 cli 任务");
   assert.equal(getWebviewStrings().helpTabModes, "模式说明");
 });
 
 test("渲染简洁准确的中文模式说明", () => {
   const chinese = helpModesPanel(buildHtml());
 
-  assert.ok(
-    chinese.indexOf(">Loop<") < chinese.indexOf(">Loop+<"),
-  );
-
-  for (const snippet of [
-    "如何选择",
-    "Loop+ 按事件验收",
-    "交互直接、启动快、开销低",
-    "批次边界清楚、信任子任务汇报",
-    "主模型不亲自验收或测试",
-    "用户或项目规则要求时另派独立子任务验证",
-    "均未要求时默认不做",
-    "完成即验收",
-    "可见队列",
-    "追加消息或任务",
-    "实现、契约、测试、产物、无关改动",
-    "需要时可以自行测试或启动应用，但不强制。",
-    "默认 100，最大 999",
-  ]) {
-    assert.ok(chinese.includes(snippet), `Missing Chinese help snippet: ${snippet}`);
-  }
+  const descriptions = [
+    "Vibe 模式，直接执行目标 cli 任务",
+    "Loop 模式，主模型相当于任务分发的项目经理调度多个子模型共用完成任务",
+    "Loop+ 模式（主推），主模型除了分发任务还充当组长角色进行功能验收，如果发现有缺陷会再发起整改",
+  ];
+  assert.deepEqual([...chinese.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]), descriptions);
 });
 
 test("使用说明仅保留默认选中的模式说明页签", () => {
