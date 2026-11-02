@@ -109,7 +109,7 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         if (!normalized) {
           return false;
         }
-        if (normalized === "系统默认") {
+        if (normalized === "系统默认" || normalized === t("acceptancePlanDefaultName")) {
           return true;
         }
         return getAcceptancePlanSummaries().some((plan) => (
@@ -140,28 +140,19 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
           && getAcceptancePlanSummaries().some((plan) => plan.id === planId);
       }
 
-      function savedPlanWithDefaultName() {
-        const label = t("acceptancePlanDefaultName");
-        return getAcceptancePlanSummaries().find((plan) => plan.name === label) || null;
-      }
-
       function applyAcceptancePlanDraftToDom() {
         const select = getAcceptancePlanElement("acceptancePlanSelect");
         if (select) {
           const plans = getAcceptancePlanSummaries();
-          const savedDefault = savedPlanWithDefaultName();
-          const previousValue = select.value;
           select.innerHTML = "";
           const newOption = document.createElement("option");
           newOption.value = ACCEPTANCE_PLAN_NEW_ID;
           newOption.textContent = t("acceptancePlanNewOption");
           select.appendChild(newOption);
-          if (!savedDefault) {
-            const systemOption = document.createElement("option");
-            systemOption.value = ACCEPTANCE_PLAN_SYSTEM_ID;
-            systemOption.textContent = t("acceptancePlanDefaultName");
-            select.appendChild(systemOption);
-          }
+          const systemOption = document.createElement("option");
+          systemOption.value = ACCEPTANCE_PLAN_SYSTEM_ID;
+          systemOption.textContent = t("acceptancePlanDefaultName");
+          select.appendChild(systemOption);
           plans.forEach((plan) => {
             const option = document.createElement("option");
             option.value = plan.id;
@@ -173,9 +164,6 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
             ? currentId
             : (plans.some((plan) => plan.id === currentId) ? currentId : ACCEPTANCE_PLAN_SYSTEM_ID);
           select.value = target;
-          if (previousValue && previousValue !== target && !plans.some((plan) => plan.id === previousValue) && previousValue !== ACCEPTANCE_PLAN_NEW_ID && previousValue !== ACCEPTANCE_PLAN_SYSTEM_ID) {
-            select.value = target;
-          }
         }
         const deleteButton = getAcceptancePlanElement("deleteAcceptancePlan");
         if (deleteButton) {
@@ -188,6 +176,7 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         }
         if (nameInput) {
           nameInput.value = acceptancePlanDialog.name;
+          nameInput.readOnly = acceptancePlanDialog.planId === ACCEPTANCE_PLAN_SYSTEM_ID;
         }
         ACCEPTANCE_PLAN_CHECK_KEYS.forEach((key) => {
           const input = getAcceptancePlanElement(ACCEPTANCE_PLAN_CHECK_INPUT_IDS[key]);
@@ -208,16 +197,13 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         if (otherText) {
           otherText.value = acceptancePlanDialog.otherText;
         }
+        setAcceptancePlanSaving(acceptancePlanDialog.saving);
       }
 
       function loadAcceptancePlanDraft(planId, options = {}) {
-        const savedDefault = savedPlanWithDefaultName();
-        if (savedDefault && (!planId || planId === ACCEPTANCE_PLAN_SYSTEM_ID)) {
-          planId = savedDefault.id;
-        }
         if (planId === ACCEPTANCE_PLAN_NEW_ID) {
           acceptancePlanDialog.planId = ACCEPTANCE_PLAN_NEW_ID;
-          acceptancePlanDialog.name = "";
+          acceptancePlanDialog.name = t("acceptancePlanNewDefaultName");
           acceptancePlanDialog.checks = [];
           acceptancePlanDialog.otherText = "";
         } else {
@@ -298,7 +284,7 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         }
         const saveButton = getAcceptancePlanElement("saveAcceptancePlan");
         if (saveButton) {
-          saveButton.disabled = acceptancePlanDialog.saving;
+          saveButton.disabled = acceptancePlanDialog.saving || acceptancePlanDialog.planId === ACCEPTANCE_PLAN_SYSTEM_ID;
           saveButton.textContent = acceptancePlanDialog.saving
             ? t("acceptancePlanSaving")
             : t("acceptancePlanSavePlan");
@@ -431,7 +417,7 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
       }
 
       function saveAcceptancePlanFromDialog() {
-        if (acceptancePlanDialog.saving) {
+        if (acceptancePlanDialog.saving || acceptancePlanDialog.planId === ACCEPTANCE_PLAN_SYSTEM_ID) {
           return;
         }
         const draft = readAcceptancePlanDraftFromDom();
@@ -448,7 +434,6 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
           }
           return;
         }
-        // 已保存方案按 ID 更新；系统默认和新增方案若与已有方案同名，则覆盖那一条。
         const sameName = findAcceptancePlanByName(draft.name, null);
         const updatingSavedPlan = isSavedAcceptancePlanId(draft.planId);
         if (hasAcceptancePlanName(draft.name, updatingSavedPlan ? draft.planId : (sameName ? sameName.id : null))) {

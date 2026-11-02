@@ -19,6 +19,7 @@ class FakeElement {
   tagName: string;
   style: { display: string } = { display: "" };
   disabled = false;
+  readOnly = false;
   hidden = false;
   value = "";
   checked = false;
@@ -284,6 +285,7 @@ this.api = {
   closeAcceptancePlanDeleteDialog: closeAcceptancePlanDeleteDialog,
   confirmAcceptancePlanNameDialog: confirmAcceptancePlanNameDialog,
   handleAcceptancePlanSavedMessage: handleAcceptancePlanSavedMessage,
+  bindAcceptancePlanDialogEvents: bindAcceptancePlanDialogEvents,
   openAcceptancePlanDialog: openAcceptancePlanDialog,
   closeAcceptancePlanDialog: closeAcceptancePlanDialog,
   confirmAcceptancePlan: confirmAcceptancePlan,
@@ -345,6 +347,8 @@ test("opening with a task snapshot keeps that task's checks instead of the saved
   assert.equal(harness.dom.acceptancePlanSelect.value, "system_default");
   assert.equal(harness.dom.acceptancePlanNameField.style.display, "flex");
   assert.equal(harness.dom.acceptancePlanNameInput.value, "默认方案");
+  assert.equal(harness.dom.acceptancePlanNameInput.readOnly, true);
+  assert.equal(harness.dom.saveAcceptancePlan.disabled, true);
   assert.equal(harness.dom.acceptancePlanCheckPerformance.checked, true);
   assert.equal(harness.dom.acceptancePlanCheckSecurity.checked, false);
   assert.equal(harness.dom.acceptancePlanOtherText.value, "检查滚动");
@@ -405,7 +409,7 @@ test("unchecking 其它 hides its text and drops it from the snapshot", () => {
   });
 });
 
-test("saving 系统默认 creates a plan from the visible name without starting the task", () => {
+test("内置默认方案不可保存，即使通过脚本修改名称也不能绕过", () => {
   const harness = createHarness();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
   harness.dom.acceptancePlanCheckSecurity.checked = true;
@@ -413,35 +417,36 @@ test("saving 系统默认 creates a plan from the visible name without starting 
   harness.api.saveAcceptancePlanFromDialog();
 
   assert.equal(harness.api.isAcceptancePlanNameDialogOpen(), false);
-  assert.equal(harness.posted.length, 1);
-  const posted = harness.posted[0];
-  assert.equal(posted.type, "saveLoopPlusAcceptancePlan");
-  assert.equal(posted.planId, null);
-  assert.equal(posted.name, "安全加严");
-  assert.deepEqual(plain(posted.checks), ["security"]);
+  assert.equal(harness.posted.length, 0);
+  assert.equal(harness.dom.saveAcceptancePlan.disabled, true);
+  assert.equal(harness.dom.acceptancePlanNameInput.readOnly, true);
   assert.equal(harness.dispatched.length, 0, "saving must never start the task");
   assert.equal(harness.dom.acceptancePlanOverlay.classList.contains("visible"), true, "parent modal stays open");
 });
 
-test("saving from 系统默认 keeps the prefilled 默认方案 name", () => {
+test("新增方案默认名称为新建方案并可直接保存", () => {
   const harness = createHarness();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  harness.api.loadAcceptancePlanDraft("new");
+  assert.equal(harness.dom.acceptancePlanNameInput.value, "新建方案");
+  assert.equal(harness.dom.acceptancePlanNameInput.readOnly, false);
+  assert.equal(harness.dom.saveAcceptancePlan.disabled, false);
   harness.api.saveAcceptancePlanFromDialog();
 
   assert.equal(harness.posted.length, 1);
   assert.equal(harness.posted[0].planId, null);
-  assert.equal(harness.posted[0].name, "默认方案");
+  assert.equal(harness.posted[0].name, "新建方案");
   assert.equal(harness.api.isAcceptancePlanNameDialogOpen(), false);
 });
 
-test("新增方案 starts blank and saves as a new plan", () => {
+test("新增方案预填名称且保留空名、重名与保留名校验", () => {
   const harness = createHarness({ plans: [planDraft({ id: "plan-a", name: "安全加严" })] });
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
   harness.dom.acceptancePlanSelect.value = "new";
   harness.api.loadAcceptancePlanDraft("new");
 
   assert.equal(harness.dom.acceptancePlanNameField.style.display, "flex");
-  assert.equal(harness.dom.acceptancePlanNameInput.value, "");
+  assert.equal(harness.dom.acceptancePlanNameInput.value, "新建方案");
   assert.equal(harness.dom.acceptancePlanCheckSecurity.checked, false);
   assert.equal(harness.posted.length, 0, "switching to 新增方案 does not persist a selection");
 
@@ -464,6 +469,10 @@ test("新增方案 starts blank and saves as a new plan", () => {
 
   harness.dom.acceptancePlanSelect.value = "new";
   harness.api.loadAcceptancePlanDraft("new");
+  harness.dom.acceptancePlanNameInput.value = " 默认方案 ";
+  harness.api.saveAcceptancePlanFromDialog();
+  assert.equal(harness.dom.acceptancePlanError.textContent, "已存在同名验收方案，请更换名称。");
+  assert.equal(harness.posted.length, 0);
   harness.dom.acceptancePlanNameInput.value = " 系统默认 ";
   harness.api.saveAcceptancePlanFromDialog();
   assert.equal(harness.dom.acceptancePlanError.textContent, "已存在同名验收方案，请更换名称。");
@@ -480,6 +489,7 @@ test("新增方案 starts blank and saves as a new plan", () => {
 test("a second save is ignored while the first is still in flight", () => {
   const harness = createHarness();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  harness.api.loadAcceptancePlanDraft("new");
   harness.api.saveAcceptancePlanFromDialog();
   harness.api.saveAcceptancePlanFromDialog();
 
@@ -502,6 +512,7 @@ test("closing the dialog before save creates nothing and keeps the parent draft"
 test("a saved plan is selected, its name becomes editable, and the draft is reloaded", () => {
   const harness = createHarness();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  harness.api.loadAcceptancePlanDraft("new");
   harness.dom.acceptancePlanNameInput.value = "安全加严";
   harness.api.saveAcceptancePlanFromDialog();
 
@@ -543,30 +554,44 @@ test("switching plans loads its checks and 其它 text, and rename updates the s
   assert.equal(harness.api.isAcceptancePlanNameDialogOpen(), false, "rename updates in place");
 });
 
-test("a saved 默认方案 replaces the builtin option so the dropdown has only one", () => {
+test("内置默认方案始终可选且不会被已保存方案覆盖", () => {
   const harness = createHarness({
-    plans: [planDraft({ id: "plan-default", name: "默认方案", checks: ["security"], otherText: "" })],
+    plans: [planDraft({ id: "plan-default", name: "新建方案", checks: ["security"], otherText: "" })],
+    selection: "system_default",
   });
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
   const labels = harness.dom.acceptancePlanSelect.children.map((option: { textContent: string }) => option.textContent);
-  assert.deepEqual(labels, ["新增方案", "默认方案"]);
-  assert.equal(harness.dom.acceptancePlanSelect.value, "plan-default");
-  assert.equal(harness.dom.acceptancePlanCheckSecurity.checked, true);
-  assert.equal(harness.dom.deleteAcceptancePlan.hidden, false);
+  assert.deepEqual(labels, ["新增方案", "默认方案", "新建方案"]);
+  assert.equal(harness.dom.acceptancePlanSelect.value, "system_default");
+  assert.equal(harness.dom.acceptancePlanCheckSecurity.checked, false);
+  assert.equal(harness.dom.deleteAcceptancePlan.hidden, true);
 });
 
-test("saving the builtin 默认方案 overwrites the saved plan with the same name", () => {
+test("每次打开恢复最近选择，无效选择回退内置默认", () => {
   const harness = createHarness({
-    plans: [planDraft({ id: "plan-default", name: "默认方案", checks: [], otherText: "" })],
+    plans: [planDraft({ id: "plan-default", name: "新建方案", checks: ["security"], otherText: "" })],
+    selection: "plan-default",
   });
+  harness.api.bindAcceptancePlanDialogEvents();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
-  harness.dom.acceptancePlanCheckSecurity.checked = true;
-  harness.api.saveAcceptancePlanFromDialog();
-
+  assert.equal(harness.dom.acceptancePlanSelect.value, "plan-default");
+  assert.equal(harness.dom.acceptancePlanCheckSecurity.checked, true);
+  assert.equal(harness.dom.saveAcceptancePlan.disabled, false);
+  harness.dom.acceptancePlanSelect.value = "system_default";
+  harness.dom.acceptancePlanSelect.listeners.change[0]({});
+  assert.equal(harness.state.loopPlusAcceptancePlanSelection, "system_default");
+  assert.deepEqual(plain(harness.posted), [{ type: "selectLoopPlusAcceptancePlan", planId: "system_default" }]);
+  harness.api.closeAcceptancePlanDialog();
+  harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  assert.equal(harness.dom.acceptancePlanSelect.value, "system_default");
+  assert.equal(harness.dom.saveAcceptancePlan.disabled, true);
+  harness.dom.acceptancePlanSelect.value = "new";
+  harness.dom.acceptancePlanSelect.listeners.change[0]({});
   assert.equal(harness.posted.length, 1);
-  assert.equal(harness.posted[0].planId, "plan-default");
-  assert.equal(harness.posted[0].name, "默认方案");
-  assert.deepEqual(plain(harness.posted[0].checks), ["security"]);
+  assert.equal(harness.state.loopPlusAcceptancePlanSelection, "system_default");
+  harness.state.loopPlusAcceptancePlanSelection = "deleted";
+  harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  assert.equal(harness.dom.acceptancePlanSelect.value, "system_default");
 });
 
 test("delete is available only for a saved plan and asks before posting", () => {

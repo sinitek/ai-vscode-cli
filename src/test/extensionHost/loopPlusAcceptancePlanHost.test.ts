@@ -145,7 +145,7 @@ test("invalid drafts and duplicate names are rejected before any write", () => {
 
 test("deleting the selected plan falls back to the system default", () => {
   const host = createHost();
-  const created = saveLoopPlusAcceptancePlan(host, { planId: null, name: "默认方案", checks: ["security"], otherText: "" });
+  const created = saveLoopPlusAcceptancePlan(host, { planId: null, name: "新建方案", checks: ["security"], otherText: "" });
   assert.equal(created.ok, true);
   if (!created.ok) {
     return;
@@ -188,4 +188,43 @@ test("a stored selection pointing at a deleted plan resolves back to the system 
     loopPlusAcceptancePlanSelection: "plan-deleted",
   });
   assert.equal(state.selection, "system_default");
+});
+
+test("旧默认方案迁移后保留最近选择，明确选回内置默认不会被旧方案抢占", () => {
+  const legacyPlan = { id: "legacy", name: "默认方案", checks: ["security"] as const, otherText: "", updatedAt: 8 };
+  const host = createHost({
+    loopPlusAcceptancePlans: [{ ...legacyPlan, checks: [...legacyPlan.checks] }],
+    loopPlusAcceptancePlanSelection: "legacy",
+  });
+  assert.deepEqual(readLoopPlusAcceptancePlanPanelState(host.current), {
+    plans: [{ ...legacyPlan, name: "新建方案" }],
+    selection: "legacy",
+  });
+  assert.deepEqual(selectLoopPlusAcceptancePlan(host, "system_default"), { ok: true, selection: "system_default" });
+  assert.equal(host.current.loopPlusAcceptancePlans?.[0].name, "新建方案");
+  assert.equal(readLoopPlusAcceptancePlanPanelState(host.current).selection, "system_default");
+});
+
+test("默认方案保存请求被拒绝且不会写入工作区设置", () => {
+  const host = createHost();
+  const result = saveLoopPlusAcceptancePlan(host, {
+    planId: "system_default", name: "新建方案", checks: ["security"],
+  });
+  assert.deepEqual(result, { ok: false, error: "默认方案不能保存，请先选择新增方案。" });
+  assert.equal(host.saved.length, 0);
+  assert.deepEqual(host.current, {});
+});
+
+test("选择保存失败时保留之前的项目选择", () => {
+  const host = createHost({ loopPlusAcceptancePlanSelection: "system_default" });
+  const created = saveLoopPlusAcceptancePlan(host, { name: "新建方案", checks: [] });
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+  host.failNextSave = true;
+  assert.deepEqual(selectLoopPlusAcceptancePlan(host, "system_default"), {
+    ok: false, error: "验收方案保存失败，请稍后重试。",
+  });
+  assert.equal(host.current.loopPlusAcceptancePlanSelection, created.plan.id);
 });

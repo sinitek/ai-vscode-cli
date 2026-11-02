@@ -114,6 +114,34 @@ test("unchecked 其它 drops its text so it cannot count as a requirement", () =
   assert.equal(loaded[1].otherText, "real requirement");
 });
 
+test("旧默认方案迁移为新建方案并保留内容、稳定标识及时间戳", () => {
+  const legacy = plan({
+    id: "plan-legacy",
+    name: " 默认方案 ",
+    checks: ["security", "other"],
+    otherText: "检查鉴权边界",
+    updatedAt: 42,
+  });
+  const migrated = normalizeLoopPlusAcceptancePlans([legacy]);
+  assert.deepEqual(migrated, [{ ...legacy, name: "新建方案" }]);
+  assert.equal(resolveLoopPlusAcceptancePlanSelectionId(legacy.id, migrated), legacy.id);
+  assert.deepEqual(normalizeLoopPlusAcceptancePlans(migrated), migrated);
+  assert.equal(legacy.name, " 默认方案 ");
+});
+
+test("迁移旧默认方案避开已有名称且不覆盖任何方案", () => {
+  const plans = [
+    plan({ id: "legacy-a", name: "默认方案", checks: ["security"] }),
+    plan({ id: "custom-a", name: "新建方案" }),
+    plan({ id: "custom-b", name: "新建方案（2）" }),
+    plan({ id: "legacy-b", name: "默认方案", checks: ["performance"] }),
+  ];
+  const migrated = normalizeLoopPlusAcceptancePlans(plans);
+  assert.deepEqual(migrated.map((item) => item.name), ["新建方案（3）", "新建方案", "新建方案（2）", "新建方案（4）"]);
+  assert.deepEqual(migrated.map((item) => item.id), plans.map((item) => item.id));
+  assert.deepEqual(normalizeLoopPlusAcceptancePlans(migrated), migrated);
+});
+
 test("selection falls back to the system default when the id is unknown or corrupted", () => {
   const plans = [plan({ id: "plan-a" })];
   assert.equal(resolveLoopPlusAcceptancePlanSelectionId("plan-a", plans), "plan-a");
@@ -147,7 +175,11 @@ test("creating a plan needs a unique trimmed name and keeps 其它 validation", 
   const reserved = upsertLoopPlusAcceptancePlan({ plans: [], name: " 系统默认 ", checks: [], otherText: "" });
   assert.deepEqual(reserved, { ok: false, error: "已存在同名验收方案，请更换名称。" });
   const defaultName = upsertLoopPlusAcceptancePlan({ plans: [], name: "默认方案", checks: [], otherText: "" });
-  assert.equal(defaultName.ok, true);
+  assert.deepEqual(defaultName, { ok: false, error: "已存在同名验收方案，请更换名称。" });
+  const systemSave = upsertLoopPlusAcceptancePlan({
+    plans: [], planId: "system_default", name: "自定义名称", checks: ["security"], otherText: "",
+  });
+  assert.deepEqual(systemSave, { ok: false, error: "默认方案不能保存，请先选择新增方案。" });
 
   const otherBlank = upsertLoopPlusAcceptancePlan({ plans: base, name: "新方案", checks: ["other"], otherText: "   " });
   assert.deepEqual(otherBlank, { ok: false, error: "已勾选“其它”，请填写审查内容。" });

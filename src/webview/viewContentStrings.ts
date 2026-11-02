@@ -215,6 +215,7 @@ export const WEBVIEW_STRINGS = {
     acceptancePlanSystemDefault: "系统默认",
     acceptancePlanNewOption: "新增方案",
     acceptancePlanDefaultName: "默认方案",
+    acceptancePlanNewDefaultName: "新建方案",
     acceptancePlanOtherReviewHeading: "其它审查内容",
     historyTitle: "历史记录",
     historyClearSessions: "重置当前会话",

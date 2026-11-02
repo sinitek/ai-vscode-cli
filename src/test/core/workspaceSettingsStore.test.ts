@@ -158,6 +158,38 @@ test("loads acceptance plans and selection, then saves them beside other setting
   }
 });
 
+test("各项目独立恢复最近选择并兼容迁移旧默认方案", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const firstProject = { ...createOptions(workspaceSettingsDir), workspaceKey: "project-a" };
+  const secondProject = { ...createOptions(workspaceSettingsDir), workspaceKey: "project-b" };
+  const firstPath = path.join(workspaceSettingsDir, "project-a.json");
+  try {
+    fs.writeFileSync(firstPath, JSON.stringify({
+      workspaceMemoryEnabled: true,
+      loopPlusAcceptancePlans: [{
+        id: "legacy-default", name: "默认方案", checks: ["security", "other"], otherText: "审计要求", updatedAt: 5,
+      }],
+      loopPlusAcceptancePlanSelection: "legacy-default",
+    }), "utf8");
+    saveWorkspaceSettings({ loopPlusAcceptancePlanSelection: "system_default" }, secondProject);
+    const migrated = loadWorkspaceSettings(firstProject);
+    assert.deepEqual(migrated.loopPlusAcceptancePlans, [{
+      id: "legacy-default", name: "新建方案", checks: ["security", "other"], otherText: "审计要求", updatedAt: 5,
+    }]);
+    assert.equal(migrated.loopPlusAcceptancePlanSelection, "legacy-default");
+    assert.equal(migrated.workspaceMemoryEnabled, true);
+    saveWorkspaceSettings(migrated, firstProject);
+    assert.deepEqual(loadWorkspaceSettings(firstProject), migrated);
+    assert.equal(JSON.parse(fs.readFileSync(firstPath, "utf8")).loopPlusAcceptancePlans[0].name, "新建方案");
+    assert.equal(loadWorkspaceSettings(secondProject).loopPlusAcceptancePlanSelection, "system_default");
+    saveWorkspaceSettings({ ...migrated, loopPlusAcceptancePlanSelection: "system_default" }, firstProject);
+    assert.equal(loadWorkspaceSettings(firstProject).loopPlusAcceptancePlanSelection, "system_default");
+    assert.equal(loadWorkspaceSettings(secondProject).loopPlusAcceptancePlans, undefined);
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
 test("corrupted acceptance plan settings fall back to the system default without breaking other fields", () => {
   const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
   const options = createOptions(workspaceSettingsDir);

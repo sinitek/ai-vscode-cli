@@ -9,8 +9,8 @@
 
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID = "system_default";
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME = "系统默认";
-/** 从系统默认另存时预填的方案名；用户可在弹窗里改完再保存。 */
-export const LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME = "默认方案";
+export const LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME = "新建方案";
+const LEGACY_DEFAULT_ACCEPTANCE_PLAN_NAME = "默认方案";
 export const LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH = 50;
 export const LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES = [
   "dispatched work",
@@ -225,7 +225,20 @@ export function normalizeLoopPlusAcceptancePlans(value: unknown): LoopPlusAccept
       result.push(plan);
     }
   });
-  return result;
+  const usedNames = new Set(result.map((plan) => plan.name));
+  return result.map((plan) => {
+    if (plan.name !== LEGACY_DEFAULT_ACCEPTANCE_PLAN_NAME) {
+      return plan;
+    }
+    let name = LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME;
+    let suffix = 2;
+    while (usedNames.has(name)) {
+      name = `${LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME}（${suffix}）`;
+      suffix += 1;
+    }
+    usedNames.add(name);
+    return { ...plan, name };
+  });
 }
 
 export function resolveLoopPlusAcceptancePlanSelectionId(
@@ -309,12 +322,15 @@ export function upsertLoopPlusAcceptancePlan(input: UpsertLoopPlusAcceptancePlan
   if (!name) {
     return { ok: false, error: "请输入验收方案名称。" };
   }
-  if (name === LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME) {
+  if (name === LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME || name === LEGACY_DEFAULT_ACCEPTANCE_PLAN_NAME) {
     return { ok: false, error: "已存在同名验收方案，请更换名称。" };
   }
   const requestedId = normalizePlanId(input.planId ?? "");
+  if (requestedId === LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID) {
+    return { ok: false, error: "默认方案不能保存，请先选择新增方案。" };
+  }
   const byId = requestedId ? plans.find((plan) => plan.id === requestedId) ?? null : null;
-  if (requestedId && requestedId !== LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID && !byId) {
+  if (requestedId && !byId) {
     return { ok: false, error: "验收方案不存在或已被删除。" };
   }
   const byName = plans.find((plan) => plan.name === name) ?? null;
