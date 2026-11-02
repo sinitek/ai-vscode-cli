@@ -306,7 +306,7 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 - 七个 CLI 的首次加载、心跳和空闲刷新不写原生配置，也不自动抢回旧选择；只有显式激活和任务启动准备写入。任务派发与命令修复重试前重新应用任务档案，优先使用绑定子任务档案或显式执行快照，否则使用当前激活档案；没有激活身份时在启动阶段选择有序首项，没有档案则兼容原生配置。写入失败或被新切换替代时停止派发；OpenCode 在应用后校验。无待提交选择时跟随宿主激活状态刷新；待提交时仍隔离其他档案模型快照。不引入长期配置锁，不承诺跨进程同时启动原子性或已有进程动态迁移；旧版本扩展窗口需要重载后才停止后台回写。
 - 配置中心不再自动或手动把 Claude / Codex 配置转换为 OpenCode 配置；OpenCode 配置列表只展示原生 OpenCode 档案。历史自动迁移档案不会被删除，但会从新的 OpenCode 配置列表中隐藏，避免继续刷新或复用旧转换项
 - 备份与导出
-- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这七个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。市场也支持选择本地 ZIP 并多选 CLI 安装：若 ZIP 唯一顶层项是含 `SKILL.md` 的技能目录，则以该目录名为技能名，只安装其内部内容；若 ZIP 根目录直接包含 `SKILL.md`，则以 ZIP 文件名（不含 `.zip`）为技能名，并安装根目录内容。两种布局均安装到目标 CLI 的全局技能目录，不保留外层包装目录。拒绝路径穿越、符号链接、加密条目、缺少 `SKILL.md` 的布局及超限压缩包。全部在线安装成功后市场弹层保持打开并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
+- 技能管理可以打开、删除和复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局 skills 目录。配置页导入按钮右侧提供 LobeHub Skills 市场：搜索公开 discover 接口，下载时多选这七个 CLI，扩展宿主用 `yauzl` 解压并安装到对应全局目录；同名目录会先删除再安装。“Skills 市场”按钮右侧独立提供“导入 skills”，直接选择本地 ZIP 并多选 CLI 安装，市场弹层不再提供本地导入入口：若 ZIP 唯一顶层项是含 `SKILL.md` 的技能目录，则以该目录名为技能名，只安装其内部内容；若 ZIP 根目录直接包含 `SKILL.md`，则以 ZIP 文件名（不含 `.zip`）为技能名，并安装根目录内容。两种布局均安装到目标 CLI 的全局技能目录，不保留外层包装目录。拒绝路径穿越、符号链接、加密条目、缺少 `SKILL.md` 的布局及超限压缩包。全部在线安装成功后市场弹层保持打开并清空当前技能与目标 CLI 选择，方便继续选择安装；只有用户手动关闭弹层才会退出。部分失败时弹层同样保持打开并展示失败目标。不再安装、更新或卸载内置官方 Skills，也不再提供官方 catalog、内置 ZIP 或同步脚本
 - OpenCode 的全局技能目录为 `${XDG_CONFIG_HOME:-~/.config}/opencode/skills`，不是 `~/.opencode/skills`；项目级 `.opencode/skills` 不并入配置中心。Grok 的用户全局技能目录为 `${GROK_HOME:-~/.grok}/skills`，不包含 `bundled/skills`。DSH 的全局技能目录为 `${DSH_HOME:-~/.dsh}/skills`，Kimi Code 为 `${KIMI_CODE_HOME:-~/.kimi-code}/skills`，ZCode 默认为 `~/.zcode/skills`。路径依据为 [OpenCode Agent Skills](https://opencode.ai/docs/skills/)、[OpenCode 配置目录](https://opencode.ai/docs/config/)、[Grok Skills、插件与市场](https://docs.x.ai/build/features/skills-plugins-marketplaces)、[DSH filesystem skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.zh.md)、[Kimi Code Agent Skills](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/skills.html) 和 [ZCode Skill](https://zcode.z.ai/cn/docs/skill)。
 - Skills 表格的操作按钮保持同行；“复制到”按钮打开弹窗，可多选当前 CLI 以外的目标。复制期间禁用重复提交，部分失败保留失败目标重试，成功目标不会重复复制；不覆盖同名技能。
 - 配置中心不再提供 MCP 市场、安装、卸载或健康检查
@@ -383,7 +383,7 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 
 - 用户能在 VS Code 内完成多 CLI 切换与对话
 - 会话、历史、模型和规则在重开面板后仍可恢复
-- 配置中心能管理本地配置；Skills 可打开、删除、复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，也可上传本地 ZIP 安装：唯一顶层技能目录采用目录名，ZIP 根直接包含 `SKILL.md` 时采用 ZIP 文件名；配置中心不再提供 MCP 管理
+- 配置中心能管理本地配置；Skills 可打开、删除、复制 Claude、OpenCode、Grok、Codex、DSH、Kimi Code、ZCode 七个全局目录，并可从 LobeHub Skills 市场搜索下载后安装到所选 CLI，也可通过“Skills 市场”按钮右侧的“导入 skills”选择本地 ZIP 安装：唯一顶层技能目录采用目录名，ZIP 根直接包含 `SKILL.md` 时采用 ZIP 文件名；配置中心不再提供 MCP 管理
 - 出现异常时，用户可以看到足够的错误提示和排障入口
 
 OpenCode 模型可视化编辑器支持官方 `provider.<id>.models.<id>.limit.context` 上下文 token 上限字段；该字段依据 OpenCode Models 文档（<https://opencode.ai/docs/models/>，访问日期：`2026-08-31`）的模型配置约定，留空时保留 Provider/模型默认值，填写的非负有限数值按 OpenCode 配置 schema 写回 `limit.context`，其他 `limit` 字段继续无损保留。

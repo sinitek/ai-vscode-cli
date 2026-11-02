@@ -136,19 +136,19 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
-test("config page exposes the LobeHub skills market beside import", () => {
+test("config page exposes local skills import to the right of the LobeHub market", () => {
   const uiSource = fs.readFileSync(path.join(process.cwd(), "media/config/assets/config-app-ui.js"), "utf8");
   const apiSource = fs.readFileSync(path.join(process.cwd(), "media/config/assets/config-app-api.js"), "utf8");
   const importAt = uiSource.indexOf('onClick: openImportModal, children: "导入"');
   const marketAt = uiSource.indexOf('children: "Skills 市场"');
+  const skillsImportAt = uiSource.indexOf('children: skillsImporting ? "导入中..." : "导入 skills"');
   assert.ok(importAt >= 0);
   assert.ok(marketAt > importAt);
+  assert.ok(skillsImportAt > marketAt);
   assert.match(uiSource, /searchLobehubSkills\(\{ query: nextQuery, page: nextPage \}\)/);
   assert.match(uiSource, /installLobehubSkill\(\{[\s\S]*?identifier: selected\.identifier/);
   assert.match(uiSource, /installLocalSkillZip\(\)/);
-  assert.match(uiSource, /上传 ZIP 并选择 CLI/);
-  assert.match(uiSource, /ZIP 内单个顶层目录作为技能目录/);
-  assert.match(uiSource, /根目录含 SKILL\.md 时使用 ZIP 文件名/);
+  assert.doesNotMatch(uiSource, /上传 ZIP 并选择 CLI/);
   assert.match(uiSource, /安装到 CLI（可多选）/);
   assert.match(uiSource, /sinitek-cli-skills-installed/);
   const installStart = uiSource.indexOf("const confirmInstall = async () => {");

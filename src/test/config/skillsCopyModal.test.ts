@@ -226,6 +226,135 @@ function skillUiSlice(): string {
   return uiSource.slice(uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="), uiSource.indexOf("const SkillsManagerModal ="));
 }
 
+function createLocalImportHarness(install: () => Promise<unknown>) {
+  const errors: string[][] = [];
+  const importing: boolean[] = [];
+  const messages: string[] = [];
+  const warnings: string[] = [];
+  const events: Array<{ type: string; detail?: unknown }> = [];
+  const importingRef = { current: false };
+  const source = uiSource.slice(uiSource.indexOf("const installLocalSkillsFromZip ="), uiSource.indexOf("// Config list panel"));
+  const runImport = vm.runInNewContext(`${skillUiSlice()}\n${source}\ninstallLocalSkillsFromZip`, {
+    Error,
+    installLocalSkillZip: install,
+    Kt: {
+      success: (message: string) => messages.push(message),
+      warning: (message: string) => warnings.push(message),
+    },
+    window: {
+      dispatchEvent: (event: { type: string; detail?: unknown }) => events.push(event),
+    },
+    CustomEvent: class CustomEvent {
+      type: string;
+      detail?: unknown;
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
+  });
+  return {
+    errors,
+    importing,
+    messages,
+    warnings,
+    events,
+    importingRef,
+    run: () => runImport({
+      importingRef,
+      setErrors: (value: string[]) => errors.push(plain(value)),
+      setImporting: (value: boolean) => importing.push(value),
+    }) as Promise<void>,
+  };
+}
+
+test("local skills import appears immediately after the market button and leaves the market dialog", () => {
+  const listPanel = uiSource.slice(uiSource.indexOf("const ConfigListPanel ="), uiSource.indexOf("const CLI_GLOBAL_SKILL_TARGETS ="));
+  const toolbar = listPanel.slice(listPanel.indexOf('className: "config-list-toolbar"'), listPanel.indexOf("skillsMarketOpen ?"));
+  assert.match(toolbar, /children: "Skills 市场" \}\),\s+be\.jsx\(xn, \{/);
+  assert.match(toolbar, /onClick: \(\) => void installLocalSkillsFromZip\(\{/);
+  assert.match(toolbar, /disabled: skillsImporting/);
+  assert.match(toolbar, /children: skillsImporting \? "导入中\.\.\." : "导入 skills"/);
+  assert.match(toolbar, /flexWrap: "wrap"/);
+  assert.match(toolbar, /skillsImportErrors\.length > 0[\s\S]*role: "alert"/);
+  const market = skillUiSlice().slice(skillUiSlice().indexOf("const SkillsMarketModal ="));
+  assert.doesNotMatch(market, /installLocalSkillZip|上传 ZIP|本地 ZIP|uploadErrors/);
+});
+
+test("local skills import reports success and refreshes only installed CLI targets", async () => {
+  const harness = createLocalImportHarness(async () => ({ targets: [
+    { platform: "codex", name: "local-skill", status: "installed" },
+    { platform: "dsh", name: "local-skill", status: "installed" },
+  ] }));
+  await harness.run();
+  assert.deepEqual(harness.messages, ["已安装 local-skill"]);
+  assert.deepEqual(harness.importing, [true, false]);
+  assert.deepEqual(harness.errors, [[]]);
+  assert.deepEqual(plain(harness.events), [{
+    type: "sinitek-cli-skills-installed",
+    detail: { platforms: ["codex", "dsh"] },
+  }]);
+});
+
+test("cancelled or empty local skills imports reset the button without success messages", async () => {
+  for (const result of [null, {}, { targets: [] }]) {
+    const harness = createLocalImportHarness(async () => result);
+    await harness.run();
+    assert.deepEqual(harness.importing, [true, false]);
+    assert.equal(harness.importingRef.current, false);
+    assert.deepEqual(harness.messages, []);
+    assert.deepEqual(harness.warnings, []);
+    assert.deepEqual(harness.events, []);
+    assert.deepEqual(harness.errors, [[]]);
+  }
+});
+
+test("local skills import keeps partial failures visible with shared CLI labels", async () => {
+  const harness = createLocalImportHarness(async () => ({ targets: [
+    { platform: "codex", name: "local-skill", status: "installed" },
+    { platform: "dsh", name: "local-skill", status: "failed", message: "目录不可写" },
+  ] }));
+  await harness.run();
+  assert.deepEqual(harness.errors, [[], ["DSH / local-skill：目录不可写"]]);
+  assert.deepEqual(harness.messages, ["已安装 local-skill"]);
+  assert.deepEqual(harness.warnings, []);
+  assert.deepEqual(plain(harness.events[0]?.detail), { platforms: ["codex"] });
+});
+
+test("local skills import exposes failures and exceptions without reporting success", async () => {
+  const failed = createLocalImportHarness(async () => ({ targets: [
+    { platform: "dsh", name: "local-skill", status: "failed", message: "目录不可写" },
+  ] }));
+  await failed.run();
+  assert.deepEqual(failed.warnings, ["没有安装新技能"]);
+  assert.deepEqual(failed.messages, []);
+  assert.deepEqual(failed.events, []);
+  const rejected = createLocalImportHarness(async () => { throw new Error("选择 ZIP 失败"); });
+  await rejected.run();
+  assert.deepEqual(rejected.errors, [[], ["选择 ZIP 失败"]]);
+  assert.deepEqual(rejected.importing, [true, false]);
+  assert.deepEqual(rejected.messages, []);
+});
+
+test("local skills import prevents duplicate native file pickers while importing", async () => {
+  let finishImport!: () => void;
+  let calls = 0;
+  const harness = createLocalImportHarness(async () => {
+    calls++;
+    await new Promise<void>((resolve) => { finishImport = resolve; });
+    return null;
+  });
+  const pending = harness.run();
+  await harness.run();
+  assert.equal(calls, 1);
+  assert.equal(harness.importingRef.current, true);
+  assert.deepEqual(harness.importing, [true]);
+  finishImport();
+  await pending;
+  assert.equal(harness.importingRef.current, false);
+  assert.deepEqual(harness.importing, [true, false]);
+});
+
 test("shared copy targets include DSH, Kimi Code, and ZCode", async () => {
   const targets = vm.runInNewContext(`${skillUiSlice()}\nCLI_GLOBAL_SKILL_TARGETS`, {});
   assert.deepEqual(plain(targets), [
