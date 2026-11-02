@@ -4667,13 +4667,28 @@ async function runPrompt(
     const workspaceKey = activeWorkspaceKey;
     const startupCommand = getCliCommand(target.cli);
     let executionConfigId: string | null | undefined;
+    let skipExecutionConfigRewrite = false;
+    const continueWithoutConfigRewrite = (runTarget: PromptRunTarget, error: unknown): void => {
+      if (skipExecutionConfigRewrite) {
+        return;
+      }
+      skipExecutionConfigRewrite = true;
+      appendSystemMessageForPromptTarget(runTarget, "警告：任务前配置重写失败，已跳过后续重写，将尝试使用当前可用配置继续执行；运行配置可能与所选档案不一致。");
+      void logError("task-config-rewrite-skipped", {
+        cli: runTarget.cli,
+        tabId: runTarget.tabId,
+        configId: executionConfigId ?? null,
+        error: getErrorInfo(error).message,
+      });
+    };
     await promptAutoRepairController.run(promptInput, target, {
       execute: async (attemptInput, attemptTarget) => {
+        let appliedExecutionConfigId: string | null = null;
         try {
           if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
-            throw new Error("配置应用失败，任务未启动，请重新激活配置后重试。");
+            continueWithoutConfigRewrite(attemptTarget, new Error("等待中的配置应用失败。"));
           }
-          if (executionConfigId === undefined) {
+          if (!skipExecutionConfigRewrite && executionConfigId === undefined) {
             const boundConfigId = attemptInput.taskRole === "subtask"
               ? attemptInput.loopSubtaskConfigId?.trim()
               : undefined;
@@ -4686,10 +4701,21 @@ async function runPrompt(
               executionConfigId = configState.activeConfigId || configState.configs[0]?.id || null;
             }
           }
-          if (executionConfigId) {
-            const applied = await applyConfigById(attemptTarget.cli, executionConfigId);
-            if (applied !== "applied") {
+          if (!skipExecutionConfigRewrite && executionConfigId) {
+            let applied: ConfigApplyResult | undefined;
+            try {
+              applied = await applyConfigById(attemptTarget.cli, executionConfigId);
+            } catch (error) {
+              if (isAbortErrorInfo(getErrorInfo(error))) {
+                throw error;
+              }
+              continueWithoutConfigRewrite(attemptTarget, error);
+            }
+            if (applied === "superseded") {
               throw new Error("任务配置已被新的切换请求替代，任务未启动，请重试。");
+            }
+            if (applied === "applied") {
+              appliedExecutionConfigId = executionConfigId;
             }
           }
           if (attemptTarget.cli === "opencode") {
@@ -4719,7 +4745,7 @@ async function runPrompt(
           const sessionId = resolvePromptRunTargetSessionId(attemptTarget)
             ?? getLatestLoopRoundRunRecord(attemptInput.loopTaskId, attemptInput.loopRound ?? 1, "subtask", attemptInput.loopSubtaskId)?.sessionId;
           if (task && sessionId) {
-            updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(task.subTasks, attemptInput.loopSubtaskId, { cli: attemptTarget.cli, sessionId, configId: executionConfigId ?? null }) });
+            updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(task.subTasks, attemptInput.loopSubtaskId, { cli: attemptTarget.cli, sessionId, configId: appliedExecutionConfigId }) });
           }
         }
       },
