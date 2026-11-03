@@ -298,13 +298,14 @@
     {
       "id": "plugin.rule.cli_example_import_inputs",
       "name": "七类 CLI 范例导入必填与模型引用一致性",
-      "description": "共享范例抽屉的一键导入先打开必填 base_url、api_key、模型名称弹窗，密钥输入遮蔽，取消或校验失败不修改草稿，关闭后清空输入。确认后按 CLI 的 JSON/TOML 结构更新地址、密钥、模型定义键与默认和辅助引用。Codex config/auth 两个范例入口均同时更新两个文件；OpenCode 主模型与 small_model 指向同一输入模型并仅生成一份定义；Claude 包含各档默认模型与子代理模型；Grok、KimiCode 同步表键和默认引用；DSH 同步 acpModel；ZCode 同步默认选择和供应商模型列表。导入成功后统一切到源码页签：Claude、OpenCode、DSH、ZCode 为 JSON，Codex（含 auth 范例入口）、Grok、KimiCode 为 TOML。保留范例其他参数，不自动保存或激活，不改变新增配置行为。",
+      "description": "共享范例抽屉的一键导入先打开必填 base_url、api_key、模型名称弹窗，密钥输入遮蔽，取消或校验失败不修改草稿，关闭后清空输入。确认后按 CLI 的 JSON/TOML 结构更新地址、密钥、模型定义键与默认和辅助引用。Codex config/auth 两个范例入口均同时更新两个文件；OpenCode 主模型与 small_model 指向同一输入模型并仅生成一份定义；Claude 包含各档默认模型与子代理模型；Grok、KimiCode 同步表键和默认引用；DSH 同步 acpModel；ZCode 同步默认选择和供应商模型列表。导入成功后统一切到源码页签：Claude、OpenCode、DSH、ZCode 为 JSON，Codex（含 auth 范例入口）、Grok、KimiCode 为 TOML。保留范例其他参数，抽屉导入不自动保存或激活。七类 CLI 配置目录点击添加直接复用同一导入弹窗，并提供可编辑的必填配置名称；校验通过后才生成、保存并选中新档案，不自动激活。取消或校验失败不创建档案，异步保存中禁止重复提交和关闭，失败保留输入供重试。",
       "status": "active",
       "aliases": ["范例导入弹窗", "一键导入必填", "CLI 模型引用替换"],
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
         {"path": "media/config/assets/config-app-ui.js", "anchor": "buildCliExampleImport"},
         {"path": "src/test/config/cliExampleImport.test.ts"},
+        {"path": "src/test/config/newConfigFromExample.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },

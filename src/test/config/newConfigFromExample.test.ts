@@ -40,7 +40,7 @@ function plain<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-test("七个 CLI 新增配置时自动复制对应范例", () => {
+test("七个 CLI 配置工厂保留对应范例与初始字段", () => {
   const { create, examples } = loadConfigFactory();
 
   assert.deepEqual(plain(create("Claude 测试", "claude")), {
@@ -89,12 +89,90 @@ test("七个 CLI 新增配置时自动复制对应范例", () => {
   });
 });
 
-test("新增配置工厂拒绝未知平台，新增入口保留空名称与保存失败校验", () => {
+test("新增配置工厂拒绝未知平台", () => {
   const { create } = loadConfigFactory();
   assert.throws(() => create("未知", "unknown"), /不支持的配置平台/);
+});
 
+function loadNewConfigFlow(platform: string, saveError?: Error) {
   const ui = read(uiPath);
-  assert.match(ui, /if \(!U\) return \(Kt\.error\("配置名称不能为空"\), Promise\.reject\(\)\)/);
-  assert.match(ui, /const T = await l\(createConfigFromExample\(U, k\)\)/);
-  assert.match(ui, /Kt\.error\("添加失败: " \+ T\), Promise\.reject\(T\)/);
+  const section = (startMarker: string, endMarker: string) => {
+    const start = ui.indexOf(startMarker);
+    const end = ui.indexOf(endMarker, start);
+    assert.ok(start >= 0 && end > start, `找不到 ${startMarker}`);
+    return ui.slice(start, end);
+  };
+  const saved: Record<string, any>[] = [];
+  const selected: unknown[][] = [];
+  const messages: string[] = [];
+  const { create } = loadConfigFactory();
+  const sandbox: Record<string, any> = {
+    URL, Error,
+    createConfigFromExample: create,
+    newConfigPlatform: null,
+    setNewConfigPlatform: (next: string | null) => { sandbox.newConfigPlatform = next; },
+    l: async (payload: Record<string, any>) => {
+      if (saveError) throw saveError;
+      saved.push(payload);
+      return { ...payload, id: "created-profile" };
+    },
+    o: (...selection: unknown[]) => selected.push(selection),
+    Kt: { success: (message: string) => messages.push(message) },
+  };
+  vm.runInNewContext([
+    section("function fk(", "const CLI_GLOBAL_SKILL_TARGETS ="),
+    section("const DSH_UI_PROVIDER", "const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS"),
+    section("// OPENCODE_VISUAL_EDITOR_UTILS_START", "// CODEX_VISUAL_EDITOR_UTILS_END"),
+    section("const GROK_VISUAL_FIELD_IDS", "// Config editor panel"),
+    `const ${section("I = (platform) => setNewConfigPlatform(platform),", "      R = async (k, L) =>").replace(/,\s*$/, ";")}`,
+    "globalThis.handlers = { open: I, submit: addImportedConfig, build: buildCliExampleImport };",
+  ].join("\n"), sandbox);
+  sandbox.handlers.open(platform);
+  return { sandbox, saved, selected, messages };
+}
+
+test("七个 CLI 点击添加直接打开导入弹窗，确认输入后才保存并选中新档案", async () => {
+  const values = { name: "  自定义配置  ", base_url: "https://api.example.com/v1", api_key: "test-import-key", model: "custom-model" };
+  for (const platform of ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"]) {
+    const { sandbox, saved, selected, messages } = loadNewConfigFlow(platform);
+    assert.equal(sandbox.newConfigPlatform, platform);
+    assert.equal(saved.length, 0);
+    assert.equal(selected.length, 0);
+    await sandbox.handlers.submit(values);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].name, "自定义配置");
+    assert.equal(saved[0].platform, platform);
+    const exampleKey = `${platform}-${["claude", "opencode"].includes(platform) ? "settings" : "config"}`;
+    const imported = sandbox.handlers.build(exampleKey, values);
+    for (const [key, content] of Object.entries(imported)) assert.equal(saved[0][key], content);
+    if (["grok", "dsh", "kimi-code", "zcode"].includes(platform)) {
+      assert.equal(saved[0].configContent, saved[0].content);
+    }
+    if (platform === "claude") {
+      assert.equal(saved[0].mcpContent, "{}");
+      assert.deepEqual(plain(saved[0].claudeSkills), []);
+    }
+    if (platform === "codex") assert.deepEqual(plain(saved[0].codexSkills), []);
+    if (platform === "opencode") assert.deepEqual(plain(saved[0].openCodeSkills), []);
+    assert.equal(sandbox.newConfigPlatform, null);
+    assert.deepEqual(selected, [["created-profile", platform]]);
+    assert.deepEqual(messages, ["添加成功"]);
+  }
+  assert.match(read(uiPath), /newConfigPlatform \? be\.jsx\(CliExampleImportModal, \{\s*platform: newConfigPlatform,\s*onClose: \(\) => setNewConfigPlatform\(null\),\s*onImport: addImportedConfig/);
+});
+
+test("新增配置校验失败或保存失败不关闭导入弹窗，也不选择或激活档案", async () => {
+  const values = { name: "测试配置", base_url: "https://api.example.com/v1", api_key: "test-import-key", model: "custom-model" };
+  const invalid = loadNewConfigFlow("claude");
+  await assert.rejects(invalid.sandbox.handlers.submit({ ...values, base_url: "" }), /请填写/);
+  assert.equal(invalid.sandbox.newConfigPlatform, "claude");
+  assert.equal(invalid.saved.length, 0);
+  assert.equal(invalid.selected.length, 0);
+
+  const failure = loadNewConfigFlow("codex", new Error("保存失败测试"));
+  await assert.rejects(failure.sandbox.handlers.submit(values), /保存失败测试/);
+  assert.equal(failure.sandbox.newConfigPlatform, "codex");
+  assert.equal(failure.saved.length, 0);
+  assert.equal(failure.selected.length, 0);
+  assert.equal(failure.messages.length, 0);
 });

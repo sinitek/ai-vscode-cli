@@ -173,7 +173,7 @@ test("必填项、地址、控制字符和 OpenCode 模型边界拒绝导入，�
   assert.equal(JSON.parse(trimmed.content).model, values.model);
 });
 
-test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重开清空、失败保留错误", () => {
+test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重开清空、失败保留错误", async () => {
   const state: unknown[] = [];
   let cursor = 0;
   let closed = 0;
@@ -192,7 +192,7 @@ test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重�
     cursor = 0;
     return utils.modal({ onClose: () => { closed++; }, onImport });
   };
-  render().props.onOk();
+  await render().props.onOk();
   assert.equal(imported.length, 0);
   assert.equal(nodes(render()).filter((node) => node.props.role === "alert").length, 3);
   for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
@@ -205,12 +205,86 @@ test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重�
   render().props.onCancel();
   assert.equal(closed, 1);
   assert.equal(imported.length, 0);
-  render().props.onOk();
+  await render().props.onOk();
   assert.deepEqual({ ...imported[0] }, values);
-  render(() => { throw new Error("导入失败测试"); }).props.onOk();
+  await render(() => { throw new Error("导入失败测试"); }).props.onOk();
   assert.ok(nodes(render()).some((node) => node.props.role === "alert" && node.props.children === "导入失败测试"));
   state.length = 0;
   assert.ok(nodes(render()).filter((node) => node.type === "input").every((node) => node.props.value === ""));
+});
+
+test("新增导入弹窗支持名称校验、取消、异步保存失败重试及保存中防重复提交", async () => {
+  const state: unknown[] = [];
+  const refs: AnyRecord[] = [];
+  let cursor = 0;
+  let refCursor = 0;
+  let closed = 0;
+  let submissions = 0;
+  let rejectSave: (error: Error) => void = () => undefined;
+  const { utils } = loadUtilities({
+    configPlatformLabel: () => "Codex",
+    c: {
+      useState: (initial: unknown) => {
+        const index = cursor++;
+        if (!(index in state)) state[index] = initial;
+        return [state[index], (next: unknown) => { state[index] = next; }];
+      },
+      useRef: (initial: unknown) => {
+        const index = refCursor++;
+        return refs[index] ||= { current: initial };
+      },
+    },
+  });
+  const render = (onImport = (_next: AnyRecord) => {
+    submissions++;
+    return new Promise<void>((_resolve, reject) => { rejectSave = reject; });
+  }) => {
+    cursor = 0;
+    refCursor = 0;
+    return utils.modal({ platform: "codex", onClose: () => { closed++; }, onImport });
+  };
+  const input = (label: string) => {
+    const field = nodes(render()).find((node) => node.props["aria-label"] === label);
+    assert.ok(field);
+    return field;
+  };
+  assert.equal(render().props.title, "添加Codex配置");
+  assert.equal(render().props.zIndex, 1100);
+  assert.equal(render().props.okText, "创建配置");
+  assert.match(input("配置名称").props.value, /^Codex 配置 \d+$/);
+  input("配置名称").props.onChange({ target: { value: " " } });
+  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
+    input(label).props.onChange({ target: { value: values[key as keyof typeof values] } });
+  }
+  await render().props.onOk();
+  assert.equal(submissions, 0);
+  assert.ok(nodes(render()).some((node) => node.props.role === "alert" && node.props.children === "配置名称不能为空"));
+  render().props.onCancel();
+  assert.equal(closed, 1);
+  input("配置名称").props.onChange({ target: { value: "我的配置" } });
+  const saving = render().props.onOk();
+  assert.equal(submissions, 1);
+  assert.equal(render().props.confirmLoading, true);
+  assert.equal(render().props.cancelButtonProps.disabled, true);
+  assert.equal(render().props.closable, false);
+  assert.ok(nodes(render()).filter((node) => node.type === "input").every((node) => node.props.disabled));
+  await render().props.onOk();
+  render().props.onCancel();
+  assert.equal(submissions, 1);
+  assert.equal(closed, 1);
+  rejectSave(new Error("异步保存失败测试"));
+  await saving;
+  assert.equal(render().props.confirmLoading, false);
+  assert.ok(nodes(render()).some((node) => node.props.role === "alert" && node.props.children === "异步保存失败测试"));
+  assert.equal(input("配置名称").props.value, "我的配置");
+  assert.equal(input("api_key").props.value, values.api_key);
+  let retried: AnyRecord | undefined;
+  await render(async (next) => { retried = next; }).props.onOk();
+  assert.equal(retried?.name, "我的配置");
+  assert.equal(retried?.base_url, values.base_url);
+  state.length = 0;
+  refs.length = 0;
+  assert.equal(input("api_key").props.value, "");
 });
 
 test("共享抽屉确认导入后统一切换源码页签，仅更新草稿，解析失败不关闭，Codex 同步更新两个文件", () => {

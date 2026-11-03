@@ -26,7 +26,7 @@ Loop 和 Loop+ 子任务创建时，子会话只保留正常样式的用户提�
 
 配置页面所有 CLI 分组的内置范例均不包含 `subcoco`，原有该名称统一替换为 `default`。KimiCode 范例的 Provider 定义、模型引用、表单占位提示及无模型可复制时的新增模型回退 Provider 均使用 `default`；不迁移或改写用户已有配置。
 
-七类 CLI 的“查看范例 → 一键导入”先弹出配置填写窗口，`base_url`、`api_key`、模型名称三项必填，密钥输入遮蔽；取消或校验失败不修改草稿，关闭后不保留输入。确认后按各 CLI 的 JSON/TOML 结构更新地址、密钥及全部关联模型字段：Claude 包含默认各档模型与子代理模型；Codex 的 config/auth 两个范例入口均同步更新 `config.toml` 与 `auth.json`；OpenCode 将主/小模型引用指向同一输入模型并保留一份模型定义；Grok、KimiCode 同步修改模型表键与默认引用；DSH 同步模型列表和 `acpModel`；ZCode 同步默认选择和供应商模型列表。导入成功后统一切到源码页签：Claude、OpenCode、DSH、ZCode 为 JSON；Codex（含 auth 范例入口）、Grok、KimiCode 为 TOML。范例其他参数保留，导入只更新当前草稿，仍需手动保存，不改变“新增配置”行为。实现见 `media/config/assets/config-app-ui.js`；回归见 `src/test/config/cliExampleImport.test.ts`。
+七类 CLI 的“查看范例 → 一键导入”先弹出配置填写窗口，`base_url`、`api_key`、模型名称三项必填，密钥输入遮蔽；取消或校验失败不修改草稿，关闭后不保留输入。确认后按各 CLI 的 JSON/TOML 结构更新地址、密钥及全部关联模型字段：Claude 包含默认各档模型与子代理模型；Codex 的 config/auth 两个范例入口均同步更新 `config.toml` 与 `auth.json`；OpenCode 将主/小模型引用指向同一输入模型并保留一份模型定义；Grok、KimiCode 同步修改模型表键与默认引用；DSH 同步模型列表和 `acpModel`；ZCode 同步默认选择和供应商模型列表。导入成功后统一切到源码页签：Claude、OpenCode、DSH、ZCode 为 JSON；Codex（含 auth 范例入口）、Grok、KimiCode 为 TOML。范例其他参数保留，从范例抽屉导入只更新当前草稿，仍需手动保存。配置目录点击“添加”则直接打开对应 CLI 的同一导入弹窗，额外提供可编辑的配置名称；必填校验通过后生成、保存并选中新档案，不自动激活。取消或校验失败不创建档案；异步保存中禁用输入、关闭与重复提交，保存失败保留输入并显示错误，可重试。实现见 `media/config/assets/config-app-ui.js`；回归见 `src/test/config/cliExampleImport.test.ts`、`src/test/config/newConfigFromExample.test.ts`。
 
 Loop+ 输入区工具栏最左侧有原生复选框「全栈」，默认勾选，并按主配置持久化。勾选时模型行是「主-思考」和「子-全栈」，所有编码使用子-全栈的 CLI、档案、模型和思考力度；取消后才显示「子-后端」「子-前端」并按职责路由。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行收益明显时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的边界并行派发多个子任务；共享文件或有强依赖时保持单任务。编码不能回退主模型。每个可见角色标签右侧有问号，悬停或键盘聚焦立即显示说明；模型行下方不再展示「分析可用主模型，编码必须使用对应子模型」的路由提示文案。经典 Loop、Loop+ 和普通聊天不显示该开关，主标签仍是「主模型」。实现见 `src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/modelSelectionStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts`；回归见 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`。
 
@@ -239,7 +239,7 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 2026-10-27 DSH 参考范例的 `apiKey` 更新为 `"your_apikey"` 占位值，不是真实密钥。非空 profile `apiKey` 优先注入子进程的 `SINITEK_DSH_API_KEY`；需要沿用环境变量时应先清空或移除该字段。范例与优先级回归入口：`src/test/cli/dshConfigModels.test.ts`、`src/test/extensionHost/dshInteractiveHostWire.test.ts`。
 
-2026-10-27 配置中心新增 Claude、Codex、OpenCode、Grok、DSH、kimi 配置档案时自动复制对应范例，回归入口：`src/test/config/newConfigFromExample.test.ts`。
+2026-11-03 配置中心新增 Claude、Codex、OpenCode、Grok、DSH、Kimi Code、ZCode 配置档案时直接打开对应一键导入弹窗，填写后按范例生成并保存，替代只填名称后复制静态范例的流程；回归入口：`src/test/config/newConfigFromExample.test.ts`、`src/test/config/cliExampleImport.test.ts`。
 
 2026-10-28 子任务跨 CLI 路由修复：Vibe 忽略并清理残留路由字段；Loop、Loop+ 与子任务续跑在目标 CLI 配置状态暂未同步时，宿主每隔 3 秒刷新并重查，最多 3 次，成功后再派发，耗尽则明确失败且不回退主 CLI。回归入口：`src/test/session/sessionMessageActions.test.ts`、`src/test/loop/subtaskCliRoute.test.ts`、`src/test/webview/loopSubtaskCliRoute.test.ts`。
 

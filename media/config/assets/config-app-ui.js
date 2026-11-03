@@ -704,6 +704,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       [p, h] = c.useState(null),
       [b, x] = c.useState(null),
       [S, y] = c.useState(null),
+      [newConfigPlatform, setNewConfigPlatform] = c.useState(null),
       [exportOpen, setExportOpen] = c.useState(!1),
       [exportResult, setExportResult] = c.useState(""),
       [importOpen, setImportOpen] = c.useState(!1),
@@ -733,29 +734,20 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       ),
       exportAllChecked = e.length > 0 && exportSelectedCount === e.length,
       exportAnySelected = exportSelectedCount > 0,
-      I = (k) => {
-        const L = configPlatformLabel(k);
-        xr.confirm({
-          title: `添加${L}配置`,
-          content: be.jsx(zi, {
-            id: "config-name-input",
-            placeholder: "请输入配置名称",
-            defaultValue: `${L} 配置 ${Date.now()}`,
-          }),
-          onOk: async () => {
-            const U = document
-              .getElementById("config-name-input")
-              ?.value?.trim();
-            if (!U) return (Kt.error("配置名称不能为空"), Promise.reject());
-            try {
-              const T = await l(createConfigFromExample(U, k));
-              o(T.id, T.platform);
-              Kt.success("添加成功");
-            } catch (T) {
-              return (Kt.error("添加失败: " + T), Promise.reject(T));
-            }
-          },
-        });
+      I = (platform) => setNewConfigPlatform(platform),
+      addImportedConfig = async (values) => {
+        const platform = newConfigPlatform;
+        const config = createConfigFromExample(values.name.trim(), platform);
+        const exampleKey = `${platform}-${platform === "claude" || platform === "opencode" ? "settings" : "config"}`;
+        const imported = buildCliExampleImport(exampleKey, values);
+        const payload = { ...config, ...imported };
+        if (imported.content !== void 0 && "configContent" in payload) {
+          payload.configContent = imported.content;
+        }
+        const saved = await l(payload);
+        o(saved.id, saved.platform);
+        setNewConfigPlatform(null);
+        Kt.success("添加成功");
       },
       R = async (k, L) => {
         try {
@@ -1327,6 +1319,11 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           children: skillsImportErrors.join("\n"),
         }) : null,
         skillsMarketOpen ? be.jsx(SkillsMarketModal, { onClose: () => setSkillsMarketOpen(!1) }) : null,
+        newConfigPlatform ? be.jsx(CliExampleImportModal, {
+          platform: newConfigPlatform,
+          onClose: () => setNewConfigPlatform(null),
+          onImport: addImportedConfig,
+        }) : null,
         isConfigPlatformEnabled("claude", cliEnabledByName) ? H("claude", $) : null,
         isConfigPlatformEnabled("codex", cliEnabledByName) ? H("codex", w) : null,
         isConfigPlatformEnabled("opencode", cliEnabledByName) ? H("opencode", O) : null,
@@ -6263,29 +6260,48 @@ const buildCliExampleImport = (exampleKey, values) => {
   }
 };
 
-const CliExampleImportModal = ({ onClose, onImport }) => {
-  const [values, setValues] = c.useState({ base_url: "", api_key: "", model: "" });
+const CLI_EXAMPLE_IMPORT_Z_INDEX = 1100;
+
+const CliExampleImportModal = ({ onClose, onImport, platform }) => {
+  const [values, setValues] = c.useState({
+    base_url: "", api_key: "", model: "",
+    ...(platform ? { name: `${configPlatformLabel(platform)} 配置 ${Date.now()}` } : {}),
+  });
   const [errors, setErrors] = c.useState({});
+  const [submitting, setSubmitting] = c.useState(!1);
   const baseUrlInputRef = c.useRef(null);
-  const submit = () => {
+  const submittingRef = c.useRef(!1);
+  const submit = async () => {
+    if (submittingRef.current) return;
     const nextErrors = validateCliExampleImport(values);
+    if (platform && !String(values.name || "").trim()) nextErrors.name = "配置名称不能为空";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
+    submittingRef.current = !0;
+    setSubmitting(!0);
     try {
-      onImport(values);
+      await onImport(values);
     } catch (error) {
       setErrors({ import: error instanceof Error ? error.message : String(error) });
+    } finally {
+      submittingRef.current = !1;
+      setSubmitting(!1);
     }
   };
   return be.jsx(xr, {
-    title: "填写范例导入配置",
+    title: platform ? `添加${configPlatformLabel(platform)}配置` : "填写范例导入配置",
     open: !0,
     width: 480,
     rootClassName: "cli-example-import-modal",
+    zIndex: CLI_EXAMPLE_IMPORT_Z_INDEX,
     afterOpenChange: (open) => { if (open) baseUrlInputRef.current?.focus(); },
-    onCancel: onClose,
+    onCancel: () => { if (!submittingRef.current) onClose(); },
     onOk: submit,
-    okText: "确认导入",
+    confirmLoading: submitting,
+    cancelButtonProps: { disabled: submitting },
+    closable: !submitting,
+    keyboard: !submitting,
+    okText: platform ? "创建配置" : "确认导入",
     cancelText: "取消",
     maskClosable: !1,
     children: be.jsxs("div", {
@@ -6293,9 +6309,12 @@ const CliExampleImportModal = ({ onClose, onImport }) => {
       children: [
         be.jsx("p", {
           className: "grok-model-copy-hint",
-          children: "三项均为必填。导入会替换当前范例的地址、密钥和全部模型引用，确认后仍需保存。",
+          children: platform
+            ? "填写配置名称、base_url、api_key 和模型名称，确认后按当前 CLI 范例生成并保存配置。"
+            : "三项均为必填。导入会替换当前范例的地址、密钥和全部模型引用，确认后仍需保存。",
         }),
         ...[
+          ...(platform ? [["name", "配置名称", "请输入配置名称"]] : []),
           ["base_url", "base_url", "例如 https://api.example.com/v1"],
           ["api_key", "api_key", "请输入 API 密钥"],
           ["model", "模型名称", "例如 got-6.1-sol"],
@@ -6310,6 +6329,7 @@ const CliExampleImportModal = ({ onClose, onImport }) => {
               value: values[key],
               placeholder,
               required: !0,
+              disabled: submitting,
               autoComplete: "off",
               spellCheck: !1,
               "aria-label": label,
