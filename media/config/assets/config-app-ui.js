@@ -7087,12 +7087,6 @@ const ConfigEditorPanel = () => {
             showConfigSaveError(`config.toml：TOML 格式或字段错误：${grokVisualError || GROK_EMPTY_TEXT_ERROR}`);
             return;
           }
-          const kimiCodeCompleted = kimiCodeVisualCompleteConfigText(W);
-          if (!kimiCodeCompleted.ok) {
-            setKimiCodeVisualError(kimiCodeCompleted.error), showConfigSaveError(kimiCodeCompleted.error);
-            return;
-          }
-          W = kimiCodeCompleted.content;
           await r(O.id, { content: W, configContent: W });
           setGrokTextDraft(W), setGrokValidContent(W);
           const H = grokVisualParseContent(W);

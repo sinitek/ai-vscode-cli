@@ -57,6 +57,22 @@ function loadGrokVisualUtils(sandbox: Record<string, unknown> = {}): {
   return (sandbox as { __grok: never }).__grok as never;
 }
 
+function loadKimiVisualUtils(sandbox: Record<string, unknown> = {}): {
+  completeText: (content: string) => { ok: boolean; error?: string };
+} {
+  const source = read(uiPath);
+  const parserStart = source.indexOf("function fk(");
+  const parserEnd = source.indexOf("const CLI_GLOBAL_SKILL_TARGETS =");
+  const kimiStart = source.indexOf("const KIMI_CODE_VISUAL_FIELD_IDS");
+  const kimiEnd = source.indexOf("const ps = {");
+  assert.ok(parserStart >= 0 && parserEnd > parserStart && kimiStart > parserEnd && kimiEnd > kimiStart);
+  vm.runInNewContext(
+    `${source.slice(parserStart, parserEnd)}\n${source.slice(kimiStart, kimiEnd)}\nglobalThis.__kimi = KimiCodeConfigVisualEditorUtils;`,
+    sandbox,
+  );
+  return (sandbox as { __kimi: never }).__kimi as never;
+}
+
 type EditorNode = { type: unknown; props: Record<string, any> };
 
 function editorNodes(value: unknown): EditorNode[] {
@@ -514,4 +530,57 @@ trust_level = "trusted"
   const invalid = utils.parseContent("[[[");
   assert.equal(invalid.ok, false);
   assert.equal(invalid.state, null);
+});
+
+test("Grok TOML saving does not apply Kimi Code model validation", async () => {
+  const source = read(uiPath);
+  const saveStart = source.indexOf("saveGrokConfigCard = async () => {");
+  const saveEnd = source.indexOf("\n      },\n      kimiCodeSaveDisabled", saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+
+  const content = `[models]\ndefault = "mdkj/gpt-6.1-sol"\ndefault_reasoning_effort = "high"\n\n[model."mdkj/gpt-6.1-sol"]\nmodel = "mdkj/gpt-6.1-sol"\n`;
+  const saveCalls: Array<{ id: string; fields: Record<string, string> }> = [];
+  const applyCalls: Array<Record<string, string>> = [];
+  const errors: string[] = [];
+  const sandbox: Record<string, any> = {
+    O: { id: "grok-profile", platform: "grok" },
+    grokSaveDisabled: false,
+    grokTextDraft: content,
+    grokValidContent: content,
+    grokEditorMode: "toml",
+    grokVisualError: "",
+    GROK_EMPTY_TEXT_ERROR: "空文本不会覆盖上一份有效内容。",
+    setGrokVisualError: (value: string) => { sandbox.grokVisualError = value; },
+    setGrokTextDraft: (value: string) => { sandbox.grokTextDraft = value; },
+    setGrokValidContent: (value: string) => { sandbox.grokValidContent = value; },
+    setGrokVisualState: (value: unknown) => { sandbox.grokVisualState = value; },
+    setKimiCodeVisualError: (value: string) => { errors.push(value); },
+    grokVisualParseContent: (value: string) => grokUtils.parseContent(value),
+    grokVisualSerializeState: (value: unknown) => grokUtils.serializeState(value),
+    r: async (id: string, fields: Record<string, string>) => { saveCalls.push({ id, fields }); },
+    A: async (fields: Record<string, string>) => { applyCalls.push(fields); },
+    Kt: { warning: () => undefined, success: () => undefined },
+    showConfigSaveError: (error: unknown) => { errors.push(String(error)); },
+  };
+  const grokUtils = loadGrokVisualUtils(sandbox);
+  const kimiUtils = loadKimiVisualUtils();
+  const kimiValidation = kimiUtils.completeText(content);
+  assert.equal(kimiValidation.ok, false);
+  assert.equal(kimiValidation.error, "models.default 必须是 TOML 表。");
+  sandbox.kimiCodeVisualCompleteConfigText = kimiUtils.completeText;
+
+  vm.runInNewContext(
+    `const ${source.slice(saveStart, saveEnd).trim()}\n}; globalThis.__save = saveGrokConfigCard;`,
+    sandbox,
+  );
+  await sandbox.__save();
+
+  assert.equal(errors.length, 0);
+  assert.equal(saveCalls.length, 1);
+  assert.equal(saveCalls[0].id, "grok-profile");
+  assert.equal(saveCalls[0].fields.content, content);
+  assert.equal(saveCalls[0].fields.configContent, content);
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].content, content);
+  assert.equal(applyCalls[0].configContent, content);
 });
