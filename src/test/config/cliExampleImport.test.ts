@@ -31,6 +31,7 @@ function loadUtilities(overrides: AnyRecord = {}) {
     URL, Error,
     be: { jsx: element, jsxs: element, Fragment: "fragment" },
     zi: "input", xr: "modal", xn: "button", RE: "drawer",
+    $l: { SECRET_COMBOBOX_MODE_DO_NOT_USE: "combobox" },
     KH: "import-icon",
     ...overrides,
   };
@@ -39,10 +40,171 @@ function loadUtilities(overrides: AnyRecord = {}) {
     section("const DSH_UI_PROVIDER", "const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS"),
     section("// OPENCODE_VISUAL_EDITOR_UTILS_START", "// CODEX_VISUAL_EDITOR_UTILS_END"),
     section("const GROK_VISUAL_FIELD_IDS", "// Config editor panel"),
-    "globalThis.utils = { build: buildCliExampleImport, validate: validateCliExampleImport, modal: CliExampleImportModal, parseToml: g1, examples: Nk, templates: ps, claude: ClaudeConfigVisualEditorUtils, codex: CodexConfigVisualEditorUtils, opencode: OpenCodeConfigVisualEditorUtils, grok: GrokConfigVisualEditorUtils, kimi: KimiCodeConfigVisualEditorUtils, zcode: ZcodeConfigVisualEditorUtils, dsh: DshConfigPageUtils };",
+    "globalThis.utils = { build: buildCliExampleImport, validate: validateCliExampleImport, protocol: getCliExampleImportProtocol, modal: CliExampleImportModal, parseToml: g1, examples: Nk, templates: ps, claude: ClaudeConfigVisualEditorUtils, codex: CodexConfigVisualEditorUtils, opencode: OpenCodeConfigVisualEditorUtils, grok: GrokConfigVisualEditorUtils, kimi: KimiCodeConfigVisualEditorUtils, zcode: ZcodeConfigVisualEditorUtils, dsh: DshConfigPageUtils, protocolOptions: { codex: CODEX_VISUAL_WIRE_APIS, opencode: OPEN_CODE_PROVIDER_NPM_OPTIONS, grok: GROK_VISUAL_API_BACKENDS, dsh: DSH_UI_API_OPTIONS, kimi: KIMI_CODE_VISUAL_PROVIDER_TYPES, zcode: ZCODE_VISUAL_API_TYPES } };",
   ].join("\n"), sandbox);
   return { sandbox, utils: sandbox.utils as AnyRecord };
 }
+
+function readProtocol(utils: AnyRecord, exampleKey: string, imported: AnyRecord): unknown {
+  const document = exampleKey === "opencode-settings" || exampleKey === "dsh-config" || exampleKey === "zcode-config"
+    ? JSON.parse(imported.content)
+    : utils.parseToml(imported.configContent || imported.content);
+  switch (exampleKey) {
+    case "codex-config":
+    case "codex-auth": return document.model_providers[document.model_provider].wire_api;
+    case "opencode-settings": return document.provider[document.model.split("/")[0]].npm;
+    case "grok-config": return document.model[document.models.default].api_backend;
+    case "dsh-config": return document.api;
+    case "kimi-code-config": return document.providers[document.models[document.default_model].provider].type;
+    case "zcode-config": return document.config.providerConfigRules.providerRules[0].config.api.type;
+    default: throw new Error(`未知范例：${exampleKey}`);
+  }
+}
+
+function loadModalHarness(props: AnyRecord) {
+  const state: unknown[] = [];
+  const refs: AnyRecord[] = [];
+  let cursor = 0;
+  let refCursor = 0;
+  const imported: AnyRecord[] = [];
+  const { utils, sandbox } = loadUtilities({
+    configPlatformLabel: (platform: string) => platform,
+    c: {
+      useState: (initial: unknown) => {
+        const index = cursor++;
+        if (!(index in state)) state[index] = initial;
+        return [state[index], (next: unknown) => { state[index] = next; }];
+      },
+      useRef: (initial: unknown) => {
+        const index = refCursor++;
+        return refs[index] ||= { current: initial };
+      },
+    },
+  });
+  const render = (onImport: (next: AnyRecord) => unknown = (next) => imported.push(next)) => {
+    cursor = 0;
+    refCursor = 0;
+    return utils.modal({ onClose: () => undefined, onImport, ...props });
+  };
+  const field = (label: string) => nodes(render()).find((node) => node.props["aria-label"] === label);
+  const fill = () => {
+    for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
+      field(label)!.props.onChange({ target: { value: values[key as keyof typeof values] } });
+    }
+  };
+  return { render, field, fill, imported, utils, sandbox };
+}
+
+test("协议字段及默认值读取各 CLI 范例，候选复用现有可视化选项，Claude 不暴露协议", () => {
+  const { utils } = loadUtilities();
+  for (const [exampleKey, field, expected, optionKey] of [
+    ["codex-config", "wire_api", "responses", "codex"],
+    ["codex-auth", "wire_api", "responses", "codex"],
+    ["opencode-settings", "npm", "@ai-sdk/openai-compatible", "opencode"],
+    ["grok-config", "api_backend", "responses", "grok"],
+    ["dsh-config", "api", "openai-completions", "dsh"],
+    ["kimi-code-config", "type", "openai", "kimi"],
+    ["zcode-config", "api.type", "openai-responses", "zcode"],
+  ]) {
+    const protocol = utils.protocol(exampleKey);
+    assert.equal(protocol.field, field);
+    assert.equal(protocol.defaultValue, expected);
+    const options = utils.protocolOptions[optionKey];
+    assert.deepEqual(Array.from(protocol.options, (option: AnyRecord) => option.value), Array.from(options, (option: any) => typeof option === "string" ? option : option.value));
+    assert.equal(readProtocol(utils, exampleKey, utils.build(exampleKey, values)), expected);
+  }
+  assert.equal(utils.protocol("claude-settings"), null);
+  assert.equal(utils.protocol("unknown"), null);
+  assert.deepEqual(utils.build("claude-settings", { ...values, protocol: "responses" }), utils.build("claude-settings", values));
+  utils.examples["dsh-config"].content = utils.examples["dsh-config"].content.replace('"openai-completions"', '"anthropic-messages"');
+  assert.equal(utils.protocol("dsh-config").defaultValue, "anthropic-messages");
+});
+
+test("所有协议选项写入正确层级并可重新载入编辑器，OpenCode 支持自定义 npm 包", () => {
+  const { utils } = loadUtilities();
+  const originals = JSON.stringify(utils.examples);
+  for (const exampleKey of exampleKeys.filter((key) => key !== "claude-settings")) {
+    const metadata = utils.protocol(exampleKey);
+    const choices = metadata.options.map((option: AnyRecord) => option.value);
+    if (metadata.allowCustomValue) choices.push("@example/custom-provider");
+    for (const protocol of choices) {
+      const imported = utils.build(exampleKey, { ...values, protocol: ` ${protocol} ` });
+      assert.equal(readProtocol(utils, exampleKey, imported), protocol);
+      if (exampleKey === "dsh-config") assert.equal(utils.dsh.readDocument(imported.content).ok, true);
+      else {
+        const editorKey = exampleKey.startsWith("codex") ? "codex" : exampleKey.startsWith("kimi") ? "kimi" : exampleKey.split("-")[0];
+        const parsed = utils[editorKey].parseContent(imported.configContent || imported.content);
+        assert.equal(parsed.ok, true, `${exampleKey}: ${protocol}: ${parsed.error}`);
+        assert.ok(!parsed.state.fieldError, `${exampleKey}: ${protocol}: ${parsed.state.fieldError}`);
+      }
+    }
+  }
+  assert.equal(JSON.stringify(utils.examples), originals);
+});
+
+test("协议缺失沿用范例，显式空值、非法类型、控制字符或不支持的协议阻止生成", () => {
+  const { utils } = loadUtilities();
+  for (const exampleKey of exampleKeys.filter((key) => key !== "claude-settings")) {
+    for (const protocol of ["", " ", null, 123, {}, "responses\n"]) {
+      const errors = utils.validate({ ...values, protocol }, exampleKey);
+      assert.ok(errors.protocol, `${exampleKey}: ${JSON.stringify(protocol)}`);
+      assert.throws(() => utils.build(exampleKey, { ...values, protocol }), /API 协议类型/);
+    }
+    if (exampleKey !== "opencode-settings") {
+      assert.throws(() => utils.build(exampleKey, { ...values, protocol: "unsupported" }), /当前 CLI 支持/);
+    }
+  }
+  assert.throws(() => utils.build("codex-config", { ...values, protocol: "chat" }), /当前 CLI 支持/);
+});
+
+test("新增与范例抽屉弹窗均显示正确的协议默认值及候选，Claude 不显示，重开恢复范例默认值", async () => {
+  for (const exampleKey of exampleKeys) {
+    const platform = exampleKey === "kimi-code-config" ? "kimi-code" : exampleKey.split("-")[0];
+    for (const props of [{ exampleKey }, { platform }]) {
+      const harness = loadModalHarness(props);
+      const select = harness.field("API 协议类型");
+      if (exampleKey === "claude-settings") {
+        assert.equal(select, undefined);
+        continue;
+      }
+      const metadata = harness.utils.protocol(exampleKey);
+      assert.ok(select);
+      assert.equal(select.props.value, metadata.defaultValue);
+      assert.equal(select.props.showSearch, true);
+      assert.equal(select.props["aria-required"], true);
+      assert.equal(select.props.mode, metadata.allowCustomValue ? "combobox" : undefined);
+      const container = {};
+      assert.equal(select.props.getPopupContainer({ parentElement: container }), container);
+      harness.fill();
+      const selected = metadata.options[0].value;
+      harness.field("API 协议类型")!.props.onChange(selected);
+      await harness.render().props.onOk();
+      assert.equal(harness.imported[0].protocol, selected);
+      assert.equal(loadModalHarness(props).field("API 协议类型")!.props.value, metadata.defaultValue);
+    }
+  }
+  assert.match(source, /CliExampleImportModal, \{\s*exampleKey: S,/);
+});
+
+test("协议下拉空值校验、搜索自定义包、异步失败保留选择及保存中禁用", async () => {
+  const harness = loadModalHarness({ platform: "opencode" });
+  harness.fill();
+  harness.field("API 协议类型")!.props.onSearch("");
+  await harness.render().props.onOk();
+  assert.equal(harness.imported.length, 0);
+  assert.equal(harness.field("API 协议类型")!.props.status, "error");
+  assert.ok(nodes(harness.render()).some((node) => node.props.role === "alert" && node.props.children === "请选择 API 协议类型"));
+  harness.field("API 协议类型")!.props.onSearch("@example/custom-provider");
+  assert.equal(harness.field("API 协议类型")!.props.status, undefined);
+  let rejectSave: (error: Error) => void = () => undefined;
+  const pending = harness.render(() => new Promise((_resolve, reject) => { rejectSave = reject; })).props.onOk();
+  assert.equal(harness.field("API 协议类型")!.props.disabled, true);
+  rejectSave(new Error("保存失败"));
+  await pending;
+  assert.equal(harness.field("API 协议类型")!.props.value, "@example/custom-provider");
+  await harness.render().props.onOk();
+  assert.equal(harness.imported[0].protocol, "@example/custom-provider");
+});
 
 test("七类 CLI 的八个范例入口按结构替换全部模型引用、地址和密钥，不修改范例原文", () => {
   const { utils } = loadUtilities();

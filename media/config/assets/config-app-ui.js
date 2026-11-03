@@ -22,6 +22,11 @@ function cliInstallCommand(platform) {
 const DSH_UI_PROVIDER = "sinitek-custom";
 const DSH_UI_API = "openai-completions";
 const DSH_UI_SUPPORTED_APIS = [DSH_UI_API, "openai-responses", "anthropic-messages"];
+const DSH_UI_API_OPTIONS = [
+  { value: DSH_UI_API, label: "OpenAI Chat Completions（openai-completions）" },
+  { value: "openai-responses", label: "OpenAI Responses（openai-responses）" },
+  { value: "anthropic-messages", label: "Anthropic Messages（anthropic-messages）" },
+];
 const DSH_UI_API_KEY_ENV = "SINITEK_DSH_API_KEY";
 const DSH_UI_MODEL_ID = "deepseek-v4.1-flash";
 const DSH_UI_EXAMPLE_BASE_URL = "http://127.0.0.1:33391/v1";
@@ -3858,6 +3863,7 @@ const ClaudeConfigVisualEditorUtils = Object.freeze({
 // CLAUDE_VISUAL_EDITOR_UTILS_END
 
 // CODEX_VISUAL_EDITOR_UTILS_START
+const CODEX_VISUAL_WIRE_APIS = Object.freeze(["responses"]);
 const codexVisualIsRecord = (value) =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -4256,7 +4262,7 @@ const codexVisualValidateState = (state) => {
     providerIds.add(id);
     const wireApiError = codexVisualValidateEnum(
       provider.wireApi,
-      ["responses"],
+      CODEX_VISUAL_WIRE_APIS,
       provider.source?.wire_api,
       `Provider “${id}” 的 wire_api`,
     );
@@ -6154,7 +6160,36 @@ const Nk = {
     "zcode-config": { title: "ZCode provider_config.json", content: ps.zcode.config },
   };
 
-const validateCliExampleImport = (values) => {
+const getCliExampleImportProtocol = (exampleKey) => {
+  const optionsFor = (values) => values.map((value) => ({ value, label: value }));
+  switch (exampleKey) {
+    case "codex-config":
+    case "codex-auth": {
+      const document = g1(ps.codex.config);
+      return { field: "wire_api", defaultValue: document.model_providers[document.model_provider].wire_api, options: optionsFor(CODEX_VISUAL_WIRE_APIS) };
+    }
+    case "opencode-settings": {
+      const document = JSON.parse(Nk[exampleKey].content);
+      return { field: "npm", defaultValue: document.provider[document.model.split("/")[0]].npm, options: optionsFor(OPEN_CODE_PROVIDER_NPM_OPTIONS.map((option) => option.value)), allowCustomValue: !0 };
+    }
+    case "grok-config": {
+      const document = g1(Nk[exampleKey].content);
+      return { field: "api_backend", defaultValue: document.model[document.models.default].api_backend, options: optionsFor(GROK_VISUAL_API_BACKENDS) };
+    }
+    case "dsh-config":
+      return { field: "api", defaultValue: JSON.parse(Nk[exampleKey].content).api, options: DSH_UI_API_OPTIONS };
+    case "kimi-code-config": {
+      const document = g1(Nk[exampleKey].content);
+      return { field: "type", defaultValue: document.providers[document.models[document.default_model].provider].type, options: optionsFor(KIMI_CODE_VISUAL_PROVIDER_TYPES) };
+    }
+    case "zcode-config":
+      return { field: "api.type", defaultValue: JSON.parse(Nk[exampleKey].content).config.providerConfigRules.providerRules[0].config.api.type, options: optionsFor(ZCODE_VISUAL_API_TYPES) };
+    default:
+      return null;
+  }
+};
+
+const validateCliExampleImport = (values, exampleKey) => {
   const errors = {};
   for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
     const value = String(values[key] || "").trim();
@@ -6171,17 +6206,28 @@ const validateCliExampleImport = (values) => {
       errors.base_url = "请填写有效的 HTTP 或 HTTPS 地址";
     }
   }
+  const protocol = getCliExampleImportProtocol(exampleKey);
+  if (protocol) {
+    const value = values.protocol === void 0 ? protocol.defaultValue : values.protocol;
+    if (typeof value !== "string" || !value.trim()) errors.protocol = "请选择 API 协议类型";
+    else if (/[\u0000-\u001f\u007f]/.test(value)) errors.protocol = "API 协议类型不能包含换行或控制字符";
+    else if (!protocol.allowCustomValue && !protocol.options.some((option) => option.value === value.trim())) {
+      errors.protocol = "请选择当前 CLI 支持的 API 协议类型";
+    }
+  }
   return errors;
 };
 
 const buildCliExampleImport = (exampleKey, values) => {
-  const errors = validateCliExampleImport(values);
+  const errors = validateCliExampleImport(values, exampleKey);
   if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
   const baseUrl = values.base_url.trim();
   const apiKey = values.api_key.trim();
   const model = values.model.trim();
   const example = Nk[exampleKey];
   if (!example) throw new Error("不支持的配置范例");
+  const protocol = getCliExampleImportProtocol(exampleKey);
+  const protocolValue = protocol ? (values.protocol === void 0 ? protocol.defaultValue : values.protocol).trim() : void 0;
   switch (exampleKey) {
     case "claude-settings": {
       const document = JSON.parse(example.content);
@@ -6201,6 +6247,7 @@ const buildCliExampleImport = (exampleKey, values) => {
       const document = g1(ps.codex.config);
       document.model = model;
       document.model_providers[document.model_provider].base_url = baseUrl;
+      document.model_providers[document.model_provider].wire_api = protocolValue;
       const auth = JSON.parse(ps.codex.auth);
       auth.OPENAI_API_KEY = apiKey;
       return { configContent: Ik(document), authContent: JSON.stringify(auth, null, 2) };
@@ -6214,6 +6261,7 @@ const buildCliExampleImport = (exampleKey, values) => {
       const modelConfig = provider.models[mainModel];
       provider.options.baseURL = baseUrl;
       provider.options.apiKey = apiKey;
+      provider.npm = protocolValue;
       provider.models = { [model]: { ...modelConfig, name: model } };
       document.model = `${providerId}/${model}`;
       document.small_model = document.model;
@@ -6223,13 +6271,14 @@ const buildCliExampleImport = (exampleKey, values) => {
       const document = g1(example.content);
       const modelConfig = document.model[document.models.default];
       document.models.default = model;
-      document.model = { [model]: { ...modelConfig, model, base_url: baseUrl, api_key: apiKey } };
+      document.model = { [model]: { ...modelConfig, model, base_url: baseUrl, api_key: apiKey, api_backend: protocolValue } };
       return { content: Ik(document) };
     }
     case "dsh-config": {
       const document = JSON.parse(example.content);
       document.baseURL = baseUrl;
       document.apiKey = apiKey;
+      document.api = protocolValue;
       document.models = [{ ...document.models[0], id: model, name: model }];
       document.acpModel = model;
       return { content: JSON.stringify(document, null, 2) };
@@ -6240,6 +6289,7 @@ const buildCliExampleImport = (exampleKey, values) => {
       const provider = document.providers[modelConfig.provider];
       provider.base_url = baseUrl;
       provider.api_key = apiKey;
+      provider.type = protocolValue;
       document.models = { [model]: { ...modelConfig, model } };
       document.default_model = model;
       return { content: Ik(document) };
@@ -6250,6 +6300,7 @@ const buildCliExampleImport = (exampleKey, values) => {
       config.defaultModelSelection.modelId = model;
       for (const rule of config.providerConfigRules.providerRules) {
         rule.config.api.baseUrl = baseUrl;
+        rule.config.api.type = protocolValue;
         rule.config.access.apiKey = apiKey;
         rule.config.personalModelIds = [model];
       }
@@ -6262,9 +6313,12 @@ const buildCliExampleImport = (exampleKey, values) => {
 
 const CLI_EXAMPLE_IMPORT_Z_INDEX = 1100;
 
-const CliExampleImportModal = ({ onClose, onImport, platform }) => {
+const CliExampleImportModal = ({ onClose, onImport, platform, exampleKey }) => {
+  const currentExampleKey = exampleKey || (platform ? `${platform}-${platform === "claude" || platform === "opencode" ? "settings" : "config"}` : "");
+  const protocol = getCliExampleImportProtocol(currentExampleKey);
   const [values, setValues] = c.useState({
     base_url: "", api_key: "", model: "",
+    ...(protocol ? { protocol: protocol.defaultValue } : {}),
     ...(platform ? { name: `${configPlatformLabel(platform)} 配置 ${Date.now()}` } : {}),
   });
   const [errors, setErrors] = c.useState({});
@@ -6273,7 +6327,7 @@ const CliExampleImportModal = ({ onClose, onImport, platform }) => {
   const submittingRef = c.useRef(!1);
   const submit = async () => {
     if (submittingRef.current) return;
-    const nextErrors = validateCliExampleImport(values);
+    const nextErrors = validateCliExampleImport(values, currentExampleKey);
     if (platform && !String(values.name || "").trim()) nextErrors.name = "配置名称不能为空";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
@@ -6310,8 +6364,8 @@ const CliExampleImportModal = ({ onClose, onImport, platform }) => {
         be.jsx("p", {
           className: "grok-model-copy-hint",
           children: platform
-            ? "填写配置名称、base_url、api_key 和模型名称，确认后按当前 CLI 范例生成并保存配置。"
-            : "三项均为必填。导入会替换当前范例的地址、密钥和全部模型引用，确认后仍需保存。",
+            ? "填写以下必填信息，确认后按当前 CLI 范例生成并保存配置。"
+            : "填写以下必填信息。导入会替换范例中的对应字段和全部模型引用，确认后仍需保存。",
         }),
         ...[
           ...(platform ? [["name", "配置名称", "请输入配置名称"]] : []),
@@ -6350,6 +6404,43 @@ const CliExampleImportModal = ({ onClose, onImport, platform }) => {
             }) : null,
           ],
         }, key)),
+        protocol ? be.jsxs("label", {
+          className: "config-visual-field",
+          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+          children: [
+            be.jsx("span", { children: `API 协议类型（${protocol.field}，必选）` }),
+            be.jsx($l, {
+              value: values.protocol,
+              options: protocol.options,
+              disabled: submitting,
+              showSearch: !0,
+              optionFilterProp: "label",
+              mode: protocol.allowCustomValue ? $l.SECRET_COMBOBOX_MODE_DO_NOT_USE : void 0,
+              placeholder: protocol.allowCustomValue ? "选择或输入 Provider npm 包" : "请选择 API 协议类型",
+              getPopupContainer: (trigger) => trigger.parentElement || document.body,
+              style: { width: "100%" },
+              "aria-label": "API 协议类型",
+              "aria-required": !0,
+              "aria-invalid": Boolean(errors.protocol),
+              "aria-describedby": errors.protocol ? "cli-example-protocol-error" : void 0,
+              status: errors.protocol ? "error" : void 0,
+              onChange: (value) => {
+                setValues({ ...values, protocol: value || "" });
+                setErrors({ ...errors, protocol: "", import: "" });
+              },
+              onSearch: protocol.allowCustomValue ? (value) => {
+                setValues({ ...values, protocol: value });
+                setErrors({ ...errors, protocol: "", import: "" });
+              } : void 0,
+            }),
+            errors.protocol ? be.jsx("div", {
+              id: "cli-example-protocol-error",
+              role: "alert",
+              className: "grok-model-action-error",
+              children: errors.protocol,
+            }) : null,
+          ],
+        }) : null,
         errors.import ? be.jsx("div", {
           role: "alert",
           className: "grok-model-action-error",
@@ -6941,6 +7032,7 @@ const ConfigEditorPanel = () => {
                     children: I.content,
                   }),
                   exampleImportOpen ? be.jsx(CliExampleImportModal, {
+                    exampleKey: S,
                     onClose: () => setExampleImportOpen(!1),
                     onImport: importCliExample,
                   }) : null,
@@ -9252,7 +9344,7 @@ const ConfigEditorPanel = () => {
                                 (L) => updateSelectedCodexProvider({ wireApi: L }),
                                 [
                                   { value: "", label: "跟随默认" },
-                                  { value: "responses", label: "responses" },
+                                  ...CODEX_VISUAL_WIRE_APIS.map((value) => ({ value, label: value })),
                                 ],
                               ),
                               renderCodexSelect("requires_openai_auth", W.requiresOpenaiAuth, (L) => updateSelectedCodexProvider({ requiresOpenaiAuth: L }), H),
@@ -9607,11 +9699,7 @@ const ConfigEditorPanel = () => {
                               if (controlsDisabled || !document) return;
                               applyDshResult(dshUiUpdateApi(document, value));
                             },
-                            [
-                              { value: "openai-completions", label: "OpenAI Chat Completions（openai-completions）" },
-                              { value: "openai-responses", label: "OpenAI Responses（openai-responses）" },
-                              { value: "anthropic-messages", label: "Anthropic Messages（anthropic-messages）" },
-                            ],
+                            DSH_UI_API_OPTIONS,
                             { disabled: controlsDisabled },
                           ),
                         }),

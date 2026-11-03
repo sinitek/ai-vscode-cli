@@ -291,6 +291,8 @@ Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI
 
 配置中心支持：
 
+新增配置与范例一键导入的共享弹窗还提供“API 协议类型”，沿用可视化候选并默认选中范例实际值：Codex 写入 Provider `wire_api`，OpenCode 写入 Provider `npm`（支持搜索和自定义包），Grok 写入模型 `api_backend`，DSH 写入根级 `api`，Kimi Code 写入 Provider `type`，ZCode 写入供应商 `api.type`；Claude 不显示、不额外写入协议。Codex 仅提供当前支持的 `responses`。显式空值或非法协议阻止生成，保存中禁用选择，保存失败保留当前选择；关闭重开重新读取范例默认值。导入草稿与新增保存/不激活的边界不变。
+
 源码编辑区使用本地 CodeMirror 提供 JSON/TOML 语法着色，Codex `auth.json` 也使用 JSON 着色；OpenCode 源码支持 JSONC 注释和尾逗号并原样保存，可视化编辑仍限严格 JSON，其模型读取、运行 overlay、Skills 合并和档案复制同步支持 JSONC。保存前由 Webview 和扩展宿主统一校验格式，错误通过“配置保存失败”弹窗告知具体文件、格式及解析位置，并保持原有档案和运行配置不变。
 
 - 配置档案列表、排序、激活、删除、初始化。左侧配置目录宽 306px（较 360px 收窄 15%）；每个 CLI 分组在条目最左侧用单选按钮激活，同一分组同时只激活一项；添加按钮文案为“添加”。「复制配置」只复制当前 CLI 的该档案，确认框输入可修改的新名称，默认是原名称加「_副本」并避开重名；空名称和同 CLI 重名不创建副本

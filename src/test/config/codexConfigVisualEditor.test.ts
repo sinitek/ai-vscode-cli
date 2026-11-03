@@ -413,6 +413,7 @@ function createCodexEditorHarness(content: string) {
     codexVisualState: utils.createState(content), codexVisualError: "",
     getConfigFieldHelp: (label: string) => label,
     CODEX_VISUAL_REASONING_EFFORT_OPTIONS: ["low", "medium", "high", "xhigh"],
+    CODEX_VISUAL_WIRE_APIS: ["responses"],
     CODEX_VISUAL_APPROVAL_POLICY_OPTIONS: ["on-request", "never"],
     CODEX_VISUAL_SANDBOX_MODE_OPTIONS: ["read-only", "workspace-write", "danger-full-access"],
     CODEX_VISUAL_WEB_SEARCH_OPTIONS: ["disabled", "cached", "indexed", "live"],

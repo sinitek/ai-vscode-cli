@@ -161,6 +161,27 @@ test("七个 CLI 点击添加直接打开导入弹窗，确认输入后才保存
   assert.match(read(uiPath), /newConfigPlatform \? be\.jsx\(CliExampleImportModal, \{\s*platform: newConfigPlatform,\s*onClose: \(\) => setNewConfigPlatform\(null\),\s*onImport: addImportedConfig/);
 });
 
+test("新增配置按弹窗选择写入各 CLI 的协议字段", async () => {
+  const values = { name: "协议配置", base_url: "https://api.example.com/v1", api_key: "test-import-key", model: "custom-model" };
+  for (const [platform, protocol] of [
+    ["codex", "responses"], ["opencode", "@example/custom-provider"],
+    ["grok", "messages"], ["dsh", "anthropic-messages"],
+    ["kimi-code", "openai_responses"], ["zcode", "openai-responses"],
+  ]) {
+    const { sandbox, saved, selected } = loadNewConfigFlow(platform);
+    await sandbox.handlers.submit({ ...values, protocol });
+    assert.equal(saved.length, 1);
+    assert.equal(selected.length, 1);
+    const content = saved[0].configContent || saved[0].content;
+    assert.ok(content.includes(protocol), `${platform}: ${protocol}`);
+    if (platform !== "codex") assert.equal(saved[0].content, saved[0].configContent || saved[0].content);
+  }
+  const { sandbox, saved } = loadNewConfigFlow("codex");
+  await assert.rejects(() => sandbox.handlers.submit({ ...values, protocol: "chat" }), /当前 CLI 支持/);
+  assert.equal(saved.length, 0);
+  assert.equal(sandbox.newConfigPlatform, "codex");
+});
+
 test("新增配置校验失败或保存失败不关闭导入弹窗，也不选择或激活档案", async () => {
   const values = { name: "测试配置", base_url: "https://api.example.com/v1", api_key: "test-import-key", model: "custom-model" };
   const invalid = loadNewConfigFlow("claude");
