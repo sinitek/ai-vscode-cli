@@ -49,6 +49,7 @@ import {
   type LoopPlusAcceptancePlanSnapshot,
 } from "../loopPlusAcceptancePlan";
 import {
+  confirmedLoopPlusReviewIds,
   createLoopPlusDecisionStrategyRegistry,
   loopPlusDecisionStrategyFor,
   type LoopPlusDecisionControlPlan,
@@ -1030,9 +1031,19 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!deps.appendAcceptancePlanChat) {
       return;
     }
+    const eventIds = confirmedLoopPlusReviewIds(decision);
+    if (eventIds.length === 0) {
+      return;
+    }
+    const attempts = runtime.scheduler.snapshot().seenAttempts;
     const task = deps.readTask(runtime.taskId);
+    const subtaskTitles = eventIds.map((eventId) => {
+      const attempt = attempts.find((item) => buildLoopPlusFinishEventId(item.subtaskId, item.attemptId) === eventId);
+      return task?.subTasks.find((subtask) => subtask.id === attempt?.subtaskId)?.title ?? attempt?.subtaskId ?? eventId;
+    });
     const section = buildLoopPlusAcceptanceFeedbackSection({
       snapshot: task?.loopPlusAcceptancePlan,
+      subtaskTitles,
       reviews: (decision.reviews ?? []).map((review) => ({
         eventId: review.reviewEventId,
         acceptance: review.acceptance,

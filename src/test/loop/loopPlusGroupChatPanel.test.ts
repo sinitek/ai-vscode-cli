@@ -372,6 +372,7 @@ test("shows one execution animation for every running Loop+ subtask without pret
 test("renders short default and optional acceptance reasons in the group chat bubble", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   const section = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["修复空值分支"],
     checks: [{ name: "tests", passed: false, detail: "新增断言失败，需要修复空值分支" }],
     snapshot: { id: "plan-a", name: "安全加严", checks: ["security"], otherText: "", systemDefault: false },
     planResults: [{ key: "security", passed: true, reason: "输入边界已校验，日志不含令牌" }],
@@ -379,6 +380,8 @@ test("renders short default and optional acceptance reasons in the group chat bu
   assert.ok(section);
   const page = html(buildWithChat(scheduler.snapshot(), {}, `# Loop+ chat\n\n## ${section.heading}\n\n${section.body}\n`));
   assert.match(page, /\| 审查内容 \| 审查结果 \|/u);
+  assert.match(page, /\*\*子任务：修复空值分支\*\*[\s\S]*\*\*整体验收结果：❌ 未通过\*\*[\s\S]*\| 审查内容/u);
+  assert.doesNotMatch(page, /\| 验收事件|\| 整体验收结果/u);
   assert.match(page, /\| 默认验收·测试验证 \| ❌ 新增断言失败，需要修复空值分支 \|/u);
   assert.match(page, /\| 安全审查 \| ✅ 输入边界已校验，日志不含令牌 \|/u);
   assert.doesNotMatch(page, /默认验收·tests/u);

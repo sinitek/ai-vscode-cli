@@ -321,23 +321,108 @@ test("accept feedback requires reasons before commit and shows default and selec
       ? /\| 默认验收·测试验证 \| ✅ 报告中的回归用例全部通过 \|/
       : /\| 默认验收·测试验证 \| ❌ 报告中的回归断言失败 \|/);
     assert.match(feedback.body, passed
-      ? /\| 验收事件 1 \| ✅ 回归通过且实现符合需求 \|/
-      : /\| 验收事件 1 \| ❌ 回归断言失败，尚未满足需求 \|/);
+      ? /\n\n✅ 回归通过且实现符合需求\n\n/
+      : /\n\n❌ 回归断言失败，尚未满足需求\n\n/);
+    assert.match(feedback.body, /^\*\*子任务：alpha\*\*\n\n/u);
+    assert.ok(feedback.body.includes(`**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**`));
+    assert.doesNotMatch(feedback.body, /验收事件|\| 整体验收结果/u);
     assert.match(feedback.body, /\| 安全审查 \| ✅ 输入已校验，日志无敏感信息 \|/);
     assert.match(feedback.body, /\| 审查内容 \| 审查结果 \|/);
     assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
   }
 });
 
-test("completed feedback includes default reasons even without an acceptance plan snapshot", async () => {
+test("completed without subtask events only summarizes and never writes an acceptance table", async () => {
+  for (const withPlan of [false, true]) {
+    const env = harness();
+    const run = env.host.tryRun({
+      displayPrompt: "ship the feature",
+      ...(withPlan ? {
+        loopPlusAcceptancePlan: { id: "security", name: "安全审查", checks: ["security"] as const, otherText: "", systemDefault: false },
+      } : {}),
+    }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(completedDecision(withPlan ? {
+      acceptancePlanResults: [{ key: "security", passed: true, reason: "输入边界已核对" }],
+    } : {}));
+    await flush();
+    assert.equal(env.acceptanceFeedback.length, 0);
+    assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+    assert.equal(env.tasks.get(run.taskId ?? "")?.answerConclusion, "finished");
+    assert.equal(env.tasks.get(run.taskId ?? "")?.finalSummary, "everything passed");
+  }
+});
+
+test("accept followed by completed closeout writes only one subtask acceptance table", async () => {
   const env = harness();
-  env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
-  env.mains[0].resolve(completedDecision());
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch", subtasks: [{ ...subtask("alpha", ["src/alpha.ts"]), title: "重构规则表" }],
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "实现与回归通过" });
+  await flush();
+  env.mains.at(-1)!.resolve(decisionJson({ status: "accept", reviewEventIds: env.mains.at(-1)!.request.reviewEventIds }));
   await flush();
   assert.equal(env.acceptanceFeedback.length, 1);
-  assert.equal((env.acceptanceFeedback[0].body.match(/默认验收·/gu) ?? []).length, 6);
-  assert.equal((env.acceptanceFeedback[0].body.match(/\| ✅ [^|\n]+ \|$/gmu) ?? []).length, 6);
+  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：重构规则表\*\*/u);
+  assert.equal(env.mains.at(-1)?.request.kind, "closeout");
+  env.mains.at(-1)!.resolve(completedDecision());
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.acceptanceFeedback.length, 1);
+});
+
+test("completed can directly accept a batch and names every subtask above one table", async () => {
+  const env = harness();
+  const task = baseTask("complete-batch", twoFinishedReviews());
+  task.subTasks = [
+    { id: "alpha", title: "前端表单", status: "completed", updatedAt: 1 },
+    { id: "beta", title: "后端接口", status: "completed", updatedAt: 1 },
+  ];
+  env.tasks.set(task.id, task);
+  env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, { resumeTaskId: task.id, schedulingMode: "event_driven" });
+  await flush();
+  const main = env.mains.at(-1)!;
+  assert.equal(main.request.reviewEventIds?.length, 2);
+  main.resolve(completedDecision({ reviewEventIds: main.request.reviewEventIds }));
+  await flush();
+  assert.equal(env.tasks.get(task.id)?.status, "completed");
+  assert.equal(env.acceptanceFeedback.length, 1);
+  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：前端表单、后端接口\*\*\n\n\*\*整体验收结果：✅ 通过\*\*/u);
+  assert.doesNotMatch(env.acceptanceFeedback[0].body, /验收事件/u);
+});
+
+test("restored reviewed attempts suppress only closeout feedback, not a new attempt", async () => {
+  for (const newAttempt of [false, true]) {
+    const env = harness();
+    const scheduler = createLoopPlusScheduler({ snapshot: twoFinishedReviews() });
+    const ids = [scheduler.snapshot().currentReview!.eventId, ...scheduler.snapshot().reviewQueue.map((item) => item.eventId)];
+    assert.equal(scheduler.submitReviewBatch(ids, [
+      { eventId: ids[0], acceptance: "failed" },
+      { eventId: ids[1], acceptance: "passed" },
+    ]).ok, true);
+    if (newAttempt) {
+      scheduler.dispatch([{ subtaskId: "alpha", attemptId: "a2", writeFiles: ["src/alpha.ts"] }]);
+      scheduler.finish({ subtaskId: "alpha", attemptId: "a2", outcome: "completed" });
+    }
+    const task = baseTask(`restored-${newAttempt}`, scheduler.snapshot());
+    task.subTasks = [{ id: "alpha", title: "规则表修复", status: "completed", updatedAt: 1 }];
+    env.tasks.set(task.id, task);
+    env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+      resumeTaskId: task.id, resumeRequested: true, schedulingMode: "event_driven",
+    });
+    await flush();
+    const main = env.mains.at(-1)!;
+    main.resolve(completedDecision(newAttempt ? { reviewEventIds: main.request.reviewEventIds } : {}));
+    await flush();
+    assert.equal(env.tasks.get(task.id)?.status, "completed");
+    assert.equal(env.acceptanceFeedback.length, newAttempt ? 1 : 0);
+    if (newAttempt) {
+      assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：规则表修复\*\*/u);
+    }
+  }
 });
 
 test("uses the configured Loop+ dispatch subtask maximum", async () => {

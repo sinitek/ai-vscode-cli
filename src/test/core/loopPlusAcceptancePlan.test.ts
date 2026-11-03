@@ -372,6 +372,7 @@ test("acceptance feedback lists every selected item only when each verdict is pr
 
 test("acceptance feedback includes default and per-event reasons within 50 characters", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["修复空输入处理"],
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "测试断言失败，需先修复" }],
     checks: [{ name: "tests", passed: false, detail: "测试断言失败" }],
     snapshot: {
@@ -384,11 +385,12 @@ test("acceptance feedback includes default and per-event reasons within 50 chara
     planResults: [{ key: "security", passed: true, reason: "未发现输入信任边界问题" }],
   });
   assert.equal(section?.heading, "验收结果");
-  assert.match(section?.body ?? "", /\| 验收事件 1 \| ❌ 测试断言失败，需先修复 \|/);
+  assert.match(section?.body ?? "", /^\*\*子任务：修复空输入处理\*\*\n\n\*\*整体验收结果：❌ 未通过\*\*\n\n❌ 测试断言失败，需先修复\n\n\| 审查内容/u);
+  assert.doesNotMatch(section?.body ?? "", /验收事件|\| 整体验收结果/u);
   assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ 测试断言失败 \|/);
   assert.match(section?.body ?? "", /\| 安全审查 \| ✅ 未发现输入信任边界问题 \|/);
   const reasons = [...(section?.body.matchAll(/\| [✅❌] ([^|\n]+) \|$/gmu) ?? [])].map((match) => match[1].trim());
-  assert.equal(reasons.length, 3);
+  assert.equal(reasons.length, 2);
   assert.equal(reasons.every((reason) => Array.from(reason).length <= 50), true);
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "passed" }],
@@ -400,8 +402,41 @@ test("acceptance feedback preserves the chosen reason language without translati
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "The empty-input regression still fails." }],
     checks: [{ name: "tests", passed: false, detail: "Empty-input assertion fails." }],
   });
-  assert.match(section?.body ?? "", /\| 验收事件 1 \| ❌ The empty-input regression still fails\. \|/u);
+  assert.match(section?.body ?? "", /\n\n❌ The empty-input regression still fails\.\n\n/u);
   assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ Empty-input assertion fails\. \|/u);
+});
+
+test("acceptance feedback identifies a batch above one shared table and escapes task titles", () => {
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["前端 *表单*\n## 结果", "后端 | API <script>"],
+    reviews: [
+      { eventId: "front", acceptance: "passed", reason: "表单回归通过" },
+      { eventId: "back", acceptance: "failed", reason: "契约断言失败" },
+    ],
+    checks: [{ name: "tests", passed: false, detail: "后端契约断言失败" }],
+  });
+  assert.ok(section);
+  const [summary, table] = section.body.split("| 审查内容");
+  assert.ok(summary.includes("前端 \\*表单\\* \\#\\# 结果"));
+  assert.ok(summary.includes("后端 \\| API \\<script\\>"));
+  assert.match(summary, /整体验收结果：❌ 未通过/u);
+  assert.match(summary, /✅ 表单回归通过/u);
+  assert.match(summary, /❌ 契约断言失败/u);
+  assert.doesNotMatch(table, /子任务|验收事件|整体验收结果/u);
+  assert.equal((section.body.match(/\| 审查内容/gu) ?? []).length, 1);
+});
+
+test("task-only acceptance derives the overall result from default and optional checks", () => {
+  for (const passed of [true, false]) {
+    const section = buildLoopPlusAcceptanceFeedbackSection({
+      checks: [{ name: "tests", passed: true, detail: "回归通过" }],
+      snapshot: { id: "security", name: "安全", checks: ["security"], otherText: "", systemDefault: false },
+      planResults: [{ key: "security", passed, reason: passed ? "输入边界已校验" : "日志包含敏感信息" }],
+    });
+    assert.ok(section);
+    assert.ok(section.body.startsWith(`**主任务验收**\n\n**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**\n\n| 审查内容`));
+  }
+  assert.equal(buildLoopPlusAcceptanceFeedbackSection({ subtaskTitles: ["无结果"] }), null);
 });
 
 test("default acceptance feedback works without optional reviews and rejects invalid reasons", () => {

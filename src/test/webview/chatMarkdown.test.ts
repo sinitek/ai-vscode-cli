@@ -115,6 +115,7 @@ test("Loop+ acceptance feedback renders as a two-column review table", () => {
   const { buildLoopPlusAcceptanceFeedbackSection } = require("../../loopPlusAcceptancePlan") as typeof import("../../loopPlusAcceptancePlan");
   const render = loadRenderer();
   const section = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["重构规则表"],
     reviews: [{ eventId: "event-a", acceptance: "passed", reason: "报告完整，代码核对四处重复规则" }],
     checks: [{ name: "dispatched work", passed: true, detail: "报告已写入，含范围与验证命令" }],
   });
@@ -122,9 +123,10 @@ test("Loop+ acceptance feedback renders as a two-column review table", () => {
   const html = render(section.body);
   assert.match(html, /<th>审查内容<\/th>/u);
   assert.match(html, /<th>审查结果<\/th>/u);
-  assert.match(html, /<td>验收事件 1<\/td>\s*<td>✅ 报告完整，代码核对四处重复规则<\/td>/u);
+  assert.match(html, /<p><strong>子任务：重构规则表<\/strong><\/p>\s*<p><strong>整体验收结果：✅ 通过<\/strong><\/p>\s*<p>✅ 报告完整，代码核对四处重复规则<\/p>\s*<div class="markdown-table-wrap"><table>/u);
   assert.match(html, /<td>默认验收·实现完整性<\/td>\s*<td>✅ 报告已写入，含范围与验证命令<\/td>/u);
-  assert.equal((html.match(/<tr>/gu) ?? []).length, 3);
+  assert.equal((html.match(/<tr>/gu) ?? []).length, 2);
+  assert.doesNotMatch(html, /<td>(?:验收事件|整体验收结果)/u);
   assert.doesNotMatch(html, /<ul>|<li>/u);
   const piped = buildLoopPlusAcceptanceFeedbackSection({
     checks: [{ name: "tests", passed: false, detail: "断言含 | 竖线" }],

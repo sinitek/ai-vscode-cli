@@ -518,6 +518,7 @@ export type LoopPlusAcceptanceFeedbackCheck = {
 
 export type LoopPlusAcceptanceFeedbackInput = {
   snapshot?: LoopPlusAcceptancePlanSnapshot | null;
+  subtaskTitles?: readonly string[];
   reviews?: readonly LoopPlusAcceptanceFeedbackReview[];
   checks?: readonly LoopPlusAcceptanceFeedbackCheck[];
   planResults?: readonly LoopPlusAcceptancePlanFeedbackResult[];
@@ -545,16 +546,17 @@ export function buildLoopPlusAcceptanceFeedbackSection(
   input: LoopPlusAcceptanceFeedbackInput,
 ): { heading: string; body: string } | null {
   const rows: AcceptanceFeedbackRow[] = [];
-  for (const [index, review] of (input.reviews ?? []).entries()) {
+  const reviews = input.reviews ?? [];
+  const summaries: string[] = [];
+  for (const [index, review] of reviews.entries()) {
     const reason = normalizeFeedbackReason(review.reason);
     if (!reason) {
       return null;
     }
-    rows.push({
-      content: `验收事件 ${index + 1}`,
-      passed: review.acceptance === "passed",
-      reason,
-    });
+    const title = reviews.length > 1
+      ? `${escapeMarkdownFeedbackText(input.subtaskTitles?.[index] ?? `子任务 ${index + 1}`)}：`
+      : "";
+    summaries.push(`${title}${review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}`);
   }
   for (const check of input.checks ?? []) {
     const reason = normalizeFeedbackReason(check.detail);
@@ -585,13 +587,27 @@ export function buildLoopPlusAcceptanceFeedbackSection(
       rows.push({ content: item.label, passed: result.passed, reason });
     }
   }
-  if (rows.length === 0) {
+  if (rows.length === 0 && summaries.length === 0) {
     return null;
+  }
+  const titles = (input.subtaskTitles ?? []).map(escapeMarkdownFeedbackText).filter(Boolean);
+  const passed = rows.every((row) => row.passed) && reviews.every((review) => review.acceptance === "passed");
+  const sections = [
+    titles.length > 0 ? `**子任务：${titles.join("、")}**` : "**主任务验收**",
+    `**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**`,
+    ...summaries,
+  ];
+  if (rows.length > 0) {
+    sections.push(renderAcceptanceFeedbackTable(rows));
   }
   return {
     heading: "验收结果",
-    body: renderAcceptanceFeedbackTable(rows),
+    body: sections.join("\n\n"),
   };
+}
+
+function escapeMarkdownFeedbackText(value: string): string {
+  return value.replace(/\s+/gu, " ").trim().replace(/([\\`*_[\]<>|#])/gu, "\\$1");
 }
 
 function renderAcceptanceFeedbackTable(rows: readonly AcceptanceFeedbackRow[]): string {

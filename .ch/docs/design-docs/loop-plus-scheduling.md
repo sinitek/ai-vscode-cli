@@ -38,13 +38,15 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 
 - 快照与模板解耦：弹窗里的方案是可复用模板，任务记录里的是确认时刻的副本。之后修改或删除模板不改变已启动任务；续跑、恢复、补充需求直接读任务记录里的快照。
 - 提示注入：`initial` / `review` / `closeout` / `continue` / `user` 五类主模型提示共用同一份快照，只在固定验收清单之后追加已勾选审查项与有效“其它”文本，要求逐项给出证据或显式“不适用”。固定清单、调度协议和“主模型不得自行实现或修复被派发工作”的约束不变。
-- 简短验收反馈：`accept` 或 `completed` 真正结束验收后，Loop+ 群聊追加一条「验收结果」气泡。气泡正文是两列表格，第一列是审查内容，第二列是审查结果（通过或未通过，以及证据型原因）；原因语言按任务、证据和上下文选择，不强制中文。即使没有附加快照，也必须显示固定六项默认验收：实现完整性、契约一致性、测试验证、产物可运行性、改动合理性、回归与边界检查。「其它」仅展示本次结论和原因，不重复长篇审查要求。
+- 简短验收反馈：`accept` 或 `completed` 真正结束验收后，Loop+ 群聊追加一条「验收结果」气泡。气泡在表格外上方显示真实子任务名、整体验收结果及事件原因；批量确认列出本批所有子任务名和各自结论，共用一张明细表。两列表格仅保留默认及附加检查，第一列是审查内容，第二列是审查结果（通过或未通过，以及证据型原因），不再添加“验收事件”或整体结果首行；原因语言按任务、证据和上下文选择，不强制中文。即使没有附加快照，也必须显示固定六项默认验收：实现完整性、契约一致性、测试验证、产物可运行性、改动合理性、回归与边界检查。「其它」仅展示本次结论和原因，不重复长篇审查要求。
 - 反馈协议：`accept.reviews[].reason` 解释各事件的结果，`accept.acceptance.checks[].detail` 和 `completed.acceptance.checks[].detail` 解释六项默认检查；已选择的附加项通过 `acceptancePlanResults[].reason` 解释。每条原因按 Unicode 字符计数不超过 50 字，不适用时说明具体限制，不能编造通过证据。运行时拒绝缺失、空白或超长原因，以及缺少默认项或所选附加结果的决策，走既有协议重试，不生成兜底评价或部分气泡；未发生验收时不写气泡。通用解析入口仍兼容旧数据，严格校验由 Loop+ 运行时启用。
 - 固定基线不可关闭：归一化时强制包含基线项，前端布尔值、旧版数据或可选配置都无法移除。
 - 模板持久化：方案与当前选中项存工作区设置（`loopPlusAcceptancePlans` / `loopPlusAcceptancePlanSelection`），系统默认是内置只读项，不写入存储。只改模板不会改写已启动任务。
 - 群聊修改：Loop+ 群聊顶部「验收方案」打开同一弹窗，确认后把当前复选项写回该任务的 `loopPlusAcceptancePlan`。下一次主模型验收提示立即读取新快照；若复核或收尾正在进行，宿主中止这一轮并按新快照重新提问。空基线会清掉任务上的附加快照。主任务状态为 `completed` 后不再显示该按钮。
 
 ## 事实来源与验证
+
+验收反馈以本轮确认事件为边界：`accept` 之后仍按原流程调用主任务收尾，但收尾没有新确认事件时只总结、不生成验收表格，没有派发子任务的直接完成同样只总结。直接 `completed` 确认新事件仍显示对应子任务表格，修复的新 attempt 不被历史确认抑制。展示依据当前决策的确认事件 ID，恢复后同样适用，不依赖内存去重标记；不改写用户已有 transcript，不删除历史气泡，不取消协议要求的收尾检查。
 
 - 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
 - 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
