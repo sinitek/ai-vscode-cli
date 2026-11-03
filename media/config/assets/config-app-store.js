@@ -234,6 +234,11 @@ const CONFIG_STORAGE_KEYS = {
         throw (console.error("初始化默认配置失败:", n), n);
       }
     },
+    addBlankConfig: (name, platform) => {
+      const draft = { name, platform, id: createConfigId(), createdAt: Date.now(), updatedAt: Date.now(), content: "", configContent: "", authContent: "", isDraft: !0 };
+      e({ configs: [...t().configs, draft] });
+      return draft;
+    },
     addConfig: async (n) => {
       try {
         const r = {
@@ -262,15 +267,26 @@ const CONFIG_STORAGE_KEYS = {
         const o = t().configs.find((u) => u.id === n);
         if (!o) throw new Error("配置不存在");
         const l = { ...o, ...r, updatedAt: Date.now() };
+        delete l.isDraft;
         await saveConfigItem(l);
         const s = t().configs.map((u) => (u.id === n ? l : u));
-        e({ configs: s });
+        if (o.isDraft) {
+          const order = appendOrderForConfigs([l], t().configOrders);
+          e({ configs: s, configOrders: order });
+          storeJson(CONFIG_STORAGE_KEYS.CONFIG_ORDER, order);
+          saveConfigOrder(l.platform, order).catch((error) => console.error("同步配置顺序失败:", error));
+        } else e({ configs: s });
       } catch (o) {
         throw (console.error("更新配置失败:", o), o);
       }
     },
     deleteConfig: async (n, r) => {
       try {
+        if (t().configs.find((item) => item.id === r)?.isDraft) {
+          const selected = t().selectedConfigId === r && t().selectedConfigPlatform === n;
+          e({ configs: t().configs.filter((item) => item.id !== r), ...(selected ? { selectedConfigId: null, selectedConfigPlatform: null } : {}) });
+          return;
+        }
         await deleteConfigItem(n, r);
         const o = t().configs.filter((p) => p.id !== r),
           l = t().configOrders,
@@ -355,7 +371,7 @@ const CONFIG_STORAGE_KEYS = {
       const p = {},
         flat = [];
       configManagerPlatforms.forEach((platform) => {
-        p[platform] = s[platform].map((h) => h.id);
+        p[platform] = s[platform].filter((h) => !h.isDraft).map((h) => h.id);
         flat.push(...s[platform]);
       });
       (e({ configs: flat, configOrders: p }),

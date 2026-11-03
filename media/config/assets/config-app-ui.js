@@ -700,6 +700,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         selectedConfigPlatform: r,
         setSelectedConfig: o,
         addConfig: l,
+        addBlankConfig,
         updateConfig: s,
         deleteConfig: u,
         duplicateConfig: f,
@@ -734,12 +735,20 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       kimiCodeConfigs = c.useMemo(() => e.filter((k) => k.platform === "kimi-code"), [e]),
       zcodeConfigs = c.useMemo(() => e.filter((k) => k.platform === "zcode"), [e]),
       exportSelectedCount = c.useMemo(
-        () => e.reduce((k, L) => k + (exportSelection[L.id] ? 1 : 0), 0),
+        () => e.reduce((k, L) => k + (!L.isDraft && exportSelection[L.id] ? 1 : 0), 0),
         [e, exportSelection],
       ),
-      exportAllChecked = e.length > 0 && exportSelectedCount === e.length,
+      exportableConfigs = e.filter((item) => !item.isDraft),
+      exportAllChecked = exportableConfigs.length > 0 && exportSelectedCount === exportableConfigs.length,
       exportAnySelected = exportSelectedCount > 0,
       I = (platform) => setNewConfigPlatform(platform),
+      skipImportedConfig = (values) => {
+        const name = String(values.name || "").trim() || `${configPlatformLabel(newConfigPlatform)} 配置 ${Date.now()}`;
+        const draft = addBlankConfig(name, newConfigPlatform);
+        o(draft.id, draft.platform);
+        setNewConfigPlatform(null);
+        onMobileClose?.();
+      },
       addImportedConfig = async (values) => {
         const platform = newConfigPlatform;
         const config = createConfigFromExample(values.name.trim(), platform);
@@ -810,6 +819,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       },
       B = async (k, L) => {
         k.stopPropagation();
+        if (L.isDraft) return;
         try {
           (h(L.id),
             await backupConfigItem(L.platform),
@@ -957,7 +967,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       toggleExportAll = (k) => {
         const L = {};
         e.forEach((G) => {
-          L[G.id] = k;
+          L[G.id] = !G.isDraft && k;
         });
         setExportSelection(L);
       },
@@ -965,7 +975,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         setExportSelection((G) => ({ ...G, [k]: L }));
       },
       doExport = async () => {
-        const selected = e.filter((L) => exportSelection[L.id]);
+        const selected = e.filter((L) => !L.isDraft && exportSelection[L.id]);
         const skippedSecret = selected.some((L) =>
           L.platform === "dsh" && dshUiContainsSecret(`${L.content || ""}\n${L.configContent || ""}`),
         );
@@ -1171,7 +1181,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                   J = S === F.id;
                 return be.jsx(Bs.Item, {
                   className: K ? "config-list-item config-list-item-selected" : "config-list-item",
-                  draggable: !0,
+                  draggable: !F.isDraft,
                   onClick: () => {
                     (o(F.id, F.platform), onMobileClose?.());
                   },
@@ -1197,6 +1207,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       be.jsx(xn, {
                         type: "text",
                         size: "small",
+                        disabled: F.isDraft,
                         icon: be.jsx(zH, {}),
                         onClick: (ae) => V(ae, F),
                         title: "复制配置",
@@ -1204,6 +1215,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       be.jsx(xn, {
                         type: "text",
                         size: "small",
+                        disabled: F.isDraft,
                         icon: be.jsx(FH, {}),
                         onClick: (ae) => W(ae, F),
                         title: "重命名",
@@ -1228,7 +1240,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                           : "config-activate-radio",
                         name: `config-active-${k}`,
                         checked: Y,
-                        disabled: Boolean(p),
+                        disabled: Boolean(p) || F.isDraft,
                         "aria-label": "激活",
                         title: "激活",
                         onClick: (ae) => {
@@ -1240,7 +1252,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       be.jsx("span", {
                         className: "config-name",
                         style: { fontWeight: K ? 600 : 500 },
-                        children: F.name,
+                        children: F.isDraft ? `${F.name}（未保存）` : F.name,
                       }),
                       Y &&
                         be.jsx("span", {
@@ -1328,6 +1340,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           platform: newConfigPlatform,
           onClose: () => setNewConfigPlatform(null),
           onImport: addImportedConfig,
+          onSkip: skipImportedConfig,
         }) : null,
         isConfigPlatformEnabled("claude", cliEnabledByName) ? H("claude", $) : null,
         isConfigPlatformEnabled("codex", cliEnabledByName) ? H("codex", w) : null,
@@ -1370,7 +1383,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       be.jsx("input", {
                         type: "checkbox",
                         checked: exportAllChecked,
-                        disabled: e.length === 0,
+                        disabled: exportableConfigs.length === 0,
                         onChange: (k) => toggleExportAll(k.target.checked),
                       }),
                       be.jsx("span", { children: "全选" }),
@@ -1381,7 +1394,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                       color: "var(--text-color-secondary)",
                       fontSize: "12px",
                     },
-                    children: `已选择 ${exportSelectedCount} / ${e.length}`,
+                    children: `已选择 ${exportSelectedCount} / ${exportableConfigs.length}`,
                   }),
                 ],
               }),
@@ -1395,7 +1408,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                   background: "var(--bg-color-layout)",
                 },
                 children:
-                  e.length === 0
+                  exportableConfigs.length === 0
                     ? be.jsx("div", {
                         style: {
                           color: "var(--text-color-secondary)",
@@ -1403,7 +1416,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                         },
                         children: "暂无配置可导出",
                       })
-                    : e.map((k) =>
+                    : exportableConfigs.map((k) =>
                         be.jsx(
                           "div",
                           {
@@ -6313,7 +6326,7 @@ const buildCliExampleImport = (exampleKey, values) => {
 
 const CLI_EXAMPLE_IMPORT_Z_INDEX = 1100;
 
-const CliExampleImportModal = ({ onClose, onImport, platform, exampleKey }) => {
+const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey }) => {
   const currentExampleKey = exampleKey || (platform ? `${platform}-${platform === "claude" || platform === "opencode" ? "settings" : "config"}` : "");
   const protocol = getCliExampleImportProtocol(currentExampleKey);
   const [values, setValues] = c.useState({
@@ -6342,6 +6355,19 @@ const CliExampleImportModal = ({ onClose, onImport, platform, exampleKey }) => {
       setSubmitting(!1);
     }
   };
+  const skip = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = !0;
+    setSubmitting(!0);
+    try {
+      await onSkip(values);
+    } catch (error) {
+      setErrors({ import: error instanceof Error ? error.message : String(error) });
+    } finally {
+      submittingRef.current = !1;
+      setSubmitting(!1);
+    }
+  };
   return be.jsx(xr, {
     title: platform ? `添加${configPlatformLabel(platform)}配置` : "填写范例导入配置",
     open: !0,
@@ -6357,6 +6383,11 @@ const CliExampleImportModal = ({ onClose, onImport, platform, exampleKey }) => {
     keyboard: !submitting,
     okText: platform ? "创建配置" : "确认导入",
     cancelText: "取消",
+    footer: onSkip ? [
+      be.jsx(xn, { disabled: submitting, onClick: onClose, children: "取消" }, "cancel"),
+      be.jsx(xn, { type: "primary", loading: submitting, onClick: submit, children: "创建配置" }, "submit"),
+      be.jsx(xn, { disabled: submitting, onClick: skip, children: "跳过" }, "skip"),
+    ] : void 0,
     maskClosable: !1,
     children: be.jsxs("div", {
       className: "grok-model-dialog-content",
@@ -6364,7 +6395,7 @@ const CliExampleImportModal = ({ onClose, onImport, platform, exampleKey }) => {
         be.jsx("p", {
           className: "grok-model-copy-hint",
           children: platform
-            ? "填写以下必填信息，确认后按当前 CLI 范例生成并保存配置。"
+            ? "填写以下必填信息，确认后按当前 CLI 范例生成并保存配置；也可跳过并编辑空白草稿，切换配置或关闭页面前请保存。"
             : "填写以下必填信息。导入会替换范例中的对应字段和全部模型引用，确认后仍需保存。",
         }),
         ...[
@@ -6576,14 +6607,14 @@ const ConfigEditorPanel = () => {
         return;
       }
       if (O.platform === "claude") {
-        const W = O.content || "{}",
+        const W = O.isDraft ? "" : O.content || "{}",
           H = claudeVisualParseContent(W);
         s(W), v(""), h(""), setClaudeEditorMode("json");
         H.ok
           ? (setClaudeVisualState(H.state), setClaudeVisualError(""))
           : (setClaudeVisualState(null), setClaudeVisualError(H.error));
       } else if (O.platform === "opencode") {
-        const W = O.content || "{}",
+        const W = O.isDraft ? "" : O.content || "{}",
           H = openCodeVisualParseContent(W);
         s(W), v(""), h(""), setOpenCodeEditorMode("json");
         H.ok

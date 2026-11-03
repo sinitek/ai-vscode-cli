@@ -61,6 +61,25 @@ function readProtocol(utils: AnyRecord, exampleKey: string, imported: AnyRecord)
   }
 }
 
+test("新增弹窗的跳过按钮位于创建按钮右侧，绕过必填校验且防重复操作", async () => {
+  let skipped = 0;
+  let resolveSkip: () => void = () => undefined;
+  const harness = loadModalHarness({ platform: "codex", onSkip: () => {
+    skipped++;
+    return new Promise<void>((resolve) => { resolveSkip = resolve; });
+  } });
+  const footer = harness.render().props.footer;
+  assert.deepEqual(Array.from(footer, (button: EditorNode) => button.props.children), ["取消", "创建配置", "跳过"]);
+  const pending = footer[2].props.onClick();
+  assert.equal(skipped, 1);
+  assert.equal(harness.render().props.footer[2].props.disabled, true);
+  await footer[2].props.onClick();
+  assert.equal(skipped, 1);
+  resolveSkip();
+  await pending;
+  assert.equal(loadModalHarness({ exampleKey: "codex-config" }).render().props.footer, undefined);
+});
+
 function loadModalHarness(props: AnyRecord) {
   const state: unknown[] = [];
   const refs: AnyRecord[] = [];

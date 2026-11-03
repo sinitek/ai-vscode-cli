@@ -310,6 +310,20 @@
       ]
     },
     {
+      "id": "plugin.rule.cli_new_config_blank_draft",
+      "name": "新增配置跳过导入进入空白草稿",
+      "description": "七类 CLI 新增配置弹窗的创建按钮右侧提供跳过，无需导入字段即可创建并选中空白源码草稿；空名称自动生成。草稿仅存在于当前页面，不自动激活，不可复制或导出，删除无需宿主操作；填写有效内容并成功保存后成为普通档案，保存失败保留草稿。范例抽屉的导入不提供跳过。",
+      "status": "active",
+      "aliases": ["跳过导入", "空白配置草稿"],
+      "applies_to": ["plugin.config_profile", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "media/config/assets/config-app-ui.js", "anchor": "skipImportedConfig"},
+        {"path": "media/config/assets/config-app-store.js", "anchor": "addBlankConfig"},
+        {"path": "src/test/config/newConfigFromExample.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.codex_config_visual_current_schema",
       "name": "Codex 可视化配置按当前官方根级与 features 契约",
       "description": "Codex 可视化编辑器只按当前 config.toml 契约处理新配置：model_context_window 与 model_auto_compact_token_limit 是根级整数 token 参数，不属于 model_providers；公共区默认 Provider 紧随默认模型；sandbox_mode、approval_policy、web_search 仅提供官方字符串枚举下拉，approval_policy 不再提供已废弃的 untrusted；[features] 仅把官方布尔开关映射为 true 复选框，置于 Provider 工作区下方，以四列单元格展示，每项包含复选框、标签和 SVG 问号，并在悬停或聚焦时即时显示中文说明。复杂 granular 审批和非布尔 feature 配置不由表单猜测，用户应在 TOML 源码模式编辑；本任务不做旧配置版本迁移。",

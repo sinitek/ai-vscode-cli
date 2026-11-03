@@ -111,6 +111,13 @@ function loadNewConfigFlow(platform: string, saveError?: Error) {
     createConfigFromExample: create,
     newConfigPlatform: null,
     setNewConfigPlatform: (next: string | null) => { sandbox.newConfigPlatform = next; },
+    configPlatformLabel: (value: string) => value,
+    addBlankConfig: (name: string, draftPlatform: string) => {
+      const draft = { id: "blank-profile", name, platform: draftPlatform, content: "", isDraft: true };
+      sandbox.draft = draft;
+      return draft;
+    },
+    onMobileClose: () => { sandbox.mobileClosed = true; },
     l: async (payload: Record<string, any>) => {
       if (saveError) throw saveError;
       saved.push(payload);
@@ -125,11 +132,77 @@ function loadNewConfigFlow(platform: string, saveError?: Error) {
     section("// OPENCODE_VISUAL_EDITOR_UTILS_START", "// CODEX_VISUAL_EDITOR_UTILS_END"),
     section("const GROK_VISUAL_FIELD_IDS", "// Config editor panel"),
     `const ${section("I = (platform) => setNewConfigPlatform(platform),", "      R = async (k, L) =>").replace(/,\s*$/, ";")}`,
-    "globalThis.handlers = { open: I, submit: addImportedConfig, build: buildCliExampleImport };",
+    "globalThis.handlers = { open: I, submit: addImportedConfig, skip: skipImportedConfig, build: buildCliExampleImport };",
   ].join("\n"), sandbox);
   sandbox.handlers.open(platform);
   return { sandbox, saved, selected, messages };
 }
+
+test("七个 CLI 可跳过导入并选择未保存的空白草稿", () => {
+  for (const platform of ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"]) {
+    const { sandbox, saved, selected } = loadNewConfigFlow(platform);
+    sandbox.handlers.skip({ name: "  我的草稿  " });
+    assert.equal(sandbox.draft.name, "我的草稿");
+    assert.equal(sandbox.draft.platform, platform);
+    assert.equal(sandbox.draft.content, "");
+    assert.equal(sandbox.draft.isDraft, true);
+    assert.equal(saved.length, 0);
+    assert.deepEqual(selected, [["blank-profile", platform]]);
+    assert.equal(sandbox.newConfigPlatform, null);
+    assert.equal(sandbox.mobileClosed, true);
+  }
+  const { sandbox } = loadNewConfigFlow("codex");
+  sandbox.handlers.skip({ name: " " });
+  assert.match(sandbox.draft.name, /^Codex 配置 \d+$/);
+});
+
+test("空白草稿仅在成功保存后持久化，失败可重试且删除不请求宿主", async () => {
+  const storeSource = read(storePath);
+  const start = storeSource.indexOf("useConfigStore = QH(");
+  assert.ok(start >= 0);
+  let state: Record<string, any> = {};
+  const saved: Record<string, any>[] = [];
+  const deleted: unknown[][] = [];
+  let fail = true;
+  let nextId = 0;
+  const sandbox: Record<string, any> = {
+    QH: (factory: any) => {
+      state = factory((patch: Record<string, any>) => Object.assign(state, patch), () => state);
+      return state;
+    },
+    createEmptyActiveIds: () => ({}),
+    loadStoredOrder: () => ({ dsh: [] }),
+    createConfigId: () => `draft-${++nextId}`,
+    saveConfigItem: async (config: Record<string, any>) => {
+      if (fail) throw new Error("保存失败");
+      saved.push(config);
+    },
+    deleteConfigItem: async (...args: unknown[]) => { deleted.push(args); },
+    appendOrderForConfigs: (configs: Record<string, any>[], orders: Record<string, string[]>) => ({
+      ...orders, dsh: [...orders.dsh, ...configs.map((config) => config.id)],
+    }),
+    storeJson: () => undefined,
+    saveConfigOrder: async () => undefined,
+    CONFIG_STORAGE_KEYS: { CONFIG_ORDER: "order" },
+    console: { error: () => undefined },
+  };
+  vm.runInNewContext(`const ${storeSource.slice(start)}\nglobalThis.store = useConfigStore;`, sandbox);
+  const draft = sandbox.store.addBlankConfig("测试", "dsh");
+  assert.equal(draft.content, "");
+  assert.equal(saved.length, 0);
+  await assert.rejects(sandbox.store.updateConfig(draft.id, { content: "{}" }), /保存失败/);
+  assert.equal(state.configs[0].isDraft, true);
+  fail = false;
+  await sandbox.store.updateConfig(draft.id, { content: "{}" });
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].isDraft, undefined);
+  assert.equal(state.configs[0].isDraft, undefined);
+  assert.deepEqual(Array.from(state.configOrders.dsh), [draft.id]);
+  const discarded = sandbox.store.addBlankConfig("待删除", "dsh");
+  await sandbox.store.deleteConfig("dsh", discarded.id);
+  assert.equal(deleted.length, 0);
+  assert.equal(state.configs.length, 1);
+});
 
 test("七个 CLI 点击添加直接打开导入弹窗，确认输入后才保存并选中新档案", async () => {
   const values = { name: "  自定义配置  ", base_url: "https://api.example.com/v1", api_key: "test-import-key", model: "custom-model" };
