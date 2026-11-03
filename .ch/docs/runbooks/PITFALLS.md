@@ -24,7 +24,15 @@
 - Claude 联网工具空结果与域名检查失败：见本页“Claude 工具调用成功包装不代表获得有效数据”。
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
+- 群聊局部补丁不能只恢复外层滚动位置：见本页“群聊补丁需保留气泡内部滚动”。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
+
+## 群聊补丁需保留气泡内部滚动
+
+- 状态：已规避；首次发现：2026-11-03。
+- 现象与根因：Loop / Loop+ 定时刷新或宿主补丁替换时间线 `innerHTML`，气泡内代码、宽表、JSON 等区域的 DOM 重建，`scrollLeft` 和 `scrollTop` 归零。只恢复 `.main.scrollTop` 不能保留内部阅读位置。
+- 长期规避：未变化的 HTML 不重建；首次比较须考虑浏览器对 HTML 实体与属性的序列化规范化。确需替换时，在共享 Markdown / JSON 挂载完成后，按后代元素结构路径恢复横纵位置；已移除或类型变化的节点跳过，超出内容尺寸的位置由浏览器夹紧。提问回复共用同一更新入口，外层列表跟随规则不变。
+- 验证方式：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/webview/chatMarkdown.test.js dist/test/webview/chatCopy.test.js`。使用实际生成的群聊 HTML 在 Chromium 中等待 5 秒自动刷新，再追加内容补丁，检查代码横纵位置、宽表横向位置及外层历史阅读位置；旧实现应复现内部位置归零，修复后 Loop / Loop+ 均保持位置。
 
 ## 配置页标准按钮必须覆盖 Portal 作用域
 

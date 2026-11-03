@@ -392,6 +392,145 @@ function createPanelHarness() {
   return harness;
 }
 
+type ScrollElementHarness = {
+  tagName: string;
+  scrollTop: number;
+  scrollLeft: number;
+  parentElement?: ScrollElementHarness;
+  children: ScrollElementHarness[];
+};
+
+function createScrollElement(tagName: string, children: ScrollElementHarness[] = []): ScrollElementHarness {
+  const element: ScrollElementHarness = { tagName, scrollTop: 0, scrollLeft: 0, children };
+  children.forEach((child) => { child.parentElement = element; });
+  return element;
+}
+
+function createScrollPatchHarness(normalizeHtml: (value: string) => string = (value) => value) {
+  const page = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = page.slice(page.indexOf("function captureNestedScrollState"), page.indexOf("function replaceContinueModelChoice"));
+  const slot = createScrollElement("DIV", [createScrollElement("ARTICLE", [
+    createScrollElement("PRE"),
+    createScrollElement("DIV", [createScrollElement("TABLE")]),
+  ])]);
+  let replacements = 0;
+  let mounts = 0;
+  let html = "initial";
+  let nextChildren = slot.children;
+  Object.defineProperty(slot, "innerHTML", {
+    get: () => html,
+    set: (value: string) => {
+      html = value;
+      slot.children = nextChildren;
+      slot.children.forEach((child) => { child.parentElement = slot; });
+      replacements += 1;
+    },
+  });
+  const descendants = (element: ScrollElementHarness): ScrollElementHarness[] =>
+    element.children.flatMap((child) => [child, ...descendants(child)]);
+  Object.assign(slot, { querySelectorAll: () => descendants(slot) });
+  const context = vm.createContext({
+    renderedSlotHtml: new WeakMap([[slot, { initial: html }]]),
+    document: { createElement: () => {
+      let value = "";
+      return {
+        get innerHTML() { return value; },
+        set innerHTML(html: string) { value = normalizeHtml(html); },
+      };
+    } },
+    mountGroupChatMarkdown: () => { mounts += 1; },
+  });
+  vm.runInContext(source, context);
+  return {
+    slot,
+    replace: (value: unknown, children: ScrollElementHarness[], target: unknown = slot) => {
+      nextChildren = children;
+      context.slot = target;
+      context.html = value;
+      vm.runInContext("replaceHtml(slot, html);", context);
+    },
+    get replacements() { return replacements; },
+    get mounts() { return mounts; },
+  };
+}
+
+test("keeps unchanged group chat bubbles mounted, including their nested scroll state", () => {
+  const harness = createScrollPatchHarness();
+  const original = harness.slot.children[0];
+  original.children[0].scrollLeft = 240;
+  original.children[0].scrollTop = 180;
+
+  harness.replace("initial", []);
+
+  assert.equal(harness.replacements, 0);
+  assert.equal(harness.mounts, 0);
+  assert.equal(harness.slot.children[0], original);
+  assert.equal(original.children[0].scrollLeft, 240);
+  assert.equal(original.children[0].scrollTop, 180);
+});
+
+test("normalizes the first content patch before comparing it with browser-serialized HTML", () => {
+  let normalizations = 0;
+  const harness = createScrollPatchHarness((value) => {
+    normalizations += 1;
+    return value === "initial-serialized-differently" ? "initial" : value;
+  });
+
+  harness.replace("initial-serialized-differently", []);
+  harness.replace("initial-serialized-differently", []);
+
+  assert.equal(harness.replacements, 0);
+  assert.equal(harness.mounts, 0);
+  assert.equal(normalizations, 1);
+});
+
+test("restores independent horizontal and vertical bubble scroll positions when new messages arrive", () => {
+  const harness = createScrollPatchHarness();
+  const original = harness.slot.children[0];
+  original.children[0].scrollLeft = 240;
+  original.children[0].scrollTop = 180;
+  original.children[1].scrollLeft = 90;
+  original.children[1].children[0].scrollTop = 35;
+  const next = createScrollElement("ARTICLE", [
+    createScrollElement("PRE"),
+    createScrollElement("DIV", [createScrollElement("TABLE")]),
+  ]);
+
+  harness.replace("updated", [next, createScrollElement("ARTICLE")]);
+
+  assert.equal(harness.replacements, 1);
+  assert.equal(harness.mounts, 1);
+  assert.equal(next.children[0].scrollLeft, 240);
+  assert.equal(next.children[0].scrollTop, 180);
+  assert.equal(next.children[1].scrollLeft, 90);
+  assert.equal(next.children[1].children[0].scrollTop, 35);
+  next.children[0].scrollLeft = 320;
+  harness.replace("updated", []);
+  assert.equal(harness.replacements, 1);
+  assert.equal(next.children[0].scrollLeft, 320);
+});
+
+test("ignores removed or changed scroll containers instead of restoring into unrelated elements", () => {
+  const harness = createScrollPatchHarness();
+  harness.slot.children[0].children[0].scrollLeft = 240;
+  harness.slot.children[0].children[1].children[0].scrollTop = 35;
+  const next = createScrollElement("ARTICLE", [createScrollElement("P")]);
+
+  assert.doesNotThrow(() => harness.replace("shortened", [next]));
+  assert.equal(next.children[0].scrollLeft, 0);
+  assert.doesNotThrow(() => harness.replace("", []));
+  assert.equal(harness.slot.children.length, 0);
+});
+
+test("rejects missing slots and non-string group chat patches without touching the DOM", () => {
+  const harness = createScrollPatchHarness();
+  harness.replace(undefined, []);
+  harness.replace(null, []);
+  harness.replace("updated", [], null);
+  assert.equal(harness.replacements, 0);
+  assert.equal(harness.mounts, 0);
+});
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

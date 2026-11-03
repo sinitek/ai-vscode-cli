@@ -725,7 +725,7 @@
     {
       "id": "plugin.rule.loop_group_shared_markdown",
       "name": "Loop 群聊复用普通 AI 对话的 Markdown 渲染",
-      "description": "Loop / Loop+ 群聊时间线、总结和提问回复复用普通 AI 对话的 Markdown 运行时、Marked / JSONFormatter 资源及主题样式；初始载入与增量补丁均支持标题、列表、表格、引用、代码、JSON 树、图片和 SVG。沟通文件保留原有受限预览入口，代码块路径不转换为预览按钮；思考动画及调度保持原行为。图片解析、预览、下载使用共享扩展宿主处理器，沿用地址和字节校验、过期页面保护及禁用预览脚本的安全边界，不执行原始 HTML。",
+      "description": "Loop / Loop+ 群聊时间线、总结和提问回复复用普通 AI 对话的 Markdown 运行时、Marked / JSONFormatter 资源及主题样式；初始载入与增量补丁均支持标题、列表、表格、引用、代码、JSON 树、图片和 SVG。定时刷新与宿主补丁跳过未变化内容，更新时保留气泡内部横纵滚动位置，外层列表仍按是否接近底部跟随。沟通文件保留原有受限预览入口，代码块路径不转换为预览按钮；思考动画及调度保持原行为。图片解析、预览、下载使用共享扩展宿主处理器，沿用地址和字节校验、过期页面保护及禁用预览脚本的安全边界，不执行原始 HTML。",
       "status": "active",
       "aliases": ["Loop", "Loop+", "群聊", "Markdown", "提问回复", "增量渲染"],
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],

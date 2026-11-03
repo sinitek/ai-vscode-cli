@@ -325,6 +325,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const SCROLL_BUTTON_SUPPRESS_MS = 400;
 	      const sidebarElement = document.querySelector(".sidebar");
 	      const mainElement = document.querySelector(".main");
+	      const renderedSlotHtml = new WeakMap();
+	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot").forEach((slot) => {
+	        renderedSlotHtml.set(slot, { initial: slot.innerHTML });
+	      });
 	      const continueDialogBackdrop = document.getElementById("continueDialogBackdrop");
 	      const continueDialogInput = document.getElementById("continueDialogInput");
 	      const continueDialogError = document.getElementById("continueDialogError");
@@ -674,14 +678,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          : [];
 	        const distance = askChatMessages.scrollHeight - askChatMessages.scrollTop - askChatMessages.clientHeight;
 	        const stickToBottom = distance <= 50;
+	        const previousTop = askChatMessages.scrollTop;
 	        const waiting = askThread && askThread.running ? renderAskWaiting() : "";
-	        askChatMessages.innerHTML = messages.length || waiting
+	        replaceHtml(askChatMessages, messages.length || waiting
 	          ? messages.map(renderAskBubble).join("") + waiting
-	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
-            mountJsonTreeHosts(askChatMessages);
-	        if (stickToBottom) {
-	          askChatMessages.scrollTop = askChatMessages.scrollHeight;
-	        }
+	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>");
+	        askChatMessages.scrollTop = stickToBottom ? askChatMessages.scrollHeight : previousTop;
 	        const running = Boolean(askThread && askThread.running);
 	        if (askChatSend) {
 	          askChatSend.disabled = running;
@@ -934,12 +936,55 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        return document.visibilityState === "visible" && !document.getElementById("clarificationDialogBackdrop");
 	      }
 
+	      function captureNestedScrollState(slot) {
+	        const positions = [];
+	        slot.querySelectorAll("*").forEach((element) => {
+	          if (!element.scrollTop && !element.scrollLeft) {
+	            return;
+	          }
+	          const path = [];
+	          let current = element;
+	          while (current !== slot) {
+	            const parent = current.parentElement;
+	            path.unshift(Array.prototype.indexOf.call(parent.children, current));
+	            current = parent;
+	          }
+	          positions.push({ path, tagName: element.tagName, top: element.scrollTop, left: element.scrollLeft });
+	        });
+	        return positions;
+	      }
+
+	      function restoreNestedScrollState(slot, positions) {
+	        positions.forEach((position) => {
+	          const element = position.path.reduce((parent, index) => parent && parent.children[index], slot);
+	          if (element && element.tagName === position.tagName) {
+	            element.scrollTop = position.top;
+	            element.scrollLeft = position.left;
+	          }
+	        });
+	      }
+
 	      function replaceHtml(slot, html) {
 	        if (!slot || typeof html !== "string") {
 	          return;
 	        }
+	        const previous = renderedSlotHtml.get(slot);
+	        if (previous && previous.source === html) {
+	          return;
+	        }
+	        if (previous && typeof previous.initial === "string") {
+	          const holder = document.createElement("div");
+	          holder.innerHTML = html;
+	          if (holder.innerHTML === previous.initial) {
+	            renderedSlotHtml.set(slot, { source: html });
+	            return;
+	          }
+	        }
+	        const positions = captureNestedScrollState(slot);
 	        slot.innerHTML = html;
             mountGroupChatMarkdown(slot);
+	        restoreNestedScrollState(slot, positions);
+	        renderedSlotHtml.set(slot, { source: html });
 	      }
 
 	      function replaceContinueModelChoice(html) {
