@@ -101,6 +101,7 @@ type Calls = {
   clearedPromptHistory: number;
   promptHistory: Array<{ prompt: string; cli: CliName }>;
   promptFavorites: Array<{ id: string; favorite?: boolean }>;
+  promptGlobals: Array<{ id: string; global?: boolean }>;
   savedSettings: WorkspaceSettings[];
   statusUpdates: number;
   ruleWrites: Array<{ cli: CliName; scope: "global" | "project"; content: string }>;
@@ -176,6 +177,7 @@ function createHarness(): HandlerHarness {
     clearedPromptHistory: 0,
     promptHistory: [],
     promptFavorites: [],
+    promptGlobals: [],
     savedSettings: [],
     statusUpdates: 0,
     ruleWrites: [],
@@ -302,6 +304,7 @@ function createHarness(): HandlerHarness {
     clearAllSessions: () => { calls.clearedSessions += 1; },
     clearPromptHistory: () => { calls.clearedPromptHistory += 1; },
     setPromptHistoryFavorite: (id, favorite) => { calls.promptFavorites.push({ id, favorite }); },
+    setPromptHistoryGlobal: (id, global) => { calls.promptGlobals.push({ id, global }); },
     setWorkspaceInteractiveModeForCli: (cli, mode) => { calls.interactiveModes.push({ cli, mode }); },
     resetConversationTabSession: async () => undefined,
     getConfigManagerPanel: () => undefined,
@@ -533,6 +536,20 @@ test("records prompt history through explicit webview message", async (t) => {
     { prompt: "fallback prompt", cli: "codex" },
   ]);
   assert.equal(harness.calls.panelStates, 2);
+});
+
+test("routes global prompt toggles and refreshes the latest shared state", async (context) => {
+  const harness = createHarness();
+  context.after(harness.restore);
+  await handlePanelMessageWithDeps({ type: "togglePromptHistoryGlobal", id: " prompt-1 ", global: true }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "togglePromptHistoryGlobal", id: "prompt-2", global: false }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "togglePromptHistoryGlobal", id: " " }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "refreshPromptHistory" }, harness.deps);
+  assert.deepEqual(harness.calls.promptGlobals, [
+    { id: "prompt-1", global: true },
+    { id: "prompt-2", global: false },
+  ]);
+  assert.equal(harness.calls.panelStates, 3);
 });
 
 test("reports config and rules failures while preserving successful rule contracts", async (t) => {

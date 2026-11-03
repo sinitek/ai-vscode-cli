@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-02",
+  "as_of": "2026-11-03",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -1598,6 +1598,22 @@
         {"path": "src/test/session/promptHistoryStore.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "历史提示词去重与复用置顶"}
+      ]
+    },
+    {
+      "id": "plugin.rule.prompt_history_global_favorites",
+      "name": "收藏提示词全局共享",
+      "description": "历史提示词每条提供全局复选框，仅收藏项可启用。全局库独立保存到 ~/.sinitek_cli/prompt-history-global.json，各项目历史提示词与仅收藏列表可搜索和复用，普通历史保持项目隔离；正文相同的项目项和共享项合并展示，复用保留共享 ID、收藏和全局状态，并更新共享时间与 CLI。共享时保留项目副本，取消全局只撤销共享并在当前项目保留收藏；取消收藏同时撤销共享和当前项目收藏，不删除其它项目已有本地收藏。打开历史弹窗读取最新共享数据，普通项目写入不会恢复已撤销共享；手动清空、保留期和数量裁剪不删除全局收藏。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/promptHistoryStore.ts", "anchor": "setPromptHistoryGlobalInStore"},
+        {"path": "src/extensionHost/modelSettings.ts", "anchor": "buildPromptHistoryState"},
+        {"path": "src/panelMessageHandlers/session.ts", "anchor": "togglePromptHistoryGlobal"},
+        {"path": "src/webview/viewContentScript/historyPanels.ts", "anchor": "setPromptHistoryGlobal"},
+        {"path": "src/test/session/promptHistoryStore.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "历史提示词全局收藏"}
       ]
     },
     {

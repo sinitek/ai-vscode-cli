@@ -25,6 +25,7 @@ import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
 import { createCliModelSelectionStrategies } from "./cliModelSelectionStrategies";
 import { buildModelState as buildModelSelectionState, deleteCliModelFromStore, ensureCliModelStore as ensureCliModelSelectionStore, getEffectiveCliArgs as getEffectiveCliArgsFromStore, getLoopRoleExplicitModelFromStore, getOpenCodeRoleModelFromStore, getOpenCodeRoleVariantFromStore, getSelectedLoopFullstackCliFromStore, getSelectedLoopFullstackThinkingFromStore, getSelectedLoopSubtaskCliFromStore, getSelectedLoopSubtaskModeFromStore, getSelectedLoopFrontendCliFromStore, selectLoopFrontendCliInStore, selectLoopFullstackCliInStore, selectLoopSubtaskModeInStore, getSelectedLoopThinkingModeFromStore, loadModelStore as loadModelSelectionStore, loopFullstackRoleNeedsSeed, markLoopFullstackRoleSeededInStore, mergeUniqueModelNames, moveCliModelInStore, normalizeCliModelName, readModelStore as readModelSelectionStore, renameCliModelInStore, selectCliModelInStore, selectLoopSubtaskCliInStore, setLoopRoleExplicitModelInStore, setOpenCodeRoleModelInStore, setOpenCodeRoleVariantInStore, setOpenCodeVariantInStore, setSelectedLoopFrontendThinkingInStore, setSelectedLoopFullstackThinkingInStore, setSelectedLoopThinkingModeInStore, writeModelStore as writeModelSelectionStore, type CliModelStore, type LoopPlusConfigRole, type ModelSelectionStoreState } from "../modelSelectionStore";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
+import { setPromptHistoryGlobalInStore } from "../promptHistoryStore";
 import { isInteractiveMode, isThinkingMode, isLoopTaskBlockedByMainAiFailureLimit as isLoopTaskBlockedByMainAiFailureLimitWithLimit, normalizeVisibleInteractiveMode, resolveLoopTaskSessionId as resolveLoopTaskSessionIdWithDeps, resolvePromptRunTargetSessionId as resolvePromptRunTargetSessionIdWithDeps } from "../promptRunState";
 import { buildPromptHistoryState as buildPromptHistoryStateFromStore, clearPromptHistoryStore, cleanupPromptHistoryRetentionAcrossWorkspaces as cleanupPromptHistoryStoreRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup as collectWorkspaceKeysForPromptHistoryStoreCleanup, deletePromptHistoryFile as deletePromptHistoryStoreFile, ensurePromptHistoryStore as ensurePromptHistoryStoreState, getPromptHistoryFilePath as getPromptHistoryStoreFilePath, loadPromptHistoryStore as loadPromptHistoryStoreFromStore, readPromptHistoryFile as readPromptHistoryStoreFile, recordPromptHistoryInStore, setPromptHistoryFavoriteInStore, writePromptHistoryFile as writePromptHistoryStoreFile, type PromptHistoryStore } from "../promptHistoryStore";
 import { readToolSettings, resolveGlobalAutoCompactContextAfterRun, resolveGlobalHumanInteractionEnabled } from "../toolSettings";
@@ -1722,7 +1723,7 @@ function ensurePromptHistoryStore(store?: PromptHistoryStore): PromptHistoryStor
 }
 
 function buildPromptHistoryState(): PromptHistoryItem[] {
-  return buildPromptHistoryStateFromStore(promptHistoryStore);
+  return buildPromptHistoryStateFromStore(promptHistoryStore, getPromptHistoryStoreOptions());
 }
 
 function recordPromptHistory(prompt: string, cli: CliName): void {
@@ -1731,6 +1732,10 @@ function recordPromptHistory(prompt: string, cli: CliName): void {
 
 function setPromptHistoryFavorite(id: string, favorite?: boolean): void {
   promptHistoryStore = setPromptHistoryFavoriteInStore(promptHistoryStore, id, favorite, getPromptHistoryStoreOptions());
+}
+
+function setPromptHistoryGlobal(id: string, global?: boolean): void {
+  promptHistoryStore = setPromptHistoryGlobalInStore(promptHistoryStore, id, global, getPromptHistoryStoreOptions());
 }
 
 function clearPromptHistory(): void {
@@ -1864,6 +1869,7 @@ return {
   buildPromptHistoryState: wrap(buildPromptHistoryState),
   recordPromptHistory: wrap(recordPromptHistory),
   setPromptHistoryFavorite: wrap(setPromptHistoryFavorite),
+  setPromptHistoryGlobal: wrap(setPromptHistoryGlobal),
   clearPromptHistory: wrap(clearPromptHistory),
   getPromptHistoryFilePath: wrap(getPromptHistoryFilePath),
   readPromptHistoryFile: wrap(readPromptHistoryFile),

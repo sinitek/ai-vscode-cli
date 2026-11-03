@@ -6,12 +6,15 @@ import * as path from "node:path";
 
 import type { CliName } from "../../cli/types";
 import {
+  buildPromptHistoryState,
   cleanupPromptHistoryRetentionAcrossWorkspaces,
   clearPromptHistoryStore,
   ensurePromptHistoryStore,
+  getGlobalPromptHistoryFilePath,
   loadPromptHistoryStore,
   recordPromptHistoryInStore,
   setPromptHistoryFavoriteInStore,
+  setPromptHistoryGlobalInStore,
   type PromptHistoryStore,
   type PromptHistoryStoreOptions,
 } from "../../promptHistoryStore";
@@ -253,4 +256,135 @@ test("manual prompt history clearing preserves favorites", () => {
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test("only favorite prompts can become global", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir);
+  let store = recordPromptHistoryInStore(undefined, "private prompt", "codex", options);
+  for (const id of ["", "missing", store.items[0].id]) {
+    store = setPromptHistoryGlobalInStore(store, id, true, options);
+  }
+  assert.equal(fs.existsSync(getGlobalPromptHistoryFilePath(options)), false);
+  assert.equal(buildPromptHistoryState(store, options)[0].global, undefined);
+});
+
+test("shares global favorites across projects without exposing private history or duplicating prompts", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir);
+  const otherOptions = { ...options, workspaceKey: "other-project" };
+  let source = recordPromptHistoryInStore(undefined, "shared prompt", "codex", options);
+  const sharedId = source.items[0].id;
+  source = setPromptHistoryFavoriteInStore(source, sharedId, true, options);
+  source = setPromptHistoryGlobalInStore(source, sharedId, true, options);
+  source = recordPromptHistoryInStore(source, "private prompt", "codex", options);
+  const other = recordPromptHistoryInStore(undefined, "other private prompt", "claude", otherOptions);
+  const sharedState = buildPromptHistoryState(other, otherOptions);
+  const globalItem = sharedState.find((item) => item.global === true);
+  assert.equal(globalItem?.id, sharedId);
+  assert.equal(globalItem?.favorite, true);
+  assert.equal(sharedState.some((item) => item.prompt === "private prompt"), false);
+  assert.equal(loadPromptHistoryStore(otherOptions).items.length, 1);
+  assert.equal(buildPromptHistoryState(source, options).filter((item) => item.prompt === "shared prompt").length, 1);
+  const persisted = JSON.parse(fs.readFileSync(getGlobalPromptHistoryFilePath(options), "utf8")) as PromptHistoryStore;
+  assert.equal(persisted.items[0].global, true);
+  assert.equal(source.items.some((item) => item.global === true), false);
+});
+
+test("reuses a global favorite in another project and preserves its shared identity and favorite", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir);
+  const otherOptions = { ...options, workspaceKey: "other-project" };
+  let other = recordPromptHistoryInStore(undefined, "shared prompt", "claude", otherOptions);
+  let source = recordPromptHistoryInStore(undefined, "shared prompt", "codex", options);
+  const sharedId = source.items[0].id;
+  source = setPromptHistoryFavoriteInStore(source, sharedId, true, options);
+  setPromptHistoryGlobalInStore(source, sharedId, true, options);
+  context.mock.method(Date, "now", () => 1_900_000_000_000);
+  other = recordPromptHistoryInStore(other, "  shared prompt\n", "opencode", otherOptions);
+  const state = buildPromptHistoryState(other, otherOptions);
+  assert.deepEqual(state, [{
+    id: sharedId,
+    prompt: "shared prompt",
+    createdAt: 1_900_000_000_000,
+    cli: "opencode",
+    favorite: true,
+    global: true,
+  }]);
+  assert.deepEqual(buildPromptHistoryState(source, options), state);
+  assert.equal(loadPromptHistoryStore(otherOptions).items[0].global, undefined);
+});
+
+test("revoking global sharing preserves project favorites and stale writers cannot restore sharing", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir);
+  const otherOptions = { ...options, workspaceKey: "other-project" };
+  let source = recordPromptHistoryInStore(undefined, "shared prompt", "codex", options);
+  const sharedId = source.items[0].id;
+  source = setPromptHistoryFavoriteInStore(source, sharedId, true, options);
+  source = setPromptHistoryGlobalInStore(source, sharedId, undefined, options);
+  const other = setPromptHistoryGlobalInStore(undefined, sharedId, undefined, otherOptions);
+  assert.equal(other.items[0].favorite, true);
+  assert.equal(other.items[0].global, undefined);
+  assert.equal(buildPromptHistoryState(source, options)[0].global, undefined);
+  source = recordPromptHistoryInStore(source, "unrelated prompt", "codex", options);
+  clearPromptHistoryStore(source, options);
+  cleanupPromptHistoryRetentionAcrossWorkspaces(options);
+  const emptyProject = { ...options, workspaceKey: "empty-project" };
+  assert.deepEqual(buildPromptHistoryState(loadPromptHistoryStore(emptyProject), emptyProject), []);
+  assert.equal(loadPromptHistoryStore(options).items[0].favorite, true);
+  assert.equal(loadPromptHistoryStore(otherOptions).items[0].favorite, true);
+});
+
+test("unfavoriting a shared prompt removes global sharing and keeps ordinary history in the current project", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir);
+  const otherOptions = { ...options, workspaceKey: "other-project" };
+  let source = recordPromptHistoryInStore(undefined, "shared prompt", "codex", options);
+  const sharedId = source.items[0].id;
+  source = setPromptHistoryFavoriteInStore(source, sharedId, true, options);
+  setPromptHistoryGlobalInStore(source, sharedId, true, options);
+  const other = setPromptHistoryFavoriteInStore(undefined, sharedId, false, otherOptions);
+  assert.equal(other.items[0].favorite, false);
+  assert.equal(buildPromptHistoryState(other, otherOptions)[0].global, undefined);
+  assert.equal(buildPromptHistoryState(source, options)[0].global, undefined);
+  assert.equal(buildPromptHistoryState(source, options)[0].favorite, true);
+});
+
+test("shared favorites survive cleanup and independent project changes merge the latest shared file", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const options = createOptions(rootDir, { promptHistoryLimit: 0 });
+  const otherOptions = { ...options, workspaceKey: "other-project" };
+  const source: PromptHistoryStore = { items: [{ id: "first", prompt: "first shared prompt", cli: "codex", createdAt: 1, favorite: true }] };
+  const other: PromptHistoryStore = { items: [{ id: "second", prompt: "second shared prompt", cli: "claude", createdAt: 2, favorite: true }] };
+  setPromptHistoryGlobalInStore(source, "first", true, options);
+  setPromptHistoryGlobalInStore(other, "second", true, otherOptions);
+  const expiredOptions = { ...options, isTimestampWithinHistoryRetention: () => false };
+  cleanupPromptHistoryRetentionAcrossWorkspaces(expiredOptions);
+  clearPromptHistoryStore(source, expiredOptions);
+  const state = buildPromptHistoryState(undefined, expiredOptions);
+  assert.deepEqual(state.map((item) => item.id), ["second", "first"]);
+  assert.ok(state.every((item) => item.favorite && item.global));
+});
+
+test("ignores malformed or non-favorite shared data without changing project history", (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-prompt-history-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const errors: string[] = [];
+  const options = { ...createOptions(rootDir), logError: (event: string) => errors.push(event) };
+  const store = recordPromptHistoryInStore(undefined, "private prompt", "codex", options);
+  const filePath = getGlobalPromptHistoryFilePath(options);
+  fs.writeFileSync(filePath, "{invalid", "utf8");
+  assert.deepEqual(buildPromptHistoryState(store, options), store.items);
+  assert.deepEqual(errors, ["prompt-history-read-error"]);
+  fs.writeFileSync(filePath, JSON.stringify({ items: [
+    { id: "invalid", prompt: "not a favorite", cli: "codex", createdAt: 1, favorite: false, global: true },
+  ] }), "utf8");
+  assert.deepEqual(buildPromptHistoryState(store, options), store.items);
 });

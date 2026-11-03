@@ -2019,6 +2019,34 @@ test("paginates prompt history in groups of 50 and resets scroll and expansion w
   assert.equal(list.children.length, 50);
 });
 
+test("enables global prompt sharing only for favorites and clears sharing when unfavorited", () => {
+  const { api, document, posted, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ promptHistory: [
+    { id: "favorite", prompt: "shared workflow", cli: "codex", createdAt: 3, favorite: true },
+    { id: "plain", prompt: "private prompt", cli: "codex", createdAt: 2, favorite: false },
+  ] }) });
+  const list = document.getElementById("promptHistoryList");
+  const favoriteToggle = list.children[0].querySelector(".prompt-global-toggle")!;
+  const plainToggle = list.children[1].querySelector(".prompt-global-toggle")!;
+  assert.equal(plainToggle.children[0].disabled, true);
+  assert.equal(plainToggle.title, "收藏后才能设为全局");
+  assert.equal(favoriteToggle.children[0].disabled, false);
+  assert.equal(favoriteToggle.children[0].checked, false);
+  favoriteToggle.children[0].checked = true;
+  favoriteToggle.children[0].dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "togglePromptHistoryGlobal", id: "favorite", global: true });
+  assert.equal(api.state.promptHistory[0].global, true);
+  assert.equal(list.children[0].querySelector(".prompt-global-toggle")!.children[0].checked, true);
+  list.children[0].querySelector(".prompt-favorite-button")!.click();
+  assert.equal(api.state.promptHistory[0].favorite, false);
+  assert.equal(api.state.promptHistory[0].global, false);
+  assert.equal(list.children[0].querySelector(".prompt-global-toggle")!.children[0].disabled, true);
+  list.children[1].querySelector(".prompt-favorite-button")!.click();
+  assert.equal(list.children[1].querySelector(".prompt-global-toggle")!.children[0].disabled, false);
+  document.getElementById("historyButton").click();
+  assert.ok(posted.some((message: any) => message.type === "refreshPromptHistory"));
+});
+
 test("applies prompt history search and favorite filters before pagination and resets their page", () => {
   const { api, document, window } = createRuntimeHarness();
   const promptHistory = Array.from({ length: 121 }, (_value, index) => ({

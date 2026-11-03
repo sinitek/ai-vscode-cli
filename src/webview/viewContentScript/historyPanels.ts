@@ -495,6 +495,25 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
             setPromptHistoryFavorite(item.id, !isFavorite);
           });
 
+          const globalLabel = document.createElement("label");
+          globalLabel.className = "prompt-history-filter prompt-global-toggle" + (isFavorite ? "" : " is-disabled");
+          globalLabel.title = isFavorite ? t("promptGlobalHint") : t("promptGlobalRequiresFavorite");
+          globalLabel.addEventListener("click", (event) => event.stopPropagation());
+
+          const globalCheckbox = document.createElement("input");
+          globalCheckbox.type = "checkbox";
+          globalCheckbox.checked = isFavorite && item.global === true;
+          globalCheckbox.disabled = !isFavorite;
+          globalCheckbox.setAttribute("aria-label", t("promptGlobalLabel") + "：" + globalLabel.title);
+          globalCheckbox.addEventListener("change", (event) => {
+            event.stopPropagation();
+            setPromptHistoryGlobal(item.id, globalCheckbox.checked);
+          });
+          const globalText = document.createElement("span");
+          globalText.textContent = t("promptGlobalLabel");
+          globalLabel.appendChild(globalCheckbox);
+          globalLabel.appendChild(globalText);
+
           const viewButton = document.createElement("button");
           viewButton.className = "ghost";
           viewButton.textContent = state.promptHistoryExpandedId === item.id
@@ -514,6 +533,7 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
           });
 
           actions.appendChild(favoriteButton);
+          actions.appendChild(globalLabel);
           actions.appendChild(viewButton);
           actions.appendChild(useButton);
 
@@ -556,12 +576,31 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
         const target = items.find((item) => item && item.id === normalizedId);
         if (target) {
           target.favorite = Boolean(favorite);
+          if (!target.favorite) {
+            target.global = false;
+          }
         }
         renderPromptHistoryList();
         vscode.postMessage({
           type: "togglePromptHistoryFavorite",
           id: normalizedId,
           favorite: Boolean(favorite),
+        });
+      }
+
+      function setPromptHistoryGlobal(id, global) {
+        const normalizedId = typeof id === "string" ? id.trim() : "";
+        const items = Array.isArray(state.promptHistory) ? state.promptHistory : [];
+        const target = items.find((item) => item && item.id === normalizedId);
+        if (!normalizedId || !isPromptHistoryFavorite(target)) {
+          return;
+        }
+        target.global = Boolean(global);
+        renderPromptHistoryList();
+        vscode.postMessage({
+          type: "togglePromptHistoryGlobal",
+          id: normalizedId,
+          global: Boolean(global),
         });
       }
 

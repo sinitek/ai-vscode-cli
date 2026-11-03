@@ -132,6 +132,7 @@ export type PanelMessageHandlerDeps = {
   clearAllSessions: () => void;
   clearPromptHistory: () => void;
   setPromptHistoryFavorite: (id: string, favorite?: boolean) => void;
+  setPromptHistoryGlobal: (id: string, global?: boolean) => void;
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => void;
   resetConversationTabSession: () => Promise<void>;
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;

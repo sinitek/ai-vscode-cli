@@ -1212,6 +1212,7 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       }
       .prompt-header {
         display: flex;
+        flex-wrap: wrap;
         align-items: flex-start;
         justify-content: space-between;
         gap: 8px;
@@ -1220,7 +1221,7 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         display: flex;
         flex-direction: column;
         gap: 4px;
-        flex: 1;
+        flex: 1 1 180px;
         min-width: 0;
       }
       .prompt-preview {
@@ -1246,7 +1247,8 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         flex-shrink: 0;
         flex-wrap: wrap;
         justify-content: flex-end;
-        max-width: 220px;
+        max-width: 100%;
+        margin-inline-start: auto;
       }
       .prompt-favorite-button {
         min-width: 28px;
@@ -1256,6 +1258,15 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       }
       .prompt-favorite-button.is-favorite {
         color: var(--vscode-charts-yellow, var(--vscode-foreground));
+      }
+      .prompt-global-toggle {
+        min-height: 28px;
+        align-self: center;
+        white-space: nowrap;
+      }
+      .prompt-global-toggle.is-disabled {
+        color: var(--vscode-disabledForeground);
+        cursor: default;
       }
       .prompt-full {
         display: none;

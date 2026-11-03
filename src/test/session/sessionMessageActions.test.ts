@@ -220,6 +220,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     clearAllSessions: () => undefined,
     clearPromptHistory: () => undefined,
     setPromptHistoryFavorite: () => undefined,
+    setPromptHistoryGlobal: () => undefined,
     setWorkspaceInteractiveModeForCli: (cli, mode) => {
       calls.interactiveModes.push({ cli, mode });
       state.workspaceSettings.interactiveModeByCli = {

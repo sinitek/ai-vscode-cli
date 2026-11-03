@@ -550,6 +550,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       });
 
       function openHistory() {
+        vscode.postMessage({ type: "refreshPromptHistory" });
         if (elements.historyButton) {
           elements.historyButton.classList.add("is-loading");
           elements.historyButton.setAttribute("aria-busy", "true");

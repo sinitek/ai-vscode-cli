@@ -57,6 +57,8 @@ export type PanelMessage =
   | { type: "clearPromptHistory" }
   | { type: "recordPromptHistory"; prompt: string; cli?: CliName }
   | { type: "togglePromptHistoryFavorite"; id: string; favorite?: boolean }
+  | { type: "togglePromptHistoryGlobal"; id: string; global?: boolean }
+  | { type: "refreshPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
   | {
       type: "humanInteractionResponse";
@@ -285,6 +287,7 @@ export type PromptHistoryItem = {
   createdAt: number;
   cli: CliName;
   favorite?: boolean;
+  global?: boolean;
 };
 
 export type ChatMessageAction =

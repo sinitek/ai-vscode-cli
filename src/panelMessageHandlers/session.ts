@@ -57,6 +57,7 @@ type SessionPanelMessageDeps = Pick<
   | "clearAllSessions"
   | "clearPromptHistory"
   | "setPromptHistoryFavorite"
+  | "setPromptHistoryGlobal"
   | "setWorkspaceInteractiveModeForCli"
   | "resetConversationTabSession"
   | "getConfigManagerPanel"
@@ -385,6 +386,19 @@ export function createSessionPanelMessageHandlers(
       await deps.postPanelState();
     },
 
+    togglePromptHistoryGlobal: async (message) => {
+      const id = typeof message.id === "string" ? message.id.trim() : "";
+      if (!id) {
+        return;
+      }
+      deps.setPromptHistoryGlobal(id, message.global);
+      await deps.postPanelState();
+    },
+
+    refreshPromptHistory: async () => {
+      await deps.postPanelState();
+    },
+
     newSession: async () => {
       const sessionId = deps.addConversationTab(deps.getCurrentCli(), null);
       deps.setWorkspaceInteractiveModeForCli(deps.getCurrentCli(), "coding");
@@ -504,6 +518,8 @@ export type SessionPanelMessage = Extract<
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "togglePromptHistoryFavorite" }
+  | { type: "togglePromptHistoryGlobal" }
+  | { type: "refreshPromptHistory" }
   | { type: "newSession" }
   | { type: "queryCodexLongConnectionCount" }
   | { type: "resetConversationTabSession" }

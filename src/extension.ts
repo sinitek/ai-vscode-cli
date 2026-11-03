@@ -1067,6 +1067,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     clearAllSessions,
     clearPromptHistory,
     setPromptHistoryFavorite,
+    setPromptHistoryGlobal: (id, global) => modelSettingsHost.setPromptHistoryGlobal(id, global),
     setWorkspaceInteractiveModeForCli,
     resetConversationTabSession,
     getConfigManagerPanel: () => configManagerPanel,

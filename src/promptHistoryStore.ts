@@ -77,8 +77,38 @@ export function createPromptHistoryId(timestamp?: number): string {
   return `prompt_${base}_${Math.random().toString(16).slice(2)}`;
 }
 
-export function buildPromptHistoryState(store: PromptHistoryStore | undefined): PromptHistoryItem[] {
-  return store?.items ? [...store.items] : [];
+export function buildPromptHistoryState(
+  store: PromptHistoryStore | undefined,
+  options?: PromptHistoryStoreOptions
+): PromptHistoryItem[] {
+  const items = store?.items ? [...store.items] : [];
+  if (!options) {
+    return items;
+  }
+  const sharedItems = readGlobalPromptHistoryStore(options).items;
+  const sharedPrompts = new Set(sharedItems.map((item) => item.prompt));
+  return [...items.filter((item) => !sharedPrompts.has(item.prompt)), ...sharedItems]
+    .sort((first, second) => second.createdAt - first.createdAt);
+}
+
+export function getGlobalPromptHistoryFilePath(
+  options: Pick<PromptHistoryStoreOptions, "legacyPromptHistoryFile">
+): string {
+  return path.join(path.dirname(options.legacyPromptHistoryFile), "prompt-history-global.json");
+}
+
+function readGlobalPromptHistoryStore(options: PromptHistoryStoreOptions): PromptHistoryStore {
+  const stored = readPromptHistoryStoreFile(getGlobalPromptHistoryFilePath(options), options);
+  const normalized = ensurePromptHistoryStore(stored, options);
+  return {
+    items: normalized.items
+      .filter((item) => item.favorite === true)
+      .map((item) => ({ ...item, global: true })),
+  };
+}
+
+function writeGlobalPromptHistoryStore(store: PromptHistoryStore, options: PromptHistoryStoreOptions): void {
+  writePromptHistoryStoreFile(store, getGlobalPromptHistoryFilePath(options), options);
 }
 
 function shouldRetainPromptHistoryItem(
@@ -112,15 +142,23 @@ export function recordPromptHistoryInStore(
   const nextStore = store
     ? ensurePromptHistoryStore(store, options)
     : loadPromptHistoryStore(options);
+  const globalStore = readGlobalPromptHistoryStore(options);
+  const sharedItem = globalStore.items.find((item) => item.prompt === normalized);
   const matchingItems = nextStore.items.filter((item) => item.prompt === normalized);
   nextStore.items = nextStore.items.filter((item) => item.prompt !== normalized);
-  nextStore.items.unshift({
-    id: matchingItems[0]?.id ?? createPromptHistoryId(),
+  const nextItem: PromptHistoryItem = {
+    id: sharedItem?.id ?? matchingItems[0]?.id ?? createPromptHistoryId(),
     prompt: normalized,
     createdAt: Date.now(),
     cli,
-    favorite: matchingItems.some((item) => item.favorite === true),
-  });
+    favorite: Boolean(sharedItem) || matchingItems.some((item) => item.favorite === true),
+  };
+  nextStore.items.unshift(nextItem);
+  if (sharedItem) {
+    globalStore.items = globalStore.items.filter((item) => item.prompt !== normalized);
+    globalStore.items.unshift({ ...nextItem, global: true });
+    writeGlobalPromptHistoryStore(globalStore, options);
+  }
   nextStore.items = limitPromptHistoryItems(nextStore.items, options.promptHistoryLimit);
   writePromptHistoryFile(nextStore, options);
   return nextStore;
@@ -139,7 +177,10 @@ export function setPromptHistoryFavoriteInStore(
   if (!normalizedId) {
     return nextStore;
   }
-  const item = nextStore.items.find((entry) => entry.id === normalizedId);
+  const globalStore = readGlobalPromptHistoryStore(options);
+  const localItem = nextStore.items.find((entry) => entry.id === normalizedId);
+  const sharedItem = globalStore.items.find((entry) => entry.id === normalizedId || entry.prompt === localItem?.prompt);
+  const item = sharedItem ?? localItem;
   if (!item) {
     return nextStore;
   }
@@ -147,12 +188,71 @@ export function setPromptHistoryFavoriteInStore(
   if (Boolean(item.favorite) === nextFavorite) {
     return nextStore;
   }
-  item.favorite = nextFavorite;
+  nextStore.items = nextStore.items.filter((entry) => entry.prompt !== item.prompt);
+  nextStore.items.push({
+    id: item.id,
+    prompt: item.prompt,
+    createdAt: item.createdAt,
+    cli: item.cli,
+    favorite: nextFavorite,
+  });
+  if (sharedItem && !nextFavorite) {
+    globalStore.items = globalStore.items.filter((entry) => entry.prompt !== item.prompt);
+    writeGlobalPromptHistoryStore(globalStore, options);
+  }
+  nextStore.items = ensurePromptHistoryStore(nextStore, options).items;
   writePromptHistoryFile(nextStore, options);
   options.logInfo?.("prompt-history-favorite-updated", {
     workspace: options.workspaceKey,
     id: normalizedId,
     favorite: nextFavorite,
+  });
+  return nextStore;
+}
+
+export function setPromptHistoryGlobalInStore(
+  store: PromptHistoryStore | undefined,
+  id: string,
+  global: boolean | undefined,
+  options: PromptHistoryStoreOptions
+): PromptHistoryStore {
+  const nextStore = store
+    ? ensurePromptHistoryStore(store, options)
+    : loadPromptHistoryStore(options);
+  const normalizedId = String(id ?? "").trim();
+  if (!normalizedId) {
+    return nextStore;
+  }
+  const globalStore = readGlobalPromptHistoryStore(options);
+  const localItem = nextStore.items.find((entry) => entry.id === normalizedId);
+  const sharedItem = globalStore.items.find((entry) => entry.id === normalizedId || entry.prompt === localItem?.prompt);
+  const item = sharedItem ?? localItem;
+  if (!item || item.favorite !== true) {
+    return nextStore;
+  }
+  const nextGlobal = typeof global === "boolean" ? global : !sharedItem;
+  if (nextGlobal === Boolean(sharedItem)) {
+    return nextStore;
+  }
+  globalStore.items = globalStore.items.filter((entry) => entry.prompt !== item.prompt);
+  if (nextGlobal) {
+    globalStore.items.unshift({ ...item, global: true });
+  }
+  writeGlobalPromptHistoryStore(globalStore, options);
+  nextStore.items = nextStore.items.filter((entry) => entry.prompt !== item.prompt);
+  nextStore.items.push({
+    id: item.id,
+    prompt: item.prompt,
+    createdAt: item.createdAt,
+    cli: item.cli,
+    favorite: true,
+  });
+  nextStore.items.sort((first, second) => second.createdAt - first.createdAt);
+  writePromptHistoryFile(nextStore, options);
+  options.logInfo?.("prompt-history-global-updated", {
+    workspace: options.workspaceKey,
+    id: normalizedId,
+    global: nextGlobal,
   });
   return nextStore;
 }
@@ -189,8 +289,14 @@ export function readPromptHistoryFile(
   options: PromptHistoryStoreOptions,
   workspaceKey: string = options.workspaceKey
 ): PromptHistoryStore | undefined {
+  return readPromptHistoryStoreFile(getPromptHistoryFilePath(options, workspaceKey), options);
+}
+
+function readPromptHistoryStoreFile(
+  filePath: string,
+  options: Pick<PromptHistoryStoreOptions, "logError">
+): PromptHistoryStore | undefined {
   try {
-    const filePath = getPromptHistoryFilePath(options, workspaceKey);
     if (!fs.existsSync(filePath)) {
       return undefined;
     }
@@ -207,8 +313,15 @@ export function writePromptHistoryFile(
   options: PromptHistoryStoreOptions,
   workspaceKey: string = options.workspaceKey
 ): void {
+  writePromptHistoryStoreFile(store, getPromptHistoryFilePath(options, workspaceKey), options);
+}
+
+function writePromptHistoryStoreFile(
+  store: PromptHistoryStore,
+  filePath: string,
+  options: Pick<PromptHistoryStoreOptions, "logError">
+): void {
   try {
-    const filePath = getPromptHistoryFilePath(options, workspaceKey);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf8");
   } catch (error) {

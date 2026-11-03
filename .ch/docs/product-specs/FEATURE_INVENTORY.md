@@ -70,6 +70,12 @@ AI 对话面板读取 Codex 当前 `config.toml` 的根级 `model` 作为配置�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AI 对话 / kimi | 配置模型管理与精简工具回放 | active | 终端用户 | `docs/kimi-code-guide.md`、`.ch/docs/references/kimi-code-official-reference.md` | `src/config/kimiCodeConfig.ts`、`src/interactive/kimiRunner.ts`、`src/extensionHost/modelSettings.ts`、`src/extensionHost/interactiveTurnKimi.ts`、`src/interactive/kimiAppServerProtocol.ts`、`src/panelMessageHandlers/session.ts`、`src/webview/viewContentScript/modelManager.ts` | `npm run build`；`node --test dist/test/config/kimiCodeConfig.test.js dist/test/interactive/kimiRunner.test.js dist/test/interactive/kimiAppServerProtocol.test.js dist/test/extensionHost/kimiInteractiveHostWire.test.js dist/test/session/kimiModelMessageHandlers.test.js` | 模型下拉复用 Codex 管理弹窗，新增、重命名、删除、排序同时保存当前档案和真实 `config.toml`；新增条目保留 provider、凭据与高级字段。配置保存后重建 ACP 进程并恢复原会话，新模型广告立即可用；每轮动态应用配置别名和思考档位。命令仅显示 `exec` 标题，普通工具仅显示标题，不重复参数或成功结果。 |
 
+## 历史提示词全局收藏
+
+| 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AI 对话 / 会话 | 收藏提示词全局共享 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#34-会话与并发` | `src/promptHistoryStore.ts`、`src/extensionHost/modelSettings.ts`、`src/panelMessageHandlers/session.ts`、`src/webview/viewContentScript/historyPanels.ts` | `npm run build`；`node --test dist/test/session/promptHistoryStore.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`；Chromium 桌面/窄面板与双项目验证 | 每条历史提供“全局”勾选，只有已收藏项可启用；全局收藏独立持久化，各项目在“仅收藏”中可搜索和复用，同正文合并展示并保留共享 ID。取消全局保留项目收藏，取消收藏同时撤销共享；其它项目已有本地副本不删除。打开历史弹窗读取最新共享状态；普通历史保持项目隔离，清空和自动裁剪保留全局收藏。 |
+
 ## 对话管理模型弹窗生命周期
 
 | 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
