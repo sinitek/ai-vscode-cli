@@ -2321,6 +2321,7 @@ type OpenCodeRuntimePreparationInput = {
   configId?: string | null;
   role?: OpenCodeModelRoleInput;
   model?: string | null;
+  variant?: string | null;
   requiresSubtaskModel?: boolean;
 };
 
@@ -2329,6 +2330,7 @@ function normalizeOpenCodeRuntimePreparationInput(
 ): Required<Pick<OpenCodeRuntimePreparationInput, "configId">> & {
   role: OpenCodeCanonicalModelRole;
   model: string | null;
+  variant: string | null;
   requiresSubtaskModel: boolean;
 } {
   if (typeof input === "string" || input === null) {
@@ -2336,6 +2338,7 @@ function normalizeOpenCodeRuntimePreparationInput(
       configId: input ?? getActiveConfigIdForCli("opencode"),
       role: "main",
       model: null,
+      variant: null,
       requiresSubtaskModel: false,
     };
   }
@@ -2344,6 +2347,7 @@ function normalizeOpenCodeRuntimePreparationInput(
     configId: input?.configId ?? getActiveConfigIdForCli("opencode"),
     role,
     model: normalizeCliModelName(input?.model) ?? null,
+    variant: isOpenCodeThinkingEffort(input?.variant) ? input.variant.trim() : null,
     requiresSubtaskModel: role === "subtask" || input?.requiresSubtaskModel === true,
   };
 }
@@ -2395,7 +2399,7 @@ async function prepareOpenCodeRuntime(
     configContent,
     "subtask",
   );
-  const effectiveVariant = getOpenCodeVariantForRun(
+  const effectiveVariant = runtimeInput.variant ?? getOpenCodeVariantForRun(
     "opencode",
     effectiveModel,
     configId,

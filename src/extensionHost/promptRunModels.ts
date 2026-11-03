@@ -58,15 +58,15 @@ export function createPromptRunModelsHost(deps: PromptRunModelsHostDeps) {
     const explicitThinkingMode = role === "subtask"
       ? input.loopSubtaskThinkingMode
       : input.loopMainThinkingMode;
-    const usesLoopRoleThinking = cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code"
+    const usesLoopRoleThinking = cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode" || cli === "opencode"
       || (cli === "claude" && role === "subtask");
     const roleThinkingMode = usesLoopRoleThinking && deps.isThinkingMode(explicitThinkingMode)
       ? deps.normalizeThinkingModeForCli(cli, explicitThinkingMode)
-      : usesLoopRoleThinking
+      : usesLoopRoleThinking && cli !== "opencode"
         ? deps.getSelectedLoopThinkingMode(cli, role, roleModel, options.configId) ?? undefined
         : undefined;
     const resolvedThinkingMode = roleThinkingMode
-      ?? (!crossCli && options.applySubtaskCap && role === "subtask"
+      ?? (cli !== "opencode" && !crossCli && options.applySubtaskCap && role === "subtask"
         ? deps.getEffectiveThinkingMode(cli, roleModel ?? deps.getSelectedCliModel(cli))
         : undefined);
     if (!resolvedThinkingMode) {
@@ -107,6 +107,7 @@ export function createPromptRunModelsHost(deps: PromptRunModelsHostDeps) {
       ...(loopSubtaskModel ? { loopSubtaskModel } : {}),
       ...(!executingCrossCliSubtask && roles.fallback.main ? { loopMainModelFallback: roles.fallback.main } : {}),
       ...(!subtaskIsOtherCli && roles.fallback.subtask ? { loopSubtaskModelFallback: roles.fallback.subtask } : {}),
+      ...(input.taskRole === "subtask" ? { model: explicitSingle ?? loopSubtaskModel } : {}),
     };
   }
 

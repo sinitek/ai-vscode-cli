@@ -135,7 +135,7 @@ export function resolveCurrentLoopModelPair(input: {
   const frontendCrossCli = Boolean(storedFrontendCli && storedFrontendCli !== input.cli);
   const frontendConfigId = frontendCrossCli && storedFrontendCli
     ? input.getActiveConfigIdForCli?.(storedFrontendCli) ?? null
-    : null;
+    : configId;
   if (frontendCrossCli && !frontendConfigId) {
     return {
       main,
@@ -146,10 +146,11 @@ export function resolveCurrentLoopModelPair(input: {
     };
   }
   const frontendExplicit = input.getLoopRoleExplicitModel?.(frontendCrossCli ? frontendConfigId : configId, "frontend");
-  const frontendCliForLookup = storedFrontendCli;
+  const frontendCliForLookup = storedFrontendCli ?? input.cli;
+  const hasFrontendRoute = Boolean(input.getSelectedLoopFrontendCli || frontendExplicit?.configured);
   const frontend = frontendExplicit?.configured
     ? normalizeContinueModelName(frontendExplicit.model)
-    : frontendCrossCli && frontendCliForLookup
+    : hasFrontendRoute
       ? normalizeContinueModelName(input.getSelectedLoopCliModel?.(frontendCliForLookup, "subtask", frontendConfigId))
         ?? normalizeContinueModelName(input.getSelectedCliModel(frontendCliForLookup, frontendConfigId))
       : null;
@@ -168,24 +169,29 @@ export function resolveCurrentLoopModelPair(input: {
     };
   }
   const fullstackExplicit = input.getLoopRoleExplicitModel?.(fullstackConfigId, "fullstack");
-  const fullstack = fullstackExplicit?.configured ? normalizeContinueModelName(fullstackExplicit.model) : null;
+  const fullstackCliForLookup = storedFullstackCli ?? input.cli;
+  const hasFullstackRoute = Boolean(input.getSelectedLoopFullstackCli || fullstackExplicit?.configured);
+  const fullstack = fullstackExplicit?.configured
+    ? normalizeContinueModelName(fullstackExplicit.model)
+    : hasFullstackRoute
+      ? normalizeContinueModelName(input.getSelectedLoopCliModel?.(fullstackCliForLookup, "subtask", fullstackConfigId))
+        ?? normalizeContinueModelName(input.getSelectedCliModel(fullstackCliForLookup, fullstackConfigId))
+      : null;
   const loopSubtaskMode = input.getSelectedLoopSubtaskMode?.(configId) ?? "fullstack";
   return {
     main,
     subtask,
     ...(crossCli ? { subtaskCli, ...(subtaskConfigId ? { subtaskConfigId } : {}) } : {}),
-    ...(frontendCrossCli
+    ...(hasFrontendRoute
       ? {
-        frontendCli: storedFrontendCli,
+        frontendCli: frontendCliForLookup,
         ...(frontendConfigId ? { frontendConfigId } : {}),
         ...(frontend ? { frontend } : {}),
       }
-      : frontendExplicit?.configured
-        ? { ...(frontend ? { frontend } : {}) }
-        : {}),
-    ...((storedFullstackCli || fullstackExplicit?.configured)
+      : {}),
+    ...(hasFullstackRoute
       ? {
-        ...(fullstackCrossCli && storedFullstackCli ? { fullstackCli: storedFullstackCli } : {}),
+        fullstackCli: fullstackCliForLookup,
         ...(fullstackConfigId ? { fullstackConfigId } : {}),
         ...(fullstack ? { fullstack } : {}),
       }

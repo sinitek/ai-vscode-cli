@@ -9,7 +9,7 @@ import type { LoopTaskRecord } from "../../../loopTaskStore";
 import type { TaskRunRecord, TaskRunStatus } from "../../../promptRunState";
 import type { LoopPlusPromptTarget } from "../../../extensionHost/loopPlusOrchestration";
 import type { LoopPlusSchedulerSnapshot } from "../../../loopPlusScheduler";
-import type { LoopPlusRuntimeAdapter } from "../../../extensionHost/loopPlusRuntimeAdapter";
+import type { LoopPlusRuntimeAdapter, LoopPlusRuntimeAdapterDeps } from "../../../extensionHost/loopPlusRuntimeAdapter";
 
 type PublishOptions = {
   status?: TaskRunStatus | null;
@@ -84,8 +84,10 @@ export async function waitForLoopPlus(predicate: () => boolean, label: string): 
 }
 
 export function createLoopPlusRuntimeFixture(options: {
+  cli?: LoopPlusPromptTarget["cli"];
   maxConcurrency?: number;
   configId?: string | null;
+  resolveThinkingMode?: LoopPlusRuntimeAdapterDeps["resolveThinkingMode"];
   executionRootFactory?: () => { cwd: string; dispose: () => void };
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
@@ -93,7 +95,7 @@ export function createLoopPlusRuntimeFixture(options: {
   const { readLoopTaskStore, writeLoopTaskStore } = require("../../../loopTaskStore") as typeof import("../../../loopTaskStore");
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "loop-plus-runtime-"));
   const storeFile = path.join(rootDir, "loop-tasks.json");
-  const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
+  const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: options.cli ?? "codex", sessionId: "session" };
   const messages = new Map<string, ChatMessage[]>();
   const runs: TaskRunRecord[] = [];
   const refreshes: LoopPlusRuntimeFixture["refreshes"] = [];
@@ -357,7 +359,7 @@ export function createLoopPlusRuntimeFixture(options: {
     },
     getMessages: (promptTarget) => bucket(promptTarget.tabId),
     readRuns: () => runs,
-    resolveThinkingMode: () => "low",
+    resolveThinkingMode: options.resolveThinkingMode ?? (() => "low"),
     createExecutionRoot: () => {
       if (rootFailure) {
         throw new Error(rootFailure);

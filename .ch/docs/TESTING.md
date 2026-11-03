@@ -14,6 +14,7 @@
 - 静态空白校验：`npm run validate:whitespace`，也可在必要时用脚本参数限制到本次改动范围。
 - Python 开发、导出与发布脚本：`python3 -m unittest discover -s scripts/tests -p 'test_*.py'`（Windows 可用 `python`），覆盖依赖布局、失败中止、macOS 路径选择、Windows `.cmd` 参数传递、发布鉴权与 VSIX ZIP 审计。
 - 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态的问题，单元测试之外还要补充最小本机真实验证，并记录命令、关键输出和结论。
+- Loop+ 双模型真实门禁：`npm run build && node scripts/verify_loop_model_routing.js --live`。该命令使用真实 Codex runner 调用 `gpt-6.1-sol` / high 与 `gpt-6.1-terra` / low，会产生模型费用，使用系统临时工作区和隔离任务存储；只有完整派发、子任务执行、验收收口、session 参数及产物都通过才成功。429 等上游错误必须保持失败，不能用参数正确替代完整真实验收；此脚本不发布扩展。
 
 ## 什么情况下默认要补单元测试
 

@@ -1,5 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { loopModelRoutingFromPromptInput } from "../../continueModelChoice";
+import { resolveLoopPlusRoleExecution } from "../../subtaskCliRoute";
 
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
@@ -36,6 +38,86 @@ function extractFunctionSource(source: string, functionName: string): string {
   }
   throw new Error(`Unterminated ${functionName}`);
 }
+
+for (const role of ["frontend", "fullstack"]) {
+  test(`Loop+ ${role} binds thinking controls for every main CLI layout`, () => {
+    const changes: unknown[] = [];
+    const controls = Array.from({ length: 3 }, () => ({
+      listener: null as null | ((event: unknown) => void),
+      addEventListener(_name: string, listener: (event: unknown) => void) { this.listener = listener; },
+    }));
+    const bind = new Function("handleLoopRoleThinkingChange", extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "bindLoopRoleThinkingControls") + "\nreturn bindLoopRoleThinkingControls;")((...args: unknown[]) => changes.push(args));
+    bind(role, [...controls, null]);
+    for (const control of controls) control.listener!({ target: { value: "low" } });
+    assert.deepEqual(changes, Array.from({ length: 3 }, () => [role, "low"]));
+    const label = role === "frontend" ? "Frontend" : "Fullstack";
+    assert.ok(VIEW_CONTENT_SCRIPT_MODEL_MANAGER.includes(`bindLoopRoleThinkingControls("${role}", [elements.codexLoop${label}ThinkingMode, elements.openCode${label}ThinkingMode, elements.claudeLoop${label}ThinkingMode])`));
+  });
+}
+
+test("DSH role controls retain the advertised medium thinking level", () => {
+  const normalize = new Function(extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "normalizeSubtaskThinkingValue") + "\nreturn normalizeSubtaskThinkingValue;")();
+  assert.equal(normalize("dsh", "medium"), "medium");
+  assert.equal(normalize("dsh", "off"), "");
+});
+
+for (const role of ["fullstack", "frontend"]) {
+  for (const crossCli of [false, true]) {
+    for (const explicitModel of [null, "named-model", ""]) {
+      test(`Loop+ ${role} snapshots the displayed model with crossCli=${crossCli} and explicit=${JSON.stringify(explicitModel)}`, () => {
+        const configId = crossCli ? "child-config" : "main-config";
+        const state = {
+          loopRoleExplicitModelByConfigId: explicitModel === null ? {} : { [configId]: { [role]: explicitModel } },
+        };
+        const apply = new Function(
+          "state", "getLoopSubtaskMode", "getLoopNamedRoute", "readLoopSubtaskModelSelection",
+          [
+            extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "readExplicitRoleModel"),
+            extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "finishLoopPlusPromptPayload"),
+            "return finishLoopPlusPromptPayload;",
+          ].join("\n"),
+        )(
+          state,
+          () => "fullstack",
+          (requestedRole: string) => requestedRole === role ? {
+            mainConfigId: "main-config", subtaskConfigId: configId,
+            subtaskCli: crossCli ? "dsh" : "codex", crossCli,
+          } : null,
+          () => "gpt-6.1-terra",
+        );
+        const payload = { model: "gpt-6.1-sol", loopMainModel: "gpt-6.1-sol" };
+        const result = apply(payload, "loop_plus");
+        const prefix = role === "fullstack" ? "loopSubtaskFullstack" : "loopSubtaskFrontend";
+        assert.equal(result[prefix + "Model"], (explicitModel ?? "gpt-6.1-terra") || undefined);
+        assert.equal(result[prefix + "ConfigId"], configId);
+        assert.equal(result[prefix + "Cli"], crossCli ? "dsh" : "codex");
+        assert.equal(result.model, "gpt-6.1-sol");
+        const routing = loopModelRoutingFromPromptInput(result, { mainCli: "codex" });
+        const execution = resolveLoopPlusRoleExecution({
+          mainCli: "codex",
+          taskType: role === "frontend" ? "frontend" : "backend",
+          loopSubtaskMode: role === "fullstack" ? "fullstack" : "split",
+          fullstackRoute: routing?.subtaskFullstack,
+          frontendRoute: routing?.subtaskFrontend,
+          prompt: result,
+        });
+        assert.equal(execution.unavailableReason, undefined);
+        assert.equal(execution.model, (explicitModel ?? "gpt-6.1-terra") || undefined);
+        assert.equal(apply(payload, "loop"), payload);
+      });
+    }
+  }
+}
+
+test("Loop+ skips unavailable named routes instead of borrowing the main model", () => {
+  const apply = new Function(
+    "getLoopSubtaskMode", "getLoopNamedRoute",
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "finishLoopPlusPromptPayload")
+      + "\nreturn finishLoopPlusPromptPayload;",
+  )(() => "fullstack", () => ({ subtaskCli: "codex", unavailableReason: "配置不可用" }));
+  assert.deepEqual(apply({ model: "gpt-6.1-sol" }, "loop_plus"), { model: "gpt-6.1-sol", loopSubtaskMode: "fullstack" });
+  assert.equal(apply(null, "loop_plus"), null);
+});
 
 function createRoleVisibilityHarness(cli: string) {
   const state = {

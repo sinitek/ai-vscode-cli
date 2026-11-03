@@ -317,6 +317,7 @@ export async function runOpenCodePromptTemplate(
   const runtimePreparation = await ports.prepareOpenCodeRuntime({
     role: input.taskRole === "subtask" ? "subtask" : "main",
     model: input.model ?? null,
+    variant: input.thinkingModeOverride ?? (input.taskRole === "subtask" ? input.loopSubtaskThinkingMode : input.loopMainThinkingMode),
     requiresSubtaskModel: Boolean(input.loopTaskId),
   });
   const runtimeModel = runtimePreparation.effectiveModel;

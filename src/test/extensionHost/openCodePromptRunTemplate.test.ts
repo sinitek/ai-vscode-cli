@@ -459,6 +459,23 @@ test("records the effective OpenCode model and preserves each prompt snapshot", 
   assert.deepEqual(messages.map((message) => message.executionProfile?.model), ["effective-model", "next-model"]);
 });
 
+for (const taskRole of ["main", "subtask"] as const) {
+  test(`OpenCode ${taskRole} forwards bound role thinking to the actual variant preparation`, async () => {
+    let captured: unknown;
+    const ports = createRecordingPorts([], {
+      prepareOpenCodeRuntime: async (input) => {
+        captured = input;
+        return createRuntimePreparation();
+      },
+    });
+    await runOpenCodePromptTemplate(createInput({
+      taskRole, loopTaskId: "task", model: "provider/bound-model", thinkingModeOverride: taskRole === "main" ? "high" : "low",
+      loopMainThinkingMode: "xhigh", loopSubtaskThinkingMode: "medium",
+    }), createTarget(), {}, ports);
+    assert.deepEqual(captured, { role: taskRole, model: "provider/bound-model", variant: taskRole === "main" ? "high" : "low", requiresSubtaskModel: true });
+  });
+}
+
 test("fills the execution model on a preloaded OpenCode prompt without duplicating it", async () => {
   const message: import("../../webview/types").ChatMessage = {
     id: "preloaded", role: "user", content: "ship the template", createdAt: 123,

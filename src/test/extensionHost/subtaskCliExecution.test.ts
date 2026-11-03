@@ -4,7 +4,7 @@ import fs = require("fs");
 import os = require("os");
 import path = require("path");
 
-import type { CliName } from "../../cli/types";
+import { CLI_LIST, type CliName } from "../../cli/types";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { installVscodeMock } from "../vscodeMock";
@@ -92,18 +92,20 @@ test("classic Loop trusts reports, delegates only required verification and keep
   }
 });
 
-for (const sameCli of [false, true]) {
+for (const subtaskCli of CLI_LIST) {
+for (const mainCli of [subtaskCli, subtaskCli === "codex" ? "grok" : "codex"] as const) {
+  const sameCli = subtaskCli === mainCli;
 for (const reuseSession of [false, true]) {
-  const subtaskCli = sameCli ? "codex" : "claude";
-test(`classic Loop ${reuseSession ? "restores a continuous task session" : "creates a fresh task session"} on ${subtaskCli}`, async () => {
+test(`classic Loop ${reuseSession ? "restores a continuous task session" : "creates a fresh task session"} from ${mainCli} on ${subtaskCli}`, async () => {
   const created: PromptRunTarget[] = [];
   const systemMessages: Array<{ tabId: string; content: string }> = [];
   const prompts: Array<{ input: PromptRunInput; targetTabId?: string }> = [];
-  const parent: PromptRunTarget = { tabId: "main-tab", cli: "codex", sessionId: "main-session" };
+  const parent: PromptRunTarget = { tabId: "main-tab", cli: mainCli, sessionId: "main-session" };
   const task = loopTask({
+    cli: mainCli,
     modelRouting: {
       main: { model: "gpt-main" },
-      subtask: { cli: subtaskCli, ...(sameCli ? {} : { configId: "claude-config" }) },
+      subtask: { cli: subtaskCli, model: "gpt-6.1-terra", ...(sameCli ? {} : { configId: "claude-config" }) },
     },
     originProfile: { configId: "codex-config", subtaskThinkingMode: "high" },
     subTasks: reuseSession ? [{ id: "previous", title: "此前任务", status: "completed", executionSession: { cli: subtaskCli, configId: "claude-config", sessionId: "claude-previous" } }] : [],
@@ -155,7 +157,7 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   } as never);
 
   const status = await host.runLoopSubtasksBatchWithRetry({
-    input: { displayPrompt: "ship it", modelPrompt: "ship it", contextTags: [] },
+    input: { displayPrompt: "ship it", modelPrompt: "ship it", contextTags: [], model: "gpt-6.1-sol", loopSubtaskModel: "stale-subtask-model", loopSubtaskThinkingMode: "low" },
     target: parent,
     task,
     round: 1,
@@ -163,17 +165,19 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   });
 
   assert.equal(status[0]?.status, "end");
-  assert.equal(parent.cli, "codex");
+  assert.equal(parent.cli, mainCli);
   assert.equal(parent.sessionId, "main-session");
   assert.equal(created.length, 1);
   assert.equal(created[0]?.cli, subtaskCli);
   assert.equal(created[0]?.sessionId, reuseSession ? "claude-previous" : null);
   assert.equal(created[0]?.tabId, `sub-${subtaskCli}`);
   assert.notEqual(prompts[0]?.targetTabId, parent.tabId);
-  assert.equal(prompts[0]?.input.loopSubtaskCli, sameCli ? undefined : "claude");
+  assert.equal(prompts[0]?.input.loopSubtaskCli, sameCli ? undefined : subtaskCli);
   assert.equal(prompts[0]?.input.loopSubtaskConfigId, "claude-config");
-  assert.equal(prompts[0]?.input.loopSubtaskModel, undefined);
-  assert.equal(prompts[0]?.input.loopSubtaskThinkingMode, sameCli ? undefined : "high");
+  assert.equal(prompts[0]?.input.loopSubtaskModel, "gpt-6.1-terra");
+  assert.equal(prompts[0]?.input.model, "gpt-6.1-terra");
+  assert.equal(prompts[0]?.input.loopSubtaskThinkingMode, "high");
+  assert.equal(prompts[0]?.input.thinkingModeOverride, "high");
   assert.equal(prompts[0]?.input.taskRole, "subtask");
   assert.equal(prompts[0]?.input.loopSubtaskId, "sub-1");
   assert.match(prompts[0]?.input.modelPrompt ?? "", /遵循用户要求和项目既有规则，自主选择完成任务的方法/u);
@@ -185,6 +189,7 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   assert.equal(systemMessages.some((message) => message.tabId === created[0]?.tabId), false);
 });
 
+}
 }
 }
 

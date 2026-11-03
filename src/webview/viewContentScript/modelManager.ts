@@ -1190,7 +1190,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       function normalizeSubtaskThinkingValue(cli, rawValue) {
         const normalized = typeof rawValue === "string" ? rawValue.trim() : "";
         if (cli === "dsh") {
-          return ["low", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
+          return ["low", "medium", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
         }
         if (cli === "kimi-code") {
           return ["low", "medium", "high", "xhigh", "max"].includes(normalized) ? normalized : "";
@@ -1452,16 +1452,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           handleLoopRoleModelChange("fullstack", event.target.value);
         });
       }
-      if (elements.codexLoopFrontendThinkingMode) {
-        elements.codexLoopFrontendThinkingMode.addEventListener("change", (event) => {
-          handleLoopRoleThinkingChange("frontend", event.target.value);
+      function bindLoopRoleThinkingControls(role, controls) {
+        controls.forEach((selectElement) => {
+          if (selectElement) {
+            selectElement.addEventListener("change", (event) => {
+              handleLoopRoleThinkingChange(role, event.target.value);
+            });
+          }
         });
       }
-      if (elements.codexLoopFullstackThinkingMode) {
-        elements.codexLoopFullstackThinkingMode.addEventListener("change", (event) => {
-          handleLoopRoleThinkingChange("fullstack", event.target.value);
-        });
-      }
+      bindLoopRoleThinkingControls("frontend", [elements.codexLoopFrontendThinkingMode, elements.openCodeFrontendThinkingMode, elements.claudeLoopFrontendThinkingMode]);
+      bindLoopRoleThinkingControls("fullstack", [elements.codexLoopFullstackThinkingMode, elements.openCodeFullstackThinkingMode, elements.claudeLoopFullstackThinkingMode]);
       [
         elements.codexLoopFullstackCliSelect,
         elements.openCodeLoopFullstackCliSelect,

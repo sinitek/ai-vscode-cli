@@ -537,6 +537,25 @@ test("routes Codex Loop with explicit main and subtask model payload fields", as
   });
 });
 
+for (const cli of ["codex", "grok", "dsh", "kimi-code", "zcode"] as const) {
+  for (const interactiveMode of ["loop", "loop_plus"] as const) {
+    test(`${cli} ${interactiveMode} retains separate role model and thinking snapshots`, async () => {
+      const { deps, calls } = createSendPromptHarness(cli);
+      await handlePanelMessageWithDeps({
+        type: "sendPrompt", prompt: "验证角色参数", interactiveMode, cli,
+        tabId: "tab-opencode-smoke", model: "main-model", loopMainModel: "main-model", loopSubtaskModel: "child-model",
+        loopMainThinkingMode: "high", loopSubtaskThinkingMode: "low",
+      } as PanelMessage, deps);
+      assert.equal(calls.runLoopPrompt.length, 1);
+      const input = calls.runLoopPrompt[0].input;
+      assert.equal(input.loopMainModel, "main-model");
+      assert.equal(input.loopSubtaskModel, "child-model");
+      assert.equal(input.loopMainThinkingMode, "high");
+      assert.equal(input.loopSubtaskThinkingMode, "low");
+    });
+  }
+}
+
 test("falls back Codex Loop role models to the legacy generic model payload", async () => {
   const { deps, calls } = createSendPromptHarness("codex");
 

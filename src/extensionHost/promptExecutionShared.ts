@@ -41,6 +41,7 @@ export type OpenCodeRuntimePreparationInput = {
   configId?: string | null;
   role?: OpenCodeModelRoleInput;
   model?: string | null;
+  variant?: string | null;
   requiresSubtaskModel?: boolean;
 };
 

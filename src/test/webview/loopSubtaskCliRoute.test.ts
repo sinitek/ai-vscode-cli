@@ -49,7 +49,7 @@ function extractFunctionSource(source: string, functionName: string): string {
 function createRouteApi(state: Record<string, any>) {
   const posted: Array<Record<string, unknown>> = [];
   const source = [
-    "const CLI_NAMES = ['codex', 'claude', 'opencode', 'grok'];",
+    "const CLI_NAMES = ['codex', 'claude', 'opencode', 'grok', 'dsh', 'kimi-code', 'zcode'];",
     ...[
       "normalizeModelSelection",
       "normalizeThinkingModeSelection",
@@ -131,6 +131,25 @@ function baseState() {
       configSubtaskRef: "oc-live",
     },
   };
+}
+
+for (const cli of ["codex", "grok", "dsh", "kimi-code", "zcode"]) {
+  for (const mode of ["loop", "loop_plus"]) {
+    test(`${cli} ${mode} snapshots distinct main/subtask models and thinking`, () => {
+      const state = baseState();
+      state.currentCli = cli;
+      state.activeConfigIdByCli[cli] = "profile";
+      Object.assign(state.selectedLoopModelsByCli, { [cli]: { main: "main-model", subtask: "child-model" } });
+      Object.assign(state.loopModelsByCli, { [cli]: { main: ["main-model"], subtask: ["child-model"] } });
+      Object.assign(state.selectedLoopThinkingByCli, { [cli]: { main: "high", subtask: "low" } });
+      const { api } = createRouteApi(state);
+      const payload = api.applyCodexLoopRoleModelsToPromptPayload({ model: "main-model" }, cli, mode, null);
+      assert.equal(payload.loopMainModel, "main-model");
+      assert.equal(payload.loopSubtaskModel, "child-model");
+      assert.equal(payload.loopMainThinkingMode, "high");
+      assert.equal(payload.loopSubtaskThinkingMode, "low");
+    });
+  }
 }
 
 test("subtask CLI choices stay on the main config and do not rewrite main or target main roles", () => {

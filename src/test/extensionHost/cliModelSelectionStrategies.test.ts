@@ -345,6 +345,14 @@ test("ZCode preserves native reasoning levels without generic max downgrades", (
   assert.equal(host.normalizeThinkingModeForCli("zcode", "off"), "off");
 });
 
+test("Loop reasoning normalization preserves DSH medium and native OpenCode variants", () => {
+  const { host } = createHost({ store: ensureCliModelStore(), currentCli: "dsh" });
+  assert.equal(host.normalizeThinkingModeForCli("dsh", "medium"), "medium");
+  for (const mode of ["low", "medium", "high", "xhigh", "max", "ultra"] as const) {
+    assert.equal(host.normalizeThinkingModeForCli("opencode", mode), mode);
+  }
+});
+
 test("host delegates four CLIs, persists through the host, and isolates Grok profiles", (context) => {
   let writes = 0;
   context.mock.method(modelSelectionStore, "writeModelStore", () => {

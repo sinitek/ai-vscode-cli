@@ -9,6 +9,18 @@
 - 归档条目仍需保留首次发现时间、适用版本、修复方式和关联资料，便于审计和追溯。
 - 当历史归档数量较多或单文件超过约 500 行时，再按主题拆分历史文件并从本页建立索引。
 
+## Loop / Loop+ 同 CLI 子模型被主模型替代
+
+- 发现时间：2026-11-03。
+- 适用版本：经典 Loop 只在跨 CLI 分支注入绑定模型、Loop+ 命名角色快照只取独立设置的版本。
+- 现象：主、子模型 CLI 相同但下拉选择不同模型，子任务仍启动主模型；同 CLI 前端子路由还可能被判定为不可用。
+- 根因：经典 Loop 把模型、思考力度绑定误放在 `crossCli` 条件内；Loop+ 下拉在没有独立设置时显示已有子模型，但发送没有相同回退，且省略同 CLI 的命名角色身份。
+- 修正：模型和思考力度绑定不依赖跨 CLI；新建及改用当前配置继续时，命名角色携带完整 CLI/config/model，模型回退与下拉一致，区分未设置与显式 CLI 默认。历史快照不自动改写；受影响旧任务继续时选择“使用新配置的主子模型”重新绑定。
+- 验证：`npm run build`；`subtaskCliExecution.test.ts`、`loopPlusFullstackMode.test.ts`；真实 Chromium 对 Webview 的经典 Loop、全栈继承、全栈独立选择、拆分前端进行提交，并核对宿主路由与 Codex thread/turn 参数。
+- 事实来源：`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`。不修改历史任务、用户本地配置或模型目录。
+
+同次全 CLI 核查补充：角色快照入口不能只列 Codex，ZCode 在宿主模型/思考能力判断中不能遗漏；OpenCode 启动前水合曾把子任务的 `model` 覆盖成 `loopMainModel`，必须在水合后保留实际绑定模型。命名角色思考档须传到 OpenCode 实际 variant 而非仅 UI 或展示快照，未指定时不以主模型档位覆盖原角色 variant；归一化保留 OpenCode 原生高档及 DSH medium。所有主 CLI 布局的全栈/前端思考控件都要绑定修改事件。`loopModelRouting.test.ts` 覆盖七种 CLI、同/跨 CLI、全栈/拆分；真实 CLI 验收必须有完整调度与产物证据，429 失败及仅 session 参数正确不能冒充成功，也不能越过发布门禁。
+
 ## Loop+ 手动中断被送入验收队列
 
 - 发现时间：2026-10-20

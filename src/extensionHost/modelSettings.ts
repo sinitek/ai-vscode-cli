@@ -499,10 +499,10 @@ function isLoopTaskBlockedByMainAiFailureLimit(task: Pick<LoopTaskRecord, "mainA
 }
 
 function normalizeThinkingModeForCli(cli: CliName, mode: ThinkingMode): ThinkingMode {
-  if (cli === "dsh" && (mode === "off" || mode === "medium")) {
+  if (cli === "dsh" && mode === "off") {
     return "high";
   }
-  if (cli === "grok" || cli === "dsh" || cli === "zcode") {
+  if (cli === "grok" || cli === "dsh" || cli === "zcode" || cli === "opencode") {
     return mode;
   }
   if (cli === "kimi-code") {

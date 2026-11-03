@@ -873,7 +873,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
       }
 
       function shouldIncludeCodexLoopRoleModels(targetCli, targetInteractiveMode, targetTab) {
-        if (targetCli !== "codex") {
+        if (targetCli !== "codex" && targetCli !== "grok" && targetCli !== "dsh" && targetCli !== "kimi-code" && targetCli !== "zcode") {
           return false;
         }
         if (
@@ -920,17 +920,18 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             return;
           }
           const prefix = role === "fullstack" ? "loopSubtaskFullstack" : "loopSubtaskFrontend";
-          if (route.crossCli) {
-            next[prefix + "Cli"] = route.subtaskCli;
-          }
+          next[prefix + "Cli"] = route.subtaskCli;
           if (route.subtaskConfigId) {
             next[prefix + "ConfigId"] = route.subtaskConfigId;
           }
           const explicit = typeof readExplicitRoleModel === "function"
             ? readExplicitRoleModel(route.subtaskConfigId || route.mainConfigId, role)
             : null;
-          if (explicit) {
-            next[prefix + "Model"] = explicit;
+          const model = explicit ?? (typeof readLoopSubtaskModelSelection === "function"
+            ? readLoopSubtaskModelSelection(route)
+            : "");
+          if (model) {
+            next[prefix + "Model"] = model;
           }
           const thinkingMap = role === "fullstack" ? state.selectedLoopFullstackThinkingByConfigId : state.selectedLoopFrontendThinkingByConfigId;
           const configId = route.subtaskConfigId || route.mainConfigId;

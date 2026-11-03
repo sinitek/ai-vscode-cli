@@ -348,7 +348,7 @@ function supportsMainSubtaskPromptModels(
   targetCli: ReturnType<PanelMessageHandlerDeps["getCurrentCli"]>,
 ): boolean {
   return targetCli === "codex" || targetCli === "opencode" || targetCli === "grok" || targetCli === "dsh"
-    || targetCli === "kimi-code";
+    || targetCli === "kimi-code" || targetCli === "zcode";
 }
 
 function resolvePromptRoleModels(
@@ -497,7 +497,8 @@ function resolvePromptRoleThinkingModes(
     || thinkingSubtaskCli === "grok"
     || thinkingSubtaskCli === "claude"
     || thinkingSubtaskCli === "dsh"
-    || thinkingSubtaskCli === "kimi-code";
+    || thinkingSubtaskCli === "kimi-code"
+    || thinkingSubtaskCli === "zcode";
   if ((!supportsMainSubtaskPromptModels(targetCli) && !includeSubtaskThinking) || !options.includeLoopModels) {
     return {};
   }
@@ -505,7 +506,7 @@ function resolvePromptRoleThinkingModes(
   const subtaskModel = promptModels.loopSubtaskCli
     ? promptModels.loopSubtaskModel
     : promptModels.loopSubtaskModel ?? promptModels.model ?? mainModel;
-  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok" || targetCli === "dsh" || targetCli === "kimi-code")
+  const loopMainThinkingMode = (targetCli === "codex" || targetCli === "grok" || targetCli === "dsh" || targetCli === "kimi-code" || targetCli === "zcode")
     ? normalizePromptThinkingMode(message.loopMainThinkingMode, targetCli, deps)
       ?? deps.getSelectedLoopThinkingMode?.(targetCli, "main", mainModel, configId)
       ?? undefined
@@ -518,7 +519,7 @@ function resolvePromptRoleThinkingModes(
     : undefined;
   const frontendCli = promptModels.loopSubtaskFrontendCli;
   const frontendThinking = frontendCli
-    && (frontendCli === "codex" || frontendCli === "grok" || frontendCli === "claude" || frontendCli === "dsh" || frontendCli === "kimi-code")
+    && (frontendCli === "codex" || frontendCli === "grok" || frontendCli === "claude" || frontendCli === "dsh" || frontendCli === "kimi-code" || frontendCli === "zcode")
     ? normalizePromptThinkingMode(message.loopSubtaskFrontendThinkingMode, frontendCli, deps)
       ?? deps.getSelectedLoopThinkingMode?.(frontendCli, "subtask", promptModels.loopSubtaskFrontendModel, promptModels.loopSubtaskFrontendConfigId ?? null)
       ?? undefined

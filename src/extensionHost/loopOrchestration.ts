@@ -896,9 +896,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         ...input,
         ...(options.crossCli ? {
           loopSubtaskCli: options.executionCli,
-          loopSubtaskModel: options.boundSubtaskModel,
-          ...(options.boundThinkingMode ? { loopSubtaskThinkingMode: options.boundThinkingMode } : {}),
         } : {}),
+        loopSubtaskModel: options.boundSubtaskModel,
+        ...(options.boundThinkingMode ? { loopSubtaskThinkingMode: options.boundThinkingMode } : {}),
         ...(options.executionConfigId ? { loopSubtaskConfigId: options.executionConfigId } : {}),
       }
       : input;

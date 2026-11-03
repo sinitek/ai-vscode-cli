@@ -2,6 +2,10 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+Loop / Loop+ 的参数隔离覆盖七种 CLI，不只修复 Codex：支持模型选择的 CLI 保存各自角色模型和思考快照；Claude 仍按能力使用默认模型。OpenCode 启动前水合不覆盖已绑定子模型，角色思考力度进入实际 variant，未指定时沿用原角色 variant；xhigh/max/ultra 不被通用归一化降档。DSH 的 medium 与 ZCode 原生档位正确保留。OpenCode、Claude 布局的全栈/前端思考下拉及 OpenCode 全栈模型下拉均响应修改并随任务发送。既有子任务思考上限不变。实现见 `src/extensionHost/promptRunModels.ts`、`src/sessionMessageActions.ts`、`src/extensionHost/modelSettings.ts`、`src/extensionHost/openCodePromptRunTemplate.ts`；回归见 `src/test/extensionHost/loopModelRouting.test.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts`。真实双模型门禁命令为 `npm run build && node scripts/verify_loop_model_routing.js --live`，该命令调用真实模型并产生费用；只有完整任务完成且 session 参数与产物均验证通过才报告成功。
+
+Loop / Loop+ 主、子模型属于同一个 CLI 时仍独立执行各自绑定的模型。经典 Loop 新建和续接子会话均应用已解析的子模型及思考力度；Loop+ 全栈、前端提交完整 CLI/config/model 快照，与下拉显示一致。命名角色尚未独立选择模型时使用下拉显示的已有子模型，显式选择 CLI 默认则不补该子模型；继续时选择“使用新配置的主子模型”遵循相同解析规则。跨 CLI 路由和配置缺失拒绝策略不变。实现见 `src/extensionHost/loopOrchestration.ts`、`src/webview/viewContentScript/taskListAndUi.ts`、`src/continueModelChoice.ts`；回归见 `src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`、`src/test/loop/continueModelChoice.test.ts`。
+
 Loop / Loop+ 连续子任务会话复用：主模型用 `continueFromSubtaskId` 选择来源；Loop+ 验收失败的关联修补项自动继承原子任务，控制重派复用原线程。关闭 Tab 后仍可按持久化 CLI/config/session 绑定恢复，同一来源或会话串行执行；独立任务新会话，缺失或不兼容绑定记录原因后新建。经典汇报驱动和 Loop+ 验收规则不变。实现见 `src/loopSubtaskSession.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归见 `src/test/loop/loopSubtaskSession.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`；规则见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
 
 作为 starter，这里默认从空表开始；当首个真实能力进入规划或实现时，再新增条目。
