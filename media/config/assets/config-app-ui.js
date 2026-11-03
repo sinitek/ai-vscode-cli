@@ -6368,6 +6368,38 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
       setSubmitting(!1);
     }
   };
+  const renderField = ([key, label, placeholder]) => be.jsxs("label", {
+    className: "config-visual-field",
+    style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+    children: [
+      be.jsx("span", { children: `${label}（必填）` }),
+      be.jsx(zi, {
+        ref: key === "base_url" ? baseUrlInputRef : void 0,
+        type: key === "api_key" ? "password" : "text",
+        value: values[key],
+        placeholder,
+        required: !0,
+        disabled: submitting,
+        autoComplete: "off",
+        spellCheck: !1,
+        "aria-label": label,
+        "aria-invalid": Boolean(errors[key]),
+        "aria-describedby": errors[key] ? `cli-example-${key}-error` : void 0,
+        status: errors[key] ? "error" : void 0,
+        onChange: (event) => {
+          setValues({ ...values, [key]: event.target.value });
+          setErrors({ ...errors, [key]: "", import: "" });
+        },
+        onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) submit(); },
+      }),
+      errors[key] ? be.jsx("div", {
+        id: `cli-example-${key}-error`,
+        role: "alert",
+        className: "grok-model-action-error",
+        children: errors[key],
+      }) : null,
+    ],
+  }, key);
   return be.jsx(xr, {
     title: platform ? `添加${configPlatformLabel(platform)}配置` : "填写范例导入配置",
     open: !0,
@@ -6398,43 +6430,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
             ? "填写以下必填信息，确认后按当前 CLI 范例生成并保存配置；也可跳过并编辑空白草稿，切换配置或关闭页面前请保存。"
             : "填写以下必填信息。导入会替换范例中的对应字段和全部模型引用，确认后仍需保存。",
         }),
-        ...[
-          ...(platform ? [["name", "配置名称", "请输入配置名称"]] : []),
-          ["base_url", "base_url", "例如 https://api.example.com/v1"],
-          ["api_key", "api_key", "请输入 API 密钥"],
-          ["model", "模型名称", "例如 got-6.1-sol"],
-        ].map(([key, label, placeholder]) => be.jsxs("label", {
-          className: "config-visual-field",
-          style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
-          children: [
-            be.jsx("span", { children: `${label}（必填）` }),
-            be.jsx(zi, {
-              ref: key === "base_url" ? baseUrlInputRef : void 0,
-              type: key === "api_key" ? "password" : "text",
-              value: values[key],
-              placeholder,
-              required: !0,
-              disabled: submitting,
-              autoComplete: "off",
-              spellCheck: !1,
-              "aria-label": label,
-              "aria-invalid": Boolean(errors[key]),
-              "aria-describedby": errors[key] ? `cli-example-${key}-error` : void 0,
-              status: errors[key] ? "error" : void 0,
-              onChange: (event) => {
-                setValues({ ...values, [key]: event.target.value });
-                setErrors({ ...errors, [key]: "", import: "" });
-              },
-              onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) submit(); },
-            }),
-            errors[key] ? be.jsx("div", {
-              id: `cli-example-${key}-error`,
-              role: "alert",
-              className: "grok-model-action-error",
-              children: errors[key],
-            }) : null,
-          ],
-        }, key)),
+        platform ? renderField(["name", "配置名称", "请输入配置名称"]) : null,
         protocol ? be.jsxs("label", {
           className: "config-visual-field",
           style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
@@ -6472,6 +6468,11 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
             }) : null,
           ],
         }) : null,
+        ...[
+          ["base_url", "base_url", "例如 https://api.example.com/v1"],
+          ["api_key", "api_key", "请输入 API 密钥"],
+          ["model", "模型名称", "例如 got-6.1-sol"],
+        ].map(renderField),
         errors.import ? be.jsx("div", {
           role: "alert",
           className: "grok-model-action-error",

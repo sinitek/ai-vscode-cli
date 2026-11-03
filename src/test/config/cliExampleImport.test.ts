@@ -205,6 +205,23 @@ test("新增与范例抽屉弹窗均显示正确的协议默认值及候选，Cl
   assert.match(source, /CliExampleImportModal, \{\s*exampleKey: S,/);
 });
 
+test("协议类型位于配置名称之后，其余导入字段之前", () => {
+  for (const exampleKey of exampleKeys) {
+    const platform = exampleKey === "kimi-code-config" ? "kimi-code" : exampleKey.split("-")[0];
+    for (const props of [{ exampleKey }, { platform }]) {
+      const fields = nodes(loadModalHarness(props).render())
+        .map((node) => node.props["aria-label"])
+        .filter(Boolean);
+      const expected = [
+        ...("platform" in props ? ["配置名称"] : []),
+        ...(platform === "claude" ? [] : ["API 协议类型"]),
+        "base_url", "api_key", "模型名称",
+      ];
+      assert.deepEqual(fields, expected, JSON.stringify(props));
+    }
+  }
+});
+
 test("协议下拉空值校验、搜索自定义包、异步失败保留选择及保存中禁用", async () => {
   const harness = loadModalHarness({ platform: "opencode" });
   harness.fill();

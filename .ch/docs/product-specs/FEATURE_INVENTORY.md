@@ -245,6 +245,8 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 2026-11-03 新增配置弹窗在创建按钮右侧提供“跳过”，无需填写导入字段即可进入空白源码草稿；名称为空时自动生成。草稿仅保存在当前页面内，不自动激活或导出，切换配置或关闭页面前需填写有效配置并保存；保存失败保留草稿供重试。范例抽屉的一键导入不显示跳过。
 
+新增配置和范例导入弹窗中，支持的 API 协议类型位于配置名称之后、地址和密钥等字段之前；范例导入无名称字段时协议类型位于首位，Claude 不显示协议类型。
+
 2026-10-28 子任务跨 CLI 路由修复：Vibe 忽略并清理残留路由字段；Loop、Loop+ 与子任务续跑在目标 CLI 配置状态暂未同步时，宿主每隔 3 秒刷新并重查，最多 3 次，成功后再派发，耗尽则明确失败且不回退主 CLI。回归入口：`src/test/session/sessionMessageActions.test.ts`、`src/test/loop/subtaskCliRoute.test.ts`、`src/test/webview/loopSubtaskCliRoute.test.ts`。
 
 2026-10-26 DSH 配置档案导入修复：配置中心导入保留受支持的根级 `apiKey`，与 DSH 保存和 API 校验使用相同边界；非根级密钥字段仍拒绝导入。回归入口：`src/test/config/dshconfigpage.test.ts`。
