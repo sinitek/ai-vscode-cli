@@ -77,7 +77,11 @@ function createFakeChild(pid?: number): FakeChild {
   return child;
 }
 
-function attachTurnStatusAppServer(child: FakeChild, status: string): void {
+function attachTurnStatusAppServer(
+  child: FakeChild,
+  status: string,
+  notifications: ReadonlyArray<{ method: string; params?: unknown }> = [],
+): void {
   let input = "";
   const send = (message: Record<string, unknown>): void => {
     child.stdout.write(`${JSON.stringify(message)}\n`);
@@ -108,6 +112,9 @@ function attachTurnStatusAppServer(child: FakeChild, status: string): void {
       if (message.method === "turn/start") {
         send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
         queueMicrotask(() => {
+          for (const notification of notifications) {
+            send({ jsonrpc: "2.0", ...notification });
+          }
           send({
             jsonrpc: "2.0",
             method: "turn/completed",
@@ -928,6 +935,160 @@ test("Codex runner does not promote commentary agent messages on completed turns
       assert.deepEqual(assistant, [
         { chunk: "Hi! 我在这里，随时可以帮你处理这个工作区的任务。", final: undefined },
       ]);
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex notification routing preserves reasoning aliases, plan updates, and item events", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61230);
+  const primary = { threadId: "parent-thread", turnId: "parent-turn" };
+  attachTurnStatusAppServer(child, "completed", [
+    { method: "turn/started", params: { thread_id: "parent-thread", turn: { id: "parent-turn" } } },
+    { method: "item/reasoning/summaryTextDelta", params: { ...primary, itemId: "thinking", delta: "先分析" } },
+    { method: "item/reasoning/summaryPartAdded", params: { ...primary, itemId: "thinking" } },
+    { method: "item/reasoning/textDelta", params: { ...primary, itemId: "thinking", delta: "再验证" } },
+    {
+      method: "turn/plan/updated",
+      params: {
+        ...primary,
+        plan: [{ step: "检查路由", status: "completed" }, { step: "完成验证", status: "in_progress" }],
+      },
+    },
+    { method: "item/started", params: { ...primary, item: { id: "tool", type: "commandExecution", command: "echo ready" } } },
+    {
+      method: "item/completed",
+      params: { ...primary, item: { id: "tool", type: "commandExecution", command: "echo ready", aggregatedOutput: "ready", exitCode: 0 } },
+    },
+  ]);
+  const assistant: Array<{ chunk: string; kind?: string }> = [];
+  const taskLists: Array<Array<{ text: string; done: boolean }>> = [];
+  const traces: string[] = [];
+  const events: unknown[] = [];
+  crossSpawn.spawn = (): unknown => child;
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: "parent-thread",
+    });
+    try {
+      await runner.runStreamed("检查通知路由", {
+        ...createHandlers(events),
+        onAssistantDelta: (chunk, meta) => assistant.push({ chunk, kind: meta?.kind }),
+        onTaskListUpdate: (items) => taskLists.push(items),
+        onTrace: (content) => traces.push(content),
+      });
+      assert.deepEqual(assistant, [
+        { chunk: "先分析", kind: "thinking" },
+        { chunk: "\n", kind: "thinking" },
+        { chunk: "再验证", kind: "thinking" },
+      ]);
+      assert.deepEqual(taskLists, [[{ text: "检查路由", done: true }, { text: "完成验证", done: false }]]);
+      assert.ok(traces.some((content) => content.includes("ready")));
+      assert.deepEqual(events.map((event) => (event as { type?: string }).type).filter((type) => type !== "codex.lifecycle"), [
+        "turn.started", "turn.plan.updated", "item.started", "item.completed", "turn.completed",
+      ]);
+      assert.equal(runner.getThreadId(), "parent-thread");
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex notification routing ignores unknown methods and accepts missing params", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61231);
+  attachTurnStatusAppServer(child, "completed", [
+    { method: "" },
+    { method: "future/notification", params: null },
+    { method: "__proto__" },
+    { method: "constructor" },
+    { method: "toString" },
+    { method: "account/rateLimits/updated", params: { message: "不应作为错误处理" } },
+    { method: "account/updated" },
+    { method: "thread/started" },
+    { method: "item/reasoning/textDelta" },
+    { method: "item/agentMessage/delta" },
+    { method: "thread/tokenUsage/updated" },
+    { method: "turn/plan/updated" },
+    { method: "rawResponseItem/completed" },
+    { method: "error" },
+  ]);
+  const output: string[] = [];
+  let completed = 0;
+  crossSpawn.spawn = (): unknown => child;
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: "parent-thread",
+    });
+    try {
+      await runner.runStreamed("忽略无效通知", {
+        ...createHandlers(),
+        onAssistantDelta: (chunk) => output.push(chunk),
+        onTrace: (content) => output.push(content),
+        onTurnCompleted: () => { completed += 1; },
+      });
+      assert.deepEqual(output, []);
+      assert.equal(completed, 1);
+      assert.equal(runner.getThreadId(), "parent-thread");
+    } finally {
+      runner.dispose();
+    }
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("Codex notification routing keeps child failures isolated and fails the primary on rate limits", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const child = createFakeChild(61232);
+  attachTurnStatusAppServer(child, "completed", [
+    { method: "error", params: { threadId: "child-thread", error: { message: "子任务失败" } } },
+    { method: "error", params: { threadId: "parent-thread", message: "Reconnecting... 1/5" } },
+    {
+      method: "error",
+      params: { threadId: "parent-thread", error: { type: "rate_limit_error", message: "Concurrency limit exceeded" } },
+    },
+  ]);
+  const traces: string[] = [];
+  const subagents: Array<{ threadId: string; status: string; error?: string }> = [];
+  let completed = 0;
+  crossSpawn.spawn = (): unknown => child;
+  try {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath,
+      args: [],
+      thinkingMode: "medium",
+      interactiveMode: "coding",
+      threadId: "parent-thread",
+    });
+    try {
+      await assert.rejects(runner.runStreamed("检查错误路由", {
+        ...createHandlers(),
+        onTrace: (content) => traces.push(content),
+        onSubagentUpdate: (update) => subagents.push(update),
+        onTurnCompleted: () => { completed += 1; },
+      }), /Concurrency limit exceeded/u);
+      assert.deepEqual(subagents, [{ threadId: "child-thread", status: "failed", error: "子任务失败" }]);
+      assert.ok(traces.some((content) => content === "warning Reconnecting... 1/5"));
+      assert.ok(traces.some((content) => content.includes("Concurrency limit exceeded")));
+      assert.equal(completed, 0);
     } finally {
       runner.dispose();
     }
