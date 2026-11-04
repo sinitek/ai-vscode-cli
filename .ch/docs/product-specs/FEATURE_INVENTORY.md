@@ -2,6 +2,22 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## 人工交互系统提醒
+
+- Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，仅编辑器窗口在后台时发送标题为“携宁 CLI 提醒”的固定中文系统通知；同一交互只通知一次，前台等待后切到后台也能触发。通知不包含项目路径、问题、答案或密码，不抢焦点。
+- Windows 同时请求 VS Code 主进程窗口的任务栏闪烁；同主进程多窗口可能一起被提醒。macOS 在扩展 globalStorage 下生成并注册固定身份的“携宁 CLI 提醒”后台应用，通过 `UserNotifications` 发送系统通知；首次需要系统授权，被拒绝后须在“系统设置 → 通知 → 携宁 CLI 提醒”手动允许，不承诺 VS Code Dock 弹跳。Linux 使用已安装的 `notify-send`；X11 且已安装 `wmctrl` 时按主进程 PID 尽力请求窗口提醒，Wayland 不调用 X11 工具。
+- 返回窗口、最后一项交互提交/拒绝/取消/超时、扩展释放时停止图标提醒；若还有未查看的任务完成提醒，交互结束不会提前清除其图标提醒。并发交互不会被单个请求结束提前清除，慢速原生调用结束后补做清理。通知授权等待独立于窗口提醒队列，不延迟图标清理。已投递的系统通知可保留在通知中心，不承诺点击跳转。
+- VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications`、`sinitek-cli-tools.humanInteractionWindowAttention` 默认开启且可独立关闭。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
+- 实现：`src/humanInteractionAttention.ts`、`src/desktopAttention.ts`、`src/macosDesktopNotifications.ts`、`src/extensionHost/humanInteractionAttentionHost.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归：`src/test/core/humanInteractionAttention.test.ts`、`src/test/core/desktopAttention.test.ts`、`src/test/core/macosDesktopNotifications.test.ts`、`src/test/extensionHost/humanInteractionAttentionHost.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。通知排障见 `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`。
+
+## 主任务与 Vibe 完成系统提醒
+
+- 仅 Vibe 成功结束，或经典 Loop / Loop+ 主任务最终完成并持久化后，在编辑器后台时提醒。子任务完成、中间主模型轮次结束、上下文压缩、失败、用户停止、暂停和等待澄清都不触发完成提醒；既有人工交互提醒独立保留。
+- 复用“携宁 CLI 提醒”系统身份，固定正文为“任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，不含任务内容、路径或敏感信息。Windows 同时请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
+- 完成提醒与人工交互共享窗口状态，不互相清除；多个完成事件可聚合一条通知，最近 512 个事件 ID 去重。完成图标提醒持续到恢复焦点或关闭完成窗口提醒设置；恢复焦点后不重放，前台完成不在下次切后台补发。已投递通知仍可留在通知中心。
+- 新增应用级设置 `sinitek-cli-tools.taskCompletionNotifications` 与 `sinitek-cli-tools.taskCompletionWindowAttention`，默认开启，两者及原有人工交互设置互相独立；远程、本机、权限、工具缺失、不抢焦点和无新增声音的边界与人工交互提醒一致。
+- 实现：`src/taskCompletionAttention.ts`、`src/humanInteractionAttention.ts`、`src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/core/taskCompletionAttention.test.ts`、`src/test/extensionHost/taskCompletionAttentionHost.test.ts` 及既有桌面提醒用例。
+
 Loop / Loop+ 的参数隔离覆盖七种 CLI，不只修复 Codex：支持模型选择的 CLI 保存各自角色模型和思考快照；Claude 仍按能力使用默认模型。OpenCode 启动前水合不覆盖已绑定子模型，角色思考力度进入实际 variant，未指定时沿用原角色 variant；xhigh/max/ultra 不被通用归一化降档。DSH 的 medium 与 ZCode 原生档位正确保留。OpenCode、Claude 布局的全栈/前端思考下拉及 OpenCode 全栈模型下拉均响应修改并随任务发送。既有子任务思考上限不变。实现见 `src/extensionHost/promptRunModels.ts`、`src/sessionMessageActions.ts`、`src/extensionHost/modelSettings.ts`、`src/extensionHost/openCodePromptRunTemplate.ts`；回归见 `src/test/extensionHost/loopModelRouting.test.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts`。真实双模型门禁命令为 `npm run build && node scripts/verify_loop_model_routing.js --live`，该命令调用真实模型并产生费用；只有完整任务完成且 session 参数与产物均验证通过才报告成功。
 
 Loop / Loop+ 主、子模型属于同一个 CLI 时仍独立执行各自绑定的模型。经典 Loop 新建和续接子会话均应用已解析的子模型及思考力度；Loop+ 全栈、前端提交完整 CLI/config/model 快照，与下拉显示一致。命名角色尚未独立选择模型时使用下拉显示的已有子模型，显式选择 CLI 默认则不补该子模型；继续时选择“使用新配置的主子模型”遵循相同解析规则。跨 CLI 路由和配置缺失拒绝策略不变。实现见 `src/extensionHost/loopOrchestration.ts`、`src/webview/viewContentScript/taskListAndUi.ts`、`src/continueModelChoice.ts`；回归见 `src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`、`src/test/loop/continueModelChoice.test.ts`。

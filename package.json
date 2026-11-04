@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "在 VS Code 中运行 Codex、Claude、OpenCode、Grok 和 DeepSeek Harness CLI 的扩展。",
-  "version": "1.7.7",
+  "version": "1.8.0",
   "publisher": "sinitek",
   "icon": "media/icon.png",
   "repository": {
@@ -223,6 +223,30 @@
           "type": "boolean",
           "default": true,
           "description": "启用 Codex、Claude 和 OpenCode Vibe/coding 任务中的人工交互表单，用于 AI 继续执行前需要澄清需求的场景。"
+        },
+        "sinitek-cli-tools.humanInteractionNotifications": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "编辑器窗口在后台且有人机交互或主任务澄清等待处理时，尝试发送本机系统通知。通知权限、勿扰模式和系统工具可能限制展示；远程扩展宿主不发送。"
+        },
+        "sinitek-cli-tools.humanInteractionWindowAttention": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "后台等待人工交互时请求窗口图标提醒：Windows 闪烁任务栏，Linux X11 在已安装 wmctrl 时尽力提醒；macOS 不支持通过公开扩展 API 弹跳 VS Code Dock 图标。"
+        },
+        "sinitek-cli-tools.taskCompletionNotifications": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "编辑器窗口在后台且主任务或 Vibe 任务成功完成时，尝试发送“携宁 CLI 提醒”系统通知。子任务、中间轮次、上下文压缩、失败和停止不提醒；展示受系统通知权限和勿扰设置限制。"
+        },
+        "sinitek-cli-tools.taskCompletionWindowAttention": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "主任务或 Vibe 任务在后台成功完成时请求窗口图标提醒，返回窗口后清理。Windows 闪烁任务栏，Linux X11 在已有 wmctrl 时尽力提醒；macOS 不弹跳 VS Code Dock 图标。子任务完成不提醒。"
         },
         "sinitek-cli-tools.debug": {
           "type": "boolean",

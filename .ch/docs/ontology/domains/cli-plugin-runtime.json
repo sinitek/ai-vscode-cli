@@ -1042,6 +1042,38 @@
       ]
     },
     {
+      "id": "plugin.rule.human_interaction_desktop_attention",
+      "name": "人工交互后台系统通知与窗口提醒",
+      "description": "Vibe 人工交互与 Loop/Loop+ 主任务澄清在窗口后台时尽力发送标题为携宁 CLI 提醒的固定中文系统通知，同一交互只通知一次，不显示问题、答案、密码或项目路径。Windows 按编辑器主进程 PID 闪烁任务栏；macOS 在扩展存储生成并注册固定身份的携宁 CLI 提醒后台应用，使用 UserNotifications、检测授权及投递结果，不承诺 Dock 弹跳；Linux 需要已有 notify-send 且仅在 X11/wmctrl 可用时按 PID 提醒。焦点恢复、所有请求结束且没有未查看完成提醒、或扩展释放清理图标提醒，兼容并发和迟到调用，通知授权不阻塞窗口清理；已投递通知可保留。两项人工交互应用级设置默认开启且可独立关闭。远程 workspace 宿主跳过本机系统工具，通知失败不阻塞原任务。",
+      "aliases": ["系统通知", "任务栏闪烁", "后台提醒", "携宁 CLI 提醒", "humanInteractionNotifications", "humanInteractionWindowAttention"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "人工交互系统提醒"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "人工交互系统提醒"},
+        {"path": "src/humanInteractionAttention.ts"},
+        {"path": "src/desktopAttention.ts"},
+        {"path": "src/macosDesktopNotifications.ts"},
+        {"path": "src/extensionHost/humanInteractionAttentionHost.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.task_completion_desktop_attention",
+      "name": "仅主任务与 Vibe 成功完成触发桌面提醒",
+      "description": "Vibe 成功运行记录写入后、经典 Loop 与 Loop+ 主任务最终完成持久化后，仅在本机窗口后台时复用携宁 CLI 提醒的固定中文系统通知和窗口提醒。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成通知；前台完成和历史已完成任务不补发。Loop+ 最终持久化失败不提前通知，重试成功后通知。完成事件最近 512 个 ID 去重，多项完成可聚合，返回窗口清除完成待查看状态，不在再次失焦后重放。与人工交互共享窗口状态，不互相清除；通知通道异步且不阻塞任务，Windows 不同 Toast Tag 避免两类通知覆盖，macOS 复用稳定助手身份及权限且不弹跳 Dock。taskCompletionNotifications 与 taskCompletionWindowAttention 两项应用级设置默认开启并独立于人工交互设置。",
+      "aliases": ["任务完成提醒", "主任务完成通知", "Vibe 完成", "子任务不提醒", "taskCompletionNotifications", "taskCompletionWindowAttention"],
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "主任务与 Vibe 完成系统提醒"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "主任务与 Vibe 完成系统提醒"},
+        {"path": "src/taskCompletionAttention.ts"},
+        {"path": "src/humanInteractionAttention.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extension.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.local_state_boundary",
       "name": "本地状态边界明确",
       "description": "运行时状态、Loop 任务和外部 CLI 配置属于本地资源层，不应混入 UI 组件或业务编排细节。",

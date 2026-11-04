@@ -14,6 +14,7 @@
 
 ## 当前有效条目
 
+- macOS 通知命令退出成功不代表用户看到了横幅：见本页“macOS 通知命令成功不等于实际展示”。
 - 配置落盘成功不代表长连接已加载新配置：见本页“同 CLI 切换配置必须核对交互进程身份”。
 - 配置页抽屉按钮不能只依赖应用根节点的主题作用域：见本页“配置页标准按钮必须覆盖 Portal 作用域”。
 - 原生配置浮层不能直接使用公开 `vscode.openWith` 的负数 ViewColumn：见本页“原生模态编辑器必须隔离内部入口并保留回退”。
@@ -779,6 +780,48 @@
 ### 关联资料
 - `.ch/docs/exec-plans/completed/2026-09/2026-09-20-windows-loop-cli-compat.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+## macOS 通知命令成功不等于实际展示
+
+- 状态：有效
+- 适用范围：`src/macosDesktopNotifications.ts`、人工交互后台系统提醒
+
+### 现象与根因
+
+- 裸 `osascript` 的 `display notification` 可返回 0，但 `usernoted` 拒绝缺少有效应用地址的 `com.apple.ScriptEditor2`；具有 bundle ID 的旧版 AppleScript 通知也可能被拒绝。
+- 临时目录中的助手即使执行 `lsregister -f` 仍可能报 `LSApplicationRecord failed to find`。使用扩展 `globalStorage` 中的固定应用路径、bundle ID 和注册流程，不拿临时构建目录当正式应用位置。
+- 授权被拒绝时不会每次重新弹授权窗口。本机实测 `UNNotificationSettings.authorizationStatus=1`，必须由用户在系统设置里手动允许；允许后为 2。不直接修改通知数据库或绕过勿扰模式。
+- JXA 的异步 completion handler 不应调用 Foundation / AppKit 桥接方法，实测会触发 `nextEventMatchingMask should only be called from the Main Thread`。回调只保存结果，在主线程 run loop 处理桥接对象。
+- JXA 的 JavaScript `null` 会被桥接为 `NSNull`；作为通知触发器会导致系统 XPC 解码拒绝，客户端报 `NSCocoaErrorDomain 4097`。Objective-C nil 使用 `$()`，不能用 `null` 替代。
+
+### 长期规避
+
+- 使用系统工具生成并签名 JXA 后台应用，通过现代 `UNUserNotificationCenter` 发送静默通知；显示名和标题均为“携宁 CLI 提醒”，bundle ID 保持 `com.sinitek.cli-tools.notifications`。Windows 通知发送者仍使用编辑器已注册的身份。
+- 授权和投递通过独立临时 JSON 文件回报，不能把 `open` 退出码当成通知成功。脚本共用 60 秒 deadline，启动命令 65 秒超时，通知等待不占用窗口提醒状态队列。
+- 验收分成三层：API 授权、系统接受投递、用户确认实际展示。`submitted` 仅证明系统接收；勿扰模式、显示策略、通知中心与横幅仍需区分。
+- 通知未允许时，打开苹果菜单 → 系统设置 → 通知 → 携宁 CLI 提醒，开启“允许通知”，选择横幅或提醒。旧测试助手可能暂显示为“AI 助手提醒”，以同一 bundle ID 的当前应用为准；不为改名更换 bundle ID 或重置用户权限。
+
+### 验证方式
+
+- `npm run build`
+- `node --test dist/test/core/macosDesktopNotifications.test.js dist/test/core/humanInteractionAttention.test.js`
+- 用正式助手调用 `--diagnose` 只查询授权，不发送通知：
+
+```sh
+notification_app="<扩展 globalStorage>/desktop-attention/macos-v4/携宁 CLI 提醒.app"
+result_directory="$(mktemp -d)"
+open -g -W -n "$notification_app" --args --diagnose "携宁 CLI 提醒" "固定测试文案" "$result_directory/status"
+cat "$result_directory/status"
+rm -r "$result_directory"
+```
+
+- 只查询本助手相关系统日志，不导出无关通知或用户内容：
+
+```sh
+/usr/bin/log show --last 2m --style compact --predicate 'process == "usernoted" AND eventMessage CONTAINS[c] "com.sinitek.cli-tools.notifications"'
+```
+
+- 2026-11-04 本机实测：授权后 API 回报 `submitted`，用户重试后确认看到了“携宁 CLI 提醒”；Windows/Linux 仍需分别真机验收，命令 mock 不代表系统展示通过。
 
 ## DSH 关闭后恢复不能按 Tab ID 选择隔离目录
 

@@ -135,6 +135,8 @@ function harness(options: {
   beforeUpdateTask?: (patch: Partial<LoopTaskRecord>) => void;
   adaptMain?: (request: LoopPlusMainRequest, callIndex: number) => LoopPlusMainHandle | undefined;
   clarificationTimeoutMs?: () => number;
+  waitForClarification?: LoopPlusOrchestrationDeps["waitForClarification"];
+  onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -155,6 +157,8 @@ function harness(options: {
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
     ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
+    waitForClarification: options.waitForClarification,
+    onTaskCompleted: options.onTaskCompleted,
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
@@ -351,6 +355,62 @@ test("completed without subtask events only summarizes and never writes an accep
     assert.equal(env.tasks.get(run.taskId ?? "")?.answerConclusion, "finished");
     assert.equal(env.tasks.get(run.taskId ?? "")?.finalSummary, "everything passed");
   }
+});
+
+test("parent completion attention fires only after persisted closeout, not after subtask execution", async () => {
+  const completed: string[] = [];
+  const env = harness({ onTaskCompleted: (taskId) => {
+    assert.equal(env.tasks.get(taskId)?.status, "completed");
+    completed.push(taskId);
+  } });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  assert.deepEqual(completed, []);
+  const review = env.mains[env.mains.length - 1];
+  review.resolve(completedDecision({ reviewEventIds: review.request.reviewEventIds }));
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await run.done;
+  assert.deepEqual(completed, [run.taskId]);
+  await env.host.tryRun({ displayPrompt: "already done" }, env.target, { resumeTaskId: run.taskId }).done;
+  assert.deepEqual(completed, [run.taskId]);
+});
+
+test("completion attention waits for a failed final persistence to be retried", async () => {
+  const completed: string[] = [];
+  let failFinalWrite = true;
+  const env = harness({
+    onTaskCompleted: (taskId) => { completed.push(taskId); },
+    beforeUpdateTask: (patch) => {
+      if (patch.status === "completed" && failFinalWrite) {
+        failFinalWrite = false;
+        throw new Error("final write failed");
+      }
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(completedDecision());
+  await run.done;
+  assert.deepEqual(completed, []);
+  assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await env.host.tryRun({ displayPrompt: "retry final write" }, env.target, { resumeTaskId: run.taskId }).done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.deepEqual(completed, [run.taskId]);
+});
+
+test("a completion attention failure cannot fail the completed parent task", async () => {
+  const env = harness({ onTaskCompleted: () => { throw new Error("native failure"); } });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(completedDecision());
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.logs.some((entry) => entry.event === "loop-plus-completion-notification-failed"), true);
 });
 
 test("accept followed by completed closeout writes only one subtask acceptance table", async () => {
@@ -2702,6 +2762,24 @@ test("continues Loop+ after the user submits the main-task clarification form", 
   assert.equal(env.mains.length, 2);
   assert.equal(env.mains[1]?.request.kind, "continue");
   assert.match(env.mains[1]?.request.prompt ?? "", /用户已提交主任务澄清表单/);
+});
+
+test("Loop+ routes main-task clarification through the injected desktop-attention adapter", async () => {
+  let waitingScope: string | undefined;
+  const env = harness({
+    waitForClarification: async (scopeId, clarification) => {
+      waitingScope = scopeId;
+      return { interactionId: clarification.interactionId, status: "completed", values: { scope: "api" } };
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  assert.equal(waitingScope, loopClarificationScope(run.taskId ?? ""));
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.pendingClarification, undefined);
+  env.host.stopParent(run.taskId ?? "");
 });
 
 test("continues Loop+ with the best plan when clarification times out", async () => {

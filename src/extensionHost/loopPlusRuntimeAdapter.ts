@@ -54,6 +54,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   appendHostMessage: LoopPlusOrchestrationDeps["appendMessage"];
   appendCompletionMessages?: LoopPlusOrchestrationDeps["appendCompletionMessages"];
+  onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
   appendAcceptancePlanChat?: LoopPlusOrchestrationDeps["appendAcceptancePlanChat"];
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
@@ -61,6 +62,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   log?: LoopPlusOrchestrationDeps["log"];
   revealClarification?: (taskId: string) => void;
   recordInteractionHistory?: LoopPlusOrchestrationDeps["recordInteractionHistory"];
+  waitForClarification?: LoopPlusOrchestrationDeps["waitForClarification"];
   runPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null }) => Promise<void>;
   getMessages: (target: LoopPlusPromptTarget) => ChatMessage[];
   readRuns: () => TaskRunRecord[];
@@ -496,6 +498,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         updateTask: (taskId, patch) => deps.updateTask(taskId, patch),
         appendMessage: deps.appendHostMessage,
         appendCompletionMessages: deps.appendCompletionMessages,
+        onTaskCompleted: deps.onTaskCompleted,
         appendSubtaskChat: deps.appendSubtaskChat,
         appendAcceptancePlanChat: deps.appendAcceptancePlanChat,
         runMain,
@@ -517,6 +520,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         log: deps.log,
         revealClarification: deps.revealClarification,
         recordInteractionHistory: deps.recordInteractionHistory,
+        waitForClarification: deps.waitForClarification,
       });
     }
     return hostInstance;

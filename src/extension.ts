@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import { createHumanInteractionAttentionHost } from "./extensionHost/humanInteractionAttentionHost";
+import { withHumanInteractionAttention, type HumanInteractionAttentionController } from "./humanInteractionAttention";
+import { notifyLoopTaskCompletion, notifyTaskRunCompletion } from "./taskCompletionAttention";
 import { formatOrchestratorClarificationAnswer, loopClarificationScope, waitForOrchestratorClarification } from "./orchestratorClarification";
 import * as fs from "fs";
 import * as path from "path";
@@ -537,6 +540,12 @@ export function activate(context: vscode.ExtensionContext): void {
   isExtensionDeactivating = false;
   extensionContext = context;
   extensionUri = context.extensionUri;
+  humanInteractionAttention = createHumanInteractionAttentionHost(context, (channel, error) => {
+    void logError("humanInteraction-desktop-attention", {
+      channel,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
   interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
@@ -645,6 +654,8 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 export function deactivate(): void {
   isExtensionDeactivating = true;
+  void humanInteractionAttention?.dispose();
+  humanInteractionAttention = undefined;
   void restoreMarketplaceUpdateCheck();
   scheduledTaskScheduler?.stop();
   scheduledTaskScheduler = null;
@@ -1335,6 +1346,15 @@ type PendingHumanInteraction = {
 
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
+let humanInteractionAttention: HumanInteractionAttentionController | undefined;
+
+function waitForOrchestratorClarificationWithAttention(
+  ...args: Parameters<typeof waitForOrchestratorClarification>
+): ReturnType<typeof waitForOrchestratorClarification> {
+  const [scopeId, request] = args;
+  return withHumanInteractionAttention(humanInteractionAttention, `${scopeId}:${request.interactionId}`,
+    () => waitForOrchestratorClarification(...args));
+}
 
 function getHumanInteractionHistoryOptions() {
   return {
@@ -1366,6 +1386,7 @@ function rememberPendingHumanInteraction(entry: PendingHumanInteraction): void {
   const ids = pendingHumanInteractionIdsByTabId.get(entry.request.tabId) ?? new Set<string>();
   ids.add(entry.request.interactionId);
   pendingHumanInteractionIdsByTabId.set(entry.request.tabId, ids);
+  void humanInteractionAttention?.request(entry.request.interactionId);
 }
 
 function forgetPendingHumanInteraction(interactionId: string): PendingHumanInteraction | null {
@@ -1374,6 +1395,7 @@ function forgetPendingHumanInteraction(interactionId: string): PendingHumanInter
     return null;
   }
   pendingHumanInteractionsById.delete(interactionId);
+  void humanInteractionAttention?.complete(interactionId);
   const ids = pendingHumanInteractionIdsByTabId.get(entry.request.tabId);
   if (ids) {
     ids.delete(interactionId);
@@ -3799,6 +3821,12 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         appendLoopAnswerConclusionMessage(target, task);
         appendLoopFinalSummaryMessage(target, task);
       },
+      onTaskCompleted: (taskId) => {
+        const task = readLoopTaskRecord(taskId);
+        if (task) {
+          notifyLoopTaskCompletion(humanInteractionAttention, task);
+        }
+      },
       appendSubtaskChat: (target, notice) => {
         appendLoopPlusSubtaskChat(target, notice);
       },
@@ -3819,6 +3847,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         void logInfo(event, payload);
       },
       revealClarification: (taskId) => { void openLoopGroupChatPanel(taskId); },
+      waitForClarification: waitForOrchestratorClarificationWithAttention,
       recordInteractionHistory: recordOrchestratorInteractionResponse,
       runPrompt: (input, options) => runPrompt(input, options),
       getMessages: (target) => getLoopMessagesForTarget(target),
@@ -4087,7 +4116,7 @@ async function waitForLoopTaskClarification(task: LoopTaskRecord, target: Prompt
     return true;
   }
   void openLoopGroupChatPanel(task.id);
-  const submission = await waitForOrchestratorClarification(loopClarificationScope(task.id), request, {
+  const submission = await waitForOrchestratorClarificationWithAttention(loopClarificationScope(task.id), request, {
     timeoutMs: readHumanInteractionTimeoutMs(),
     recordHistory: recordOrchestratorInteractionResponse,
   });
@@ -4352,6 +4381,7 @@ async function runLoopPromptOrchestration(
       appendSystemMessageForLoop(target, buildLoopTaskCompletedText(decisionRunResult.task));
       appendLoopAnswerConclusionMessage(target, decisionRunResult.task, decisionRunResult.decision);
       appendLoopFinalSummaryMessage(target, decisionRunResult.task, decisionRunResult.decision);
+      notifyLoopTaskCompletion(humanInteractionAttention, decisionRunResult.task);
       return;
     }
     if (decisionRunResult.status === "needs-review") {
@@ -5030,7 +5060,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
       primaryPromptRunController.activeProcess?.kill();
     },
     sendRunStatus,
-    appendCompletionMessage,
+    appendCompletionMessage: (status) => appendCompletionMessage(status, { notifyCompletion: false }),
     persistActiveMessages: options.allowActiveRun === true
       ? persistAutoCompactMessagesPreservingConcurrentTranscript
       : persistActiveMessages,
@@ -5466,11 +5496,11 @@ function startTaskRun(
   };
 }
 
-function appendCompletionMessage(status: TaskRunStatus): void {
+function appendCompletionMessage(status: TaskRunStatus, options: { notifyCompletion?: boolean } = {}): void {
   if (primaryPromptRunController.activeCompletionSent) {
     return;
   }
-  const taskRecord = finalizeTaskRun(primaryPromptRunController.activeRunId, status);
+  const taskRecord = finalizeTaskRun(primaryPromptRunController.activeRunId, status, options);
   const message = {
     id: createMessageId(),
     role: "system" as const,
@@ -5538,7 +5568,7 @@ function sendPanelMessage(payload: Record<string, unknown>): void {
   sendPanelMessageWithActiveTab(payload, primaryPromptRunController.activeTabIdForRun, (message) => viewProvider?.postMessage(message));
 }
 
-function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus): TaskRunRecord | null {
+function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, options: { notifyCompletion?: boolean } = {}): TaskRunRecord | null {
   if (!runId || !primaryPromptRunController.activeTaskRun || primaryPromptRunController.activeTaskRun.id !== runId) {
     return null;
   }
@@ -5551,14 +5581,17 @@ function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus): Task
     status,
   };
   primaryPromptRunController.activeTaskRun = null;
-  appendTaskRun(record);
+  appendTaskRun(record, options);
   return record;
 }
 
-function appendTaskRun(record: TaskRunRecord): void {
+function appendTaskRun(record: TaskRunRecord, options: { notifyCompletion?: boolean } = {}): void {
   const store = readTaskStore();
   store.runs.push(record);
   writeTaskStore(store);
+  if (options.notifyCompletion !== false) {
+    notifyTaskRunCompletion(humanInteractionAttention, record);
+  }
 }
 
 function getTaskStoreDeps() {

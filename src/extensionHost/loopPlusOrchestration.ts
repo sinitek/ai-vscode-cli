@@ -184,6 +184,7 @@ export type LoopPlusOrchestrationDeps = {
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   appendMessage: (target: LoopPlusPromptTarget, message: string, taskId: string) => void;
   appendCompletionMessages?: (target: LoopPlusPromptTarget, task: LoopTaskRecord) => void;
+  onTaskCompleted?: (taskId: string) => void;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
   startAttempt: (request: LoopPlusAttemptRequest) => LoopPlusAttemptHandle;
   prepareCommunication?: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, round: number) => string | null;
@@ -199,6 +200,7 @@ export type LoopPlusOrchestrationDeps = {
   appendAcceptancePlanChat?: (taskId: string, section: { heading: string; body: string }) => void;
   log?: (event: string, payload?: unknown) => void;
   revealClarification?: (taskId: string) => void;
+  waitForClarification?: typeof waitForOrchestratorClarification;
   clarificationTimeoutMs?: () => number;
   recordInteractionHistory?: HumanInteractionHistoryRecorder;
 };
@@ -332,6 +334,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             });
           }
           appendCompletionMessages(runtime);
+          notifyTaskCompleted(runtime);
         }
         const done = runtime.lifecycle.promise;
         releaseCompleted(runtime);
@@ -1022,6 +1025,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           });
         }
         appendCompletionMessages(runtime);
+        notifyTaskCompleted(runtime);
         releaseCompleted(runtime);
         return "stop";
       },
@@ -1060,6 +1064,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       deps.appendAcceptancePlanChat(runtime.taskId, section);
     } catch (error) {
       deps.log?.("loop-plus-acceptance-feedback-failed", {
+        taskId: runtime.taskId,
+        error: errorText(error),
+      });
+    }
+  }
+
+  function notifyTaskCompleted(runtime: ParentRuntime): void {
+    try {
+      deps.onTaskCompleted?.(runtime.taskId);
+    } catch (error) {
+      deps.log?.("loop-plus-completion-notification-failed", {
         taskId: runtime.taskId,
         error: errorText(error),
       });
@@ -1120,7 +1135,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       updatedAt: now(),
     });
     deps.revealClarification?.(runtime.taskId);
-    const submission = await waitForOrchestratorClarification(loopClarificationScope(runtime.taskId), request, {
+    const submission = await (deps.waitForClarification ?? waitForOrchestratorClarification)(loopClarificationScope(runtime.taskId), request, {
       timeoutMs: deps.clarificationTimeoutMs?.() ?? readHumanInteractionTimeoutMs(),
       recordHistory: deps.recordInteractionHistory,
     });

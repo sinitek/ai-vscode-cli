@@ -178,6 +178,21 @@ OpenCode 配置卡片默认进入可视化模式，以 Provider 列表和当前 
 
 Vibe（coding）不执行子任务路由；即使请求残留 Loop 子任务 CLI 字段，Webview 也不显示子任务配置告警，宿主会在普通发送时移除这些路由字段。Loop、Loop+ 或 Loop 子任务续跑使用跨 CLI 路由时，若消息未携带目标配置 ID，宿主先读取目标 CLI 当前激活配置；暂时缺失时每隔 3 秒等待配置应用、刷新面板状态并重查，最多重试 3 次。重试期间发送不会被 Webview 的临时状态拦截；读到配置后才派发子任务并附上配置 ID，重试耗尽仍失败且不回退主 CLI。
 
+### 人工交互系统提醒
+
+- Vibe 人工交互及 Loop/Loop+ 主任务澄清进入待处理后，窗口在后台时尽力发送原生系统通知；前台等待后切到后台也会触发。同一交互只通知一次，通知标题统一为“携宁 CLI 提醒”，使用固定中文概括文案，不包含问题、答案、密码或项目路径，不强制激活窗口、不新增提示音或通知点击跳转。
+- Windows 使用已安装编辑器的 AppUserModelID 发送系统通知，并按 VS Code 主进程 PID 请求任务栏闪烁；同主进程多个窗口可能一起被提醒。macOS 在扩展 globalStorage 下用系统自带 `osacompile -l JavaScript` 生成并签名固定身份 `com.sinitek.cli-tools.notifications` 的“携宁 CLI 提醒”后台应用，注册到 Launch Services 后通过 `open -g -W -n` 启动，调用 `UNUserNotificationCenter`；不依赖裸 `osascript` 或旧版 `display notification`，不承诺使用 VS Code 图标或弹跳其 Dock 图标。首次请求通知授权；已拒绝时记录日志，用户须在“系统设置 → 通知 → 携宁 CLI 提醒”手动开启允许通知并选择横幅或提醒，不自动修改权限。助手通过独立临时结果文件回报授权/投递状态，调用结束后清理；系统接受投递不等于用户实际看到。Linux 需要已有 `notify-send`；X11 下可用的 `wmctrl` 按主进程 PID 请求图标提醒，Wayland、无显示或无法获得有效主进程 PID 时不尝试 X11 图标操作。
+- 返回窗口、所有待处理交互结束且没有未查看的完成提醒、或扩展释放会清理图标提醒。单个请求结束不提前清除其他并发请求；窗口调用串行化并在迟到调用完成后补清理。系统通知在独立异步通道发送，最长 60 秒等待授权/投递、启动命令 65 秒超时，不阻塞任务或窗口清理；其他原生命令默认 8 秒超时。已投递通知可留在系统通知中心。原生工具不存在、权限或勿扰限制不改变既有交互、取消和超时语义。
+- VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications` 与 `sinitek-cli-tools.humanInteractionWindowAttention` 默认开启，可独立关闭并立即影响当前待处理提醒。不安装系统工具、不增加 npm 依赖。远程 workspace 扩展宿主跳过原生提醒，避免通知发到远程机器；本地 UI 扩展宿主可以提醒。
+
+### 主任务与 Vibe 完成系统提醒
+
+- Vibe 成功运行记录写入后，以及经典 Loop / Loop+ 主任务最终完成并持久化后，编辑器后台时复用上述本机提醒通道。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成提醒；前台完成不在之后切后台重放。Loop+ 最终持久化失败时不提前通知，重试成功后再通知；已完成任务的历史加载不补发。
+- 通知身份和标题仍为“携宁 CLI 提醒”，正文固定为“任务已完成，请返回编辑器中的 AI 对话面板查看结果。”。两类通知共享 macOS 助手 bundle ID、缓存和既有通知授权，无须重新授权；Windows 使用不同 Toast Tag 区分人工交互和完成通知。平台权限与展示限制仍然有效，接受投递不保证用户已看到。
+- 四项应用级设置均默认开启：人工交互沿用原设置，完成系统通知用 `sinitek-cli-tools.taskCompletionNotifications`，完成窗口提醒用 `sinitek-cli-tools.taskCompletionWindowAttention`，可各自关闭。完成提醒聚合为一个待查看窗口状态，最近 512 个完成事件去重，恢复焦点清除且不会因之后失焦而再次闪烁。并发人工交互和完成提醒共享窗口管理，单一交互结束或关闭另一类窗口设置不停止剩余提醒；扩展释放和迟到调用仍清理。
+- Windows 通过实际编辑器 AppUserModelID 发送静默 Toast，通知来源是编辑器身份，标题为“携宁 CLI 提醒”，按编辑器主进程 PID 请求任务栏闪烁；可能涉及同主进程多个窗口。macOS 的通知来源是独立“携宁 CLI 提醒”助手，发送系统通知但不弹跳 VS Code Dock 图标；拒绝后须在系统设置手动开启允许通知及横幅或提醒。双方都不抢焦点、不新增声音、不承诺点击定位具体任务；操作系统勿扰、通知设置和桌面环境仍可能抑制展示。
+- 这不是 macOS 系统完全缺少 Dock 提醒能力：原生应用有 `NSApplication.requestUserAttention`，但作用于该应用，不等于扩展能直接控制宿主 VS Code 的 Dock 图标。本方案助手是无 Dock 图标的 `LSUIElement` 后台应用，不把请求助手自身注意力当成 VS Code Dock 弹跳来宣称。
+
 ### 3.3.1 Loop 子任务项目规则隔离
 
 经典 Loop 与 Loop+ 的后续任务支持 `continueFromSubtaskId`：主模型判断是否延续此前子任务；独立任务新会话，连续任务复用同一父任务中 CLI 与配置兼容的真实会话。Loop+ 失败验收关联的修补项默认继承失败来源，`reprompt` 同样续接原子任务。新 Tab/新 attempt 不代表新 CLI 会话；原 Tab 关闭后绑定仍保留。共享来源或会话不并行执行，旧记录无绑定或配置不兼容时记录原因并新建会话。细节及边界见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`，不改变经典汇报驱动或 Loop+ 验收门槛。
