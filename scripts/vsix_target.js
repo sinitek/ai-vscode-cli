@@ -33,6 +33,8 @@ function requiredEntries(target) {
   resolveTarget(target);
   const targets = target === "universal" ? Object.keys(TARGETS) : [target];
   return [
+    "node_modules/jsonc-parser/package.json",
+    "node_modules/jsonc-parser/lib/umd/main.js",
     ...["package.json", "sdk.mjs", "cli.js", "resvg.wasm", "tree-sitter.wasm", "tree-sitter-bash.wasm"]
       .map((file) => `${SDK_ROOT}/${file}`),
     ...targets.flatMap((entry) => [

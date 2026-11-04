@@ -30,6 +30,34 @@ test("VSIX pins the Claude SDK layout supported by universal packaging", () => {
   assert.equal(manifest.dependencies["@anthropic-ai/claude-agent-sdk"], "0.2.12");
 });
 
+test("VSIX declares the model import JSONC parser as a production dependency", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  assert.ok(manifest.dependencies["jsonc-parser"]);
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest.devDependencies, "jsonc-parser"), false);
+});
+
+test("every VSIX target retains and audits the model import JSONC parser", () => {
+  const parserEntries = [
+    "node_modules/jsonc-parser/package.json",
+    "node_modules/jsonc-parser/lib/umd/main.js",
+  ];
+  for (const target of ["universal", ...targets]) {
+    const entries = rules.requiredEntries(target);
+    const ignoreRules = rules.buildIgnoreRules(baseRules, target);
+    for (const entry of parserEntries) {
+      assert.ok(entries.includes(entry), `${target}: ${entry}`);
+      assert.equal(isIncluded(entry, ignoreRules), true, `${target}: ${entry}`);
+      assert.throws(
+        () => rules.validateEntries(entries.filter((file) => file !== entry), target),
+        /jsonc-parser/u,
+      );
+    }
+  }
+});
+
 function isIncluded(file: string, ignoreRules: string): boolean {
   const patterns = ignoreRules.split(/\r?\n/u).map((pattern) => pattern.trim())
     .filter((pattern) => pattern && !pattern.startsWith("#"));

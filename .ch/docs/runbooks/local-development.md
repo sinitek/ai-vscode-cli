@@ -174,9 +174,11 @@ python scripts/export_vscode_extension.py --target win32-x64
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map
 - 使用 Python 标准库读取 ZIP 清单并审计，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败；无需安装 unzip
-- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、沟通文件预览的 `marked` 依赖，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；审计失败会打印具体缺失文件，不再只显示子进程退出码
+- 校验关键运行时文件仍在包内，包括 `dist/extension.js`、配置页三段脚本与 Monaco loader、workspace scaffold、沟通文件预览的 `marked` 依赖、模型导入的 `jsonc-parser` 包描述与 CommonJS 入口，以及 Claude SDK、内置 `cli.js`、全部 WASM、rg 与 ripgrep.node；审计失败会打印具体缺失文件，不再只显示子进程退出码
 - 平台包仅保留对应平台的 SDK ripgrep 和 sharp/libvips，额外检查目标平台原生依赖，拒绝混入其他平台资源；保留 SDK 和原生依赖的许可证
 - 默认输出到 `dist/sinitek-cli-tools-<version>.vsix`，结束时打印实际 MiB/字节大小
+
+扩展运行时直接导入的 npm 包必须显式列在 `package.json` 的 `dependencies`，并沿用 `.vscodeignore` 的对应包放行约定；不能依赖 `@vscode/vsce` 等开发工具间接安装。否则本地构建和单测可能正常，但 VSIX 收集生产依赖时遗漏模块，安装后激活报 `Cannot find module`。修复后必须重新导出并安装 VSIX，单纯重载已安装的旧包不会补齐依赖。`jsonc-parser` 已纳入所有打包目标的资源审计。
 
 Claude SDK 的内置 `cli.js` 是 Windows `.cmd` 启动路径的后备；SDK WASM、原生 ripgrep 和 sharp/libvips 都属于运行时能力，不可为了缩包一并删除。`.vscodeignore` 由 vsce 实现的否定模式优先于排除模式，不能再加 `!node_modules/@anthropic-ai/**` 等宽泛放行，否则会让平台裁剪与类型声明排除失效。对应护栏见 `src/test/shared/vsixPackaging.test.ts`。
 

@@ -127,6 +127,7 @@ Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份
 ## VSIX 瘦身与平台定向导出
 
 - 默认导出通用包，剔除开发临时页面、截图、构建 source map、SDK 类型声明和嵌套 Python 缓存，不删除 Claude 内置 CLI、WASM、图片处理或其他运行时能力。
+- 模型导入所需的 `jsonc-parser` 显式声明为生产依赖；通用包及所有平台包均审计其包描述与 CommonJS 入口，缺少时阻止导出，避免安装后因缺少解析器无法激活扩展。
 - 仓库 README 保留本地图片预览；导出时不依赖 GitHub/GitLab 地址推导，仅在 VSIX 内将已登记的介绍图改为当前版本的 Gallery HTTPS 地址，并注册标准可寻址截图资产，由市场随包托管。README、图片文件、HTTPS 引用和资产登记均通过 ZIP 审计；新增本地图需登记，缺图或遗漏转换阻止导出。详见打包运行手册。
 - `python3 scripts/export_vscode_extension.py --target current`（Windows 可用 `python`）或显式平台值导出独立命名、带 VSIX target 标记的平台包；只裁剪其他平台的 ripgrep/sharp/libvips，缺少目标原生依赖时失败，不改变工作区依赖。支持范围与分发边界见 `.ch/docs/runbooks/local-development.md` 的“打包 VSIX”。
 - 实现入口：`scripts/export_vscode_extension.py`、`scripts/vsix_target.js`、`.vscodeignore`；回归入口：`src/test/shared/vsixPackaging.test.ts`、`scripts/tests/test_export_vscode_extension.py`，并执行真实打包和 ZIP 审计。
