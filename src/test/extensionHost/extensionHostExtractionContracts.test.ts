@@ -268,15 +268,15 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(autoRepairExecuteSource, /execute: async \(attemptInput, attemptTarget\) => \{/);
   assert.match(
     autoRepairExecuteSource,
-    /if \(shouldUseInteractive\) \{\s*await runPromptInteractive\(attemptInput, attemptTarget, executionOptions\);/,
+    /if \(shouldUseInteractive\) \{\s*await runPromptInteractive\(currentAttemptInput, attemptTarget, executionOptions\);/,
   );
   assert.match(
     autoRepairExecuteSource,
-    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(attemptInput, attemptTarget, executionOptions\);/,
+    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(currentAttemptInput, attemptTarget, executionOptions\);/,
   );
   assert.match(
     autoRepairExecuteSource,
-    /\} else \{\s*await runPromptOneShot\(attemptInput, attemptTarget, executionOptions\);/,
+    /\} else \{\s*await runPromptOneShot\(currentAttemptInput, attemptTarget, executionOptions\);/,
   );
   assert.doesNotMatch(autoRepairExecuteSource, /promptInput, target, executionOptions/);
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);

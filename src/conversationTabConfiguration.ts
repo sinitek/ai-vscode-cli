@@ -127,9 +127,7 @@ export function createConversationTabConfigurationRestorer(deps: {
         return false;
       }
       if (deps.getActiveConfigId(route.cli) !== configId) {
-        if (await deps.applyConfig(route.cli, configId) !== "applied" || !isCurrent()) {
-          return false;
-        }
+        return false;
       }
       if (route.model !== undefined && route.cli !== "claude") {
         const options = route.model === null ? [] : await deps.getModelOptions(route.cli, configId, role);

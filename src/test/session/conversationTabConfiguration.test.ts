@@ -19,7 +19,7 @@ function createHarness(configuration: ConversationTabConfiguration | null) {
   const state = {
     activeTabId: "tab-main",
     workspaceKey: "workspace",
-    activeConfigs: { codex: "other", grok: "other", opencode: "other", claude: "other" } as Record<CliName, string>,
+    activeConfigs: { codex: "main-config", grok: "sub-config", opencode: "open-config", claude: "claude-config" } as Record<CliName, string>,
     configurations: new Map<string, ConversationTabConfiguration | null>([["tab-main", configuration]]),
     configs: new Set(["codex:main-config", "grok:sub-config", "opencode:open-config", "claude:claude-config"]),
     models: ["main-model", "sub-model", "provider/model"],
@@ -141,7 +141,7 @@ test("ordinary tabs only use the latest user execution profile and preserve lega
 test("restores both Loop config routes, models and thinking without changing a target CLI main role", async () => {
   const harness = createHarness(loopConfiguration);
   await harness.restore("tab-main");
-  assert.deepEqual(harness.calls.applied, ["codex:main-config", "grok:sub-config"]);
+  assert.deepEqual(harness.calls.applied, []);
   assert.deepEqual(harness.calls.selected, [
     { route: loopConfiguration.main, role: "main" },
     { route: loopConfiguration.subtask, role: "subtask" },
@@ -163,6 +163,7 @@ test("Vibe restores a child execution model and its thinking as the single model
 test("keeps current config and model when the saved config no longer exists", async () => {
   const harness = createHarness(loopConfiguration);
   harness.state.configs.delete("codex:main-config");
+  harness.state.activeConfigs.codex = "other";
   await harness.restore("tab-main");
   assert.deepEqual(harness.calls.applied, []);
   assert.deepEqual(harness.calls.selected, []);
@@ -182,6 +183,7 @@ test("restores an existing config but never recreates a deleted model or overwri
 test("a missing child config preserves the child CLI selection while restoring the main model", async () => {
   const harness = createHarness(loopConfiguration);
   harness.state.configs.delete("grok:sub-config");
+  harness.state.activeConfigs.grok = "other";
   await harness.restore("tab-main");
   assert.deepEqual(harness.calls.selected.map(({ role }) => role), ["main"]);
   assert.deepEqual(harness.calls.subtaskClis, []);
@@ -215,19 +217,21 @@ test("does not reapply an already active config", async () => {
   assert.equal(harness.calls.selected.length, 1);
 });
 
-test("superseded config writes do not restore stale models", async () => {
+test("history never applies a different profile or restores its stale models", async () => {
   const harness = createHarness(loopConfiguration);
-  harness.deps.applyConfig = async () => "superseded";
+  harness.state.activeConfigs.codex = "other";
+  harness.state.activeConfigs.grok = "other";
+  harness.deps.applyConfig = async () => { throw new Error("历史恢复不得应用配置"); };
   await harness.restore("tab-main");
   assert.deepEqual(harness.calls.selected, []);
 });
 
 test("read and apply failures are logged without breaking tab navigation", async () => {
-  for (const failure of ["read", "apply"]) {
+  for (const failure of ["read", "wait"]) {
     const harness = createHarness(loopConfiguration);
     const error = new Error(failure);
     if (failure === "read") harness.deps.configExists = async () => { throw error; };
-    else harness.deps.applyConfig = async () => { throw error; };
+    else harness.deps.waitForConfigApply = async () => { throw error; };
     await harness.restore("tab-main");
     assert.deepEqual(harness.calls.errors, [error]);
     assert.deepEqual(harness.calls.selected, []);

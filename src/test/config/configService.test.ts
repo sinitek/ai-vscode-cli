@@ -23,6 +23,30 @@ function restoreEnvironmentVariable(name: string, value: string | undefined): vo
   process.env[name] = value;
 }
 
+test("native reads do not create config files and fingerprints change with profile, settings or auth", async () => {
+  await withTempHome(async (homeDir) => {
+    const service = loadConfigService();
+    await service.readClaudeConfig();
+    await service.readClaudeMcpConfig();
+    await service.readCodexConfig();
+    await service.readOpenCodeConfig();
+    for (const relative of [".claude/settings.json", ".claude.json", ".codex/config.toml", ".codex/auth.json", ".opencode/config.json"]) {
+      await assert.rejects(fs.stat(path.join(homeDir, relative)), { code: "ENOENT" });
+    }
+    await service.writeCodexConfig('model = "test"', '{"token":"synthetic-before"}');
+    const before = await service.readRuntimeConfigFingerprint("codex", "profile");
+    assert.equal(await service.readRuntimeConfigFingerprint("codex", "profile"), before);
+    assert.notEqual(await service.readRuntimeConfigFingerprint("codex", "another-profile"), before);
+    await service.writeCodexConfig('model = "test"', '{"token":"synthetic-after"}');
+    assert.notEqual(await service.readRuntimeConfigFingerprint("codex", "profile"), before);
+    await service.writeClaudeConfig('{"env":{"MODE":"before"}}');
+    const claudeBefore = await service.readRuntimeConfigFingerprint("claude", "profile");
+    await service.writeClaudeConfig('{"env":{"MODE":"after"}}');
+    assert.notEqual(await service.readRuntimeConfigFingerprint("claude", "profile"), claudeBefore);
+    assert.match(before, /^[a-f\d]{64}$/);
+  });
+});
+
 async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T> {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-config-service-"));
   const homeDir = path.join(tempRoot, "home");
@@ -47,6 +71,79 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 }
+
+test("native application, active edits and task leases share one cross-window profile revision", async () => {
+  await withTempHome(async (homeDir) => {
+    const first = loadConfigService();
+    const original = { id: "first", name: "合成配置一", platform: "codex" as const, content: 'model = "synthetic-first"\n', authContent: '{"token":"synthetic-before"}', createdAt: 1, updatedAt: 1 };
+    const replacement = { ...original, id: "second", name: "合成配置二", content: 'model = "synthetic-second"\n' };
+    await first.saveConfig(original);
+    await first.saveConfig(replacement);
+    await first.applyConfig("codex", { profileId: original.id });
+    const visible = (await first.readSharedConfigSelection("codex"))!;
+    const second = loadConfigService();
+    assert.deepEqual(await second.readSharedConfigSelection("codex"), visible);
+    const running = await first.acquireRuntimeConfigExecution("codex", visible);
+    try {
+      await assert.rejects(second.applyConfig("codex", { profileId: replacement.id }), /执行中的任务/);
+      await assert.rejects(second.saveConfig({ ...original, authContent: '{"token":"synthetic-after"}' }), /执行中的任务/);
+      await assert.rejects(second.deleteConfig("codex", original.id), /执行中的任务/);
+      await second.saveConfig({ ...replacement, name: "未激活档案允许编辑" });
+      const concurrent = await second.acquireRuntimeConfigExecution("codex", visible);
+      await concurrent.release();
+      await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), replacement.content);
+      await assert.rejects(second.acquireRuntimeConfigExecution("codex", visible), /仍有执行中的任务/);
+      assert.equal(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), replacement.content);
+    } finally { await running.release(); }
+    const repaired = await first.acquireRuntimeConfigExecution("codex", visible);
+    await repaired.release();
+    assert.equal(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), original.content);
+    await second.saveConfig({ ...original, authContent: '{"token":"synthetic-after"}' });
+    const edited = (await first.readSharedConfigSelection("codex"))!;
+    assert.notEqual(edited.revision, visible.revision);
+    await assert.rejects(first.acquireRuntimeConfigExecution("codex", visible), /本次任务未启动/);
+    assert.match(await fs.readFile(path.join(homeDir, ".codex", "auth.json"), "utf8"), /synthetic-after/);
+    await second.applyConfig("codex", { profileId: replacement.id });
+    await assert.rejects(first.acquireRuntimeConfigExecution("codex", edited), /本次任务未启动/);
+    assert.equal((await first.readSharedConfigSelection("codex"))?.configId, replacement.id);
+    const sharedText = await fs.readFile(path.join(homeDir, ".codex", ".sinitek-runtime-coordination", "config.toml", "selection.json"), "utf8");
+    assert.doesNotMatch(sharedText, /synthetic-(before|after)/);
+  });
+});
+
+test("custom ZCode native targets have independent selections and execution leases despite sharing profile archives", async () => {
+  await withTempHome(async (homeDir) => {
+    const previousBase = process.env.ZCODE_DATA_BASE_DIR;
+    const previousTarget = process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE;
+    process.env.ZCODE_DATA_BASE_DIR = homeDir;
+    const firstTarget = path.join(homeDir, "runtime-one", "provider_config.json");
+    const secondTarget = path.join(homeDir, "runtime-two", "provider_config.json");
+    process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = firstTarget;
+    const service = loadConfigService();
+    const { createZcodeExampleText } = require("../../config/zcodeConfig") as typeof import("../../config/zcodeConfig");
+    const first = { id: "first-target", name: "合成目标一", platform: "zcode" as const, content: createZcodeExampleText(), createdAt: 1, updatedAt: 1 };
+    const second = { ...first, id: "second-target", name: "合成目标二" };
+    let lease: Awaited<ReturnType<typeof service.acquireRuntimeConfigExecution>> | undefined;
+    try {
+      await service.saveConfig(first);
+      await service.saveConfig(second);
+      await service.applyConfig("zcode", { profileId: first.id });
+      const visible = (await service.readSharedConfigSelection("zcode"))!;
+      lease = await service.acquireRuntimeConfigExecution("zcode", visible);
+      process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = secondTarget;
+      await service.applyConfig("zcode", { profileId: second.id });
+      assert.equal((await service.readSharedConfigSelection("zcode"))?.configId, second.id);
+      process.env.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE = firstTarget;
+      assert.deepEqual(await service.readSharedConfigSelection("zcode"), visible);
+      await assert.rejects(service.applyConfig("zcode", { profileId: second.id }), /执行中的任务/);
+      assert.equal(await fs.readFile(firstTarget, "utf8"), await fs.readFile(secondTarget, "utf8"));
+    } finally {
+      await lease?.release();
+      restoreEnvironmentVariable("ZCODE_DATA_BASE_DIR", previousBase);
+      restoreEnvironmentVariable("ZCODE_PERSONAL_PROVIDER_CONFIG_FILE", previousTarget);
+    }
+  });
+});
 
 test("invalid JSON or TOML cannot overwrite a saved profile or runtime configuration", async () => {
   await withTempHome(async (homeDir) => {
@@ -108,7 +205,7 @@ test("Codex runtime config only manages ~/.codex/config.toml and auth.json", asy
     assert.deepEqual(await configService.getCurrentConfig("codex"), {
       content: "",
       configContent: "",
-      authContent: "{}",
+      authContent: "",
     });
 
     await assert.rejects(
@@ -116,13 +213,14 @@ test("Codex runtime config only manages ~/.codex/config.toml and auth.json", asy
       (error: NodeJS.ErrnoException) => error.code === "ENOENT",
     );
 
+    await fs.mkdir(path.join(homeDir, ".codex"), { recursive: true });
     await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), "model = \"gpt-5\"\n");
     await fs.writeFile(path.join(homeDir, ".codex", ".env"), "OPENAI_API_KEY=from-env\n");
 
     assert.deepEqual(await configService.getCurrentConfig("codex"), {
       content: "model = \"gpt-5\"\n",
       configContent: "model = \"gpt-5\"\n",
-      authContent: "{}",
+      authContent: "",
     });
   });
 });
@@ -201,10 +299,11 @@ test("Codex apply retries a transient runtime overwrite before dispatch", async 
     const configPath = path.join(homeDir, ".codex", "config.toml");
     const originalReadFile = fs.readFile;
     let configReads = 0;
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
     context.mock.method(fs, "readFile", async (...args: Parameters<typeof fs.readFile>) => {
       if (args[0] === configPath) {
         configReads += 1;
-        if (configReads === 1) {
+        if (configReads === 2) {
           await fs.writeFile(configPath, 'model = "other-window"\n', "utf8");
         }
       }
@@ -214,7 +313,7 @@ test("Codex apply retries a transient runtime overwrite before dispatch", async 
     const payload = { content: 'model = "task-profile"\n', authContent: '{"mode":"test"}' };
     await configService.applyConfig("codex", payload);
 
-    assert.equal(configReads, 2);
+    assert.equal(configReads, 4);
     assert.deepEqual(await configService.readCodexConfig(), { config: payload.content, auth: payload.authContent });
   });
 });
@@ -225,10 +324,11 @@ test("Codex persistent verification failure does not block the next queued apply
     const configPath = path.join(homeDir, ".codex", "config.toml");
     const originalReadFile = fs.readFile;
     let configReads = 0;
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
     context.mock.method(fs, "readFile", async (...args: Parameters<typeof fs.readFile>) => {
       if (args[0] === configPath) {
         configReads += 1;
-        if (configReads <= 3) {
+        if (configReads <= 6 && configReads % 2 === 0) {
           await fs.writeFile(configPath, 'model = "other-window"\n', "utf8");
         }
       }
@@ -240,7 +340,7 @@ test("Codex persistent verification failure does not block the next queued apply
 
     await assert.rejects(failed, /未成功更新配置.*Codex.*config\.toml/);
     await recovered;
-    assert.equal(configReads, 4);
+    assert.equal(configReads, 8);
     assert.equal(await fs.readFile(configPath, "utf8"), 'model = "next"\n');
   });
 });
@@ -442,7 +542,7 @@ test("OpenCode current model config ignores the separate global MCP opencode.jso
 
     const configService = loadConfigService();
     assert.deepEqual(await configService.getCurrentConfig("opencode"), {
-      content: "{}",
+      content: "",
     });
 
     await configService.applyConfig("opencode", {
@@ -526,7 +626,7 @@ test("legacy gemini runtime calls follow OpenCode and unknown platforms stay rej
     await fs.mkdir(path.dirname(globalMcp), { recursive: true });
     await fs.writeFile(globalMcp, "{\"mcp\":{\"pencil\":true}}\n");
 
-    assert.deepEqual(await configService.getCurrentConfig("gemini"), { content: "{}" });
+    assert.deepEqual(await configService.getCurrentConfig("gemini"), { content: "" });
     assert.equal(Object.prototype.hasOwnProperty.call(await configService.getCurrentConfig("gemini"), "envContent"), false);
     await configService.applyConfig("gemini", { content: "not json" });
     assert.equal(await fs.readFile(openCodeConfig, "utf8"), "not json");
@@ -1178,15 +1278,17 @@ test("reloading configService after HOME changes does not keep the previous runt
     process.env.GROK_HOME = path.join(tempRoot, "grok-a");
     const first = loadConfigService();
     await first.getCurrentConfig("claude");
-    await fs.stat(path.join(homeA, ".claude", "settings.json"));
+    await assert.rejects(fs.stat(path.join(homeA, ".claude", "settings.json")), { code: "ENOENT" });
 
     process.env.HOME = homeB;
     process.env.USERPROFILE = homeB;
     process.env.GROK_HOME = path.join(tempRoot, "grok-b");
     const second = loadConfigService();
     await second.getCurrentConfig("codex");
-    await fs.stat(path.join(homeB, ".codex", "config.toml"));
-    await fs.stat(path.join(homeB, ".codex", "auth.json"));
+    await assert.rejects(fs.stat(path.join(homeB, ".codex", "config.toml")), { code: "ENOENT" });
+    await assert.rejects(fs.stat(path.join(homeB, ".codex", "auth.json")), { code: "ENOENT" });
+    await second.writeCodexConfig('model = "second-home"', "{}");
+    assert.equal((await second.readCodexConfig()).config, 'model = "second-home"');
     await assert.rejects(
       () => fs.stat(path.join(homeA, ".codex", "config.toml")),
       (error: NodeJS.ErrnoException) => error.code === "ENOENT",

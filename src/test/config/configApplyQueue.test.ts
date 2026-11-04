@@ -2,6 +2,25 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { createConfigApplyQueue } from "../../config/configApplyQueue";
 
+test("execution verification cannot supersede an explicit profile switch", async () => {
+  const queue = createConfigApplyQueue<"codex">();
+  const write = createDeferred();
+  const committed: string[] = [];
+  const switching = queue.request("codex", {
+    apply: () => write.promise,
+    commit: () => { committed.push("user-choice"); },
+  });
+  const execution = await queue.requestIfIdle("codex", {
+    apply: async () => { assert.fail("任务不得覆盖用户切换"); },
+    commit: () => { assert.fail("任务不得提交激活配置"); },
+  });
+  assert.equal(execution, "superseded");
+  write.resolve();
+  assert.equal(await switching, "applied");
+  assert.deepEqual(committed, ["user-choice"]);
+  assert.equal(await queue.requestIfIdle("codex", { apply: async () => undefined, commit: () => undefined }), "applied");
+});
+
 function createDeferred(): {
   promise: Promise<void>;
   resolve: () => void;

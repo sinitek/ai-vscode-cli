@@ -18,6 +18,7 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateGrokRunner({
             sessionId: uiSessionIdAtStart,
+            configFingerprint: port.configFingerprint,
             command: port.commandForRunner,
             agentArgs: port.grokAgentArgs,
             cwd: grokCwd,
@@ -58,6 +59,7 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
         }
         if (uiSessionId) {
           port.interactiveRunnerManager.setRunner("grok", uiSessionId, runner, port.thinkingMode, port.interactiveMode, port.selectedModel, {
+            configFingerprint: port.configFingerprint,
             command: port.commandForRunner,
             args: port.grokAgentArgs,
             cwd: grokCwd,

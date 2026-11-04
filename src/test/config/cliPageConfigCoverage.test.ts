@@ -740,7 +740,7 @@ test("all CLI current-config responses carry the same authoritative host identit
   }
 });
 
-test("all CLI saves refresh state while only active profiles apply through the shared editor helper", async (context) => {
+test("all CLI saves refresh state without a second frontend activation based on stale active profile state", async (context) => {
   const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
   const configService = require("../../config/configService") as typeof import("../../config/configService");
   const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
@@ -764,31 +764,17 @@ test("all CLI saves refresh state while only active profiles apply through the s
     assert.equal(response?.success, true);
   };
   const source = readProjectFile("media/config/assets/config-app-ui.js");
-  const applySource = extractBetween(source, "A = async (W) => {", "      saveClaudeSettingsCard =").replace(/,\s*$/, ";");
-  const sandbox: AnyRecord = {
-    O: null,
-    o: (platform: string) => `${platform}-active`,
-    applyConfigItem: (platform: string, payload: AnyRecord) => request({ action: "apply", platform, payload }),
-    Kt: { success: () => undefined, error: (message: string) => assert.fail(message) },
-  };
-  vm.runInNewContext(`const ${applySource}\nglobalThis.applySaved = A;`, sandbox);
+  assert.doesNotMatch(source.slice(source.indexOf("saveClaudeSettingsCard =")), /applyConfigItem\(/);
   for (const cli of CLI_LIST) {
     const before = refreshes;
     const profile = { id: `${cli}-active`, platform: cli, name: cli, content: "synthetic", createdAt: 1, updatedAt: 1 };
-    sandbox.O = profile;
     await request({ action: "save", config: profile });
-    await sandbox.applySaved({ content: profile.content });
+    assert.equal(refreshes, before + 1, cli);
+    await request({ action: "save", config: { ...profile, id: `${cli}-inactive` } });
     assert.equal(refreshes, before + 2, cli);
-    assert.equal(applied.at(-1)?.platform, cli);
-    assert.equal(applied.at(-1)?.payload.profileId, cli === "dsh" ? profile.id : undefined);
-    const appliesBefore = applied.length;
-    sandbox.O = { ...profile, id: `${cli}-inactive` };
-    await request({ action: "save", config: sandbox.O });
-    await sandbox.applySaved({ content: "synthetic-inactive" });
-    assert.equal(refreshes, before + 3, cli);
-    assert.equal(applied.length, appliesBefore, cli);
+    assert.equal(applied.length, 0, cli);
   }
-  assert.equal(applied.length, CLI_LIST.length);
+  assert.equal(applied.length, 0);
 });
 
 test("all CLI config snapshots load concurrently, reuse the current seed and isolate errors", async () => {
@@ -1376,8 +1362,9 @@ test("ZCode save applies only the active profile and waits for runtime model ref
       if (!response?.success) throw new Error(response?.error ?? "missing response");
       return response.data;
     };
+    await request({ action: "save", config: profile });
+    await configService.applyConfig("zcode", { profileId: profile.id });
     const source = readProjectFile("media/config/assets/config-app-ui.js");
-    const applySource = extractBetween(source, "A = async (W) => {", "      saveClaudeSettingsCard =").replace(/,\s*$/, ";");
     const saveSection = source.slice(source.indexOf('"data-testid": "zcode-save-config"'));
     const saveSource = extractBetween(saveSection, "onClick: async () => {", '                          children: "保存",').replace(/,\s*$/, ";");
     const sandbox: AnyRecord = {
@@ -1395,7 +1382,7 @@ test("ZCode save applies only the active profile and waits for runtime model ref
       r: (id: string, fields: AnyRecord) => request({ action: "save", config: { ...sandbox.O, id, ...fields } }),
       applyConfigItem: (platform: string, payload: AnyRecord) => request({ action: "apply", platform, payload }),
     };
-    vm.runInNewContext(`const ${applySource}\nconst ${saveSource.replace("onClick:", "save =")}\nglobalThis.saveProfile = save;`, sandbox);
+    vm.runInNewContext(`const ${saveSource.replace("onClick:", "save =")}\nglobalThis.saveProfile = save;`, sandbox);
     refreshBarrier = new Promise<void>((resolve) => { releaseRefresh = resolve; });
     const refreshEntered = new Promise<void>((resolve) => { refreshStarted = resolve; });
     const saving = sandbox.saveProfile();
@@ -1407,7 +1394,7 @@ test("ZCode save applies only the active profile and waits for runtime model ref
     await saving;
     assert.equal((await configService.getConfigById("zcode", "active"))?.content, updated);
     assert.deepEqual(snapshots.map((models) => models[0]), ["local-glm/glm-5.3-flash", "local-glm/synthetic-updated-model"]);
-    assert.equal(successes.at(-1), "已更新当前激活的配置");
+    assert.equal(successes.at(-1), "保存成功");
 
     sandbox.O = { ...profile, id: "inactive" };
     sandbox.zcodeTextDraft = initial;
@@ -1416,12 +1403,20 @@ test("ZCode save applies only the active profile and waits for runtime model ref
     assert.equal((await configService.getConfigById("zcode", "inactive"))?.content, initial);
     assert.match(fs.readFileSync(runtimePath, "utf8"), /synthetic-updated-model/);
 
+    await configService.applyConfig("zcode", { profileId: "inactive" });
+    sandbox.O = profile;
+    await sandbox.saveProfile();
+    assert.equal((await configService.readSharedConfigSelection("zcode"))?.configId, "inactive");
+    assert.equal(fs.readFileSync(runtimePath, "utf8"), initial);
+
+    await configService.applyConfig("zcode", { profileId: profile.id });
     sandbox.O = profile;
     fs.writeFileSync(runtimePath, "not-json");
     successes.length = 0;
     await sandbox.saveProfile();
-    assert.equal(errors.length, 1);
-    assert.equal(errors[0], "未成功更新配置");
+    assert.ok(errors.length >= 1);
+    assert.match(errors.join("\n"), /未成功更新配置|Existing provider settings were left unchanged/);
+    assert.equal((await configService.readSharedConfigSelection("zcode"))?.ready, false);
     assert.equal(successes.includes("已更新当前激活的配置"), false);
     assert.equal(fs.readFileSync(runtimePath, "utf8"), "not-json");
   } finally {

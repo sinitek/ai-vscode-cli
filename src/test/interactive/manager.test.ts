@@ -25,6 +25,26 @@ function claudeOptions(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test("configuration fingerprints rebuild stale runners without disposing another tab", () => {
+  const manager = new InteractiveRunnerManager();
+  try {
+    const first = manager.getOrCreateClaudeRunner(claudeOptions({ configFingerprint: "before" }));
+    const other = manager.getOrCreateClaudeRunner(claudeOptions({ sessionId: "other-tab", configFingerprint: "before" }));
+    assert.equal(manager.getOrCreateClaudeRunner(claudeOptions({ configFingerprint: "before" })), first);
+    manager.setRunner("claude", "session-claude", first, "medium", "coding", "sonnet", {
+      command: "claude", cwd: "/workspace", entrypoint: "/usr/local/bin/claude", configFingerprint: "before",
+    });
+    assert.equal(manager.getOrCreateClaudeRunner(claudeOptions({ configFingerprint: "before" })), first);
+    const changed = manager.getOrCreateClaudeRunner(claudeOptions({ configFingerprint: "after" }));
+    assert.notEqual(changed, first);
+    assert.equal(first.isDisposed(), true);
+    assert.equal(other.isDisposed(), false);
+    assert.equal(manager.getOrCreateClaudeRunner(claudeOptions({ configFingerprint: "after" })), changed);
+  } finally {
+    manager.disposeAll();
+  }
+});
+
 test("Claude runners stay attached to one session until cwd, model, or CLI ownership changes", () => {
   const manager = new InteractiveRunnerManager();
   try {

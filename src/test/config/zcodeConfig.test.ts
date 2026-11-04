@@ -426,7 +426,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
   const editorStart = source.indexOf('be.jsxs("div", {', platformStart);
   const editorEnd = source.indexOf(': O.platform === "kimi-code"', editorStart);
   const editor = source.slice(editorStart, editorEnd).trim();
-  const drawerHandlers = extractBetween(source, 'N = (W) => y(W),', '      A = async (W) =>').replace(/,\s*$/, ";");
+  const drawerHandlers = extractBetween(source, 'N = (W) => y(W),', '      saveClaudeSettingsCard =').replace(/,\s*$/, ";");
   const { utils } = loadZcodeVisualUi();
   const example = { title: "ZCode provider_config.json", content: createZcodeExampleText() };
   const element = (type: unknown, props: AnyRecord) => ({ type, props });

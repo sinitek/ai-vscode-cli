@@ -92,6 +92,7 @@ async function runDshAttempt(
   const runner = uiSessionIdAtStart
     ? port.interactiveRunnerManager.getOrCreateDshRunner({
       sessionId: uiSessionIdAtStart,
+      configFingerprint: port.configFingerprint,
       ...runnerOptions,
     })
     : new DshInteractiveRunner({
@@ -151,6 +152,7 @@ async function runDshAttempt(
         confirmed.model,
         {
           command: port.commandForRunner,
+          configFingerprint: port.configFingerprint,
           args: launch.agentArgs,
           cwd: dshCwd,
           // Remember the ACP id, not the pre-start local_ id, so the next

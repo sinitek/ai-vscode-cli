@@ -207,6 +207,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
     "isConfigApplyPendingForCli",
   );
+  const visibleConfigHelperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "readVisibleConfigSelections");
   const posted: unknown[] = [];
   const dispatchPrompt = new Function(
     "normalizePromptPayloadWithModelFields",
@@ -223,7 +224,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "resetTaskListForRunStart",
     "cliSupportsModelSelection",
     "vscode",
-    `${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
+    `${visibleConfigHelperSource}\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
     (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
       ? {
@@ -237,7 +238,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     {
       currentCli: "opencode",
       selectedConfigId: "config-opencode",
-      configState: { activeConfigId: "config-opencode" },
+      configState: { activeConfigId: "config-opencode", revision: "visible-revision" },
       selectedModelsByCli: {},
     },
     (mode: unknown) => mode || "coding",
@@ -255,6 +256,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
   assert.equal(dispatchPrompt({ prompt: "queued task", contextOptions: {}, skipPromptHistory: true }), true);
   assert.deepEqual(posted, [{
     type: "sendPrompt",
+    configSelections: { opencode: { configId: "config-opencode", revision: "visible-revision" } },
     prompt: "queued task",
     interactiveMode: "coding",
     contextOptions: {},

@@ -5,6 +5,7 @@ import type { ConversationExecutionProfile } from "./webview/types";
 import type { LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 
 export type PromptRunInput = {
+  configSelections?: Partial<Record<CliName, import("./config/sharedRuntimeConfig").VisibleConfigSelection>>;
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];

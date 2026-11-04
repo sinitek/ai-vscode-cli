@@ -19,10 +19,6 @@ export async function resolveSubtaskRouteConfigId(input: {
   refreshPanelState?: () => Promise<void>;
   delay?: (milliseconds: number) => Promise<void>;
 }): Promise<string | null> {
-  const requestedConfigId = normalizeRouteConfigId(input.configId);
-  if (requestedConfigId) {
-    return requestedConfigId;
-  }
   const delay = input.delay ?? ((milliseconds: number) => new Promise<void>((resolve) => {
     setTimeout(resolve, milliseconds);
   }));

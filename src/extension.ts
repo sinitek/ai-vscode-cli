@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
+import { ConfigSelectionChangedError } from "./config/sharedRuntimeConfig";
 import {
   cleanupHumanInteractionHistory,
   cleanupHumanInteractionHistoryAcrossWorkspaces,
@@ -953,7 +954,9 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
   if (!targetTabId) {
     throw new Error("No conversation tab is available for the scheduled task.");
   }
-  await configApplyQueue.waitForIdle(task.cli);
+  if (!await configApplyQueue.waitForIdle(task.cli)) {
+    throw new Error("配置应用失败，定时任务未启动。");
+  }
   const executionConfig = resolveScheduledTaskExecutionConfigForTask(
     task,
     getWorkspaceInteractiveMode(task.cli),
@@ -973,17 +976,22 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
   const imagePaths = task.cli === "codex"
     ? await resolveCodexImagePathsForPrompt(displayPrompt)
     : [];
+  const mainConfigId = getActiveConfigIdForCli(task.cli);
+  const subtaskCli = task.loopSubtaskCli ?? task.cli;
+  const subtaskConfigId = getActiveConfigIdForCli(subtaskCli);
+  const mainModel = getSelectedLoopCliModel(task.cli, "main", mainConfigId)
+    ?? getSelectedCliModel(task.cli, mainConfigId);
+  const subtaskModel = getSelectedLoopCliModel(subtaskCli, "subtask", subtaskConfigId)
+    ?? getSelectedCliModel(subtaskCli, subtaskConfigId);
   const input: PromptRunInput = {
     displayPrompt,
     modelPrompt,
     contextTags: contextBuild.contextTags,
-    ...(task.model ? { model: task.model } : {}),
-    ...(task.loopMainModel ? { loopMainModel: task.loopMainModel } : {}),
-    ...(task.loopSubtaskModel ? { loopSubtaskModel: task.loopSubtaskModel } : {}),
+    model: getSelectedCliModel(task.cli, mainConfigId) ?? undefined,
+    loopMainModel: mainModel ?? undefined,
+    loopSubtaskModel: subtaskModel ?? undefined,
     ...(task.loopSubtaskCli ? { loopSubtaskCli: task.loopSubtaskCli } : {}),
-    ...(task.loopSubtaskConfigId ? { loopSubtaskConfigId: task.loopSubtaskConfigId } : {}),
-    ...(task.loopMainThinkingMode ? { loopMainThinkingMode: task.loopMainThinkingMode } : {}),
-    ...(task.loopSubtaskThinkingMode ? { loopSubtaskThinkingMode: task.loopSubtaskThinkingMode } : {}),
+    loopSubtaskConfigId: subtaskConfigId ?? undefined,
     ...(imagePaths.length ? { imagePaths } : {}),
     throwOnError: true,
   };
@@ -1073,6 +1081,14 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getConfigManagerPanel: () => configManagerPanel,
     applyConfigById,
     waitForConfigApply: (cli) => configApplyQueue.waitForIdle(cli),
+    validateVisibleConfigSelections: async (cli, selections) => {
+      const visible = selections?.[cli];
+      const current = await loadConfigState(cli);
+      if (!visible || current.configurationError || !current.revision
+        || visible.configId !== current.activeConfigId || visible.revision !== current.revision) {
+        throw new ConfigSelectionChangedError();
+      }
+    },
     readCliRules,
     writeCliRules,
     normalizeRuleTargets,
@@ -1157,16 +1173,8 @@ async function manageKimiCodeModelList(
   const result = await configApplyQueue.request("kimi-code", {
     apply: async () => {
       managed = await modelSettingsHost.manageKimiCodeModelList(change, configId);
-      const config = await configService.getConfigById("kimi-code", configId);
-      if (!config) throw new Error(t("config.notFound"));
-      await configService.applyConfig("kimi-code", {
-        content: config.content,
-        envContent: config.envContent,
-        configContent: config.configContent,
-        authContent: config.authContent,
-      });
     },
-    commit: () => { setWorkspaceActiveConfigId("kimi-code", configId); },
+    commit: () => undefined,
   });
   if (!managed) throw new Error("Kimi 模型配置未保存。");
   const saved = managed as { applied: boolean; model: string | null; config: import("./config/kimiCodeConfig").KimiCodeConfigModels };
@@ -1638,6 +1646,7 @@ const { runPromptParallel } = createPromptParallelRuntimeHost({
   waitForHiddenRetryDelay,
 });
 const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
+  readRuntimeConfigFingerprint: configService.readRuntimeConfigFingerprint,
   AI_TASK_RAW_OUTPUT_MAX_BYTES,
   activeRunsByTabId: interactiveRunsByTabId,
   adoptSessionId,
@@ -2243,7 +2252,10 @@ function resolveModelConfigIdForCli(
   );
 }
 
-async function applyConfigById(cli: CliName, configId: string): Promise<ConfigApplyResult> {
+async function applyConfigById(
+  cli: CliName,
+  configId: string,
+): Promise<ConfigApplyResult> {
   if (!configId) {
     return "applied";
   }
@@ -2259,6 +2271,7 @@ async function applyConfigById(cli: CliName, configId: string): Promise<ConfigAp
         configId,
       });
       await configService.applyConfig(cli, {
+        profileId: configId,
         content: config.content,
         mcpContent: config.mcpContent,
         envContent: cli === "codex" ? undefined : config.envContent,
@@ -2281,6 +2294,7 @@ async function loadConfigState(cli: CliName): Promise<PanelState["configState"]>
     getConfigList: (targetCli) => configService.getConfigList(targetCli),
     getConfigOrder: (targetCli) => configService.getConfigOrder(targetCli),
     getCurrentConfig: (targetCli) => configService.getCurrentConfig(targetCli),
+    readSharedConfigSelection: configService.readSharedConfigSelection,
     setWorkspaceActiveConfigId,
     setLastConfigStateLoadError: (targetCli, message) => {
       if (message) {
@@ -4629,7 +4643,7 @@ async function runPrompt(
   }
 
   if (input.taskRole === "subtask") {
-    const boundConfigId = typeof input.loopSubtaskConfigId === "string" ? input.loopSubtaskConfigId.trim() : "";
+    const boundConfigId = getActiveConfigIdForCli(target.cli) ?? "";
     const configExists = boundConfigId
       ? Boolean(await configService.getConfigById(target.cli, boundConfigId))
       : false;
@@ -4637,7 +4651,7 @@ async function runPrompt(
       taskRole: input.taskRole,
       targetCli: target.cli,
       loopSubtaskCli: input.loopSubtaskCli,
-      loopSubtaskConfigId: input.loopSubtaskConfigId,
+      loopSubtaskConfigId: boundConfigId,
       activeConfigId: getActiveConfigIdForCli(target.cli),
       configExists,
     });
@@ -4671,58 +4685,42 @@ async function runPrompt(
     };
     const workspaceKey = activeWorkspaceKey;
     const startupCommand = getCliCommand(target.cli);
-    let executionConfigId: string | null | undefined;
-    let skipExecutionConfigRewrite = false;
-    const continueWithoutConfigRewrite = (runTarget: PromptRunTarget, error: unknown): void => {
-      if (skipExecutionConfigRewrite) {
-        return;
-      }
-      skipExecutionConfigRewrite = true;
-      appendSystemMessageForPromptTarget(runTarget, "警告：任务前配置重写失败，已跳过后续重写，将尝试使用当前可用配置继续执行；运行配置可能与所选档案不一致。");
-      void logError("task-config-rewrite-skipped", {
-        cli: runTarget.cli,
-        tabId: runTarget.tabId,
-        configId: executionConfigId ?? null,
-        error: getErrorInfo(error).message,
-      });
-    };
     await promptAutoRepairController.run(promptInput, target, {
       execute: async (attemptInput, attemptTarget) => {
         let appliedExecutionConfigId: string | null = null;
+        let currentAttemptInput = attemptInput;
+        let executionLease: Awaited<ReturnType<typeof configService.acquireRuntimeConfigExecution>> | undefined;
         try {
           if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
-            continueWithoutConfigRewrite(attemptTarget, new Error("等待中的配置应用失败。"));
+            throw new Error("配置应用失败，任务未启动，请重新选择配置后重试。");
           }
-          if (!skipExecutionConfigRewrite && executionConfigId === undefined) {
-            const boundConfigId = attemptInput.taskRole === "subtask"
-              ? attemptInput.loopSubtaskConfigId?.trim()
-              : undefined;
-            executionConfigId = boundConfigId
-              || attemptInput.executionProfile?.configId
-              || getActiveConfigIdForCli(attemptTarget.cli)
-              || null;
-            if (!executionConfigId) {
-              const configState = await loadConfigState(attemptTarget.cli);
-              executionConfigId = configState.activeConfigId || configState.configs[0]?.id || null;
-            }
+          const configState = await loadConfigState(attemptTarget.cli);
+          const expected = attemptInput.configSelections?.[attemptTarget.cli]
+            ?? (!attemptInput.configSelections && configState.revision
+              ? { configId: configState.activeConfigId, revision: configState.revision } : null);
+          if (!expected || configState.configurationError) throw new ConfigSelectionChangedError();
+          executionLease = await configService.acquireRuntimeConfigExecution(attemptTarget.cli, expected);
+          const executionConfigId = executionLease.selection.configId;
+          const previousConfigId = attemptInput.taskRole === "subtask"
+            ? attemptInput.loopSubtaskConfigId
+            : attemptInput.executionProfile?.configId
+              ?? (attemptInput.loopTaskId ? readLoopTaskRecord(attemptInput.loopTaskId)?.originProfile?.configId : undefined);
+          if (previousConfigId && previousConfigId !== executionConfigId) {
+            const role = attemptInput.taskRole === "subtask" ? "subtask" : "main";
+            const model = attemptInput.taskRole
+              ? getSelectedLoopCliModel(attemptTarget.cli, role, executionConfigId)
+                ?? getSelectedCliModel(attemptTarget.cli, executionConfigId)
+              : getSelectedCliModel(attemptTarget.cli, executionConfigId);
+            currentAttemptInput = {
+              ...attemptInput,
+              model: model ?? undefined,
+              ...(attemptInput.taskRole === "main" ? { loopMainModel: model ?? undefined, loopMainThinkingMode: undefined } : {}),
+              thinkingModeOverride: undefined,
+              executionProfile: undefined,
+              ...(attemptInput.taskRole === "subtask" ? { loopSubtaskConfigId: executionConfigId ?? undefined } : {}),
+            };
           }
-          if (!skipExecutionConfigRewrite && executionConfigId) {
-            let applied: ConfigApplyResult | undefined;
-            try {
-              applied = await applyConfigById(attemptTarget.cli, executionConfigId);
-            } catch (error) {
-              if (isAbortErrorInfo(getErrorInfo(error))) {
-                throw error;
-              }
-              continueWithoutConfigRewrite(attemptTarget, error);
-            }
-            if (applied === "superseded") {
-              throw new Error("任务配置已被新的切换请求替代，任务未启动，请重试。");
-            }
-            if (applied === "applied") {
-              appliedExecutionConfigId = executionConfigId;
-            }
-          }
+          appliedExecutionConfigId = executionConfigId;
           if (attemptTarget.cli === "opencode") {
             const preflightMessage = await getOpenCodeConfigPreflightMessage();
             if (preflightMessage) {
@@ -4735,15 +4733,21 @@ async function runPrompt(
             }
           }
         } catch (error) {
+          await executionLease?.release();
+          if (error instanceof ConfigSelectionChangedError) void postPanelState();
           appendSystemMessageForPromptTarget(attemptTarget, getErrorInfo(error).message);
           throw error;
         }
-        if (shouldUseInteractive) {
-          await runPromptInteractive(attemptInput, attemptTarget, executionOptions);
-        } else if (hasOtherTabRun(attemptTarget.tabId)) {
-          await runPromptParallel(attemptInput, attemptTarget, executionOptions);
-        } else {
-          await runPromptOneShot(attemptInput, attemptTarget, executionOptions);
+        try {
+          if (shouldUseInteractive) {
+            await runPromptInteractive(currentAttemptInput, attemptTarget, executionOptions);
+          } else if (hasOtherTabRun(attemptTarget.tabId)) {
+            await runPromptParallel(currentAttemptInput, attemptTarget, executionOptions);
+          } else {
+            await runPromptOneShot(currentAttemptInput, attemptTarget, executionOptions);
+          }
+        } finally {
+          await executionLease?.release();
         }
         if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);

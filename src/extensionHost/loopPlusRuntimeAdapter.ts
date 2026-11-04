@@ -189,6 +189,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     rememberLivePrompt(taskId, {
       displayPrompt: prompt.displayPrompt,
       modelPrompt: prompt.modelPrompt ?? prompt.displayPrompt,
+      configSelections: prompt.configSelections,
       contextTags: [],
       model: prompt.model,
       loopMainModel: prompt.loopMainModel,
@@ -236,6 +237,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       live: livePrompts.get(taskId) ?? null,
     });
     const promptInput: PromptRunInput = {
+      ...(livePrompts.get(taskId)?.configSelections ? { configSelections: livePrompts.get(taskId)!.configSelections } : {}),
       displayPrompt,
       modelPrompt,
       contextTags: [],
@@ -575,6 +577,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const result = host().tryRun({
       displayPrompt: input.displayPrompt,
       modelPrompt: input.modelPrompt,
+      configSelections: input.configSelections,
       ...(input.loopPlusAcceptancePlan ? { loopPlusAcceptancePlan: input.loopPlusAcceptancePlan } : {}),
       model: input.model,
       loopMainModel: input.loopMainModel,

@@ -826,13 +826,16 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             L.platform === "claude"
               ? await applyConfigItem(L.platform, {
                   content: L.content,
+                  profileId: L.id,
                 })
               : L.platform === "opencode"
 	                ? await applyConfigItem(L.platform, {
 	                    content: L.content,
+                      profileId: L.id,
 	                  })
                 : L.platform === "grok"
                   ? await applyConfigItem(L.platform, {
+                      profileId: L.id,
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
                     })
@@ -844,10 +847,12 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
                     })
                 : L.platform === "kimi-code" || L.platform === "zcode"
                   ? await applyConfigItem(L.platform, {
+                      profileId: L.id,
                       content: L.configContent || L.content || "",
                       configContent: L.configContent || L.content || "",
                     })
                 : await applyConfigItem(L.platform, {
+                    profileId: L.id,
                     configContent: L.configContent,
                     authContent: L.authContent,
                   }),
@@ -3595,9 +3600,8 @@ const openCodeVisualSetRole = (state, providerId, modelId, role, enabled) => {
   return { ...state, [key]: enabled ? ref : state[key] === ref ? "" : state[key] };
 };
 
-const openCodeVisualRunSaveFlow = async ({ content, saveConfig, applyActiveConfig }) => {
+const openCodeVisualRunSaveFlow = async ({ content, saveConfig }) => {
   await saveConfig(content);
-  await applyActiveConfig(content);
   return content;
 };
 
@@ -6491,7 +6495,6 @@ const ConfigEditorPanel = () => {
         selectedConfigPlatform: t,
         getConfigById: n,
         updateConfig: r,
-        getActiveConfigId: o,
         isLoading: configListLoading,
       } = useConfigStore(),
       [l, s] = c.useState(""),
@@ -7072,16 +7075,6 @@ const ConfigEditorPanel = () => {
               })
             : null,
         }),
-      A = async (W) => {
-        if (!O || o(O.platform) !== O.id) return;
-        const payload = O.platform === "dsh" ? { ...W, profileId: O.id } : W;
-        try {
-          await applyConfigItem(O.platform, payload);
-          Kt.success("已更新当前激活的配置");
-        } catch (k) {
-          Kt.error("未成功更新配置");
-        }
-      },
       saveClaudeSettingsCard = async () => {
         if (!O) {
           Kt.warning("请先选择一个配置");
@@ -7113,7 +7106,6 @@ const ConfigEditorPanel = () => {
             H.ok && setClaudeVisualState(H.state);
           }
           Kt.success("保存成功");
-          await A({ content: W });
         } catch (W) {
           showConfigSaveError("保存失败: " + W);
         }
@@ -7152,7 +7144,6 @@ const ConfigEditorPanel = () => {
                 k.ok && setOpenCodeVisualState(k.state);
               }
             },
-            applyActiveConfig: (H) => A({ content: H }),
           });
         } catch (H) {
           showConfigSaveError("保存失败: " + H);
@@ -7186,7 +7177,6 @@ const ConfigEditorPanel = () => {
           const L = codexVisualParseContent(W);
           L.ok && setCodexVisualState(L.state);
           Kt.success("保存成功");
-          await A({ configContent: W, authContent: k });
         } catch (W) {
           showConfigSaveError("保存失败: " + W);
         }
@@ -7202,7 +7192,6 @@ const ConfigEditorPanel = () => {
           await r(O.id, { content: m, configContent: m, authContent: W });
           h(W);
           Kt.success("保存成功");
-          await A({ configContent: m, authContent: W });
         } catch (W) {
           showConfigSaveError("保存失败: " + W);
         }
@@ -7236,7 +7225,6 @@ const ConfigEditorPanel = () => {
           const H = grokVisualParseContent(W);
           H.ok && !H.state.fieldError && setGrokVisualState(H.state);
           Kt.success("保存成功");
-          await A({ content: W, configContent: W });
         } catch (W) {
           showConfigSaveError("保存失败: " + W);
         }
@@ -7330,7 +7318,6 @@ const ConfigEditorPanel = () => {
           const H = kimiCodeVisualParseContent(W);
           H.ok && !H.state.fieldError && setKimiCodeVisualState(H.state);
           Kt.success("保存成功");
-          await A({ content: W, configContent: W });
         } catch (W) {
           showConfigSaveError("保存失败: " + W);
         }
@@ -7414,7 +7401,6 @@ const ConfigEditorPanel = () => {
           setDshText(content);
           setDshFieldError("");
           Kt.success("保存成功");
-          await A({ content, configContent: content });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const safeMessage = dshUiContainsSecret(message) ? DSH_UI_SECRET_ERROR : message;
@@ -10514,7 +10500,6 @@ const ConfigEditorPanel = () => {
                             const parsed = ZcodeConfigVisualEditorUtils.parseContent(serialized.content);
                             if (parsed.ok) setZcodeVisualState(parsed.state);
                             Kt.success("保存成功");
-                            await A({ content: serialized.content, configContent: serialized.content });
                             } catch (error) {
                               showConfigSaveError(error);
                             }

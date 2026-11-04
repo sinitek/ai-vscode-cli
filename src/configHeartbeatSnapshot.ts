@@ -10,6 +10,7 @@ import type { PanelState } from "./webview/types";
 export type ConfigHeartbeatSnapshot = {
   cli: CliName;
   activeConfigId: string | null;
+  revision?: string;
   configIds: string[];
   modelSelected: string | null;
   managedModelOptions: string[];
@@ -47,6 +48,7 @@ export function buildConfigHeartbeatSnapshot(
   return {
     cli,
     activeConfigId: configState.activeConfigId,
+    ...(configState.revision ? { revision: configState.revision } : {}),
     configIds: configState.configs.map((config) => config.id),
     modelSelected,
     managedModelOptions,
@@ -64,7 +66,7 @@ export function shouldRefreshConfigHeartbeat(
   if (!previous || previous.cli !== next.cli) {
     return true;
   }
-  if (previous.activeConfigId !== next.activeConfigId) {
+  if (previous.activeConfigId !== next.activeConfigId || previous.revision !== next.revision) {
     return true;
   }
   if (!areStringListsEqual(previous.configIds, next.configIds)) {

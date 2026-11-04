@@ -475,7 +475,7 @@ test("Grok config platform reads and writes TOML while keeping unshown fields", 
     const configPath = path.join(homeDir, "config.toml");
     assert.equal(await fs.readFile(configPath, "utf8"), serialized.content);
     const names = await fs.readdir(homeDir);
-    assert.deepEqual(names, ["config.toml"]);
+    assert.deepEqual(names.sort(), [".sinitek-runtime-coordination", "config.toml"]);
   });
 });
 

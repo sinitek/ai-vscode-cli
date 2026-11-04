@@ -44,6 +44,35 @@ export function assertRuntimeConfigApplied(
   throw new RuntimeConfigVerificationError(options.cli, options.file);
 }
 
+export function runtimeConfigMatches(
+  expected: string,
+  actual: string,
+  options: RuntimeConfigVerificationOptions,
+): boolean {
+  try {
+    assertRuntimeConfigApplied(expected, actual, options);
+    return true;
+  } catch (error) {
+    if (error instanceof RuntimeConfigVerificationError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export async function applyRuntimeConfigIfNeeded(
+  expected: string,
+  read: () => Promise<string>,
+  write: (content: string) => Promise<void>,
+  options: RuntimeConfigVerificationOptions,
+): Promise<void> {
+  if (runtimeConfigMatches(expected, await read(), options)) {
+    return;
+  }
+  await write(expected);
+  assertRuntimeConfigApplied(expected, await read(), options);
+}
+
 export async function retryRuntimeConfigApply<Result>(operation: () => Promise<Result>): Promise<Result> {
   for (let attempt = 1; ; attempt += 1) {
     try {

@@ -1,6 +1,10 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import { createHash } from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
+import { SharedRuntimeConfig, type VisibleConfigSelection } from "./sharedRuntimeConfig";
+import type { CliName } from "../cli/types";
 import {
   ApplyPayload,
   ConfigItem,
@@ -33,12 +37,13 @@ import {
 } from "./configPaths";
 import { isPlainObject, parseJsonObjectText, type JsonObjectParseMode } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
-import { resolveGrokConfigPath } from "../shared/userHomePaths";
+import { resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
 import {
   createZcodeExampleText,
   readZcodeProviderConfigText,
   writeZcodeProviderConfigText,
   backupZcodeProviderConfig,
+  resolveZcodeProviderConfigPath,
 } from "./zcodeConfig";
 import {
   commitKimiCodeText,
@@ -57,6 +62,33 @@ import {
 } from "./dshConfig";
 
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
+const runtimeWriteContext = new AsyncLocalStorage<boolean>();
+
+function sharedRuntimeConfig(platform: LegacyConfigPlatformInput): SharedRuntimeConfig {
+  const cli = normalizeConfigPlatform(platform);
+  const target = cli === "claude" ? CONFIG_PATHS.claude.settings
+    : cli === "grok" ? resolveGrokConfigPath()
+      : cli === "dsh" ? resolveDshConfigPaths().patchPath
+        : cli === "kimi-code" ? resolveKimiCodeConfigPath()
+          : cli === "zcode" ? resolveZcodeProviderConfigPath()
+            : CONFIG_PATHS[cli].config;
+  return new SharedRuntimeConfig(path.join(path.dirname(target), ".sinitek-runtime-coordination", path.basename(target)));
+}
+
+function guardedRuntimeWrite<Arguments extends unknown[]>(write: (...args: Arguments) => Promise<void>): (...args: Arguments) => Promise<void> {
+  return async (...args) => {
+    if (runtimeWriteContext.getStore()) throw new Error("原生配置已变化，但此 CLI 仍有执行中的任务，暂不能修复配置，请任务结束后重新应用。");
+    await write(...args);
+  };
+}
+
+function profileDigest(config: ConfigItem): string {
+  return createHash("sha256").update(JSON.stringify([
+    config.platform, config.content ?? config.configContent ?? "", config.configContent ?? config.content ?? "",
+    config.authContent ?? "{}", config.mcpContent ?? "{}", config.envContent ?? "",
+    config.codexSkills ?? [], config.claudeSkills ?? [], config.openCodeSkills ?? [], config.grokSkills ?? [],
+  ])).digest("hex");
+}
 const OPENCODE_PLACEHOLDER_PROVIDER_IDS = new Set(["myprovider"]);
 const OPENCODE_PLACEHOLDER_MODEL_IDS = new Set([
   "my-model-name",
@@ -84,12 +116,14 @@ async function ensureDir(dirPath: string): Promise<void> {
   }
 }
 
-async function ensureFile(filePath: string, defaultContent: string): Promise<void> {
+async function readTextFileOrEmpty(filePath: string): Promise<string> {
   try {
-    await fs.access(filePath);
-  } catch {
-    await ensureDir(path.dirname(filePath));
-    await fs.writeFile(filePath, defaultContent, "utf-8");
+    return await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
   }
 }
 
@@ -143,21 +177,17 @@ export const getOpenCodeRuntimePaths = getOpenCodeRuntimePathsFromConfigPaths;
 export const getCodexRuntimePaths = getCodexRuntimePathsFromConfigPaths;
 
 export async function readClaudeConfig(): Promise<string> {
-  await ensureFile(CONFIG_PATHS.claude.settings, "{}");
-  return fs.readFile(CONFIG_PATHS.claude.settings, "utf-8");
+  return readTextFileOrEmpty(CONFIG_PATHS.claude.settings);
 }
 
 export async function readClaudeMcpConfig(): Promise<string> {
-  await ensureFile(CONFIG_PATHS.claude.mcp, "{}");
-  return fs.readFile(CONFIG_PATHS.claude.mcp, "utf-8");
+  return readTextFileOrEmpty(CONFIG_PATHS.claude.mcp);
 }
 
 export async function readCodexConfig(): Promise<{ config: string; auth: string }> {
-  await ensureFile(CONFIG_PATHS.codex.config, "");
-  await ensureFile(CONFIG_PATHS.codex.auth, "{}");
   const [config, auth] = await Promise.all([
-    fs.readFile(CONFIG_PATHS.codex.config, "utf-8"),
-    fs.readFile(CONFIG_PATHS.codex.auth, "utf-8"),
+    readTextFileOrEmpty(CONFIG_PATHS.codex.config),
+    readTextFileOrEmpty(CONFIG_PATHS.codex.auth),
   ]);
   return { config, auth };
 }
@@ -209,20 +239,43 @@ export async function activateSavedDshConfig(profileId: string): Promise<void> {
   if (!profile) {
     throw new Error("DSH profile was not found.");
   }
-  const result = await activateDshProfile({
+  await applyConfig("dsh", {
     profileId,
     content: profile.configContent ?? profile.content ?? "",
-    paths: resolveDshConfigPaths(),
   });
-  if (!result.ok || !result.activated) {
-    throw new Error(result.error);
-  }
 }
 
 export async function readOpenCodeConfig(): Promise<{ config: string; env: string }> {
-  await ensureFile(CONFIG_PATHS.opencode.config, "{}");
-  const config = await fs.readFile(CONFIG_PATHS.opencode.config, "utf-8");
+  const config = await readTextFileOrEmpty(CONFIG_PATHS.opencode.config);
   return { config, env: "" };
+}
+
+export async function readRuntimeConfigFingerprint(cli: CliName, configId: string | null): Promise<string> {
+  let content: unknown;
+  switch (cli) {
+    case "claude":
+      content = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
+      break;
+    case "codex":
+      content = await readCodexConfig();
+      break;
+    case "opencode":
+      content = await readOpenCodeConfig();
+      break;
+    case "grok":
+      content = await readGrokConfigText();
+      break;
+    case "dsh":
+      content = await readDshConfigText();
+      break;
+    case "kimi-code":
+      content = await readKimiCodeConfigTextFromDisk();
+      break;
+    case "zcode":
+      content = await readZcodeProviderConfigText();
+      break;
+  }
+  return createHash("sha256").update(JSON.stringify([cli, configId, content])).digest("hex");
 }
 
 export async function writeClaudeConfig(content: string): Promise<void> {
@@ -396,39 +449,39 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
   claude: {
     readClaudeConfig,
     readClaudeMcpConfig,
-    writeClaudeConfig,
-    writeClaudeMcpConfig,
+    writeClaudeConfig: guardedRuntimeWrite(writeClaudeConfig),
+    writeClaudeMcpConfig: guardedRuntimeWrite(writeClaudeMcpConfig),
     backupClaudeConfig,
   },
   codex: {
     readCodexConfig,
-    writeCodexConfig,
+    writeCodexConfig: guardedRuntimeWrite(writeCodexConfig),
     backupCodexConfig,
   },
   opencode: {
     readOpenCodeConfig,
-    writeOpenCodeConfig,
+    writeOpenCodeConfig: guardedRuntimeWrite(writeOpenCodeConfig),
     backupOpenCodeConfig,
   },
   grok: {
     readGrokConfigText,
-    writeGrokConfigText,
+    writeGrokConfigText: guardedRuntimeWrite(writeGrokConfigText),
     backupGrokConfig,
   },
   dsh: {
     readDshConfigText,
-    writeDshConfigText,
+    writeDshConfigText: guardedRuntimeWrite(writeDshConfigText),
     backupDshConfig,
   },
   "kimi-code": {
     readKimiCodeConfigText: readKimiCodeConfigTextFromDisk,
-    writeKimiCodeConfigText: writeKimiCodeConfigTextToDisk,
+    writeKimiCodeConfigText: guardedRuntimeWrite(writeKimiCodeConfigTextToDisk),
     backupKimiCodeConfig: backupKimiCodeConfig,
     createDefaultConfigText: createKimiCodeDefaultConfigText,
   },
   zcode: {
     readZcodeConfigText: () => readZcodeProviderConfigText(),
-    writeZcodeConfigText: (content) => writeZcodeProviderConfigText(content),
+    writeZcodeConfigText: guardedRuntimeWrite((content: string) => writeZcodeProviderConfigText(content)),
     backupZcodeConfig: () => backupZcodeProviderConfig(),
     createDefaultConfigText: createZcodeExampleText,
   },
@@ -1101,14 +1154,18 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
   delete legacyConfig.geminiSkills;
 
   const filePath = getConfigFilePath(configToSave.platform, config.id);
-  await ensureDir(configDir);
-  if (configToSave.platform === "dsh") {
-    await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
-    await fs.chmod(configDir, 0o700);
+  await sharedRuntimeConfig(configToSave.platform).edit(config.id, async () => {
+    await ensureDir(configDir);
+    if (configToSave.platform === "dsh") {
+      await fs.chmod(configDir, 0o700);
+    }
     await writeFileAtomically(filePath, JSON.stringify(configToSave, null, 2), { mode: 0o600 });
-  } else {
-    await fs.writeFile(filePath, JSON.stringify(configToSave, null, 2), "utf-8");
-  }
+  }, async () => {
+    const saved = await getConfigById(configToSave.platform, config.id);
+    if (!saved) throw new Error("保存后的配置档案无法读取，请检查文件权限。");
+    await applyRuntimeConfig(normalizeConfigPlatform(saved.platform), saved);
+    return profileDigest(saved);
+  });
 }
 
 export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem> {
@@ -1151,7 +1208,7 @@ export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem
 
 export async function deleteConfig(platform: LegacyConfigPlatformInput, configId: string): Promise<void> {
   const filePath = getConfigFilePath(platform, configId);
-  await fs.unlink(filePath);
+  await sharedRuntimeConfig(platform).edit(configId, () => fs.unlink(filePath), async () => null);
 }
 
 export async function getConfigById(
@@ -1234,9 +1291,8 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
   return cliRuntimeConfigStrategies[normalizedPlatform].readCurrent();
 }
 
-export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
-  const normalizedPlatform = normalizeConfigPlatform(platform);
-  return enqueueConfigApply(normalizedPlatform, () => retryRuntimeConfigApply(async () => {
+async function applyRuntimeConfig(normalizedPlatform: CurrentConfigPlatform, payload: ApplyPayload): Promise<void> {
+  return retryRuntimeConfigApply(async () => {
     const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
     if (normalizedPlatform === "dsh" && profileId) {
       const result = await activateDshProfile({
@@ -1249,7 +1305,38 @@ export async function applyConfig(platform: LegacyConfigPlatformInput, payload: 
       return;
     }
     await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
-  }));
+  });
+}
+
+export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  return enqueueConfigApply(normalizedPlatform, async () => {
+    await sharedRuntimeConfig(platform).change(async () => {
+      const configId = payload.profileId?.trim() || null;
+      const config = configId ? await getConfigById(platform, configId) : null;
+      if (configId && !config) throw new Error("配置档案不存在，请刷新后重试。");
+      await applyRuntimeConfig(normalizedPlatform, config ? { ...config, profileId: configId ?? undefined } : payload);
+      return { configId, profileDigest: config ? profileDigest(config) : null };
+    });
+  });
+}
+
+export async function readSharedConfigSelection(platform: LegacyConfigPlatformInput, initializeConfigId?: string | null) {
+  return sharedRuntimeConfig(platform).read(initializeConfigId === undefined ? undefined : async () => {
+    const config = initializeConfigId ? await getConfigById(platform, initializeConfigId) : null;
+    return { configId: config?.id ?? null, profileDigest: config ? profileDigest(config) : null };
+  });
+}
+
+export async function acquireRuntimeConfigExecution(cli: CliName, expected: VisibleConfigSelection) {
+  return sharedRuntimeConfig(cli).acquire(expected, async (selection, readOnly) => {
+    if (!selection.configId) return;
+    const config = await getConfigById(cli, selection.configId);
+    if (!config || profileDigest(config) !== selection.profileDigest) {
+      throw new Error("当前档案内容已变化或无法读取，任务未启动，请刷新并重新应用配置。");
+    }
+    await runtimeWriteContext.run(readOnly, () => applyRuntimeConfig(cli, { ...config, profileId: undefined }));
+  });
 }
 
 export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {

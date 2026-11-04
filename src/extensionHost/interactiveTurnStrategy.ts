@@ -57,6 +57,7 @@ export type InteractiveTurnAttemptPort = {
   readonly interactiveMode: InteractiveMode;
   readonly selectedModel: string | null;
   readonly activeConfigId: string | null;
+  readonly configFingerprint?: string;
   readonly claudeEntrypoint: string | undefined;
   readonly isolateProjectInstructions: boolean | undefined;
   readonly originalSessionId: string | null;

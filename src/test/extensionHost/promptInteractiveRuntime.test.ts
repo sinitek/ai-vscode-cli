@@ -75,6 +75,7 @@ function createInteractiveRuntimeHarness(options: {
   const mappingUpserts: Array<{ cli: CliName; sessionId: string; mappedId: string; freezePrevious?: string }> = [];
   const processTitles: Array<{ cli: CliName; sessionId: string }> = [];
   const codexPrompts: string[] = [];
+  const runnerFingerprints: (string | undefined)[] = [];
   const humanInteractionRequests: HumanInteractionRequest[] = [];
   const canceledHumanInteractionTabs: Array<{ tabId: string; statusText?: string }> = [];
   let idCounter = 0;
@@ -122,15 +123,17 @@ function createInteractiveRuntimeHarness(options: {
   const manager = {
     getCodexRunnerSelection: () => null,
     hasCodexRunner: () => false,
-    getOrCreateCodexRunner: () => {
+    getOrCreateCodexRunner: (input: Parameters<InteractiveRunnerManager["getOrCreateCodexRunner"]>[0]) => {
+      runnerFingerprints.push(input.configFingerprint);
       codexRunnerCreateCalls += 1;
       return codexRunner;
     },
-    getOrCreateClaudeRunner: () => {
+    getOrCreateClaudeRunner: (input: Parameters<InteractiveRunnerManager["getOrCreateClaudeRunner"]>[0]) => {
+      runnerFingerprints.push(input.configFingerprint);
       claudeRunnerCreateCalls += 1;
       return claudeRunner;
     },
-    setRunner: () => undefined,
+    setRunner: (...input: Parameters<InteractiveRunnerManager["setRunner"]>) => { runnerFingerprints.push(input[6]?.configFingerprint); },
   } as unknown as InteractiveRunnerManager;
 
   const getSessionMessages = (sessionId: string): ChatMessage[] => {
@@ -257,6 +260,7 @@ function createInteractiveRuntimeHarness(options: {
     mappingUpserts,
     processTitles,
     codexPrompts,
+    runnerFingerprints,
     humanInteractionRequests,
     canceledHumanInteractionTabs,
     get codexRunnerCreateCalls() {
@@ -297,6 +301,29 @@ function createTarget(overrides: Partial<PromptRunTarget> = {}): PromptRunTarget
     ...overrides,
   };
 }
+
+test("the interactive host passes the verified native identity through creation and registration", async () => {
+  for (const cli of ["codex", "claude"] as const) {
+    const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+      readRuntimeConfigFingerprint: async (requestedCli, configId) => {
+        assert.equal(requestedCli, cli);
+        assert.equal(configId, "config-main");
+        return "native-config-and-auth-fingerprint";
+      },
+    } });
+    await harness.host.runPromptInteractive(createPromptInput(), createTarget({ cli }));
+    assert.ok(harness.runnerFingerprints.length >= 2);
+    assert.ok(harness.runnerFingerprints.every((fingerprint) => fingerprint === "native-config-and-auth-fingerprint"));
+  }
+});
+
+test("an unreadable configuration identity cannot start an interactive runner", async () => {
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    readRuntimeConfigFingerprint: async () => { throw new Error("配置读取失败"); },
+  } });
+  await assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget()), /配置读取失败/);
+  assert.equal(harness.codexRunnerCreateCalls, 0);
+});
 
 test("interactive runtime host keeps empty prompts inside its boundary", async () => {
   const harness = createInteractiveRuntimeHarness({

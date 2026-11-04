@@ -75,6 +75,7 @@ export type LoopPlusPromptTarget = {
 export type LoopPlusRunInput = {
   displayPrompt: string;
   modelPrompt?: string;
+  configSelections?: import("../promptRunTypes").PromptRunInput["configSelections"];
   /** 启动时确认的验收方案快照，写入任务记录后不再随模板编辑变化。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   model?: string;

@@ -26,6 +26,7 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateZcodeRunner({
           sessionId: uiSessionIdAtStart,
+          configFingerprint: port.configFingerprint,
           command: port.commandForRunner,
           agentArgs: launch.agentArgs,
           cwd,
@@ -79,6 +80,7 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           settings.model,
           {
             command: port.commandForRunner,
+            configFingerprint: port.configFingerprint,
             args: launch.agentArgs,
             cwd,
             localSessionId: started.sessionId,

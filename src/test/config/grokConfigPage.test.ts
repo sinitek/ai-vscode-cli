@@ -580,7 +580,5 @@ test("Grok TOML saving does not apply Kimi Code model validation", async () => {
   assert.equal(saveCalls[0].id, "grok-profile");
   assert.equal(saveCalls[0].fields.content, content);
   assert.equal(saveCalls[0].fields.configContent, content);
-  assert.equal(applyCalls.length, 1);
-  assert.equal(applyCalls[0].content, content);
-  assert.equal(applyCalls[0].configContent, content);
+  assert.equal(applyCalls.length, 0);
 });

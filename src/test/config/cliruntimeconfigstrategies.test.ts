@@ -6,6 +6,70 @@ import {
   type CliRuntimeConfigIoPorts,
 } from "../../config/cliRuntimeConfigStrategies";
 import type { ApplyPayload, CurrentConfigPlatform } from "../../config/types";
+import { createKimiCodeDefaultConfigText } from "../../config/kimiCodeConfig";
+import { createZcodeExampleText } from "../../config/zcodeConfig";
+
+test("every CLI checks before writing, skips equal content and rejects unreadable or unapplied files", async (context) => {
+  for (const cli of ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"] as const) {
+    await context.test(cli, async () => {
+      const ports = createPorts();
+      let content = "";
+      let auth = "{}";
+      let writes = 0;
+      let readFails = false;
+      let ignoreWrite = false;
+      const read = async () => {
+        if (readFails) { throw new Error("读取失败"); }
+        return content;
+      };
+      const write = async (next: string) => {
+        writes += 1;
+        if (!ignoreWrite) { content = next; }
+      };
+      ports.claude.readClaudeConfig = read;
+      ports.claude.writeClaudeConfig = write;
+      ports.codex.readCodexConfig = async () => ({ config: await read(), auth });
+      ports.codex.writeCodexConfig = async (next, nextAuth) => { await write(next); if (!ignoreWrite) { auth = nextAuth ?? auth; } };
+      ports.opencode.readOpenCodeConfig = async () => ({ config: await read(), env: "" });
+      ports.opencode.writeOpenCodeConfig = write;
+      ports.grok.readGrokConfigText = read;
+      ports.grok.writeGrokConfigText = write;
+      ports.dsh.readDshConfigText = read;
+      ports.dsh.writeDshConfigText = write;
+      ports["kimi-code"].readKimiCodeConfigText = read;
+      ports["kimi-code"].writeKimiCodeConfigText = write;
+      ports["kimi-code"].createDefaultConfigText = createKimiCodeDefaultConfigText;
+      ports.zcode.readZcodeConfigText = read;
+      ports.zcode.writeZcodeConfigText = write;
+      ports.zcode.backupZcodeConfig = async () => null;
+      ports.zcode.createDefaultConfigText = createZcodeExampleText;
+      const strategy = strategiesFrom(ports)[cli];
+      const expected = cli === "grok" ? VALID_GROK_TOML
+        : cli === "codex" ? 'model = "test"'
+        : cli === "claude" || cli === "opencode" ? '{"enabled":true}'
+        : strategy.fallbackInitialFields().content;
+      const payload = { content: expected, authContent: "{}" };
+      await strategy.apply(payload);
+      assert.equal(writes, 1);
+      await strategy.apply(payload);
+      assert.equal(writes, 1);
+      if (cli === "codex") {
+        auth = '{"outdated":true}';
+        await strategy.apply(payload);
+        assert.equal(auth, "{}");
+        assert.equal(writes, 2);
+      }
+      const beforeFailure = writes;
+      readFails = true;
+      await assert.rejects(strategy.apply(payload), /读取失败/);
+      assert.equal(writes, beforeFailure);
+      readFails = false;
+      content = "";
+      ignoreWrite = true;
+      await assert.rejects(strategy.apply(payload), /未成功更新配置/);
+    });
+  }
+});
 
 const VALID_GROK_TOML = [
   "# keep comment",
@@ -158,6 +222,7 @@ test("Claude apply writes settings before a failing MCP write and skips falsy MC
   ports.claude.writeClaudeConfig = async (content) => {
     settings = content;
   };
+  ports.claude.readClaudeMcpConfig = async () => "{}";
   ports.claude.writeClaudeMcpConfig = async () => {
     mcpWrites += 1;
     throw new Error("mcp failed");
@@ -243,7 +308,7 @@ test("Codex apply keeps content priority, auth retention, and skills boundaries"
   });
   assert.equal(storedConfig, "model = \"only-config-content\"");
   assert.equal(storedAuth, "");
-  assert.equal(calls.filter((call) => call === "read").length, 5);
+  assert.equal(calls.filter((call) => call === "read").length, 6);
 
   await strategy.apply({
     content: "",
@@ -264,7 +329,7 @@ test("Codex apply keeps content priority, auth retention, and skills boundaries"
     authContent: "{}",
     codexSkills: [],
   });
-  assert.equal(storedConfig, "model = \"exact\"\n");
+  assert.equal(storedConfig, "model = \"exact\"");
 
   await strategy.apply({
     content: "model = \"exact\"",
@@ -496,9 +561,9 @@ test("Grok strategy rejects blank or invalid content without writing", async () 
   assert.equal(stored, VALID_GROK_TOML);
 
   await strategy.apply({ content: undefined, configContent: VALID_GROK_TOML });
-  assert.equal(written, VALID_GROK_TOML);
-  assert.match(written, /kept_note = "leave-me"/);
-  assert.match(written, /# keep comment/);
+  assert.equal(written, "");
+  assert.equal(stored, VALID_GROK_TOML);
+  assert.equal(calls.includes("write"), false);
 
   await strategy.apply({
     content: VALID_GROK_TOML,

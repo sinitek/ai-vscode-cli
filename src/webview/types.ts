@@ -75,6 +75,7 @@ export type PanelMessage =
   | { type: "repairCliCommand"; cli: CliName }
   | {
       type: "sendPrompt";
+      configSelections?: Partial<Record<CliName, import("../config/sharedRuntimeConfig").VisibleConfigSelection>>;
       prompt: string;
       interactiveMode?: InteractiveMode;
       contextOptions?: PromptContextOptions;
@@ -420,6 +421,8 @@ export type PanelState = {
   configState: {
     configs: ConfigSummary[];
     activeConfigId: string | null;
+    revision?: string;
+    configurationError?: string;
   };
   configStateByCli?: Partial<Record<CliName, PanelState["configState"]>>;
   modelState: {

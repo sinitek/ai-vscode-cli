@@ -90,6 +90,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getGlobalHumanInteractionEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
+  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null) => Promise<string>;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome">>;
@@ -228,6 +229,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const cli = target.cli;
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = getActiveConfigIdForCli(cli);
+    const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId);
     const requestedModel = input.model || getSelectedCliModel(cli, activeConfigId);
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)
@@ -1213,6 +1215,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode") {
           throw new Error(`interactive-runner-unsupported:${cli}`);
         }
+        if (getActiveConfigIdForCli(cli) !== activeConfigId) {
+          throw new Error("配置选择已变化，任务未启动，请重试。");
+        }
         const disposition = await interactiveTurnStrategies[cli].runAttempt({
           cli,
           tabId,
@@ -1234,6 +1239,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           interactiveMode,
           selectedModel,
           activeConfigId,
+          configFingerprint,
           claudeEntrypoint,
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
           originalSessionId: target.sessionId,

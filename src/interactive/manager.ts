@@ -132,12 +132,12 @@ export class InteractiveRunnerManager {
     return this.reuseOrCreate(
       cli,
       prepared.sessionId,
-      (entry) => strategy.canReuse(entry, prepared),
+      (entry) => entry.configFingerprint === options.configFingerprint && strategy.canReuse(entry, prepared),
       (entry) => {
         strategy.applyReuse(entry, prepared);
       },
       () => strategy.createRunner(prepared),
-      (created) => strategy.createRegistration(prepared, created),
+      (created) => ({ ...strategy.createRegistration(prepared, created), configFingerprint: options.configFingerprint }),
     );
   }
 
@@ -259,13 +259,14 @@ export class InteractiveRunnerManager {
     const matched = existing && existing.cli === cli ? (existing as RunnerEntryByCli[TCli]) : undefined;
     if (matched && matched.runner === input.runner) {
       applySetMetadata(matched);
+      matched.configFingerprint = input.options.configFingerprint;
       this.touch(matched);
       return;
     }
     if (existing) {
       this.disposeEntry(key);
     }
-    const entry = this.withLifecycle(createSetRegistration());
+    const entry = this.withLifecycle({ ...createSetRegistration(), configFingerprint: input.options.configFingerprint });
     this.entries.set(key, entry);
     this.touch(entry);
   }

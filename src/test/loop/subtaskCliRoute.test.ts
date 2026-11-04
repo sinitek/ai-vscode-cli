@@ -6,6 +6,15 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
+test("historical subtask bindings never override the current CLI profile", async () => {
+  assert.equal(await resolveSubtaskRouteConfigId({
+    cli: "codex", configId: "historical-profile", getActiveConfigId: () => "current-profile",
+  }), "current-profile");
+  assert.equal(await resolveSubtaskRouteConfigId({
+    cli: "codex", configId: "historical-profile", getActiveConfigId: () => null, delay: async () => undefined,
+  }), null);
+});
+
 const {
   INVALID_SUBTASK_CLI_ROUTE,
   planBoundSubtaskConfigApply,

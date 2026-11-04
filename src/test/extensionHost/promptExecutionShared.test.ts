@@ -31,6 +31,6 @@ test("the shared prompt entry applies classic project instructions before all ru
   assert.match(entry, /cwd: useClassicLoopProjectInstructions \? resolveWorkspaceCwd\(\)/u);
   assert.match(entry, /isolateProjectInstructions: useClassicLoopProjectInstructions\s*\? false/u);
   for (const runner of ["runPromptInteractive", "runPromptParallel", "runPromptOneShot"]) {
-    assert.ok(entry.includes(`${runner}(attemptInput, attemptTarget, executionOptions)`));
+    assert.ok(entry.includes(`${runner}(currentAttemptInput, attemptTarget, executionOptions)`));
   }
 });

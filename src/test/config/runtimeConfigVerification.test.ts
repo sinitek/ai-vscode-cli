@@ -2,9 +2,26 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
   assertRuntimeConfigApplied,
+  applyRuntimeConfigIfNeeded,
   retryRuntimeConfigApply,
   RuntimeConfigVerificationError,
 } from "../../config/runtimeConfigVerification";
+
+test("conditional application skips semantically equal files and verifies changed files", async () => {
+  let content = '{ "enabled": true }';
+  let writes = 0;
+  const read = async () => content;
+  const write = async (next: string) => { writes += 1; content = next; };
+  const options = { cli: "测试 CLI", file: "settings.json", format: "JSON" as const };
+  await applyRuntimeConfigIfNeeded('{"enabled":true}', read, write, options);
+  assert.equal(writes, 0);
+  await applyRuntimeConfigIfNeeded('{"enabled":false}', read, write, options);
+  assert.equal(writes, 1);
+  await assert.rejects(applyRuntimeConfigIfNeeded("{}", read, async () => undefined, options), RuntimeConfigVerificationError);
+  await assert.rejects(applyRuntimeConfigIfNeeded("{}", async () => { throw new Error("读取失败"); }, write, options), /读取失败/);
+  await assert.rejects(applyRuntimeConfigIfNeeded("{}", read, async () => { throw new Error("写入失败"); }, options), /写入失败/);
+  assert.equal(writes, 1);
+});
 
 test("runtime verification compares structured values without weakening field checks", async (context) => {
   const scenarios: {

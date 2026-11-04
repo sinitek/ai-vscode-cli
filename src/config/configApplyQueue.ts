@@ -99,5 +99,12 @@ export function createConfigApplyQueue<K extends string>() {
 
   const waitForIdle = async (key: K): Promise<boolean> => states.get(key)?.idlePromise ?? true;
 
-  return { request, waitForIdle };
+  const requestIfIdle = (key: K, operation: ConfigApplyOperation): Promise<ConfigApplyResult> => {
+    if (states.has(key)) {
+      return Promise.resolve("superseded");
+    }
+    return request(key, operation);
+  };
+
+  return { request, requestIfIdle, waitForIdle };
 }

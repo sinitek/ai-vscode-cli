@@ -10,6 +10,7 @@ import type { GrokInteractiveRunner } from "./grokRunner";
 export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode";
 
 export type RunnerLifecycleFields = {
+  configFingerprint?: string;
   idleTimer: NodeJS.Timeout | null;
   lastUsedAt: number;
 };
@@ -96,6 +97,7 @@ export type ZcodeRunnerEntry = {
 } & RunnerLifecycleFields;
 
 export type ZcodeRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   command: string;
   agentArgs: string[];
@@ -137,6 +139,7 @@ export type RunnerRegistrationByCli = {
 };
 
 export type CodexRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   threadId: string | null;
   command: string;
@@ -149,6 +152,7 @@ export type CodexRunnerCreateOptions = {
 };
 
 export type ClaudeRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   mappedSessionId: string | null;
   command: string;
@@ -162,6 +166,7 @@ export type ClaudeRunnerCreateOptions = {
 };
 
 export type GrokRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   command: string;
   agentArgs: string[];
@@ -189,6 +194,7 @@ export type PreparedGrokCreate = {
 };
 
 export type DshRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   command: string;
   agentArgs: string[];
@@ -206,6 +212,7 @@ export type PreparedDshCreate = {
 };
 
 export type KimiCodeRunnerCreateOptions = {
+  configFingerprint?: string;
   sessionId: string;
   command: string;
   agentArgs: string[];
@@ -227,6 +234,7 @@ export type PreparedKimiCodeCreate = {
 };
 
 export type RunnerSetOptions = {
+  configFingerprint?: string;
   configId?: string | null;
   command?: string;
   args?: string[];

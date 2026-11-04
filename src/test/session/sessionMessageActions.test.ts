@@ -444,6 +444,42 @@ test("waits for pending config apply before sending a prompt", async () => {
   assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
 });
 
+test("stale visible configuration refuses both ordinary and Loop dispatch before recording history", async () => {
+  for (const interactiveMode of ["coding", "loop"] as const) {
+    const { deps, calls } = createSendPromptHarness();
+    deps.validateVisibleConfigSelections = async () => { throw new Error("所见配置版本已过期，请重新确认"); };
+    await handlePanelMessageWithDeps({
+      type: "sendPrompt", prompt: "不能使用未确认的配置", cli: "opencode", interactiveMode,
+      tabId: "tab-opencode-smoke",
+      configSelections: { opencode: { configId: "visible-profile", revision: "old-revision" } },
+    }, deps);
+    assert.equal(calls.runPrompt.length, 0);
+    assert.equal(calls.runLoopPrompt.length, 0);
+    assert.equal(calls.promptHistory.length, 0);
+    assert.equal(calls.preloaded.length, 0);
+    assert.equal(calls.postPanelState, 1);
+    assert.equal(calls.webviewErrors.length, 1);
+  }
+});
+
+test("validated visible revisions are forwarded unchanged to ordinary and Loop execution", async () => {
+  for (const interactiveMode of ["coding", "loop"] as const) {
+    const { deps, calls } = createSendPromptHarness();
+    const configSelections = { opencode: { configId: "visible-profile", revision: "visible-revision" } };
+    deps.validateVisibleConfigSelections = async (cli, selections) => {
+      assert.equal(cli, "opencode");
+      assert.deepEqual(selections, configSelections);
+    };
+    await handlePanelMessageWithDeps({
+      type: "sendPrompt", prompt: "按已确认的所见配置执行", cli: "opencode", interactiveMode,
+      tabId: "tab-opencode-smoke", configSelections,
+    }, deps);
+    const dispatched = interactiveMode === "coding" ? calls.runPrompt : calls.runLoopPrompt;
+    assert.equal(dispatched.length, 1);
+    assert.deepEqual(dispatched[0].input.configSelections, configSelections);
+  }
+});
+
 test("skips prompt history when a queued prompt was already recorded", async () => {
   const { deps, calls } = createSendPromptHarness();
 

@@ -1082,10 +1082,12 @@
     {
       "id": "plugin.rule.config_apply_serializes_runtime_writes",
       "name": "同一 CLI 配置应用串行写入运行文件",
-      "description": "配置中心及任务启动前通过同一 applyConfig 入口应用同一 CLI 的档案时，同一进程内运行时文件写入按 CLI 串行排队，Codex 的 config.toml 与 auth.json 配对校验，不同 CLI 可独立应用。读回按 JSON/TOML 结构和值校验，OpenCode 支持 JSONC，忽略格式、对象键序、注释和换行差异，数组顺序、实际字段差异及 Claude MCP 顶层浅合并边界保持严格。仅校验冲突在当前队列内最多完整应用3次，重试前等待25/50毫秒；DSH激活也有界恢复。配置服务对持续冲突及其它错误返回失败，配置中心和显式切换不伪装成功；任务入口捕获重写失败后警告并继续使用当前可用配置，不提交激活成功。不提供跨进程文件锁或失败自动回滚。",
+      "description": "同一进程内按 CLI 串行应用，并按目标原生配置路径使用跨进程互斥、共享提交版本与完整请求执行租约。七个 CLI 按 JSON/TOML 语义比较，OpenCode 支持 JSONC；一致不写，不一致修复并读回验证。Codex 配对检查 config/auth，Claude MCP 保持顶层浅合并，ZCode 保留其它供应商。仅校验冲突最多应用3次，等待25/50毫秒；其它错误直接失败，部分应用标记不可执行。保存由服务在同一事务判断是否仍为当前档案，配置卡片和 Kimi 模型管理不保存后二次激活。存在租约时拒绝切换及保存/删除当前档案，同版本任务可并行，已有租约期间只读校验；未激活档案可编辑，不同目标独立。死进程锁/租约按 PID 存活状态保守清理，不超时抢占活进程；旧版窗口、外部直接写入及自动文件回滚不受保证。",
       "status": "active",
       "applies_to": ["plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
+        {"path": "src/config/sharedRuntimeConfig.ts"},
+        {"path": "src/test/config/sharedRuntimeConfig.test.ts"},
         {"path": "src/config/configService.ts"},
         {"path": "src/config/runtimeConfigVerification.ts"},
         {"path": "src/extension.ts"},
@@ -1101,10 +1103,13 @@
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
-      "description": "七个 CLI 的显式档案切换在宿主完成 applyConfig 并提交 activeConfigIdByCli 后生效；发送与队列出队等待提交，最新选择覆盖旧请求，失败回滚。待提交时模型与思考只接受 activeConfigId 匹配 selectedConfigId 的快照，提交结束后跟随宿主激活状态。首次加载、心跳及空闲刷新不自动激活首项或回写旧档案。统一任务入口在三种执行路由和命令修复重试前尽力重写任务档案，绑定子任务档案优先于执行快照及当前激活身份，无身份时启动阶段选择有序首项，无档案则兼容原生配置。等待中的应用失败或重写抛错时警告并继续派发，本次任务后续重写跳过，下一次新任务可重试；不提交激活成功，失败重写后的子任务会话绑定配置 ID 留空。被新请求替代、主动取消、缺失绑定档案及实际 OpenCode 配置预检失败仍按原有逻辑处理，真实 CLI 错误不吞。不引入长期锁，不保证跨进程原子性、失败自动回滚或运行中进程迁移。",
+      "description": "七个 CLI 的当前档案以目标原生路径的共享提交 ID、随机版本与内容摘要为准，显式应用成功发布版本，五秒心跳只跟随不回写；首次迁移可识别已匹配原生文件的档案，不激活任意首项。面板、排队与手动 Loop 输入携带所见 configSelections，统一入口在请求开始和修复重试时再次核对，缺失或过期就刷新并拒绝，不静默采用不同档案。配置等待、摘要、读取、写入、验证及预检失败均阻止执行。后台定时/历史入口不恢复旧档案，未携带所见版本时读取当前共享选择；明确恢复原分组和配置仍属主动操作。常驻 runner 和 Codex 池按档案及配置/认证 SHA-256 指纹重建或隔离，不迁移在途进程。首次读取/心跳不创建原生文件，旧版窗口与外部直接写入不受保证。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.config_profile", "plugin.local_cli"],
       "source_refs": [
+        {"path": "src/config/sharedRuntimeConfig.ts"},
+        {"path": "src/webviewCommandCoordinator.ts"},
+        {"path": "src/test/config/currentConfigOwnership.test.ts"},
         {"path": "src/config/configApplyQueue.ts"},
         {"path": "src/extension.ts"},
         {"path": "src/sessionMessageActions.ts"},
@@ -1121,7 +1126,7 @@
     {
       "id": "plugin.rule.conversation_tab_execution_configuration",
       "name": "对话标签恢复实际执行配置模型与思考力度",
-      "description": "切换对话标签、关闭活动标签后自动回退或打开已有会话时，Loop / Loop+ 主标签恢复任务当前主子路由、配置和思考档位；子标签使用 Vibe，优先恢复实际执行快照。用户消息 executionProfile 保存配置 ID、原始模型 ID、思考档位与 OpenCode variant，展示用 executionModel 不作为新快照模型 ID。缺失配置、模型或可靠旧记录时保留对应选择，不重建模型；模型不可用时不改其思考设置。跨 CLI 子路由不回退主配置。异步恢复检查标签、请求序号和工作区身份，避免过期模型或消息覆盖当前标签。显式重置会话以同 CLI 空白新标签替换旧标签时保留尚待应用的显式配置选择与模型状态，不按普通标签切换清空；无待提交切换时接受宿主激活身份，不因重置自动回写旧档案；重置意图在标签上下文变化后消费，不影响后续目标标签配置恢复。",
+      "description": "切换对话标签、关闭活动标签后回退或打开已有会话时不应用历史档案；仅当历史路由与当前激活配置一致时恢复模型、思考和跨 CLI 子路由，档案不同则保留当前选择。Loop 主标签读取任务路由，子标签优先读取实际执行快照；executionProfile 保存档案 ID、原始模型 ID、思考档位与 OpenCode variant，executionModel 仅展示。缺失档案、模型或可靠记录不重建模型；异步恢复检查标签、请求序号与工作区，防止旧快照覆盖当前上下文。显式重置会话保留待提交的用户配置选择，不借普通标签恢复回写旧档案。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.chat_panel", "plugin.config_profile", "plugin.loop_task"],
       "source_refs": [

@@ -34,6 +34,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateKimiCodeRunner({
           sessionId: uiSessionIdAtStart,
+          configFingerprint: port.configFingerprint,
           command: port.commandForRunner,
           agentArgs: launch.agentArgs,
           cwd,
@@ -107,6 +108,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
             snapshot.model,
             {
               command: port.commandForRunner,
+              configFingerprint: port.configFingerprint,
               args: launch.agentArgs,
               cwd,
               // Remember the ACP id so the next turn reuses this process.

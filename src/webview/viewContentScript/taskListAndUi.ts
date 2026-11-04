@@ -1077,6 +1077,18 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return next;
       }
 
+      function readVisibleConfigSelections() {
+        const selections = {};
+        const configStates = { ...(state.configStateByCli || {}), [state.currentCli]: state.configState };
+        Object.keys(configStates).forEach((cli) => {
+          const config = configStates[cli];
+          if (config && typeof config.revision === "string") {
+            selections[cli] = { configId: config.activeConfigId || null, revision: config.revision };
+          }
+        });
+        return selections;
+      }
+
       function snapshotPromptPayloadForQueue(payload) {
         const normalizedPayload = normalizePromptPayloadWithModelFields(payload);
         if (!normalizedPayload) {
@@ -1088,6 +1100,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const capturedPayload = {
           ...normalizedPayload,
           interactiveMode,
+          configSelections: normalizedPayload.configSelections || readVisibleConfigSelections(),
         };
         if (normalizedPayload.interactiveMode) {
           return capturedPayload;
@@ -1170,6 +1183,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           : "";
         const sendPromptMessage = {
           type: "sendPrompt",
+          configSelections: normalizedPayload.configSelections || readVisibleConfigSelections(),
           prompt,
           interactiveMode: targetInteractiveMode,
           contextOptions: normalizedPayload.contextOptions,

@@ -28,6 +28,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
         void port.logInfo("runPrompt-interactive-codex-selection-new-thread", {
           cli: port.cli,
           sessionId: uiSessionIdAtStart,
+          configFingerprint: port.configFingerprint,
           previousThreadId: mappedThreadId,
           configId: nextSelection.configId,
           model: nextSelection.model,
@@ -38,6 +39,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateCodexRunner({
             sessionId: uiSessionIdAtStart,
+            configFingerprint: port.configFingerprint,
             threadId: threadDecision.threadId,
             command: port.command,
             args: port.args,
@@ -48,6 +50,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             configId: nextSelection.configId,
           })
         : new CodexInteractiveRunner({
+            configFingerprint: port.configFingerprint,
             command: port.command,
             args: port.args,
             cwd: port.cwd ?? undefined,
@@ -161,6 +164,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
                 configId: nextSelection.configId,
                 command: port.command,
+                configFingerprint: port.configFingerprint,
                 args: port.args,
                 cwd: port.cwd ?? undefined,
               });

@@ -6,7 +6,7 @@ import { commitGrokText, validateGrokDocument } from "./grokConfig";
 import { commitKimiCodeText } from "./kimiCodeConfig";
 import { mergeZcodeProviderConfigText } from "./zcodeConfig";
 import { mergeGrokSkillsConfig } from "./grokSkills";
-import { assertRuntimeConfigApplied } from "./runtimeConfigVerification";
+import { applyRuntimeConfigIfNeeded, assertRuntimeConfigApplied, runtimeConfigMatches } from "./runtimeConfigVerification";
 import { t } from "../i18n";
 import type {
   ApplyPayload,
@@ -107,15 +107,11 @@ function createClaudeRuntimeConfigStrategy(io: ClaudeRuntimeConfigIo): CliRuntim
       const nextSettings = payload.claudeSkills === undefined
         ? payload.content ?? "{}"
         : mergeClaudeSkillsConfig(payload.content ?? "{}", payload.claudeSkills);
-      await io.writeClaudeConfig(nextSettings);
-      if (payload.mcpContent) {
-        await io.writeClaudeMcpConfig(payload.mcpContent);
-      }
-      assertRuntimeConfigApplied(nextSettings, await io.readClaudeConfig(), {
+      await applyRuntimeConfigIfNeeded(nextSettings, io.readClaudeConfig, io.writeClaudeConfig, {
         cli: "Claude", file: "settings.json", format: "JSON",
       });
       if (payload.mcpContent) {
-        assertRuntimeConfigApplied(payload.mcpContent, await io.readClaudeMcpConfig(), {
+        await applyRuntimeConfigIfNeeded(payload.mcpContent, io.readClaudeMcpConfig, io.writeClaudeMcpConfig, {
           cli: "Claude", file: ".claude.json", format: "JSON", patch: true,
         });
       }
@@ -156,11 +152,15 @@ function createCodexRuntimeConfigStrategy(io: CodexRuntimeConfigIo): CliRuntimeC
       if (configContent === undefined) {
         throw new Error(t("config.codexIncomplete"));
       }
-      const current = payload.authContent === undefined ? await io.readCodexConfig() : undefined;
+      const current = await io.readCodexConfig();
       const nextConfig = payload.codexSkills === undefined
         ? configContent
         : mergeCodexSkillsConfig(configContent, payload.codexSkills);
-      const nextAuth = payload.authContent ?? current?.auth ?? "{}";
+      const nextAuth = payload.authContent ?? (current.auth || "{}");
+      if (runtimeConfigMatches(nextConfig, current.config, { cli: "Codex", file: "config.toml", format: "TOML" })
+        && runtimeConfigMatches(nextAuth, current.auth, { cli: "Codex", file: "auth.json", format: "JSON" })) {
+        return;
+      }
       await io.writeCodexConfig(nextConfig, nextAuth);
       const applied = await io.readCodexConfig();
       assertRuntimeConfigApplied(nextConfig, applied.config, {
@@ -206,9 +206,7 @@ function createOpenCodeRuntimeConfigStrategy(io: OpenCodeRuntimeConfigIo): CliRu
       const nextSettings = openCodeSkills === undefined
         ? payload.content ?? "{}"
         : mergeOpenCodeSkillsConfig(payload.content ?? "{}", openCodeSkills);
-      await io.writeOpenCodeConfig(nextSettings);
-      const applied = await io.readOpenCodeConfig();
-      assertRuntimeConfigApplied(nextSettings, applied.config, {
+      await applyRuntimeConfigIfNeeded(nextSettings, async () => (await io.readOpenCodeConfig()).config, io.writeOpenCodeConfig, {
         cli: "OpenCode", file: "config.json", format: "JSONC",
       });
     },
@@ -262,8 +260,7 @@ function createGrokRuntimeConfigStrategy(io: GrokRuntimeConfigIo): CliRuntimeCon
       if (fieldError) {
         throw new Error(fieldError);
       }
-      await io.writeGrokConfigText(committed.content);
-      assertRuntimeConfigApplied(committed.content, await io.readGrokConfigText(), {
+      await applyRuntimeConfigIfNeeded(committed.content, io.readGrokConfigText, io.writeGrokConfigText, {
         cli: "Grok", file: "config.toml", format: "TOML",
       });
     },
@@ -300,8 +297,7 @@ function createDshRuntimeConfigStrategy(io: DshRuntimeConfigIo): CliRuntimeConfi
       if (!committed.ok) {
         throw new Error(committed.error);
       }
-      await io.writeDshConfigText(committed.content);
-      assertRuntimeConfigApplied(committed.content, await io.readDshConfigText(), {
+      await applyRuntimeConfigIfNeeded(committed.content, io.readDshConfigText, io.writeDshConfigText, {
         cli: "DSH", file: "active-profile.json", format: "JSON",
       });
     },
@@ -338,9 +334,10 @@ function createZcodeRuntimeConfigStrategy(io: ZcodeRuntimeConfigIo): CliRuntimeC
       if (!committed.ok) {
         throw new Error(committed.error);
       }
-      await io.backupZcodeConfig();
-      await io.writeZcodeConfigText(committed.content);
-      assertRuntimeConfigApplied(committed.content, await io.readZcodeConfigText(), {
+      await applyRuntimeConfigIfNeeded(committed.content, io.readZcodeConfigText, async (content) => {
+        await io.backupZcodeConfig();
+        await io.writeZcodeConfigText(content);
+      }, {
         cli: "ZCode", file: "provider_config.json", format: "JSON",
       });
     },
@@ -376,8 +373,7 @@ function createKimiCodeRuntimeConfigStrategy(io: KimiCodeRuntimeConfigIo): CliRu
       if (!committed.ok) {
         throw new Error(committed.error);
       }
-      await io.writeKimiCodeConfigText(committed.content);
-      assertRuntimeConfigApplied(committed.content, await io.readKimiCodeConfigText(), {
+      await applyRuntimeConfigIfNeeded(committed.content, io.readKimiCodeConfigText, io.writeKimiCodeConfigText, {
         cli: "Kimi Code", file: "config.toml", format: "TOML",
       });
     },

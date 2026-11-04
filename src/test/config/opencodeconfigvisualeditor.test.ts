@@ -433,7 +433,7 @@ test("invalid JSON cannot become an empty visual save", () => {
   assert.match(serialized.error, /切换到 JSON 模式修复/);
 });
 
-test("JSON and visual state round-trip while save flow calls save then apply", async () => {
+test("JSON and visual state round-trip while the coordinated save flow never separately reactivates a profile", async () => {
   const utils = loadVisualUtils();
   const parsed = utils.parseContent(extractOpenCodeExample());
   assert.equal(parsed.ok, true);
@@ -455,7 +455,7 @@ test("JSON and visual state round-trip while save flow calls save then apply", a
     saveConfig: async (content: string) => calls.push(`save:${JSON.parse(content).model}`),
     applyActiveConfig: async (content: string) => calls.push(`apply:${JSON.parse(content).model}`),
   });
-  assert.deepEqual(calls, ["save:myAPI/main-chat-model", "apply:myAPI/main-chat-model"]);
+  assert.deepEqual(calls, ["save:myAPI/main-chat-model"]);
   assert.match(loadUiSource(), /saveOpenCodeSettingsCard[\s\S]*openCodeVisualRunSaveFlow/);
 });
 

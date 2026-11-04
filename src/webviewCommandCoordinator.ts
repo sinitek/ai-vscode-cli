@@ -397,6 +397,7 @@ export type ConfigStateLoaderDeps = {
   getConfigList: (cli: CliName) => Promise<ConfigItem[]>;
   getConfigOrder: (cli: CliName) => Promise<Partial<Record<CliName, string[]>>>;
   getCurrentConfig: (cli: CliName) => Promise<CurrentConfig>;
+  readSharedConfigSelection?: (cli: CliName, initialConfigId: string | null) => Promise<import("./config/sharedRuntimeConfig").SharedConfigSelection | null>;
   setWorkspaceActiveConfigId: (cli: CliName, configId: string | null) => void;
   setLastConfigStateLoadError: (cli: CliName, message: string | null) => void;
   logInfo: (event: string, payload?: unknown) => void;
@@ -410,7 +411,7 @@ export async function loadConfigStateWithDeps(
 ): Promise<PanelState["configState"]> {
   try {
     const configs = await deps.getConfigList(cli);
-    if (configs.length === 0) {
+    if (configs.length === 0 && !deps.readSharedConfigSelection) {
       deps.setWorkspaceActiveConfigId(cli, null);
       deps.setLastConfigStateLoadError(cli, null);
       deps.logInfo("loadConfigState-empty", { cli, reason: "no-configs" });
@@ -432,15 +433,15 @@ export async function loadConfigStateWithDeps(
     const preferredActive = preferredActiveConfigId
       ? orderedConfigs.find((config) => config.id === preferredActiveConfigId) ?? null
       : null;
-    const matchedActive = preferredActive && matchesActiveConfig(cli, preferredActive, current)
-      ? preferredActive
-      : orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
-    const active = matchedActive ?? preferredActive;
-    const activeConfigId = active ? active.id : null;
-    if (matchedActive && preferredActiveConfigId !== activeConfigId) {
+    const matchedActive = preferredActive && matchesActiveConfig(cli, preferredActive, current);
+    const initial = matchedActive ? preferredActive : orderedConfigs.find((config) => matchesActiveConfig(cli, config, current));
+    const shared = await deps.readSharedConfigSelection?.(cli, initial?.id ?? null);
+    const activeConfigId = shared ? shared.configId : preferredActive?.id ?? null;
+    if (shared && activeConfigId && !orderedConfigs.some((config) => config.id === activeConfigId)) {
+      throw new Error("共享选择的配置档案无法读取，请刷新并重新应用配置。");
+    }
+    if (preferredActiveConfigId !== activeConfigId) {
       deps.setWorkspaceActiveConfigId(cli, activeConfigId);
-    } else if (!preferredActive && preferredActiveConfigId) {
-      deps.setWorkspaceActiveConfigId(cli, null);
     } else if (!matchedActive && preferredActive) {
       deps.logInfo("loadConfigState-preferred-fallback", {
         cli,
@@ -456,6 +457,7 @@ export async function loadConfigStateWithDeps(
         platform: config.platform,
       })),
       activeConfigId,
+      ...(shared ? { revision: shared.revision, ...(!shared.ready ? { configurationError: "上次配置应用未成功，请重新应用配置后执行。" } : {}) } : {}),
     };
   } catch (error) {
     const message = deps.errorToMessage(error);

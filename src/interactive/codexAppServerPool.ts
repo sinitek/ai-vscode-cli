@@ -55,6 +55,7 @@ const connections = new Map<string, CodexAppServerConnection>();
 let nextConnectionId = 1;
 
 export function buildCodexAppServerConnectionKey(input: {
+  configFingerprint?: string;
   command: string;
   args: string[];
   cwd?: string;
@@ -67,6 +68,7 @@ export function buildCodexAppServerConnectionKey(input: {
     cwd: input.cwd ?? "",
     codexHomeDir: input.codexHomeDir,
     modelProvider: input.modelProvider ?? "",
+    configFingerprint: input.configFingerprint ?? "",
   });
 }
 
@@ -581,4 +583,3 @@ function extractRoutingThread(message: Record<string, unknown>): { threadId: str
     parentThreadId: parent || null,
   };
 }
-

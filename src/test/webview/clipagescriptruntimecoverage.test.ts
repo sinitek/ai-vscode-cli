@@ -1103,6 +1103,20 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
   });
 }
 
+test("queued prompts retain the displayed profile revision instead of silently adopting a later heartbeat", () => {
+  const { api, posted, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
+  const payload = api.buildPromptPayload("按所见配置执行");
+  assert.equal(payload.configSelections.codex.revision, "visible-a");
+  api.queuePromptForLater(payload);
+  const queued = api.getActiveConversationRuntimeState().pendingPromptQueue[0];
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
+  api.dispatchPrompt(queued);
+  const sent = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.equal(sent.configSelections.codex.configId, "config-a");
+  assert.equal(sent.configSelections.codex.revision, "visible-a");
+});
+
 for (const cli of CLI_LIST) {
   test(`${cli} never writes a profile during initial or repeated passive state refreshes`, () => {
     const { api, document, window, posted } = createRuntimeHarness();

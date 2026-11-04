@@ -142,6 +142,7 @@ function emitPrimaryTokenUsageUpdate(
 
 
 type CodexRunnerMutableOptions = {
+  configFingerprint?: string;
   command: string;
   args: string[];
   cwd?: string;
@@ -474,6 +475,7 @@ export class CodexInteractiveRunner {
       cwd,
       codexHomeDir: childEnvResult.codexHomeDir,
       modelProvider: threadOptions.modelProvider ?? null,
+      configFingerprint: this.options.configFingerprint,
     });
     if (this.connection && (!this.connection.isAlive() || this.connection.key !== key)) {
       const previous = this.connection;

@@ -140,6 +140,28 @@ function reportText(rootDir: string): string {
   return chunks.join("\n");
 }
 
+test("Loop+ preserves visible configuration revisions from its first main call through subtask dispatch", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  const configSelections = { codex: { configId: "visible-profile", revision: "visible-revision" } };
+  try {
+    fixture.queueMain((input, tabId) => {
+      assert.deepEqual(input.configSelections, configSelections);
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.deepEqual(input.configSelections, configSelections);
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      assert.deepEqual(input.configSelections, configSelections);
+      fixture.publish(input, tabId, { status: "end", content: "已完成所见配置任务" });
+    });
+    await fixture.adapter.runEventDriven({ ...prompt(), configSelections }, { schedulingMode: "event_driven" }, fixture.target);
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.equal(fixture.attemptCalls.length, 1);
+  } finally { fixture.dispose(); }
+});
+
 test("adapter creates only the normal user prompt bubble in a subtask conversation", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   let messages: ReturnType<typeof fixture.getMessages> = [];

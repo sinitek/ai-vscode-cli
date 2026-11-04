@@ -26,6 +26,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
       let runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateClaudeRunner({
             sessionId: uiSessionIdAtStart,
+            configFingerprint: port.configFingerprint,
             mappedSessionId,
             command: port.commandForRunner,
             args: port.args,
@@ -124,6 +125,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
         }
         port.interactiveRunnerManager.setRunner("claude", uiSessionId, runner, port.thinkingMode, port.interactiveMode, port.selectedModel, {
           command: port.commandForRunner,
+          configFingerprint: port.configFingerprint,
           args: port.args,
           cwd: port.cwd ?? undefined,
           entrypoint: port.claudeEntrypoint,

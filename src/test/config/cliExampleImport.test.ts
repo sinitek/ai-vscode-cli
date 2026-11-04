@@ -512,7 +512,7 @@ test("共享抽屉确认导入后统一切换源码页签，仅更新草稿，�
       setDshFieldError: () => undefined, setDshSelectedModelId: () => undefined,
       setDshEditorMode: (mode: string) => { editorModes.push(mode); },
     });
-    vm.runInNewContext(`const ${section("N = (W) => y(W),", "      A = async (W) =>").replace(/,\s*$/, ";")}\nglobalThis.handlers = { D, B, importCliExample };`, sandbox);
+    vm.runInNewContext(`const ${section("N = (W) => y(W),", "      saveClaudeSettingsCard =").replace(/,\s*$/, ";")}\nglobalThis.handlers = { D, B, importCliExample };`, sandbox);
     sandbox.handlers.D();
     assert.equal(sandbox.exampleImportOpen, true);
     assert.equal(calls.length, 0);

@@ -71,6 +71,7 @@ export const codexRunnerLifecycleStrategy: CodexRunnerLifecycleStrategy = {
       interactiveMode: prepared.options.interactiveMode,
       model: prepared.selection.model,
       threadId: prepared.options.threadId,
+      configFingerprint: prepared.options.configFingerprint,
     });
   },
   createRunner(prepared) {
@@ -82,6 +83,7 @@ export const codexRunnerLifecycleStrategy: CodexRunnerLifecycleStrategy = {
       interactiveMode: prepared.options.interactiveMode,
       model: prepared.selection.model,
       threadId: prepared.options.threadId,
+      configFingerprint: prepared.options.configFingerprint,
     });
   },
   createRegistration(prepared, runner) {
