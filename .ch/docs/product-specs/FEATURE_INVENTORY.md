@@ -44,6 +44,8 @@ AI 对话面板读取 Codex 当前 `config.toml` 的根级 `model` 作为配置�
 
 七类 CLI 的八个“查看范例”入口和共享“一键导入”按钮统一复用“保存”的主按钮、小尺寸及 `config-standard-action-button` 样式；查看显示眼睛图标，导入显示闪电图标，装饰图标不改变中文读屏名称。标准主按钮在抽屉中也沿用相同的 VS Code 主题颜色和交互规则。仅统一外观，不改变范例弹窗、草稿导入、源码页签和手动保存流程。实现见 `media/config/assets/config-app-ui.js`、`src/webview/configView.ts`；回归见 `src/test/config/configappcompactcontrols.test.ts`。
 
+Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份的任务快照：沿用任务主 CLI，优先使用前端独立档案，未记录独立档案时仅同 CLI 可沿用任务原档案；不借用主/后端模型或当前激活档案。运行时提示保留同 CLI 前端/全栈角色身份。仅有思考档、非法 CLI、跨 CLI 缺档案等情况继续拒绝。实现见 `src/subtaskCliRoute.ts`、`src/extensionHost/promptRunRuntime.ts`；回归见 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopModelRouting.test.ts`。
+
 ## Grok 原生人工交互补充
 
 ## 人机交互历史

@@ -40,7 +40,9 @@ for (const cli of CLI_LIST) {
           fixture.queueMain((input, tabId) => {
             taskId = input.loopTaskId!;
             assert.equal(input.model, "main-model");
-            fixture.publish(input, tabId, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "dispatch", subtasks: [{ id: "work", title: "验证模型", executionRole: mode === "split" ? "frontend" : "backend", prompt: "Implement the isolated routing check. Write the result to result.txt and report the actual verification evidence.", writeFiles: ["result.txt"] }] })) });
+            assert.equal(input.loopSubtaskFrontendCli, cli);
+            assert.equal(input.loopSubtaskFullstackCli, cli);
+            fixture.publish(input, tabId, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "dispatch", subtasks: [{ id: "work", title: "验证模型", taskType: mode === "split" ? "frontend" : "backend", prompt: "Implement the isolated routing check. Write the result to result.txt and report the actual verification evidence.", writeFiles: ["result.txt"] }] })) });
           });
           for (let count = 0; count < 3; count += 1) {
             fixture.queueMain((input, tabId) => {
@@ -74,6 +76,67 @@ for (const cli of CLI_LIST) {
       });
     }
   }
+}
+
+for (const frontendConfigId of [undefined, "frontend-profile"]) {
+  test(`Loop+ dispatches and accepts a saved frontend route without CLI and profile=${frontendConfigId ?? "origin"}`, async () => {
+    const fixture = createLoopPlusRuntimeFixture();
+    let taskId = "";
+    try {
+      fixture.queueMain((input, tabId) => {
+        taskId = input.loopTaskId!;
+        const task = fixture.readTask(taskId);
+        assert.ok(task);
+        fixture.saveTask({
+          ...task,
+          loopSubtaskMode: "split",
+          modelRouting: {
+            main: { model: "main-model" },
+            subtask: { model: "backend-model" },
+            subtaskFrontend: { model: "frontend-model", ...(frontendConfigId ? { configId: frontendConfigId } : {}) },
+          },
+          originProfile: { configId: "main-profile", subtaskFrontendThinkingMode: "low" },
+        });
+        fixture.publish(input, tabId, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({
+          status: "dispatch",
+          subtasks: [{ id: "frontend", title: "前端实现", taskType: "frontend", prompt: "Implement the isolated frontend change in result.txt and report the actual verification evidence.", writeFiles: ["result.txt"] }],
+        })) });
+      });
+      for (let count = 0; count < 3; count += 1) {
+        fixture.queueMain((input, tabId) => {
+          const eventId = input.modelPrompt.match(/Current review eventId: (\S+)/)?.[1];
+          fixture.publish(input, tabId, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({
+            status: "completed",
+            ...(eventId && eventId !== "(none)" ? { reviewEventId: eventId } : {}),
+            answerConclusion: "已验证",
+            finalSummary: "前端路由已验收",
+            acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+            requirementCoverage: [{ name: "前端路由", passed: true }],
+          })) });
+        });
+      }
+      fixture.setAttemptAction((input, tabId) => {
+        assert.equal(input.model, "frontend-model");
+        assert.equal(input.loopSubtaskModel, "frontend-model");
+        assert.equal(input.loopSubtaskConfigId, frontendConfigId ?? "main-profile");
+        assert.equal(input.loopSubtaskThinkingMode, "low");
+        assert.equal(fixture.createdSubtaskTargets.at(-1)?.cli, "codex");
+        fixture.publish(input, tabId, { status: "end", content: "前端实现已完成" });
+      });
+      await fixture.adapter.runEventDriven({
+        displayPrompt: "验证已有前端路由",
+        modelPrompt: "验证已有前端路由",
+        contextTags: [],
+        model: "main-model",
+        loopSubtaskModel: "backend-model",
+        loopSubtaskMode: "split",
+      }, { schedulingMode: "event_driven" }, fixture.target);
+      assert.equal(fixture.attemptCalls.length, 1);
+      assert.equal(fixture.readTask(taskId)?.status, "completed");
+    } finally {
+      fixture.dispose();
+    }
+  });
 }
 
 test("OpenCode hydration keeps the selected subtask model instead of restoring the main model", async () => {

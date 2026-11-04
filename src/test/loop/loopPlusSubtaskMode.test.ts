@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import { installVscodeMock } from "../vscodeMock";
+import { CLI_LIST } from "../../cli/types";
 
 installVscodeMock();
 
@@ -166,6 +167,85 @@ test("split routes frontend and backend separately and general always uses the m
   });
   assert.match(missingFrontend.unavailableReason || "", /子-前端配置不可用/);
   assert.notEqual(missingFrontend.model, "backend-model");
+});
+
+test("split restores same-CLI frontend snapshots without a CLI field and keeps their model and profile", () => {
+  for (const mainCli of CLI_LIST) {
+    for (const frontendRoute of [
+      { model: "frontend-model" },
+      { configId: "frontend-profile", model: "frontend-model" },
+      { configId: "frontend-profile" },
+    ]) {
+      const execution = resolveLoopPlusRoleExecution({
+        mainCli,
+        loopSubtaskMode: "split",
+        taskType: "frontend",
+        frontendRoute,
+        mainRoute: { model: "main-model" },
+        backendRoute: { model: "backend-model", configId: "backend-profile" },
+        originProfile: { configId: "main-profile", subtaskFrontendThinkingMode: "high" },
+      });
+      assert.equal(execution.unavailableReason, undefined, mainCli);
+      assert.equal(execution.cli, mainCli);
+      assert.equal(execution.crossCli, false);
+      assert.equal(execution.role, "frontend");
+      assert.equal(execution.model, frontendRoute.model);
+      assert.equal(execution.configId, frontendRoute.configId ?? "main-profile");
+      assert.equal(execution.thinkingMode, "high");
+    }
+  }
+});
+
+test("split restores same-CLI frontend prompt identity without falling back to other role models", () => {
+  const execution = resolveLoopPlusRoleExecution({
+    mainCli: "codex",
+    loopSubtaskMode: "split",
+    taskType: "frontend",
+    prompt: {
+      loopSubtaskFrontendModel: "frontend-model",
+      loopSubtaskFrontendConfigId: "frontend-profile",
+      loopSubtaskFrontendThinkingMode: "low",
+      loopMainModel: "main-model",
+      loopSubtaskModel: "backend-model",
+    },
+  });
+  assert.equal(execution.unavailableReason, undefined);
+  assert.equal(execution.cli, "codex");
+  assert.equal(execution.model, "frontend-model");
+  assert.equal(execution.configId, "frontend-profile");
+  assert.equal(execution.thinkingMode, "low");
+});
+
+test("split rejects missing frontend identity, invalid CLI and cross-CLI profiles instead of guessing", () => {
+  for (const scenario of [
+    {},
+    { frontendRoute: { model: "  " } },
+    { frontendRoute: { fallback: "unrecorded" } },
+    { prompt: { loopSubtaskFrontendThinkingMode: "high" } },
+    { prompt: { loopSubtaskFrontendCli: "unknown", loopSubtaskFrontendModel: "frontend-model" } },
+    { frontendRoute: { model: "frontend-model", fallback: "invalid-subtask-cli" } },
+    { frontendRoute: { cli: "grok" as const, model: "frontend-model" } },
+  ]) {
+    const execution = resolveLoopPlusRoleExecution({
+      mainCli: "codex",
+      loopSubtaskMode: "split",
+      taskType: "frontend",
+      originProfile: { configId: "main-profile", subtaskFrontendThinkingMode: "high" },
+      mainRoute: { model: "main-model" },
+      backendRoute: { model: "backend-model", configId: "backend-profile" },
+      ...scenario,
+    });
+    assert.ok(execution.unavailableReason);
+    assert.equal(execution.model, undefined);
+    assert.equal(execution.configId, null);
+  }
+  const missingProfile = resolveLoopPlusRoleExecution({
+    mainCli: "codex",
+    loopSubtaskMode: "split",
+    taskType: "frontend",
+    frontendRoute: { model: "frontend-model" },
+  });
+  assert.match(missingProfile.unavailableReason ?? "", /子-前端配置不可用/);
 });
 
 test("legacy tasks without a mode keep the atomic subtask route and saved frontend routes stay split", () => {

@@ -1216,7 +1216,7 @@
     {
       "id": "plugin.rule.loop_plus_role_model_routing",
       "name": "Loop+ 按全栈或拆分模式绑定子模型",
-      "description": "Loop+ 只有一个 loopSubtaskMode：fullstack 或 split。新界面和新任务缺省 fullstack。fullstack 下 backend、frontend 和未归类编码都使用子-全栈的 CLI、configId、模型和思考力度；split 下 frontend 使用子-前端，backend 及其它编码使用子-后端。同 CLI 的主子模型仍独立绑定，全栈和前端请求保留完整 CLI/config/model；未设置独立模型时快照与下拉显示的已有子模型一致，显式 CLI 默认不补已有子模型。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 general 子任务；小/中型思考或单一分析方向不使用 general。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的交付边界并行派发多个编码子任务；共享文件或有强依赖时保持单任务，不为增加数量而拆分。general 读取主模型完整配置，不能携带编码交付；纯回答/只读请求可由主模型直接完成。三套配置分别保存，切换模式不覆盖。首次缺少全栈角色时从原子模型初始化一次。没有模式且没有独立前端子路由的旧任务按 fullstack 沿用原子模型；已有前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝。子配置失败不回退主模型编码。主模型仍负责编排和验收。",
+      "description": "Loop+ 只有一个 loopSubtaskMode：fullstack 或 split。新界面和新任务缺省 fullstack。fullstack 下 backend、frontend 和未归类编码都使用子-全栈的 CLI、configId、模型和思考力度；split 下 frontend 使用子-前端，backend 及其它编码使用子-后端。同 CLI 的主子模型仍独立绑定，全栈和前端请求及运行时提示保留完整 CLI/config/model；未设置独立模型时快照与下拉显示的已有子模型一致，显式 CLI 默认不补已有子模型。已有前端模型或档案但省略 CLI 的历史快照按任务主 CLI 解析，独立档案优先，仅同 CLI 缺档案时沿用任务原档案；仅思考档不构成路由，非法 CLI 或跨 CLI 缺档案仍拒绝。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 general 子任务；小/中型思考或单一分析方向不使用 general。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的交付边界并行派发多个编码子任务；共享文件或有强依赖时保持单任务，不为增加数量而拆分。general 读取主模型完整配置，不能携带编码交付；纯回答/只读请求可由主模型直接完成。三套配置分别保存，切换模式不覆盖。首次缺少全栈角色时从原子模型初始化一次。没有模式且没有独立前端子路由的旧任务按 fullstack 沿用原子模型；已有前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝。子配置失败不回退主模型编码。主模型仍负责编排和验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [
@@ -1230,6 +1230,8 @@
         {"path": "src/modelSelectionStore.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/test/extensionHost/loopModelRouting.test.ts"},
         {"path": "src/webview/viewContentHtml.ts"},
         {"path": "src/test/loop/loopPlusSubtaskMode.test.ts"},
         {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},

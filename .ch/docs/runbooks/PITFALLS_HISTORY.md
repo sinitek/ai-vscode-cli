@@ -11,11 +11,13 @@
 
 ## Loop / Loop+ 同 CLI 子模型被主模型替代
 
+2026-11-04 排障补充：本机前端 attempt 的报告在创建 CLI 会话前即记录「子-前端配置不可用」，但任务已保存前端模型，有的还保存了独立档案。只修新任务发送入口不够：`resolveLoopPlusPromptRoleBinding` 仍会删除同 CLI 的前端/全栈命名角色身份；前端解析又把历史快照省略 CLI 误认为缺配置。运行时须保留命名角色 CLI，历史前端模型/档案可证明路由存在时按任务主 CLI 解析，并保持独立模型和档案。仅思考档、非法身份、跨 CLI 缺档案不兼容放行。回归 dispatch 必须使用真实协议字段 `taskType`，不是被解析器忽略的 `executionRole`，否则所谓前端用例实际只覆盖默认后端。验证见 `loopPlusSubtaskMode.test.ts`、`loopModelRouting.test.ts`，后者同时覆盖历史前端派发、执行、验收，不改写本机任务记录。
+
 - 发现时间：2026-11-03。
 - 适用版本：经典 Loop 只在跨 CLI 分支注入绑定模型、Loop+ 命名角色快照只取独立设置的版本。
 - 现象：主、子模型 CLI 相同但下拉选择不同模型，子任务仍启动主模型；同 CLI 前端子路由还可能被判定为不可用。
 - 根因：经典 Loop 把模型、思考力度绑定误放在 `crossCli` 条件内；Loop+ 下拉在没有独立设置时显示已有子模型，但发送没有相同回退，且省略同 CLI 的命名角色身份。
-- 修正：模型和思考力度绑定不依赖跨 CLI；新建及改用当前配置继续时，命名角色携带完整 CLI/config/model，模型回退与下拉一致，区分未设置与显式 CLI 默认。历史快照不自动改写；受影响旧任务继续时选择“使用新配置的主子模型”重新绑定。
+- 修正：模型和思考力度绑定不依赖跨 CLI；新建及改用当前配置继续时，命名角色携带完整 CLI/config/model，模型回退与下拉一致，区分未设置与显式 CLI 默认。历史快照不自动改写；历史任务若缺失实际模型选择，继续时选择“使用新配置的主子模型”重新绑定；仅省略 CLI 的前端路由按 2026-11-04 兼容规则恢复。
 - 验证：`npm run build`；`subtaskCliExecution.test.ts`、`loopPlusFullstackMode.test.ts`；真实 Chromium 对 Webview 的经典 Loop、全栈继承、全栈独立选择、拆分前端进行提交，并核对宿主路由与 Codex thread/turn 参数。
 - 事实来源：`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/product-specs/FEATURE_INVENTORY.md`。不修改历史任务、用户本地配置或模型目录。
 

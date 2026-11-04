@@ -462,7 +462,12 @@ function resolveFrontendRoleExecution(input: {
       unavailableReason: FRONTEND_ROUTE_MISSING,
     };
   }
-  const cli = routeCli.cli ?? promptCli.cli;
+  const frontendConfigId = normalizeRouteConfigId(input.frontendRoute?.configId)
+    ?? normalizeRouteConfigId(input.prompt?.loopSubtaskFrontendConfigId);
+  const routeModel = normalizeRouteModel(input.frontendRoute?.model);
+  const promptModel = normalizeRouteModel(input.prompt?.loopSubtaskFrontendModel);
+  const implicitCli = frontendConfigId || routeModel || promptModel ? input.mainCli : undefined;
+  const cli = routeCli.cli ?? promptCli.cli ?? implicitCli;
   if (!cli) {
     return {
       cli: input.mainCli,
@@ -472,8 +477,7 @@ function resolveFrontendRoleExecution(input: {
     };
   }
   const crossCli = cli !== input.mainCli;
-  const configId = normalizeRouteConfigId(input.frontendRoute?.configId)
-    ?? normalizeRouteConfigId(input.prompt?.loopSubtaskFrontendConfigId)
+  const configId = frontendConfigId
     ?? (crossCli ? null : normalizeRouteConfigId(input.originProfile?.configId) ?? null);
   if (crossCli && !configId) {
     return {
@@ -491,8 +495,6 @@ function resolveFrontendRoleExecution(input: {
       unavailableReason: FRONTEND_ROUTE_MISSING,
     };
   }
-  const routeModel = normalizeRouteModel(input.frontendRoute?.model);
-  const promptModel = normalizeRouteModel(input.prompt?.loopSubtaskFrontendModel);
   const model = input.frontendRoute?.cli ? routeModel : (promptModel ?? routeModel);
   const thinkingMode = normalizeRouteThinkingMode(input.originProfile?.subtaskFrontendThinkingMode)
     ?? normalizeRouteThinkingMode(input.prompt?.loopSubtaskFrontendThinkingMode);
