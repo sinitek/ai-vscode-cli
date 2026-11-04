@@ -11,7 +11,7 @@ type LockOwner = { pid: number; token: string };
 
 export class ConfigSelectionChangedError extends Error {
   constructor() {
-    super("配置已在其他窗口切换或更新，本次任务未启动。界面已请求刷新，请确认所见配置后重新发送。");
+    super("配置档案已在其他窗口切换，本次任务未启动。界面已请求刷新，请确认所选档案后重新发送。");
     this.name = "ConfigSelectionChangedError";
   }
 }
@@ -175,23 +175,12 @@ export class SharedRuntimeConfig {
 
   async acquire(
     expected: VisibleConfigSelection,
-    prepare: (selection: SharedConfigSelection, readOnly: boolean) => Promise<void>,
   ): Promise<{ selection: SharedConfigSelection; release: () => Promise<void> }> {
     const lease: ExecutionLease = { id: randomUUID(), pid: process.pid };
     const selection = await this.locked(async () => {
       const state = await this.readState();
-      if (!state || state.configId !== expected.configId || state.revision !== expected.revision) throw new ConfigSelectionChangedError();
+      if (!state || state.configId !== expected.configId) throw new ConfigSelectionChangedError();
       if (!state.ready) throw new Error("上次配置应用未成功，任务未启动，请重新应用所需档案。");
-      try {
-        await prepare(this.selection(state), state.leases.length > 0);
-      } catch (error) {
-        if (!state.leases.length) {
-          state.ready = false;
-          state.revision = randomUUID();
-          await this.writeState(state);
-        }
-        throw error;
-      }
       state.leases.push(lease);
       await this.writeState(state);
       return this.selection(state);

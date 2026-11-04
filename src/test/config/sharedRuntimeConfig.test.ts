@@ -12,20 +12,20 @@ async function withDirectory(run: (directory: string) => Promise<void>): Promise
   try { await run(directory); } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
 
-test("windows share the committed selection and stale visible versions never prepare or execute", async () => {
+test("windows reject switched profiles but accept updated revisions of the same profile", async () => {
   await withDirectory(async (directory) => {
     const first = new SharedRuntimeConfig(directory);
     const second = new SharedRuntimeConfig(directory);
     const before = await first.change(async () => ({ configId: "before", profileDigest: "digest-before" }));
     assert.deepEqual(await second.read(), before);
     const after = await second.change(async () => ({ configId: "after", profileDigest: "digest-after" }));
-    let prepared = false;
-    await assert.rejects(first.acquire(before, async () => { prepared = true; }), ConfigSelectionChangedError);
-    assert.equal(prepared, false);
+    await assert.rejects(first.acquire(before), ConfigSelectionChangedError);
     assert.deepEqual(await first.read(), after);
     const sameProfileEdit = await second.change(async () => ({ configId: "after", profileDigest: "digest-edited" }));
     assert.notEqual(after.revision, sameProfileEdit.revision);
-    await assert.rejects(first.acquire(after, async () => undefined), ConfigSelectionChangedError);
+    const lease = await first.acquire(after);
+    assert.deepEqual(lease.selection, sameProfileEdit);
+    await lease.release();
   });
 });
 
@@ -34,11 +34,10 @@ test("same-version executions coexist but live leases block switching and active
     const first = new SharedRuntimeConfig(directory);
     const second = new SharedRuntimeConfig(directory);
     const selected = await first.change(async () => ({ configId: "selected", profileDigest: "digest" }));
-    const readOnlyFlags: boolean[] = [];
-    const firstLease = await first.acquire(selected, async (_selection, readOnly) => { readOnlyFlags.push(readOnly); });
-    const secondLease = await second.acquire(selected, async (_selection, readOnly) => { readOnlyFlags.push(readOnly); });
+    const firstLease = await first.acquire(selected);
+    const secondLease = await second.acquire(selected);
     try {
-      assert.deepEqual(readOnlyFlags, [false, true]);
+      assert.deepEqual(firstLease.selection, secondLease.selection);
       await assert.rejects(second.change(async () => ({ configId: "other", profileDigest: "other" })), /执行中的任务/);
       await assert.rejects(first.edit("selected", async () => assert.fail("must not edit"), async () => "other"), /执行中的任务/);
       await first.edit("inactive", async () => undefined, async () => "ignored");
@@ -58,9 +57,9 @@ test("partial writes invalidate execution until an explicit successful applicati
     await assert.rejects(shared.change(async () => { throw new Error("synthetic-write-failure"); }), /synthetic-write-failure/);
     const invalid = await shared.read();
     assert.equal(invalid?.ready, false);
-    await assert.rejects(shared.acquire(invalid!, async () => assert.fail("must not prepare")), /上次配置应用未成功/);
+    await assert.rejects(shared.acquire(invalid!), /上次配置应用未成功/);
     const restored = await shared.change(async () => ({ configId: "restored", profileDigest: "restored" }));
-    const lease = await shared.acquire(restored, async () => undefined);
+    const lease = await shared.acquire(restored);
     await lease.release();
     await fs.writeFile(path.join(directory, "selection.json"), "broken");
     await assert.rejects(shared.read(), /无法读取/);
@@ -73,7 +72,7 @@ test("first-read migration runs once and independent native directories do not s
     const second = new SharedRuntimeConfig(path.join(directory, "two"));
     const selected = (await first.read(async () => ({ configId: "initial", profileDigest: "initial" })))!;
     assert.equal((await first.read(async () => assert.fail("must not initialize twice")))?.configId, "initial");
-    const lease = await first.acquire(selected, async () => undefined);
+    const lease = await first.acquire(selected);
     try {
       await second.change(async () => ({ configId: "independent", profileDigest: "independent" }));
       assert.equal((await first.read())?.configId, "initial");
@@ -100,7 +99,7 @@ process.on("message", async (message) => {
         return { configId: message.configId, profileDigest: message.configId };
       });
     } else if (message.action === "acquire") {
-      const lease = await shared.acquire(message.expected, async () => {});
+      const lease = await shared.acquire(message.expected);
       leases.set(message.id, lease);
       result = { ...lease.selection, leaseId: message.id };
     } else if (message.action === "release") {

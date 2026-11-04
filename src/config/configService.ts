@@ -2,7 +2,6 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { AsyncLocalStorage } from "async_hooks";
 import { SharedRuntimeConfig, type VisibleConfigSelection } from "./sharedRuntimeConfig";
 import type { CliName } from "../cli/types";
 import {
@@ -62,7 +61,6 @@ import {
 } from "./dshConfig";
 
 const BACKUP_DIR = path.join(os.homedir(), ".ai_cli_tools_backups");
-const runtimeWriteContext = new AsyncLocalStorage<boolean>();
 
 function sharedRuntimeConfig(platform: LegacyConfigPlatformInput): SharedRuntimeConfig {
   const cli = normalizeConfigPlatform(platform);
@@ -73,13 +71,6 @@ function sharedRuntimeConfig(platform: LegacyConfigPlatformInput): SharedRuntime
           : cli === "zcode" ? resolveZcodeProviderConfigPath()
             : CONFIG_PATHS[cli].config;
   return new SharedRuntimeConfig(path.join(path.dirname(target), ".sinitek-runtime-coordination", path.basename(target)));
-}
-
-function guardedRuntimeWrite<Arguments extends unknown[]>(write: (...args: Arguments) => Promise<void>): (...args: Arguments) => Promise<void> {
-  return async (...args) => {
-    if (runtimeWriteContext.getStore()) throw new Error("原生配置已变化，但此 CLI 仍有执行中的任务，暂不能修复配置，请任务结束后重新应用。");
-    await write(...args);
-  };
 }
 
 function profileDigest(config: ConfigItem): string {
@@ -449,39 +440,39 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
   claude: {
     readClaudeConfig,
     readClaudeMcpConfig,
-    writeClaudeConfig: guardedRuntimeWrite(writeClaudeConfig),
-    writeClaudeMcpConfig: guardedRuntimeWrite(writeClaudeMcpConfig),
+    writeClaudeConfig,
+    writeClaudeMcpConfig,
     backupClaudeConfig,
   },
   codex: {
     readCodexConfig,
-    writeCodexConfig: guardedRuntimeWrite(writeCodexConfig),
+    writeCodexConfig,
     backupCodexConfig,
   },
   opencode: {
     readOpenCodeConfig,
-    writeOpenCodeConfig: guardedRuntimeWrite(writeOpenCodeConfig),
+    writeOpenCodeConfig,
     backupOpenCodeConfig,
   },
   grok: {
     readGrokConfigText,
-    writeGrokConfigText: guardedRuntimeWrite(writeGrokConfigText),
+    writeGrokConfigText,
     backupGrokConfig,
   },
   dsh: {
     readDshConfigText,
-    writeDshConfigText: guardedRuntimeWrite(writeDshConfigText),
+    writeDshConfigText,
     backupDshConfig,
   },
   "kimi-code": {
     readKimiCodeConfigText: readKimiCodeConfigTextFromDisk,
-    writeKimiCodeConfigText: guardedRuntimeWrite(writeKimiCodeConfigTextToDisk),
+    writeKimiCodeConfigText: writeKimiCodeConfigTextToDisk,
     backupKimiCodeConfig: backupKimiCodeConfig,
     createDefaultConfigText: createKimiCodeDefaultConfigText,
   },
   zcode: {
     readZcodeConfigText: () => readZcodeProviderConfigText(),
-    writeZcodeConfigText: guardedRuntimeWrite((content: string) => writeZcodeProviderConfigText(content)),
+    writeZcodeConfigText: (content: string) => writeZcodeProviderConfigText(content),
     backupZcodeConfig: () => backupZcodeProviderConfig(),
     createDefaultConfigText: createZcodeExampleText,
   },
@@ -1329,14 +1320,7 @@ export async function readSharedConfigSelection(platform: LegacyConfigPlatformIn
 }
 
 export async function acquireRuntimeConfigExecution(cli: CliName, expected: VisibleConfigSelection) {
-  return sharedRuntimeConfig(cli).acquire(expected, async (selection, readOnly) => {
-    if (!selection.configId) return;
-    const config = await getConfigById(cli, selection.configId);
-    if (!config || profileDigest(config) !== selection.profileDigest) {
-      throw new Error("当前档案内容已变化或无法读取，任务未启动，请刷新并重新应用配置。");
-    }
-    await runtimeWriteContext.run(readOnly, () => applyRuntimeConfig(cli, { ...config, profileId: undefined }));
-  });
+  return sharedRuntimeConfig(cli).acquire(expected);
 }
 
 export async function backupConfig(platform: LegacyConfigPlatformInput): Promise<string[]> {

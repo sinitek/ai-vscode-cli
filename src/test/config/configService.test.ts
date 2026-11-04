@@ -72,7 +72,7 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
-test("native application, active edits and task leases share one cross-window profile revision", async () => {
+test("native application and leases coordinate profiles while execution only checks profile identity", async () => {
   await withTempHome(async (homeDir) => {
     const first = loadConfigService();
     const original = { id: "first", name: "合成配置一", platform: "codex" as const, content: 'model = "synthetic-first"\n', authContent: '{"token":"synthetic-before"}', createdAt: 1, updatedAt: 1 };
@@ -89,25 +89,75 @@ test("native application, active edits and task leases share one cross-window pr
       await assert.rejects(second.saveConfig({ ...original, authContent: '{"token":"synthetic-after"}' }), /执行中的任务/);
       await assert.rejects(second.deleteConfig("codex", original.id), /执行中的任务/);
       await second.saveConfig({ ...replacement, name: "未激活档案允许编辑" });
-      const concurrent = await second.acquireRuntimeConfigExecution("codex", visible);
-      await concurrent.release();
       await fs.writeFile(path.join(homeDir, ".codex", "config.toml"), replacement.content);
-      await assert.rejects(second.acquireRuntimeConfigExecution("codex", visible), /仍有执行中的任务/);
-      assert.equal(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), replacement.content);
-    } finally { await running.release(); }
-    const repaired = await first.acquireRuntimeConfigExecution("codex", visible);
-    await repaired.release();
-    assert.equal(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), original.content);
+      const concurrent = await second.acquireRuntimeConfigExecution("codex", visible);
+      try {
+        assert.equal(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), replacement.content);
+      } finally {
+        await concurrent.release();
+      }
+    } finally {
+      await running.release();
+    }
     await second.saveConfig({ ...original, authContent: '{"token":"synthetic-after"}' });
     const edited = (await first.readSharedConfigSelection("codex"))!;
     assert.notEqual(edited.revision, visible.revision);
-    await assert.rejects(first.acquireRuntimeConfigExecution("codex", visible), /本次任务未启动/);
+    const sameProfile = await first.acquireRuntimeConfigExecution("codex", visible);
+    try {
+      assert.deepEqual(sameProfile.selection, edited);
+    } finally {
+      await sameProfile.release();
+    }
     assert.match(await fs.readFile(path.join(homeDir, ".codex", "auth.json"), "utf8"), /synthetic-after/);
     await second.applyConfig("codex", { profileId: replacement.id });
     await assert.rejects(first.acquireRuntimeConfigExecution("codex", edited), /本次任务未启动/);
     assert.equal((await first.readSharedConfigSelection("codex"))?.configId, replacement.id);
     const sharedText = await fs.readFile(path.join(homeDir, ".codex", ".sinitek-runtime-coordination", "config.toml", "selection.json"), "utf8");
     assert.doesNotMatch(sharedText, /synthetic-(before|after)/);
+  });
+});
+
+test("execution never compares or repairs native model, connection or authentication content", async () => {
+  await withTempHome(async (homeDir) => {
+    const service = loadConfigService();
+    const original = { id: "identity-only", name: "档案身份合成配置", platform: "codex" as const,
+      content: 'model = "synthetic-default"\nmodel_provider = "same-provider"\n', authContent: '{"token":"synthetic-auth"}', createdAt: 1, updatedAt: 1 };
+    await service.saveConfig(original);
+    await service.applyConfig("codex", { profileId: original.id });
+    const visible = (await service.readSharedConfigSelection("codex"))!;
+    const configPath = path.join(homeDir, ".codex", "config.toml");
+    const authPath = path.join(homeDir, ".codex", "auth.json");
+    const changedConfig = 'model = "synthetic-selected"\nmodel_provider = "external-provider"\n';
+    const changedAuth = '{"token":"synthetic-external"}';
+    await fs.writeFile(configPath, changedConfig);
+    await fs.writeFile(authPath, changedAuth);
+    const running = await service.acquireRuntimeConfigExecution("codex", visible);
+    try {
+      const concurrent = await service.acquireRuntimeConfigExecution("codex", visible);
+      try {
+        assert.deepEqual(concurrent.selection, visible);
+        assert.equal(await fs.readFile(configPath, "utf8"), changedConfig);
+        assert.equal(await fs.readFile(authPath, "utf8"), changedAuth);
+        assert.equal((await service.getConfigById("codex", original.id))?.content, original.content);
+      } finally {
+        await concurrent.release();
+      }
+      await assert.rejects(service.applyConfig("codex", { profileId: original.id }), /执行中的任务/);
+    } finally {
+      await running.release();
+    }
+    const idle = await service.acquireRuntimeConfigExecution("codex", visible);
+    await idle.release();
+    assert.equal(await fs.readFile(configPath, "utf8"), changedConfig);
+    assert.equal(await fs.readFile(authPath, "utf8"), changedAuth);
+    await fs.rm(configPath);
+    await fs.rm(authPath);
+    const missingNative = await service.acquireRuntimeConfigExecution("codex", visible);
+    await missingNative.release();
+    await assert.rejects(fs.stat(configPath), { code: "ENOENT" });
+    await assert.rejects(fs.stat(authPath), { code: "ENOENT" });
+    await service.applyConfig("codex", { profileId: original.id });
+    assert.equal(await fs.readFile(configPath, "utf8"), original.content);
   });
 });
 

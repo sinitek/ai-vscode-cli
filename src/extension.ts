@@ -1085,7 +1085,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       const visible = selections?.[cli];
       const current = await loadConfigState(cli);
       if (!visible || current.configurationError || !current.revision
-        || visible.configId !== current.activeConfigId || visible.revision !== current.revision) {
+        || visible.configId !== current.activeConfigId) {
         throw new ConfigSelectionChangedError();
       }
     },
