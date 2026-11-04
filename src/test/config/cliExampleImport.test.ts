@@ -39,6 +39,7 @@ function loadUtilities(overrides: AnyRecord = {}) {
     section("function fk(", "const CLI_GLOBAL_SKILL_TARGETS ="),
     section("const DSH_UI_PROVIDER", "const CONFIG_FIELD_HELP_TOOLTIP_TITLE_FALLBACK_DELAY_MS"),
     section("// OPENCODE_VISUAL_EDITOR_UTILS_START", "// CODEX_VISUAL_EDITOR_UTILS_END"),
+    section("function parseConfigJsonText(", "const GROK_VISUAL_FIELD_IDS"),
     section("const GROK_VISUAL_FIELD_IDS", "// Config editor panel"),
     "globalThis.utils = { build: buildCliExampleImport, validate: validateCliExampleImport, protocol: getCliExampleImportProtocol, modal: CliExampleImportModal, parseToml: g1, examples: Nk, templates: ps, claude: ClaudeConfigVisualEditorUtils, codex: CodexConfigVisualEditorUtils, opencode: OpenCodeConfigVisualEditorUtils, grok: GrokConfigVisualEditorUtils, kimi: KimiCodeConfigVisualEditorUtils, zcode: ZcodeConfigVisualEditorUtils, dsh: DshConfigPageUtils, protocolOptions: { codex: CODEX_VISUAL_WIRE_APIS, opencode: OPEN_CODE_PROVIDER_NPM_OPTIONS, grok: GROK_VISUAL_API_BACKENDS, dsh: DSH_UI_API_OPTIONS, kimi: KIMI_CODE_VISUAL_PROVIDER_TYPES, zcode: ZCODE_VISUAL_API_TYPES } };",
   ].join("\n"), sandbox);

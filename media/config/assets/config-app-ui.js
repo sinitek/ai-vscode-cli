@@ -3340,7 +3340,7 @@ const openCodeVisualSetOptionalNumber = (target, key, value) => {
 
 const openCodeVisualParseContent = (content) => {
   try {
-    const config = JSON.parse(content || "{}");
+    const config = parseConfigJsonText(content || "{}", !0);
     if (!openCodeVisualIsRecord(config)) throw new Error("顶层配置必须是 JSON 对象");
     if (config.provider !== void 0 && !openCodeVisualIsRecord(config.provider))
       throw new Error("provider 必须是 JSON 对象");
@@ -3396,7 +3396,6 @@ const openCodeVisualValidateState = (state) => {
       const modelId = String(model?.id || "").trim();
       if (!modelId)
         errors.push(`Provider “${providerId || providerIndex + 1}” 的第 ${modelIndex + 1} 个模型 id 不能为空`);
-      else if (modelId.includes("/")) errors.push(`模型 id “${modelId}” 不能包含 /`);
       else if (modelIds.has(modelId))
         errors.push(`Provider “${providerId}” 中的模型 id “${modelId}” 重复`);
       else {
@@ -3466,7 +3465,11 @@ const openCodeVisualSerializeState = (state) => {
     (provider.models || []).forEach((model) => {
       const modelValue = openCodeVisualClone(model.source) || {};
       model.name.trim() ? (modelValue.name = model.name.trim()) : delete modelValue.name;
-      modelValue.reasoning = model.reasoning === !0;
+      if (model.reasoning === !0 || Object.prototype.hasOwnProperty.call(modelValue, "reasoning")) {
+        modelValue.reasoning = model.reasoning === !0;
+      } else {
+        delete modelValue.reasoning;
+      }
       if (openCodeVisualIsRecord(modelValue.limit)) {
         const modelLimit = { ...modelValue.limit };
         openCodeVisualSetOptionalNumber(modelLimit, "context", model.context);
@@ -6489,6 +6492,534 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
 };
 
 // Config editor panel
+const MODEL_IMPORT_CLAUDE_FIELDS = [
+  { key: "model", label: "model" },
+  { key: "env.ANTHROPIC_DEFAULT_HAIKU_MODEL", label: "Haiku" },
+  { key: "env.ANTHROPIC_DEFAULT_SONNET_MODEL", label: "Sonnet" },
+  { key: "env.ANTHROPIC_DEFAULT_OPUS_MODEL", label: "Opus" },
+  { key: "env.CLAUDE_CODE_SUBAGENT_MODEL", label: "子代理" },
+];
+
+const modelImportStableStringify = (value) => {
+  try {
+    return JSON.stringify(value ?? {});
+  } catch {
+    return "";
+  }
+};
+
+const modelImportProviderReason = (provider) => {
+  if (!provider) return "请选择供应商";
+  if (provider.disabledReason) return modelImportProviderDisabledText(provider.disabledReason);
+  if (!String(provider.baseUrl || "").trim()) return "当前供应商缺少 URL，无法解析模型";
+  return "";
+};
+
+const modelImportProviderDisabledText = (reason) => {
+  const text = typeof reason === "string" ? reason : "";
+  if (/(?:api[\s_-]*key|token|credential|secret|password).*(?:missing|unavailable|not configured|no available|不可用|缺少|没有|无)|(?:missing|unavailable|not configured|no available|不可用|缺少|没有|无).*(?:api[\s_-]*key|token|credential|secret|password)/i.test(text)) {
+    return "当前供应商没有可用 API Key，请检查配置或宿主环境变量。";
+  }
+  if (/url|endpoint/i.test(text)) return "当前供应商 URL 无效或缺失，请检查配置。";
+  if (/protocol|unsupported|not supported/i.test(text)) return "当前供应商协议暂不可用于模型解析。";
+  return "当前供应商不可用于模型解析，请检查配置后重试。";
+};
+
+const modelImportCredentialStatus = (provider) => provider?.disabledReason
+  && /(?:api[\s_-]*key|token|credential|secret|password).*(?:missing|unavailable|not configured|no available|不可用|缺少|没有|无)|(?:missing|unavailable|not configured|no available|不可用|缺少|没有|无).*(?:api[\s_-]*key|token|credential|secret|password)/i.test(String(provider.disabledReason))
+  ? "未检测到可用 API Key（也可能由宿主环境变量提供）"
+  : "凭据状态由宿主验证，不显示密钥";
+
+const modelImportContentForPlatform = (platform, importedDraft) => {
+  if (!importedDraft || typeof importedDraft !== "object") return void 0;
+  if (platform === "opencode" || platform === "codex") {
+    return typeof importedDraft.configContent === "string" ? importedDraft.configContent : importedDraft.content;
+  }
+  return typeof importedDraft.content === "string" ? importedDraft.content : importedDraft.configContent;
+};
+
+const modelImportUniqueModels = (models) => {
+  const seen = new Set();
+  return (Array.isArray(models) ? models : []).reduce((result, model) => {
+    const id = String(model?.id || "").trim();
+    if (!id || seen.has(id)) return result;
+    seen.add(id);
+    result.push({ id, label: String(model?.label || id) });
+    return result;
+  }, []);
+};
+
+const modelImportToggleSelection = (mode, current, modelId, checked) => {
+  if (mode === "single") return checked ? [modelId] : [];
+  return checked
+    ? Array.from(new Set([...(Array.isArray(current) ? current : []), modelId]))
+    : (Array.isArray(current) ? current : []).filter((id) => id !== modelId);
+};
+
+const modelImportToggleAll = (current, visibleModels, checked) => {
+  const currentIds = Array.isArray(current) ? current : [];
+  const visibleIds = (Array.isArray(visibleModels) ? visibleModels : []).map((model) => model.id);
+  return checked
+    ? Array.from(new Set([...currentIds, ...visibleIds]))
+    : currentIds.filter((id) => !visibleIds.includes(id));
+};
+
+const modelImportNormalizeFields = (fields) => {
+  const source = new Map((Array.isArray(fields) ? fields : [])
+    .filter((field) => field && field.key)
+    .map((field) => [String(field.key), field]));
+  return MODEL_IMPORT_CLAUDE_FIELDS.map((field) => ({
+    ...field,
+    value: String(source.get(field.key)?.value || ""),
+  }));
+};
+
+const modelImportDraftMatches = (draft, snapshot) => modelImportStableStringify(draft) === modelImportStableStringify(snapshot);
+
+const modelImportSubmitError = (platform, error) => {
+  const message = typeof error?.message === "string" ? error.message.split(/\r?\n/, 1)[0] : "";
+  if (platform === "kimi-code" && message === "Kimi Code 需要同一 provider 的有效模型模板（正数 max_context_size）；请先配置模板后再导入。继承值不代表服务端发现的模型能力。") {
+    return "导入失败：请先为同一供应商配置有效模型，并设置正数 max_context_size，再重新导入。";
+  }
+  return "导入失败，请检查配置后重试。";
+};
+
+const modelImportSerializationResult = (serialized, makeDraft) => serialized?.ok
+  ? { ok: !0, draft: makeDraft(serialized.content) }
+  : { ok: !1, error: modelImportSafeErrorText(serialized?.error || "当前可视化配置无法序列化，请切换到源码模式修复后重试。") };
+
+const modelImportSafeErrorText = (error) => {
+  if (error instanceof Error || (error && typeof error === "object")) return "操作失败，请检查当前配置后重试。";
+  const text = String(error || "");
+  if (/(?:api[\s_-]*key|token|credential|secret|password).*(?:missing|unavailable|not configured|不可用|缺少|没有|无)|(?:missing|unavailable|not configured|不可用|缺少|没有|无).*(?:api[\s_-]*key|token|credential|secret|password)/i.test(text)) {
+    return "当前供应商没有可用 API Key，请检查配置或宿主环境变量。";
+  }
+  if (/url|endpoint/i.test(text)) return "供应商地址无效，请检查 URL 后重试。";
+  if (/protocol|unsupported|not supported|协议.*不支持/i.test(text)) return "供应商协议暂不可用于模型解析。";
+  if ([
+    "配置或草稿已变化，已忽略过期结果。请重新打开模型导入并解析。",
+    "当前配置草稿已修改，请重新打开并解析，避免覆盖未保存更改",
+    "当前配置草稿已修改，请重新解析，避免使用过期结果",
+    "当前配置草稿已修改，请重新解析后再导入，未保存更改不会被覆盖",
+    "导入期间配置发生并发编辑，已停止更新，请重新解析",
+    "配置已变化，导入结果未应用，请重新解析",
+    "配置或草稿已变化，导入结果未应用，请重新解析",
+    "请选择要替换的模型",
+    "请选择至少一个模型",
+  ].includes(text)) return text;
+  return "操作失败，请检查当前配置后重试。";
+};
+
+const modelImportTrySerialize = (serialize) => {
+  try {
+    return serialize();
+  } catch (error) {
+    return { ok: !1, error: modelImportSafeErrorText(error) };
+  }
+};
+
+const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, getCurrentConfigIdentity, onClose, onImported }) => {
+  const [providers, setProviders] = c.useState([]);
+  const [providerId, setProviderId] = c.useState("");
+  const [providerLoading, setProviderLoading] = c.useState(!0);
+  const [providerError, setProviderError] = c.useState("");
+  const [models, setModels] = c.useState([]);
+  const [existingModelIds, setExistingModelIds] = c.useState([]);
+  const [fields, setFields] = c.useState([]);
+  const [fieldValues, setFieldValues] = c.useState({});
+  const [selectedModelIds, setSelectedModelIds] = c.useState([]);
+  const [searchText, setSearchText] = c.useState("");
+  const [discovering, setDiscovering] = c.useState(!1);
+  const [importing, setImporting] = c.useState(!1);
+  const [resultError, setResultError] = c.useState("");
+  const [resultReady, setResultReady] = c.useState(!1);
+  const generationRef = c.useRef(0);
+  const importContextRef = c.useRef({ platform, draft, configIdentity: configIdentity || platform });
+  const livePropsRef = c.useRef(null);
+  livePropsRef.current = { getCurrentDraft, getCurrentConfigIdentity, onClose, onImported };
+  const importContext = importContextRef.current;
+  const importDraft = importContext.draft;
+  const importPlatform = importContext.platform;
+  const selectedProvider = providers.find((provider) => provider.id === providerId) || null;
+  const selectedProviderReason = modelImportProviderReason(selectedProvider);
+  const mode = selectedProvider?.mode || "multi";
+  const existingModelIdSet = new Set(existingModelIds);
+  const availableModels = models.filter((model) => !existingModelIdSet.has(model.id));
+  const filteredModels = availableModels.filter((model) => {
+    const query = searchText.trim().toLowerCase();
+    return !query || `${model.id} ${model.label}`.toLowerCase().includes(query);
+  });
+  const hasValidSelection = mode === "claude"
+    ? models.some((model) => Object.values(fieldValues).some((value) => String(value || "").trim() === model.id))
+    : selectedModelIds.length > 0;
+  const invalidateRequests = () => {
+    generationRef.current += 1;
+  };
+  const contextStillCurrent = () => {
+    try {
+      const latest = livePropsRef.current || {};
+      const currentIdentity = typeof latest.getCurrentConfigIdentity === "function"
+        ? latest.getCurrentConfigIdentity()
+        : (configIdentity || platform);
+      const currentDraft = typeof latest.getCurrentDraft === "function" ? latest.getCurrentDraft() : importDraft;
+      return currentIdentity === importContext.configIdentity && modelImportDraftMatches(currentDraft, importDraft);
+    } catch {
+      return !1;
+    }
+  };
+  const setImportError = (error) => setResultError(modelImportSafeErrorText(error));
+  const setStaleContextError = () => setImportError("配置或草稿已变化，已忽略过期结果。请重新打开模型导入并解析。");
+  const closeModal = () => {
+    if (importing) return;
+    invalidateRequests();
+    livePropsRef.current?.onClose?.();
+  };
+
+  const loadProviders = () => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    setProviderLoading(!0);
+    setProviderError("");
+    setProviders([]);
+    setProviderId("");
+    setResultError("");
+    setResultReady(!1);
+    setModels([]);
+    setExistingModelIds([]);
+    setFields([]);
+    setFieldValues({});
+    setSelectedModelIds([]);
+    setDiscovering(!1);
+    getModelImportProviders({ platform: importPlatform, draft: importDraft })
+      .then((result) => {
+        if (generationRef.current !== generation) return;
+        if (!contextStillCurrent()) {
+          setProviderError("配置或草稿已变化，供应商结果已忽略。请关闭并重新打开模型导入。");
+          return;
+        }
+        const nextProviders = Array.isArray(result?.providers) ? result.providers.filter((provider) => provider && provider.id) : [];
+        setProviders(nextProviders);
+        const firstEnabled = nextProviders.find((provider) => !provider.disabledReason && !modelImportProviderReason(provider));
+        setProviderId(firstEnabled?.id || nextProviders[0]?.id || "");
+        if (!nextProviders.length) setProviderError("当前配置没有可用供应商，请检查配置后重试。");
+      })
+      .catch((error) => {
+        if (generationRef.current !== generation) return;
+        if (!contextStillCurrent()) setProviderError("配置或草稿已变化，供应商请求已忽略。请关闭并重新打开模型导入。");
+        else setProviderError("供应商列表加载失败，请重试。");
+      })
+      .finally(() => {
+        if (generationRef.current === generation) setProviderLoading(!1);
+      });
+  };
+
+  c.useEffect(() => {
+    loadProviders();
+    return () => {
+      invalidateRequests();
+    };
+  }, []);
+
+  const selectProvider = (value) => {
+    invalidateRequests();
+    setDiscovering(!1);
+    setProviderId(value || "");
+    setModels([]);
+    setExistingModelIds([]);
+    setFields([]);
+    setFieldValues({});
+    setSelectedModelIds([]);
+    setSearchText("");
+    setResultError("");
+    setResultReady(!1);
+  };
+
+  const discover = async () => {
+    const reason = modelImportProviderReason(selectedProvider);
+    if (reason) {
+      setImportError(reason);
+      return;
+    }
+    if (!contextStillCurrent()) {
+      setImportError("当前配置草稿已修改，请重新打开并解析，避免覆盖未保存更改");
+      return;
+    }
+    const requestedProviderId = selectedProvider.id;
+    const requestedMode = mode;
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    setDiscovering(!0);
+    setResultError("");
+    setResultReady(!1);
+    try {
+      const result = await discoverImportModels({ platform: importPlatform, draft: importDraft, providerId: requestedProviderId });
+      if (generationRef.current !== generation) return;
+      if (!contextStillCurrent()) {
+        setImportError("当前配置草稿已修改，请重新解析，避免使用过期结果");
+        return;
+      }
+      const nextModels = modelImportUniqueModels(result?.models);
+      const nextExisting = Array.isArray(result?.existingModelIds)
+        ? Array.from(new Set(result.existingModelIds.map((id) => String(id || "").trim()).filter(Boolean)))
+        : [];
+      const nextFields = requestedMode === "claude" ? modelImportNormalizeFields(result?.fields) : [];
+      const nextFieldValues = Object.fromEntries(nextFields.map((field) => [field.key, field.value]));
+      const nextExistingSet = new Set(nextExisting);
+      const nextAvailable = nextModels.filter((model) => !nextExistingSet.has(model.id));
+      setModels(nextModels);
+      setExistingModelIds(nextExisting);
+      setFields(nextFields);
+      setFieldValues(nextFieldValues);
+      setSelectedModelIds(requestedMode === "single" ? (nextAvailable[0] ? [nextAvailable[0].id] : []) : []);
+      setResultReady(!0);
+    } catch (error) {
+      if (generationRef.current === generation) {
+        if (!contextStillCurrent()) setStaleContextError();
+        else setResultError("解析模型失败，请检查配置后重试。");
+      }
+    } finally {
+      if (generationRef.current === generation) setDiscovering(!1);
+    }
+  };
+
+  const toggleModel = (modelId, checked) => {
+    setSelectedModelIds((current) => modelImportToggleSelection(mode, current, modelId, checked));
+  };
+  const toggleAll = (checked) => {
+    setSelectedModelIds((current) => modelImportToggleAll(current, filteredModels, checked));
+  };
+  const updateField = (key, value) => {
+    const originalValue = fields.find((field) => field.key === key)?.value || "";
+    setFieldValues((current) => ({ ...current, [key]: value || originalValue }));
+  };
+  const submit = async () => {
+    if (!resultReady || importing) return;
+    if (!contextStillCurrent()) {
+      setImportError("当前配置草稿已修改，请重新解析后再导入，未保存更改不会被覆盖");
+      return;
+    }
+    const selected = mode === "claude"
+      ? Array.from(new Set(Object.values(fieldValues).map((value) => String(value || "").trim()).filter((value) => value && models.some((model) => model.id === value))))
+      : selectedModelIds;
+    if (!selected.length) {
+      setImportError(mode === "single" ? "请选择要替换的模型" : "请选择至少一个模型");
+      return;
+    }
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    setImporting(!0);
+    setResultError("");
+    try {
+      const result = await applyModelImport({
+        platform: importPlatform,
+        draft: importDraft,
+        providerId: selectedProvider.id,
+        selectedModelIds: selected,
+        ...(mode === "claude" ? { fields: fieldValues } : {}),
+      });
+      if (generationRef.current !== generation) return;
+      if (!contextStillCurrent()) {
+        setImportError("导入期间配置发生并发编辑，已停止更新，请重新解析");
+        return;
+      }
+      if (!result?.draft || typeof result.draft !== "object") {
+        throw new Error("宿主未返回有效配置草稿");
+      }
+      if (!contextStillCurrent()) {
+        setImportError("配置已变化，导入结果未应用，请重新解析");
+        return;
+      }
+      const didApply = await livePropsRef.current?.onImported?.(result.draft, {
+        configIdentity: importContext.configIdentity,
+        draft: importDraft,
+      });
+      if (didApply === !1 && generationRef.current === generation) {
+        setImportError("配置或草稿已变化，导入结果未应用，请重新解析");
+      }
+    } catch (error) {
+      if (generationRef.current === generation) {
+        if (!contextStillCurrent()) setStaleContextError();
+        else setResultError(modelImportSubmitError(importPlatform, error));
+      }
+    } finally {
+      if (generationRef.current === generation) setImporting(!1);
+    }
+  };
+
+  const providerOptions = providers.map((provider) => ({
+    value: provider.id,
+    label: provider.disabledReason ? `${provider.label || provider.id}（不可用）` : provider.label || provider.id,
+    disabled: Boolean(provider.disabledReason || modelImportProviderReason(provider)),
+  }));
+  const renderResult = () => {
+    if (!resultReady) return null;
+    if (!models.length && mode !== "claude") {
+      return be.jsx("div", { className: "model-import-empty", role: "status", children: "未发现可用模型，请重试解析或检查供应商配置。" });
+    }
+    if (!availableModels.length && mode !== "claude") {
+      return be.jsx("div", { className: "model-import-empty", role: "status", children: "没有可导入的模型；发现结果中的模型均已配置。" });
+    }
+    if (mode === "claude") {
+      return be.jsxs("div", {
+        className: "model-import-result",
+        children: [
+          !models.length ? be.jsx("div", {
+            className: "model-import-empty",
+            role: "status",
+            children: "未发现可选 Claude 模型；现有字段值保持不变，可重新解析。",
+          }) : null,
+          be.jsx("div", { className: "model-import-result-title", children: "Claude 模型字段" }),
+          be.jsx("div", { className: "model-import-field-list", children: fields.map((field) => {
+            const currentValue = fieldValues[field.key] || "";
+            const options = [
+              { value: "", label: field.value ? "保留原值" : "保留为空" },
+              ...models.map((model) => ({ value: model.id, label: model.label })),
+              ...(field.value && !models.some((model) => model.id === field.value)
+                ? [{ value: field.value, label: `${field.value}（原值）` }]
+                : []),
+              ...(currentValue && currentValue !== field.value && !models.some((model) => model.id === currentValue)
+                ? [{ value: currentValue, label: `${currentValue}（当前值）` }]
+                : []),
+            ];
+            return be.jsxs("label", { className: "model-import-field", key: field.key, children: [
+              be.jsx("span", { children: field.label }),
+              be.jsx($l, {
+                value: currentValue || void 0,
+                options,
+                allowClear: !0,
+                showSearch: !0,
+                optionFilterProp: "label",
+                placeholder: field.value ? "保留原值" : "保留为空",
+                disabled: importing,
+                onChange: (value) => updateField(field.key, value || ""),
+                "aria-label": field.label,
+                getPopupContainer: (node) => node.parentElement || document.body,
+                style: { width: "100%" },
+              }),
+            ] }, field.key);
+          }) }),
+        ],
+      });
+    }
+    const allVisibleSelected = filteredModels.length > 0 && filteredModels.every((model) => selectedModelIds.includes(model.id));
+    return be.jsxs("div", {
+      className: "model-import-result",
+      children: [
+        mode === "multi"
+          ? be.jsx(zi, {
+              value: searchText,
+              disabled: importing,
+              onChange: (event) => setSearchText(event.target.value),
+              placeholder: "搜索模型",
+              "aria-label": "搜索可导入模型",
+              allowClear: !0,
+            })
+          : null,
+        mode === "multi"
+          ? be.jsxs("label", { className: "model-import-select-all", children: [
+              be.jsx("input", {
+                type: "checkbox",
+                checked: allVisibleSelected,
+                disabled: importing || !filteredModels.length,
+                onChange: (event) => toggleAll(event.target.checked),
+                "aria-label": "全选可导入模型",
+              }),
+              be.jsx("span", { children: "全选可导入模型" }),
+            ] })
+          : be.jsx("div", { className: "model-import-mode-note", children: "单选模式：导入后会替换当前模型，请确认选择。" }),
+        filteredModels.length
+          ? be.jsx("div", { className: "model-import-model-list", role: mode === "single" ? "radiogroup" : "group", "aria-label": "可导入模型", children: filteredModels.map((model) => be.jsxs("label", { className: "model-import-model-option", key: model.id, children: [
+              be.jsx("input", {
+                type: mode === "single" ? "radio" : "checkbox",
+                name: mode === "single" ? "model-import-single" : void 0,
+                disabled: importing,
+                checked: selectedModelIds.includes(model.id),
+                onChange: (event) => toggleModel(model.id, event.target.checked),
+                "aria-label": model.label,
+              }),
+              be.jsxs("span", { className: "model-import-model-copy", children: [
+                be.jsx("strong", { children: model.label }),
+                model.label !== model.id ? be.jsx("code", { children: model.id }) : null,
+              ] }),
+            ] })) })
+          : be.jsx("div", { className: "model-import-empty", role: "status", children: "没有匹配的模型。" }),
+      ],
+    });
+  };
+
+  return be.jsx(xr, {
+    title: "模型解析导入",
+    open: !0,
+    width: 560,
+    rootClassName: "model-import-modal",
+    destroyOnClose: !0,
+    maskClosable: !1,
+    closable: !importing,
+    keyboard: !importing,
+    onCancel: closeModal,
+    footer: [
+      be.jsx(xn, { disabled: importing, onClick: closeModal, children: "取消" }, "cancel"),
+      be.jsx(xn, { type: "primary", loading: importing, disabled: !resultReady || !hasValidSelection || Boolean(selectedProviderReason) || !selectedProvider, onClick: submit, children: "导入" }, "submit"),
+    ],
+    children: be.jsxs("div", {
+      className: "model-import-dialog",
+      "aria-busy": providerLoading || discovering || importing,
+      children: [
+        be.jsx("p", { className: "model-import-description", children: "从当前配置中的供应商解析模型。导入只更新当前编辑器草稿，不会自动保存或激活配置。" }),
+        be.jsxs("div", { className: "model-import-provider-section", children: [
+          be.jsx("label", { className: "model-import-field", children: [
+            be.jsx("span", { children: "供应商" }),
+            be.jsx($l, {
+              value: providerId || void 0,
+              options: providerOptions,
+              loading: providerLoading,
+              disabled: providerLoading || importing,
+              showSearch: !0,
+              optionFilterProp: "label",
+              placeholder: "选择供应商",
+              onChange: selectProvider,
+              "aria-label": "模型导入供应商",
+              getPopupContainer: (node) => node.parentElement || document.body,
+              style: { width: "100%" },
+            }),
+          ] }),
+          selectedProvider
+            ? be.jsxs("div", { className: "model-import-provider-meta", children: [
+                be.jsx("span", { children: `URL：${selectedProvider.baseUrl || "未提供"}` }),
+                be.jsx("span", { children: `协议：${selectedProvider.protocol || "未提供"}` }),
+                be.jsx("span", { children: modelImportCredentialStatus(selectedProvider) }),
+              ] })
+            : null,
+          selectedProvider?.disabledReason ? be.jsx("div", { className: "model-import-status is-error", role: "alert", children: modelImportProviderDisabledText(selectedProvider.disabledReason) }) : null,
+          providerError ? be.jsx("div", { className: "model-import-status is-error", role: "alert", children: providerError }) : null,
+          providerError ? be.jsx(xn, {
+            className: "config-standard-action-button model-import-provider-retry",
+            size: "small",
+            disabled: providerLoading || importing,
+            onClick: loadProviders,
+            children: providerLoading ? "正在重试" : "重试加载",
+          }) : null,
+        ] }),
+        selectedProviderReason && !selectedProvider?.disabledReason
+          ? be.jsx("div", { className: "model-import-status is-error", role: "alert", children: selectedProviderReason })
+          : null,
+        be.jsx(xn, {
+          className: "config-standard-action-button model-import-discover-button",
+          type: "primary",
+          size: "small",
+          loading: discovering,
+          disabled: providerLoading || discovering || importing || Boolean(selectedProviderReason) || !selectedProvider,
+          onClick: discover,
+          children: "解析模型",
+        }),
+        resultError ? be.jsx("div", { className: "model-import-status is-error", role: "alert", children: resultError }) : null,
+        renderResult(),
+        be.jsx("div", { className: "model-import-footer-note", children: importPlatform === "kimi-code" ? "导入项的上下文和能力继承自同供应商已有模型模板，并非服务端发现，请核对后再保存。" : mode === "single" ? "导入前会再次检查当前草稿；并发编辑时不会覆盖未保存内容。" : "请确认选择后再导入，导入成功后沿用现有保存流程。" }),
+      ],
+    }),
+  });
+};
+
 const ConfigEditorPanel = () => {
     const {
         selectedConfigId: e,
@@ -6556,6 +7087,8 @@ const ConfigEditorPanel = () => {
       [configFieldHelpTooltipKey, setConfigFieldHelpTooltipKey] = c.useState(""),
       configFieldHelpTooltipTimerRef = c.useRef(null),
       [exampleImportOpen, setExampleImportOpen] = c.useState(!1),
+      [modelImportOpen, setModelImportOpen] = c.useState(!1),
+      [modelImportDraft, setModelImportDraft] = c.useState(null),
       O = e ? n(e, t || void 0) : null,
       I = S ? Nk[S] : null;
     c.useEffect(() => {
@@ -6565,6 +7098,8 @@ const ConfigEditorPanel = () => {
     }, []);
     c.useEffect(() => {
       setExampleImportOpen(!1);
+      setModelImportOpen(!1);
+      setModelImportDraft(null);
       y(null);
       setGrokAddModelOpen(!1);
       setGrokNewModelId("");
@@ -9510,8 +10045,133 @@ const ConfigEditorPanel = () => {
           renderFixedEditorModeTabs(H),
         ],
       });
+    const readModelImportDraft = () => {
+      if (!O) return { ok: !1, error: "请先选择一个配置。" };
+      if (O.platform === "claude") {
+        const serialized = claudeEditorMode === "visual"
+          ? modelImportTrySerialize(() => claudeVisualSerializeState(claudeVisualState))
+          : { ok: !0, content: l };
+        return modelImportSerializationResult(serialized, (content) => ({ content }));
+      }
+      if (O.platform === "opencode") {
+        const serialized = openCodeEditorMode === "visual"
+          ? modelImportTrySerialize(() => openCodeVisualSerializeState(openCodeVisualState))
+          : { ok: !0, content: l };
+        return modelImportSerializationResult(serialized, (content) => ({ content }));
+      }
+      if (O.platform === "codex") {
+        const serialized = codexEditorMode === "visual"
+          ? modelImportTrySerialize(() => codexVisualSerializeState(codexVisualState))
+          : { ok: !0, content: m };
+        return modelImportSerializationResult(serialized, (content) => ({ content, configContent: content, authContent: p }));
+      }
+      if (O.platform === "grok") {
+        const serialized = grokEditorMode === "visual"
+          ? modelImportTrySerialize(() => grokVisualSerializeState(grokVisualState))
+          : { ok: !0, content: grokTextDraft };
+        return modelImportSerializationResult(serialized, (content) => ({ content, configContent: content }));
+      }
+      if (O.platform === "kimi-code") {
+        const serialized = kimiCodeEditorMode === "visual"
+          ? modelImportTrySerialize(() => kimiCodeVisualSerializeState(kimiCodeVisualState))
+          : { ok: !0, content: kimiCodeTextDraft };
+        return modelImportSerializationResult(serialized, (content) => ({ content, configContent: content }));
+      }
+      if (O.platform === "zcode") {
+        const serialized = zcodeEditorMode === "visual"
+          ? modelImportTrySerialize(() => ZcodeConfigVisualEditorUtils.serializeState(zcodeVisualState))
+          : { ok: !0, content: zcodeTextDraft };
+        return modelImportSerializationResult(serialized, (content) => ({ content, configContent: content }));
+      }
+      return { ok: !0, draft: { content: dshText, configContent: dshText } };
+    };
+    const openModelImport = () => {
+      if (!O) {
+        Kt.warning("请先选择一个配置");
+        return;
+      }
+      const readResult = readModelImportDraft();
+      if (!readResult.ok) {
+        Kt.error(`无法读取当前可视化草稿：${readResult.error}。请切换到源码模式修复后重试。`);
+        return;
+      }
+      setModelImportDraft(readResult.draft);
+      setModelImportOpen(!0);
+    };
+    const applyModelImportDraft = (importedDraft) => {
+      if (!O || !importedDraft || typeof importedDraft !== "object") return !1;
+      const content = modelImportContentForPlatform(O.platform, importedDraft);
+      if (O.platform === "claude" && typeof content === "string") return syncClaudeVisualContent(content, claudeEditorMode, !0);
+      if (O.platform === "opencode" && typeof content === "string") return syncOpenCodeVisualContent(content, openCodeEditorMode, !0);
+      if (O.platform === "codex") {
+        if (typeof content === "string" && !syncCodexVisualContent(content, codexEditorMode, !0)) return !1;
+        if (typeof importedDraft.authContent === "string") h(importedDraft.authContent);
+        return !0;
+      }
+      if (O.platform === "grok" && typeof content === "string") return syncGrokVisualContent(content, grokEditorMode, !0);
+      if (O.platform === "kimi-code" && typeof content === "string") return syncKimiCodeVisualContent(content, kimiCodeEditorMode, !0);
+      if (O.platform === "zcode" && typeof content === "string") return syncZcodeVisualContent(content, zcodeEditorMode, !0);
+      if (O.platform === "dsh" && typeof content === "string") {
+        const parsed = readDshUiDocument(content);
+        if (!parsed.ok) {
+          setDshFieldError(parsed.error);
+          return !1;
+        }
+        setDshText(parsed.content);
+        setDshVisual(parsed.document);
+        setDshFieldError("");
+        setDshSelectedModelId(parsed.document.acpModel || parsed.document.models?.[0]?.id || "");
+        return !0;
+      }
+      return !1;
+    };
+    const currentModelImportIdentity = () => O ? `${O.platform}:${O.id}` : "";
+    const handleModelImport = async (importedDraft, expectedContext) => {
+      const currentRead = readModelImportDraft();
+      if (!O
+        || !expectedContext
+        || currentModelImportIdentity() !== expectedContext.configIdentity
+        || !currentRead.ok
+        || !modelImportDraftMatches(currentRead.draft, expectedContext.draft)) {
+        Kt.error("配置或草稿已变化，导入结果未应用，请重新解析后再导入。");
+        return !1;
+      }
+      if (!applyModelImportDraft(importedDraft)) {
+        Kt.error("导入结果无法应用，请检查当前配置草稿并重新解析。");
+        return !1;
+      }
+      setModelImportOpen(!1);
+      setModelImportDraft(null);
+      Kt.success("已导入模型，请确认后保存");
+      return !0;
+    };
+    const renderModelImportOverlay = () => modelImportOpen && modelImportDraft
+      ? be.jsx(ModelImportModal, {
+          platform: O.platform,
+          draft: modelImportDraft,
+          configIdentity: currentModelImportIdentity(),
+          getCurrentDraft: () => {
+            const current = readModelImportDraft();
+            return current.ok ? current.draft : null;
+          },
+          getCurrentConfigIdentity: currentModelImportIdentity,
+          onClose: () => {
+            setModelImportOpen(!1);
+            setModelImportDraft(null);
+          },
+          onImported: handleModelImport,
+        })
+      : null;
+    const renderModelImportButton = () => be.jsx(xn, {
+      className: "config-standard-action-button model-import-open-button",
+      size: "small",
+      onClick: openModelImport,
+      "aria-label": "模型解析导入",
+      children: "模型解析导入",
+    });
     const renderDshProfileEditor = () => {
       const controlsDisabled = Boolean(dshBusy || configListLoading);
+      const modelImportAction = typeof renderModelImportButton === "function" ? renderModelImportButton() : null;
       const document = dshVisual && typeof dshVisual === "object" ? dshVisual : null;
       const models = document && Array.isArray(document.models) ? document.models : [];
       const selectedModelId = models.some((model) => model.id === dshSelectedModelId)
@@ -9617,7 +10277,8 @@ const ConfigEditorPanel = () => {
               style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
               children: [
                 be.jsxs("div", {
-                  style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                  className: "model-import-action-row",
+                    style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
                   children: [
                     be.jsxs("strong", { children: [be.jsx(Ya, {}), " profile.json"] }),
                     be.jsx(xn, {
@@ -9628,6 +10289,7 @@ const ConfigEditorPanel = () => {
                       onClick: () => N("dsh-config"),
                       children: "查看范例",
                     }),
+                    modelImportAction,
                   ],
                 }),
                 be.jsx("div", {
@@ -10042,8 +10704,9 @@ const ConfigEditorPanel = () => {
                             gap: 6,
                           },
                           children: [
-                            be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 6 },
+                    be.jsxs("div", {
+                              className: "model-import-action-row",
+                              style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 },
                               children: [
                                 be.jsxs("span", {
                                   children: [
@@ -10060,6 +10723,7 @@ const ConfigEditorPanel = () => {
                                   onClick: () => N("claude-settings"),
                                   children: "查看范例",
                                 }),
+                                renderModelImportButton(),
                               ],
 	                            }),
 	                          ],
@@ -10126,6 +10790,7 @@ const ConfigEditorPanel = () => {
                                                           onDelete: confirmDeleteCliSkill,
                                                         }),
               B(),
+              renderModelImportOverlay(),
             ],
           })
         : O.platform === "opencode"
@@ -10220,7 +10885,8 @@ const ConfigEditorPanel = () => {
                           },
                           children: [
                             be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 4 },
+                              className: "model-import-action-row",
+                              style: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", minWidth: 0 },
                               children: [
                                 be.jsxs("span", { children: [be.jsx(Ya, {}), " config.json"] }),
                                 be.jsx(xn, {
@@ -10231,6 +10897,7 @@ const ConfigEditorPanel = () => {
                                   onClick: () => N("opencode-settings"),
                                   children: "查看范例",
                                 }),
+                                renderModelImportButton(),
                               ],
                             }),
                           ],
@@ -10303,6 +10970,7 @@ const ConfigEditorPanel = () => {
                                                                 onDelete: confirmDeleteCliSkill,
                                                               }),
                 B(),
+                renderModelImportOverlay(),
               ],
             })
           : O.platform === "grok"
@@ -10385,7 +11053,8 @@ const ConfigEditorPanel = () => {
                       style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
                       children: [
                         be.jsxs("div", {
-                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          className: "model-import-action-row",
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                             be.jsx(xn, {
@@ -10393,9 +11062,10 @@ const ConfigEditorPanel = () => {
                               type: "primary",
                               size: "small",
                               icon: be.jsx(KD, { "aria-hidden": !0 }),
-                              onClick: () => N("grok-config"),
-                              children: "查看范例",
-                            }),
+                                  onClick: () => N("grok-config"),
+                                  children: "查看范例",
+                                }),
+                                renderModelImportButton(),
                           ],
                         }),
                         be.jsx("div", {
@@ -10450,6 +11120,7 @@ const ConfigEditorPanel = () => {
                     onDelete: confirmDeleteCliSkill,
                   }),
                   B(),
+                  renderModelImportOverlay(),
                 ],
               })
           : O.platform === "zcode"
@@ -10515,7 +11186,8 @@ const ConfigEditorPanel = () => {
                       style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
                       children: [
                         be.jsxs("div", {
-                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          className: "model-import-action-row",
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " provider_config.json"] }),
                             be.jsx(xn, {
@@ -10523,9 +11195,10 @@ const ConfigEditorPanel = () => {
                               type: "primary",
                               size: "small",
                               icon: be.jsx(KD, { "aria-hidden": !0 }),
-                              onClick: () => N("zcode-config"),
-                              children: "查看范例",
-                            }),
+                                  onClick: () => N("zcode-config"),
+                                  children: "查看范例",
+                                }),
+                                renderModelImportButton(),
                           ],
                         }),
                         be.jsx("div", { style: { marginBottom: "4px", color: "var(--text-color-secondary)", fontSize: "12px" }, children: "配置文件路径: ~/.zcode/v2/provider_config.json" }),
@@ -10562,6 +11235,7 @@ const ConfigEditorPanel = () => {
                     }),
                   }),
                   B(),
+                  renderModelImportOverlay(),
                 ],
               })
             : O.platform === "kimi-code"
@@ -10644,7 +11318,8 @@ const ConfigEditorPanel = () => {
                       style: { display: "flex", flexDirection: "column", gap: "8px", flex: 1 },
                       children: [
                         be.jsxs("div", {
-                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                          className: "model-import-action-row",
+                          style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
                           children: [
                             be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                             be.jsx(xn, {
@@ -10652,9 +11327,10 @@ const ConfigEditorPanel = () => {
                               type: "primary",
                               size: "small",
                               icon: be.jsx(KD, { "aria-hidden": !0 }),
-                              onClick: () => N("kimi-code-config"),
-                              children: "查看范例",
-                            }),
+                                  onClick: () => N("kimi-code-config"),
+                                  children: "查看范例",
+                                }),
+                                renderModelImportButton(),
                           ],
                         }),
                         be.jsx("div", {
@@ -10709,11 +11385,12 @@ const ConfigEditorPanel = () => {
                     onDelete: confirmDeleteCliSkill,
                   }),
                   B(),
+                  renderModelImportOverlay(),
                 ],
               })
           : O.platform === "dsh"
             ? be.jsxs(be.Fragment, {
-                children: [renderDshProfileEditor(), B()],
+                children: [renderDshProfileEditor(), B(), renderModelImportOverlay()],
               })
           : be.jsxs("div", {
               className: "config-editor-shell config-editor-codex",
@@ -10805,7 +11482,8 @@ const ConfigEditorPanel = () => {
                           style: { display: "flex", flexDirection: "column", gap: "2px" },
                           children: [
                             be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" },
+                              className: "model-import-action-row",
+                            style: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
                               children: [
                                 be.jsxs("strong", { children: [be.jsx(Ya, {}), " config.toml"] }),
                                 be.jsx(xn, {
@@ -10816,6 +11494,7 @@ const ConfigEditorPanel = () => {
                                   onClick: () => N("codex-config"),
                                   children: "查看范例",
                                 }),
+                                renderModelImportButton(),
                               ],
                             }),
                             be.jsx("span", {
@@ -10890,7 +11569,8 @@ const ConfigEditorPanel = () => {
                           },
                           children: [
                             be.jsxs("div", {
-                              style: { display: "flex", alignItems: "center", gap: 4 },
+                              className: "model-import-action-row",
+                              style: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", minWidth: 0 },
                               children: [
                                 be.jsxs("span", {
                                   children: [be.jsx(Ya, {}), " auth.json"],
@@ -10903,6 +11583,7 @@ const ConfigEditorPanel = () => {
                                   onClick: () => N("codex-auth"),
                                   children: "查看范例",
                                 }),
+                                renderModelImportButton(),
                               ],
 	                            }),
 	                          ],
@@ -10945,6 +11626,7 @@ const ConfigEditorPanel = () => {
                                                                 onDelete: confirmDeleteCliSkill,
                                                               }),
                 B(),
+                renderModelImportOverlay(),
               ],
             })
       : be.jsx("div", {

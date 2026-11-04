@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-03",
+  "as_of": "2026-11-04",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -109,7 +109,12 @@
         {"path": "src/interactive/kimiRunner.ts"},
         {"path": "src/interactive/kimiAppServerProtocol.ts"},
         {"path": "src/config/dshConfig.ts"},
-        {"path": "src/cli/dshConfigModels.ts"}
+        {"path": "src/cli/dshConfigModels.ts"},
+        {"path": "src/config/modelimport.ts"},
+        {"path": "src/webview/configProtocol.ts"},
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/configView.ts"},
+        {"path": "src/test/config/modelimport.test.ts"}
       ]
     },
     {
@@ -1686,6 +1691,22 @@
         {"path": "src/test/config/lobehubSkillMarket.test.ts", "anchor": "installs local ZIP skills from a single wrapper directory or archive root"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "技能管理"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Skills 市场本地 ZIP 安装"}
+      ]
+    },
+    {
+      "id": "plugin.rule.model_import_host_draft_boundary",
+      "name": "模型发现导入仅作用于当前草稿",
+      "description": "配置页模型发现和导入由扩展宿主按显式 config:request action 执行，只解析当前七类 CLI 草稿，不保存、激活或改写其它档案。宿主按当前配置隔离供应商及模型去重，支持已声明的 OpenAI Chat/Responses、Anthropic Messages、Google GenAI 和 Ollama 原生列表协议；不支持或无法安全判定的协议、地址和凭据返回禁用原因。Grok 按每个模型配置选择 URL、协议和凭据，不强制字面 API Key 配套环境变量；新模型保留所选项的字面 api_key 或 env_key，导入器识别的 api_key 环境引用归一为 env_key 而不展开密钥，字面密钥仅在同一草稿复用，不进入供应商 DTO 或错误；去重按 URL、协议和有效密钥隔离，表键冲突生成别名，不覆盖默认引用。Codex 显式 env_key 优先且不借用 auth.json 同名字段，支持 Bearer 配置、显式 OpenAI API key 认证与无认证自定义服务。Claude 合并宿主和 settings.env，配置覆盖宿主，AUTH_TOKEN 使用 Bearer，API_KEY 使用 X-Api-Key。Kimi Code 支持 provider.env 的协议凭据与 URL，显式凭据声明不跨来源降级，导入要求同供应商有正数上下文模型模板，继承设置不代表发现的模型能力。OpenCode 支持 URL 和密钥的环境引用。DSH 与 ZCode 原有安全边界不变。返回值和导入值经过平台、provider、模型 ID、重定向、超时、响应大小、分页和密钥边界校验，JSON/JSONC/TOML 未知字段、注释和已有凭据保持不变。可执行模型不代表服务端支持模型列表接口。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile", "plugin.extension_host"],
+      "source_refs": [
+        {"path": "src/config/modelimport.ts"},
+        {"path": "src/webview/configProtocol.ts"},
+        {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/configView.ts"},
+        {"path": "src/test/config/modelimport.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-config-model-import-host.md"}
       ]
     }
   ]

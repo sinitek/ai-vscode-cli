@@ -427,6 +427,10 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
   const editorEnd = source.indexOf(': O.platform === "kimi-code"', editorStart);
   const editor = source.slice(editorStart, editorEnd).trim();
   const drawerHandlers = extractBetween(source, 'N = (W) => y(W),', '      saveClaudeSettingsCard =').replace(/,\s*$/, ";");
+  const importSafety = extractBetween(source, "const modelImportSerializationResult =", "const ModelImportModal =");
+  const importOpen = extractBetween(source, "const readModelImportDraft =", "const applyModelImportDraft =");
+  const importOverlay = extractBetween(source, "const renderModelImportOverlay =", "const renderModelImportButton =");
+  const importButtonSource = extractBetween(source, "const renderModelImportButton =", "const renderDshProfileEditor =");
   const { utils } = loadZcodeVisualUi();
   const example = { title: "ZCode provider_config.json", content: createZcodeExampleText() };
   const element = (type: unknown, props: AnyRecord) => ({ type, props });
@@ -435,7 +439,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
     const sandbox: AnyRecord = {
       be: { jsx: element, jsxs: element, Fragment: "fragment" },
       aa: "card", xn: "button", Pv: "icon", Ya: "icon", KD: "view-icon", KH: "import-icon", Qa: "textarea", ConfigSourceEditor: "textarea", RE: "drawer",
-      O: { id: "zcode-test", name: "ZCode" },
+      O: { id: "zcode-test", name: "ZCode", platform: "zcode" },
       Nk: { "zcode-config": example }, S: null, I: null,
       exampleImportOpen: false,
       CliExampleImportModal: "import-modal",
@@ -443,6 +447,10 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
       buildCliExampleImport: () => ({ content: example.content }),
       configListLoading: false, zcodeEditorMode: mode,
       zcodeVisualError: "", zcodeVisualState: null, zcodeTextDraft: "",
+      modelImportOpen: false, modelImportDraft: null,
+      ZcodeConfigVisualEditorUtils: utils,
+      setModelImportDraft: (draft: unknown) => { sandbox.modelImportDraft = draft; },
+      setModelImportOpen: (open: boolean) => { sandbox.modelImportOpen = open; },
       renderConfigEditorCardTitle: () => null,
       renderZcodeVisualEditor: () => null,
       renderCodexField: () => null, renderConfigSelect: () => null,
@@ -460,7 +468,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
         return true;
       },
     };
-    vm.runInNewContext(`const ${drawerHandlers}\nglobalThis.render = () => (${editor});`, sandbox);
+    vm.runInNewContext(`${importSafety}\n${importOpen}\n${importOverlay}\n${importButtonSource}\nconst ${drawerHandlers}\nglobalThis.render = () => (${editor});`, sandbox);
     const drawer = () => {
       const node = findNode(sandbox.render(), (candidate) => candidate.type === "drawer");
       assert.ok(node, "ZCode must mount the shared example drawer");

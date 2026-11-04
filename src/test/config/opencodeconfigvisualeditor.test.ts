@@ -18,11 +18,15 @@ function loadVisualUtils(sandbox: Record<string, any> = {}): any {
   const end = source.indexOf(endMarker);
   assert.notEqual(start, -1, "visual utility start marker should exist");
   assert.notEqual(end, -1, "visual utility end marker should exist");
+  const jsoncParserSource = source.slice(
+    source.indexOf("function parseConfigJsonText("),
+    source.indexOf("const GROK_VISUAL_FIELD_IDS"),
+  );
   vm.runInNewContext(
-    `${source.slice(start, end)}\n;globalThis.__utils = OpenCodeConfigVisualEditorUtils;`,
+    `${jsoncParserSource}\n${source.slice(start, end)}\n;globalThis.__utils = OpenCodeConfigVisualEditorUtils; globalThis.__parseConfigJsonText = parseConfigJsonText;`,
     sandbox,
   );
-  return sandbox.__utils;
+  return { ...sandbox.__utils, parseConfigJsonText: sandbox.__parseConfigJsonText };
 }
 
 function extractOpenCodeExample(): string {
@@ -421,6 +425,51 @@ test("undeclared model roles remain valid visual configuration references", () =
   assert.equal(serialized.ok, true);
   assert.equal(serialized.config.model, "builtin/main");
   assert.equal(serialized.config.small_model, "other/small");
+});
+
+test("slash-containing OpenCode model IDs round-trip with both role references", () => {
+  const utils = loadVisualUtils();
+  const input = {
+    provider: {
+      openai: {
+        name: "OpenAI compatible",
+        options: { baseURL: "https://api.example.test/v1", apiKey: "keep-secret" },
+        models: {
+          "vendor/model-name": { name: "Vendor Model", reasoning: true, options: { temperature: 0.3 } },
+        },
+      },
+      other: { models: { keep: { name: "Keep" } } },
+    },
+    model: "openai/vendor/model-name",
+    small_model: "openai/vendor/model-name",
+    unrelated: { keep: true },
+  };
+  const parsed = utils.parseContent(JSON.stringify(input));
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(Array.from(parsed.state.providers[0].models, (model: any) => model.id), ["vendor/model-name"]);
+  const serialized = utils.serializeState(parsed.state);
+  assert.equal(serialized.ok, true);
+  assert.equal(serialized.config.model, "openai/vendor/model-name");
+  assert.equal(serialized.config.small_model, "openai/vendor/model-name");
+  assert.deepEqual(JSON.parse(JSON.stringify(serialized.config.provider.openai.models["vendor/model-name"])), input.provider.openai.models["vendor/model-name"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(serialized.config.provider.other)), input.provider.other);
+  assert.deepEqual(JSON.parse(JSON.stringify(serialized.config.unrelated)), input.unrelated);
+});
+
+test("OpenCode visual parser accepts JSONC while preserving the original text for source mode", () => {
+  const utils = loadVisualUtils();
+  const jsonc = `{
+    // provider comment must survive source-mode import
+    "provider": {"openai": {"models": {"vendor/model-name": {},},},},
+    "model": "openai/vendor/model-name",
+  }`;
+  const parsed = utils.parseContent(jsonc);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.state.primaryModel, "openai/vendor/model-name");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(utils.parseConfigJsonText(jsonc, true))),
+    JSON.parse(JSON.stringify(parsed.state.source)),
+  );
 });
 
 test("invalid JSON cannot become an empty visual save", () => {

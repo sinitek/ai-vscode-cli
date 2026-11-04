@@ -12,6 +12,7 @@ export type GrokTomlParseResult =
   | { ok: false; error: string };
 
 const BARE_KEY = /^[A-Za-z0-9_-]+$/;
+const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 export function parseGrokToml(content: string): GrokTomlParseResult {
   if (typeof content !== "string") {
@@ -262,7 +263,7 @@ function parseKeyPath(input: string): string[] {
       throw new Error("非法 TOML 键。");
     }
   }
-  if (keys.length === 0 || keys.some((key) => key.length === 0)) {
+  if (keys.length === 0 || keys.some((key) => key.length === 0 || BLOCKED_KEYS.has(key))) {
     throw new Error("空 TOML 键。");
   }
   return keys;

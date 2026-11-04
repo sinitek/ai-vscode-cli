@@ -6,6 +6,11 @@ import type {
   CopyConfigPayload,
 } from "../config/types";
 import type { CliName } from "../cli/types";
+import type {
+  ApplyModelImportPayload,
+  DiscoverImportModelsPayload,
+  ModelImportPayload,
+} from "../config/modelimport";
 
 export type ConfigNavigationTarget = {
   cli: CliName;
@@ -38,6 +43,9 @@ export const CONFIG_ACTIONS = [
   "pickAndInstallLocalSkillZip",
   "exportConfigs",
   "getCliEnabled",
+  "getModelImportProviders",
+  "discoverImportModels",
+  "applyModelImport",
 ] as const;
 
 export type ConfigAction = typeof CONFIG_ACTIONS[number];
@@ -63,7 +71,10 @@ export type ConfigRequestPayload =
   | { action: "installLobehubSkill"; payload?: { identifier?: string; platforms?: string[] } }
   | { action: "pickAndInstallLocalSkillZip" }
   | { action: "exportConfigs"; payload: { fileName?: string; content: string } }
-  | { action: "getCliEnabled" };
+  | { action: "getCliEnabled" }
+  | { action: "getModelImportProviders"; payload: ModelImportPayload }
+  | { action: "discoverImportModels"; payload: DiscoverImportModelsPayload }
+  | { action: "applyModelImport"; payload: ApplyModelImportPayload };
 
 export type ConfigCliEnabledMessage = {
   type: "config:cliEnabled";

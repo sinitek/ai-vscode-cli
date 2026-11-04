@@ -472,6 +472,9 @@ export function getConfigViewHtml(
           installLocalSkillZip: () => requestConfig("pickAndInstallLocalSkillZip", {}),
           exportConfigs: (payload) => requestConfig("exportConfigs", { payload }),
           getCliEnabled: () => requestConfig("getCliEnabled", {}),
+          getModelImportProviders: (payload) => requestConfig("getModelImportProviders", { payload }),
+          discoverImportModels: (payload) => requestConfig("discoverImportModels", { payload }),
+          applyModelImport: (payload) => requestConfig("applyModelImport", { payload }),
         },
       };
 

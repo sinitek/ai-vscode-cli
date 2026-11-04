@@ -78,3 +78,148 @@
   overflow-wrap: anywhere;
   font-family: var(--vscode-editor-font-family, monospace);
 }
+
+.model-import-modal .ant-modal {
+  width: min(560px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px);
+}
+.model-import-modal .ant-modal-body,
+.model-import-dialog {
+  min-width: 0;
+}
+.model-import-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 180px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.model-import-description,
+.model-import-footer-note {
+  margin: 0;
+  color: var(--vscode-descriptionForeground, var(--text-color-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+}
+.model-import-provider-section,
+.model-import-result,
+.model-import-field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.model-import-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.model-import-field > span,
+.model-import-result-title {
+  font-weight: 500;
+}
+.model-import-provider-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  color: var(--vscode-descriptionForeground, var(--text-color-secondary));
+  font-size: 12px;
+  line-height: 1.45;
+}
+.model-import-provider-meta > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-import-status {
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, var(--border-color));
+  border-radius: 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.model-import-status.is-error {
+  border-color: var(--vscode-inputValidation-errorBorder, var(--error-color));
+  color: var(--vscode-inputValidation-errorForeground, var(--error-color));
+}
+.model-import-discover-button {
+  align-self: flex-start;
+}
+.model-import-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  min-width: 0;
+  overflow: auto;
+  padding: 2px;
+}
+.model-import-model-option,
+.model-import-select-all {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.model-import-model-option:hover,
+.model-import-select-all:hover {
+  background: var(--vscode-list-hoverBackground, var(--background-color-secondary));
+  border-color: var(--vscode-widget-border, var(--border-color));
+}
+.model-import-model-option:focus-within,
+.model-import-select-all:focus-within {
+  border-color: var(--vscode-focusBorder);
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.model-import-model-option input,
+.model-import-select-all input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.model-import-model-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.model-import-model-copy strong,
+.model-import-model-copy code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-import-model-copy code {
+  color: var(--vscode-descriptionForeground, var(--text-color-secondary));
+  font-size: 11px;
+}
+.model-import-mode-note,
+.model-import-empty {
+  color: var(--vscode-descriptionForeground, var(--text-color-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+}
+.model-import-open-button {
+  flex: 0 0 auto;
+}
+.model-import-action-row {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.model-import-action-row > :not(button) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .model-import-modal .ant-modal {
+    top: 16px;
+  }
+}

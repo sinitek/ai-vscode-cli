@@ -20,6 +20,11 @@ import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 import { expandHomePath } from "../shared/userHomePaths";
 import { normalizeCliEnabledByName, readToolSettings } from "../toolSettings";
 import type { CliName } from "../cli/types";
+import {
+  applyModelImport,
+  discoverImportModels,
+  getModelImportProviders,
+} from "../config/modelimport";
 
 type ConfigManagerHandlers = {
   onConfigChanged?: () => void | Promise<void>;
@@ -422,6 +427,15 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
           void logEssential("config-export", { path: targetPath });
           break;
         }
+        case "getModelImportProviders":
+          response.data = getModelImportProviders(message.payload);
+          break;
+        case "discoverImportModels":
+          response.data = await discoverImportModels(message.payload);
+          break;
+        case "applyModelImport":
+          response.data = await applyModelImport(message.payload);
+          break;
         default:
           response.success = false;
           response.error = t("config.unknownRequest");
