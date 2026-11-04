@@ -2,6 +2,13 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop / Loop+ 随时补充需求
+
+- 群聊「补充需求」弹窗不依赖主模型空闲；提交后入口始终可再次打开，不等待群聊刷新。可连续提交多条需求，按提交顺序持久化并显示在群聊中，不打断当前主模型或子任务调用，也不另起并发主模型提问。
+- Loop+ 复用持久化用户消息队列；主模型忙碌时先排队，之后按既有调度顺序处理。经典 Loop 在下一次主任务判断时读取补充需求；若当前调用返回完成结论但调用期间收到新需求，先重新判断，不能直接收口漏掉新要求。
+- 空白内容不提交；弹窗关闭后重复点击确认或快捷键不重复发送；刷新保留已打开弹窗的草稿和焦点。已完成且无运行进程的任务仍按既有「继续执行」规则处理，不因补充入口修复自动重启。
+- 实现：`src/webview/loopGroupChatPanel.ts`、`src/panelDiagnostics.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
+
 ## 人工交互系统提醒
 
 - Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，仅编辑器窗口在后台时发送标题为“携宁 CLI 提醒”的固定中文系统通知；同一交互只通知一次，前台等待后切到后台也能触发。通知不包含项目路径、问题、答案或密码，不抢焦点。

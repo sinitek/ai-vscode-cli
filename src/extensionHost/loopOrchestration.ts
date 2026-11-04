@@ -198,6 +198,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number;
   }): Promise<LoopMainDecisionRunResult> {
     const { input, target, task, round } = options;
+    const requirementsAtStart = [...(task.supplementalRequirements ?? [])];
     let mainStatus: TaskRunStatus;
     try {
       mainStatus = await runLoopRound({
@@ -248,6 +249,15 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         finalSummary: "Main task did not return a valid loop decision JSON.",
       }) ?? task;
       return { status: "needs-review", task: failedRecord };
+    }
+
+    if (decision.status === "completed") {
+      const latest = readLoopTaskRecord(task.id) ?? task;
+      const requirements = latest.supplementalRequirements ?? [];
+      if (requirements.length !== requirementsAtStart.length
+        || requirements.some((requirement, index) => requirement !== requirementsAtStart[index])) {
+        return { status: "pending-requirements", task: latest };
+      }
     }
 
     return applyLoopMainDecisionForRun(task.id, decision);
@@ -489,6 +499,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
     | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
     | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "pending-requirements"; task: LoopTaskRecord }
     | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 

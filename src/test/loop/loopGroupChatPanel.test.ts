@@ -354,6 +354,73 @@ test("Loop+ continue dialog shows missing role models without reusing inactive r
   assert.match(html, /value="current" checked/u);
 });
 
+function createSupplementDialogHarness() {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function closeContinueDialog"), html.indexOf("const ASK_WAITING_LABEL"));
+  const button = { disabled: false };
+  const input = { value: "", focus: () => undefined, select: () => undefined };
+  const messages: { type: string; prompt: string }[] = [];
+  const errors: string[] = [];
+  const context = {
+    continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
+    continueDialogInput: input,
+    continueDialogConfirm: { dataset: {} },
+    continueDialogOpen: false,
+    continueDialogMode: undefined,
+    setContinueDialogError: (error: string) => errors.push(error),
+    setContinueModelChoiceVisible: () => undefined,
+    saveDialogState: () => undefined,
+    clearDialogState: () => undefined,
+    actionButton: () => button,
+    document: { getElementById: () => null, querySelector: () => null },
+    window: { setTimeout: () => undefined },
+    vscode: { postMessage: (message: { type: string; prompt: string }) => messages.push(message) },
+  };
+  const actions = vm.runInNewContext(`${source}\n({ openSupplementDialog, submitSupplementDialog, closeContinueDialog });`, context) as {
+    openSupplementDialog: (prompt?: string) => void;
+    submitSupplementDialog: () => void;
+    closeContinueDialog: () => void;
+  };
+  return { ...actions, button, input, messages, errors, context };
+}
+
+test("keeps the supplement entry enabled for consecutive submissions without waiting for a patch", () => {
+  const harness = createSupplementDialogHarness();
+  for (const prompt of ["  补充第一个要求  ", "补充第二个要求", "补充第三个要求"]) {
+    harness.openSupplementDialog(prompt);
+    harness.submitSupplementDialog();
+    assert.equal(harness.button.disabled, false);
+    assert.equal(harness.context.continueDialogOpen, false);
+  }
+  assert.deepEqual(harness.messages.map((message) => message.prompt), ["补充第一个要求", "补充第二个要求", "补充第三个要求"]);
+  assert.ok(harness.messages.every((message) => message.type === "loopGroupChatChat:supplementTask"));
+});
+
+test("ignores duplicate supplement confirmation after the dialog closes", () => {
+  const harness = createSupplementDialogHarness();
+  harness.openSupplementDialog("只发送一次");
+  harness.submitSupplementDialog();
+  harness.submitSupplementDialog();
+  assert.equal(harness.messages.length, 1);
+  harness.openSupplementDialog("取消的需求");
+  harness.closeContinueDialog();
+  harness.submitSupplementDialog();
+  assert.equal(harness.messages.length, 1);
+});
+
+test("keeps empty supplement input editable and does not submit a continue dialog as a supplement", () => {
+  const harness = createSupplementDialogHarness();
+  harness.openSupplementDialog("   ");
+  harness.submitSupplementDialog();
+  assert.equal(harness.messages.length, 0);
+  assert.equal(harness.context.continueDialogOpen, true);
+  assert.equal(harness.errors.at(-1), "请输入需求内容。");
+  vm.runInNewContext('continueDialogMode = "continue";', harness.context);
+  harness.input.value = "继续执行";
+  harness.submitSupplementDialog();
+  assert.equal(harness.messages.length, 0);
+});
+
 test("refreshes the current runtime configuration immediately when the continue dialog opens", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const openDialog = html.slice(html.indexOf("function openContinueDialog"), html.indexOf("function closeContinueDialog"));

@@ -4388,6 +4388,10 @@ async function runLoopPromptOrchestration(
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
       return;
     }
+    if (decisionRunResult.status === "pending-requirements") {
+      removeLoopMainDecisionMessage(target, decisionRunResult.task.id, round);
+      continue;
+    }
     if (decisionRunResult.status === "awaiting-input") {
       continue;
     }

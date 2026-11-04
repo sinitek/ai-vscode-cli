@@ -437,7 +437,7 @@ test("previews a communication file from the open Loop group chat", async () => 
   }
 });
 
-test("forwards Loop+ user speech to the main-task queue and leaves classic Loop unchanged", async () => {
+test("persists consecutive supplements while the main task is busy and queues only Loop+ messages", async () => {
   const vscode = require("vscode") as typeof import("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
@@ -463,8 +463,10 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
   });
   try {
     const task = createStoppedTask();
+    task.status = "running";
     task.schedulingMode = "event_driven";
     const notices: string[] = [];
+    const communication: string[] = [];
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -472,9 +474,9 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
       normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       appendSupplementalRequirement: (existing, nextItem) => [...(existing ?? []), nextItem],
-      appendSupplementalRequirementToCommunication: () => undefined,
+      appendSupplementalRequirementToCommunication: (_task, requirement) => { communication.push(requirement); },
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
-      updateTaskRecord: () => task,
+      updateTaskRecord: (_taskId, patch) => Object.assign(task, patch),
       listTaskStoreFiles: () => [],
       readTaskStoreTasks: () => [],
       collectRunningTaskIds: () => new Set([task.id]),
@@ -489,7 +491,7 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
       isTabRunActive: () => true,
       getActiveConfigIdForCli: () => "current-config",
       getSelectedCliModel: () => "current-model",
-      runLoopPrompt: async () => undefined,
+      runLoopPrompt: async () => { assert.fail("补充需求不应启动并发主模型调用"); },
       stopRunsForTask: () => undefined,
       markTaskStoppedByUser: () => task,
       postPanelState: async () => undefined,
@@ -506,14 +508,20 @@ test("forwards Loop+ user speech to the main-task queue and leaves classic Loop 
     await coordinator.open(task.id);
     assert.equal(typeof messageHandler, "function");
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "  please check the running subtask  " });
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "then check another requirement" });
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "   " });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(notices, ["please check the running subtask"]);
+    assert.deepEqual(notices, ["please check the running subtask", "then check another requirement"]);
+    assert.deepEqual(task.supplementalRequirements, notices);
+    assert.deepEqual(communication, notices);
 
     notices.length = 0;
     task.schedulingMode = "classic";
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "classic only" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(notices, []);
+    assert.deepEqual(task.supplementalRequirements, ["please check the running subtask", "then check another requirement", "classic only"]);
+    assert.deepEqual(communication, task.supplementalRequirements);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }

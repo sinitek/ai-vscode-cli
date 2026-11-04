@@ -46,6 +46,69 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   };
 }
 
+for (const mutateInPlace of [false, true]) {
+  test(`classic Loop rechecks supplements arriving during completion (${mutateInPlace ? "mutable" : "immutable"} record)`, async () => {
+    const task = loopTask();
+    let stored = task;
+    const prompts: string[] = [];
+    let applied = 0;
+    const host = createLoopOrchestrationHost({
+      getLoopCommunicationPaths: () => ({ dir: task.communicationDir, mainFile: task.mainCommunicationFile, subtasksDir: "/tmp/loop-comm/subtasks" }),
+      normalizeLoopContinuePromptForPrompt: () => null,
+      buildLoopSupplementalRequirementsLines: (record: LoopTaskRecord) => record.supplementalRequirements ?? [],
+      buildLoopMainSubChatTranscriptFile: () => "/tmp/loop-comm/chat.md",
+      isLoopTaskExecutionInterrupted: () => false,
+      readLoopTaskRecord: () => stored,
+      updateLoopTaskRecord: (_taskId: string, patch: Partial<LoopTaskRecord>) => {
+        stored = mutateInPlace ? Object.assign(stored, patch) : { ...stored, ...patch };
+        return stored;
+      },
+      refreshOpenLoopGroupChatPanelForTask: () => undefined,
+      resolvePromptRunModelForRole: () => undefined,
+      resolvePromptRunThinkingModeForRole: () => undefined,
+      runPrompt: async (input: PromptRunInput) => {
+        prompts.push(input.modelPrompt);
+        if (prompts.length === 1) {
+          const requirements = ["主模型忙碌期间追加的需求"];
+          if (mutateInPlace) {
+            stored.supplementalRequirements?.push(...requirements);
+          } else {
+            stored = { ...stored, supplementalRequirements: requirements };
+          }
+        }
+      },
+      resolveLoopTaskSessionId: () => null,
+      getLoopRoundRunStatus: () => "end",
+      appendLoopRound: () => undefined,
+      buildLoopRoundSummary: () => "主模型已回答",
+      getLastLoopAssistantContent: () => "completed decision",
+      parseLoopMainDecision: () => ({ status: "completed", finalSummary: "完成" }),
+      buildResetLoopMainAiFailureState: () => ({}),
+      applyLoopMainDecision: () => {
+        applied += 1;
+        stored = { ...stored, status: "completed" };
+        return { status: "completed", task: stored };
+      },
+    } as never);
+    const options = {
+      input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
+      target: { tabId: "main-tab", cli: "codex" as const, sessionId: null },
+      task,
+      round: 1,
+    };
+
+    const pending = await host.runClassicLoopMainDecision(options);
+    assert.equal(pending.status, "pending-requirements");
+    assert.equal(stored.status, "running");
+    assert.equal(applied, 0);
+
+    const completed = await host.runClassicLoopMainDecision({ ...options, task: pending.task });
+    assert.equal(completed.status, "completed");
+    assert.equal(applied, 1);
+    assert.match(prompts[1], /主模型忙碌期间追加的需求/u);
+  });
+}
+
 test("classic Loop trusts reports, delegates only required verification and keeps optional SVG guidance", async () => {
   const task = loopTask();
   const prompts: string[] = [];

@@ -559,7 +559,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function submitSupplementDialog() {
-	        if (!continueDialogInput) {
+	        if (!continueDialogInput || !continueDialogOpen || continueDialogMode !== "supplement") {
 	          return;
 	        }
 	        const prompt = continueDialogInput.value.trim();
@@ -569,10 +569,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        closeContinueDialog();
-	        const liveSupplementButton = actionButton("supplementTask");
-	        if (liveSupplementButton) {
-	          liveSupplementButton.disabled = true;
-	        }
 	        vscode.postMessage({ type: "loopGroupChatChat:supplementTask", prompt });
 	      }
 

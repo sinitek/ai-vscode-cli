@@ -16,7 +16,7 @@ const STRINGS = {
     continuePromptDefault: "继续",
     supplementPromptDefault: "",
     supplementDialogTitle: "补充需求",
-    supplementDialogDescription: "补充内容会显示在群聊中，并在下一轮提供给主任务。这不会单独向主模型提问。",
+    supplementDialogDescription: "可随时补充需求，提交后可继续添加。主模型忙碌时会排队，当前调用结束后再处理；不会打断正在执行的任务，也不会单独向主模型提问。",
     askDialogTitle: "向主模型提问",
     askDialogDescription: "这是当前任务和主模型的单独对话，只有气泡和输入框。回答时只显示等待动画，结束后给出最终答复，不展示思考过程。关闭后再打开会恢复这些气泡；如果还在回答，会继续显示等待动画。不会写成补充需求，也不会推动任务调度。",
     askChatEmpty: "还没有提问。在下方输入后发送。",
