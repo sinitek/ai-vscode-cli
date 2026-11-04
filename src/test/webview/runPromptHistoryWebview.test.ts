@@ -145,8 +145,10 @@ test("sets loading animation state on historyButton and removes it after modal r
   let renderPromptHistoryListCalled = false;
   let setHistoryTabCalled = false;
   let stateDuringRenderIsLoading = false;
+  const postedMessages: unknown[] = [];
 
   const runOpenHistory = new Function(
+    "vscode",
     "elements",
     "state",
     "renderSessionList",
@@ -156,6 +158,7 @@ test("sets loading animation state on historyButton and removes it after modal r
     "requestAnimationFrame",
     `${openHistorySource}; return openHistory;`,
   )(
+    { postMessage: (message: unknown) => postedMessages.push(message) },
     { historyButton, historyOverlay },
     { historyTab: "sessions" },
     () => {
@@ -174,6 +177,7 @@ test("sets loading animation state on historyButton and removes it after modal r
 
   runOpenHistory();
 
+  assert.deepEqual(postedMessages, [{ type: "refreshPromptHistory" }]);
   assert.equal(renderSessionListCalled, true);
   assert.equal(renderPromptHistoryListCalled, true);
   assert.equal(setHistoryTabCalled, true);

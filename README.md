@@ -8,8 +8,9 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.7.x
-- bugfix & 体验优化
+### 1.8.0
+- cli 配置支持解析 url 列出模型来快捷导入
+- 任务完成或者人机交互会主动提醒， windows 还会在导航栏闪烁。
 
 ### 1.7.0
 - Loop+ 支持全栈和前后端不同模型两种配置

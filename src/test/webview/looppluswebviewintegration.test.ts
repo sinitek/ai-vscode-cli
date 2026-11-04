@@ -412,6 +412,7 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "shouldIncludeCodexLoopRoleModels"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "resolvePromptLoopRoleModel"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "applyCodexLoopRoleModelsToPromptPayload"],
+    [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "readVisibleConfigSelections"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "snapshotPromptPayloadForQueue"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "isConfigApplyPendingForCli"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "dispatchPrompt"],

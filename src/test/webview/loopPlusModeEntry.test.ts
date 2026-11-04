@@ -467,6 +467,7 @@ type SendMessage = {
   contextOptions?: unknown;
   scheduledAt?: number;
   files?: unknown[];
+  configSelections?: Record<string, { configId: string | null; revision: string }>;
 };
 
 function buildDispatchHarness() {
@@ -474,7 +475,7 @@ function buildDispatchHarness() {
     currentCli: "codex",
     interactiveMode: "loop_plus",
     selectedConfigId: "config-1",
-    configState: { activeConfigId: "config-1" },
+    configState: { activeConfigId: "config-1", revision: "revision-1" },
     pendingConfigApply: null as { cli?: string; configId?: string } | null,
     selectedModelsByCli: { codex: "single-model", claude: "claude-model" } as Record<string, string>,
   };
@@ -496,6 +497,7 @@ function buildDispatchHarness() {
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
+      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",
@@ -584,6 +586,7 @@ test("sends, queues, and flushes Loop+ with role models and no legacy mode", () 
   assert.equal(sent.loopMainThinkingMode, "high");
   assert.equal(sent.loopSubtaskThinkingMode, "medium");
   assert.equal(sent.model, "saved-main-model");
+  assert.deepEqual(sent.configSelections, { codex: { configId: "config-1", revision: "revision-1" } });
   assert.equal(Object.prototype.hasOwnProperty.call(sent, "loopExecutionMode"), false);
 
   harness.posted.length = 0;
@@ -595,8 +598,10 @@ test("sends, queues, and flushes Loop+ with role models and no legacy mode", () 
   assert.equal(harness.runtime.pendingPromptQueue[0].loopMainThinkingMode, "high");
   assert.equal(harness.runtime.pendingPromptQueue[0].loopSubtaskThinkingMode, "medium");
   assert.equal(harness.runtime.pendingPromptQueue[0].skipPromptHistory, true);
+  assert.deepEqual(harness.runtime.pendingPromptQueue[0].configSelections, sent.configSelections);
 
   harness.state.interactiveMode = "coding";
+  harness.state.configState = { activeConfigId: "config-2", revision: "revision-2" };
   harness.setActiveTab("tab-active");
   assert.equal(harness.api.flushPendingPromptQueue("tab-other"), true);
   const flushed = harness.posted.find((message) => message.type === "sendPrompt");
@@ -607,6 +612,7 @@ test("sends, queues, and flushes Loop+ with role models and no legacy mode", () 
   assert.equal(flushed.loopSubtaskModel, "saved-sub-model");
   assert.equal(flushed.loopMainThinkingMode, "high");
   assert.equal(flushed.loopSubtaskThinkingMode, "medium");
+  assert.deepEqual(flushed.configSelections, sent.configSelections);
   assert.equal(Object.prototype.hasOwnProperty.call(flushed, "loopExecutionMode"), false);
 
   harness.state.interactiveMode = "loop_plus";
@@ -813,6 +819,7 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
+      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",

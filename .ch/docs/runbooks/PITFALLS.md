@@ -14,6 +14,7 @@
 
 ## 当前有效条目
 
+- 抽取 Webview 函数的测试夹具必须同步依赖：见本页“Webview 源码抽取夹具必须补齐真实依赖”。
 - macOS 通知命令退出成功不代表用户看到了横幅：见本页“macOS 通知命令成功不等于实际展示”。
 - 配置落盘成功不代表长连接已加载新配置：见本页“同 CLI 切换配置必须核对交互进程身份”。
 - 配置页抽屉按钮不能只依赖应用根节点的主题作用域：见本页“配置页标准按钮必须覆盖 Portal 作用域”。
@@ -28,6 +29,13 @@
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
 - 群聊局部补丁不能只恢复外层滚动位置：见本页“群聊补丁需保留气泡内部滚动”。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
+
+## Webview 源码抽取夹具必须补齐真实依赖
+
+- 状态：已规避；首次确认及修复：2026-11-04。
+- 现象与根因：使用 `extractFunctionSource`、`new Function` 或 VM 拼装局部 Webview 流程时，业务函数新增的同作用域 helper 和宿主桥接不会自动进入夹具。配置快照新增 `readVisibleConfigSelections` 后，旧 Loop+ 派发及队列夹具报 ReferenceError；历史弹窗增加 `vscode.postMessage` 后，旧加载动画夹具同样失败。
+- 长期规避：优先把依赖的真实 helper 加入抽取列表，并提供符合当前契约的配置修订号、宿主桥接与消息收集器；断言配置快照在排队后不被新配置替换、历史打开确实请求刷新。不要删除真实行为或用无语义的空函数掩盖缺失依赖。
+- 验证方式：`npm run build && node --test dist/test/webview/loopPlusModeEntry.test.js dist/test/webview/looppluswebviewintegration.test.js dist/test/webview/runPromptHistoryWebview.test.js`，再运行 `npm run test:unit`。
 
 ## 同 CLI 切换配置必须核对交互进程身份
 
