@@ -1899,6 +1899,7 @@ function renderContinueModelChoice(
 ): string {
   return renderContinueModelChoiceHtml({
     choice: state.continueModels,
+    loopPlus: Boolean(state.loopPlus),
     strings: {
       label: strings.continueModelChoiceLabel,
       originalTitle: strings.continueModelOriginal,
@@ -1907,6 +1908,8 @@ function renderContinueModelChoice(
       currentTitle: strings.continueModelCurrent,
       currentHint: strings.continueModelCurrentHint,
       summary: strings.continueModelSummary,
+      splitSummary: strings.continueModelSplitSummary,
+      fullstackSummary: strings.continueModelFullstackSummary,
       unrecorded: strings.continueModelUnrecorded,
     },
     escapeHtml,

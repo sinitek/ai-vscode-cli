@@ -78,6 +78,75 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
   assert.deepEqual(createOptions, { createIfMissing: false });
 });
 
+for (const originalMode of ["split", "fullstack"] as const) {
+  test(`Loop+ continue preview preserves ${originalMode} and reads all current role selections`, () => {
+    const task = createStoppedTask();
+    task.schedulingMode = "event_driven";
+    task.loopSubtaskMode = originalMode;
+    task.originProfile = { configId: "original-config" };
+    task.modelRouting = {
+      main: { model: "original-main" },
+      subtask: { model: "original-backend" },
+      subtaskFrontend: { cli: "claude", model: "original-frontend" },
+      subtaskFullstack: { cli: "grok", model: "original-fullstack" },
+    };
+    const currentMode = originalMode === "split" ? "fullstack" : "split";
+    const state = buildLoopGroupChatPanelState(task, {
+      getExtensionUri: () => ({ fsPath: "/extension" } as any),
+      panelsByTaskId: new Map(),
+      normalizeTaskId: () => task.id,
+      normalizeSupplementalRequirement: () => null,
+      appendSupplementalRequirement: () => [],
+      appendSupplementalRequirementToCommunication: () => undefined,
+      readTaskRecord: () => task,
+      updateTaskRecord: () => task,
+      listTaskStoreFiles: () => [],
+      readTaskStoreTasks: () => [],
+      collectRunningTaskIds: () => new Set(),
+      readTextFileIfNonEmpty: () => null,
+      fileExists: () => false,
+      writeTextFileEnsuringDir: () => true,
+      getActiveSubtaskIds: () => [],
+      buildCompletedConclusionAndSummaryMarkdown: () => "",
+      resolveMainPromptTarget: () => null,
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => false,
+      getActiveConfigIdForCli: (cli) => `${cli}-config`,
+      getSelectedCliModel: () => "current-main",
+      getSelectedLoopCliModel: (_cli, role) => role === "main" ? "current-main" : "current-backend",
+      getSelectedLoopFrontendCli: () => "claude",
+      getSelectedLoopFullstackCli: () => "grok",
+      getSelectedLoopSubtaskMode: () => currentMode,
+      getLoopRoleExplicitModel: (_configId, role) => ({ configured: true, model: `current-${role}` }),
+      runLoopPrompt: async () => undefined,
+      stopRunsForTask: () => undefined,
+      markTaskStoppedByUser: () => task,
+      postPanelState: async () => undefined,
+      getActiveConversationTaskId: () => task.id,
+      showInformationMessage: () => undefined,
+      showWarningMessage: () => undefined,
+      pickTask: async () => task,
+      t: ((key: string) => key) as Parameters<typeof buildLoopGroupChatPanelState>[1]["t"],
+    });
+
+    assert.equal(state.continueModels?.original.loopSubtaskMode, originalMode);
+    assert.equal(state.continueModels?.original.frontend, "original-frontend");
+    assert.equal(state.continueModels?.original.fullstack, "original-fullstack");
+    assert.deepEqual(state.continueModels?.current, {
+      main: "current-main",
+      subtask: "current-backend",
+      frontend: "current-frontend",
+      frontendCli: "claude",
+      frontendConfigId: "claude-config",
+      fullstack: "current-fullstack",
+      fullstackCli: "grok",
+      fullstackConfigId: "grok-config",
+      loopSubtaskMode: currentMode,
+    });
+  });
+}
+
 test("Loop group chat continuation uses the main tab current CLI config and model", async () => {
   const task = createStoppedTask();
   const configCalls: string[] = [];

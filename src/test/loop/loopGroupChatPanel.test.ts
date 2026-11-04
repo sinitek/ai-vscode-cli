@@ -243,7 +243,10 @@ test("renders recorded and current Loop models on the continue dialog", () => {
     {
       continueModels: {
         original: { main: "original-main", subtask: "original-subtask" },
-        current: { main: "current-main", subtask: "current-subtask" },
+        current: {
+          main: "current-main", subtask: "current-subtask", loopSubtaskMode: "fullstack",
+          frontend: "hidden-frontend", fullstack: "hidden-fullstack",
+        },
       },
       task: {
         id: "task-models",
@@ -267,8 +270,88 @@ test("renders recorded and current Loop models on the continue dialog", () => {
   assert.match(html, /使用新配置的主子模型/u);
   assert.match(html, /主模型 original-main，子模型 original-subtask/u);
   assert.match(html, /主模型 current-main，子模型 current-subtask/u);
+  assert.doesNotMatch(html, /hidden-frontend|hidden-fullstack|子-后端|子-前端|子-全栈/u);
   assert.match(html, /value="original" checked/u);
   assert.doesNotMatch(html, /value="original" disabled/u);
+});
+
+for (const originalMode of ["split", "fullstack"] as const) {
+  test(`Loop+ continue dialog renders ${originalMode} separately from the current mode`, () => {
+    const currentMode = originalMode === "split" ? "fullstack" : "split";
+    const state = createState({
+      loopPlus: {
+        ok: true,
+        schedulingMode: "event_driven",
+        activity: "stopped",
+        phase: "stopped",
+        wakePending: false,
+        currentReview: null,
+        reviewQueue: [],
+        currentReviewCount: 0,
+        reviewQueueCount: 0,
+        visibleReviewCount: 0,
+        running: [],
+        pending: [],
+        runningCount: 0,
+        pendingCount: 0,
+        seenAttempts: [],
+      },
+      continueModels: {
+        original: {
+          main: "original-main", subtask: "original-backend", subtaskCli: "codex",
+          frontend: "original-frontend", frontendCli: "claude",
+          fullstack: "original-fullstack", fullstackCli: "grok",
+          loopSubtaskMode: originalMode,
+        },
+        current: {
+          main: "current-main", subtask: "current-backend", subtaskCli: "codex",
+          frontend: "current-frontend", frontendCli: "claude",
+          fullstack: "current-fullstack", fullstackCli: "grok",
+          loopSubtaskMode: currentMode,
+        },
+      },
+    });
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+    const choiceHtml = html.slice(html.indexOf('<div id="continueModelChoice"'), html.indexOf('id="continueDialogError"'));
+    for (const [source, mode] of [["original", originalMode], ["current", currentMode]]) {
+      if (mode === "split") {
+        assert.ok(choiceHtml.includes(`主模型 ${source}-main，子-后端 codex / ${source}-backend，子-前端 claude / ${source}-frontend`));
+        assert.ok(!choiceHtml.includes(`${source}-fullstack`));
+      } else {
+        assert.ok(choiceHtml.includes(`主模型 ${source}-main，子-全栈 grok / ${source}-fullstack`));
+        assert.ok(!choiceHtml.includes(`${source}-backend`));
+        assert.ok(!choiceHtml.includes(`${source}-frontend`));
+      }
+    }
+  });
+}
+
+test("Loop+ continue dialog infers legacy split routes and preserves legacy atomic models", () => {
+  const state = createState({
+    loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "legacy" },
+    continueModels: {
+      original: { main: "legacy-main", subtask: "legacy-backend", frontendCli: "claude" },
+      current: { main: "atomic-main", subtask: "atomic-subtask" },
+    },
+  });
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.match(html, /主模型 legacy-main，子-后端 legacy-backend，子-前端 claude \/ 默认模型/u);
+  assert.match(html, /主模型 atomic-main，子-全栈 atomic-subtask/u);
+});
+
+test("Loop+ continue dialog shows missing role models without reusing inactive routes", () => {
+  const state = createState({
+    loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "missing" },
+    continueModels: {
+      original: { main: null, subtask: null },
+      current: { main: "current-main", subtask: "inactive-backend", loopSubtaskMode: "fullstack" },
+    },
+  });
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.match(html, /主模型 current-main，子-全栈 未记录/u);
+  assert.doesNotMatch(html, /inactive-backend/u);
+  assert.match(html, /value="original" disabled/u);
+  assert.match(html, /value="current" checked/u);
 });
 
 test("refreshes the current runtime configuration immediately when the continue dialog opens", () => {

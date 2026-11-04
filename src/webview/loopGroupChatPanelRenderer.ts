@@ -35,6 +35,8 @@ const STRINGS = {
     continueModelCurrent: "使用新配置的主子模型",
     continueModelCurrentHint: "使用当前 Loop 模式里配置的主模型和子模型继续。",
     continueModelSummary: "主模型 {main}，子模型 {subtask}",
+    continueModelSplitSummary: "主模型 {main}，子-后端 {subtask}，子-前端 {frontend}",
+    continueModelFullstackSummary: "主模型 {main}，子-全栈 {fullstack}",
     continueModelUnrecorded: "未记录",
     supplementPromptLabel: "需求内容",
     supplementPromptRequired: "请输入需求内容。",

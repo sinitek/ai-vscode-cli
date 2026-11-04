@@ -844,7 +844,10 @@ export function buildLoopGroupChatPanelState(
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   const cli = target?.cli ?? task.cli;
   const originalModels = task.originProfile?.configId
-    ? continueModelPairFromLoopRouting(task.modelRouting)
+    ? {
+      ...continueModelPairFromLoopRouting(task.modelRouting),
+      ...(task.loopSubtaskMode ? { loopSubtaskMode: task.loopSubtaskMode } : {}),
+    }
     : emptyContinueModelPair();
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
@@ -865,6 +868,9 @@ export function buildLoopGroupChatPanelState(
         getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
         getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
         getSelectedLoopFrontendCli: deps.getSelectedLoopFrontendCli,
+        getSelectedLoopFullstackCli: deps.getSelectedLoopFullstackCli,
+        getSelectedLoopSubtaskMode: deps.getSelectedLoopSubtaskMode,
+        getLoopRoleExplicitModel: deps.getLoopRoleExplicitModel,
         getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
       }),
     },

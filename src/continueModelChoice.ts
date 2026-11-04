@@ -1,5 +1,9 @@
 import type { CliName } from "./cli/types";
-import type { LoopSubtaskMode } from "./loopPlusSubtaskMode";
+import {
+  loopSubtaskRouteHasIdentity,
+  resolveStoredLoopSubtaskMode,
+  type LoopSubtaskMode,
+} from "./loopPlusSubtaskMode";
 import type { LoopTaskModelRouting } from "./loopTaskStore";
 import {
   formatSubtaskRouteSummary,
@@ -38,6 +42,8 @@ export type ContinueModelChoiceStrings = {
   currentTitle: string;
   currentHint: string;
   summary: string;
+  splitSummary: string;
+  fullstackSummary: string;
   unrecorded: string;
 };
 
@@ -363,6 +369,7 @@ export function shouldApplyCurrentContinueModels(
 
 export function renderContinueModelChoiceHtml(options: {
   choice?: ContinueModelChoice | null;
+  loopPlus?: boolean;
   strings: ContinueModelChoiceStrings;
   escapeHtml: (value: string) => string;
 }): string {
@@ -377,7 +384,7 @@ export function renderContinueModelChoiceHtml(options: {
       value: "original",
       title: options.strings.originalTitle,
       hint: originalAvailable ? options.strings.originalHint : options.strings.originalUnavailable,
-      detail: formatContinueModelSummary(options.strings.summary, choice.original, options.strings.unrecorded),
+      detail: formatContinueModelSummary(options.strings, choice.original, options.loopPlus),
       checked: originalAvailable,
       disabled: !originalAvailable,
       escapeHtml: options.escapeHtml,
@@ -386,7 +393,7 @@ export function renderContinueModelChoiceHtml(options: {
       value: "current",
       title: options.strings.currentTitle,
       hint: options.strings.currentHint,
-      detail: formatContinueModelSummary(options.strings.summary, choice.current, options.strings.unrecorded),
+      detail: formatContinueModelSummary(options.strings, choice.current, options.loopPlus),
       checked: !originalAvailable,
       disabled: false,
       escapeHtml: options.escapeHtml,
@@ -394,13 +401,28 @@ export function renderContinueModelChoiceHtml(options: {
   </div>`;
 }
 
-function formatContinueModelSummary(template: string, pair: ContinueModelPair, unrecorded: string): string {
+function formatContinueModelSummary(
+  strings: ContinueModelChoiceStrings,
+  pair: ContinueModelPair,
+  loopPlus: boolean | undefined,
+): string {
+  const subtaskRoute = { cli: pair.subtaskCli, model: pair.subtask };
+  const frontendRoute = { cli: pair.frontendCli, configId: pair.frontendConfigId, model: pair.frontend };
+  const fullstackRoute = { cli: pair.fullstackCli, configId: pair.fullstackConfigId, model: pair.fullstack };
+  const mode = loopPlus ? resolveStoredLoopSubtaskMode({
+    loopSubtaskMode: pair.loopSubtaskMode,
+    frontendRoute,
+  }) : null;
+  const template = mode === "split" ? strings.splitSummary
+    : mode === "fullstack" ? strings.fullstackSummary
+      : strings.summary;
+  const effectiveFullstackRoute = !pair.loopSubtaskMode && !loopSubtaskRouteHasIdentity(fullstackRoute)
+    ? subtaskRoute : fullstackRoute;
   return template
-    .split("{main}").join(pair.main || unrecorded)
-    .split("{subtask}").join(formatSubtaskRouteSummary({
-      cli: pair.subtaskCli,
-      model: pair.subtask,
-    }, unrecorded));
+    .split("{main}").join(pair.main || strings.unrecorded)
+    .split("{subtask}").join(formatSubtaskRouteSummary(subtaskRoute, strings.unrecorded))
+    .split("{frontend}").join(formatSubtaskRouteSummary(frontendRoute, strings.unrecorded))
+    .split("{fullstack}").join(formatSubtaskRouteSummary(effectiveFullstackRoute, strings.unrecorded));
 }
 
 function renderContinueModelOption(options: {
