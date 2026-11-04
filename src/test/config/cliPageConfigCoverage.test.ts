@@ -592,14 +592,39 @@ test("config HTML bridge validates host protocol mapping and active-config sync 
         name: "OpenCode Copy",
       },
     },
+    {
+      type: "config:request",
+      requestId: "model-import-providers",
+      action: "getModelImportProviders",
+      payload: { platform: "grok", draft: {} },
+    },
+    {
+      type: "config:request",
+      requestId: "model-import-discover",
+      action: "discoverImportModels",
+      payload: { platform: "grok", providerId: "provider-test", draft: {} },
+    },
+    {
+      type: "config:request",
+      requestId: "model-import-apply",
+      action: "applyModelImport",
+      payload: { platform: "grok", providerId: "provider-test", draft: {}, selectedModelIds: [] },
+    },
   ];
   const openPathMessage: ConfigOpenPathMessage = { type: "config:openPath", path: "/tmp/config.json" };
   const openExternalMessage: ConfigOpenExternalMessage = { type: "config:openExternal", url: "https://example.test" };
   const closeMessage: ConfigCloseMessage = { type: "config:close" };
-  assert.deepEqual(requestMessages.map((message) => message.type), ["config:request", "config:request", "config:request"]);
+  assert.deepEqual(requestMessages.map((message) => message.type), [
+    "config:request", "config:request", "config:request", "config:request", "config:request", "config:request",
+  ]);
   assert.equal(openPathMessage.type, "config:openPath");
   assert.equal(openExternalMessage.type, "config:openExternal");
   assert.equal(closeMessage.type, "config:close");
+});
+
+test("config host keeps model import actions in the bridge contract", () => {
+  const actions = extractConfigActions();
+  assert.deepEqual(actions.slice(-3), ["getModelImportProviders", "discoverImportModels", "applyModelImport"]);
 });
 
 test("ZCode active sync uses the host identity even when a saved profile differs from runtime", async () => {
@@ -1631,6 +1656,9 @@ test("config protocol declarations stay aligned with panel switch cases and brid
     "pickAndInstallLocalSkillZip",
     "exportConfigs",
     "getCliEnabled",
+    "getModelImportProviders",
+    "discoverImportModels",
+    "applyModelImport",
   ]);
 
   for (const action of actions) {

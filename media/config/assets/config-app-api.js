@@ -240,4 +240,30 @@ const detectConfigApiMode = () =>
     } catch (t) {
       throw (console.error("导出配置失败:", t), t);
     }
+  },
+  getModelImportProviders = async (payload = {}) => {
+    if (!configApi.getModelImportProviders) throw new Error("当前模式不支持模型解析导入");
+    return configApi.getModelImportProviders({
+      platform: payload.platform,
+      draft: payload.draft,
+    });
+  },
+  discoverImportModels = async (payload = {}) => {
+    if (!configApi.discoverImportModels) throw new Error("当前模式不支持模型解析");
+    return configApi.discoverImportModels({
+      platform: payload.platform,
+      draft: payload.draft,
+      providerId: payload.providerId,
+    });
+  },
+  applyModelImport = async (payload = {}) => {
+    if (!configApi.applyModelImport) throw new Error("当前模式不支持导入模型");
+    const request = {
+      platform: payload.platform,
+      draft: payload.draft,
+      providerId: payload.providerId,
+      selectedModelIds: Array.isArray(payload.selectedModelIds) ? payload.selectedModelIds : [],
+    };
+    if (payload.fields && typeof payload.fields === "object") request.fields = payload.fields;
+    return configApi.applyModelImport(request);
   };

@@ -32,9 +32,12 @@ function loadVisualParser(source: string): (content: string) => any {
   const end = source.indexOf("// OPENCODE_VISUAL_EDITOR_UTILS_END");
   assert.notEqual(start, -1, "visual utility start marker should exist");
   assert.notEqual(end, -1, "visual utility end marker should exist");
+  const parserStart = source.indexOf("function parseConfigJsonText(");
+  const parserEnd = source.indexOf("const GROK_VISUAL_FIELD_IDS", parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart, "JSONC parser should exist");
   const sandbox: Record<string, unknown> = {};
   vm.runInNewContext(
-    `${source.slice(start, end)}\n;globalThis.__parse = OpenCodeConfigVisualEditorUtils.parseContent;`,
+    `${source.slice(parserStart, parserEnd)}\n${source.slice(start, end)}\n;globalThis.__parse = OpenCodeConfigVisualEditorUtils.parseContent;`,
     sandbox,
   );
   return sandbox.__parse as (content: string) => any;
