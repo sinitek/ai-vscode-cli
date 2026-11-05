@@ -716,7 +716,7 @@ test("falls back OpenCode Loop subtask model to the main model when unset", asyn
   });
 });
 
-test("persists the Loop subtask thinking cap globally and clamps ultra", async () => {
+test("ignores retired Loop subtask thinking cap updates", async () => {
   const { deps, calls, state } = createSendPromptHarness();
 
   await handlePanelMessageWithDeps({
@@ -725,9 +725,9 @@ test("persists the Loop subtask thinking cap globally and clamps ultra", async (
     value: "ultra",
   }, deps);
 
-  assert.deepEqual(calls.toolSettingsPatches, [{ loopSubtaskMaxThinkingMode: "xhigh" }]);
+  assert.deepEqual(calls.toolSettingsPatches, []);
   assert.deepEqual(state.workspaceSettings, {});
-  assert.equal(calls.postPanelState, 1);
+  assert.equal(calls.postPanelState, 0);
 });
 
 test("ignores retired implicit-subagents updates without persisting settings", async () => {

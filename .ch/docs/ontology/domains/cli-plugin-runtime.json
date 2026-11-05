@@ -1277,7 +1277,7 @@
     {
       "id": "plugin.rule.loop_role_launch_parameters",
       "name": "Loop 各 CLI 角色启动参数隔离",
-      "description": "Loop 与 Loop+ 的主子角色在七种 CLI 共用路由中保留独立模型与思考快照。Claude 沿用其默认模型能力；OpenCode 启动前水合保留实际子模型，显式角色思考档进入实际 variant，未指定时沿用配置、模型和角色自己的 variant。通用归一化保留 OpenCode 原生高档、DSH medium 和 ZCode 档位；既有子任务思考上限仍有效。OpenCode 与 Claude 布局的命名角色模型和思考控件响应修改。真实双模型验收要求生产调度器及 runner 完成派发、执行、收口，并核对 session 参数及产物；上游失败不能视为通过。",
+      "description": "Loop 与 Loop+ 的主子角色在七种 CLI 共用路由中保留独立模型与思考快照。Claude 沿用其默认模型能力；OpenCode 启动前水合保留实际子模型，显式角色思考档进入实际 variant，未指定时沿用配置、模型和角色自己的 variant。通用归一化保留 OpenCode 原生高档、DSH medium 和 ZCode 档位；子任务按用户提交的角色思考力度执行，不再提供全局子任务思考上限，也不再截断 max/ultra；旧上限字段及更新消息忽略，CLI 原生能力校验和未指定时的默认逻辑保持不变。OpenCode 与 Claude 布局的命名角色模型和思考控件响应修改。真实双模型验收要求生产调度器及 runner 完成派发、执行、收口，并核对 session 参数及产物；上游失败不能视为通过。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [

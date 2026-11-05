@@ -117,7 +117,7 @@ type LoopOrchestrationRequiredHostDeps =
       cli: CliName,
       role: LoopTaskRole,
       model: string | undefined,
-      options?: { applySubtaskCap?: boolean; configId?: string | null },
+      options?: { configId?: string | null },
     ) => ThinkingMode | undefined;
     runPrompt: (
       input: PromptRunInput,
@@ -916,7 +916,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const roleModel = resolvePromptRunModelForRole(routedInput, role);
     const thinkingCli = role === "subtask" ? (options.executionCli ?? target.cli) : target.cli;
     const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, thinkingCli, role, roleModel, {
-      applySubtaskCap: true,
       configId: role === "subtask" ? options.executionConfigId : undefined,
     });
     await runPrompt({

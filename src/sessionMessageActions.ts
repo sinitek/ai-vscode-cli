@@ -5,7 +5,6 @@ import { getDebugLogging } from "./cli/config";
 import { logInfo, setDebugLogging } from "./logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
-import { normalizeLoopSubtaskMaxThinkingMode } from "./loopSubtaskThinking";
 import {
   normalizeHistoryRetentionDays,
   resolveHumanInteractionTimeoutMinutes,
@@ -267,14 +266,6 @@ export async function handleUpdateSettingMessage(
     deps.updateStoredToolSettings({
       humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(message.value),
     });
-    await deps.postPanelState();
-    return;
-  }
-  if (message.key === "loopSubtaskMaxThinkingMode") {
-    const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(message.value);
-    if (loopSubtaskMaxThinkingMode) {
-      deps.updateStoredToolSettings({ loopSubtaskMaxThinkingMode });
-    }
     await deps.postPanelState();
     return;
   }

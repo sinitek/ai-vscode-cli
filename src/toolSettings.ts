@@ -3,10 +3,6 @@ import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
-import {
-  normalizeLoopSubtaskMaxThinkingMode,
-  type LoopSubtaskMaxThinkingMode,
-} from "./loopSubtaskThinking";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -24,7 +20,6 @@ export type ToolSettingsState = {
   loopPlusDecisionSubtaskMax?: number;
   loopPlusMaxAcceptances?: number;
   humanInteractionTimeoutMinutes?: number;
-  loopSubtaskMaxThinkingMode?: LoopSubtaskMaxThinkingMode;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
   macTaskShell?: MacTaskShell;
@@ -130,12 +125,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     if (Number.isFinite(parsed)) {
       normalized.humanInteractionTimeoutMinutes = resolveHumanInteractionTimeoutMinutes(parsed);
     }
-  }
-  const loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
-    record.loopSubtaskMaxThinkingMode,
-  );
-  if (loopSubtaskMaxThinkingMode) {
-    normalized.loopSubtaskMaxThinkingMode = loopSubtaskMaxThinkingMode;
   }
   if (record.macTaskShell === "zsh" || record.macTaskShell === "bash") {
     normalized.macTaskShell = record.macTaskShell;

@@ -14,7 +14,6 @@ import {
   LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
-import { LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT } from "../loopSubtaskThinking";
 
 const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
 const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
@@ -53,7 +52,6 @@ ${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     loopPlusMaxAcceptancesDefault: LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
     loopPlusMaxAcceptancesMin: LOOP_PLUS_MAX_ACCEPTANCES_MIN,
     loopPlusMaxAcceptancesLimit: LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-    loopSubtaskMaxThinkingModeDefault: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   }))}
     </script>

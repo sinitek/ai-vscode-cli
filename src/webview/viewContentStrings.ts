@@ -305,9 +305,6 @@ export const WEBVIEW_STRINGS = {
     toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
     toolSettingsLoopPlusMaxAcceptancesTitle:
       "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",
-    toolSettingsLoopSubtaskMaxThinkingModeLabel: "Loop/Loop+ 子任务最大思考力度",
-    toolSettingsLoopSubtaskMaxThinkingModeTitle:
-      "全局设置。Loop/Loop+ 子任务使用此上限与所选模型思考力度中的较低值；max 和 ultra 最多为 xhigh。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

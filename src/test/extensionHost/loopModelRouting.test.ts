@@ -19,7 +19,6 @@ function modelsHost() {
     getSelectedLoopThinkingMode: () => "medium",
     normalizeThinkingModeForCli: (_cli, mode) => mode,
     getEffectiveThinkingMode: () => "high",
-    getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     isThinkingMode: (value): value is import("../../cli/types").ThinkingMode => typeof value === "string" && ["off", "on", "low", "medium", "high", "xhigh", "ultra", "max"].includes(value),
     resolveOpenCodeRoleModelsForConfig: () => ({ main: "provider/stored-main", subtask: "provider/stored-child", fallback: {} }),
   });
@@ -30,10 +29,11 @@ for (const cli of CLI_LIST) {
     for (const mode of ["fullstack", "split"] as const) {
       test(`Loop+ ${cli} ${mode} crossCli=${crossCli} preserves bound model and thinking`, async () => {
         const host = modelsHost();
+        const thinkingMode = mode === "fullstack" ? "max" : "ultra";
         const mainCli: CliName = crossCli ? (cli === "codex" ? "grok" : "codex") : cli;
         const fixture = createLoopPlusRuntimeFixture({
           cli: mainCli,
-          resolveThinkingMode: (input, targetCli, role, model) => host.resolvePromptRunThinkingModeForRole(input, targetCli, role, model, { applySubtaskCap: role === "subtask" }),
+          resolveThinkingMode: (input, targetCli, role, model) => host.resolvePromptRunThinkingModeForRole(input, targetCli, role, model),
         });
         let taskId = "";
         try {
@@ -54,7 +54,7 @@ for (const cli of CLI_LIST) {
           fixture.setAttemptAction((input, tabId) => {
             assert.equal(input.model, "child-model");
             assert.equal(input.loopSubtaskModel, "child-model");
-            assert.equal(input.thinkingModeOverride, "low");
+            assert.equal(input.thinkingModeOverride, thinkingMode);
             assert.equal(fixture.createdSubtaskTargets.at(-1)?.cli, cli);
             fixture.publish(input, tabId, { status: "end", content: "已验证" });
           });
@@ -63,9 +63,9 @@ for (const cli of CLI_LIST) {
             modelPrompt: "验证角色参数",
             contextTags: [],
             model: "main-model", loopMainModel: "main-model", loopMainThinkingMode: "high",
-            loopSubtaskCli: cli, loopSubtaskConfigId: "child-config", loopSubtaskModel: "child-model", loopSubtaskThinkingMode: "low",
-            loopSubtaskFrontendCli: cli, loopSubtaskFrontendConfigId: "child-config", loopSubtaskFrontendModel: "child-model", loopSubtaskFrontendThinkingMode: "low",
-            loopSubtaskFullstackCli: cli, loopSubtaskFullstackConfigId: "child-config", loopSubtaskFullstackModel: "child-model", loopSubtaskFullstackThinkingMode: "low",
+            loopSubtaskCli: cli, loopSubtaskConfigId: "child-config", loopSubtaskModel: "child-model", loopSubtaskThinkingMode: thinkingMode,
+            loopSubtaskFrontendCli: cli, loopSubtaskFrontendConfigId: "child-config", loopSubtaskFrontendModel: "child-model", loopSubtaskFrontendThinkingMode: thinkingMode,
+            loopSubtaskFullstackCli: cli, loopSubtaskFullstackConfigId: "child-config", loopSubtaskFullstackModel: "child-model", loopSubtaskFullstackThinkingMode: thinkingMode,
             loopSubtaskMode: mode,
           }, { schedulingMode: "event_driven" }, fixture.target);
           assert.equal(fixture.readTask(taskId)?.status, "completed");
@@ -158,6 +158,6 @@ test("OpenCode hydration keeps the selected subtask model instead of restoring t
 test("OpenCode leaves unspecified thinking to its role-specific variant preparation", () => {
   const host = modelsHost();
   const input: PromptRunInput = { displayPrompt: "test", modelPrompt: "test", contextTags: [] };
-  assert.equal(host.resolvePromptRunThinkingModeForRole(input, "opencode", "subtask", "provider/child", { applySubtaskCap: true }), undefined);
-  assert.equal(host.resolvePromptRunThinkingModeForRole({ ...input, loopSubtaskThinkingMode: "low" }, "opencode", "subtask", "provider/child", { applySubtaskCap: true }), "low");
+  assert.equal(host.resolvePromptRunThinkingModeForRole(input, "opencode", "subtask", "provider/child"), undefined);
+  assert.equal(host.resolvePromptRunThinkingModeForRole({ ...input, loopSubtaskThinkingMode: "low" }, "opencode", "subtask", "provider/child"), "low");
 });

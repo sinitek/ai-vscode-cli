@@ -184,7 +184,6 @@ test("injects the copy handler into both chat Webviews", () => {
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
-    loopSubtaskMaxThinkingModeDefault: "high",
     finalAnswerTextMarker: "<FINAL>",
   });
   const groupPanel = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, {

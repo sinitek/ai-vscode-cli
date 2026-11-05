@@ -695,17 +695,6 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   />
                 </div>
               </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}</div>
-                  <select id="loopSubtaskMaxThinkingMode" class="thinking-select" title="${i18n.toolSettingsLoopSubtaskMaxThinkingModeTitle}" aria-label="${i18n.toolSettingsLoopSubtaskMaxThinkingModeLabel}">
-                    <option value="low">${i18n.thinkingOptionLow}</option>
-                    <option value="medium">${i18n.thinkingOptionMedium}</option>
-                    <option value="high">${i18n.thinkingOptionHigh}</option>
-                    <option value="xhigh">${i18n.thinkingOptionXHigh}</option>
-                  </select>
-                </div>
-              </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
               <section class="tool-settings-card">

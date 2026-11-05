@@ -543,7 +543,6 @@ function createRuntimeHarness(
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
-    loopSubtaskMaxThinkingModeDefault: "high",
     finalAnswerTextMarker: "<FINAL>",
   });
   const runtimeFactory = new Function(
@@ -1059,7 +1058,6 @@ test("builds the split page runtime script with configured literals", () => {
     loopMaxRoundsDefault: 4,
     loopMaxRoundsMin: 2,
     loopMaxRoundsMax: 9,
-    loopSubtaskMaxThinkingModeDefault: "medium",
     finalAnswerTextMarker: "<FINAL>",
   });
 
@@ -4277,11 +4275,9 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     loopMaxRoundsDefault: 5,
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 12,
-    loopSubtaskMaxThinkingModeDefault: "high",
     finalAnswerTextMarker: "<FINAL>",
   });
   const functionSource = [
-    "normalizeLoopSubtaskMaxThinkingMode",
     "normalizeLoopMaxRounds",
     "normalizeModelNameList",
     "normalizeModelSelection",
@@ -4310,9 +4306,7 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "state",
     "CLI_NAMES",
     "t",
-    "LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT",
     `${functionSource}; return {
-      normalizeLoopSubtaskMaxThinkingMode,
       normalizeLoopMaxRounds,
       normalizeModelNameList,
       normalizeOpenCodeThinkingPayload,
@@ -4326,10 +4320,8 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     state,
     ["codex", "claude", "opencode"],
     (key: string) => key,
-    "high",
   );
 
-  assert.equal(helpers.normalizeLoopSubtaskMaxThinkingMode("bad"), "high");
   assert.equal(helpers.normalizeLoopMaxRounds("99"), 12);
   assert.deepEqual(helpers.normalizeModelNameList([" GPT ", "gpt", "", 42]), ["GPT"]);
   assert.deepEqual(helpers.normalizeOpenCodeThinkingPayload({

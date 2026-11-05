@@ -24,7 +24,6 @@ function buildRuntimeScript(): string {
     loopMaxRoundsDefault: 20,
     loopMaxRoundsMin: 1,
     loopMaxRoundsMax: 100,
-    loopSubtaskMaxThinkingModeDefault: "xhigh",
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
 }

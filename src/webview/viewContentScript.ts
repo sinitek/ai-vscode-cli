@@ -39,7 +39,6 @@ export type BuildWebviewRuntimeScriptInput = {
   loopPlusMaxAcceptancesDefault?: number;
   loopPlusMaxAcceptancesMin?: number;
   loopPlusMaxAcceptancesLimit?: number;
-  loopSubtaskMaxThinkingModeDefault: string;
   finalAnswerTextMarker: string;
 };
 
@@ -87,7 +86,6 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT}", String(input.loopPlusMaxAcceptancesDefault ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT)],
     ["${LOOP_PLUS_MAX_ACCEPTANCES_MIN}", String(input.loopPlusMaxAcceptancesMin ?? LOOP_PLUS_MAX_ACCEPTANCES_MIN)],
     ["${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}", String(input.loopPlusMaxAcceptancesLimit ?? LOOP_PLUS_MAX_ACCEPTANCES_LIMIT)],
-    ["${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}", input.loopSubtaskMaxThinkingModeDefault],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(

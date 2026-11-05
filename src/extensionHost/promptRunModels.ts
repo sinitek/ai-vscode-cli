@@ -4,7 +4,6 @@ import type { PromptRunInput, ResolvedOpenCodeRoleModels } from "../promptRunTyp
 import * as configService from "../config/configService";
 import { normalizeCliModelName } from "../modelSelectionStore";
 import { parseCliName } from "../subtaskCliRoute";
-import { resolveLoopSubtaskThinkingMode } from "../loopSubtaskThinking";
 
 export type PromptRunModelsHostDeps = {
   getActiveConfigIdForCli: (cli: CliName) => string | null;
@@ -13,7 +12,6 @@ export type PromptRunModelsHostDeps = {
   getSelectedLoopThinkingMode: (cli: CliName, role: LoopTaskRole, model?: string | null, configId?: string | null) => ThinkingMode | null;
   normalizeThinkingModeForCli: (cli: CliName, mode: ThinkingMode) => ThinkingMode;
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
-  getGlobalLoopSubtaskMaxThinkingMode: () => ThinkingMode;
   isThinkingMode: (value: unknown) => value is ThinkingMode;
   resolveOpenCodeRoleModelsForConfig: (configId: string | null, configContent: string) => ResolvedOpenCodeRoleModels;
 };
@@ -45,7 +43,7 @@ export function createPromptRunModelsHost(deps: PromptRunModelsHostDeps) {
     cli: CliName,
     role: LoopTaskRole,
     model: string | undefined,
-    options: { applySubtaskCap?: boolean; configId?: string | null } = {}
+    options: { configId?: string | null } = {}
   ): ThinkingMode | undefined {
     const crossCli = Boolean(parseCliName(input.loopSubtaskCli));
     const roleModel = normalizePromptRunModel(model)
@@ -65,16 +63,10 @@ export function createPromptRunModelsHost(deps: PromptRunModelsHostDeps) {
       : usesLoopRoleThinking && cli !== "opencode"
         ? deps.getSelectedLoopThinkingMode(cli, role, roleModel, options.configId) ?? undefined
         : undefined;
-    const resolvedThinkingMode = roleThinkingMode
-      ?? (cli !== "opencode" && !crossCli && options.applySubtaskCap && role === "subtask"
+    return roleThinkingMode
+      ?? (cli !== "opencode" && !crossCli && role === "subtask"
         ? deps.getEffectiveThinkingMode(cli, roleModel ?? deps.getSelectedCliModel(cli))
         : undefined);
-    if (!resolvedThinkingMode) {
-      return undefined;
-    }
-    return options.applySubtaskCap && role === "subtask"
-      ? resolveLoopSubtaskThinkingMode(resolvedThinkingMode, deps.getGlobalLoopSubtaskMaxThinkingMode())
-      : resolvedThinkingMode;
   }
 
   async function hydrateOpenCodePromptRoleModels(input: PromptRunInput, cli: CliName): Promise<PromptRunInput> {

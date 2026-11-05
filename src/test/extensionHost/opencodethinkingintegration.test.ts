@@ -91,7 +91,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getGlobalAutoCompactContextAfterRun: () => false,
     getGlobalHumanInteractionEnabled: () => true,
     getGlobalLoopMaxRounds: () => 1,
-    getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     getDebugLogging: () => false,
     getMacTaskShell: () => "zsh",
     getEffectiveThinkingMode: () => "off",
@@ -140,7 +139,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.deepEqual(state.openCodeThinking, openCodeThinking);
   assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");
   assert.equal(state.openCodeModels?.selectedSmallRef, "gateway/small");
-  assert.equal(state.loopSubtaskMaxThinkingMode, "xhigh");
+  assert.equal(Object.prototype.hasOwnProperty.call(state, "loopSubtaskMaxThinkingMode"), false);
   assert.equal(state.configStateByCli, configStateByCli);
   assert.equal(state.currentCli, "opencode");
   for (const cli of CLI_LIST) assert.equal(modelConfigIds[cli], configStateByCli[cli].activeConfigId);

@@ -286,7 +286,6 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="loopMaxRounds"',
     'id="loopPlusDecisionSubtaskMax"',
     'id="loopPlusMaxAcceptances"',
-    'id="loopSubtaskMaxThinkingMode"',
     'id="commonCommandsOverlay"',
     'id="addModelOverlay"',
     'id="modelManagerList"',
@@ -308,6 +307,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="helpPanelModes" class="help-panel active"',
   ]);
   assert.doesNotMatch(html, /id="languageSelect"/);
+  assert.doesNotMatch(html, /loopSubtaskMaxThinkingMode|子任务最大思考力度/u);
   assert.doesNotMatch(html, /toolSettingsGlobal(?:Tab|Panel)|toolSettingsCleanup(?:Tab|Panel)/u);
 });
 

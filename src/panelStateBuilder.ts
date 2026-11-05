@@ -99,7 +99,6 @@ export type PanelStateBuilderDeps = {
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusMaxAcceptances?: () => number;
-  getGlobalLoopSubtaskMaxThinkingMode: () => PanelState["loopSubtaskMaxThinkingMode"];
   getDebugLogging: typeof getDebugLogging;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
@@ -217,7 +216,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(
       deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
     ),
-    loopSubtaskMaxThinkingMode: deps.getGlobalLoopSubtaskMaxThinkingMode(),
     debug: deps.getDebugLogging(),
     isMac: deps.processPlatform === "darwin",
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,

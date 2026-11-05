@@ -313,7 +313,6 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   assert.deepEqual(calls.toolSettings, [
     { autoCompactContextAfterRun: true },
     { loopMaxRounds: 4 },
-    { loopSubtaskMaxThinkingMode: "high" },
     { debug: true },
     { autoAddEditorContextTags: true },
     ...(process.platform === "darwin" ? [{ macTaskShell: "zsh" as const }] : []),
@@ -321,7 +320,7 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   assert.equal(calls.statusUpdates, 0);
   assert.deepEqual(calls.webviewMessages, []);
   assert.equal(calls.configReloads, 0);
-  assert.equal(calls.postPanelState, 9);
+  assert.equal(calls.postPanelState, 7);
 });
 
 test("persists the Loop+ dispatch subtask maximum as a global setting", async () => {

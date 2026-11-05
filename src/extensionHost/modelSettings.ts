@@ -18,7 +18,6 @@ import { changeKimiCodeConfigModelList, parseKimiCodeConfigModels, resolveKimiCo
 import { readZcodeConfigModels, resolveZcodeModelWireForRun as resolveConfiguredZcodeModelWireForRun, type ZcodeConfigModels } from "../config/zcodeConfig";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
-import { getEffectiveLoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
 import { ensureWorkspaceHarnessScaffold } from "../workspaceScaffold";
@@ -938,10 +937,6 @@ function getGlobalLoopPlusMaxAcceptances(): number {
   return resolveLoopPlusMaxAcceptances(readToolSettings().loopPlusMaxAcceptances);
 }
 
-function getGlobalLoopSubtaskMaxThinkingMode() {
-  return getEffectiveLoopSubtaskMaxThinkingMode(readToolSettings().loopSubtaskMaxThinkingMode);
-}
-
 function getModelStoreOptions() {
   return {
     modelStoreFile: MODEL_STORE_FILE,
@@ -1806,7 +1801,6 @@ return {
   getGlobalLoopMaxRounds: wrap(getGlobalLoopMaxRounds),
   getGlobalLoopPlusDecisionSubtaskMax: wrap(getGlobalLoopPlusDecisionSubtaskMax),
   getGlobalLoopPlusMaxAcceptances: wrap(getGlobalLoopPlusMaxAcceptances),
-  getGlobalLoopSubtaskMaxThinkingMode: wrap(getGlobalLoopSubtaskMaxThinkingMode),
   getModelStoreOptions: wrap(getModelStoreOptions),
   getWorkspaceSettingsStoreOptions: wrap(getWorkspaceSettingsStoreOptions),
   getPromptHistoryStoreOptions: wrap(getPromptHistoryStoreOptions),

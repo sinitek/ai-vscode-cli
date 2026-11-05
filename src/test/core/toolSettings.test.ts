@@ -188,7 +188,6 @@ test("normalizes global Loop tool settings", () => {
       loopPlusDecisionSubtaskMax: 8,
       loopPlusMaxAcceptances: 100,
       humanInteractionTimeoutMinutes: 10,
-      loopSubtaskMaxThinkingMode: "high",
     },
   );
   assert.deepEqual(
@@ -209,7 +208,7 @@ test("normalizes global Loop tool settings", () => {
   assert.equal(readHumanInteractionTimeoutMs({ humanInteractionTimeoutMinutes: 1440 }), 86_400_000);
   assert.deepEqual(
     normalizeToolSettings({ loopSubtaskMaxThinkingMode: "ultra" }),
-    { loopSubtaskMaxThinkingMode: "xhigh" },
+    {},
   );
 });
 
@@ -232,7 +231,6 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
     }),
     {
       loopMaxRounds: 31,
-      loopSubtaskMaxThinkingMode: "xhigh",
       memoryAutoExtractAfterLoopTask: true,
     },
   );

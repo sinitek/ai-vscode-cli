@@ -47,7 +47,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         selectElement.value = nextValue;
         return nextValue;
       }
-      const LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT = "\${LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT}";
       const traceMarkers = {
         input: ["Input", "输入"],
         output: ["Output", "输出"],
@@ -215,7 +214,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         loopPlusMaxAcceptances: \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT},
-        loopSubtaskMaxThinkingMode: LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT,
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
@@ -418,7 +416,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
-        loopSubtaskMaxThinkingMode: document.getElementById("loopSubtaskMaxThinkingMode"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
         commonCommandButton: document.getElementById("commonCommandButton"),
@@ -602,12 +599,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const loopMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
-
-      function normalizeLoopSubtaskMaxThinkingMode(value) {
-        return ["low", "medium", "high", "xhigh"].includes(value)
-          ? value
-          : LOOP_SUBTASK_MAX_THINKING_MODE_DEFAULT;
-      }
 
       function normalizeHumanInteractionTimeoutMinutes(value) {
         const numeric = typeof value === "number"

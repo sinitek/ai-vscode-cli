@@ -490,18 +490,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.loopPlusMaxAcceptances.addEventListener("change", commitLoopPlusMaxAcceptances);
         elements.loopPlusMaxAcceptances.addEventListener("blur", commitLoopPlusMaxAcceptances);
       }
-      if (elements.loopSubtaskMaxThinkingMode) {
-        elements.loopSubtaskMaxThinkingMode.addEventListener("change", (event) => {
-          const nextValue = normalizeLoopSubtaskMaxThinkingMode(event.target.value);
-          state.loopSubtaskMaxThinkingMode = nextValue;
-          elements.loopSubtaskMaxThinkingMode.value = nextValue;
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopSubtaskMaxThinkingMode",
-            value: nextValue,
-          });
-        });
-      }
       if (elements.historyRetentionDays) {
         const commitHistoryRetentionDays = () => {
           const raw = Number(elements.historyRetentionDays.value);

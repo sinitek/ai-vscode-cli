@@ -307,7 +307,6 @@ test("Grok Loop and Loop+ prompts carry role models and keep off thinking", asyn
     getSelectedLoopThinkingMode: () => "off",
     normalizeThinkingModeForCli,
     getEffectiveThinkingMode: () => "high",
-    getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     isThinkingMode,
     resolveOpenCodeRoleModelsForConfig: () => ({ main: "opencode-main", subtask: "opencode-sub", fallback: {} }),
   });

@@ -7,7 +7,6 @@ import {
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
-import type { LoopSubtaskMaxThinkingMode } from "../loopSubtaskThinking";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
 import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
@@ -388,7 +387,6 @@ export type PanelState = {
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
   loopPlusMaxAcceptances: number;
-  loopSubtaskMaxThinkingMode: LoopSubtaskMaxThinkingMode;
   debug: boolean;
   isMac: boolean;
   macTaskShell: MacTaskShell;

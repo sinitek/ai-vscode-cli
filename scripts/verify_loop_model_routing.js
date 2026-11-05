@@ -23,14 +23,13 @@ async function main() {
     getSelectedLoopThinkingMode: (_cli, role) => role === "main" ? "high" : "low",
     normalizeThinkingModeForCli: (_cli, mode) => mode,
     getEffectiveThinkingMode: () => "medium",
-    getGlobalLoopSubtaskMaxThinkingMode: () => "xhigh",
     isThinkingMode: (value) => ["low", "medium", "high", "xhigh"].includes(value),
     resolveOpenCodeRoleModelsForConfig: () => { throw new Error("非 OpenCode 验证"); },
   });
   const fixture = createLoopPlusRuntimeFixture({
     maxConcurrency: 1,
     executionRootFactory: () => ({ cwd: workspace, dispose: () => {} }),
-    resolveThinkingMode: (input, cli, role, model) => models.resolvePromptRunThinkingModeForRole(input, cli, role, model, { applySubtaskCap: role === "subtask" }),
+    resolveThinkingMode: (input, cli, role, model) => models.resolvePromptRunThinkingModeForRole(input, cli, role, model),
   });
   fixture.target.sessionId = null;
   const runners = new Map();

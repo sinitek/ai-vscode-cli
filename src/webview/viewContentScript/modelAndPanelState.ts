@@ -624,9 +624,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopPlusMaxAcceptances = normalizeLoopPlusMaxAcceptances(
           panelState.loopPlusMaxAcceptances
         );
-        state.loopSubtaskMaxThinkingMode = normalizeLoopSubtaskMaxThinkingMode(
-          panelState.loopSubtaskMaxThinkingMode
-        );
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -700,9 +697,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.loopPlusMaxAcceptances) {
           elements.loopPlusMaxAcceptances.value = String(state.loopPlusMaxAcceptances);
-        }
-        if (elements.loopSubtaskMaxThinkingMode) {
-          elements.loopSubtaskMaxThinkingMode.value = state.loopSubtaskMaxThinkingMode;
         }
         if (elements.macTaskShellRow) {
           elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";
