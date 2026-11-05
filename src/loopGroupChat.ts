@@ -358,11 +358,13 @@ function classifyLoopGroupChatSection(heading: string, body: string): LoopGroupC
   if (heading === "任务事件") {
     return { kind: "task-event", heading, body };
   }
-  if (heading === "验收结果") {
+  if (heading === "验收结果" || heading === "主任务暂停") {
     return {
       kind: "main-turn",
       heading,
-      body,
+      body: heading === "主任务暂停"
+        ? body.replace(/^<!-- loop-plus-pause:[^\n]* -->\n?/gmu, "").trim()
+        : body,
       actorId: "main",
       actorTitle: "主任务",
     };
@@ -399,6 +401,7 @@ function classifyLoopGroupChatSection(heading: string, body: string): LoopGroupC
 
 function isLoopGroupChatBoundaryHeading(heading: string): boolean {
   return heading === "群聊规则"
+    || heading === "主任务暂停"
     || heading === "任务事件"
     || heading === "补充需求"
     || heading === "任务成功完成"

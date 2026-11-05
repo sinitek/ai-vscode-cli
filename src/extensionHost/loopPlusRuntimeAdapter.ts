@@ -57,6 +57,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
   appendAcceptancePlanChat?: LoopPlusOrchestrationDeps["appendAcceptancePlanChat"];
+  recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   appendAttemptReport: (filePath: string, content: string) => void;
   log?: LoopPlusOrchestrationDeps["log"];
@@ -501,6 +502,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         onTaskCompleted: deps.onTaskCompleted,
         appendSubtaskChat: deps.appendSubtaskChat,
         appendAcceptancePlanChat: deps.appendAcceptancePlanChat,
+        recordPause: deps.recordPause,
         runMain,
         startAttempt,
         prepareCommunication: deps.prepareCommunication,

@@ -170,6 +170,7 @@ export type LoopTaskRecord = {
   loopPlus?: unknown;
   loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
+  loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   /** 新建或续跑时绑定的子任务模式。缺失时由迁移规则解释，不随输入区事后改写。 */
@@ -906,6 +907,16 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
+  const blockReview = (raw as { loopPlusBlockReview?: unknown }).loopPlusBlockReview;
+  const loopPlusBlockReview = blockReview && typeof blockReview === "object" && !Array.isArray(blockReview)
+    && ("state" in blockReview) && (blockReview.state === "pending" || blockReview.state === "reviewed")
+    ? {
+      state: blockReview.state as "pending" | "reviewed",
+      ...("summary" in blockReview && typeof blockReview.summary === "string" && blockReview.summary.trim()
+        ? { summary: blockReview.summary.trim() }
+        : {}),
+    }
+    : undefined;
   const loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(rawAcceptancePlan);
   const loopSubtaskMode = readLoopSubtaskModeField((raw as { loopSubtaskMode?: unknown }).loopSubtaskMode);
   return {
@@ -919,6 +930,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
+    ...(loopPlusBlockReview ? { loopPlusBlockReview } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
     ...(loopSubtaskMode === null ? { loopSubtaskModeInvalid: true } : {}),

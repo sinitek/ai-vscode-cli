@@ -135,7 +135,7 @@ const MESSAGES = {
     "run.loopPlusPaused": "Loop+ 自动调度已暂停，验收队列保持不变。{detail}",
     "run.loopPlusAcceptanceLimit": "Loop+ 已达到验收上限（{accepted}/{limit}）。还有 {pending} 项待验收，队列保持不变。提高“Loop+ 最多验收次数”后可以继续。",
     "run.loopPlusStopped": "Loop+ 调度已停止。晚到的执行结果只留证，不会自动验收。",
-    "run.loopPlusCompleted": "Loop+ 任务已完成：{taskId}",
+    "run.loopPlusCompleted": "Loop+ 全部任务已完成：{taskId}",
     "run.loopPlusSubtaskFinished": "Loop+ 子任务已结束：{title}\n运行结果：{status}\nLoop+ 任务：{taskId}",
     "run.loopPlusCommunicationFile": "沟通文件：{file}",
     "run.loopPlusNestedRefused": "Loop+ 子任务标签不能再启动 Loop+。",

@@ -81,7 +81,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
   appendTaskRun: (record: TaskRunRecord) => void;
   buildSubagentProgressLabels: () => SubagentProgressLabels;
-  buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null) => string;
+  buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord) => string;
   createMessageId: () => string;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName } | null | undefined;
@@ -856,7 +856,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       };
       appendTaskRun(taskRecord);
       appendSystemMessageForTab(
-        buildTaskRunCompletionText(status, taskRecord.durationMs)
+        buildTaskRunCompletionText(status, taskRecord.durationMs, taskRecord)
       );
       return taskRecord;
     };

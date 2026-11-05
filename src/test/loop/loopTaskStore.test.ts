@@ -24,6 +24,23 @@ test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
 });
 
+test("bounded Loop+ block review persists and rejects malformed state", () => {
+  const task = createLegacyTask();
+  task.loopPlusBlockReview = { state: "pending", summary: "need independent work check" };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusBlockReview, task.loopPlusBlockReview);
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].loopPlusBlockReview = { state: "reviewed", summary: 1 };
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusBlockReview, { state: "reviewed" });
+  raw.tasks[0].loopPlusBlockReview = { state: "unknown", summary: "invalid" };
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.equal(readSkillTask(task.taskStoreFile).loopPlusBlockReview, undefined);
+  delete raw.tasks[0].loopPlusBlockReview;
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.equal(readSkillTask(task.taskStoreFile).loopPlusBlockReview, undefined);
+});
+
 function hasOwnProperty(value: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }

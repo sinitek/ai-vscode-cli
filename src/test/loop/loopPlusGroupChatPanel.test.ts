@@ -618,6 +618,31 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
 });
 
 
+test("pause evidence is visible while persistence metadata stays out of rendered messages", () => {
+  const snapshot = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();
+  const reason = "真实联调未完成，需要补充隔离证据。";
+  const chat = [
+    "# Loop 群聊",
+    "## 主任务暂停",
+    "<!-- loop-plus-pause:task:2:loop-plus-blocked -->",
+    "- 时间：2026-11-05T01:00:00.000Z",
+    "",
+    "Loop+ 已暂停，整体任务尚未完成。",
+    "",
+    "### 暂停原因与未完成事项",
+    reason,
+    "",
+    "### 如何继续",
+    "补充证据后点击继续执行，不会自动移除安全门槛。",
+  ].join("\n");
+  const rendered = html(buildWithChat(snapshot, { status: "needs-review", finalSummary: reason, subTasks: [] }, chat));
+  assert.match(rendered, /Loop\+ 已暂停，整体任务尚未完成。/);
+  assert.match(rendered, /真实联调未完成，需要补充隔离证据。/);
+  assert.match(rendered, /不会自动移除安全门槛/);
+  assert.doesNotMatch(rendered, /loop-plus-pause:|\[object Object\]/);
+  assert.doesNotMatch(rendered, /Loop\+ 全部任务已完成/);
+});
+
 test("interrupted open subtasks wait for continuation without thinking bubbles or review counts", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
   scheduler.dispatch([spec("D", "D-1", "Delta")]);

@@ -40,6 +40,7 @@ export type LoopPlusMainPromptContext = {
   /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
+  blockedReviewSummary?: string;
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -346,6 +347,12 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Do not edit scheduling state, active ids, the loopPlus snapshot, or the task record.",
     `Parent task: ${context.taskId}`,
     `Prompt kind: ${context.kind}`,
+    ...(context.blockedReviewSummary !== undefined ? [
+      "Bounded blocked review: this is the one remaining-work check before a global pause, not permission to retry a failed execution.",
+      `Previous proposed blockage: ${context.blockedReviewSummary || "(no reason supplied)"}`,
+      "Re-read every unfinished root and supplemental requirement. Separate safe independent work, work awaiting a live attempt, and work requiring external input. Dispatch independent work; wait for live dependencies only when no acceptance batch is open; preserve and judge the entire acceptance batch otherwise. A blocked path does not block unrelated deliverables.",
+      "Only return blocked if no safe independent work remains. Its non-empty finalSummary must name unfinished requirements, evidence-backed blockers, who must provide what, and the condition/action for continuing. Do not remove safety gates, invent evidence, or dispatch placeholder work.",
+    ] : []),
     `Record file: ${context.taskStoreFile}`,
     `Main communication file: ${context.mainCommunicationFile}`,
     `Main communication report path: ${context.mainCommunicationFile}`,
@@ -415,7 +422,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept, and list its subtask ids on the review that needs the work. Passed reviews stay passed. If the new work must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
-    "- blocked asks a person for a decision and confirms nothing. Do not include reviewEventId, reviewEventIds, or subtasks. finalSummary is optional.",
+    "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
+    "- blocked asks a person for external input and confirms nothing. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary naming unfinished requirements, concrete blockers, the required input and responsible party, and the condition/action for continuing. The host performs one bounded remaining-work review before pausing.",
     "- clarify asks the user to fill a form in the group chat and confirms nothing. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
     "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
     buildStructuredSvgSummaryPromptInstruction("finalSummary"),

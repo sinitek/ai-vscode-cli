@@ -90,6 +90,162 @@ function completedDecision(extra: Record<string, unknown> = {}): string {
   });
 }
 
+test("a proposed global block receives one bounded review and can dispatch independent work", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "SDK recovery needs external evidence" }));
+  await flush();
+  const current = () => env.tasks.get(run.taskId ?? "");
+  assert.equal(current()?.status, "running");
+  assert.equal(current()?.loopPlusBlockReview?.state, "pending");
+  assert.equal(await isSettled(run.done), false);
+  assert.match(env.mains[1].request.prompt, /Bounded blocked review/);
+  assert.match(env.mains[1].request.prompt, /SDK recovery needs external evidence/);
+  assert.match(env.mains[1].request.prompt, /every unfinished root and supplemental requirement/);
+  env.mains[1].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("launcher", ["start.py"])] }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0].request.subtaskId, "launcher");
+  assert.equal(current()?.loopPlusBlockReview, undefined);
+  assert.equal(env.messages.includes("loop-plus-blocked"), false);
+  env.host.stopParent(run.taskId ?? "");
+});
+
+test("confirming a global block pauses once and records the actual unfinished work", async () => {
+  const pauses: Array<{ task: LoopTaskRecord; message: string }> = [];
+  const env = harness({ recordPause: (task, message) => { pauses.push({ task, message }); } });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
+  await flush();
+  const summary = "页面测试未完成；平台维护方补齐隔离证据后点击继续。";
+  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: summary }));
+  await flush();
+  assert.equal(await isSettled(run.done), true);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusBlockReview?.state, "reviewed");
+  assert.equal(pauses.length, 1);
+  assert.equal(pauses[0].task.finalSummary, summary);
+  assert.equal(pauses[0].message, "loop-plus-blocked");
+  env.host.tryRun({ displayPrompt: "show state" }, env.target, { resumeTaskId: run.taskId });
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(pauses.length, 1);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+});
+
+test("pause communication recording continues when the chat notification fails", async () => {
+  const pauses: Array<{ task: LoopTaskRecord; message: string }> = [];
+  const env = harness({
+    appendMessage: (_target, message) => {
+      if (message === "loop-plus-blocked") {
+        throw new Error("chat unavailable");
+      }
+    },
+    recordPause: (task, message) => { pauses.push({ task, message }); },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.equal(pauses.length, 1);
+  assert.equal(pauses[0].message, "loop-plus-blocked");
+  assert.equal(env.logs.some((entry) => entry.event === "loop-plus-pause-message-failed"), true);
+});
+
+test("block review survives host reconstruction and cannot restart the same no-progress check", async () => {
+  const env = harness();
+  const pending = baseTask("pending-review", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
+  pending.loopPlusBlockReview = { state: "pending", summary: "need external input" };
+  env.tasks.set(pending.id, pending);
+  const run = env.host.tryRun({ displayPrompt: "restore" }, env.target, { resumeTaskId: pending.id });
+  await flush();
+  assert.match(env.mains[0].request.prompt, /Bounded blocked review/);
+  env.mains[0].resolve(decisionJson({ status: "blocked" }));
+  await flush();
+  assert.equal(await isSettled(run.done), true);
+  assert.equal(env.mains.length, 1);
+  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /未提供具体原因/);
+
+  const reviewed = baseTask("reviewed", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
+  reviewed.loopPlusBlockReview = { state: "reviewed", summary: "already checked" };
+  env.tasks.set(reviewed.id, reviewed);
+  env.host.tryRun({ displayPrompt: "restore" }, env.target, { resumeTaskId: reviewed.id });
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: "still waiting" }));
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.tasks.get(reviewed.id)?.status, "needs-review");
+});
+
+test("new user input rearms one review while malformed answers keep the existing retry limit", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "missing evidence" }));
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: "no independent work" }));
+  await flush();
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "new platform evidence supplied"), true);
+  await flush();
+  env.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "evidence still incomplete" }));
+  await flush();
+  assert.match(env.mains[3].request.prompt, /Bounded blocked review/);
+  assert.equal(env.mains[3].request.userMessageCount, 1);
+  env.mains[3].resolve("invalid protocol");
+  await flush();
+  env.mains[4].resolve("invalid protocol again");
+  await flush();
+  env.mains[5].resolve("invalid protocol a third time");
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.equal(env.mains.length, 6);
+  assert.equal(env.messages.filter((message) => message === "loop-plus-block-review").length, 2);
+});
+
+test("user input received without a live host rearms the persisted block review", () => {
+  const env = harness();
+  const paused = baseTask("stored-blocked-review", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
+  paused.status = "needs-review";
+  paused.loopPlusBlockReview = { state: "reviewed", summary: "waiting for platform evidence" };
+  env.tasks.set(paused.id, paused);
+  assert.equal(env.host.submitUserMessage(paused.id, "new platform evidence supplied"), true);
+  assert.equal(env.tasks.get(paused.id)?.loopPlusBlockReview, undefined);
+  assert.deepEqual(snapshotOf(env.tasks.get(paused.id)).userMessageQueue, ["new platform evidence supplied"]);
+  assert.equal(env.tasks.get(paused.id)?.status, "needs-review");
+  assert.equal(env.mains.length, 0);
+});
+
+test("block review preserves every acceptance event and a running attempt", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("a", ["a.ts"]), subtask("b", ["b.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "a done" });
+  await flush();
+  const eventId = env.mains[1].request.reviewEventId;
+  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: "a path is blocked" }));
+  await flush();
+  assert.equal(env.mains[2].request.reviewEventId, eventId);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).running[0]?.subtaskId, "b");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts[0]?.disposition, "finished");
+  env.attempts[1].resolve({ outcome: "completed", detail: "b done during review" });
+  await flush();
+  const expanded = env.mains[env.mains.length - 1];
+  assert.equal(expanded.request.reviewEventIds?.length, 2);
+  expanded.resolve(decisionJson({ status: "accept", reviewEventIds: expanded.request.reviewEventIds, subtasks: [] }));
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.every((attempt) => attempt.disposition === "reviewed"), true);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusBlockReview, undefined);
+  env.host.stopParent(run.taskId ?? "");
+});
+
 function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRecord {
   return {
     id,
@@ -137,6 +293,8 @@ function harness(options: {
   clarificationTimeoutMs?: () => number;
   waitForClarification?: LoopPlusOrchestrationDeps["waitForClarification"];
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
+  appendMessage?: LoopPlusOrchestrationDeps["appendMessage"];
+  recordPause?: LoopPlusOrchestrationDeps["recordPause"];
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -159,6 +317,7 @@ function harness(options: {
     ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
     waitForClarification: options.waitForClarification,
     onTaskCompleted: options.onTaskCompleted,
+    recordPause: options.recordPause,
     ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
@@ -193,9 +352,9 @@ function harness(options: {
       tasks.set(taskId, next);
       return next;
     },
-    appendMessage: (_target, message) => {
+    appendMessage: options.appendMessage ?? ((_target, message) => {
       messages.push(message);
-    },
+    }),
     runMain: (request) => {
       mainCalls += 1;
       if (options.adaptMain) {
@@ -1015,6 +1174,8 @@ test("resume after stopping the unanswered initial main issues exactly one execu
   assert.equal(env.mains.length, 2);
   env.mains[1].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "hold" }));
   await flush();
+  env.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "hold" }));
+  await flush();
   assert.equal(await isSettled(continued.done), true);
   assert.equal(env.attempts.length, 0);
 });
@@ -1293,6 +1454,8 @@ test("resumes a blocked review and a main-failure pause without reviving attempt
   const review = blocked.mains[1];
   review.resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
   await flush();
+  blocked.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
+  await flush();
   assert.equal(blocked.tasks.get(blockedRun.taskId ?? "")?.status, "needs-review");
   assert.equal(snapshotOf(blocked.tasks.get(blockedRun.taskId ?? "")).currentReview, null);
   assert.equal(snapshotOf(blocked.tasks.get(blockedRun.taskId ?? "")).reviewQueue.length, 1);
@@ -1301,7 +1464,7 @@ test("resumes a blocked review and a main-failure pause without reviving attempt
     resumeRequested: true,
   });
   await flush();
-  assert.equal(blocked.mains.filter((item) => item.request.kind === "review").length, 2);
+  assert.equal(blocked.mains.filter((item) => item.request.kind === "review").length, 3);
   assert.equal(blocked.attempts.length, 1);
   assert.equal(blocked.tasks.get(blockedRun.taskId ?? "")?.status, "running");
   assert.equal(blocked.tasks.get(blockedRun.taskId ?? "")?.mainAiFailureCount ?? 0, 0);
@@ -1452,6 +1615,8 @@ test("retains a finished attempt when report writing fails and reviews the queue
   await flush();
   const taskId = run.taskId ?? "";
   const stored = () => env.tasks.get(taskId);
+  env.mains.at(-1)?.resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
+  await flush();
   assert.equal(alphaReports, 1);
   assert.equal(env.reports.length, 0);
   assert.equal(stored()?.status, "error");
@@ -1882,6 +2047,11 @@ test("does not let a delayed reservation cross a needs-review pause", async () =
   assert.ok(review);
   review.resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
   await flush();
+  const blockReview = env.mains[2];
+  assert.match(blockReview.request.prompt, /Bounded blocked review/);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  blockReview.resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
+  await flush();
   const taskId = run.taskId ?? "";
   const stored = () => env.tasks.get(taskId);
   assert.equal(await isSettled(run.done), true);
@@ -1908,16 +2078,16 @@ test("does not let a delayed reservation cross a needs-review pause", async () =
   assert.equal(env.attempts[1]?.request.attemptId, parkedId);
   assert.equal(stored()?.status, "running");
   const resumedReview = env.mains.filter((item) => item.request.kind === "review");
-  assert.equal(resumedReview.length, 2);
-  assert.equal(resumedReview[1]?.request.reviewEventId, review.request.reviewEventId);
+  assert.equal(resumedReview.length, 3);
+  assert.equal(resumedReview[2]?.request.reviewEventId, review.request.reviewEventId);
   assert.equal(await isSettled(continued.done), false);
-  resumedReview[1]?.resolve(decisionJson({
+  resumedReview[2]?.resolve(decisionJson({
     status: "accept",
-    reviewEventId: resumedReview[1]?.request.reviewEventId,
+    reviewEventId: resumedReview[2]?.request.reviewEventId,
     subtasks: [],
   }));
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.reviewEventId === review.request.reviewEventId).length, 2);
+  assert.equal(env.mains.filter((item) => item.request.reviewEventId === review.request.reviewEventId).length, 3);
   assert.equal(env.attempts.filter((item) => item.request.subtaskId === "beta").length, 1);
   assert.equal(stored()?.mainAiFailureCount ?? 0, 0);
 });
@@ -2269,6 +2439,8 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   assert.equal(reviews()[2]?.request.reviewEventId, eventId);
 
   reviews()[2].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
+  await flush();
+  reviews()[3].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
   await flush();
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
   assert.equal(env.tasks.get(taskId)?.finalSummary, "need a person");

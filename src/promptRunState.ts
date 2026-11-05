@@ -65,7 +65,8 @@ export function formatDuration(durationMs: number): string {
 export function buildTaskRunCompletionText(
   status: TaskRunStatus,
   durationMs: number | null | undefined,
-  labels: { failed: string; stopped: string; completed: string; failedWithDuration: (duration: string) => string; stoppedWithDuration: (duration: string) => string; completedWithDuration: (duration: string) => string }
+  labels: { failed: string; stopped: string; completed: string; failedWithDuration: (duration: string) => string; stoppedWithDuration: (duration: string) => string; completedWithDuration: (duration: string) => string; loopMain?: string; loopMainWithDuration?: (duration: string) => string; loopSubtask?: string; loopSubtaskWithDuration?: (duration: string) => string },
+  context?: { loopPlus: boolean; taskRole?: LoopTaskRole },
 ): string {
   const hasDuration = typeof durationMs === "number" && Number.isFinite(durationMs);
   const durationText = hasDuration ? formatDuration(Math.max(0, durationMs)) : null;
@@ -74,6 +75,16 @@ export function buildTaskRunCompletionText(
   }
   if (status === "stopped") {
     return durationText ? labels.stoppedWithDuration(durationText) : labels.stopped;
+  }
+  if (context?.loopPlus && context.taskRole === "main" && labels.loopMain) {
+    return durationText && labels.loopMainWithDuration
+      ? labels.loopMainWithDuration(durationText)
+      : labels.loopMain;
+  }
+  if (context?.loopPlus && context.taskRole === "subtask" && labels.loopSubtask) {
+    return durationText && labels.loopSubtaskWithDuration
+      ? labels.loopSubtaskWithDuration(durationText)
+      : labels.loopSubtask;
   }
   return durationText ? labels.completedWithDuration(durationText) : labels.completed;
 }

@@ -419,3 +419,9 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 修复 DSH 作为 Loop+ 子模型时，原子任务结束、Tab 关闭、主模型验收失败后，修复任务虽然继承相同 session ID 与 `DSH_HOME`，却因每轮随机 cwd 被 ACP 拒绝的问题。同一 DSH 会话改用稳定的隔离执行根，每轮重建并安全清理工作区链接，保留空目录；普通 Vibe 和其他 CLI 不变。Windows 跨盘使用真实工作区同卷目录。旧版随机 cwd 会话不能安全迁移时明确提示重新派发新子任务，不创建替代会话丢失上下文。未知文件或替换目录均保留并拒绝覆盖。
 
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
+
+## 2026-11-05 Loop+ 阻塞复核与分层完成提示
+
+Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；发现安全、独立的工作时继续派发，复核后仍无可执行工作才暂停。待复核状态持久化并抑制无进展重复；新用户补充或真实调度/验收进展可重新开启一次。暂停原因和恢复条件进入主聊天、主任务沟通文件与群聊 transcript。主任务单次调用与子任务结束不再显示整体完成，父任务持久化完成后才给出最终完成提示。
+
+实现：`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopTaskStore.ts`、`src/loopPlusPause.ts`、`src/promptRunState.ts`、`src/extension.ts`；验证：`npm run build`；`node --test dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/promptRunCompletionText.test.js dist/test/loop/loopPlusPause.test.js`。

@@ -201,6 +201,7 @@ import {
 import { createModelSettingsHost, schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { createExtensionSessionTabsHost } from "./extensionHost/sessionTabs";
 import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
+import { buildLoopPlusPauseText, recordLoopPlusPause } from "./loopPlusPause";
 import { createPromptRunModelsHost } from "./extensionHost/promptRunModels";
 import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptRunController";
 import { trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type WorkspaceSettings } from "./workspaceSettingsStore";
@@ -3841,6 +3842,10 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         appendTextFileEnsuringDir(chatFile, `\n## ${section.heading}\n${section.body.trim()}\n`);
         refreshOpenLoopGroupChatPanelForTask(task.id);
       },
+      recordPause: (task, message) => {
+        recordLoopPlusPause(task, message);
+        refreshOpenLoopGroupChatPanelForTask(task.id);
+      },
       prepareCommunication: (task, subtask, round) => prepareLoopSubtaskCommunicationFile(task, subtask, round, 0),
       appendAttemptReport: (filePath, content) => {
         appendTextFileEnsuringDir(filePath, content);
@@ -4025,6 +4030,12 @@ function loopPlusHostMessage(message: string, taskId: string): string {
   }
   if (message === "loop-plus-completed") {
     return t("run.loopPlusCompleted", { taskId });
+  }
+  if (message === "loop-plus-block-review") {
+    return "Loop+ 正在复核剩余要求，检查是否还有可独立推进的工作；本次复核不会放宽安全门槛。";
+  }
+  if (message === "loop-plus-blocked" && task) {
+    return buildLoopPlusPauseText(task, message);
   }
   if (message === "loop-plus-resume-blocked") {
     return t("run.loopPlusPaused", { detail: "running executions are still live" });
@@ -5510,7 +5521,7 @@ function appendCompletionMessage(status: TaskRunStatus, options: { notifyComplet
   const message = {
     id: createMessageId(),
     role: "system" as const,
-    content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null),
+    content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null, taskRecord ?? undefined),
     createdAt: Date.now(),
   };
   primaryPromptRunController.activeCompletionSent = true;
@@ -5541,7 +5552,9 @@ function sendRunStatus(
   });
 }
 
-function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null): string {
+function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord): string {
+  const loopPlus = Boolean(record?.loopTaskId
+    && readLoopTaskRecord(record.loopTaskId)?.schedulingMode === "event_driven");
   return buildTaskRunCompletionTextWithLabels(status, durationMs, {
     failed: t("run.failed"),
     stopped: t("run.stopped"),
@@ -5549,7 +5562,11 @@ function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number |
     failedWithDuration: (duration) => t("run.failedWithDuration", { duration }),
     stoppedWithDuration: (duration) => t("run.stoppedWithDuration", { duration }),
     completedWithDuration: (duration) => t("run.completedWithDuration", { duration }),
-  });
+    loopMain: "本轮调度已结束，整体任务状态以 Loop+ 主任务为准。",
+    loopMainWithDuration: (duration) => `本轮调度已结束，用时 ${duration}；整体任务状态以 Loop+ 主任务为准。`,
+    loopSubtask: "子任务执行结束，等待主任务验收。",
+    loopSubtaskWithDuration: (duration) => `子任务执行结束，用时 ${duration}，等待主任务验收。`,
+  }, { loopPlus, taskRole: record?.taskRole });
 }
 
 function sendRawStreamDelta(

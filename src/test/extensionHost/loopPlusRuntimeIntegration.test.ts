@@ -495,11 +495,18 @@ test("adapter stop keeps resume state, blocks continue while cancellation is liv
         }),
       });
     });
+    fixture.queueMain(async (input, tabId) => {
+      assert.match(input.displayPrompt, /Bounded blocked review/);
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: decision({ status: "blocked", finalSummary: "all remaining work needs a person" }),
+      });
+    });
     await fixture.adapter.runEventDriven(prompt("keep the saved prompt"), {
       resumeTaskId: taskId,
       resumeRequested: true,
     }, fixture.target);
-    assert.equal(fixture.mainCalls.length, 3);
+    assert.equal(fixture.mainCalls.length, 4);
     assert.equal(fixture.attemptCalls.length, 1);
     assert.equal(fixture.parkedSubtaskIds().includes("A"), false);
     const resumed = fixture.readTask(taskId);
