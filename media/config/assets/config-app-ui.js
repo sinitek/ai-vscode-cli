@@ -1342,6 +1342,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
         }) : null,
         skillsMarketOpen ? be.jsx(SkillsMarketModal, { onClose: () => setSkillsMarketOpen(!1) }) : null,
         newConfigPlatform ? be.jsx(CliExampleImportModal, {
+          key: `cli-example-import-${newConfigPlatform}`,
           platform: newConfigPlatform,
           onClose: () => setNewConfigPlatform(null),
           onImport: addImportedConfig,
@@ -6331,32 +6332,198 @@ const buildCliExampleImport = (exampleKey, values) => {
   }
 };
 
+const CLI_EXAMPLE_IMPORT_PLATFORMS = Object.freeze({
+  "claude-settings": "claude",
+  "codex-config": "codex",
+  "codex-auth": "codex",
+  "opencode-settings": "opencode",
+  "grok-config": "grok",
+  "dsh-config": "dsh",
+  "kimi-code-config": "kimi-code",
+  "zcode-config": "zcode",
+});
+
+const CLI_EXAMPLE_IMPORT_DISCOVERY_MODEL = "sinitek-discovery-probe";
+
+const cliExampleImportPlatformFor = (exampleKey) => CLI_EXAMPLE_IMPORT_PLATFORMS[exampleKey] || "";
+
+const validateCliExampleImportConnection = (values, exampleKey) => {
+  const errors = { ...validateCliExampleImport({ ...values, model: CLI_EXAMPLE_IMPORT_DISCOVERY_MODEL }, exampleKey) };
+  delete errors.model;
+  return errors;
+};
+
+const buildCliExampleImportDiscovery = (exampleKey, values, platform) => {
+  const resolvedPlatform = platform || cliExampleImportPlatformFor(exampleKey);
+  if (!resolvedPlatform) throw new Error("不支持的配置范例");
+  const errors = validateCliExampleImportConnection(values, exampleKey);
+  const firstError = Object.values(errors)[0];
+  if (firstError) throw new Error(firstError);
+  return {
+    platform: resolvedPlatform,
+    draft: buildCliExampleImport(exampleKey, { ...values, model: CLI_EXAMPLE_IMPORT_DISCOVERY_MODEL }),
+  };
+};
+
+const cliExampleImportModelText = (next) => (typeof next === "string" ? next : String(next?.target?.value ?? ""));
+
+const cliExampleImportDiscoveryBridge = () => (typeof getModelImportProviders === "function" && typeof discoverImportModels === "function"
+  ? { providers: getModelImportProviders, discover: discoverImportModels }
+  : null);
+
+const cliExampleImportModelOptions = (models) => {
+  const seen = new Set();
+  return (Array.isArray(models) ? models : []).reduce((result, model) => {
+    const id = String(model?.id || "").trim();
+    if (!id || seen.has(id)) return result;
+    seen.add(id);
+    result.push({ value: id, label: String(model?.label || id) });
+    return result;
+  }, []);
+};
+
 const CLI_EXAMPLE_IMPORT_Z_INDEX = 1100;
 
 const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey }) => {
   const currentExampleKey = exampleKey || (platform ? `${platform}-${platform === "claude" || platform === "opencode" ? "settings" : "config"}` : "");
   const protocol = getCliExampleImportProtocol(currentExampleKey);
+  const discoveryPlatform = cliExampleImportPlatformFor(currentExampleKey);
+  const initialName = platform ? `${configPlatformLabel(platform)} 配置 ${Date.now()}` : "";
   const [values, setValues] = c.useState({
     base_url: "", api_key: "", model: "",
     ...(protocol ? { protocol: protocol.defaultValue } : {}),
-    ...(platform ? { name: `${configPlatformLabel(platform)} 配置 ${Date.now()}` } : {}),
+    ...(platform ? { name: initialName } : {}),
   });
   const [errors, setErrors] = c.useState({});
   const [submitting, setSubmitting] = c.useState(!1);
+  const [discovery, setDiscovery] = c.useState({ status: "idle", models: [], message: "" });
   const baseUrlInputRef = c.useRef(null);
   const submittingRef = c.useRef(!1);
+  const targetIdentity = `${currentExampleKey}|${platform || ""}`;
+  const identityRef = c.useRef(targetIdentity);
+  const autoNameRef = c.useRef(initialName);
+  const discoveryRef = c.useRef({ generation: 0, signature: "", identity: targetIdentity, inFlight: !1 });
+  const connectionSignature = () => JSON.stringify([
+    currentExampleKey,
+    String(values.base_url || "").trim(),
+    String(values.api_key || "").trim(),
+    protocol ? String(values.protocol === void 0 ? protocol.defaultValue : values.protocol).trim() : "",
+  ]);
+  const invalidateDiscovery = () => {
+    discoveryRef.current = { generation: discoveryRef.current.generation + 1, signature: "", identity: targetIdentity, inFlight: !1 };
+  };
+  const resetForTarget = () => {
+    const nextDefaultName = platform ? `${configPlatformLabel(platform)} 配置 ${Date.now()}` : "";
+    discoveryRef.current = { generation: discoveryRef.current.generation + 1, signature: "", identity: targetIdentity, inFlight: !1 };
+    setValues((previous) => ({
+      base_url: previous.base_url,
+      api_key: previous.api_key,
+      model: "",
+      ...(protocol ? { protocol: protocol.defaultValue } : {}),
+      ...(platform ? { name: previous.name && previous.name !== autoNameRef.current ? previous.name : nextDefaultName } : {}),
+    }));
+    if (platform) autoNameRef.current = nextDefaultName;
+    setErrors({});
+    setDiscovery({ status: "idle", models: [], message: "" });
+  };
+  c.useEffect(() => {
+    if (identityRef.current === targetIdentity) return;
+    identityRef.current = targetIdentity;
+    resetForTarget();
+  }, [targetIdentity]);
+  c.useEffect(() => () => {
+    discoveryRef.current = { generation: discoveryRef.current.generation + 1, signature: "", identity: "", inFlight: !1 };
+  }, []);
+  const targetReady = identityRef.current === targetIdentity;
+  const activeDiscovery = targetReady ? discovery : { status: "idle", models: [], message: "" };
+  const modelValue = targetReady ? values.model : "";
+  const protocolValue = targetReady ? values.protocol : protocol ? protocol.defaultValue : void 0;
+  const nameValue = targetReady ? values.name : "";
+  const discoveryPending = activeDiscovery.status === "loading";
+  const confirmBlocked = submitting || discoveryPending || activeDiscovery.status === "idle";
+  const resolveBlocked = submitting || !targetReady || discoveryPending
+    || Object.keys(validateCliExampleImportConnection(values, currentExampleKey)).length > 0;
+  const resolveModels = async () => {
+    if (submittingRef.current || discoveryRef.current.inFlight) return;
+    if (identityRef.current !== targetIdentity) return;
+    const connectionErrors = validateCliExampleImportConnection(values, currentExampleKey);
+    setErrors((previous) => ({ ...previous, ...connectionErrors, import: "" }));
+    if (Object.keys(connectionErrors).length) return;
+    let request;
+    try {
+      request = buildCliExampleImportDiscovery(currentExampleKey, values, discoveryPlatform);
+    } catch {
+      setDiscovery({ status: "failure", models: [], message: "未能解析模型，可手动填写模型名称" });
+      return;
+    }
+    const bridge = cliExampleImportDiscoveryBridge();
+    if (!bridge) {
+      setDiscovery({ status: "failure", models: [], message: "未能解析模型，可手动填写模型名称" });
+      return;
+    }
+    const generation = discoveryRef.current.generation + 1;
+    const signature = connectionSignature();
+    const identity = targetIdentity;
+    discoveryRef.current = { generation, signature, identity, inFlight: !0 };
+    const stillCurrent = () => identityRef.current === identity && discoveryRef.current.identity === identity
+      && discoveryRef.current.generation === generation && discoveryRef.current.signature === signature;
+    setDiscovery({ status: "loading", models: [], message: "" });
+    let models = [];
+    let message = "";
+    try {
+      const providerResult = await bridge.providers({ platform: request.platform, draft: request.draft });
+      if (!stillCurrent()) return;
+      const providers = (Array.isArray(providerResult?.providers) ? providerResult.providers : [])
+        .filter((provider) => provider && provider.id);
+      const selectedBaseUrl = String(values.base_url || "").trim().replace(/\/+$/, "");
+      const usable = providers.filter((provider) => !provider.disabledReason && String(provider.baseUrl || "").trim());
+      const chosen = usable.find((provider) => String(provider.baseUrl || "").trim().replace(/\/+$/, "") === selectedBaseUrl)
+        || usable[0]
+        || providers[0];
+      if (!chosen || chosen.disabledReason) {
+        message = "未能解析模型，可手动填写模型名称";
+      } else {
+        const result = await bridge.discover({ platform: request.platform, draft: request.draft, providerId: chosen.id });
+        if (!stillCurrent()) return;
+        models = cliExampleImportModelOptions(result?.models);
+        if (!models.length) message = "未能从当前地址解析到可用模型，可手动填写模型名称";
+      }
+    } catch {
+      if (!stillCurrent()) return;
+      message = "未能解析模型，可手动填写模型名称";
+    }
+    if (!stillCurrent()) return;
+    discoveryRef.current = { generation, signature, identity, inFlight: !1 };
+    if (!models.length) {
+      setDiscovery({ status: "failure", models: [], message });
+      return;
+    }
+    setValues((previous) => {
+      const currentModel = String(previous.model || "").trim();
+      return { ...previous, model: models.some((option) => option.value === currentModel) ? currentModel : models[0].value };
+    });
+    setErrors((previous) => ({ ...previous, model: "", import: "" }));
+    setDiscovery({ status: "success", models, message: "" });
+  };
   const submit = async () => {
     if (submittingRef.current) return;
-    const nextErrors = validateCliExampleImport(values, currentExampleKey);
-    if (platform && !String(values.name || "").trim()) nextErrors.name = "配置名称不能为空";
+    const resolvedValues = { ...values, model: modelValue };
+    const unresolved = activeDiscovery.status === "idle" || activeDiscovery.status === "loading";
+    const nextErrors = validateCliExampleImport(resolvedValues, currentExampleKey);
+    if (unresolved) delete nextErrors.model;
+    if (platform && !String(resolvedValues.name || "").trim()) nextErrors.name = "配置名称不能为空";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
+    if (unresolved) {
+      setErrors((previous) => ({ ...previous, import: "请先解析模型；解析失败后可手动填写模型名称" }));
+      return;
+    }
     submittingRef.current = !0;
     setSubmitting(!0);
     try {
-      await onImport(values);
+      await onImport(resolvedValues);
     } catch (error) {
-      setErrors({ import: error instanceof Error ? error.message : String(error) });
+      setErrors((previous) => ({ ...previous, import: error instanceof Error ? error.message : String(error) }));
     } finally {
       submittingRef.current = !1;
       setSubmitting(!1);
@@ -6365,17 +6532,27 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
   const skip = async () => {
     if (submittingRef.current) return;
     submittingRef.current = !0;
+    invalidateDiscovery();
     setSubmitting(!0);
     try {
       await onSkip(values);
     } catch (error) {
-      setErrors({ import: error instanceof Error ? error.message : String(error) });
+      setErrors((previous) => ({ ...previous, import: error instanceof Error ? error.message : String(error) }));
     } finally {
       submittingRef.current = !1;
       setSubmitting(!1);
     }
   };
-  const renderField = ([key, label, placeholder]) => be.jsxs("label", {
+  const updateValue = (key, value, connection) => {
+    const clearsModel = connection && discovery.status !== "idle";
+    if (clearsModel) {
+      invalidateDiscovery();
+      setDiscovery({ status: "idle", models: [], message: "" });
+    }
+    setValues((previous) => ({ ...previous, [key]: value, ...(clearsModel ? { model: "" } : {}) }));
+    setErrors((previous) => ({ ...previous, [key]: "", import: "" }));
+  };
+  const renderField = ([key, label, placeholder], connection = !1) => be.jsxs("label", {
     className: "config-visual-field",
     style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
     children: [
@@ -6383,7 +6560,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
       be.jsx(zi, {
         ref: key === "base_url" ? baseUrlInputRef : void 0,
         type: key === "api_key" ? "password" : "text",
-        value: values[key],
+        value: key === "name" ? nameValue : values[key],
         placeholder,
         required: !0,
         disabled: submitting,
@@ -6393,10 +6570,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
         "aria-invalid": Boolean(errors[key]),
         "aria-describedby": errors[key] ? `cli-example-${key}-error` : void 0,
         status: errors[key] ? "error" : void 0,
-        onChange: (event) => {
-          setValues({ ...values, [key]: event.target.value });
-          setErrors({ ...errors, [key]: "", import: "" });
-        },
+        onChange: (event) => updateValue(key, cliExampleImportModelText(event?.target ? event.target.value : event), connection),
         onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) submit(); },
       }),
       errors[key] ? be.jsx("div", {
@@ -6407,6 +6581,94 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
       }) : null,
     ],
   }, key);
+  const modelError = errors.model ? be.jsx("div", {
+    id: "cli-example-model-error",
+    role: "alert",
+    className: "grok-model-action-error",
+    children: errors.model,
+  }) : null;
+  const statusText = activeDiscovery.status === "loading" ? "正在解析模型，请稍候…"
+    : activeDiscovery.status === "success" ? `已解析 ${activeDiscovery.models.length} 个模型，请选择后提交`
+      : activeDiscovery.status === "failure" ? "解析未完成，可重试解析或手动填写模型名称"
+        : "填写地址和密钥后可解析模型";
+  const renderModelField = () => {
+    const shared = {
+      "aria-label": "模型名称",
+      "aria-required": !0,
+      "aria-invalid": Boolean(errors.model),
+      "aria-describedby": errors.model ? "cli-example-model-error" : "cli-example-model-hint",
+    };
+    if (activeDiscovery.status === "success") return be.jsxs("label", {
+      className: "config-visual-field",
+      style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+      children: [
+        be.jsx("span", { children: "模型名称（必填）" }),
+        be.jsx($l, {
+          ...shared,
+          value: modelValue || void 0,
+          options: activeDiscovery.models,
+          showSearch: !0,
+          allowClear: !0,
+          optionFilterProp: "label",
+          placeholder: "选择模型",
+          disabled: submitting || discoveryPending,
+          status: errors.model ? "error" : void 0,
+          getPopupContainer: (trigger) => trigger.parentElement || document.body,
+          style: { width: "100%" },
+          onChange: (value) => updateValue("model", cliExampleImportModelText(value)),
+        }),
+        be.jsx("div", {
+          id: "cli-example-model-hint",
+          className: "grok-model-copy-hint",
+          children: "模型列表来自当前地址，可搜索或重新选择。",
+        }),
+        modelError,
+      ],
+    });
+    if (activeDiscovery.status === "failure") return be.jsxs("label", {
+      className: "config-visual-field",
+      style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+      children: [
+        be.jsx("span", { children: "模型名称（必填）" }),
+        be.jsx(zi, {
+          ...shared,
+          type: "text",
+          value: modelValue,
+          placeholder: "例如 got-6.1-sol",
+          required: !0,
+          disabled: submitting,
+          autoComplete: "off",
+          spellCheck: !1,
+          status: errors.model ? "error" : void 0,
+          onChange: (event) => updateValue("model", cliExampleImportModelText(event?.target ? event.target.value : event)),
+        }),
+        be.jsx("div", {
+          id: "cli-example-model-hint",
+          className: "grok-model-copy-hint",
+          children: activeDiscovery.message || "未能解析模型，可手动填写模型名称",
+        }),
+        modelError,
+      ],
+    });
+    return be.jsxs("label", {
+      className: "config-visual-field",
+      style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
+      children: [
+        be.jsx("span", { children: "模型名称（必填）" }),
+        be.jsx($l, {
+          ...shared,
+          value: modelValue || void 0,
+          options: [],
+          showSearch: !0,
+          disabled: true,
+          placeholder: discoveryPending ? "正在解析模型…" : "填写地址和密钥后解析模型",
+          getPopupContainer: (trigger) => trigger.parentElement || document.body,
+          style: { width: "100%" },
+        }),
+        modelError,
+      ],
+    });
+  };
   return be.jsx(xr, {
     title: platform ? `添加${configPlatformLabel(platform)}配置` : "填写范例导入配置",
     open: !0,
@@ -6414,17 +6676,18 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
     rootClassName: "cli-example-import-modal",
     zIndex: CLI_EXAMPLE_IMPORT_Z_INDEX,
     afterOpenChange: (open) => { if (open) baseUrlInputRef.current?.focus(); },
-    onCancel: () => { if (!submittingRef.current) onClose(); },
+    onCancel: () => { if (!submittingRef.current) { invalidateDiscovery(); onClose(); } },
     onOk: submit,
     confirmLoading: submitting,
     cancelButtonProps: { disabled: submitting },
     closable: !submitting,
     keyboard: !submitting,
     okText: platform ? "创建配置" : "确认导入",
+    okButtonProps: { disabled: confirmBlocked },
     cancelText: "取消",
     footer: onSkip ? [
-      be.jsx(xn, { disabled: submitting, onClick: onClose, children: "取消" }, "cancel"),
-      be.jsx(xn, { type: "primary", loading: submitting, onClick: submit, children: "创建配置" }, "submit"),
+      be.jsx(xn, { disabled: submitting, onClick: () => { invalidateDiscovery(); onClose(); }, children: "取消" }, "cancel"),
+      be.jsx(xn, { type: "primary", loading: submitting, disabled: confirmBlocked, onClick: submit, children: "创建配置" }, "submit"),
       be.jsx(xn, { disabled: submitting, onClick: skip, children: "跳过" }, "skip"),
     ] : void 0,
     maskClosable: !1,
@@ -6444,7 +6707,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
           children: [
             be.jsx("span", { children: `API 协议类型（${protocol.field}，必选）` }),
             be.jsx($l, {
-              value: values.protocol,
+              value: protocolValue,
               options: protocol.options,
               disabled: submitting,
               showSearch: !0,
@@ -6458,14 +6721,8 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
               "aria-invalid": Boolean(errors.protocol),
               "aria-describedby": errors.protocol ? "cli-example-protocol-error" : void 0,
               status: errors.protocol ? "error" : void 0,
-              onChange: (value) => {
-                setValues({ ...values, protocol: value || "" });
-                setErrors({ ...errors, protocol: "", import: "" });
-              },
-              onSearch: protocol.allowCustomValue ? (value) => {
-                setValues({ ...values, protocol: value });
-                setErrors({ ...errors, protocol: "", import: "" });
-              } : void 0,
+              onChange: (value) => updateValue("protocol", value || "", !0),
+              onSearch: protocol.allowCustomValue ? (value) => updateValue("protocol", value, !0) : void 0,
             }),
             errors.protocol ? be.jsx("div", {
               id: "cli-example-protocol-error",
@@ -6475,11 +6732,28 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
             }) : null,
           ],
         }) : null,
-        ...[
-          ["base_url", "base_url", "例如 https://api.example.com/v1"],
-          ["api_key", "api_key", "请输入 API 密钥"],
-          ["model", "模型名称", "例如 got-6.1-sol"],
-        ].map(renderField),
+        renderField(["base_url", "base_url", "例如 https://api.example.com/v1"], !0),
+        renderField(["api_key", "api_key", "请输入 API 密钥"], !0),
+        be.jsxs("div", {
+          className: "cli-example-import-discovery",
+          children: [
+            be.jsx(xn, {
+              className: "cli-example-import-resolve",
+              loading: discoveryPending,
+              disabled: resolveBlocked,
+              onClick: resolveModels,
+              children: activeDiscovery.status === "failure" ? "重新解析" : "解析模型",
+            }),
+            be.jsx("div", {
+              className: "cli-example-import-discovery-status grok-model-copy-hint",
+              role: "status",
+              "aria-live": "polite",
+              "data-state": activeDiscovery.status,
+              children: statusText,
+            }),
+          ],
+        }),
+        renderModelField(),
         errors.import ? be.jsx("div", {
           role: "alert",
           className: "grok-model-action-error",
@@ -6490,7 +6764,6 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
   });
 
 };
-
 // Config editor panel
 const MODEL_IMPORT_CLAUDE_FIELDS = [
   { key: "model", label: "model" },
@@ -7602,6 +7875,7 @@ const ConfigEditorPanel = () => {
                     children: I.content,
                   }),
                   exampleImportOpen ? be.jsx(CliExampleImportModal, {
+                    key: `cli-example-import-${S}`,
                     exampleKey: S,
                     onClose: () => setExampleImportOpen(!1),
                     onImport: importCliExample,

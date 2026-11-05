@@ -231,7 +231,8 @@ test("七个 CLI 点击添加直接打开导入弹窗，确认输入后才保存
     assert.deepEqual(selected, [["created-profile", platform]]);
     assert.deepEqual(messages, ["添加成功"]);
   }
-  assert.match(read(uiPath), /newConfigPlatform \? be\.jsx\(CliExampleImportModal, \{\s*platform: newConfigPlatform,\s*onClose: \(\) => setNewConfigPlatform\(null\),\s*onImport: addImportedConfig/);
+  assert.match(read(uiPath), /newConfigPlatform \? be\.jsx\(CliExampleImportModal, \{\s*key: `cli-example-import-\$\{newConfigPlatform\}`,?\s*platform: newConfigPlatform,\s*onClose: \(\) => setNewConfigPlatform\(null\),\s*onImport: addImportedConfig/);
+  assert.match(read(uiPath), /exampleImportOpen \? be\.jsx\(CliExampleImportModal, \{\s*key: `cli-example-import-\$\{S\}`,?\s*exampleKey: S,/);
 });
 
 test("新增配置按弹窗选择写入各 CLI 的协议字段", async () => {

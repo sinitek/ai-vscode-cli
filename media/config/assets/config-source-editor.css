@@ -223,3 +223,39 @@
     top: 16px;
   }
 }
+
+.cli-example-import-discovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.cli-example-import-resolve {
+  flex: 0 0 auto;
+}
+.cli-example-import-discovery-status {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cli-example-import-discovery-status[data-state="failure"] {
+  color: var(--error-color);
+}
+.cli-example-import-modal .config-visual-field {
+  min-width: 0;
+}
+.cli-example-import-modal .config-visual-field .ant-input,
+.cli-example-import-modal .config-visual-field .ant-select,
+.cli-example-import-modal .config-visual-field .ant-select-selector {
+  width: 100%;
+  min-width: 0;
+}
+.cli-example-import-modal .ant-select-dropdown {
+  max-width: min(420px, calc(100vw - 32px));
+}
+.cli-example-import-modal .ant-select-item-option-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

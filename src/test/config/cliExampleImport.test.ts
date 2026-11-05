@@ -33,6 +33,8 @@ function loadUtilities(overrides: AnyRecord = {}) {
     zi: "input", xr: "modal", xn: "button", RE: "drawer",
     $l: { SECRET_COMBOBOX_MODE_DO_NOT_USE: "combobox" },
     KH: "import-icon",
+    getModelImportProviders: async () => ({ providers: [{ id: "gateway", baseUrl: values.base_url }] }),
+    discoverImportModels: async () => ({ models: [{ id: values.model, label: values.model }] }),
     ...overrides,
   };
   vm.runInNewContext([
@@ -89,16 +91,20 @@ function loadModalHarness(props: AnyRecord) {
   const imported: AnyRecord[] = [];
   const { utils, sandbox } = loadUtilities({
     configPlatformLabel: (platform: string) => platform,
+    ...(props.bridge || {}),
     c: {
       useState: (initial: unknown) => {
         const index = cursor++;
         if (!(index in state)) state[index] = initial;
-        return [state[index], (next: unknown) => { state[index] = next; }];
+        return [state[index], (next: unknown) => {
+          state[index] = typeof next === "function" ? (next as (previous: unknown) => unknown)(state[index]) : next;
+        }];
       },
       useRef: (initial: unknown) => {
         const index = refCursor++;
         return refs[index] ||= { current: initial };
       },
+      useEffect: () => undefined,
     },
   });
   const render = (onImport: (next: AnyRecord) => unknown = (next) => imported.push(next)) => {
@@ -107,12 +113,19 @@ function loadModalHarness(props: AnyRecord) {
     return utils.modal({ onClose: () => undefined, onImport, ...props });
   };
   const field = (label: string) => nodes(render()).find((node) => node.props["aria-label"] === label);
-  const fill = () => {
-    for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
-      field(label)!.props.onChange({ target: { value: values[key as keyof typeof values] } });
+  const status = () => nodes(render()).find((node) => node.props.role === "status");
+  const resolve = () => nodes(render()).find((node) => node.props.className === "cli-example-import-resolve")!.props.onClick();
+  const fillConnection = () => {
+    for (const key of ["base_url", "api_key"]) {
+      field(key)!.props.onChange({ target: { value: values[key as keyof typeof values] } });
     }
   };
-  return { render, field, fill, imported, utils, sandbox };
+  const fill = async () => {
+    fillConnection();
+    await resolve();
+    field("模型名称")!.props.onChange({ target: { value: values.model } });
+  };
+  return { render, field, status, resolve, fillConnection, fill, imported, utils, sandbox };
 }
 
 test("协议字段及默认值读取各 CLI 范例，候选复用现有可视化选项，Claude 不暴露协议", () => {
@@ -195,15 +208,15 @@ test("新增与范例抽屉弹窗均显示正确的协议默认值及候选，Cl
       assert.equal(select.props.mode, metadata.allowCustomValue ? "combobox" : undefined);
       const container = {};
       assert.equal(select.props.getPopupContainer({ parentElement: container }), container);
-      harness.fill();
       const selected = metadata.options[0].value;
       harness.field("API 协议类型")!.props.onChange(selected);
+      await harness.fill();
       await harness.render().props.onOk();
       assert.equal(harness.imported[0].protocol, selected);
       assert.equal(loadModalHarness(props).field("API 协议类型")!.props.value, metadata.defaultValue);
     }
   }
-  assert.match(source, /CliExampleImportModal, \{\s*exampleKey: S,/);
+  assert.match(source, /CliExampleImportModal, \{\s*key: `cli-example-import-\$\{S\}`,?\s*exampleKey: S,/);
 });
 
 test("协议类型位于配置名称之后，其余导入字段之前", () => {
@@ -225,7 +238,7 @@ test("协议类型位于配置名称之后，其余导入字段之前", () => {
 
 test("协议下拉空值校验、搜索自定义包、异步失败保留选择及保存中禁用", async () => {
   const harness = loadModalHarness({ platform: "opencode" });
-  harness.fill();
+  await harness.fill();
   harness.field("API 协议类型")!.props.onSearch("");
   await harness.render().props.onOk();
   assert.equal(harness.imported.length, 0);
@@ -233,6 +246,8 @@ test("协议下拉空值校验、搜索自定义包、异步失败保留选择�
   assert.ok(nodes(harness.render()).some((node) => node.props.role === "alert" && node.props.children === "请选择 API 协议类型"));
   harness.field("API 协议类型")!.props.onSearch("@example/custom-provider");
   assert.equal(harness.field("API 协议类型")!.props.status, undefined);
+  await harness.resolve();
+  harness.field("模型名称")!.props.onChange({ target: { value: values.model } });
   let rejectSave: (error: Error) => void = () => undefined;
   const pending = harness.render(() => new Promise((_resolve, reject) => { rejectSave = reject; })).props.onOk();
   assert.equal(harness.field("API 协议类型")!.props.disabled, true);
@@ -374,7 +389,9 @@ test("必填项、地址、控制字符和 OpenCode 模型边界拒绝导入，�
 
 test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重开清空、失败保留错误", async () => {
   const state: unknown[] = [];
+  const refs: AnyRecord[] = [];
   let cursor = 0;
+  let refCursor = 0;
   let closed = 0;
   const imported: AnyRecord[] = [];
   const { utils } = loadUtilities({
@@ -382,33 +399,47 @@ test("必填弹窗遮蔽密钥、空输入阻止导入、取消不导入、重�
       useState: (initial: unknown) => {
         const index = cursor++;
         if (!(index in state)) state[index] = initial;
-        return [state[index], (next: unknown) => { state[index] = next; }];
+        return [state[index], (next: unknown) => {
+          state[index] = typeof next === "function" ? (next as (previous: unknown) => unknown)(state[index]) : next;
+        }];
       },
-      useRef: () => ({ current: null }),
+      useRef: (initial: unknown) => {
+        const index = refCursor++;
+        return refs[index] ||= { current: initial };
+      },
+      useEffect: () => undefined,
     },
   });
   const render = (onImport = (next: AnyRecord) => imported.push(next)) => {
     cursor = 0;
+    refCursor = 0;
     return utils.modal({ onClose: () => { closed++; }, onImport });
   };
+  const fieldNode = (label: string) => nodes(render()).find((node) => node.props["aria-label"] === label);
+  const resolveNode = () => nodes(render()).find((node) => node.props.className === "cli-example-import-resolve");
   await render().props.onOk();
   assert.equal(imported.length, 0);
-  assert.equal(nodes(render()).filter((node) => node.props.role === "alert").length, 3);
-  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
-    const input = nodes(render()).find((node) => node.props["aria-label"] === label);
+  assert.equal(nodes(render()).filter((node) => node.props.role === "alert").length, 2);
+  assert.equal(fieldNode("模型名称")!.props.disabled, true);
+  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"]]) {
+    const input = fieldNode(label)!;
     assert.ok(input);
     assert.equal(input.props.required, true);
     if (key === "api_key") assert.equal(input.props.type, "password");
     input.props.onChange({ target: { value: values[key as keyof typeof values] } });
   }
-  render().props.onCancel();
-  assert.equal(closed, 1);
-  assert.equal(imported.length, 0);
+  assert.equal(resolveNode()!.props.disabled, false);
+  await resolveNode()!.props.onClick();
+  assert.equal(nodes(render()).find((node) => node.props.role === "status")!.props["data-state"], "failure");
+  assert.equal(fieldNode("模型名称")!.type, "input");
+  assert.ok(nodes(render()).some((node) => node.props.children === "未能解析模型，可手动填写模型名称"));
+  fieldNode("模型名称")!.props.onChange({ target: { value: values.model } });
   await render().props.onOk();
-  assert.deepEqual({ ...imported[0] }, values);
-  await render(() => { throw new Error("导入失败测试"); }).props.onOk();
-  assert.ok(nodes(render()).some((node) => node.props.role === "alert" && node.props.children === "导入失败测试"));
+  assert.equal(imported[0].model, values.model);
+  assert.equal(imported[0].api_key, values.api_key);
+  assert.equal(closed, 0);
   state.length = 0;
+  refs.length = 0;
   assert.ok(nodes(render()).filter((node) => node.type === "input").every((node) => node.props.value === ""));
 });
 
@@ -426,12 +457,15 @@ test("新增导入弹窗支持名称校验、取消、异步保存失败重试�
       useState: (initial: unknown) => {
         const index = cursor++;
         if (!(index in state)) state[index] = initial;
-        return [state[index], (next: unknown) => { state[index] = next; }];
+        return [state[index], (next: unknown) => {
+          state[index] = typeof next === "function" ? (next as (previous: unknown) => unknown)(state[index]) : next;
+        }];
       },
       useRef: (initial: unknown) => {
         const index = refCursor++;
         return refs[index] ||= { current: initial };
       },
+      useEffect: () => undefined,
     },
   });
   const render = (onImport = (_next: AnyRecord) => {
@@ -452,9 +486,11 @@ test("新增导入弹窗支持名称校验、取消、异步保存失败重试�
   assert.equal(render().props.okText, "创建配置");
   assert.match(input("配置名称").props.value, /^Codex 配置 \d+$/);
   input("配置名称").props.onChange({ target: { value: " " } });
-  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"], ["model", "模型名称"]]) {
+  for (const [key, label] of [["base_url", "base_url"], ["api_key", "api_key"]]) {
     input(label).props.onChange({ target: { value: values[key as keyof typeof values] } });
   }
+  await nodes(render()).find((node) => node.props.className === "cli-example-import-resolve")!.props.onClick();
+  input("模型名称").props.onChange(values.model);
   await render().props.onOk();
   assert.equal(submissions, 0);
   assert.ok(nodes(render()).some((node) => node.props.role === "alert" && node.props.children === "配置名称不能为空"));
