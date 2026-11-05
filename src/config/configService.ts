@@ -53,6 +53,7 @@ import {
 } from "./kimiCodeConfig";
 import { commitDshDocument } from "../cli/dshConfigModels";
 import { assertConfigSourceFormat } from "./configSourceValidation";
+import { getCanonicalConfigContent, normalizeConfigProfileFields } from "./configprofilenormalization";
 import {
   activateDshProfile,
   readDshActiveProfileText,
@@ -549,35 +550,7 @@ async function readConfigList(platform: LegacyConfigPlatformInput): Promise<Conf
             ? config.updatedAt
             : Date.now(),
       };
-      if (normalizedConfig.platform === "claude") {
-        if (normalizedConfig.mcpContent === undefined) {
-          normalizedConfig.mcpContent = "{}";
-        }
-        if (normalizedConfig.claudeSkills === undefined) {
-          normalizedConfig.claudeSkills = [];
-        }
-      }
-      if (normalizedConfig.platform === "opencode") {
-        delete normalizedConfig.envContent;
-      }
-      if (normalizedConfig.platform === "opencode" && normalizedConfig.openCodeSkills === undefined) {
-        normalizedConfig.openCodeSkills = [];
-      }
-      if (normalizedConfig.platform === "codex") {
-        normalizeCodexConfigFields(normalizedConfig);
-      }
-      if (normalizedConfig.platform === "grok") {
-        normalizeGrokConfigFields(normalizedConfig);
-      }
-      if (normalizedConfig.platform === "dsh") {
-        normalizeDshConfigFields(normalizedConfig);
-      }
-      if (normalizedConfig.platform === "kimi-code") {
-        normalizeKimiCodeConfigFields(normalizedConfig);
-      }
-      if (normalizedConfig.platform === "zcode") {
-        normalizeZcodeConfigFields(normalizedConfig);
-      }
+      normalizeConfigProfileFields(normalizedConfig, normalizedPlatform, "list");
       configs.push(normalizedConfig);
     } catch {
       // 跳过损坏配置
@@ -647,69 +620,6 @@ function formatJSONString(value: string): string {
   } catch {
     return value;
   }
-}
-
-function getCodexTomlContent(config: Pick<ConfigItem, "content" | "configContent">): string {
-  // configContent is the canonical Codex profile field; content remains for legacy profiles.
-  return config.configContent ?? config.content ?? "";
-}
-
-function normalizeCodexConfigFields(config: ConfigItem): void {
-  const content = getCodexTomlContent(config);
-  config.content = content;
-  config.configContent = content;
-  delete config.envContent;
-  config.authContent = config.authContent ?? "{}";
-  config.codexSkills = config.codexSkills ?? [];
-}
-
-function normalizeGrokConfigFields(config: ConfigItem): void {
-  const content = config.configContent ?? config.content ?? "";
-  config.content = content;
-  config.configContent = content;
-  delete config.authContent;
-  delete config.mcpContent;
-  delete config.envContent;
-  config.grokSkills = config.grokSkills ?? [];
-}
-
-function normalizeDshConfigFields(config: ConfigItem): void {
-  const content = config.configContent ?? config.content ?? "";
-  config.content = content;
-  config.configContent = content;
-  delete config.authContent;
-  delete config.mcpContent;
-  delete config.envContent;
-  delete config.claudeSkills;
-  delete config.codexSkills;
-  delete config.openCodeSkills;
-  delete config.grokSkills;
-}
-
-function normalizeZcodeConfigFields(config: ConfigItem): void {
-  const content = config.configContent ?? config.content ?? "";
-  config.content = content;
-  config.configContent = content;
-  delete config.authContent;
-  delete config.mcpContent;
-  delete config.envContent;
-  delete config.claudeSkills;
-  delete config.codexSkills;
-  delete config.openCodeSkills;
-  delete config.grokSkills;
-}
-
-function normalizeKimiCodeConfigFields(config: ConfigItem): void {
-  const content = config.configContent ?? config.content ?? "";
-  config.content = content;
-  config.configContent = content;
-  delete config.authContent;
-  delete config.mcpContent;
-  delete config.envContent;
-  delete config.claudeSkills;
-  delete config.codexSkills;
-  delete config.openCodeSkills;
-  delete config.grokSkills;
 }
 
 function readJsonObjectText(
@@ -960,7 +870,7 @@ function extractCodexMcpConfig(configContent: string | undefined): Record<string
 
 function extractMcpConfig(source: ConfigItem): Record<string, unknown> {
   if (source.platform === "codex") {
-    return extractCodexMcpConfig(getCodexTomlContent(source));
+    return extractCodexMcpConfig(getCanonicalConfigContent(source));
   }
   const config =
     source.platform === "claude"
@@ -1063,8 +973,8 @@ function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform,
   }
   return {
     ...base,
-    content: source.platform === "codex" ? getCodexTomlContent(source) : "",
-    configContent: source.platform === "codex" ? getCodexTomlContent(source) : "",
+    content: source.platform === "codex" ? getCanonicalConfigContent(source) : "",
+    configContent: source.platform === "codex" ? getCanonicalConfigContent(source) : "",
     authContent: source.platform === "codex" ? source.authContent ?? "{}" : "{}",
     codexSkills: source.platform === "codex" ? [...(source.codexSkills ?? [])] : [],
   };
@@ -1088,20 +998,12 @@ function isLegacyCrossMigratedOpenCodeConfig(config: Partial<ConfigItem>): boole
 
 export async function saveConfig(config: ConfigItem): Promise<void> {
   const configDir = getConfigDir(config.platform);
-  const configToSave: ConfigItem = { ...config, platform: normalizeConfigPlatform(config.platform) };
+  const normalizedPlatform = normalizeConfigPlatform(config.platform);
+  const configToSave: ConfigItem = { ...config, platform: normalizedPlatform };
   assertConfigSourceFormat(configToSave);
 
-  if (configToSave.platform === "codex") {
-    normalizeCodexConfigFields(configToSave);
-  }
-  if (configToSave.platform === "grok") {
-    normalizeGrokConfigFields(configToSave);
-  }
-  if (configToSave.platform === "zcode") {
-    normalizeZcodeConfigFields(configToSave);
-  }
+  normalizeConfigProfileFields(configToSave, normalizedPlatform, "save");
   if (configToSave.platform === "kimi-code") {
-    normalizeKimiCodeConfigFields(configToSave);
     const committed = commitKimiCodeText("", configToSave.content ?? "");
     if (!committed.ok) {
       throw new Error(committed.error);
@@ -1110,7 +1012,6 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
     configToSave.configContent = committed.content;
   }
   if (configToSave.platform === "dsh") {
-    normalizeDshConfigFields(configToSave);
     const committed = commitDshDocument(configToSave.content ?? "");
     if (!committed.ok) {
       throw new Error(committed.error);
@@ -1128,7 +1029,6 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
     configToSave.authContent = formatJSONString(configToSave.authContent);
   }
   if (configToSave.platform === "opencode") {
-    delete configToSave.envContent;
     const validation = validateOpenCodeConfigForRun(configToSave.content, undefined);
     const blockingIssues = validation.issues.filter((issue) => (
       issue.code !== "role-model-missing"
@@ -1138,12 +1038,6 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
       throw new Error(blockingIssues.map((issue) => issue.message).join("\n"));
     }
   }
-  const legacyConfig = configToSave as ConfigItem & { geminiSkills?: ConfigItem["openCodeSkills"] };
-  if (configToSave.platform === "opencode" && configToSave.openCodeSkills === undefined) {
-    configToSave.openCodeSkills = legacyConfig.geminiSkills ?? [];
-  }
-  delete legacyConfig.geminiSkills;
-
   const filePath = getConfigFilePath(configToSave.platform, config.id);
   await sharedRuntimeConfig(configToSave.platform).edit(config.id, async () => {
     await ensureDir(configDir);
@@ -1209,35 +1103,10 @@ export async function getConfigById(
   try {
     const filePath = getConfigFilePath(platform, configId);
     const content = await fs.readFile(filePath, "utf-8");
-    const config = JSON.parse(content) as ConfigItem & { geminiSkills?: ConfigItem["openCodeSkills"] };
-    config.platform = normalizeConfigPlatform(platform);
-    if (config.platform === "claude") {
-      if (config.mcpContent === undefined) {
-        config.mcpContent = "{}";
-      }
-      if (config.claudeSkills === undefined) {
-        config.claudeSkills = [];
-      }
-    }
-    if (config.platform === "opencode") {
-      delete config.envContent;
-    }
-    if (config.platform === "opencode" && config.openCodeSkills === undefined) {
-      config.openCodeSkills = config.geminiSkills ?? [];
-    }
-    delete config.geminiSkills;
-    if (config.platform === "codex") {
-      normalizeCodexConfigFields(config);
-    }
-    if (config.platform === "dsh") {
-      normalizeDshConfigFields(config);
-    }
-    if (config.platform === "kimi-code") {
-      normalizeKimiCodeConfigFields(config);
-    }
-    if (config.platform === "zcode") {
-      normalizeZcodeConfigFields(config);
-    }
+    const config = JSON.parse(content) as ConfigItem;
+    const normalizedPlatform = normalizeConfigPlatform(platform);
+    config.platform = normalizedPlatform;
+    normalizeConfigProfileFields(config, normalizedPlatform, "read");
     return config;
   } catch {
     return null;

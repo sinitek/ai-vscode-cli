@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { installVscodeMock } from "../vscodeMock";
+import type { ConfigItem, CurrentConfigPlatform } from "../../config/types";
 
 installVscodeMock();
 
@@ -22,6 +23,254 @@ function restoreEnvironmentVariable(name: string, value: string | undefined): vo
   }
   process.env[name] = value;
 }
+
+async function withProfileFixture(run: (fixture: {
+  service: ReturnType<typeof loadConfigService>;
+  file: (platform: CurrentConfigPlatform, id: string) => string;
+  write: (platform: CurrentConfigPlatform, id: string, value: unknown) => Promise<void>;
+}) => Promise<void>): Promise<void> {
+  await withTempHome(async (homeDir) => {
+    const overrides = {
+      GROK_HOME: path.join(homeDir, ".grok"),
+      DSH_HOME: path.join(homeDir, ".dsh"),
+      KIMI_CODE_HOME: path.join(homeDir, ".kimi-code"),
+      ZCODE_DATA_BASE_DIR: homeDir,
+      XDG_CONFIG_HOME: path.join(homeDir, ".config"),
+    };
+    const previous = Object.keys(overrides).map((name) => [name, process.env[name]] as const);
+    Object.assign(process.env, overrides);
+    try {
+      const service = loadConfigService();
+      const { getConfigFilePath } = require("../../config/configPaths") as typeof import("../../config/configPaths");
+      await run({
+        service,
+        file: getConfigFilePath,
+        write: async (platform, id, value) => {
+          const filePath = getConfigFilePath(platform, id);
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, JSON.stringify(value));
+        },
+      });
+    } finally {
+      for (const [name, value] of previous) restoreEnvironmentVariable(name, value);
+    }
+  });
+}
+
+function normalizationProfile(platform: CurrentConfigPlatform, fields: Record<string, unknown> = {}): ConfigItem {
+  return { id: "normalization", name: "特征档案", platform, createdAt: 20, updatedAt: 30, ...fields };
+}
+
+test("profile list/read preserve phase-specific fields across all seven platforms", async () => {
+  await withProfileFixture(async ({ service, write }) => {
+    const skills = [{ name: "fixture", path: "/synthetic/skill", enabled: true }];
+    for (const platform of ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"] as const) {
+      const input = normalizationProfile(platform, {
+        content: "legacy", configContent: "", authContent: null, mcpContent: null, envContent: "env",
+        claudeSkills: null, codexSkills: null, grokSkills: null, geminiSkills: skills,
+        custom: { kept: true },
+      });
+      await write(platform, input.id, input);
+      const [listed] = await service.getConfigList(platform);
+      const read = await service.getConfigById(platform, input.id);
+      assert.ok(read);
+      for (const result of [listed, read]) {
+        assert.deepEqual((result as ConfigItem & { custom: unknown }).custom, { kept: true });
+        assert.equal(result.createdAt, 20);
+        assert.equal(result.updatedAt, 30);
+        assert.equal(result.id, input.id);
+      }
+      assert.equal((listed as unknown as Record<string, unknown>).geminiSkills instanceof Array, true);
+      assert.equal("geminiSkills" in read, false);
+      if (platform === "claude") {
+        for (const result of [listed, read]) {
+          assert.equal(result.mcpContent, null);
+          assert.equal(result.claudeSkills, null);
+          assert.equal(result.content, "legacy");
+        }
+      } else if (platform === "opencode") {
+        assert.deepEqual(listed.openCodeSkills, []);
+        assert.deepEqual(read.openCodeSkills, skills);
+        assert.equal(listed.envContent, undefined);
+        assert.equal(read.envContent, undefined);
+      } else if (platform === "grok") {
+        assert.equal(listed.content, "");
+        assert.equal(listed.authContent, undefined);
+        assert.equal(listed.mcpContent, undefined);
+        assert.equal(listed.envContent, undefined);
+        assert.deepEqual(listed.grokSkills, []);
+        assert.equal(read.content, "legacy");
+        assert.equal(read.authContent, null);
+        assert.equal(read.envContent, "env");
+      } else {
+        for (const result of [listed, read]) {
+          assert.equal(result.content, "");
+          assert.equal(result.configContent, "");
+          assert.equal(result.envContent, undefined);
+          if (platform === "codex") {
+            assert.equal(result.authContent, "{}");
+            assert.deepEqual(result.codexSkills, []);
+            assert.equal(result.mcpContent, null);
+          } else {
+            for (const field of ["authContent", "mcpContent", "claudeSkills", "codexSkills", "openCodeSkills", "grokSkills"]) {
+              assert.equal(field in result, false);
+            }
+          }
+        }
+      }
+    }
+    const claude = normalizationProfile("claude");
+    await write("claude", claude.id, claude);
+    for (const result of [(await service.getConfigList("claude"))[0], await service.getConfigById("claude", claude.id)]) {
+      assert.equal(result?.mcpContent, "{}");
+      assert.deepEqual(result?.claudeSkills, []);
+    }
+    await write("opencode", "normalization", normalizationProfile("opencode", { platform: "gemini", geminiSkills: skills }));
+    assert.equal((await service.getConfigList("opencode"))[0].platform, "opencode");
+    assert.deepEqual((await service.getConfigById("gemini", "normalization"))?.openCodeSkills, skills);
+  });
+});
+
+test("profile list filters invalid files, falls back timestamps, sorts and only hides migrated OpenCode at list boundary", async () => {
+  await withProfileFixture(async ({ service, write, file }) => {
+    for (const [id, value] of Object.entries({
+      older: normalizationProfile("opencode", { id: "older", createdAt: 1 }),
+      newer: normalizationProfile("opencode", { id: "newer", createdAt: 2 }),
+      fallback: normalizationProfile("opencode", { id: "fallback", createdAt: null, updatedAt: "invalid" }),
+      hidden: normalizationProfile("opencode", { id: "hidden", sourcePlatform: "codex" }),
+      wrong: normalizationProfile("claude"), missing: { name: "missing", platform: "opencode" },
+      empty: normalizationProfile("opencode", { id: "" }), array: [], primitive: 42,
+    })) await write("opencode", id, value);
+    await fs.writeFile(file("opencode", "broken"), "{broken");
+    const before = Date.now();
+    const list = await service.getConfigList("opencode");
+    assert.deepEqual(list.map((item) => item.id), ["fallback", "newer", "older"]);
+    assert.ok(list[0].createdAt >= before && list[0].createdAt <= Date.now());
+    assert.ok(list[0].updatedAt >= before && list[0].updatedAt <= Date.now());
+    assert.equal((await service.getConfigById("opencode", "hidden"))?.id, "hidden");
+    assert.equal((await service.getConfigById("opencode", "wrong"))?.platform, "opencode");
+    assert.equal(await service.getConfigById("opencode", "broken"), null);
+    assert.equal(await service.getConfigById("opencode", "absent"), null);
+    await fs.mkdir(file("opencode", "directory"));
+    assert.equal(await service.getConfigById("opencode", "directory"), null);
+  });
+});
+
+test("profile save preserves caller and source text while persisting platform cleanup and historical defaults", async () => {
+  await withProfileFixture(async ({ service, file }) => {
+    const { createDshExampleProfileText } = require("../../cli/dshConfigModels") as typeof import("../../cli/dshConfigModels");
+    const { createKimiCodeDefaultConfigText } = require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+    const { createZcodeExampleText } = require("../../config/zcodeConfig") as typeof import("../../config/zcodeConfig");
+    const toml = '# keep comment\nmodel = "fixture"\n';
+    const jsonc = '{\n // keep comment\n "provider": {},\n}\n';
+    const sources = {
+      claude: '{"env":{}}', codex: toml, grok: toml, opencode: jsonc,
+      dsh: createDshExampleProfileText(), "kimi-code": createKimiCodeDefaultConfigText(),
+      zcode: JSON.stringify(JSON.parse(createZcodeExampleText())),
+    };
+    const legacySkills = [{ name: "legacy", path: "/synthetic/legacy", enabled: true }];
+    for (const platform of Object.keys(sources) as CurrentConfigPlatform[]) {
+      const input = normalizationProfile(platform, {
+        content: sources[platform], configContent: sources[platform], envContent: "discard-or-keep",
+        authContent: "{}", geminiSkills: legacySkills, custom: ["kept"],
+        ...(platform === "claude" ? {} : { claudeSkills: legacySkills, codexSkills: legacySkills, grokSkills: legacySkills }),
+      });
+      const snapshot = structuredClone(input);
+      Object.freeze(input);
+      await service.saveConfig(input);
+      assert.deepEqual(input, snapshot);
+      const saved = JSON.parse(await fs.readFile(file(platform, input.id), "utf8"));
+      assert.equal("geminiSkills" in saved, false);
+      assert.deepEqual(saved.custom, ["kept"]);
+      assert.equal(saved.createdAt, 20);
+      assert.equal(saved.updatedAt, 30);
+      if (platform === "claude") {
+        assert.equal("mcpContent" in saved, false);
+        assert.equal("claudeSkills" in saved, false);
+        assert.equal(saved.envContent, "discard-or-keep");
+      } else {
+        assert.equal("envContent" in saved, false);
+      }
+      if (platform === "codex" || platform === "grok" || platform === "opencode") {
+        assert.equal(saved.content, sources[platform]);
+        if (platform !== "opencode") assert.equal(saved.configContent, sources[platform]);
+      }
+      if (platform === "opencode") assert.deepEqual(saved.openCodeSkills, legacySkills);
+      if (platform === "grok" || platform === "dsh" || platform === "kimi-code" || platform === "zcode") {
+        assert.equal("authContent" in saved, false);
+        assert.equal("mcpContent" in saved, false);
+      }
+      if (platform === "dsh" || platform === "kimi-code" || platform === "zcode") {
+        for (const field of ["claudeSkills", "codexSkills", "openCodeSkills", "grokSkills"]) assert.equal(field in saved, false);
+      }
+      if (platform === "zcode") {
+        assert.equal(saved.configContent, sources.zcode);
+        assert.equal(saved.content, JSON.stringify(JSON.parse(sources.zcode), null, 2));
+        assert.notEqual(saved.content, saved.configContent);
+      }
+      if (process.platform !== "win32") {
+        assert.equal((await fs.stat(file(platform, input.id))).mode & 0o777, 0o600);
+        if (platform === "dsh") assert.equal((await fs.stat(path.dirname(file(platform, input.id)))).mode & 0o777, 0o700);
+      }
+    }
+    const explicit = normalizationProfile("opencode", { id: "explicit", content: "{}", openCodeSkills: [], geminiSkills: legacySkills });
+    await service.saveConfig(explicit);
+    assert.deepEqual((await service.getConfigById("opencode", explicit.id))?.openCodeSkills, []);
+  });
+});
+
+test("profile source validation precedes cleanup and rejected saves leave valid disk profiles unchanged", async () => {
+  await withProfileFixture(async ({ service, file }) => {
+    const { createDshExampleProfileText } = require("../../cli/dshConfigModels") as typeof import("../../cli/dshConfigModels");
+    for (const platform of ["claude", "codex", "opencode", "grok", "dsh", "kimi-code", "zcode"] as const) {
+      const source = platform === "dsh" ? createDshExampleProfileText() : "";
+      const valid = normalizationProfile(platform, { content: source, configContent: source });
+      await service.saveConfig(valid);
+      const before = await fs.readFile(file(platform, valid.id), "utf8");
+      const broken = platform === "codex" || platform === "grok" || platform === "kimi-code" ? 'model = "unterminated' : "{broken";
+      for (const fields of [{ content: broken, configContent: broken }, { mcpContent: "{broken" }]) {
+        const input = { ...valid, ...fields, geminiSkills: [] };
+        const snapshot = structuredClone(input);
+        await assert.rejects(service.saveConfig(input), /格式错误/);
+        assert.deepEqual(input, snapshot);
+        assert.equal(await fs.readFile(file(platform, valid.id), "utf8"), before);
+      }
+    }
+    const input = normalizationProfile("codex", { content: 'model = "stale"', configContent: "" });
+    await service.saveConfig(input);
+    const saved = JSON.parse(await fs.readFile(file("codex", input.id), "utf8"));
+    assert.equal(saved.content, "");
+    assert.equal(saved.configContent, "");
+  });
+});
+
+test("profile save keeps commit rejection and OpenCode model-validation exceptions before writing", async () => {
+  await withProfileFixture(async ({ service, file }) => {
+    const { createDshExampleProfileText } = require("../../cli/dshConfigModels") as typeof import("../../cli/dshConfigModels");
+    for (const [platform, source, invalid, error] of [
+      ["dsh", createDshExampleProfileText(), "{}", /DSH/],
+      ["kimi-code", "", 'default_permission_mode = "never"\n', /default_permission_mode 无效/],
+    ] as const) {
+      const valid = normalizationProfile(platform, { content: source, configContent: source });
+      await service.saveConfig(valid);
+      const before = await fs.readFile(file(platform, valid.id), "utf8");
+      await assert.rejects(service.saveConfig({ ...valid, content: invalid, configContent: invalid }), error);
+      assert.equal(await fs.readFile(file(platform, valid.id), "utf8"), before);
+    }
+    const compatible = JSON.stringify({ provider: { fixture: {
+      npm: "@ai-sdk/openai-compatible", options: { baseURL: "https://fixture.invalid/api" },
+      models: { fixture: { name: "Fixture" } },
+    } } });
+    const issues = service.validateOpenCodeConfigForRun(compatible, undefined).issues.map((issue) => issue.code);
+    assert.ok(issues.includes("role-model-missing"));
+    assert.ok(issues.includes("openai-compatible-base-url-missing-v1"));
+    const input = normalizationProfile("opencode", { content: compatible, geminiSkills: [] });
+    await service.saveConfig(input);
+    const before = await fs.readFile(file("opencode", input.id), "utf8");
+    await assert.rejects(service.saveConfig({ ...input, content: '{"model":"missing/model"}' }));
+    assert.equal(await fs.readFile(file("opencode", input.id), "utf8"), before);
+  });
+});
 
 test("native reads do not create config files and fingerprints change with profile, settings or auth", async () => {
   await withTempHome(async (homeDir) => {
