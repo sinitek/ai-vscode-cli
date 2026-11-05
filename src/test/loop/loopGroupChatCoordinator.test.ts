@@ -561,6 +561,7 @@ test("asks the current main model session and shows the answer without supplemen
     const notices: string[] = [];
     const questions: string[] = [];
     const savedThreads: string[] = [];
+    let mainModelBusy = true;
     let supplementalCount = 0;
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
@@ -586,7 +587,7 @@ test("asks the current main model session and shows the answer without supplemen
       resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "codex" }),
       revealPanelView: async () => undefined,
       switchVisibleConversationTabForLoop: async () => undefined,
-      isTabRunActive: () => true,
+      isTabRunActive: () => mainModelBusy,
       getActiveConfigIdForCli: () => "current-config",
       getSelectedCliModel: () => "current-model",
       runLoopPrompt: async () => undefined,
@@ -630,7 +631,20 @@ test("asks the current main model session and shows the answer without supplemen
     await coordinator.open(task.id);
     const installedHtml = webview.html;
     assert.match(installedHtml, /上次的问题/u);
+    assert.match(installedHtml, /id="askChatSend"[^>]*disabled/u);
     messageHandler?.({ type: "loopGroupChatChat:domReady", generation: 1 });
+    const savedCount = savedThreads.length;
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "忙碌时不应发送" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(questions, []);
+    assert.equal(savedThreads.length, savedCount);
+    const panelWhileBusy = deps.panelsByTaskId.get(task.id);
+    assert.equal(panelWhileBusy?.getState()?.mainModelBusy, true);
+    assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题"]);
+    assert.equal(panelWhileBusy?.getAskThread().running, false);
+    mainModelBusy = false;
+    await coordinator.refresh(task.id);
+    assert.equal(panelWhileBusy?.getState()?.mainModelBusy, false);
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(questions, ["可以合并吗"]);
@@ -656,6 +670,12 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(panel?.getAskThread().dialogOpen, false);
     assert.match(panel?.getAskThread().messages.map((message) => message.content).join("\n") ?? "", /上次的问题/u);
     assert.match(panel?.getAskThread().messages.map((message) => message.content).join("\n") ?? "", /可以先合并冲突文件。/u);
+    mainModelBusy = true;
+    messageHandler?.({ type: "loopGroupChatChat:openAskDialog" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(panel?.getState()?.mainModelBusy, true);
+    assert.equal(panel?.getAskThread().dialogOpen, true);
+    assert.deepEqual(questions, ["可以合并吗"]);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }

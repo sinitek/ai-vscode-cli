@@ -181,6 +181,7 @@ export class LoopGroupChatPanel {
 
 export type LoopGroupChatPanelContentPatch = {
   type: "loopGroupChatChat:contentPatch";
+  mainModelBusy: boolean;
   generation: number;
   headingText: string;
   subtitleText: string;
@@ -201,6 +202,7 @@ export function buildLoopGroupChatPanelContentPatch(
   const transcript = parseLoopGroupChatTranscript(state.chatMarkdown);
   return {
     type: "loopGroupChatChat:contentPatch",
+    mainModelBusy: state.mainModelBusy === true,
     generation,
     headingText: state.loopPlus ? strings.titleLoopPlus : strings.title,
     subtitleText: `${getPanelSubtitle(state, strings)} · ${state.task.id}`,
@@ -279,7 +281,7 @@ ${renderPanelDialog({
           label: strings.askAnswerClose,
           className: "icon-button ask-chat-close",
         }),
-        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${askThread.running ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
+        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}" aria-describedby="askChatBusy"${askThread.running || state.mainModelBusy ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
       ${state.loopPlus ? renderGroupAcceptancePlanDialogs() : ""}
@@ -343,6 +345,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const askChatForm = document.getElementById("askChatForm");
 	      const askChatInput = document.getElementById("askChatInput");
 	      const askChatSend = document.getElementById("askChatSend");
+	      const askChatBusy = document.getElementById("askChatBusy");
 	      const askChatAbort = document.getElementById("askChatAbort");
 	      const askChatClose = document.getElementById("askChatClose");
 	      const scrollToBottomWrap = document.getElementById("scrollToBottomWrap");
@@ -359,6 +362,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let dialogStateRestored = false;
 	      let askDialogOpen = ${askThread.dialogOpen ? "true" : "false"};
 	      let askThread = ${embedJson(askThread)};
+	      let mainModelBusy = ${state.mainModelBusy === true};
 	      let communicationPreviewOpen = false;
 	      let communicationPreviewSeq = 0;
 
@@ -680,9 +684,21 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          ? messages.map(renderAskBubble).join("") + waiting
 	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>");
 	        askChatMessages.scrollTop = stickToBottom ? askChatMessages.scrollHeight : previousTop;
+	        updateAskAvailability();
+	      }
+
+	      function updateAskAvailability() {
 	        const running = Boolean(askThread && askThread.running);
 	        if (askChatSend) {
-	          askChatSend.disabled = running;
+	          askChatSend.disabled = running || mainModelBusy;
+	          if (mainModelBusy && !running) {
+	            askChatSend.setAttribute("aria-describedby", "askChatBusy");
+	          } else {
+	            askChatSend.removeAttribute("aria-describedby");
+	          }
+	        }
+	        if (askChatBusy) {
+	          askChatBusy.hidden = !mainModelBusy || running;
 	        }
 	        if (askChatAbort) {
 	          askChatAbort.hidden = !running;
@@ -753,7 +769,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function submitAskChat() {
-	        if (!askChatInput || (askThread && askThread.running)) {
+	        if (!askChatInput || mainModelBusy || (askThread && askThread.running)) {
 	          return;
 	        }
 	        const prompt = askChatInput.value.trim();
@@ -1037,6 +1053,8 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return true;
 	        }
 	        appliedPatchGeneration = generation;
+	        mainModelBusy = message.mainModelBusy === true;
+	        updateAskAvailability();
 	        const heading = document.getElementById("panelHeading");
 	        if (heading && typeof message.headingText === "string") {
 	          heading.textContent = message.headingText;

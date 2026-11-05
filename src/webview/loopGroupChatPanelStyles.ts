@@ -159,7 +159,7 @@ ${DIALOG_SHELL_STYLES}
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
         border-radius: 16px 16px 4px 16px;
         padding: 10px 14px;
-        white-space: pre-wrap;
+        white-space: normal;
         overflow-wrap: anywhere;
       }
       .ask-chat-message.assistant .ask-chat-bubble,
@@ -170,8 +170,14 @@ ${DIALOG_SHELL_STYLES}
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
         border-radius: var(--radius);
         padding: 12px;
-        white-space: pre-wrap;
+        white-space: normal;
         overflow-wrap: anywhere;
+      }
+      .ask-chat-bubble.markdown-body > :first-child {
+        margin-top: 0;
+      }
+      .ask-chat-bubble.markdown-body > :last-child {
+        margin-bottom: 0;
       }
       .ask-chat-message.waiting {
         justify-content: flex-start;
@@ -208,6 +214,15 @@ ${DIALOG_SHELL_STYLES}
         align-items: center;
         gap: 8px;
         margin-top: 8px;
+      }
+      .ask-chat-busy {
+        min-width: 0;
+        color: var(--vscode-errorForeground);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .ask-chat-actions .icon-button {
+        flex-shrink: 0;
       }
       .ask-chat-dialog .icon-button {
         width: 26px;

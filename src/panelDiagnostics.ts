@@ -859,6 +859,7 @@ export function buildLoopGroupChatPanelState(
   return {
     ...state,
     ...acceptancePlanState,
+    mainModelBusy: Boolean(target && deps.isTabRunActive(target.tabId)),
     continueModels: {
       original: originalModels,
       current: resolveCurrentLoopModelPair({
@@ -1197,6 +1198,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     if (current.running) {
       return;
     }
+    const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
+    if (target && deps.isTabRunActive(target.tabId)) {
+      await refresh(task.id);
+      return;
+    }
     const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
     const run = { aborted: false };
     askRuns.set(task.id, run);
@@ -1421,6 +1427,9 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         message.type === "loopGroupChatChat:openAskDialog",
         Date.now(),
       ), "remember");
+      if (message.type === "loopGroupChatChat:openAskDialog") {
+        await refresh(task.id);
+      }
       return;
     }
     if (message.type === "loopGroupChatChat:stopTask") {

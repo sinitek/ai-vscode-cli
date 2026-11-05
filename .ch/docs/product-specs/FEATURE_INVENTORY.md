@@ -421,6 +421,12 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
 
+## 2026-11-05 向主模型提问弹窗忙碌提示
+
+Loop / Loop+ 的“向主模型提问”弹窗按主模型 Tab 的实际运行状态控制发送，而不是按整个任务是否运行判断。主模型忙碌时禁用发送，发送按钮左侧显示主题错误色文字“主模型忙，正在处理任务，请稍后”；不新增用户或系统气泡，不写入提问历史，输入框仍可编辑并保留草稿。打开弹窗时重新检查状态，后续局部刷新自动同步忙碌与空闲，空闲后恢复发送；Ctrl/⌘+Enter 快捷键提交和宿主侧请求同样执行忙碌校验。自身提问回答期间继续显示等待动画和中止按钮，不误报为其他任务占用。用户 Markdown 气泡不再保留生成 HTML 的尾部换行，并清除首尾块外边距，保留多段内容和代码缩进。
+
+实现：`src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelTypes.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/webview/loopGroupChatPanelStyles.ts`；验证：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/core/panelDiagnostics.test.js`；headless Chromium 桌面与窄屏验证忙碌提示、气泡尺寸和状态切换。
+
 ## 2026-11-05 Loop+ 阻塞复核与分层完成提示
 
 Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；发现安全、独立的工作时继续派发，复核后仍无可执行工作才暂停。待复核状态持久化并抑制无进展重复；新用户补充或真实调度/验收进展可重新开启一次。暂停原因和恢复条件进入主聊天、主任务沟通文件与群聊 transcript。主任务单次调用与子任务结束不再显示整体完成，父任务持久化完成后才给出最终完成提示。

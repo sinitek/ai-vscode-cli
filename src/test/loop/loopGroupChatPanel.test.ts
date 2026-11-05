@@ -8,6 +8,7 @@ installVscodeMock();
 
 const {
   buildLoopGroupChatPanelHtml: buildLoopGroupChatPanelHtmlImpl,
+  buildLoopGroupChatPanelContentPatch,
   LoopGroupChatPanel,
 } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 const {
@@ -993,6 +994,72 @@ test("renders the main-task clarification form in the group chat and pauses auto
     createState(),
   );
   assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
+});
+
+test("shows a busy notice beside the disabled send button without adding a bubble", () => {
+  const state = createState({ mainModelBusy: true });
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.match(html, /id="askChatBusy" class="ask-chat-busy" role="status">主模型忙，正在处理任务，请稍后<\/span><button id="askChatSend"[^>]*disabled/u);
+  assert.doesNotMatch(html, /id="askChatInput"[^>]*disabled/u);
+  assert.match(html, /\.ask-chat-busy\s*\{[^}]*color: var\(--vscode-errorForeground\)/u);
+  assert.equal(buildLoopGroupChatPanelContentPatch(state, 1).mainModelBusy, true);
+  assert.equal(buildLoopGroupChatPanelContentPatch(createState(), 2).mainModelBusy, false);
+});
+
+test("keeps Markdown bubble edges compact without preserving generated HTML newlines", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  assert.match(html, /\.ask-chat-message\.user \.ask-chat-bubble\s*\{[^}]*white-space: normal/u);
+  assert.match(html, /\.ask-chat-bubble\.markdown-body > :first-child\s*\{\s*margin-top: 0;/u);
+  assert.match(html, /\.ask-chat-bubble\.markdown-body > :last-child\s*\{\s*margin-bottom: 0;/u);
+});
+
+test("updates ask availability from live patches and blocks submission without losing the draft", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const availability = html.slice(html.indexOf("function updateAskAvailability"), html.indexOf("function applyAskThread"));
+  const submit = html.slice(html.indexOf("function submitAskChat"), html.indexOf("function restoreAskDialogState"));
+  const patch = html.slice(html.indexOf("function applyContentPatch"), html.indexOf("function startAutoRefresh"));
+  const sent: unknown[] = [];
+  const context = vm.createContext({
+    mainModelBusy: false,
+    askThread: { running: false },
+    askChatInput: { disabled: false, value: "  请检查结果  ", focus: () => undefined },
+    askChatSend: {
+      disabled: false,
+      setAttribute: () => undefined,
+      removeAttribute: () => undefined,
+    },
+    askChatAbort: { hidden: true },
+    askChatBusy: { hidden: true },
+    appliedPatchGeneration: 1,
+    mainElement: null,
+    document: { getElementById: () => null },
+    replaceHtml: () => undefined,
+    isNearBottom: () => true,
+    applyClarificationPatch: () => undefined,
+    replaceContinueModelChoice: () => undefined,
+    saveAskDialogState: () => undefined,
+    vscode: { postMessage: (message: unknown) => sent.push(message) },
+  });
+  vm.runInContext(`${availability}\n${submit}\n${patch}`, context);
+  vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 2, mainModelBusy: true }); submitAskChat();', context);
+  assert.equal(context.askChatSend.disabled, true);
+  assert.equal(context.askChatBusy.hidden, false);
+  assert.equal(context.askChatInput.disabled, false);
+  assert.equal(context.askChatInput.value, "  请检查结果  ");
+  assert.deepEqual(sent, []);
+  vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 1, mainModelBusy: false });', context);
+  assert.equal(context.askChatSend.disabled, true);
+  vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 3, mainModelBusy: false }); submitAskChat();', context);
+  assert.equal(context.askChatSend.disabled, false);
+  assert.equal(context.askChatBusy.hidden, true);
+  assert.equal(context.askChatInput.value, "");
+  assert.equal(JSON.stringify(sent), JSON.stringify([{ type: "loopGroupChatChat:askMainModel", prompt: "请检查结果" }]));
+  vm.runInContext('mainModelBusy = true; askThread.running = true; askChatInput.value = "下一问"; updateAskAvailability(); submitAskChat();', context);
+  assert.equal(context.askChatInput.disabled, true);
+  assert.equal(context.askChatSend.disabled, true);
+  assert.equal(context.askChatBusy.hidden, true);
+  assert.equal(context.askChatAbort.hidden, false);
+  assert.equal(sent.length, 1);
 });
 
 test("renders a persistent ask chat with a waiting indicator and can publish updates", () => {

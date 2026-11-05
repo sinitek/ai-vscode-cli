@@ -22,6 +22,7 @@ const STRINGS = {
     askChatEmpty: "还没有提问。在下方输入后发送。",
     askChatPlaceholder: "输入要问主模型的问题",
     askChatSend: "发送",
+    askChatBusy: "主模型忙，正在处理任务，请稍后",
     askChatAbort: "中止",
     askChatWaiting: "正在回答",
     continueDialogTitle: "继续 Loop 任务",
