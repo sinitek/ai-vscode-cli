@@ -209,7 +209,8 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
-  if (message.key === "humanInteractionNotifications" || message.key === "taskCompletionNotifications") {
+  if (message.key === "humanInteractionNotifications" || message.key === "taskCompletionNotifications"
+    || message.key === "humanInteractionWindowAttention" || message.key === "taskCompletionWindowAttention") {
     try {
       if (typeof message.value === "boolean" && deps.updateNotificationSetting) {
         await deps.updateNotificationSetting(message.key, message.value);

@@ -125,16 +125,23 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   const state = buildPanelStateWithDeps(deps);
   assert.equal(state.taskCompletionNotifications, true);
   assert.equal(state.humanInteractionNotifications, true);
+  assert.equal(state.taskCompletionWindowAttention, true);
+  assert.equal(state.humanInteractionWindowAttention, true);
   for (const settings of [
     { taskCompletionNotifications: false, humanInteractionNotifications: true },
     { taskCompletionNotifications: true, humanInteractionNotifications: false },
     { taskCompletionNotifications: false, humanInteractionNotifications: false },
+    { taskCompletionWindowAttention: false, humanInteractionWindowAttention: true },
+    { taskCompletionWindowAttention: true, humanInteractionWindowAttention: false },
+    { taskCompletionWindowAttention: false, humanInteractionWindowAttention: false },
   ]) {
     deps.getWorkspaceConfiguration = () => ({ get: <T>(key: string, fallback?: T) =>
       key in settings ? settings[key as keyof typeof settings] as T : fallback });
     const notificationState = buildPanelStateWithDeps(deps);
-    assert.equal(notificationState.taskCompletionNotifications, settings.taskCompletionNotifications);
-    assert.equal(notificationState.humanInteractionNotifications, settings.humanInteractionNotifications);
+    assert.equal(notificationState.taskCompletionNotifications, settings.taskCompletionNotifications !== false);
+    assert.equal(notificationState.humanInteractionNotifications, settings.humanInteractionNotifications !== false);
+    assert.equal(notificationState.taskCompletionWindowAttention, settings.taskCompletionWindowAttention !== false);
+    assert.equal(notificationState.humanInteractionWindowAttention, settings.humanInteractionWindowAttention !== false);
   }
   assert.deepEqual(state.openCodeThinking, openCodeThinking);
   assert.equal(state.openCodeModels?.selectedPrimaryRef, "gateway/model");

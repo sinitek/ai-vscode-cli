@@ -58,7 +58,7 @@ test("渲染简洁准确的中文模式说明", () => {
   assert.deepEqual([...chinese.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]), descriptions);
 });
 
-test("使用说明仅保留模式说明，通知授权和两个默认开启的开关位于工具设置", () => {
+test("使用说明仅保留模式说明，通知授权和四个默认开启的开关位于工具设置", () => {
   const chineseHtml = buildHtml();
 
   for (const html of [chineseHtml]) {
@@ -69,15 +69,21 @@ test("使用说明仅保留模式说明，通知授权和两个默认开启的�
     assert.match(html, /id="toolSettingsNotificationsPanel"[^>]*hidden/);
     assert.match(html, /id="taskCompletionNotifications"[^>]*checked/);
     assert.match(html, /id="humanInteractionNotifications"[^>]*checked/);
+    assert.match(html, /id="taskCompletionWindowAttention"[^>]*aria-labelledby="taskCompletionWindowAttentionLabel"[^>]*checked/);
+    assert.match(html, /id="humanInteractionWindowAttention"[^>]*aria-labelledby="humanInteractionWindowAttentionLabel"[^>]*checked/);
     assert.ok(html.indexOf('id="toolSettingsNotificationsPanel"') < html.indexOf('id="humanInteractionNotifications"'));
     assert.ok(html.indexOf('id="authorizeNotifications"') < html.indexOf('id="helpOverlay"'));
     assert.match(html, /任务完成通知/);
     assert.match(html, /人机交互通知/);
+    assert.match(html, /任务完成图标闪烁/);
+    assert.match(html, /人机交互图标闪烁/);
+    assert.match(html, /id="helpNotificationWindows"[^>]*hidden/);
+    assert.match(html, /id="helpNotificationLinux"[^>]*hidden/);
     assert.match(html, /id="helpNotificationMac" hidden/);
     assert.match(html, /id="authorizeNotifications"[^>]*disabled/);
     assert.match(html, /id="notificationAuthorizationStatus" role="status" aria-live="polite"/);
     assert.match(html, /系统设置 → 通知 → 携宁 CLI 提醒/);
-    assert.match(html, /选择“不允许”后不会反复弹出/);
+    assert.match(html, /拒绝后不再自动弹窗/);
     assert.doesNotMatch(html, /helpTabInstall|helpPanelInstall|npm i(?:nstall)? -g|winget install|移除系统环境变量配置/);
     assert.doesNotMatch(html, /help-section[^>]*style=/);
     const selects = interactiveModeSelects(html);

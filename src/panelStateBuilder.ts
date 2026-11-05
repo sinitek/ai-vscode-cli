@@ -204,6 +204,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
     humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
     taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
+    humanInteractionWindowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
+    taskCompletionWindowAttention: config.get<boolean>("taskCompletionWindowAttention", true),
     cliEnabledByName: normalizeCliEnabledByName(deps.getCliEnabledByName?.()) ?? {},
     humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),

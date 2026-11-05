@@ -23,10 +23,15 @@ function harness() {
     toolSettingsNotificationsTab: element(), toolSettingsNotificationsPanel: element(),
     toolSettingsRepairTab: element(), toolSettingsRepairPanel: element(),
     taskCompletionNotifications: element(), humanInteractionNotifications: element(),
+    taskCompletionWindowAttention: element(), humanInteractionWindowAttention: element(),
+    helpNotificationWindows: element(), helpNotificationLinux: element(),
     helpNotificationMac: element(), notificationAuthorizationStatus: element(), authorizeNotifications: element(), refreshNotificationAuthorization: element(),
   };
   const messages: Array<{ type: string; action?: string; requestId: number; key?: string; value?: boolean }> = [];
-  const state: Record<string, boolean> = { taskCompletionNotifications: true, humanInteractionNotifications: true };
+  const state: Record<string, boolean> = {
+    taskCompletionNotifications: true, humanInteractionNotifications: true,
+    taskCompletionWindowAttention: true, humanInteractionWindowAttention: true,
+  };
   let timeout: (() => void) | undefined;
   const context = vm.createContext({
     elements, state, i18n: getWebviewStrings(), vscode: { postMessage: (message: typeof messages[number]) => messages.push(message) },
@@ -82,7 +87,23 @@ test("工具设置支持鼠标、方向键及 Home/End 切换五个页签", () =
   assert.equal(env.elements.toolSettingsGeneralPanel.hidden, false);
 });
 
-test("两个通知开关默认开启且只发送各自配置更新", () => {
+test("通知和图标闪烁四项开关默认开启且独立更新", () => {
+  const keys = ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"] as const;
+  for (const key of keys) {
+    const env = harness();
+    for (const setting of keys) assert.equal(env.state[setting], true);
+    env.elements[key].listeners.change({ target: { checked: false } });
+    for (const setting of keys) assert.equal(env.state[setting], setting !== key);
+    env.elements[key].listeners.change({ target: { checked: true } });
+    assert.equal(env.state[key], true);
+    assert.deepEqual(env.messages.map(({ type, key, value }) => ({ type, key, value })), [
+      { type: "updateSetting", key, value: false },
+      { type: "updateSetting", key, value: true },
+    ]);
+  }
+});
+
+test("两个通知开关只发送各自配置更新", () => {
   const env = harness();
   assert.equal(env.state.taskCompletionNotifications, true);
   assert.equal(env.state.humanInteractionNotifications, true);
@@ -105,14 +126,16 @@ test("通知开关回显真实配置，缺省开启并可恢复保存失败后�
   const source = VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE;
   const start = source.indexOf("state.humanInteractionNotifications =");
   const end = source.indexOf("state.cliEnabledByName =", start);
-  const render = source.indexOf('["humanInteractionNotifications", "taskCompletionNotifications"].forEach');
+  const render = source.indexOf('["humanInteractionNotifications", "taskCompletionNotifications", "humanInteractionWindowAttention", "taskCompletionWindowAttention"].forEach');
   const renderEnd = source.indexOf("});", render) + 3;
-  for (const panelState of [{}, { taskCompletionNotifications: false, humanInteractionNotifications: true },
-    { taskCompletionNotifications: true, humanInteractionNotifications: false }]) {
+  const keys = ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"] as const;
+  const configurations: Partial<Record<typeof keys[number], boolean>>[] = [
+    {}, ...keys.map((key) => ({ [key]: false })), Object.fromEntries(keys.map((key) => [key, false])), {},
+  ];
+  for (const panelState of configurations) {
     env.context.panelState = panelState;
     vm.runInContext(source.slice(start, end) + source.slice(render, renderEnd), env.context);
-    assert.equal(env.elements.taskCompletionNotifications.checked, panelState.taskCompletionNotifications !== false);
-    assert.equal(env.elements.humanInteractionNotifications.checked, panelState.humanInteractionNotifications !== false);
+    for (const key of keys) assert.equal(env.elements[key].checked, panelState[key] !== false);
   }
 });
 
@@ -122,6 +145,8 @@ test("Mac permission statuses provide correct actions and Linux hides authorizat
     env.api.requestNotificationAuthorization(false);
     env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "darwin", status } });
     assert.equal(env.elements.helpNotificationMac.hidden, false);
+    assert.equal(env.elements.helpNotificationWindows.hidden, true);
+    assert.equal(env.elements.helpNotificationLinux.hidden, true);
     assert.equal(env.elements.authorizeNotifications.hidden, false);
     assert.equal(env.elements.authorizeNotifications.disabled, status === "unavailable");
     assert.equal(env.elements.authorizeNotifications.textContent, ["authorized", "denied", "disabled"].includes(status) ? "打开系统通知设置" : "授权通知");
@@ -130,6 +155,8 @@ test("Mac permission statuses provide correct actions and Linux hides authorizat
   env.api.requestNotificationAuthorization(false);
   env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "linux", status: "not-required" } });
   assert.equal(env.elements.helpNotificationMac.hidden, true);
+  assert.equal(env.elements.helpNotificationWindows.hidden, true);
+  assert.equal(env.elements.helpNotificationLinux.hidden, false);
   assert.equal(env.elements.authorizeNotifications.hidden, true);
   assert.match(OVERLAYS_MODALS_STYLES, /#authorizeNotifications\[hidden\]\s*\{\s*display:\s*none;/);
   assert.equal(env.elements.authorizeNotifications.disabled, true);
@@ -141,6 +168,8 @@ test("Windows offers system notification settings for enabled, disabled and unav
     env.api.requestNotificationAuthorization(false);
     env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "win32", status, detail: `Windows: ${status}` } });
     assert.equal(env.elements.helpNotificationMac.hidden, true);
+    assert.equal(env.elements.helpNotificationWindows.hidden, false);
+    assert.equal(env.elements.helpNotificationLinux.hidden, true);
     assert.equal(env.elements.authorizeNotifications.hidden, false);
     assert.equal(env.elements.authorizeNotifications.disabled, false);
     assert.equal(env.elements.authorizeNotifications.textContent, "打开系统通知设置");

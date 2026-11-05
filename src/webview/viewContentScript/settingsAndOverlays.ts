@@ -403,7 +403,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       });
       setToolSettingsTab("general");
-      ["taskCompletionNotifications", "humanInteractionNotifications"].forEach((key) => {
+      ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"].forEach((key) => {
         if (!elements[key]) return;
         elements[key].addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
@@ -613,6 +613,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         if (authorization.platform) {
           notificationAuthorizationPlatform = authorization.platform;
           elements.helpNotificationMac.hidden = authorization.platform !== "darwin";
+          elements.helpNotificationWindows.hidden = authorization.platform !== "win32";
+          elements.helpNotificationLinux.hidden = authorization.platform !== "linux";
           elements.authorizeNotifications.hidden = !["darwin", "win32"].includes(authorization.platform);
         }
         const labels = {

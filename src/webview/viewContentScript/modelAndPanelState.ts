@@ -608,6 +608,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
         state.humanInteractionNotifications = panelState.humanInteractionNotifications !== false;
         state.taskCompletionNotifications = panelState.taskCompletionNotifications !== false;
+        state.humanInteractionWindowAttention = panelState.humanInteractionWindowAttention !== false;
+        state.taskCompletionWindowAttention = panelState.taskCompletionWindowAttention !== false;
         state.cliEnabledByName = panelState && panelState.cliEnabledByName && typeof panelState.cliEnabledByName === "object"
           ? panelState.cliEnabledByName
           : {};
@@ -677,7 +679,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.humanInteractionEnabled) {
           elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;
         }
-        ["humanInteractionNotifications", "taskCompletionNotifications"].forEach((key) => {
+        ["humanInteractionNotifications", "taskCompletionNotifications", "humanInteractionWindowAttention", "taskCompletionWindowAttention"].forEach((key) => {
           if (elements[key]) elements[key].checked = state[key];
         });
         if (elements.humanInteractionTimeoutMinutes) {

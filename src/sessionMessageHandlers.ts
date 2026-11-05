@@ -66,7 +66,7 @@ export type ConversationTabRecordForPanel = {
 };
 
 export type PanelMessageHandlerDeps = {
-  updateNotificationSetting?: (key: "humanInteractionNotifications" | "taskCompletionNotifications", enabled: boolean) => PromiseLike<void>;
+  updateNotificationSetting?: (key: "humanInteractionNotifications" | "taskCompletionNotifications" | "humanInteractionWindowAttention" | "taskCompletionWindowAttention", enabled: boolean) => PromiseLike<void>;
   ensureWorkspaceSessionStore: () => void;
   postPanelState: () => Promise<void>;
   reconcileRunningConversationTabs?: () => void;

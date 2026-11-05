@@ -728,9 +728,23 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   </label>
                 </div>
                 <div class="tool-settings-row">
+                  <div id="taskCompletionWindowAttentionLabel" class="tool-settings-label">${i18n.toolSettingsTaskCompletionWindowAttentionLabel}</div>
+                  <label class="debug-toggle">
+                    <input type="checkbox" id="taskCompletionWindowAttention" aria-labelledby="taskCompletionWindowAttentionLabel" checked />
+                    <span>${i18n.toolSettingsDebugToggle}</span>
+                  </label>
+                </div>
+                <div class="tool-settings-row">
                   <div id="humanInteractionNotificationsLabel" class="tool-settings-label">${i18n.toolSettingsHumanInteractionNotificationsLabel}</div>
                   <label class="debug-toggle">
                     <input type="checkbox" id="humanInteractionNotifications" aria-labelledby="humanInteractionNotificationsLabel" checked />
+                    <span>${i18n.toolSettingsDebugToggle}</span>
+                  </label>
+                </div>
+                <div class="tool-settings-row">
+                  <div id="humanInteractionWindowAttentionLabel" class="tool-settings-label">${i18n.toolSettingsHumanInteractionWindowAttentionLabel}</div>
+                  <label class="debug-toggle">
+                    <input type="checkbox" id="humanInteractionWindowAttention" aria-labelledby="humanInteractionWindowAttentionLabel" checked />
                     <span>${i18n.toolSettingsDebugToggle}</span>
                   </label>
                 </div>
@@ -748,8 +762,8 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   <p class="tool-settings-note">${i18n.helpNotificationMacGuide}</p>
                   <p class="tool-settings-note">${i18n.helpNotificationMacManual}</p>
                 </section>
-                <p class="tool-settings-note">${i18n.helpNotificationWindows}</p>
-                <p class="tool-settings-note">${i18n.helpNotificationLinux}</p>
+                <p id="helpNotificationWindows" class="tool-settings-note" hidden>${i18n.helpNotificationWindows}</p>
+                <p id="helpNotificationLinux" class="tool-settings-note" hidden>${i18n.helpNotificationLinux}</p>
               </section>
             </div>
             <div id="toolSettingsRepairPanel" class="tool-settings-panel tool-settings-panel-single" role="tabpanel" aria-labelledby="toolSettingsRepairTab">

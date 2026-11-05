@@ -380,6 +380,8 @@ export type PanelState = {
   humanInteractionEnabled: boolean;
   humanInteractionNotifications?: boolean;
   taskCompletionNotifications?: boolean;
+  humanInteractionWindowAttention?: boolean;
+  taskCompletionWindowAttention?: boolean;
   /** Explicit CLI availability. Missing names stay enabled. */
   cliEnabledByName?: Partial<Record<CliName, boolean>>;
   humanInteractionTimeoutMinutes: number;

@@ -102,6 +102,27 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
   return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions, authorizationCalls, authorizationState, opened, errors, globalState };
 }
 
+test("Windows 图标闪烁配置立即生效且不影响各类系统通知", async () => {
+  for (const key of ["humanInteractionWindowAttention", "taskCompletionWindowAttention"]) {
+    const env = hostHarness({ platform: "win32" });
+    const remind = (eventId: string) => key === "humanInteractionWindowAttention"
+      ? env.controller.request(eventId) : env.controller.taskCompleted(eventId);
+    await remind("first");
+    assert.deepEqual(env.events, ["notify", "start"]);
+    env.settings[key] = false;
+    env.configurationChanged(`sinitek-cli-tools.${key}`);
+    await env.controller.refresh();
+    assert.deepEqual(env.events, ["notify", "start", "stop"]);
+    await remind("second");
+    assert.deepEqual(env.events, ["notify", "start", "stop", "notify"]);
+    env.settings[key] = true;
+    env.configurationChanged(`sinitek-cli-tools.${key}`);
+    await env.controller.refresh();
+    assert.deepEqual(env.events, ["notify", "start", "stop", "notify", "start"]);
+    await env.controller.dispose();
+  }
+});
+
 test("Windows startup opens notification settings once across restarts and manual actions remain available", async () => {
   const env = hostHarness({ platform: "win32", status: "denied" });
   await new Promise<void>((resolve) => setImmediate(resolve));
