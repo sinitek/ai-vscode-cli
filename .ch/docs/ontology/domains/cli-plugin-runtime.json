@@ -1064,17 +1064,19 @@
     },
     {
       "id": "plugin.rule.notification_authorization_guidance",
-      "name": "Mac 首次自动授权与使用说明手动恢复",
-      "description": "本机 macOS 扩展启动或通知设置变更时，任一类系统通知开启才异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，远程宿主不调用本机工具。使用说明保留默认模式说明并增加通知授权页签，所有平台显示通知条件，Mac 单独展示状态和手动说明。未决定时按钮直接请求系统授权，已拒绝、已允许或关闭横幅时打开系统通知设置，由用户选择携宁 CLI 提醒；首次手动拒绝不立即跳转设置。刷新只查询，不申请、不投递。授权与两类通知共用稳定身份及串行助手，失败可重试，不持久缓存权限。",
-      "aliases": ["通知授权", "自动授权", "手动授权", "使用说明", "拒绝后不再弹窗", "macos-v5"],
+      "name": "Mac 首次自动授权与工具设置通知管理",
+      "description": "本机 macOS 扩展启动或通知设置变更时，任一类系统通知开启才异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，远程宿主不调用本机工具。使用说明仅保留模式说明，通知授权页签位于工具设置，所有平台显示通知条件，Mac 单独展示状态和手动说明。任务完成通知和人机交互通知两个开关均默认开启，读取并全局保存既有 application 配置，彼此独立且立即生效，保留已有选择；保存失败报错并回传真实状态，不影响窗口图标提醒或系统授权。未决定时按钮直接请求系统授权，已拒绝、已允许或关闭横幅时打开系统通知设置，由用户选择携宁 CLI 提醒；首次手动拒绝不立即跳转设置。刷新只查询，不申请、不投递。授权与两类通知共用稳定身份及串行助手，失败可重试，不持久缓存权限。",
+      "aliases": ["通知授权", "自动授权", "手动授权", "工具设置", "通知开关", "任务完成通知", "人机交互通知", "拒绝后不再弹窗", "macos-v5"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "通知授权引导与使用说明"},
-        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "通知授权引导与使用说明"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "通知授权与工具设置"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "通知授权与工具设置"},
         {"path": "src/macosDesktopNotifications.ts"},
         {"path": "src/desktopNotificationAuthorization.ts"},
         {"path": "src/extensionHost/humanInteractionAttentionHost.ts"},
+        {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/panelStateBuilder.ts"},
         {"path": "src/webview/viewProvider.ts"},
         {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"}
       ]

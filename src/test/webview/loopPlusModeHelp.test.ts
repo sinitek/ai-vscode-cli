@@ -44,7 +44,7 @@ function interactiveModeSelects(html: string): string[] {
 test("使用固定中文帮助文案", () => {
   assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
   assert.equal(WEBVIEW_STRINGS.helpModeVibe, "Vibe 模式，直接执行目标 cli 任务");
-  assert.equal(getWebviewStrings().helpTabModes, "模式说明");
+  assert.equal(getWebviewStrings().toolSettingsNotificationsTab, "通知授权");
 });
 
 test("渲染简洁准确的中文模式说明", () => {
@@ -58,15 +58,21 @@ test("渲染简洁准确的中文模式说明", () => {
   assert.deepEqual([...chinese.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]), descriptions);
 });
 
-test("使用说明默认选中模式说明并提供通知授权页签和 Mac 手动入口", () => {
+test("使用说明仅保留模式说明，通知授权和两个默认开启的开关位于工具设置", () => {
   const chineseHtml = buildHtml();
 
   for (const html of [chineseHtml]) {
     assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
-    assert.match(html, /id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes"/);
-    assert.match(html, /id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes"/);
-    assert.match(html, /id="helpTabNotifications" class="help-tab" role="tab" aria-selected="false" aria-controls="helpPanelNotifications" tabindex="-1"/);
-    assert.match(html, /id="helpPanelNotifications"[^>]*hidden/);
+    assert.match(html, /id="helpPanelModes" class="help-panel active"/);
+    assert.doesNotMatch(html, /helpTabModes|helpTabNotifications|helpPanelNotifications/);
+    assert.match(html, /id="toolSettingsNotificationsTab"[^>]*aria-controls="toolSettingsNotificationsPanel"/);
+    assert.match(html, /id="toolSettingsNotificationsPanel"[^>]*hidden/);
+    assert.match(html, /id="taskCompletionNotifications"[^>]*checked/);
+    assert.match(html, /id="humanInteractionNotifications"[^>]*checked/);
+    assert.ok(html.indexOf('id="toolSettingsNotificationsPanel"') < html.indexOf('id="humanInteractionNotifications"'));
+    assert.ok(html.indexOf('id="authorizeNotifications"') < html.indexOf('id="helpOverlay"'));
+    assert.match(html, /任务完成通知/);
+    assert.match(html, /人机交互通知/);
     assert.match(html, /id="helpNotificationMac" hidden/);
     assert.match(html, /id="authorizeNotifications"[^>]*disabled/);
     assert.match(html, /id="notificationAuthorizationStatus" role="status" aria-live="polite"/);

@@ -847,6 +847,37 @@ test("persists human interaction globally", async () => {
   assert.equal(calls.postPanelState, 1);
 });
 
+test("通知开关分别写入既有应用级配置，不修改工具或工作区设置", async () => {
+  const { deps, calls, state } = createSendPromptHarness();
+  const updates: Array<{ key: string; enabled: boolean }> = [];
+  deps.updateNotificationSetting = async (key, enabled) => { updates.push({ key, enabled }); };
+  for (const key of ["taskCompletionNotifications", "humanInteractionNotifications"]) {
+    await handlePanelMessageWithDeps({ type: "updateSetting", key, value: false }, deps);
+  }
+  assert.deepEqual(updates, [
+    { key: "taskCompletionNotifications", enabled: false },
+    { key: "humanInteractionNotifications", enabled: false },
+  ]);
+  assert.deepEqual(calls.toolSettingsPatches, []);
+  assert.deepEqual(state.workspaceSettings, {});
+  assert.deepEqual(calls.savedSettings, []);
+  assert.equal(calls.postPanelState, 2);
+});
+
+test("通知配置拒绝非布尔值并在保存失败后报错和回传真实状态", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const errors: unknown[] = [];
+  let attempts = 0;
+  deps.updateNotificationSetting = async () => { attempts += 1; throw new Error("只读配置"); };
+  deps.showWebviewError = (title, detail) => { errors.push({ title, detail }); };
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "taskCompletionNotifications", value: "false" }, deps);
+  assert.equal(attempts, 0);
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "humanInteractionNotifications", value: false }, deps);
+  assert.equal(attempts, 1);
+  assert.deepEqual(errors, [{ title: "通知设置", detail: "保存通知设置失败：只读配置" }]);
+  assert.equal(calls.postPanelState, 2);
+});
+
 test("ignores legacy Codex implicit-subagents updates when persistence is unavailable", async () => {
   const { deps, calls, state } = createSendPromptHarness();
   deps.updateStoredToolSettings = () => false;

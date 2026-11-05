@@ -203,6 +203,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     codeGraphInstalling: deps.codeGraphInstalling === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
+    humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
+    taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
     cliEnabledByName: normalizeCliEnabledByName(deps.getCliEnabledByName?.()) ?? {},
     humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),

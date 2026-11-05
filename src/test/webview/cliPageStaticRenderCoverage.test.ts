@@ -300,7 +300,10 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="configApplyErrorOverlay"',
     'id="configApplyErrorContent"',
     'id="helpOverlay"',
-    'id="helpTabModes"',
+    'id="toolSettingsNotificationsTab"',
+    'id="toolSettingsNotificationsPanel"',
+    'id="taskCompletionNotifications"',
+    'id="humanInteractionNotifications"',
     'id="helpPanelModes"',
     'id="helpPanelModes" class="help-panel active"',
   ]);
@@ -337,7 +340,7 @@ test("只渲染固定中文静态页面文案", () => {
   ]);
   assert.doesNotMatch(html, /AI Chat|automatic conflict resolution|没有自动解冲突/u);
   assert.doesNotMatch(html, /id="help(?:Tab|Panel)Install"/);
-  assert.match(html, /id="helpTabModes" class="help-tab active"/);
+  assert.doesNotMatch(html, /id="helpTab(?:Modes|Notifications)"/);
   assert.match(html, /id="helpPanelModes" class="help-panel active"/);
   assert.doesNotMatch(html, /按住 Shift|Shift while dragging|拖拽文件/);
 });

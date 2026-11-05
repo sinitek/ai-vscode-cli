@@ -1,38 +1,24 @@
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setToolSettingsTab(scope) {
-        const aiTask = scope === "aiTask";
-        const workspace = scope === "workspace";
-        const repair = scope === "repair";
-        const general = !aiTask && !workspace && !repair;
-        if (elements.toolSettingsGeneralTab) {
-          elements.toolSettingsGeneralTab.classList.toggle("active", general);
-          elements.toolSettingsGeneralTab.setAttribute("aria-selected", general ? "true" : "false");
-        }
-        if (elements.toolSettingsAiTaskTab) {
-          elements.toolSettingsAiTaskTab.classList.toggle("active", aiTask);
-          elements.toolSettingsAiTaskTab.setAttribute("aria-selected", aiTask ? "true" : "false");
-        }
-        if (elements.toolSettingsWorkspaceTab) {
-          elements.toolSettingsWorkspaceTab.classList.toggle("active", workspace);
-          elements.toolSettingsWorkspaceTab.setAttribute("aria-selected", workspace ? "true" : "false");
-        }
-        if (elements.toolSettingsRepairTab) {
-          elements.toolSettingsRepairTab.classList.toggle("active", repair);
-          elements.toolSettingsRepairTab.setAttribute("aria-selected", repair ? "true" : "false");
-        }
-        if (elements.toolSettingsGeneralPanel) {
-          elements.toolSettingsGeneralPanel.classList.toggle("active", general);
-        }
-        if (elements.toolSettingsAiTaskPanel) {
-          elements.toolSettingsAiTaskPanel.classList.toggle("active", aiTask);
-        }
-        if (elements.toolSettingsWorkspacePanel) {
-          elements.toolSettingsWorkspacePanel.classList.toggle("active", workspace);
-        }
-        if (elements.toolSettingsRepairPanel) {
-          elements.toolSettingsRepairPanel.classList.toggle("active", repair);
-        }
-        if (repair) {
+        const selected = ["aiTask", "workspace", "notifications", "repair"].includes(scope) ? scope : "general";
+        [["general", elements.toolSettingsGeneralTab, elements.toolSettingsGeneralPanel],
+          ["aiTask", elements.toolSettingsAiTaskTab, elements.toolSettingsAiTaskPanel],
+          ["workspace", elements.toolSettingsWorkspaceTab, elements.toolSettingsWorkspacePanel],
+          ["notifications", elements.toolSettingsNotificationsTab, elements.toolSettingsNotificationsPanel],
+          ["repair", elements.toolSettingsRepairTab, elements.toolSettingsRepairPanel]].forEach(([name, tab, panel]) => {
+          const active = name === selected;
+          if (tab) {
+            tab.classList.toggle("active", active);
+            tab.setAttribute("aria-selected", String(active));
+            tab.tabIndex = active ? 0 : -1;
+          }
+          if (panel) {
+            panel.classList.toggle("active", active);
+            panel.hidden = !active;
+          }
+        });
+        if (selected === "notifications") requestNotificationAuthorization(false);
+        if (selected === "repair") {
           requestCliRepairs();
         }
       }
@@ -401,19 +387,30 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
       }
 
-      if (elements.toolSettingsGeneralTab) {
-        elements.toolSettingsGeneralTab.addEventListener("click", () => setToolSettingsTab("general"));
-      }
-      if (elements.toolSettingsAiTaskTab) {
-        elements.toolSettingsAiTaskTab.addEventListener("click", () => setToolSettingsTab("aiTask"));
-      }
-      if (elements.toolSettingsWorkspaceTab) {
-        elements.toolSettingsWorkspaceTab.addEventListener("click", () => setToolSettingsTab("workspace"));
-      }
-      if (elements.toolSettingsRepairTab) {
-        elements.toolSettingsRepairTab.addEventListener("click", () => setToolSettingsTab("repair"));
-      }
+      const toolSettingsTabs = [["general", elements.toolSettingsGeneralTab], ["aiTask", elements.toolSettingsAiTaskTab],
+        ["workspace", elements.toolSettingsWorkspaceTab], ["notifications", elements.toolSettingsNotificationsTab],
+        ["repair", elements.toolSettingsRepairTab]];
+      toolSettingsTabs.forEach(([scope, tab], index) => {
+        if (!tab) return;
+        tab.addEventListener("click", () => setToolSettingsTab(scope));
+        tab.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? toolSettingsTabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + toolSettingsTabs.length) % toolSettingsTabs.length;
+          setToolSettingsTab(toolSettingsTabs[next][0]);
+          toolSettingsTabs[next][1].focus();
+        });
+      });
       setToolSettingsTab("general");
+      ["taskCompletionNotifications", "humanInteractionNotifications"].forEach((key) => {
+        if (!elements[key]) return;
+        elements[key].addEventListener("change", (event) => {
+          const enabled = Boolean(event.target.checked);
+          state[key] = enabled;
+          vscode.postMessage({ type: "updateSetting", key, value: enabled });
+        });
+      });
       if (elements.autoCompactContextAfterRun) {
         elements.autoCompactContextAfterRun.addEventListener("change", (event) => {
           const enabled = Boolean(event.target.checked);
@@ -612,7 +609,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.authorizeNotifications.disabled = true;
         elements.refreshNotificationAuthorization.disabled = true;
         elements.notificationAuthorizationStatus.textContent = request ? i18n.helpNotificationRequesting : i18n.helpNotificationLoading;
-        elements.helpPanelNotifications.setAttribute("aria-busy", "true");
+        elements.toolSettingsNotificationsPanel.setAttribute("aria-busy", "true");
         notificationAuthorizationTimer = setTimeout(() => {
           applyNotificationAuthorization({ requestId, payload: { status: "unavailable", detail: i18n.helpNotificationTimeout } });
         }, 70000);
@@ -637,28 +634,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           unavailable: i18n.helpNotificationUnavailable,
         };
         elements.notificationAuthorizationStatus.textContent = authorization.detail || labels[authorization.status] || i18n.helpNotificationUnavailable;
-        elements.helpPanelNotifications.setAttribute("aria-busy", "false");
+        elements.toolSettingsNotificationsPanel.setAttribute("aria-busy", "false");
         elements.authorizeNotifications.textContent = ["authorized", "denied", "disabled"].includes(authorization.status)
           ? i18n.helpNotificationOpenSettings : i18n.helpNotificationAuthorize;
         elements.authorizeNotifications.disabled = authorization.platform !== "darwin" || authorization.status === "unavailable";
         elements.refreshNotificationAuthorization.disabled = false;
       }
 
-      function setHelpTab(notifications) {
-        [[elements.helpTabModes, elements.helpPanelModes, !notifications],
-          [elements.helpTabNotifications, elements.helpPanelNotifications, notifications]].forEach(([tab, panel, active]) => {
-          if (!tab || !panel) return;
-          tab.classList.toggle("active", active);
-          tab.setAttribute("aria-selected", String(active));
-          tab.tabIndex = active ? 0 : -1;
-          panel.classList.toggle("active", active);
-          panel.hidden = !active;
-        });
-        if (notifications) requestNotificationAuthorization(false);
-      }
-
       function openHelp() {
-        setHelpTab(false);
         elements.helpOverlay.classList.add("visible");
       }
 
@@ -668,6 +651,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       function openToolSettings() {
         elements.toolSettingsOverlay.classList.add("visible");
+        if (elements.toolSettingsNotificationsTab && elements.toolSettingsNotificationsTab.getAttribute("aria-selected") === "true") requestNotificationAuthorization(false);
       }
 
       function closeToolSettings() {
@@ -1337,17 +1321,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         openHelp();
       });
 
-      [elements.helpTabModes, elements.helpTabNotifications].forEach((tab, index, tabs) => {
-        if (!tab) return;
-        tab.addEventListener("click", () => setHelpTab(index === 1));
-        tab.addEventListener("keydown", (event) => {
-          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-          event.preventDefault();
-          const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
-          setHelpTab(next === 1);
-          tabs[next].focus();
-        });
-      });
       if (elements.authorizeNotifications) {
         elements.authorizeNotifications.addEventListener("click", () => requestNotificationAuthorization(true));
         elements.refreshNotificationAuthorization.addEventListener("click", () => requestNotificationAuthorization(false));

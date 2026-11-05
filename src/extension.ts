@@ -1027,6 +1027,7 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
 
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
   await handlePanelMessageWithDeps(message, {
+    updateNotificationSetting: (key, enabled) => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).update(key, enabled, vscode.ConfigurationTarget.Global),
     ensureWorkspaceSessionStore,
     postPanelState,
     reconcileRunningConversationTabs,

@@ -77,11 +77,13 @@ export const TOAST_MISC_STYLES = `      /* Toast */
       }
       .tool-settings-tabs {
         display: flex;
+        overflow-x: auto;
         gap: 4px;
         padding: 0 16px;
         border-bottom: 1px solid var(--vscode-panel-border);
       }
       .tool-settings-tab {
+        flex-shrink: 0;
         background: transparent;
         border: none;
         border-bottom: 2px solid transparent;

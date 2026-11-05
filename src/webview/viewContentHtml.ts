@@ -567,6 +567,7 @@ ${renderChatModal({
             <button id="toolSettingsGeneralTab" class="tool-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="toolSettingsGeneralPanel">${i18n.toolSettingsGeneralTab}</button>
             <button id="toolSettingsAiTaskTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsAiTaskPanel">${i18n.toolSettingsAiTaskTab}</button>
             <button id="toolSettingsWorkspaceTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsWorkspacePanel">${i18n.toolSettingsWorkspaceTab}</button>
+            <button id="toolSettingsNotificationsTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsNotificationsPanel">${i18n.toolSettingsNotificationsTab}</button>
             <button id="toolSettingsRepairTab" class="tool-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="toolSettingsRepairPanel">${i18n.toolSettingsRepairTab}</button>
           </div>
           <div class="tool-settings-body">
@@ -726,6 +727,40 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   </label>
                 </div>
                 <div id="codeGraphNote" class="tool-settings-note">${i18n.toolSettingsInstallCodeGraphHint}</div>
+              </section>
+            </div>
+            <div id="toolSettingsNotificationsPanel" class="tool-settings-panel tool-settings-panel-single" role="tabpanel" aria-labelledby="toolSettingsNotificationsTab" hidden>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <div id="taskCompletionNotificationsLabel" class="tool-settings-label">${i18n.toolSettingsTaskCompletionNotificationsLabel}</div>
+                  <label class="debug-toggle">
+                    <input type="checkbox" id="taskCompletionNotifications" aria-labelledby="taskCompletionNotificationsLabel" checked />
+                    <span>${i18n.toolSettingsDebugToggle}</span>
+                  </label>
+                </div>
+                <div class="tool-settings-row">
+                  <div id="humanInteractionNotificationsLabel" class="tool-settings-label">${i18n.toolSettingsHumanInteractionNotificationsLabel}</div>
+                  <label class="debug-toggle">
+                    <input type="checkbox" id="humanInteractionNotifications" aria-labelledby="humanInteractionNotificationsLabel" checked />
+                    <span>${i18n.toolSettingsDebugToggle}</span>
+                  </label>
+                </div>
+                <p class="tool-settings-note">${i18n.helpNotificationOverview}</p>
+                <p class="tool-settings-note">${i18n.helpNotificationSettings}</p>
+              </section>
+              <section class="tool-settings-card">
+                <p id="notificationAuthorizationStatus" role="status" aria-live="polite">${i18n.helpNotificationLoading}</p>
+                <div class="notification-authorization-actions">
+                  <button id="authorizeNotifications" class="primary action-button" hidden disabled>${i18n.helpNotificationAuthorize}</button>
+                  <button id="refreshNotificationAuthorization" class="secondary action-button" disabled>${i18n.helpNotificationRefresh}</button>
+                </div>
+                <section id="helpNotificationMac" hidden aria-labelledby="helpNotificationMacTitle">
+                  <h3 id="helpNotificationMacTitle">${i18n.helpNotificationMacTitle}</h3>
+                  <p class="tool-settings-note">${i18n.helpNotificationMacGuide}</p>
+                  <p class="tool-settings-note">${i18n.helpNotificationMacManual}</p>
+                </section>
+                <p class="tool-settings-note">${i18n.helpNotificationWindows}</p>
+                <p class="tool-settings-note">${i18n.helpNotificationLinux}</p>
               </section>
             </div>
             <div id="toolSettingsRepairPanel" class="tool-settings-panel tool-settings-panel-single" role="tabpanel" aria-labelledby="toolSettingsRepairTab">
@@ -907,36 +942,12 @@ ${renderChatModal({
           label: i18n.helpClose,
           wrapperClassName: "session-actions",
         },
-        contentHtml: `          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
-            <button id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes">${i18n.helpTabModes}</button>
-            <button id="helpTabNotifications" class="help-tab" role="tab" aria-selected="false" aria-controls="helpPanelNotifications" tabindex="-1">${i18n.helpTabNotifications}</button>
-          </div>
-          <div id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes">
+        contentHtml: `          <div id="helpPanelModes" class="help-panel active">
             <div class="help-section">
               <ul>
                 <li>${i18n.helpModeVibe}</li>
                 <li>${i18n.helpModeLoop}</li>
                 <li>${i18n.helpModeLoopPlus}</li>
-              </ul>
-            </div>
-          </div>
-          <div id="helpPanelNotifications" class="help-panel" role="tabpanel" aria-labelledby="helpTabNotifications" hidden>
-            <div class="help-section">
-              <p>${i18n.helpNotificationOverview}</p>
-              <p id="notificationAuthorizationStatus" role="status" aria-live="polite">${i18n.helpNotificationLoading}</p>
-              <div class="notification-authorization-actions">
-                <button id="authorizeNotifications" class="primary action-button" hidden disabled>${i18n.helpNotificationAuthorize}</button>
-                <button id="refreshNotificationAuthorization" class="secondary action-button" disabled>${i18n.helpNotificationRefresh}</button>
-              </div>
-              <section id="helpNotificationMac" hidden aria-labelledby="helpNotificationMacTitle">
-                <h3 id="helpNotificationMacTitle">${i18n.helpNotificationMacTitle}</h3>
-                <p>${i18n.helpNotificationMacGuide}</p>
-                <p>${i18n.helpNotificationMacManual}</p>
-              </section>
-              <p>${i18n.helpNotificationSettings}</p>
-              <ul>
-                <li>${i18n.helpNotificationWindows}</li>
-                <li>${i18n.helpNotificationLinux}</li>
               </ul>
             </div>
           </div>

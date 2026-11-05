@@ -210,6 +210,17 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key === "humanInteractionNotifications" || message.key === "taskCompletionNotifications") {
+    try {
+      if (typeof message.value === "boolean" && deps.updateNotificationSetting) {
+        await deps.updateNotificationSetting(message.key, message.value);
+      }
+    } catch (error) {
+      deps.showWebviewError("通知设置", error instanceof Error ? `保存通知设置失败：${error.message}` : "保存通知设置失败，请重试。");
+    }
+    await deps.postPanelState();
+    return;
+  }
   if (message.key === "humanInteractionEnabled") {
     deps.updateStoredToolSettings({ humanInteractionEnabled: Boolean(message.value) });
     await deps.postPanelState();
