@@ -156,7 +156,7 @@ test("Loop and Loop+ embed the same renderer as AI chat for initial and patched 
     assert.ok(html.includes("&lt;script&gt;不会执行&lt;/script&gt;"));
     assert.ok(html.includes('mountGroupChatMarkdown(document)'));
     assert.ok(html.includes('mountGroupChatMarkdown(slot)'));
-    assert.ok(html.includes('renderMarkdown(message.content'));
+    assert.match(html, /ask-chat-bubble markdown-body" data-markdown-source=/u);
     assert.match(html, /img-src self https: http: data:/u);
     assert.ok(getMarkdownStyles(".markdown-body").includes(".markdown-body .chat-image-preview img"));
     const markdownStyles = getMarkdownStyles(".markdown-body");

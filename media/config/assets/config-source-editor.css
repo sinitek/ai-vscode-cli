@@ -186,6 +186,7 @@
 }
 .model-import-model-copy {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -198,6 +199,17 @@
 .model-import-model-copy code {
   color: var(--vscode-descriptionForeground, var(--text-color-secondary));
   font-size: 11px;
+}
+.model-import-model-tag {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-widget-border, var(--border-color));
+  border-radius: 8px;
+  color: var(--vscode-descriptionForeground, var(--text-color-secondary));
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
 }
 .model-import-mode-note,
 .model-import-empty {

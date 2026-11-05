@@ -65,7 +65,7 @@ Loop 和 Loop+ 子任务创建时，子会话只保留正常样式的用户提�
 
 范例一键导入与新增配置弹窗的模型名称改为分阶段解析：先填写有效的 `base_url`、`api_key` 与协议，再主动点击“解析模型”，才按当前范例生成的内存临时草稿调用宿主供应商与模型发现，按键输入不触发请求。解析成功展示可搜索、可清空的单选下拉，模型 ID 为值、展示名为文案，允许改选后提交；解析中按钮 loading 且模型控件与确认禁用，状态行以 `role=status` / `aria-live` 播报。地址、密钥、协议或关闭时作废旧请求与旧结果，迟到成功或失败不覆盖新状态。解析失败、空结果、协议不支持或供应商禁用时，同一模型行回退为原文本输入并提示“未能解析模型，可手动填写模型名称”，提供“重新解析”，手动输入仍走原有最终校验。临时种子模型只存在于解析草稿，不进入用户草稿、候选列表或提交负载，同名真实模型不被排除；密钥不进入状态文案、候选、错误或日志。实现见 `media/config/assets/config-app-ui.js`；回归见 `src/test/config/cliExampleImport.test.ts`、`src/test/config/cliexampleimportmodeldiscovery.test.ts`、`src/test/config/newConfigFromExample.test.ts`。
 
-七类 CLI 配置编辑页在“查看范例”右侧提供“模型解析导入”入口。弹窗从当前编辑草稿列出供应商及关联地址，选择可用供应商并主动点击“解析模型”后，由扩展宿主查询模型；列表排除该供应商已配置的模型，支持搜索和选择，多模型平台追加所选项，Codex 以单选方式显式替换当前模型。Claude 可将发现的模型独立映射到 `model`、Haiku、Sonnet、Opus 和子代理五个字段，允许多个字段使用同一模型，并保留未修改的值。切换供应商会丢弃过期解析结果；配置身份或草稿在请求期间变化时，拒绝应用过期结果，避免覆盖并发编辑。导入成功只更新当前编辑器草稿，需用户另行确认保存，不自动保存、激活或改写其他档案。
+七类 CLI 配置编辑页在“查看范例”右侧提供“模型解析导入”入口。弹窗从当前编辑草稿列出供应商及关联地址，选择可用供应商并主动点击“解析模型”后，由扩展宿主查询模型；列表展示该供应商的全部解析结果：已配置的模型不再被过滤去重，而是保留可勾选并带“已配置”标记，支持搜索和选择；多模型平台追加所选项，若所选全部已配置则提示不会新增模型并阻止导入，Codex 以单选方式显式替换当前模型。Claude 可将发现的模型独立映射到 `model`、Haiku、Sonnet、Opus 和子代理五个字段，允许多个字段使用同一模型，并保留未修改的值。切换供应商会丢弃过期解析结果；配置身份或草稿在请求期间变化时，拒绝应用过期结果，避免覆盖并发编辑。导入成功只更新当前编辑器草稿，需用户另行确认保存，不自动保存、激活或改写其他档案。
 
 扩展宿主按草稿解析供应商、API key/环境变量引用、关联 URL 和协议，通过固定 `config:request` action 暴露供应商列表、显式模型发现和草稿导入；支持 OpenAI Chat/Responses、Anthropic Messages、Google GenAI 以及明确声明的 Ollama 原生列表接口，并非所有协议均可用，未知、不支持或无法安全判定的协议及缺失地址会显示禁用原因。OpenCode、Kimi Code、ZCode 等多供应商按供应商隔离去重；JSON/JSONC/TOML 未知字段、注释和密钥边界保留，无法安全修改时拒绝导入。请求只访问用户配置的 HTTP(S) 同源地址，限制重定向、超时、响应/分页/结果大小并拒绝 URL 凭据和危险模型 ID。实现见 `media/config/assets/config-app-ui.js`、`media/config/assets/config-app-api.js`、`src/config/modelimport.ts`、`src/webview/configProtocol.ts`、`src/webview/configPanel.ts`、`src/webview/configView.ts`；回归见 `src/test/config/modelimportui.test.ts`、`src/test/config/modelimport.test.ts`、`src/test/config/cliPageConfigCoverage.test.ts`。主审查记录构建及完整配置测试 419/419 通过；这不等同浏览器、真实服务或 VS Code 扩展宿主验证。
 
@@ -428,6 +428,12 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 Loop / Loop+ 的“向主模型提问”弹窗按主模型 Tab 的实际运行状态控制发送，而不是按整个任务是否运行判断。主模型忙碌时禁用发送，发送按钮左侧显示主题错误色文字“主模型忙，正在处理任务，请稍后”；不新增用户或系统气泡，不写入提问历史，输入框仍可编辑并保留草稿。打开弹窗时重新检查状态，后续局部刷新自动同步忙碌与空闲，空闲后恢复发送；Ctrl/⌘+Enter 快捷键提交和宿主侧请求同样执行忙碌校验。自身提问回答期间继续显示等待动画和中止按钮，不误报为其他任务占用。用户 Markdown 气泡不再保留生成 HTML 的尾部换行，并清除首尾块外边距，保留多段内容和代码缩进。
 
 实现：`src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelTypes.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/webview/loopGroupChatPanelStyles.ts`；验证：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/core/panelDiagnostics.test.js`；headless Chromium 桌面与窄屏验证忙碌提示、气泡尺寸和状态切换。
+
+## 2026-11-05 向主模型提问弹窗 Markdown 与自动滚动
+
+用户问题、主模型回复和系统消息复用群聊气泡的 Markdown 挂载链路与主题样式，支持标题、列表、表格、引用、代码、JSON 树、图片与 SVG，保持既有安全转义。新问题、等待气泡、回复及正文更新出现时，不论此前是否位于底部，弹窗消息区均自动滚到底部，并在下一帧及图片加载完成后校正布局；重新打开弹窗也定位最新消息。无内容变化的周期刷新保留阅读位置，隐藏弹窗不主动滚动；群聊主时间线的滚动策略不变。
+
+实现：`src/webview/loopGroupChatPanel.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/webview/chatMarkdown.test.ts`。
 
 ## 2026-11-05 Loop+ 阻塞复核与分层完成提示
 

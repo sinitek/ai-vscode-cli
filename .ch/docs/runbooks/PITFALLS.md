@@ -30,6 +30,7 @@
 - Grok 多模型与 Responses `response.metadata` 流兼容限制：见 [grok-model-config.md](grok-model-config.md)。
 - AI 对话面板自动置底只看更新前距离底部是否不超过 50px。
 - 群聊局部补丁不能只恢复外层滚动位置：见本页“群聊补丁需保留气泡内部滚动”。
+- 提问弹窗置底不能只等待一帧：见本页“提问弹窗需在图片加载后校正滚动”。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
 
 ## 相同 HTML 补丁不会清理按钮临时状态
@@ -67,8 +68,15 @@
 
 - 状态：已规避；首次发现：2026-11-03。
 - 现象与根因：Loop / Loop+ 定时刷新或宿主补丁替换时间线 `innerHTML`，气泡内代码、宽表、JSON 等区域的 DOM 重建，`scrollLeft` 和 `scrollTop` 归零。只恢复 `.main.scrollTop` 不能保留内部阅读位置。
-- 长期规避：未变化的 HTML 不重建；首次比较须考虑浏览器对 HTML 实体与属性的序列化规范化。确需替换时，在共享 Markdown / JSON 挂载完成后，按后代元素结构路径恢复横纵位置；已移除或类型变化的节点跳过，超出内容尺寸的位置由浏览器夹紧。提问回复共用同一更新入口，外层列表跟随规则不变。
+- 长期规避：未变化的 HTML 不重建；首次比较须考虑浏览器对 HTML 实体与属性的序列化规范化。确需替换时，在共享 Markdown / JSON 挂载完成后，按后代元素结构路径恢复横纵位置；已移除或类型变化的节点跳过，超出内容尺寸的位置由浏览器夹紧。提问回复共用同一更新入口；主时间线的接近底部跟随规则不变，提问弹窗按自身新内容置底策略处理。
 - 验证方式：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/webview/chatMarkdown.test.js dist/test/webview/chatCopy.test.js`。使用实际生成的群聊 HTML 在 Chromium 中等待 5 秒自动刷新，再追加内容补丁，检查代码横纵位置、宽表横向位置及外层历史阅读位置；旧实现应复现内部位置归零，修复后 Loop / Loop+ 均保持位置。
+
+## 提问弹窗需在图片加载后校正滚动
+
+- 状态：已规避；首次发现：2026-11-05。
+- 现象与根因：Markdown 气泡写入后立即或下一帧滚到底部，SVG / 图片仍可能稍后才完成解码并撑高内容，最终最新回复下方被遮住；VM 中固定 `scrollHeight` 的测试不能复现。
+- 长期规避：新内容或打开弹窗时置底并在下一帧校正，消息区以捕获模式监听不冒泡的图片 `load` 再次置底；隐藏弹窗不滚动，无变化刷新不抢阅读位置。继续保留群聊主时间线的原有跟随边界。
+- 验证方式：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/webview/chatMarkdown.test.js`；Chromium 中先滚离底部，再推送含 SVG 的回复，等待图片加载后断言消息区距离底部不超过 1px。
 
 ## 配置页标准按钮必须覆盖 Portal 作用域
 

@@ -658,8 +658,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          : message.role === "system"
 	            ? "system"
 	            : "assistant";
-	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body">' +
-	          renderMarkdown(message.content ? message.content : "") +
+	        const content = askEscape(message.content || "");
+	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body" data-markdown-source="' + content + '">' +
+	          content +
 	          "</div></article>";
 	      }
 
@@ -669,21 +670,30 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          '"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span></div></article>';
 	      }
 
-	      function renderAskThread() {
+	      function scrollAskToBottom() {
+	        if (askDialogOpen && askChatMessages) {
+	          askChatMessages.scrollTop = askChatMessages.scrollHeight;
+	        }
+	      }
+
+	      function renderAskThread(forceScroll = false) {
 	        if (!askChatMessages) {
 	          return;
 	        }
 	        const messages = askThread && Array.isArray(askThread.messages)
 	          ? askThread.messages.filter((message) => message && message.role !== "thinking")
 	          : [];
-	        const distance = askChatMessages.scrollHeight - askChatMessages.scrollTop - askChatMessages.clientHeight;
-	        const stickToBottom = distance <= 50;
-	        const previousTop = askChatMessages.scrollTop;
 	        const waiting = askThread && askThread.running ? renderAskWaiting() : "";
-	        replaceHtml(askChatMessages, messages.length || waiting
+	        const html = messages.length || waiting
 	          ? messages.map(renderAskBubble).join("") + waiting
-	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>");
-	        askChatMessages.scrollTop = stickToBottom ? askChatMessages.scrollHeight : previousTop;
+	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
+	        const previous = renderedSlotHtml.get(askChatMessages);
+	        const contentChanged = !previous || previous.source !== html;
+	        replaceHtml(askChatMessages, html);
+	        if (askDialogOpen && (contentChanged || forceScroll)) {
+	          scrollAskToBottom();
+	          window.requestAnimationFrame(scrollAskToBottom);
+	        }
 	        updateAskAvailability();
 	      }
 
@@ -740,7 +750,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          askChatBackdrop.classList.add("visible");
 	          askChatBackdrop.setAttribute("aria-hidden", "false");
 	        }
-	        renderAskThread();
+	        renderAskThread(true);
 	      }
 
 	      function hideAskDialog() {
@@ -1257,6 +1267,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        filePreviewClose.addEventListener("click", () => {
 	          closeCommunicationFilePreview();
 	        });
+	      }
+	      if (askChatMessages) {
+	        askChatMessages.addEventListener("load", scrollAskToBottom, true);
 	      }
 	      if (askChatBackdrop) {
 	        askChatBackdrop.addEventListener("click", (event) => {

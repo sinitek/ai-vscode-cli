@@ -1013,6 +1013,119 @@ test("keeps Markdown bubble edges compact without preserving generated HTML newl
   assert.match(html, /\.ask-chat-bubble\.markdown-body > :last-child\s*\{\s*margin-bottom: 0;/u);
 });
 
+test("mounts ask bubbles through the shared group chat Markdown renderer", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function askEscape"), html.indexOf("function renderAskWaiting"));
+  const { CHAT_MARKDOWN_SCRIPT } = require("../../webview/chatMarkdown");
+  const { getMarkedScript } = require("../../webview/markdownAssets");
+  const context = vm.createContext({ TextEncoder });
+  vm.runInContext(`${getMarkedScript()}\n${source}\nconst escapeHtml = askEscape;\n${CHAT_MARKDOWN_SCRIPT}`, context);
+  const content = '## 回答\n\n**成功**\n\n- 第一项\n\n| 检查 | 结果 |\n| --- | --- |\n| 构建 | 通过 |\n\n> 说明\n\n```ts\nconst value = "<安全>";\n```';
+  for (const role of ["user", "assistant", "system"]) {
+    context.message = { role, content };
+    const bubble = vm.runInContext("renderAskBubble(message)", context);
+    assert.match(bubble, /class="ask-chat-bubble markdown-body" data-markdown-source="/u);
+    assert.match(bubble, /&quot;&lt;安全&gt;&quot;/u);
+    assert.doesNotMatch(bubble, /<h2>|<安全>/u);
+    let removedSource = false;
+    const element = {
+      innerHTML: "",
+      querySelectorAll: () => [],
+      getAttribute: () => content,
+      removeAttribute: (name: string) => { removedSource = name === "data-markdown-source"; },
+    };
+    context.root = { querySelectorAll: (selector: string) => selector === "[data-markdown-source]" ? [element] : [] };
+    vm.runInContext("mountGroupChatMarkdown(root)", context);
+    assert.equal(removedSource, true);
+    for (const tag of ["h2", "strong", "ul", "table", "blockquote", "pre"]) {
+      assert.ok(element.innerHTML.includes(`<${tag}`), `${role}: ${tag}`);
+    }
+    assert.match(element.innerHTML, /language-ts/u);
+    assert.match(element.innerHTML, /&lt;安全&gt;/u);
+  }
+  context.message = { role: "thinking", content: "不显示思考" };
+  assert.equal(vm.runInContext("renderAskBubble(message)", context), "");
+});
+
+test("scrolls new ask bubbles and reopened dialogs to the bottom without disturbing unchanged history", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  assert.match(html, /askChatMessages.addEventListener\("load", scrollAskToBottom, true\)/u);
+  const source = html.slice(html.indexOf("function askEscape"), html.indexOf("function getStoredAskDialogState"));
+  const frames: Array<() => void> = [];
+  const renderedSlotHtml = new WeakMap();
+  const log = { scrollHeight: 1200, clientHeight: 240, scrollTop: 0 };
+  const context = vm.createContext({
+    askChatMessages: log,
+    askDialogOpen: true,
+    askThread: { messages: [], running: false },
+    ASK_WAITING_LABEL: "等待回复",
+    ASK_EMPTY_LABEL: "暂无消息",
+    renderedSlotHtml,
+    window: { requestAnimationFrame: (callback: () => void) => frames.push(callback) },
+    replaceHtml: (slot: object, sourceHtml: string) => renderedSlotHtml.set(slot, { source: sourceHtml }),
+    askChatSend: undefined,
+    askChatBusy: undefined,
+    askChatAbort: undefined,
+    askChatInput: undefined,
+    mainModelBusy: false,
+  });
+  vm.runInContext(source, context);
+  const render = (thread: unknown) => {
+    context.nextThread = thread;
+    vm.runInContext("applyAskThread(nextThread)", context);
+  };
+  render({ messages: [], running: false });
+  assert.equal(log.scrollTop, log.scrollHeight);
+  frames.splice(0).forEach((callback) => callback());
+
+  const messages: Array<{ role: string; content: string }> = [];
+  for (const message of [
+    { role: "user", content: "请分析问题" },
+    { role: "assistant", content: "## 回答" },
+    { role: "system", content: "已中止" },
+  ]) {
+    log.scrollTop = 0;
+    messages.push(message);
+    render({ messages: [...messages], running: false });
+    assert.equal(log.scrollTop, log.scrollHeight, message.role);
+    assert.equal(frames.length, 1);
+    log.scrollHeight += 100;
+    frames.splice(0).forEach((callback) => callback());
+    assert.equal(log.scrollTop, log.scrollHeight, "布局完成后校正到底部");
+  }
+  log.scrollTop = 10;
+  render({ messages: [...messages], running: false });
+  assert.equal(log.scrollTop, 10, "无变化刷新保留阅读位置");
+  assert.equal(frames.length, 0);
+
+  render({ messages: [...messages], running: true });
+  assert.equal(log.scrollTop, log.scrollHeight, "等待气泡出现后滚动");
+  frames.splice(0).forEach((callback) => callback());
+  log.scrollTop = 0;
+  messages[1].content += "\n\n新增回复正文";
+  render({ messages: [...messages], running: true });
+  assert.equal(log.scrollTop, log.scrollHeight, "回复增长后滚动");
+
+  context.askDialogOpen = false;
+  log.scrollTop = 20;
+  frames.splice(0).forEach((callback) => callback());
+  assert.equal(log.scrollTop, 20, "关闭弹窗后不执行排队滚动");
+  render({ messages: [...messages], running: false });
+  assert.equal(log.scrollTop, 20);
+  assert.equal(frames.length, 0);
+
+  const showDialog = html.slice(html.indexOf("function showAskDialog"), html.indexOf("function hideAskDialog"));
+  context.askChatBackdrop = { classList: { add: () => undefined }, setAttribute: () => undefined };
+  vm.runInContext(showDialog + "\nshowAskDialog();", context);
+  assert.equal(log.scrollTop, log.scrollHeight, "重新打开未变化的历史仍滚到底部");
+  frames.splice(0).forEach((callback) => callback());
+  log.scrollHeight += 100;
+  vm.runInContext("scrollAskToBottom();", context);
+  assert.equal(log.scrollTop, log.scrollHeight, "图片加载导致高度变化后校正滚动");
+  vm.runInContext("askChatMessages = null; renderAskThread();", context);
+  assert.equal(frames.length, 0);
+});
+
 test("updates ask availability from live patches and blocks submission without losing the draft", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const availability = html.slice(html.indexOf("function updateAskAvailability"), html.indexOf("function applyAskThread"));

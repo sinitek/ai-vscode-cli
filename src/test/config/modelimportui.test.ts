@@ -320,7 +320,7 @@ test("Grok modal discovers and imports using the selected literal-key configurat
   buttonWithText(harness.tree, "解析模型").props.onClick();
   await discoveryDone;
   await harness.settle();
-  assert.equal(findNodes(harness.tree, (node) => node.type === "input" && node.props?.["aria-label"] === "old-second").length, 0);
+  assert.equal(findNodes(harness.tree, (node) => node.type === "input" && node.props?.["aria-label"] === "old-second").length, 1);
   findNodes(harness.tree, (node) => node.type === "input" && node.props?.["aria-label"] === "new-model")[0].props.onChange({ target: { checked: true } });
   harness.render();
   await buttonWithText(harness.tree, "导入").props.onClick();
@@ -699,7 +699,7 @@ test("provider empty, unsupported, disabled, and draft-race states are explicit"
 
 test("loading, retry, import confirmation, and unsaved-content protection are represented in the UI", () => {
   const source = readAsset("media/config/assets/config-app-ui.js");
-  for (const text of ["解析模型", "导入", "没有可导入的模型", "请重新解析", "并发编辑", "未保存更改", "凭据状态由宿主验证"]) {
+  for (const text of ["解析模型", "导入", "未发现可用模型", "请重新解析", "并发编辑", "未保存更改", "凭据状态由宿主验证", "已配置"]) {
     assert.ok(source.includes(text), `missing UI state text: ${text}`);
   }
   assert.match(source, /getModelImportProviders\(\{ platform: importPlatform, draft: importDraft \}\)/);
@@ -771,8 +771,13 @@ test("modal execution renders safe provider errors and retries", async () => {
 test("modal execution reports loading, retryable discovery errors, empty results, and configured-only results", async () => {
   const providers = deferred<AnyRecord>();
   let attempts = 0;
+  let applied = 0;
   const harness = createModelImportModalHarness({
     providers: () => providers.promise,
+    apply: async () => {
+      applied += 1;
+      return { draft: { content: "updated" } };
+    },
     discover: async () => {
       attempts += 1;
       if (attempts === 1) throw new Error("token=private-value");
@@ -794,7 +799,15 @@ test("modal execution reports loading, retryable discovery errors, empty results
   assert.match(treeText(harness.tree), /未发现可用模型/);
   buttonWithText(harness.tree, "解析模型").props.onClick();
   await harness.settle();
-  assert.match(treeText(harness.tree), /模型均已配置/);
+  assert.match(treeText(harness.tree), /Already configured/);
+  assert.match(treeText(harness.tree), /已配置/);
+  findNodes(harness.tree, (node) => node.type === "input" && node.props?.["aria-label"] === "Already configured")[0]
+    .props.onChange({ target: { checked: true } });
+  harness.render();
+  await buttonWithText(harness.tree, "导入").props.onClick();
+  await harness.settle();
+  assert.match(treeText(harness.tree), /所选模型均已配置/);
+  assert.equal(applied, 0);
 });
 
 test("modal execution refuses an import after draft or config identity changes", async () => {
@@ -883,7 +896,7 @@ test("provider, discovery, and import rejections ignore concurrent draft changes
   assert.equal(findNodes(importHarness.tree, (node) => node.type === "Modal")[0].props.children.props["aria-busy"], false);
 });
 
-test("modal execution deduplicates multi selections and excludes configured models, while single mode stays radio-only", async () => {
+test("modal execution deduplicates multi selections and lists configured models selectable, while single mode stays radio-only", async () => {
   let submittedMulti: AnyRecord = {};
   const multiHarness = createModelImportModalHarness({
     providers: async () => ({ providers: [{ id: "multi", label: "Multi", baseUrl: "http://localhost", protocol: "openai-responses", mode: "multi" }] }),
@@ -902,8 +915,12 @@ test("modal execution deduplicates multi selections and excludes configured mode
   await multiHarness.settle();
   const multiInputs = findNodes(multiHarness.tree, (node) => node.type === "input" && node.props?.["aria-label"]);
   const newModelInput = multiInputs.find((node) => node.props["aria-label"] === "New");
+  const configuredModelInput = multiInputs.find((node) => node.props["aria-label"] === "Configured");
   assert.ok(newModelInput);
-  assert.equal(multiInputs.some((node) => node.props["aria-label"] === "Configured"), false);
+  assert.ok(configuredModelInput);
+  assert.equal(configuredModelInput.props.type, "checkbox");
+  assert.equal(configuredModelInput.props.checked, false);
+  assert.equal(configuredModelInput.props.disabled, false);
   newModelInput.props.onChange({ target: { checked: true } });
   newModelInput.props.onChange({ target: { checked: true } });
   multiHarness.render();
@@ -919,9 +936,10 @@ test("modal execution deduplicates multi selections and excludes configured mode
   buttonWithText(singleHarness.tree, "解析模型").props.onClick();
   await singleHarness.settle();
   const singleInputs = findNodes(singleHarness.tree, (node) => node.type === "input" && node.props?.type === "radio");
-  assert.equal(singleInputs.length, 1);
-  assert.equal(singleInputs[0].props["aria-label"], "Replacement");
-  assert.equal(singleInputs[0].props.checked, true);
+  assert.equal(singleInputs.length, 2);
+  assert.deepEqual(plain(singleInputs.map((node) => node.props["aria-label"])), ["Configured", "Replacement"]);
+  assert.equal(singleInputs[0].props.checked, false);
+  assert.equal(singleInputs[1].props.checked, true);
 });
 
 test("Claude execution exposes exact field keys and allows one discovered model across fields", async () => {

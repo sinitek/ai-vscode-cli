@@ -6879,6 +6879,7 @@ const modelImportSafeErrorText = (error) => {
     "配置或草稿已变化，导入结果未应用，请重新解析",
     "请选择要替换的模型",
     "请选择至少一个模型",
+    "所选模型均已配置，导入不会新增模型；请改选其他模型。",
   ].includes(text)) return text;
   return "操作失败，请检查当前配置后重试。";
 };
@@ -6917,8 +6918,7 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
   const selectedProviderReason = modelImportProviderReason(selectedProvider);
   const mode = selectedProvider?.mode || "multi";
   const existingModelIdSet = new Set(existingModelIds);
-  const availableModels = models.filter((model) => !existingModelIdSet.has(model.id));
-  const filteredModels = availableModels.filter((model) => {
+  const filteredModels = models.filter((model) => {
     const query = searchText.trim().toLowerCase();
     return !query || `${model.id} ${model.label}`.toLowerCase().includes(query);
   });
@@ -7039,11 +7039,12 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
       const nextFieldValues = Object.fromEntries(nextFields.map((field) => [field.key, field.value]));
       const nextExistingSet = new Set(nextExisting);
       const nextAvailable = nextModels.filter((model) => !nextExistingSet.has(model.id));
+      const defaultSingleId = nextAvailable[0]?.id || nextModels[0]?.id || "";
       setModels(nextModels);
       setExistingModelIds(nextExisting);
       setFields(nextFields);
       setFieldValues(nextFieldValues);
-      setSelectedModelIds(requestedMode === "single" ? (nextAvailable[0] ? [nextAvailable[0].id] : []) : []);
+      setSelectedModelIds(requestedMode === "single" && defaultSingleId ? [defaultSingleId] : []);
       setResultReady(!0);
     } catch (error) {
       if (generationRef.current === generation) {
@@ -7076,6 +7077,10 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
       : selectedModelIds;
     if (!selected.length) {
       setImportError(mode === "single" ? "请选择要替换的模型" : "请选择至少一个模型");
+      return;
+    }
+    if (mode === "multi" && selected.every((modelId) => existingModelIdSet.has(modelId))) {
+      setImportError("所选模型均已配置，导入不会新增模型；请改选其他模型。");
       return;
     }
     const generation = generationRef.current + 1;
@@ -7128,9 +7133,6 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
     if (!resultReady) return null;
     if (!models.length && mode !== "claude") {
       return be.jsx("div", { className: "model-import-empty", role: "status", children: "未发现可用模型，请重试解析或检查供应商配置。" });
-    }
-    if (!availableModels.length && mode !== "claude") {
-      return be.jsx("div", { className: "model-import-empty", role: "status", children: "没有可导入的模型；发现结果中的模型均已配置。" });
     }
     if (mode === "claude") {
       return be.jsxs("div", {
@@ -7201,20 +7203,24 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
             ] })
           : be.jsx("div", { className: "model-import-mode-note", children: "单选模式：导入后会替换当前模型，请确认选择。" }),
         filteredModels.length
-          ? be.jsx("div", { className: "model-import-model-list", role: mode === "single" ? "radiogroup" : "group", "aria-label": "可导入模型", children: filteredModels.map((model) => be.jsxs("label", { className: "model-import-model-option", key: model.id, children: [
-              be.jsx("input", {
-                type: mode === "single" ? "radio" : "checkbox",
-                name: mode === "single" ? "model-import-single" : void 0,
-                disabled: importing,
-                checked: selectedModelIds.includes(model.id),
-                onChange: (event) => toggleModel(model.id, event.target.checked),
-                "aria-label": model.label,
-              }),
-              be.jsxs("span", { className: "model-import-model-copy", children: [
-                be.jsx("strong", { children: model.label }),
-                model.label !== model.id ? be.jsx("code", { children: model.id }) : null,
-              ] }),
-            ] })) })
+          ? be.jsx("div", { className: "model-import-model-list", role: mode === "single" ? "radiogroup" : "group", "aria-label": "可导入模型", children: filteredModels.map((model) => {
+              const alreadyConfigured = existingModelIdSet.has(model.id);
+              return be.jsxs("label", { className: "model-import-model-option", key: model.id, children: [
+                be.jsx("input", {
+                  type: mode === "single" ? "radio" : "checkbox",
+                  name: mode === "single" ? "model-import-single" : void 0,
+                  disabled: importing,
+                  checked: selectedModelIds.includes(model.id),
+                  onChange: (event) => toggleModel(model.id, event.target.checked),
+                  "aria-label": model.label,
+                }),
+                be.jsxs("span", { className: "model-import-model-copy", children: [
+                  be.jsx("strong", { children: model.label }),
+                  model.label !== model.id ? be.jsx("code", { children: model.id }) : null,
+                ] }),
+                alreadyConfigured ? be.jsx("span", { className: "model-import-model-tag", children: "已配置" }) : null,
+              ] });
+            }) })
           : be.jsx("div", { className: "model-import-empty", role: "status", children: "没有匹配的模型。" }),
       ],
     });
