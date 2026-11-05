@@ -47,7 +47,7 @@ function harness() {
   return { elements, state, messages, api, context, timeout: () => timeout?.() };
 }
 
-test("工具设置默认常规配置，仅通知授权页签查询权限", () => {
+test("工具设置默认常规配置，仅通知设置页签查询权限", () => {
   const env = harness();
   assert.equal(env.elements.toolSettingsNotificationsPanel.hidden, true);
   assert.equal(env.messages.length, 0);
@@ -116,7 +116,7 @@ test("通知开关回显真实配置，缺省开启并可恢复保存失败后�
   }
 });
 
-test("Mac permission statuses provide correct action and other platforms hide Mac controls", () => {
+test("Mac permission statuses provide correct actions and Linux hides authorization controls", () => {
   const env = harness();
   for (const status of ["not-determined", "authorized", "denied", "disabled", "unavailable"]) {
     env.api.requestNotificationAuthorization(false);
@@ -128,11 +128,31 @@ test("Mac permission statuses provide correct action and other platforms hide Ma
     assert.equal(env.elements.refreshNotificationAuthorization.disabled, false);
   }
   env.api.requestNotificationAuthorization(false);
-  env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "win32", status: "not-required" } });
+  env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "linux", status: "not-required" } });
   assert.equal(env.elements.helpNotificationMac.hidden, true);
   assert.equal(env.elements.authorizeNotifications.hidden, true);
   assert.match(OVERLAYS_MODALS_STYLES, /#authorizeNotifications\[hidden\]\s*\{\s*display:\s*none;/);
   assert.equal(env.elements.authorizeNotifications.disabled, true);
+});
+
+test("Windows offers system notification settings for enabled, disabled and unavailable states", () => {
+  const env = harness();
+  for (const status of ["authorized", "denied", "disabled", "unavailable"]) {
+    env.api.requestNotificationAuthorization(false);
+    env.api.applyNotificationAuthorization({ requestId: env.messages.at(-1)!.requestId, payload: { platform: "win32", status, detail: `Windows: ${status}` } });
+    assert.equal(env.elements.helpNotificationMac.hidden, true);
+    assert.equal(env.elements.authorizeNotifications.hidden, false);
+    assert.equal(env.elements.authorizeNotifications.disabled, false);
+    assert.equal(env.elements.authorizeNotifications.textContent, "打开系统通知设置");
+    assert.equal(env.elements.notificationAuthorizationStatus.textContent, `Windows: ${status}`);
+  }
+  env.api.requestNotificationAuthorization(true);
+  assert.equal(env.messages.at(-1)!.action, "request");
+  env.timeout();
+  assert.equal(env.elements.authorizeNotifications.hidden, false);
+  assert.equal(env.elements.authorizeNotifications.disabled, false);
+  assert.equal(env.elements.authorizeNotifications.textContent, "打开系统通知设置");
+  assert.match(env.elements.notificationAuthorizationStatus.textContent, /超时/);
 });
 
 test("permission actions correlate responses, render details as text and recover after timeout", () => {

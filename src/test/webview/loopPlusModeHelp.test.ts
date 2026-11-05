@@ -44,7 +44,7 @@ function interactiveModeSelects(html: string): string[] {
 test("使用固定中文帮助文案", () => {
   assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
   assert.equal(WEBVIEW_STRINGS.helpModeVibe, "Vibe 模式，直接执行目标 cli 任务");
-  assert.equal(getWebviewStrings().toolSettingsNotificationsTab, "通知授权");
+  assert.equal(getWebviewStrings().toolSettingsNotificationsTab, "通知设置");
 });
 
 test("渲染简洁准确的中文模式说明", () => {

@@ -46,7 +46,15 @@ $document.LoadXml('<toast><visual><binding template="ToastGeneric"><text>${HUMAN
 $notification = [Windows.UI.Notifications.ToastNotification]::new($document)
 $notification.Tag = $env:SINITEK_ATTENTION_TAG
 $notification.Group = 'sinitek-cli-tools'
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:SINITEK_ATTENTION_APP_ID).Show($notification)
+$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:SINITEK_ATTENTION_APP_ID)
+if ($notifier.Setting.ToString() -ne 'Enabled') { throw ('Windows notifications unavailable: ' + $notifier.Setting.ToString()) }
+$notifier.Show($notification)
+`;
+
+const WINDOWS_NOTIFICATION_AUTHORIZATION_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($env:SINITEK_ATTENTION_APP_ID).Setting.ToString()
 `;
 
 const WINDOWS_ATTENTION_SCRIPT = `
@@ -127,6 +135,23 @@ export function createDesktopAttentionTransport(options: {
 
   return {
     async notificationAuthorization(request): Promise<DesktopNotificationAuthorization> {
+      if (options.platform === "win32") {
+        if (!options.appUserModelId) {
+          return { platform: options.platform, status: "unavailable", detail: "无法读取编辑器的 Windows 系统通知标识，请检查编辑器安装。" };
+        }
+        const setting = (await powershell(WINDOWS_NOTIFICATION_AUTHORIZATION_SCRIPT, {
+          SINITEK_ATTENTION_APP_ID: options.appUserModelId,
+        })).trim();
+        const settings: Record<string, Pick<DesktopNotificationAuthorization, "status" | "detail">> = {
+          Enabled: { status: "authorized", detail: `Windows 已允许“${options.appName}”发送通知。若没有横幅，请在系统通知设置中开启通知横幅，并检查勿扰或专注模式。` },
+          DisabledForApplication: { status: "denied", detail: `Windows 已关闭“${options.appName}”的通知，请在系统通知设置中开启该编辑器的通知和通知横幅。` },
+          DisabledForUser: { status: "disabled", detail: "Windows 已关闭当前用户的系统通知，请在系统通知设置中开启通知。若由管理员管理，请联系管理员。" },
+          DisabledByGroupPolicy: { status: "denied", detail: "Windows 通知已被系统策略禁用，请联系管理员处理；应用无法自行开启。" },
+          DisabledByManifest: { status: "unavailable", detail: "当前编辑器安装未提供有效的 Windows 通知支持，请检查编辑器安装。" },
+        };
+        return { platform: options.platform, ...(settings[setting]
+          ?? { status: "unavailable", detail: "无法识别 Windows 通知状态，请刷新重试或打开系统通知设置检查。" }) };
+      }
       if (options.platform !== "darwin") {
         return { platform: options.platform, status: "not-required" };
       }

@@ -16,7 +16,7 @@ function harness(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}) {
     commands.push(command);
     return command.args[0] === "-lp"
       ? "0x00400001 0 321 host workspace - Visual Studio Code\n0x00400002 0 999 host another application\n0x00400003 0 321 host other workspace\n"
-      : "";
+      : "Enabled";
   });
   return { options, commands, transport };
 }
@@ -25,14 +25,50 @@ function decodedScript(command: DesktopAttentionCommand): string {
   return Buffer.from(command.args[command.args.length - 1], "base64").toString("utf16le");
 }
 
-test("authorization is not required on Windows/Linux and missing macOS storage is explicit", async () => {
-  for (const platform of ["win32", "linux"] as const) {
-    const env = harness(platform);
-    assert.deepEqual(await env.transport.notificationAuthorization(true), { platform, status: "not-required" });
-    assert.equal(env.commands.length, 0);
-  }
+test("Linux does not request authorization and missing macOS storage is explicit", async () => {
+  const linux = harness("linux");
+  assert.deepEqual(await linux.transport.notificationAuthorization(true), { platform: "linux", status: "not-required" });
+  assert.equal(linux.commands.length, 0);
   const env = harness("darwin");
   assert.equal((await env.transport.notificationAuthorization(false)).status, "unavailable");
+});
+
+test("Windows queries native notification settings without sending a toast or opening settings", async () => {
+  const settings = [
+    ["Enabled", "authorized", /已允许/],
+    ["DisabledForApplication", "denied", /编辑器|Visual Studio Code/],
+    ["DisabledForUser", "disabled", /当前用户/],
+    ["DisabledByGroupPolicy", "denied", /系统策略.*管理员/],
+    ["DisabledByManifest", "unavailable", /安装/],
+    ["unrecognized", "unavailable", /无法识别/],
+  ] as const;
+  for (const [setting, status, detail] of settings) {
+    const commands: DesktopAttentionCommand[] = [];
+    const transport = createDesktopAttentionTransport({
+      platform: "win32", appName: "Visual Studio Code", appUserModelId: "Microsoft.VisualStudioCodeInsiders", env: {},
+    }, async (command) => { commands.push(command); return `\r\n${setting}\r\n`; });
+    for (const request of [false, true]) {
+      const result = await transport.notificationAuthorization(request);
+      assert.equal(result.platform, "win32");
+      assert.equal(result.status, status);
+      assert.match(result.detail!, detail);
+    }
+    assert.equal(commands.length, 2);
+    assert.equal(commands[0].env?.SINITEK_ATTENTION_APP_ID, "Microsoft.VisualStudioCodeInsiders");
+    assert.match(decodedScript(commands[0]), /CreateToastNotifier.*Setting.ToString/);
+    assert.doesNotMatch(decodedScript(commands[0]), /\.Show\(|Start-Process|ms-settings:|Set-ItemProperty/);
+  }
+});
+
+test("Windows authorization reports missing identity and propagates native query failures", async () => {
+  const missing = createDesktopAttentionTransport({ platform: "win32", appName: "Code", env: {} }, async () => {
+    assert.fail("缺失通知身份时不应调用系统工具");
+  });
+  assert.equal((await missing.notificationAuthorization(false)).status, "unavailable");
+  const failed = createDesktopAttentionTransport({ platform: "win32", appName: "Code", appUserModelId: "test-editor", env: {} }, async () => {
+    throw new Error("系统通知查询失败");
+  });
+  await assert.rejects(failed.notificationAuthorization(false), /系统通知查询失败/);
 });
 
 test("macOS requires local helper storage and does not pretend to bounce the Dock", async () => {
@@ -52,6 +88,7 @@ test("Windows sends an encoded toast with the actual editor identity", async () 
   assert.ok(command.args.includes("-EncodedCommand"));
   assert.equal(command.env?.SINITEK_ATTENTION_APP_ID, "Microsoft.VisualStudioCode");
   assert.match(decodedScript(command), /CreateToastNotifier/);
+  assert.match(decodedScript(command), /Setting.ToString\(\) -ne 'Enabled'.*throw/);
   assert.equal(command.env?.SINITEK_ATTENTION_BODY, HUMAN_INTERACTION_NOTIFICATION_BODY);
   assert.equal(command.env?.SINITEK_ATTENTION_TAG, "human-input");
   assert.match(decodedScript(command), /SecurityElement\]::Escape/);

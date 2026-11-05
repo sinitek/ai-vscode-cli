@@ -13,13 +13,14 @@ const hostScript = ts.transpileModule(hostSource, {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJS.Platform; notifications?: boolean; status?: DesktopNotificationAuthorization["status"]; failAuthorization?: boolean; requestDenied?: boolean; openSettings?: boolean } = {}) {
+function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJS.Platform; notifications?: boolean; status?: DesktopNotificationAuthorization["status"]; failAuthorization?: boolean; requestDenied?: boolean; openSettings?: boolean; openResult?: Promise<boolean>; globalState?: Map<string, boolean>; failSave?: boolean } = {}) {
   const events: string[] = [];
   const state = { focused: false };
   const settings: Record<string, boolean> = { humanInteractionNotifications: options.notifications ?? true, taskCompletionNotifications: options.notifications ?? true, humanInteractionWindowAttention: true };
   const authorizationCalls: boolean[] = [];
   const opened: string[] = [];
   const errors: unknown[] = [];
+  const globalState = options.globalState ?? new Map<string, boolean>();
   const authorizationState = { status: options.status ?? "authorized" };
   const subscriptions: Array<{ dispose: () => void }> = [];
   let windowChanged = (): void => undefined;
@@ -32,7 +33,7 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
       if (name === "vscode") {
         return {
           env: { appName: "Visual Studio Code", appRoot: "/editor/resources/app", remoteName: options.remote ? "ssh-remote" : undefined,
-            openExternal: async (uri: string) => { opened.push(uri); return options.openSettings ?? true; } },
+            openExternal: async (uri: string) => { opened.push(uri); return options.openResult ?? options.openSettings ?? true; } },
           Uri: { parse: (value: string) => value },
           ExtensionKind: { UI: 1 },
           window: {
@@ -62,7 +63,7 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
               authorizationCalls.push(request);
               if (options.failAuthorization) throw new Error("授权读取失败");
               if (request && authorizationState.status === "not-determined") authorizationState.status = options.requestDenied ? "denied" : "authorized";
-              return { platform: options.platform ?? "darwin", status: options.platform && options.platform !== "darwin" ? "not-required" : authorizationState.status };
+              return { platform: options.platform ?? "darwin", status: options.platform === "linux" ? "not-required" : authorizationState.status };
             },
             notify: async () => { events.push("notify"); },
             startAttention: async () => { events.push("start"); },
@@ -89,10 +90,88 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
   const controller = sandbox.exports.createHumanInteractionAttentionHost({
     subscriptions,
     globalStorageUri: { fsPath: "/test-extension-storage" },
+    globalState: {
+      get: (key: string, fallback: boolean) => globalState.get(key) ?? fallback,
+      update: async (key: string, value: boolean) => {
+        if (options.failSave) throw new Error("扩展状态保存失败");
+        globalState.set(key, value);
+      },
+    },
     extension: { extensionKind: options.ui ? 1 : 2 },
   } as never, (_channel, error) => { errors.push(error); });
-  return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions, authorizationCalls, authorizationState, opened, errors };
+  return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions, authorizationCalls, authorizationState, opened, errors, globalState };
 }
+
+test("Windows startup opens notification settings once across restarts and manual actions remain available", async () => {
+  const env = hostHarness({ platform: "win32", status: "denied" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(env.opened, ["ms-settings:notifications"]);
+  assert.equal(env.globalState.size, 1);
+  env.configurationChanged("sinitek-cli-tools.humanInteractionNotifications");
+  assert.equal(env.opened.length, 1);
+  const restarted = hostHarness({ platform: "win32", globalState: env.globalState });
+  assert.deepEqual(restarted.opened, []);
+  assert.equal((await env.controller.notificationAuthorization()).status, "denied");
+  assert.equal(env.opened.length, 1);
+  const response = await env.controller.notificationAuthorization(true);
+  assert.equal(response.status, "denied");
+  assert.match(response.detail!, /已打开 Windows.*Visual Studio Code.*刷新/);
+  assert.equal(env.opened.length, 2);
+  assert.deepEqual(env.events, []);
+});
+
+test("Windows first-run guidance waits for an enabled notification setting and respects remote hosts", async () => {
+  const env = hostHarness({ platform: "win32", notifications: false });
+  assert.deepEqual(env.opened, []);
+  env.settings.taskCompletionNotifications = true;
+  env.configurationChanged("sinitek-cli-tools.taskCompletionNotifications");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(env.opened, ["ms-settings:notifications"]);
+  const remote = hostHarness({ platform: "win32", remote: true });
+  assert.equal((await remote.controller.notificationAuthorization(true)).status, "unavailable");
+  assert.deepEqual(remote.opened, []);
+  assert.deepEqual(remote.authorizationCalls, []);
+  const ui = hostHarness({ platform: "win32", remote: true, ui: true });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(ui.opened, ["ms-settings:notifications"]);
+});
+
+test("concurrent Windows configuration changes share a single first-run settings request", async () => {
+  let complete!: (opened: boolean) => void;
+  const openResult = new Promise<boolean>((resolve) => { complete = resolve; });
+  const env = hostHarness({ platform: "win32", openResult });
+  env.configurationChanged("sinitek-cli-tools.humanInteractionNotifications");
+  env.configurationChanged("sinitek-cli-tools.taskCompletionNotifications");
+  assert.deepEqual(env.opened, ["ms-settings:notifications"]);
+  assert.equal(env.globalState.size, 0);
+  complete(true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(env.globalState.size, 1);
+  env.configurationChanged("sinitek-cli-tools.taskCompletionNotifications");
+  assert.equal(env.opened.length, 1);
+});
+
+test("Windows settings can be retried after opening fails and remain accessible after query failure", async () => {
+  const options = { platform: "win32" as const, openSettings: false, failAuthorization: true };
+  const env = hostHarness(options);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(env.globalState.size, 0);
+  assert.equal(env.errors.length, 1);
+  const failed = await env.controller.notificationAuthorization(true);
+  assert.equal(failed.status, "unavailable");
+  assert.match(failed.detail!, /手动前往/);
+  options.openSettings = true;
+  const recovered = await env.controller.notificationAuthorization(true);
+  assert.equal(recovered.status, "unavailable");
+  assert.match(recovered.detail!, /已打开 Windows/);
+  assert.equal(env.globalState.size, 1);
+  await env.controller.request("ask");
+  assert.deepEqual(env.events, ["notify", "start"]);
+  const storage = hostHarness({ platform: "win32", failSave: true });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(storage.errors.length, 1);
+  assert.equal(storage.globalState.size, 0);
+});
 
 test("local Mac startup requests authorization only when a notification setting is enabled", async () => {
   const local = hostHarness({ status: "not-determined" });

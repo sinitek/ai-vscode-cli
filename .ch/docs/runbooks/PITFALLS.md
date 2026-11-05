@@ -838,15 +838,34 @@ rm -r "$result_directory"
 /usr/bin/log show --last 2m --style compact --predicate 'process == "usernoted" AND eventMessage CONTAINS[c] "com.sinitek.cli-tools.notifications"'
 ```
 
-- 2026-11-04 本机实测：授权后 API 回报 `submitted`，用户重试后确认看到了“携宁 CLI 提醒”；Windows/Linux 仍需分别真机验收，命令 mock 不代表系统展示通过。
+- 2026-11-04 Mac 本机实测：授权后 API 回报 `submitted`，用户重试后确认看到了“携宁 CLI 提醒”；Windows 真机结果见下节，Linux 仍需真机验收，命令 mock 不代表系统展示通过。
 
 ### 授权入口与拒绝恢复
 
 - 本机 Mac 启动扩展且至少一类系统通知开启时自动请求未决定权限。系统拒绝是持久决定，后续只读取状态，不反复申请，不自动打开系统设置。
-- 工具设置 → 通知授权：任务完成通知、人机交互通知两个开关默认开启，复用既有应用级 VS Code 配置，全局保存且立即生效，关闭不会关闭窗口图标提醒或撤销系统授权。未决定时点击“授权通知”直接弹系统授权；拒绝或已授权时点击“打开系统通知设置”，手动选择“携宁 CLI 提醒”，处理后点击“刷新状态”。刷新只查询，不发送测试通知。远程宿主不执行本机操作。
+- 工具设置 → 通知设置：任务完成通知、人机交互通知两个开关默认开启，复用既有应用级 VS Code 配置，全局保存且立即生效，关闭不会关闭窗口图标提醒或撤销系统授权。Mac 未决定时点击“授权通知”直接弹系统授权；拒绝或已授权时点击“打开系统通知设置”，手动选择“携宁 CLI 提醒”，处理后点击“刷新状态”。刷新只查询，不发送测试通知。远程宿主不执行本机操作。
 - `--authorize` 是只授权、不投递模式；`--diagnose` 只查询。二者与通知发送复用助手和串行队列，不能为重弹授权而换 bundle ID、删除系统权限或伪装成新的应用。
 - 修改嵌入助手脚本必须升级缓存目录，否则已有 `main.scpt` 会被直接复用；本次从 `macos-v4` 升级到 `macos-v5`，保留 bundle ID，不删除旧目录或重置既有授权。
-- Webview 的全局 `button { display: inline-flex }` 会覆盖浏览器的 `[hidden]` 默认样式；平台专属授权按钮必须显式提供 `#authorizeNotifications[hidden] { display: none }`，并用非 Mac 浏览器场景验证实际不可见，不能只断言 DOM 的 `hidden` 属性。
+- Webview 的全局 `button { display: inline-flex }` 会覆盖浏览器的 `[hidden]` 默认样式；平台专属授权按钮必须显式提供 `#authorizeNotifications[hidden] { display: none }`，并用 Linux 浏览器场景验证实际不可见，不能只断言 DOM 的 `hidden` 属性。Windows 的同一按钮用于打开系统通知设置，应保持可见。
+
+## Windows 已允许通知并投递成功仍不显示横幅
+
+### 现象与根因
+
+- 系统通知和当前编辑器的“显示通知横幅”均已开启，`ToastNotifier.Setting` 返回 `Enabled`，通知历史存在记录、系统日志显示已送达，但屏幕没有横幅。
+- 2026-11-05 本机确认是 Windows 免打扰抑制了展示。用户处理免打扰后，再次通过现有 Windows transport 发送通知，用户确认看到了横幅；无需将 VS Code 切到后台。
+
+### 排查与长期规避
+
+- 在“工具设置 → 通知设置”读取实际编辑器通知状态，打开“设置 → 系统 → 通知”，检查编辑器通知、通知横幅、免打扰及自动启用条件。`Enabled` 只代表允许通知，不能据此宣称横幅可见；系统接收和用户可见应分别验收。
+- Windows 经典桌面通知没有 macOS 式的允许/拒绝授权框。首次启用任一通知时自动打开系统通知设置，成功后记录扩展全局状态；之后可手动打开，刷新只查询。查询失败也保留设置入口。
+- 系统通知前后台均派发，任务栏闪烁仅在后台触发。不为显示横幅而绕过免打扰、修改用户系统开关或更换已注册的编辑器身份。
+
+### 验证边界
+
+- 真实 Extension Development Host 已验证 `ms-settings:notifications` 打开、首次引导持久化、原生状态查询及通知调用无报错；用户另行确认关闭免打扰后实际看到了横幅。
+- 浏览器验证覆盖 Windows 关闭/查询失败状态、窄面板、Mac 首次授权和 Linux 隐藏授权按钮；这些验证不能替代 Windows 原生展示确认。
+- 完整验收记录：[Windows 通知状态与首次设置引导](../exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md)。
 
 ## DSH 关闭后恢复不能按 Tab ID 选择隔离目录
 

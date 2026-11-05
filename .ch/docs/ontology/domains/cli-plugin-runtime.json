@@ -1064,14 +1064,15 @@
     },
     {
       "id": "plugin.rule.notification_authorization_guidance",
-      "name": "Mac 首次自动授权与工具设置通知管理",
-      "description": "本机 macOS 扩展启动或通知设置变更时，任一类系统通知开启才异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，远程宿主不调用本机工具。使用说明仅保留模式说明，通知授权页签位于工具设置，所有平台显示通知条件，Mac 单独展示状态和手动说明。任务完成通知和人机交互通知两个开关均默认开启，读取并全局保存既有 application 配置，彼此独立且立即生效，保留已有选择；保存失败报错并回传真实状态，不影响窗口图标提醒或系统授权。未决定时按钮直接请求系统授权，已拒绝、已允许或关闭横幅时打开系统通知设置，由用户选择携宁 CLI 提醒；首次手动拒绝不立即跳转设置。刷新只查询，不申请、不投递。授权与两类通知共用稳定身份及串行助手，失败可重试，不持久缓存权限。",
-      "aliases": ["通知授权", "自动授权", "手动授权", "工具设置", "通知开关", "任务完成通知", "人机交互通知", "拒绝后不再弹窗", "macos-v5"],
+      "name": "Mac 首次授权与 Windows 首次设置引导及通知管理",
+      "description": "工具设置的通知设置页签复用两类 application 通知开关，默认开启、独立、全局保存并立即生效，保留已有选择，失败回传真实状态。Mac 在本机启动或通知配置变化且任一通知开启时异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，手动按钮在未决定时申请，否则打开系统通知设置选择携宁 CLI 提醒。Windows 查询当前编辑器身份的 ToastNotifier.Setting，区分允许、应用关闭、用户全局关闭、系统策略及安装或查询异常；查询失败仍能手动打开 ms-settings:notifications。Windows 无 Mac 式授权框，首次启用任一通知时自动打开系统通知设置，成功后记录扩展全局状态，重启不重复，失败可重试，同一宿主并发请求合并。刷新只查询，不申请、不投递、不打开设置；远程 workspace 宿主不操作本机，通知都关闭时不自动引导。用户自行设置系统通知和横幅，不自动修改系统开关；Enabled 或投递成功不代表横幅可见。保留 Mac 稳定身份和串行助手，不持久缓存授权状态，不影响后台窗口提醒或任务执行。",
+      "aliases": ["通知授权", "通知设置", "Windows 通知", "首次引导", "ms-settings:notifications", "自动授权", "手动授权", "工具设置", "通知开关", "任务完成通知", "人机交互通知", "拒绝后不再弹窗", "macos-v5"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "通知授权与工具设置"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "通知授权与工具设置"},
+        {"path": "src/desktopAttention.ts"},
         {"path": "src/macosDesktopNotifications.ts"},
         {"path": "src/desktopNotificationAuthorization.ts"},
         {"path": "src/extensionHost/humanInteractionAttentionHost.ts"},

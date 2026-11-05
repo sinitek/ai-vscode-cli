@@ -602,6 +602,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
 
       let notificationAuthorizationRequestId = 0;
       let notificationAuthorizationTimer = null;
+      let notificationAuthorizationPlatform = null;
 
       function requestNotificationAuthorization(request) {
         if (notificationAuthorizationTimer !== null) return;
@@ -622,8 +623,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         notificationAuthorizationTimer = null;
         const authorization = data.payload || {};
         if (authorization.platform) {
+          notificationAuthorizationPlatform = authorization.platform;
           elements.helpNotificationMac.hidden = authorization.platform !== "darwin";
-          elements.authorizeNotifications.hidden = authorization.platform !== "darwin";
+          elements.authorizeNotifications.hidden = !["darwin", "win32"].includes(authorization.platform);
         }
         const labels = {
           "not-determined": i18n.helpNotificationNotDetermined,
@@ -635,9 +637,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         };
         elements.notificationAuthorizationStatus.textContent = authorization.detail || labels[authorization.status] || i18n.helpNotificationUnavailable;
         elements.toolSettingsNotificationsPanel.setAttribute("aria-busy", "false");
-        elements.authorizeNotifications.textContent = ["authorized", "denied", "disabled"].includes(authorization.status)
+        elements.authorizeNotifications.textContent = notificationAuthorizationPlatform === "win32" || ["authorized", "denied", "disabled"].includes(authorization.status)
           ? i18n.helpNotificationOpenSettings : i18n.helpNotificationAuthorize;
-        elements.authorizeNotifications.disabled = authorization.platform !== "darwin" || authorization.status === "unavailable";
+        elements.authorizeNotifications.disabled = !["darwin", "win32"].includes(notificationAuthorizationPlatform)
+          || (notificationAuthorizationPlatform === "darwin" && authorization.status === "unavailable");
         elements.refreshNotificationAuthorization.disabled = false;
       }
 
