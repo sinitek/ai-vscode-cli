@@ -824,7 +824,7 @@
 - 用正式助手调用 `--diagnose` 只查询授权，不发送通知：
 
 ```sh
-notification_app="<扩展 globalStorage>/desktop-attention/macos-v4/携宁 CLI 提醒.app"
+notification_app="<扩展 globalStorage>/desktop-attention/macos-v5/携宁 CLI 提醒.app"
 result_directory="$(mktemp -d)"
 open -g -W -n "$notification_app" --args --diagnose "携宁 CLI 提醒" "固定测试文案" "$result_directory/status"
 cat "$result_directory/status"
@@ -838,6 +838,14 @@ rm -r "$result_directory"
 ```
 
 - 2026-11-04 本机实测：授权后 API 回报 `submitted`，用户重试后确认看到了“携宁 CLI 提醒”；Windows/Linux 仍需分别真机验收，命令 mock 不代表系统展示通过。
+
+### 授权入口与拒绝恢复
+
+- 本机 Mac 启动扩展且至少一类系统通知开启时自动请求未决定权限。系统拒绝是持久决定，后续只读取状态，不反复申请，不自动打开系统设置。
+- 使用说明 → 通知授权：未决定时点击“授权通知”直接弹系统授权；拒绝或已授权时点击“打开系统通知设置”，手动选择“携宁 CLI 提醒”，处理后点击“刷新状态”。刷新只查询，不发送测试通知。远程宿主不执行本机操作。
+- `--authorize` 是只授权、不投递模式；`--diagnose` 只查询。二者与通知发送复用助手和串行队列，不能为重弹授权而换 bundle ID、删除系统权限或伪装成新的应用。
+- 修改嵌入助手脚本必须升级缓存目录，否则已有 `main.scpt` 会被直接复用；本次从 `macos-v4` 升级到 `macos-v5`，保留 bundle ID，不删除旧目录或重置既有授权。
+- Webview 的全局 `button { display: inline-flex }` 会覆盖浏览器的 `[hidden]` 默认样式；平台专属授权按钮必须显式提供 `#authorizeNotifications[hidden] { display: none }`，并用非 Mac 浏览器场景验证实际不可见，不能只断言 DOM 的 `hidden` 属性。
 
 ## DSH 关闭后恢复不能按 Tab ID 选择隔离目录
 

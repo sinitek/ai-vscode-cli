@@ -29,6 +29,7 @@ export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
 
 export type PanelMessage =
   | { type: "requestState" }
+  | { type: "notificationAuthorization"; action: "status" | "request"; requestId: number }
   | { type: "requestHumanInteractionHistory" }
   | { type: "previewChatImage"; source: string; alt?: string }
   | { type: "resolveChatImage"; source: string }

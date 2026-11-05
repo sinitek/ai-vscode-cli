@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { DesktopAttentionCommandRunner } from "./desktopAttention";
+import type { DesktopNotificationAuthorization } from "./desktopNotificationAuthorization";
 
 export const MACOS_NOTIFICATION_APP_ID = "com.sinitek.cli-tools.notifications";
 export const MACOS_NOTIFICATION_APP_NAME = "携宁 CLI 提醒";
@@ -12,7 +13,8 @@ export function createMacOSDesktopNotificationSender(options: {
   run: DesktopAttentionCommandRunner;
 }) {
   let preparedApp: Promise<string> | undefined;
-  const directory = path.join(options.storagePath, "desktop-attention", "macos-v4");
+  let queue: Promise<unknown> = Promise.resolve();
+  const directory = path.join(options.storagePath, "desktop-attention", "macos-v5");
   const appPath = path.join(directory, `${MACOS_NOTIFICATION_APP_NAME}.app`);
   const script = `
 ObjC.import('Foundation');
@@ -47,7 +49,7 @@ function run() {
       result.status = 'diagnostic';
     } else if (result.authorizationStatus === Number($.UNAuthorizationStatusDenied)) {
       result.status = 'denied';
-    } else {
+    } else if (result.authorizationStatus === Number($.UNAuthorizationStatusNotDetermined)) {
       finished = false;
       center.requestAuthorizationWithOptionsCompletionHandler($.UNAuthorizationOptionAlert, function(granted, error) {
         authorized = granted;
@@ -61,10 +63,17 @@ function run() {
         result.errorDomain = ObjC.unwrap(authorizationError.domain);
       } else if (finished && !authorized) {
         result.status = 'denied';
+      } else if (finished) {
+        result.status = 'authorized';
+        result.authorizationStatus = Number($.UNAuthorizationStatusAuthorized);
+        result.alertSetting = Number($.UNNotificationSettingEnabled);
       }
+    } else {
+      authorized = true;
+      result.status = 'authorized';
     }
   }
-  if (finished && authorized && !hasError(authorizationError)) {
+  if (finished && authorized && !hasError(authorizationError) && arguments.indexOf('--authorize') < 0) {
     finished = false;
     var content = $.UNMutableNotificationContent.alloc.init;
     content.title = arguments[arguments.length - 3];
@@ -132,7 +141,7 @@ function run() {
     }
   };
 
-  return async (body: string = options.body): Promise<void> => {
+  const invoke = async (mode: "notify" | "--diagnose" | "--authorize", body: string = options.body) => {
     if (!preparedApp) {
       preparedApp = prepare().then(async (preparedPath) => {
         await options.run({
@@ -151,23 +160,44 @@ function run() {
     try {
       await options.run({
         file: "/usr/bin/open",
-        args: ["-g", "-W", "-n", preparedPath, "--args", options.title, body, resultPath],
+        args: ["-g", "-W", "-n", preparedPath, "--args", ...(mode === "notify" ? [] : [mode]), options.title, body, resultPath],
         timeoutMs: 65000,
       });
       const result = JSON.parse(await fs.promises.readFile(resultPath, "utf8")) as {
         status: string;
         errorCode?: number;
         errorDomain?: string;
+        authorizationStatus?: number;
+        alertSetting?: number;
       };
-      if (result.status !== "submitted") {
+      if (!["submitted", "authorized", "diagnostic", "denied"].includes(result.status) || (mode === "notify" && result.status !== "submitted")) {
         const permissionDenied = result.status === "denied"
           || (result.errorDomain === "UNErrorDomain" && result.errorCode === 1);
         throw new Error(permissionDenied
           ? "系统未允许发送通知，请在“系统设置 → 通知 → 携宁 CLI 提醒”中开启允许通知，并选择横幅或提醒"
           : "系统通知未能提交，可能等待授权超时或系统拒绝请求");
       }
+      return result;
     } finally {
       await fs.promises.rm(resultDirectory, { recursive: true, force: true });
     }
   };
+
+  const enqueue = <Result>(operation: () => Promise<Result>): Promise<Result> => {
+    const pending = queue.then(operation);
+    queue = pending.catch(() => undefined);
+    return pending;
+  };
+  const authorization = (mode: "--diagnose" | "--authorize"): Promise<DesktopNotificationAuthorization> => enqueue(async () => {
+    const result = await invoke(mode);
+    const status = result.status === "denied" || result.authorizationStatus === 1 ? "denied"
+      : result.authorizationStatus === 0 ? "not-determined"
+        : result.authorizationStatus !== undefined && [2, 3, 4].includes(result.authorizationStatus)
+          ? result.alertSetting === 1 ? "disabled" : "authorized" : "unavailable";
+    return { platform: "darwin", status };
+  });
+  return Object.assign((body?: string): Promise<void> => enqueue(async () => { await invoke("notify", body); }), {
+    getAuthorization: () => authorization("--diagnose"),
+    requestAuthorization: () => authorization("--authorize"),
+  });
 }

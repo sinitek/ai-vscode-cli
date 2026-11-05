@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { createHumanInteractionAttentionHost } from "./extensionHost/humanInteractionAttentionHost";
-import { withHumanInteractionAttention, type HumanInteractionAttentionController } from "./humanInteractionAttention";
+import { withHumanInteractionAttention } from "./humanInteractionAttention";
 import { notifyLoopTaskCompletion, notifyTaskRunCompletion } from "./taskCompletionAttention";
 import { formatOrchestratorClarificationAnswer, loopClarificationScope, waitForOrchestratorClarification } from "./orchestratorClarification";
 import * as fs from "fs";
@@ -588,6 +588,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await handlePanelMessage(message);
     },
     onRequestHumanInteractionHistory: () => readHumanInteractionHistory(getHumanInteractionHistoryOptions()),
+    onNotificationAuthorization: (request) => humanInteractionAttention!.notificationAuthorization(request),
   });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
@@ -1346,7 +1347,7 @@ type PendingHumanInteraction = {
 
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
-let humanInteractionAttention: HumanInteractionAttentionController | undefined;
+let humanInteractionAttention: ReturnType<typeof createHumanInteractionAttentionHost> | undefined;
 
 function waitForOrchestratorClarificationWithAttention(
   ...args: Parameters<typeof waitForOrchestratorClarification>

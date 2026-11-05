@@ -909,6 +909,7 @@ ${renderChatModal({
         },
         contentHtml: `          <div class="help-tabs" role="tablist" aria-label="${i18n.helpTabsLabel}">
             <button id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes">${i18n.helpTabModes}</button>
+            <button id="helpTabNotifications" class="help-tab" role="tab" aria-selected="false" aria-controls="helpPanelNotifications" tabindex="-1">${i18n.helpTabNotifications}</button>
           </div>
           <div id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes">
             <div class="help-section">
@@ -916,6 +917,26 @@ ${renderChatModal({
                 <li>${i18n.helpModeVibe}</li>
                 <li>${i18n.helpModeLoop}</li>
                 <li>${i18n.helpModeLoopPlus}</li>
+              </ul>
+            </div>
+          </div>
+          <div id="helpPanelNotifications" class="help-panel" role="tabpanel" aria-labelledby="helpTabNotifications" hidden>
+            <div class="help-section">
+              <p>${i18n.helpNotificationOverview}</p>
+              <p id="notificationAuthorizationStatus" role="status" aria-live="polite">${i18n.helpNotificationLoading}</p>
+              <div class="notification-authorization-actions">
+                <button id="authorizeNotifications" class="primary action-button" hidden disabled>${i18n.helpNotificationAuthorize}</button>
+                <button id="refreshNotificationAuthorization" class="secondary action-button" disabled>${i18n.helpNotificationRefresh}</button>
+              </div>
+              <section id="helpNotificationMac" hidden aria-labelledby="helpNotificationMacTitle">
+                <h3 id="helpNotificationMacTitle">${i18n.helpNotificationMacTitle}</h3>
+                <p>${i18n.helpNotificationMacGuide}</p>
+                <p>${i18n.helpNotificationMacManual}</p>
+              </section>
+              <p>${i18n.helpNotificationSettings}</p>
+              <ul>
+                <li>${i18n.helpNotificationWindows}</li>
+                <li>${i18n.helpNotificationLinux}</li>
               </ul>
             </div>
           </div>

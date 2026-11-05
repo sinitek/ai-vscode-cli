@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import { win32 } from "path";
 import type { HumanInteractionAttentionTransport } from "./humanInteractionAttention";
 import { createMacOSDesktopNotificationSender } from "./macosDesktopNotifications";
+import type { DesktopNotificationAuthorization } from "./desktopNotificationAuthorization";
 
 export const HUMAN_INTERACTION_NOTIFICATION_TITLE = "携宁 CLI 提醒";
 export const HUMAN_INTERACTION_NOTIFICATION_BODY = "有一项人机交互等待处理，请返回编辑器中的 AI 对话面板。";
@@ -94,7 +95,9 @@ export function createDesktopAttentionTransport(options: {
   mainProcessId?: number;
   storagePath?: string;
   env: NodeJS.ProcessEnv;
-}, run: DesktopAttentionCommandRunner = runDesktopAttentionCommand): HumanInteractionAttentionTransport {
+}, run: DesktopAttentionCommandRunner = runDesktopAttentionCommand): HumanInteractionAttentionTransport & {
+  notificationAuthorization: (request: boolean) => Promise<DesktopNotificationAuthorization>;
+} {
   const linuxWindows = new Set<string>();
   const notifyMacOS = options.storagePath ? createMacOSDesktopNotificationSender({
     storagePath: options.storagePath,
@@ -123,6 +126,15 @@ export function createDesktopAttentionTransport(options: {
   };
 
   return {
+    async notificationAuthorization(request): Promise<DesktopNotificationAuthorization> {
+      if (options.platform !== "darwin") {
+        return { platform: options.platform, status: "not-required" };
+      }
+      if (!notifyMacOS) {
+        return { platform: options.platform, status: "unavailable", detail: "无法确定本机通知助手的存储位置。" };
+      }
+      return request ? notifyMacOS.requestAuthorization() : notifyMacOS.getAuthorization();
+    },
     async notify(kind = "human-interaction"): Promise<void> {
       const body = kind === "task-completed" ? TASK_COMPLETION_NOTIFICATION_BODY : HUMAN_INTERACTION_NOTIFICATION_BODY;
       if (options.platform === "darwin") {

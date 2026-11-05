@@ -2,6 +2,9 @@
 export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEventListener("message", (event) => {
         try {
           const data = event.data;
+          if (data.type === "notificationAuthorization") {
+            applyNotificationAuthorization(data);
+          }
           if (data.type === "chatImageResolved") {
             applyChatImageSource(data);
           }

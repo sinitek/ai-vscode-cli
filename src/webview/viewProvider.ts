@@ -5,10 +5,12 @@ import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
 import { t } from "../i18n";
 import { formatHomeDisplayPath } from "../shared/userHomePaths";
+import type { DesktopNotificationAuthorization } from "../desktopNotificationAuthorization";
 
 type ViewHandlers = {
   onMessage: (message: PanelMessage) => void;
   onRequestHumanInteractionHistory?: () => Record<string, unknown>[];
+  onNotificationAuthorization?: (request: boolean) => Promise<DesktopNotificationAuthorization>;
 };
 
 export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
@@ -55,6 +57,19 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       }
       if (isChatImageMessage(message)) {
         return this.imageHost.handleMessage(message);
+      }
+      if (message.type === "notificationAuthorization") {
+        let authorization: DesktopNotificationAuthorization;
+        try {
+          authorization = await this.handlers.onNotificationAuthorization?.(message.action === "request")
+            ?? { platform: process.platform, status: "unavailable", detail: "通知授权服务暂不可用，请重试。" };
+        } catch {
+          authorization = { platform: process.platform, status: "unavailable", detail: "通知授权操作失败，请重试。" };
+        }
+        if (this.view === webviewView) {
+          this.postMessage({ type: "notificationAuthorization", requestId: message.requestId, payload: authorization });
+        }
+        return;
       }
       if (message.type === "requestHumanInteractionHistory") {
         this.postMessage({

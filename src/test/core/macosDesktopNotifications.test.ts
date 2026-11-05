@@ -14,7 +14,7 @@ import type { DesktopAttentionCommand } from "../../desktopAttention";
 function harness(storagePath: string) {
   const commands: DesktopAttentionCommand[] = [];
   let failCompilation = false;
-  let result: { status: string; errorCode?: number; errorDomain?: string } = { status: "submitted" };
+  let result: { status: string; errorCode?: number; errorDomain?: string; authorizationStatus?: number; alertSetting?: number } = { status: "submitted" };
   const run = async (command: DesktopAttentionCommand): Promise<string> => {
     commands.push(command);
     if (command.file === "/usr/bin/osacompile") {
@@ -71,7 +71,7 @@ test("macOS helper compilation failures leave no incomplete app and can be retri
   const notify = env.create();
   env.failNextCompilation();
   await assert.rejects(notify(), /编译失败/);
-  const directory = path.join(storagePath, "desktop-attention", "macos-v4");
+  const directory = path.join(storagePath, "desktop-attention", "macos-v5");
   assert.deepEqual(fs.readdirSync(directory), []);
   await notify();
   assert.deepEqual(fs.readdirSync(directory), ["携宁 CLI 提醒.app"]);
@@ -96,7 +96,7 @@ test("concurrent extension windows can prepare the same notification app without
   const env = harness(storagePath);
   await Promise.all([env.create()(), env.create()()]);
   assert.equal(env.commands.filter((command) => command.file === "/usr/bin/open").length, 2);
-  assert.deepEqual(fs.readdirSync(path.join(storagePath, "desktop-attention", "macos-v4")), ["携宁 CLI 提醒.app"]);
+  assert.deepEqual(fs.readdirSync(path.join(storagePath, "desktop-attention", "macos-v5")), ["携宁 CLI 提醒.app"]);
 });
 
 test("macOS reports denied permission and delivery failure instead of treating app launch as success", async (context) => {
@@ -114,7 +114,7 @@ test("macOS reports denied permission and delivery failure instead of treating a
   await assert.rejects(notify(), /超时/);
   env.setResult({ status: "submitted" });
   await notify();
-  assert.deepEqual(fs.readdirSync(path.join(storagePath, "desktop-attention", "macos-v4")), ["携宁 CLI 提醒.app"]);
+  assert.deepEqual(fs.readdirSync(path.join(storagePath, "desktop-attention", "macos-v5")), ["携宁 CLI 提醒.app"]);
 });
 
 test("macOS notification script uses native nil and handles native callbacks on the run loop", async (context) => {
@@ -123,7 +123,7 @@ test("macOS notification script uses native nil and handles native callbacks on 
   const env = harness(storagePath);
   await env.create()();
   const script = env.commands[0].args[5];
-  const execute = (options: { denied?: boolean; authorizationError?: boolean; deliveryError?: boolean; diagnose?: boolean; timeout?: boolean }) => {
+  const execute = (options: { denied?: boolean; undetermined?: boolean; reject?: boolean; authorizeOnly?: boolean; authorizationError?: boolean; deliveryError?: boolean; diagnose?: boolean; timeout?: boolean }) => {
     const callbacks: Array<() => void> = [];
     const events: string[] = [];
     let result = "";
@@ -134,14 +134,14 @@ test("macOS notification script uses native nil and handles native callbacks on 
     const center = {
       getNotificationSettingsWithCompletionHandler: (callback: (settings: unknown) => void) => {
         if (!options.timeout) {
-          callbacks.push(() => callback({ authorizationStatus: options.denied ? 1 : 2, alertSetting: 2 }));
+          callbacks.push(() => callback({ authorizationStatus: options.denied ? 1 : options.undetermined ? 0 : 2, alertSetting: 2 }));
         }
       },
       requestAuthorizationWithOptionsCompletionHandler: (flags: number, callback: (granted: boolean, error: unknown) => void) => {
         assert.equal(insideCallback, false);
         assert.equal(flags, 4);
         events.push("authorize");
-        callbacks.push(() => callback(!options.authorizationError, options.authorizationError ? error : nil));
+        callbacks.push(() => callback(!options.authorizationError && !options.reject, options.authorizationError ? error : nil));
       },
       addNotificationRequestWithCompletionHandler: (request: unknown, callback: (error: unknown) => void) => {
         assert.equal(insideCallback, false);
@@ -152,6 +152,9 @@ test("macOS notification script uses native nil and handles native callbacks on 
     const bridge = Object.assign(() => nil, {
       UNUserNotificationCenter: { currentNotificationCenter: center },
       UNAuthorizationStatusDenied: 1,
+      UNAuthorizationStatusNotDetermined: 0,
+      UNAuthorizationStatusAuthorized: 2,
+      UNNotificationSettingEnabled: 2,
       UNAuthorizationOptionAlert: 4,
       UNMutableNotificationContent: { alloc: { init: {} } },
       UNNotificationRequest: {
@@ -163,7 +166,7 @@ test("macOS notification script uses native nil and handles native callbacks on 
           return { identifier };
         },
       },
-      NSProcessInfo: { processInfo: { arguments: ["helper", ...(options.diagnose ? ["--diagnose"] : []), "携宁 CLI 提醒", "固定通知测试文案", "isolated-status"] } },
+      NSProcessInfo: { processInfo: { arguments: ["helper", ...(options.diagnose ? ["--diagnose"] : options.authorizeOnly ? ["--authorize"] : []), "携宁 CLI 提醒", "固定通知测试文案", "isolated-status"] } },
       NSRunLoop: { currentRunLoop: { runUntilDate: () => {
         insideCallback = true;
         try { callbacks.shift()?.(); } finally { insideCallback = false; }
@@ -181,12 +184,55 @@ test("macOS notification script uses native nil and handles native callbacks on 
     vm.runInContext("run()", sandbox);
     return { result: JSON.parse(result), events };
   };
-  assert.deepEqual(execute({}), { result: { status: "submitted", authorizationStatus: 2, alertSetting: 2 }, events: ["authorize", "submit"] });
+  assert.deepEqual(execute({}), { result: { status: "submitted", authorizationStatus: 2, alertSetting: 2 }, events: ["submit"] });
+  assert.deepEqual(execute({ undetermined: true }).events, ["authorize", "submit"]);
+  assert.deepEqual(execute({ undetermined: true, authorizeOnly: true }), {
+    result: { status: "authorized", authorizationStatus: 2, alertSetting: 2 }, events: ["authorize"],
+  });
+  assert.deepEqual(execute({ authorizeOnly: true }).events, []);
+  assert.deepEqual(execute({ denied: true, authorizeOnly: true }).events, []);
+  assert.equal(execute({ undetermined: true, authorizeOnly: true, reject: true }).result.status, "denied");
   assert.equal(execute({ denied: true }).result.status, "denied");
   assert.deepEqual(execute({ denied: true }).events, []);
-  assert.equal(execute({ authorizationError: true }).result.errorDomain, "UNErrorDomain");
+  assert.equal(execute({ undetermined: true, authorizationError: true }).result.errorDomain, "UNErrorDomain");
   assert.equal(execute({ deliveryError: true }).result.status, "delivery-error");
   assert.deepEqual(execute({ diagnose: true }).events, []);
   assert.equal(execute({ diagnose: true }).result.status, "diagnostic");
   assert.equal(execute({ timeout: true }).result.status, "timeout");
+});
+
+test("macOS authorization modes query or request without sending notifications and refresh permission state", async (context) => {
+  const storagePath = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-notification-authorization-"));
+  context.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const env = harness(storagePath);
+  const sender = env.create();
+  for (const [authorizationStatus, alertSetting, expected] of [
+    [0, 0, "not-determined"], [1, 1, "denied"], [2, 2, "authorized"], [2, 1, "disabled"], [3, 2, "authorized"],
+  ] as const) {
+    env.setResult({ status: "diagnostic", authorizationStatus, alertSetting });
+    assert.deepEqual(await sender.getAuthorization(), { platform: "darwin", status: expected });
+    assert.ok(env.commands[env.commands.length - 1].args.includes("--diagnose"));
+  }
+  env.setResult({ status: "authorized", authorizationStatus: 2, alertSetting: 2 });
+  assert.deepEqual(await sender.requestAuthorization(), { platform: "darwin", status: "authorized" });
+  assert.ok(env.commands[env.commands.length - 1].args.includes("--authorize"));
+  env.setResult({ status: "denied", authorizationStatus: 1 });
+  assert.equal((await sender.requestAuthorization()).status, "denied");
+  env.setResult({ status: "submitted" });
+  await sender();
+  assert.ok(!env.commands[env.commands.length - 1].args.includes("--authorize"));
+});
+
+test("macOS concurrent authorization and notifications share preparation and recover after a failed operation", async (context) => {
+  const storagePath = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-notification-queue-"));
+  context.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const env = harness(storagePath);
+  const sender = env.create();
+  env.setResult({ status: "timeout" });
+  const results = await Promise.allSettled([sender.requestAuthorization(), sender.getAuthorization(), sender()]);
+  assert.ok(results.every((result) => result.status === "rejected"));
+  assert.equal(env.commands.filter((command) => command.file === "/usr/bin/osacompile").length, 1);
+  assert.equal(env.commands.filter((command) => command.file === "/usr/bin/open").length, 3);
+  env.setResult({ status: "authorized", authorizationStatus: 2 });
+  assert.equal((await sender.requestAuthorization()).status, "authorized");
 });

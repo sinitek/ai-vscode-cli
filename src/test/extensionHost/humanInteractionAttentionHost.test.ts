@@ -6,16 +6,21 @@ import vm = require("node:vm");
 import ts = require("typescript");
 import { createHumanInteractionAttentionController, withHumanInteractionAttention } from "../../humanInteractionAttention";
 import { buildTimedOutHumanInteractionSubmission, type HumanInteractionRequest } from "../../humanInteraction";
+import type { DesktopNotificationAuthorization } from "../../desktopNotificationAuthorization";
 
 const hostSource = fs.readFileSync(path.join(process.cwd(), "src/extensionHost/humanInteractionAttentionHost.ts"), "utf8");
 const hostScript = ts.transpileModule(hostSource, {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJS.Platform } = {}) {
+function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJS.Platform; notifications?: boolean; status?: DesktopNotificationAuthorization["status"]; failAuthorization?: boolean; requestDenied?: boolean; openSettings?: boolean } = {}) {
   const events: string[] = [];
   const state = { focused: false };
-  const settings: Record<string, boolean> = { humanInteractionNotifications: true, humanInteractionWindowAttention: true };
+  const settings: Record<string, boolean> = { humanInteractionNotifications: options.notifications ?? true, taskCompletionNotifications: options.notifications ?? true, humanInteractionWindowAttention: true };
+  const authorizationCalls: boolean[] = [];
+  const opened: string[] = [];
+  const errors: unknown[] = [];
+  const authorizationState = { status: options.status ?? "authorized" };
   const subscriptions: Array<{ dispose: () => void }> = [];
   let windowChanged = (): void => undefined;
   let configurationChanged = (_key: string): void => undefined;
@@ -26,7 +31,9 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
     require(name: string): unknown {
       if (name === "vscode") {
         return {
-          env: { appName: "Visual Studio Code", appRoot: "/editor/resources/app", remoteName: options.remote ? "ssh-remote" : undefined },
+          env: { appName: "Visual Studio Code", appRoot: "/editor/resources/app", remoteName: options.remote ? "ssh-remote" : undefined,
+            openExternal: async (uri: string) => { opened.push(uri); return options.openSettings ?? true; } },
+          Uri: { parse: (value: string) => value },
           ExtensionKind: { UI: 1 },
           window: {
             state,
@@ -51,6 +58,12 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
         return { createDesktopAttentionTransport: (input: typeof transportOptions) => {
           transportOptions = input;
           return {
+            notificationAuthorization: async (request: boolean) => {
+              authorizationCalls.push(request);
+              if (options.failAuthorization) throw new Error("授权读取失败");
+              if (request && authorizationState.status === "not-determined") authorizationState.status = options.requestDenied ? "denied" : "authorized";
+              return { platform: options.platform ?? "darwin", status: options.platform && options.platform !== "darwin" ? "not-required" : authorizationState.status };
+            },
             notify: async () => { events.push("notify"); },
             startAttention: async () => { events.push("start"); },
             stopAttention: async () => { events.push("stop"); },
@@ -77,9 +90,63 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
     subscriptions,
     globalStorageUri: { fsPath: "/test-extension-storage" },
     extension: { extensionKind: options.ui ? 1 : 2 },
-  } as never, () => undefined);
-  return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions };
+  } as never, (_channel, error) => { errors.push(error); });
+  return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions, authorizationCalls, authorizationState, opened, errors };
 }
+
+test("local Mac startup requests authorization only when a notification setting is enabled", async () => {
+  const local = hostHarness({ status: "not-determined" });
+  assert.deepEqual(local.authorizationCalls, [true]);
+  assert.equal(local.authorizationState.status, "authorized");
+  const disabled = hostHarness({ notifications: false });
+  assert.deepEqual(disabled.authorizationCalls, []);
+  disabled.settings.taskCompletionNotifications = true;
+  disabled.configurationChanged("sinitek-cli-tools.taskCompletionNotifications");
+  assert.deepEqual(disabled.authorizationCalls, [true]);
+  for (const platform of ["win32", "linux"] as const) {
+    assert.deepEqual(hostHarness({ platform }).authorizationCalls, []);
+  }
+  const remote = hostHarness({ remote: true });
+  assert.equal((await remote.controller.notificationAuthorization(true)).status, "unavailable");
+  assert.deepEqual(remote.authorizationCalls, []);
+  assert.deepEqual(remote.opened, []);
+  assert.deepEqual(hostHarness({ remote: true, ui: true }).authorizationCalls, [true]);
+});
+
+test("manual Mac authorization queries without prompting and denied permissions open settings only on request", async () => {
+  const env = hostHarness({ notifications: false, status: "denied" });
+  assert.equal((await env.controller.notificationAuthorization()).status, "denied");
+  assert.deepEqual(env.authorizationCalls, [false]);
+  assert.deepEqual(env.opened, []);
+  const response = await env.controller.notificationAuthorization(true);
+  assert.match(response.detail!, /已打开/);
+  assert.deepEqual(env.authorizationCalls, [false, false]);
+  assert.equal(env.opened[0], "x-apple.systempreferences:com.apple.Notifications-Settings.extension");
+  env.authorizationState.status = "authorized";
+  assert.equal((await env.controller.notificationAuthorization()).status, "authorized");
+  await env.controller.notificationAuthorization(true);
+  assert.equal(env.opened.length, 2);
+});
+
+test("rejecting the first manual request does not immediately reopen settings or request again", async () => {
+  const env = hostHarness({ notifications: false, status: "not-determined", requestDenied: true });
+  assert.equal((await env.controller.notificationAuthorization(true)).status, "denied");
+  assert.deepEqual(env.authorizationCalls, [false, true]);
+  assert.deepEqual(env.opened, []);
+  assert.equal((await env.controller.notificationAuthorization()).status, "denied");
+  assert.deepEqual(env.authorizationCalls, [false, true, false]);
+});
+
+test("authorization failures remain nonblocking and failed settings navigation explains manual recovery", async () => {
+  const failed = hostHarness({ failAuthorization: true });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(failed.errors.length, 1);
+  assert.equal((await failed.controller.notificationAuthorization()).status, "unavailable");
+  await failed.controller.request("ask");
+  assert.ok(failed.events.includes("notify"));
+  const denied = hostHarness({ notifications: false, status: "denied", openSettings: false });
+  assert.match((await denied.controller.notificationAuthorization(true)).detail!, /手动前往/);
+});
 
 test("host routes focus and preference changes through the controller and disposes cleanly", async () => {
   const env = hostHarness();

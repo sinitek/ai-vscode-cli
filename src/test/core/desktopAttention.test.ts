@@ -25,6 +25,16 @@ function decodedScript(command: DesktopAttentionCommand): string {
   return Buffer.from(command.args[command.args.length - 1], "base64").toString("utf16le");
 }
 
+test("authorization is not required on Windows/Linux and missing macOS storage is explicit", async () => {
+  for (const platform of ["win32", "linux"] as const) {
+    const env = harness(platform);
+    assert.deepEqual(await env.transport.notificationAuthorization(true), { platform, status: "not-required" });
+    assert.equal(env.commands.length, 0);
+  }
+  const env = harness("darwin");
+  assert.equal((await env.transport.notificationAuthorization(false)).status, "unavailable");
+});
+
 test("macOS requires local helper storage and does not pretend to bounce the Dock", async () => {
   const env = harness("darwin");
   await assert.rejects(env.transport.notify(), /存储位置/);

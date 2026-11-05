@@ -58,13 +58,20 @@ test("渲染简洁准确的中文模式说明", () => {
   assert.deepEqual([...chinese.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]), descriptions);
 });
 
-test("使用说明仅保留默认选中的模式说明页签", () => {
+test("使用说明默认选中模式说明并提供通知授权页签和 Mac 手动入口", () => {
   const chineseHtml = buildHtml();
 
   for (const html of [chineseHtml]) {
     assert.doesNotMatch(html, /automatic conflict resolution|自动解冲突|不能自动解冲突|没有自动解冲突/);
     assert.match(html, /id="helpTabModes" class="help-tab active" role="tab" aria-selected="true" aria-controls="helpPanelModes"/);
     assert.match(html, /id="helpPanelModes" class="help-panel active" role="tabpanel" aria-labelledby="helpTabModes"/);
+    assert.match(html, /id="helpTabNotifications" class="help-tab" role="tab" aria-selected="false" aria-controls="helpPanelNotifications" tabindex="-1"/);
+    assert.match(html, /id="helpPanelNotifications"[^>]*hidden/);
+    assert.match(html, /id="helpNotificationMac" hidden/);
+    assert.match(html, /id="authorizeNotifications"[^>]*disabled/);
+    assert.match(html, /id="notificationAuthorizationStatus" role="status" aria-live="polite"/);
+    assert.match(html, /系统设置 → 通知 → 携宁 CLI 提醒/);
+    assert.match(html, /选择“不允许”后不会反复弹出/);
     assert.doesNotMatch(html, /helpTabInstall|helpPanelInstall|npm i(?:nstall)? -g|winget install|移除系统环境变量配置/);
     assert.doesNotMatch(html, /help-section[^>]*style=/);
     const selects = interactiveModeSelects(html);

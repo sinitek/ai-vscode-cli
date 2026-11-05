@@ -50,6 +50,40 @@ function createProvider(messages: PanelMessage[] = []) {
   });
 }
 
+test("notification authorization messages return correlated results without entering the session router", async () => {
+  const requests: boolean[] = [];
+  const messages: PanelMessage[] = [];
+  const provider = new CliBridgeViewProvider({ fsPath: process.cwd() } as vscode.Uri, {
+    onMessage: (message) => { messages.push(message); },
+    onNotificationAuthorization: async (request) => {
+      requests.push(request);
+      return { platform: "darwin", status: "denied" };
+    },
+  });
+  const env = createViewHarness();
+  provider.resolveWebviewView(env.view);
+  await env.receive({ type: "notificationAuthorization", action: "status", requestId: 1 });
+  await env.receive({ type: "notificationAuthorization", action: "request", requestId: 2 });
+  assert.deepEqual(requests, [false, true]);
+  assert.deepEqual(messages, []);
+  assert.deepEqual(env.posted, [1, 2].map((requestId) => ({ type: "notificationAuthorization", requestId, payload: { platform: "darwin", status: "denied" } })));
+});
+
+test("notification authorization failures report recoverable state and disposed views ignore late replies", async () => {
+  const provider = new CliBridgeViewProvider({ fsPath: process.cwd() } as vscode.Uri, {
+    onMessage: () => undefined,
+    onNotificationAuthorization: async () => { throw new Error("fixture failure"); },
+  });
+  const env = createViewHarness();
+  provider.resolveWebviewView(env.view);
+  await env.receive({ type: "notificationAuthorization", action: "request", requestId: 1 });
+  assert.equal((env.posted[0] as { payload: { status: string } }).payload.status, "unavailable");
+  const pending = env.receive({ type: "notificationAuthorization", action: "status", requestId: 2 });
+  env.dispose();
+  await pending;
+  assert.equal(env.posted.length, 1);
+});
+
 test("buffers references before the view and script are ready and flushes only once", () => {
   const messages: PanelMessage[] = [];
   const provider = createProvider(messages);

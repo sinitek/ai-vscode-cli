@@ -17,6 +17,14 @@
 - VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications`、`sinitek-cli-tools.humanInteractionWindowAttention` 默认开启且可独立关闭。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
 - 实现：`src/humanInteractionAttention.ts`、`src/desktopAttention.ts`、`src/macosDesktopNotifications.ts`、`src/extensionHost/humanInteractionAttentionHost.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归：`src/test/core/humanInteractionAttention.test.ts`、`src/test/core/desktopAttention.test.ts`、`src/test/core/macosDesktopNotifications.test.ts`、`src/test/extensionHost/humanInteractionAttentionHost.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。通知排障见 `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`。
 
+## 通知授权引导与使用说明
+
+- 本机 macOS 扩展启动时，只要人工交互或任务完成系统通知任一设置开启，就异步申请未决定的通知权限；后续启用通知设置也会检查。已允许或已拒绝时不重复请求系统授权；拒绝不会弹额外提示或自动打开系统设置，不影响任务执行。
+- 使用说明保留默认“模式说明”，新增“通知授权”页签，介绍后台提醒范围、两类开关、Windows/Linux 通知条件和勿扰限制；支持鼠标及方向键、Home/End 切换。
+- Mac 页签显示实时授权状态及单独手动说明。“授权通知”对未决定状态直接弹系统授权；已允许、拒绝或关闭横幅时按钮改为“打开系统通知设置”，跳转通知设置后由用户选择“携宁 CLI 提醒”。刷新只查询、不申请、不发送通知；失败和超时可重试。远程扩展宿主不执行本机授权，其他系统不显示 Mac 专属说明及授权按钮。
+- 自动授权、手动授权及实际投递复用固定 bundle ID，助手脚本缓存升级到 `macos-v5`，不重置既有权限；原生调用串行化，避免重复创建或并发授权，查询结果不持久缓存。授权与完成通知共用权限，不新增声音或 Dock 弹跳。
+- 实现：`src/macosDesktopNotifications.ts`、`src/desktopNotificationAuthorization.ts`、`src/desktopAttention.ts`、`src/extensionHost/humanInteractionAttentionHost.ts`、`src/webview/viewProvider.ts` 及使用说明 Webview；回归：通知助手/传输/宿主、`src/test/webview/notificationAuthorization.test.ts`、`src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/viewProvider.test.ts`。
+
 ## 主任务与 Vibe 完成系统提醒
 
 - 仅 Vibe 成功结束，或经典 Loop / Loop+ 主任务最终完成并持久化后，在编辑器后台时提醒。子任务完成、中间主模型轮次结束、上下文压缩、失败、用户停止、暂停和等待澄清都不触发完成提醒；既有人工交互提醒独立保留。

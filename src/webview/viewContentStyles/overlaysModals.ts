@@ -752,6 +752,23 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       .help-modal {
         height: 600px;
       }
+      .notification-authorization-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 16px 0;
+      }
+      #authorizeNotifications[hidden] {
+        display: none;
+      }
+      #notificationAuthorizationStatus {
+        color: var(--vscode-descriptionForeground);
+        overflow-wrap: anywhere;
+      }
+      #helpNotificationMac h3 {
+        margin: 24px 0 8px;
+        font-size: inherit;
+      }
 
       .session-list, .help-panel {
         min-height: 0;

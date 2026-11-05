@@ -603,7 +603,62 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.rulesOverlay.classList.remove("visible");
       }
 
+      let notificationAuthorizationRequestId = 0;
+      let notificationAuthorizationTimer = null;
+
+      function requestNotificationAuthorization(request) {
+        if (notificationAuthorizationTimer !== null) return;
+        const requestId = ++notificationAuthorizationRequestId;
+        elements.authorizeNotifications.disabled = true;
+        elements.refreshNotificationAuthorization.disabled = true;
+        elements.notificationAuthorizationStatus.textContent = request ? i18n.helpNotificationRequesting : i18n.helpNotificationLoading;
+        elements.helpPanelNotifications.setAttribute("aria-busy", "true");
+        notificationAuthorizationTimer = setTimeout(() => {
+          applyNotificationAuthorization({ requestId, payload: { status: "unavailable", detail: i18n.helpNotificationTimeout } });
+        }, 70000);
+        vscode.postMessage({ type: "notificationAuthorization", action: request ? "request" : "status", requestId });
+      }
+
+      function applyNotificationAuthorization(data) {
+        if (data.requestId !== notificationAuthorizationRequestId) return;
+        clearTimeout(notificationAuthorizationTimer);
+        notificationAuthorizationTimer = null;
+        const authorization = data.payload || {};
+        if (authorization.platform) {
+          elements.helpNotificationMac.hidden = authorization.platform !== "darwin";
+          elements.authorizeNotifications.hidden = authorization.platform !== "darwin";
+        }
+        const labels = {
+          "not-determined": i18n.helpNotificationNotDetermined,
+          authorized: i18n.helpNotificationAuthorized,
+          denied: i18n.helpNotificationDenied,
+          disabled: i18n.helpNotificationDisabled,
+          "not-required": i18n.helpNotificationNotRequired,
+          unavailable: i18n.helpNotificationUnavailable,
+        };
+        elements.notificationAuthorizationStatus.textContent = authorization.detail || labels[authorization.status] || i18n.helpNotificationUnavailable;
+        elements.helpPanelNotifications.setAttribute("aria-busy", "false");
+        elements.authorizeNotifications.textContent = ["authorized", "denied", "disabled"].includes(authorization.status)
+          ? i18n.helpNotificationOpenSettings : i18n.helpNotificationAuthorize;
+        elements.authorizeNotifications.disabled = authorization.platform !== "darwin" || authorization.status === "unavailable";
+        elements.refreshNotificationAuthorization.disabled = false;
+      }
+
+      function setHelpTab(notifications) {
+        [[elements.helpTabModes, elements.helpPanelModes, !notifications],
+          [elements.helpTabNotifications, elements.helpPanelNotifications, notifications]].forEach(([tab, panel, active]) => {
+          if (!tab || !panel) return;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+          panel.classList.toggle("active", active);
+          panel.hidden = !active;
+        });
+        if (notifications) requestNotificationAuthorization(false);
+      }
+
       function openHelp() {
+        setHelpTab(false);
         elements.helpOverlay.classList.add("visible");
       }
 
@@ -1281,6 +1336,22 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
       elements.helpButton.addEventListener("click", () => {
         openHelp();
       });
+
+      [elements.helpTabModes, elements.helpTabNotifications].forEach((tab, index, tabs) => {
+        if (!tab) return;
+        tab.addEventListener("click", () => setHelpTab(index === 1));
+        tab.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+          setHelpTab(next === 1);
+          tabs[next].focus();
+        });
+      });
+      if (elements.authorizeNotifications) {
+        elements.authorizeNotifications.addEventListener("click", () => requestNotificationAuthorization(true));
+        elements.refreshNotificationAuthorization.addEventListener("click", () => requestNotificationAuthorization(false));
+      }
 
       elements.closeHelp.addEventListener("click", () => {
         closeHelp();
