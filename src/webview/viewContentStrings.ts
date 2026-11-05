@@ -402,7 +402,7 @@ export const WEBVIEW_STRINGS = {
     runStatusCompacting: "压缩中",
     helpTitle: "使用说明",
     helpClose: "关闭",
-    helpNotificationOverview: "编辑器窗口在后台时，人工交互待处理、Vibe 成功结束或 Loop / Loop+ 主任务最终完成会发送系统通知。子任务完成、失败、停止或暂停不发送完成通知。",
+    helpNotificationOverview: "人工交互待处理、Vibe 成功结束或 Loop / Loop+ 主任务最终完成时，无论编辑器窗口在前台还是后台，都会发送系统通知；窗口图标提醒仅在后台触发。子任务完成、失败、停止或暂停不发送完成通知。",
     helpNotificationSettings: "两类系统通知默认开启，开关对当前编辑器的所有工作区生效，保存后立即生效。关闭通知不会关闭窗口图标提醒，也不会更改系统授权。系统通知设置、勿扰或专注模式可能阻止横幅显示；通知不可用不影响任务执行。",
     helpNotificationWindows: "Windows：通常无需额外授权。若未收到通知，请在系统的通知设置中检查当前编辑器，并关闭勿扰模式。",
     helpNotificationLinux: "Linux：需要桌面环境已安装 notify-send，并允许应用通知；具体显示方式由桌面环境决定。",

@@ -29,7 +29,7 @@ export function createHumanInteractionAttentionController(deps: {
   let attentionStarted = false;
   let queue = Promise.resolve();
 
-  const shouldRemind = (): boolean => !disposed && deps.isLocal() && !deps.isFocused() && pending.size > 0;
+  const shouldRequestWindowAttention = (): boolean => !disposed && deps.isLocal() && !deps.isFocused() && pending.size > 0;
 
   const attempt = async (channel: "notification" | "window", action: () => Promise<void>): Promise<void> => {
     try {
@@ -50,6 +50,21 @@ export function createHumanInteractionAttentionController(deps: {
   const refresh = (): Promise<void> => {
     const notifications: Promise<void>[] = [];
     queue = queue.then(async () => {
+      // Dispatch notifications before acknowledging foreground completions; only window attention depends on focus.
+      if (!disposed && deps.isLocal()) {
+        const settings = deps.readSettings();
+        const completionSettings = settings.taskCompletion ?? { notifications: true, windowAttention: true };
+        const settingsFor = (kind: DesktopAttentionNotificationKind) => kind === "task-completed" ? completionSettings : settings;
+        for (const kind of ["human-interaction", "task-completed"] as const) {
+          const entries = Array.from(pending.values()).filter((entry) => entry.kind === kind);
+          if (settingsFor(kind).notifications && entries.some((entry) => !entry.notified)) {
+            for (const entry of entries) {
+              entry.notified = true;
+            }
+            notifications.push(attempt("notification", () => deps.transport.notify(kind)));
+          }
+        }
+      }
       if (deps.isFocused() || !deps.isLocal()) {
         for (const [entryId, entry] of pending) {
           if (entry.kind === "task-completed") {
@@ -57,23 +72,11 @@ export function createHumanInteractionAttentionController(deps: {
           }
         }
       }
-      if (!shouldRemind()) {
+      if (!shouldRequestWindowAttention()) {
         await stopAttention();
         return;
       }
-      const settings = deps.readSettings();
-      const completionSettings = settings.taskCompletion ?? { notifications: true, windowAttention: true };
-      const settingsFor = (kind: DesktopAttentionNotificationKind) => kind === "task-completed" ? completionSettings : settings;
       const actions: Promise<void>[] = [];
-      for (const kind of ["human-interaction", "task-completed"] as const) {
-        const entries = Array.from(pending.values()).filter((entry) => entry.kind === kind);
-        if (settingsFor(kind).notifications && entries.some((entry) => !entry.notified)) {
-          for (const entry of entries) {
-            entry.notified = true;
-          }
-          notifications.push(attempt("notification", () => deps.transport.notify(kind)));
-        }
-      }
       const wantsWindowAttention = () => {
         const currentSettings = deps.readSettings();
         return Array.from(pending.values()).some((entry) => entry.kind === "task-completed"
@@ -86,7 +89,7 @@ export function createHumanInteractionAttentionController(deps: {
         actions.push(stopAttention());
       }
       await Promise.all(actions);
-      if (!shouldRemind() || !wantsWindowAttention()) {
+      if (!shouldRequestWindowAttention() || !wantsWindowAttention()) {
         await stopAttention();
       }
     });
@@ -116,7 +119,7 @@ export function createHumanInteractionAttentionController(deps: {
       if (seenCompletions.size > maxRememberedCompletions) {
         seenCompletions.delete(seenCompletions.values().next().value!);
       }
-      if (!deps.isLocal() || deps.isFocused()) {
+      if (!deps.isLocal()) {
         return refresh();
       }
       pending.set("completion", { kind: "task-completed", notified: false });

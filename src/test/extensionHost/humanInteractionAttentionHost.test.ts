@@ -188,6 +188,22 @@ test("Windows host reads the installed editor identity instead of hard-coding st
   await env.controller.dispose();
 });
 
+test("Windows host notifies in the foreground and only flashes pending interactions in the background", async () => {
+  const env = hostHarness({ platform: "win32" });
+  env.state.focused = true;
+  await env.controller.taskCompleted("run");
+  await env.controller.request("ask");
+  assert.deepEqual(env.events, ["notify", "notify"]);
+  env.state.focused = false;
+  env.windowChanged();
+  await env.controller.refresh();
+  assert.deepEqual(env.events, ["notify", "notify", "start"]);
+  await env.controller.complete("ask");
+  await env.controller.taskCompleted("run");
+  assert.deepEqual(env.events, ["notify", "notify", "start", "stop"]);
+  await env.controller.dispose();
+});
+
 test("host routes independent task completion preferences and clears the attention latch on focus", async () => {
   const env = hostHarness();
   env.settings.taskCompletionNotifications = false;

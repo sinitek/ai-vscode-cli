@@ -33,11 +33,11 @@ test("background requests notify once and stop attention when completed", async 
   assert.equal(env.events.length, 3);
 });
 
-test("foreground requests wait for focus loss and never notify twice on later focus changes", async () => {
+test("foreground requests notify immediately and flash only after focus loss without notifying twice", async () => {
   const env = harness();
   env.state.focused = true;
   await env.controller.request("ask");
-  assert.deepEqual(env.events, []);
+  assert.deepEqual(env.events, ["notify"]);
   env.state.focused = false;
   await env.controller.refresh();
   env.state.focused = true;
@@ -190,21 +190,70 @@ test("background task completion notifies once and retains attention until focus
   await env.controller.dispose();
 });
 
-test("foreground and remote completions are never replayed on later focus loss", async () => {
+test("foreground completions notify immediately while remote completions stay silent and neither replays", async () => {
   for (const condition of ["foreground", "remote"] as const) {
     const env = harness();
     env.state.focused = condition === "foreground";
     env.state.local = condition !== "remote";
     await env.controller.taskCompleted("run");
+    const expected = condition === "foreground" ? ["completed-notify"] : [];
+    assert.deepEqual(env.events, expected);
     env.state.focused = false;
     env.state.local = true;
     await env.controller.refresh();
     await env.controller.taskCompleted("run");
-    assert.deepEqual(env.events, []);
+    assert.deepEqual(env.events, expected);
     await env.controller.dispose();
     await env.controller.taskCompleted("late");
-    assert.deepEqual(env.events, []);
+    assert.deepEqual(env.events, expected);
   }
+});
+
+test("focus returning before a queued completion sends its notification without starting attention", async () => {
+  const env = harness();
+  const sending = env.controller.taskCompleted("run");
+  env.state.focused = true;
+  await sending;
+  assert.deepEqual(env.events, ["completed-notify"]);
+  env.state.focused = false;
+  await env.controller.refresh();
+  assert.deepEqual(env.events, ["completed-notify"]);
+  await env.controller.dispose();
+});
+
+test("foreground notification settings stay independent and focus changes do not replay acknowledged completions", async () => {
+  const env = harness();
+  env.state.focused = true;
+  env.settings.notifications = false;
+  env.settings.taskCompletion.notifications = false;
+  await env.controller.request("ask");
+  await env.controller.taskCompleted("disabled");
+  assert.deepEqual(env.events, []);
+  env.settings.notifications = true;
+  env.settings.taskCompletion.notifications = true;
+  await env.controller.refresh();
+  assert.deepEqual(env.events, ["notify"]);
+  await env.controller.taskCompleted("enabled");
+  assert.deepEqual(env.events, ["notify", "completed-notify"]);
+  await env.controller.complete("ask");
+  env.state.focused = false;
+  await env.controller.refresh();
+  assert.deepEqual(env.events, ["notify", "completed-notify"]);
+  await env.controller.dispose();
+});
+
+test("failed foreground notifications do not flash or block subsequent events", async () => {
+  const env = harness();
+  env.state.focused = true;
+  env.transport.notify = async () => { throw new Error("通知工具不可用"); };
+  await env.controller.taskCompleted("failed");
+  await env.controller.request("failed");
+  assert.deepEqual(env.errors, ["notification", "notification"]);
+  assert.deepEqual(env.events, []);
+  env.transport.notify = async () => { env.events.push("completed-notify"); };
+  await env.controller.taskCompleted("next");
+  assert.deepEqual(env.events, ["completed-notify"]);
+  await env.controller.dispose();
 });
 
 test("completion preferences are independent of interaction preferences and each other", async () => {

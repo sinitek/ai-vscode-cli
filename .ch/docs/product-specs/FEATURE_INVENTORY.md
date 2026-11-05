@@ -11,8 +11,8 @@
 
 ## 人工交互系统提醒
 
-- Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，仅编辑器窗口在后台时发送标题为“携宁 CLI 提醒”的固定中文系统通知；同一交互只通知一次，前台等待后切到后台也能触发。通知不包含项目路径、问题、答案或密码，不抢焦点。
-- Windows 同时请求 VS Code 主进程窗口的任务栏闪烁；同主进程多窗口可能一起被提醒。macOS 在扩展 globalStorage 下生成并注册固定身份的“携宁 CLI 提醒”后台应用，通过 `UserNotifications` 发送系统通知；首次需要系统授权，被拒绝后须在“系统设置 → 通知 → 携宁 CLI 提醒”手动允许，不承诺 VS Code Dock 弹跳。Linux 使用已安装的 `notify-send`；X11 且已安装 `wmctrl` 时按主进程 PID 尽力请求窗口提醒，Wayland 不调用 X11 工具。
+- Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，无论编辑器窗口在前台还是后台，都发送标题为“携宁 CLI 提醒”的固定中文系统通知；同一交互只通知一次，焦点变化不重复通知。通知不包含项目路径、问题、答案或密码，不抢焦点。
+- 窗口图标提醒仅在后台触发，前台交互尚未结束时切到后台仍可触发。Windows 请求 VS Code 主进程窗口的任务栏闪烁；同主进程多窗口可能一起被提醒。macOS 在扩展 globalStorage 下生成并注册固定身份的“携宁 CLI 提醒”后台应用，通过 `UserNotifications` 发送系统通知；首次需要系统授权，被拒绝后须在“系统设置 → 通知 → 携宁 CLI 提醒”手动允许，不承诺 VS Code Dock 弹跳。Linux 使用已安装的 `notify-send`；X11 且已安装 `wmctrl` 时按主进程 PID 尽力请求窗口提醒，Wayland 不调用 X11 工具。
 - 返回窗口、最后一项交互提交/拒绝/取消/超时、扩展释放时停止图标提醒；若还有未查看的任务完成提醒，交互结束不会提前清除其图标提醒。并发交互不会被单个请求结束提前清除，慢速原生调用结束后补做清理。通知授权等待独立于窗口提醒队列，不延迟图标清理。已投递的系统通知可保留在通知中心，不承诺点击跳转。
 - VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications`、`sinitek-cli-tools.humanInteractionWindowAttention` 默认开启且可独立关闭。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
 - 实现：`src/humanInteractionAttention.ts`、`src/desktopAttention.ts`、`src/macosDesktopNotifications.ts`、`src/extensionHost/humanInteractionAttentionHost.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归：`src/test/core/humanInteractionAttention.test.ts`、`src/test/core/desktopAttention.test.ts`、`src/test/core/macosDesktopNotifications.test.ts`、`src/test/extensionHost/humanInteractionAttentionHost.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。通知排障见 `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`。
@@ -20,7 +20,7 @@
 ## 通知授权与工具设置
 
 - 本机 macOS 扩展启动时，只要人工交互或任务完成系统通知任一设置开启，就异步申请未决定的通知权限；后续启用通知设置也会检查。已允许或已拒绝时不重复请求系统授权；拒绝不会弹额外提示或自动打开系统设置，不影响任务执行。
-- 使用说明仅保留模式说明；“工具设置 → 通知授权”集中介绍后台提醒范围、授权状态、Windows/Linux 通知条件和勿扰限制。工具设置页签支持鼠标及方向键、Home/End 切换，窄面板可横向滚动。
+- 使用说明仅保留模式说明；“工具设置 → 通知授权”集中介绍前台及后台系统通知、仅后台窗口提醒、授权状态、Windows/Linux 通知条件和勿扰限制。工具设置页签支持鼠标及方向键、Home/End 切换，窄面板可横向滚动。
 - 页签提供“任务完成通知”和“人机交互通知”两个独立开关，均默认开启；读取并全局保存既有应用级设置 `taskCompletionNotifications` / `humanInteractionNotifications`，保留用户已有选择，保存后立即生效。关闭系统通知不改变窗口图标提醒或系统授权；保存失败显示错误并用实际配置恢复界面。
 - Mac 页签显示实时授权状态及单独手动说明。“授权通知”对未决定状态直接弹系统授权；已允许、拒绝或关闭横幅时按钮改为“打开系统通知设置”，跳转通知设置后由用户选择“携宁 CLI 提醒”。刷新只查询、不申请、不发送通知；失败和超时可重试。远程扩展宿主不执行本机授权，其他系统不显示 Mac 专属说明及授权按钮。
 - 自动授权、手动授权及实际投递复用固定 bundle ID，助手脚本缓存升级到 `macos-v5`，不重置既有权限；原生调用串行化，避免重复创建或并发授权，查询结果不持久缓存。授权与完成通知共用权限，不新增声音或 Dock 弹跳。
@@ -28,9 +28,9 @@
 
 ## 主任务与 Vibe 完成系统提醒
 
-- 仅 Vibe 成功结束，或经典 Loop / Loop+ 主任务最终完成并持久化后，在编辑器后台时提醒。子任务完成、中间主模型轮次结束、上下文压缩、失败、用户停止、暂停和等待澄清都不触发完成提醒；既有人工交互提醒独立保留。
-- 复用“携宁 CLI 提醒”系统身份，固定正文为“任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，不含任务内容、路径或敏感信息。Windows 同时请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
-- 完成提醒与人工交互共享窗口状态，不互相清除；多个完成事件可聚合一条通知，最近 512 个事件 ID 去重。完成图标提醒持续到恢复焦点或关闭完成窗口提醒设置；恢复焦点后不重放，前台完成不在下次切后台补发。已投递通知仍可留在通知中心。
+- 仅 Vibe 成功结束，或经典 Loop / Loop+ 主任务最终完成并持久化后，无论编辑器窗口在前台还是后台，都发送系统通知。子任务完成、中间主模型轮次结束、上下文压缩、失败、用户停止、暂停和等待澄清都不触发完成提醒；既有人工交互提醒独立保留。
+- 复用“携宁 CLI 提醒”系统身份，固定正文为“任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，不含任务内容、路径或敏感信息。Windows 仅在后台请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
+- 完成提醒与人工交互共享窗口状态，不互相清除；多个完成事件可聚合一条通知，最近 512 个事件 ID 去重。完成图标提醒持续到恢复焦点或关闭完成窗口提醒设置；恢复焦点后不重放。前台完成立即通知，之后切后台不补发通知或闪烁；通知派发先于焦点恢复时的完成窗口状态清理，避免排队事件漏发。已投递通知仍可留在通知中心。
 - 新增应用级设置 `sinitek-cli-tools.taskCompletionNotifications` 与 `sinitek-cli-tools.taskCompletionWindowAttention`，默认开启，两者及原有人工交互设置互相独立；远程、本机、权限、工具缺失、不抢焦点和无新增声音的边界与人工交互提醒一致。
 - 实现：`src/taskCompletionAttention.ts`、`src/humanInteractionAttention.ts`、`src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/core/taskCompletionAttention.test.ts`、`src/test/extensionHost/taskCompletionAttentionHost.test.ts` 及既有桌面提醒用例。
 

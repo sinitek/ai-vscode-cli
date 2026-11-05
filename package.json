@@ -228,7 +228,7 @@
           "type": "boolean",
           "default": true,
           "scope": "application",
-          "description": "编辑器窗口在后台且有人机交互或主任务澄清等待处理时，尝试发送本机系统通知。通知权限、勿扰模式和系统工具可能限制展示；远程扩展宿主不发送。"
+          "description": "有人机交互或主任务澄清等待处理时，无论编辑器窗口在前台还是后台，都尝试发送本机系统通知。通知权限、勿扰模式和系统工具可能限制展示；远程扩展宿主不发送。"
         },
         "sinitek-cli-tools.humanInteractionWindowAttention": {
           "type": "boolean",
@@ -240,7 +240,7 @@
           "type": "boolean",
           "default": true,
           "scope": "application",
-          "description": "编辑器窗口在后台且主任务或 Vibe 任务成功完成时，尝试发送“携宁 CLI 提醒”系统通知。子任务、中间轮次、上下文压缩、失败和停止不提醒；展示受系统通知权限和勿扰设置限制。"
+          "description": "主任务或 Vibe 任务成功完成时，无论编辑器窗口在前台还是后台，都尝试发送“携宁 CLI 提醒”系统通知。子任务、中间轮次、上下文压缩、失败和停止不提醒；展示受系统通知权限和勿扰设置限制。"
         },
         "sinitek-cli-tools.taskCompletionWindowAttention": {
           "type": "boolean",
