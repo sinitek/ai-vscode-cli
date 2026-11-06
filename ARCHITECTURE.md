@@ -88,6 +88,8 @@ cli / interactive / config 服务层
 #### 扩展运行时 Host 层
 
 - 位于 `src/extensionHost/`
+- `modelSettings.ts` 保留模型选择、Loop 角色/推理力度、档案与工作区身份解析、面板构建及状态同步编排；`cliModelSelectionStrategies.ts` 只负责基于模型存储和实时缓存读取端口的选择规则，不负责配置 I/O。
+- `src/config/configuredModelRepository.ts` 通过最小读取/错误端口隔离 Codex、Grok、DSH、Kimi Code、ZCode 的配置读取、已有解析器调用、实例级档案缓存与读取失败降级。构造无 I/O，宿主以活 getter 接入已有选择策略，编辑后也写入同一仓储；仓储不依赖 VS Code、配置服务运行时单例或宿主。刷新由宿主先建立全部 CLI 身份再按原顺序并发调用；运行前仍重新读取配置，不以展示缓存替代执行配置。时序和边界见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md`。
 - `loopGroupChatPanelCoordinator.ts` 承接群聊面板状态构建及 `createLoopGroupChatPanelCoordinator` 工厂，保留显式依赖回调，协调继续模型来源/原配置恢复、补充需求、独立提问、澄清、验收方案、停止、刷新、文件预览与释放。组合根直接装配该模块；它不反向导入 `panelDiagnostics.ts` 或 `extension.ts`，也不重新定义消息路由、调度或 Webview 展示。
 - 通知设置复用 `DesktopNotificationAuthorization` 与既有 Webview 消息：macOS 调用稳定助手申请/查询授权，Windows 读取当前编辑器身份的 `ToastNotifier.Setting` 并用 `ms-settings:notifications` 打开设置。Windows 首次启用通知自动打开一次，成功后以扩展 globalState 记录；同一宿主并发请求共用 Promise，刷新只查询，远程 workspace 宿主不执行本机引导或原生工具。
 - `humanInteractionAttentionHost.ts` 绑定窗口焦点、四项应用级提醒设置与本机宿主边界；`humanInteractionAttention.ts` 统一管理普通交互、Loop/Loop+ 澄清和任务完成的去重、并发窗口提醒与清理。系统通知在前台和后台均派发，窗口图标提醒仅在后台触发；先派发通知再清理前台完成窗口状态，通知通道不阻塞串行窗口提醒队列。`taskCompletionAttention.ts` 过滤子任务与中间主模型调用：Vibe 经共享成功运行记录触发，经典 Loop / Loop+ 仅在主任务完成持久化后触发；上下文压缩显式静默。完成提醒聚合为一个待查看状态，回到窗口即清除且不会在再次切后台时重放，最近 512 个完成事件 ID 用于去重。`desktopAttention.ts` 封装有超时的系统工具调用及两类固定中文通知，Windows 用不同 Toast Tag 避免两类通知互相覆盖；`macosDesktopNotifications.ts` 在扩展存储原子生成、签名、注册并复用具备稳定身份的“携宁 CLI 提醒”后台应用，通过 JXA 调用 `UserNotifications`、回报授权/投递状态。两类提醒共享 macOS 应用身份和权限，原生提醒失败不阻塞任务。

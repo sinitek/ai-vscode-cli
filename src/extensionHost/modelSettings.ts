@@ -11,11 +11,10 @@ import { normalizeOpenCodeModelRole, parseOpenCodeConfigModels, toOpenCodeConfig
 import { type OpenCodeThinkingCapability } from "../cli/openCodeModelCapabilities";
 import { isOpenCodeThinkingEffort, normalizeOpenCodeThinkingEffort, OPENCODE_THINKING_EFFORTS } from "../cli/openCodeThinkingEffort";
 import * as configService from "../config/configService";
-import { parseCodexConfigModel } from "../cli/codexConfigModel";
-import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
-import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
-import { changeKimiCodeConfigModelList, parseKimiCodeConfigModels, resolveKimiCodeConfigModel, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
-import { readZcodeConfigModels, resolveZcodeModelWireForRun as resolveConfiguredZcodeModelWireForRun, type ZcodeConfigModels } from "../config/zcodeConfig";
+import { type DshConfigModels, type DshReasoningOption } from "../cli/dshConfigModels";
+import { type GrokConfigModels } from "../cli/grokConfigModels";
+import { changeKimiCodeConfigModelList, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
+import { ConfiguredModelRepository } from "../config/configuredModelRepository";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
@@ -91,11 +90,11 @@ const ARCHITECTURE_INITIALIZATION_DISPLAY_PROMPT = "初始化当前工作区 ARC
 let codeGraphInstalling = false;
 let codeGraphInstallPollTimer: ReturnType<typeof setInterval> | null = null;
 let codeGraphInstallPollStartedAt = 0;
-const grokModelsByConfigId = new Map<string | null, GrokConfigModels>();
-const dshModelsByConfigId = new Map<string | null, DshConfigModels>();
-const kimiCodeModelsByConfigId = new Map<string | null, KimiCodeConfigModels>();
-const zcodeModelsByConfigId = new Map<string | null, ZcodeConfigModels>();
-const codexModelByConfigId = new Map<string | null, string | null>();
+const configuredModels = new ConfiguredModelRepository({
+  getCurrentConfig: (cli) => configService.getCurrentConfig(cli),
+  getConfigById: (cli, configId) => configService.getConfigById(cli, configId),
+  readGrokConfigText: () => configService.readGrokConfigText(),
+}, (event, payload) => logError(event, payload));
 let loadedConfigStates: {
   workspaceKey: string;
   states: NonNullable<PanelState["configStateByCli"]>;
@@ -103,40 +102,28 @@ let loadedConfigStates: {
 } | null = null;
 const cliModelSelectionStrategies = createCliModelSelectionStrategies({
   getCodexConfigModel(configId) {
-    return configId === undefined ? undefined : codexModelByConfigId.get(configId);
+    return configuredModels.getCodexConfigModel(configId);
   },
   getGrokConfigModels(configId) {
-    if (configId === undefined) {
-      return undefined;
-    }
-    return grokModelsByConfigId.get(configId);
+    return configuredModels.getGrokConfigModels(configId);
   },
   resolveDefaultGrokStoreKey() {
     return `grok:${resolveGrokConfigPath()}`;
   },
   getDshConfigModels(configId) {
-    if (configId === undefined) {
-      return undefined;
-    }
-    return dshModelsByConfigId.get(configId);
+    return configuredModels.getDshConfigModels(configId);
   },
   resolveDefaultDshStoreKey() {
     return `dsh:${resolveDshActivePatchPath()}`;
   },
   getKimiCodeConfigModels(configId) {
-    if (configId === undefined) {
-      return undefined;
-    }
-    return kimiCodeModelsByConfigId.get(configId);
+    return configuredModels.getKimiCodeConfigModels(configId);
   },
   resolveDefaultKimiCodeStoreKey() {
     return `kimi-code:${resolveKimiCodeConfigPath()}`;
   },
   getZcodeConfigModels(configId) {
-    if (configId === undefined) {
-      return undefined;
-    }
-    return zcodeModelsByConfigId.get(configId);
+    return configuredModels.getZcodeConfigModels(configId);
   },
   resolveDefaultZcodeStoreKey() {
     return "zcode:provider_config.json";
@@ -1039,14 +1026,7 @@ async function refreshConfigModels(states: Record<CliName, PanelState["configSta
 }
 
 async function refreshCodexConfigModel(configState: PanelState["configState"]): Promise<void> {
-  const configId = resolveConfigModelId("codex", configState);
-  try {
-    const current = await configService.getCurrentConfig("codex");
-    codexModelByConfigId.set(configId, parseCodexConfigModel(current.configContent ?? current.content ?? ""));
-  } catch (error) {
-    codexModelByConfigId.set(configId, null);
-    void logError("codex-config-model-read-failed", { error: errorToMessage(error) });
-  }
+  await configuredModels.refreshCodexConfigModel(resolveConfigModelId("codex", configState));
 }
 
 function getSelectedCliModel(cli: CliName, configId: string | null = getActiveConfigIdForCli(cli)): string | null {
@@ -1054,73 +1034,31 @@ function getSelectedCliModel(cli: CliName, configId: string | null = getActiveCo
 }
 
 function cacheGrokConfigModels(configId: string, config: GrokConfigModels): void {
-  grokModelsByConfigId.set(configId, config);
+  configuredModels.cacheGrokConfigModels(configId, config);
 }
 
 async function refreshGrokConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = resolveConfigModelId("grok", configState);
-  try {
-    grokModelsByConfigId.set(configId, parseGrokConfigModels(await configService.readGrokConfigText()));
-  } catch (error) {
-    grokModelsByConfigId.set(configId, { models: [], labels: {}, defaultModel: null, error: errorToMessage(error) });
-    void logError("grok-config-models-read-failed", { error: errorToMessage(error) });
-  }
+  await configuredModels.refreshGrokConfigModels(resolveConfigModelId("grok", configState));
 }
 
 function cacheDshConfigModels(configId: string, config: DshConfigModels): void {
-  dshModelsByConfigId.set(configId, config);
+  configuredModels.cacheDshConfigModels(configId, config);
 }
 
 async function refreshDshConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = resolveConfigModelId("dsh", configState);
-  try {
-    const profile = configId
-      ? await configService.getConfigById("dsh", configId)
-      : await configService.getCurrentConfig("dsh");
-    if (!profile) {
-      dshModelsByConfigId.set(configId, emptyDshModels("DSH profile was not found."));
-      return;
-    }
-    dshModelsByConfigId.set(configId, parseDshConfigModels(profile.content ?? profile.configContent ?? ""));
-  } catch (error) {
-    dshModelsByConfigId.set(configId, emptyDshModels(errorToMessage(error)));
-    void logError("dsh-config-models-read-failed", { error: errorToMessage(error) });
-  }
+  await configuredModels.refreshDshConfigModels(resolveConfigModelId("dsh", configState));
 }
 
 function cacheKimiCodeConfigModels(configId: string, config: KimiCodeConfigModels): void {
-  kimiCodeModelsByConfigId.set(configId, config);
+  configuredModels.cacheKimiCodeConfigModels(configId, config);
 }
 
 async function refreshKimiCodeConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = resolveConfigModelId("kimi-code", configState);
-  try {
-    const current = await configService.getCurrentConfig("kimi-code");
-    kimiCodeModelsByConfigId.set(configId, parseKimiCodeConfigModels(current.content ?? ""));
-  } catch (error) {
-    kimiCodeModelsByConfigId.set(configId, {
-      models: [],
-      labels: {},
-      defaultModel: null,
-      thinkingEffort: null,
-      permissionMode: null,
-      error: errorToMessage(error),
-    });
-    void logError("kimi-code-config-models-read-failed", { error: errorToMessage(error) });
-  }
+  await configuredModels.refreshKimiCodeConfigModels(resolveConfigModelId("kimi-code", configState));
 }
 
 async function resolveKimiCodeModelForRun(selectedModel: string | null): Promise<string> {
-  const config = parseKimiCodeConfigModels((await configService.getCurrentConfig("kimi-code")).content ?? "");
-  if (config.error) {
-    throw new Error(t("kimi.invalidConfig"));
-  }
-  kimiCodeModelsByConfigId.set(getActiveConfigIdForCli("kimi-code"), config);
-  const model = resolveKimiCodeConfigModel(config, selectedModel);
-  if (!model) {
-    throw new Error(t("kimi.noConfiguredModels"));
-  }
-  return model;
+  return configuredModels.resolveKimiCodeModelForRun(selectedModel, () => getActiveConfigIdForCli("kimi-code"));
 }
 
 /**
@@ -1132,78 +1070,23 @@ async function resolveKimiModelWireForRun(selectedModel: string | null): Promise
 }
 
 async function refreshZcodeConfigModels(configState: PanelState["configState"]): Promise<void> {
-  const configId = resolveConfigModelId("zcode", configState);
-  try {
-    const current = await configService.getCurrentConfig("zcode");
-    zcodeModelsByConfigId.set(configId, readZcodeConfigModels(current.content ?? ""));
-  } catch (error) {
-    zcodeModelsByConfigId.set(configId, {
-      models: [],
-      labels: {},
-      defaultModel: null,
-      error: errorToMessage(error),
-    });
-    void logError("zcode-config-models-read-failed", { error: errorToMessage(error) });
-  }
+  await configuredModels.refreshZcodeConfigModels(resolveConfigModelId("zcode", configState));
 }
 
 async function resolveZcodeModelWireForRun(selectedModel: string | null): Promise<string> {
-  const content = (await configService.getCurrentConfig("zcode")).content ?? "";
-  const config = readZcodeConfigModels(content);
-  zcodeModelsByConfigId.set(getActiveConfigIdForCli("zcode"), config);
-  return resolveConfiguredZcodeModelWireForRun(content, selectedModel);
+  return configuredModels.resolveZcodeModelWireForRun(selectedModel, () => getActiveConfigIdForCli("zcode"));
 }
 
 async function resolveDshModelForRun(selectedModel: string | null): Promise<string> {
-  const configId = getActiveConfigIdForCli("dsh");
-  if (!configId) {
-    throw new Error("DSH profile is not active.");
-  }
-  const profile = await configService.getConfigById("dsh", configId);
-  if (!profile) {
-    throw new Error("DSH profile was not found.");
-  }
-  const config = parseDshConfigModels(profile.content ?? profile.configContent ?? "");
-  dshModelsByConfigId.set(configId, config);
-  if (config.error) {
-    throw new Error(config.error);
-  }
-  const model = resolveDshConfigModel(config, selectedModel);
-  if (!model) {
-    throw new Error("DSH has no configured executable model.");
-  }
-  return model;
+  return configuredModels.resolveDshModelForRun(selectedModel, getActiveConfigIdForCli("dsh"));
 }
 
 async function resolveDshModelWireForRun(selectedModel: string | null): Promise<string> {
-  const configId = getActiveConfigIdForCli("dsh");
-  if (!configId) {
-    throw new Error("DSH profile is not active.");
-  }
-  const profile = await configService.getConfigById("dsh", configId);
-  if (!profile) {
-    throw new Error("DSH profile was not found.");
-  }
-  const config = parseDshConfigModels(profile.content ?? profile.configContent ?? "");
-  dshModelsByConfigId.set(configId, config);
-  return readDshModelWireForRun(config, selectedModel);
-}
-
-function emptyDshModels(error: string): DshConfigModels {
-  return { models: [], labels: {}, defaultModel: null, wireByModelId: {}, reasoningOptionsByModelId: {}, error };
+  return configuredModels.resolveDshModelWireForRun(selectedModel, getActiveConfigIdForCli("dsh"));
 }
 
 async function resolveGrokModelForRun(selectedModel: string | null): Promise<string> {
-  const config = parseGrokConfigModels(await configService.readGrokConfigText());
-  if (config.error) {
-    throw new Error(t("grok.invalidConfig"));
-  }
-  grokModelsByConfigId.set(getActiveConfigIdForCli("grok"), config);
-  const model = resolveGrokConfigModel(config, selectedModel);
-  if (!model) {
-    throw new Error(t("grok.noConfiguredModels"));
-  }
-  return model;
+  return configuredModels.resolveGrokModelForRun(selectedModel, () => getActiveConfigIdForCli("grok"));
 }
 
 function getModelDisplayName(cli: CliName, model: string | null): string | null {
@@ -1234,7 +1117,7 @@ function getSelectedLoopThinkingMode(
   if (cli !== "dsh" || !selected) {
     return selected;
   }
-  const reasoningOptions = dshModelsByConfigId.get(configId)?.reasoningOptionsByModelId;
+  const reasoningOptions = configuredModels.getDshConfigModels(configId)?.reasoningOptionsByModelId;
   const modelKey = Object.keys(reasoningOptions ?? {}).find((candidate) => (
     candidate.toLowerCase() === (normalizeCliModelName(model) ?? "").toLowerCase()
   ));
@@ -1272,7 +1155,7 @@ function setSelectedLoopThinkingMode(
   configId: string | null = getActiveConfigIdForCli(cli),
 ): void {
   const dshOptions = cli === "dsh"
-    ? dshModelsByConfigId.get(configId)?.reasoningOptionsByModelId
+    ? configuredModels.getDshConfigModels(configId)?.reasoningOptionsByModelId
     : undefined;
   const dshModelKey = Object.keys(dshOptions ?? {}).find((candidate) => (
     candidate.toLowerCase() === (normalizeCliModelName(model) ?? "").toLowerCase()
@@ -1375,8 +1258,7 @@ async function manageKimiCodeModelList(
     configContent: content,
     updatedAt: Date.now(),
   });
-  const parsed = parseKimiCodeConfigModels(content);
-  kimiCodeModelsByConfigId.set(configId, parsed);
+  const parsed = configuredModels.cacheKimiCodeConfigContent(configId, content);
   if (change.type === "add") selectCliModel("kimi-code", change.model, configId);
   return { applied: true, model: change.type === "delete" ? parsed.defaultModel : change.type === "rename" ? change.nextModel : change.model, config: parsed };
 }
@@ -1559,7 +1441,7 @@ function buildModelState(
   const state = buildModelSelectionState(modelStore, getActiveConfigIdForCli, activeConfigIdByCli);
   const resolvedIds = state.activeConfigIdByCli ?? {};
   const codexConfigId = resolvedIds.codex ?? null;
-  const codexConfiguredModel = codexModelByConfigId.get(codexConfigId) ?? null;
+  const codexConfiguredModel = configuredModels.getCodexConfigModel(codexConfigId) ?? null;
   const codexMain = getSelectedLoopCliModel("codex", "main", codexConfigId);
   const codexSubtask = getSelectedLoopCliModel("codex", "subtask", codexConfigId);
   state.configuredDefaultByCli = { codex: codexConfiguredModel };
@@ -1576,7 +1458,7 @@ function buildModelState(
   const configId = resolvedIds.grok ?? null;
   const models = getModelOptionsForCli("grok", configId);
   state.optionsByCli.grok = models;
-  state.labelsByCli = { grok: { ...(grokModelsByConfigId.get(configId)?.labels ?? {}) } };
+  state.labelsByCli = { grok: { ...(configuredModels.getGrokConfigModels(configId)?.labels ?? {}) } };
   state.managedByCli.grok = [];
   state.selectedByCli.grok = getSelectedCliModel("grok", configId);
   state.loopOptionsByCli = { ...state.loopOptionsByCli, grok: { main: models, subtask: models } };
@@ -1588,7 +1470,7 @@ function buildModelState(
   state.optionsByCli["kimi-code"] = kimiCodeModels;
   state.labelsByCli = {
     ...state.labelsByCli,
-    "kimi-code": { ...(kimiCodeModelsByConfigId.get(kimiCodeConfigId)?.labels ?? {}) },
+    "kimi-code": { ...(configuredModels.getKimiCodeConfigModels(kimiCodeConfigId)?.labels ?? {}) },
   };
   state.managedByCli["kimi-code"] = [...kimiCodeModels];
   state.selectedByCli["kimi-code"] = getSelectedCliModel("kimi-code", kimiCodeConfigId);
@@ -1601,7 +1483,7 @@ function buildModelState(
   state.optionsByCli.zcode = zcodeModels;
   state.labelsByCli = {
     ...state.labelsByCli,
-    zcode: { ...(zcodeModelsByConfigId.get(zcodeConfigId)?.labels ?? {}) },
+    zcode: { ...(configuredModels.getZcodeConfigModels(zcodeConfigId)?.labels ?? {}) },
   };
   state.managedByCli.zcode = [...zcodeModels];
   state.selectedByCli.zcode = getSelectedCliModel("zcode", zcodeConfigId);
@@ -1626,7 +1508,7 @@ function buildModelState(
   state.optionsByCli.dsh = dshModels;
   state.labelsByCli = {
     ...state.labelsByCli,
-    dsh: { ...(dshModelsByConfigId.get(dshConfigId)?.labels ?? {}) },
+    dsh: { ...(configuredModels.getDshConfigModels(dshConfigId)?.labels ?? {}) },
   };
   state.managedByCli.dsh = [];
   state.selectedByCli.dsh = getSelectedCliModel("dsh", dshConfigId);
@@ -1636,10 +1518,10 @@ function buildModelState(
   state.selectedLoopByCli = { ...state.selectedLoopByCli, dsh: { main: dshMain, subtask: dshSubtask } };
   const dshSelectedModel = state.selectedByCli.dsh;
   state.dshReasoningOptions = dshSelectedModel
-    ? [...(dshModelsByConfigId.get(dshConfigId)?.reasoningOptionsByModelId[dshSelectedModel] ?? [])]
+    ? [...(configuredModels.getDshConfigModels(dshConfigId)?.reasoningOptionsByModelId[dshSelectedModel] ?? [])]
     : [];
   state.dshReasoningOptionsByModel = Object.fromEntries(
-    Object.entries(dshModelsByConfigId.get(dshConfigId)?.reasoningOptionsByModelId ?? {})
+    Object.entries(configuredModels.getDshConfigModels(dshConfigId)?.reasoningOptionsByModelId ?? {})
       .map(([model, options]) => [model, [...options]]),
   );
   state.selectedLoopThinkingByCli = {
@@ -1679,16 +1561,16 @@ function buildModelState(
     zcode: getEffectiveThinkingMode("zcode", state.selectedByCli.zcode),
   };
   const issues = { ...(state.issuesByCli ?? {}) };
-  if (grokModelsByConfigId.get(configId)?.error) {
+  if (configuredModels.getGrokConfigModels(configId)?.error) {
     issues.grok = "目标 CLI 配置读取失败，不能派发子任务。";
   }
-  if (dshModelsByConfigId.get(dshConfigId)?.error) {
+  if (configuredModels.getDshConfigModels(dshConfigId)?.error) {
     issues.dsh = "目标 CLI 配置读取失败，不能派发子任务。";
   }
-  if (kimiCodeModelsByConfigId.get(kimiCodeConfigId)?.error) {
+  if (configuredModels.getKimiCodeConfigModels(kimiCodeConfigId)?.error) {
     issues["kimi-code"] = "目标 CLI 配置读取失败，不能派发子任务。";
   }
-  if (zcodeModelsByConfigId.get(zcodeConfigId)?.error) {
+  if (configuredModels.getZcodeConfigModels(zcodeConfigId)?.error) {
     issues.zcode = "目标 CLI 配置读取失败，不能派发子任务。";
   }
   if (Object.keys(issues).length > 0) {

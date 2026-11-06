@@ -758,3 +758,69 @@ test("separate model settings hosts do not share Grok cache or store updates", (
   assert.equal(first.host.getModelDisplayName("grok", "from-a"), "A");
   assert.equal(second.host.getSelectedCliModel("grok", "profile"), "from-b");
 });
+
+test("host publishes identities before concurrent reads and isolates one CLI refresh failure", async (context) => {
+  const states = allCliConfigStates(true);
+  const reads: string[] = [];
+  const errors: string[] = [];
+  let releaseCodex!: (value: { content: string }) => void;
+  const pendingCodex = new Promise<{ content: string }>((resolve) => { releaseCodex = resolve; });
+  const { host } = createHost({
+    store: ensureCliModelStore(), currentCli: "codex", preferredConfigId: () => null,
+    logError: (event) => { errors.push(event); return new Promise<void>(() => undefined); },
+  });
+  const checkIdentity = (cli: CliName) => {
+    assert.equal(host.getActiveConfigIdForCli(cli), `${cli}-profile`);
+    reads.push(cli);
+  };
+  context.mock.method(configService, "getCurrentConfig", async (cli: CliName) => {
+    checkIdentity(cli);
+    if (cli === "codex") return pendingCodex;
+    return { content: nativeConfigContent(cli) };
+  });
+  context.mock.method(configService, "readGrokConfigText", async () => {
+    checkIdentity("grok");
+    throw new Error("synthetic Grok failure");
+  });
+  context.mock.method(configService, "getConfigById", async (cli: CliName, configId: string) => {
+    checkIdentity(cli);
+    assert.equal(configId, "dsh-profile");
+    return { id: configId, name: cli, platform: cli, content: nativeConfigContent(cli), createdAt: 1, updatedAt: 1 };
+  });
+  const refreshing = host.refreshConfigModels(states);
+  assert.deepEqual(reads, ["codex", "grok", "kimi-code", "zcode", "dsh"]);
+  await Promise.resolve();
+  await Promise.resolve();
+  const partial = host.buildModelState();
+  assert.deepEqual(partial.optionsByCli.codex, []);
+  assert.ok(partial.optionsByCli.dsh.length > 0);
+  assert.ok(partial.optionsByCli["kimi-code"].length > 0);
+  assert.ok(partial.optionsByCli.zcode.length > 0);
+  assert.match(partial.issuesByCli?.grok ?? "", /配置读取失败/);
+  releaseCodex({ content: 'model = "late-model"' });
+  await refreshing;
+  assert.equal(host.getSelectedCliModel("codex"), "late-model");
+  assert.deepEqual(errors, ["grok-config-models-read-failed"]);
+});
+
+test("already-created host strategies observe repository cache refreshes and saved Kimi edits", async (context) => {
+  context.mock.method(modelSelectionStore, "writeModelStore", () => undefined);
+  const { host } = createHost({ store: ensureCliModelStore(), currentCli: "kimi-code" });
+  let content = createKimiCodeDefaultConfigText({ model: "synthetic-before" });
+  context.mock.method(configService, "getCurrentConfig", async () => ({ content }));
+  const profile = { id: "profile", name: "Kimi", platform: "kimi-code" as const, content, createdAt: 1, updatedAt: 1 };
+  context.mock.method(configService, "getConfigById", async () => profile);
+  const save = context.mock.method(configService, "saveConfig", async (config: typeof profile) => { profile.content = config.content; });
+  assert.deepEqual(host.getModelOptionsForCli("kimi-code", "profile"), []);
+  await host.refreshKimiCodeConfigModels({ configs: [], activeConfigId: "profile" });
+  assert.deepEqual(host.getModelOptionsForCli("kimi-code", "profile"), ["synthetic-before"]);
+  content = createKimiCodeDefaultConfigText({ model: "synthetic-refreshed" });
+  await host.refreshKimiCodeConfigModels({ configs: [], activeConfigId: "profile" });
+  assert.equal(host.getSelectedCliModel("kimi-code", "profile"), "synthetic-refreshed");
+  const edited = await host.manageKimiCodeModelList({ type: "add", model: "synthetic-edited" }, "profile");
+  assert.equal(edited.applied, true);
+  assert.ok(host.getModelOptionsForCli("kimi-code", "profile").includes("synthetic-edited"));
+  assert.equal(host.getSelectedCliModel("kimi-code", "profile"), "synthetic-edited");
+  assert.equal(save.mock.callCount(), 1);
+  assert.deepEqual(host.buildModelState().labelsByCli?.["kimi-code"], edited.config.labels);
+});
