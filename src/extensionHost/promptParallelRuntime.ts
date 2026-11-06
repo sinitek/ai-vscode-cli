@@ -16,7 +16,7 @@ import {
 } from "../humanInteraction";
 import type { I18nKey } from "../i18n";
 import type { OpenCodeTabStreamAction } from "../openCodeTabStream";
-import type { CliAttemptResult } from "../panelDiagnostics";
+import type { CliAttemptResult } from "../promptRetry";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
@@ -66,16 +66,16 @@ type PromptParallelRuntimeRequiredHostDeps = {
     loopTaskId: string;
   }) => ChatMessage[];
   appendBoundedUtf8Text: typeof import("../boundedText").appendBoundedUtf8Text;
-  appendHiddenRetryErrorTraceMessage: typeof import("../panelDiagnostics").appendHiddenRetryErrorTraceMessage;
+  appendHiddenRetryErrorTraceMessage: typeof import("../promptRetry").appendHiddenRetryErrorTraceMessage;
   appendMessageToStore: typeof import("../promptRunState").appendMessageToStore;
   appendOpenCodeFinalTextToTabStream: typeof import("../openCodeTabStream").appendOpenCodeFinalTextToTabStream;
   appendTaskRun: (record: TaskRunRecord) => void;
   applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
   buildHiddenRetryFailureMessage: typeof import("../hiddenRetry").buildHiddenRetryFailureMessage;
-  buildHiddenRetryLimitMessage: typeof import("../panelDiagnostics").buildHiddenRetryLimitMessage;
+  buildHiddenRetryLimitMessage: typeof import("../promptRetry").buildHiddenRetryLimitMessage;
   buildHiddenRetryPrompt: typeof import("../promptRuntime").buildHiddenRetryPrompt;
-  buildHiddenRetryQueuedMessage: typeof import("../panelDiagnostics").buildHiddenRetryQueuedMessage;
-  buildHiddenRetryStartedMessage: typeof import("../panelDiagnostics").buildHiddenRetryStartedMessage;
+  buildHiddenRetryQueuedMessage: typeof import("../promptRetry").buildHiddenRetryQueuedMessage;
+  buildHiddenRetryStartedMessage: typeof import("../promptRetry").buildHiddenRetryStartedMessage;
   buildOpenCodeFailureMessage: (output: OpenCodeRunOutput, fallbackMessage: string) => string;
   buildOpenCodeMissingFinalConclusionMessage: (output: OpenCodeRunOutput) => string;
   buildProcessLabel: typeof import("../cli/commandRunner").buildProcessLabel;
@@ -103,7 +103,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
   getHiddenRetryDelayMs: typeof import("../hiddenRetry").getHiddenRetryDelayMs;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   hasAssistantFinalConclusionAfterMessage: typeof import("../finalConclusion").hasAssistantFinalConclusionAfterMessage;
-  isHiddenRetryEligibleAttempt: typeof import("../panelDiagnostics").isHiddenRetryEligibleAttempt;
+  isHiddenRetryEligibleAttempt: typeof import("../promptRetry").isHiddenRetryEligibleAttempt;
   isLocalSessionId: (sessionId: string) => boolean;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
   logDebug: (event: string, payload?: unknown) => Promise<void>;
@@ -161,7 +161,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
   shouldRequireExplicitFinalAnswerForRun: (input: PromptRunInput) => boolean;
   t: (key: I18nKey, params?: Record<string, string | number | boolean>) => string;
   updateSessionBuffer: (buffer: string, chunk: string) => string;
-  waitForHiddenRetryDelay: typeof import("../panelDiagnostics").waitForHiddenRetryDelay;
+  waitForHiddenRetryDelay: typeof import("../promptRetry").waitForHiddenRetryDelay;
 };
 
 export type PromptParallelRuntimeHostDeps = Partial<PromptParallelRuntimeRequiredHostDeps>;

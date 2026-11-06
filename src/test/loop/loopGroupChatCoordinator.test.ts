@@ -279,7 +279,7 @@ test("Loop group chat continuation can keep the recorded main and subtask models
   assert.equal(runCalls[0]?.loopSubtaskModel, "current-subtask");
 });
 
-test("Loop group chat original runtime restores the recorded group, config, models, and thinking", async () => {
+test("Loop group chat original runtime restores recorded selections and rejects restoration failures", async () => {
   const task = createStoppedTask();
   task.modelRouting = {
     main: { model: "original-main" },
@@ -292,6 +292,8 @@ test("Loop group chat original runtime restores the recorded group, config, mode
   };
   const runCalls: Array<{ input: Record<string, unknown>; options: Record<string, unknown> }> = [];
   const restored: string[] = [];
+  const warnings: string[] = [];
+  const sideEffects: string[] = [];
   type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
   const deps: CoordinatorDeps = {
     getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -301,7 +303,7 @@ test("Loop group chat original runtime restores the recorded group, config, mode
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
-    updateTaskRecord: () => task,
+    updateTaskRecord: () => { sideEffects.push("update"); return task; },
     listTaskStoreFiles: () => [],
     readTaskStoreTasks: () => [],
     collectRunningTaskIds: () => new Set(),
@@ -312,7 +314,7 @@ test("Loop group chat original runtime restores the recorded group, config, mode
     buildCompletedConclusionAndSummaryMarkdown: () => "",
     resolveMainPromptTarget: () => ({ tabId: "current-tab", cli: "opencode" }),
     revealPanelView: async () => undefined,
-    switchVisibleConversationTabForLoop: async () => undefined,
+    switchVisibleConversationTabForLoop: async () => { sideEffects.push("switch"); },
     isTabRunActive: () => false,
     getActiveConfigIdForCli: () => "current-config",
     getSelectedCliModel: () => "current-model",
@@ -328,7 +330,7 @@ test("Loop group chat original runtime restores the recorded group, config, mode
     postPanelState: async () => undefined,
     getActiveConversationTaskId: () => task.id,
     showInformationMessage: () => undefined,
-    showWarningMessage: () => undefined,
+    showWarningMessage: (message) => { warnings.push(message); },
     pickTask: async () => task,
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
@@ -346,6 +348,19 @@ test("Loop group chat original runtime restores the recorded group, config, mode
   assert.equal(runCalls[0]?.options.targetTabId, "origin-tab");
   assert.equal(runCalls[0]?.options.preserveLoopOrigin, true);
   assert.equal(runCalls[0]?.options.resumeTaskId, task.id);
+
+  const previousSideEffects = [...sideEffects];
+  deps.restoreOriginalLoopRuntime = async () => ({ ok: false, message: "recorded config missing" });
+  await coordinator.continueTask(task.id, "继续", "original");
+  assert.deepEqual(warnings, ["recorded config missing"]);
+  assert.equal(runCalls.length, 1);
+  assert.deepEqual(sideEffects, previousSideEffects);
+
+  deps.restoreOriginalLoopRuntime = async () => ({ ok: true, target: { tabId: null, cli: "codex" } });
+  await coordinator.continueTask(task.id, "继续", "original");
+  assert.deepEqual(warnings, ["recorded config missing", "loopGroupChatChat.originalRuntimeUnavailable"]);
+  assert.equal(runCalls.length, 1);
+  assert.deepEqual(sideEffects, previousSideEffects);
 });
 
 test("previews a communication file from the open Loop group chat", async () => {

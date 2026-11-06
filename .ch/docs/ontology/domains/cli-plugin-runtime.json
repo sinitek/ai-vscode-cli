@@ -1226,7 +1226,7 @@
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/webview/loopGroupChatPanel.ts"},
-        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/test/loop/loopGroupChatPanel.test.ts"},
@@ -1244,7 +1244,7 @@
         {"path": "src/continueModelChoice.ts"},
         {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
-        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
       ]
     },
@@ -1354,7 +1354,7 @@
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/loopMainQuestion.ts"},
-        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
@@ -1383,7 +1383,8 @@
         {"path": "src/loopPlusScheduler.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
-        {"path": "src/panelDiagnostics.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
+        {"path": "src/loopTaskMessagePolicy.ts", "anchor": "isLoopTaskPromptResumeCandidate"},
         {"path": "src/extensionHost/promptRunRuntime.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
         {"path": "src/extension.ts"}
@@ -1622,7 +1623,7 @@
       "source_refs": [
         {"path": "src/interactive/kimiAppServerProtocol.ts", "anchor": "readKimiPromptError"},
         {"path": "src/interactive/kimiRunner.ts", "anchor": "readKimiPromptError"},
-        {"path": "src/panelDiagnostics.ts", "anchor": "isHiddenRetryEligibleErrorInfo"},
+        {"path": "src/promptRetry.ts", "anchor": "isHiddenRetryEligibleErrorInfo"},
         {"path": "src/test/extensionHost/kimiInteractiveHostWire.test.ts", "anchor": "Kimi model-not-found errors"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Kimi Code ACP 收到"}
       ]

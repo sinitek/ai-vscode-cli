@@ -81,11 +81,14 @@ cli / interactive / config 服务层
 - `src/sessionMessageRouter.ts` 只负责类型安全的消息到处理器分派和领域 Registry 合并，不承载业务分支
 - `src/panelMessageHandlers/` 按 diagnostics、session、prompt、workspace 领域拆分消息处理器；每个处理器通过 `Pick<PanelMessageHandlerDeps, ...>` 声明最小依赖，避免接收完整组合根依赖
 - `src/sessionMessageHandlers.ts` 保留兼容的统一入口，仅负责初始化会话存储、记录调试日志并调用 Router；新增消息应进入对应领域 Registry，而不是继续堆积条件分支
+- `src/panelDiagnostics.ts` 保留模型管理诊断实现（`createPanelDiagnosticsInspector`）及其依赖注入端口，并作为旧入口兼容 Facade，显式命名转导出原有错误/重试、Loop 消息策略与群聊协调 API。转导出与新模块共享同一函数对象，不包装、不复制实现、不通过 `export *` 扩大公开面。
+- 内部运行时直接依赖职责模块：`src/promptRetry.ts` 负责错误信息、隐藏重试资格/等待/提示和错误 trace，复用 `src/hiddenRetry.ts` 的延迟、格式化与去重纯辅助；`src/loopTaskMessagePolicy.ts` 负责继续提示词、任务恢复/session 兼容、验证信号和完成消息识别。两者不依赖 Facade、组合根或群聊面板协调器。
 - 本次运行时抽取后，`src/extension.ts` 为 5659 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进
 
 #### 扩展运行时 Host 层
 
 - 位于 `src/extensionHost/`
+- `loopGroupChatPanelCoordinator.ts` 承接群聊面板状态构建及 `createLoopGroupChatPanelCoordinator` 工厂，保留显式依赖回调，协调继续模型来源/原配置恢复、补充需求、独立提问、澄清、验收方案、停止、刷新、文件预览与释放。组合根直接装配该模块；它不反向导入 `panelDiagnostics.ts` 或 `extension.ts`，也不重新定义消息路由、调度或 Webview 展示。
 - 通知设置复用 `DesktopNotificationAuthorization` 与既有 Webview 消息：macOS 调用稳定助手申请/查询授权，Windows 读取当前编辑器身份的 `ToastNotifier.Setting` 并用 `ms-settings:notifications` 打开设置。Windows 首次启用通知自动打开一次，成功后以扩展 globalState 记录；同一宿主并发请求共用 Promise，刷新只查询，远程 workspace 宿主不执行本机引导或原生工具。
 - `humanInteractionAttentionHost.ts` 绑定窗口焦点、四项应用级提醒设置与本机宿主边界；`humanInteractionAttention.ts` 统一管理普通交互、Loop/Loop+ 澄清和任务完成的去重、并发窗口提醒与清理。系统通知在前台和后台均派发，窗口图标提醒仅在后台触发；先派发通知再清理前台完成窗口状态，通知通道不阻塞串行窗口提醒队列。`taskCompletionAttention.ts` 过滤子任务与中间主模型调用：Vibe 经共享成功运行记录触发，经典 Loop / Loop+ 仅在主任务完成持久化后触发；上下文压缩显式静默。完成提醒聚合为一个待查看状态，回到窗口即清除且不会在再次切后台时重放，最近 512 个完成事件 ID 用于去重。`desktopAttention.ts` 封装有超时的系统工具调用及两类固定中文通知，Windows 用不同 Toast Tag 避免两类通知互相覆盖；`macosDesktopNotifications.ts` 在扩展存储原子生成、签名、注册并复用具备稳定身份的“携宁 CLI 提醒”后台应用，通过 JXA 调用 `UserNotifications`、回报授权/投递状态。两类提醒共享 macOS 应用身份和权限，原生提醒失败不阻塞任务。
 - `promptAutoRepair.ts` 在统一 `runPrompt` 分流外管理任务级命令修复与单次新会话重放，按 Tab 处理取消和任务替代；复用 `cliCommandRepair.ts` 的命令发现及组合根持久化，第二次执行关闭各 runtime 的 hidden retry，旧会话历史由生命周期层保留。

@@ -41,7 +41,7 @@ import {
   HIDDEN_RETRY_MAX_RETRIES,
   isHiddenRetryEligibleErrorInfo,
   waitForHiddenRetryDelay,
-} from "../panelDiagnostics";
+} from "../promptRetry";
 import { buildUserChatMessage } from "../panelStateBuilder";
 import { buildHiddenRetryPrompt, buildThinkingPrompt } from "../promptRuntime";
 import {

@@ -43,7 +43,7 @@ import {
   HIDDEN_RETRY_MAX_RETRIES,
   isHiddenRetryEligibleAttempt,
   waitForHiddenRetryDelay,
-} from "../panelDiagnostics";
+} from "../promptRetry";
 import { buildHiddenRetryPrompt, buildThinkingPrompt, redactPromptArg } from "../promptRuntime";
 import type { LoopTaskRole, RunActivity, TaskRunDraft, TaskRunStatus } from "../promptRunState";
 import { extractSessionId } from "../sessionLifecycle";

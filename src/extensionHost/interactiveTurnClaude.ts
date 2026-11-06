@@ -5,7 +5,7 @@ import {
   isClaudeSuccessfulFinalResult,
   isClaudeToolUseStop,
 } from "../interactive/claudeRunner";
-import { getErrorInfo, type ErrorInfo } from "../panelDiagnostics";
+import { getErrorInfo, type ErrorInfo } from "../promptRetry";
 import { normalizeRawStreamContent } from "../promptRunState";
 import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
