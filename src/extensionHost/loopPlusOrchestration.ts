@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
   buildResetLoopMainAiFailureState,
@@ -1668,6 +1669,24 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     outcome: LoopPlusExecutionOutcome;
     detail: string | null;
   }): void {
+    const currentAttempt = runtime.scheduler.snapshot().running.find((item) => item.subtaskId === input.subtaskId);
+    let completed = false;
+    try {
+      applyFinishResult(runtime, input);
+      completed = input.outcome === "completed";
+    } finally {
+      if (!currentAttempt || currentAttempt.attemptId === input.attemptId) {
+        loopSubtaskAutoCompactions.notify(runtime.taskId, input.subtaskId, completed);
+      }
+    }
+  }
+
+  function applyFinishResult(runtime: ParentRuntime, input: {
+    subtaskId: string;
+    attemptId: string;
+    outcome: LoopPlusExecutionOutcome;
+    detail: string | null;
+  }): void {
     if (runtime.released || runtime.scheduler.snapshot().completed) {
       deps.log?.("loop-plus-finish-ignored", {
         taskId: runtime.taskId,
@@ -2237,6 +2256,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function retireControlledAttempt(runtime: ParentRuntime, record: LoopPlusExecutionRecord): void {
+    loopSubtaskAutoCompactions.notify(runtime.taskId, record.subtaskId, false);
     nextLaunchEpoch(runtime, record.attemptId);
     runtime.launching.delete(record.attemptId);
     const inFlight = runtime.attempts.get(record.attemptId);

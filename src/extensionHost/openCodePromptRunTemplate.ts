@@ -4,10 +4,8 @@ import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { FinalConclusionCheckOptions } from "../finalConclusion";
 import type { I18nKey } from "../i18n";
-import {
-  shouldOverlapLoopMainContextCompaction,
-  type LoopMainAutoCompactRequest,
-} from "../loopMainAutoCompact";
+import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
+import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
@@ -597,9 +595,9 @@ export async function runOpenCodePromptTemplate(
         conversationHasFinalConclusion,
       });
       if (shouldAutoCompactAfterRun) {
-        await ports.maybeAutoCompactContextAfterPromptSuccess(target, completion.sessionId, completion.durationMs, {
-          overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input),
-        });
+        const compactTarget = { ...target, sessionId: completion.sessionId };
+        await scheduleAutoCompactAfterPrompt({ ...input, model: runtimeModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
+          ports.maybeAutoCompactContextAfterPromptSuccess(compactTarget, compactTarget.sessionId, completion.durationMs, options));
       }
       return;
     }

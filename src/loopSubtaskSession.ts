@@ -1,6 +1,7 @@
 import { CLI_LIST, type CliName } from "./cli/types";
 import type { LoopSubtaskDecision, LoopSubtaskRecord, LoopTaskRecord } from "./loopTaskStore";
 import type { LoopPlusDecision } from "./loopPlusDecision";
+import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
 
 export type LoopSubtaskSession = {
   cli: CliName;
@@ -110,7 +111,7 @@ export async function withLoopSubtaskSession<T>(
   }
   const ordered = Array.from(keys).sort();
   const acquire = (index: number): Promise<T> => index === ordered.length
-    ? run()
+    ? loopSubtaskAutoCompactions.runWhenReady(cli, sessionId, run)
     : withSessionLease(ordered[index], () => acquire(index + 1));
   return acquire(0);
 }

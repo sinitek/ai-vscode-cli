@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import { runOpenCodePromptTemplate } from "../../extensionHost/openCodePromptRunTemplate";
 import type { OpenCodePromptRunPorts } from "../../extensionHost/openCodePromptRunTemplate";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
+import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 
 type RecordedPort = OpenCodePromptRunPorts & {
   events: string[];
@@ -268,6 +269,30 @@ function createInput(overrides: Partial<PromptRunInput> = {}): PromptRunInput {
 function createTarget(): PromptRunTarget {
   return { tabId: "tab-1", cli: "opencode", sessionId: null };
 }
+
+test("OpenCode subtask returns its result before notification starts background compaction", { timeout: 2000 }, async () => {
+  const events: string[] = [];
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => { finish = resolve; });
+  const ports = createRecordingPorts(events, {
+    maybeAutoCompactContextAfterPromptSuccess: async (target, sessionId, _duration, options) => {
+      assert.equal(target.sessionId, "session-1");
+      assert.equal(sessionId, "session-1");
+      assert.deepEqual(options, { isolatedRun: true });
+      events.push("compact");
+      await gate;
+    },
+  });
+  await runOpenCodePromptTemplate(createInput({ taskRole: "subtask", loopTaskId: "opencode-report-first", loopSubtaskId: "child" }), createTarget(), { cwd: "/workspace" }, ports);
+  assert.ok(events.includes("finalizeSuccessfulExit"));
+  assert.equal(events.includes("compact"), false);
+  events.push("reported");
+  loopSubtaskAutoCompactions.notify("opencode-report-first", "child", true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(events.indexOf("reported") < events.indexOf("compact"));
+  finish();
+  await loopSubtaskAutoCompactions.wait("opencode", "session-1");
+});
 
 test("runs the shared OpenCode attempt steps and calls explicit ports in order", async () => {
   const events: string[] = [];

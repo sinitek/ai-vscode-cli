@@ -28,6 +28,7 @@ function createHarness(options: {
   health: "normal" | "abnormal";
   runtime: "interactive" | "parallel" | "one-shot";
   sessionIdAfterWait?: string | null;
+  waitForSubtaskCompact?: (cli: CliName, sessionId: string | null) => Promise<void>;
   failures?: Error[];
   repairResult?: boolean;
   commandUnresolved?: boolean;
@@ -117,6 +118,9 @@ function createHarness(options: {
       if (options.sessionIdAfterWait !== undefined) {
         tab.sessionId = options.sessionIdAfterWait;
       }
+    } },
+    loopSubtaskAutoCompactions: { wait: async (cli: CliName, sessionId: string | null) => {
+      await options.waitForSubtaskCompact?.(cli, sessionId);
     } },
     isTabRunActive: () => false,
     sessionLifecycleController: { prepareSessionForPromptRun: (cli: CliName, sessionId: string | null, tabId: string, prepareOptions?: { forceNewSession?: boolean }) => {
@@ -291,6 +295,25 @@ test("does not restore an old session ID when the target was cleared while waiti
   await harness.runPrompt({ displayPrompt: "新任务", modelPrompt: "新任务", contextTags: [] });
   assert.equal(harness.dispatched[0].target.sessionId, null);
   assert.equal(harness.events.includes("dispose-old-runner"), false);
+});
+
+test("the unified entry waits for the current subtask session before acquiring config or dispatching", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const sessions: Array<string | null> = [];
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", sessionIdAfterWait: "current-child-session", waitForSubtaskCompact: async (cli, sessionId) => {
+    assert.equal(cli, "codex");
+    sessions.push(sessionId);
+    await gate;
+  } });
+  const run = harness.runPrompt({ displayPrompt: "续接", modelPrompt: "续接", contextTags: [] });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(sessions, ["current-child-session"]);
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(harness.leasedConfigs.length, 0);
+  release();
+  await run;
+  assert.equal(harness.dispatched[0].target.sessionId, "current-child-session");
 });
 
 test("the unified entry repairs ENOENT and uses a fresh session across all execution routes", async () => {

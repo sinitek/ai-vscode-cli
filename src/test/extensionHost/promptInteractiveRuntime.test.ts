@@ -11,6 +11,7 @@ import type { ChatMessage } from "../../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
+import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 
 installVscodeMock();
 
@@ -315,6 +316,31 @@ test("the interactive host passes the verified native identity through creation 
     assert.ok(harness.runnerFingerprints.length >= 2);
     assert.ok(harness.runnerFingerprints.every((fingerprint) => fingerprint === "native-config-and-auth-fingerprint"));
   }
+});
+
+test("interactive subtask completion returns before compaction and waits for the parent notification", { timeout: 2000 }, async () => {
+  const compactGate = createDeferred();
+  const started = createDeferred();
+  const compactions: unknown[] = [];
+  const harness = createInteractiveRuntimeHarness({
+    autoCompactAfterRun: true,
+    runtimeDeps: {
+      maybeAutoCompactContextAfterPromptSuccess: async (target, sessionId, _duration, options) => {
+        compactions.push({ sessionId, targetSessionId: target.sessionId, options });
+        started.resolve();
+        await compactGate.promise;
+      },
+    },
+  });
+  await harness.host.runPromptInteractive(createPromptInput({ taskRole: "subtask", loopTaskId: "interactive-report-first", loopSubtaskId: "child" }), createTarget());
+  assert.equal(harness.taskRecords.at(-1)?.status, "end");
+  assert.equal(harness.activeRunsByTabId.size, 0);
+  assert.deepEqual(compactions, []);
+  loopSubtaskAutoCompactions.notify("interactive-report-first", "child", true);
+  await started.promise;
+  assert.deepEqual(compactions, [{ sessionId: "session-1", targetSessionId: "session-1", options: { isolatedRun: true } }]);
+  compactGate.resolve();
+  await loopSubtaskAutoCompactions.wait("codex", "session-1");
 });
 
 test("an unreadable configuration identity cannot start an interactive runner", async () => {

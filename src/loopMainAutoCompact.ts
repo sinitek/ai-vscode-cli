@@ -1,5 +1,11 @@
 export type LoopMainAutoCompactRequest = {
   overlapLoopDispatch?: boolean;
+  isolatedRun?: boolean;
+  execution?: {
+    configSelection: import("./config/sharedRuntimeConfig").VisibleConfigSelection;
+    model: string | null;
+    thinkingMode?: import("./cli/types").ThinkingMode;
+  };
 };
 
 export type LoopMainAutoCompactRunRequest = {

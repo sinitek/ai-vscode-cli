@@ -1,5 +1,6 @@
 import type { TaskRunStatus } from "./promptRunState";
 import type { LoopTaskRecord } from "./loopTaskStore";
+import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
 
 export type LoopSubtaskCompletionOptions = {
   taskId: string;
@@ -56,7 +57,13 @@ export async function finalizeLoopSubtaskRun(
     assistantContent,
     tabId,
   } = options;
-  deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
+  let reported = false;
+  try {
+    deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
+    reported = runStatus === "end";
+  } finally {
+    loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported);
+  }
 
   if (runStatus !== "end" || !tabId) {
     return;

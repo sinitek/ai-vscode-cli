@@ -1,9 +1,7 @@
 import { appendBoundedUtf8Text } from "../boundedText";
 import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
-import {
-  shouldOverlapLoopMainContextCompaction,
-  type LoopMainAutoCompactRequest,
-} from "../loopMainAutoCompact";
+import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
+import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
 import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand, getZcodeCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
@@ -1003,9 +1001,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       });
       interactiveRunsByTabId.delete(tabId);
       if (status === "end" && shouldAutoCompactAfterRun) {
-        await maybeAutoCompactContextAfterPromptSuccess(target, uiSessionId, taskRecord?.durationMs ?? null, {
-          overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input),
-        });
+        const compactTarget = { ...target, sessionId: uiSessionId };
+        await scheduleAutoCompactAfterPrompt({ ...input, model: selectedModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
+          maybeAutoCompactContextAfterPromptSuccess(compactTarget, compactTarget.sessionId, taskRecord?.durationMs ?? null, options));
       }
     };
 

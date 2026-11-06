@@ -131,8 +131,11 @@ import {
   LoopMainAutoCompactFlights,
   mergeCompactTranscriptIntoLive,
   settleAutoCompactAfterPrompt,
+  type LoopMainAutoCompactRequest,
   type LoopMainAutoCompactReservation,
 } from "./loopMainAutoCompact";
+import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
+import { createIsolatedContextCompactionDeps } from "./extensionHost/isolatedContextCompaction";
 import {
   isCliEnabled,
   listEnabledClis,
@@ -157,6 +160,7 @@ import { isMemoryRuntimeOperationAllowed } from "./memory/runtimeGate";
 import { isWorkspaceHarnessInstalled } from "./workspaceScaffold";
 import {
   type ContextCompactionOptions,
+  type ContextCompactionRunDeps,
   isAutoContextCompactionCli,
   runContextCompactionWithDeps,
 } from "./contextCompactionRunner";
@@ -3443,6 +3447,9 @@ function disposeInteractiveRunnerIfUnused(binding: InteractiveSessionBinding | n
   if (!binding || !interactiveRunnerManager) {
     return;
   }
+  if (loopSubtaskAutoCompactions.has(binding.cli, binding.sessionId ?? null)) {
+    return;
+  }
   if (!shouldDisposeInteractiveSession(binding, {
     referencedSessionKeys: buildReferencedInteractiveSessionKeys(),
     activeSessionKeys: buildActiveInteractiveSessionKeys(),
@@ -4667,6 +4674,8 @@ async function runPrompt(
   }
 
   await loopMainAutoCompactFlights.wait(target.tabId);
+  const compactWaitTab = getConversationTabById(target.tabId);
+  await loopSubtaskAutoCompactions.wait(target.cli, compactWaitTab ? getConversationTabSessionIdForCli(compactWaitTab, target.cli) : null);
 
   if (isTabRunActive(target.tabId)) {
     preemptActivePromptRun(target.tabId);
@@ -4769,6 +4778,10 @@ async function runPrompt(
             };
           }
           appliedExecutionConfigId = executionConfigId;
+          currentAttemptInput = {
+            ...currentAttemptInput,
+            configSelections: { ...currentAttemptInput.configSelections, [attemptTarget.cli]: executionLease.selection },
+          };
           if (attemptTarget.cli === "opencode") {
             const preflightMessage = await getOpenCodeConfigPreflightMessage();
             if (preflightMessage) {
@@ -5036,8 +5049,12 @@ function persistAutoCompactMessagesPreservingConcurrentTranscript(): void {
   );
 }
 
-async function runContextCompaction(options: ContextCompactionOptions = {}): Promise<boolean> {
-  return runContextCompactionWithDeps({
+async function runContextCompaction(
+  options: ContextCompactionOptions = {},
+  isolatedRun = false,
+  execution?: LoopMainAutoCompactRequest["execution"],
+): Promise<boolean> {
+  const deps: ContextCompactionRunDeps = {
     getCurrentCli: () => currentCli,
     getActiveConversationTabId,
     isInteractiveSupported,
@@ -5046,9 +5063,9 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
-    getActiveConfigIdForCli,
-    getSelectedCliModel,
-    getEffectiveThinkingMode,
+    getActiveConfigIdForCli: execution ? () => execution.configSelection.configId : getActiveConfigIdForCli,
+    getSelectedCliModel: execution ? () => execution.model : getSelectedCliModel,
+    getEffectiveThinkingMode: execution?.thinkingMode ? () => execution.thinkingMode! : getEffectiveThinkingMode,
     getWorkspaceInteractiveMode,
     applyThinkingWorkspaceFiles,
     getEffectiveCliArgs,
@@ -5095,7 +5112,7 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
       if (cli !== "opencode") {
         return { model: selectedModel };
       }
-      const configId = getActiveConfigIdForCli("opencode");
+      const configId = execution ? execution.configSelection.configId : getActiveConfigIdForCli("opencode");
       const runtimePreparation = await prepareOpenCodeRuntime({
         configId,
         role: "main",
@@ -5115,7 +5132,19 @@ async function runContextCompaction(options: ContextCompactionOptions = {}): Pro
     },
     appendAssistantChunk,
     adoptSessionId,
-  }, options);
+  };
+  return runContextCompactionWithDeps(isolatedRun ? createIsolatedContextCompactionDeps(deps, {
+    saveMessages: saveSessionMessages,
+    publishMessage: (message, tabId) => sendPanelMessage({ type: "appendMessage", message, tabId: tabId ?? undefined }),
+    publishPanelMessage: sendPanelMessage,
+    sendRunStatus: (tabId, status, message, runOptions) => sendPanelMessage({
+      type: "runStatus",
+      tabId: tabId ?? undefined,
+      status,
+      message,
+      activity: status === "start" ? runOptions?.activity : undefined,
+    }),
+  }) : deps, options);
 }
 
 function shouldAutoCompactContextAfterRunForTarget(target: PromptRunTarget): boolean {
@@ -5173,7 +5202,7 @@ function reserveLoopMainAutoCompactRun(
 async function runAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string,
-  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void },
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; isolatedRun?: boolean; execution?: LoopMainAutoCompactRequest["execution"] },
 ): Promise<void> {
   const compacted = await runContextCompaction({
     silent: true,
@@ -5183,7 +5212,7 @@ async function runAutoCompactContextAfterPromptSuccess(
     timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
     allowActiveRun: request.allowActiveRun,
     onStopReady: request.onStopReady,
-  });
+  }, request.isolatedRun, request.execution);
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
     tabId: target.tabId,
@@ -5197,7 +5226,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string | null,
   durationMs: number | null | undefined,
-  options: { overlapLoopDispatch?: boolean } = {},
+  options: LoopMainAutoCompactRequest = {},
 ): Promise<void> {
   if (!shouldAutoCompactContextAfterRunForTarget(target) || !sessionId) {
     return;
@@ -5210,6 +5239,17 @@ async function maybeAutoCompactContextAfterPromptSuccess(
       durationMs: typeof durationMs === "number" ? durationMs : null,
       minDurationMs: AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS,
     });
+    return;
+  }
+  if (options.isolatedRun) {
+    const lease = options.execution
+      ? await configService.acquireRuntimeConfigExecution(target.cli, options.execution.configSelection)
+      : undefined;
+    try {
+      await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
+    } finally {
+      await lease?.release();
+    }
     return;
   }
   const overlapLoopDispatch = options.overlapLoopDispatch === true;

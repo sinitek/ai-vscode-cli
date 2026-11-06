@@ -338,6 +338,55 @@ test("silent context compaction emits status events for the active compaction in
   assert.equal(calls.appendSystemMessage, 1);
 });
 
+test("background subtask compaction never mutates an occupied primary run", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+  const { deps, calls } = createSilentCodexCompactionDeps();
+  deps.beginActiveRunState({ runId: "primary-run", cli: "codex", sessionId: "main-session", tabId: "main-tab", messageTarget: [] });
+  deps.hasActiveProcessOrInteractiveStop = () => true;
+  const statuses: Array<{ tabId: string | null; status: string }> = [];
+  const published: Array<{ tabId: string | null; content: string }> = [];
+  const saved: string[] = [];
+  const isolated = createIsolatedContextCompactionDeps(deps, {
+    publishPanelMessage: () => {},
+    saveMessages: (_cli, sessionId, messages) => {
+      saved.push(sessionId);
+      assert.equal(messages.length, 1);
+    },
+    publishMessage: (message, tabId) => { published.push({ tabId, content: message.content }); },
+    sendRunStatus: (tabId, status) => { statuses.push({ tabId, status }); },
+  });
+  isolated.beginActiveRunState({ runId: "isolated-run", cli: "opencode", sessionId: "session-1", tabId: "child-tab", messageTarget: [] });
+  isolated.adoptSessionId("opencode", "session-1", "child-tab");
+  assert.throws(() => isolated.adoptSessionId("opencode", "other-session", "child-tab"), /保留原子任务会话记录/);
+  isolated.clearActiveRun();
+  assert.equal(await runContextCompactionWithDeps(isolated, { silent: true, cli: "codex", tabId: "child-tab", sessionId: "session-1" }), true);
+  assert.equal(deps.getActiveRunId(), "primary-run");
+  assert.deepEqual(calls.sendRunStatuses, []);
+  assert.equal(calls.clearActiveRun, 0);
+  assert.equal(calls.persistActiveMessages, 0);
+  assert.equal(calls.appendCompletionMessage, 0);
+  assert.deepEqual(statuses, [{ tabId: "child-tab", status: "start" }, { tabId: "child-tab", status: "end" }]);
+  assert.deepEqual(saved, ["session-1"]);
+  assert.equal(published.length, 1);
+  assert.equal(published[0].tabId, "child-tab");
+});
+
+test("background subtask compaction failure or timeout leaves primary state intact", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+  for (const compactThread of [async () => { throw new Error("native failure"); }, () => new Promise<never>(() => {})]) {
+    const { deps, calls } = createSilentCodexCompactionDeps({ compactThread });
+    deps.beginActiveRunState({ runId: "primary-run", cli: "codex", sessionId: "main-session", tabId: "main-tab", messageTarget: [] });
+    const isolated = createIsolatedContextCompactionDeps(deps, { saveMessages: () => {}, publishMessage: () => {}, publishPanelMessage: () => {}, sendRunStatus: () => {} });
+    assert.equal(await runContextCompactionWithDeps(isolated, { silent: true, timeoutMs: 10, cli: "codex", tabId: "child-tab", sessionId: "session-1" }), false);
+    assert.equal(deps.getActiveRunId(), "primary-run");
+    assert.equal(calls.clearActiveRun, 0);
+    assert.equal(calls.killActiveProcess, 0);
+    assert.equal(calls.appendCompletionMessage, 0);
+  }
+});
+
 test("silent Codex compaction stops and returns when native compact times out", async () => {
   const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createSilentCodexCompactionDeps({

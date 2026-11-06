@@ -15,6 +15,7 @@ import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubt
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { loopSubtaskAutoCompactions, scheduleAutoCompactAfterPrompt } from "../../loopSubtaskAutoCompact";
 import {
   loopClarificationScope,
   submitOrchestratorClarification,
@@ -447,6 +448,43 @@ test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current 
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "event_driven" }, "classic"), "event_driven");
   assert.equal(resolveLoopPlusEntry({ schedulingMode: "classic" }, "event_driven"), "classic");
   assert.equal(resolveLoopPlusEntry({}, "event_driven"), "classic");
+});
+
+test("Loop+ records completion and starts main review without waiting for subtask compaction", { timeout: 3000 }, async () => {
+  for (const viaContinuation of [false, true]) {
+    const env = harness();
+    const run = env.host.tryRun({ displayPrompt: "完成任务" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+    await flush();
+    const attempt = env.attempts[0].request;
+    const gate = deferred<void>();
+    let compactStarted = false;
+    const sessionId = viaContinuation ? "continued-session" : "attempt-session";
+    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成子任务", modelPrompt: "完成子任务", contextTags: [], taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
+      assert.equal(env.reports.some((report) => report.subtaskId === "alpha"), true);
+      assert.ok(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview || snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length > 0);
+      compactStarted = true;
+      await gate.promise;
+    });
+    assert.equal(compactStarted, false);
+    env.host.reportAttempt(attempt.taskId, { subtaskId: attempt.subtaskId, attemptId: "stale-attempt", outcome: "completed", detail: "过期结果" });
+    await flush();
+    assert.equal(compactStarted, false);
+    if (viaContinuation) {
+      env.host.reportAttempt(attempt.taskId, { subtaskId: attempt.subtaskId, attemptId: attempt.attemptId, outcome: "completed", detail: "已完成续接" });
+    } else {
+      env.attempts[0].resolve({ outcome: "completed", detail: "已完成" });
+    }
+    await flush();
+    assert.equal(compactStarted, true);
+    assert.equal(env.mains.length, 2);
+    assert.equal(env.mains[1].request.kind, "review");
+    gate.resolve();
+    await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    env.host.stopParent(run.taskId ?? "");
+    await run.done;
+  }
 });
 
 test("accept feedback requires reasons before commit and shows default and selected review evidence", async () => {
@@ -2756,6 +2794,9 @@ test("steer closes one running subtask and reprompts another without an acceptan
   const steer = env.mains[1];
   assert.equal(steer.request.kind, "user");
   const nextPrompt = longPrompt("beta-next", ["src/beta-next.ts"]);
+  for (const attempt of [alpha, beta]) {
+    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成", modelPrompt: "完成", contextTags: [], taskRole: "subtask", loopTaskId: attempt.request.taskId, loopSubtaskId: attempt.request.subtaskId }, { cli: "codex", tabId: "controlled-tab", sessionId: `controlled-${attempt.request.subtaskId}` }, async () => assert.fail("retired attempts must not compact"));
+  }
   steer.resolve(decisionJson({
     status: "steer",
     controls: [
@@ -2765,6 +2806,8 @@ test("steer closes one running subtask and reprompts another without an acceptan
   }));
   await flush();
 
+  await loopSubtaskAutoCompactions.wait("codex", "controlled-alpha");
+  await loopSubtaskAutoCompactions.wait("codex", "controlled-beta");
   const task = env.tasks.get(run.taskId ?? "");
   const snapshot = snapshotOf(task);
   assert.equal(snapshot.reviewQueue.length, 0);
