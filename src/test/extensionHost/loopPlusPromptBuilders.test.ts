@@ -72,6 +72,7 @@ function mainContext(overrides: Partial<LoopPlusMainPromptContext> = {}): LoopPl
     view: view(),
     currentEventId: null,
     supplementalRequirements: [],
+    maxConcurrency: 6,
     ...overrides,
   };
 }
@@ -397,13 +398,102 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(parseExample(examples, "wait").status, "wait");
   assert.equal(parseExample(examples, "blocked").status, "blocked");
   const dispatch = parseExample(examples, "dispatch");
-  assert.equal(dispatch.subtasks?.length, 2);
-  assert.deepEqual(dispatch.subtasks?.map((subtask) => subtask.taskType), ["backend", "frontend"]);
-  assert.equal(new Set(dispatch.subtasks?.map((subtask) => subtask.conflictGroup)).size, 2);
+  assert.equal(dispatch.subtasks?.length, 4);
+  assert.deepEqual(dispatch.subtasks?.map((subtask) => subtask.taskType), ["backend", "frontend", "backend", "backend"]);
+  assert.equal(new Set(dispatch.subtasks?.map((subtask) => subtask.conflictGroup)).size, 4);
   assert.match(prompt, /Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default/);
   assert.match(prompt, /large enough to split into at least two independent analysis tracks/);
   assert.match(prompt, /dispatch at least two general subtasks together/);
   assert.match(prompt, /prefer one dispatch containing multiple independent coding subtasks/);
+});
+
+test("shows real concurrency capacity and encourages useful multi-task delivery in both modes", () => {
+  for (const loopSubtaskMode of ["split", "fullstack"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({
+      loopSubtaskMode,
+      view: view({ running: [execution("busy", "running")] }),
+    }));
+    assert.match(prompt, /Scheduler concurrency limit: 6/);
+    assert.match(prompt, /Available concurrency slots in this snapshot: 5/);
+    assert.match(prompt, /Decision subtask limit: 6/);
+    assert.match(prompt, /aim for 3 to 6 concurrent subtasks, bounded by available slots/);
+    assert.match(prompt, /Two roles do not mean a two-task limit/);
+    assert.match(prompt, /never create tiny or artificial tasks just to fill capacity/);
+    assert.match(prompt, /On dispatch and accept, look for ready independent work to refill free slots/);
+    assert.match(prompt, /Do not duplicate running or pending tasks/);
+    assert.match(prompt, /not a fixed task count or a role quota/);
+    assert.doesNotMatch(prompt, /Keep one coding subtask when the work shares files/);
+    assert.doesNotMatch(prompt, /keep shared or dependent work together/);
+  }
+});
+
+test("parallel examples obey single-decision and scheduler limits including a one-task cap", () => {
+  for (const { subtaskMax, maxConcurrency, expectedCount } of [
+    { subtaskMax: 1, maxConcurrency: 6, expectedCount: 1 },
+    { subtaskMax: 2, maxConcurrency: 6, expectedCount: 2 },
+    { subtaskMax: 3, maxConcurrency: 6, expectedCount: 3 },
+    { subtaskMax: 6, maxConcurrency: 2, expectedCount: 2 },
+    { subtaskMax: 6, maxConcurrency: 1, expectedCount: 1 },
+    { subtaskMax: 20, maxConcurrency: 6, expectedCount: 4 },
+  ]) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax, maxConcurrency }));
+    const examples = extractProtocolExamples(prompt);
+    for (const [status, jsonText] of examples) {
+      const parsed = parseLoopPlusDecision(jsonText, { subtaskMax });
+      assert.equal(parsed?.status, status);
+    }
+    const dispatch = parseExample(examples, "dispatch");
+    assert.equal(dispatch.subtasks?.length, expectedCount);
+    if (Math.min(subtaskMax, maxConcurrency) < 3) {
+      assert.doesNotMatch(prompt, /aim for 3 to/);
+      assert.match(prompt, new RegExp(`Use up to ${expectedCount} useful independent subtasks`));
+    }
+  }
+});
+
+test("reports occupied reservations without counting blocked pending tasks as running slots", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    maxConcurrency: 2,
+    view: view({
+      running: [execution("one", "running"), execution("two", "running"), execution("three", "running")],
+      pending: [execution("blocked", "pending")],
+    }),
+  }));
+  assert.match(prompt, /Available concurrency slots in this snapshot: 0/);
+  assert.match(prompt, /Still pending count: 1/);
+  const backfill = buildLoopPlusMainModelPrompt(mainContext({
+    maxConcurrency: 3,
+    view: view({
+      running: [execution("one", "running")],
+      pending: [execution("blocked", "pending")],
+    }),
+  }));
+  assert.match(backfill, /Available concurrency slots in this snapshot: 2/);
+});
+
+test("allows rare incidental edits without weakening known write-conflict protection", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext());
+  assert.match(prompt, /Shared read-only context is not a write conflict/);
+  assert.match(prompt, /Declare every known shared write path honestly/);
+  assert.match(prompt, /Known overlapping writeFiles or conflictGroup remain serialized by the host/);
+  assert.match(prompt, /serialize only that part and continue unrelated deliverables/);
+  assert.match(prompt, /Rare small incidental cross-scope edits are acceptable/);
+  assert.match(prompt, /Do not deliberately schedule competing edits to the same symbols or contract/);
+  for (const taskType of ["backend", "frontend", "general"] as const) {
+    const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
+      subtask: { id: taskType, title: taskType, taskType, prompt: "TASK_TOKEN" },
+      communicationFile: "REPORT_TOKEN",
+    });
+    if (taskType === "general") {
+      assert.doesNotMatch(subtaskPrompt, /Reconcile small disjoint edits locally/);
+      assert.match(subtaskPrompt, /This attempt is analysis only/);
+    } else {
+      assert.match(subtaskPrompt, /Re-read the latest file before writing/);
+      assert.match(subtaskPrompt, /do not revert or overwrite their work/);
+      assert.match(subtaskPrompt, /Reconcile small disjoint edits locally/);
+      assert.match(subtaskPrompt, /report the dependency to the main model/);
+    }
+  }
 });
 
 test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
@@ -511,7 +601,7 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
   }));
   assert.match(fullstackPrompt, /Loop\+ subtask mode: fullstack/);
   assert.match(fullstackPrompt, /Do not split coding into frontend and backend only to choose different models/);
-  assert.match(fullstackPrompt, /When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel/);
+  assert.match(fullstackPrompt, /One fullstack model is not a one-task limit/);
   assert.match(fullstackPrompt, /mode=fullstack coding=dsh \/ fullstack-model/);
   assert.match(mainPrompt, /When the task changes UI appearance, layout, or interaction/);
   const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({

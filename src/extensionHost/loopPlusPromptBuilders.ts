@@ -34,6 +34,7 @@ export type LoopPlusMainPromptContext = {
   interruptedSubtaskIds?: readonly string[];
   supplementalRequirements: readonly string[];
   pendingUserMessages?: readonly string[];
+  maxConcurrency: number;
   subtaskMax?: number;
   acceptedCount?: number;
   acceptanceLimit?: number;
@@ -129,7 +130,11 @@ function acceptanceEventIds(context: LoopPlusMainPromptContext): string[] {
   return single ? [single] : [];
 }
 
-function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null): string {
+function buildLoopPlusProtocolExamples(
+  eventIds: readonly string[],
+  dispatchExampleCount: number,
+  acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null,
+): string {
   const planReasons = {
     maintainability: "复用既有模块，未引入重复实现",
     security: "输入和路径均有校验，未泄露敏感信息",
@@ -163,6 +168,30 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
     conflictGroup: "example-frontend-scope",
     writeFiles: ["src/example-frontend.ts"],
   };
+  const parallelSupportSubtasks = [
+    {
+      id: "example-config-subtask",
+      title: "Example independent configuration subtask",
+      prompt: [
+        "Implement the independent configuration validator against the agreed existing schema. Suggested write scope: src/example-config.ts and src/test/example-config.test.ts; no backend or frontend changes are needed.",
+        "Design key point: reuse the existing schema and keep the public configuration contract stable. Record verification commands and results in the attempt report.",
+      ].join(" "),
+      taskType: "backend",
+      conflictGroup: "example-config-scope",
+      writeFiles: ["src/example-config.ts", "src/test/example-config.test.ts"],
+    },
+    {
+      id: "example-docs-subtask",
+      title: "Example independent documentation subtask",
+      prompt: [
+        "Document the already agreed user workflow. Suggested write scope: docs/example-usage.md. Use the existing contract and requirements, so this task does not wait for implementation changes.",
+        "Design key point: keep examples consistent with the agreed contract and do not edit implementation files. Record documentation checks and results in the attempt report.",
+      ].join(" "),
+      taskType: "backend",
+      conflictGroup: "example-docs-scope",
+      writeFiles: ["docs/example-usage.md"],
+    },
+  ];
   const completed: Record<string, unknown> = {
     status: "completed",
     answerConclusion: "The main decision and any required work meet the original request.",
@@ -214,7 +243,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
       status: "dispatch",
       value: {
         status: "dispatch",
-        subtasks: [subtask, parallelFrontendSubtask],
+        subtasks: [subtask, parallelFrontendSubtask, ...parallelSupportSubtasks].slice(0, dispatchExampleCount),
       },
     },
     {
@@ -250,7 +279,7 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
         controls: [
           { id: "example-running-subtask", action: "close" },
           { id: "example-other-subtask", action: "reprompt", prompt: reprompt },
-        ],
+        ].slice(0, dispatchExampleCount),
       },
     },
     {
@@ -298,6 +327,8 @@ function buildLoopPlusProtocolExamples(eventIds: readonly string[], acceptancePl
 
 export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext): string {
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
+  const parallelCapacity = Math.min(subtaskMax, context.maxConcurrency);
+  const availableSlots = Math.max(0, context.maxConcurrency - context.view.running.length);
   const acceptedCount = normalizePromptCount(context.acceptedCount);
   const acceptanceLimit = resolveLoopPlusMaxAcceptances(context.acceptanceLimit);
   const current = context.view.currentReview;
@@ -370,6 +401,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "FIFO review queue, oldest first:",
     queued,
     `Still running count: ${context.view.running.length}`,
+    `Scheduler concurrency limit: ${context.maxConcurrency}`,
+    `Available concurrency slots in this snapshot: ${availableSlots}`,
+    `Decision subtask limit: ${subtaskMax}`,
     "Still running (open reservations, including interrupted subtasks):",
     running,
     `Interrupted subtasks awaiting continuation: ${context.interruptedSubtaskIds?.join(", ") || "(none)"}`,
@@ -394,7 +428,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
     "- Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default. Do not dispatch general for a small or medium question, a single analysis track, ordinary inspection, making a plan, or explaining work. If the request is answer-only/read-only and needs no separate evidence report or parallel analysis, return completed directly with no subtasks.",
     "- Dispatch general subtasks only when the thinking workload is large enough to split into at least two independent analysis tracks, each needing substantial investigation, and parallel execution has a clear material benefit in wall-clock time or coverage. If so, dispatch at least two general subtasks together with distinct evidence scopes; general is read-only and never carries coding delivery.",
-    "- For coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks when their writeFiles and conflictGroup scopes do not overlap and they can be verified separately. Keep one coding subtask when the work shares files or has a strict dependency; never split just to increase the count.",
+    "- For coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks with separate deliverables, primary write ownership, and verification. Decompose by delivery boundary, not by model role: multiple backend, frontend, or fullstack subtasks can run together. Two roles do not mean a two-task limit.",
+    parallelCapacity >= 3
+      ? `- When at least three useful independent delivery boundaries are ready, aim for 3 to ${parallelCapacity} concurrent subtasks, bounded by available slots and the decision subtask limit. Do not default to only one or two. Use fewer when there are fewer useful boundaries, real prerequisite dependencies, or insufficient free slots; never create tiny or artificial tasks just to fill capacity.`
+      : `- Use up to ${parallelCapacity} useful independent subtasks within the configured limits and available slots. Never create tiny or artificial tasks just to fill capacity.`,
+    "- On dispatch and accept, look for ready independent work to refill free slots instead of waiting for all siblings. Review the whole open acceptance batch first and attach follow-up work to accept. Do not duplicate running or pending tasks; pending work already owns its place in the queue and may consume released slots.",
+    "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
+    "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
+    "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
     ...loopPlusModeRuleLines(context),
     "- writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
@@ -433,7 +474,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
-    buildLoopPlusProtocolExamples(batchIds, context.acceptancePlan),
+    "Protocol examples illustrate JSON shape, not a fixed task count or a role quota. Size real work using the rules and live capacity above.",
+    buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan),
   ].join("\n");
 }
 
@@ -448,7 +490,7 @@ function loopPlusModeRuleLines(context: LoopPlusMainPromptContext): string[] {
   ];
   if (mode === "fullstack") {
     return [
-      "- Loop+ subtask mode: fullstack. Every coding task uses the fullstack sub-model. Do not split coding into frontend and backend only to choose different models. When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel; keep shared or dependent work together.",
+      "- Loop+ subtask mode: fullstack. Every coding task uses the fullstack sub-model. Do not split coding into frontend and backend only to choose different models. One fullstack model is not a one-task limit: split useful independent delivery boundaries and dispatch them together under the parallel-capacity and ownership rules above.",
       ...shared,
       "- taskType backend, frontend, and any coding without a more specific type all execute on the fullstack sub-model. general stays read-only analysis on the main model configuration in both modes.",
       ...summary,
@@ -457,7 +499,7 @@ function loopPlusModeRuleLines(context: LoopPlusMainPromptContext): string[] {
   return [
     "- Loop+ subtask mode: split. Frontend coding uses the frontend sub-model. Backend coding and any other coding use the backend sub-model. general stays read-only analysis on the main model configuration.",
     ...shared,
-    "- Keep ordinary analysis in the main decision and follow the large parallel-analysis rule for general. When coding or writing has separate non-conflicting delivery boundaries, prefer dispatching those subtasks together in parallel; keep shared or dependent work together. Coding that cannot be split uses frontend for UI implementation and backend for every other code change.",
+    "- Keep ordinary analysis in the main decision and follow the large parallel-analysis rule for general. Split useful independent delivery boundaries under the parallel-capacity and ownership rules above; the frontend/backend routing does not limit the number of subtasks. Coding that cannot be split uses frontend for UI implementation and backend for every other code change.",
     ...summary,
   ];
 }
@@ -486,6 +528,10 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     role === "general"
       ? "This attempt is analysis only. A prompt instruction is not a sandbox; still do not edit files."
       : "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
+    ...(role === "general" ? [] : [
+      "Other subtasks may edit this workspace concurrently. Re-read the latest file before writing, preserve changes owned by others, and do not revert or overwrite their work. Reconcile small disjoint edits locally instead of stopping merely because another task changed the file.",
+      "Keep necessary incidental cross-scope edits minimal and report their paths, reasons, and reconciliation in this attempt report. If the same symbols or shared contract need competing changes, report the dependency to the main model rather than forcing a broad rewrite.",
+    ]),
     "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
     "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",
     role === "frontend"

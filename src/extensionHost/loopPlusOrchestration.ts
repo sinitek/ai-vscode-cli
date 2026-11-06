@@ -1868,6 +1868,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       pendingUserMessages: step.userMessageCount > 0
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
+      maxConcurrency,
       subtaskMax: decisionSubtaskMax(),
       acceptedCount: reviewedAcceptanceCount(runtime),
       acceptanceLimit: acceptanceLimitFor(runtime),

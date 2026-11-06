@@ -856,6 +856,45 @@ test("keeps conflict and concurrency limits when new work is added beside a runn
   assert.equal(snapshotOf(task).pending.length >= 1, true);
 });
 
+test("fills six production slots while serializing only a conflicting follow-up", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship independent deliverables" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.match(env.mains[0].request.modelPrompt, /Scheduler concurrency limit: 6/);
+  assert.match(env.mains[0].request.modelPrompt, /Available concurrency slots in this snapshot: 6/);
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: Array.from({ length: 6 }, (_, index) => subtask(`delivery-${index}`, [`src/delivery-${index}.ts`])),
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 6);
+  const task = () => env.tasks.get(run.taskId ?? "")!;
+  assert.equal(snapshotOf(task()).running.length, 6);
+  env.attempts[0].resolve({ outcome: "completed", detail: "delivery-0 ready" });
+  await flush();
+  const review = env.mains[1];
+  assert.match(review.request.modelPrompt, /Available concurrency slots in this snapshot: 1/);
+  review.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: review.request.reviewEventId,
+    subtasks: [
+      subtask("shared-follow-up", ["src\\delivery-1.ts"]),
+      subtask("independent-follow-up", ["src/independent-follow-up.ts"]),
+    ],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 7);
+  assert.equal(env.attempts[6].request.subtaskId, "independent-follow-up");
+  assert.equal(snapshotOf(task()).running.length, 6);
+  assert.deepEqual(snapshotOf(task()).pending.map((item) => item.subtaskId), ["shared-follow-up"]);
+  env.attempts[1].resolve({ outcome: "completed", detail: "delivery-1 ready" });
+  await flush();
+  assert.equal(env.attempts.length, 8);
+  assert.equal(env.attempts[7].request.subtaskId, "shared-follow-up");
+  assert.equal(snapshotOf(task()).running.length, 6);
+  assert.equal(snapshotOf(task()).pending.length, 0);
+});
+
 test("records each accept review without failing a successful sibling", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

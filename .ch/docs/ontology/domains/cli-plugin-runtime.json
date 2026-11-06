@@ -1460,6 +1460,21 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_capacity_aware_parallel_delivery",
+      "name": "Loop+ 按容量与交付边界合理并行",
+      "description": "Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3–6 路，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts", "anchor": "buildMainRequest"},
+        {"path": "src/test/extensionHost/loopPlusPromptBuilders.test.ts"},
+        {"path": "src/test/extensionHost/loopPlusOrchestration.test.ts", "anchor": "fills six production slots"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "容量感知拆分与轻量冲突协作"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 容量感知并行与轻量冲突协作"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_dispatch_subtask_max",
       "name": "Loop+ 单次派发子任务上限可配置",
       "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency；超出并发上限的已接受子任务留在 pending。",
