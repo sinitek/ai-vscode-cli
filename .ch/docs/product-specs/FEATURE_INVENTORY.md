@@ -283,6 +283,8 @@ Loop、Loop+ 专属通知与操作入口不进入指令折叠：系统通知，�
 
 任务列表浮层的统一布局：展开后按单行高度最多显示 4 行，超出内容在列表内部滚动；标题字号为 13px，任务项字号为 12px，任务项上下间距为 3px，任务项 padding 不变；浮层卡片与下方输入表单的外部空隙由 20px 减至 10px（任务列表面板底部 2px + 输入区域顶部 8px），输入区域内部布局保持不变。
 
+同一任务列表重复刷新、任务进度或等高文本更新时复用滚动容器与已有任务行，不因重绘将滚动位置重置到顶部；增删任务保留容器，实际内容缩短时由浏览器约束有效滚动范围。切换任务列表或清空后重新展示时不继承上一列表的滚动位置。实现见 `src/webview/viewContentScript/taskListAndUi.ts`，回归见 `src/test/webview/openCodeTaskListOverlay.test.ts`。
+
 starter 默认不预置功能项。复制模板后，请从第一个真实能力开始维护下表。
 
 Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；`model_not_found` 等确定性模型配置错误直接显示错误气泡，不进入缺少最终结论的自动续跑。实现与回归见 `src/interactive/kimiAppServerProtocol.ts`、`src/interactive/kimiRunner.ts`、`src/panelDiagnostics.ts` 和 Kimi ACP 测试。

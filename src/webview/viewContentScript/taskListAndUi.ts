@@ -158,24 +158,37 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (elements.taskListCount) {
           elements.taskListCount.textContent = formatTaskListProgress(items);
         }
-        const list = document.createElement("ul");
-        list.className = "tasklist-items";
-        items.forEach((item) => {
-          const li = document.createElement("li");
-          li.className = "tasklist-item";
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.className = "tasklist-checkbox";
-          checkbox.checked = item.done;
-          checkbox.disabled = true;
-          const text = document.createElement("span");
-          text.textContent = item.text;
-          li.appendChild(checkbox);
-          li.appendChild(text);
-          list.appendChild(li);
+        let list = elements.taskListBody.children[0];
+        if (!list || list.taskListState !== activeTaskListState) {
+          list = document.createElement("ul");
+          list.className = "tasklist-items";
+          list.taskListState = activeTaskListState;
+        }
+        items.forEach((item, index) => {
+          let row = list.children[index];
+          if (!row) {
+            row = document.createElement("li");
+            row.className = "tasklist-item";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.className = "tasklist-checkbox";
+            checkbox.disabled = true;
+            row.appendChild(checkbox);
+            row.appendChild(document.createElement("span"));
+            list.appendChild(row);
+          }
+          row.children[0].checked = item.done;
+          if (row.children[1].textContent !== item.text) {
+            row.children[1].textContent = item.text;
+          }
         });
-        elements.taskListBody.innerHTML = "";
-        elements.taskListBody.appendChild(list);
+        while (list.children.length > items.length) {
+          list.removeChild(list.children[list.children.length - 1]);
+        }
+        if (elements.taskListBody.children[0] !== list) {
+          elements.taskListBody.innerHTML = "";
+          elements.taskListBody.appendChild(list);
+        }
       }
 
       function extractTaskListFromMessages(messages, startIndex = 0) {

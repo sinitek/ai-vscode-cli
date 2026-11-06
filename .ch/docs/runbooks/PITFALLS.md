@@ -2847,6 +2847,16 @@ rm -r "$result_directory"
 - `.ch/docs/references/cli-runtime-reference.md`（Grok Build 段 `agent_message_chunk` / `agent_thought_chunk` 归类与空 chunk 约定）
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
+## 任务列表高度不变也会在刷新时跳回顶部
+
+- 状态：已规避
+- 首次发现：2026-11-06
+- 适用范围：AI 对话任务列表浮层
+- 根因：`renderTaskList` 每次清空 body 并创建新的 `.tasklist-items`，滚动位置属于已销毁的元素，内容高度不变也不能保留。external 列表随消息刷新仍会触发该路径。
+- 修复：同一任务列表复用滚动容器和已有行，仅更新复选框与实际变化的文本，并增删尾部行；以任务列表状态对象隔离不同 Tab，清空时销毁容器。不要用每次替换后强设滚动值掩盖无必要的 DOM 重建。
+- 验证：`node --test dist/test/webview/openCodeTaskListOverlay.test.js`；真实 Chromium 在 1280px、420px 宽度下对照旧版与修复版，重复刷新 30 次、更新进度和等高文本，内容高度同为 525px，旧版 `scrollTop` 从 120 变 0，修复后维持 120；缩短至单行时自然归零。
+- 事实来源：`src/webview/viewContentScript/taskListAndUi.ts`、`src/test/webview/openCodeTaskListOverlay.test.ts`。
+
 ## Loop+ 验收方案快照在 Webview 发送链路中被归一化白名单丢弃
 
 - 状态：已规避

@@ -50,8 +50,10 @@ type FakeElement = {
   type: string;
   checked: boolean;
   disabled: boolean;
+  scrollTop: number;
   children: FakeElement[];
   appendChild: (child: FakeElement) => void;
+  removeChild: (child: FakeElement) => void;
 };
 
 function createFakeElement(): FakeElement {
@@ -65,6 +67,7 @@ function createFakeElement(): FakeElement {
     type: "",
     checked: false,
     disabled: false,
+    scrollTop: 0,
     children,
     get innerHTML() {
       return innerHtml;
@@ -76,8 +79,72 @@ function createFakeElement(): FakeElement {
     appendChild(child: FakeElement) {
       children.push(child);
     },
+    removeChild(child: FakeElement) {
+      children.splice(children.indexOf(child), 1);
+    },
   };
 }
+
+test("preserves task-list scroll container and rows across redraws and progress updates", () => {
+  const elements = {
+    taskListPanel: createFakeElement(),
+    taskListDetails: createFakeElement(),
+    taskListCount: createFakeElement(),
+    taskListBody: createFakeElement(),
+  };
+  const taskListState = {
+    items: Array.from({ length: 12 }, (_, index) => ({ text: `任务 ${index + 1}`, done: false })),
+    open: true,
+  };
+  const renderTaskList = new Function(
+    "elements",
+    "document",
+    "getActiveTaskListState",
+    `${extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "formatTaskListProgress")}
+     ${extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "renderTaskList")}
+     return renderTaskList;`,
+  )(elements, { createElement: createFakeElement }, () => taskListState) as (value?: typeof taskListState) => void;
+
+  renderTaskList();
+  const list = elements.taskListBody.children[0];
+  const rows = list.children.slice();
+  list.scrollTop = 96;
+  renderTaskList();
+  assert.equal(elements.taskListBody.children[0], list);
+  assert.equal(list.scrollTop, 96);
+  assert.deepEqual(list.children, rows);
+
+  taskListState.items = taskListState.items.map((item, index) => ({ ...item, done: index < 3 }));
+  taskListState.items[6].text = "更新任务内容";
+  renderTaskList();
+  assert.equal(elements.taskListBody.children[0], list);
+  assert.equal(list.scrollTop, 96);
+  assert.equal(elements.taskListCount.textContent, "3/12");
+  assert.equal(rows[0].children[0].checked, true);
+  assert.equal(rows[6].children[1].textContent, "更新任务内容");
+  rows.forEach((row, index) => assert.equal(list.children[index], row));
+
+  taskListState.items.push({ text: "追加任务", done: false });
+  renderTaskList();
+  assert.equal(list.children.length, 13);
+  assert.equal(list.scrollTop, 96);
+  taskListState.items.splice(10);
+  renderTaskList();
+  assert.equal(list.children.length, 10);
+  assert.equal(list.scrollTop, 96);
+
+  renderTaskList({ items: taskListState.items, open: true });
+  assert.notEqual(elements.taskListBody.children[0], list);
+  assert.equal(elements.taskListBody.children[0].scrollTop, 0);
+  renderTaskList({ items: [], open: false });
+  assert.equal(elements.taskListBody.children.length, 0);
+  assert.equal(elements.taskListPanel.style.display, "none");
+  assert.equal(elements.taskListDetails.open, false);
+  renderTaskList(taskListState);
+  assert.equal(elements.taskListBody.children[0].scrollTop, 0);
+  elements.taskListBody = null as unknown as FakeElement;
+  assert.doesNotThrow(() => renderTaskList());
+});
 
 test("renders OpenCode task updates in the active task-list overlay", () => {
   const functionSources = [
