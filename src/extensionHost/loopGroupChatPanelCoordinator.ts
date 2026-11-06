@@ -263,6 +263,7 @@ function canStopLoopTaskWithRunningTaskIds(
 export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps) {
   const askThreads = new Map<string, LoopAskThread>();
   const askRuns = new Map<string, { aborted: boolean }>();
+  const continuingTaskIds = new Set<string>();
   let askSerial = 0;
 
   const syncAskThread = (
@@ -333,7 +334,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     panel.update(buildLoopGroupChatPanelState(task, deps));
   };
 
-  const continueTask = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
+  const runContinuation = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
@@ -472,6 +473,32 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
     });
     await refresh(normalizedTaskId);
+  };
+
+  const continueTask = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId)
+      ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id)
+      ?? taskId;
+    if (continuingTaskIds.has(normalizedTaskId)) {
+      return;
+    }
+    continuingTaskIds.add(normalizedTaskId);
+    try {
+      await runContinuation(normalizedTaskId, prompt, modelSourceValue);
+    } catch (error) {
+      deps.showWarningMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      continuingTaskIds.delete(normalizedTaskId);
+      try {
+        await refresh(normalizedTaskId);
+      } finally {
+        const task = deps.readTaskRecord(normalizedTaskId);
+        postToPanel(normalizedTaskId, {
+          type: "loopGroupChatChat:continueTaskSettled",
+          canContinue: task ? resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue : false,
+        });
+      }
+    }
   };
 
   const supplementTask = async (taskId: string, prompt?: unknown): Promise<void> => {

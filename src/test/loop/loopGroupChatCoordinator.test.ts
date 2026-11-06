@@ -32,6 +32,122 @@ function createStoppedTask(): LoopTaskRecord {
   };
 }
 
+function createContinuationRecoveryHarness() {
+  const task = createStoppedTask();
+  task.schedulingMode = "event_driven";
+  task.originProfile = { configId: "original-config" };
+  task.modelRouting = { main: { model: "main-model" }, subtask: { model: "subtask-model" } };
+  const messages: Array<{ type: string; canContinue?: boolean }> = [];
+  const warnings: string[] = [];
+  let runs = 0;
+  let refreshes = 0;
+  const panel = {
+    getState: () => undefined,
+    setAskThread: () => undefined,
+    update: () => { refreshes += 1; },
+    post: (message: { type: string; canContinue?: boolean }) => messages.push(message),
+  };
+  type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
+  const deps: CoordinatorDeps = {
+    getExtensionUri: () => ({ fsPath: "/extension" } as any),
+    panelsByTaskId: new Map([[task.id, panel as never]]),
+    normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
+    normalizeSupplementalRequirement: () => null,
+    appendSupplementalRequirement: (existing) => [...(existing ?? [])],
+    appendSupplementalRequirementToCommunication: () => undefined,
+    readTaskRecord: () => task,
+    updateTaskRecord: () => task,
+    listTaskStoreFiles: () => [],
+    readTaskStoreTasks: () => [],
+    collectRunningTaskIds: () => new Set(),
+    readTextFileIfNonEmpty: () => null,
+    fileExists: () => false,
+    writeTextFileEnsuringDir: () => true,
+    getActiveSubtaskIds: () => [],
+    buildCompletedConclusionAndSummaryMarkdown: () => "",
+    resolveMainPromptTarget: () => ({ tabId: "main-tab", cli: "codex" }),
+    revealPanelView: async () => undefined,
+    switchVisibleConversationTabForLoop: async () => undefined,
+    isTabRunActive: () => false,
+    getActiveConfigIdForCli: () => "original-config",
+    getSelectedCliModel: () => "main-model",
+    restoreOriginalLoopRuntime: async () => ({ ok: true, target: { tabId: "main-tab", cli: "codex" } }),
+    runLoopPrompt: async () => { runs += 1; },
+    stopRunsForTask: () => undefined,
+    markTaskStoppedByUser: () => task,
+    postPanelState: async () => undefined,
+    getActiveConversationTaskId: () => task.id,
+    showInformationMessage: () => undefined,
+    showWarningMessage: (message) => { warnings.push(message); },
+    pickTask: async () => task,
+    t: ((key: string) => key) as CoordinatorDeps["t"],
+  };
+  return { task, deps, messages, warnings, coordinator: createLoopGroupChatPanelCoordinator(deps),
+    get runs() { return runs; }, get refreshes() { return refreshes; } };
+}
+
+test("failed original-runtime restoration settles continuation and allows a second attempt", async () => {
+  const harness = createContinuationRecoveryHarness();
+  const restore = harness.deps.restoreOriginalLoopRuntime;
+  harness.deps.restoreOriginalLoopRuntime = async () => ({ ok: false, message: "执行中的任务尚未结束" });
+  await harness.coordinator.continueTask(harness.task.id, "继续执行", "original");
+  assert.deepEqual(harness.warnings, ["执行中的任务尚未结束"]);
+  assert.deepEqual(harness.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: true }]);
+  assert.equal(harness.runs, 0);
+  assert.equal(harness.refreshes, 1);
+  harness.deps.restoreOriginalLoopRuntime = restore;
+  await harness.coordinator.continueTask(harness.task.id, "再次继续", "original");
+  assert.equal(harness.runs, 1);
+  assert.equal(harness.messages.length, 2);
+});
+
+for (const failureStage of ["restore", "run"] as const) {
+  test(`unexpected ${failureStage} errors settle continuation and remain retryable`, async () => {
+    const harness = createContinuationRecoveryHarness();
+    const failure = async (): Promise<never> => { throw new Error("续跑启动异常"); };
+    if (failureStage === "restore") harness.deps.restoreOriginalLoopRuntime = failure;
+    else harness.deps.runLoopPrompt = failure;
+    await harness.coordinator.continueTask(harness.task.id, "继续执行", "original");
+    assert.deepEqual(harness.warnings, ["续跑启动异常"]);
+    assert.deepEqual(harness.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: true }]);
+    harness.deps.restoreOriginalLoopRuntime = async () => ({ ok: true, target: { tabId: "main-tab", cli: "codex" } });
+    harness.deps.runLoopPrompt = async () => undefined;
+    await harness.coordinator.continueTask(harness.task.id, "再次继续", "original");
+    assert.equal(harness.messages.length, 2);
+  });
+}
+
+test("missing and already-running tasks still acknowledge continuation requests", async () => {
+  const missing = createContinuationRecoveryHarness();
+  missing.deps.readTaskRecord = () => null;
+  await missing.coordinator.continueTask(missing.task.id, "继续执行", "original");
+  assert.deepEqual(missing.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: false }]);
+  const running = createContinuationRecoveryHarness();
+  running.task.status = "running";
+  running.deps.collectRunningTaskIds = () => new Set([running.task.id]);
+  await running.coordinator.continueTask(running.task.id, "继续执行", "original");
+  assert.deepEqual(running.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: false }]);
+  assert.equal(running.runs, 0);
+});
+
+test("duplicate continuation requests cannot start a task twice while original runtime restoration is pending", async () => {
+  const harness = createContinuationRecoveryHarness();
+  let releaseRestore!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseRestore = resolve; });
+  harness.deps.restoreOriginalLoopRuntime = async () => {
+    await gate;
+    return { ok: true, target: { tabId: "main-tab", cli: "codex" } };
+  };
+  const first = harness.coordinator.continueTask(harness.task.id, "继续执行", "original");
+  await harness.coordinator.continueTask(harness.task.id, "重复继续", "original");
+  assert.equal(harness.runs, 0);
+  assert.equal(harness.messages.length, 0);
+  releaseRestore();
+  await first;
+  assert.equal(harness.runs, 1);
+  assert.equal(harness.messages.length, 1);
+});
+
 test("does not recreate a closed main tab while rendering a terminal Loop panel", () => {
   const task = createStoppedTask();
   let createOptions: { createIfMissing?: boolean } | undefined;

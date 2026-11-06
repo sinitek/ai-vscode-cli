@@ -2282,6 +2282,7 @@ function resolveModelConfigIdForCli(
 async function applyConfigById(
   cli: CliName,
   configId: string,
+  options: { reuseActiveProfile?: boolean } = {},
 ): Promise<ConfigApplyResult> {
   if (!configId) {
     return "applied";
@@ -2307,7 +2308,7 @@ async function applyConfigById(
         codexSkills: config.codexSkills,
         claudeSkills: config.claudeSkills,
         openCodeSkills: config.openCodeSkills,
-      });
+      }, options);
     },
     commit: () => {
       setWorkspaceActiveConfigId(cli, configId);
@@ -2725,7 +2726,7 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
     if (!config) {
       return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: profile.configId }) };
     }
-    const applied = await applyConfigById(task.cli, profile.configId);
+    const applied = await applyConfigById(task.cli, profile.configId, { reuseActiveProfile: true });
     if (applied !== "applied") {
       return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: profile.configId }) };
     }
@@ -2786,7 +2787,7 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
       if (!subtaskConfig) {
         return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
       }
-      const subtaskApplied = await applyConfigById(boundSubtaskCli, subtaskConfigId);
+      const subtaskApplied = await applyConfigById(boundSubtaskCli, subtaskConfigId, { reuseActiveProfile: true });
       if (subtaskApplied !== "applied") {
         return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
       }

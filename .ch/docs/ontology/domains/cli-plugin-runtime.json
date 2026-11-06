@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-05",
+  "as_of": "2026-11-06",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -1246,6 +1246,21 @@
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_continuation_recovery",
+      "name": "Loop 续跑复用就绪原档案并明确收尾请求",
+      "description": "Loop 与 Loop+ 以原配置续跑时，在共享配置互斥事务内复用仍已就绪的同一档案，不重复写入原生配置、认证文件或共享版本，不清除有效执行租约。切换不同档案、修复未就绪档案、显式重新应用和编辑配置仍遵守租约互斥。续跑提前拒绝、恢复失败和启动异常都发送 continueTaskSettled 回执，按实际任务状态解除继续按钮临时禁用；不依赖相同内容补丁重建 DOM。前端防止弹窗关闭后的重复确认，宿主按任务去重正在处理的续跑请求。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.config_profile"],
+      "source_refs": [
+        {"path": "src/config/sharedRuntimeConfig.ts", "anchor": "change"},
+        {"path": "src/config/configService.ts", "anchor": "applyConfig"},
+        {"path": "src/extension.ts", "anchor": "restoreOriginalLoopRuntime"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]
     },
     {

@@ -4,9 +4,11 @@ import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
 import ts = require("typescript");
+import vm = require("node:vm");
 
 import { installVscodeMock } from "../vscodeMock";
 import { createLoopOrchestrationHost } from "../../extensionHost/loopOrchestration";
+import { createConfigApplyQueue } from "../../config/configApplyQueue";
 
 installVscodeMock();
 import {
@@ -244,6 +246,52 @@ function createOpenCodeSubagentRuntimeDeps(
     ...overrides,
   };
 }
+
+test("original Loop runtime restoration reuses ready main and cross-CLI subtask profiles without changing explicit apply behavior", async () => {
+  const sourceFile = ts.createSourceFile("extension.ts", readSource("src", "extension.ts"), ts.ScriptTarget.Latest, true);
+  const apply = requireFunction(sourceFile, "applyConfigById", "extension.ts");
+  const restore = requireFunction(sourceFile, "restoreOriginalLoopRuntime", "extension.ts");
+  const source = ts.transpileModule(`${apply.getText(sourceFile)}\n${restore.getText(sourceFile)}\n({ applyConfigById, restoreOriginalLoopRuntime });`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const calls: Array<{ cli: string; configId: string; reuseActiveProfile?: boolean }> = [];
+  const runtime = vm.runInNewContext(source, {
+    normalizeLoopTaskOriginProfile: (profile: unknown) => profile,
+    configService: {
+      getConfigById: async (_cli: string, configId: string) => ({ id: configId }),
+      applyConfig: async (cli: string, payload: { profileId: string }, options: { reuseActiveProfile?: boolean }) => {
+        calls.push({ cli, configId: payload.profileId, ...options });
+      },
+    },
+    configApplyQueue: createConfigApplyQueue(),
+    setWorkspaceActiveConfigId: () => undefined,
+    logEssential: async () => undefined,
+    activeWorkspaceKey: "synthetic-workspace",
+    prepareLoopOriginContinuationTarget: () => ({ tabId: "main-tab" }),
+    switchVisibleConversationTabForLoop: async () => undefined,
+    parseCliName: (value: string | undefined) => value ?? null,
+    selectCliLoopModel: () => undefined,
+    selectLoopSubtaskCli: () => undefined,
+    postPanelState: async () => undefined,
+    t: (key: string) => key,
+    errorToMessage: (error: Error) => error.message,
+  }) as {
+    restoreOriginalLoopRuntime: (task: unknown) => Promise<{ ok: boolean }>;
+    applyConfigById: (cli: string, configId: string) => Promise<string>;
+  };
+  const restored = await runtime.restoreOriginalLoopRuntime({
+    cli: "codex",
+    originProfile: { configId: "main-config" },
+    modelRouting: { main: { model: "main-model" }, subtask: { cli: "grok", configId: "subtask-config", model: "subtask-model" } },
+  });
+  assert.equal(restored.ok, true);
+  assert.deepEqual(calls, [
+    { cli: "codex", configId: "main-config", reuseActiveProfile: true },
+    { cli: "grok", configId: "subtask-config", reuseActiveProfile: true },
+  ]);
+  assert.equal(await runtime.applyConfigById("codex", "explicit-config"), "applied");
+  assert.deepEqual(calls[2], { cli: "codex", configId: "explicit-config" });
+});
 
 test("extension delegates Loop, parallel, one-shot, and interactive prompt runtime wiring to extensionHost hosts", () => {
   const extensionSource = readSource("src", "extension.ts");

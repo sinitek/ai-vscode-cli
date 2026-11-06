@@ -50,6 +50,46 @@ test("same-version executions coexist but live leases block switching and active
   });
 });
 
+test("continuation reuses a ready profile without rewriting its selection or clearing live leases", async () => {
+  await withDirectory(async (directory) => {
+    const first = new SharedRuntimeConfig(directory);
+    const second = new SharedRuntimeConfig(directory);
+    const selected = await first.change(async () => ({ configId: "selected", profileDigest: "digest" }));
+    const lease = await first.acquire(selected);
+    const before = await fs.readFile(path.join(directory, "selection.json"), "utf8");
+    try {
+      const reused = await second.change(async () => assert.fail("must not reapply"), { reuseConfigId: "selected" });
+      assert.deepEqual(reused, selected);
+      assert.equal(await fs.readFile(path.join(directory, "selection.json"), "utf8"), before);
+      await assert.rejects(second.change(async () => assert.fail("must not switch"), { reuseConfigId: "other" }), /执行中的任务/);
+      await assert.rejects(second.change(async () => assert.fail("must not force reapply")), /执行中的任务/);
+    } finally {
+      await lease.release();
+    }
+    const switched = await second.change(async () => ({ configId: "other", profileDigest: "other" }), { reuseConfigId: "other" });
+    assert.equal(switched.configId, "other");
+    assert.notEqual(switched.revision, selected.revision);
+  });
+});
+
+test("continuation initializes missing selections and reapplies a profile whose last apply failed", async () => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory);
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }), { reuseConfigId: "selected" });
+    await assert.rejects(shared.change(async () => { throw new Error("apply failed"); }), /apply failed/);
+    assert.equal((await shared.read())?.ready, false);
+    let applies = 0;
+    const restored = await shared.change(async () => {
+      applies += 1;
+      return { configId: "selected", profileDigest: "restored" };
+    }, { reuseConfigId: "selected" });
+    assert.equal(applies, 1);
+    assert.equal(restored.ready, true);
+    assert.equal(restored.profileDigest, "restored");
+    assert.notEqual(restored.revision, selected.revision);
+  });
+});
+
 test("partial writes invalidate execution until an explicit successful application", async () => {
   await withDirectory(async (directory) => {
     const shared = new SharedRuntimeConfig(directory);
@@ -89,7 +129,7 @@ const leases = new Map();
 process.on("message", async (message) => {
   try {
     let result;
-    if (message.action === "change" || message.action === "hold") {
+    if (message.action === "change" || message.action === "hold" || message.action === "ensure") {
       result = await shared.change(async () => {
         if (message.action === "hold") {
           process.send({ id: message.id, holding: true });
@@ -97,7 +137,7 @@ process.on("message", async (message) => {
         }
         await fs.writeFile(path.join(process.argv[2], "synthetic-runtime"), message.configId);
         return { configId: message.configId, profileDigest: message.configId };
-      });
+      }, { reuseConfigId: message.action === "ensure" ? message.configId : undefined });
     } else if (message.action === "acquire") {
       const lease = await shared.acquire(message.expected);
       leases.set(message.id, lease);
@@ -140,6 +180,25 @@ function createWorker(directory: string) {
     },
   };
 }
+
+test("a continuation in another process reuses the selected profile without dropping the running process lease", { timeout: 15000 }, async () => {
+  await withDirectory(async (directory) => {
+    const running = createWorker(directory);
+    const continuing = createWorker(directory);
+    try {
+      const selected = await running.request({ action: "change", configId: "selected" });
+      const lease = await running.request({ action: "acquire", expected: selected });
+      assert.deepEqual(await continuing.request({ action: "ensure", configId: "selected" }), selected);
+      assert.equal(await fs.readFile(path.join(directory, "synthetic-runtime"), "utf8"), "selected");
+      await assert.rejects(continuing.request({ action: "ensure", configId: "other" }), /执行中的任务/);
+      await assert.rejects(continuing.request({ action: "change", configId: "selected" }), /执行中的任务/);
+      await running.request({ action: "release", leaseId: lease.leaseId });
+      assert.equal((await continuing.request({ action: "ensure", configId: "other" })).configId, "other");
+    } finally {
+      await Promise.all([running.stop(), continuing.stop()]);
+    }
+  });
+});
 
 test("independent processes serialize writes, reject unseen selections and recover a crashed execution lease", { timeout: 15000 }, async () => {
   await withDirectory(async (directory) => {

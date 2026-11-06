@@ -139,9 +139,15 @@ export class SharedRuntimeConfig {
     });
   }
 
-  async change(operation: () => Promise<{ configId: string | null; profileDigest: string | null }>): Promise<SharedConfigSelection> {
+  async change(
+    operation: () => Promise<{ configId: string | null; profileDigest: string | null }>,
+    options: { reuseConfigId?: string } = {},
+  ): Promise<SharedConfigSelection> {
     return this.locked(async () => {
       const previous = await this.readState();
+      if (options.reuseConfigId && previous?.ready && previous.configId === options.reuseConfigId) {
+        return this.selection(previous);
+      }
       this.assertIdle(previous);
       const state: SharedState = previous ?? { version: 1, configId: null, profileDigest: null, revision: randomUUID(), ready: false, leases: [] };
       state.ready = false;

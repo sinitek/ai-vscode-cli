@@ -367,23 +367,58 @@ function createSupplementDialogHarness() {
     continueDialogInput: input,
     continueDialogConfirm: { dataset: {} },
     continueDialogOpen: false,
-    continueDialogMode: undefined,
+    continueRequestPending: false,
+    continueDialogMode: undefined as string | undefined,
     setContinueDialogError: (error: string) => errors.push(error),
     setContinueModelChoiceVisible: () => undefined,
     saveDialogState: () => undefined,
     clearDialogState: () => undefined,
+    readContinueModelSource: () => "original",
     actionButton: () => button,
     document: { getElementById: () => null, querySelector: () => null },
     window: { setTimeout: () => undefined },
     vscode: { postMessage: (message: { type: string; prompt: string }) => messages.push(message) },
   };
-  const actions = vm.runInNewContext(`${source}\n({ openSupplementDialog, submitSupplementDialog, closeContinueDialog });`, context) as {
+  const actions = vm.runInNewContext(`${source}\n({ openSupplementDialog, submitSupplementDialog, closeContinueDialog, submitContinueDialog, applyContinueTaskSettled });`, context) as {
     openSupplementDialog: (prompt?: string) => void;
     submitSupplementDialog: () => void;
     closeContinueDialog: () => void;
+    submitContinueDialog: () => void;
+    applyContinueTaskSettled: (message: { canContinue: boolean }) => void;
   };
   return { ...actions, button, input, messages, errors, context };
 }
+
+test("continuation settlement restores a locally disabled button even when the action HTML is unchanged", () => {
+  const harness = createSupplementDialogHarness();
+  harness.context.continueDialogOpen = true;
+  harness.context.continueDialogMode = "continue";
+  harness.input.value = "继续原任务";
+  harness.submitContinueDialog();
+  assert.equal(harness.button.disabled, true);
+  assert.equal(harness.context.continueRequestPending, true);
+  harness.submitContinueDialog();
+  assert.equal(harness.messages.length, 1);
+  harness.applyContinueTaskSettled({ canContinue: true });
+  assert.equal(harness.button.disabled, false);
+  assert.equal(harness.context.continueRequestPending, false);
+  harness.context.continueDialogOpen = true;
+  harness.context.continueDialogMode = "continue";
+  harness.submitContinueDialog();
+  assert.equal(harness.messages.length, 2);
+  harness.applyContinueTaskSettled({ canContinue: false });
+  assert.equal(harness.button.disabled, true);
+});
+
+test("ignores continuation confirmation while its dialog is closed or showing supplemental requirements", () => {
+  const harness = createSupplementDialogHarness();
+  harness.input.value = "继续原任务";
+  harness.submitContinueDialog();
+  harness.openSupplementDialog("补充要求");
+  harness.submitContinueDialog();
+  assert.equal(harness.messages.length, 0);
+  assert.equal(harness.button.disabled, false);
+});
 
 test("keeps the supplement entry enabled for consecutive submissions without waiting for a patch", () => {
   const harness = createSupplementDialogHarness();
@@ -433,6 +468,7 @@ test("refreshes the current runtime configuration immediately when the continue 
     continueDialogConfirm: { dataset: {} },
     continueDialogOpen: false,
     continueDialogMode: undefined,
+    continueRequestPending: false,
     setContinueDialogError: () => undefined,
     setContinueModelChoiceVisible: () => undefined,
     saveDialogState: () => calls.push("save"),
@@ -1134,6 +1170,7 @@ test("updates ask availability from live patches and blocks submission without l
   const sent: unknown[] = [];
   const context = vm.createContext({
     mainModelBusy: false,
+    continueRequestPending: false,
     askThread: { running: false },
     askChatInput: { disabled: false, value: "  请检查结果  ", focus: () => undefined },
     askChatSend: {

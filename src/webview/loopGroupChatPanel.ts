@@ -358,6 +358,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let autoRefreshTimer = undefined;
 	      let suppressScrollButtonUntil = 0;
 	      let continueDialogOpen = false;
+	      let continueRequestPending = false;
 	      let continueDialogMode = undefined;
 	      let dialogStateRestored = false;
 	      let askDialogOpen = ${askThread.dialogOpen ? "true" : "false"};
@@ -513,7 +514,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function openContinueDialog(preservedPrompt) {
-	        if (!continueDialogBackdrop || !continueDialogInput) {
+	        if (!continueDialogBackdrop || !continueDialogInput || continueRequestPending) {
 	          return;
 	        }
 	        setContinueDialogError("");
@@ -545,7 +546,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function submitContinueDialog() {
-	        if (!continueDialogInput) {
+	        if (!continueDialogInput || !continueDialogOpen || continueDialogMode !== "continue" || continueRequestPending) {
 	          return;
 	        }
 	        const prompt = continueDialogInput.value.trim();
@@ -554,12 +555,21 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          continueDialogInput.focus();
 	          return;
 	        }
+	        continueRequestPending = true;
 	        closeContinueDialog();
 	        const liveContinueButton = actionButton("continueTask");
 	        if (liveContinueButton) {
 	          liveContinueButton.disabled = true;
 	        }
 	        vscode.postMessage({ type: "loopGroupChatChat:continueTask", prompt, modelSource: readContinueModelSource() });
+	      }
+
+	      function applyContinueTaskSettled(message) {
+	        continueRequestPending = false;
+	        const liveContinueButton = actionButton("continueTask");
+	        if (liveContinueButton) {
+	          liveContinueButton.disabled = message.canContinue !== true;
+	        }
 	      }
 
 	      function submitSupplementDialog() {
@@ -1074,6 +1084,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          subtitle.textContent = message.subtitleText;
 	        }
 	        replaceHtml(document.getElementById("panelActions"), message.actionsHtml);
+	        if (continueRequestPending) {
+	          const liveContinueButton = actionButton("continueTask");
+	          if (liveContinueButton) {
+	            liveContinueButton.disabled = true;
+	          }
+	        }
 	        replaceHtml(document.getElementById("taskPanelSlot"), message.taskPanelHtml);
 	        replaceHtml(document.getElementById("rosterPanelSlot"), message.rosterPanelHtml);
 	        const shouldStick = isNearBottom();
@@ -1173,6 +1189,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      });
 	      window.addEventListener("message", (event) => {
 	        const message = event.data;
+	        if (message && message.type === "loopGroupChatChat:continueTaskSettled") {
+	          applyContinueTaskSettled(message);
+	          return;
+	        }
             if (message && message.type === "chatImageResolved") {
               applyChatImageSource(message);
               return;

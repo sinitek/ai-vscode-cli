@@ -2,6 +2,12 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop / Loop+ 中断后继续执行
+
+- 选择原配置续跑时，主 CLI 与跨 CLI 子任务都在各自的跨窗口共享互斥事务内检查档案身份；原档案仍为已就绪的当前选择则直接复用，不重新写入原生配置、认证文件或共享版本，不清除任何有效执行租约。切换到不同档案、修复未就绪档案、显式重新应用或编辑配置仍遵守原有租约互斥。
+- 续跑提前拒绝、原配置恢复失败和启动异常后，宿主发送明确收尾回执并刷新实际任务状态；“继续执行”可再次弹窗，不依赖相同 HTML 补丁重建按钮。同一请求确认只提交一次，同一任务准备续跑时拒绝重复启动。
+- 实现：`src/config/sharedRuntimeConfig.ts`、`src/config/configService.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/webview/loopGroupChatPanel.ts`；回归：`src/test/config/sharedRuntimeConfig.test.ts`、`src/test/config/configService.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`。
+
 ## Loop / Loop+ 随时补充需求
 
 - 群聊「补充需求」弹窗不依赖主模型空闲；提交后入口始终可再次打开，不等待群聊刷新。可连续提交多条需求，按提交顺序持久化并显示在群聊中，不打断当前主模型或子任务调用，也不另起并发主模型提问。

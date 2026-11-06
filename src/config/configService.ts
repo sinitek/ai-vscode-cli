@@ -1168,16 +1168,20 @@ async function applyRuntimeConfig(normalizedPlatform: CurrentConfigPlatform, pay
   });
 }
 
-export async function applyConfig(platform: LegacyConfigPlatformInput, payload: ApplyPayload): Promise<void> {
+export async function applyConfig(
+  platform: LegacyConfigPlatformInput,
+  payload: ApplyPayload,
+  options: { reuseActiveProfile?: boolean } = {},
+): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
+  const configId = payload.profileId?.trim() || null;
   return enqueueConfigApply(normalizedPlatform, async () => {
     await sharedRuntimeConfig(platform).change(async () => {
-      const configId = payload.profileId?.trim() || null;
       const config = configId ? await getConfigById(platform, configId) : null;
       if (configId && !config) throw new Error("配置档案不存在，请刷新后重试。");
       await applyRuntimeConfig(normalizedPlatform, config ? { ...config, profileId: configId ?? undefined } : payload);
       return { configId, profileDigest: config ? profileDigest(config) : null };
-    });
+    }, { reuseConfigId: options.reuseActiveProfile ? configId ?? undefined : undefined });
   });
 }
 

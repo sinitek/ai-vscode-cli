@@ -366,6 +366,39 @@ test("native application and leases coordinate profiles while execution only che
   });
 });
 
+test("original-profile continuation does not reapply native files while another execution holds the same profile", async () => {
+  await withTempHome(async (homeDir) => {
+    const service = loadConfigService();
+    const original = { id: "continuation", name: "续跑合成配置", platform: "codex" as const,
+      content: 'model = "synthetic-original"\n', authContent: '{"token":"synthetic-original"}', createdAt: 1, updatedAt: 1 };
+    const other = { ...original, id: "other" };
+    await service.saveConfig(original);
+    await service.saveConfig(other);
+    await service.applyConfig("codex", { profileId: original.id });
+    const selected = (await service.readSharedConfigSelection("codex"))!;
+    const lease = await service.acquireRuntimeConfigExecution("codex", selected);
+    const configPath = path.join(homeDir, ".codex", "config.toml");
+    const authPath = path.join(homeDir, ".codex", "auth.json");
+    const nativeConfig = 'model = "synthetic-current"\n';
+    const nativeAuth = '{"token":"synthetic-current"}';
+    await fs.writeFile(configPath, nativeConfig);
+    await fs.writeFile(authPath, nativeAuth);
+    try {
+      await service.applyConfig("codex", { profileId: original.id }, { reuseActiveProfile: true });
+      assert.deepEqual(await service.readSharedConfigSelection("codex"), selected);
+      assert.equal(await fs.readFile(configPath, "utf8"), nativeConfig);
+      assert.equal(await fs.readFile(authPath, "utf8"), nativeAuth);
+      await assert.rejects(service.applyConfig("codex", { profileId: other.id }, { reuseActiveProfile: true }), /执行中的任务/);
+      await assert.rejects(service.applyConfig("codex", { profileId: original.id }), /执行中的任务/);
+    } finally {
+      await lease.release();
+    }
+    await service.applyConfig("codex", { profileId: other.id }, { reuseActiveProfile: true });
+    assert.equal((await service.readSharedConfigSelection("codex"))?.configId, other.id);
+    assert.match(await fs.readFile(configPath, "utf8"), /synthetic-original/u);
+  });
+});
+
 test("execution never compares or repairs native model, connection or authentication content", async () => {
   await withTempHome(async (homeDir) => {
     const service = loadConfigService();
