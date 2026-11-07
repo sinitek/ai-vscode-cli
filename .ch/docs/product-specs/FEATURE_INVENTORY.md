@@ -2,6 +2,18 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop+ 群聊验收状态
+
+- 状态：`active`（2026-11-07）。主模型正在批量验收时，本批所有子任务均显示蓝色「正在验收」，状态说明列出全部相关子任务；新增完成事件扩入本批时同步展示，不再仅标记首项。颜色使用 VS Code 主题蓝色变量，不硬编码色值。
+- 未开始验收的队列仍显示「待验收」；暂停、停止、运行中及验收结果保持各自状态。仅调整展示，不改变 scheduler 的当前项、队列计数、验收协议或持久化快照。
+- 实现：`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopPlusPanelState.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
+
+## Loop / Loop+ 群聊窄屏布局
+
+- 状态：`active`（2026-11-07）。宽度不超过 780px 时不再上下排列任务信息和聊天：保留顶部标题操作栏，聊天占满下方内容区，左侧任务信息与成员默认收起。
+- 点击内容区左侧居中图标展开侧栏浮层，不挤压聊天或改变聊天滚动位置；侧栏独立滚动，点击图标、侧栏外区域或按 Esc 收起。隐藏侧栏不可获得键盘焦点，收起后焦点返回开关；已有对话框优先处理 Esc。
+- 周期内容补丁保留展开状态；切回宽屏恢复原双栏，重新进入窄屏默认收起。实现：`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`。
+
 ## AI 对话 Markdown 文件链接
 
 - 状态：`active`（2026-11-07）。普通对话、历史回显及 Loop / Loop+ 群聊的 Markdown 链接通过扩展宿主打开，不再让 Webview 直接导航本地地址。
@@ -13,7 +25,8 @@
 ## AI 对话 Tab 任务摘要
 
 - 状态：`active`（2026-11-07）；用户：多会话并行的 AI 对话使用者；运行时与浮层已实现并经主审。现有提示词截取标签保留，不冒充 AI 摘要。
-- 首次用户可见需求在 Loop 改写前捕获，在共同 `runPrompt` 取得实际配置执行租约后异步归纳一次，不等完成、不阻塞任务；可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。空白 Tab、后续消息、hover、刷新和旧历史恢复不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出只缺失摘要、不重试，不用原提示截断伪造。
+- 每次新的用户可见任务提交都在 Loop 改写前捕获需求，在共同 `runPrompt` 取得实际配置执行租约后异步归纳并更新 Tab 摘要，不等完成、不阻塞任务；已有摘要或历史会话继续执行也可更新。可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。同一任务的内部调度/重试、空白 Tab、hover、刷新和仅恢复旧历史不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出保留上次有效摘要（从未成功则缺失），同次提交不重试，不用原提示截断伪造。
+- 新任务替换同 Tab 的在途摘要请求，旧结果不得覆盖新任务；更新同步保存到 Tab、草稿及当前绑定 session，已显示浮层随状态推送更新正文。刷新改进的实施与验证见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md`。
 - 按任务/会话保存，兼容旧记录；原生 session 绑定、重载、历史重开不丢失或串 Tab，关闭/重置/工作区切换后的迟到结果丢弃。复用已有 CLI/provider 配置的独立受限 session，不污染原对话/Loop 协议，不绕过 DSH/Kimi/ZCode 的 one-shot prompt 禁令。
 - 连续 hover 或键盘 focus 1000 毫秒后显示一段正文的轻量主题浮层；离开、失焦、选择、关闭、分页、Escape 隐藏，无摘要/生成中/失败无占位。纯文本安全渲染、窄屏换行且不越界；原 Tab 尺寸、分页、状态、角色和关闭功能不变，无新增配置、语言包或开关。
 - 规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` §3.4；设计：`.ch/docs/design-docs/vscode-cli-extension-runtime.md`；已归档验收与证据：`.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md`。测试状态：合并代码构建及相关回归 299/299；真实隔离 Codex 成功；完整生成 Webview 在宽窄屏×深浅主题四组合通过浏览器验证，另有 UI 相关回归 41/41（与前述重叠，不相加）。其他六种 CLI 未做真实 provider 调用，未做完整 VS Code 扩展宿主端到端、确定性繁简转换或无关全量测试。

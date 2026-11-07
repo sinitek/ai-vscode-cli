@@ -154,7 +154,10 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.match(page, /typing-dots/u);
     assert.doesNotMatch(page, /data-thinking-kind="moderator"|<b>running<\/b>/u);
     assert.match(page, /事件驱动逐项验收/u);
-    assert.match(page, /正在验收 子任务 1：Alpha。/u);
+    assert.match(page, /正在验收 子任务 1：Alpha、子任务 2：Bravo、子任务 3：Charlie。/u);
+    assert.equal((page.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 4);
+    assert.doesNotMatch(page, /<div class="member-meta">待验收<\/div>/u);
+    assert.match(page, /\.member-status-reviewing,[^}]*--vscode-charts-blue/u);
     assert.doesNotMatch(page, /尝试|已验收尝试/u);
     assert.doesNotMatch(page, /执行结束，尚未验收|待验收队列/u);
     assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
@@ -162,6 +165,25 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.match(page, /主任务 思考中/u);
     assert.doesNotMatch(page, /已全部收口/u);
   }
+});
+
+test("renders a single review in blue and includes new batch members without marking running work", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const single = html(build(scheduler.snapshot()));
+  assert.match(single, /正在验收 子任务 1：Alpha。/u);
+  assert.equal((single.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 2);
+
+  dispatchAndFinish(scheduler, "B", "b-1");
+  assert.equal(scheduler.dispatch([spec("D", "d-1")]).started.length, 1);
+  const snapshot = scheduler.snapshot();
+  const before = JSON.stringify(snapshot);
+  const state = build(snapshot);
+  const batch = html(state);
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.match(batch, /正在验收 子任务 1：Alpha、子任务 2：Bravo。/u);
+  assert.equal((batch.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 3);
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "D")?.status, "running");
 });
 
 test("renders waiting, a non-empty queue with zero running work, and a damaged snapshot", () => {
@@ -293,7 +315,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(JSON.stringify(snapshot), before);
   assert.match(resumedPage, /data-loop-plus-status="reviewing"/u);
   assert.match(resumedPage, /data-loop-plus-phase="reviewing"/u);
-  assert.match(resumedPage, /正在验收 子任务 1：Alpha。/u);
+  assert.match(resumedPage, /正在验收 子任务 1：Alpha、子任务 2：Bravo。/u);
   assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
   assertLoopPlusDetailCardsHidden(resumedPage);
   assert.match(resumedPage, /子任务 4：Delta 思考中/u);

@@ -31,14 +31,15 @@ export type ConversationTaskSummaryJob = {
 export function createConversationTaskSummarySubmissions<Tab extends object, Snapshot extends { workspace: string; draft: object }>() {
   const snapshots = new WeakMap<Tab, Snapshot>();
   return {
-    remember(tab: Tab, workspace: string, draft: Snapshot["draft"], create: () => Snapshot | undefined): Snapshot | undefined {
+    remember(tab: Tab, workspace: string, draft: Snapshot["draft"], create: () => Snapshot | undefined, newSubmission = false): Snapshot | undefined {
       const existing = snapshots.get(tab);
-      if (existing && existing.workspace === workspace && existing.draft === draft) return existing;
+      if (!newSubmission && existing && existing.workspace === workspace && existing.draft === draft) return existing;
       const snapshot = create();
       if (snapshot) snapshots.set(tab, snapshot);
       else snapshots.delete(tab);
       return snapshot;
     },
+    isCurrent: (tab: Tab, snapshot: Snapshot): boolean => snapshots.get(tab) === snapshot,
   };
 }
 
@@ -122,25 +123,32 @@ export function createConversationTaskSummaryCoordinator<Tab extends SummaryMeta
   queueOptions?: Parameters<typeof createConversationTaskSummaryQueue>[0];
 }) {
   const queue = createConversationTaskSummaryQueue(deps.queueOptions);
+  const requests = new WeakMap<Tab, { submission: object; workspace: string; draft: Draft; key: string }>();
   let requestSequence = 0;
   return {
     request(input: {
       tabId: string;
       eligible: boolean;
+      submission: object;
       capture: () => Pick<ConversationTaskSummaryJob, "run" | "dispose">;
     }): boolean {
       const tab = deps.getTab(input.tabId);
-      if (!tab || !input.eligible || tab.taskSummaryAttempted || tab.taskSummary) return false;
+      if (!tab || !input.eligible) return false;
       const workspace = deps.workspace();
       const draft = deps.getDraft(input.tabId);
+      const previous = requests.get(tab);
+      if (previous?.submission === input.submission && previous.workspace === workspace && previous.draft === draft) return false;
+      const key = `${workspace}:${input.tabId}:${++requestSequence}`;
+      const request = { submission: input.submission, workspace, draft, key };
+      requests.set(tab, request);
+      if (previous) queue.cancel(previous.key);
       tab.taskSummaryAttempted = true;
       draft.taskSummaryAttempted = true;
       const session = deps.getSession(tab);
       if (session) session.taskSummaryAttempted = true;
-      const key = `${workspace}:${input.tabId}:${++requestSequence}`;
       const isCurrent = (): boolean => deps.workspace() === workspace
         && deps.getTab(input.tabId) === tab && tab.taskSummaryAttempted === true
-        && deps.getDraft(input.tabId) === draft;
+        && deps.getDraft(input.tabId) === draft && requests.get(tab) === request;
       try {
         deps.persist();
         if (!queue.canEnqueue(key)) return false;

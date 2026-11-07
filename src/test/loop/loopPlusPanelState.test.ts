@@ -168,8 +168,8 @@ test("projects the current review, FIFO queue, running work, and pending work fr
   assert.equal(state.rounds[0]?.completedAt, undefined);
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "main")?.status, "reviewing");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "reviewing");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "C")?.status, "queued_review");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "B")?.status, "reviewing");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "C")?.status, "reviewing");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "D")?.status, "running");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "E")?.status, "pending");
   assert.equal(state.task.canStop, true);
@@ -411,6 +411,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(continuedProjection.visibleReviewCount, 2);
   assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "main")?.status, "reviewing");
   assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "A")?.status, "reviewing");
+  assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "B")?.status, "reviewing");
   assert.equal(continued.rounds[0]?.activeSpeaker, undefined);
 
   const queueScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });

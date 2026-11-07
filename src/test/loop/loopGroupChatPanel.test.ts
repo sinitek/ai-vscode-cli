@@ -355,6 +355,108 @@ test("Loop+ continue dialog shows missing role models without reusing inactive r
   assert.match(html, /value="current" checked/u);
 });
 
+function createSidebarHarness(narrow = true) {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function setSidebarOpen"), html.indexOf('sidebarToggle.addEventListener("click"'));
+  const attributes = new Map<string, string>();
+  const classes = new Set<string>();
+  const focusTargets: string[] = [];
+  const sidebarElement = {
+    inert: false,
+    setAttribute: (name: string, value: string) => attributes.set(`sidebar:${name}`, value),
+    focus: () => focusTargets.push("sidebar"),
+    contains: (element: unknown): boolean => element === sidebarElement,
+  };
+  const sidebarToggle = {
+    title: "",
+    setAttribute: (name: string, value: string) => attributes.set(name, value),
+    focus: () => focusTargets.push("toggle"),
+  };
+  const context = {
+    sidebarElement,
+    sidebarToggle,
+    sidebarBackdrop: { hidden: true },
+    narrowSidebarQuery: { matches: narrow },
+    sidebarOpen: false,
+    layoutElement: { classList: { toggle: (name: string, enabled: boolean) => enabled ? classes.add(name) : classes.delete(name) } },
+    document: { activeElement: null as unknown, querySelector: () => null as unknown },
+  };
+  const actions = vm.runInNewContext(`${source}\n({ setSidebarOpen, syncSidebarMode, handleSidebarKeydown })`, context) as {
+    setSidebarOpen: (open: boolean, restoreFocus?: boolean) => void;
+    syncSidebarMode: () => void;
+    handleSidebarKeydown: (event: { key: string; defaultPrevented?: boolean; preventDefault: () => void }) => void;
+  };
+  actions.syncSidebarMode();
+  return { ...actions, context, attributes, classes, focusTargets, html };
+}
+
+test("narrow group chat starts with an inaccessible collapsed sidebar and opens it above chat", () => {
+  const harness = createSidebarHarness();
+  assert.equal(harness.context.sidebarElement.inert, true);
+  assert.equal(harness.attributes.get("sidebar:aria-hidden"), "true");
+  assert.equal(harness.attributes.get("aria-expanded"), "false");
+  assert.match(harness.html, /id="sidebarToggle"[^>]*aria-controls="panelSidebar"/u);
+  assert.match(harness.html, /\.sidebar\s*\{\s*position: absolute;/u);
+  assert.doesNotMatch(harness.html, /max-height: 45vh/u);
+
+  harness.setSidebarOpen(true);
+  assert.ok(harness.classes.has("sidebar-open"));
+  assert.equal(harness.context.sidebarElement.inert, false);
+  assert.equal(harness.context.sidebarBackdrop.hidden, false);
+  assert.equal(harness.attributes.get("aria-expanded"), "true");
+  assert.equal(harness.attributes.get("aria-label"), "收起任务信息");
+  assert.deepEqual(harness.focusTargets, ["sidebar"]);
+
+  harness.setSidebarOpen(false, true);
+  assert.equal(harness.context.sidebarElement.inert, true);
+  assert.equal(harness.context.sidebarBackdrop.hidden, true);
+  assert.equal(harness.attributes.get("aria-label"), "展开任务信息");
+  assert.deepEqual(harness.focusTargets, ["sidebar", "toggle"]);
+});
+
+test("sidebar Escape closes only the drawer and defers to existing dialogs", () => {
+  const harness = createSidebarHarness();
+  let prevented = 0;
+  const event = { key: "Escape", preventDefault: () => { prevented += 1; } };
+  harness.setSidebarOpen(true);
+  harness.handleSidebarKeydown({ ...event, key: "Enter" });
+  assert.equal(harness.context.sidebarOpen, true);
+  harness.context.document.querySelector = () => ({});
+  harness.handleSidebarKeydown(event);
+  assert.equal(harness.context.sidebarOpen, true);
+  harness.context.document.querySelector = () => null;
+  harness.handleSidebarKeydown({ ...event, defaultPrevented: true });
+  assert.equal(harness.context.sidebarOpen, true);
+  harness.handleSidebarKeydown(event);
+  assert.equal(harness.context.sidebarOpen, false);
+  assert.equal(prevented, 1);
+  assert.equal(harness.focusTargets.at(-1), "toggle");
+});
+
+test("resizing restores the desktop sidebar and collapses it on reentering narrow mode", () => {
+  const harness = createSidebarHarness(false);
+  assert.equal(harness.context.sidebarElement.inert, false);
+  harness.setSidebarOpen(true);
+  assert.equal(harness.context.sidebarOpen, false);
+  assert.equal(harness.context.sidebarBackdrop.hidden, true);
+
+  harness.context.document.activeElement = harness.context.sidebarElement;
+  harness.context.narrowSidebarQuery.matches = true;
+  harness.syncSidebarMode();
+  assert.equal(harness.context.sidebarElement.inert, true);
+  assert.equal(harness.focusTargets.at(-1), "toggle");
+  harness.setSidebarOpen(true);
+  harness.context.narrowSidebarQuery.matches = false;
+  harness.syncSidebarMode();
+  assert.equal(harness.context.sidebarOpen, false);
+  assert.equal(harness.context.sidebarElement.inert, false);
+  assert.equal(harness.context.sidebarBackdrop.hidden, true);
+  harness.context.narrowSidebarQuery.matches = true;
+  harness.syncSidebarMode();
+  assert.equal(harness.context.sidebarOpen, false);
+  assert.equal(harness.context.sidebarElement.inert, true);
+});
+
 function createSupplementDialogHarness() {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const source = html.slice(html.indexOf("function closeContinueDialog"), html.indexOf("const ASK_WAITING_LABEL"));

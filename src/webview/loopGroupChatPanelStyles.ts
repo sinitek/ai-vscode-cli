@@ -34,6 +34,7 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         flex-direction: column;
       }
       .topbar {
+        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -325,6 +326,7 @@ ${DIALOG_SHELL_STYLES}
         font-size: 12px;
       }
       .layout {
+        position: relative;
         width: 100%;
         min-width: 0;
         display: grid;
@@ -339,6 +341,10 @@ ${DIALOG_SHELL_STYLES}
         background: var(--vscode-sideBar-background);
         padding: 14px;
         overflow: auto;
+      }
+      .sidebar-toggle,
+      .sidebar-backdrop {
+        display: none;
       }
 	      .main {
 	        min-width: 0;
@@ -448,6 +454,11 @@ ${DIALOG_SHELL_STYLES}
         color: var(--vscode-descriptionForeground);
         font-size: 11px;
         overflow-wrap: anywhere;
+      }
+      .member-status-reviewing,
+      [data-loop-plus-activity="reviewing"],
+      [data-loop-plus-status="reviewing"] [data-loop-plus-field="activity"] .meta-value {
+        color: var(--vscode-charts-blue, var(--vscode-textLink-foreground, var(--vscode-focusBorder)));
       }
       .member-status-passed {
         color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, var(--vscode-focusBorder)));
@@ -689,12 +700,62 @@ ${DIALOG_SHELL_STYLES}
           justify-content: flex-start;
         }
         .layout {
+          --sidebar-drawer-width: min(300px, calc(100% - 48px));
           grid-template-columns: 1fr;
+          grid-template-rows: minmax(0, 1fr);
         }
         .sidebar {
-          border-right: 0;
-          border-bottom: 1px solid var(--vscode-widget-border);
-          max-height: 45vh;
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: var(--sidebar-drawer-width);
+          z-index: 11;
+          visibility: hidden;
+          overscroll-behavior: contain;
+        }
+        .sidebar-open .sidebar {
+          visibility: visible;
+        }
+        .sidebar-toggle {
+          position: absolute;
+          top: 50%;
+          left: 0;
+          z-index: 12;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 48px;
+          padding: 0;
+          transform: translateY(-50%);
+          border: 1px solid var(--vscode-widget-border);
+          border-left: 0;
+          border-radius: 0 var(--radius) var(--radius) 0;
+          color: var(--vscode-foreground);
+          background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+          cursor: pointer;
+        }
+        .sidebar-toggle:hover {
+          background: var(--vscode-toolbar-hoverBackground);
+        }
+        .sidebar-toggle:focus-visible {
+          outline: 2px solid var(--vscode-focusBorder);
+          outline-offset: -2px;
+        }
+        .sidebar-open .sidebar-toggle {
+          left: var(--sidebar-drawer-width);
+        }
+        .sidebar-open .sidebar-toggle .icon {
+          transform: rotate(180deg);
+        }
+        .sidebar-backdrop:not([hidden]) {
+          position: absolute;
+          inset: 0;
+          z-index: 10;
+          display: block;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          cursor: default;
         }
         .main {
           padding: 12px;

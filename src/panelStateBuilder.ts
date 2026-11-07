@@ -841,7 +841,7 @@ function loopPlusMemberStatus(
     return projection.activity === "reviewing" ? "reviewing" : "held_review";
   }
   if (projection.reviewQueue.some((item) => item.subtaskId === subtaskId)) {
-    return "queued_review";
+    return projection.activity === "reviewing" ? "reviewing" : "queued_review";
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {

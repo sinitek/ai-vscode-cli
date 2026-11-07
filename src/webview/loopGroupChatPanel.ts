@@ -29,6 +29,7 @@ import type {
   LoopGroupChatPanelRound,
   LoopGroupChatPanelState,
   LoopPlusPanelProjection,
+  LoopPlusPanelReviewItem,
 } from "./loopGroupChatPanelTypes";
 export type {
   LoopCommunicationFilePreviewMessage,
@@ -301,10 +302,14 @@ ${renderPanelDialog({
         actionsHtml: renderModalActions("dialog-actions", `<button id="filePreviewClose" class="button" type="button">${escapeHtml(strings.communicationFileClose)}</button>`),
       })}
       <div class="layout">
-        <aside class="sidebar">
+        <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="${escapeAttribute(strings.hideSidebar)}" tabindex="-1" hidden></button>
+        <aside id="panelSidebar" class="sidebar" aria-label="${escapeAttribute(strings.sidebarLabel)}" tabindex="-1">
           <div id="taskPanelSlot">${patch.taskPanelHtml}</div>
           <div id="rosterPanelSlot">${patch.rosterPanelHtml}</div>
         </aside>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-controls="panelSidebar" aria-expanded="false" aria-label="${escapeAttribute(strings.showSidebar)}" title="${escapeAttribute(strings.showSidebar)}">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19" /></svg>
+        </button>
         <main class="main">
           <div id="timelineSlot">${patch.timelineHtml}</div>
 	          <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
@@ -330,6 +335,11 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
 	      const SCROLL_BUTTON_SUPPRESS_MS = 400;
 	      const sidebarElement = document.querySelector(".sidebar");
+	      const layoutElement = document.querySelector(".layout");
+	      const sidebarToggle = document.getElementById("sidebarToggle");
+	      const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+	      const narrowSidebarQuery = window.matchMedia("(max-width: 780px)");
+	      let sidebarOpen = false;
 	      const mainElement = document.querySelector(".main");
 	      const renderedSlotHtml = new WeakMap();
 	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot").forEach((slot) => {
@@ -370,6 +380,41 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let mainModelBusy = ${state.mainModelBusy === true};
 	      let communicationPreviewOpen = false;
 	      let communicationPreviewSeq = 0;
+
+	      function setSidebarOpen(open, restoreFocus = false) {
+	        sidebarOpen = narrowSidebarQuery.matches && open;
+	        layoutElement.classList.toggle("sidebar-open", sidebarOpen);
+	        sidebarToggle.setAttribute("aria-expanded", String(sidebarOpen));
+	        const label = sidebarOpen ? "${escapeJsString(strings.hideSidebar)}" : "${escapeJsString(strings.showSidebar)}";
+	        sidebarToggle.setAttribute("aria-label", label);
+	        sidebarToggle.title = label;
+	        sidebarBackdrop.hidden = !sidebarOpen;
+	        sidebarElement.inert = narrowSidebarQuery.matches && !sidebarOpen;
+	        sidebarElement.setAttribute("aria-hidden", String(sidebarElement.inert));
+	        if (sidebarOpen) {
+	          sidebarElement.focus({ preventScroll: true });
+	        } else if (restoreFocus && narrowSidebarQuery.matches) {
+	          sidebarToggle.focus({ preventScroll: true });
+	        }
+	      }
+
+	      function syncSidebarMode() {
+	        const restoreFocus = narrowSidebarQuery.matches && sidebarElement.contains(document.activeElement);
+	        setSidebarOpen(false, restoreFocus);
+	      }
+
+	      function handleSidebarKeydown(event) {
+	        if (event.key === "Escape" && sidebarOpen && !event.defaultPrevented && !document.querySelector(".dialog-backdrop.visible")) {
+	          event.preventDefault();
+	          setSidebarOpen(false, true);
+	        }
+	      }
+
+	      sidebarToggle.addEventListener("click", () => setSidebarOpen(!sidebarOpen, true));
+	      sidebarBackdrop.addEventListener("click", () => setSidebarOpen(false, true));
+	      narrowSidebarQuery.addEventListener("change", syncSidebarMode);
+	      document.addEventListener("keydown", handleSidebarKeydown);
+	      syncSidebarMode();
 
 	      function getStoredState() {
 	        return vscode.getState() || {};
@@ -1482,7 +1527,10 @@ function loopPlusActivityText(
       return strings.loopPlusActivityReviewPending;
     case "reviewing":
       return formatTemplate(strings.loopPlusActivityReviewing, {
-        subtask: loopPlusSubtaskLabel(state, projection.currentReview?.subtaskId ?? ""),
+        subtask: [projection.currentReview, ...projection.reviewQueue]
+          .filter((item): item is LoopPlusPanelReviewItem => item !== null)
+          .map((item) => loopPlusSubtaskLabel(state, item.subtaskId))
+          .join("、"),
       });
     case "stopped":
       return strings.loopPlusActivityStopped;
@@ -1527,6 +1575,9 @@ function renderLoopPlusCount(field: string, label: string, value: number): strin
 }
 
 function acceptanceStatusClass(status: string): string {
+  if (status === "reviewing") {
+    return "member-status-reviewing";
+  }
   if (status === "acceptance_passed" || status === "reviewed") {
     return "member-status-passed";
   }

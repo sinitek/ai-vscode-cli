@@ -90,7 +90,7 @@
       "id": "plugin.conversation_task_summary",
       "name": "对话 Tab AI 任务摘要",
       "kind": "value_object",
-      "description": "任务/会话元信息：首次有效提交异步归纳一次，以可选 ConversationTabSummary.taskSummary 提供最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文但无确定性繁简转换。不同于首条提示词截取标签，也不是任务完成总结；缺失字段兼容旧记录。",
+      "description": "任务/会话元信息：每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，以可选 ConversationTabSummary.taskSummary 提供最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文但无确定性繁简转换。已有摘要或历史会话继续执行也可更新；失败保留上次有效摘要。不同于首条提示词截取标签，也不是任务完成总结；缺失字段兼容旧记录。",
       "status": "active",
       "aliases": ["Tab 任务摘要", "taskSummary", "会话意图摘要"],
       "implementation_paths": ["src/conversationTaskSummary.ts", "src/extensionHost/conversationTaskSummary.ts", "src/webview/types.ts"],
@@ -343,8 +343,8 @@
   "rules": [
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
-      "name": "任务摘要仅首次提交异步生成",
-      "description": "首次用户可见需求在 Loop 改写前捕获，共同 runPrompt 取得实际配置执行租约后独立异步归纳，不等完成、不阻塞主任务。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出无摘要且不重试，空白 Tab、后续消息、hover、刷新和旧历史不触发。七种 CLI 复用已有 runner 与配置，不污染原对话/Loop，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断。",
+      "name": "任务摘要随新提交异步更新",
+      "description": "每次新的用户可见任务提交在 Loop 改写前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不污染原对话/Loop，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
@@ -360,7 +360,7 @@
     {
       "id": "plugin.rule.tab_task_summary_identity",
       "name": "任务摘要持久化与迟到结果隔离",
-      "description": "摘要按任务/会话保存，兼容旧记录缺字段；local/native session 绑定、重载和历史重开不丢失、不串 Tab。请求绑定工作区、准确 Tab/草稿对象与唯一代际；关闭、重置或工作区切换作废在途请求并丢弃迟到结果，重置后立即新提交不与旧请求冲突，不按活动 Tab 兜底写回。",
+      "description": "摘要更新同步保存到 Tab、草稿与当前绑定 session，兼容旧记录缺字段；local/native session 绑定、重载和历史重开不丢失、不串 Tab。请求绑定工作区、准确 Tab/草稿对象、提交快照与唯一代际；新任务替换会取消旧在途请求，关闭、重置或工作区切换亦作废在途请求并丢弃迟到结果，旧结果不得覆盖新摘要，不按活动 Tab 兜底写回。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.cli_session", "plugin.extension_host"],
       "source_refs": [

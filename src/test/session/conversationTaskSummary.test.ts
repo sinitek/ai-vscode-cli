@@ -3,6 +3,8 @@ import assert = require("node:assert/strict");
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as vm from "node:vm";
+import * as ts from "typescript";
 import {
   buildConversationTaskSummaryPrompt,
   createConversationTaskSummaryCoordinator,
@@ -14,6 +16,7 @@ import { createSessionTabsController, type ConversationTabRecord, type Conversat
 import { createCliRecord } from "../../cli/types";
 import type { SessionStore } from "../../sessionStore";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
+import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -27,7 +30,7 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 
-function createCoordinator(timeoutMs = 100) {
+function createCoordinator(timeoutMs = 100, queueOptions: Parameters<typeof createConversationTaskSummaryQueue>[0] = {}) {
   type Metadata = { taskSummary?: string; taskSummaryAttempted?: boolean; sessionId?: string };
   let workspace = "workspace-a";
   const tabs = new Map<string, Metadata>([["tab-a", {}], ["tab-b", {}]]);
@@ -41,7 +44,7 @@ function createCoordinator(timeoutMs = 100) {
     getSession: (tab) => tab.sessionId ? sessions.get(tab.sessionId) : undefined,
     persist: () => undefined,
     publish: () => { publishes += 1; },
-    queueOptions: { timeoutMs, pollMs: 2 },
+    queueOptions: { timeoutMs, pollMs: 2, ...queueOptions },
   });
   return { coordinator, tabs, drafts, sessions, setWorkspace: (key: string) => { workspace = key; }, publishes: () => publishes };
 }
@@ -72,8 +75,70 @@ test("the first visible submission survives Loop protocol dispatch and local-ses
   assert.equal(dispatched, first);
   assert.equal(dispatched?.requirement, "改进用户登录体验");
   assert.equal(dispatched?.model, "submitted-model");
+  assert.equal(registry.isCurrent(tab, first!), true);
+  const next = registry.remember(tab, "workspace", draft, () => ({ workspace: "workspace", draft, requirement: "修复图片预览", model: "next-model" }), true);
+  assert.notEqual(next, first);
+  assert.equal(registry.isCurrent(tab, first!), false);
+  assert.equal(registry.isCurrent(tab, next!), true);
+  assert.equal(registry.remember(tab, "workspace", draft, () => assert.fail("internal dispatch must reuse the new submission")), next);
   assert.equal(registry.remember(tab, "other-workspace", {}, () => undefined), undefined);
   assert.equal(registry.remember({}, "workspace", {}, () => undefined), undefined);
+});
+
+test("extension captures each visible submission on historical sessions without recapturing internal Loop preloads", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
+  const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true);
+  const names = ["preloadUserMessageForPrompt", "rememberConversationTaskSummarySubmission"];
+  const declarations = sourceFile.statements.filter((statement): statement is ts.FunctionDeclaration => (
+    ts.isFunctionDeclaration(statement) && names.includes(statement.name?.text ?? "")
+  ));
+  assert.equal(declarations.length, names.length);
+  const script = ts.transpileModule(declarations.map((declaration) => declaration.getText(sourceFile)).join("\n"), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const tab = { taskSummary: "之前的任务摘要", taskSummaryAttempted: true };
+  const draft = { firstPrompt: "之前的需求", messages: [{ id: "old", role: "user", content: "之前的需求" }] };
+  const submissions = createConversationTaskSummarySubmissions<object, { workspace: string; draft: object; requirement: string }>();
+  let messageSequence = 0;
+  const runtime = vm.runInNewContext(`${script}\n({ preloadUserMessageForPrompt, rememberConversationTaskSummarySubmission });`, {
+    activeWorkspaceKey: "workspace",
+    pendingConversationTaskSummarySubmissions: submissions,
+    getConversationTabById: () => tab,
+    getConversationTabSessionIdForCli: () => "native-session",
+    getPendingSessionDraft: () => draft,
+    readLoopTaskRecord: () => ({ rootPrompt: "旧 Loop 根需求", subTasks: [{ id: "subtask", prompt: "旧子任务需求" }] }),
+    getActiveConfigIdForCli: () => "config",
+    getSelectedCliModel: () => "model",
+    getEffectiveThinkingMode: () => "off",
+    getCliCommand: () => "codex",
+    getCliArgs: () => [],
+    resolveRecordedExecutionModel: () => "model",
+    resolvePreloadedExecutionModel: () => "model",
+    markConversationTabExecutionLocked: () => false,
+    createMessageId: () => `message-${++messageSequence}`,
+    buildConversationExecutionProfile: () => ({}),
+    buildUserChatMessage: (input: PromptRunInput, _createdAt: number, messageId: string) => ({ id: messageId, role: "user", content: input.displayPrompt }),
+    loadSessionMessages: () => draft.messages,
+    appendMessageToStore: (messages: typeof draft.messages, message: typeof draft.messages[number]) => messages.push(message),
+    sendPanelMessage: () => undefined,
+  }) as {
+    preloadUserMessageForPrompt: (input: PromptRunInput, target: PromptRunTarget, options?: { captureTaskSummary?: boolean }) => PromptRunInput;
+    rememberConversationTaskSummarySubmission: (input: PromptRunInput, target: PromptRunTarget) => { requirement: string };
+  };
+  const target: PromptRunTarget = { tabId: "tab-a", cli: "codex", sessionId: "native-session" };
+  const input: PromptRunInput = { displayPrompt: "修复新的登录问题", modelPrompt: "模型上下文", contextTags: [] };
+  const first = runtime.preloadUserMessageForPrompt(input, target);
+  const firstSnapshot = runtime.rememberConversationTaskSummarySubmission(first, target);
+  assert.equal(firstSnapshot.requirement, input.displayPrompt);
+  assert.equal(runtime.preloadUserMessageForPrompt(first, target), first);
+  const second = runtime.preloadUserMessageForPrompt({ ...input, taskRole: "subtask", loopTaskId: "loop", loopSubtaskId: "subtask" }, target);
+  const secondSnapshot = runtime.rememberConversationTaskSummarySubmission(second, target);
+  assert.notEqual(secondSnapshot, firstSnapshot, "even identical submitted text is a new task");
+  assert.equal(secondSnapshot.requirement, input.displayPrompt);
+  const internal = { ...input, taskRole: "main" as const, loopTaskId: "loop", displayPrompt: "内部调度协议" };
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), secondSnapshot);
+  runtime.preloadUserMessageForPrompt(internal, target, { captureTaskSummary: false });
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), secondSnapshot);
 });
 
 test("first submit calls AI once, does not use a prompt prefix, and accepts before task completion", async () => {
@@ -86,11 +151,11 @@ test("first submit calls AI once, does not use a prompt prefix, and accepts befo
     captures += 1;
     return { run: async () => { calls += 1; return ai.promise; }, dispose: () => { releases += 1; } };
   };
-  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: false, capture }), false);
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: false, submission: capture, capture }), false);
   assert.equal(captures, 0);
-  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, capture }), true);
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture }), true);
   assert.equal(harness.tabs.get("tab-a")!.taskSummary, undefined);
-  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, capture }), false);
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture }), false);
   await pause();
   assert.equal(calls, 1);
   ai.resolve("改进登录异常恢复能力");
@@ -106,8 +171,8 @@ test("concurrent tabs remain isolated and late binding writes to the current mig
   const harness = createCoordinator();
   const first = deferred<string>();
   const second = deferred<string>();
-  harness.coordinator.request({ tabId: "tab-a", eligible: true, capture: () => ({ run: () => first.promise, dispose: () => undefined }) });
-  harness.coordinator.request({ tabId: "tab-b", eligible: true, capture: () => ({ run: () => second.promise, dispose: () => undefined }) });
+  harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({ run: () => first.promise, dispose: () => undefined }) });
+  harness.coordinator.request({ tabId: "tab-b", eligible: true, submission: {}, capture: () => ({ run: () => second.promise, dispose: () => undefined }) });
   harness.sessions.set("native-session", {});
   harness.tabs.get("tab-a")!.sessionId = "native-session";
   second.resolve("优化图片预览");
@@ -118,13 +183,126 @@ test("concurrent tabs remain isolated and late binding writes to the current mig
   harness.coordinator.dispose();
 });
 
+test("new submissions refresh existing summaries and persist to the tab, draft and bound session", async () => {
+  const harness = createCoordinator();
+  const tab = harness.tabs.get("tab-a")!;
+  Object.assign(tab, { taskSummary: "之前的任务摘要", taskSummaryAttempted: true, sessionId: "historical-session" });
+  harness.sessions.set("historical-session", { taskSummary: tab.taskSummary, taskSummaryAttempted: true });
+  const submission = {};
+  const result = deferred<string>();
+  let captures = 0;
+  const capture = () => {
+    captures += 1;
+    return { run: () => result.promise, dispose: () => undefined };
+  };
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission, capture }), true);
+  assert.equal(tab.taskSummary, "之前的任务摘要");
+  result.resolve("修复后续任务摘要刷新");
+  await pause();
+  for (const metadata of [tab, harness.drafts.get("tab-a"), harness.sessions.get("historical-session")]) {
+    assert.equal(metadata?.taskSummary, "修复后续任务摘要刷新");
+    assert.equal(metadata?.taskSummaryAttempted, true);
+  }
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission, capture }), false);
+  assert.equal(captures, 1);
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({
+    run: async () => "优化第三个任务", dispose: () => undefined,
+  }) }), true);
+  await pause();
+  assert.equal(tab.taskSummary, "优化第三个任务");
+  assert.equal(harness.sessions.get("historical-session")!.taskSummary, "优化第三个任务");
+  assert.equal(harness.publishes(), 2);
+  harness.coordinator.dispose();
+});
+
+test("a new submission aborts the previous summary and late output cannot overwrite the latest task", async () => {
+  const harness = createCoordinator();
+  const previous = deferred<string>();
+  let previousSignal: AbortSignal | undefined;
+  let releases = 0;
+  harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({
+    run: (signal) => { previousSignal = signal; return previous.promise; },
+    dispose: () => { releases += 1; },
+  }) });
+  await pause();
+  harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({
+    run: async () => "当前新任务的摘要", dispose: () => { releases += 1; },
+  }) });
+  assert.equal(previousSignal?.aborted, true);
+  await pause();
+  previous.resolve("不应覆盖的旧任务摘要");
+  await pause();
+  assert.equal(harness.tabs.get("tab-a")!.taskSummary, "当前新任务的摘要");
+  assert.equal(harness.publishes(), 1);
+  assert.equal(releases, 2);
+  harness.coordinator.dispose();
+});
+
+test("failed refreshes retain the previous summary but do not prevent the next task from generating", async () => {
+  for (const outcome of ["empty", "error", "timeout", "capture"]) {
+    const harness = createCoordinator(8);
+    const tab = harness.tabs.get("tab-a")!;
+    Object.assign(tab, { taskSummary: "已保存的任务摘要", taskSummaryAttempted: true, sessionId: "native" });
+    harness.drafts.get("tab-a")!.taskSummary = tab.taskSummary;
+    harness.sessions.set("native", { taskSummary: tab.taskSummary });
+    const submission = {};
+    const capture = () => {
+      if (outcome === "capture") throw new Error("capture failed");
+      return {
+        run: async (): Promise<string> => {
+          if (outcome === "error") throw new Error("unavailable");
+          if (outcome === "timeout") return new Promise(() => undefined);
+          return " ";
+        },
+        dispose: () => undefined,
+      };
+    };
+    harness.coordinator.request({ tabId: "tab-a", eligible: true, submission, capture });
+    await pause(20);
+    assert.equal(tab.taskSummary, "已保存的任务摘要", outcome);
+    assert.equal(harness.drafts.get("tab-a")!.taskSummary, tab.taskSummary, outcome);
+    assert.equal(harness.sessions.get("native")!.taskSummary, tab.taskSummary, outcome);
+    assert.equal(harness.publishes(), 0, outcome);
+    assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission, capture }), false, outcome);
+    assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({
+      run: async () => "下一任务已成功更新", dispose: () => undefined,
+    }) }), true, outcome);
+    await pause();
+    assert.equal(tab.taskSummary, "下一任务已成功更新", outcome);
+    harness.coordinator.dispose();
+  }
+});
+
+test("capacity overflow preserves the previous summary and only consumes the rejected submission", async () => {
+  const harness = createCoordinator(100, { concurrency: 1, capacity: 1 });
+  const blocker = deferred<string>();
+  harness.coordinator.request({ tabId: "tab-b", eligible: true, submission: {}, capture: () => ({
+    run: () => blocker.promise, dispose: () => undefined,
+  }) });
+  const tab = harness.tabs.get("tab-a")!;
+  tab.taskSummary = "上次成功生成的摘要";
+  const submission = {};
+  const capture = () => ({ run: async () => "下一任务的有效摘要", dispose: () => undefined });
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission,
+    capture: () => assert.fail("a full queue must not capture a runner"),
+  }), false);
+  assert.equal(tab.taskSummary, "上次成功生成的摘要");
+  blocker.resolve("其他标签页的任务摘要");
+  await pause();
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission, capture }), false);
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture }), true);
+  await pause();
+  assert.equal(tab.taskSummary, "下一任务的有效摘要");
+  harness.coordinator.dispose();
+});
+
 test("close, reset, workspace switch, and teardown discard late results and release runners", async () => {
   for (const action of ["close", "reset", "workspace", "dispose"]) {
     const harness = createCoordinator();
     const result = deferred<string>();
     let releases = 0;
     let signal: AbortSignal | undefined;
-    harness.coordinator.request({ tabId: "tab-a", eligible: true, capture: () => ({
+    harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => ({
       run: (value) => { signal = value; return result.promise; }, dispose: () => { releases += 1; },
     }) });
     await pause();
@@ -148,13 +326,13 @@ test("a reset tab can immediately summarize its new task while the old job is re
   const harness = createCoordinator();
   const previous = deferred<string>();
   let releases = 0;
-  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true,
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {},
     capture: () => ({ run: async () => previous.promise, dispose: () => { releases += 1; } }),
   }), true);
   const tab = harness.tabs.get("tab-a")!;
   delete tab.taskSummaryAttempted;
   harness.drafts.set("tab-a", {});
-  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true,
+  assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {},
     capture: () => ({ run: async () => "新任务的独立摘要", dispose: () => { releases += 1; } }),
   }), true);
   await pause();
@@ -179,11 +357,11 @@ test("empty, failed, and timed out AI calls stay missing without retries", async
       },
       dispose: () => { releases += 1; },
     });
-    harness.coordinator.request({ tabId: "tab-a", eligible: true, capture });
+    harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture });
     await pause(20);
     assert.equal(harness.tabs.get("tab-a")!.taskSummary, undefined);
     assert.equal(releases, 1);
-    assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, capture }), false);
+    assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture }), false);
     harness.coordinator.dispose();
   }
 });

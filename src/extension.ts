@@ -4547,12 +4547,14 @@ function resolvePreloadedExecutionModel(input: PromptRunInput, cli: CliName): st
   return typeof displayName === "string" && displayName.trim() ? displayName.trim() : recorded;
 }
 
-function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget): PromptRunInput {
+function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget, options: { captureTaskSummary?: boolean } = {}): PromptRunInput {
   if (input.preloadedUserMessageId) {
     return input;
   }
   const tab = getConversationTabById(target.tabId);
-  rememberConversationTaskSummarySubmission(input, target);
+  if (options.captureTaskSummary !== false) {
+    rememberConversationTaskSummarySubmission(input, target, true);
+  }
   const firstExecutionModel = resolveRecordedExecutionModel(input, getSelectedCliModel(target.cli));
   const firstExecutionDisplayModel = resolvePreloadedExecutionModel(input, target.cli);
   const newlyLocked = markConversationTabExecutionLocked(target.tabId, firstExecutionModel);
@@ -4587,15 +4589,13 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
   };
 }
 
-function rememberConversationTaskSummarySubmission(input: PromptRunInput, target: PromptRunTarget) {
+function rememberConversationTaskSummarySubmission(input: PromptRunInput, target: PromptRunTarget, newSubmission = false) {
   const tab = getConversationTabById(target.tabId);
   if (!tab) return undefined;
   const draft = getPendingSessionDraft(target.tabId, target.cli);
   return pendingConversationTaskSummarySubmissions.remember(tab, activeWorkspaceKey, draft, () => {
-    if (getConversationTabSessionIdForCli(tab, target.cli) || tab.taskSummaryAttempted || tab.taskSummary || draft.firstPrompt
-      || draft.messages.some((message) => message.role === "user" && message.id !== input.preloadedUserMessageId)) return undefined;
     const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
-    const requirement = input.taskRole === "subtask"
+    const requirement = newSubmission ? input.displayPrompt : input.taskRole === "subtask"
       ? task?.subTasks.find((subtask) => subtask.id === input.loopSubtaskId)?.prompt
       : task?.rootPrompt ?? input.displayPrompt;
     if (!requirement?.trim()) return undefined;
@@ -4613,7 +4613,7 @@ function rememberConversationTaskSummarySubmission(input: PromptRunInput, target
           ?? getOpenCodeRoleVariantFromStore(modelStore, configId, model, role),
       ) : null,
     };
-  });
+  }, newSubmission);
 }
 
 function appendSystemMessageForPromptTarget(target: PromptRunTarget, content: string): void {
@@ -4747,7 +4747,7 @@ async function runPrompt(
     return;
   }
   const previousSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
-  const firstSummaryTask = Boolean(summarySubmission && activeWorkspaceKey === summarySubmission.workspace
+  const currentSummaryTask = Boolean(summarySubmission && activeWorkspaceKey === summarySubmission.workspace
     && currentTab === summarySubmissionTab);
   target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
   if (previousSessionId && target.sessionId !== previousSessionId) {
@@ -4759,7 +4759,7 @@ async function runPrompt(
   let promptInput = input;
 
   if (target.cli === "opencode") {
-    promptInput = preloadUserMessageForPrompt(promptInput, target);
+    promptInput = preloadUserMessageForPrompt(promptInput, target, { captureTaskSummary: false });
   }
 
   if (input.taskRole === "subtask") {
@@ -4866,7 +4866,8 @@ async function runPrompt(
           if (summarySubmission) {
             conversationTaskSummaries.request({
               tabId: attemptTarget.tabId,
-              eligible: firstSummaryTask,
+              eligible: currentSummaryTask && pendingConversationTaskSummarySubmissions.isCurrent(currentTab, summarySubmission),
+              submission: summarySubmission,
               capture: () => {
                 const model = currentAttemptInput.model ?? summarySubmission.model;
                 return captureConversationTaskSummaryExecution({
