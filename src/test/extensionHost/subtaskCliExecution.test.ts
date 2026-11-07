@@ -10,6 +10,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { installVscodeMock } from "../vscodeMock";
 import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
+import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 
 installVscodeMock();
 
@@ -141,6 +142,8 @@ test("classic Loop trusts reports, delegates only required verification and keep
   assert.equal(prompts.length, 1);
   for (const prompt of prompts) {
     assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
+    assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
+    assert.ok(prompt.includes(JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE })));
     assert.doesNotMatch(prompt, /\[final_answer\]/u);
     assert.match(prompt, /相信子任务汇报的结果/u);
     assert.match(prompt, /主任务不验收子任务产物，不检查代码、文档或实现细节/u);

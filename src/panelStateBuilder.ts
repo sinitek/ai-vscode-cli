@@ -6,6 +6,7 @@ import {
 } from "./cli/config";
 import { isInteractiveSupported } from "./cli/config";
 import { t } from "./i18n";
+import { buildLoopBlockedPauseText } from "./loopBlockedSummary";
 import { CLI_LIST, CliName, MacTaskShell } from "./cli/types";
 import { type LoopTaskRole } from "./promptRunState";
 import {
@@ -1036,7 +1037,7 @@ export function buildLoopTaskNeedsReviewText(
   const failureSuffix = isBlockedByMainAiFailureLimit(task)
     ? `\n主任务 AI 调用已连续失败 ${normalizeLoopMainAiFailureCount(task.mainAiFailureCount)}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
     : "";
-  return `Loop 任务需要人工复核：${task.id}\n记录文件：${task.taskStoreFile}${failureSuffix}`;
+  return `${buildLoopBlockedPauseText(task)}${failureSuffix}\n\nLoop 任务：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
 export function buildLoopMainResumeText(

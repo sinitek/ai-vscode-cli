@@ -7,6 +7,7 @@ import {
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
 import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
+import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
@@ -22,6 +23,21 @@ import type {
 
 const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "clarify", "completed"] as const;
 const PLURAL_CONFIRMATION_KEYS = ["reviewEventIds", "confirmedEventIds", "acceptedEventIds"] as const;
+
+test("all main prompt kinds require readable Chinese blockers with recovery or impossibility explanations", () => {
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    for (const blockedReviewSummary of [undefined, "缺少联调权限"]) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, blockedReviewSummary }));
+      assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
+      assert.match(prompt, /必须用简体中文/);
+      assert.match(prompt, /谁需要提供什么/);
+      assert.match(prompt, /按当前要求无法完成/);
+      assert.match(prompt, /不把模型可解决的问题推给用户/);
+      const blocked = parseExample(extractProtocolExamples(prompt), "blocked");
+      assert.equal(blocked.finalSummary, LOOP_BLOCKED_SUMMARY_EXAMPLE);
+    }
+  }
+});
 
 function execution(subtaskId: string, state: LoopPlusExecutionRecord["state"]): LoopPlusExecutionRecord {
   return {

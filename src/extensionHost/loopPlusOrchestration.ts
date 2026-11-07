@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
@@ -1138,10 +1139,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       deps.log?.("loop-plus-block-review", { taskId: runtime.taskId });
       return "continue";
     }
-    if (decision.status === "blocked" && !decision.finalSummary?.trim()) {
+    if (decision.status === "blocked") {
       decision = {
         ...decision,
-        finalSummary: "主任务尚未完成。阻塞复核后仍未提供具体原因；请补充未完成要求、阻塞证据及恢复条件，再通过继续入口重试。现有安全门槛保持不变。",
+        finalSummary: normalizeLoopBlockedSummary(decision.finalSummary),
       };
     }
     return loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(

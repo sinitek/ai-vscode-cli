@@ -349,9 +349,12 @@ test("blocks a main decision and keeps the supplied final summary", () => {
   assert.deepEqual(result.patch.activeSubtaskIds, []);
   assert.equal(hasOwn(result.patch, "pendingClarification"), false);
 
-  const fallback = decide(createTask(), { status: "blocked" });
-  assert.equal(fallback.patch.finalSummary, "Main task reported blocked.");
-  assert.equal(hasOwn(fallback.patch, "estimatedRemainingRounds"), false);
+  for (const finalSummary of [undefined, "", " \n "]) {
+    const fallback = decide(createTask(), { status: "blocked", finalSummary });
+    assert.match(fallback.patch.finalSummary ?? "", /未提供具体阻塞原因/);
+    assert.match(fallback.patch.finalSummary ?? "", /向主模型提问/);
+    assert.equal(hasOwn(fallback.patch, "estimatedRemainingRounds"), false);
+  }
 });
 
 test("continues a single legacy subtask and replaces the active subtask ids", () => {

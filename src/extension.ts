@@ -4406,6 +4406,9 @@ async function runLoopPromptOrchestration(
       return;
     }
     if (decisionRunResult.status === "needs-review") {
+      if (decisionRunResult.decision?.status === "blocked") {
+        removeLoopMainDecisionMessage(target, decisionRunResult.task.id, round);
+      }
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
       return;
     }

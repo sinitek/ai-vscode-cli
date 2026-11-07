@@ -455,3 +455,9 @@ Loop / Loop+ 的“向主模型提问”弹窗按主模型 Tab 的实际运行�
 Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；发现安全、独立的工作时继续派发，复核后仍无可执行工作才暂停。待复核状态持久化并抑制无进展重复；新用户补充或真实调度/验收进展可重新开启一次。暂停原因和恢复条件进入主聊天、主任务沟通文件与群聊 transcript。主任务单次调用与子任务结束不再显示整体完成，父任务持久化完成后才给出最终完成提示。
 
 实现：`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopTaskStore.ts`、`src/loopPlusPause.ts`、`src/promptRunState.ts`、`src/extension.ts`；验证：`npm run build`；`node --test dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/promptRunCompletionText.test.js dist/test/loop/loopPlusPause.test.js`。
+
+## 2026-11-07 Loop / Loop+ 阻塞答复可读性
+
+`blocked` 答复用简体中文说明当前结论、阻塞原因及未完成事项，列出恢复前必须解决的条件、责任方、具体动作与确认方式；模型能自行处理的工作不推给用户。确实无法完成时说明不可满足的要求和原因，给出替代方案或明确没有可行路径，不再无条件提示点击继续。信息不足时如实说明，空原因提示向主模型索取说明，不编造原因。经典 Loop 主聊天显示实际原因并移除本轮原始阻塞 JSON；Loop+ 主聊天与暂停记录使用同一说明，群聊中断摘要不再暗示所有阻塞都能继续。任务状态、验收门槛和有界复核不变。
+
+实现：`src/loopBlockedSummary.ts`、`src/panelStateBuilder.ts`、`src/loopPlusPause.ts`、`src/loopFinalSummary.ts`、两种模式的主模型提示构建器与编排入口；回归：`src/test/loop/loopBlockedSummary.test.ts`、`src/test/loop/loopPlusPause.test.ts` 及相关提示、状态机、编排测试。

@@ -10,6 +10,7 @@ import {
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_EN } from "../loopMainTaskListPolicy";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
+import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
@@ -286,7 +287,7 @@ function buildLoopPlusProtocolExamples(
       status: "blocked",
       value: {
         status: "blocked",
-        finalSummary: "A person must resolve this blocker before Loop+ can proceed.",
+        finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE,
       },
     },
     {
@@ -382,7 +383,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       "Bounded blocked review: this is the one remaining-work check before a global pause, not permission to retry a failed execution.",
       `Previous proposed blockage: ${context.blockedReviewSummary || "(no reason supplied)"}`,
       "Re-read every unfinished root and supplemental requirement. Separate safe independent work, work awaiting a live attempt, and work requiring external input. Dispatch independent work; wait for live dependencies only when no acceptance batch is open; preserve and judge the entire acceptance batch otherwise. A blocked path does not block unrelated deliverables.",
-      "Only return blocked if no safe independent work remains. Its non-empty finalSummary must name unfinished requirements, evidence-backed blockers, who must provide what, and the condition/action for continuing. Do not remove safety gates, invent evidence, or dispatch placeholder work.",
+      "Only return blocked if no safe independent work remains. Its non-empty finalSummary must name unfinished requirements and evidence-backed blockers, then explain either who must provide what and the condition/action for continuing, or why the current requirements cannot be met and which alternatives remain. Do not remove safety gates, invent evidence, or dispatch placeholder work.",
     ] : []),
     `Record file: ${context.taskStoreFile}`,
     `Main communication file: ${context.mainCommunicationFile}`,
@@ -464,7 +465,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together. dispatch if that work can start now. wait instead when a still-running or pending execution must finish before the new subtask can be launched. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision. Put work that can start now on accept, and list its subtask ids on the review that needs the work. Passed reviews stay passed. If the new work must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
-    "- blocked asks a person for external input and confirms nothing. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary naming unfinished requirements, concrete blockers, the required input and responsible party, and the condition/action for continuing. The host performs one bounded remaining-work review before pausing.",
+    "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms nothing. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
+    LOOP_BLOCKED_SUMMARY_INSTRUCTION,
     "- clarify asks the user to fill a form in the group chat and confirms nothing. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
     "- completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
     buildStructuredSvgSummaryPromptInstruction("finalSummary"),

@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { resolveLoopAnswerConclusion } from "../loopFinalSummary";
+import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import {
   isLoopMainAiFailureLimitReached,
   LOOP_MAIN_AI_FAILURE_LIMIT,
@@ -237,7 +238,7 @@ function applyBlockedLoopMainDecision(context: LoopMainDecisionContext): LoopMai
     patch: {
       status: "needs-review",
       ...clearedActiveSubtasks(),
-      finalSummary: context.decision.finalSummary ?? "Main task reported blocked.",
+      finalSummary: normalizeLoopBlockedSummary(context.decision.finalSummary),
       ...(typeof context.decision.estimatedRemainingRounds === "number"
         ? { estimatedRemainingRounds: context.decision.estimatedRemainingRounds }
         : {}),

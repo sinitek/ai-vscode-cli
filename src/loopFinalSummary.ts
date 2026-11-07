@@ -1,3 +1,5 @@
+import { normalizeLoopBlockedSummary } from "./loopBlockedSummary";
+
 export type LoopGroupChatFinalStatusSection = {
   heading: "任务成功完成" | "任务中断";
   body: string;
@@ -70,9 +72,11 @@ export function buildLoopGroupChatFinalStatusSection(task: {
       terminalStatus: "interrupted",
       body: buildLoopGroupChatFinalStatusBody(
         task,
-        "任务已中断，需要人工复核或继续。",
-        "### 中断说明",
-        normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status)),
+        status === "needs-review" ? "任务已暂停，整体任务尚未完成。" : "任务已中断，需要人工复核或继续。",
+        status === "needs-review" ? "### 暂停说明" : "### 中断说明",
+        status === "needs-review"
+          ? normalizeLoopBlockedSummary(task.finalSummary)
+          : normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status)),
       ),
     };
   }

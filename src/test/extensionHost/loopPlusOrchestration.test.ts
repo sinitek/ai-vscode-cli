@@ -171,7 +171,8 @@ test("block review survives host reconstruction and cannot restart the same no-p
   await flush();
   assert.equal(await isSettled(run.done), true);
   assert.equal(env.mains.length, 1);
-  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /未提供具体原因/);
+  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /未提供具体阻塞原因/);
+  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /向主模型提问/);
 
   const reviewed = baseTask("reviewed", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
   reviewed.loopPlusBlockReview = { state: "reviewed", summary: "already checked" };

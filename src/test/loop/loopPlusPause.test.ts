@@ -13,7 +13,7 @@ function task(root: string): LoopTaskRecord {
     rootPrompt: "complete implementation", schedulingMode: "event_driven", status: "needs-review",
     createdAt: 1, updatedAt: 2, maxRounds: 20, currentRound: 0,
     communicationDir: root, mainCommunicationFile: path.join(root, "main-task.md"), subTasks: [], rounds: [],
-    finalSummary: "未完成页面真实测试；平台维护方需提供隔离证据，核验后继续。",
+    finalSummary: "### 当前结论\n暂时无法继续，任务尚未完成。\n### 阻塞原因与未完成事项\n页面真实测试未完成：当前缺少隔离环境的确认依据。\n### 继续前需要解决的事项\n1. 平台维护方提供隔离证据。\n2. 主模型核验依据，确认符合测试要求后，在群聊点击“继续执行”。",
     completionRoundSummaries: [], completionRequirementCoverage: [],
   };
 }
@@ -49,6 +49,25 @@ test("missing reasons have a safe fallback while other pause causes cannot reuse
   const paused = task(os.tmpdir());
   assert.match(buildLoopPlusPauseText({ ...paused, finalSummary: " " }, "loop-plus-blocked"), /未提供具体阻塞原因/);
   assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /平台维护方/);
+});
+
+test("impossible work is explained without appending an ineffective continue instruction", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loopplus-impossible-"));
+  try {
+    const summary = "### 当前结论\n按当前要求无法完成。\n### 阻塞原因与未完成事项\n原始数据已删除且无备份，无法还原真实数据。\n### 可行替代方案\n只能调整范围处理现存数据，不能补造已删除记录。";
+    const paused = { ...task(root), finalSummary: summary };
+    const text = buildLoopPlusPauseText(paused, "loop-plus-blocked");
+    assert.ok(text.endsWith(summary));
+    assert.doesNotMatch(text, /继续执行|补充上述所需证据/);
+    recordLoopPlusPause(paused, "loop-plus-blocked");
+    for (const file of [paused.mainCommunicationFile, path.join(root, "group-chat.md")]) {
+      const content = fs.readFileSync(file, "utf8");
+      assert.ok(content.includes(text));
+      assert.doesNotMatch(content, /继续执行/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("partial transcript writes are deduplicated when recording is retried", () => {

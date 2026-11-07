@@ -11,6 +11,7 @@ import type { LoopMainDecision, LoopSubtaskRecord, LoopTaskRecord } from "../loo
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
+import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 
 export const LOOP_PARALLEL_SUBTASK_MAX = 6;
 export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 3 * 1000;
@@ -1043,7 +1044,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       '{"status":"completed","estimatedRemainingRounds":0,"answerConclusion":"根据子任务汇报直接回答用户原始问题","finalSummary":"根据全部子任务汇报归纳完成内容与交付结果"}',
       '{"status":"continue","estimatedRemainingRounds":2,"parallelReason":"写入范围互不重叠且没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","writeFiles":["src/a.ts"],"prompt":"背景与目标：完成 A。遵循项目既有规则，自主选择实施方式并汇报完成情况。"},{"id":"stable-id-b","title":"子任务B标题","writeFiles":["docs/b.md"],"prompt":"背景与目标：完成 B。遵循项目既有规则，自主选择实施方式并汇报完成情况。"}]}',
       '{"status":"continue","estimatedRemainingRounds":1,"subtasks":[{"id":"required-tests","title":"执行用户或项目规则要求的测试","prompt":"用户要求或项目规则要求任务完成后运行相关测试。请作为独立测试子任务按该要求执行，并汇报结果、失败或阻塞；不要扩大到未要求的检查。"}]}',
-      '{"status":"blocked","estimatedRemainingRounds":0,"finalSummary":"阻塞原因"}',
+      JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE }),
       '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
       "",
       "字段要求：",
@@ -1054,7 +1055,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- finalSummary 根据子任务汇报归纳整体结果、完成内容和最终交付；遗留问题如实说明，不编造验收结论。",
       buildStructuredSvgSummaryPromptInstruction("finalSummary"),
       `- status=continue 时提供 subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}，不要求 acceptance。`,
-      "- 当前没有可执行子任务、需要等待外部结果时，必须返回 blocked，并在 finalSummary 说明等待对象。",
+      "- 当前没有可执行子任务、需要等待外部结果，或有证据表明当前要求无法完成时，返回 blocked，不得把任务标成 completed。",
+      LOOP_BLOCKED_SUMMARY_INSTRUCTION,
       "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
       "- subtasks[*].prompt 说明背景、目标、范围以及用户或项目规则已有的要求即可，不额外强制执行步骤、设计方法或验收流程。writeFiles 是并发冲突提示，不是硬性写入白名单。不要把任务记录、调度状态、轮次或父任务协议写进 prompt；沟通文件和禁止修改的调度文件由宿主附加。",

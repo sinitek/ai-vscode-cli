@@ -1532,6 +1532,25 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_blocked_user_explanation",
+      "name": "Loop 阻塞答复说明原因与恢复条件或不可完成理由",
+      "description": "Loop / Loop+ 的 blocked 答复复用 finalSummary，以简体中文说明当前结论、具体原因、证据及未完成要求；可恢复时逐项给出前置条件、责任方、动作和确认方式，模型可自行处理的工作不转嫁给用户。确有依据表明当前要求无法完成时明确限制和可行替代方案或无替代路径，不附带无效继续指引；信息不足不得断言不可能。经典 Loop 复核气泡显示实际说明并移除本轮阻塞 JSON；Loop+ 主聊天及暂停记录复用说明，群聊中断摘要不再统一建议继续。缺失说明使用诚实中文兜底，提示向主模型索取原因而不编造。任务状态、验收及有界复核不变。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": "src/loopBlockedSummary.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/panelStateBuilder.ts", "anchor": "buildLoopTaskNeedsReviewText"},
+        {"path": "src/loopPlusPause.ts"},
+        {"path": "src/loopFinalSummary.ts"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/test/loop/loopBlockedSummary.test.ts"},
+        {"path": "src/test/loop/loopPlusPause.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_layered_completion_messages",
       "name": "Loop+ 分层表达调用、子任务与父任务完成",
       "description": "Loop+ 主任务单次调用结束只表示本轮调度结束，子任务调用结束表示等待主任务验收；二者都不代表父任务整体完成。仅父任务完成状态持久化成功后显示整体完成并触发完成提醒。普通对话与经典 Loop 文案保持兼容。",
