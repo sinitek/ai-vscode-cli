@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
+import { isChatLinkMessage, openChatLink } from "./chatLinkHost";
 import { logError } from "../logger";
 import { getWebviewHtml } from "./viewContent";
 import { PanelMessage, PanelState } from "./types";
@@ -57,6 +58,9 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       }
       if (isChatImageMessage(message)) {
         return this.imageHost.handleMessage(message);
+      }
+      if (isChatLinkMessage(message)) {
+        return openChatLink(message.source, (source) => this.imageHost.handleMessage({ type: "previewChatImage", source }));
       }
       if (message.type === "notificationAuthorization") {
         let authorization: DesktopNotificationAuthorization;

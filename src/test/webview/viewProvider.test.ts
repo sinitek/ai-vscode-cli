@@ -50,6 +50,23 @@ function createProvider(messages: PanelMessage[] = []) {
   });
 }
 
+test("chat links use the host opener instead of the session router and ignore disposed views", async (context) => {
+  const api = require("vscode");
+  const external: string[] = [];
+  const previous = api.env.openExternal;
+  api.env.openExternal = async (uri: { toString: () => string }) => { external.push(uri.toString()); return true; };
+  context.after(() => { api.env.openExternal = previous; });
+  const messages: PanelMessage[] = [];
+  const provider = createProvider(messages);
+  const harness = createViewHarness();
+  provider.resolveWebviewView(harness.view);
+  await harness.receive({ type: "openChatLink", source: "https://example.com/result" });
+  harness.dispose();
+  await harness.receive({ type: "openChatLink", source: "https://example.com/stale" });
+  assert.deepEqual(external, ["https://example.com/result"]);
+  assert.deepEqual(messages, []);
+});
+
 test("notification authorization messages return correlated results without entering the session router", async () => {
   const requests: boolean[] = [];
   const messages: PanelMessage[] = [];

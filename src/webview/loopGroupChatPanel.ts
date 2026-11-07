@@ -8,6 +8,7 @@ import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
 import { CHAT_COPY_SCRIPT } from "./chatCopy";
 import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
+import { isChatLinkMessage, openChatLink } from "./chatLinkHost";
 import { getMarkedScript, getJsonFormatterScript } from "./markdownAssets";
 import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { getMarkdownStyles } from "./viewContentStyles/markdown";
@@ -79,6 +80,9 @@ export class LoopGroupChatPanel {
       this.panel.webview.onDidReceiveMessage(async (message: LoopGroupChatPanelMessage) => {
         if (isChatImageMessage(message)) {
           return this.imageHost.handleMessage(message);
+        }
+        if (isChatLinkMessage(message)) {
+          return openChatLink(message.source, (source) => this.imageHost.handleMessage({ type: "previewChatImage", source }));
         }
         if (message?.type === "loopGroupChatChat:domReady") {
           this.handleDomReady(typeof message.generation === "number" ? message.generation : 0);
@@ -1117,6 +1121,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 
 	      document.addEventListener("click", (event) => {
             if (handleChatImageClick(event)) {
+              return;
+            }
+            if (handleChatLinkClick(event)) {
               return;
             }
 	        const target = event.target.closest("[data-action]");

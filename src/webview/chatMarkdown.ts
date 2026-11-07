@@ -1,9 +1,29 @@
 import { createChatSvgImageSource, normalizeChatImageSource } from "./chatImagePreview";
+import { normalizeChatLinkSource } from "./chatLink";
 
 export const CHAT_MARKDOWN_SCRIPT = `
       ${createChatSvgImageSource.toString()}
 
       ${normalizeChatImageSource.toString()}
+
+      ${normalizeChatLinkSource.toString()}
+
+      function handleChatLinkClick(event) {
+        if (event.defaultPrevented) {
+          return false;
+        }
+        const target = event.target && typeof event.target.closest === "function"
+          ? event.target.closest("a[data-chat-link]") : null;
+        if (!target) {
+          return false;
+        }
+        event.preventDefault();
+        const source = normalizeChatLinkSource(target.getAttribute("data-chat-link"));
+        if (source) {
+          vscode.postMessage({ type: "openChatLink", source });
+        }
+        return true;
+      }
 
       function parseJsonContainerText(text) {
         if (!text || (text[0] !== "{" && text[0] !== "[")) {
@@ -209,6 +229,16 @@ export const CHAT_MARKDOWN_SCRIPT = `
         }
         const renderer = new marked.Renderer();
         renderer.image = renderChatImage;
+        renderer.link = function(token) {
+          const label = this.parser.parseInline(token.tokens);
+          const source = normalizeChatLinkSource(token.href);
+          if (!source) {
+            return label;
+          }
+          const escapeAttribute = (value) => escapeHtml(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+          return '<a href="#" data-chat-link="' + escapeAttribute(source) + '" title="'
+            + escapeAttribute(token.title || source) + '">' + label + '</a>';
+        };
         const renderTable = (token) => {
           const header = token.header.map((cell) => renderer.tablecell(cell)).join("");
           const body = token.rows.map((row) => renderer.tablerow({ text: row.map((cell) => renderer.tablecell(cell)).join("") })).join("");

@@ -9,6 +9,7 @@ import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScr
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { MARKDOWN_STYLES } from "../../webview/viewContentStyles/markdown";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
+import { normalizeChatLinkSource } from "../../webview/chatLink";
 
 const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=";
 
@@ -17,7 +18,7 @@ function loadRenderer(overrides: Record<string, unknown> = {}) {
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING.indexOf("      function renderChatImage("),
     VIEW_CONTENT_SCRIPT_TRACE_RENDERING.indexOf("      function isLineNumberedLine("),
   );
-  const sandbox = { normalizeChatImageSource, createChatSvgImageSource, ...overrides };
+  const sandbox = { normalizeChatImageSource, normalizeChatLinkSource, createChatSvgImageSource, ...overrides };
   const markedPath = path.join(__dirname, "../../..", "media", "marked.min.js");
   return new Script(`${fs.readFileSync(markedPath, "utf8")}
     function escapeHtml(value) { return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -146,10 +147,14 @@ test("delegates image clicks to the host and prevents surrounding links from ope
   const source = VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.slice(0, VIEW_CONTENT_SCRIPT_EVENT_BINDINGS.indexOf("\n      ["));
   const listeners: Record<string, (event: unknown) => void> = {};
   const posted: unknown[] = [];
-  new Function("elements", "vscode", "normalizeChatImageSource", handlerSource + source)(
-    { messages: { addEventListener: (name: string, handler: (event: unknown) => void) => { listeners[name] = handler; } } },
+  new Function("elements", "vscode", "normalizeChatImageSource", "handleChatLinkClick", handlerSource + source)(
+    { messages: { addEventListener: (name: string, handler: (event: unknown) => void) => {
+      const previous = listeners[name];
+      listeners[name] = (event) => { previous?.(event); handler(event); };
+    } } },
     { postMessage: (message: unknown) => posted.push(message) },
     normalizeChatImageSource,
+    () => false,
   );
   let prevented = false;
   listeners.click({

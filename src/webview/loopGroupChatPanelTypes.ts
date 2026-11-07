@@ -129,6 +129,7 @@ export type LoopGroupChatPanelState = {
 
 export type LoopGroupChatPanelMessage =
   | import("./chatImageHost").ChatImageMessage
+  | import("./chatLinkHost").ChatLinkMessage
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }

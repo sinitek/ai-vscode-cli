@@ -4,6 +4,14 @@
 - 更新日期：2026-11-07
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
+## 对话 Markdown 链接边界
+
+`chatMarkdown.ts` 用共享的 `normalizeChatLinkSource` 校验链接并渲染带 `data-chat-link` 的锚点；普通消息区与群聊点击委托发送 `openChatLink`，阻止 Webview 默认导航。图片按钮及下载已处理的点击不再触发外围链接。`viewProvider.ts` 和 `loopGroupChatPanel.ts` 在业务消息路由前调用 `chatLinkHost.ts`；打开操作只由点击触发，宿主重复校验来源。
+
+本地路径复用现有图片资源路径解析（首个工作区、home、file URI、Windows/UNC），不复制另一套平台规则；允许 sandbox 绝对路径，但不为缺失文件猜测映射。宿主检查存在性后分流图片预览、Markdown 内置预览、目录定位和 `vscode.open` 默认/扩展编辑器；代码位置转换为零基 selection，其他片段保留。HTTP(S) 仅用 `env.openExternal`，禁止任意命令或脚本协议。PDF/Office 的可视化依赖已安装的预览扩展，无法打开时给出中文提示及需要用户显式选择的系统打开方式，不引入新依赖或在 Webview 执行文档脚本。
+
+PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文件类型声明，命中后通过 `vscode.openWith` 打开对应预览器；没有预览器时直接显示选择打开方式、系统应用或查找预览扩展的中文恢复入口，避免默认二进制文本编辑器虽然返回成功却无法预览的假成功。
+
 ## 分工与设计选择
 
 `ConfiguredModelRepository` 是小型、显式、实例级 Repository，不是新的选择策略框架。原宿主混合了配置 I/O、解析、五类缓存、异常降级和选择/角色编排；现在前四项归仓储，后者继续归宿主与已有策略。五个 Map 只有一份，按原来的 `string | null` 档案键分开存储，各宿主创建独立仓储。`undefined` 仍表示没有指定/未加载，不等价于合法的 `null` 原生配置缓存键。

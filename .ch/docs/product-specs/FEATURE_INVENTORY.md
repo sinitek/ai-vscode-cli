@@ -2,6 +2,14 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## AI 对话 Markdown 文件链接
+
+- 状态：`active`（2026-11-07）。普通对话、历史回显及 Loop / Loop+ 群聊的 Markdown 链接通过扩展宿主打开，不再让 Webview 直接导航本地地址。
+- 支持工作区相对路径、绝对路径、`file:` URI、`sandbox:/` 本地路径、含中文和空格的路径、Windows 驱动器与 UNC；相对路径沿用图片规则，以首个工作区根目录解析，不猜测或映射不存在的 sandbox 文件。
+- 图片及 SVG 复用禁用脚本的内容区预览；Markdown 默认打开内置预览；其他文件优先使用 VS Code 默认/扩展编辑器，支持 `#L12C3`、`:12:3` 代码定位以及 PDF 页码片段。目录在资源管理器定位，HTTP(S) 交给系统浏览器。
+- PDF、PPTX 等格式优先调用已安装且声明相应文件类型的自定义预览编辑器，本次不增加渲染器或自动安装扩展；未安装预览器时不进入二进制文本编辑器，而是提示选择打开方式、使用系统应用或查找预览扩展。其他打开失败同样提供恢复入口，缺失文件提示实际解析路径。拒绝命令、脚本、data 等协议和带凭据 URL；图片下载链路保持不变。
+- 实现：`src/webview/chatLink.ts`、`src/webview/chatLinkHost.ts`、`src/webview/chatMarkdown.ts`；回归：`src/test/webview/chatLink.test.ts`、`src/test/webview/chatLinkHost.test.ts`、`src/test/webview/viewProvider.test.ts`。
+
 ## AI 对话 Tab 任务摘要
 
 - 状态：`active`（2026-11-07）；用户：多会话并行的 AI 对话使用者；运行时与浮层已实现并经主审。现有提示词截取标签保留，不冒充 AI 摘要。

@@ -1,6 +1,7 @@
 // Primary UI event bindings and conversation reset controls.
 export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) {
         elements.messages.addEventListener("click", handleChatImageClick);
+        elements.messages.addEventListener("click", handleChatLinkClick);
       }
 
       [
