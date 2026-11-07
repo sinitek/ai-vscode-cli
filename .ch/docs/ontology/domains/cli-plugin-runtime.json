@@ -114,6 +114,11 @@
         {"path": "src/config/modelimport.ts"},
         {"path": "src/webview/configProtocol.ts"},
         {"path": "src/webview/configPanel.ts"},
+        {"path": "src/webview/configRequestRouter.ts"},
+        {"path": "src/webview/configRequestHandlers/profiles.ts"},
+        {"path": "src/webview/configRequestHandlers/skills.ts"},
+        {"path": "src/test/config/cliPageConfigCoverage.test.ts"},
+        {"path": ".ch/docs/design-docs/config-center-request-commands.md"},
         {"path": "src/webview/configView.ts"},
         {"path": "src/test/config/modelimport.test.ts"}
       ]

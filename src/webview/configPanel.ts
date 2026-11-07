@@ -13,7 +13,9 @@ import {
   ConfigReadyMessage,
 } from "./configProtocol";
 import * as configService from "../config/configService";
-import { normalizeConfigPlatform } from "../config/configPaths";
+import { createConfigProfileRequestHandlers } from "./configRequestHandlers/profiles";
+import { createConfigSkillRequestHandlers } from "./configRequestHandlers/skills";
+import { routeConfigRequest, type ConfigRequestHandlers } from "./configRequestRouter";
 import { logEssential, logInfo } from "../logger";
 import { t } from "../i18n";
 import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
@@ -50,11 +52,82 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
   private nativeModalOpenTask: Promise<void> | undefined;
   private nativeModalUnavailable = false;
   private panelMode: ConfigViewHostMode = "window";
+  private readonly requestHandlers: ConfigRequestHandlers;
 
   public constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly handlers: ConfigManagerHandlers = {}
-  ) {}
+  ) {
+    this.requestHandlers = {
+      ...createConfigProfileRequestHandlers(configService, this.handlers),
+      ...createConfigSkillRequestHandlers(configService, {
+        pickLocalSkillZip: async () => {
+          const selectedFiles = await vscode.window.showOpenDialog({
+            title: "选择 Skills ZIP 包",
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters: { "ZIP 压缩包": ["zip"] },
+          });
+          return selectedFiles?.[0]?.fsPath ?? null;
+        },
+        pickSkillPlatforms: async () => {
+          const selectedPlatforms = await vscode.window.showQuickPick(
+            [
+              { label: "Claude", platform: "claude" },
+              { label: "Codex", platform: "codex" },
+              { label: "OpenCode", platform: "opencode" },
+              { label: "Grok", platform: "grok" },
+              { label: "DSH", platform: "dsh" },
+              { label: "Kimi Code", platform: "kimi-code" },
+              { label: "ZCode", platform: "zcode" },
+            ],
+            {
+              canPickMany: true,
+              title: "选择安装目标 CLI",
+              placeHolder: "可多选 Skills 安装位置",
+            },
+          );
+          return selectedPlatforms?.length ? selectedPlatforms.map((platform) => platform.platform) : null;
+        },
+      }),
+      getCliEnabled: (_message, response) => {
+        response.data = {
+          cliEnabledByName: normalizeCliEnabledByName(readToolSettings().cliEnabledByName) ?? {},
+        };
+      },
+      exportConfigs: async (message, response) => {
+        const payload = message.payload;
+        if (!payload || typeof payload.content !== "string") {
+          throw new Error(t("config.exportContentEmpty"));
+        }
+        const rawName = payload.fileName || "";
+        const safeName = rawName
+          ? path.basename(rawName).replace(/[\\/:*?"<>|]/g, "_")
+          : `sinitek-cli-configs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        const targetName = safeName.endsWith(".json") ? safeName : `${safeName}.json`;
+        let downloadsDir = path.join(os.homedir(), "Downloads");
+        try {
+          await fs.promises.mkdir(downloadsDir, { recursive: true });
+        } catch {
+          downloadsDir = os.homedir();
+        }
+        const targetPath = path.join(downloadsDir, targetName);
+        await fs.promises.writeFile(targetPath, payload.content, "utf8");
+        response.data = { path: targetPath, fileName: targetName, downloadsDir };
+        void logEssential("config-export", { path: targetPath });
+      },
+      getModelImportProviders: (message, response) => {
+        response.data = getModelImportProviders(message.payload);
+      },
+      discoverImportModels: async (message, response) => {
+        response.data = await discoverImportModels(message.payload);
+      },
+      applyModelImport: async (message, response) => {
+        response.data = await applyModelImport(message.payload);
+      },
+    };
+  }
 
   public registerCustomEditorProvider(): vscode.Disposable | undefined {
     if (this.customEditorRegistration) {
@@ -289,157 +362,9 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
     };
 
     try {
-      switch (message.action) {
-        case "getList":
-          response.data = await configService.getConfigList(message.platform);
-          break;
-        case "getOrder":
-          response.data = await configService.getConfigOrder(message.platform);
-          break;
-        case "setOrder":
-          await configService.setConfigOrder(message.platform, message.order);
-          response.data = true;
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "getById":
-          response.data = await configService.getConfigById(message.platform, message.id);
-          break;
-        case "save":
-          await configService.saveConfig(message.config);
-          response.data = message.config;
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "copy":
-          response.data = await configService.copyConfig(message.payload);
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "delete":
-          await configService.deleteConfig(message.platform, message.id);
-          response.data = true;
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "getCurrent": {
-          const current = await configService.getCurrentConfig(message.platform);
-          response.data = {
-            ...current,
-            activeConfigId: await this.handlers.getActiveConfigId?.(normalizeConfigPlatform(message.platform)) ?? null,
-          };
-          break;
-        }
-        case "apply":
-          response.data = await configService.applyConfig(message.platform, message.payload);
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "backup":
-          response.data = await configService.backupConfig(message.platform);
-          break;
-        case "getBackups":
-          response.data = await configService.getBackupList(message.platform);
-          break;
-        case "initDefault":
-          response.data = await configService.initDefaultConfig(message.platform);
-          await this.handlers.onConfigChanged?.();
-          break;
-        case "getCliSkillsList":
-          response.data = await configService.getCliSkillsList(message.platform);
-          break;
-        case "openCliSkillsDirectory":
-          response.data = await configService.openCliSkillsDirectory(message.platform);
-          break;
-        case "deleteCliSkill":
-          response.data = await configService.deleteCliSkill(message.platform, message.name);
-          break;
-        case "copyCliSkill":
-          response.data = await configService.copyCliSkill(
-            message.platform,
-            message.name,
-            message.targetPlatform,
-          );
-          break;
-        case "searchLobehubSkills":
-          response.data = await configService.searchLobehubSkills(message.payload);
-          break;
-        case "installLobehubSkill":
-          response.data = await configService.installLobehubSkill(message.payload);
-          break;
-        case "pickAndInstallLocalSkillZip": {
-          const selectedFiles = await vscode.window.showOpenDialog({
-            title: "选择 Skills ZIP 包",
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            filters: { "ZIP 压缩包": ["zip"] },
-          });
-          if (!selectedFiles?.[0]) {
-            response.data = null;
-            break;
-          }
-          const selectedPlatforms = await vscode.window.showQuickPick(
-            [
-              { label: "Claude", platform: "claude" },
-              { label: "Codex", platform: "codex" },
-              { label: "OpenCode", platform: "opencode" },
-              { label: "Grok", platform: "grok" },
-              { label: "DSH", platform: "dsh" },
-              { label: "Kimi Code", platform: "kimi-code" },
-              { label: "ZCode", platform: "zcode" },
-            ],
-            {
-              canPickMany: true,
-              title: "选择安装目标 CLI",
-              placeHolder: "可多选 Skills 安装位置",
-            },
-          );
-          if (!selectedPlatforms?.length) {
-            response.data = null;
-            break;
-          }
-          response.data = await configService.installLocalSkillZipFromPath(
-            { platforms: selectedPlatforms.map((platform) => platform.platform) },
-            selectedFiles[0].fsPath,
-          );
-          break;
-        }
-        case "getCliEnabled":
-          response.data = {
-            cliEnabledByName: normalizeCliEnabledByName(readToolSettings().cliEnabledByName) ?? {},
-          };
-          break;
-        case "exportConfigs": {
-          const payload = message.payload;
-          if (!payload || typeof payload.content !== "string") {
-            throw new Error(t("config.exportContentEmpty"));
-          }
-          const rawName = payload.fileName || "";
-          const safeName = rawName
-            ? path.basename(rawName).replace(/[\\/:*?"<>|]/g, "_")
-            : `sinitek-cli-configs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-          const targetName = safeName.endsWith(".json") ? safeName : `${safeName}.json`;
-          let downloadsDir = path.join(os.homedir(), "Downloads");
-          try {
-            await fs.promises.mkdir(downloadsDir, { recursive: true });
-          } catch {
-            downloadsDir = os.homedir();
-          }
-          const targetPath = path.join(downloadsDir, targetName);
-          await fs.promises.writeFile(targetPath, payload.content, "utf8");
-          response.data = { path: targetPath, fileName: targetName, downloadsDir };
-          void logEssential("config-export", { path: targetPath });
-          break;
-        }
-        case "getModelImportProviders":
-          response.data = getModelImportProviders(message.payload);
-          break;
-        case "discoverImportModels":
-          response.data = await discoverImportModels(message.payload);
-          break;
-        case "applyModelImport":
-          response.data = await applyModelImport(message.payload);
-          break;
-        default:
-          response.success = false;
-          response.error = t("config.unknownRequest");
-          break;
+      if (!await routeConfigRequest(this.requestHandlers, message, response)) {
+        response.success = false;
+        response.error = t("config.unknownRequest");
       }
     } catch (error) {
       response.success = false;

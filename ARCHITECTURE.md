@@ -5,6 +5,7 @@
 更详细的运行时设计见：
 
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
+- `.ch/docs/design-docs/config-center-request-commands.md`：配置中心实例级 24 动作命令表、局部 typed router 与领域/宿主边界。
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 

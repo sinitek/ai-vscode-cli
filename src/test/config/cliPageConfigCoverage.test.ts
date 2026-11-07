@@ -1628,11 +1628,304 @@ test("config manager panel routes remaining request actions and export branches"
   }
 });
 
-test("config protocol declarations stay aligned with panel switch cases and bridge actions", () => {
+async function withRequestPatches(
+  patches: [AnyRecord, string, unknown][],
+  run: () => Promise<void>,
+): Promise<void> {
+  const originals = patches.map(([target, key]) => Object.getOwnPropertyDescriptor(target, key));
+  try {
+    patches.forEach(([target, key, value]) => {
+      Object.defineProperty(target, key, { value, writable: true, configurable: true });
+    });
+    await run();
+  } finally {
+    patches.forEach(([target, key], index) => {
+      const original = originals[index];
+      if (original) Object.defineProperty(target, key, original);
+      else delete target[key];
+    });
+  }
+}
+
+function createRequestPanel(handlers: AnyRecord = {}) {
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any, handlers);
+  const messages: AnyRecord[] = [];
+  const state = manager as AnyRecord;
+  state.panel = { webview: { postMessage: async (message: AnyRecord) => { messages.push(message); return true; } } };
+  return {
+    manager, state, messages,
+    dispatch: (payload: AnyRecord) => state.handleRequest({ type: "config:request", requestId: "request-id", ...payload }) as Promise<void>,
+  };
+}
+
+for (const [action, service] of [
+  ["setOrder", "setConfigOrder"], ["save", "saveConfig"], ["copy", "copyConfig"],
+  ["delete", "deleteConfig"], ["apply", "applyConfig"], ["initDefault", "initDefaultConfig"],
+]) {
+  test(`panel ${action} awaits notification and retains data on notification failure`, async () => {
+    const services = require("../../config/configService") as AnyRecord;
+    const errors = require("../../errorDisplay") as AnyRecord;
+    const { t } = require("../../i18n") as typeof import("../../i18n");
+    const notices: unknown[][] = [];
+    const config = { id: "memory-profile", platform: "codex" };
+    const returned = action === "initDefault" ? null : { value: "service-result" };
+    const expected = action === "save" ? config : action === "setOrder" || action === "delete" ? true : returned;
+    const events: string[] = [];
+    let releaseNotification!: () => void;
+    let notificationStarted!: () => void;
+    const notificationGate = new Promise<void>((resolve) => { releaseNotification = resolve; });
+    const started = new Promise<void>((resolve) => { notificationStarted = resolve; });
+    const host = {
+      onConfigChanged: async () => {
+        events.push("notify:start");
+        notificationStarted();
+        await notificationGate;
+        events.push("notify:end");
+      },
+    };
+    await withRequestPatches([
+      [services, service, async () => { events.push("service"); return returned; }],
+      [errors, "showErrorWithActions", async (...args: unknown[]) => { notices.push(args); }],
+    ], async () => {
+      const panel = createRequestPanel(host);
+      const registry = panel.state.requestHandlers;
+      const payload = { action, platform: "codex", config, order: {}, id: config.id, payload: { profileId: config.id } };
+      const pending = panel.dispatch(payload);
+      await started;
+      assert.equal(panel.messages.length, 0);
+      assert.deepEqual(events, ["service", "notify:start"]);
+      releaseNotification();
+      await pending;
+      assert.deepEqual(events, ["service", "notify:start", "notify:end"]);
+      assert.deepEqual(panel.messages[0], { type: "config:response", requestId: "request-id", success: true, data: expected });
+      assert.strictEqual(panel.messages[0].data, expected);
+
+      const failure = new Error("notification failed");
+      host.onConfigChanged = async () => { throw failure; };
+      await panel.dispatch({ ...payload, requestId: "notification-error" });
+      assert.deepEqual(panel.messages[1], {
+        type: "config:response", requestId: "notification-error", success: false,
+        data: expected, error: errors.buildErrorDetail(failure),
+      });
+      services[service] = async () => { throw failure; };
+      host.onConfigChanged = async () => assert.fail("service failure must not notify");
+      await panel.dispatch({ ...payload, requestId: "service-error" });
+      assert.deepEqual(panel.messages[2], {
+        type: "config:response", requestId: "service-error", success: false, error: errors.buildErrorDetail(failure),
+      });
+      assert.strictEqual(panel.state.requestHandlers, registry);
+      assert.equal(notices.length, action === "apply" ? 2 : 0);
+      for (const notice of notices) {
+        assert.deepEqual(notice, [t("config.applyFailedTitle"), failure, { detailTitle: t("config.applyFailedTitle") }]);
+      }
+    });
+  });
+}
+
+test("panel rejects malformed action keys and keeps concurrent responses independent", async () => {
+  const services = require("../../config/configService") as AnyRecord;
+  const { t } = require("../../i18n") as typeof import("../../i18n");
+  let finishRead!: () => void;
+  const gate = new Promise<void>((resolve) => { finishRead = resolve; });
+  await withRequestPatches([
+    [services, "getConfigList", async () => { await gate; return ["delayed"]; }],
+    [services, "getConfigOrder", async () => ({ codex: ["immediate"] })],
+  ], async () => {
+    const panel = createRequestPanel();
+    const pending = panel.dispatch({ action: "getList", platform: "codex", requestId: "slow" });
+    await panel.dispatch({ action: "getOrder", platform: "codex", requestId: "fast" });
+    assert.deepEqual(panel.messages.map((message) => message.requestId), ["fast"]);
+    finishRead();
+    await pending;
+    assert.deepEqual(panel.messages.map((message) => message.requestId), ["fast", "slow"]);
+    assert.notStrictEqual(panel.messages[0], panel.messages[1]);
+    assert.deepEqual(panel.messages[0].data, { codex: ["immediate"] });
+    assert.deepEqual(panel.messages[1].data, ["delayed"]);
+    for (const action of ["unknown", "toString", "constructor", "__proto__", undefined, 7, {
+      [Symbol.toPrimitive]() { assert.fail("must not coerce action"); },
+    }]) {
+      await panel.dispatch({ action, requestId: "unknown" });
+      assert.deepEqual(panel.messages.at(-1), {
+        type: "config:response", requestId: "unknown", success: false, error: t("config.unknownRequest"),
+      });
+    }
+    panel.state.panel = undefined;
+    const count = panel.messages.length;
+    await panel.dispatch({ action: "getOrder", platform: "codex" });
+    assert.equal(panel.messages.length, count);
+    const pendingWithoutPanel = panel.dispatch({ action: "getList", platform: "codex" });
+    panel.state.panel = { webview: { postMessage: async (message: AnyRecord) => { panel.messages.push(message); return true; } } };
+    await pendingWithoutPanel;
+    assert.equal(panel.messages.length, count + 1);
+  });
+});
+
+for (const action of ["getModelImportProviders", "discoverImportModels", "applyModelImport"]) {
+  test(`panel ${action} uses the existing late-bound import entry without notifying`, async () => {
+    const imports = require("../../config/modelimport") as AnyRecord;
+    const payload = { platform: "codex", draft: {}, providerId: "memory", selectedModelIds: ["model"] };
+    const expected = { imported: action };
+    let calls = 0;
+    const invoke = (received: unknown) => { calls += 1; assert.strictEqual(received, payload); return expected; };
+    await withRequestPatches([
+      [imports, action, action === "getModelImportProviders" ? invoke : async (received: unknown) => invoke(received)],
+    ], async () => {
+      const panel = createRequestPanel({ onConfigChanged: () => assert.fail("import command must not notify") });
+      await panel.dispatch({ action, payload });
+      assert.strictEqual(panel.messages[0].data, expected);
+      assert.equal(calls, 1);
+      const failure = new Error("import failed");
+      imports[action] = () => { throw failure; };
+      await panel.dispatch({ action, payload });
+      assert.equal(panel.messages[1].success, false);
+      assert.match(panel.messages[1].error, /import failed/);
+      assert.equal(Object.prototype.hasOwnProperty.call(panel.messages[1], "data"), false);
+    });
+  });
+}
+
+test("panel CLI enabled command reads settings and normalization on every request", async () => {
+  const settings = require("../../toolSettings") as AnyRecord;
+  let enabled: unknown = { codex: false };
+  let reads = 0;
+  await withRequestPatches([
+    [settings, "readToolSettings", () => { reads += 1; return { cliEnabledByName: enabled }; }],
+  ], async () => {
+    const panel = createRequestPanel();
+    assert.equal(reads, 0);
+    await panel.dispatch({ action: "getCliEnabled" });
+    assert.deepEqual(panel.messages[0].data, { cliEnabledByName: { codex: false } });
+    enabled = { claude: true, codex: true };
+    await panel.dispatch({ action: "getCliEnabled" });
+    assert.deepEqual(panel.messages[1].data, { cliEnabledByName: { claude: true, codex: true } });
+    enabled = undefined;
+    await panel.dispatch({ action: "getCliEnabled" });
+    assert.deepEqual(panel.messages[2].data, { cliEnabledByName: {} });
+    assert.equal(reads, 3);
+  });
+});
+
+test("panel ZIP picker preserves options and order, and both cancellation stages skip installation", async () => {
+  const vscode = require("vscode") as AnyRecord;
+  const services = require("../../config/configService") as AnyRecord;
+  const events: string[] = [];
+  let selectedFiles: unknown = undefined;
+  let selectedPlatforms: unknown = undefined;
+  await withRequestPatches([
+    [vscode.window, "showOpenDialog", async (options: unknown) => {
+      events.push("file");
+      assert.deepEqual(options, {
+        title: "选择 Skills ZIP 包", canSelectFiles: true, canSelectFolders: false,
+        canSelectMany: false, filters: { "ZIP 压缩包": ["zip"] },
+      });
+      return selectedFiles;
+    }],
+    [vscode.window, "showQuickPick", async (items: unknown, options: unknown) => {
+      events.push("platforms");
+      assert.deepEqual(items, [
+        { label: "Claude", platform: "claude" }, { label: "Codex", platform: "codex" },
+        { label: "OpenCode", platform: "opencode" }, { label: "Grok", platform: "grok" },
+        { label: "DSH", platform: "dsh" }, { label: "Kimi Code", platform: "kimi-code" },
+        { label: "ZCode", platform: "zcode" },
+      ]);
+      assert.deepEqual(options, { canPickMany: true, title: "选择安装目标 CLI", placeHolder: "可多选 Skills 安装位置" });
+      return selectedPlatforms;
+    }],
+    [services, "installLocalSkillZipFromPath", async (payload: unknown, file: unknown) => {
+      events.push("install");
+      assert.deepEqual(payload, { platforms: ["zcode", "claude"] });
+      assert.equal(file, "/tmp/in-memory.zip");
+      return "installed";
+    }],
+  ], async () => {
+    const panel = createRequestPanel();
+    await panel.dispatch({ action: "pickAndInstallLocalSkillZip" });
+    assert.equal(panel.messages.at(-1)?.data, null);
+    assert.deepEqual(events, ["file"]);
+    selectedFiles = [];
+    await panel.dispatch({ action: "pickAndInstallLocalSkillZip" });
+    assert.equal(panel.messages.at(-1)?.data, null);
+    selectedFiles = [{ fsPath: "/tmp/in-memory.zip" }];
+    for (const selection of [undefined, []]) {
+      selectedPlatforms = selection;
+      await panel.dispatch({ action: "pickAndInstallLocalSkillZip" });
+      assert.equal(panel.messages.at(-1)?.data, null);
+    }
+    assert.equal(events.includes("install"), false);
+    selectedPlatforms = [{ platform: "zcode" }, { platform: "claude" }];
+    await panel.dispatch({ action: "pickAndInstallLocalSkillZip" });
+    assert.equal(panel.messages.at(-1)?.data, "installed");
+    assert.deepEqual(events.slice(-3), ["file", "platforms", "install"]);
+  });
+});
+
+test("panel export preserves filenames, empty content, UTF-8, fallback and write failure boundaries", async () => {
+  const logger = require("../../logger") as AnyRecord;
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-command-export-"));
+  const events: unknown[][] = [];
+  let mkdirFails = false;
+  let writeFails = false;
+  const failure = new Error("export IO failed");
+  try {
+    await withRequestPatches([
+      [os, "homedir", () => home],
+      [fs.promises, "mkdir", async (...args: unknown[]) => { events.push(["mkdir", ...args]); if (mkdirFails) throw failure; }],
+      [fs.promises, "writeFile", async (...args: unknown[]) => { events.push(["write", ...args]); if (writeFails) throw failure; }],
+      [logger, "logEssential", async (...args: unknown[]) => { events.push(["log", ...args]); }],
+    ], async () => {
+      const panel = createRequestPanel();
+      const exports = [
+        { fileName: "../bad:name.JSON", content: "中文" },
+        { fileName: "ready.json", content: "" },
+        { content: "{}" },
+      ];
+      for (const payload of exports) await panel.dispatch({ action: "exportConfigs", payload });
+      const downloads = path.join(home, "Downloads");
+      assert.deepEqual(panel.messages[0].data, { path: path.join(downloads, "bad_name.JSON.json"), fileName: "bad_name.JSON.json", downloadsDir: downloads });
+      assert.equal(panel.messages[1].data.fileName, "ready.json");
+      assert.match(panel.messages[2].data.fileName, /^sinitek-cli-configs-\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/);
+      assert.deepEqual(events.slice(0, 3), [
+        ["mkdir", downloads, { recursive: true }],
+        ["write", path.join(downloads, "bad_name.JSON.json"), "中文", "utf8"],
+        ["log", "config-export", { path: path.join(downloads, "bad_name.JSON.json") }],
+      ]);
+      assert.ok(events.some((entry) => entry[0] === "write" && entry[2] === ""));
+      mkdirFails = true;
+      await panel.dispatch({ action: "exportConfigs", payload: { fileName: "fallback", content: "fallback" } });
+      assert.deepEqual(panel.messages.at(-1)?.data, { path: path.join(home, "fallback.json"), fileName: "fallback.json", downloadsDir: home });
+      mkdirFails = false;
+      writeFails = true;
+      const beforeFailure = events.length;
+      await panel.dispatch({ action: "exportConfigs", payload: { fileName: "write-fail", content: "fail" } });
+      assert.equal(panel.messages.at(-1)?.success, false);
+      assert.equal(Object.prototype.hasOwnProperty.call(panel.messages.at(-1), "data"), false);
+      assert.deepEqual(events.slice(beforeFailure).map((entry) => entry[0]), ["mkdir", "write"]);
+      const beforeInvalid = events.length;
+      for (const payload of [undefined, null, {}, { content: 123 }]) {
+        await panel.dispatch({ action: "exportConfigs", payload });
+        assert.equal(panel.messages.at(-1)?.success, false);
+      }
+      assert.equal(events.length, beforeInvalid);
+    });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("config protocol declarations stay aligned with the production registry and bridge actions", () => {
   const actions = extractConfigActions();
   const panelSource = readProjectFile("src/webview/configPanel.ts");
   const viewSource = readProjectFile("src/webview/configView.ts");
   const apiSource = readProjectFile("media/config/assets/config-app-api.js");
+  const { ConfigManagerPanel } = require("../../webview/configPanel") as typeof import("../../webview/configPanel");
+  const manager = new ConfigManagerPanel({ fsPath: repoRoot } as any);
+  const handlers = (manager as AnyRecord).requestHandlers;
+  const registeredActions = Reflect.ownKeys(handlers);
+
+  assert.equal(registeredActions.length, actions.length);
+  assert.deepEqual(new Set(registeredActions), new Set(actions));
+  assert.ok(Object.values(handlers).every((handler) => typeof handler === "function"));
 
   assert.deepEqual(actions, [
     "getList",
@@ -1662,7 +1955,6 @@ test("config protocol declarations stay aligned with panel switch cases and brid
   ]);
 
   for (const action of actions) {
-    assert.match(panelSource, new RegExp(`case "${escapeRegExp(action)}":`), `${action} should have a panel handler`);
     assert.match(viewSource, new RegExp(`requestConfig\\("${escapeRegExp(action)}"`), `${action} should have a webview bridge wrapper`);
   }
 
