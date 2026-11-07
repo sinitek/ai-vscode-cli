@@ -143,6 +143,11 @@ class FakeElement {
     return this.children.length;
   }
 
+  replaceChildren(...children: FakeElement[]): void {
+    this.innerHTML = "";
+    children.forEach((child) => this.appendChild(child));
+  }
+
   appendChild<T extends FakeElement>(child: T): T {
     this.detach(child);
     child.parentElement = this;
@@ -391,6 +396,8 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "rememberRenderedMessage"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getOrCreateMessageElement"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "createMessageElement"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getMessageConversationKey"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "activateRenderedConversation"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderMessages"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"],
@@ -430,10 +437,7 @@ function browserScript(): string {
     "var lastAutoInteractiveModeTabKey = \"\";",
     "var traceCollapsibleOpenKeys = new Set();",
     "var instructionGroupOpenKeys = new Set();",
-    "var thinkingBubbleViewStates = new Map();",
-    "var renderedMessagesById = new Map();",
-    "var renderedInstructionGroupsByKey = new Map();",
-    "var renderedConversationKey = \"\";",
+    VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(0, VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("var thinkingBubbleResizeObserver")),
     "var thinkingBubbleResizeObserver = null;",
     "var conversationRuntimeByTabId = Object.create(null);",
     "var loopMetaByTabId = Object.create(null);",

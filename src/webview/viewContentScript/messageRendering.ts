@@ -3,6 +3,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
       var renderedMessagesById = new Map();
       var renderedInstructionGroupsByKey = new Map();
       var renderedConversationKey = "";
+      var renderedMessageCount = 0;
+      var renderedConversationViews = new Map();
+      const MAX_CACHED_CONVERSATION_VIEWS = 2;
+      const MAX_CACHED_CONVERSATION_MESSAGES = 5000;
       var thinkingBubbleResizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver((entries) => entries.forEach((entry) => syncThinkingBubbleViewport(entry.target, false)))
         : null;
@@ -757,8 +761,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           content: message.content,
           metadata: JSON.stringify({ ...message, content: undefined }),
           context: JSON.stringify([
-            state.currentCli,
-            getActiveConversationTabId(),
+            getMessageConversationKey(),
+            state.onlyShowFinalResults,
             index,
             streaming === true || isAssistantMarkdownRenderPending(message),
             isPreToolAssistantNarration(message, index),
@@ -964,17 +968,77 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return true;
       }
 
+      function getMessageConversationKey() {
+        const tabId = getActiveConversationTabId();
+        const tab = getConversationTabSummary(tabId);
+        return JSON.stringify([tab ? tab.cli : state.currentCli, tabId]);
+      }
+
+      function pruneRenderedConversationViews(tabIds) {
+        const validTabIds = new Set(tabIds);
+        renderedConversationViews.forEach((view, key) => {
+          if (!validTabIds.has(view.tabId)) {
+            renderedConversationViews.delete(key);
+          }
+        });
+      }
+
+      function activateRenderedConversation(conversationKey) {
+        if (renderedConversationKey === conversationKey) {
+          return null;
+        }
+        const previousKey = renderedConversationKey;
+        const previousTabId = previousKey ? JSON.parse(previousKey)[1] : null;
+        if (previousTabId && getConversationTabSummary(previousTabId)
+          && renderedMessageCount <= MAX_CACHED_CONVERSATION_MESSAGES) {
+          renderedConversationViews.set(previousKey, {
+            tabId: previousTabId,
+            children: Array.from(elements.messages.children),
+            messagesById: renderedMessagesById,
+            instructionGroupsByKey: renderedInstructionGroupsByKey,
+            messageCount: renderedMessageCount,
+            scrollTop: elements.chatArea ? elements.chatArea.scrollTop : 0,
+            nearBottom: isChatNearBottom(),
+          });
+        }
+        if (thinkingBubbleResizeObserver) {
+          thinkingBubbleResizeObserver.disconnect();
+        }
+        const restored = renderedConversationViews.get(conversationKey);
+        renderedConversationViews.delete(conversationKey);
+        let cachedMessageCount = 0;
+        renderedConversationViews.forEach((view) => { cachedMessageCount += view.messageCount; });
+        while (renderedConversationViews.size > MAX_CACHED_CONVERSATION_VIEWS
+          || cachedMessageCount > MAX_CACHED_CONVERSATION_MESSAGES) {
+          const oldestKey = renderedConversationViews.keys().next().value;
+          cachedMessageCount -= renderedConversationViews.get(oldestKey).messageCount;
+          renderedConversationViews.delete(oldestKey);
+        }
+        elements.messages.replaceChildren(...(restored ? restored.children : []));
+        renderedMessagesById = restored ? restored.messagesById : new Map();
+        renderedInstructionGroupsByKey = restored ? restored.instructionGroupsByKey : new Map();
+        renderedMessageCount = restored ? restored.messageCount : 0;
+        renderedConversationKey = restored ? conversationKey : "";
+        if (restored && thinkingBubbleResizeObserver) {
+          elements.messages.querySelectorAll(".thinking-bubble-viewport").forEach((viewport) => {
+            thinkingBubbleResizeObserver.observe(viewport);
+          });
+        }
+        return restored || { scrollTop: 0, nearBottom: true };
+      }
+
       function renderMessages(options = {}) {
         try {
-          const conversationKey = JSON.stringify([state.currentCli, getActiveConversationTabId()]);
+          const conversationKey = getMessageConversationKey();
+          const restoredView = activateRenderedConversation(conversationKey);
           const visibleMessages = getVisibleMessages();
           const visibleIds = visibleMessages.map((entry) => entry.message.id).filter(Boolean);
           const reuseMessages = options.incremental === true
             && renderedConversationKey === conversationKey
             && new Set(visibleIds).size === visibleIds.length;
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
-          const previousScrollTop = elements.chatArea ? elements.chatArea.scrollTop : 0;
-          const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
+          const previousScrollTop = restoredView ? restoredView.scrollTop : (elements.chatArea ? elements.chatArea.scrollTop : 0);
+          const shouldAutoScroll = !chatSearchAnchored && (restoredView ? restoredView.nearBottom : isChatNearBottom());
           captureOpenTraceCollapsibleKeys();
           captureOpenInstructionGroupKeys();
           thinkingBubbleViewStates.clear();
@@ -989,6 +1053,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           }
           renderedConversationKey = conversationKey;
           appendVisibleMessageEntries(visibleMessages, reuseMessages);
+          renderedMessageCount = visibleMessages.length;
 
           forceCollapseToolResultBubbles();
           elements.emptyState.style.display = visibleMessages.length === 0 ? "block" : "none";
@@ -1007,6 +1072,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           renderedMessagesById.clear();
           renderedInstructionGroupsByKey.clear();
           renderedConversationKey = "";
+          renderedMessageCount = 0;
           if (thinkingBubbleResizeObserver) {
             thinkingBubbleResizeObserver.disconnect();
           }
@@ -1701,6 +1767,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
                 state.conversationTabs.activeTabId = tab.id;
               }
               syncActiveMessagesFromRuntime();
+              renderConversationTabs();
               syncRunningStateForActiveTab();
               if (typeof updateContextTokenUsage === "function") {
                 updateContextTokenUsage();

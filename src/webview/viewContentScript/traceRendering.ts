@@ -540,11 +540,15 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         if (!message || message.role !== "assistant") {
           return content;
         }
-        if (message.kind === "thinking" && state.currentCli === "grok") {
-          content = joinGrokThinkingSoftBreaks(content);
-        }
-        if (message.kind === "thinking" && state.currentCli === "codex") {
-          content = stripCodexThinkingPlaceholderText(content);
+        if (message.kind === "thinking") {
+          const activeTab = state.conversationTabs?.tabs?.find((tab) => tab.id === state.conversationTabs.activeTabId);
+          const currentCli = activeTab ? activeTab.cli : state.currentCli;
+          if (currentCli === "grok") {
+            content = joinGrokThinkingSoftBreaks(content);
+          }
+          if (currentCli === "codex") {
+            content = stripCodexThinkingPlaceholderText(content);
+          }
         }
         const marker = "\${FINAL_ANSWER_TEXT_MARKER}";
         if (marker) {

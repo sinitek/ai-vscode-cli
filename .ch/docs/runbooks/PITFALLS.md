@@ -14,6 +14,13 @@
 
 ## 当前有效条目
 
+### Webview 标签切换的重复消息重建（已规避）
+
+- 现象：长对话切换标签后短暂卡顿，宿主回传时再次阻塞。
+- 根因：本地点击、`state` 和 `setMessages` 连续全量清空消息 DOM，重复解析 Markdown、挂载 JSON 树与注册思考气泡观测。
+- 长期规避：运行态同步默认增量渲染；近期标签视图采用有界缓存，保留节点并按快照更新，不以无限缓存换取速度。跨 CLI 的渲染身份取标签 CLI，不取尚未收到宿主确认的临时 `state.currentCli`。
+- 验证：`npm run build && node --test dist/test/webview/clipagescriptruntimecoverage.test.js`；生产 Webview 的 Chromium 合成长对话测量需覆盖点击、两类宿主回传、节点复用、滚动位置和后台更新，不能只统计点击 handler。
+
 - Loop+ 单次调用完成或子任务验收通过不代表父任务完成；暂停需核对最终决策和阻塞摘要：见 [Loop+ 暂停排查](loop-plus-stop-diagnosis.md)。
 - 增量刷新不会自动恢复临时禁用的按钮：见本页“相同 HTML 补丁不会清理按钮临时状态”。
 - 抽取 Webview 函数的测试夹具必须同步依赖：见本页“Webview 源码抽取夹具必须补齐真实依赖”。

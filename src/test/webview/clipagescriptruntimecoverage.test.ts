@@ -598,6 +598,7 @@ function createRuntimeHarness(
         shouldHideParsedTaskListMessage,
         stripParsedTaskListContentFromText,
         renderedMessageCacheSize: () => renderedMessagesById.size,
+        renderedConversationViewCacheSize: () => renderedConversationViews.size,
         forceRenderMarkdownFailure: () => {
           renderMarkdown = () => { throw new Error("markdown failed"); };
           renderMessages();
@@ -2813,6 +2814,178 @@ test("live appends reuse every unchanged history bubble and expanded instruction
   assert.equal(group.open, true);
   assert.equal(group.dataset.instructionCount, "3");
   assert.equal(group.querySelector("summary").textContent, "收起 (3)");
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("state and identical message snapshots reuse rendered bubbles and only replace changed content", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const transcript = [
+    { id: "stable-user", role: "user", content: "保留原节点" },
+    { id: "changed-reply", role: "assistant", content: "原始回复", codexFinalAnswer: true },
+  ];
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: transcript });
+  const user = api.findRenderedMessageElement("stable-user");
+  const reply = api.findRenderedMessageElement("changed-reply");
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: structuredClone(transcript) });
+  assert.equal(api.findRenderedMessageElement("stable-user"), user);
+  assert.equal(api.findRenderedMessageElement("changed-reply"), reply);
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    transcript[0], { ...transcript[1], content: "更新后的回复" },
+  ] });
+  assert.equal(api.findRenderedMessageElement("stable-user"), user);
+  assert.notEqual(api.findRenderedMessageElement("changed-reply"), reply);
+  assert.match(api.findRenderedMessageElement("changed-reply").querySelector(".bubble").innerHTML, /更新后的回复/);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("tab round trips reuse isolated views before and after host acknowledgement and restore scroll and groups", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "claude" }];
+  const panelState = (activeTabId: string) => createPanelState({
+    currentCli: tabs.find((tab) => tab.id === activeTabId)?.cli,
+    conversationTabs: { activeTabId, tabs },
+  });
+  window.dispatchMessage({ type: "state", payload: panelState("tab-1") });
+  api.state.onlyShowFinalResults = false;
+  const transcript = [
+    { id: "shared-user", role: "user", content: "第一个标签" },
+    { id: "cmd-1", role: "trace", content: "exec first" },
+    { id: "cmd-2", role: "trace", content: "exec second" },
+  ];
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: transcript });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [
+    { id: "shared-user", role: "user", content: "第二个标签" },
+  ] });
+  const firstUser = api.findRenderedMessageElement("shared-user");
+  const messages = document.getElementById("messages");
+  const group = messages.querySelector("details.instruction-group");
+  group.querySelector("summary").click();
+  const chatArea = document.getElementById("chatArea");
+  chatArea.scrollHeight = 2000;
+  chatArea.clientHeight = 400;
+  chatArea.scrollTop = 120;
+  document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[1].click();
+  const secondUser = api.findRenderedMessageElement("shared-user");
+  assert.notEqual(secondUser, firstUser);
+  assert.equal(document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[1].classList.contains("active"), true);
+  window.dispatchMessage({ type: "state", payload: panelState("tab-2") });
+  assert.equal(api.findRenderedMessageElement("shared-user"), secondUser);
+  document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[0].click();
+  assert.equal(api.findRenderedMessageElement("shared-user"), firstUser);
+  assert.equal(chatArea.scrollTop, 120);
+  assert.equal(messages.querySelector("details.instruction-group"), group);
+  assert.equal(group.open, true);
+  window.dispatchMessage({ type: "state", payload: panelState("tab-1") });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: structuredClone(transcript) });
+  assert.equal(api.findRenderedMessageElement("shared-user"), firstUser);
+  assert.equal(messages.querySelector("details.instruction-group"), group);
+  assert.equal(group.open, true);
+  assert.equal(chatArea.scrollTop, 120);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("cached views reconcile background snapshots and evict least recently used and closed tabs", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  const tabs = [1, 2, 3, 4].map((index) => ({ id: `tab-${index}`, cli: "codex" }));
+  const select = (activeTabId: string, nextTabs = tabs) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ conversationTabs: { activeTabId, tabs: nextTabs } }),
+  });
+  select("tab-1");
+  api.state.onlyShowFinalResults = false;
+  tabs.forEach((tab) => window.dispatchMessage({ type: "setMessages", tabId: tab.id, messages: [
+    { id: "shared-user", role: "user", content: tab.id },
+  ] }));
+  const firstUser = api.findRenderedMessageElement("shared-user");
+  select("tab-2");
+  const secondUser = api.findRenderedMessageElement("shared-user");
+  select("tab-3");
+  select("tab-4");
+  assert.equal(api.renderedConversationViewCacheSize(), 2);
+  select("tab-2");
+  assert.equal(api.findRenderedMessageElement("shared-user"), secondUser);
+  select("tab-1");
+  assert.notEqual(api.findRenderedMessageElement("shared-user"), firstUser);
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [
+    { id: "shared-user", role: "user", content: "后台新快照" },
+    { id: "new-user", role: "user", content: "新增消息" },
+  ] });
+  select("tab-2");
+  assert.match(api.findRenderedMessageElement("shared-user").querySelector(".bubble").innerHTML, /后台新快照/);
+  assert.ok(api.findRenderedMessageElement("new-user"));
+  select("tab-2", [tabs[1]]);
+  assert.equal(api.renderedConversationViewCacheSize(), 0);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("cross-CLI tab clicks format thinking with the target CLI before host acknowledgement", () => {
+  const { api, document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "grok"]);
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "grok" }];
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "tab-1", tabs } }) });
+  api.state.onlyShowFinalResults = false;
+  const thinking = { id: "thinking", role: "assistant", kind: "thinking", content: "First line\n continues here." };
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [thinking] });
+  document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[1].click();
+  assert.equal(api.state.currentCli, "codex");
+  assert.equal(api.getAssistantMessageContentForDisplay(thinking), "First line continues here.");
+  const bubble = api.findRenderedMessageElement("thinking");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ currentCli: "grok", conversationTabs: { activeTabId: "tab-2", tabs } }) });
+  assert.equal(api.findRenderedMessageElement("thinking"), bubble);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("a pending bottom-scroll frame from another tab does not overwrite restored reading position", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, undefined, true);
+  const flushAnimationFrames = () => {
+    const frames = Array.from(window.animationFrames.values()) as Listener[];
+    window.animationFrames.clear();
+    frames.forEach((listener) => listener());
+  };
+  const select = (activeTabId: string) => window.dispatchMessage({ type: "state", payload: createPanelState({
+    conversationTabs: { activeTabId, tabs: [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }] },
+  }) });
+  select("tab-1");
+  api.state.onlyShowFinalResults = false;
+  const chatArea = document.getElementById("chatArea");
+  chatArea.scrollHeight = 2000;
+  chatArea.clientHeight = 400;
+  chatArea.scrollTop = 120;
+  flushAnimationFrames();
+  chatArea.scrollTop = 120;
+  select("tab-2");
+  select("tab-1");
+  assert.equal(chatArea.scrollTop, 120);
+  flushAnimationFrames();
+  assert.equal(chatArea.scrollTop, 120);
+});
+
+test("cached message totals stay bounded and result-only changes invalidate restored views", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  const tabs = [1, 2, 3].map((index) => ({ id: `tab-${index}`, cli: "codex" }));
+  const select = (activeTabId: string) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ conversationTabs: { activeTabId, tabs } }),
+  });
+  select("tab-1");
+  api.state.onlyShowFinalResults = false;
+  for (const tab of tabs.slice(0, 2)) {
+    window.dispatchMessage({ type: "setMessages", tabId: tab.id, messages: [
+      ...Array.from({ length: 2500 }, (_, index) => ({ id: `user-${index}`, role: "user", content: tab.id })),
+      { id: "trace", role: "trace", content: "exec pwd" },
+    ] });
+  }
+  const firstUser = api.findRenderedMessageElement("user-0");
+  select("tab-2");
+  select("tab-3");
+  assert.equal(api.renderedConversationViewCacheSize(), 1);
+  api.state.onlyShowFinalResults = true;
+  select("tab-2");
+  assert.ok(api.findRenderedMessageElement("user-0"));
+  assert.equal(api.findRenderedMessageElement("trace"), null);
+  select("tab-1");
+  assert.notEqual(api.findRenderedMessageElement("user-0"), firstUser);
+  assert.equal(api.findRenderedMessageElement("trace"), null);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 

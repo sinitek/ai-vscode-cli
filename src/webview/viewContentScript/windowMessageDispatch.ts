@@ -32,7 +32,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               instructionGroupOpenKeys.clear();
             }
             syncConversationControlsForActiveTab();
-            renderMessages();
+            renderMessages({ incremental: true });
           }
           if (data.type === "sessionLoadError") {
             console.error("[sinitek-webview] sessionLoadError", {

@@ -64,6 +64,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
 
       function pruneConversationRuntimeStates(tabIds) {
         const validKeys = new Set([TAB_RUNTIME_DEFAULT_KEY]);
+        if (typeof pruneRenderedConversationViews === "function") {
+          pruneRenderedConversationViews(tabIds);
+        }
         if (Array.isArray(tabIds)) {
           tabIds.forEach((tabId) => {
             if (typeof tabId === "string" && tabId) {
@@ -151,7 +154,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         const nextMessages = ensureRuntimeStateMessages(runtimeState);
         state.messages = nextMessages;
         if (options.render !== false) {
-          renderMessages();
+          renderMessages({ incremental: true });
         }
       }
 
@@ -175,7 +178,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
           if (isRuntimeStateForActiveTab(tabId)) {
             state.messages = runtimeState.messages;
             if (options.render !== false) {
-              renderMessages();
+              renderMessages({ incremental: true });
             }
           }
           if (loopMetaChanged) {

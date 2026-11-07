@@ -2,6 +2,13 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## AI 对话标签切换性能
+
+- 切换时立即更新选中标签并显示该标签的已加载消息；宿主 `state` 和 `setMessages` 回传采用增量对比，未变化的气泡与指令组不重复解析或重建。
+- 按 CLI 与标签 ID 隔离近期消息视图，最多缓存两个非活动视图、合计不超过 5000 条消息，超限按最近使用顺序淘汰；关闭标签释放对应缓存，不改变磁盘会话格式或 CLI 执行逻辑。
+- 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
+- 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
+
 ## Loop+ 容量感知并行与轻量冲突协作
 
 - 生产并发上限保持 6；主模型可见真实上限、剩余槽位和单次派发上限。存在至少三个有收益的独立交付边界且容量允许时争取 3–6 路，不再默认按一个全栈角色或两个前后端角色限制任务数；边界不足、真实依赖或容量不足时允许少派，不为凑数拆分。

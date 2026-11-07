@@ -1073,11 +1073,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function stickChatToBottom(behavior = "auto") {
+        const tabId = getActiveConversationTabId();
         followLatestMessages = true;
         suppressScrollButtonUntil = Date.now() + AUTO_SCROLL_BUTTON_SUPPRESS_MS;
         updateScrollToBottomButton(true);
         scrollChatToBottom(behavior);
         requestAnimationFrame(() => {
+          if (getActiveConversationTabId() !== tabId) {
+            return;
+          }
           scrollChatToBottom("auto");
           updateScrollToBottomButton(true);
         });
