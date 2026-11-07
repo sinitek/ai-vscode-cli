@@ -48,6 +48,12 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("conversation tabs use compact horizontal padding and close-button spacing", () => {
+  assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*gap:\s*3px;/);
+  assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*padding:\s*2\.5px 5px;/);
+  assert.match(HEADER_TABS_STYLES, /\.conversation-tab-close\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/);
+});
+
 test("renders accessible prompt history pagination below the scrollable list", () => {
   const html = buildHtml();
   const promptPanel = html.split('id="historyPanelPrompts"')[1].split('id="historyPanelSessions"')[0];

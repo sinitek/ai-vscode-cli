@@ -414,6 +414,23 @@ test("narrow group chat starts with an inaccessible collapsed sidebar and opens 
   assert.deepEqual(harness.focusTargets, ["sidebar", "toggle"]);
 });
 
+test("sidebar toggle border and icon share the theme primary color and 2px strokes", () => {
+  const { html } = createSidebarHarness();
+  const toggleStyles = /\.sidebar-toggle\s*\{([^}]+)\}/u.exec(html)?.[1];
+  assert.ok(toggleStyles);
+  assert.match(toggleStyles, /border: 2px solid currentColor;/u);
+  assert.match(toggleStyles, /color: var\(--vscode-button-background, var\(--vscode-focusBorder\)\);/u);
+  assert.match(html, /id="sidebarToggle"[^>]*>\s*<svg[^>]*fill="none"[^>]*stroke="currentColor"[^>]*stroke-width="2"/u);
+});
+
+test("sidebar toggle is 30 percent narrower with a theme-aware shadow", () => {
+  const { html } = createSidebarHarness();
+  const toggleStyles = /\.sidebar-toggle\s*\{([^}]+)\}/u.exec(html)?.[1];
+  assert.ok(toggleStyles);
+  assert.match(toggleStyles, /width: 19\.6px;/u);
+  assert.match(toggleStyles, /box-shadow: 2px 2px 6px var\(--vscode-widget-shadow,/u);
+});
+
 test("sidebar Escape closes only the drawer and defers to existing dialogs", () => {
   const harness = createSidebarHarness();
   let prevented = 0;

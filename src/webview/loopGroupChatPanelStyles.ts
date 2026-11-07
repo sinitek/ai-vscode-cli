@@ -723,15 +723,16 @@ ${DIALOG_SHELL_STYLES}
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 28px;
+          width: 19.6px;
           height: 48px;
           padding: 0;
           transform: translateY(-50%);
-          border: 1px solid var(--vscode-widget-border);
+          border: 2px solid currentColor;
           border-left: 0;
           border-radius: 0 var(--radius) var(--radius) 0;
-          color: var(--vscode-foreground);
+          color: var(--vscode-button-background, var(--vscode-focusBorder));
           background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+          box-shadow: 2px 2px 6px var(--vscode-widget-shadow, color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent));
           cursor: pointer;
         }
         .sidebar-toggle:hover {

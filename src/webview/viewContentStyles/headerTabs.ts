@@ -234,11 +234,11 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       .conversation-tab {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 3px;
         min-height: 22px;
         margin-bottom: -1px;
         margin-left: -1px;
-        padding: 2.5px 10px;
+        padding: 2.5px 5px;
         border-radius: 0;
         border: 1px solid var(--vscode-widget-border, var(--vscode-input-border));
         background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editorWidget-background));

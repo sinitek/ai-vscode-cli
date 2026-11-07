@@ -308,7 +308,7 @@ ${renderPanelDialog({
           <div id="rosterPanelSlot">${patch.rosterPanelHtml}</div>
         </aside>
         <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-controls="panelSidebar" aria-expanded="false" aria-label="${escapeAttribute(strings.showSidebar)}" title="${escapeAttribute(strings.showSidebar)}">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19" /></svg>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19" /></svg>
         </button>
         <main class="main">
           <div id="timelineSlot">${patch.timelineHtml}</div>
