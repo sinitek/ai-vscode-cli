@@ -1,7 +1,7 @@
-# VS Code CLI 运行时：配置模型数据访问边界
+# VS Code CLI 运行时：配置模型与 Tab 任务摘要边界
 
-- 状态：已实施，行为保持不变
-- 更新日期：2026-11-06
+- 状态：配置模型仓储已实施，行为保持不变；Tab 任务摘要已实现并经主审，验证边界见下文
+- 更新日期：2026-11-07
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
 ## 分工与设计选择
@@ -39,4 +39,28 @@
 
 仓储不解析路径、不开文件、不写配置、不读环境凭据；读取能力仍只由 ConfigService 承载。错误端口只接收既有事件与 `{ error }`，不新增配置内容或密钥日志。不新增网络、锁、定时器或额外缓存层，刷新及运行读取次数保持原样；Map 数量和键生命周期与原宿主相同，原缓存未设淘汰，本次不另增无界层。
 
-无 UI、样式、交互或消息协议变更，FEATURE_INVENTORY 无需更新；浏览器/VS Code 可视化验证不适用。自动行为证据位于仓储测试和宿主选择策略测试；完整命令、结果和未验证项见 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-configured-model-repository.md`。
+上述配置模型仓储变更无 UI、样式、交互或消息协议变更，无需更新 FEATURE_INVENTORY；该部分浏览器/VS Code 可视化验证不适用。自动行为证据位于仓储测试和宿主选择策略测试；完整命令、结果和未验证项见 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-configured-model-repository.md`。
+
+## Tab 任务摘要（已实现）
+
+### 事实来源与边界
+
+`src/extension.ts` 捕获首次提交并接入摘要协调器，`src/conversationTaskSummary.ts` 承载归纳提示、结果归一化和有界队列，`src/extensionHost/conversationTaskSummary.ts` 捕获配置快照并执行隔离调用。`src/webview/types.ts` 的 `ConversationTabSummary` 投影给 `src/webview/viewContentScript/messageRendering.ts` 的 `renderConversationTabs`；Tab、会话保存与绑定由 `src/sessionTabs.ts`、`src/sessionStore.ts`、`src/sessionLifecycle.ts`、`src/workspaceSettingsStore.ts` 及既有宿主 `src/extensionHost/sessionTabs.ts` 承接。原 `preparePendingLabel` 提示词标签行为保留，不等于 AI 摘要。用户行为见能力分册 §3.4；原先待实现阶段已在验收后收口，过程和证据见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md`。
+
+### 数据与首次触发
+
+- 对外只增加可选 `ConversationTabSummary.taskSummary?: string`。归一化折叠空白，校验汉字与纯文本，拒绝空白、超限、思考/工具标记和无效输出；以 `Array.from` 限制最多 30 个 Unicode 码点，不破坏非 BMP 字符。提示要求简体中文，但未做确定性繁简转换。旧记录缺字段兼容，无生成中/失败占位。
+- 首次用户可见需求在 Loop 协议改写和 local session 接管前通过 WeakMap 保存；共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用，捕获实际模型、思考/variant、命令、参数、环境与 provider 配置快照。主任务不等待摘要结束。`taskSummaryAttempted` 随 Tab/草稿/会话保存，失败、超时和溢出也消费一次尝试；空白 Tab、后续消息、hover、刷新与旧历史恢复不补生成或重试。
+- 摘要是任务/会话元信息，不写入用户消息、回放、任务记录或 Loop 协议。草稿、会话保存、状态投影和 local/native 绑定（包括目标 session 已存在时）保留摘要与尝试状态，重载/历史重开恢复元信息，不从当前活动 Tab 猜测归属。
+
+### 生命周期与失败降级
+
+- 请求捕获工作区、准确 Tab 对象、草稿对象与唯一请求代际；写回和执行前检查有效性，活动请求每 100 毫秒检查身份。关闭、重置、工作区切换后丢弃迟到结果，重置后立即提交的新请求不与旧请求冲突；原生绑定迁移仍写入同一任务当前绑定的 session。
+- 队列并发 2、总容量 32（含活动与待执行），活动调用超时 20 秒；输入最多 6000 码点、助手输出最多 4096 个 UTF-16 单元，OpenCode 结构流另限 128 KiB。失败/超时/溢出不重试；取消、清理和扩展退出释放 runner/进程、计时器和隔离临时目录。
+- 七种 CLI 复用现有 runner/配置助手，以独立 session 和受限权限执行，不续接原 thread、不执行原任务工具。Codex/Grok/DSH/Kimi/ZCode 使用原生 app-server/ACP，Claude 使用 SDK，OpenCode 使用已验证的 `run --format json`，不新增手写 HTTP 或服务。`src/cli/cliRunArgStrategies.ts` 对 DSH/Kimi/ZCode 的 one-shot prompt 禁令保持；不可用或无效结果仅摘要缺失，不影响主任务、不回落提示词截断。
+
+### UI 消费与验证边界
+
+前端只消费字段，不因 hover 或焦点发起 AI。鼠标连续停留或键盘聚焦 1000 毫秒后显示一段正文的轻量浮层；离开/失焦、选择/切换、关闭、分页和 Escape 均清理计时并隐藏。单一 body 级浮层以 `textContent`、`role="tooltip"` 和 `aria-describedby` 安全展示，沿用 `.header-hover-tooltip` 主题语义；重绘保留有效停留时间/焦点，窄视口换行、边界钳制及向上翻转不越界。无摘要、生成中、失败无占位；原 Tab 尺寸、分页、运行/错误状态、角色和关闭行为不变，无新增配置、语言包或开关。
+
+运行时与 UI 护栏分别在 `src/test/session/conversationTaskSummary.test.ts`、会话存储/生命周期回归及 `src/test/webview/conversationtabsummarytooltip.test.ts`。主审合并代码构建与相关测试 299/299；真实隔离 Codex 调用生成 22 码点摘要，6348 毫秒并清除临时目录；完整生成 Webview 在 960×720、280×640 与深浅主题四组合通过 Chromium 验证，另有 UI 相关 41/41 回归（与主审测试重叠，不相加）。其余六种 CLI 未做真实 provider 调用，没有完整 VS Code 扩展宿主端到端、确定性繁简转换或无关全量测试。原始材料和具体命令见归档计划；本次收口只复核证据并做文档/本体检查，不重建 `dist` 或重新调用真实 CLI。

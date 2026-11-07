@@ -535,6 +535,12 @@ export function createSessionLifecycleController(deps: {
     const draft = deps.getPendingSessionDraft(tabId, cli);
     const label = draft.label;
     const firstPrompt = draft.firstPrompt;
+    const summaryRecord = deps.sessionStore()[cli].sessions.find((item) => item.id === sessionId);
+    if (summaryRecord && (draft.taskSummary || draft.taskSummaryAttempted)) {
+      if (draft.taskSummary) summaryRecord.taskSummary = draft.taskSummary;
+      if (draft.taskSummaryAttempted) summaryRecord.taskSummaryAttempted = true;
+      deps.persistSessionStore(deps.sessionStore());
+    }
     if (!label) {
       if (firstPrompt) {
         const sessions = deps.sessionStore()[cli].sessions;

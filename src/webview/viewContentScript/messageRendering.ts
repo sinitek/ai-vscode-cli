@@ -1668,12 +1668,219 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return button;
       }
 
+      var conversationTabSummaryTooltipController = null;
+
+      function createConversationTabSummaryTooltipController(root) {
+        const tooltipId = "conversationTabSummaryTooltip";
+        let tooltip = null;
+        let timer = null;
+        let generation = 0;
+        let current = null;
+        let entries = new Map();
+        let rebuilding = false;
+        let restoreFocus = null;
+        let pointer = null;
+
+        const findTab = (target) => {
+          const tab = target && typeof target.closest === "function"
+            ? target.closest(".conversation-tab") : null;
+          return tab && root.contains(tab) ? tab : null;
+        };
+        const describe = (anchor, visible) => {
+          const ids = (anchor.getAttribute("aria-describedby") || "").split(/\\s+/)
+            .filter((id) => id && id !== tooltipId);
+          if (visible) {
+            ids.push(tooltipId);
+          }
+          if (ids.length) {
+            anchor.setAttribute("aria-describedby", ids.join(" "));
+          } else {
+            anchor.removeAttribute("aria-describedby");
+          }
+        };
+        const hide = () => {
+          generation += 1;
+          if (timer !== null) {
+            clearTimeout(timer);
+            timer = null;
+          }
+          if (current) {
+            describe(current.anchor, false);
+          }
+          current = null;
+          if (tooltip) {
+            tooltip.hidden = true;
+          }
+        };
+        const validAnchor = (anchor) => {
+          if (!anchor.isConnected || !root.contains(anchor) || document.hidden) {
+            return false;
+          }
+          const rect = anchor.getBoundingClientRect();
+          return window.innerWidth > 16 && window.innerHeight > 16
+            && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0
+            && rect.top < window.innerHeight && rect.left < window.innerWidth;
+        };
+        const show = () => {
+          timer = null;
+          if (!current || !validAnchor(current.anchor)) {
+            hide();
+            return;
+          }
+          if (!tooltip) {
+            tooltip = document.createElement("div");
+            tooltip.id = tooltipId;
+            tooltip.className = "header-hover-tooltip conversation-tab-summary-tooltip";
+            tooltip.setAttribute("role", "tooltip");
+            document.body.appendChild(tooltip);
+          }
+          tooltip.textContent = current.text;
+          tooltip.style.maxWidth = Math.min(280, window.innerWidth - 16) + "px";
+          tooltip.style.maxHeight = (window.innerHeight - 16) + "px";
+          tooltip.hidden = false;
+          const anchorRect = current.anchor.getBoundingClientRect();
+          const tooltipRect = tooltip.getBoundingClientRect();
+          const left = Math.max(8, Math.min(anchorRect.left + (anchorRect.width - tooltipRect.width) / 2,
+            window.innerWidth - tooltipRect.width - 8));
+          const preferredTop = anchorRect.bottom + 8;
+          const top = preferredTop + tooltipRect.height <= window.innerHeight - 8
+            ? preferredTop : anchorRect.top - tooltipRect.height - 8;
+          tooltip.style.left = left + "px";
+          tooltip.style.top = Math.max(8, Math.min(top, window.innerHeight - tooltipRect.height - 8)) + "px";
+          describe(current.anchor, true);
+        };
+        const enter = (anchor, source) => {
+          const id = anchor && anchor.dataset.conversationTabId;
+          const entry = entries.get(id);
+          if (!entry || !entry.text || !validAnchor(anchor)) {
+            hide();
+            return;
+          }
+          if (current && current.id === id) {
+            return;
+          }
+          hide();
+          current = { id, anchor, text: entry.text, source, bounds: anchor.getBoundingClientRect() };
+          const token = generation;
+          timer = setTimeout(() => {
+            if (token === generation) {
+              show();
+            }
+          }, 1000);
+        };
+        root.addEventListener("mouseover", (event) => {
+          const anchor = findTab(event.target);
+          pointer = { x: event.clientX, y: event.clientY };
+          if (anchor && findTab(event.relatedTarget) !== anchor) {
+            enter(anchor, "pointer");
+          }
+        });
+        root.addEventListener("mousemove", (event) => {
+          pointer = { x: event.clientX, y: event.clientY };
+        });
+        root.addEventListener("mouseout", (event) => {
+          if (!rebuilding && findTab(event.target) !== findTab(event.relatedTarget)) {
+            hide();
+          }
+        });
+        root.addEventListener("focusin", (event) => {
+          if (!rebuilding) {
+            enter(findTab(event.target), "focus");
+          }
+        });
+        root.addEventListener("focusout", (event) => {
+          if (!rebuilding && findTab(event.target) !== findTab(event.relatedTarget)) {
+            hide();
+          }
+        });
+        root.addEventListener("click", hide, true);
+        root.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            hide();
+          }
+        }, true);
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            hide();
+          }
+        });
+        document.addEventListener("visibilitychange", hide);
+        window.addEventListener("resize", hide);
+        window.addEventListener("scroll", () => {
+          if (!current || rebuilding) {
+            return;
+          }
+          const bounds = current.anchor.getBoundingClientRect();
+          if (!validAnchor(current.anchor) || ["left", "top", "right", "bottom"]
+            .some((edge) => bounds[edge] !== current.bounds[edge])) {
+            hide();
+          }
+        }, true);
+        window.addEventListener("blur", hide);
+        window.addEventListener("pagehide", hide);
+
+        return {
+          beginRender() {
+            rebuilding = true;
+            const focused = findTab(document.activeElement);
+            restoreFocus = focused ? {
+              id: focused.dataset.conversationTabId,
+              close: document.activeElement !== focused,
+            } : null;
+            entries = new Map();
+          },
+          register(anchor, tab) {
+            anchor.dataset.conversationTabId = tab.id;
+            entries.set(tab.id, {
+              anchor,
+              text: typeof tab.taskSummary === "string" ? tab.taskSummary.trim() : "",
+            });
+          },
+          endRender() {
+            if (restoreFocus) {
+              const entry = entries.get(restoreFocus.id);
+              if (entry) {
+                const focusTarget = restoreFocus.close
+                  ? entry.anchor.querySelector(".conversation-tab-close") : entry.anchor;
+                if (focusTarget && !focusTarget.disabled) {
+                  focusTarget.focus({ preventScroll: true });
+                }
+              }
+            }
+            rebuilding = false;
+            if (!current) {
+              return;
+            }
+            const entry = entries.get(current.id);
+            const stillHovered = current.source !== "pointer" || (pointer
+              && findTab(document.elementFromPoint(pointer.x, pointer.y)) === (entry && entry.anchor));
+            const stillFocused = current.source !== "focus"
+              || (entry && findTab(document.activeElement) === entry.anchor);
+            if (!entry || !entry.text || !validAnchor(entry.anchor) || !stillHovered || !stillFocused) {
+              hide();
+              return;
+            }
+            describe(current.anchor, false);
+            current.anchor = entry.anchor;
+            current.text = entry.text;
+            current.bounds = entry.anchor.getBoundingClientRect();
+            if (tooltip && !tooltip.hidden) {
+              show();
+            }
+          },
+        };
+      }
+
       function renderConversationTabs() {
         syncConversationTabRunningFlowWatch();
         syncAutoInteractiveModeForActiveTab();
         if (!elements.conversationTabs) {
           return;
         }
+        if (!conversationTabSummaryTooltipController) {
+          conversationTabSummaryTooltipController = createConversationTabSummaryTooltipController(elements.conversationTabs);
+        }
+        conversationTabSummaryTooltipController.beginRender();
         const tabs = state.conversationTabs && Array.isArray(state.conversationTabs.tabs)
           ? state.conversationTabs.tabs
           : [];
@@ -1684,6 +1891,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         if (!showTabs) {
           conversationTabPageIndex = 0;
           conversationTabPageAnchorTabId = activeTabId;
+          conversationTabSummaryTooltipController.endRender();
           return;
         }
         const activeTabIndex = tabs.findIndex((tab) => tab && tab.id === activeTabId);
@@ -1736,6 +1944,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           tabItem.setAttribute("aria-selected", String(isActive));
           tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
           tabItem.setAttribute("aria-disabled", "false");
+          conversationTabSummaryTooltipController.register(tabItem, tab);
 
           const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
           const labelText = formatConversationTabLabel(tab, tabBaseLabel);
@@ -1801,6 +2010,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           );
           elements.conversationTabs.appendChild(nextButton);
         }
+        conversationTabSummaryTooltipController.endRender();
       }
 
 `;

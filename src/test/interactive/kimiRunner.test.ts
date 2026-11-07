@@ -406,6 +406,22 @@ test("Kimi permission requests auto-approve with an advertised allow option", as
   assert.deepEqual(permissionReply?.result, { outcome: { outcome: "selected", optionId: "approve_once" } });
 });
 
+test("text-only Kimi runners deny permissions even if a caller offers an explicit approval", async () => {
+  const fake = new FakeKimi();
+  const { runner } = createRunner(fake, { model: MODEL, denyToolPermissions: true });
+  try {
+    await runner.start();
+    const finish = fake.finishPrompt.bind(fake);
+    fake.finishPrompt = ((message: Record<string, unknown>) => {
+      fake.requestPermission(String((message.params as { sessionId?: string }).sessionId ?? ""));
+      setTimeout(() => finish(message), 5);
+    }) as typeof fake.finishPrompt;
+    await runner.prompt("summarize only", { onRequest: () => ({ result: { outcome: { outcome: "selected", optionId: "approve_once" } } }) });
+    const reply = fake.lines.map((line) => JSON.parse(line) as Record<string, unknown>).find((message) => message.id === "perm-1");
+    assert.deepEqual(reply?.result, { outcome: { outcome: "cancelled" } });
+  } finally { runner.dispose(); }
+});
+
 test("Kimi prompt rejects provider errors embedded in an ACP result", async () => {
   const message = 'Model "kimi-k3.1-pro" is not supported by any configured account in this group';
   const fake = new FakeKimi();

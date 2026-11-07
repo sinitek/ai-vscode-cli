@@ -119,6 +119,7 @@ export type KimiStreamHandlers = {
 };
 
 export type KimiRunnerOptions = {
+  denyToolPermissions?: boolean;
   cwd: string;
   command?: string;
   agentArgs?: readonly string[];
@@ -838,8 +839,8 @@ export class KimiInteractiveRunner {
       resolution = null;
     }
     // Plan mode must never be bypassed: only non-plan turns may auto-approve.
-    const decision = resolveKimiPermissionDecision(resolution, offer, {
-      allowTools: this.currentModeId !== "plan",
+    const decision = resolveKimiPermissionDecision(this.options.denyToolPermissions ? null : resolution, offer, {
+      allowTools: !this.options.denyToolPermissions && this.currentModeId !== "plan",
     });
     this.reply(message.id, buildKimiPermissionResult(decision));
   }

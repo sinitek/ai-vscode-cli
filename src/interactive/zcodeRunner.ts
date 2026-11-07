@@ -71,6 +71,7 @@ export type ZcodeStreamHandlers = {
 };
 
 export type ZcodeRunnerOptions = {
+  denyToolPermissions?: boolean;
   cwd: string;
   command?: string;
   agentArgs?: readonly string[];
@@ -514,6 +515,13 @@ export class ZcodeInteractiveRunner {
       return;
     }
     if (message.method === "interaction/requestPermission") {
+      if (this.options.denyToolPermissions) {
+        this.child.stdin.write(serializeCodexAppServerMessage({
+          id: message.id,
+          error: { code: -32601, message: "Text-only summary denies tool permissions." },
+        }));
+        return;
+      }
       const option = selectZcodeAllowOption(message.params);
       if (!option) {
         this.child.stdin.write(serializeCodexAppServerMessage({

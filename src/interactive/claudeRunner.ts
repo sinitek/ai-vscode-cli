@@ -753,6 +753,8 @@ export class ClaudeInteractiveRunner {
       entrypoint?: string;
       sessionId: string | null;
       isolateProjectInstructions?: boolean;
+      textOnly?: boolean;
+      env?: NodeJS.ProcessEnv;
     }
   ) {}
 
@@ -969,7 +971,7 @@ export class ClaudeInteractiveRunner {
       ? this.options.model.trim()
       : defaultModelFromArgs(this.options.args);
     const cwd = this.options.cwd ?? os.homedir();
-    const claudeSettings = await loadClaudeSettings();
+    const claudeSettings = this.options.env ? {} : await loadClaudeSettings();
     this.throwIfSuperseded(abortGeneration, disposeGeneration);
 
     const abortController = new AbortController();
@@ -983,11 +985,23 @@ export class ClaudeInteractiveRunner {
       pathToClaudeCodeExecutable: this.options.entrypoint,
       maxTurns: 200,
       env: {
-        ...process.env,
+        ...(this.options.env ?? process.env),
         ...claudeSettings,
       },
       abortController,
     };
+    if (this.options.textOnly) {
+      queryOptions.tools = [];
+      queryOptions.allowedTools = [];
+      queryOptions.disallowedTools = [];
+      queryOptions.mcpServers = {};
+      queryOptions.hooks = {};
+      queryOptions.settingSources = [];
+      queryOptions.permissionMode = "dontAsk";
+      queryOptions.canUseTool = async () => ({ behavior: "deny", message: "Text-only summary." });
+      queryOptions.maxTurns = 1;
+      queryOptions.persistSession = false;
+    }
     if (queryOptions.permissionMode === "bypassPermissions") {
       queryOptions.allowDangerouslySkipPermissions = true;
     }

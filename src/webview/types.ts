@@ -268,6 +268,7 @@ export type SessionSummary = {
 };
 
 export type ConversationTabSummary = {
+  taskSummary?: string;
   id: string;
   cli: CliName;
   sessionId: string | null;

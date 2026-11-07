@@ -2,9 +2,12 @@ import { CliName, CLI_LIST, InteractiveMode, LOOP_PLUS_INTERACTIVE_MODE } from "
 import { ConversationTabSummary, ChatMessage } from "./webview/types";
 import { resolveLoopSchedulingMode, type LoopSchedulingMode, type LoopTaskStatus } from "./loopTaskStore";
 import { type SessionStore } from "./sessionStore";
+import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
 export type ConversationTabRecord = {
+  taskSummary?: string;
+  taskSummaryAttempted?: boolean;
   id: string;
   cli: CliName;
   sessionId: string | null;
@@ -20,6 +23,8 @@ export type ConversationTabsState = {
 };
 
 export type PendingSessionDraft = {
+  taskSummary?: string;
+  taskSummaryAttempted?: boolean;
   label: string | null;
   firstPrompt: string | null;
   messages: ChatMessage[];
@@ -344,6 +349,8 @@ export function createSessionTabsController(deps: {
       sessionId: sessionIdByCli[cli] ?? null,
       sessionIdByCli,
       createdAt,
+      ...(normalizeConversationTaskSummary(record.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(record.taskSummary) } : {}),
+      ...(record.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
       ...(executionLocked ? {
         executionLocked: true,
         lockedPrimaryModel,
@@ -384,6 +391,8 @@ export function createSessionTabsController(deps: {
           sessionId: sessionIdByCli[tab.cli] ?? null,
           sessionIdByCli,
           createdAt: tab.createdAt,
+          ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
+          ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
           ...(isConversationTabExecutionLocked(tab) ? {
             executionLocked: true,
             lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
@@ -404,6 +413,8 @@ export function createSessionTabsController(deps: {
         sessionId: tab.sessionId,
         sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
         createdAt: tab.createdAt,
+        ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
+        ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
         ...(isConversationTabExecutionLocked(tab) ? {
           executionLocked: true,
           lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
@@ -548,6 +559,8 @@ export function createSessionTabsController(deps: {
           && loopTaskRunning
         );
         const summary = {
+          taskSummary: normalizeConversationTaskSummary(tab.taskSummary)
+            ?? normalizeConversationTaskSummary(deps.getSessionStore()?.[tab.cli]?.sessions.find((session) => session.id === tab.sessionId)?.taskSummary),
           id: tab.id,
           cli: tab.cli,
           sessionId: tab.sessionId,
@@ -624,6 +637,10 @@ export function createSessionTabsController(deps: {
       state.tabs.forEach((tab) => {
         if (getConversationTabSessionIdForCli(tab, cli) === sessionId) {
           changed = setConversationTabSessionIdForCli(tab, cli, null) || changed;
+          if (tab.cli === cli) {
+            delete tab.taskSummary;
+            delete tab.taskSummaryAttempted;
+          }
           clearDraft(tab.id, cli);
         }
       });
@@ -700,6 +717,8 @@ export function createSessionTabsController(deps: {
       if (!activeTab) {
         return;
       }
+      delete activeTab.taskSummary;
+      delete activeTab.taskSummaryAttempted;
       let changed = false;
       if (activeTab.cli !== cli) {
         changed = switchConversationTabCli(activeTab, cli) || changed;

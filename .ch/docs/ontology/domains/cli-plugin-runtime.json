@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-06",
+  "as_of": "2026-11-07",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -84,6 +84,22 @@
         {"path": "ARCHITECTURE.md", "anchor": "CLI / Interactive / Config 服务层"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
         {"path": "src/interactive/grokAppServerProtocol.ts"}
+      ]
+    },
+    {
+      "id": "plugin.conversation_task_summary",
+      "name": "对话 Tab AI 任务摘要",
+      "kind": "value_object",
+      "description": "任务/会话元信息：首次有效提交异步归纳一次，以可选 ConversationTabSummary.taskSummary 提供最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文但无确定性繁简转换。不同于首条提示词截取标签，也不是任务完成总结；缺失字段兼容旧记录。",
+      "status": "active",
+      "aliases": ["Tab 任务摘要", "taskSummary", "会话意图摘要"],
+      "implementation_paths": ["src/conversationTaskSummary.ts", "src/extensionHost/conversationTaskSummary.ts", "src/webview/types.ts"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Tab 任务摘要（已实现）"},
+        {"path": "src/webview/types.ts", "anchor": "ConversationTabSummary"},
+        {"path": "src/conversationTaskSummary.ts", "anchor": "normalizeConversationTaskSummary"},
+        {"path": "src/test/session/conversationTaskSummary.test.ts"}
       ]
     },
     {
@@ -180,6 +196,25 @@
     }
   ],
   "relations": [
+    {
+      "id": "plugin.relation.session_records_task_summary",
+      "name": "会话保存任务摘要",
+      "description": "摘要与 taskSummaryAttempted 随 Tab、草稿和会话保存并投影给所属 Tab；local/native session 接管、重载和历史重开保留同一任务归属，不补生成旧历史。",
+      "status": "active",
+      "from": "plugin.cli_session",
+      "type": "records",
+      "to": "plugin.conversation_task_summary",
+      "cardinality": "1:0..1",
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "数据与首次触发"},
+        {"path": "src/sessionStore.ts"},
+        {"path": "src/sessionLifecycle.ts"},
+        {"path": "src/extensionHost/sessionTabs.ts"},
+        {"path": "src/workspaceSettingsStore.ts"},
+        {"path": "src/test/session/sessionStoreCoreCoverage.test.ts"},
+        {"path": "src/test/session/sessionLifecycleCoreCoverage.test.ts"}
+      ]
+    },
     {
       "id": "plugin.relation.host_contains_panel",
       "name": "扩展宿主承载对话面板",
@@ -306,6 +341,52 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.tab_task_summary_first_submit",
+      "name": "任务摘要仅首次提交异步生成",
+      "description": "首次用户可见需求在 Loop 改写前捕获，共同 runPrompt 取得实际配置执行租约后独立异步归纳，不等完成、不阻塞主任务。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出无摘要且不重试，空白 Tab、后续消息、hover、刷新和旧历史不触发。七种 CLI 复用已有 runner 与配置，不污染原对话/Loop，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断。",
+      "status": "active",
+      "applies_to": ["plugin.conversation_task_summary", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "生命周期与失败降级"},
+        {"path": "src/cli/cliRunArgStrategies.ts"},
+        {"path": "src/extension.ts", "anchor": "rememberConversationTaskSummarySubmission"},
+        {"path": "src/conversationTaskSummary.ts", "anchor": "createConversationTaskSummaryQueue"},
+        {"path": "src/extensionHost/conversationTaskSummary.ts", "anchor": "captureConversationTaskSummaryExecution"},
+        {"path": "src/test/session/conversationTaskSummary.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.tab_task_summary_identity",
+      "name": "任务摘要持久化与迟到结果隔离",
+      "description": "摘要按任务/会话保存，兼容旧记录缺字段；local/native session 绑定、重载和历史重开不丢失、不串 Tab。请求绑定工作区、准确 Tab/草稿对象与唯一代际；关闭、重置或工作区切换作废在途请求并丢弃迟到结果，重置后立即新提交不与旧请求冲突，不按活动 Tab 兜底写回。",
+      "status": "active",
+      "applies_to": ["plugin.conversation_task_summary", "plugin.cli_session", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "生命周期与失败降级"},
+        {"path": "src/conversationTaskSummary.ts", "anchor": "createConversationTaskSummaryCoordinator"},
+        {"path": "src/test/session/conversationTaskSummary.test.ts"},
+        {"path": "src/sessionTabs.ts"},
+        {"path": "src/sessionStore.ts"},
+        {"path": "src/sessionLifecycle.ts"},
+        {"path": "src/extensionHost/sessionTabs.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.tab_task_summary_tooltip",
+      "name": "任务摘要延迟浮层与键盘读取",
+      "description": "鼠标连续停留或键盘聚焦 Tab 1000 毫秒后显示一段正文的轻量主题浮层；离开/失焦、选择/切换、关闭、分页或 Escape 隐藏。无摘要、生成中、失败无占位；textContent 安全文本配合 tooltip/aria-describedby，重绘保留有效停留和焦点，窄屏换行不越界；原 Tab 尺寸、分页、运行/错误状态、角色和关闭功能不变，无新增配置、语言包或开关。",
+      "status": "active",
+      "applies_to": ["plugin.conversation_task_summary", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 任务摘要"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "createConversationTabSummaryTooltipController"},
+        {"path": "src/webview/viewContentStyles/headerTabs.ts", "anchor": ".conversation-tab-summary-tooltip"},
+        {"path": "src/test/webview/conversationtabsummarytooltip.test.ts"}
+      ]
+    },
     {
       "id": "plugin.rule.cli_example_import_inputs",
       "name": "七类 CLI 范例导入必填与模型引用一致性",

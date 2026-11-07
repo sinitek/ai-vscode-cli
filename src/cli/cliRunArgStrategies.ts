@@ -23,6 +23,7 @@ export type CliRunArgOptions = {
  * Strategies do not read them.
  */
 type CliRunArgBuildOptions = CliRunArgOptions & {
+  baseArgs?: readonly string[];
   openCodeSmallModel?: string | null;
   openCodeSmallVariant?: string | null;
   envOverrides?: Record<string, string>;
@@ -260,7 +261,7 @@ export function buildCliArgs(
   prompt?: string,
 ): string[] {
   const strategy = createCliRunArgStrategies()[cli];
-  const baseArgs = getCliArgs(cli);
+  const baseArgs = options.baseArgs ?? getCliArgs(cli);
   const thinkingArgs = strategy.includeThinkingArgs && options.thinkingMode
     ? getThinkingArgs(cli, options.thinkingMode)
     : [];

@@ -87,6 +87,16 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       .header-hover-tooltip[hidden] {
         display: none;
       }
+      .conversation-tab-summary-tooltip {
+        position: fixed;
+        transform: none;
+        box-sizing: border-box;
+        width: max-content;
+        max-width: min(280px, calc(100vw - 16px));
+        white-space: normal;
+        overflow-wrap: anywhere;
+        overflow: hidden;
+      }
       #chatSearchButton.is-open {
         opacity: 1;
         color: var(--vscode-textLink-foreground, var(--vscode-focusBorder));

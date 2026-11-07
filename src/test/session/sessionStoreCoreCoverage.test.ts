@@ -78,6 +78,26 @@ function createSession(id: string, lastUsedAt: number, extra: Partial<SessionRec
   };
 }
 
+test("task summary metadata survives disk reload and legacy records remain absent", () => {
+  const paths = createTemporaryPaths();
+  const store = createStore();
+  store.codex.sessions.push(createSession("new", 200, { taskSummary: "  修复\n会话恢复  ", taskSummaryAttempted: true }), createSession("legacy", 200));
+  const options = {
+    cliList, unnamedLabel: "Unnamed", isTimestampWithinHistoryRetention: () => true,
+    buildSessionLabelFromPrompt: () => null, shouldUseFallbackSessionLabel: () => false,
+  };
+  try {
+    const normalized = ensureSessionStore(store, options);
+    assert.equal(normalized.codex.sessions[0].taskSummary, "修复 会话恢复");
+    assert.equal(normalized.codex.sessions[0].taskSummaryAttempted, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(normalized.codex.sessions[1], "taskSummary"), false);
+    writeSessionFile(normalized, "workspace", paths);
+    const restored = ensureSessionStore(readSessionFile("workspace", paths) ?? undefined, options);
+    assert.equal(restored.codex.sessions[0].taskSummary, "修复 会话恢复");
+    assert.equal(restored.codex.sessions[1].taskSummary, undefined);
+  } finally { removeTemporaryPaths(paths); }
+});
+
 test("normalizes retained sessions, stale current IDs, and basic store helpers", () => {
   const options = {
     cliList,

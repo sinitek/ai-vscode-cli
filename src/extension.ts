@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
+import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
+import { normalizeOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
 import { createHumanInteractionAttentionHost } from "./extensionHost/humanInteractionAttentionHost";
 import { withHumanInteractionAttention } from "./humanInteractionAttention";
 import { notifyLoopTaskCompletion, notifyTaskRunCompletion } from "./taskCompletionAttention";
@@ -266,6 +269,27 @@ const conversationTabStore: ConversationTabsState = {
   tabs: [],
 };
 const pendingSessionDrafts: Record<string, PendingSessionDraft> = {};
+const pendingConversationTaskSummarySubmissions = createConversationTaskSummarySubmissions<ConversationTabRecord, {
+  workspace: string;
+  draft: PendingSessionDraft;
+  requirement: string;
+  model: string | null;
+  thinkingMode: ThinkingMode;
+  command: string;
+  args: string[];
+  openCodeVariant: string | null;
+}>();
+const conversationTaskSummaries = createConversationTaskSummaryCoordinator({
+  workspace: () => activeWorkspaceKey,
+  getTab: (tabId) => conversationTabStore.tabs.find((tab) => tab.id === tabId) ?? null,
+  getDraft: (tabId) => getPendingSessionDraft(tabId, getConversationTabById(tabId)?.cli),
+  getSession: (tab) => sessionStore[tab.cli]?.sessions.find((session) => session.id === getConversationTabSessionIdForCli(tab, tab.cli)),
+  persist: () => {
+    sessionTabsController.persistConversationTabsToWorkspaceSettings();
+    void persistSessionStoreToStorage(sessionStore).catch(() => undefined);
+  },
+  publish: () => { void postPanelState().catch(() => undefined); },
+});
 const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
@@ -663,6 +687,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 export function deactivate(): void {
   isExtensionDeactivating = true;
+  conversationTaskSummaries.dispose();
   void humanInteractionAttention?.dispose();
   humanInteractionAttention = undefined;
   void restoreMarketplaceUpdateCheck();
@@ -1904,6 +1929,7 @@ function ensureWorkspaceSessionStore(): void {
 }
 
 function applyWorkspaceSessionStore(workspaceKey: string): void {
+  conversationTaskSummaries.clear();
   activeWorkspaceKey = workspaceKey;
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
@@ -4526,6 +4552,7 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     return input;
   }
   const tab = getConversationTabById(target.tabId);
+  rememberConversationTaskSummarySubmission(input, target);
   const firstExecutionModel = resolveRecordedExecutionModel(input, getSelectedCliModel(target.cli));
   const firstExecutionDisplayModel = resolvePreloadedExecutionModel(input, target.cli);
   const newlyLocked = markConversationTabExecutionLocked(target.tabId, firstExecutionModel);
@@ -4558,6 +4585,35 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     ...input,
     preloadedUserMessageId: messageId,
   };
+}
+
+function rememberConversationTaskSummarySubmission(input: PromptRunInput, target: PromptRunTarget) {
+  const tab = getConversationTabById(target.tabId);
+  if (!tab) return undefined;
+  const draft = getPendingSessionDraft(target.tabId, target.cli);
+  return pendingConversationTaskSummarySubmissions.remember(tab, activeWorkspaceKey, draft, () => {
+    if (getConversationTabSessionIdForCli(tab, target.cli) || tab.taskSummaryAttempted || tab.taskSummary || draft.firstPrompt
+      || draft.messages.some((message) => message.role === "user" && message.id !== input.preloadedUserMessageId)) return undefined;
+    const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
+    const requirement = input.taskRole === "subtask"
+      ? task?.subTasks.find((subtask) => subtask.id === input.loopSubtaskId)?.prompt
+      : task?.rootPrompt ?? input.displayPrompt;
+    if (!requirement?.trim()) return undefined;
+    const configId = input.configSelections?.[target.cli]?.configId ?? getActiveConfigIdForCli(target.cli);
+    const model = input.model ?? getSelectedCliModel(target.cli, configId);
+    const role = input.taskRole === "subtask" ? "subtask" : "main";
+    return {
+      workspace: activeWorkspaceKey, draft, requirement, model,
+      thinkingMode: input.thinkingModeOverride ?? getEffectiveThinkingMode(target.cli, model),
+      command: getCliCommand(target.cli),
+      args: [...getCliArgs(target.cli)],
+      openCodeVariant: target.cli === "opencode" ? normalizeOpenCodeThinkingEffort(
+        input.executionProfile?.openCodeVariant ?? input.thinkingModeOverride
+          ?? (role === "subtask" ? input.loopSubtaskThinkingMode : input.loopMainThinkingMode)
+          ?? getOpenCodeRoleVariantFromStore(modelStore, configId, model, role),
+      ) : null,
+    };
+  });
 }
 
 function appendSystemMessageForPromptTarget(target: PromptRunTarget, content: string): void {
@@ -4666,6 +4722,8 @@ async function runPrompt(
   if (!target) {
     return;
   }
+  const summarySubmissionTab = getConversationTabById(target.tabId);
+  const summarySubmission = rememberConversationTaskSummarySubmission(input, target);
   promptAutoRepairController.cancel(target.tabId);
   if (shouldAwaitCliCommandAutoRepair(target.cli, {
     [target.cli]: getCliCommand(target.cli),
@@ -4689,6 +4747,8 @@ async function runPrompt(
     return;
   }
   const previousSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
+  const firstSummaryTask = Boolean(summarySubmission && activeWorkspaceKey === summarySubmission.workspace
+    && currentTab === summarySubmissionTab);
   target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
   if (previousSessionId && target.sessionId !== previousSessionId) {
     disposeInteractiveRunnerIfUnused({ cli: target.cli, sessionId: previousSessionId });
@@ -4803,6 +4863,23 @@ async function runPrompt(
           throw error;
         }
         try {
+          if (summarySubmission) {
+            conversationTaskSummaries.request({
+              tabId: attemptTarget.tabId,
+              eligible: firstSummaryTask,
+              capture: () => {
+                const model = currentAttemptInput.model ?? summarySubmission.model;
+                return captureConversationTaskSummaryExecution({
+                  cli: attemptTarget.cli, requirement: summarySubmission.requirement, model,
+                  thinkingMode: currentAttemptInput.thinkingModeOverride ?? summarySubmission.thinkingMode,
+                  command: summarySubmission.command,
+                  args: summarySubmission.args,
+                  openCodeVariant: currentAttemptInput.thinkingModeOverride ?? summarySubmission.openCodeVariant,
+                  claudeEntrypoint: attemptTarget.cli === "claude" ? resolveClaudeInteractiveEntrypoint(summarySubmission.command) : undefined,
+                });
+              },
+            });
+          }
           if (shouldUseInteractive) {
             await runPromptInteractive(currentAttemptInput, attemptTarget, executionOptions);
           } else if (hasOtherTabRun(attemptTarget.tabId)) {

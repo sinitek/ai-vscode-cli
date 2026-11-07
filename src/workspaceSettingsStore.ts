@@ -17,6 +17,8 @@ import {
 } from "./loopPlusAcceptancePlan";
 
 export type ConversationTabRecordForWorkspaceSettings = {
+  taskSummary?: string;
+  taskSummaryAttempted?: boolean;
   id: string;
   cli: CliName;
   sessionId: string | null;

@@ -89,6 +89,7 @@ export type GrokStreamHandlers = {
 };
 
 export type GrokRunnerOptions = {
+  textOnly?: boolean;
   cwd: string;
   command?: string;
   agentArgs?: readonly string[];
@@ -178,6 +179,10 @@ export class GrokInteractiveRunner {
       this.options.agentArgs ?? getGrokAgentArgs(),
       this.options.model,
     );
+    if (this.options.textOnly) {
+      launchArgs[launchArgs.indexOf("--permission-mode") + 1] = "dontAsk";
+      launchArgs.splice(3, 0, "--deny", "*", "--disable-web-search", "--no-subagents");
+    }
     let resolved: ReturnType<typeof resolveSpawnCommand>;
     try {
       resolved = resolveSpawnCommand(command, launchArgs);
@@ -494,6 +499,7 @@ export class GrokInteractiveRunner {
   private async answerClientRequest(message: GrokJsonRpcMessage): Promise<void> {
     const handlers = this.activeHandlers;
     try {
+      if (this.options.textOnly) throw new GrokAcpClientError("Text-only summary denies client tools.", -32601);
       const result = await this.acpClient.handle(String(message.method), message.params, this.sessionId);
       if (this.canWrite()) {
         this.write({ jsonrpc: "2.0", id: message.id, result });

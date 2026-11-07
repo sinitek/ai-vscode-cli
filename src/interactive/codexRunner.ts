@@ -142,6 +142,8 @@ function emitPrimaryTokenUsageUpdate(
 
 
 type CodexRunnerMutableOptions = {
+  env?: NodeJS.ProcessEnv;
+  readOnly?: boolean;
   configFingerprint?: string;
   command: string;
   args: string[];
@@ -421,12 +423,20 @@ export class CodexInteractiveRunner {
       this.options.interactiveMode,
       this.options.model,
     );
+    if (this.options.readOnly) {
+      threadOptions.approvalPolicy = "never";
+      threadOptions.sandboxMode = "read-only";
+      threadOptions.additionalDirectories = [];
+      threadOptions.webSearchEnabled = false;
+      threadOptions.webSearchMode = "disabled";
+      threadOptions.networkAccessEnabled = false;
+    }
     const imagePaths = collectArgValues(this.options.args, ["--image", "-i"])
       .map((item) => item.trim())
       .filter(Boolean);
     let resolvedWorkspaceDir = threadOptions.workingDirectory;
     const configOverrides: string[] = [];
-    const childEnvResult = buildCodexChildEnv(process.env);
+    const childEnvResult = buildCodexChildEnv(this.options.env ?? process.env);
     threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
     const loadedThreadId = String(this.options.threadId || "").trim();
     if (

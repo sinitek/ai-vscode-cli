@@ -6,6 +6,7 @@ import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { stripThinkingWrapperTags } from "./thinkingMarkup";
 import type { SessionHealth } from "./sessionHealth";
 import { ChatMessage } from "./webview/types";
+import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
 
 export type SessionRecord = {
   id: string;
@@ -13,6 +14,8 @@ export type SessionRecord = {
   createdAt: number;
   lastUsedAt: number;
   firstPrompt?: string;
+  taskSummary?: string;
+  taskSummaryAttempted?: boolean;
   health?: SessionHealth;
 };
 
@@ -79,6 +82,8 @@ export function ensureSessionStore(
             createdAt: session.createdAt ?? Date.now(),
             lastUsedAt: session.lastUsedAt ?? Date.now(),
             firstPrompt,
+            ...(normalizeConversationTaskSummary(session.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(session.taskSummary) } : {}),
+            ...(session.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
             ...(session.health === "normal" || session.health === "abnormal" ? { health: session.health } : {}),
           };
         })

@@ -228,6 +228,24 @@ function createRecord(id: string, label: string = "Unnamed"): SessionRecord {
   return { id, label, createdAt: 1, lastUsedAt: 2 };
 }
 
+test("draft summary metadata binds to a local session and survives migration into an existing native record", () => {
+  const harness = createLifecycleHarness();
+  try {
+    harness.state.store.codex.sessions.push(createRecord("local_summary"), createRecord("native-summary"));
+    harness.state.drafts.set("tab-1:codex", {
+      label: null, firstPrompt: null, messages: [],
+      taskSummary: "归纳最初任务需求", taskSummaryAttempted: true,
+    });
+    harness.controller.assignPendingLabel("codex", "tab-1", "local_summary");
+    assert.equal(harness.state.store.codex.sessions[0].taskSummary, "归纳最初任务需求");
+    assert.equal(harness.state.store.codex.sessions[0].taskSummaryAttempted, true);
+    harness.controller.migrateLocalSessionToTargetSession("codex", "local_summary", "native-summary");
+    const native = harness.state.store.codex.sessions.find((session) => session.id === "native-summary")!;
+    assert.equal(native.taskSummary, "归纳最初任务需求");
+    assert.equal(native.taskSummaryAttempted, true);
+  } finally { harness.cleanup(); }
+});
+
 test("replaces an error-only session for every CLI while retaining its bubbles in the new session", () => {
   for (const cli of CLI_LIST) {
     const harness = createLifecycleHarness();

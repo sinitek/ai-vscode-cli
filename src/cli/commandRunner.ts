@@ -128,6 +128,9 @@ type StreamHandlers = {
 };
 
 type RunStreamOptions = RunCliOptions & {
+  environment?: NodeJS.ProcessEnv;
+  commandOverride?: string;
+  argsOverride?: string[];
   cwd?: string;
   sessionId?: string | null;
   processLabel?: string;
@@ -236,10 +239,11 @@ function resolveSpawnCommand(command: string, args: string[]): {
 function buildSpawnEnvironment(
   cwd: string | undefined,
   envOverrides?: Record<string, string>,
-  runtimeEnvOverrides?: Record<string, string>
+  runtimeEnvOverrides?: Record<string, string>,
+  parentEnv: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...parentEnv,
     ...(envOverrides ?? {}),
     ...(runtimeEnvOverrides ?? {}),
   };
@@ -335,8 +339,8 @@ export function runCliStream(
   handlers: StreamHandlers,
   options: RunStreamOptions = {}
 ): RunProcess {
-  const configuredCommand = getCliCommand(cli);
-  const fullArgs = buildCliArgs(cli, options, prompt);
+  const configuredCommand = options.commandOverride ?? getCliCommand(cli);
+  const fullArgs = options.argsOverride ?? buildCliArgs(cli, options, prompt);
   const processLabel = options.processLabel;
   const runtimeOverlay = cli === "opencode"
     ? createOpenCodeRuntimeOverlayForOptions(options)
@@ -368,7 +372,7 @@ export function runCliStream(
 
   const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
     cwd: options.cwd,
-    env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides),
+    env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides, options.environment),
     argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
