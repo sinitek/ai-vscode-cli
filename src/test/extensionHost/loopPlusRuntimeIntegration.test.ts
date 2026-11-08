@@ -26,7 +26,13 @@ function longPrompt(id: string, file: string): string {
 }
 
 function decision(value: unknown): string {
-  return JSON.stringify(withLoopPlusAcceptReviews(value));
+  const enriched = withLoopPlusAcceptReviews(value);
+  if (enriched && typeof enriched === "object" && !Array.isArray(enriched)
+    && (enriched as { status?: unknown }).status === "accept"
+    && !Object.prototype.hasOwnProperty.call(enriched, "progressPercent")) {
+    return JSON.stringify({ ...enriched, progressPercent: 23 });
+  }
+  return JSON.stringify(enriched);
 }
 
 function subtask(id: string, file: string, conflictGroup?: string) {

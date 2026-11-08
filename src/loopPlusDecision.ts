@@ -9,6 +9,7 @@ import {
 } from "./loopPlusAcceptancePlan";
 export { LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH, LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
 import {
+  normalizeLoopPlusProgressPercent,
   readLoopPlusTaskTypeField,
   type LoopAcceptance,
   type LoopAcceptanceCheck,
@@ -47,15 +48,15 @@ export type LoopPlusControlAction = (typeof LOOP_PLUS_CONTROL_ACTIONS)[number];
 
 export type LoopPlusControlDecision = {
   id: string;
-  action: LoopPlusControlAction;
-  prompt?: string;
-  title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
   /** 省略时 reprompt 保留原子任务分类。 */
   taskType?: LoopPlusTaskType;
   codingDelivery?: boolean;
-};
+} & (
+  | { action: "close"; prompt?: string; title?: string }
+  | { action: "reprompt"; prompt: string; title: string }
+);
 
 export type LoopPlusAcceptReview = {
   reviewEventId: string;
@@ -66,6 +67,7 @@ export type LoopPlusAcceptReview = {
 
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
+  progressPercent?: number;
   directCompletion?: true;
   reviewEventId?: string;
   reviewEventIds?: string[];
@@ -93,6 +95,7 @@ export type LoopPlusDecisionOptions = {
   allowDirectCompletion?: boolean;
   acceptancePlanKeys?: readonly string[];
   requireAcceptanceFeedback?: boolean;
+  requireProgressPercent?: boolean;
 };
 
 export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
@@ -205,6 +208,13 @@ function normalizeAcceptDecision(
   subtaskMax: number,
   options?: LoopPlusDecisionOptions,
 ): LoopPlusDecision | null {
+  const progressPercent = normalizeLoopPlusProgressPercent(raw.progressPercent);
+  if (
+    (hasOwn(raw, "progressPercent") && (progressPercent === undefined || progressPercent === 100))
+    || (options?.requireProgressPercent === true && progressPercent === undefined)
+  ) {
+    return null;
+  }
   const reviewEvents = readReviewConfirmation(raw, true);
   if (!reviewEvents) {
     return null;
@@ -237,6 +247,7 @@ function normalizeAcceptDecision(
   }
   return withEstimatedRemainingRounds({
     status: "accept",
+    ...(progressPercent !== undefined ? { progressPercent } : {}),
     ...reviewEvents,
     reviews,
     ...(subtasks.length > 0 ? { subtasks } : {}),
@@ -509,14 +520,14 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
-  if (prompt.length < LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH) {
+  if (!title || prompt.length < LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH) {
     return null;
   }
   return {
     id,
     action: "reprompt",
     prompt,
-    ...(title ? { title } : {}),
+    title,
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,

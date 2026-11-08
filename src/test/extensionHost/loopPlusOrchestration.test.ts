@@ -77,7 +77,13 @@ function subtask(id: string, files: string[], conflictGroup?: string): LoopSubta
 }
 
 function decisionJson(value: unknown): string {
-  return JSON.stringify(withLoopPlusAcceptReviews(value));
+  const enriched = withLoopPlusAcceptReviews(value);
+  if (enriched && typeof enriched === "object" && !Array.isArray(enriched)
+    && (enriched as { status?: unknown }).status === "accept"
+    && !Object.prototype.hasOwnProperty.call(enriched, "progressPercent")) {
+    return JSON.stringify({ ...enriched, progressPercent: 23 });
+  }
+  return JSON.stringify(enriched);
 }
 
 function completedDecision(extra: Record<string, unknown> = {}): string {
@@ -600,6 +606,7 @@ test("accept feedback requires reasons before commit and shows default and selec
       ? { ...check, passed, detail: passed ? "报告中的回归用例全部通过" : "报告中的回归断言失败" } : check);
     const decision = {
       status: "accept", reviewEventId: eventId,
+      progressPercent: 23,
       reviews: [{ reviewEventId: eventId, acceptance: passed ? "passed" : "failed", reason: passed ? "回归通过且实现符合需求" : "回归断言失败，尚未满足需求" }],
       acceptance: { passed, checks },
       acceptancePlanResults: [{ key: "security", passed: true, reason: "输入已校验，日志无敏感信息" }],
@@ -611,6 +618,7 @@ test("accept feedback requires reasons before commit and shows default and selec
     env.mains[env.mains.length - 1].resolve(JSON.stringify(decision));
     await flush();
     assert.equal(env.acceptanceFeedback.length, 1);
+    assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusProgressPercent, 23);
     const feedback = env.acceptanceFeedback[0];
     assert.equal(feedback.taskId, run.taskId);
     assert.equal(feedback.heading, "验收结果");
@@ -627,6 +635,46 @@ test("accept feedback requires reasons before commit and shows default and selec
     assert.match(feedback.body, /\| 审查内容 \| 审查结果 \|/);
     assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
   }
+});
+
+test("Loop+ persists assessed acceptance progress, retains it after pause, and completes at 100 percent", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成全部任务" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  assert.equal(env.tasks.get(taskId)?.loopPlusProgressPercent, 0);
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "第一阶段已完成" });
+  await flush();
+  const accept = env.mains[1];
+  accept.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: accept.request.reviewEventId,
+    reviews: [{ reviewEventId: accept.request.reviewEventId, acceptance: "passed", reason: "阶段验收通过" }],
+    progressPercent: 23,
+    subtasks: [],
+  }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusProgressPercent, 23);
+  assert.match(env.mains[2].request.prompt, /Last overall progress: 23%/);
+
+  env.host.stopParent(taskId);
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.loopPlusProgressPercent, 23);
+  const resumed = env.host.tryRun(
+    { displayPrompt: "完成全部任务" }, env.target,
+    { resumeTaskId: taskId, schedulingMode: "event_driven", resumeRequested: true },
+  );
+  await flush();
+  const continuation = env.mains.at(-1);
+  assert.ok(continuation);
+  assert.match(continuation.request.prompt, /Last overall progress: 23%/);
+  continuation.resolve(directCompletionDecision());
+  await flush();
+  await resumed.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.loopPlusProgressPercent, 100);
 });
 
 test("completed without subtask events only summarizes and never writes an acceptance table", async () => {
@@ -2929,6 +2977,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
   const steer = env.mains[1];
   assert.equal(steer.request.kind, "user");
   const nextPrompt = longPrompt("beta-next", ["src/beta-next.ts"]);
+  const nextTitle = "按补充需求修正 beta";
   for (const attempt of [alpha, beta]) {
     await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成", modelPrompt: "完成", contextTags: [], taskRole: "subtask", loopTaskId: attempt.request.taskId, loopSubtaskId: attempt.request.subtaskId }, { cli: "codex", tabId: "controlled-tab", sessionId: `controlled-${attempt.request.subtaskId}` }, async () => assert.fail("retired attempts must not compact"));
   }
@@ -2936,7 +2985,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
     status: "steer",
     controls: [
       { id: "alpha", action: "close" },
-      { id: "beta", action: "reprompt", prompt: nextPrompt, writeFiles: ["src/beta-next.ts"] },
+      { id: "beta", action: "reprompt", title: nextTitle, prompt: nextPrompt, writeFiles: ["src/beta-next.ts"] },
     ],
   }));
   await flush();
@@ -2954,25 +3003,67 @@ test("steer closes one running subtask and reprompts another without an acceptan
   const restarted = env.attempts.filter((item) => item.request.subtaskId === "beta");
   assert.equal(restarted.length, 2);
   assert.equal(restarted[1].request.prompt, nextPrompt);
-  assert.equal(restarted[1].request.title, "beta");
+  assert.equal(restarted[1].request.title, nextTitle);
   assert.equal(restarted[1].request.continueFromSubtaskId, "beta");
   assert.deepEqual(restarted[1].request.writeFiles, ["src/beta-next.ts"]);
   assert.equal(snapshot.running.some((item) => item.attemptId === restarted[1].request.attemptId), true);
+  assert.equal(snapshot.running.find((item) => item.subtaskId === "beta")?.title, nextTitle);
   assert.equal(env.reports.some((item) => item.attemptId === alpha.request.attemptId), false);
   assert.equal(env.reports.some((item) => item.attemptId === beta.request.attemptId), false);
   assert.deepEqual(env.abortedAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
   assert.deepEqual(env.closeTabAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
   assert.equal(task?.subTasks.find((item) => item.id === "alpha")?.status, "blocked");
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.prompt, nextPrompt);
+  assert.equal(task?.subTasks.find((item) => item.id === "beta")?.title, nextTitle);
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.status, "running");
   assert.equal(notices.some((notice) => (
     notice.subtaskId === "alpha" && notice.phase === "finished" && notice.runStatus === "stopped"
+  )), true);
+  assert.equal(notices.some((notice) => (
+    notice.subtaskId === "beta" && notice.phase === "started" && notice.title === nextTitle
   )), true);
   assert.equal(notices.some((notice) => (
     notice.subtaskId === "beta"
     && notice.phase === "finished"
     && notice.assistantContent === "主任务已中断该子任务，并改用新的提示词继续执行。"
   )), true);
+});
+
+test("does not interrupt an existing attempt until reprompt includes the corrected title", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const original = env.attempts[0];
+  assert.equal(env.host.submitUserMessage(taskId, "根据补充要求纠正 alpha，并更新标题"), true);
+  await flush();
+  const nextPrompt = longPrompt("alpha-corrected", ["src/alpha.ts"]);
+  env.mains[1].resolve(decisionJson({
+    status: "steer",
+    controls: [{ id: "alpha", action: "reprompt", prompt: nextPrompt }],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.deepEqual(env.abortedAttemptIds, []);
+  assert.equal(env.tasks.get(taskId)?.subTasks[0]?.title, "alpha");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).running[0]?.attemptId, original.request.attemptId);
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), true);
+
+  const nextTitle = "按补充要求修正 alpha";
+  env.mains[2].resolve(decisionJson({
+    status: "steer",
+    controls: [{ id: "alpha", action: "reprompt", title: nextTitle, prompt: nextPrompt }],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.deepEqual(env.abortedAttemptIds, [original.request.attemptId]);
+  assert.equal(env.attempts[1].request.title, nextTitle);
+  assert.equal(env.tasks.get(taskId)?.subTasks[0]?.title, nextTitle);
 });
 
 test("main controls can close or reprompt interrupted open subtasks", async () => {
@@ -2990,7 +3081,7 @@ test("main controls can close or reprompt interrupted open subtasks", async () =
   await flush();
   env.mains[1].resolve(decisionJson({ status: "steer", controls: [
     { id: "alpha", action: "close" },
-    { id: "beta", action: "reprompt", prompt: longPrompt("beta", ["src/beta.ts"]) },
+    { id: "beta", action: "reprompt", title: "继续修正 beta", prompt: longPrompt("beta", ["src/beta.ts"]) },
   ] }));
   await flush();
   assert.deepEqual(env.closeTabAttemptIds, env.attempts.slice(0, 2).map((item) => item.request.attemptId));
@@ -3053,7 +3144,7 @@ test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id
   const nextPrompt = longPrompt("beta-reloaded", ["src/beta.ts"]);
   steer.resolve(decisionJson({
     status: "steer",
-    controls: [{ id: "beta", action: "reprompt", prompt: nextPrompt }],
+    controls: [{ id: "beta", action: "reprompt", title: "恢复后修正 beta", prompt: nextPrompt }],
   }));
   await flush();
   const betaAttempts = snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.subtaskId === "beta");
@@ -3061,6 +3152,8 @@ test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id
   assert.notEqual(betaAttempts[1]?.attemptId, betaAttempts[0]?.attemptId);
   const restarted = env.attempts.filter((item) => item.request.subtaskId === "beta");
   assert.equal(restarted.at(-1)?.request.prompt, nextPrompt);
+  assert.equal(restarted.at(-1)?.request.title, "恢复后修正 beta");
+  assert.equal(env.tasks.get(taskId)?.subTasks.find((item) => item.id === "beta")?.title, "恢复后修正 beta");
   assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), false);
 });
 

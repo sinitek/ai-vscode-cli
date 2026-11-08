@@ -162,7 +162,7 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.doesNotMatch(page, /执行结束，尚未验收|待验收队列/u);
     assert.doesNotMatch(page, /<div class="meta-label">当前轮次<\/div>/u);
     assert.match(page, /子任务 4：Delta 思考中/u);
-    assert.match(page, /主任务 思考中/u);
+    assert.match(page, /主任务 0% 思考中/u);
     assert.doesNotMatch(page, /已全部收口/u);
   }
 });
@@ -197,7 +197,7 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.match(waiting, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
   assert.match(waiting, /子任务 4：Delta 思考中/u);
   assert.match(waiting, /typing-dots/u);
-  assert.doesNotMatch(waiting, /data-thinking-kind="main"|主任务 思考中|已全部收口|正在验收/u);
+  assert.doesNotMatch(waiting, /data-thinking-kind="main"|主任务 0% 思考中|已全部收口|正在验收/u);
 
   const queuedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(queuedScheduler, "A", "a-1");
@@ -273,7 +273,7 @@ test("shows the Loop+ main reviewer animation in the shared group chat", () => {
   assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
   assertLoopPlusDetailCardsHidden(page);
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
-  assert.match(page, /主任务 思考中/u);
+  assert.match(page, /主任务 0% 思考中/u);
   assert.doesNotMatch(page, /data-thinking-kind="moderator"|裁判主持人 思考中|红蓝辩论群聊/u);
   assert.match(page, /事件驱动逐项验收/u);
 });
@@ -307,7 +307,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(heldPage, /自动验收已暂停/u);
   assert.match(heldPage, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
   assert.match(heldPage, /子任务 4：Delta 思考中/u);
-  assert.doesNotMatch(heldPage, /data-thinking-kind="main"|主任务 思考中|正在验收|已全部收口/u);
+  assert.doesNotMatch(heldPage, /data-thinking-kind="main"|主任务 0% 思考中|正在验收|已全部收口/u);
   assert.match(heldPage, /<button[^>]*data-action="continueTask"/u);
   assert.doesNotMatch(heldPage, /<button[^>]*data-action="stopTask"/u);
 
@@ -319,7 +319,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
   assertLoopPlusDetailCardsHidden(resumedPage);
   assert.match(resumedPage, /子任务 4：Delta 思考中/u);
-  assert.match(resumedPage, /主任务 思考中/u);
+  assert.match(resumedPage, /主任务 0% 思考中/u);
   assert.doesNotMatch(resumedPage, /自动验收已暂停/u);
   assert.match(resumedPage, /<button[^>]*data-action="stopTask"/u);
   assert.doesNotMatch(resumedPage, /<button[^>]*data-action="continueTask"/u);
@@ -358,7 +358,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assertLoopPlusDetailCardsHidden(stoppedPage);
   assert.match(stoppedPage, /data-thinking-kind="subtask" data-thinking-id="D"/u);
   assert.match(stoppedPage, /子任务 4：Delta 思考中/u);
-  assert.doesNotMatch(stoppedPage, /data-thinking-kind="main"|自动验收已暂停|正在验收|主任务 思考中/u);
+  assert.doesNotMatch(stoppedPage, /data-thinking-kind="main"|自动验收已暂停|正在验收|主任务 0% 思考中/u);
 
   const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(completedScheduler.complete().ok, true);
@@ -388,7 +388,7 @@ test("shows one execution animation for every running Loop+ subtask without pret
   assert.match(page, /子任务 5：Echo 思考中/u);
   assert.equal(page.match(/data-thinking-kind="subtask"/gu)?.length, 2);
   assert.equal(page.match(/data-thinking-kind="subtask"[^>]*>[\s\S]*?<span class="typing-dots"/gu)?.length, 2);
-  assert.doesNotMatch(page, /data-thinking-kind="main"|主任务 思考中|正在验收/u);
+  assert.doesNotMatch(page, /data-thinking-kind="main"|主任务 0% 思考中|正在验收/u);
 });
 
 test("renders short default and optional acceptance reasons in the group chat bubble", () => {
@@ -620,10 +620,10 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
   assert.match(starting, /data-loop-plus-status="decomposing"/u);
   assert.match(starting, /data-loop-plus-phase="idle"/u);
   assert.match(starting, /主任务正在分解子任务。/u);
-  assert.match(starting, /<div class="member-name">主任务<\/div>\s*<div class="member-meta">分解子任务<\/div>/u);
+  assert.match(starting, /<div class="member-name">主任务 0%<\/div>\s*<div class="member-meta">分解子任务<\/div>/u);
   assert.doesNotMatch(starting, /空闲/u);
   assert.match(starting, /data-thinking-kind="main" data-thinking-id="main"/u);
-  assert.match(starting, /主任务 思考中/u);
+  assert.match(starting, /主任务 0% 思考中/u);
 
   const idle = html(build(snapshot, {
     subTasks: [],
@@ -631,8 +631,8 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
     currentRound: 0,
   }));
   assert.match(idle, /data-loop-plus-status="idle"/u);
-  assert.match(idle, /<div class="member-name">主任务<\/div>\s*<div class="member-meta">空闲<\/div>/u);
-  assert.doesNotMatch(idle, /分解子任务|data-thinking-kind="main"|主任务 思考中/u);
+  assert.match(idle, /<div class="member-name">主任务 0%<\/div>\s*<div class="member-meta">空闲<\/div>/u);
+  assert.doesNotMatch(idle, /分解子任务|data-thinking-kind="main"|主任务 0% 思考中/u);
 
   const stale = html(build(snapshot, { loopPlusMainPhase: "decomposing" }));
   assert.match(stale, /data-loop-plus-status="idle"/u);

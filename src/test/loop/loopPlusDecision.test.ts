@@ -324,6 +324,25 @@ test("strict feedback requires all selected plan results and accepts concise fai
   }), null);
 });
 
+test("production acceptance requires an integer overall progress below completion", () => {
+  const base = withLoopPlusAcceptReviews({ status: "accept", reviewEventId: "event-progress" }) as Record<string, unknown>;
+  for (const progressPercent of [undefined, null, "23", 23.5, -1, 100, 101]) {
+    const decision = { ...base };
+    if (progressPercent === undefined) {
+      delete decision.progressPercent;
+    } else {
+      decision.progressPercent = progressPercent;
+    }
+    assert.equal(parseLoopPlusDecision(JSON.stringify(decision), { requireProgressPercent: true }), null);
+  }
+  const parsed = parseLoopPlusDecision(JSON.stringify({ ...base, progressPercent: 23 }), { requireProgressPercent: true });
+  assert.equal(parsed?.status, "accept");
+  assert.equal(parsed?.progressPercent, 23);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({ ...base, progressPercent: 0 }), { requireProgressPercent: true })?.progressPercent, 0);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({ ...base, progressPercent: 99 }), { requireProgressPercent: true })?.progressPercent, 99);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({ ...base, progressPercent: 100 })), null);
+});
+
 test("completed feedback requires short default reasons without truncating requirement coverage", () => {
   const detail = "需求覆盖证据".repeat(20);
   const base = {
@@ -566,16 +585,41 @@ test("parses steer and controls without treating them as acceptance", () => {
     status: "accept",
     reviewEventId: "event-1",
     reviews: [{ reviewEventId: "event-1", acceptance: "passed" }],
-    controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT }],
+    controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta" }],
   }));
   assert.equal(accepted?.status, "accept");
   assert.equal(accepted?.controls?.[0]?.action, "reprompt");
   assert.equal(accepted?.subtasks, undefined);
 });
 
+test("reprompt requires a non-empty corrected title on every supported decision", () => {
+  const decisions = [
+    { status: "steer" },
+    { status: "dispatch", subtasks: [subtask("alpha")] },
+    {
+      status: "accept",
+      reviewEventId: "event-1",
+      reviews: [{ reviewEventId: "event-1", acceptance: "passed" }],
+    },
+  ];
+  for (const decision of decisions) {
+    for (const title of [undefined, "", " \n ", null, 42]) {
+      assert.equal(parseLoopPlusDecision(JSON.stringify({
+        ...decision,
+        controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title }],
+      })), null, `${decision.status} must reject an invalid reprompt title: ${String(title)}`);
+    }
+    const parsed = parseLoopPlusDecision(JSON.stringify({
+      ...decision,
+      controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "  修正 beta 校验逻辑  " }],
+    }));
+    assert.equal(parsed?.controls?.[0]?.title, "修正 beta 校验逻辑");
+  }
+});
+
 test("rejects controls that would confirm, overlap, or use a short prompt", () => {
   const rejected = [
-    { status: "steer", controls: [{ id: "alpha", action: "reprompt", prompt: "太短" }] },
+    { status: "steer", controls: [{ id: "alpha", action: "reprompt", prompt: "太短", title: "修正 alpha" }] },
     { status: "steer", controls: [] },
     { status: "steer", subtasks: [subtask("alpha")], controls: [{ id: "beta", action: "close" }] },
     { status: "steer", reviewEventId: "event-1", controls: [{ id: "alpha", action: "close" }] },

@@ -40,6 +40,7 @@ export type LoopPlusMainPromptContext = {
   maxConcurrency: number;
   subtaskMax?: number;
   acceptedCount?: number;
+  progressPercent?: number;
   acceptanceLimit?: number;
   /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
   loopSubtaskMode?: LoopSubtaskMode;
@@ -253,6 +254,7 @@ function buildLoopPlusProtocolExamples(
       status: "accept",
       value: {
         status: "accept",
+        progressPercent: 23,
         ...acceptConfirmation,
         reviews: acceptReviews,
         acceptance: {
@@ -281,7 +283,7 @@ function buildLoopPlusProtocolExamples(
         status: "steer",
         controls: [
           { id: "example-running-subtask", action: "close" },
-          { id: "example-other-subtask", action: "reprompt", prompt: reprompt },
+          { id: "example-other-subtask", action: "reprompt", title: "修正校验分支并验证", prompt: reprompt },
         ].slice(0, dispatchExampleCount),
       },
     },
@@ -395,6 +397,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Queued attempt report paths: read each queued subtask communicationFile from the latest task record.",
     "Main communication and task record paths above are the supplied snapshot values. Attempt report paths are the communicationFile values stored in that record. Do not invent or hardcode a machine path.",
     `Current review eventId: ${liveEventId ?? "(none)"}`,
+    `Last overall progress: ${context.progressPercent ?? 0}%`,
     current ? formatReview(current, "current") : "Current review item: (none)",
     `Acceptance batch count: ${batchIds.length}`,
     "Acceptance batch, oldest first. Confirm this whole list in this decision:",
@@ -466,7 +469,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     acceptExampleRule,
     "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
     "- steer interrupts open subtasks and confirms nothing. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
+    "- Every accept must include progressPercent, an integer from 0 to 99. Reassess overall completion of all root and supplemental requirements using accepted evidence and remaining work, not subtask counts or acceptance counts. This is your judgment, not a scheduler calculation. New requirements may require lowering the estimate. The host updates progress only after the acceptance batch is successfully confirmed. Reserve 100% for the host after final completed succeeds; do not report 100 on accept. wait, dispatch, steer, blocked, and clarify do not update progress.",
     "- controls actions are close or reprompt. close aborts that subtask, closes its conversation tab, and drops it without an acceptance event or acceptance count. reprompt aborts it, closes that attempt's conversation tab, and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt and closes the tab; JSON alone does not stop a process.",
+    "- reprompt requires a non-empty title describing the corrected task in Simplified Chinese. Do not reuse the old title when the task goal or scope has changed; update the title together with the prompt. A reprompt without a valid title is rejected.",
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when other work is still running or pending, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept, and list its subtask ids on the review that needs the work. Passed reviews stay passed. If the new work must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",

@@ -36,6 +36,7 @@ const closeControl = { id: "child-1", action: "close" as const };
 const repromptControl = {
   id: "child-1",
   action: "reprompt" as const,
+  title: "修正子任务实现",
   prompt: "Continue from the reviewed diff without opening a second confirmation path.".padEnd(80, "."),
 };
 
@@ -70,7 +71,11 @@ function decisionStep(overrides: Partial<LoopPlusDecisionStepView> = {}): LoopPl
 }
 
 function decision(status: LoopPlusDecisionStatus, extra: Partial<LoopPlusDecision> = {}): LoopPlusDecision {
-  return withLoopPlusAcceptReviews({ status, ...extra });
+  return withLoopPlusAcceptReviews({
+    status,
+    ...(status === "accept" && extra.progressPercent === undefined ? { progressPercent: 23 } : {}),
+    ...extra,
+  });
 }
 
 function names(calls: readonly RecordedCall[]): string[] {
@@ -184,6 +189,9 @@ function createPort(options: {
     },
     persistEstimatedRounds(value) {
       record("persistEstimatedRounds", [value.estimatedRemainingRounds]);
+    },
+    persistProgressPercent(value) {
+      record("persistProgressPercent", [value.progressPercent]);
     },
     noteWaiting(runningCount) {
       record("noteWaiting", [runningCount]);
@@ -585,6 +593,7 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "submitReviewBatch",
     "acknowledgeUserMessages",
     "markDecisionAccepted",
+    "persistProgressPercent",
     "refuseDispatchPastAcceptanceLimit",
     "commitControls",
     "dispatchSubtasks",
@@ -592,7 +601,9 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "queueView",
   ]);
   assert.deepEqual(calls[3].args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
-  assert.deepEqual(calls[6].args, [1]);
+  assert.deepEqual(calls.find((call) => call.name === "persistProgressPercent")?.args, [23]);
+  assert.deepEqual(calls.find((call) => call.name === "refuseDispatchPastAcceptanceLimit")?.args, [1]);
+  assert.deepEqual(calls.find((call) => call.name === "persistEstimatedRounds")?.args, [2]);
   assert.equal(calls.find((call) => call.name === "commitControls")?.args[1], plan);
   assert.equal(names(calls).includes("applyControls"), false);
   assert.equal(names(calls).includes("waitForInFlightWork"), false);
@@ -606,11 +617,12 @@ test("accept keeps an already submitted batch when a later launch is refused or 
     reviewEventId: "evt-1",
     subtasks: [subtask],
   })), "stop");
-  assert.deepEqual(names(limited.calls).slice(0, 5), [
+  assert.deepEqual(names(limited.calls).slice(0, 6), [
     "confirmReviewWithinAcceptanceLimit",
     "submitReviewBatch",
     "acknowledgeUserMessages",
     "markDecisionAccepted",
+    "persistProgressPercent",
     "refuseDispatchPastAcceptanceLimit",
   ]);
   assert.equal(names(limited.calls).includes("dispatchSubtasks"), false);

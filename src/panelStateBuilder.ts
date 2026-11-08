@@ -36,6 +36,7 @@ import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import { buildLoopGroupChatFinalStatusSection, buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, formatLoopGroupChatMemberName, LOOP_MAIN_SUB_CHAT_ROUND_KEY, latestLoopGroupChatSubtaskStartedAt, resolveLoopTaskRunControlState } from "./loopGroupChat";
 import {
+  normalizeLoopPlusProgressPercent,
   resolveLoopSchedulingMode,
   type LoopRoundRecord,
   type LoopSubtaskRecord,
@@ -674,7 +675,10 @@ function buildLoopMainSubChatPanelRound(
   const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
   const joinedAtBySubtaskId = readLoopSubtaskJoinedStartedAt(chatFile, deps);
   if (loopPlus) {
-    const mainTitle = getLoopMainSubChatMainTitle();
+    const progressPercent = loopPlus.ok && loopPlus.phase === "completed"
+      ? 100
+      : Math.min(normalizeLoopPlusProgressPercent(task.loopPlusProgressPercent) ?? 0, 99);
+    const mainTitle = `${getLoopMainSubChatMainTitle()} ${progressPercent}%`;
     return {
       key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
       kind: "execution",

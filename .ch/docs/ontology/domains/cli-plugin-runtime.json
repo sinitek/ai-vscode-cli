@@ -1639,7 +1639,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_control",
       "name": "Loop+ 主任务用 JSON 中断子任务",
-      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词为同一子任务开启新 attempt 和新 tab。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
+      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填非空新标题为同一子任务开启新 attempt 和新 tab；标题用简体中文反映纠正目标，同步到调度快照、任务记录和群聊，不默认沿用旧标题。缺失或无效标题拒绝整份决策且不停止旧执行；close 无需标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1648,6 +1648,21 @@
         {"path": "src/loopPlusScheduler.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_overall_progress",
+      "name": "Loop+ 主任务总体进度由验收判断",
+      "description": "Loop+ 主模型在每次验收批次成功提交时给出 0–99 的总体进度整数，基于已验收证据、原始和补充需求及剩余工作判断，不按子任务数量或验收次数计算；补充需求可使进度重新校准。未提交或被拒绝的验收不得更新进度。新任务从 0% 开始，暂停、停止和续跑保留当前值；仅最终完成门禁成功并持久化后设为 100%。群聊左侧 Loop+ 主任务标题显示百分比，经典 Loop 不变。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/loopTaskStore.ts"},
+        {"path": "src/panelStateBuilder.ts"}
       ]
     },
     {

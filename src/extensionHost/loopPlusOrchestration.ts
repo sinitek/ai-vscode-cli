@@ -34,6 +34,7 @@ import { resolveStoredLoopSubtaskMode, type LoopSubtaskMode } from "../loopPlusS
 import type { LoopPlusTaskType } from "../loopTaskStore";
 import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import {
+  normalizeLoopPlusProgressPercent,
   resolveLoopSchedulingMode,
   type LoopSchedulingMode,
   type LoopSubtaskDecision,
@@ -457,7 +458,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const runtime = buildRuntime(task, target, input, scheduler);
     runtime.decomposing = true;
     runtimes.set(task.id, runtime);
-    persist(runtime);
+    persist(runtime, { loopPlusProgressPercent: 0 });
     deps.appendMessage(target, "loop-plus-started", task.id);
     deps.log?.("loop-plus-started", { taskId: task.id });
     return runtime;
@@ -805,6 +806,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         subtaskMax: decisionSubtaskMax(),
         acceptancePlanKeys,
         requireAcceptanceFeedback: true,
+        requireProgressPercent: true,
         allowDirectCompletion: canCompleteDirectly(runtime),
       });
       if (decision?.status === "clarify") {
@@ -987,6 +989,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       persistEstimatedRounds(decision: LoopPlusDecision) {
         persistEstimatedRounds(runtime, decision);
       },
+      persistProgressPercent(decision: LoopPlusDecision) {
+        const progressPercent = normalizeLoopPlusProgressPercent(decision.progressPercent);
+        if (progressPercent !== undefined && progressPercent < 100) {
+          deps.updateTask(runtime.taskId, { loopPlusProgressPercent: progressPercent, updatedAt: now() });
+        }
+      },
       noteWaiting(runningCount: number) {
         deps.appendMessage(runtime.target, "loop-plus-waiting", runtime.taskId);
         deps.log?.("loop-plus-waiting", {
@@ -1009,6 +1017,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       finishParent(decision: LoopPlusDecision): LoopPlusDecisionOutcome {
         const patch: Partial<LoopTaskRecord> = {
           status: "completed",
+          loopPlusProgressPercent: 100,
           answerConclusion: decision.answerConclusion,
           finalSummary: decision.finalSummary,
           completionRequirementCoverage: decision.requirementCoverage,
@@ -1885,6 +1894,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       maxConcurrency,
       subtaskMax: decisionSubtaskMax(),
       acceptedCount: reviewedAcceptanceCount(runtime),
+      progressPercent: normalizeLoopPlusProgressPercent(task?.loopPlusProgressPercent) ?? 0,
       acceptanceLimit: acceptanceLimitFor(runtime),
       ...(routing.mode ? { loopSubtaskMode: routing.mode } : {}),
       routingSummary: routing.summary,
@@ -2242,13 +2252,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         commands.push({ subtaskId: control.id, action: "close" });
         continue;
       }
-      const prompt = control.prompt?.trim() ?? "";
-      if (!prompt) {
+      const prompt = control.prompt.trim();
+      const title = control.title.trim();
+      if (!prompt || !title) {
         return null;
       }
       seq += 1;
       const meta = runtime.meta.get(control.id);
-      const title = control.title ?? meta?.decision.title ?? control.id;
       const writeFiles = control.writeFiles ?? meta?.decision.writeFiles ?? [];
       const conflictGroup = control.conflictGroup ?? meta?.decision.conflictGroup;
       const taskType = control.taskType ?? meta?.decision.taskType;

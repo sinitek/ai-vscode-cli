@@ -177,6 +177,63 @@ test("projects the current review, FIFO queue, running work, and pending work fr
   assert.equal(state.task.canContinue, false);
 });
 
+test("reprompt shows the corrected title for the same subtask in the group chat", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("D", "d-1", "原始执行目标")]);
+  const source = task(scheduler.snapshot(), {
+    subTasks: [{ id: "D", title: "原始执行目标", status: "running", updatedAt: 14 }],
+  });
+  const before = buildLoopGroupChatPanelStateWithDeps(source, deps());
+  assert.equal(before.rounds[0]?.participants.find((item) => item.id === "D")?.title, "子任务 1：原始执行目标");
+
+  const nextTitle = "按补充要求修正执行目标";
+  const controlled = scheduler.applyControls([{
+    subtaskId: "D",
+    action: "reprompt",
+    replacement: spec("D", "d-2", nextTitle),
+  }]);
+  assert.equal(controlled.ok, true);
+  source.loopPlus = scheduler.snapshot();
+  source.subTasks[0] = { ...source.subTasks[0], title: nextTitle, updatedAt: 21 };
+  const after = buildLoopGroupChatPanelStateWithDeps(source, deps());
+  assert.equal(after.rounds[0]?.participants.find((item) => item.id === "D")?.title, `子任务 1：${nextTitle}`);
+  assert.ok(after.loopPlus?.ok);
+  if (after.loopPlus?.ok) {
+    assert.equal(after.loopPlus.running[0]?.title, nextTitle);
+    assert.equal(after.loopPlus.running[0]?.attemptId, "d-2");
+  }
+});
+
+test("shows persisted overall progress in the Loop+ main member title and completes at 100 percent", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const base = task(scheduler.snapshot(), { subTasks: [] });
+  for (const progressPercent of [0, 23, 99, -1, 100.5]) {
+    const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), {
+      subTasks: [],
+      loopPlusProgressPercent: progressPercent,
+    }), deps());
+    const expected = Number.isInteger(progressPercent) && progressPercent >= 0 && progressPercent <= 99
+      ? progressPercent
+      : 0;
+    assert.equal(state.rounds[0]?.participants.find((item) => item.id === "main")?.title, `主任务 ${expected}%`);
+  }
+  assert.equal(scheduler.complete().ok, true);
+  const completed = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), {
+    ...base,
+    loopPlus: scheduler.snapshot(),
+    status: "completed",
+    loopPlusProgressPercent: 23,
+  }), deps());
+  assert.equal(completed.rounds[0]?.participants.find((item) => item.id === "main")?.title, "主任务 100%");
+  const classic = buildLoopGroupChatPanelStateWithDeps(task(undefined, {
+    ...base,
+    schedulingMode: "classic",
+    loopPlus: undefined,
+    loopPlusProgressPercent: 23,
+  }), deps());
+  assert.equal(classic.rounds[0]?.participants.find((item) => item.id === "main")?.title, "主任务");
+});
+
 test("shows waiting instead of a generating main task while only executions are running", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   const dispatched = scheduler.dispatch([spec("D", "d-1")]);

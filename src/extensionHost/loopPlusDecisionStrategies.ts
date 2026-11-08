@@ -59,6 +59,7 @@ export interface LoopPlusDecisionStrategyPort {
   persistRunning(): void;
   persistSnapshot(): void;
   persistEstimatedRounds(decision: LoopPlusDecision): void;
+  persistProgressPercent(decision: LoopPlusDecision): void;
   noteWaiting(runningCount: number): void;
   pauseForReview(message: string, summary?: string): void;
   armCloseout(): void;
@@ -250,6 +251,7 @@ function applyAcceptDecision(
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
+  port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
   if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";

@@ -25,6 +25,18 @@ import type {
 const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "clarify", "completed"] as const;
 const PLURAL_CONFIRMATION_KEYS = ["reviewEventIds", "confirmedEventIds", "acceptedEventIds"] as const;
 
+test("all main prompt kinds require a corrected Chinese title when reprompting", () => {
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
+    assert.match(prompt, /reprompt requires a non-empty title/);
+    assert.match(prompt, /title describing the corrected task in Simplified Chinese/);
+    assert.match(prompt, /Do not reuse the old title/);
+    const steer = parseExample(extractProtocolExamples(prompt), "steer");
+    const reprompt = steer.controls?.find((control) => control.action === "reprompt");
+    assert.ok(reprompt?.title?.trim());
+  }
+});
+
 test("all main prompt kinds require readable Chinese blockers with recovery or impossibility explanations", () => {
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
     for (const blockedReviewSummary of [undefined, "缺少联调权限"]) {
@@ -240,7 +252,8 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.equal(Object.prototype.hasOwnProperty.call(steer, "subtasks"), false);
   assert.equal(steer.controls?.some((control) => control.action === "close"), true);
   assert.equal(steer.controls?.some((control) => (
-    control.action === "reprompt" && (control.prompt?.length ?? 0) >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH
+    control.action === "reprompt" && Boolean(control.title?.trim())
+      && (control.prompt?.length ?? 0) >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH
   )), true);
 
   const blocked = parseExample(examples, "blocked");

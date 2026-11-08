@@ -170,6 +170,7 @@ export type LoopTaskRecord = {
   loopPlus?: unknown;
   loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
+  loopPlusProgressPercent?: number;
   loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
@@ -906,6 +907,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
+  const loopPlusProgressPercent = normalizeLoopPlusProgressPercent(raw.loopPlusProgressPercent);
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
   const blockReview = (raw as { loopPlusBlockReview?: unknown }).loopPlusBlockReview;
   const loopPlusBlockReview = blockReview && typeof blockReview === "object" && !Array.isArray(blockReview)
@@ -930,6 +932,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
+    ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
     ...(loopPlusBlockReview ? { loopPlusBlockReview } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
@@ -1109,6 +1112,12 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
       ? { lastStartedAt: raw.lastStartedAt }
       : {}),
   };
+}
+
+export function normalizeLoopPlusProgressPercent(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100
+    ? value
+    : undefined;
 }
 
 function normalizeLoopPlusMainPhase(value: unknown): LoopPlusMainPhase | undefined {
