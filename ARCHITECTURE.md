@@ -6,6 +6,7 @@
 
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - `.ch/docs/design-docs/config-center-request-commands.md`：配置中心实例级 24 动作命令表、局部 typed router 与领域/宿主边界。
+- `.ch/docs/design-docs/skill-archive-installation.md`：技能 ZIP 安装的兼容 Facade、来源发现与共享安全安装模板，用户行为不变。
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
