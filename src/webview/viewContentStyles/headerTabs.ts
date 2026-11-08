@@ -215,7 +215,7 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
       .conversation-tabs-track {
         display: flex;
         align-items: flex-end;
-        gap: 0;
+        gap: 1px;
         flex: 1;
         min-width: 0;
       }

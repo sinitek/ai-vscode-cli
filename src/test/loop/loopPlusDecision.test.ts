@@ -22,6 +22,42 @@ const CHINESE_PROMPT = [
   "验收：模式保持 loop_plus，快照原样保存，解析器不调度也不改任务记录。",
 ].join("");
 
+test("direct completion needs explicit host permission but no acceptance payload", () => {
+  const candidate = {
+    status: "completed",
+    directCompletion: true,
+    answerConclusion: "已处理",
+    finalSummary: "已直接完成简单事项，无需子任务或独立验收。",
+  };
+  assert.deepEqual(parseLoopPlusDecision(JSON.stringify(candidate), {
+    allowDirectCompletion: true,
+    requireAcceptanceFeedback: true,
+  }), candidate);
+  assert.equal(withLoopPlusAcceptReviews(candidate), candidate);
+  assert.equal(normalizeLoopPlusDecision(candidate), null);
+  assert.equal(normalizeLoopPlusDecision(candidate, { allowDirectCompletion: false }), null);
+  assert.equal(normalizeLoopPlusDecision({ ...candidate, directCompletion: undefined }, { allowDirectCompletion: true }), null);
+  assert.equal(normalizeLoopPlusDecision({ status: "completed", answerConclusion: "已处理", finalSummary: "已处理" }, { allowDirectCompletion: true }), null);
+});
+
+test("direct completion rejects missing results, review bypasses and mixed protocol fields", () => {
+  const candidate = { status: "completed", directCompletion: true, answerConclusion: "已处理", finalSummary: "已处理" };
+  for (const extra of [
+    { answerConclusion: " " }, { finalSummary: " " },
+    { directCompletion: false }, { directCompletion: "true" }, { directCompletion: null },
+    { reviewEventId: "event" }, { reviewEventIds: [] }, { reviews: [] },
+    { controls: [] }, { subtasks: [] }, { acceptance: { passed: false } },
+    { requirementCoverage: [] }, { acceptancePlanResults: [] },
+    { confirmedEventIds: [] }, { acceptedEventIds: [] },
+  ]) {
+    assert.equal(normalizeLoopPlusDecision({ ...candidate, ...extra }, { allowDirectCompletion: true }), null, JSON.stringify(extra));
+  }
+  assert.equal(normalizeLoopPlusDecision(candidate, { allowDirectCompletion: true, acceptancePlanKeys: ["security"] }), null);
+  for (const status of ["dispatch", "accept", "wait", "steer", "blocked", "clarify"]) {
+    assert.equal(normalizeLoopPlusDecision({ ...candidate, status }, { allowDirectCompletion: true }), null);
+  }
+});
+
 function subtask(id: string, prompt = CHINESE_PROMPT, title = `子任务 ${id}`) {
   return {
     id,

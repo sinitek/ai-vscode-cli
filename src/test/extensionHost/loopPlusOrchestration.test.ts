@@ -91,6 +91,101 @@ function completedDecision(extra: Record<string, unknown> = {}): string {
   });
 }
 
+function directCompletionDecision(): string {
+  return decisionJson({
+    status: "completed", directCompletion: true,
+    answerConclusion: "已处理简单事项", finalSummary: "直接处理完成，未新增子任务或验收。",
+  });
+}
+
+test("trivial work completes in one main call without subtasks or acceptance feedback", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "处理一个明确、低风险的简单事项" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.match(env.mains[0].request.prompt, /Direct completion available: yes/);
+  env.mains[0].resolve(directCompletionDecision());
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.tasks.get(run.taskId ?? "")?.answerConclusion, "已处理简单事项");
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.acceptanceFeedback.length, 0);
+});
+
+test("simple supplemental work is handled during live work and after earlier acceptance", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  env.host.submitUserMessage(run.taskId ?? "", "顺便处理一个不冲突的简单事项");
+  await flush();
+  const supplemental = env.mains[1];
+  assert.equal(supplemental.request.kind, "user");
+  assert.match(supplemental.request.prompt, /Direct completion available: no/);
+  assert.match(supplemental.request.prompt, /directly handle eligible independent trivial work first/);
+  supplemental.resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).userMessageQueue, []);
+  env.attempts[0].resolve({ outcome: "completed", detail: "功能完成" });
+  await flush();
+  const review = env.mains[2];
+  assert.match(review.request.prompt, /Direct completion available: no/);
+  review.resolve(decisionJson({ status: "accept", reviewEventIds: review.request.reviewEventIds, subtasks: [] }));
+  await flush();
+  const closeout = env.mains[3];
+  assert.match(closeout.request.prompt, /Direct completion available: yes/);
+  env.host.submitUserMessage(run.taskId ?? "", "再处理一项简单补充需求");
+  closeout.resolve(directCompletionDecision());
+  await flush();
+  const followup = env.mains[4];
+  assert.match(followup.request.prompt, /再处理一项简单补充需求/);
+  assert.match(followup.request.prompt, /Direct completion available: yes/);
+  followup.resolve(directCompletionDecision());
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.acceptanceFeedback.length, 1);
+});
+
+test("direct completion cannot bypass open work, review events or selected reviews", async () => {
+  for (const stage of ["running", "pending", "review", "plan"] as const) {
+    const env = harness({ maxConcurrency: 1 });
+    const run = env.host.tryRun({
+      displayPrompt: "处理工作",
+      ...(stage === "plan" ? { loopPlusAcceptancePlan: { id: "security", name: "安全审查", checks: ["security"] as const, otherText: "", systemDefault: false } } : {}),
+    }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    if (stage !== "plan") {
+      env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: stage === "pending"
+        ? [subtask("first", ["first.ts"]), subtask("second", ["second.ts"])]
+        : [subtask("first", ["first.ts"])] }));
+      await flush();
+      if (stage === "review") {
+        env.attempts[0].resolve({ outcome: "completed", detail: "待验收" });
+      } else {
+        env.host.submitUserMessage(run.taskId ?? "", "处理一个简单补充事项");
+      }
+      await flush();
+    }
+    const current = env.mains[env.mains.length - 1];
+    assert.match(current.request.prompt, /Direct completion available: no/);
+    current.resolve(directCompletionDecision());
+    await flush();
+    assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
+    assert.equal(env.acceptanceFeedback.length, 0);
+    assert.equal(env.messages.includes("loop-plus-completed"), false);
+    env.host.stopParent(run.taskId ?? "");
+    await run.done;
+  }
+});
+
 test("a proposed global block receives one bounded review and can dispatch independent work", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

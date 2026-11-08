@@ -10,6 +10,7 @@ import type { LoopTaskRole, TaskRunStatus } from "../promptRunState";
 import type { LoopMainDecision, LoopSubtaskRecord, LoopTaskRecord } from "../loopTaskStore";
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
+import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../loopDirectExecutionPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 
@@ -1016,18 +1017,19 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       `子任务沟通目录：${communication.subtasksDir}`,
       "",
       "Loop 模式原理（必须遵守）：",
-      "1. 主任务每轮只输出一个 JSON 决策，不直接做具体实现。",
+      "1. 主任务先判断是否适用简单任务直办；不适用时负责拆分和派发，不直接做具体实现。每轮最终只输出一个 JSON 决策。",
       `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
       "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你根据汇报继续决策。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
       `6. ${LOOP_MAIN_STALE_TASK_LIST_RULE_ZH}`,
+      LOOP_DIRECT_EXECUTION_RULE_ZH,
       "",
       "主任务职责：",
       "1. 读取任务记录文件中当前任务的 status、activeSubtaskId、activeSubtaskIds、subTasks 和 rounds 概要。",
       "2. 读取主任务沟通文件和最新子任务汇报，相信子任务汇报的结果，只判断用户目标和项目规则要求的工作是否已完成。",
-      "3. 第 1 轮按需求拆分任务并写入主任务沟通文件，优先派发互不冲突的可执行子任务。",
-      "4. 后续轮次根据汇报推进：有未完成工作则派发下一批子任务，不因缺少验收证据或未运行未要求的测试而增加任务。",
+      "3. 第 1 轮先判断简单任务直办；不适用时按需求拆分任务并写入主任务沟通文件，优先派发互不冲突的可执行子任务。",
+      "4. 后续轮次根据汇报推进：需要委派的未完成工作派发下一批子任务；独立且符合直办条件的新工作可直接处理。不因缺少验收证据或未运行未要求的测试而增加任务。",
       "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
       "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
       `7. 每批最多 ${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
@@ -1036,8 +1038,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
       "11. 每次决策预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个子任务批次才能 completed；completed 时为 0。",
       "12. 根据汇报，原始目标以及用户或项目规则要求的独立验收、测试任务都已完成时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
-      "13. 主任务只负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",
-      "14. 主任务不要直接执行具体代码/文件修改；返回 JSON 后由程序启动子任务。",
+      "13. 除符合条件的简单任务直办外，主任务负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",
+      "14. 简单任务直办完成后可直接返回 completed，estimatedRemainingRounds=0，如实说明操作结果，不虚构子任务或验收结论；其它实现工作返回 JSON 后由程序启动子任务。",
       "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
       "",
       "JSON 协议：",

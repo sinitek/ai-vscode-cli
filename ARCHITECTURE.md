@@ -151,6 +151,8 @@ cli / interactive / config 服务层
 
 #### Loop 子任务执行隔离
 
+- Loop / Loop+ 每轮主决策（包括补充需求、继续、验收及收尾）共享 `src/loopDirectExecutionPolicy.ts` 的简单事项直办规则，按复杂度、风险和验证需求判断，而非操作种类或修改行数。独立、明确、低风险且无需独立验证的事项由主任务直接处理，复杂或已委派工作保留原流程。Loop+ 仅无开放工作、待验收事件及附加审查时，由宿主显式放行 `directCompletion=true` 的精简完成协议；用户消息和 scheduler 门禁不变。具体边界见 `.ch/docs/design-docs/loop-plus-scheduling.md`。
+
 经典 Loop 与 Loop+ 支持连续子任务会话复用：主模型通过 `continueFromSubtaskId` 声明来源；Loop+ 验收失败的修补项按 review 关联自动继承原子任务会话，控制重派续接原子任务。真实 CLI/config/session 绑定保存在子任务记录，关闭 Tab 不清除绑定；仅同一父任务且 CLI、配置兼容时恢复。共享来源与会话串行执行，独立任务仍新建会话。隔离工作目录与 CLI 会话身份是不同边界，细节见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
 
 - 经典 Loop 主任务和子任务均以真实工作区作为 cwd，按各 CLI 的默认机制读取项目规则；子任务首次运行与手动续跑使用同一策略。主任务只拆分、派发、协调并信任子任务汇报判断完成，不检查实现细节、不亲自验收或测试。用户或项目规则要求的验收、测试、构建等检查另派独立子任务，均无要求时默认不做。Loop+ 保持既有事件驱动验收。

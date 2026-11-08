@@ -2,6 +2,13 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop / Loop+ 每轮简单事项直办
+
+- 每一轮均按复杂度、风险和验证需求判断，覆盖首次、补充需求、用户消息、继续、验收及收尾。目标明确、局部低风险、操作结果可直接确认，且用户与项目规则均无测试、构建或独立验收要求的简单事项，由主任务直接完成，不委派、不额外验收。不按操作类型、文件数或行数限制，不把复杂工作拆碎来规避流程。
+- 不冲突的简单补充事项可在其它任务执行时处理；其它任务仍照常派发、等待或验收，不接管或修补已委派产物，不因子配置失败回退主模型编码，也不遗漏原始及补充要求。
+- Loop+ 无运行、排队或待验收工作且无附加审查时，宿主接受 `directCompletion=true` 与完成结论组成的精简 `completed`，不要求验收/覆盖清单，不新增验收反馈；历史子任务不影响资格。其它完成门禁、用户消息队列和已派发工作验收保持不变。
+- 实现：`src/loopDirectExecutionPolicy.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`。验证覆盖两种模式和所有提示阶段、简单补充事项、历史委派后的精简收口，以及开放任务/事件/附加审查的拒绝路径。
+
 ## Loop+ 群聊验收状态
 
 - 状态：`active`（2026-11-07）。主模型正在批量验收时，本批所有子任务均显示蓝色「正在验收」，状态说明列出全部相关子任务；新增完成事件扩入本批时同步展示，不再仅标记首项。颜色使用 VS Code 主题蓝色变量，不硬编码色值。
@@ -60,7 +67,7 @@
 
 ## 人工交互系统提醒
 
-- Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，无论编辑器窗口在前台还是后台，都发送标题为“携宁 CLI 提醒”的固定中文系统通知；同一交互只通知一次，焦点变化不重复通知。通知不包含项目路径、问题、答案或密码，不抢焦点。
+- Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，无论编辑器窗口在前台还是后台，都发送标题为“携宁 CLI 提醒”的中文系统通知；正文为“【目录名 项目】 有一项人机交互等待处理，请返回编辑器中的 AI 对话面板。”。项目名在发送时复用 `resolveWorkspaceCwd` 解析工作目录并取目录名，无法解析时显示“【未命名 项目】”；同一交互只通知一次，焦点变化不重复通知。通知不包含完整项目路径、问题、答案或密码，不抢焦点。
 - 窗口图标提醒仅在后台触发，前台交互尚未结束时切到后台仍可触发。Windows 请求 VS Code 主进程窗口的任务栏闪烁；同主进程多窗口可能一起被提醒。macOS 在扩展 globalStorage 下生成并注册固定身份的“携宁 CLI 提醒”后台应用，通过 `UserNotifications` 发送系统通知；首次需要系统授权，被拒绝后须在“系统设置 → 通知 → 携宁 CLI 提醒”手动允许，不承诺 VS Code Dock 弹跳。Linux 使用已安装的 `notify-send`；X11 且已安装 `wmctrl` 时按主进程 PID 尽力请求窗口提醒，Wayland 不调用 X11 工具。
 - 返回窗口、最后一项交互提交/拒绝/取消/超时、扩展释放时停止图标提醒；若还有未查看的任务完成提醒，交互结束不会提前清除其图标提醒。并发交互不会被单个请求结束提前清除，慢速原生调用结束后补做清理。通知授权等待独立于窗口提醒队列，不延迟图标清理。已投递的系统通知可保留在通知中心，不承诺点击跳转。
 - VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications`、`sinitek-cli-tools.humanInteractionWindowAttention` 默认开启且可独立关闭。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
@@ -79,7 +86,7 @@
 ## 主任务与 Vibe 完成系统提醒
 
 - 仅 Vibe 成功结束，或经典 Loop / Loop+ 主任务最终完成并持久化后，无论编辑器窗口在前台还是后台，都发送系统通知。子任务完成、中间主模型轮次结束、上下文压缩、失败、用户停止、暂停和等待澄清都不触发完成提醒；既有人工交互提醒独立保留。
-- 复用“携宁 CLI 提醒”系统身份，固定正文为“任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，不含任务内容、路径或敏感信息。Windows 仅在后台请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
+- 复用“携宁 CLI 提醒”系统身份，正文为“【目录名 项目】 任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，项目名来源与人工交互提醒一致，不含任务内容、完整路径或敏感信息。Windows 仅在后台请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
 - 完成提醒与人工交互共享窗口状态，不互相清除；多个完成事件可聚合一条通知，最近 512 个事件 ID 去重。完成图标提醒持续到恢复焦点或关闭完成窗口提醒设置；恢复焦点后不重放。前台完成立即通知，之后切后台不补发通知或闪烁；通知派发先于焦点恢复时的完成窗口状态清理，避免排队事件漏发。已投递通知仍可留在通知中心。
 - 新增应用级设置 `sinitek-cli-tools.taskCompletionNotifications` 与 `sinitek-cli-tools.taskCompletionWindowAttention`，默认开启，两者及原有人工交互设置互相独立；远程、本机、权限、工具缺失、不抢焦点和无新增声音的边界与人工交互提醒一致。
 - 实现：`src/taskCompletionAttention.ts`、`src/humanInteractionAttention.ts`、`src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/core/taskCompletionAttention.test.ts`、`src/test/extensionHost/taskCompletionAttentionHost.test.ts` 及既有桌面提醒用例。
@@ -92,7 +99,7 @@ Loop / Loop+ 连续子任务会话复用：主模型用 `continueFromSubtaskId` 
 
 作为 starter，这里默认从空表开始；当首个真实能力进入规划或实现时，再新增条目。
 
-经典 Loop 采用汇报驱动：主模型只拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。用户明确要求或项目既有规则要求的验收、测试、构建及任务完成后检查，必须另派独立子模型任务并根据汇报收口；均无要求时默认不做。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）的隔离、事件驱动验收和完成门槛不变。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。
+经典 Loop 除下述简单任务直办外采用汇报驱动：主模型拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。用户明确要求或项目既有规则要求的验收、测试、构建及任务完成后检查，必须另派独立子模型任务并根据汇报收口；均无要求时默认不做。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）已派发工作的隔离、事件驱动验收和完成门槛不变；简单任务直办遵循下述例外。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
@@ -128,7 +135,7 @@ Grok 模型导入按每个 `[model.<配置名>]` 提供 URL/协议/凭据来源�
 
 凭据兼容修复验证：构建通过，完整配置测试 426/426 与 Grok/Codex 配置模型测试 6/6 通过。使用合成配置和本机 HTTP 接收端核验 Grok 1.0.62 读取导入产物时选择正确 URL、字面密钥与模型，并核验 Codex 环境凭据优先级；接收端主动以 401 终止，不代表真实服务调用成功。未运行浏览器或图形扩展宿主验收。
 
-Loop+ 输入区工具栏最左侧有原生复选框「全栈」，默认勾选，并按主配置持久化。勾选时模型行是「主-思考」和「子-全栈」，所有编码使用子-全栈的 CLI、档案、模型和思考力度；取消后才显示「子-后端」「子-前端」并按职责路由。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行收益明显时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的边界并行派发多个子任务；共享文件或有强依赖时保持单任务。编码不能回退主模型。每个可见角色标签右侧有问号，悬停或键盘聚焦立即显示说明；模型行下方不再展示「分析可用主模型，编码必须使用对应子模型」的路由提示文案。经典 Loop、Loop+ 和普通聊天不显示该开关，主标签仍是「主模型」。实现见 `src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/modelSelectionStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts`；回归见 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`。
+Loop+ 输入区工具栏最左侧有原生复选框「全栈」，默认勾选，并按主配置持久化。勾选时模型行是「主-思考」和「子-全栈」，所有需委派的编码使用子-全栈的 CLI、档案、模型和思考力度；取消后才显示「子-后端」「子-前端」并按职责路由。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行收益明显时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。不符合简单直办条件的代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的边界并行派发多个子任务；共享文件或有强依赖时保持单任务。编码不能回退主模型。每个可见角色标签右侧有问号，悬停或键盘聚焦立即显示说明；模型行下方不再展示「分析可用主模型，编码必须使用对应子模型」的路由提示文案。经典 Loop、Loop+ 和普通聊天不显示该开关，主标签仍是「主模型」。实现见 `src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/modelSelectionStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts`；回归见 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`、`src/test/webview/loopPlusFullstackMode.test.ts`。
 
 Loop+ 群聊的「继续 Loop 任务」弹窗按各选项自己的模式展示模型：「恢复原分组和配置」使用任务快照，「使用新配置的主子模型」使用当前选择。拆分模式分别展示主模型、子-后端和子-前端；全栈模式只展示主模型和子-全栈，不展示隐藏角色。子角色保留对应 CLI / 模型信息，CLI 默认模型和缺失记录分别显示「默认模型」「未记录」。旧任务沿用现有模式兼容规则，经典 Loop 仍展示主/子模型。当前配置预览与实际续跑共用完整的模式和角色模型选择来源。实现见 `src/continueModelChoice.ts`、`src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanel.ts`；回归见 `src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts`。
 

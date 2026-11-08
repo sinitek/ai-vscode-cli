@@ -7,6 +7,7 @@ import {
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
 import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
+import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../../loopDirectExecutionPolicy";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
@@ -110,6 +111,33 @@ function parseExample(examples: Map<string, string>, status: string): LoopPlusDe
   assert.equal(decision?.status, status);
   return decision as LoopPlusDecision;
 }
+
+test("every Loop+ decision applies complexity-based direct execution including supplemental work", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      for (const allowDirectCompletion of [false, true]) {
+        const prompt = buildLoopPlusMainModelPrompt(mainContext({
+          loopSubtaskMode, kind, allowDirectCompletion,
+          supplementalRequirements: ["同步简单补充事项"],
+          pendingUserMessages: ["处理这个小调整"],
+        }));
+        assert.ok(prompt.includes(LOOP_DIRECT_EXECUTION_RULE_EN));
+        assert.ok(prompt.includes(`Direct completion available: ${allowDirectCompletion ? "yes" : "no"}`));
+        assert.match(prompt, /not an operation whitelist/);
+        assert.match(prompt, /Do not decide by file count, line count/);
+        assert.match(prompt, /may be executed directly in every decision, even when Direct completion available is no/);
+        assert.match(prompt, /Earlier reviewed work does not prohibit this path/);
+        assert.match(prompt, /Do not conflict with running, pending, or unreviewed ownership/);
+        assert.match(prompt, /Never use it to skip unreviewed events, failed or unfinished requirements/);
+        assert.match(prompt, /同步简单补充事项/);
+        assert.match(prompt, /处理这个小调整/);
+        const directJson = prompt.match(/return (\{"status":"completed","directCompletion":true[^\n]+?\})\./)?.[1];
+        assert.ok(directJson);
+        assert.equal(parseLoopPlusDecision(directJson, { allowDirectCompletion })?.directCompletion, allowDirectCompletion ? true : undefined);
+      }
+    }
+  }
+});
 
 test("acceptance reason language follows the task and conversation instead of forcing Chinese", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({ rootPrompt: "Verify the exported API and regression tests." }));
@@ -603,7 +631,7 @@ test("asks the main task to judge a batch of new user messages before launching"
   assert.match(prompt, /1\. FIRST_USER_MESSAGE/);
   assert.match(prompt, /2\. SECOND_USER_MESSAGE/);
   assert.match(prompt, /judge the whole list together/);
-  assert.match(prompt, /wait instead when a still-running or pending execution must finish/);
+  assert.match(prompt, /wait when other work is still running or pending, including after finishing a trivial supplemental request/);
   assert.match(prompt, /Do not dispatch a placeholder just to wait/);
 });
 

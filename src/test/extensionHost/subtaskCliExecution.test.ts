@@ -11,6 +11,7 @@ import { installVscodeMock } from "../vscodeMock";
 import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
+import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../../loopDirectExecutionPolicy";
 
 installVscodeMock();
 
@@ -131,16 +132,23 @@ test("classic Loop trusts reports, delegates only required verification and keep
     buildLoopRoundSummary: () => "已中断",
   } as never);
 
-  const result = await host.runClassicLoopMainDecision({
-    input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
-    target: { tabId: "main-tab", cli: "codex", sessionId: null },
-    task,
-    round: 1,
-  });
-  assert.equal(result.status, "interrupted");
-  assert.equal(result.runStatus, "stopped");
-  assert.equal(prompts.length, 1);
+  for (const round of [1, 2, 5]) {
+    const result = await host.runClassicLoopMainDecision({
+      input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
+      target: { tabId: "main-tab", cli: "codex", sessionId: null },
+      task,
+      round,
+    });
+    assert.equal(result.status, "interrupted");
+    assert.equal(result.runStatus, "stopped");
+  }
+  assert.equal(prompts.length, 3);
   for (const prompt of prompts) {
+    assert.ok(prompt.includes(LOOP_DIRECT_EXECUTION_RULE_ZH));
+    assert.match(prompt, /包括首次需求、补充需求、继续指令和收尾事项/);
+    assert.match(prompt, /不使用文件数、行数、标题关键词或扩展名作为机械白名单/);
+    assert.match(prompt, /独立的简单补充事项可在本轮直接完成/);
+    assert.doesNotMatch(prompt, /主任务不要直接执行具体代码\/文件修改/);
     assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
     assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
     assert.ok(prompt.includes(JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE })));
@@ -157,6 +165,53 @@ test("classic Loop trusts reports, delegates only required verification and keep
     assert.doesNotMatch(prompt, /主模型必须先把可执行界面设计写进 prompt|派发时禁止只给粗粒度目标/u);
   }
 });
+
+for (const mainCli of CLI_LIST) {
+test(`Loop+ ${mainCli} directly handles initial and supplemental work without child sessions`, async () => {
+  const fixture = createLoopPlusRuntimeFixture({ cli: mainCli });
+  const firstFile = path.join(fixture.rootDir, "direct-first.txt");
+  const supplementalFile = path.join(fixture.rootDir, "direct-supplemental.txt");
+  let taskId: string | undefined;
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      await new Promise((resolve) => setImmediate(resolve));
+      taskId = input.loopTaskId;
+      assert.equal(input.taskRole, "main");
+      assert.match(input.modelPrompt, /Direct completion available: yes/);
+      fs.writeFileSync(firstFile, "首次事项已完成", "utf8");
+      assert.equal(fixture.adapter.host().submitUserMessage(taskId ?? "", "处理一个独立简单补充事项"), true);
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: JSON.stringify({ status: "completed", directCompletion: true, answerConclusion: "首次完成", finalSummary: "首次事项已直接处理" }),
+      });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.match(input.modelPrompt, /处理一个独立简单补充事项/);
+      assert.match(input.modelPrompt, /Direct completion available: yes/);
+      fs.writeFileSync(supplementalFile, "补充事项已完成", "utf8");
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: JSON.stringify({ status: "completed", directCompletion: true, answerConclusion: "全部完成", finalSummary: "首次和补充事项均直接完成，未派发子任务" }),
+      });
+    });
+    assert.equal(await fixture.adapter.runEventDriven({
+      displayPrompt: "处理一个明确、低风险的简单事项",
+      modelPrompt: "处理一个明确、低风险的简单事项",
+      contextTags: [], loopSubtaskMode: "fullstack",
+    }, { schedulingMode: "event_driven" }, fixture.target), true);
+    assert.equal(fs.readFileSync(firstFile, "utf8"), "首次事项已完成");
+    assert.equal(fs.readFileSync(supplementalFile, "utf8"), "补充事项已完成");
+    assert.equal(fixture.readTask(taskId ?? "")?.status, "completed");
+    assert.equal(fixture.readTask(taskId ?? "")?.answerConclusion, "全部完成");
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.equal(fixture.attemptCalls.length, 0);
+    assert.equal(fixture.createdSubtaskTargets.length, 0);
+    assert.equal(fixture.completionMessages.length, 1);
+  } finally {
+    fixture.dispose();
+  }
+});
+}
 
 for (const subtaskCli of CLI_LIST) {
 for (const mainCli of [subtaskCli, subtaskCli === "codex" ? "grok" : "codex"] as const) {

@@ -9,7 +9,8 @@ import {
   MACOS_NOTIFICATION_APP_ID,
   MACOS_NOTIFICATION_APP_NAME,
 } from "../../macosDesktopNotifications";
-import type { DesktopAttentionCommand } from "../../desktopAttention";
+import { createDesktopAttentionTransport, HUMAN_INTERACTION_NOTIFICATION_BODY, TASK_COMPLETION_NOTIFICATION_BODY,
+  type DesktopAttentionCommand } from "../../desktopAttention";
 
 function harness(storagePath: string) {
   const commands: DesktopAttentionCommand[] = [];
@@ -33,7 +34,7 @@ function harness(storagePath: string) {
     return "";
   };
   const create = () => createMacOSDesktopNotificationSender({ storagePath, title: "提醒测试", body: "这是隔离测试。", run });
-  return { commands, create, failNextCompilation: () => { failCompilation = true; }, setResult: (value: typeof result) => { result = value; } };
+  return { commands, create, run, failNextCompilation: () => { failCompilation = true; }, setResult: (value: typeof result) => { result = value; } };
 }
 
 test("macOS builds an identifiable background notification app in extension storage and reuses it", async (context) => {
@@ -61,6 +62,24 @@ test("macOS builds an identifiable background notification app in extension stor
   await notify();
   await env.create()();
   assert.equal(env.commands.length, originalCount + 3);
+  assert.equal(env.commands.filter((command) => command.file === "/usr/bin/osacompile").length, 1);
+});
+
+test("macOS 两类通知在相同助手身份下显示当前项目名称", async (context) => {
+  const storagePath = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-notification-project-"));
+  context.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const env = harness(storagePath);
+  let projectName = "研发 & <工具>";
+  const transport = createDesktopAttentionTransport({
+    platform: "darwin", appName: "Visual Studio Code", storagePath, env: {}, getProjectName: () => projectName,
+  }, env.run);
+  await transport.notify();
+  projectName = "另一个项目";
+  await transport.notify("task-completed");
+  const launches = env.commands.filter((command) => command.file === "/usr/bin/open");
+  assert.equal(launches[0].args[6], `【研发 & <工具> 项目】 ${HUMAN_INTERACTION_NOTIFICATION_BODY}`);
+  assert.equal(launches[1].args[6], `【另一个项目 项目】 ${TASK_COMPLETION_NOTIFICATION_BODY}`);
+  assert.equal(launches[0].args[3], launches[1].args[3]);
   assert.equal(env.commands.filter((command) => command.file === "/usr/bin/osacompile").length, 1);
 });
 

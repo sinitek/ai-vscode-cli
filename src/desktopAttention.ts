@@ -102,6 +102,7 @@ export function createDesktopAttentionTransport(options: {
   appUserModelId?: string;
   mainProcessId?: number;
   storagePath?: string;
+  getProjectName?: () => string | undefined;
   env: NodeJS.ProcessEnv;
 }, run: DesktopAttentionCommandRunner = runDesktopAttentionCommand): HumanInteractionAttentionTransport & {
   notificationAuthorization: (request: boolean) => Promise<DesktopNotificationAuthorization>;
@@ -161,7 +162,9 @@ export function createDesktopAttentionTransport(options: {
       return request ? notifyMacOS.requestAuthorization() : notifyMacOS.getAuthorization();
     },
     async notify(kind = "human-interaction"): Promise<void> {
-      const body = kind === "task-completed" ? TASK_COMPLETION_NOTIFICATION_BODY : HUMAN_INTERACTION_NOTIFICATION_BODY;
+      const projectName = options.getProjectName?.()?.trim().replace(/\s+/g, " ") || "未命名";
+      const message = kind === "task-completed" ? TASK_COMPLETION_NOTIFICATION_BODY : HUMAN_INTERACTION_NOTIFICATION_BODY;
+      const body = `【${projectName} 项目】 ${message}`;
       if (options.platform === "darwin") {
         if (!notifyMacOS) {
           throw new Error("无法确定本机通知助手的存储位置。");

@@ -36,7 +36,7 @@ function subtaskId(value: unknown): string | undefined {
 }
 
 export function withLoopPlusAcceptReviews<T>(value: T): T {
-  if (!isRecord(value) || (value.status !== "accept" && value.status !== "completed")) {
+  if (!isRecord(value) || (value.status !== "accept" && value.status !== "completed") || value.directCompletion === true) {
     return value;
   }
   const next: AcceptRecord = { ...value };

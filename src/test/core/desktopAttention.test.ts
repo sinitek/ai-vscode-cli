@@ -11,7 +11,8 @@ import {
 
 function harness(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}) {
   const commands: DesktopAttentionCommand[] = [];
-  const options = { platform, appName: "Visual Studio Code", appUserModelId: "Microsoft.VisualStudioCode", mainProcessId: 321, env };
+  const options = { platform, appName: "Visual Studio Code", appUserModelId: "Microsoft.VisualStudioCode", mainProcessId: 321,
+    getProjectName: (): string | undefined => "示例项目", env };
   const transport = createDesktopAttentionTransport(options, async (command) => {
     commands.push(command);
     return command.args[0] === "-lp"
@@ -89,7 +90,7 @@ test("Windows sends an encoded toast with the actual editor identity", async () 
   assert.equal(command.env?.SINITEK_ATTENTION_APP_ID, "Microsoft.VisualStudioCode");
   assert.match(decodedScript(command), /CreateToastNotifier/);
   assert.match(decodedScript(command), /Setting.ToString\(\) -ne 'Enabled'.*throw/);
-  assert.equal(command.env?.SINITEK_ATTENTION_BODY, HUMAN_INTERACTION_NOTIFICATION_BODY);
+  assert.equal(command.env?.SINITEK_ATTENTION_BODY, `【示例项目 项目】 ${HUMAN_INTERACTION_NOTIFICATION_BODY}`);
   assert.equal(command.env?.SINITEK_ATTENTION_TAG, "human-input");
   assert.match(decodedScript(command), /SecurityElement\]::Escape/);
   assert.doesNotMatch(decodedScript(command), /ExecutionPolicy|SetForegroundWindow/);
@@ -98,15 +99,53 @@ test("Windows sends an encoded toast with the actual editor identity", async () 
 test("completion notifications reuse the title and editor identity without replacing interaction toasts", async () => {
   const windows = harness("win32");
   await windows.transport.notify("task-completed");
-  assert.equal(windows.commands[0].env?.SINITEK_ATTENTION_BODY, TASK_COMPLETION_NOTIFICATION_BODY);
+  assert.equal(windows.commands[0].env?.SINITEK_ATTENTION_BODY, `【示例项目 项目】 ${TASK_COMPLETION_NOTIFICATION_BODY}`);
   assert.equal(windows.commands[0].env?.SINITEK_ATTENTION_TAG, "task-completed");
   assert.equal(windows.commands[0].env?.SINITEK_ATTENTION_APP_ID, "Microsoft.VisualStudioCode");
   assert.match(decodedScript(windows.commands[0]), /audio silent="true"/);
   assert.ok(decodedScript(windows.commands[0]).includes(HUMAN_INTERACTION_NOTIFICATION_TITLE));
   const linux = harness("linux");
   await linux.transport.notify("task-completed");
-  assert.deepEqual(linux.commands[0].args.slice(-3), ["--", HUMAN_INTERACTION_NOTIFICATION_TITLE, TASK_COMPLETION_NOTIFICATION_BODY]);
+  assert.deepEqual(linux.commands[0].args.slice(-3), ["--", HUMAN_INTERACTION_NOTIFICATION_TITLE, `【示例项目 项目】 ${TASK_COMPLETION_NOTIFICATION_BODY}`]);
   assert.ok(linux.commands[0].args.includes("dialog-information"));
+});
+
+test("通知发送时读取项目名，特殊字符仅作为正文参数传递", async () => {
+  for (const platform of ["win32", "linux"] as const) {
+    const env = harness(platform);
+    env.options.getProjectName = () => "  研发 & <工具> \"$HOME\" '测试'\n目录  ";
+    await env.transport.notify();
+    env.options.getProjectName = () => "另一个目录";
+    await env.transport.notify("task-completed");
+    const bodies = env.commands.map((command) => platform === "win32"
+      ? command.env?.SINITEK_ATTENTION_BODY : command.args[command.args.length - 1]);
+    assert.deepEqual(bodies, [
+      `【研发 & <工具> "$HOME" '测试' 目录 项目】 ${HUMAN_INTERACTION_NOTIFICATION_BODY}`,
+      `【另一个目录 项目】 ${TASK_COMPLETION_NOTIFICATION_BODY}`,
+    ]);
+    if (platform === "win32") {
+      assert.doesNotMatch(decodedScript(env.commands[0]), /研发|\$HOME/);
+    } else {
+      assert.deepEqual(env.commands[0].args.slice(-3, -1), ["--", HUMAN_INTERACTION_NOTIFICATION_TITLE]);
+    }
+  }
+});
+
+test("缺少项目名称时显示明确的回退名称", async () => {
+  const env = harness("linux");
+  for (const projectName of [undefined, "", " \n\t "]) {
+    env.options.getProjectName = () => projectName;
+    await env.transport.notify();
+    const args = env.commands[env.commands.length - 1].args;
+    assert.equal(args[args.length - 1], `【未命名 项目】 ${HUMAN_INTERACTION_NOTIFICATION_BODY}`);
+  }
+  const commands: DesktopAttentionCommand[] = [];
+  const transport = createDesktopAttentionTransport({ platform: "linux", appName: "Code", env: {} }, async (command) => {
+    commands.push(command);
+    return "";
+  });
+  await transport.notify("task-completed");
+  assert.equal(commands[0].args[commands[0].args.length - 1], `【未命名 项目】 ${TASK_COMPLETION_NOTIFICATION_BODY}`);
 });
 
 test("Windows flashes only windows of the known main process and supports explicit cleanup", async () => {
@@ -146,7 +185,7 @@ test("Linux uses native notification arguments and targets only matching X11 pro
   const env = harness("linux", { DISPLAY: ":0" });
   await env.transport.notify();
   assert.equal(env.commands[0].file, "notify-send");
-  assert.deepEqual(env.commands[0].args.slice(-3), ["--", HUMAN_INTERACTION_NOTIFICATION_TITLE, HUMAN_INTERACTION_NOTIFICATION_BODY]);
+  assert.deepEqual(env.commands[0].args.slice(-3), ["--", HUMAN_INTERACTION_NOTIFICATION_TITLE, `【示例项目 项目】 ${HUMAN_INTERACTION_NOTIFICATION_BODY}`]);
   await env.transport.startAttention();
   assert.deepEqual(env.commands.slice(1).map((command) => command.args), [
     ["-lp"],

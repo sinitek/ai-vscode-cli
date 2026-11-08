@@ -805,6 +805,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         subtaskMax: decisionSubtaskMax(),
         acceptancePlanKeys,
         requireAcceptanceFeedback: true,
+        allowDirectCompletion: canCompleteDirectly(runtime),
       });
       if (decision?.status === "clarify") {
         const outcome = await waitForLoopPlusClarification(runtime, decision);
@@ -1849,6 +1850,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     settle(runtime);
   }
 
+  function canCompleteDirectly(runtime: ParentRuntime): boolean {
+    const task = deps.readTask(runtime.taskId);
+    const snapshot = runtime.scheduler.snapshot();
+    return !!task
+      && snapshot.running.length === 0
+      && snapshot.pending.length === 0
+      && snapshot.reviewQueue.length === 0
+      && snapshot.currentReview === null
+      && listLoopPlusAcceptancePlanFeedbackItems(task.loopPlusAcceptancePlan).length === 0;
+  }
+
   function buildMainRequest(runtime: ParentRuntime, step: MainStep): LoopPlusMainRequest {
     const task = deps.readTask(runtime.taskId);
     const routing = describeLoopPlusRouting(task);
@@ -1859,6 +1871,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       mainCommunicationFile: task?.mainCommunicationFile ?? "",
       kind: step.kind,
       acceptancePlan: task?.loopPlusAcceptancePlan ?? null,
+      allowDirectCompletion: canCompleteDirectly(runtime),
       view: runtime.scheduler.wait().view,
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],

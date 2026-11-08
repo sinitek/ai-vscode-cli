@@ -11,6 +11,7 @@ const WINDOWS_NOTIFICATION_GUIDANCE_KEY = "windowsNotificationSettingsOpened.v1"
 export function createHumanInteractionAttentionHost(
   context: vscode.ExtensionContext,
   onError: (channel: "notification" | "window", error: unknown) => void,
+  resolveWorkspaceCwd: () => string | undefined,
 ) {
   let appUserModelId: string | undefined;
   if (process.platform === "win32") {
@@ -32,6 +33,10 @@ export function createHumanInteractionAttentionHost(
     appUserModelId,
     mainProcessId: Number(process.env.VSCODE_PID),
     storagePath: context.globalStorageUri.fsPath,
+    getProjectName: () => {
+      const cwd = resolveWorkspaceCwd();
+      return cwd ? path.basename(cwd) : undefined;
+    },
     env: process.env,
   });
   let windowsSettingsRequest: Promise<boolean> | undefined;

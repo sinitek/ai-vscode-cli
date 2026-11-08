@@ -15,7 +15,7 @@ const hostScript = ts.transpileModule(hostSource, {
 
 function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJS.Platform; notifications?: boolean; status?: DesktopNotificationAuthorization["status"]; failAuthorization?: boolean; requestDenied?: boolean; openSettings?: boolean; openResult?: Promise<boolean>; globalState?: Map<string, boolean>; failSave?: boolean } = {}) {
   const events: string[] = [];
-  const state = { focused: false };
+  const state = { focused: false, workspaceCwd: undefined as string | undefined };
   const settings: Record<string, boolean> = { humanInteractionNotifications: options.notifications ?? true, taskCompletionNotifications: options.notifications ?? true, humanInteractionWindowAttention: true };
   const authorizationCalls: boolean[] = [];
   const opened: string[] = [];
@@ -25,7 +25,7 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
   const subscriptions: Array<{ dispose: () => void }> = [];
   let windowChanged = (): void => undefined;
   let configurationChanged = (_key: string): void => undefined;
-  let transportOptions: { mainProcessId?: number; appUserModelId?: string } = {};
+  let transportOptions: { mainProcessId?: number; appUserModelId?: string; getProjectName?: () => string | undefined } = {};
   const sandbox = {
     exports: {} as typeof import("../../extensionHost/humanInteractionAttentionHost"),
     process: { platform: options.platform ?? "darwin", env: { VSCODE_PID: "321" } },
@@ -81,7 +81,7 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
         return { readFileSync: () => JSON.stringify({ win32AppUserModelId: "Microsoft.VisualStudioCodeInsiders" }) };
       }
       if (name === "path") {
-        return path;
+        return options.platform === "win32" ? path.win32 : path;
       }
       throw new Error(`未预期的模块：${name}`);
     },
@@ -98,9 +98,20 @@ function hostHarness(options: { remote?: boolean; ui?: boolean; platform?: NodeJ
       },
     },
     extension: { extensionKind: options.ui ? 1 : 2 },
-  } as never, (_channel, error) => { errors.push(error); });
+  } as never, (_channel, error) => { errors.push(error); }, () => state.workspaceCwd);
   return { controller, state, settings, events, subscriptions, windowChanged, configurationChanged, transportOptions, authorizationCalls, authorizationState, opened, errors, globalState };
 }
+
+test("通知项目名复用工作目录解析结果，仅取目录名并支持目录变化", () => {
+  for (const platform of ["darwin", "linux", "win32"] as const) {
+    const env = hostHarness({ platform });
+    assert.equal(env.transportOptions.getProjectName?.(), undefined);
+    env.state.workspaceCwd = platform === "win32" ? "C:\\work\\研发项目\\" : "/work/研发项目/";
+    assert.equal(env.transportOptions.getProjectName?.(), "研发项目");
+    env.state.workspaceCwd = platform === "win32" ? "\\\\server\\share\\另一个项目" : "/other/另一个项目";
+    assert.equal(env.transportOptions.getProjectName?.(), "另一个项目");
+  }
+});
 
 test("Windows 图标闪烁配置立即生效且不影响各类系统通知", async () => {
   for (const key of ["humanInteractionWindowAttention", "taskCompletionWindowAttention"]) {

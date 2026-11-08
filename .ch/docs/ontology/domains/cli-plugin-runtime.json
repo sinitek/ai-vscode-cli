@@ -156,7 +156,7 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内采用主从多智能体的任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。经典 Loop 主任务仅拆分、派发、协调并信任子任务汇报判断完成，不亲自验收测试；用户或项目规则要求的验证另派独立子任务，均无要求时默认不做。经典子任务加载真实工作区规则并自主实施。经典同批子任务按 3 秒间隔错峰启动，互不冲突的任务仍可并行；局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动项标记 skipped；所有 activeSubtaskIds 对应子任务结束后才继续判断进度。Loop+ 保持事件驱动验收。用户停止统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
+      "description": "插件内采用主从多智能体的任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。经典 Loop 主任务除每轮简单直办外负责拆分、派发、协调并信任子任务汇报判断完成，不亲自验收测试；用户或项目规则要求的验证另派独立子任务，均无要求时默认不做。经典子任务加载真实工作区规则并自主实施。经典同批子任务按 3 秒间隔错峰启动，互不冲突的任务仍可并行；局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动项标记 skipped；所有 activeSubtaskIds 对应子任务结束后才继续判断进度。Loop+ 已派发工作保持事件驱动验收；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。用户停止统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
       "implementation_paths": ["src/loopTaskStore.ts", "src/loopGroupChat.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
@@ -341,6 +341,39 @@
     }
   ],
   "rules": [
+    {
+      "id": "plugin.rule.loop_trivial_direct_execution",
+      "name": "Loop 与 Loop+ 每轮简单事项由主任务直办",
+      "description": "首次、补充需求、用户消息、继续、验收及收尾每轮均按复杂度、风险和验证需求判断：目标明确、局部低风险、结果可直接确认，且无需独立调查、设计、协作或用户与项目要求的测试、构建、验收时，主任务直接处理，不委派、不新增验收；不按操作种类、文件数、行数或关键词白名单判断。不冲突的简单补充事项可在其它任务进行时处理，不能接管、修复已委派工作或遗漏原要求。Loop+ 仅无开放工作、待验收事件和附加审查时接受 directCompletion=true 与非空 answerConclusion、finalSummary 的精简 completed；既往委派历史不禁止，未处理用户消息与调度门禁不变。不得拆碎复杂工作规避验收，或因子配置失败回退主模型编码。",
+      "status": "active",
+      "applies_to": [
+        "plugin.loop_task",
+        "plugin.extension_host"
+      ],
+      "source_refs": [
+        {
+          "path": "src/loopDirectExecutionPolicy.ts"
+        },
+        {
+          "path": "src/loopPlusDecision.ts"
+        },
+        {
+          "path": "src/extensionHost/loopOrchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusOrchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusPromptBuilders.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/loop-plus-scheduling.md"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"
+        }
+      ]
+    },
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
       "name": "任务摘要随新提交异步更新",
@@ -1158,7 +1191,7 @@
     {
       "id": "plugin.rule.human_interaction_desktop_attention",
       "name": "人工交互系统通知与后台窗口提醒",
-      "description": "Vibe 人工交互与 Loop/Loop+ 主任务澄清进入待处理后，无论窗口在前台还是后台，都尽力发送标题为携宁 CLI 提醒的固定中文系统通知；同一交互只通知一次，焦点变化不重发，不显示问题、答案、密码或项目路径。窗口图标提醒仅在后台触发，前台交互未结束时切后台仍可触发图标提醒。Windows 按编辑器主进程 PID 闪烁任务栏；macOS 在扩展存储生成并注册固定身份的携宁 CLI 提醒后台应用，使用 UserNotifications、检测授权及投递结果，不承诺 Dock 弹跳；Linux 需要已有 notify-send 且仅在 X11/wmctrl 可用时按 PID 提醒。焦点恢复、所有请求结束且没有未查看完成提醒、或扩展释放清理图标提醒，兼容并发和迟到调用，通知授权不阻塞窗口清理；已投递通知可保留。两项人工交互应用级设置默认开启且可独立关闭。远程 workspace 宿主跳过本机系统工具，通知失败不阻塞原任务。",
+      "description": "Vibe 人工交互与 Loop/Loop+ 主任务澄清进入待处理后，无论窗口在前台还是后台，都尽力发送标题为携宁 CLI 提醒的中文系统通知；正文以【目录名 项目】开头，发送时复用 resolveWorkspaceCwd 并只取目录名，无法解析时显示【未命名 项目】。同一交互只通知一次，焦点变化不重发，不显示问题、答案、密码或完整项目路径。窗口图标提醒仅在后台触发，前台交互未结束时切后台仍可触发图标提醒。Windows 按编辑器主进程 PID 闪烁任务栏；macOS 在扩展存储生成并注册固定身份的携宁 CLI 提醒后台应用，使用 UserNotifications、检测授权及投递结果，不承诺 Dock 弹跳；Linux 需要已有 notify-send 且仅在 X11/wmctrl 可用时按 PID 提醒。焦点恢复、所有请求结束且没有未查看完成提醒、或扩展释放清理图标提醒，兼容并发和迟到调用，通知授权不阻塞窗口清理；已投递通知可保留。两项人工交互应用级设置默认开启且可独立关闭。远程 workspace 宿主跳过本机系统工具，通知失败不阻塞原任务。",
       "aliases": ["系统通知", "任务栏闪烁", "后台提醒", "携宁 CLI 提醒", "humanInteractionNotifications", "humanInteractionWindowAttention"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
@@ -1194,7 +1227,7 @@
     {
       "id": "plugin.rule.task_completion_desktop_attention",
       "name": "仅主任务与 Vibe 成功完成触发桌面提醒",
-      "description": "Vibe 成功运行记录写入后、经典 Loop 与 Loop+ 主任务最终完成持久化后，无论本机窗口在前台还是后台，都复用携宁 CLI 提醒的固定中文系统通知；窗口提醒仅在后台触发。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成通知；历史已完成任务不补发。Loop+ 最终持久化失败不提前通知，重试成功后通知。完成事件最近 512 个 ID 去重，多项完成可聚合，先派发通知再在前台清除完成待查看窗口状态，避免焦点恢复与排队事件竞争漏发。前台完成立即通知，之后切后台不重发通知或闪烁。与人工交互共享窗口状态，不互相清除；通知通道异步且不阻塞任务，Windows 不同 Toast Tag 避免两类通知覆盖，macOS 复用稳定助手身份及权限且不弹跳 Dock。taskCompletionNotifications 与 taskCompletionWindowAttention 两项应用级设置默认开启并独立于人工交互设置。",
+      "description": "Vibe 成功运行记录写入后、经典 Loop 与 Loop+ 主任务最终完成持久化后，无论本机窗口在前台还是后台，都复用携宁 CLI 提醒的中文系统通知，正文以【目录名 项目】开头，目录名来源及【未命名 项目】回退与人工交互通知一致，不显示完整路径；窗口提醒仅在后台触发。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成通知；历史已完成任务不补发。Loop+ 最终持久化失败不提前通知，重试成功后通知。完成事件最近 512 个 ID 去重，多项完成可聚合，先派发通知再在前台清除完成待查看窗口状态，避免焦点恢复与排队事件竞争漏发。前台完成立即通知，之后切后台不重发通知或闪烁。与人工交互共享窗口状态，不互相清除；通知通道异步且不阻塞任务，Windows 不同 Toast Tag 避免两类通知覆盖，macOS 复用稳定助手身份及权限且不弹跳 Dock。taskCompletionNotifications 与 taskCompletionWindowAttention 两项应用级设置默认开启并独立于人工交互设置。",
       "aliases": ["任务完成提醒", "主任务完成通知", "Vibe 完成", "子任务不提醒", "taskCompletionNotifications", "taskCompletionWindowAttention"],
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
@@ -1422,7 +1455,7 @@
     {
       "id": "plugin.rule.loop_plus_role_model_routing",
       "name": "Loop+ 按全栈或拆分模式绑定子模型",
-      "description": "Loop+ 只有一个 loopSubtaskMode：fullstack 或 split。新界面和新任务缺省 fullstack。fullstack 下 backend、frontend 和未归类编码都使用子-全栈的 CLI、configId、模型和思考力度；split 下 frontend 使用子-前端，backend 及其它编码使用子-后端。同 CLI 的主子模型仍独立绑定，全栈和前端请求及运行时提示保留完整 CLI/config/model；未设置独立模型时快照与下拉显示的已有子模型一致，显式 CLI 默认不补已有子模型。已有前端模型或档案但省略 CLI 的历史快照按任务主 CLI 解析，独立档案优先，仅同 CLI 缺档案时沿用任务原档案；仅思考档不构成路由，非法 CLI 或跨 CLI 缺档案仍拒绝。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 general 子任务；小/中型思考或单一分析方向不使用 general。代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的交付边界并行派发多个编码子任务；共享文件或有强依赖时保持单任务，不为增加数量而拆分。general 读取主模型完整配置，不能携带编码交付；纯回答/只读请求可由主模型直接完成。三套配置分别保存，切换模式不覆盖。首次缺少全栈角色时从原子模型初始化一次。没有模式且没有独立前端子路由的旧任务按 fullstack 沿用原子模型；已有前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝。子配置失败不回退主模型编码。主模型仍负责编排和验收。",
+      "description": "Loop+ 只有一个 loopSubtaskMode：fullstack 或 split。新界面和新任务缺省 fullstack。fullstack 下 backend、frontend 和未归类编码都使用子-全栈的 CLI、configId、模型和思考力度；split 下 frontend 使用子-前端，backend 及其它编码使用子-后端。同 CLI 的主子模型仍独立绑定，全栈和前端请求及运行时提示保留完整 CLI/config/model；未设置独立模型时快照与下拉显示的已有子模型一致，显式 CLI 默认不补已有子模型。已有前端模型或档案但省略 CLI 的历史快照按任务主 CLI 解析，独立档案优先，仅同 CLI 缺档案时沿用任务原档案；仅思考档不构成路由，非法 CLI 或跨 CLI 缺档案仍拒绝。主模型默认自行完成普通拆分、仓库推理和只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 general 子任务；小/中型思考或单一分析方向不使用 general。不符合简单直办条件的代码、测试、文档、配置和脚本等写入任务优先按互不冲突且可分别验收的交付边界并行派发多个编码子任务；共享文件或有强依赖时保持单任务，不为增加数量而拆分。general 读取主模型完整配置，不能携带编码交付；纯回答/只读请求可由主模型直接完成。三套配置分别保存，切换模式不覆盖。首次缺少全栈角色时从原子模型初始化一次。没有模式且没有独立前端子路由的旧任务按 fullstack 沿用原子模型；已有前后端独立配置但没有模式的记录按 split 恢复。未知非空模式或分类拒绝。子配置失败不回退主模型编码。主模型除每轮简单直办外仍负责编排和验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [
@@ -1566,7 +1599,7 @@
     {
       "id": "plugin.rule.loop_plus_capacity_aware_parallel_delivery",
       "name": "Loop+ 按容量与交付边界合理并行",
-      "description": "Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3–6 路，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。",
+      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3–6 路，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -1671,7 +1704,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型按固定清单验收",
-      "description": "Loop+ 主模型在 accept 或 completed 前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；建议写入范围之外的改动只在完成任务确实需要时出现，没有无关改动；没有遗漏、回归或边界错误。不适用必须明确说明。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。主模型可以自行运行相关测试或启动已有可运行产物，但都不强制，跳过本身不构成失败。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；建议写入范围之外的改动只在完成任务确实需要时出现，没有无关改动；没有遗漏、回归或边界错误。不适用必须明确说明。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。主模型可以自行运行相关测试或启动已有可运行产物，但都不强制，跳过本身不构成失败。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1859,7 +1892,7 @@
     {
       "id": "plugin.rule.classic_loop_report_driven",
       "name": "经典 Loop 信任汇报并按用户或项目要求独立验证",
-      "description": "经典 Loop 主任务只拆分、派发、协调并依据子任务汇报判断目标完成，不检查实现细节、不亲自验收、不运行测试、构建或启动验证。用户明确要求或项目既有规则要求的验收、测试和任务完成后检查，必须另派独立子模型任务并按汇报收口；用户未提不能忽略项目规则，两者均未要求时默认不增加验证。经典子任务首次派发与手动续跑均使用真实工作区加载项目规则，自主实施，不注入额外设计或强制实施流程。completed 只要求非空 finalSummary；acceptance、requirementCoverage 和 roundSummaries 可选兼容，不再是完成门槛。轻量总结不虚构验收通过。Loop+ 全栈及原有模式的隔离、验收、调度和完成门槛不变。",
+      "description": "除每轮简单直办外，经典 Loop 主任务负责拆分、派发、协调并依据子任务汇报判断目标完成，不检查实现细节、不亲自验收、不运行测试、构建或启动验证。用户明确要求或项目既有规则要求的验收、测试和任务完成后检查，必须另派独立子模型任务并按汇报收口；用户未提不能忽略项目规则，两者均未要求时默认不增加验证。经典子任务首次派发与手动续跑均使用真实工作区加载项目规则，自主实施，不注入额外设计或强制实施流程。completed 只要求非空 finalSummary；acceptance、requirementCoverage 和 roundSummaries 可选兼容，不再是完成门槛。轻量总结不虚构验收通过。Loop+ 已派发工作的隔离、验收、调度和完成门槛不变；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.extension_host"],
       "source_refs": [

@@ -66,6 +66,7 @@ export type LoopPlusAcceptReview = {
 
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
+  directCompletion?: true;
   reviewEventId?: string;
   reviewEventIds?: string[];
   reviews?: LoopPlusAcceptReview[];
@@ -89,6 +90,7 @@ export type LoopPlusAcceptancePlanResult = {
 
 export type LoopPlusDecisionOptions = {
   subtaskMax?: number;
+  allowDirectCompletion?: boolean;
   acceptancePlanKeys?: readonly string[];
   requireAcceptanceFeedback?: boolean;
 };
@@ -147,6 +149,9 @@ export function normalizeLoopPlusDecision(
     return null;
   }
   if (hasImplicitQueueConfirmation(value)) {
+    return null;
+  }
+  if (hasOwn(value, "directCompletion") && (value.status !== "completed" || value.directCompletion !== true)) {
     return null;
   }
   const estimatedRemainingRounds = normalizeEstimatedRemainingRounds(value.estimatedRemainingRounds);
@@ -341,6 +346,28 @@ function normalizeCompletedDecision(
   }
   const answerConclusion = readOptionalText(raw.answerConclusion);
   const finalSummary = readOptionalText(raw.finalSummary);
+  if (raw.directCompletion === true) {
+    if (
+      options?.allowDirectCompletion !== true
+      || !answerConclusion
+      || !finalSummary
+      || hasOwn(raw, "reviewEventId")
+      || hasOwn(raw, "reviewEventIds")
+      || hasOwn(raw, "subtasks")
+      || hasOwn(raw, "acceptance")
+      || hasOwn(raw, "requirementCoverage")
+      || hasOwn(raw, "acceptancePlanResults")
+      || (options.acceptancePlanKeys?.length ?? 0) > 0
+    ) {
+      return null;
+    }
+    return withEstimatedRemainingRounds({
+      status: "completed",
+      directCompletion: true,
+      answerConclusion,
+      finalSummary,
+    }, estimatedRemainingRounds);
+  }
   const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
   const acceptance = normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback);
   const requirementCoverage = normalizeAcceptanceChecks(raw.requirementCoverage);

@@ -577,7 +577,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channel,
       error: error instanceof Error ? error.message : String(error),
     });
-  });
+  }, resolveWorkspaceCwd);
   interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());

@@ -4,6 +4,14 @@
 
 ## 调度边界
 
+### 每轮简单事项直办
+
+Loop 与 Loop+ 在首次、补充需求、用户消息、继续、验收及收尾的每轮主决策中，都先按 `src/loopDirectExecutionPolicy.ts` 判断当前事项是否特别简单：目标明确、局部低风险、结果能从操作本身直接确认，不需要独立调查、设计或协作，且用户与项目规则均未要求测试、构建或独立验收。满足时由主任务直接处理，不按操作类型、文件数或行数设白名单，也不为了流程完整派发微型子任务。
+
+独立简单补充事项可与其它工作同轮处理，但不能争抢运行中、排队中或待验收任务的写入，不能接管或修补已派发产物。处理完简单事项后，仍按其它工作的状态返回 `dispatch`、`wait`、`accept` 或正常 `completed`；不能遗漏原要求、跳过待验收事件或因子模型失败回退主模型编码。
+
+Loop+ 宿主每轮重新计算 `allowDirectCompletion`：仅无 running / pending / currentReview / reviewQueue 且无附加审查项时允许精简收口，不以是否存在历史子任务为条件。模型还必须确认所有原始及补充要求已完成且本轮符合直办条件，返回 `status=completed`、`directCompletion=true`、非空 `answerConclusion` 与 `finalSummary`，不携带子任务、事件确认、验收或覆盖清单字段。解析器默认拒绝该协议，须由宿主显式放行；用户消息确认、并发变化检查和 scheduler 完成门禁保持有效。其它 `completed` 的固定清单和附加审查校验不变。
+
 ### 子任务完成汇报与压缩顺序
 
 Loop 与 Loop+ 的子任务成功返回后，先持久化完成结果并提交主任务汇报或验收事件，再异步压缩子任务自己的会话；主任务验收、其它子任务派发不等待这次压缩。交互运行和 OpenCode 共用运行模板都通过 `src/loopSubtaskAutoCompact.ts` 延迟登记压缩，经典 Loop 在 `finalizeLoopSubtaskRun` 完成汇报后放行，Loop+ 在完成事件处理后放行，包含人工续接的完成事件；过期 attempt 的结果不能放行新 attempt 的压缩。
@@ -65,7 +73,7 @@ Loop 与 Loop+ 共用群聊的 780px 窄屏断点：标题栏下方只保留聊�
 
 参数隔离覆盖 Codex、Claude、OpenCode、Grok、DSH、Kimi Code、ZCode，不做 Codex 特判。支持模型选择的 CLI 发送主子角色模型与思考档快照；Claude 按自身能力使用默认模型并保留子角色思考档。OpenCode 子任务模型在启动前水合配置时不得被主模型覆盖，显式角色思考档传入实际运行 variant；未指定时保留该配置、模型、角色自己的 variant。OpenCode 的 xhigh/max/ultra、DSH 的 medium 和 ZCode 原生档位不被通用归一化降档；既有子任务思考上限仍有效。OpenCode、Claude 布局的命名角色下拉同样绑定模型/思考修改事件。
 
-Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任务和输入区缺省 `fullstack`。全栈勾选时只展示并启用「子-全栈」，backend、frontend 和未归类编码都用这一套 CLI、configId、模型和思考力度。取消勾选才展示「子-后端」「子-前端」：frontend 走前端子模型，backend 和其它编码走后端子模型。主模型默认自行完成拆分、仓库推理和普通只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。编码/写入任务（包括代码、测试、文档、配置和脚本）优先按互不冲突且可分别验收的交付边界一次拆成多个子任务并行；存在共享文件或强依赖时保持单任务，不为增加数量而拆分。`general` 读取主 CLI、主档案、`modelRouting.main` 和 `originProfile.mainThinkingMode`，不能携带 `writeFiles` 或 `codingDelivery`。纯回答/只读请求若不需要独立证据或并行分析，主模型直接 `completed`，不创建子任务。
+Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任务和输入区缺省 `fullstack`。全栈勾选时只展示并启用「子-全栈」，backend、frontend 和未归类编码都用这一套 CLI、configId、模型和思考力度。取消勾选才展示「子-后端」「子-前端」：frontend 走前端子模型，backend 和其它编码走后端子模型。主模型默认自行完成拆分、仓库推理和普通只读思考；只有规模大、至少能拆成两个相互独立且各自需要充分调查的分析方向，并且并行能显著缩短耗时或扩大覆盖时，才一次派发多个主模型 `general` 子任务。小/中型思考或单一分析方向不派 `general`。需要委派的非简单编码/写入任务（包括代码、测试、文档、配置和脚本）优先按互不冲突且可分别验收的交付边界一次拆成多个子任务并行；存在共享文件或强依赖时保持单任务，不为增加数量而拆分。`general` 读取主 CLI、主档案、`modelRouting.main` 和 `originProfile.mainThinkingMode`，不能携带 `writeFiles` 或 `codingDelivery`。纯回答/只读请求若不需要独立证据或并行分析，主模型直接 `completed`，不创建子任务。
 
 三套配置分别落在 `loopSubtask*`、`loopSubtaskFrontend*`、`loopSubtaskFullstack*`，以及 `modelRouting.subtask` / `subtaskFrontend` / `subtaskFullstack`。切换模式只改变显隐和路由，不互相覆盖。全栈角色第一次缺失时从原子模型完整配置初始化一次，并用 `loopFullstackRoleSeededByConfigId` 记住，避免来回切换重拷贝。空模型字符串表示用户选择 CLI 默认模型，与整组配置缺失区分。
 
@@ -91,7 +99,7 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 
 ## 事实来源与验证
 
-验收反馈以本轮确认事件为边界：`accept` 之后仍按原流程调用主任务收尾，但收尾没有新确认事件时只总结、不生成验收表格，没有派发子任务的直接完成同样只总结。直接 `completed` 确认新事件仍显示对应子任务表格，修复的新 attempt 不被历史确认抑制。展示依据当前决策的确认事件 ID，恢复后同样适用，不依赖内存去重标记；不改写用户已有 transcript，不删除历史气泡，不取消协议要求的收尾检查。
+验收反馈以本轮确认事件为边界：`accept` 之后仍按原流程调用主任务收尾，但收尾没有新确认事件时只总结、不生成验收表格，没有派发子任务的直接完成同样只总结。直接 `completed` 确认新事件仍显示对应子任务表格，修复的新 attempt 不被历史确认抑制。展示依据当前决策的确认事件 ID，恢复后同样适用，不依赖内存去重标记；不改写用户已有 transcript，不删除历史气泡；符合简单直办条件且无开放工作或附加审查的收尾，可使用下述 directCompletion 精简协议，其它收尾检查不变。
 
 - 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
 - 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
