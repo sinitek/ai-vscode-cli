@@ -31,10 +31,9 @@ import {
   getConfigOrderPath,
   getOpenCodeRuntimePaths as getOpenCodeRuntimePathsFromConfigPaths,
   normalizeConfigPlatform,
-  type ConfigPathPlatform,
   type LegacyConfigPlatformInput,
 } from "./configPaths";
-import { isPlainObject, parseJsonObjectText, type JsonObjectParseMode } from "../shared/jsonObject";
+import { isPlainObject } from "../shared/jsonObject";
 import { writeFileAtomically } from "../shared/atomicWrite";
 import { resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
 import {
@@ -54,6 +53,7 @@ import {
 import { commitDshDocument } from "../cli/dshConfigModels";
 import { assertConfigSourceFormat } from "./configSourceValidation";
 import { getCanonicalConfigContent, normalizeConfigProfileFields } from "./configprofilenormalization";
+import { assertConfigCopyAllowed, buildConfigCopy, createConfigCopyName } from "./configCopy";
 import {
   activateDshProfile,
   readDshActiveProfileText,
@@ -622,19 +622,6 @@ function formatJSONString(value: string): string {
   }
 }
 
-function readJsonObjectText(
-  value: string | undefined,
-  fallback = "{}",
-  mode: JsonObjectParseMode = "strict",
-): Record<string, unknown> {
-  const text = typeof value === "string" && value.trim().length > 0 ? value : fallback;
-  try {
-    return parseJsonObjectText(text, { mode });
-  } catch {
-    return {};
-  }
-}
-
 export function parseEnvText(content: string | undefined): Record<string, string> {
   const env: Record<string, string> = {};
   for (const rawLine of (content ?? "").split(/\r?\n/)) {
@@ -815,171 +802,6 @@ export function validateOpenCodeConfigForRun(
   };
 }
 
-function createCopyName(baseName: string, existingNames: string[]): string {
-  const baseCopyName = `${baseName}_副本`;
-  if (!existingNames.includes(baseCopyName)) {
-    return baseCopyName;
-  }
-  let index = 2;
-  let nextName = `${baseCopyName}${index}`;
-  while (existingNames.includes(nextName)) {
-    index += 1;
-    nextName = `${baseCopyName}${index}`;
-  }
-  return nextName;
-}
-
-function extractCodexMcpConfig(configContent: string | undefined): Record<string, unknown> {
-  const servers: Record<string, unknown> = {};
-  const sectionPattern = /^\s*\[mcp_servers\.([^\]]+)\]\s*$/;
-  const valuePattern = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/;
-  let currentServerId: string | null = null;
-  for (const line of (configContent ?? "").split(/\r?\n/)) {
-    const section = line.match(sectionPattern);
-    if (section) {
-      currentServerId = section[1].trim().replace(/^['"]|['"]$/g, "");
-      servers[currentServerId] = {};
-      continue;
-    }
-    if (!currentServerId) {
-      continue;
-    }
-    if (/^\s*\[[^\]]+\]\s*$/.test(line)) {
-      currentServerId = null;
-      continue;
-    }
-    const entry = line.match(valuePattern);
-    if (!entry) {
-      continue;
-    }
-    const target = servers[currentServerId] as Record<string, unknown>;
-    const key = entry[1];
-    const rawValue = entry[2].trim();
-    if (rawValue.startsWith("[") || rawValue.startsWith("{")) {
-      try {
-        target[key] = JSON.parse(rawValue.replace(/'/g, "\""));
-        continue;
-      } catch {
-        // Keep a plain string when the TOML value is not JSON-compatible.
-      }
-    }
-    target[key] = rawValue.replace(/^['"]|['"]$/g, "");
-  }
-  return Object.keys(servers).length > 0 ? { mcp: servers } : {};
-}
-
-function extractMcpConfig(source: ConfigItem): Record<string, unknown> {
-  if (source.platform === "codex") {
-    return extractCodexMcpConfig(getCanonicalConfigContent(source));
-  }
-  const config =
-    source.platform === "claude"
-      ? readJsonObjectText(source.mcpContent, "{}")
-      : readJsonObjectText(source.content, "{}", source.platform === "opencode" ? "jsonc" : "strict");
-  const servers = isPlainObject(config.mcpServers)
-    ? config.mcpServers
-    : isPlainObject(config.mcp)
-      ? config.mcp
-    : isPlainObject(config.mcp_servers)
-      ? config.mcp_servers
-      : {};
-  return Object.keys(servers).length > 0 ? { mcp: servers } : {};
-}
-
-function cloneOpenCodeSkillsFromSource(source: ConfigItem): ConfigItem["openCodeSkills"] {
-  if (source.platform === "opencode") {
-    return [...(source.openCodeSkills ?? [])];
-  }
-  if (source.platform === "claude") {
-    return (source.claudeSkills ?? []).map((skill) => ({ ...skill }));
-  }
-  if (source.platform === "codex") {
-    return (source.codexSkills ?? []).map((skill) => ({ ...skill }));
-  }
-  return [];
-}
-
-function buildOpenCodeConfigFromSource(source: ConfigItem): Pick<ConfigItem, "content" | "openCodeSkills"> {
-  const content = readJsonObjectText(source.content, "{}", source.platform === "opencode" ? "jsonc" : "strict");
-  if (isPlainObject(content.mcpServers) && !isPlainObject(content.mcp)) {
-    content.mcp = content.mcpServers;
-    delete content.mcpServers;
-  }
-  return {
-    content: `${JSON.stringify(content, null, 2)}\n`,
-    openCodeSkills: cloneOpenCodeSkillsFromSource(source),
-  };
-}
-
-function buildConfigCopy(source: ConfigItem, targetPlatform: ConfigPathPlatform, name: string): ConfigItem {
-  const now = Date.now();
-  const base: ConfigItem = {
-    id: generateId(),
-    name,
-    platform: targetPlatform,
-    createdAt: now,
-    updatedAt: now,
-  };
-  if (targetPlatform === "opencode") {
-    return {
-      ...base,
-      ...buildOpenCodeConfigFromSource(source),
-    };
-  }
-  if (targetPlatform === "claude") {
-    return {
-      ...base,
-      content: source.platform === "claude" ? source.content ?? "{}" : "{}",
-      mcpContent: source.platform === "claude" ? source.mcpContent ?? "{}" : JSON.stringify(extractMcpConfig(source), null, 2),
-      claudeSkills: source.platform === "claude" ? [...(source.claudeSkills ?? [])] : [],
-    };
-  }
-  if (targetPlatform === "grok") {
-    const content = source.platform === "grok" ? source.configContent ?? source.content ?? "" : "";
-    return {
-      ...base,
-      content,
-      configContent: content,
-      grokSkills: source.platform === "grok" ? [...(source.grokSkills ?? [])] : [],
-    };
-  }
-  if (targetPlatform === "dsh") {
-    const content = source.platform === "dsh" ? source.configContent ?? source.content ?? "" : "";
-    return {
-      ...base,
-      content,
-      configContent: content,
-    };
-  }
-  if (targetPlatform === "kimi-code") {
-    const content = source.platform === "kimi-code"
-      ? source.configContent ?? source.content ?? ""
-      : createKimiCodeDefaultConfigText();
-    return {
-      ...base,
-      content,
-      configContent: content,
-    };
-  }
-  if (targetPlatform === "zcode") {
-    const content = source.platform === "zcode"
-      ? source.configContent ?? source.content ?? ""
-      : createZcodeExampleText();
-    return {
-      ...base,
-      content,
-      configContent: content,
-    };
-  }
-  return {
-    ...base,
-    content: source.platform === "codex" ? getCanonicalConfigContent(source) : "",
-    configContent: source.platform === "codex" ? getCanonicalConfigContent(source) : "",
-    authContent: source.platform === "codex" ? source.authContent ?? "{}" : "{}",
-    codexSkills: source.platform === "codex" ? [...(source.codexSkills ?? [])] : [],
-  };
-}
-
 function isLegacyCrossMigratedOpenCodeConfig(config: Partial<ConfigItem>): boolean {
   if (config.platform !== "opencode") {
     return false;
@@ -1060,33 +882,16 @@ export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem
   if (!source) {
     throw new Error(t("config.notFound"));
   }
-  if (
-    (sourcePlatform === "opencode" && targetPlatform !== "opencode")
-    || (sourcePlatform !== "opencode" && targetPlatform === "opencode")
-  ) {
-    throw new Error("OpenCode configs can only be copied as OpenCode configs; Claude/Codex configs are not converted.");
-  }
-  if (
-    (sourcePlatform === "dsh" && targetPlatform !== "dsh")
-    || (sourcePlatform !== "dsh" && targetPlatform === "dsh")
-  ) {
-    throw new Error("DSH configs can only be copied as DSH configs.");
-  }
-  if (
-    (sourcePlatform === "kimi-code" && targetPlatform !== "kimi-code")
-    || (sourcePlatform !== "kimi-code" && targetPlatform === "kimi-code")
-  ) {
-    throw new Error("Kimi Code configs can only be copied as Kimi Code configs.");
-  }
-  if (
-    (sourcePlatform === "zcode" && targetPlatform !== "zcode")
-    || (sourcePlatform !== "zcode" && targetPlatform === "zcode")
-  ) {
-    throw new Error("ZCode configs can only be copied as ZCode configs.");
-  }
+  assertConfigCopyAllowed(sourcePlatform, targetPlatform);
   const existingNames = (await getConfigList(targetPlatform)).map((config) => config.name);
-  const name = payload.name?.trim() || createCopyName(source.name, existingNames);
-  const copiedConfig = buildConfigCopy(source, targetPlatform, name);
+  const name = payload.name?.trim() || createConfigCopyName(source.name, existingNames);
+  const now = Date.now();
+  const copiedConfig = buildConfigCopy(source, targetPlatform, {
+    id: generateId(),
+    name,
+    createdAt: now,
+    updatedAt: now,
+  });
   await saveConfig(copiedConfig);
   return copiedConfig;
 }

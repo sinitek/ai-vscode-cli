@@ -203,12 +203,12 @@ function createHarness(tabs: Tab[] = [
   return { document, root, window, timers, canceled, state, posted, render, refresh, tab, hover, advance, tooltip, visible };
 }
 
-test("summary appears at 1000ms, never 999ms, as a single accessible plain text tooltip", () => {
+test("summary appears at 300ms, never 299ms, as a single accessible plain text tooltip", () => {
   const harness = createHarness();
   const anchor = harness.hover("a");
   anchor.setAttribute("aria-describedby", "existing-help");
   assert.equal(harness.visible(), false);
-  harness.advance(999);
+  harness.advance(299);
   assert.equal(harness.visible(), false);
   harness.advance(1);
   assert.equal(harness.tooltip()?.textContent, "实现任务摘要悬浮提示");
@@ -226,7 +226,7 @@ test("leave cancels pending work; stale canceled callbacks and quick cross-tab m
   first.dispatch("mouseout");
   harness.hover("b");
   harness.canceled.forEach((callback) => callback());
-  harness.advance(999);
+  harness.advance(299);
   assert.equal(harness.visible(), false);
   harness.advance(1);
   assert.equal(harness.tooltip()?.textContent, "修复分页交互");
@@ -238,11 +238,11 @@ test("unrelated redraws preserve elapsed dwell and transfer a visible tooltip to
   const harness = createHarness();
   const oldAnchor = harness.hover("a");
   for (let count = 0; count < 9; count += 1) {
-    harness.advance(100);
+    harness.advance(30);
     harness.refresh();
     assert.equal(harness.timers.size, 1);
   }
-  harness.advance(99);
+  harness.advance(29);
   assert.equal(harness.visible(), false);
   harness.advance(1);
   assert.equal(harness.visible(), true);
@@ -271,7 +271,7 @@ test("deleted, paged-out, pointer-displaced and detached anchors cannot show lat
       id: String(index), cli: "codex", taskSummary: "任务摘要",
     })));
     harness.hover("0");
-    harness.advance(500);
+    harness.advance(150);
     if (change === "deleted") {
       harness.state.conversationTabs.tabs.shift();
       harness.render();
@@ -317,10 +317,10 @@ test("summary renders markup-like input as text, not HTML", () => {
 test("keyboard focus uses the same delay, survives redraw, and blur or Escape dismisses", () => {
   const harness = createHarness();
   harness.tab("a").focus();
-  harness.advance(600);
+  harness.advance(150);
   harness.refresh();
   assert.equal(harness.document.activeElement, harness.tab("a"));
-  harness.advance(399);
+  harness.advance(149);
   assert.equal(harness.visible(), false);
   harness.advance(1);
   assert.equal(harness.visible(), true);
@@ -336,7 +336,7 @@ test("keyboard focus uses the same delay, survives redraw, and blur or Escape di
 test("Escape cancels pending focus dwell without selecting or posting hover requests", () => {
   const harness = createHarness();
   harness.tab("a").focus();
-  harness.advance(999);
+  harness.advance(299);
   harness.document.fire("keydown", { target: harness.tab("a"), key: "Escape", preventDefault() {}, stopPropagation() {} });
   harness.advance(1);
   assert.equal(harness.visible(), false);
@@ -431,15 +431,15 @@ test("selecting the already active tab by keyboard still dismisses the summary",
 test("a queued focus scroll that leaves the anchor unchanged does not starve keyboard dwell", () => {
   const harness = createHarness();
   harness.tab("a").focus();
-  harness.advance(500);
+  harness.advance(150);
   harness.refresh();
   harness.window.fire("scroll", { target: harness.root, preventDefault() {}, stopPropagation() {} }, true);
-  harness.advance(500);
+  harness.advance(150);
   assert.equal(harness.visible(), true);
 });
 
 test("removing a summary during redraw cancels both pending and visible tooltips", () => {
-  for (const delay of [500, 1000]) {
+  for (const delay of [150, 300]) {
     const harness = createHarness();
     harness.hover("a");
     harness.advance(delay);

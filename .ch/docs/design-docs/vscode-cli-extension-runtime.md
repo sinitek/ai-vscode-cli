@@ -58,7 +58,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 ### 数据与任务级触发
 
 - 对外只增加可选 `ConversationTabSummary.taskSummary?: string`。归一化折叠空白，校验汉字与纯文本，拒绝空白、超限、思考/工具标记和无效输出；以 `Array.from` 限制最多 30 个 Unicode 码点，不破坏非 BMP 字符。提示要求简体中文，但未做确定性繁简转换。旧记录缺字段兼容，无生成中/失败占位。
-- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用，捕获实际模型、思考/variant、命令、参数、环境与 provider 配置快照；内部 OpenCode 消息预加载不替换提交快照。主任务不等待摘要结束。
+- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
 - 协调器按提交快照对象、工作区和草稿对象去重，同一任务的 Loop 内部调度及自动重试只尝试一次；`taskSummaryAttempted` 仍随 Tab/草稿/会话保存，但不再是后续新任务的永久门禁。失败、超时和溢出也消费本次尝试；空白 Tab、hover、刷新与仅恢复旧历史不补生成，新提交不受前次失败影响。
 - 摘要是任务/会话元信息，不写入用户消息、回放、任务记录或 Loop 协议。草稿、会话保存、状态投影和 local/native 绑定（包括目标 session 已存在时）保留摘要与尝试状态，重载/历史重开恢复元信息，不从当前活动 Tab 猜测归属。
 
@@ -70,6 +70,6 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 ### UI 消费与验证边界
 
-前端只消费字段，不因 hover 或焦点发起 AI。鼠标连续停留或键盘聚焦 1000 毫秒后显示一段正文的轻量浮层；离开/失焦、选择/切换、关闭、分页和 Escape 均清理计时并隐藏。单一 body 级浮层以 `textContent`、`role="tooltip"` 和 `aria-describedby` 安全展示，沿用 `.header-hover-tooltip` 主题语义；重绘保留有效停留时间/焦点，窄视口换行、边界钳制及向上翻转不越界。无摘要、生成中、失败无占位；原 Tab 尺寸、分页、运行/错误状态、角色和关闭行为不变，无新增配置、语言包或开关。
+前端只消费字段，不因 hover 或焦点发起 AI。鼠标连续停留或键盘聚焦 300 毫秒后显示一段正文的轻量浮层；离开/失焦、选择/切换、关闭、分页和 Escape 均清理计时并隐藏。单一 body 级浮层以 `textContent`、`role="tooltip"` 和 `aria-describedby` 安全展示，沿用 `.header-hover-tooltip` 主题语义；重绘保留有效停留时间/焦点，窄视口换行、边界钳制及向上翻转不越界。无摘要、生成中、失败无占位；原 Tab 尺寸、分页、运行/错误状态、角色和关闭行为不变，无新增配置、语言包或开关。
 
 运行时与 UI 护栏分别在 `src/test/session/conversationTaskSummary.test.ts`、会话存储/生命周期回归及 `src/test/webview/conversationtabsummarytooltip.test.ts`。初次交付主审合并代码构建与相关测试 299/299；真实隔离 Codex 调用生成 22 码点摘要，6348 毫秒并清除临时目录；完整生成 Webview 在 960×720、280×640 与深浅主题四组合通过 Chromium 验证，另有 UI 相关 41/41 回归（与主审测试重叠，不相加），证据见原归档计划。后续任务级刷新改进重新执行构建、相关回归 280/280、ontology 校验与真实 Chromium 四组合验证，验证已显示浮层随连续任务更新且布局不变；发现的 57 项历史 VM 夹具失败已用修改前源码复现，证据见刷新改进计划。该轮未重跑真实 CLI/provider，没有完整 VS Code 扩展宿主端到端、确定性繁简转换或无关全量测试。

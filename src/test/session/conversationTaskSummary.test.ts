@@ -154,6 +154,7 @@ test("first submit calls AI once, does not use a prompt prefix, and accepts befo
   assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: false, submission: capture, capture }), false);
   assert.equal(captures, 0);
   assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture }), true);
+  assert.equal(captures, 0, "runner and provider configuration capture should happen after dispatch returns");
   assert.equal(harness.tabs.get("tab-a")!.taskSummary, undefined);
   assert.equal(harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: capture, capture }), false);
   await pause();
@@ -164,6 +165,25 @@ test("first submit calls AI once, does not use a prompt prefix, and accepts befo
   assert.equal(harness.drafts.get("tab-a")!.taskSummary, "改进登录异常恢复能力");
   assert.equal(harness.publishes(), 1);
   assert.equal(releases, 1);
+  harness.coordinator.dispose();
+});
+
+test("a superseded submission is canceled before its deferred capture starts", async () => {
+  const harness = createCoordinator();
+  let firstCaptures = 0;
+  let secondCaptures = 0;
+  harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => {
+    firstCaptures += 1;
+    return { run: async () => "过期摘要", dispose: () => undefined };
+  } });
+  harness.coordinator.request({ tabId: "tab-a", eligible: true, submission: {}, capture: () => {
+    secondCaptures += 1;
+    return { run: async () => "当前任务摘要", dispose: () => undefined };
+  } });
+  await pause();
+  assert.equal(firstCaptures, 0);
+  assert.equal(secondCaptures, 1);
+  assert.equal(harness.tabs.get("tab-a")!.taskSummary, "当前任务摘要");
   harness.coordinator.dispose();
 });
 
@@ -341,7 +361,7 @@ test("a reset tab can immediately summarize its new task while the old job is re
   assert.equal(tab.taskSummary, "新任务的独立摘要");
   assert.equal(harness.drafts.get("tab-a")!.taskSummary, "新任务的独立摘要");
   assert.equal(harness.publishes(), 1);
-  assert.equal(releases, 2);
+  assert.equal(releases, 1, "the canceled deferred job never creates a runner to release");
   harness.coordinator.dispose();
 });
 

@@ -35,7 +35,7 @@
 - 每次新的用户可见任务提交都在 Loop 改写前捕获需求，在共同 `runPrompt` 取得实际配置执行租约后异步归纳并更新 Tab 摘要，不等完成、不阻塞任务；已有摘要或历史会话继续执行也可更新。可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。同一任务的内部调度/重试、空白 Tab、hover、刷新和仅恢复旧历史不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出保留上次有效摘要（从未成功则缺失），同次提交不重试，不用原提示截断伪造。
 - 新任务替换同 Tab 的在途摘要请求，旧结果不得覆盖新任务；更新同步保存到 Tab、草稿及当前绑定 session，已显示浮层随状态推送更新正文。刷新改进的实施与验证见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md`。
 - 按任务/会话保存，兼容旧记录；原生 session 绑定、重载、历史重开不丢失或串 Tab，关闭/重置/工作区切换后的迟到结果丢弃。复用已有 CLI/provider 配置的独立受限 session，不污染原对话/Loop 协议，不绕过 DSH/Kimi/ZCode 的 one-shot prompt 禁令。
-- 连续 hover 或键盘 focus 1000 毫秒后显示一段正文的轻量主题浮层；离开、失焦、选择、关闭、分页、Escape 隐藏，无摘要/生成中/失败无占位。纯文本安全渲染、窄屏换行且不越界；原 Tab 尺寸、分页、状态、角色和关闭功能不变，无新增配置、语言包或开关。
+- 连续 hover 或键盘 focus 300 毫秒后显示一段正文的轻量主题浮层；摘要通过独立后台队列准备，不同步占用任务启动或 Webview 渲染；离开、失焦、选择、关闭、分页、Escape 隐藏，无摘要/生成中/失败无占位。纯文本安全渲染、窄屏换行且不越界；原 Tab 尺寸、分页、状态、角色和关闭功能不变，无新增配置、语言包或开关。
 - 规格：`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` §3.4；设计：`.ch/docs/design-docs/vscode-cli-extension-runtime.md`；已归档验收与证据：`.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md`。测试状态：合并代码构建及相关回归 299/299；真实隔离 Codex 成功；完整生成 Webview 在宽窄屏×深浅主题四组合通过浏览器验证，另有 UI 相关回归 41/41（与前述重叠，不相加）。其他六种 CLI 未做真实 provider 调用，未做完整 VS Code 扩展宿主端到端、确定性繁简转换或无关全量测试。
 
 ## AI 对话标签切换性能

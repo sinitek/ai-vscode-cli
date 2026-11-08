@@ -1672,6 +1672,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
 
       function createConversationTabSummaryTooltipController(root) {
         const tooltipId = "conversationTabSummaryTooltip";
+        const dwellMs = 300;
         let tooltip = null;
         let timer = null;
         let generation = 0;
@@ -1766,7 +1767,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
             if (token === generation) {
               show();
             }
-          }, 1000);
+          }, dwellMs);
         };
         root.addEventListener("mouseover", (event) => {
           const anchor = findTab(event.target);

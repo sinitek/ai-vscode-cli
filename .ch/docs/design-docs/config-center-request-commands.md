@@ -113,6 +113,37 @@ registry 的类型按 `ConfigAction` 映射到各自消息的 `Extract` handler�
 - 集成回归：24 动作分发、requestId/data/error、未知/原型键、apply 专用提示、导出清理/后缀/目录创建失败回退/UTF-8 写入/日志、panel 缺失、通知等待和 CLI enabled 动态读取。编译检查穷尽性和消息类型关联，不以运行时键数代替类型检查。
 - 接线后实际串行执行 `npm run build`、六文件相关回归（213/213）与 `npm run test:page`（含再次 build，433/433）；具体命令、日志和未运行项见执行计划。不使用接线前基线替代验收；未运行发布脚本或浏览器 smoke，本次没有 UI 改动。
 
+## 配置档案复制：Facade 与纯策略（2026-11-08）
+
+复制规则在 `src/config/configCopy.ts` 内使用模块级 `Record<CurrentConfigPlatform, ConfigCopyStrategy>` 覆盖七种目标格式，构造函数按目标命名，不引入基类、插件发现或每次调用创建的注册表。请求协议和 UI 均不改变：配置页仍只复制当前 CLI，服务仍保留 Claude/Codex/Grok 之间历史跨平台路径，不能以 UI 当前限制删除服务兼容行为。
+
+依赖方向与责任边界：
+
+```text
+profiles.ts 的 copy handler
+  → configService.copyConfig（Facade：读取源、检查限制、名称、ID/时间、保存编排）
+    → configCopy（纯策略：命名/限制/构造；显式 metadata，无 I/O）
+    → saveConfig（原有校验/归一/锁/原子写/权限/激活配置处理）
+  → 写 response.data，再 await 可选 onConfigChanged
+```
+
+- handler 仍原样传递 payload，不新增 UI 重名拒绝规则到服务，不改变通知和异常边界。
+- facade 严格依次归一源/目标平台、读取源并先报既有 notFound、检查跨平台限制、读取目标名称、确定名称、生成时间/ID、构造、`await saveConfig`、返回原构造对象，不重新读取保存对象。时间仍先捕获，再由既有 generateId 生成 ID。legacy gemini 仅经既有 normalizeConfigPlatform。
+- `createConfigCopyName` 保留“原名_副本”、冲突递增 2/3 及编号空隙行为。显式名称由 facade trim 后使用，空白/缺省才生成；显式重名仍由原有服务路径处理，不新增拒绝。
+- `assertConfigCopyAllowed` 按 OpenCode、DSH、Kimi Code、ZCode 顺序执行原限制与原错误文案，这四者仅同平台复制；涉及多个限制时错误优先级不变。构造函数不重复检查，避免将检查推迟到名称读取/metadata 生成之后。
+- `buildConfigCopy(source, targetPlatform, metadata)` 只消费传入的 id/name/createdAt/updatedAt，不生成随机数或读取时钟，不导入 configService、VS Code，不执行文件或网络操作。复用 canonical 内容、既有 JSON/JSONC 解析器和 Kimi/ZCode 纯范例构造；格式默认分支保留但 facade 仍拒绝不允许的路径。
+- 字段集合及数组语义不变：Codex/Grok/DSH/Kimi/ZCode 使用 `configContent ?? content`，空字符串优先；Claude 同平台保留 content/mcpContent，跨平台沿用原 MCP 提取/空对象回退；Codex authContent 默认 `{}`。同平台 Skills 复制数组、保留元素引用；OpenCode 历史跨来源辅助分支仍逐元素复制 Claude/Codex Skills，不把这种内部构造兼容变成服务支持路径。DSH/Kimi/ZCode 不携带其他 CLI 凭据或 Skills。
+- OpenCode 仍按 JSONC 读取 content，仅在 mcpServers 是对象且 mcp 不是对象时转换，再两空格格式化并加末尾换行；旧 Codex 行式 TOML MCP 提取器保持原容错与解析局限，不趁机扩展。构造不会修改源对象。
+- saveConfig 未更改：策略不能绕过原格式校验、归一、原子写、权限、SharedRuntimeConfig 锁和激活配置应用。
+
+原实现自测（round 2）：隔离 HOME/USERPROFILE/缓存并清除继承的 CLI 路径覆盖后，标准 build 通过，新增纯策略测试 22/22（其中逐项检查 49 组平台限制），既有 configService、opencodeConfigService、configprofilenormalization、configProfileRequestHandlers 回归 186/186。纯策略测试还禁止文件/网络/子进程操作、时钟与随机数，检查固定 metadata、精确字段、空值、源不变和 Skills 引用语义；当时未执行另一任务的公开 API/真实临时文件独立验收。
+
+主审修复前合并验证：标准 build 及包含 configCopyCompatibility 的六文件测试 333/333 通过，日志在 `/tmp/sinitek-copy-main-review.yyBDvc/build.log`、`tests.tap`。这些功能证据未发现回归，但主审另行确认 configService 仍遗留无调用的 readJsonObjectText，以及仅为它保留的 parseJsonObjectText/JsonObjectParseMode 和不再使用的 ConfigPathPlatform 导入，属于抽取遗漏与可维护性问题。
+
+收尾修复后复验（round 3）：只删除服务中的该私有死函数及三个无用导入，保留仍使用的 isPlainObject 和 configCopy 内正在使用的辅助函数，不重新抽象工具或更改容错规则。在本轮宿主 cwd、新建隔离 HOME/缓存且清除继承 CLI 路径覆盖的环境，串行执行标准 build → configcopy、configCopyCompatibility、configService、opencodeConfigService、configprofilenormalization、configProfileRequestHandlers 六文件测试，修复后再次 333/333 通过，0 失败/跳过/取消；日志在 `/tmp/sinitek-copy-cleanup.XxnEhh/build.log`、`tests.tap`。TypeScript AST 核查服务中四个遗留标识符均已消失，isPlainObject 的 14 处标识符出现保留；SHA-256 核对确认策略模块及六个测试源码未改。相关空白与 ontology validate 通过。这是本次修复复验，不宣称主任务最终验收完成；没有改公开 API、策略、保存机制或 UI。
+
+执行记录见 [配置复制策略实现计划](../exec-plans/completed/2026-11/2026-11-08-config-profile-copy-strategies.md)。本次没有用户可见变化，FEATURE_INVENTORY 无需修改；ontology 概念/关系/权限/状态/输入输出/场景不变，既有 configService 与本设计的事实来源路径仍有效，无需语义更新。浏览器验证不适用，不改布局、主题或交互。
+
 ## 如何增加动作
 
 1. 在既有 `configProtocol.ts` 的请求联合与 `CONFIG_ACTIONS` 增加动作，不创建另一张业务动作白名单。

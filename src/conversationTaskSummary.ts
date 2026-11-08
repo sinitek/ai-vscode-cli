@@ -152,15 +152,25 @@ export function createConversationTaskSummaryCoordinator<Tab extends SummaryMeta
       try {
         deps.persist();
         if (!queue.canEnqueue(key)) return false;
-        const execution = input.capture();
-        return queue.enqueue({ key, isCurrent, ...execution, accept: (summary) => {
+        let execution: Pick<ConversationTaskSummaryJob, "run" | "dispose"> | undefined;
+        return queue.enqueue({
+          key,
+          isCurrent,
+          run: async (signal) => {
+            if (signal.aborted || !isCurrent()) return undefined;
+            execution = input.capture();
+            return execution.run(signal);
+          },
+          dispose: () => execution?.dispose(),
+          accept: (summary) => {
           tab.taskSummary = summary;
           draft.taskSummary = summary;
           const bound = deps.getSession(tab);
           if (bound) { bound.taskSummary = summary; bound.taskSummaryAttempted = true; }
           deps.persist();
           deps.publish();
-        } });
+          },
+        });
       } catch { return false; }
     },
     clear: () => queue.clear(),
