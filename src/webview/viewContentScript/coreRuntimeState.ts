@@ -1,7 +1,10 @@
 import { buildHiddenLoopPlusProtocolPromptRuntimeSource } from "../../loopPlusProtocolPrompt";
+import { buildFinalAnswerMessageRuntimeSource } from "../../finalAnswerProtocol";
 
 // Conversation runtime and prompt context state helpers.
-export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTaskListState() {
+export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerMessageRuntimeSource()}
+
+      function createTaskListState() {
         return {
           items: [],
           open: false,
@@ -226,27 +229,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         if (!Array.isArray(state.messages) || messageIndex < 0 || messageIndex >= state.messages.length) {
           return false;
         }
-        const current = state.messages[messageIndex];
-        if (!current || current.role !== "assistant") {
-          return false;
-        }
-        if (current.loopAnswerConclusion === true) {
-          return true;
-        }
-        if (current.loopFinalSummary === true) {
-          return true;
-        }
-        if (current.codexFinalAnswer === true) {
-          return true;
-        }
-        const finalAnswerMarker = "\${FINAL_ANSWER_TEXT_MARKER}";
-        if (
-          finalAnswerMarker
-          && String(current.content || "").includes(finalAnswerMarker)
-        ) {
-          return true;
-        }
-        return false;
+        return isFinalAnswerMessage(state.messages[messageIndex], "\${FINAL_ANSWER_TEXT_MARKER}");
       }
 
       ${buildHiddenLoopPlusProtocolPromptRuntimeSource()}

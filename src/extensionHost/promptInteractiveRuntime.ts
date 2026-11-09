@@ -401,6 +401,15 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
     };
 
+    const resolveAssistantMessageIndex = (): number | null => {
+      if (assistantMessageIndex !== null && messageTarget[assistantMessageIndex]?.id === assistantMessageId) {
+        return assistantMessageIndex;
+      }
+      const index = assistantMessageId ? messageTarget.findIndex((message) => message.id === assistantMessageId) : -1;
+      assistantMessageIndex = index >= 0 ? index : null;
+      return assistantMessageIndex;
+    };
+
     const isCurrentRunActive = (): boolean => {
       const entry = interactiveRunsByTabId.get(tabId);
       return Boolean(entry && entry.runId === runId && !entry.stopped);
@@ -696,10 +705,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           reasoningItemId: options.reasoningItemId,
         });
       }
-      if (!assistantMessageId || assistantMessageIndex === null) {
+      const currentIndex = resolveAssistantMessageIndex();
+      if (!assistantMessageId || currentIndex === null) {
         return;
       }
-      const message = messageTarget[assistantMessageIndex];
+      const message = messageTarget[currentIndex];
       if (!message || message.role !== "assistant") {
         return;
       }
@@ -733,32 +743,34 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     const removeAssistantPlaceholderForTab = (): boolean => {
-      if (assistantMessageIndex === null) {
+      const currentIndex = resolveAssistantMessageIndex();
+      if (currentIndex === null) {
         return false;
       }
-      const message = messageTarget[assistantMessageIndex];
+      const message = messageTarget[currentIndex];
       if (!message || message.role !== "assistant") {
         return false;
       }
       if (message.content.trim()) {
         return false;
       }
-      messageTarget.splice(assistantMessageIndex, 1);
+      messageTarget.splice(currentIndex, 1);
       assistantMessageIndex = null;
       return true;
     };
 
     const removeCurrentAssistantMessageForTab = (): string => {
-      if (assistantMessageIndex === null) {
+      const currentIndex = resolveAssistantMessageIndex();
+      if (currentIndex === null) {
         return "";
       }
-      const message = messageTarget[assistantMessageIndex];
+      const message = messageTarget[currentIndex];
       if (!message || message.role !== "assistant") {
         return "";
       }
       const removedId = message.id;
       const content = String(message.content ?? "");
-      messageTarget.splice(assistantMessageIndex, 1);
+      messageTarget.splice(currentIndex, 1);
       assistantMessageIndex = null;
       if (assistantMessageId === removedId) {
         assistantMessageId = undefined;
@@ -935,10 +947,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (!canHandleNaturalLanguageHumanInteraction() || naturalLanguageHumanInteractionCount > 0) {
         return false;
       }
-      if (assistantMessageIndex === null) {
+      const currentIndex = resolveAssistantMessageIndex();
+      if (currentIndex === null) {
         return false;
       }
-      const message = messageTarget[assistantMessageIndex];
+      const message = messageTarget[currentIndex];
       if (!message || message.role !== "assistant" || message.kind === "thinking") {
         return false;
       }

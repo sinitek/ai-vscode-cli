@@ -34,6 +34,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             syncConversationControlsForActiveTab();
             renderMessages({ incremental: true });
           }
+          if (data.type === "chatMessagesPruned") {
+            applyChatBubblePruningResult(data);
+          }
           if (data.type === "sessionLoadError") {
             console.error("[sinitek-webview] sessionLoadError", {
               title: data.title,

@@ -622,18 +622,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (message.role !== "assistant") {
           return message.role === "user";
         }
-        if (index === state.messages.length - 1 || isAssistantMarkdownRenderPending(message)) {
-          return true;
-        }
-        const presentation = getTracePresentation(message.content || "");
-        return isProtectedChatBubbleMessage(
-          message,
-          "\${FINAL_ANSWER_TEXT_MARKER}",
-          presentation.type === "thinking" || isToolActivityMessage(message)
-        );
+        return isFinalAssistantSummaryMessage(index) || isAssistantMarkdownRenderPending(message);
       }
 
-      function getVisibleMessages() {
+      function getBaseChatBubbleEntries() {
         if (!Array.isArray(state.messages) || state.messages.length === 0) {
           return [];
         }
@@ -658,7 +650,85 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             ...entry,
             protected: isChatBubbleRetentionProtectedMessage(entry.message, entry.index),
           }));
-        return selectRetainedChatBubbleEntries(entries, state.chatMessageLimit)
+        return entries;
+      }
+
+      function retainChatBubbleEntries(entries) {
+        const tabId = getActiveConversationTabId();
+        const tab = state.conversationTabs?.tabs?.find((item) => item.id === tabId);
+        if (!tab || typeof getConversationRuntimeState !== "function") {
+          return selectRetainedChatBubbleEntries(entries, state.chatMessageLimit);
+        }
+        const runtimeState = getConversationRuntimeState(tabId);
+        const identity = JSON.stringify([tab.cli, tab.sessionId || null]);
+        const checkpoint = JSON.stringify([
+          identity, state.chatMessageLimit,
+          typeof isConversationTabBusy === "function" && isConversationTabBusy(tabId),
+          entries.map((entry) => [entry.message.id, entry.protected]),
+        ]);
+        const pending = runtimeState.chatBubbleRetentionPending;
+        if (pending && pending.identity === identity) {
+          return entries.filter((entry) => !pending.deletedIds.has(entry.message.id));
+        }
+        runtimeState.chatBubbleRetentionPending = null;
+        if (runtimeState.chatBubbleRetentionSkipOnce) {
+          runtimeState.chatBubbleRetentionSkipOnce = false;
+          runtimeState.chatBubbleRetentionCheckpoint = checkpoint;
+          return entries;
+        }
+        if (runtimeState.chatBubbleRetentionCheckpoint === checkpoint) {
+          return entries;
+        }
+        runtimeState.chatBubbleRetentionCheckpoint = checkpoint;
+        const retained = selectRetainedChatBubbleEntries(entries, state.chatMessageLimit);
+        if (retained.length === entries.length) {
+          return entries;
+        }
+        const retainedIds = new Set(retained.map((entry) => entry.message.id));
+        const messages = entries.filter((entry) => !retainedIds.has(entry.message.id))
+          .map((entry) => ({ id: entry.message.id, content: entry.message.content }));
+        const requestId = createMessageId();
+        runtimeState.chatBubbleRetentionPending = {
+          requestId, identity, deletedIds: new Set(messages.map((message) => message.id)),
+        };
+        vscode.postMessage({
+          type: "pruneChatMessages", requestId, tabId, cli: tab.cli,
+          sessionId: tab.sessionId || null, messages,
+        });
+        return retained;
+      }
+
+      function applyChatBubblePruningResult(data) {
+        const runtimeState = getConversationRuntimeState(data.tabId, { create: false });
+        const pending = runtimeState && runtimeState.chatBubbleRetentionPending;
+        if (!pending || pending.requestId !== data.requestId) {
+          return;
+        }
+        runtimeState.chatBubbleRetentionPending = null;
+        const tab = state.conversationTabs?.tabs?.find((item) => item.id === data.tabId);
+        if (!tab || JSON.stringify([tab.cli, tab.sessionId || null]) !== pending.identity) {
+          return;
+        }
+        runtimeState.chatBubbleRetentionSkipOnce = true;
+        if (Array.isArray(data.messages)) {
+          const remainingIds = new Set(data.messages.map((message) => message.id));
+          for (const message of runtimeState.messages || []) {
+            if (!remainingIds.has(message.id)) {
+              clearAssistantDeltaRenderTimer(message.id);
+            }
+          }
+          setMessagesForTab(data.tabId, normalizeMessageOrder(data.messages), { render: false });
+        }
+        if (data.error) {
+          showToast(data.error);
+        }
+        if (isRuntimeStateForActiveTab(data.tabId)) {
+          renderMessages({ incremental: true });
+        }
+      }
+
+      function getVisibleMessages() {
+        return retainChatBubbleEntries(getBaseChatBubbleEntries())
           .filter(({ message, index }) => !state.onlyShowFinalResults
             || shouldShowMessageInResultOnlyMode(message, index));
       }

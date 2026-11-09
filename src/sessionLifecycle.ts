@@ -44,6 +44,8 @@ import {
 } from "./sessionTabs";
 import { ChatMessage } from "./webview/types";
 import { resolveSessionHealth, type SessionHealth } from "./sessionHealth";
+import { FINAL_ANSWER_TEXT_MARKER, isFinalAnswerMessage } from "./finalAnswerProtocol";
+import type { PanelMessage } from "./webview/types";
 
 type RuntimeSessionReference = {
   cli: CliName;
@@ -56,6 +58,7 @@ export type PrimaryRunSessionState = {
   sessionId: string | null;
   tabId: string | null;
   messageTarget: ChatMessage[] | null;
+  messageIndex?: number | null;
 };
 
 export type ProcessTitleState = {
@@ -192,6 +195,7 @@ export function createSessionLifecycleController(deps: {
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
   restoreProcessTitle: () => void;
   saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
+  pruneChatMessages: (request: Extract<PanelMessage, { type: "pruneChatMessages" }>) => void;
   sendSessionLoadErrorToPanel: (cli: CliName, sessionId: string | null, detail: string, tabId: string | null) => void;
   sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   syncPendingDraftMessagesForSessionAdoption: (cli: CliName, tabId: string | null) => void;
@@ -203,6 +207,8 @@ export function createSessionLifecycleController(deps: {
     options?: { freezePrevious?: string; codexSelection?: CodexRunSelection | null }
   ) => void;
 } {
+  const retentionPrunedSessions = new Set<string>();
+  const retentionPrunedArrays = new WeakSet<ChatMessage[]>();
   const messagePathOptions = () => ({
     workspaceKeyFallback: deps.workspaceKeyFallback,
     legacyMessageDir: deps.legacyMessageDir,
@@ -301,6 +307,7 @@ export function createSessionLifecycleController(deps: {
       for (const sessionId of staleSessionIds[cli]) {
         const key = getSessionKey(workspaceKey, cli, sessionId);
         deps.sessionMessageCache.delete(key);
+        retentionPrunedSessions.delete(key);
         deps.sessionMessageLoadErrors.delete(key);
         try {
           const filePath = getMessageFile(cli, sessionId, workspaceKey, messagePathOptions());
@@ -363,9 +370,12 @@ export function createSessionLifecycleController(deps: {
       buildErrorDetail,
       loadErrors: deps.sessionMessageLoadErrors,
       logError: (event, payload) => deps.logError(event, payload),
+      onRetentionPruned: () => retentionPrunedSessions.add(key),
     });
     const sanitized = sanitizeMessages(messages, cli);
-    const recovered = maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
+    const recovered = retentionPrunedSessions.has(key)
+      ? null
+      : maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
     const resolvedMessages = recovered ?? sanitized.messages;
     const collapsed = cli === "grok"
       ? collapseGrokConsecutiveThinkingMessages(resolvedMessages)
@@ -376,7 +386,11 @@ export function createSessionLifecycleController(deps: {
         activeWorkspaceKey: deps.activeWorkspaceKey(),
         ...messagePathOptions(),
         logError: (event, payload) => deps.logError(event, payload),
+        retentionPruned: retentionPrunedSessions.has(key),
       });
+    }
+    if (retentionPrunedSessions.has(key)) {
+      retentionPrunedArrays.add(storedMessages);
     }
     deps.sessionMessageCache.set(key, storedMessages);
     updateSessionHealth(cli, sessionId, storedMessages);
@@ -420,14 +434,114 @@ export function createSessionLifecycleController(deps: {
 
   const saveMessages = (cli: CliName, sessionId: string, messages: ChatMessage[]): void => {
     const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
+    if (retentionPrunedArrays.has(messages)) {
+      retentionPrunedSessions.add(key);
+    }
     const sanitized = sanitizeMessages(messages, cli);
+    if (retentionPrunedSessions.has(key)) {
+      retentionPrunedArrays.add(sanitized.messages);
+    }
     updateSessionHealth(cli, sessionId, sanitized.messages);
     deps.sessionMessageCache.set(key, sanitized.messages);
     writeMessageFile(cli, sessionId, sanitized.messages, {
       activeWorkspaceKey: deps.activeWorkspaceKey(),
       ...messagePathOptions(),
       logError: (event, payload) => deps.logError(event, payload),
+      retentionPruned: retentionPrunedSessions.has(key),
     });
+  };
+
+  const pruneChatMessages = (request: Extract<PanelMessage, { type: "pruneChatMessages" }>): void => {
+    const respond = (messages?: ChatMessage[], error?: string): void => deps.sendPanelMessage({
+      type: "chatMessagesPruned",
+      requestId: request.requestId,
+      tabId: request.tabId,
+      cli: request.cli,
+      sessionId: request.sessionId,
+      messages,
+      error,
+    });
+    const tab = deps.getConversationTabById(request.tabId);
+    if (!tab || tab.cli !== request.cli || getConversationTabSessionIdForCli(tab, request.cli) !== request.sessionId) {
+      respond();
+      return;
+    }
+    const stored = request.sessionId
+      ? loadMessages(request.cli, request.sessionId)
+      : deps.getPendingSessionDraft(request.tabId, request.cli).messages;
+    const primary = deps.getPrimaryRunSessionState();
+    const matchingPrimary = primary.tabId === request.tabId && primary.cli === request.cli
+      && primary.sessionId === request.sessionId && primary.messageTarget;
+    const runs = deps.getRuntimeSessionReferences(request.tabId)
+      .filter((run) => run.cli === request.cli && run.sessionId === request.sessionId);
+    const live = deps.getLiveMessagesForTab(request.tabId);
+    const source = live ?? stored;
+    const targets = new Set([stored, source, ...runs.map((run) => run.messageTarget)]);
+    if (matchingPrimary) {
+      targets.add(matchingPrimary);
+    }
+    const activeMessage = matchingPrimary && primary.messageIndex != null
+      ? matchingPrimary[primary.messageIndex]
+      : undefined;
+    const protectedIds = new Set<string>(activeMessage ? [activeMessage.id] : []);
+    for (const run of runs) {
+      const assistant = [...run.messageTarget].reverse().find((message) => message.role === "assistant");
+      if (assistant) {
+        protectedIds.add(assistant.id);
+      }
+    }
+    const candidates = new Map<string, string>();
+    if (Array.isArray(request.messages)) {
+      for (const message of request.messages) {
+        if (message && typeof message.id === "string" && typeof message.content === "string") {
+          candidates.set(message.id, message.content);
+        }
+      }
+    }
+    const deletedIds = new Set(source.filter((message) => candidates.get(message.id) === message.content)
+      .map((message) => message.id));
+    for (const messages of targets) {
+      for (const message of messages) {
+        if (message.role === "user" || isFinalAnswerMessage(message, FINAL_ANSWER_TEXT_MARKER) || protectedIds.has(message.id)
+          || candidates.get(message.id) !== message.content) {
+          deletedIds.delete(message.id);
+        }
+      }
+    }
+    if (deletedIds.size === 0) {
+      respond(source);
+      return;
+    }
+    const remaining = source.filter((message) => !deletedIds.has(message.id));
+    if (request.sessionId && !writeMessageFile(request.cli, request.sessionId, remaining, {
+      activeWorkspaceKey: deps.activeWorkspaceKey(),
+      ...messagePathOptions(),
+      retentionPruned: true,
+      logError: (event, payload) => deps.logError(event, payload),
+    })) {
+      respond(source, "气泡清理失败：无法保存会话历史，原消息未删除。");
+      return;
+    }
+    for (const messages of targets) {
+      let retainedCount = 0;
+      for (const message of messages) {
+        if (!deletedIds.has(message.id)) {
+          messages[retainedCount++] = message;
+        }
+      }
+      messages.length = retainedCount;
+      retentionPrunedArrays.add(messages);
+    }
+    if (request.sessionId) {
+      const key = getSessionKey(deps.activeWorkspaceKey(), request.cli, request.sessionId);
+      retentionPrunedSessions.add(key);
+      deps.sessionMessageCache.set(key, source);
+    }
+    if (matchingPrimary && primary.messageIndex != null) {
+      const nextIndex = activeMessage ? matchingPrimary.findIndex((message) => message.id === activeMessage.id) : -1;
+      deps.setPrimaryRunSessionState({ messageIndex: nextIndex >= 0 ? nextIndex : null });
+    }
+    respond(source);
   };
 
   const sendLoadError = (
@@ -464,7 +578,9 @@ export function createSessionLifecycleController(deps: {
   };
 
   const deleteArtifacts = (cli: CliName, sessionId: string): void => {
-    deps.sessionMessageCache.delete(getSessionKey(deps.activeWorkspaceKey(), cli, sessionId));
+    const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
+    deps.sessionMessageCache.delete(key);
+    retentionPrunedSessions.delete(key);
     const filePath = getMessageFile(cli, sessionId, deps.activeWorkspaceKey(), messagePathOptions());
     try {
       if (fs.existsSync(filePath)) {
@@ -519,6 +635,9 @@ export function createSessionLifecycleController(deps: {
     }
     const existing = loadMessages(cli, sessionId);
     const merged = [...existing, ...pending];
+    if (retentionPrunedArrays.has(existing) || retentionPrunedArrays.has(pending)) {
+      retentionPrunedArrays.add(merged);
+    }
     draft.messages = [];
     saveMessages(cli, sessionId, merged);
     const primary = deps.getPrimaryRunSessionState();
@@ -646,6 +765,7 @@ export function createSessionLifecycleController(deps: {
     attachPendingMessages,
     clearAllSessions: () => {
       deps.sessionMessageCache.clear();
+      retentionPrunedSessions.clear();
       const store = deps.sessionStore();
       for (const cli of CLI_LIST) {
         store[cli].currentId = null;
@@ -715,6 +835,7 @@ export function createSessionLifecycleController(deps: {
       });
     },
     loadSessionMessages: loadMessages,
+    pruneChatMessages,
     loadSessionStore: () => {
       const stored = readSessionFile(deps.activeWorkspaceKey(), sessionPathOptions())
         ?? deps.globalStateGet<SessionStore>(deps.getSessionStoreKey());
@@ -769,6 +890,9 @@ export function createSessionLifecycleController(deps: {
       const localMessages = loadMessages(cli, localSessionId);
       const targetMessages = loadMessages(cli, targetSessionId);
       const mergedMessages = mergeSessionMessages(targetMessages, localMessages);
+      if (retentionPrunedArrays.has(targetMessages) || retentionPrunedArrays.has(localMessages)) {
+        retentionPrunedArrays.add(mergedMessages);
+      }
       saveMessages(cli, targetSessionId, mergedMessages);
 
       const targetIndex = sessions.findIndex((session) => session.id === targetSessionId);

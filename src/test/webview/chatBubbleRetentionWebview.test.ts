@@ -4,6 +4,7 @@ import * as vm from "node:vm";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
+import { buildFinalAnswerMessageRuntimeSource } from "../../finalAnswerProtocol";
 
 type Message = { id: string; role: string; content: string; kind?: string; [key: string]: unknown };
 
@@ -17,7 +18,7 @@ function history(count: number, prefix = "message"): Message[] {
   return Array.from({ length: count }, (_, index) => ({ id: `${prefix}-${index}`, role: "system", content: `process ${index}` }));
 }
 
-function createHarness() {
+function createHarness(persistent = false) {
   const state = {
     messages: [] as Message[], chatMessageLimit: 500, onlyShowFinalResults: false, currentCli: "codex",
     conversationTabs: { activeTabId: "first", tabs: [{ id: "first", cli: "codex" }, { id: "second", cli: "claude" }] },
@@ -25,6 +26,8 @@ function createHarness() {
   const chatArea = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0 }) };
   const unobserved: unknown[] = [];
   const timers = new Map<number, () => void>();
+  const posted: Record<string, any>[] = [];
+  const runtimes: Record<string, any> = {};
   let timerId = 0;
   let created = 0;
   let updated = 0;
@@ -99,12 +102,25 @@ function createHarness() {
     isToolResultLikeMessage: () => false,
   };
   const helpers = ["isCodexReasoningStyleMessage", "isAssistantMarkdownRenderPending", "clearAssistantDeltaRenderTimer", "shouldDeferAssistantMarkdownWhileStreaming", "assistantMarkdownIdleDelay", "scheduleAssistantDeltaMarkdownRender", "scheduleAssistantStreamingRender", "flushAssistantDeltaMarkdownRenders", "appendAssistantDelta"];
+  if (persistent) {
+    sandbox.vscode = { postMessage: (message: Record<string, any>) => posted.push(message) };
+    sandbox.getConversationRuntimeState = (tabId: string) => runtimes[tabId] ||= { messages: [] };
+    sandbox.isRuntimeStateForActiveTab = (tabId: string) => state.conversationTabs.activeTabId === tabId;
+    sandbox.normalizeMessageOrder = (messages: Message[]) => messages;
+    sandbox.setMessagesForTab = (tabId: string, messages: Message[]) => {
+      sandbox.getConversationRuntimeState(tabId).messages = messages;
+      if (sandbox.isRuntimeStateForActiveTab(tabId)) state.messages = messages;
+    };
+    sandbox.showToast = (message: string) => posted.push({ type: "toast", message });
+  }
   vm.createContext(sandbox);
   vm.runInContext([
+    buildFinalAnswerMessageRuntimeSource(),
     VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,
     functionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isFinalAssistantSummaryMessage"),
     ...helpers.map((name) => functionSource(VIEW_CONTENT_SCRIPT_TRACE_RENDERING, name)),
   ].join("\n").replace(/\$\{FINAL_ANSWER_TEXT_MARKER\}/g, "[final_answer]"), sandbox);
+  if (persistent) sandbox.isConversationTabBusy = () => false;
   sandbox.rememberThinkingBubbleViewState = () => undefined;
   sandbox.createMessageElement = (message: Message, index: number, renderState: unknown) => {
     created += 1;
@@ -128,8 +144,19 @@ function createHarness() {
   sandbox.updateRenderedAssistantMessage = updateMessage;
   sandbox.updateRenderedAssistantMessageStreaming = updateMessage;
   return {
+    posted,
+    confirmPruning: (messages?: Message[], error?: string) => {
+      const request = posted.filter((message) => message.type === "pruneChatMessages").at(-1);
+      assert.ok(request);
+      const deletedIds = new Set(request.messages.map((message: Message) => message.id));
+      const remaining = messages || state.messages.filter((message) => !deletedIds.has(message.id));
+      sandbox.applyChatBubblePruningResult({ ...request, type: "chatMessagesPruned", messages: remaining, error });
+    },
     state, sandbox, root, timers, chatArea, unobserved,
-    render: () => sandbox.renderMessages({ incremental: true }),
+    render: () => {
+      if (persistent) sandbox.getConversationRuntimeState(state.conversationTabs.activeTabId).messages = state.messages;
+      sandbox.renderMessages({ incremental: true });
+    },
     visible: () => Array.from(sandbox.getVisibleMessages(), (entry: any) => ({ id: entry.message.id, index: entry.index })),
     ids: () => root.children.map((child) => child.dataset.messageId),
     get created() { return created; }, get updated() { return updated; },
@@ -159,6 +186,81 @@ test("webview counts base display entries before result filtering and preserves 
   harness.render();
   assert.deepEqual(harness.ids(), retained);
   assert.equal(messages.length, 555);
+});
+
+test("confirmed cleanup counts remaining messages across successive batches and cannot be undone by raising the limit", () => {
+  const harness = createHarness(true);
+  harness.state.messages = history(551);
+  harness.render();
+  assert.equal(harness.state.messages.length, 551);
+  assert.equal(harness.posted.length, 1);
+  harness.render();
+  assert.equal(harness.posted.length, 1);
+  harness.confirmPruning();
+  assert.equal(harness.state.messages.length, 451);
+  assert.equal(harness.state.messages[0].id, "message-100");
+  harness.state.messages.push(...history(99, "second-batch"));
+  harness.render();
+  assert.equal(harness.posted.length, 1);
+  harness.state.messages.push(...history(1, "trigger"));
+  harness.render();
+  assert.equal(harness.posted.length, 2);
+  assert.equal(harness.posted[1].messages[0].id, "message-100");
+  harness.confirmPruning();
+  assert.equal(harness.state.messages.length, 451);
+  assert.equal(harness.state.messages[0].id, "message-200");
+  harness.state.chatMessageLimit = 1000;
+  harness.render();
+  assert.equal(harness.ids().length, 451);
+  assert.equal(harness.posted.length, 2);
+});
+
+test("confirmed cleanup skips protected positions without repeated-render backfilling", () => {
+  const harness = createHarness(true);
+  harness.state.messages = history(551);
+  for (let index = 0; index < 99; index++) harness.state.messages[index].role = "user";
+  harness.render();
+  assert.equal(harness.posted[0].messages.length, 1);
+  harness.confirmPruning();
+  assert.equal(harness.state.messages.length, 550);
+  for (let index = 0; index < 4; index++) harness.render();
+  assert.equal(harness.posted.length, 1);
+  assert.ok(harness.state.messages.some((message) => message.id === "message-100"));
+  harness.state.messages.push(...history(1, "new"));
+  harness.render();
+  assert.equal(harness.posted.length, 2);
+  assert.equal(harness.posted[1].messages[0].id, "message-100");
+});
+
+test("background cleanup replies update only the matching Tab and stale session replies are ignored", () => {
+  const harness = createHarness(true);
+  harness.state.messages = history(551, "first");
+  harness.render();
+  const firstRequest = harness.posted[0];
+  const firstRemaining = harness.state.messages.slice(100);
+  harness.state.conversationTabs.activeTabId = "second";
+  harness.state.messages = history(551, "second");
+  harness.render();
+  const secondMessages = harness.state.messages;
+  harness.sandbox.applyChatBubblePruningResult({ ...firstRequest, type: "chatMessagesPruned", messages: firstRemaining });
+  assert.equal(harness.state.messages, secondMessages);
+  assert.equal(harness.sandbox.getConversationRuntimeState("first").messages.length, 451);
+  Object.assign(harness.state.conversationTabs.tabs[1], { sessionId: "new-session" });
+  harness.confirmPruning();
+  assert.equal(harness.state.messages, secondMessages);
+  assert.equal(harness.state.messages.length, 551);
+});
+
+test("failed persistence restores authoritative messages and does not retry on every render", () => {
+  const harness = createHarness(true);
+  harness.state.messages = history(551);
+  harness.render();
+  harness.confirmPruning(harness.state.messages, "保存失败");
+  assert.equal(harness.state.messages.length, 551);
+  assert.equal(harness.ids().length, 551);
+  harness.render();
+  assert.equal(harness.posted.filter((message) => message.type === "pruneChatMessages").length, 1);
+  assert.equal(harness.posted.at(-1)?.message, "保存失败");
 });
 
 test("two Tab/CLI projections, cached DOM, configuration changes and history replacement remain isolated", () => {
@@ -230,28 +332,72 @@ test("detached streaming output reappears and completion re-applies retention wi
   assert.ok(!harness.ids().includes("worker"));
   harness.sandbox.appendAssistantDelta("worker", " delta", "thinking");
   assert.ok(harness.ids().includes("worker"));
-  assert.equal(harness.ids().length, 451);
+  assert.equal(harness.ids().length, 452);
   harness.flushTimers();
   assert.ok(!harness.ids().includes("worker"));
   assert.equal(messages[0].content, "working delta");
   harness.sandbox.appendAssistantDelta("worker", "", "thinking", { codexFinalAnswer: true });
   assert.ok(harness.ids().includes("worker"));
-  assert.equal(harness.ids().length, 451);
+  assert.equal(harness.ids().length, 452);
 });
 
-test("thinking-labelled explicit final text wins over heuristics and unmarked ordinary legacy replies survive", () => {
+test("only user requests and rendered final answers survive inside the oldest window", () => {
   const harness = createHarness();
   harness.state.chatMessageLimit = 1;
   harness.state.messages = [
     { id: "legacy", role: "assistant", content: "**Thinking** legacy answer" },
+    { id: "narration", role: "assistant", content: "先检查代码" },
+    { id: "user", role: "user", content: "修复问题" },
     { id: "explicit", role: "assistant", content: "[final_answer] done", kind: "thinking" },
     ...history(10),
   ];
   harness.render();
-  assert.deepEqual(harness.ids(), ["legacy", "explicit"]);
+  assert.deepEqual(harness.ids(), ["user", "explicit", "message-9"]);
   harness.state.onlyShowFinalResults = true;
   harness.render();
-  assert.deepEqual(harness.ids(), ["explicit"]);
+  assert.deepEqual(harness.ids(), ["user", "explicit"]);
+});
+
+test("mixed thinking and instruction history shares one oldest window and preserves newer instructions", () => {
+  const harness = createHarness();
+  const messages: Message[] = history(551).map((message, index) => ({
+    ...message, role: "assistant", kind: index % 2 === 0 ? "thinking" : "tool-use",
+  }));
+  messages[0] = { id: "request", role: "user", content: "检查并修复", kind: "normal" };
+  messages[50] = { id: "answer", role: "assistant", content: "修复完成", kind: "normal", codexFinalAnswer: true };
+  messages[2] = { id: "unmarked-thinking", role: "assistant", content: "**Checking** current behavior", kind: "normal" };
+  harness.state.messages = messages;
+  harness.render();
+  assert.equal(harness.ids().length, 453);
+  assert.deepEqual(harness.ids().slice(0, 4), ["request", "answer", "message-100", "message-101"]);
+  assert.ok(!harness.ids().includes("unmarked-thinking"));
+  assert.ok(!harness.ids().includes("message-1"));
+  assert.equal(messages.length, 551);
+  harness.render();
+  assert.equal(harness.ids().length, 453);
+});
+
+test("retention final protection matches the rendered final border predicate instead of assistant text heuristics", () => {
+  const harness = createHarness();
+  harness.state.messages = [
+    { id: "user", role: "user", content: "需求", kind: "thinking" },
+    { id: "codex", role: "assistant", content: "结论", codexFinalAnswer: true },
+    { id: "loop-answer", role: "assistant", content: "结论", loopAnswerConclusion: true },
+    { id: "loop-summary", role: "assistant", content: "结论", loopFinalSummary: true },
+    { id: "marker", role: "assistant", content: "[final_answer] 结论", kind: "thinking", subagentId: "worker" },
+    { id: "thinking", role: "assistant", content: "**Thinking** 过程正文" },
+    { id: "pre-tool", role: "assistant", content: "接下来读取文件" },
+    { id: "tool", role: "assistant", content: "读取结果", kind: "tool-result" },
+    { id: "trace", role: "trace", content: "[final_answer] 不是助手答复" },
+    { id: "last", role: "assistant", content: "尚未成为最终答复" },
+  ];
+  harness.state.messages.forEach((message, index) => {
+    assert.equal(
+      harness.sandbox.isChatBubbleRetentionProtectedMessage(message, index),
+      message.role === "user" || harness.sandbox.isFinalAssistantSummaryMessage(index),
+      message.id,
+    );
+  });
 });
 
 test("removed bubbles release rendering records and observers while preserving a non-bottom reading anchor", () => {

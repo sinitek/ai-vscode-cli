@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import { CLI_LIST, type CliName } from "../../cli/types";
 import { getCliDisplayName } from "../../cli/installer";
+import { buildFinalAnswerMessageRuntimeSource } from "../../finalAnswerProtocol";
 
 import { createZcodeExampleText, readZcodeConfigModels, ZCODE_EXAMPLE_MODEL_ID } from "../../config/zcodeConfig";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
@@ -3002,6 +3003,33 @@ test("a pending bottom-scroll frame from another tab does not overwrite restored
   assert.equal(chatArea.scrollTop, 120);
 });
 
+test("host-confirmed bubble deletion updates the real runtime and continues from remaining messages", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const messages = Array.from({ length: 551 }, (_, index) => ({ id: `process-${index}`, role: "trace", content: `exec command-${index}`, merge: false }));
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages });
+  const request = posted.find((message) => message.type === "pruneChatMessages")!;
+  assert.ok(request);
+  assert.equal(request.messages.length, 100);
+  window.dispatchMessage({ ...request, type: "chatMessagesPruned", messages: messages.slice(100) });
+  assert.equal(api.state.messages.length, 451);
+  assert.equal(api.state.messages[0].id, "process-100");
+  assert.equal(api.findRenderedMessageElement("process-0"), null);
+  for (let index = 0; index < 100; index++) {
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message: { id: `new-${index}`, role: "trace", content: `exec new-${index}`, merge: false } });
+  }
+  const requests = posted.filter((message) => message.type === "pruneChatMessages");
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].messages[0].id, "process-100");
+  window.dispatchMessage({ ...requests[1], type: "chatMessagesPruned", messages: api.state.messages.slice(100) });
+  assert.equal(api.state.messages.length, 451);
+  window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1000 }) });
+  assert.equal(api.state.messages.length, 451);
+  assert.equal(api.findRenderedMessageElement("process-0"), null);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
 test("cached message totals stay bounded and result-only changes invalidate restored views", () => {
   const { api, window, posted } = createRuntimeHarness();
   const tabs = [1, 2, 3].map((index) => ({ id: `tab-${index}`, cli: "codex" }));
@@ -4225,7 +4253,8 @@ test("treats final-answer type or [final_answer] text as final assistant bubbles
     name,
   )).join("\n");
   const helpers = new Function(
-    `const state = { messages: [] };
+    `${buildFinalAnswerMessageRuntimeSource()}
+    const state = { messages: [] };
     ${source};
     return {
       setMessages(messages) { state.messages = messages; },
@@ -4279,7 +4308,7 @@ test("treats final-answer type or [final_answer] text as final assistant bubbles
   assert.equal(helpers.isFinal(0), false);
 });
 
-test("keeps conservative assistant retention separate from explicit final-answer filtering", () => {
+test("protects only requests and explicit final answers inside the oldest window before result-only filtering", () => {
   const { api, window, posted } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1 }) });
   api.state.onlyShowFinalResults = false;
@@ -4291,10 +4320,10 @@ test("keeps conservative assistant retention separate from explicit final-answer
     { id: "process", role: "trace", content: "exec pwd" },
   ] });
   assert.ok(api.findRenderedMessageElement("request"));
-  assert.ok(api.findRenderedMessageElement("ordinary-answer"));
+  assert.equal(api.findRenderedMessageElement("ordinary-answer"), null);
   assert.ok(api.findRenderedMessageElement("explicit-final"));
   assert.equal(api.findRenderedMessageElement("ordinary-thinking"), null);
-  assert.equal(api.findRenderedMessageElement("process"), null);
+  assert.ok(api.findRenderedMessageElement("process"));
   assert.equal(api.renderedMessageCacheSize(), 3);
   api.state.onlyShowFinalResults = true;
   api.renderMessages({ incremental: true });

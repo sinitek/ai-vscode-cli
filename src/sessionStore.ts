@@ -7,6 +7,7 @@ import { stripThinkingWrapperTags } from "./thinkingMarkup";
 import type { SessionHealth } from "./sessionHealth";
 import { ChatMessage } from "./webview/types";
 import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
+import { writeFileAtomicallySync } from "./shared/atomicWrite";
 
 export type SessionRecord = {
   id: string;
@@ -41,6 +42,8 @@ type MessageIoOptions = MessagePathOptions & {
   buildErrorDetail?: (error: unknown) => string;
   loadErrors?: Map<string, string>;
   logError?: LogError;
+  retentionPruned?: boolean;
+  onRetentionPruned?: () => void;
 };
 
 export function ensureSessionStore(
@@ -349,6 +352,9 @@ export function readMessageFile(cli: CliName, sessionId: string, options: Messag
       options.loadErrors?.set(key, detail);
       return [];
     }
+    if (parsed.retentionPruned === true) {
+      options.onRetentionPruned?.();
+    }
     return parsed.messages as ChatMessage[];
   } catch (error) {
     const detail = options.buildErrorDetail ? options.buildErrorDetail(error) : String(error);
@@ -368,16 +374,23 @@ export function writeMessageFile(
   sessionId: string,
   messages: ChatMessage[],
   options: MessageIoOptions
-): void {
+): boolean {
   try {
     const cliDir = path.join(getMessageDir(options.activeWorkspaceKey, options), cli);
     if (!fs.existsSync(cliDir)) {
       fs.mkdirSync(cliDir, { recursive: true });
     }
     const filePath = getMessageFile(cli, sessionId, options.activeWorkspaceKey, options);
-    fs.writeFileSync(filePath, JSON.stringify({ messages }, null, 2), "utf8");
+    const content = JSON.stringify({ messages, ...(options.retentionPruned ? { retentionPruned: true } : {}) }, null, 2);
+    if (options.retentionPruned) {
+      writeFileAtomicallySync(filePath, content);
+    } else {
+      fs.writeFileSync(filePath, content, "utf8");
+    }
+    return true;
   } catch (error) {
     options.logError?.("session-messages-write-error", { error: String(error) });
+    return false;
   }
 }
 

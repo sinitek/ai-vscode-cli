@@ -2053,8 +2053,8 @@
     },
     {
       "id": "plugin.rule.chat_message_limit_batched_oldest_process_first",
-      "name": "气泡显示按批次最旧过程项优先",
-      "description": "显示契约以基础可展示原始消息总量 C 计数，N 为设置基准，H=floor(1.1N)，B=max(1,ceil(0.2N))；C≤H 不清理，超过时预算为 B*ceil((C-H)/B)，从最旧向后只移除可清理项、跳过保护项并保留原顺序。默认 550 条不清理，候选充足时 551 条保留 451、650 条保留 550、651 条下一批保留 451。先保留窗口再应用仅显示最终结果过滤，Tab 隔离且覆盖设置、历史、后台及增量更新。",
+      "name": "气泡按批次永久清理最旧过程项",
+      "description": "以基础可展示剩余消息总量 C 计数，N 为设置基准，H=floor(1.1N)，B=max(1,ceil(0.2N))；C≤H 不清理，超过时只检查最早 Q=B*ceil((C-H)/B) 项。区间内真正删除插件内存与本地会话存档中的过程消息、跳过保护项，保留原顺序且不向后补删。默认 551 项最早 100 项有 2 条保护消息时只删 98 条、剩 453。后续以实际剩余消息计数，同批确认后重复渲染不继续补删；提高上限和重开不能恢复。先清理后应用仅显示最终结果过滤，按 Tab/CLI/会话隔离。",
       "status": "active",
       "aliases": ["chatMessageLimit", "批次滞回", "最旧过程气泡"],
       "applies_to": ["plugin.chat_panel"],
@@ -2062,22 +2062,26 @@
         {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "显示集合与批次滞回"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "renderMessages"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}
       ]
     },
     {
       "id": "plugin.rule.chat_message_limit_protects_history_and_answers",
-      "name": "显示保护优先且不删除完整历史",
-      "description": "气泡保留约定保护用户发起、所有明确最终标记、无标记 CLI 的普通非思考主助手回复及正在流式输出的消息。候选不足或保护项自身超限时保留优先，不承诺严格最多 500；保守保护不改变 CLI 完成协议。这只是面板显示投影，不删宿主持久化会话、CLI 上下文、回放或磁盘历史，不混同 historyRetentionDays，也不改变两个非活动视图/5000 条 DOM 缓存与增量渲染。",
+      "name": "永久清理保护用户和最终答复并由宿主确认",
+      "description": "永久保护仅包括用户发起与主色边框最终答复，Webview 与宿主共用 isFinalAnswerMessage 的文本/结构化标记判定；普通助手过程正文、思考与指令同等清理，运行中活动输出临时保护。Webview 通过 pruneChatMessages 提交身份和候选快照；宿主复核后先原子落盘再原地清理缓存及运行中数组，以 chatMessagesPruned 返回剩余消息；失败保留数据。存档 retentionPruned 标记阻止 Claude 自动修复复活旧过程，流式索引按剩余集合或消息 ID 重定位。删除只作用插件数据，不修改外部 CLI 日志与上下文；不混同 historyRetentionDays 或既有 DOM 缓存。",
       "status": "active",
-      "aliases": ["chatMessageLimit", "最终答复保护", "显示投影"],
+      "aliases": ["chatMessageLimit", "最终答复保护", "永久删除", "retentionPruned"],
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
         {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "最旧优先与保护优先"},
         {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "背景与边界"},
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话标签切换性能"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "每 Tab 聊天气泡显示限额"},
         {"path": "src/webview/viewContentScript/messageRendering.ts"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
+        {"path": "src/sessionLifecycle.ts", "anchor": "pruneChatMessages"},
+        {"path": "src/sessionStore.ts", "anchor": "writeMessageFile"},
+        {"path": "src/finalAnswerProtocol.ts", "anchor": "isFinalAnswerMessage"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}
       ]
     },
     {

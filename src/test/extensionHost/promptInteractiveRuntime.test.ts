@@ -424,6 +424,23 @@ test("ZCode default config is resolved before launch and its runner completes th
   assert.equal(harness.activeRunsByTabId.size, 0);
 });
 
+test("interactive streaming resolves its message by identity after earlier bubbles are deleted", async () => {
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("[final_answer] first", { codexFinalAnswer: true });
+      const target = harness.activeRunsByTabId.get("tab-1")!.messageTarget;
+      const active = target.find((message) => message.content.includes("first"))!;
+      assert.ok(target.indexOf(active) > 0);
+      target.splice(0, target.indexOf(active));
+      handlers.onAssistantDelta(" second", { codexFinalAnswer: true });
+      assert.equal(active.content, "[final_answer] first second");
+    },
+  });
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  assert.equal(harness.taskRecords.at(-1)?.status, "end");
+  assert.ok(harness.persistedMessages.at(-1)?.messages.some((message) => message.content === "[final_answer] first second"));
+});
+
 test("interactive runtime host completes a successful Codex runner turn", async () => {
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async (_prompt, handlers) => {

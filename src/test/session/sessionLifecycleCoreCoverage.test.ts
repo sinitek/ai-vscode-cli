@@ -25,6 +25,7 @@ type LifecycleDeps = Parameters<typeof createSessionLifecycleController>[0];
 
 type LifecycleHarness = {
   controller: ReturnType<typeof createSessionLifecycleController>;
+  restart: () => ReturnType<typeof createSessionLifecycleController>;
   state: {
     store: SessionStore;
     tabs: ConversationTabRecord[];
@@ -202,6 +203,9 @@ function createLifecycleHarness(options: { messageDirIsFile?: boolean } = {}): L
       if (patch.messageTarget !== undefined) {
         state.primary.messageTarget = patch.messageTarget;
       }
+      if (patch.messageIndex !== undefined) {
+        state.primary.messageIndex = patch.messageIndex;
+      }
     },
     getRuntimeSessionReferences: (tabId) => state.runtimeRuns
       .filter((run) => !tabId || run.tabId === tabId),
@@ -217,6 +221,7 @@ function createLifecycleHarness(options: { messageDirIsFile?: boolean } = {}): L
 
   return {
     controller: createSessionLifecycleController(deps),
+    restart: () => createSessionLifecycleController({ ...deps, sessionMessageCache: new Map() }),
     state,
     calls,
     paths: { root, messageDirRoot, workspaceKey },
@@ -227,6 +232,117 @@ function createLifecycleHarness(options: { messageDirIsFile?: boolean } = {}): L
 function createRecord(id: string, label: string = "Unnamed"): SessionRecord {
   return { id, label, createdAt: 1, lastUsedAt: 2 };
 }
+
+test("bubble pruning really deletes cached, live and persisted messages and preserves the active index", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const sessionId = "retained-session";
+    harness.state.tabs[0].sessionId = sessionId;
+    harness.state.tabs[0].sessionIdByCli.codex = sessionId;
+    const messages: ChatMessage[] = [
+      createMessage("user", "user", "请求"),
+      { ...createMessage("thinking", "assistant", "旧思考"), kind: "thinking" },
+      createMessage("command", "trace", "exec old"),
+      { ...createMessage("final", "assistant", "最终答复"), codexFinalAnswer: true },
+      createMessage("active", "assistant", "正在输出"),
+    ];
+    harness.controller.saveSessionMessages("codex", sessionId, messages);
+    const cached = harness.controller.loadSessionMessages("codex", sessionId);
+    harness.state.liveMessages.set("tab-1", messages);
+    harness.state.primary = { cli: "codex", tabId: "tab-1", sessionId, messageTarget: messages, messageIndex: 4 };
+    harness.state.runtimeRuns.push({ tabId: "tab-1", cli: "codex", sessionId, messageTarget: messages });
+    harness.controller.pruneChatMessages({ type: "pruneChatMessages", requestId: "first", tabId: "tab-1", cli: "codex", sessionId, messages: messages.map(({ id, content }) => ({ id, content })) });
+    assert.deepEqual(messages.map((message) => message.id), ["user", "final", "active"]);
+    assert.deepEqual(cached.map((message) => message.id), ["user", "final", "active"]);
+    assert.equal(harness.state.primary.messageIndex, 2);
+    messages[2].content += "，继续";
+    harness.controller.saveSessionMessages("codex", sessionId, messages);
+    const reopened = harness.restart().loadSessionMessages("codex", sessionId);
+    assert.deepEqual(reopened.map((message) => message.id), ["user", "final", "active"]);
+    assert.equal(reopened[2].content, "正在输出，继续");
+    const saved = JSON.parse(fs.readFileSync(path.join(harness.paths.messageDirRoot, harness.paths.workspaceKey, "codex", `${sessionId}.json`), "utf8"));
+    assert.equal(saved.retentionPruned, true);
+    assert.deepEqual(saved.messages.map((message: ChatMessage) => message.id), ["user", "final", "active"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("bubble pruning rejects stale session identities, changed snapshots and final-answer upgrades", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const messages = [createMessage("changed", "assistant", "new"), { ...createMessage("final", "assistant", "old"), loopFinalSummary: true }, createMessage("ordinary", "trace", "exec safe")];
+    harness.state.drafts.set("tab-1:codex", { label: null, firstPrompt: null, messages });
+    const request = { type: "pruneChatMessages" as const, requestId: "stale", tabId: "tab-1", cli: "codex" as const, sessionId: "old-session", messages: messages.map(({ id }) => ({ id, content: "old" })) };
+    harness.controller.pruneChatMessages(request);
+    assert.equal(messages.length, 3);
+    harness.controller.pruneChatMessages({ ...request, sessionId: null });
+    assert.equal(messages.length, 3);
+    harness.controller.pruneChatMessages({ ...request, cli: "claude", sessionId: null });
+    assert.equal(messages.length, 3);
+    harness.controller.pruneChatMessages({ ...request, sessionId: null, messages: [{ id: "ordinary", content: "exec safe" }] });
+    assert.deepEqual(messages.map((message) => message.id), ["changed", "final"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("bubble pruning leaves memory intact and reports failure when the history cannot be written", () => {
+  const harness = createLifecycleHarness({ messageDirIsFile: true });
+  try {
+    harness.state.tabs[0].sessionId = "blocked";
+    harness.state.tabs[0].sessionIdByCli.codex = "blocked";
+    const messages = [createMessage("command", "trace", "exec old")];
+    harness.controller.saveSessionMessages("codex", "blocked", messages);
+    const cached = harness.controller.loadSessionMessages("codex", "blocked");
+    harness.controller.pruneChatMessages({ type: "pruneChatMessages", requestId: "fail", tabId: "tab-1", cli: "codex", sessionId: "blocked", messages });
+    assert.equal(cached.length, 1);
+    assert.match(String(harness.calls.panelMessages.at(-1)?.error), /原消息未删除/);
+    assert.equal((harness.calls.panelMessages.at(-1)?.messages as ChatMessage[]).length, 1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("pruned draft history keeps its deletion marker through session binding and migration", () => {
+  const harness = createLifecycleHarness();
+  try {
+    harness.state.tabs[0] = { ...harness.state.tabs[0], cli: "claude" };
+    const messages = [createMessage("user", "user", "请求"), createMessage("thinking", "assistant", "旧过程")];
+    harness.state.drafts.set("tab-1:claude", { label: null, firstPrompt: null, messages });
+    harness.controller.pruneChatMessages({ type: "pruneChatMessages", requestId: "draft", tabId: "tab-1", cli: "claude", sessionId: null, messages: [{ id: "thinking", content: "旧过程" }] });
+    assert.deepEqual(messages.map((message) => message.id), ["user"]);
+    harness.controller.attachPendingMessages("claude", "tab-1", "local_pruned-draft");
+    harness.state.store.claude.sessions.push(createRecord("local_pruned-draft"));
+    harness.controller.migrateLocalSessionToTargetSession("claude", "local_pruned-draft", "native-pruned-draft", { notifyPanel: false });
+    let recoveries = 0;
+    harness.state.recoveredClaudeMessages = () => { recoveries++; return [createMessage("revived", "assistant", "不应恢复")]; };
+    assert.deepEqual(harness.restart().loadSessionMessages("claude", "native-pruned-draft").map((message) => message.id), ["user"]);
+    assert.equal(recoveries, 0);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("Claude transcript recovery does not resurrect intentionally pruned messages after restart", () => {
+  const harness = createLifecycleHarness();
+  try {
+    harness.state.tabs[0] = { ...harness.state.tabs[0], cli: "claude", sessionId: "claude-pruned", sessionIdByCli: { claude: "claude-pruned" } };
+    const messages = [createMessage("user", "user", "请求"), createMessage("thinking", "assistant", "旧过程")];
+    harness.controller.saveSessionMessages("claude", "claude-pruned", messages);
+    harness.controller.pruneChatMessages({ type: "pruneChatMessages", requestId: "claude", tabId: "tab-1", cli: "claude", sessionId: "claude-pruned", messages: [{ id: "thinking", content: "旧过程" }] });
+    let recoveries = 0;
+    harness.state.recoveredClaudeMessages = () => { recoveries++; return messages; };
+    const restarted = harness.restart();
+    const reopened = restarted.loadSessionMessages("claude", "claude-pruned");
+    assert.deepEqual(reopened.map((message) => message.id), ["user"]);
+    restarted.saveSessionMessages("claude", "claude-pruned", reopened);
+    assert.deepEqual(harness.restart().loadSessionMessages("claude", "claude-pruned").map((message) => message.id), ["user"]);
+    assert.equal(recoveries, 0);
+  } finally {
+    harness.cleanup();
+  }
+});
 
 test("draft summary metadata binds to a local session and survives migration into an existing native record", () => {
   const harness = createLifecycleHarness();

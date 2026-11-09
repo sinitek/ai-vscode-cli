@@ -521,6 +521,7 @@ function initializeSessionControllers(): void {
       sessionId: primaryPromptRunController.activeSessionId,
       tabId: primaryPromptRunController.activeTabIdForRun,
       messageTarget: primaryPromptRunController.activeMessageTarget,
+      messageIndex: primaryPromptRunController.activeMessageIndex,
     }),
     setPrimaryRunSessionState: (patch) => {
       if (patch.sessionId !== undefined) {
@@ -1117,6 +1118,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     deleteSession,
     detachConversationTabsFromSession,
     loadSessionMessages,
+    pruneChatMessages: (request) => sessionLifecycleController.pruneChatMessages(request),
     getSessionLoadError: (cli, sessionId) => sessionMessageLoadErrors.get(getSessionKey(activeWorkspaceKey, cli, sessionId)),
     postWebviewMessage: (payload) => viewProvider?.postMessage(payload),
     clearAllSessions,

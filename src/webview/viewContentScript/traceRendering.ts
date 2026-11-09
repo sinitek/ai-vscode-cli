@@ -445,7 +445,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           requiresFullRender = true;
         }
         const target = state.messages[targetIndex];
-        const previouslyProtected = isChatBubbleRetentionProtectedMessage(target, targetIndex);
         if (marksCodexFinalAnswer) {
           target.codexFinalAnswer = true;
         }
@@ -454,7 +453,6 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
         }
         target.content += content || "";
         requiresFullRender = requiresFullRender
-          || previouslyProtected !== isChatBubbleRetentionProtectedMessage(target, targetIndex)
           || (marksCodexFinalAnswer && state.onlyShowFinalResults);
         if (
           !hasRenderableMessageContent(target)

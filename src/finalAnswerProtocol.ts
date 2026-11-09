@@ -18,3 +18,22 @@ export const FINAL_ANSWER_PROMPT_INSTRUCTION =
 export function containsFinalAnswerTextMarker(value: unknown): boolean {
   return typeof value === "string" && value.includes(FINAL_ANSWER_TEXT_MARKER);
 }
+
+export function isFinalAnswerMessage(message: {
+  role?: string;
+  content?: string;
+  loopAnswerConclusion?: boolean;
+  loopFinalSummary?: boolean;
+  codexFinalAnswer?: boolean;
+} | null | undefined, finalAnswerMarker: string): boolean {
+  return message?.role === "assistant" && (
+    message.loopAnswerConclusion === true
+    || message.loopFinalSummary === true
+    || message.codexFinalAnswer === true
+    || Boolean(finalAnswerMarker && String(message.content || "").includes(finalAnswerMarker))
+  );
+}
+
+export function buildFinalAnswerMessageRuntimeSource(): string {
+  return isFinalAnswerMessage.toString();
+}

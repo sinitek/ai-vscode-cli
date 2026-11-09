@@ -3,7 +3,6 @@ import { test } from "node:test";
 import * as vm from "node:vm";
 import {
   buildChatBubbleRetentionRuntimeSource,
-  isProtectedChatBubbleMessage,
   selectRetainedChatBubbleEntries,
   type ChatBubbleRetentionEntry,
 } from "../../webview/chatBubbleRetention";
@@ -20,14 +19,22 @@ test("retention uses cumulative trigger and batch boundaries", () => {
   }
 });
 
-test("retention removes oldest process entries, skipping interleaved protected entries without mutating inputs", () => {
+test("retention skips protected entries inside the oldest window without deleting newer entries or mutating inputs", () => {
   const source = entries(12).map((entry) => Object.freeze({ ...entry, protected: entry.index % 3 === 0 }));
   Object.freeze(source);
   const retained = selectRetainedChatBubbleEntries(source, 5);
-  assert.deepEqual(retained.map((entry) => entry.index), [0, 3, 6, 9, 11]);
+  assert.deepEqual(retained.map((entry) => entry.index), [0, 3, 6, 7, 8, 9, 10, 11]);
   retained.forEach((entry) => assert.equal(entry, source[entry.index]));
   assert.equal(source.length, 12);
   assert.deepEqual(source.map((entry) => entry.index), Array.from({ length: 12 }, (_, index) => index));
+});
+
+test("protected entries consume positions in the oldest batch instead of extending deletion into newer messages", () => {
+  const source = entries(551).map((entry) => ({ ...entry, protected: entry.index === 0 || entry.index === 50 }));
+  const retained = selectRetainedChatBubbleEntries(source, 500);
+  assert.equal(retained.length, 453);
+  assert.deepEqual(retained.slice(0, 4).map((entry) => entry.index), [0, 50, 100, 101]);
+  assert.deepEqual(selectRetainedChatBubbleEntries(source, 500), retained);
 });
 
 test("all protected entries exceed threshold safely; tiny limits and empty arrays work", () => {
@@ -45,26 +52,8 @@ test("large histories retain original indices and order without content deduplic
   assert.equal(retained[499].index, 99_999);
 });
 
-test("ordinary unmarked assistant replies are protected conservatively; explicit finals override process styles", () => {
-  const protect = (message: Parameters<typeof isProtectedChatBubbleMessage>[0], process = false) =>
-    isProtectedChatBubbleMessage(message, "[final_answer]", process);
-  assert.equal(protect({ role: "user", kind: "thinking" }, true), true);
-  assert.equal(protect({ role: "assistant", content: "**Thinking** ordinary legacy answer" }), true);
-  for (const kind of ["thinking", "tool-use", "tool-result", "tool"]) {
-    assert.equal(protect({ role: "assistant", kind }), false);
-  }
-  assert.equal(protect({ role: "assistant", subagentId: "worker" }), false);
-  assert.equal(protect({ role: "assistant" }, true), false);
-  assert.equal(protect({ role: "trace" }), false);
-  assert.equal(protect({ role: "system" }), false);
-  for (const marker of [{ loopAnswerConclusion: true }, { loopFinalSummary: true }, { codexFinalAnswer: true }, { content: "[final_answer] done" }]) {
-    assert.equal(protect({ role: "assistant", kind: "thinking", subagentId: "worker", ...marker }, true), true);
-  }
-});
-
-test("runtime injection executes the identical algorithm and protection implementation", () => {
-  const runtime = vm.runInNewContext(`${buildChatBubbleRetentionRuntimeSource()}; ({ selectRetainedChatBubbleEntries, isProtectedChatBubbleMessage })`);
+test("runtime injection executes the identical oldest-window algorithm", () => {
+  const runtime = vm.runInNewContext(`${buildChatBubbleRetentionRuntimeSource()}; ({ selectRetainedChatBubbleEntries })`);
   const source = entries(651);
   assert.deepEqual(Array.from(runtime.selectRetainedChatBubbleEntries(source, 500)), selectRetainedChatBubbleEntries(source, 500));
-  assert.equal(runtime.isProtectedChatBubbleMessage({ role: "assistant", kind: "thinking", content: "[final_answer] done" }, "[final_answer]"), true);
 });

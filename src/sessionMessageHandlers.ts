@@ -129,6 +129,7 @@ export type PanelMessageHandlerDeps = {
   deleteSession: (cli: CliName, sessionId: string) => void;
   detachConversationTabsFromSession: (cli: CliName, sessionId: string) => void;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
+  pruneChatMessages?: (message: Extract<PanelMessage, { type: "pruneChatMessages" }>) => void;
   getSessionLoadError: (cli: CliName, sessionId: string) => string | undefined;
   postWebviewMessage: (payload: Record<string, unknown>) => void;
   clearAllSessions: () => void;

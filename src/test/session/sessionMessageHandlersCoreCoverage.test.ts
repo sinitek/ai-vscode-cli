@@ -387,6 +387,15 @@ function createHarness(): HandlerHarness {
   };
 }
 
+test("routes bubble deletion snapshots to the session lifecycle owner", async () => {
+  const harness = createHarness();
+  const requests: unknown[] = [];
+  harness.deps.pruneChatMessages = (message) => { requests.push(message); };
+  const request = { type: "pruneChatMessages" as const, requestId: "prune", tabId: "tab-1", cli: "codex" as const, sessionId: "session-1", messages: [{ id: "old", content: "旧过程" }] };
+  await handlePanelMessageWithDeps(request, harness.deps);
+  assert.deepEqual(requests, [request]);
+});
+
 test("does not select a CLI that tool settings have disabled", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

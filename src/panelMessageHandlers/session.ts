@@ -52,6 +52,7 @@ type SessionPanelMessageDeps = Pick<
   | "deleteSession"
   | "detachConversationTabsFromSession"
   | "loadSessionMessages"
+  | "pruneChatMessages"
   | "getSessionLoadError"
   | "postWebviewMessage"
   | "clearAllSessions"
@@ -71,6 +72,8 @@ export function createSessionPanelMessageHandlers(
   deps: SessionPanelMessageDeps
 ): PanelMessageHandlerRegistry {
   return {
+    pruneChatMessages: (message) => deps.pruneChatMessages?.(message),
+
     selectCli: async (message) => {
       const currentCli = deps.getCurrentCli();
       const currentSessionId = currentCli !== message.cli

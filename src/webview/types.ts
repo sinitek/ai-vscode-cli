@@ -29,6 +29,7 @@ export type WebviewOpenCodeThinkingState = OpenCodeThinkingState & {
 export type PanelMessage =
   | import("./chatLinkHost").ChatLinkMessage
   | { type: "requestState" }
+  | { type: "pruneChatMessages"; requestId: string; tabId: string; cli: CliName; sessionId: string | null; messages: Array<Pick<ChatMessage, "id" | "content">> }
   | { type: "notificationAuthorization"; action: "status" | "request"; requestId: number }
   | { type: "requestHumanInteractionHistory" }
   | { type: "previewChatImage"; source: string; alt?: string }
