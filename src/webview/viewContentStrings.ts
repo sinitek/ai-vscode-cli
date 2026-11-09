@@ -290,6 +290,10 @@ export const WEBVIEW_STRINGS = {
       "Codex、Claude、OpenCode、Grok、ZCode 的全局设置。耗时超过 5 分钟的任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
     toolSettingsChatMessageLimitLabel: "每个标签页气泡上限",
+    toolSettingsHideInstructionBubblesLabel: "隐藏指令气泡",
+    toolSettingsHideInstructionBubblesToggle: "启用",
+    toolSettingsHideInstructionBubblesNote: "默认关闭。开启后隐藏 AI 对话面板中的所有指令类型气泡，取消勾选后恢复显示；不影响指令执行。",
+    toolSettingsHideInstructionBubblesSaveError: "隐藏指令气泡设置保存失败，请重试。",
     toolSettingsChatMessageLimitSaveError: "气泡上限保存失败，请重试。",
     toolSettingsChatMessageLimitNote:
       "全局设置，默认 500，范围 1–10000。超过上限的 110% 时，每批检查相当于上限 20% 的最旧气泡，跳过用户消息及最终答复，不向后补删；思考和指令同等清理。清理会永久删除插件内的消息及本地会话历史，提高上限不会恢复；不影响外部 CLI 的日志与上下文。保护项较多时可超过限额。",

@@ -391,6 +391,30 @@ test("chat message limit persistence failure uses the existing error path and re
   assert.deepEqual(calls.savedSettings, []);
 });
 
+test("persists instruction bubble visibility globally and rejects non-boolean enable values", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  const originalSettings = { ...state.workspaceSettings };
+  for (const value of [true, false, "true", 1, null]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key: "hideInstructionBubbles", value }, deps);
+  }
+  assert.deepEqual(calls.toolSettings, [true, false, false, false, false].map((hideInstructionBubbles) => ({ hideInstructionBubbles })));
+  assert.equal(calls.postPanelState, 5);
+  assert.deepEqual(state.workspaceSettings, originalSettings);
+  assert.deepEqual(calls.savedSettings, []);
+});
+
+test("instruction bubble visibility save failure reports an error and returns actual state", async () => {
+  const { deps, calls } = createSettingHarness();
+  const errors: unknown[][] = [];
+  deps.updateStoredToolSettings = () => false;
+  deps.showWebviewError = (...args) => { errors.push(args); };
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "hideInstructionBubbles", value: true }, deps);
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0][1]), /隐藏指令气泡.*保存失败/);
+  assert.equal(calls.postPanelState, 1);
+  assert.deepEqual(calls.savedSettings, []);
+});
+
 test("persists automatic-cleanup retention days as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "historyRetentionDays", value: "45.9" }, deps);

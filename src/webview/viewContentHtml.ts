@@ -669,6 +669,16 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsHideInstructionBubblesLabel}</div>
+                  <label class="debug-toggle">
+                    <input type="checkbox" id="hideInstructionBubbles" aria-label="${i18n.toolSettingsHideInstructionBubblesLabel}" aria-describedby="hideInstructionBubblesNote" />
+                    <span>${i18n.toolSettingsHideInstructionBubblesToggle}</span>
+                  </label>
+                </div>
+                <div id="hideInstructionBubblesNote" class="tool-settings-note">${i18n.toolSettingsHideInstructionBubblesNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
                   <input
                     type="number"

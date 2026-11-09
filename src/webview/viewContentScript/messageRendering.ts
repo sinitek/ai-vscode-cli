@@ -729,6 +729,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function getVisibleMessages() {
         return retainChatBubbleEntries(getBaseChatBubbleEntries())
+          .filter(({ message, index }) => !state.hideInstructionBubbles || !isInstructionBubble(message, index))
           .filter(({ message, index }) => !state.onlyShowFinalResults
             || shouldShowMessageInResultOnlyMode(message, index));
       }

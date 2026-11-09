@@ -100,6 +100,7 @@ export type PanelStateBuilderDeps = {
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
   getGlobalChatMessageLimit?: () => number;
+  getGlobalHideInstructionBubbles?: () => boolean;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusMaxAcceptances?: () => number;
@@ -216,6 +217,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     ),
     historyRetentionDays: deps.getGlobalHistoryRetentionDays?.() ?? 30,
     chatMessageLimit: normalizeChatMessageLimit(deps.getGlobalChatMessageLimit?.()),
+    hideInstructionBubbles: deps.getGlobalHideInstructionBubbles?.() === true,
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,

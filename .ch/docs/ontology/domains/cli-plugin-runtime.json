@@ -2052,6 +2052,23 @@
       ]
     },
     {
+      "id": "plugin.rule.hide_instruction_bubbles_global_setting",
+      "name": "隐藏指令气泡只改变显示且默认关闭",
+      "description": "工具设置→AI任务配置以布尔 hideInstructionBubbles 写入全局 ~/.sinitek_cli/settings.json，默认及缺失/非法值均为关闭。开启后复用 isInstructionBubble 分类隐藏 AI 对话面板所有历史和新增指令气泡及连续指令组，各标签页和重载一致生效；用户、系统、思考、最终答复及带交互操作的气泡保留。先执行既有气泡保留/永久清理规则再过滤显示，不阻止指令执行、不主动删除存档；取消后恢复未被既有规则删除的消息。保存失败提示错误并由宿主真实状态回滚。",
+      "status": "active",
+      "aliases": ["hideInstructionBubbles", "隐藏指令气泡", "AI任务配置"],
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "隐藏指令气泡"},
+        {"path": "src/toolSettings.ts"},
+        {"path": "src/sessionMessageActions.ts", "anchor": "handleUpdateSettingMessage"},
+        {"path": "src/panelStateBuilder.ts"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "isInstructionBubble"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},
+        {"path": "src/test/webview/hideInstructionBubbles.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.chat_message_limit_batched_oldest_process_first",
       "name": "气泡按批次永久清理最旧过程项",
       "description": "以基础可展示剩余消息总量 C 计数，N 为设置基准，H=floor(1.1N)，B=max(1,ceil(0.2N))；C≤H 不清理，超过时只检查最早 Q=B*ceil((C-H)/B) 项。区间内真正删除插件内存与本地会话存档中的过程消息、跳过保护项，保留原顺序且不向后补删。默认 551 项最早 100 项有 2 条保护消息时只删 98 条、剩 453。后续以实际剩余消息计数，同批确认后重复渲染不继续补删；提高上限和重开不能恢复。先清理后应用仅显示最终结果过滤，按 Tab/CLI/会话隔离。",

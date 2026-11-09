@@ -33,7 +33,18 @@ test("chat message limit keeps old settings compatible and preserves neighboring
   }
 });
 
-test("chat message limit persists in global tool settings without losing other settings", () => {
+test("instruction bubble visibility accepts only booleans and keeps old settings compatible", () => {
+  for (const enabled of [true, false]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, hideInstructionBubbles: enabled }), {
+      debug: true, hideInstructionBubbles: enabled,
+    });
+  }
+  for (const value of [undefined, null, "true", "false", 1, 0, {}, []]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, hideInstructionBubbles: value }), { debug: true });
+  }
+});
+
+test("chat display settings persist globally without losing other settings", () => {
   const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-chat-limit-settings-"));
   try {
     const script = `
@@ -51,6 +62,12 @@ test("chat message limit persists in global tool settings without losing other s
       assert.equal(settings.getToolSettingsFilePath(), filePath);
       assert.deepEqual(settings.readToolSettings(), expected);
       assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), expected);
+      for (const enabled of [true, false]) {
+        settings.writeToolSettings({ ...settings.readToolSettings(), hideInstructionBubbles: enabled });
+        const persisted = { ...expected, hideInstructionBubbles: enabled };
+        assert.deepEqual(settings.readToolSettings(), persisted);
+        assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
+      }
     `;
     const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr || result.stdout);

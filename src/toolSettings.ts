@@ -22,6 +22,7 @@ export type ToolSettingsState = {
   loopPlusMaxAcceptances?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
+  hideInstructionBubbles?: boolean;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
   macTaskShell?: MacTaskShell;
@@ -69,6 +70,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
   if ("chatMessageLimit" in record) {
     normalized.chatMessageLimit = normalizeChatMessageLimit(record.chatMessageLimit);
+  }
+  if (typeof record.hideInstructionBubbles === "boolean") {
+    normalized.hideInstructionBubbles = record.hideInstructionBubbles;
   }
   if (typeof record.debug === "boolean") {
     normalized.debug = record.debug;

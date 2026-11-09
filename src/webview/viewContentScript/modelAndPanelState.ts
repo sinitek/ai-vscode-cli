@@ -539,6 +539,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           });
         }
         state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
+        state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -694,6 +695,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.chatMessageLimit) {
           elements.chatMessageLimit.value = String(state.chatMessageLimit);
+        }
+        if (elements.hideInstructionBubbles) {
+          elements.hideInstructionBubbles.checked = state.hideInstructionBubbles;
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);

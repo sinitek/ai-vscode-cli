@@ -461,6 +461,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.chatMessageLimit.addEventListener("change", commitChatMessageLimit);
         elements.chatMessageLimit.addEventListener("blur", commitChatMessageLimit);
       }
+      if (elements.hideInstructionBubbles) {
+        elements.hideInstructionBubbles.addEventListener("change", (event) => {
+          const enabled = event.target.checked === true;
+          state.hideInstructionBubbles = enabled;
+          renderMessages({ incremental: true });
+          vscode.postMessage({ type: "updateSetting", key: "hideInstructionBubbles", value: enabled });
+        });
+      }
       bindCliEnabledToggles();
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {

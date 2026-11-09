@@ -280,6 +280,14 @@ export async function handleUpdateSettingMessage(
     await deps.postPanelState();
     return;
   }
+  if (message.key === "hideInstructionBubbles") {
+    const saved = deps.updateStoredToolSettings({ hideInstructionBubbles: message.value === true });
+    if (!saved) {
+      deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsHideInstructionBubblesSaveError);
+    }
+    await deps.postPanelState();
+    return;
+  }
   if (message.key === "historyRetentionDays") {
     deps.updateStoredToolSettings({ historyRetentionDays: normalizeHistoryRetentionDays(message.value) });
     await deps.postPanelState();

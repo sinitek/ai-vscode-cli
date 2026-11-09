@@ -1313,6 +1313,7 @@ function buildPanelStateFromConfigState(
     getGlobalHumanInteractionTimeoutMinutes,
     getGlobalHistoryRetentionDays: getHistoryRetentionDays,
     getGlobalChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().chatMessageLimit),
+    getGlobalHideInstructionBubbles: () => readToolSettings().hideInstructionBubbles === true,
     getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
     getGlobalLoopPlusMaxAcceptances,

@@ -53,6 +53,13 @@
 - 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+## 隐藏指令气泡
+
+- 工具设置 → AI任务配置新增“隐藏指令气泡”复选框，默认关闭；全局工具设置 `hideInstructionBubbles` 持久化到 `~/.sinitek_cli/settings.json`，缺失或非布尔值视为关闭，不新增工作区覆盖项。
+- 勾选后立即隐藏 AI 对话面板中所有按既有 `isInstructionBubble` 分类的气泡，包括历史消息、新增消息、工具调用/结果及连续指令组；切换标签页或重新打开面板继续生效。用户、系统、思考、最终答复及带交互操作的气泡不因此隐藏，原有其它筛选保持不变。
+- 仅过滤显示，不阻止指令执行、不删除消息或存档；取消勾选恢复尚未被既有保留规则删除的气泡。气泡上限仍先基于完整基础集合执行既有清理规则，再应用隐藏指令与仅显示最终结果筛选；隐藏不绕过永久清理，也不承诺恢复已被清理的消息。设置保存失败时显示中文错误并以宿主真实状态恢复开关和气泡。
+- 实现：`src/toolSettings.ts`、`src/sessionMessageActions.ts`、`src/panelStateBuilder.ts`、`src/webview/viewContentScript/messageRendering.ts`；回归：`src/test/webview/hideInstructionBubbles.test.ts`、`src/test/core/toolSettings.test.ts`、`src/test/session/sessionMessageActionsCoreCoverage.test.ts`。
+
 ## 每 Tab 聊天气泡显示限额
 
 - 状态：已实现并通过针对性合并验收（2026-11-09）；全仓覆盖率、真实扩展宿主/CLI 与 Windows/Linux 未验证，详见归档计划。入口：工具设置 → AI任务配置；全局工具 `~/.sinitek_cli/settings.json` 的 `chatMessageLimit` 对各 Tab 分别生效，默认 500，整数范围 1–10000。有限数字及非空数字字符串向下取整后钳制；空值、空白字符串、非数字、非有限数或其它类型回退 500。
