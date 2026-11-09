@@ -231,7 +231,26 @@ test("shows persisted overall progress in the Loop+ main member title and comple
     loopPlus: undefined,
     loopPlusProgressPercent: 23,
   }), deps());
-  assert.equal(classic.rounds[0]?.participants.find((item) => item.id === "main")?.title, "主任务");
+  assert.equal(classic.rounds[0]?.participants.find((item) => item.id === "main")?.title, "主任务 0%");
+  assert.equal(classic.task.progressPercent, 0);
+});
+
+test("projects classic Loop progress into the header and member title without reading Loop+ progress", () => {
+  for (const status of ["running", "stopped", "error", "needs-review", "completed"] as const) {
+    for (const progressPercent of [undefined, 0, 42, 99, 100, -1, 100.5]) {
+      const state = buildLoopGroupChatPanelStateWithDeps(task(undefined, {
+        schedulingMode: "classic",
+        status,
+        loopProgressPercent: progressPercent,
+        loopPlusProgressPercent: 77,
+      }), deps());
+      const expected = status === "completed" ? 100
+        : typeof progressPercent === "number" && Number.isInteger(progressPercent) && progressPercent >= 0 && progressPercent <= 100
+          ? Math.min(progressPercent, 99) : 0;
+      assert.equal(state.task.progressPercent, expected);
+      assert.equal(state.rounds[0]?.participants.find((item) => item.id === "main")?.title, `主任务 ${expected}%`);
+    }
+  }
 });
 
 test("shows waiting instead of a generating main task while only executions are running", () => {

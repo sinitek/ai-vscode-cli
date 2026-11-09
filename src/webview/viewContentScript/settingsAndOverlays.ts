@@ -447,6 +447,20 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
         elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
       }
+      if (elements.chatMessageLimit) {
+        const commitChatMessageLimit = () => {
+          const nextValue = normalizeChatMessageLimit(elements.chatMessageLimit.value);
+          const changed = state.chatMessageLimit !== nextValue;
+          state.chatMessageLimit = nextValue;
+          elements.chatMessageLimit.value = String(nextValue);
+          if (changed) {
+            renderMessages({ incremental: true });
+          }
+          vscode.postMessage({ type: "updateSetting", key: "chatMessageLimit", value: nextValue });
+        };
+        elements.chatMessageLimit.addEventListener("change", commitChatMessageLimit);
+        elements.chatMessageLimit.addEventListener("blur", commitChatMessageLimit);
+      }
       bindCliEnabledToggles();
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {

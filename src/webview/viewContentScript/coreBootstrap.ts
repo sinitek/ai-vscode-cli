@@ -213,6 +213,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         cliEnabledByName: {},
         humanInteractionTimeoutMinutes: 15,
         historyRetentionDays: 30,
+        chatMessageLimit: \${CHAT_MESSAGE_LIMIT_DEFAULT},
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         loopPlusMaxAcceptances: \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT},
@@ -410,6 +411,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         toolSettingsRepairBody: document.getElementById("toolSettingsRepairBody"),
         toolSettingsRepairEmpty: document.getElementById("toolSettingsRepairEmpty"),
         historyRetentionDays: document.getElementById("historyRetentionDays"),
+        chatMessageLimit: document.getElementById("chatMessageLimit"),
         autoCompactContextAfterRun: document.getElementById("autoCompactContextAfterRun"),
         humanInteractionEnabled: document.getElementById("humanInteractionEnabled"),
         humanInteractionNotifications: document.getElementById("humanInteractionNotifications"),
@@ -605,6 +607,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       const loopMetaByTabId = Object.create(null);
       let conversationTabPageIndex = 0;
       let conversationTabPageAnchorTabId = null;
+
+      \${NORMALIZE_CHAT_MESSAGE_LIMIT}
 
       function normalizeHumanInteractionTimeoutMinutes(value) {
         const numeric = typeof value === "number"

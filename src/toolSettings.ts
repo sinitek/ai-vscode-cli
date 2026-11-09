@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
+import { normalizeChatMessageLimit } from "./chatMessageLimit";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -20,6 +21,7 @@ export type ToolSettingsState = {
   loopPlusDecisionSubtaskMax?: number;
   loopPlusMaxAcceptances?: number;
   humanInteractionTimeoutMinutes?: number;
+  chatMessageLimit?: number;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
   macTaskShell?: MacTaskShell;
@@ -65,6 +67,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     return normalized;
   }
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
+  if ("chatMessageLimit" in record) {
+    normalized.chatMessageLimit = normalizeChatMessageLimit(record.chatMessageLimit);
+  }
   if (typeof record.debug === "boolean") {
     normalized.debug = record.debug;
   }

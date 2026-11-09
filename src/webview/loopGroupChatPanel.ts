@@ -210,7 +210,7 @@ export function buildLoopGroupChatPanelContentPatch(
     mainModelBusy: state.mainModelBusy === true,
     generation,
     headingText: state.loopPlus ? strings.titleLoopPlus : strings.title,
-    subtitleText: `${getPanelSubtitle(state, strings)} · ${state.task.id}`,
+    subtitleText: state.task.id,
     actionsHtml: renderPanelActions(state, strings),
     taskPanelHtml: renderTaskPanel(state, strings),
     rosterPanelHtml: renderRosterPanel(state, strings),
@@ -1432,10 +1432,14 @@ function renderPanelActions(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
 ): string {
+  const progressPercent = state.task.progressPercent ?? 0;
+  const progressBand = Math.min(4, Math.floor(progressPercent / 20));
   return [
+    `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
       ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>`
       : "",
+    "</div>",
     state.task.canSupplement
       ? `<button class="button" type="button" data-action="supplementTask" title="${escapeAttribute(strings.supplementTaskTitle)}">${escapeHtml(strings.supplementTask)}</button>`
       : "",
@@ -1470,16 +1474,6 @@ function renderTaskPanel(
   ${renderLoopPlusPanels(state, strings)}`;
 }
 
-function getPanelSubtitle(
-  state: LoopGroupChatPanelState,
-  strings: LoopGroupChatPanelStrings,
-): string {
-  if (state.loopPlus) {
-    return strings.subtitleLoopPlus;
-  }
-  return strings.mainSubSubtitle;
-}
-
 function renderLoopPlusPanels(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
@@ -1502,14 +1496,11 @@ function renderLoopPlusPanels(
       ${renderLoopPlusField("phase", strings.loopPlusPhase, projection.phase)}
       ${renderLoopPlusField("activity", strings.status, activity)}
       ${renderLoopPlusField("wake", strings.loopPlusWake, projection.wakePending ? strings.loopPlusWakeYes : strings.loopPlusWakeNo)}
-      ${renderLoopPlusCount("current", strings.loopPlusCurrentCount, projection.currentReviewCount)}
       ${renderLoopPlusCount("queue", strings.loopPlusQueueCount, projection.reviewQueueCount)}
       ${renderLoopPlusCount("visible", strings.loopPlusVisibleCount, projection.visibleReviewCount)}
       ${renderLoopPlusCount("running", strings.loopPlusRunningCount, projection.runningCount)}
       ${renderLoopPlusCount("pending", strings.loopPlusPendingCount, projection.pendingCount)}
-      ${renderLoopPlusCount("reviewed", strings.loopPlusReviewedCount, projection.seenAttempts.filter((item) => item.disposition === "reviewed").length)}
     </div>
-    <div class="member-meta" data-loop-plus-activity="${escapeAttribute(projection.activity)}">${escapeHtml(activity)}</div>
   </section>`;
 }
 

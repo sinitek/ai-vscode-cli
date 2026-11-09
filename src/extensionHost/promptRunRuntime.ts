@@ -27,7 +27,7 @@ import {
 import { resolveLoopAnswerConclusion } from "../loopGroupChat";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
-import { getLoopTaskStoreSessionFile, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
@@ -474,6 +474,11 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
     return null;
   }
   const raw = value as Partial<LoopMainDecision>;
+  const progressPercent = normalizeLoopProgressPercent(raw.progressPercent);
+  if (Object.prototype.hasOwnProperty.call(raw, "progressPercent")
+    && (progressPercent === undefined || (progressPercent === 100 && raw.status !== "completed"))) {
+    return null;
+  }
   const estimatedRemainingRounds = normalizeLoopEstimatedRemainingRounds(
     (raw as { estimatedRemainingRounds?: unknown }).estimatedRemainingRounds
   );
@@ -498,11 +503,13 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       ...(roundSummaries ? { roundSummaries } : {}),
       ...(acceptance ? { acceptance } : {}),
       estimatedRemainingRounds: 0,
+      ...(progressPercent !== undefined ? { progressPercent } : {}),
     };
   }
   if (raw.status === "blocked") {
     return {
       status: "blocked",
+      ...(progressPercent !== undefined ? { progressPercent } : {}),
       finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
       estimatedRemainingRounds,
     };
@@ -517,6 +524,7 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       : undefined;
     return {
       status: "clarify",
+      ...(progressPercent !== undefined ? { progressPercent } : {}),
       clarification,
       ...(finalSummary ? { finalSummary } : {}),
       estimatedRemainingRounds,
@@ -532,6 +540,7 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
   return {
     status: "continue",
+    ...(progressPercent !== undefined ? { progressPercent } : {}),
     ...(acceptance ? { acceptance } : {}),
     subtask: subtasks[0],
     subtasks,

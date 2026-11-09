@@ -123,6 +123,10 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   };
 
   const state = buildPanelStateWithDeps(deps);
+  assert.equal(state.chatMessageLimit, 500);
+  for (const [value, expected] of [[762.9, 762], [0, 1], [20000, 10000], [NaN, 500], [Infinity, 500]] as const) {
+    assert.equal(buildPanelStateWithDeps({ ...deps, getGlobalChatMessageLimit: () => value }).chatMessageLimit, expected);
+  }
   assert.equal(state.taskCompletionNotifications, true);
   assert.equal(state.humanInteractionNotifications, true);
   assert.equal(state.taskCompletionWindowAttention, true);

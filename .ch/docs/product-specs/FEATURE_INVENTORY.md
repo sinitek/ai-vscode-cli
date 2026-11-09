@@ -2,10 +2,11 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
-## Loop+ 总体进度
+## Loop / Loop+ 总体进度
 
 - 状态：`active`（2026-11-08）。主模型在每次验收成功提交后评估总体完成度，任务记录保存 0–99 的模型判断值；补充需求可使进度重新校准。未成功提交的验收不更新进度，最终完成门禁成功后置为 100%，停止、暂停和续跑保留原值。
-- 群聊左侧 Loop+ 主任务成员标题显示“主任务 N%”；缺失或非法历史值按 0% 展示，经典 Loop 标题不变。
+- 经典 Loop（2026-11-09）在一个批次全部结束、准备下一批次的有效主任务决策中返回 `progressPercent`，根据全部需求、子任务汇报与剩余工作判断 0–99% 总体进度，不按子任务数或批次数推算，不增加主模型验收。首次拆分从 0% 开始，最终完成设为 100%，停止、暂停和续跑保留 `loopProgressPercent`；与 Loop+ 的 `loopPlusProgressPercent` 独立保存。
+- 两种模式的群聊副标题只显示任务 ID；左侧主任务成员标题显示“主任务 N%”，标题栏中止按钮左侧也展示较大字号进度。五档背景配色对应 [0,20)、[20,40)、[40,60)、[60,80)、[80,100]，使用 VS Code 主题语义色，窄屏保留进度与中止按钮相邻。缺失或非法历史值按 0% 展示，未完成记录最多显示 99%。
 - 实现：`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopTaskStore.ts`、`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts`；回归：Loop+ 决策、编排、任务状态投影和群聊面板测试。
 
 ## Loop / Loop+ 每轮简单事项直办
@@ -19,6 +20,7 @@
 
 - 状态：`active`（2026-11-07）。主模型正在批量验收时，本批所有子任务均显示蓝色「正在验收」，状态说明列出全部相关子任务；新增完成事件扩入本批时同步展示，不再仅标记首项。颜色使用 VS Code 主题蓝色变量，不硬编码色值。
 - 未开始验收的队列仍显示「待验收」；暂停、停止、运行中及验收结果保持各自状态。仅调整展示，不改变 scheduler 的当前项、队列计数、验收协议或持久化快照。
+- Loop+ 状态卡片仅在「状态」行展示当前状态，不在卡片底部重复说明；移除「当前项」和「验收结果」计数，保留其他汇总计数。
 - 实现：`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopPlusPanelState.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
 
 ## Loop / Loop+ 群聊窄屏布局
@@ -50,6 +52,14 @@
 - 按 CLI 与标签 ID 隔离近期消息视图，最多缓存两个非活动视图、合计不超过 5000 条消息，超限按最近使用顺序淘汰；关闭标签释放对应缓存，不改变磁盘会话格式或 CLI 执行逻辑。
 - 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
+
+## 每 Tab 聊天气泡显示限额
+
+- 状态：已实现并通过针对性合并验收（2026-11-09）；全仓覆盖率、真实扩展宿主/CLI 与 Windows/Linux 未验证，详见归档计划。入口：工具设置 → AI任务配置；全局工具 `~/.sinitek_cli/settings.json` 的 `chatMessageLimit` 对各 Tab 分别生效，默认 500，整数范围 1–10000。有限数字及非空数字字符串向下取整后钳制；空值、空白字符串、非数字、非有限数或其它类型回退 500。
+- 500 是显示软基准而非任何时候的硬上限。设基准 N、触发线 H=`floor(1.1N)`、批量 B=`max(1, ceil(0.2N))`；基础可展示原始消息总量 C≤H 时不清理，超过时以 `B * ceil((C-H)/B)` 为移除预算，从最早往后只移除可清理的过程消息，跳过保护项且保留剩余原顺序。默认 550 条不清理；候选充足时 551 条移除最旧 100 条、保留 451 条，650 条保留 550 条，651 条进入下一批、保留 451 条。
+- 用户发起消息、所有明确最终标记、无标记 CLI 的普通非思考主助手回复及正在流式输出的消息优先保留；候选不足时不为凑额度删保护项。保护消息本身可能超过基准或触发线，不能承诺严格最多 500 条。保护普通回复不等于放宽 CLI 完成判定协议。
+- 先从基础显示集合选择保留窗口，再应用「仅显示最终结果」过滤；覆盖 Tab 隔离、后台更新、历史加载和设置变化。只限制面板显示投影，不删除宿主持久化会话、CLI 上下文、回放或磁盘历史；不混同 `historyRetentionDays`，也不替代前项两个非活动视图/5000 条 DOM 缓存与增量渲染策略。
+- 设计与验收矩阵：`.ch/docs/design-docs/chat-bubble-retention.md`；实施与验证记录：`.ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md`。接入 `src/toolSettings.ts`、`src/panelStateBuilder.ts` 及 `src/webview/viewContentScript/messageRendering.ts` 链路；针对性构建、相关回归和前轮 Chromium 证据已通过，验证范围及未运行边界以归档记录为准。
 
 ## Loop+ 容量感知并行与轻量冲突协作
 

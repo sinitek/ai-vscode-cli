@@ -1,5 +1,9 @@
+import { buildChatBubbleRetentionRuntimeSource } from "../chatBubbleRetention";
+
 // Message rendering and conversation tab helpers.
-export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleViewStates = new Map();
+export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRetentionRuntimeSource()}
+
+      var thinkingBubbleViewStates = new Map();
       var renderedMessagesById = new Map();
       var renderedInstructionGroupsByKey = new Map();
       var renderedConversationKey = "";
@@ -421,6 +425,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
       }
 
       function appendVisibleMessageEntries(entries, reuseMessages) {
+        const previousThinkingViewports = thinkingBubbleResizeObserver
+          ? Array.from(elements.messages.querySelectorAll(".thinking-bubble-viewport"))
+          : [];
         const children = [];
         const visibleIds = new Set();
         const groupKeys = new Set();
@@ -477,6 +484,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         });
         flushInstructionRun();
         reconcileMessageChildren(elements.messages, children);
+        previousThinkingViewports.forEach((viewport) => {
+          if (!viewport.isConnected) {
+            thinkingBubbleResizeObserver.unobserve(viewport);
+          }
+        });
         renderedMessagesById.forEach((record, messageId) => {
           if (!visibleIds.has(messageId)) {
             const bubble = record.element.querySelector(".bubble");
@@ -606,13 +618,28 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return true;
       }
 
+      function isChatBubbleRetentionProtectedMessage(message, index) {
+        if (message.role !== "assistant") {
+          return message.role === "user";
+        }
+        if (index === state.messages.length - 1 || isAssistantMarkdownRenderPending(message)) {
+          return true;
+        }
+        const presentation = getTracePresentation(message.content || "");
+        return isProtectedChatBubbleMessage(
+          message,
+          "\${FINAL_ANSWER_TEXT_MARKER}",
+          presentation.type === "thinking" || isToolActivityMessage(message)
+        );
+      }
+
       function getVisibleMessages() {
         if (!Array.isArray(state.messages) || state.messages.length === 0) {
           return [];
         }
-        return state.messages
+        const entries = state.messages
           .map((message, index) => ({ message, index }))
-          .filter(({ message, index }) => {
+          .filter(({ message }) => {
             if (!hasRenderableMessageContent(message)) {
               return false;
             }
@@ -625,11 +652,15 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
             if (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(message)) {
               return false;
             }
-            if (!state.onlyShowFinalResults) {
-              return true;
-            }
-            return shouldShowMessageInResultOnlyMode(message, index);
-          });
+            return true;
+          })
+          .map((entry) => ({
+            ...entry,
+            protected: isChatBubbleRetentionProtectedMessage(entry.message, entry.index),
+          }));
+        return selectRetainedChatBubbleEntries(entries, state.chatMessageLimit)
+          .filter(({ message, index }) => !state.onlyShowFinalResults
+            || shouldShowMessageInResultOnlyMode(message, index));
       }
 
       function persistWebviewUiState() {
@@ -1027,6 +1058,20 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
         return restored || { scrollTop: 0, nearBottom: true };
       }
 
+      function captureRetainedChatScrollAnchor(visibleMessages) {
+        if (!elements.chatArea || typeof elements.chatArea.getBoundingClientRect !== "function") {
+          return null;
+        }
+        const viewportTop = elements.chatArea.getBoundingClientRect().top;
+        for (const entry of visibleMessages) {
+          const element = findRenderedMessageElement(entry.message.id);
+          if (element && element.getBoundingClientRect().bottom > viewportTop) {
+            return { element, top: element.getBoundingClientRect().top };
+          }
+        }
+        return null;
+      }
+
       function renderMessages(options = {}) {
         try {
           const conversationKey = getMessageConversationKey();
@@ -1039,6 +1084,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
           const previousScrollTop = restoredView ? restoredView.scrollTop : (elements.chatArea ? elements.chatArea.scrollTop : 0);
           const shouldAutoScroll = !chatSearchAnchored && (restoredView ? restoredView.nearBottom : isChatNearBottom());
+          const scrollAnchor = !shouldAutoScroll && reuseMessages
+            ? captureRetainedChatScrollAnchor(visibleMessages)
+            : null;
           captureOpenTraceCollapsibleKeys();
           captureOpenInstructionGroupKeys();
           thinkingBubbleViewStates.clear();
@@ -1054,6 +1102,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           renderedConversationKey = conversationKey;
           appendVisibleMessageEntries(visibleMessages, reuseMessages);
           renderedMessageCount = visibleMessages.length;
+          const visibleThinkingKeys = new Set(visibleMessages.map(({ message, index }) => String(message.id || "index-" + index)));
+          thinkingBubbleViewStates.forEach((_value, key) => {
+            if (!visibleThinkingKeys.has(key)) {
+              thinkingBubbleViewStates.delete(key);
+            }
+          });
 
           forceCollapseToolResultBubbles();
           elements.emptyState.style.display = visibleMessages.length === 0 ? "block" : "none";
@@ -1061,7 +1115,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      var thinkingBubbleVi
           if (shouldAutoScroll) {
             stickChatToBottom("auto");
           } else {
-            restoreChatScrollTop(previousScrollTop);
+            const scrollAdjustment = scrollAnchor && scrollAnchor.element.isConnected
+              ? scrollAnchor.element.getBoundingClientRect().top - scrollAnchor.top
+              : 0;
+            restoreChatScrollTop(previousScrollTop + scrollAdjustment);
             updateScrollToBottomButton();
           }
           updateTaskList();

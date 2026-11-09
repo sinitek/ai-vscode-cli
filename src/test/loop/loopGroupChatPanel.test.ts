@@ -920,6 +920,28 @@ function createState(overrides: any = {}) {
   };
 }
 
+test("renders five progress bands beside stop and keeps subtitles limited to the task ID", () => {
+  for (const loopPlus of [undefined, { ok: false, schedulingMode: "event_driven", error: "invalid" }]) {
+    for (const progressPercent of [0, 19, 20, 39, 40, 59, 60, 79, 80, 99, 100]) {
+      const state = createState({ loopPlus });
+      state.task.progressPercent = progressPercent;
+      state.task.canStop = true;
+      const band = Math.min(4, Math.floor(progressPercent / 20));
+      const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+      const patch = buildLoopGroupChatPanelContentPatch(state, progressPercent);
+      assert.equal(patch.subtitleText, state.task.id);
+      assert.ok(html.includes(`<p id="panelSubtitle">${state.task.id}</p>`));
+      const badge = `data-progress-band="${band}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`;
+      assert.ok(patch.actionsHtml.includes(badge));
+      assert.ok(html.includes(patch.actionsHtml));
+      assert.match(patch.actionsHtml, /class="progress-controls"><span[^>]+>\d+%<\/span><button[^>]+data-action="stopTask"[^>]*>中止<\/button><\/div>/u);
+    }
+  }
+  const state = createState();
+  assert.match(buildLoopGroupChatPanelContentPatch(state, 0).actionsHtml, /aria-valuenow="0">0%/u);
+  assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(state, 0).actionsHtml, /data-action="stopTask"/u);
+});
+
 test("shows Loop-style execution animation for Loop+ runtime work without reusing a classic active speaker", () => {
   const loopPlus = {
     ok: true as const,
@@ -973,6 +995,10 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
     );
     assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
     assert.doesNotMatch(page, /data-loop-plus-list=|data-loop-plus-role=/u);
+    const loopPlusPanel = page.match(/<section class="panel" data-loop-plus-mode="event_driven"[\s\S]*?<\/section>/u)?.[0] ?? "";
+    assert.match(loopPlusPanel, /data-loop-plus-field="activity"/u);
+    assert.doesNotMatch(loopPlusPanel, /data-loop-plus-count="(?:current|reviewed)"|>当前项<|>验收结果<|data-loop-plus-activity=/u);
+    assert.equal((loopPlusPanel.match(/正在验收/g) ?? []).length, 1);
     assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果)<\/h2>/u);
     assert.doesNotMatch(page, /<i>report<\/i>|&lt;i&gt;report&lt;\/i&gt;/u);
     assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);

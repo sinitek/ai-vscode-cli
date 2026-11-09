@@ -36,7 +36,7 @@ import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import { buildLoopGroupChatFinalStatusSection, buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, formatLoopGroupChatMemberName, LOOP_MAIN_SUB_CHAT_ROUND_KEY, latestLoopGroupChatSubtaskStartedAt, resolveLoopTaskRunControlState } from "./loopGroupChat";
 import {
-  normalizeLoopPlusProgressPercent,
+  normalizeLoopProgressPercent,
   resolveLoopSchedulingMode,
   type LoopRoundRecord,
   type LoopSubtaskRecord,
@@ -64,6 +64,7 @@ import {
   resolveLoopPlusMaxAcceptances,
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
+import { normalizeChatMessageLimit } from "./chatMessageLimit";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -98,6 +99,7 @@ export type PanelStateBuilderDeps = {
   getCliEnabledByName?: () => PanelState["cliEnabledByName"];
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
+  getGlobalChatMessageLimit?: () => number;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusMaxAcceptances?: () => number;
@@ -213,6 +215,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),
     ),
     historyRetentionDays: deps.getGlobalHistoryRetentionDays?.() ?? 30,
+    chatMessageLimit: normalizeChatMessageLimit(deps.getGlobalChatMessageLimit?.()),
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,
@@ -393,6 +396,7 @@ export function buildLoopGroupChatPanelStateWithDeps(
       cli: task.cli,
       status: task.status,
       rootPrompt: task.rootPrompt,
+      progressPercent: resolveLoopPanelProgressPercent(task, loopPlus),
       taskStoreFile: task.taskStoreFile,
       mainCommunicationFile: task.mainCommunicationFile,
       currentRound: task.currentRound,
@@ -666,6 +670,12 @@ function resolveLoopMemberLastStartedAt(
   return typeof updatedAt === "number" && Number.isFinite(updatedAt) ? updatedAt : null;
 }
 
+function resolveLoopPanelProgressPercent(task: LoopTaskRecord, loopPlus?: LoopPlusPanelProjection | null): number {
+  const completed = loopPlus ? loopPlus.ok && loopPlus.phase === "completed" : task.status === "completed";
+  const storedProgress = loopPlus ? task.loopPlusProgressPercent : task.loopProgressPercent;
+  return completed ? 100 : Math.min(normalizeLoopProgressPercent(storedProgress) ?? 0, 99);
+}
+
 function buildLoopMainSubChatPanelRound(
   task: LoopTaskRecord,
   label: string,
@@ -675,9 +685,7 @@ function buildLoopMainSubChatPanelRound(
   const chatFile = ensureLoopMainSubChatTranscriptWithDeps(task, deps);
   const joinedAtBySubtaskId = readLoopSubtaskJoinedStartedAt(chatFile, deps);
   if (loopPlus) {
-    const progressPercent = loopPlus.ok && loopPlus.phase === "completed"
-      ? 100
-      : Math.min(normalizeLoopPlusProgressPercent(task.loopPlusProgressPercent) ?? 0, 99);
+    const progressPercent = resolveLoopPanelProgressPercent(task, loopPlus);
     const mainTitle = `${getLoopMainSubChatMainTitle()} ${progressPercent}%`;
     return {
       key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
@@ -726,7 +734,7 @@ function buildLoopMainSubChatPanelRound(
   }
   const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
   const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
-  const mainTitle = getLoopMainSubChatMainTitle();
+  const mainTitle = `${getLoopMainSubChatMainTitle()} ${resolveLoopPanelProgressPercent(task)}%`;
   const mainStatus = mainRunning ? "running" : task.status;
   const mainParticipant: LoopGroupChatPanelRound["participants"][number] = {
     id: "main",

@@ -48,6 +48,20 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("chat message limit reuses the AI task settings card between compact and Loop settings", () => {
+  const html = buildHtml();
+  const start = html.indexOf('id="chatMessageLimit"');
+  assert.ok(start > html.indexOf('id="autoCompactContextAfterRun"'));
+  assert.ok(start < html.indexOf('id="loopMaxRounds"'));
+  assert.equal(countOccurrences(html, 'id="chatMessageLimit"'), 1);
+  assert.match(html, /<label class="tool-settings-label" for="chatMessageLimit">每个标签页气泡上限<\/label>/);
+  assert.match(html, /<input\s+type="number"\s+id="chatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="500"\s+aria-describedby="chatMessageLimitNote"/);
+  assert.match(html, /id="chatMessageLimitNote" class="tool-settings-note"/);
+  assert.match(html, /默认 500.*110%.*20%.*最旧过程气泡.*用户消息及最终答复始终保留.*可超过限额.*仅影响显示.*不删除历史/);
+  assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
+  assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
+});
+
 test("conversation tabs use compact horizontal padding and close-button spacing", () => {
   assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*gap:\s*3px;/);
   assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*padding:\s*2\.5px 5px;/);

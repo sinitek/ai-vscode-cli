@@ -1,5 +1,9 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import {
   isCliEnabled,
@@ -16,6 +20,44 @@ import {
   type ToolSettingsState,
 } from "../../toolSettings";
 import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
+
+test("chat message limit keeps old settings compatible and preserves neighboring values", () => {
+  assert.deepEqual(normalizeToolSettings(undefined), {});
+  assert.deepEqual(normalizeToolSettings({ debug: true, historyRetentionDays: 45 }), {
+    debug: true, historyRetentionDays: 45,
+  });
+  for (const [value, expected] of [["734.9", 734], ["", 500], [null, 500], [true, 500], [Infinity, 500], [0, 1], [20000, 10000]] as const) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, chatMessageLimit: value, historyRetentionDays: 45 }), {
+      debug: true, chatMessageLimit: expected, historyRetentionDays: 45,
+    });
+  }
+});
+
+test("chat message limit persists in global tool settings without losing other settings", () => {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-chat-limit-settings-"));
+  try {
+    const script = `
+      const assert = require("node:assert/strict");
+      const fs = require("node:fs");
+      const path = require("node:path");
+      require("node:os").homedir = () => ${JSON.stringify(temporaryHome)};
+      const settings = require(${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))});
+      const filePath = path.join(${JSON.stringify(temporaryHome)}, ".sinitek_cli", "settings.json");
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify({ debug: true, historyRetentionDays: 45, humanInteractionTimeoutMinutes: 12 }));
+      assert.deepEqual(settings.readToolSettings(), { debug: true, historyRetentionDays: 45, humanInteractionTimeoutMinutes: 12 });
+      settings.writeToolSettings({ ...settings.readToolSettings(), chatMessageLimit: "879.9" });
+      const expected = { debug: true, historyRetentionDays: 45, humanInteractionTimeoutMinutes: 12, chatMessageLimit: 879 };
+      assert.equal(settings.getToolSettingsFilePath(), filePath);
+      assert.deepEqual(settings.readToolSettings(), expected);
+      assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), expected);
+    `;
+    const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
+    fs.rmSync(temporaryHome, { recursive: true, force: true });
+  }
+});
 
 test("ignores retired final-answer policy fields", () => {
   assert.deepEqual(

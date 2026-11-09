@@ -589,6 +589,7 @@ function createRuntimeHarness(
         queuePromptForLater,
         removePromptContextTag,
         renderMessages,
+        setMessageRenderer: (renderer) => { renderMessages = renderer; },
         requestRunStreamExport,
         resetConversationRuntimeState,
         updateContextTokenUsage,
@@ -623,6 +624,46 @@ function createRuntimeHarness(
   );
   return { api, document, window: fakeWindow, posted };
 }
+
+test("chat message limit normalizes input, immediately rerenders changes and sends only the setting", () => {
+  const { api, document, posted } = createRuntimeHarness();
+  const input = document.getElementById("chatMessageLimit");
+  assert.equal(api.state.chatMessageLimit, 500);
+  posted.length = 0;
+  const renders: unknown[] = [];
+  api.setMessageRenderer((options: unknown) => { renders.push(options); });
+  for (const [value, expected, eventType] of [
+    ["764.9", 764, "change"], ["", 500, "blur"], [" ", 500, "blur"], ["nope", 500, "blur"],
+    ["0", 1, "change"], ["-9", 1, "blur"], ["1.9", 1, "change"], ["10001", 10000, "change"],
+    ["Infinity", 500, "blur"],
+  ] as const) {
+    const previousValue = api.state.chatMessageLimit;
+    const previousRenders = renders.length;
+    input.value = value;
+    input.dispatchEvent({ type: eventType });
+    assert.equal(api.state.chatMessageLimit, expected);
+    assert.equal(input.value, String(expected));
+    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "chatMessageLimit", value: expected });
+    assert.equal(renders.length - previousRenders, previousValue === expected ? 0 : 1);
+  }
+  assert.ok(renders.every((options) => JSON.stringify(options) === '{"incremental":true}'));
+  assert.ok(posted.every((message) => message.type === "updateSetting" && message.key === "chatMessageLimit"));
+});
+
+test("chat message limit receives saved values, invalid values and old snapshots safely", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  const renders: Array<{ options: unknown; limit: number }> = [];
+  api.setMessageRenderer((options: unknown) => { renders.push({ options, limit: api.state.chatMessageLimit }); });
+  for (const [value, expected] of [["820.9", 820], ["820", 820], [null, 500], [false, 500], [{}, 500], [0, 1], [20000, 10000], [undefined, 500]] as const) {
+    const previousRenders = renders.length;
+    window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: value }) });
+    assert.equal(api.state.chatMessageLimit, expected);
+    assert.equal(document.getElementById("chatMessageLimit").value, String(expected));
+    assert.equal(renders.length - previousRenders, 1);
+    assert.deepEqual(renders.at(-1), { options: { incremental: true }, limit: expected });
+  }
+});
 
 function createPanelState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -2965,9 +3006,10 @@ test("cached message totals stay bounded and result-only changes invalidate rest
   const { api, window, posted } = createRuntimeHarness();
   const tabs = [1, 2, 3].map((index) => ({ id: `tab-${index}`, cli: "codex" }));
   const select = (activeTabId: string) => window.dispatchMessage({
-    type: "state", payload: createPanelState({ conversationTabs: { activeTabId, tabs } }),
+    type: "state", payload: createPanelState({ chatMessageLimit: 5000, conversationTabs: { activeTabId, tabs } }),
   });
   select("tab-1");
+  assert.equal(api.state.chatMessageLimit, 5000);
   api.state.onlyShowFinalResults = false;
   for (const tab of tabs.slice(0, 2)) {
     window.dispatchMessage({ type: "setMessages", tabId: tab.id, messages: [
@@ -2976,6 +3018,7 @@ test("cached message totals stay bounded and result-only changes invalidate rest
     ] });
   }
   const firstUser = api.findRenderedMessageElement("user-0");
+  assert.ok(api.findRenderedMessageElement("trace"));
   select("tab-2");
   select("tab-3");
   assert.equal(api.renderedConversationViewCacheSize(), 1);
@@ -4200,19 +4243,67 @@ test("treats final-answer type or [final_answer] text as final assistant bubbles
     { role: "assistant", content: "thinking about [final_answer]", kind: "thinking" },
     { role: "assistant", content: "truncated thinking...", kind: "thinking" },
     { role: "system", content: "Task completed" },
+    { role: "assistant", content: "[final_answer]\ncompleted", kind: "thinking" },
+    { role: "assistant", content: "typed thinking final", kind: "thinking", codexFinalAnswer: true },
+    { role: "assistant", content: "loop conclusion", kind: "thinking", loopAnswerConclusion: true },
+    { role: "assistant", content: "loop summary", kind: "thinking", loopFinalSummary: true },
+    { role: "user", content: "[final_answer] request", codexFinalAnswer: true },
+    { role: "trace", content: "[final_answer] trace", codexFinalAnswer: true },
+    { role: "assistant", content: "[final_answer incomplete", kind: "thinking" },
+    { role: "assistant", content: "[final_answer] completed", kind: "tool-use" },
   ]);
 
   assert.equal(helpers.isFinal(0), false);
   assert.equal(helpers.isFinal(1), true);
   assert.equal(helpers.isFinal(2), true);
-  assert.equal(helpers.isFinal(3), false);
+  assert.equal(helpers.isFinal(3), true);
   assert.equal(helpers.isFinal(4), false);
+  assert.equal(helpers.isFinal(5), false);
+  assert.equal(helpers.isFinal(6), true);
+  assert.equal(helpers.isFinal(7), true);
+  assert.equal(helpers.isFinal(8), true);
+  assert.equal(helpers.isFinal(9), true);
+  assert.equal(helpers.isFinal(10), false);
+  assert.equal(helpers.isFinal(11), false);
+  assert.equal(helpers.isFinal(12), false);
+  assert.equal(helpers.isFinal(13), true);
+  assert.equal(helpers.isFinal(-1), false);
+  assert.equal(helpers.isFinal(14), false);
 
   helpers.setMessages([
     { role: "assistant", content: "ordinary completion-like text" },
     { role: "system", content: "Task completed" },
   ]);
   assert.equal(helpers.isFinal(0), false);
+  helpers.setMessages([]);
+  assert.equal(helpers.isFinal(0), false);
+});
+
+test("keeps conservative assistant retention separate from explicit final-answer filtering", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1 }) });
+  api.state.onlyShowFinalResults = false;
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: "request", role: "user", content: "保留请求与答复" },
+    { id: "ordinary-answer", role: "assistant", content: "ordinary completion-like text" },
+    { id: "ordinary-thinking", role: "assistant", kind: "thinking", content: "still reasoning" },
+    { id: "explicit-final", role: "assistant", kind: "thinking", content: "<FINAL>\n已完成" },
+    { id: "process", role: "trace", content: "exec pwd" },
+  ] });
+  assert.ok(api.findRenderedMessageElement("request"));
+  assert.ok(api.findRenderedMessageElement("ordinary-answer"));
+  assert.ok(api.findRenderedMessageElement("explicit-final"));
+  assert.equal(api.findRenderedMessageElement("ordinary-thinking"), null);
+  assert.equal(api.findRenderedMessageElement("process"), null);
+  assert.equal(api.renderedMessageCacheSize(), 3);
+  api.state.onlyShowFinalResults = true;
+  api.renderMessages({ incremental: true });
+  assert.ok(api.findRenderedMessageElement("request"));
+  assert.ok(api.findRenderedMessageElement("explicit-final"));
+  assert.equal(api.findRenderedMessageElement("ordinary-answer"), null);
+  assert.equal(api.renderedMessageCacheSize(), 2);
+  assert.equal(api.state.messages.length, 5);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 
 test("renders message and trace helpers across final, collapsed, tool-result, and fallback paths", () => {

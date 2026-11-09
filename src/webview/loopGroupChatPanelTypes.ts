@@ -109,6 +109,7 @@ export type LoopGroupChatPanelState = {
     cli: string;
     status: string;
     rootPrompt: string;
+    progressPercent?: number;
     taskStoreFile: string;
     mainCommunicationFile: string;
     currentRound: number;

@@ -153,7 +153,7 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
     assert.match(page, /typing-dots/u);
     assert.doesNotMatch(page, /data-thinking-kind="moderator"|<b>running<\/b>/u);
-    assert.match(page, /事件驱动逐项验收/u);
+    assert.doesNotMatch(page, /<p id="panelSubtitle">[^<]*事件驱动逐项验收/u);
     assert.match(page, /正在验收 子任务 1：Alpha、子任务 2：Bravo、子任务 3：Charlie。/u);
     assert.equal((page.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 4);
     assert.doesNotMatch(page, /<div class="member-meta">待验收<\/div>/u);
@@ -275,7 +275,7 @@ test("shows the Loop+ main reviewer animation in the shared group chat", () => {
   assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
   assert.match(page, /主任务 0% 思考中/u);
   assert.doesNotMatch(page, /data-thinking-kind="moderator"|裁判主持人 思考中|红蓝辩论群聊/u);
-  assert.match(page, /事件驱动逐项验收/u);
+  assert.doesNotMatch(page, /<p id="panelSubtitle">[^<]*事件驱动逐项验收/u);
 });
 
 test("renders a paused Loop+ review separately from active review and restores it after continue", () => {

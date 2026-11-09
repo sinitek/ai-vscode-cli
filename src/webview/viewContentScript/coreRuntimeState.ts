@@ -241,8 +241,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      function createTask
         }
         const finalAnswerMarker = "\${FINAL_ANSWER_TEXT_MARKER}";
         if (
-          current.kind !== "thinking"
-          && finalAnswerMarker
+          finalAnswerMarker
           && String(current.content || "").includes(finalAnswerMarker)
         ) {
           return true;

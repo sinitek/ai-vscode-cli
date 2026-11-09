@@ -40,6 +40,26 @@ function createRuntimeHost() {
   return createPromptRunRuntimeHost(deps);
 }
 
+test("parses classic Loop progress without requiring acceptance and rejects invalid percentages", () => {
+  const host = createRuntimeHost();
+  const decision = { status: "continue", subtasks: [{ title: "下一批次", prompt: "继续完成剩余工作，遵循项目规则并汇报实际结果。".repeat(8) }] };
+  for (const progressPercent of [0, 20, 55, 99]) {
+    const parsed = host.parseLoopMainDecision(JSON.stringify({ ...decision, progressPercent }));
+    assert.equal(parsed?.progressPercent, progressPercent);
+    assert.equal(parsed?.acceptance, undefined);
+  }
+  for (const progressPercent of [null, "20", -1, 20.5, 100, 101]) {
+    assert.equal(host.parseLoopMainDecision(JSON.stringify({ ...decision, progressPercent })), null);
+  }
+  assert.equal(host.parseLoopMainDecision(JSON.stringify(decision))?.progressPercent, undefined);
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({
+    status: "blocked", progressPercent: 55, finalSummary: "等待外部依赖",
+  }))?.progressPercent, 55);
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({
+    status: "completed", progressPercent: 100, finalSummary: "根据汇报确认完成",
+  }))?.progressPercent, 100);
+});
+
 
 function createNeedsReviewTask(): LoopTaskRecord {
   return {

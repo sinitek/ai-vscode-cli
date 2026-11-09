@@ -133,6 +133,29 @@ function createTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   };
 }
 
+test("updates classic progress only after a finished batch and reserves 100 for completion", () => {
+  const decision: LoopMainDecision = {
+    status: "continue",
+    progressPercent: 42,
+    subtasks: [{ id: "next", title: "下一批次", prompt: "完成剩余工作" }],
+  };
+  const task = createTask({ loopProgressPercent: 0 });
+  assert.equal(decide(task, decision).patch.loopProgressPercent, undefined);
+  task.rounds = [{ round: 1, role: "subtask", subtaskId: "sub-a", status: "end", startedAt: 1, endedAt: 2 }];
+  assert.equal(decide(task, decision).patch.loopProgressPercent, 42);
+  assert.equal(decide({ ...task, loopProgressPercent: 42 }, { ...decision, progressPercent: 25 }).patch.loopProgressPercent, 25);
+  assert.equal(decide(task, { ...decision, progressPercent: undefined }).patch.loopProgressPercent, undefined);
+  assert.equal(decide(task, { ...decision, progressPercent: 100 }).patch.loopProgressPercent, undefined);
+  assert.equal(decide(task, { ...decision, subtasks: [] }).patch.loopProgressPercent, undefined);
+  assert.equal(decide({ ...task, schedulingMode: "event_driven" }, decision).patch.loopProgressPercent, undefined);
+  assert.equal(decide(task, { status: "completed", finalSummary: "完成" }).patch.loopProgressPercent, 100);
+  for (const status of ["stopped", "error", "needs-review"] as const) {
+    const paused = { ...task, status, loopProgressPercent: 42 };
+    assert.equal(transitionLoopTaskStop("classic", { task: paused, now: NOW }).patch.loopProgressPercent, undefined);
+    assert.equal(decide(paused, { ...decision, progressPercent: undefined }).patch.loopProgressPercent, undefined);
+  }
+});
+
 function createStopTask(status: LoopTaskRecord["status"] = "running"): LoopTaskRecord {
   return createTask({
     status,

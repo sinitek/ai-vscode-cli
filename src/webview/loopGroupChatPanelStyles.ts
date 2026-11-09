@@ -72,6 +72,40 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         background: var(--vscode-button-secondaryBackground);
         cursor: pointer;
       }
+      .progress-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .task-progress {
+        --progress-color: var(--vscode-descriptionForeground);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 68px;
+        padding: 2px 10px;
+        border: 1px solid color-mix(in srgb, var(--progress-color) 55%, var(--vscode-editor-background));
+        border-radius: 4px;
+        color: var(--vscode-editor-foreground);
+        background: color-mix(in srgb, var(--progress-color) 18%, var(--vscode-editor-background));
+        font-size: 18px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .task-progress[data-progress-band="1"] {
+        --progress-color: var(--vscode-charts-blue, var(--vscode-focusBorder));
+      }
+      .task-progress[data-progress-band="2"] {
+        --progress-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
+      }
+      .task-progress[data-progress-band="3"] {
+        --progress-color: var(--vscode-terminal-ansiCyan, var(--vscode-charts-blue, var(--vscode-focusBorder)));
+      }
+      .task-progress[data-progress-band="4"] {
+        --progress-color: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+      }
       .button:hover {
         background: var(--vscode-button-secondaryHoverBackground);
       }

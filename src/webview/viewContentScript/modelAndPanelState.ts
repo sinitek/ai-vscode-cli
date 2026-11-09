@@ -538,6 +538,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             updateLoopMetaForTabFromSummary(tab);
           });
         }
+        state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -690,6 +691,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           : 30;
         if (elements.historyRetentionDays) {
           elements.historyRetentionDays.value = String(state.historyRetentionDays);
+        }
+        if (elements.chatMessageLimit) {
+          elements.chatMessageLimit.value = String(state.chatMessageLimit);
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);

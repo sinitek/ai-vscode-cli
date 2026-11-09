@@ -7,6 +7,7 @@ import {
   type LoopMainAiFailureState,
 } from "../loopMainFailure";
 import { ORCHESTRATOR_CLARIFICATION_LIMIT } from "../orchestratorClarification";
+import { normalizeLoopProgressPercent } from "../loopTaskStore";
 import type {
   LoopMainDecision,
   LoopSchedulingMode,
@@ -448,7 +449,18 @@ function resolveLoopMainDecisionStrategy(status: LoopMainDecision["status"]): Lo
 }
 
 export function transitionLoopMainDecision(context: LoopMainDecisionContext): LoopMainDecisionTransition {
-  return resolveLoopMainDecisionStrategy(context.decision.status)(context);
+  const transition = resolveLoopMainDecisionStrategy(context.decision.status)(context);
+  if (context.task.schedulingMode === "event_driven" || !transition.appendDecisionMessages) {
+    return transition;
+  }
+  const progressPercent = normalizeLoopProgressPercent(context.decision.progressPercent);
+  if (transition.status === "completed") {
+    transition.patch.loopProgressPercent = 100;
+  } else if (progressPercent !== undefined && progressPercent < 100
+    && context.task.rounds.some((round) => round.role === "subtask")) {
+    transition.patch.loopProgressPercent = progressPercent;
+  }
+  return transition;
 }
 
 export function transitionLoopTaskStop(

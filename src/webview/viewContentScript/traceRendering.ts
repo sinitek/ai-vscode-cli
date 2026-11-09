@@ -322,9 +322,14 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
             delete assistantStreamingMarkdownPending[messageId];
             return;
           }
+          const wasPending = isAssistantMarkdownRenderPending(message);
           delete assistantStreamingMarkdownPending[messageId];
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
           const shouldAutoScroll = !chatSearchAnchored && isChatNearBottom();
+          if (wasPending && !isChatBubbleRetentionProtectedMessage(message, renderedIndex)) {
+            renderMessages({ incremental: true });
+            return;
+          }
           if (!updateRenderedAssistantMessage(message, renderedIndex)) {
             renderMessages({ incremental: true });
             return;
@@ -420,6 +425,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           const target = state.messages[targetIndex];
           target.codexFinalAnswer = true;
           scheduleAssistantDeltaMarkdownRender(target.id);
+          renderMessages({ incremental: true });
           return;
         }
         if (targetIndex === -1 && !hasContent && marksCodexFinalAnswer) {
@@ -439,6 +445,7 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           requiresFullRender = true;
         }
         const target = state.messages[targetIndex];
+        const previouslyProtected = isChatBubbleRetentionProtectedMessage(target, targetIndex);
         if (marksCodexFinalAnswer) {
           target.codexFinalAnswer = true;
         }
@@ -446,6 +453,9 @@ export const VIEW_CONTENT_SCRIPT_TRACE_RENDERING = `        }
           target.kind = "thinking";
         }
         target.content += content || "";
+        requiresFullRender = requiresFullRender
+          || previouslyProtected !== isChatBubbleRetentionProtectedMessage(target, targetIndex)
+          || (marksCodexFinalAnswer && state.onlyShowFinalResults);
         if (
           !hasRenderableMessageContent(target)
           || (typeof shouldHideParsedTaskListMessage === "function" && shouldHideParsedTaskListMessage(target))

@@ -289,6 +289,10 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAutoCompactAfterRunTitle:
       "Codex、Claude、OpenCode、Grok、ZCode 的全局设置。耗时超过 5 分钟的任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
+    toolSettingsChatMessageLimitLabel: "每个标签页气泡上限",
+    toolSettingsChatMessageLimitSaveError: "气泡上限保存失败，请重试。",
+    toolSettingsChatMessageLimitNote:
+      "全局设置，默认 500，范围 1–10000。超过上限的 110% 时，批量清理 20% 的最旧过程气泡；用户消息及最终答复始终保留，必要时可超过限额。仅影响显示，不删除历史。",
     toolSettingsHumanInteractionLabel: "人工交互",
     toolSettingsHumanInteractionTitle:
       "Codex、Claude 和 OpenCode 的全局设置。允许 Vibe 任务在继续执行前以结构化表单询问补充信息。",

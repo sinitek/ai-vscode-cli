@@ -25,6 +25,12 @@ import {
 } from "../loopPlusDecision";
 import { CLI_LIST } from "../cli/types";
 import { getCliDisplayName } from "../cli/installer";
+import {
+  CHAT_MESSAGE_LIMIT_DEFAULT,
+  CHAT_MESSAGE_LIMIT_MIN,
+  CHAT_MESSAGE_LIMIT_MAX,
+  normalizeChatMessageLimit,
+} from "../chatMessageLimit";
 
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
@@ -68,6 +74,13 @@ function replaceLiteral(value: string, search: string, replacement: string): str
 
 export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput): string {
   const replacements: Array<[string, string]> = [
+    ["${CHAT_MESSAGE_LIMIT_DEFAULT}", String(CHAT_MESSAGE_LIMIT_DEFAULT)],
+    ["${NORMALIZE_CHAT_MESSAGE_LIMIT}", [
+      `const CHAT_MESSAGE_LIMIT_DEFAULT = ${CHAT_MESSAGE_LIMIT_DEFAULT};`,
+      `const CHAT_MESSAGE_LIMIT_MIN = ${CHAT_MESSAGE_LIMIT_MIN};`,
+      `const CHAT_MESSAGE_LIMIT_MAX = ${CHAT_MESSAGE_LIMIT_MAX};`,
+      normalizeChatMessageLimit.toString().replace(/\bexports\.(CHAT_MESSAGE_LIMIT_(?:DEFAULT|MIN|MAX))\b/g, "$1"),
+    ].join("\n")],
     ["${JSON.stringify(i18n)}", JSON.stringify(input.i18n)],
     ["${JSON.stringify(CLI_LIST)}", JSON.stringify(input.cliList)],
     [

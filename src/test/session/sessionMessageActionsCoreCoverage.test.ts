@@ -366,6 +366,31 @@ test("persists the Loop+ acceptance limit as a global setting", async () => {
   assert.equal(calls.postPanelState, 4);
 });
 
+test("persists only the normalized global chat message limit and returns panel state", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  const originalSettings = { ...state.workspaceSettings };
+  for (const value of ["734.9", 0, -8, 20000, "", "nope", null, true]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key: "chatMessageLimit", value }, deps);
+  }
+  assert.deepEqual(calls.toolSettings, [734, 1, 1, 10000, 500, 500, 500, 500].map((chatMessageLimit) => ({ chatMessageLimit })));
+  assert.equal(calls.postPanelState, 8);
+  assert.deepEqual(state.workspaceSettings, originalSettings);
+  assert.deepEqual(calls.savedSettings, []);
+  assert.deepEqual(calls.webviewMessages, []);
+});
+
+test("chat message limit persistence failure uses the existing error path and returns actual state", async () => {
+  const { deps, calls } = createSettingHarness();
+  const errors: unknown[][] = [];
+  deps.updateStoredToolSettings = () => false;
+  deps.showWebviewError = (...args) => { errors.push(args); };
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "chatMessageLimit", value: 800 }, deps);
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0][1]), /保存失败/);
+  assert.equal(calls.postPanelState, 1);
+  assert.deepEqual(calls.savedSettings, []);
+});
+
 test("persists automatic-cleanup retention days as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "historyRetentionDays", value: "45.9" }, deps);

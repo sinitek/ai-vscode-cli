@@ -154,6 +154,10 @@ test("classic Loop trusts reports, delegates only required verification and keep
     assert.ok(prompt.includes(JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE })));
     assert.doesNotMatch(prompt, /\[final_answer\]/u);
     assert.match(prompt, /相信子任务汇报的结果/u);
+    assert.match(prompt, /当前总体进度：0%/u);
+    assert.match(prompt, /总体进度 progressPercent 根据原始目标、全部补充需求、已结束批次的子任务汇报和剩余工作判断/u);
+    assert.match(prompt, /只在一个批次全部结束、准备下一批次的主任务决策时重新估算/u);
+    assert.match(prompt, /不为估算进度执行验收/u);
     assert.match(prompt, /主任务不验收子任务产物，不检查代码、文档或实现细节/u);
     assert.match(prompt, /不运行或重复运行测试、构建、启动和其它验证/u);
     assert.match(prompt, /只有用户明确要求或项目既有规则要求[\s\S]*独立的验收或测试子任务/u);

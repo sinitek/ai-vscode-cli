@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-07",
+  "as_of": "2026-11-09",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -47,7 +47,9 @@
         {"path": "src/webview/panelFileActions.ts", "anchor": "exportRunStreamRecordsToJsonl"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
         {"path": "src/interactive/grokReplayStream.ts"},
-        {"path": "src/test/interactive/grokReplayStream.test.ts"}
+        {"path": "src/test/interactive/grokReplayStream.test.ts"},
+        {"path": ".ch/docs/design-docs/chat-bubble-retention.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "每 Tab 聊天气泡显示限额"}
       ]
     },
     {
@@ -1653,7 +1655,7 @@
     {
       "id": "plugin.rule.loop_plus_overall_progress",
       "name": "Loop+ 主任务总体进度由验收判断",
-      "description": "Loop+ 主模型在每次验收批次成功提交时给出 0–99 的总体进度整数，基于已验收证据、原始和补充需求及剩余工作判断，不按子任务数量或验收次数计算；补充需求可使进度重新校准。未提交或被拒绝的验收不得更新进度。新任务从 0% 开始，暂停、停止和续跑保留当前值；仅最终完成门禁成功并持久化后设为 100%。群聊左侧 Loop+ 主任务标题显示百分比，经典 Loop 不变。",
+      "description": "Loop+ 主模型在每次验收批次成功提交时给出 0–99 的总体进度整数，基于已验收证据、原始和补充需求及剩余工作判断，不按子任务数量或验收次数计算；补充需求可使进度重新校准。未提交或被拒绝的验收不得更新进度。新任务从 0% 开始，暂停、停止和续跑保留当前值；仅最终完成门禁成功并持久化后设为 100%。Loop 与 Loop+ 群聊副标题只显示任务 ID，左侧主任务标题和中止按钮左侧均显示百分比，标题栏按五档主题色背景区分进度。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
       "source_refs": [
@@ -1663,6 +1665,23 @@
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/loopTaskStore.ts"},
         {"path": "src/panelStateBuilder.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_classic_batch_progress",
+      "name": "经典 Loop 根据批次汇报判断总体进度",
+      "description": "经典 Loop 首次拆分为 0%，批次全部结束后的有效主任务决策返回 progressPercent，宿主保存到独立字段 loopProgressPercent；根据原始/补充需求、子任务汇报和剩余工作判断，不按子任务数或批次数推算，不增加主模型验收。未完成为 0–99 整数，最终完成才设为 100%。缺失进度的旧协议保留原值，暂停、中止与续跑保留进度；两种模式的展示统一，存储字段互不混用。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/extensionHost/loopTaskStateMachine.ts"},
+        {"path": "src/loopTaskStore.ts"},
+        {"path": "src/panelStateBuilder.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"}
       ]
     },
     {
@@ -2013,6 +2032,52 @@
         {"path": ".ch/docs/design-docs/skill-archive-installation.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "技能管理"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Skills 本地 ZIP 导入"}
+      ]
+    },
+    {
+      "id": "plugin.rule.chat_message_limit_global_setting",
+      "name": "每 Tab 气泡软基准使用全局工具设置",
+      "description": "约定工具设置→AI任务配置以 chatMessageLimit 写入 ~/.sinitek_cli/settings.json，各 Tab 独立使用同一全局基准。默认 500，整数范围 1–10000；有限数字及非空数字字符串先 floor 再 clamp，空值、无效类型和非有限值回退 500。PanelState.chatMessageLimit 可选兼容旧快照，实际浏览器 state 默认 500。实现及针对性合并验收记录见归档执行计划；平台验证限制以该计划说明为准。",
+      "status": "active",
+      "aliases": ["chatMessageLimit", "每Tab气泡限额", "AI任务配置"],
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "配置与状态契约"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "每 Tab 聊天气泡显示限额"},
+        {"path": "src/toolSettings.ts"},
+        {"path": "src/panelStateBuilder.ts"},
+        {"path": "src/webview/types.ts", "anchor": "PanelState"},
+        {"path": "src/webview/viewContentScript/coreBootstrap.ts"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.chat_message_limit_batched_oldest_process_first",
+      "name": "气泡显示按批次最旧过程项优先",
+      "description": "显示契约以基础可展示原始消息总量 C 计数，N 为设置基准，H=floor(1.1N)，B=max(1,ceil(0.2N))；C≤H 不清理，超过时预算为 B*ceil((C-H)/B)，从最旧向后只移除可清理项、跳过保护项并保留原顺序。默认 550 条不清理，候选充足时 551 条保留 451、650 条保留 550、651 条下一批保留 451。先保留窗口再应用仅显示最终结果过滤，Tab 隔离且覆盖设置、历史、后台及增量更新。",
+      "status": "active",
+      "aliases": ["chatMessageLimit", "批次滞回", "最旧过程气泡"],
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "显示集合与批次滞回"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "renderMessages"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.chat_message_limit_protects_history_and_answers",
+      "name": "显示保护优先且不删除完整历史",
+      "description": "气泡保留约定保护用户发起、所有明确最终标记、无标记 CLI 的普通非思考主助手回复及正在流式输出的消息。候选不足或保护项自身超限时保留优先，不承诺严格最多 500；保守保护不改变 CLI 完成协议。这只是面板显示投影，不删宿主持久化会话、CLI 上下文、回放或磁盘历史，不混同 historyRetentionDays，也不改变两个非活动视图/5000 条 DOM 缓存与增量渲染。",
+      "status": "active",
+      "aliases": ["chatMessageLimit", "最终答复保护", "显示投影"],
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "最旧优先与保护优先"},
+        {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "背景与边界"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话标签切换性能"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
       ]
     },
     {

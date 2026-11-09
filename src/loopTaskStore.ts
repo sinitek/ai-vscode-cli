@@ -137,6 +137,7 @@ export type LoopSubtaskDecision = {
 
 export type LoopMainDecision = {
   status: "completed" | "continue" | "blocked" | "clarify";
+  progressPercent?: number;
   answerConclusion?: string;
   finalSummary?: string;
   roundSummaries?: LoopRoundSummary[];
@@ -171,6 +172,7 @@ export type LoopTaskRecord = {
   loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
+  loopProgressPercent?: number;
   loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
@@ -908,6 +910,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
   const loopPlusProgressPercent = normalizeLoopPlusProgressPercent(raw.loopPlusProgressPercent);
+  const loopProgressPercent = normalizeLoopProgressPercent(raw.loopProgressPercent);
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
   const blockReview = (raw as { loopPlusBlockReview?: unknown }).loopPlusBlockReview;
   const loopPlusBlockReview = blockReview && typeof blockReview === "object" && !Array.isArray(blockReview)
@@ -933,6 +936,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
+    ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
     ...(loopPlusBlockReview ? { loopPlusBlockReview } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
@@ -1115,6 +1119,10 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
 }
 
 export function normalizeLoopPlusProgressPercent(value: unknown): number | undefined {
+  return normalizeLoopProgressPercent(value);
+}
+
+export function normalizeLoopProgressPercent(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100
     ? value
     : undefined;

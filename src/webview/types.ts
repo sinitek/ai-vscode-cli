@@ -388,6 +388,7 @@ export type PanelState = {
   cliEnabledByName?: Partial<Record<CliName, boolean>>;
   humanInteractionTimeoutMinutes: number;
   historyRetentionDays: number;
+  chatMessageLimit?: number;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
   loopPlusMaxAcceptances: number;

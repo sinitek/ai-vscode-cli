@@ -9,6 +9,7 @@ import {
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
 import { WebviewStringKey } from "./viewContentStrings";
+import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX } from "../chatMessageLimit";
 
 type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
@@ -649,6 +650,22 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     <span>${i18n.toolSettingsAutoCompactAfterRunToggle}</span>
                   </label>
                 </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="chatMessageLimit">${i18n.toolSettingsChatMessageLimitLabel}</label>
+                  <input
+                    type="number"
+                    id="chatMessageLimit"
+                    class="tool-settings-number"
+                    min="${CHAT_MESSAGE_LIMIT_MIN}"
+                    max="${CHAT_MESSAGE_LIMIT_MAX}"
+                    step="1"
+                    value="${CHAT_MESSAGE_LIMIT_DEFAULT}"
+                    aria-describedby="chatMessageLimitNote"
+                  />
+                </div>
+                <div id="chatMessageLimitNote" class="tool-settings-note">${i18n.toolSettingsChatMessageLimitNote}</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">

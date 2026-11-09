@@ -67,6 +67,26 @@ function readPersistedTask(filePath: string, taskId: string): LoopTaskRecord {
   return task;
 }
 
+test("round-trips classic Loop progress separately from Loop+ and discards malformed values", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "loop-progress-store-"));
+  const filePath = path.join(directory, "loop-tasks.json");
+  try {
+    for (const progressPercent of [0, 42, 99, 100]) {
+      const task = createTask({ loopProgressPercent: progressPercent, loopPlusProgressPercent: 23 });
+      loopTaskStore.writeLoopTaskStore(filePath, { tasks: [task] });
+      const stored = readPersistedTask(filePath, task.id);
+      assert.equal(stored.loopProgressPercent, progressPercent);
+      assert.equal(stored.loopPlusProgressPercent, 23);
+    }
+    for (const value of [undefined, null, "42", -1, 42.5, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.equal(loopTaskStore.normalizeLoopProgressPercent(value), undefined);
+      assert.equal(loopTaskStore.normalizeLoopTaskRecord({ ...createTask(), loopProgressPercent: value })?.loopProgressPercent, undefined);
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function resetLoopStorage(): void {
   const dataDir = path.join(testHome, ".sinitek_cli");
   [

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
 import { normalizeOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
+import { normalizeChatMessageLimit } from "./chatMessageLimit";
 import { createHumanInteractionAttentionHost } from "./extensionHost/humanInteractionAttentionHost";
 import { withHumanInteractionAttention } from "./humanInteractionAttention";
 import { notifyLoopTaskCompletion, notifyTaskRunCompletion } from "./taskCompletionAttention";
@@ -1309,6 +1310,7 @@ function buildPanelStateFromConfigState(
     getGlobalHumanInteractionEnabled,
     getGlobalHumanInteractionTimeoutMinutes,
     getGlobalHistoryRetentionDays: getHistoryRetentionDays,
+    getGlobalChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().chatMessageLimit),
     getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
     getGlobalLoopPlusMaxAcceptances,
