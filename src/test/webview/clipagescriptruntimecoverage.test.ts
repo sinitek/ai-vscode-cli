@@ -2262,6 +2262,89 @@ test("expands and collapses prompt history only from the view button", () => {
   assert.equal(api.state.promptHistoryExpandedId, null);
 });
 
+test("默认过滤子任务并保留主任务、普通及旧会话，取消勾选恢复完整列表", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const sessions = [
+    { id: "main", cli: "codex", label: "主任务", taskRole: "main" },
+    { id: "subtask", cli: "codex", label: "子任务", taskRole: "subtask" },
+    { id: "other-subtask", cli: "claude", label: "其它子任务", taskRole: "subtask" },
+    { id: "ordinary", cli: "claude", label: "普通会话", taskRole: null },
+    { id: "legacy", cli: "opencode", label: "旧会话" },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    sessionState: { currentSessionId: "main", sessions },
+  }) });
+  const filter = document.getElementById("historySessionFilterSubtasks");
+  const list = document.getElementById("sessionList");
+  const labels = () => list.children.map((item: FakeElement) => item.querySelector(".session-label")?.textContent);
+  assert.equal(api.state.historySessionFilterSubtasks, true);
+  assert.equal(filter.checked, true);
+  assert.deepEqual(labels(), ["☀️ [Codex] 主任务", "[Claude] 普通会话", "[OpenCode] 旧会话"]);
+  filter.checked = false;
+  filter.dispatchEvent({ type: "change", target: filter });
+  assert.equal(api.state.historySessionFilterSubtasks, false);
+  assert.equal(list.children.length, 5);
+  assert.equal(labels()[1], "🌛 [Codex] 子任务");
+  assert.equal(labels()[2], "🌛 [Claude] 其它子任务");
+  assert.equal(api.state.sessionState.sessions.length, 5);
+  document.getElementById("historyTabPrompts").click();
+  document.getElementById("historyTabSessions").click();
+  document.getElementById("historyButton").click();
+  document.getElementById("closeHistory").click();
+  document.getElementById("historyButton").click();
+  assert.equal(filter.checked, false);
+  assert.equal(list.children.length, 5);
+  filter.checked = true;
+  filter.dispatchEvent({ type: "change", target: filter });
+  assert.equal(list.children.length, 3);
+});
+
+test("子任务过滤叠加关键词搜索且不影响历史提示词", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    sessionState: { currentSessionId: null, sessions: [
+      { id: "main", cli: "codex", label: "发布主任务", taskRole: "main" },
+      { id: "subtask", cli: "codex", label: "发布子任务", taskRole: "subtask" },
+      { id: "ordinary", cli: "claude", label: "修复解析器" },
+    ] },
+    promptHistory: [{ id: "prompt", prompt: "发布子任务", cli: "codex", createdAt: 1 }],
+  }) });
+  const list = document.getElementById("sessionList");
+  const filter = document.getElementById("historySessionFilterSubtasks");
+  const search = document.getElementById("historySearchInput");
+  search.value = "发布";
+  search.dispatchEvent({ type: "input", target: search });
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "☀️ [Codex] 发布主任务");
+  filter.checked = false;
+  filter.dispatchEvent({ type: "change", target: filter });
+  assert.equal(list.children.length, 2);
+  search.value = "子任务";
+  search.dispatchEvent({ type: "input", target: search });
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "🌛 [Codex] 发布子任务");
+  filter.checked = true;
+  filter.dispatchEvent({ type: "change", target: filter });
+  assert.equal(list.children[0].textContent, "没有匹配的历史会话。");
+  document.getElementById("historyTabPrompts").click();
+  assert.equal(document.getElementById("promptHistoryList").children[0].querySelector(".prompt-preview")?.textContent, "发布子任务");
+});
+
+test("仅有子任务时展示无匹配空态，无历史数据时展示空历史提示", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    sessionState: { currentSessionId: null, sessions: [
+      { id: "subtask", cli: "codex", label: "子任务", taskRole: "subtask" },
+    ] },
+  }) });
+  const list = document.getElementById("sessionList");
+  assert.equal(list.children[0].textContent, "没有匹配的历史会话。");
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    sessionState: { currentSessionId: null, sessions: [] },
+  }) });
+  assert.equal(list.children[0].textContent, WEBVIEW_STRINGS.historyEmptySessions);
+  assert.equal(document.getElementById("historySessionFilterSubtasks").checked, true);
+});
+
 test("filters prompt and session history by the shared keyword search", () => {
   const harness = createRuntimeHarness();
   const { api, document, window } = harness;

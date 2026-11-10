@@ -286,7 +286,7 @@ ${renderPanelDialog({
           label: strings.askAnswerClose,
           className: "icon-button ask-chat-close",
         }),
-        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"${askThread.running ? " disabled" : ""}></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}" aria-describedby="askChatBusy"${askThread.running || state.mainModelBusy ? " disabled" : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
+        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><span id="askChatBusy" class="ask-chat-busy" role="status"${askThread.queued || state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}" aria-describedby="askChatBusy"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
       ${state.loopPlus ? renderGroupAcceptancePlanDialogs() : ""}
@@ -742,7 +742,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const messages = askThread && Array.isArray(askThread.messages)
 	          ? askThread.messages.filter((message) => message && message.role !== "thinking")
 	          : [];
-	        const waiting = askThread && askThread.running ? renderAskWaiting() : "";
+	        const waiting = askThread && askThread.running && !askThread.queued ? renderAskWaiting() : "";
 	        const html = messages.length || waiting
 	          ? messages.map(renderAskBubble).join("") + waiting
 	          : '<div class="ask-chat-empty">' + askEscape(ASK_EMPTY_LABEL) + "</div>";
@@ -758,22 +758,23 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 
 	      function updateAskAvailability() {
 	        const running = Boolean(askThread && askThread.running);
+	        const queued = Boolean(askThread && askThread.queued);
 	        if (askChatSend) {
-	          askChatSend.disabled = running || mainModelBusy;
-	          if (mainModelBusy && !running) {
+	          askChatSend.disabled = false;
+	          if (queued || mainModelBusy && !running) {
 	            askChatSend.setAttribute("aria-describedby", "askChatBusy");
 	          } else {
 	            askChatSend.removeAttribute("aria-describedby");
 	          }
 	        }
 	        if (askChatBusy) {
-	          askChatBusy.hidden = !mainModelBusy || running;
+	          askChatBusy.hidden = !(queued || mainModelBusy && !running);
 	        }
 	        if (askChatAbort) {
 	          askChatAbort.hidden = !running;
 	        }
 	        if (askChatInput) {
-	          askChatInput.disabled = running;
+	          askChatInput.disabled = false;
 	        }
 	      }
 
@@ -825,7 +826,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        saveAskDialogState();
 	        vscode.postMessage({ type: "loopGroupChatChat:openAskDialog" });
 	        window.setTimeout(() => {
-	          if (askChatInput && !(askThread && askThread.running)) {
+	          if (askChatInput) {
 	            askChatInput.focus();
 	          }
 	        }, 0);
@@ -838,7 +839,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      function submitAskChat() {
-	        if (!askChatInput || mainModelBusy || (askThread && askThread.running)) {
+	        if (!askChatInput) {
 	          return;
 	        }
 	        const prompt = askChatInput.value.trim();

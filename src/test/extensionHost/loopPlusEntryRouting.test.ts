@@ -166,7 +166,9 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const preempt = functionBody(extensionSource, "preemptActivePromptRun");
   assert.equal(preempt.includes("cancelLoopPlusInvocation("), true);
   assert.equal(preempt.indexOf("cancelLoopPlusInvocation(") < preempt.indexOf("stopRunForTab("), true);
-  const promptRun = functionBody(extensionSource, "runPrompt");
+  const promptEntry = functionBody(extensionSource, "runPrompt");
+  assert.equal(promptEntry.includes("loopMainQuestionQueue.runMain("), true);
+  const promptRun = functionBody(extensionSource, "runPromptNow");
   assert.equal(promptRun.includes("preemptActivePromptRun("), true);
   assert.equal(promptRun.includes("stopRunForTab("), false);
 

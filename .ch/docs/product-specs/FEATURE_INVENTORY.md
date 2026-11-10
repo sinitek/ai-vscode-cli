@@ -342,6 +342,8 @@ ZCode 配置页默认使用 JSON：首次打开、切换档案和导入范例均
 
 ## 当前清单
 
+历史会话子任务过滤：“历史记录 → 历史会话”新增默认勾选的“过滤子任务”，按现有 `taskRole=subtask` 隐藏子任务；取消勾选恢复列表，并与关键词搜索叠加。主任务、普通会话及未标记旧记录保留，不改变历史数据或历史提示词。当前 Webview 内保持选择，重新初始化默认勾选。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/historyPanels.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；验证：`npm run build`、`node --test dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/session/historySessionLoop.test.js dist/test/session/historySessionTaskRole.test.js`。
+
 Claude Loop 子任务使用 `bypassPermissions` 执行；Claude 交互请求显式启用 `TaskCreate`、`TaskUpdate`、`TaskList`、`TaskGet`、`TaskStop`，不依赖默认模型是否开放任务跟踪工具；隔离项目指令时仅屏蔽 `project/local` settings，不屏蔽用户级 MCP 与工具配置。`allowedTools` 表示免审规则和任务工具 opt-in，不是完整工具白名单；实际工具是否可用还取决于 CLI 暴露、服务连接与网络。实现与回归见 `src/interactive/claudeRunner.ts`、`src/interactive/claudeTaskList.ts`、`src/test/interactive/claudeRunner.test.ts`。
 
 Claude 工具兼容提示通过统一构建器附加到普通、分组、Loop/Loop+ 子任务、续聊和单次调用的原始提示后面，原生 `/compact` 保持不变。当前接入实测 WebSearch 返回空结果、WebFetch 域名安全检查失败，因此 SDK 禁用这两个工具，提示用 Bash/curl 获取公开数据；上海天气提供 curl 与已安装 Node 的完整 JSON 解析命令，精简字段避免工具输出截断，并校验日期，禁止凭预览猜测气温。缺少 Node 时用已安装 Python 或 Read 完整结果，不自动安装依赖。Glob/Grep 在当前接入未暴露时先用 ToolSearch 确认，再用 rg 或平台原生命令替代；已经验证可用的文件、Notebook、任务和子代理工具继续优先使用原生能力。替代不能绕过权限、plan 或用户授权范围，未验证工具不一概判为不可用。Windows PowerShell 使用 `curl.exe`，内联脚本引号不兼容时改用授权临时脚本。实现与回归见 `src/cli/claudeToolPolicy.ts`、`src/cli/cliRunArgStrategies.ts`、`src/test/cli/claudeToolPolicy.test.ts`、`src/test/cli/cliRunArgStrategies.test.ts` 和 Claude Runner 测试。
@@ -507,11 +509,11 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
 
-## 2026-11-05 向主模型提问弹窗忙碌提示
+## 2026-11-10 向主模型提问队列（替代 2026-11-05 忙碌禁发行为）
 
-Loop / Loop+ 的“向主模型提问”弹窗按主模型 Tab 的实际运行状态控制发送，而不是按整个任务是否运行判断。主模型忙碌时禁用发送，发送按钮左侧显示主题错误色文字“主模型忙，正在处理任务，请稍后”；不新增用户或系统气泡，不写入提问历史，输入框仍可编辑并保留草稿。打开弹窗时重新检查状态，后续局部刷新自动同步忙碌与空闲，空闲后恢复发送；Ctrl/⌘+Enter 快捷键提交和宿主侧请求同样执行忙碌校验。自身提问回答期间继续显示等待动画和中止按钮，不误报为其他任务占用。用户 Markdown 气泡不再保留生成 HTML 的尾部换行，并清除首尾块外边距，保留多段内容和代码缩进。
+Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交；已提交问题立即写入提问历史，支持连续提交，按 FIFO 在主会话空闲时自动回答。主任务和提问共享会话级互斥队列，已排队的验收、补充需求及调度收口先于后续提问；已开始回答的问题不被后来到达的验收抢占。经典 Loop 的主任务交接间隙及未处理补充需求也会阻止提问抢跑。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间显示队列提示，真正回答时才显示等待动画；仍可继续输入下一问。中止等待中的问题只清空提问队列，不停止正在执行的主任务；正在回答时中止该回答并清空后续问题。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿；宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
 
-实现：`src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelTypes.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/webview/loopGroupChatPanelStyles.ts`；验证：`npm run build`；`node --test dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/core/panelDiagnostics.test.js`；headless Chromium 桌面与窄屏验证忙碌提示、气泡尺寸和状态切换。
+实现：`src/loopMainQuestionQueue.ts`、`src/loopMainQuestion.ts`、`src/loopAskThread.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/webview/loopGroupChatPanel.ts`；验证：`npm run build`；`node --test dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 验证忙碌提示、连续提交与排队/回答状态切换。
 
 ## 2026-11-05 向主模型提问弹窗 Markdown 与自动滚动
 

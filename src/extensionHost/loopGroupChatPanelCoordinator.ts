@@ -157,6 +157,7 @@ type LoopGroupChatPanelDeps = {
     question: string,
     hooks?: {
       onProgress?: (progress: LoopMainModelQuestionProgress) => void;
+      onStarted?: () => void;
       isAborted?: () => boolean;
     },
   ) => Promise<LoopMainModelAnswerResult>;
@@ -262,7 +263,11 @@ function canStopLoopTaskWithRunningTaskIds(
 
 export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps) {
   const askThreads = new Map<string, LoopAskThread>();
-  const askRuns = new Map<string, { aborted: boolean }>();
+  const askRuns = new Map<string, {
+    aborted: boolean;
+    started: boolean;
+    questions: Array<{ question: string; turnId: string }>;
+  }>();
   const continuingTaskIds = new Set<string>();
   let askSerial = 0;
 
@@ -560,59 +565,55 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       }), "render");
       return;
     }
-    if (current.running) {
-      return;
-    }
-    const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
-    if (target && deps.isTabRunActive(target.tabId)) {
-      await refresh(task.id);
-      return;
-    }
     const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
-    const run = { aborted: false };
-    askRuns.set(task.id, run);
-    const started = beginLoopAskTurn(current, question, Date.now(), turnId);
+    const existingRun = askRuns.get(task.id);
+    const run = existingRun ?? { aborted: false, started: false, questions: [] };
+    run.questions.push({ question, turnId });
+    const started = {
+      ...beginLoopAskTurn(current, question, Date.now(), turnId),
+      queued: !run.started,
+    };
     syncAskThread(task, started, "publish");
-    try {
-      const result = await deps.askMainModel(task, question, {
-        isAborted: () => run.aborted,
-      });
-      if (askRuns.get(task.id) !== run) {
-        return;
-      }
-      const thread = askThreads.get(task.id) ?? started;
-      const now = Date.now();
-      const noticeId = `${turnId}:result`;
-      const settled = result.status === "ready"
-        ? settleLoopAskTurn(thread, {
-          answer: result.answer ?? "",
-          notice: result.answer?.trim() ? null : deps.t("loopGroupChatChat.askEmpty"),
-          now,
-          noticeId,
-        })
-        : settleLoopAskTurn(thread, {
-          notice: result.status === "stopped"
-            ? deps.t("loopGroupChatChat.askStopped")
-            : (result.error || deps.t("loopGroupChatChat.askEmpty")),
-          now,
-          noticeId,
+    if (existingRun) {
+      return;
+    }
+    askRuns.set(task.id, run);
+    while (run.questions.length > 0 && !run.aborted && askRuns.get(task.id) === run) {
+      const next = run.questions.shift()!;
+      let result: LoopMainModelAnswerResult;
+      try {
+        result = await deps.askMainModel(deps.readTaskRecord(task.id) ?? task, next.question, {
+          isAborted: () => run.aborted,
+          onStarted: () => {
+            if (run.aborted || askRuns.get(task.id) !== run) {
+              return;
+            }
+            run.started = true;
+            syncAskThread(task, { ...(askThreads.get(task.id) ?? started), queued: false }, "publish");
+          },
         });
-      syncAskThread(task, settled, "render");
-    } catch (error) {
+      } catch (error) {
+        const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
+        result = { status: "error", error: deps.t("loopGroupChatChat.askFailed", { detail }) };
+      }
       if (askRuns.get(task.id) !== run) {
         return;
       }
-      const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
+      run.started = false;
       const thread = askThreads.get(task.id) ?? started;
-      syncAskThread(task, settleLoopAskTurn(thread, {
-        notice: deps.t("loopGroupChatChat.askFailed", { detail }),
+      const settled = settleLoopAskTurn(thread, {
+        ...(result.status === "ready" ? { answer: result.answer } : {}),
+        notice: result.status === "stopped"
+          ? deps.t("loopGroupChatChat.askStopped")
+          : result.status === "error" ? result.error : deps.t("loopGroupChatChat.askEmpty"),
         now: Date.now(),
-        noticeId: `${turnId}:result`,
-      }), "render");
-    } finally {
-      if (askRuns.get(task.id) === run) {
-        askRuns.delete(task.id);
-      }
+        noticeId: `${next.turnId}:result`,
+      });
+      const pending = run.questions.length > 0 && !run.aborted;
+      syncAskThread(task, { ...settled, running: pending, queued: pending }, "render");
+    }
+    if (askRuns.get(task.id) === run) {
+      askRuns.delete(task.id);
     }
   };
 
@@ -769,10 +770,19 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       const run = normalizedTaskId ? askRuns.get(normalizedTaskId) : undefined;
       if (run) {
         run.aborted = true;
+        run.questions.length = 0;
       }
       const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
-      if (task) {
-        deps.abortMainModelRun?.(task);
+      if (task && run) {
+        if (run.started) {
+          deps.abortMainModelRun?.(task);
+        }
+        askRuns.delete(task.id);
+        syncAskThread(task, settleLoopAskTurn(ensureAskThread(task), {
+          notice: deps.t("loopGroupChatChat.askStopped"),
+          now: Date.now(),
+          noticeId: `ask-stopped-${askSerial += 1}`,
+        }), "render");
       }
       return;
     }

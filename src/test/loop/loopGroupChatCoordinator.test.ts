@@ -6,6 +6,8 @@ installVscodeMock();
 
 const { buildLoopGroupChatPanelState, createLoopGroupChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { setTimeout as delay } from "node:timers/promises";
 
 function createStoppedTask(): LoopTaskRecord {
   return {
@@ -694,6 +696,10 @@ test("asks the current main model session and shows the answer without supplemen
     const savedThreads: string[] = [];
     let mainModelBusy = true;
     let supplementalCount = 0;
+    let aborts = 0;
+    let holdAnswer = false;
+    let releaseAnswer: (() => void) | undefined;
+    const questionQueue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -732,8 +738,19 @@ test("asks the current main model session and shows the answer without supplemen
       notifyLoopPlusUserMessage: (_taskId, text) => {
         notices.push(text);
       },
-      askMainModel: async (_task, question, hooks) => {
+      abortMainModelRun: () => {
+        aborts += 1;
+        releaseAnswer?.();
+      },
+      askMainModel: async (_task, question, hooks) => await questionQueue.runQuestion("main-tab", {
+        canRun: () => !mainModelBusy,
+        isAborted: hooks?.isAborted,
+      }, async () => {
+        hooks?.onStarted?.();
         questions.push(question);
+        if (question === "失败的问题") {
+          throw new Error("answer failed");
+        }
         hooks?.onProgress?.({
           before: [],
           current: [{
@@ -744,8 +761,11 @@ test("asks the current main model session and shows the answer without supplemen
             createdAt: 1,
           }],
         });
-        return { status: "ready", answer: "可以先合并冲突文件。" };
-      },
+        if (holdAnswer) {
+          await new Promise<void>((resolve) => { releaseAnswer = resolve; });
+        }
+        return { status: "ready" as const, answer: "可以先合并冲突文件。" };
+      }) ?? { status: "stopped" as const },
       readAskThread: () => ({
         version: 1,
         messages: [{ id: "old", role: "user", content: "上次的问题", createdAt: 1 }],
@@ -762,23 +782,24 @@ test("asks the current main model session and shows the answer without supplemen
     await coordinator.open(task.id);
     const installedHtml = webview.html;
     assert.match(installedHtml, /上次的问题/u);
-    assert.match(installedHtml, /id="askChatSend"[^>]*disabled/u);
+    assert.doesNotMatch(installedHtml, /id="askChatSend"[^>]*disabled/u);
     messageHandler?.({ type: "loopGroupChatChat:domReady", generation: 1 });
     const savedCount = savedThreads.length;
-    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "忙碌时不应发送" });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "再确认当前进度" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(questions, []);
-    assert.equal(savedThreads.length, savedCount);
+    assert.ok(savedThreads.length > savedCount);
     const panelWhileBusy = deps.panelsByTaskId.get(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, true);
-    assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题"]);
-    assert.equal(panelWhileBusy?.getAskThread().running, false);
+    assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题", "可以合并吗", "再确认当前进度"]);
+    assert.equal(panelWhileBusy?.getAskThread().running, true);
+    assert.equal(panelWhileBusy?.getAskThread().queued, true);
     mainModelBusy = false;
     await coordinator.refresh(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, false);
-    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(questions, ["可以合并吗"]);
+    await delay(15);
+    assert.deepEqual(questions, ["可以合并吗", "再确认当前进度"]);
     assert.equal(supplementalCount, 0);
     assert.equal(webview.html, installedHtml);
     const askThreads = posted.filter((message) => message.type === "loopGroupChatChat:askThread");
@@ -806,7 +827,32 @@ test("asks the current main model session and shows the answer without supplemen
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(panel?.getState()?.mainModelBusy, true);
     assert.equal(panel?.getAskThread().dialogOpen, true);
-    assert.deepEqual(questions, ["可以合并吗"]);
+    assert.deepEqual(questions, ["可以合并吗", "再确认当前进度"]);
+
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "取消排队的问题" });
+    messageHandler?.({ type: "loopGroupChatChat:abortMainModelQuestion" });
+    await delay(5);
+    assert.equal(aborts, 0);
+    assert.equal(panel?.getAskThread().running, false);
+    assert.doesNotMatch(questions.join("\n"), /取消排队的问题/u);
+
+    mainModelBusy = false;
+    holdAnswer = true;
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "中止正在回答的问题" });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "同时清空后续问题" });
+    await delay(5);
+    messageHandler?.({ type: "loopGroupChatChat:abortMainModelQuestion" });
+    await delay(5);
+    assert.equal(aborts, 1);
+    assert.equal(panel?.getAskThread().running, false);
+    assert.doesNotMatch(questions.join("\n"), /同时清空后续问题/u);
+
+    holdAnswer = false;
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败的问题" });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败后继续" });
+    await delay(5);
+    assert.deepEqual(questions.slice(-2), ["失败的问题", "失败后继续"]);
+    assert.equal(panel?.getAskThread().running, false);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }

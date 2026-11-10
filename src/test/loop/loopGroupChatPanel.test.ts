@@ -1177,10 +1177,11 @@ test("renders the main-task clarification form in the group chat and pauses auto
   assert.doesNotMatch(hidden, /id="clarificationDialogBackdrop"/);
 });
 
-test("shows a busy notice beside the disabled send button without adding a bubble", () => {
+test("shows the queue notice and keeps sending enabled while the main model is busy", () => {
   const state = createState({ mainModelBusy: true });
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
-  assert.match(html, /id="askChatBusy" class="ask-chat-busy" role="status">主模型忙，正在处理任务，请稍后<\/span><button id="askChatSend"[^>]*disabled/u);
+  assert.match(html, /id="askChatBusy" class="ask-chat-busy" role="status">主模型正在处理，你的问题会放入队列。<\/span>/u);
+  assert.doesNotMatch(html, /id="askChatSend"[^>]*disabled/u);
   assert.doesNotMatch(html, /id="askChatInput"[^>]*disabled/u);
   assert.match(html, /\.ask-chat-busy\s*\{[^}]*color: var\(--vscode-errorForeground\)/u);
   assert.equal(buildLoopGroupChatPanelContentPatch(state, 1).mainModelBusy, true);
@@ -1307,7 +1308,7 @@ test("scrolls new ask bubbles and reopened dialogs to the bottom without disturb
   assert.equal(frames.length, 0);
 });
 
-test("updates ask availability from live patches and blocks submission without losing the draft", () => {
+test("live busy patches and an active question still allow consecutive queued submissions", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const availability = html.slice(html.indexOf("function updateAskAvailability"), html.indexOf("function applyAskThread"));
   const submit = html.slice(html.indexOf("function submitAskChat"), html.indexOf("function restoreAskDialogState"));
@@ -1337,24 +1338,26 @@ test("updates ask availability from live patches and blocks submission without l
   });
   vm.runInContext(`${availability}\n${submit}\n${patch}`, context);
   vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 2, mainModelBusy: true }); submitAskChat();', context);
-  assert.equal(context.askChatSend.disabled, true);
+  assert.equal(context.askChatSend.disabled, false);
   assert.equal(context.askChatBusy.hidden, false);
   assert.equal(context.askChatInput.disabled, false);
-  assert.equal(context.askChatInput.value, "  请检查结果  ");
-  assert.deepEqual(sent, []);
+  assert.equal(context.askChatInput.value, "");
+  assert.equal(sent.length, 1);
   vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 1, mainModelBusy: false });', context);
-  assert.equal(context.askChatSend.disabled, true);
+  assert.equal(context.askChatSend.disabled, false);
   vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 3, mainModelBusy: false }); submitAskChat();', context);
   assert.equal(context.askChatSend.disabled, false);
   assert.equal(context.askChatBusy.hidden, true);
   assert.equal(context.askChatInput.value, "");
   assert.equal(JSON.stringify(sent), JSON.stringify([{ type: "loopGroupChatChat:askMainModel", prompt: "请检查结果" }]));
   vm.runInContext('mainModelBusy = true; askThread.running = true; askChatInput.value = "下一问"; updateAskAvailability(); submitAskChat();', context);
-  assert.equal(context.askChatInput.disabled, true);
-  assert.equal(context.askChatSend.disabled, true);
+  assert.equal(context.askChatInput.disabled, false);
+  assert.equal(context.askChatSend.disabled, false);
   assert.equal(context.askChatBusy.hidden, true);
   assert.equal(context.askChatAbort.hidden, false);
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 2);
+  vm.runInContext('askThread.queued = true; updateAskAvailability();', context);
+  assert.equal(context.askChatBusy.hidden, false);
 });
 
 test("renders a persistent ask chat with a waiting indicator and can publish updates", () => {
@@ -1392,8 +1395,8 @@ test("renders a persistent ask chat with a waiting indicator and can publish upd
     },
   );
   assert.match(running, /ask-chat-backdrop visible/u);
-  assert.match(running, /id="askChatInput"[^>]*disabled/u);
-  assert.match(running, /id="askChatSend"[^>]*disabled/u);
+  assert.doesNotMatch(running, /id="askChatInput"[^>]*disabled/u);
+  assert.doesNotMatch(running, /id="askChatSend"[^>]*disabled/u);
   assert.doesNotMatch(running, /id="askChatAbort"[^>]*hidden/u);
   assert.match(running, /可以合并吗/u);
   assert.match(running, /可以合并。/u);

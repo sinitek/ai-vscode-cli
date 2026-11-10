@@ -333,6 +333,10 @@ export function createLoopPlusRuntimeFixture(options: {
       fs.appendFileSync(filePath, content, "utf8");
     },
     runPrompt: async (input, promptOptions) => {
+      if (promptOptions?.isAborted?.()) {
+        return;
+      }
+      promptOptions?.onStarted?.();
       const tabId = promptOptions?.targetTabId ?? target.tabId;
       executionCwds.push(input.executionCwd);
       if (input.taskRole === "subtask") {

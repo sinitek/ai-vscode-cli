@@ -124,6 +124,8 @@ import {
   writeLoopAskThreadFile,
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
+import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./loopMainQuestionQueue";
+import { resolveLoopSchedulingMode } from "./loopTaskStore";
 import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
@@ -298,6 +300,8 @@ const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
 const promptAutoRepairController = createPromptAutoRepairController();
 let isExtensionDeactivating = false;
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
+const loopMainQuestionQueue = createLoopMainQuestionQueue();
+const classicMainRequirementCounts = new Map<string, number>();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -2923,7 +2927,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     if (!target && task.sessionId) {
       target = resolveLoopMainPromptTarget(task, { createIfMissing: true });
     }
-    return askLoopMainModelSession({
+    const ask = () => askLoopMainModelSession({
       question,
       modelPrompt: t("loopGroupChatChat.askModelPrompt", { question }),
       target,
@@ -2940,12 +2944,38 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
       },
       runPrompt,
       onProgress: hooks?.onProgress,
+      onStarted: hooks?.onStarted,
       isAborted: hooks?.isAborted,
       unavailableMessage: t("loopGroupChatChat.askUnavailable"),
       busyMessage: t("loopGroupChatChat.askBusy"),
       emptyMessage: t("loopGroupChatChat.askEmpty"),
       failedMessage: (detail) => t("loopGroupChatChat.askFailed", { detail }),
     });
+    if (!target) {
+      return ask();
+    }
+    return await loopMainQuestionQueue.runQuestion(target.tabId, {
+      isAborted: () => isExtensionDeactivating || hooks?.isAborted?.() === true,
+      canRun: () => {
+        if (isExtensionDeactivating || isTabRunActive(target.tabId)) {
+          return false;
+        }
+        const latest = readLoopTaskRecord(task.id);
+        const currentTarget = latest ? resolveLoopMainPromptTarget(latest, { createIfMissing: false }) : null;
+        if (!latest || !currentTarget || currentTarget.tabId !== target.tabId || currentTarget.cli !== target.cli) {
+          throw new Error(t("loopGroupChatChat.askUnavailable"));
+        }
+        if (resolveLoopSchedulingMode(latest.schedulingMode) === "event_driven") {
+          return !getLoopPlusOrchestrationHost().hasPendingMainWork(task.id);
+        }
+        return !hasPendingClassicLoopMainWork({
+          controllerActive: loopOrchestrationOwnership.getCount(task.id) > 0,
+          activeSubtaskCount: getActiveLoopSubtaskIds(latest).length,
+          requirementCount: latest.supplementalRequirements?.length ?? 0,
+          observedRequirementCount: classicMainRequirementCounts.get(task.id) ?? 0,
+        });
+      },
+    }, ask) ?? { status: "stopped" };
   },
   abortMainModelRun: (task) => {
     const target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
@@ -4158,6 +4188,9 @@ async function runLoopPrompt(
     }
   } finally {
     ownership.release?.();
+    if (ownership.taskId && loopOrchestrationOwnership.getCount(ownership.taskId) === 0) {
+      classicMainRequirementCounts.delete(ownership.taskId);
+    }
     await postPanelState();
   }
 }
@@ -4403,6 +4436,7 @@ async function runLoopPromptOrchestration(
 
     let decisionRunResult: Awaited<ReturnType<LoopOrchestrationHost["runClassicLoopMainDecision"]>>;
     try {
+      classicMainRequirementCounts.set(latest.id, latest.supplementalRequirements?.length ?? 0);
       decisionRunResult = await runClassicLoopMainDecision({
             input,
             target,
@@ -4712,9 +4746,25 @@ function preemptActivePromptRun(tabId: string): void {
 
 async function runPrompt(
   input: PromptRunInput,
-  options: { targetTabId?: string | null } = {}
+  options: { targetTabId?: string | null; isAborted?: () => boolean; onStarted?: () => void } = {}
 ): Promise<void> {
-  if (isExtensionDeactivating) {
+  const tabId = options.targetTabId ?? getActiveConversationTabId();
+  if (input.taskRole === "main" && input.loopTaskId && !input.loopAsk && tabId) {
+    const taskId = input.loopTaskId;
+    return loopMainQuestionQueue.runMain(tabId, () => runPromptNow(input, {
+      ...options,
+      targetTabId: tabId,
+      isAborted: () => options.isAborted?.() === true || readLoopTaskRecord(taskId)?.status !== "running",
+    }));
+  }
+  return runPromptNow(input, options);
+}
+
+async function runPromptNow(
+  input: PromptRunInput,
+  options: { targetTabId?: string | null; isAborted?: () => boolean; onStarted?: () => void } = {}
+): Promise<void> {
+  if (isExtensionDeactivating || options.isAborted?.()) {
     return;
   }
 
@@ -4743,6 +4793,9 @@ async function runPrompt(
   const compactWaitTab = getConversationTabById(target.tabId);
   await loopSubtaskAutoCompactions.wait(target.cli, compactWaitTab ? getConversationTabSessionIdForCli(compactWaitTab, target.cli) : null);
 
+  if (isExtensionDeactivating || options.isAborted?.()) {
+    return;
+  }
   if (isTabRunActive(target.tabId)) {
     preemptActivePromptRun(target.tabId);
   }
@@ -4868,6 +4921,10 @@ async function runPrompt(
           throw error;
         }
         try {
+          if (isExtensionDeactivating || options.isAborted?.()) {
+            return;
+          }
+          options.onStarted?.();
           if (summarySubmission) {
             conversationTaskSummaries.request({
               tabId: attemptTarget.tabId,
@@ -4905,7 +4962,7 @@ async function runPrompt(
           }
         }
       },
-      isTargetCurrent: () => !isExtensionDeactivating
+      isTargetCurrent: () => !isExtensionDeactivating && !options.isAborted?.()
         && activeWorkspaceKey === workspaceKey
         && getConversationTabById(target.tabId)?.cli === target.cli,
       onRepairStarted: () => {

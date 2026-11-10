@@ -20,6 +20,7 @@ export type LoopAskThread = {
   version: 1;
   messages: LoopAskBubble[];
   running: boolean;
+  queued?: boolean;
   dialogOpen: boolean;
   updatedAt: number;
 };
@@ -66,6 +67,7 @@ export function parseLoopAskThread(raw: string): LoopAskThread | null {
     version: LOOP_ASK_THREAD_VERSION,
     messages,
     running: record.running === true,
+    ...(record.queued === true ? { queued: true } : {}),
     dialogOpen: record.dialogOpen === true,
     updatedAt: finiteTime(record.updatedAt),
   });
@@ -189,6 +191,7 @@ export function settleLoopAskTurn(
     ...thread,
     messages,
     running: false,
+    queued: false,
     updatedAt: input.now,
   });
 }
@@ -299,6 +302,7 @@ function normalizeThread(thread: LoopAskThread): LoopAskThread {
     version: LOOP_ASK_THREAD_VERSION,
     messages: thread.messages.slice(-MAX_ASK_MESSAGES),
     running: thread.running === true,
+    ...(thread.queued === true && thread.running ? { queued: true } : {}),
     dialogOpen: thread.dialogOpen === true,
     updatedAt: finiteTime(thread.updatedAt),
   };

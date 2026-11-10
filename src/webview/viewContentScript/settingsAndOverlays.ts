@@ -1276,6 +1276,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         });
       }
 
+      if (elements.historySessionFilterSubtasks) {
+        elements.historySessionFilterSubtasks.addEventListener("change", (event) => {
+          state.historySessionFilterSubtasks = Boolean(event.target.checked);
+          renderSessionList();
+        });
+      }
+
       if (elements.promptHistoryPrevPage) {
         elements.promptHistoryPrevPage.addEventListener("click", () => {
           setPromptHistoryPage(state.promptHistoryPage - 1);

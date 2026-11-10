@@ -828,6 +828,9 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       .history-panel.sessions {
         overflow: hidden;
       }
+      .history-panel.sessions > .prompt-history-toolbar {
+        padding: 12px 16px 0;
+      }
       .history-panel.loop {
         overflow: hidden;
       }

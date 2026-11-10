@@ -2420,6 +2420,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return enqueueLiveUserMessage(runtime, trimmed);
   }
 
+  function hasPendingMainWork(taskId: string): boolean {
+    const runtime = runtimes.get(taskId);
+    if (!runtime || runtime.released) {
+      return false;
+    }
+    if (runtime.consumer || runtime.currentMain) {
+      return true;
+    }
+    const snapshot = runtime.scheduler.snapshot();
+    if (runtime.autoPaused || runtime.stopRequested || snapshot.parentStopped || snapshot.completed) {
+      return false;
+    }
+    return !runtime.initialPromptDone || runtime.forcePrompt || runtime.pumpRequested
+      || hasReview(runtime) || hasUserMessages(runtime)
+      || (runtime.closeoutBudget > 0 && snapshot.running.length === 0 && snapshot.pending.length === 0);
+  }
+
   function enqueueLiveUserMessage(runtime: ParentRuntime, text: string): boolean {
     if (runtime.released || runtime.stopRequested || runtime.stopping) {
       return false;
@@ -2517,6 +2534,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     hasController,
     reportAttempt,
     submitUserMessage,
+    hasPendingMainWork,
     applyAcceptancePlan,
   };
 }

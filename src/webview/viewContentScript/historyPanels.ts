@@ -277,20 +277,25 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
 
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
+        const filterSubtasks = Boolean(state.historySessionFilterSubtasks);
+        if (elements.historySessionFilterSubtasks) {
+          elements.historySessionFilterSubtasks.checked = filterSubtasks;
+        }
         const allSessions = state.sessionState && Array.isArray(state.sessionState.sessions)
           ? state.sessionState.sessions
           : [];
         const query = getHistorySearchQuery();
-        const sessions = allSessions.filter((session) => historySearchMatches(query, [
-          session.firstPrompt,
-          session.label,
-          session.cli,
-          session.id,
-        ]));
+        const sessions = allSessions.filter((session) => (!filterSubtasks || session.taskRole !== "subtask")
+          && historySearchMatches(query, [
+            session.firstPrompt,
+            session.label,
+            session.cli,
+            session.id,
+          ]));
         if (!sessions.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
-          empty.textContent = query && allSessions.length
+          empty.textContent = allSessions.length
             ? t("historyNoMatchingSessions")
             : t("historyEmptySessions");
           elements.sessionList.appendChild(empty);

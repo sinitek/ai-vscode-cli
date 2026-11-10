@@ -64,7 +64,11 @@ export type LoopPlusRuntimeAdapterDeps = {
   revealClarification?: (taskId: string) => void;
   recordInteractionHistory?: LoopPlusOrchestrationDeps["recordInteractionHistory"];
   waitForClarification?: LoopPlusOrchestrationDeps["waitForClarification"];
-  runPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null }) => Promise<void>;
+  runPrompt: (input: PromptRunInput, options?: {
+    targetTabId?: string | null;
+    isAborted?: () => boolean;
+    onStarted?: () => void;
+  }) => Promise<void>;
   getMessages: (target: LoopPlusPromptTarget) => ChatMessage[];
   readRuns: () => TaskRunRecord[];
   resolveThinkingMode: (
@@ -323,6 +327,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
 
   function runMain(request: LoopPlusMainRequest): LoopPlusMainHandle {
     let aborted = false;
+    let invocationStarted = false;
     const promise = (async (): Promise<string | null> => {
       const promptInput = promptForRole(
         request.taskId,
@@ -333,7 +338,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       );
       const boundary = captureBoundary(request.target);
       try {
-        await deps.runPrompt(promptInput, { targetTabId: request.target.tabId });
+        await deps.runPrompt(promptInput, {
+          targetTabId: request.target.tabId,
+          isAborted: () => aborted,
+          onStarted: () => { invocationStarted = true; },
+        });
       } catch (error) {
         const invocation = readInvocation(request.target, boundary, promptInput, "main");
         if (aborted || invocation.run?.status === "stopped") {
@@ -354,7 +363,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           return;
         }
         aborted = true;
-        deps.cancelInvocation(request.target.tabId);
+        if (invocationStarted) {
+          deps.cancelInvocation(request.target.tabId);
+        }
       },
     };
   }

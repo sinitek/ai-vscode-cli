@@ -64,6 +64,16 @@ test("keeps ask history and settles only the final answer", () => {
   assert.equal(next.running, true);
 });
 
+test("persists queued questions and clears the waiting state when settled", () => {
+  const thread = { ...beginLoopAskTurn(createEmptyLoopAskThread(), "等待的问题", 1, "queued"), queued: true };
+  const restored = parseLoopAskThread(JSON.stringify(thread));
+  assert.equal(restored?.queued, true);
+  const settled = settleLoopAskTurn(thread, { answer: "已回答", now: 2, noticeId: "answer" });
+  assert.equal(settled.running, false);
+  assert.notEqual(settled.queued, true);
+  assert.notEqual(parseLoopAskThread(JSON.stringify({ ...thread, running: false }))?.queued, true);
+});
+
 test("projects only new or updated thinking and ignores unchanged or tool text", () => {
   const before = [
     message("same", "thinking 没变", { kind: "thinking" }),

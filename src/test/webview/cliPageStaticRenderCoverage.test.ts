@@ -341,6 +341,8 @@ test("只渲染固定中文静态页面文案", () => {
     "任务列表",
     "打开群聊",
     "历史记录",
+    '<input id="historySessionFilterSubtasks" type="checkbox" checked />',
+    "过滤子任务",
     "工具设置",
     "规则配置",
     "Vibe 模式，直接执行目标 cli 任务",

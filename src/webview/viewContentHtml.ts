@@ -402,6 +402,12 @@ ${renderChatModal({
             </nav>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
+            <div class="prompt-history-toolbar">
+              <label class="prompt-history-filter">
+                <input id="historySessionFilterSubtasks" type="checkbox" checked />
+                <span>${i18n.historySessionFilterSubtasks}</span>
+              </label>
+            </div>
             <div id="sessionList" class="session-list"></div>
           </div>
         `,

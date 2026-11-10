@@ -153,7 +153,7 @@ const MESSAGES = {
     "loopGroupChatChat.continueAlreadyRunning": "当前 Loop 任务已在执行中。",
     "loopGroupChatChat.stopUnavailable": "当前 Loop 群聊没有正在运行的任务可中止。",
     "loopGroupChatChat.askUnavailable": "找不到当前主模型所在会话，不能提问。",
-    "loopGroupChatChat.askBusy": "主模型正在执行，请等这一轮结束后再提问。",
+    "loopGroupChatChat.askBusy": "主模型正在处理，你的问题会放入队列。",
     "loopGroupChatChat.askEmpty": "主模型没有返回可展示的回答。",
     "loopGroupChatChat.askFailed": "主模型暂时无法回答。{detail}",
     "loopGroupChatChat.askStopped": "已中止这次回答。",

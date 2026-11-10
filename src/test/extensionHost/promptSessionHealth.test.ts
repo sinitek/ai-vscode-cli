@@ -11,13 +11,20 @@ import { createPromptAutoRepairController } from "../../extensionHost/promptAuto
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
 import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
 const runPromptDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === "runPrompt");
+const runPromptNowDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
+  ts.isFunctionDeclaration(statement) && statement.name?.text === "runPromptNow");
 assert.ok(runPromptDeclaration);
-const runPromptScript = ts.transpileModule(runPromptDeclaration.getText(sourceFile), {
+assert.ok(runPromptNowDeclaration);
+const runPromptScript = ts.transpileModule([
+  runPromptDeclaration.getText(sourceFile),
+  runPromptNowDeclaration.getText(sourceFile),
+].join("\n"), {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
@@ -47,6 +54,7 @@ function createHarness(options: {
   const systemMessages: string[] = [];
   const statuses: string[] = [];
   const boundConfigs: Array<{ cli: CliName; sessionId: string; configId: string | null }> = [];
+  const questionQueue = createLoopMainQuestionQueue();
   let activeConfigId = options.activeConfigId === undefined ? "selected-config" : options.activeConfigId;
   const dispatched: Array<{ input: PromptRunInput; target: PromptRunTarget }> = [];
   const dispatch = async (input: PromptRunInput, target: PromptRunTarget): Promise<void> => {
@@ -60,9 +68,11 @@ function createHarness(options: {
   const runPrompt = vm.runInNewContext(`${runPromptScript}\nrunPrompt;`, {
     isExtensionDeactivating: false,
     activeWorkspaceKey: "test-workspace",
+    rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
+    loopMainQuestionQueue: questionQueue,
     shouldUseClassicLoopProjectInstructions,
-    readLoopTaskRecord: () => options.loopSessionId ? { id: "parent-loop", subTasks: [] } : null,
+    readLoopTaskRecord: () => options.loopSessionId ? { id: "parent-loop", status: "running", subTasks: [] } : null,
     resolvePromptRunTargetSessionId: () => options.loopSessionId ?? null,
     bindLoopSubtaskSession: (subTasks: unknown[], _subtaskId: string,
       binding: { cli: CliName; sessionId: string; configId: string | null }) => {
@@ -151,10 +161,55 @@ function createHarness(options: {
     runPromptInteractive: dispatch,
     runPromptParallel: dispatch,
     runPromptOneShot: dispatch,
-  }) as (input: PromptRunInput) => Promise<void>;
+  }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
   return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs,
+    questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
+
+test("cancelling main work queued behind a question prevents a late CLI start", async () => {
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session" });
+  let releaseQuestion: () => void = () => undefined;
+  const question = harness.questionQueue.runQuestion("target-tab", { canRun: () => true }, () => (
+    new Promise<void>((resolve) => { releaseQuestion = resolve; })
+  ));
+  let aborted = false;
+  let started = false;
+  const main = harness.runPrompt({ displayPrompt: "验收", modelPrompt: "验收", contextTags: [], taskRole: "main", loopTaskId: "parent-loop" }, {
+    isAborted: () => aborted,
+    onStarted: () => { started = true; },
+  });
+  assert.equal(harness.dispatched.length, 0);
+  aborted = true;
+  releaseQuestion();
+  await Promise.all([main, question]);
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(started, false);
+});
+
+test("a question cancelled while waiting for compaction never dispatches", async () => {
+  let aborted = false;
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
+    waitForSubtaskCompact: async () => { aborted = true; } });
+  await harness.runPrompt({ displayPrompt: "提问", modelPrompt: "提问", contextTags: [], loopAsk: true }, { isAborted: () => aborted });
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(harness.leasedConfigs.length, 0);
+});
+
+test("a question cancelled during config preparation releases its lease without dispatching", async () => {
+  let aborted = false;
+  let started = false;
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
+    acquireConfigLease: async () => { aborted = true; return "acquired"; } });
+  await harness.runPrompt({ displayPrompt: "提问", modelPrompt: "提问", contextTags: [], loopAsk: true }, {
+    isAborted: () => aborted,
+    onStarted: () => { started = true; },
+  });
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(harness.leasedConfigs.length, 1);
+  assert.equal(harness.events.at(-1), "release-config");
+  assert.equal(started, false);
+});
 
 test("Kimi model editing never reapplies or reactivates a stale profile after the coordinated save", async () => {
   const declaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>

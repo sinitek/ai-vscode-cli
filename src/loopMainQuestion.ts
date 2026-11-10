@@ -64,9 +64,10 @@ export async function askLoopMainModelSession(options: {
   readMessages: (target: LoopMainModelQuestionTarget) => readonly ChatMessage[];
   runPrompt: (
     input: LoopMainModelQuestionPromptInput,
-    runOptions: { targetTabId: string },
+    runOptions: { targetTabId: string; isAborted?: () => boolean },
   ) => Promise<void>;
   onProgress?: (progress: LoopMainModelQuestionProgress) => void;
+  onStarted?: () => void;
   isAborted?: () => boolean;
   progressIntervalMs?: number;
   unavailableMessage: string;
@@ -85,6 +86,7 @@ export async function askLoopMainModelSession(options: {
   if (options.isTabRunActive(target.tabId)) {
     return { status: "error", error: options.busyMessage };
   }
+  options.onStarted?.();
   const before = options.readMessages(target).map((message) => ({ ...message }));
   const publish = (): void => {
     if (!options.onProgress) {
@@ -114,6 +116,7 @@ export async function askLoopMainModelSession(options: {
       throwOnError: true,
     }, {
       targetTabId: target.tabId,
+      ...(options.isAborted ? { isAborted: options.isAborted } : {}),
     });
   } catch (error) {
     const recovered = extractNewAssistantAnswer(before, options.readMessages(target));

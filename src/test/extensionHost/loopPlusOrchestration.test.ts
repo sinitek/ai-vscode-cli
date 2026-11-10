@@ -1,5 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   createLoopPlusOrchestrationHost,
@@ -158,6 +160,75 @@ test("simple supplemental work is handled during live work and after earlier acc
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(env.attempts.length, 1);
   assert.equal(env.acceptanceFeedback.length, 1);
+});
+
+test("question readiness yields to main control, supplemental requirements and acceptance", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  assert.equal(env.host.hasPendingMainWork(taskId), true);
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  assert.equal(env.host.hasPendingMainWork(taskId), false);
+  env.host.submitUserMessage(taskId, "补充要求优先");
+  assert.equal(env.host.hasPendingMainWork(taskId), true);
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(env.host.hasPendingMainWork(taskId), false);
+  env.attempts[0].resolve({ outcome: "completed", detail: "等待验收" });
+  await flush();
+  assert.equal(env.host.hasPendingMainWork(taskId), true);
+  assert.equal(env.mains[2].request.kind, "review");
+  env.host.stopParent(taskId);
+  await flush();
+  await run.done;
+  assert.equal(env.host.hasPendingMainWork(taskId), false);
+  assert.equal(env.host.hasPendingMainWork("missing-task"), false);
+});
+
+test("Loop+ drains acceptance and supplemental work before the next queued question", async () => {
+  const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
+  const calls: string[] = [];
+  const env = harness({
+    adaptMain: (request) => ({
+      promise: queue.runMain(request.target.tabId, async () => {
+        calls.push(request.kind);
+        if (request.kind === "initial") {
+          return decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] });
+        }
+        if (request.kind === "review") {
+          return decisionJson({ status: "accept", reviewEventIds: request.reviewEventIds, subtasks: [] });
+        }
+        if (request.kind === "user") {
+          return directCompletionDecision();
+        }
+        return directCompletionDecision();
+      }),
+      abort: () => undefined,
+    }),
+  });
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  const answer = deferred<void>();
+  const canRun = () => !env.host.hasPendingMainWork(taskId);
+  const first = queue.runQuestion(env.target.tabId, { canRun }, async () => {
+    calls.push("answer-1");
+    await answer.promise;
+  });
+  const second = queue.runQuestion(env.target.tabId, { canRun }, async () => { calls.push("answer-2"); });
+  env.attempts[0].resolve({ outcome: "completed", detail: "等待验收" });
+  await flush();
+  env.host.submitUserMessage(taskId, "优先处理补充需求");
+  assert.deepEqual(calls, ["initial", "answer-1"]);
+  answer.resolve();
+  await flush();
+  await delay(5);
+  await Promise.all([first, second, run.done]);
+  assert.deepEqual(calls, ["initial", "answer-1", "review", "user", "answer-2"]);
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
 });
 
 test("direct completion cannot bypass open work, review events or selected reviews", async () => {
