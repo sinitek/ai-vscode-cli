@@ -56,7 +56,7 @@
       "id": "plugin.local_cli",
       "name": "本地 AI CLI",
       "kind": "resource",
-      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build、DeepSeek-Harness、Kimi Code 和 ZCode；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh、kimi-code、zcode。ZCode 0.17.0 走独立 ZCode Protocol（zcode app-server --stdio），不是 ACP，也不是 JSON-RPC 2.0；免审批是 --mode yolo；思考只下发 session 快照 advertised 的 thoughtLevel；session/compact 是原生压缩。GLM 自定义供应商使用 openai-chat-completions 与调用方给定的模型 ID、Base URL。配置页「安装」只复制 getCliInstallCommand 的同一条命令，不在配置页执行安装。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无压缩方法，compactSession 抛 compaction-unsupported。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。",
+      "description": "插件调用的本地命令行 AI 工具，包括 Codex、Claude、OpenCode、官方 Grok Build、DeepSeek-Harness、Kimi Code 和 ZCode；命令、参数、会话和输出解析由服务层处理。CLI_LIST 顺序为 codex、claude、opencode、grok、dsh、kimi-code、zcode。ZCode 0.17.0 走独立 ZCode Protocol（zcode app-server --stdio），不是 ACP，也不是 JSON-RPC 2.0；免审批是 --mode yolo；思考只下发 session 快照 advertised 的 thoughtLevel；session/compact 是原生压缩。GLM 自定义供应商使用 openai-chat-completions 与调用方给定的模型 ID、Base URL。配置页「安装」只复制 getCliInstallCommand 的同一条命令，不在配置页执行安装。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无独立 session/compact RPC；compactSession 确认 compact 命令广告后在原会话经 session/prompt 发送 /compact，等待当前操作开始、真实完成及正常 RPC 结果，失败或取消不成功，加入已有全局执行后自动压缩。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。Kimi Code 走官方 ACP：`kimi acp`，args 只允许 --region；新档案默认模型 kimi-k3.1-pro，界面显示名 kimi；凭据只来自 ~/.kimi-code/config.toml 或 KIMI_MODEL_* 环境变量，插件不注入密钥并剥离其它 CLI 的 *_API_KEY；thinking 只下发 ACP 广告值（off/low/medium/high/xhigh/max 的子集，env-only 只有 off/on），不改写 ultra；session/resume 只在持有 session_ 前缀 id 时使用，不发送 session/load、session/fork、session/delete；ACP 无独立 session/compact RPC；compactSession 确认 compact 命令广告后在原会话经 session/prompt 发送 /compact，等待当前操作开始、真实完成及正常 RPC 结果，失败或取消不成功，加入已有全局执行后自动压缩。Grok 由已有 GrokInteractiveRunner 走长驻 ACP stdio。dsh 交互主路径是 dsh --profile acp，不使用 session/load。可执行模型必须是配置数组中的完整 id；默认范例 id 为 deepseek-v4.1-flash，模型 id 按 endpoint 要求原样配置，旧 profile 不自动增删前缀。DSH 凭据默认引用 SINITEK_DSH_API_KEY，也可由 profile 根级 apiKey 通过插件注入同名子进程环境；密钥不进入 RPC。未配置模型不能执行。原生 compaction 不支持。实际所选模型（未显式选择时为默认模型）的 api_key 非空或 env_key 指向的环境变量非空时跳过 authenticate，直接 session/new；否则才按 authMethods 选择认证。返回的 ACP session id 接管 local_ 会话，之后用 session/load 续聊；同一进程的后续 prompt 复用 runner。有正文且 stopReason 为 end_turn 时正常结束；部分正文后收到 RPC error 仍为失败。遇到 Grok 不支持的 Responses 流事件时，从 error.data 或失败 retry_state 提取事件，提示改用服务支持的 chat_completions，标记 GROK_RESPONSES_STREAM_INCOMPATIBLE 停止无效重试并淘汰故障 runner，不根据模型名称自动改写协议。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`。选中模型在 agent 与 stdio 之间追加 `--model`，空模型省略。思考可选到 max/ultra，ultra 下发为 max。session/update 与 session/prompt 结果走 rawStreamDelta。`session/new` 与 `session/load` 仍带 `_meta.yoloMode: true`。initialize 的 terminal 与 fs 能力为 false，避免 grok 把命令转成客户端 `terminal/create`。会话、模型、命令修复、面板、工作区设置和命令面板不再维护排除 grok 的平行名单。",
       "status": "active",
       "aliases": ["codex", "claude", "opencode", "opcode", "grok", "dsh", "kimi-code", "kimi", "zcode", "local CLI"],
       "implementation_paths": ["src/cli", "src/interactive", "src/interactive/dshRunner.ts", "src/interactive/dshAppServerProtocol.ts", "src/extensionHost/interactiveTurnDsh.ts", "src/interactive/kimiRunner.ts", "src/interactive/kimiAppServerProtocol.ts", "src/extensionHost/interactiveTurnKimi.ts", "src/extensionHost/kimiInteractiveLaunch.ts", "src/interactive/zcodeRunner.ts", "src/interactive/zcodeAppServerProtocol.ts", "src/extensionHost/interactiveTurnZcode.ts", "src/config/zcodeConfig.ts"],
@@ -680,10 +680,10 @@
     },
     {
       "id": "plugin.rule.kimi_no_native_compaction",
-      "name": "Kimi ACP 没有压缩方法，usage 窗口取配置声明值",
-      "description": "Kimi Code ACP 的官方能力矩阵没有 session/compact 这类独立压缩方法，initialize 也不公布压缩能力，因此插件 compactSession() 抛 compaction-unsupported，不伪造本地压缩，对话面板不显示「压缩上下文」入口；[loop_control].reserved_context_size 只作用于 CLI 自己的会话循环。Kimi CLI 本身支持自动压缩，/compact 斜杠命令也可作为 session/prompt 文本使用；ACP 把自动压缩的开始、完成、取消、阻塞与 /compact 的开始确认作为普通助手文本发送，插件精确识别官方文案并显示「压缩中」，不作为最终答复或独立压缩方法。上下文窗口展示读每轮结束的 usage_update.size，它来自模型目录中该模型的 max_context_size，即配置声明的真实容量；事件可能晚于 prompt RPC 返回，runner 与 host 保留同会话收尾通知，缺失时隐藏标签而不显示 0 或「—」。interactiveTurnKimi.ts 标 contextWindowSource 为独立的 kimi-config-window，悬停文案说明窗口取自配置的 max_context_size，与 DSH 的 adapter-fallback 区分且不共用文案。",
+      "name": "Kimi 原会话原生命令压缩，usage 窗口取配置声明值",
+      "description": "Kimi Code 2.5.2 没有独立 session/compact RPC，但 available_commands_update 广告 compact 原生命令。插件 compactSession() 绑定原会话，先监听再以纯文本 /compact 调用 session/prompt；只有当前操作同会话开始、真实完成通知及正常 RPC 返回均确认才成功，兼容完成通知前后乱序。普通回复、异会话或迟到通知不得确认成功；失败、blocked、cancelled、停止、退出和超时均清理等待者并淘汰异常进程。冷恢复失败不新建空会话，压缩期间阻止同会话并发 prompt 和重复压缩。沿用启动配置、凭据隔离、映射和全局执行后自动压缩设置，成功且超过 5 分钟、已有会话、3 分钟超时规则不变；[loop_control].reserved_context_size 只作用于 CLI 自己的会话循环。Kimi CLI 本身支持自动压缩，/compact 斜杠命令也可作为 session/prompt 文本使用；ACP 把自动压缩的开始、完成、取消、阻塞与 /compact 的开始确认作为普通助手文本发送，插件精确识别官方文案并显示「压缩中」，不作为最终答复或独立压缩方法。上下文窗口展示读每轮结束的 usage_update.size，它来自模型目录中该模型的 max_context_size，即配置声明的真实容量；事件可能晚于 prompt RPC 返回，runner 与 host 保留同会话收尾通知；收尾须核对真实标签、当前 CLI/UI 会话、持久运行代际、原生映射及 manager runner 身份，同标签换绑或新运行接管拒绝旧用量，另一标签运行仍允许原标签合法迟到用量。隔离压缩保留显式 tabId，新增反馈为中文，修复已复验。缺失时隐藏标签而不显示 0 或「—」。interactiveTurnKimi.ts 标 contextWindowSource 为独立的 kimi-config-window，悬停文案说明窗口取自配置的 max_context_size，与 DSH 的 adapter-fallback 区分且不共用文案。",
       "status": "active",
-      "aliases": ["Kimi 压缩", "compaction-unsupported", "reserved_context_size", "usage_update"],
+      "aliases": ["Kimi 压缩", "原生 compact 命令", "compaction-unsupported", "reserved_context_size", "usage_update"],
       "applies_to": ["plugin.local_cli", "plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/references/kimi-code-official-reference.md", "anchor": "上下文用量"},
@@ -691,7 +691,12 @@
         {"path": "src/interactive/kimiRunner.ts", "anchor": "compactSession"},
         {"path": "src/extensionHost/interactiveTurnKimi.ts"},
         {"path": "src/contextCompactionRunner.ts", "anchor": "CONTEXT_COMPACTION_STRATEGY_CLIS"},
-        {"path": "src/test/config/kimiCodeDocContract.test.ts"}
+        {"path": "src/extensionHost/isolatedContextCompaction.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/test/core/contextCompactionRunner.test.ts"},
+        {"path": "src/test/extensionHost/kimiInteractiveHostWire.test.ts"},
+        {"path": "src/test/config/kimiCodeDocContract.test.ts"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md"}
       ]
     },
     {
@@ -1055,6 +1060,66 @@
         {"path": "src/test/session/sessionHealth.test.ts"},
         {"path": "src/test/extensionHost/promptSessionHealth.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.4 会话与并发"}
+      ]
+    },
+    {
+      "id": "plugin.rule.claude_current_context_usage",
+      "name": "Claude 最近主请求用量与精确模型窗口",
+      "description": "最近一次主模型请求的 input_tokens、cache_read_input_tokens、cache_creation_input_tokens 与最终 output_tokens 各计一次，不用 result 累计消耗，不重复加 thinking 或缓存生命周期分项。窗口仅精确匹配当前响应模型的 modelUsage.contextWindow，来源 claude-model-window，未知为 null。runner 与宿主按请求、会话和 Tab 绑定隔离子代理、重试及迟到事件，经 contextTokenUsage 发送到面板；不拿压缩前计数冒充压缩后测量。",
+      "status": "active",
+      "aliases": ["Claude 上下文", "claude-model-window", "contextTokenUsage"],
+      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/interactive/claudeContextUsage.ts"},
+        {"path": "src/interactive/claudeRunner.ts"},
+        {"path": "src/extensionHost/interactiveTurnClaude.ts"},
+        {"path": "src/test/interactive/claudeContextUsage.test.ts"},
+        {"path": "src/test/interactive/claudeRunner.test.ts"},
+        {"path": "src/test/extensionHost/claudeContextUsage.test.ts"},
+        {"path": ".ch/docs/references/claude-context-usage.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.opencode_current_context_usage",
+      "name": "OpenCode 最新主步骤用量与冻结模型窗口",
+      "description": "主会话最新 step_finish 按 input、output、reasoning、cache.read、cache.write 相加，覆盖前一步骤，不跨步骤累计或再加 total。有界 JSONL 复用原流；冻结配置、有效模型、cwd 和环境，复用可失效的有界模型元数据缓存。窗口只取精确 provider/model 的 limit.context，来源 opencode-model-window；缺失或非法为 null，不猜模型容量、不用 output limit。宿主实际发送 contextTokenUsage，隔离后台子任务、异会话、重试换绑及迟到查询；摘要生成步骤账单不代表压缩后占用，无可信新测量等待下一主回合。",
+      "status": "active",
+      "aliases": ["OpenCode 上下文", "opencode-model-window", "step_finish"],
+      "applies_to": ["plugin.local_cli", "plugin.cli_session", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/cli/openCodeContextUsage.ts"},
+        {"path": "src/cli/openCodeModelCapabilities.ts"},
+        {"path": "src/cli/openCodeRunOutput.ts"},
+        {"path": "src/cli/commandRunner.ts"},
+        {"path": "src/extensionHost/promptOneShotRuntime.ts"},
+        {"path": "src/extensionHost/openCodePromptRunTemplate.ts"},
+        {"path": "src/test/cli/openCodeContextUsage.test.ts"},
+        {"path": "src/test/cli/openCodeModelCapabilities.test.ts"},
+        {"path": "src/test/cli/openCodeRunOutput.test.ts"},
+        {"path": "src/test/extensionHost/promptOneShotRuntime.test.ts"},
+        {"path": ".ch/docs/references/opencode-context-usage.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+      ]
+    },
+    {
+      "id": "plugin.rule.context_usage_panel_contract",
+      "name": "上下文面板来源与既有压缩入口契约",
+      "description": "contextTokenUsage 保留 type、tabId、tokensInContextWindow:number、modelContextWindow:number|null 与可选 contextWindowSource。面板按 Tab 与会话隔离，Claude/OpenCode/Kimi/ZCode 缺测量不造初始化占位，不补未知容量；窗口来源进入中文 title 和 aria。沿用布局、主题及 runCommonCommand/compactContext，OpenCode 和具备交互能力的 Kimi 开放既有压缩入口，DSH 隐藏；运行中禁重复触发、允许中止并在结束恢复。Kimi 后台身份隔离及中文反馈已通过修复后复验；真实 Extension Development Host 点击仍未验证。OpenCode 无可信压缩后新测量时等待下一主回合，即时刷新未实现，后续增强以取得可靠新测量为条件；证据边界见归档计划。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session", "plugin.local_cli"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
+        {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": "src/webview/viewContentStrings.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md"}
       ]
     },
     {

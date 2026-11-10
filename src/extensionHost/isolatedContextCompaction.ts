@@ -41,7 +41,10 @@ export function createIsolatedContextCompactionDeps(
     clearActiveRun: () => controller.clear(),
     appendSystemMessage: (content) => appendMessage("system", content),
     sendRawStreamDelta: () => undefined,
-    sendPanelMessage: (message) => ports.publishPanelMessage({ ...message, tabId: controller.activeTabIdForRun ?? undefined }),
+    sendPanelMessage: (message) => ports.publishPanelMessage({
+      ...message,
+      tabId: ("tabId" in message ? message.tabId : undefined) ?? controller.activeTabIdForRun ?? undefined,
+    }),
     updateProcessTitle: () => undefined,
     appendTraceMessage: (content) => appendMessage("trace", content),
     setActiveProcess: (process) => { controller.activeProcess = process; },

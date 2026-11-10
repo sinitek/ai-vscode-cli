@@ -52,6 +52,7 @@ function createAsyncRunCliStreamStub(
 }
 
 function createOneShotRuntimeHarness(options: {
+  resolveContextWindow?: NonNullable<PromptOneShotRuntimeDeps["resolveOpenCodeContextWindow"]>;
   humanInteractionEnabled?: boolean;
   humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
   captureSessionFromBuffer?: PromptOneShotRuntimeDeps["captureSessionFromBuffer"];
@@ -99,6 +100,7 @@ function createOneShotRuntimeHarness(options: {
   };
 
   const deps: PromptOneShotRuntimeDeps = {
+    resolveOpenCodeContextWindow: options.resolveContextWindow ?? (async () => null),
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024 * 1024,
     adoptFreshOpenCodeLoopRecoverySession: ({ messageTarget }) => messageTarget,
     appendAssistantChunk: appendAssistantChunkToActiveTarget,
@@ -273,6 +275,7 @@ function createOneShotRuntimeHarness(options: {
   };
 
   return {
+    deps,
     host: createPromptOneShotRuntimeHost(deps),
     messages,
     panelMessages,
@@ -638,3 +641,198 @@ test("one-shot automatic repair retry does not retry transient failures again", 
   assert.equal(attempts, 1);
   assert.equal(harness.activeRunId, undefined);
 });
+
+function contextStep(sessionID: string, input: number): string {
+  return JSON.stringify({
+    type: "step_finish", timestamp: 1794280000000, sessionID,
+    part: { type: "step-finish", id: `prt_${input}`, messageID: "msg_main", sessionID, reason: "stop", cost: 0,
+      tokens: { input, output: 20, reasoning: 10, cache: { read: 40, write: 5 } } },
+  });
+}
+
+function contextStart(sessionID: string): string {
+  return JSON.stringify({ type: "step_start", sessionID, part: { type: "step-start", sessionID, messageID: "msg_main" } });
+}
+
+function contextAnswer(sessionID: string): string {
+  return JSON.stringify({ type: "text", sessionID, part: { type: "text", sessionID, text: "[final_answer] completed" } });
+}
+
+test("OpenCode usage reaches the host panel through split JSONL, uses the frozen model and latest primary step", async () => {
+  const requests: Array<Parameters<NonNullable<PromptOneShotRuntimeDeps["resolveOpenCodeContextWindow"]>>[0]> = [];
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: async (request) => {
+    requests.push(request);
+    return 16384;
+  } });
+  const stdout = [contextStart("ses_main"), contextStep("ses_main", 1000), contextStep("ses_child", 9000),
+    contextAnswer("ses_main"), contextStep("ses_main", 60)].join("\n");
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    for (let offset = 0; offset < stdout.length; offset += 13) handlers.onStdout(stdout.slice(offset, offset + 13));
+    handlers.onStderr(`${contextStep("ses_main", 99000)}\n`);
+    handlers.onExit(0);
+    handlers.onStdout(`${contextStep("ses_main", 88000)}\n`);
+  }), async () => {
+    await harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [], model: "requested-not-effective" }, {
+      tabId: "tab-usage", cli: "opencode", sessionId: null,
+    });
+  });
+  assert.deepEqual(harness.panelMessages.filter(message => message.type === "contextTokenUsage"), [{
+    type: "contextTokenUsage", tabId: "tab-usage", tokensInContextWindow: 135,
+    modelContextWindow: 16384, contextWindowSource: "opencode-model-window",
+  }]);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].model, "packyapi/claude-sonnet-5");
+  assert.equal(requests[0].envOverrides?.OPENCODE_CONFIG_CONTENT, requests[0].configContent);
+  assert.equal(requests[0].cwd, process.cwd());
+  assert.ok(harness.assistantChunks.join("").includes("[final_answer] completed"));
+});
+
+test("OpenCode usage keeps an unknown context window null instead of guessing", async () => {
+  const harness = createOneShotRuntimeHarness();
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    handlers.onStdout([contextStart("ses_main"), contextStep("ses_main", 60), contextAnswer("ses_main"), ""].join("\n"));
+    handlers.onExit(0);
+  }), async () => harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [] }, { tabId: "tab-null", cli: "opencode", sessionId: null }));
+  assert.deepEqual(harness.panelMessages.filter(message => message.type === "contextTokenUsage"), [{
+    type: "contextTokenUsage", tabId: "tab-null", tokensInContextWindow: 135, modelContextWindow: null,
+  }]);
+});
+
+test("OpenCode publishes live replacement measurements after metadata resolves, not running totals", async () => {
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: async () => 16384 });
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    handlers.onStdout([contextStart("ses_live"), contextStep("ses_live", 1000), ""].join("\n"));
+    setImmediate(() => {
+      handlers.onStdout([contextStep("ses_live", 60), contextAnswer("ses_live"), ""].join("\n"));
+      handlers.onExit(0);
+    });
+  }), async () => harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [] }, {
+    tabId: "tab-live", cli: "opencode", sessionId: null,
+  }));
+  assert.deepEqual(harness.panelMessages.filter(message => message.type === "contextTokenUsage")
+    .map(message => message.tokensInContextWindow), [1075, 135]);
+});
+
+test("OpenCode background Loop subtask usage never queries metadata or updates the primary panel", async () => {
+  let metadataCalls = 0;
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: async () => { metadataCalls += 1; return 16384; } });
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    handlers.onStdout([contextStart("ses_subtask"), contextStep("ses_subtask", 60), contextAnswer("ses_subtask"), ""].join("\n"));
+    handlers.onExit(0);
+  }), async () => harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [], taskRole: "subtask", loopTaskId: "task" }, {
+    tabId: "tab-subtask", cli: "opencode", sessionId: null,
+  }));
+  assert.equal(metadataCalls, 0);
+  assert.equal(harness.panelMessages.some(message => message.type === "contextTokenUsage"), false);
+});
+
+test("OpenCode cancellation discards a pending metadata result", async () => {
+  let resolveWindow!: (window: number | null) => void;
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: () => new Promise(resolve => { resolveWindow = resolve; }) });
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    handlers.onStdout([contextStart("ses_main"), contextStep("ses_main", 60), contextAnswer("ses_main"), ""].join("\n"));
+    handlers.onExit(0);
+    setImmediate(() => { harness.deps.clearActiveRun(); resolveWindow(16384); });
+  }), async () => harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [] }, { tabId: "tab-cancel", cli: "opencode", sessionId: null }));
+  assert.equal(harness.panelMessages.some(message => message.type === "contextTokenUsage"), false);
+});
+
+test("OpenCode failed attempts cannot publish late metadata or post-exit JSONL", async () => {
+  let resolveWindow!: (window: number | null) => void;
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: () => new Promise(resolve => { resolveWindow = resolve; }) });
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    handlers.onStdout([contextStart("ses_main"), contextStep("ses_main", 60), ""].join("\n"));
+    handlers.onStderr("provider error");
+    handlers.onExit(1);
+    handlers.onStdout(`${contextStep("ses_main", 9000)}\n`);
+    setImmediate(() => resolveWindow(16384));
+  }), async () => harness.host.runPromptOneShot({ displayPrompt: "run", modelPrompt: "run", contextTags: [], cliCommandRepairAttempted: true }, {
+    tabId: "tab-error", cli: "opencode", sessionId: null,
+  }));
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(harness.panelMessages.some(message => message.type === "contextTokenUsage"), false);
+});
+
+test("OpenCode late metadata from an older run cannot overwrite a newer tab session", async () => {
+  let resolveOldWindow!: (window: number | null) => void;
+  let signalOldQuery!: () => void;
+  const oldQueryStarted = new Promise<void>(resolve => { signalOldQuery = resolve; });
+  let metadataCalls = 0;
+  const harness = createOneShotRuntimeHarness({ resolveContextWindow: async () => {
+    metadataCalls += 1;
+    if (metadataCalls === 1) {
+      signalOldQuery();
+      return new Promise(resolve => { resolveOldWindow = resolve; });
+    }
+    return 16384;
+  } });
+  let attempts = 0;
+  await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
+    attempts += 1;
+    const sessionID = attempts === 1 ? "ses_old" : "ses_new";
+    handlers.onStdout([contextStart(sessionID), contextStep(sessionID, attempts === 1 ? 9000 : 60), contextAnswer(sessionID), ""].join("\n"));
+    handlers.onExit(0);
+  }), async () => {
+    const oldRun = harness.host.runPromptOneShot({ displayPrompt: "old", modelPrompt: "old", contextTags: [] }, {
+      tabId: "same-tab", cli: "opencode", sessionId: null,
+    });
+    await oldQueryStarted;
+    await harness.host.runPromptOneShot({ displayPrompt: "new", modelPrompt: "new", contextTags: [] }, {
+      tabId: "same-tab", cli: "opencode", sessionId: null,
+    });
+    resolveOldWindow(200000);
+    await oldRun;
+  });
+  assert.deepEqual(harness.panelMessages.filter(message => message.type === "contextTokenUsage"), [{
+    type: "contextTokenUsage", tabId: "same-tab", tokensInContextWindow: 135,
+    modelContextWindow: 16384, contextWindowSource: "opencode-model-window",
+  }]);
+});
+
+for (const freshSession of [false, true]) {
+  test(`OpenCode ${freshSession ? "fresh-session" : "hidden"} retry rebinds usage and drops settled attempt callbacks`, async () => {
+    const retry = require("../../promptRetry") as typeof import("../../promptRetry");
+    const originalWait = retry.waitForHiddenRetryDelay;
+    const originalRecovery = commandRunner.recoverOpenCodeMissingAssistantOutput;
+    retry.waitForHiddenRetryDelay = async () => true;
+    commandRunner.recoverOpenCodeMissingAssistantOutput = async () => commandRunner.parseOpenCodeRunOutput("", "");
+    let metadataCalls = 0;
+    const harness = createOneShotRuntimeHarness({ resolveContextWindow: async () => { metadataCalls += 1; return 16384; } });
+    const sessions: Array<string | null | undefined> = [];
+    let oldHandlers: RunCliStreamHandlers | undefined;
+    const streamStub: RunCliStream = (_cli, _prompt, handlers, options) => {
+      sessions.push(options?.sessionId);
+      const attempt = sessions.length;
+      setImmediate(() => {
+        if (attempt === 1) {
+          oldHandlers = handlers;
+          handlers.onStdout(`${contextStep("ses_old", 1000)}\n`);
+          if (freshSession) handlers.onExit(0);
+          else handlers.onError(new Error("temporary provider failure"));
+          return;
+        }
+        const sessionID = freshSession ? "ses_new" : "ses_old";
+        oldHandlers?.onStdout(`${contextStep(sessionID, 99999)}\n`);
+        handlers.onStdout([
+          ...(freshSession ? [contextStart("ses_old"), contextStep("ses_old", 99000), contextStart(sessionID)] : []),
+          contextStep(sessionID, 60), contextAnswer(sessionID), "",
+        ].join("\n"));
+        handlers.onExit(0);
+      });
+      return { kill: () => true };
+    };
+    try {
+      await withRunCliStreamStub(streamStub, async () => harness.host.runPromptOneShot({
+        displayPrompt: "run", modelPrompt: "run", contextTags: [], taskRole: "main", loopTaskId: "loop-task",
+      }, { tabId: "retry-tab", cli: "opencode", sessionId: "ses_old" }));
+    } finally {
+      retry.waitForHiddenRetryDelay = originalWait;
+      commandRunner.recoverOpenCodeMissingAssistantOutput = originalRecovery;
+    }
+    assert.deepEqual(sessions, ["ses_old", freshSession ? null : "ses_old"]);
+    assert.equal(metadataCalls, 1);
+    const usageMessages = harness.panelMessages.filter(message => message.type === "contextTokenUsage");
+    assert.equal(usageMessages[usageMessages.length - 1]?.tokensInContextWindow, 135);
+    assert.ok(usageMessages.every(message => Number(message.tokensInContextWindow) < 2000));
+  });
+}

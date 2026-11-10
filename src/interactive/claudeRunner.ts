@@ -6,6 +6,7 @@ import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
 import { buildClaudePromptContent } from "../cli/claudeToolPolicy";
 import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
+import { ClaudeContextUsageTracker, type ClaudeContextUsageUpdate } from "./claudeContextUsage";
 import { logInfo } from "../logger";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 import {
@@ -106,6 +107,7 @@ export type ClaudeStreamHandlers = {
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
   onSessionId: (sessionId: string) => void;
   onEvent?: (event: unknown) => void;
+  onTokenUsageUpdate?: (update: ClaudeContextUsageUpdate) => void;
 };
 
 export type ClaudeCompactionResult = {
@@ -936,6 +938,7 @@ export class ClaudeInteractiveRunner {
     });
     done.catch(() => undefined);
     const events = new ClaudeTurnEventProcessor(handlers);
+    const contextUsage = new ClaudeContextUsageTracker(this.getSessionId());
     const turn: ClaudeActiveTurn = {
       abortGeneration,
       disposeGeneration,
@@ -944,7 +947,13 @@ export class ClaudeInteractiveRunner {
       resolve: () => resolveTurn?.(),
       reject: (error) => rejectTurn?.(error),
       done,
-      handle: (message) => events.handle(message),
+      handle: (message) => {
+        const usage = contextUsage.handle(message);
+        if (usage) {
+          handlers.onTokenUsageUpdate?.(usage);
+        }
+        return events.handle(message);
+      },
     };
     this.activeTurn = turn;
     return turn;
@@ -1098,6 +1107,9 @@ export class ClaudeInteractiveRunner {
   }
 
   private captureSessionId(message: any): void {
+    if (message?.parent_tool_use_id !== undefined && message.parent_tool_use_id !== null) {
+      return;
+    }
     if (!message?.session_id || typeof message.session_id !== "string") {
       return;
     }

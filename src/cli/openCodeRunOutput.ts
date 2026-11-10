@@ -376,7 +376,10 @@ function collectOpenCodeReasoningText(value: unknown): string[] {
   return chunks;
 }
 
-export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleStreamEvent[] {
+export function parseOpenCodeVisibleStreamEvents(
+  line: string,
+  onRecord?: (record: unknown) => void,
+): OpenCodeVisibleStreamEvent[] {
   const trimmed = line.trim();
   if (!trimmed.startsWith("{")) {
     return [];
@@ -388,6 +391,8 @@ export function parseOpenCodeVisibleStreamEvents(line: string): OpenCodeVisibleS
   } catch {
     return [];
   }
+
+  onRecord?.(record);
 
   const assistantText = collectOpenCodeJsonText(record).join("");
   if (assistantText.trim()) {

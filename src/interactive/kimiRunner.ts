@@ -37,6 +37,7 @@ import {
   KIMI_THINKING_CONFIG_ID,
   findKimiForbiddenWire,
   formatKimiRpcError,
+  isKimiCompletedStopReason,
   isKimiResumableSessionId,
   parseKimiJsonRpcLine,
   planKimiProcessTreeStop,
@@ -148,6 +149,22 @@ export type KimiPromptResult = {
   stopReason: string;
 };
 
+export type KimiCompactionResult = {
+  compacted: true;
+  sessionId: string;
+};
+
+type KimiCompactionOperation = {
+  sent: boolean;
+  started: boolean;
+  completed: boolean;
+  promptCompleted: boolean;
+  handlers: KimiStreamHandlers;
+  resolve: (result: KimiCompactionResult) => void;
+  reject: (error: Error) => void;
+  advertisementReady?: (supported: boolean) => void;
+};
+
 export type KimiConfigSnapshot = {
   model: string | null;
   thinking: string | null;
@@ -175,6 +192,9 @@ export class KimiInteractiveRunner {
   private failed: Error | null = null;
   private shutdownStarted = false;
   private promptInFlight = false;
+  private compaction: KimiCompactionOperation | null = null;
+  private readonly compactAdvertisements = new Map<string, boolean>();
+  private backgroundCompaction = false;
   private turnCancelled = false;
   private turnEpoch = 0;
   private activeTurnEpoch = 0;
@@ -301,6 +321,9 @@ export class KimiInteractiveRunner {
     if (!this.sessionId || this.closed || this.failed) {
       throw this.failed ?? new KimiProtocolError("Kimi Code session is not ready", "session-not-ready");
     }
+    if (this.compaction) {
+      throw new KimiProtocolError("Kimi Code 正在压缩上下文，请稍后重试", "concurrent-prompt");
+    }
     if (this.promptInFlight) {
       throw new KimiProtocolError("a Kimi Code prompt is already in flight", "concurrent-prompt");
     }
@@ -345,6 +368,10 @@ export class KimiInteractiveRunner {
   }
 
   public cancelTurn(): void {
+    if (this.compaction) {
+      this.fail(new KimiProtocolError("Kimi Code 上下文压缩已取消", "compaction-cancelled"));
+      return;
+    }
     this.turnCancelled = true;
     this.turnOpen = false;
     this.replayStream?.finish();
@@ -362,8 +389,80 @@ export class KimiInteractiveRunner {
     });
   }
 
-  public async compactSession(): Promise<never> {
-    throw new KimiCompactionUnsupportedError();
+  public async compactSession(
+    handlers: KimiStreamHandlers = {},
+    options: { timeoutMs?: number; model?: string | null; thinkingValue?: string | null; modeId?: string | null } = {},
+  ): Promise<KimiCompactionResult> {
+    if (this.closed || this.failed) {
+      throw this.failed ?? new KimiProtocolError("Kimi Code 运行器已关闭", "closed");
+    }
+    if (this.promptInFlight || this.compaction || this.backgroundCompaction) {
+      throw new KimiProtocolError("Kimi Code 正在执行对话或上下文压缩，请稍后重试", "concurrent-prompt");
+    }
+    let operation!: KimiCompactionOperation;
+    const outcome = new Promise<KimiCompactionResult>((resolve, reject) => {
+      operation = { sent: false, started: false, completed: false, promptCompleted: false, handlers, resolve, reject };
+    });
+    this.compaction = operation;
+    const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs : 180_000;
+    const timer = setTimeout(() => {
+      if (this.compaction === operation) {
+        this.fail(new KimiProtocolError("Kimi Code 上下文压缩超时", "compaction-timeout"));
+      }
+    }, timeoutMs);
+    void (async () => {
+      const session = await this.start({ requireResume: true });
+      if (this.compaction !== operation || this.closed) return;
+      const advertised = this.compactAdvertisements.get(session.acpSessionId);
+      const supported = advertised ?? await new Promise<boolean>((resolve) => {
+        operation.advertisementReady = resolve;
+      });
+      if (this.compaction !== operation || this.closed) return;
+      if (!supported) throw new KimiCompactionUnsupportedError();
+      if (options.model) await this.setModel(options.model);
+      if (this.compaction !== operation || this.closed) return;
+      if (options.modeId) await this.setMode(options.modeId);
+      if (this.compaction !== operation || this.closed) return;
+      if (options.thinkingValue) await this.setThinkingMode(options.thinkingValue);
+      if (this.compaction !== operation || this.closed) return;
+      this.settledReplayStream?.finish();
+      this.settledReplayStream = null;
+      this.settledHandlers = null;
+      this.turnCancelled = false;
+      operation.sent = true;
+      const result = await this.request("session/prompt", buildKimiSessionPromptParams(session.acpSessionId, "/compact"));
+      if (this.compaction !== operation || this.closed) return;
+      const promptError = readKimiPromptError(result);
+      if (promptError) throw promptError;
+      if (!isKimiCompletedStopReason(readKimiPromptStopReason(result))) {
+        throw new KimiProtocolError("Kimi Code 上下文压缩命令未正常结束", "compaction-stop-reason");
+      }
+      operation.promptCompleted = true;
+      this.finishCompactionIfReady(operation);
+    })().catch((error: unknown) => {
+      if (this.compaction === operation) {
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    try {
+      return await outcome;
+    } finally {
+      clearTimeout(timer);
+      if (this.compaction === operation) {
+        this.compaction = null;
+      }
+      operation.advertisementReady?.(false);
+      operation.advertisementReady = undefined;
+    }
+  }
+
+  private finishCompactionIfReady(operation: KimiCompactionOperation): void {
+    if (this.compaction !== operation || this.closed || !operation.started || !operation.completed || !operation.promptCompleted) {
+      return;
+    }
+    this.settledHandlers = { onTokenUsageUpdate: operation.handlers.onTokenUsageUpdate };
+    operation.resolve({ compacted: true, sessionId: this.requireSessionId() });
   }
 
   public async setModel(modelValue: string): Promise<KimiConfigSnapshot> {
@@ -689,15 +788,50 @@ export class KimiInteractiveRunner {
   }
 
   private handleSessionUpdate(message: KimiJsonRpcMessage): void {
+    if (this.closed) return;
     const sessionId = readKimiUpdateSessionId(message);
+    const body = readKimiSessionUpdateBody(message);
+    if (sessionId && body?.sessionUpdate === "available_commands_update" && (!this.sessionId || sessionId === this.sessionId)) {
+      const supported = Array.isArray(body.availableCommands) && body.availableCommands.some((command: unknown) =>
+        command !== null && typeof command === "object" && (command as { name?: unknown }).name === "compact");
+      this.compactAdvertisements.set(sessionId, supported);
+      if (sessionId === this.sessionId) this.compaction?.advertisementReady?.(supported);
+      return;
+    }
     if (!sessionId || sessionId !== this.sessionId) {
       return;
     }
-    const body = readKimiSessionUpdateBody(message);
     if (!body) {
       return;
     }
     const update = classifyKimiSessionUpdate(body);
+    if (this.closed || this.turnCancelled) return;
+    if (this.compaction) {
+      const operation = this.compaction;
+      if (!operation.sent) return;
+      if (update.type === "usage") {
+        const usage = readKimiTokenUsageUpdate(update.used, update.size);
+        if (usage) operation.handlers.onTokenUsageUpdate?.(usage);
+      } else if (update.type === "assistant_text") {
+        const compaction = readKimiCompactionUpdate(update.text);
+        if (compaction?.status === "started") operation.started = true;
+        if (compaction?.status === "completed" && operation.started) operation.completed = true;
+        if (compaction && ["cancelled", "blocked", "failed"].includes(compaction.status)) {
+          this.fail(new KimiProtocolError(compaction.text, `compaction-${compaction.status}`));
+          return;
+        }
+        this.finishCompactionIfReady(operation);
+      }
+      return;
+    }
+    if (update.type === "assistant_text") {
+      const compaction = readKimiCompactionUpdate(update.text);
+      if (compaction) {
+        this.backgroundCompaction = compaction.status === "started";
+        (this.activeHandlers ?? this.settledHandlers)?.onCompactionUpdate?.(compaction);
+        return;
+      }
+    }
     if (this.settledHandlers && !this.turnOpen && !this.turnCancelled) {
       if (update.type === "usage") {
         const usage = readKimiTokenUsageUpdate(update.used, update.size);
@@ -959,6 +1093,7 @@ export class KimiInteractiveRunner {
       return;
     }
     this.failed = this.failed ?? error;
+    this.compaction?.reject(this.failed);
     this.closed = true;
     this.turnCancelled = true;
     this.turnOpen = false;

@@ -199,6 +199,8 @@ ACP 本次发出了 `usage_update`。字段存在，所以不是缺失。数值�
 
 ## 10. 取消、权限、压缩
 
+2026-11-10 压缩专项复核：本机从 `0.2.1-rc.2` 升级到官方 npm `latest` `0.2.2-rc.1`。隔离 ACP 探针中 `session/compact` 仍返回 `-32601`，没有命令广告；`session/prompt` 的字面 `/compact` 被发给 loopback 模型并产生普通答复，不是原生压缩。包内自动压力压缩仍存在，本轮没有触发它。新版要求 Node `>=24.9.0`，当前 `22.23.4` 出现 `EBADENGINE`；虽已完成隔离 ACP 单轮，不据此宣称受支持或全面兼容，也未升级 Node。详见 [CLI 上下文压缩能力核查](cli-context-compaction-audit.md)；本文件其余历史接线证据仍按原版本理解。
+
 取消已实测。`session/cancel` 是无 id 通知。发出进行中的 prompt 后约 1.5 秒发送该通知，prompt result 的 `stopReason` 为 `cancelled`，没有增量正文。会话 `turn/end` 为 `kind=aborted`、`reason.kind=user`。这不是成功生成。
 
 权限往返未跑通。客户端没有全局自动批准。工作区 read 和 `/etc/hosts` read 都完成了工具调用，但两条都没有发出 `session/request_permission`。会话预设仍是 `permission/preset=workspace-write`、`sandbox/mode=workspace-write`、`approval/policy=ask`。源码里的允许选项仍是 `allow-once` / `reject-once`。本次没有观察到可选中的请求，所以不能写成服务侧权限协商已验证。插件实跑同样没有出现 `session/request_permission`。allow-once 与 reject-once 的往返只在 runner 的协议夹具里验证：宿主返回选中的 optionId 时，runner 原样回写；没有选择时回写 cancelled。Extension Host 回合策略当前对真实请求返回空处理，runner 因此回答 cancelled，不自动批准。没有请求到达时，不要假装已经批准或拒绝。

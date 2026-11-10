@@ -775,7 +775,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           ? activeRuntime.tokensInContextWindow
           : null;
         const hasValue = tokens !== null && tokens >= 0
-          && (getActiveConversationCli() !== "zcode" || tokens > 0);
+          && (!["claude", "opencode", "kimi-code", "zcode"].includes(getActiveConversationCli()) || tokens > 0);
         const pending = Boolean(state.isRunning && ["codex", "grok"].includes(getActiveConversationCli()) && !hasValue);
         if (!hasValue && !pending) {
           hideContextTokenUsage();
@@ -804,9 +804,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             ? t("runContextTokensTitleWithConfigWindow", { used, window: windowSize })
             : windowSource === "zcode-projection"
             ? t("runContextTokensTitleWithZcodeWindow", { used, window: windowSize })
+            : windowSource === "claude-model-window"
+            ? t("runContextTokensTitleWithClaudeWindow", { used, window: windowSize })
+            : windowSource === "opencode-model-window"
+            ? t("runContextTokensTitleWithOpenCodeWindow", { used, window: windowSize })
             : t("runContextTokensTitleWithWindow", { used, window: windowSize }))
           : t("runContextTokensTitle", { used });
-        const aria = t("runContextTokensAria", { value });
+        const aria = t("runContextTokensAria", { value }) + "；" + title;
         elements.runContextTokens.textContent = t("runContextTokensLabel", { value });
         elements.runContextTokens.title = title;
         elements.runContextTokens.setAttribute("title", title);

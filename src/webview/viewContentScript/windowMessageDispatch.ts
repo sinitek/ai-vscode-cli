@@ -269,7 +269,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
             const runtimeState = getConversationRuntimeState(targetTabId);
-            const tokens = typeof data.tokensInContextWindow === "number" && Number.isFinite(data.tokensInContextWindow)
+            const tokens = typeof data.tokensInContextWindow === "number" && Number.isFinite(data.tokensInContextWindow) && data.tokensInContextWindow >= 0
               ? data.tokensInContextWindow
               : null;
             const windowSize = typeof data.modelContextWindow === "number" && Number.isFinite(data.modelContextWindow)
@@ -278,12 +278,18 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             if (runtimeState) {
               runtimeState.tokensInContextWindow = tokens;
               runtimeState.modelContextWindow = windowSize && windowSize > 0 ? windowSize : null;
-              runtimeState.contextWindowSource = data.contextWindowSource === "adapter-fallback"
+              runtimeState.contextWindowSource = runtimeState.modelContextWindow === null
+                ? null
+                : data.contextWindowSource === "adapter-fallback"
                 ? "adapter-fallback"
                 : data.contextWindowSource === "kimi-config-window"
                 ? "kimi-config-window"
                 : data.contextWindowSource === "zcode-projection"
                 ? "zcode-projection"
+                : data.contextWindowSource === "claude-model-window"
+                ? "claude-model-window"
+                : data.contextWindowSource === "opencode-model-window"
+                ? "opencode-model-window"
                 : null;
             }
             if (!shouldHandleTabScopedEvent(data)) {

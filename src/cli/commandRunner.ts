@@ -410,7 +410,7 @@ export function runCliStream(
 export function captureCliOutput(
   command: string,
   args: string[],
-  options: { cwd?: string; timeoutMs?: number } = {}
+  options: { cwd?: string; timeoutMs?: number; envOverrides?: Record<string, string> } = {}
 ): Promise<CapturedCliOutput> {
   return new Promise((resolve, reject) => {
     const spawnCommand = resolveSpawnCommand(command, args);
@@ -423,7 +423,7 @@ export function captureCliOutput(
 
     const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
       cwd: options.cwd,
-      env: buildSpawnEnvironment(options.cwd),
+      env: buildSpawnEnvironment(options.cwd, options.envOverrides),
       detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

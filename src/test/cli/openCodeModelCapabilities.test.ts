@@ -4,6 +4,98 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
+test("reads only the resolved exact model context window, never the output limit", async () => {
+  const capabilities = loadCapabilities();
+  for (const context of [16384, 0, -1, 1.5, "16384", null, undefined, Infinity]) {
+    const parsed = capabilities.parseOpenCodeModelsVerboseOutput(verboseModel("probe", "probe", {
+      limit: { context, output: 512 },
+    }), "probe", "probe");
+    assert.equal(parsed?.modelContextWindow ?? null, context === 16384 ? 16384 : null);
+  }
+  const options = {
+    version: " ",
+    configIdentity: "same-profile",
+    configContent: JSON.stringify({ model: "probe/probe", provider: { probe: { models: { probe: {} } } } }),
+    model: "probe/probe", cwd: "/frozen-workspace", envOverrides: { OPENCODE_CONFIG_CONTENT: "frozen-content" },
+  };
+  const calls: string[][] = [];
+  const executor: import("../../cli/openCodeModelCapabilities").OpenCodeCapabilityCommandExecutor = async (request) => {
+    calls.push(request.args);
+    assert.equal(request.cwd, options.cwd);
+    assert.deepEqual(request.envOverrides, options.envOverrides);
+    return { stdout: request.args[0] === "--version" ? "1.18.35" : verboseModel("probe", "probe", {
+      limit: { context: 16384, output: 512 },
+    }), stderr: "", exitCode: 0 };
+  };
+  assert.deepEqual(await Promise.all(Array.from({ length: 10 }, () => (
+    capabilities.resolveOpenCodeContextWindow({ ...options, executor })
+  ))), Array(10).fill(16384));
+  assert.deepEqual(calls, [["--version"], ["models", "probe", "--verbose"]]);
+  await capabilities.resolveOpenCodeContextWindow({ ...options, configContent: options.configContent + " ", executor });
+  assert.equal(calls.length, 3);
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  await capabilities.resolveOpenCodeContextWindow({ ...options, executor });
+  assert.equal(calls.length, 5);
+  capabilities.clearOpenCodeThinkingCapabilityCache();
+  assert.equal(await capabilities.resolveOpenCodeContextWindow({ ...options, version: "1.18.35", executor: async () => ({
+    stdout: verboseModel("probe", "probe", { limit: { output: 512 } }), stderr: "", exitCode: 0,
+  }) }), null);
+});
+
+test("OpenCode metadata cache is bounded and expires without polling the CLI for each event", async () => {
+  const capabilities = loadCapabilities();
+  const originalNow = Date.now;
+  let now = 100000;
+  Date.now = () => now;
+  let queries = 0;
+  const resolve = (identity: string) => capabilities.resolveOpenCodeContextWindow({
+    version: "1.18.35", model: "probe/probe", configIdentity: identity,
+    configContent: JSON.stringify({ model: "probe/probe", provider: { probe: { models: { probe: {} } } } }),
+    executor: async () => {
+      queries += 1;
+      return { stdout: verboseModel("probe", "probe", { limit: { context: 16384 } }), stderr: "", exitCode: 0 };
+    },
+  });
+  try {
+    await resolve("first");
+    await resolve("first");
+    assert.equal(queries, 1);
+    now += 60001;
+    await resolve("first");
+    assert.equal(queries, 2);
+    for (let index = 0; index < 65; index += 1) await resolve(`profile-${index}`);
+    await resolve("first");
+    assert.equal(queries, 68);
+  } finally {
+    Date.now = originalNow;
+    capabilities.clearOpenCodeThinkingCapabilityCache();
+  }
+});
+
+test("OpenCode default metadata executor forwards frozen environment through the existing capture runner", async () => {
+  const capabilities = loadCapabilities();
+  const commandRunner = require("../../cli/commandRunner") as typeof import("../../cli/commandRunner");
+  const originalCapture = commandRunner.captureCliOutput;
+  const captured: Array<Parameters<typeof originalCapture>> = [];
+  commandRunner.captureCliOutput = async (...request) => {
+    captured.push(request);
+    return { stdout: verboseModel("probe", "probe", { limit: { context: 16384 } }), stderr: "", exitCode: 0 };
+  };
+  try {
+    assert.equal(await capabilities.resolveOpenCodeContextWindow({
+      command: "C:\\Tools Folder\\opencode.cmd", version: "1.18.35", model: "probe/probe",
+      configContent: JSON.stringify({ provider: { probe: { models: { probe: {} } } } }),
+      cwd: "/frozen/workspace", envOverrides: { OPENCODE_CONFIG_CONTENT: "frozen" }, timeoutMs: 1234,
+    }), 16384);
+    assert.deepEqual(captured, [["C:\\Tools Folder\\opencode.cmd", ["models", "probe", "--verbose"], {
+      cwd: "/frozen/workspace", envOverrides: { OPENCODE_CONFIG_CONTENT: "frozen" }, timeoutMs: 1234,
+    }]]);
+  } finally {
+    commandRunner.captureCliOutput = originalCapture;
+    capabilities.clearOpenCodeThinkingCapabilityCache();
+  }
+});
+
 function loadCapabilities(): typeof import("../../cli/openCodeModelCapabilities") {
   const modulePath = require.resolve("../../cli/openCodeModelCapabilities");
   delete require.cache[modulePath];

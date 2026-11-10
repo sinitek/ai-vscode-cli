@@ -100,6 +100,8 @@ function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions =
       beginActiveRun: () => {},
       endActiveRun: () => {},
       getOrCreateCodexRunner: () => runner as never,
+      getOrCreateKimiCodeRunner: () => { throw new Error("Unexpected Kimi runner"); },
+      hasKimiCodeRunner: () => false,
       getOrCreateClaudeRunner: () => {
         throw new Error("Claude runner should not be used in this test");
       },
@@ -264,9 +266,11 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
     interactiveRunnerManager: {
       beginActiveRun: () => {},
       endActiveRun: () => {},
+      hasKimiCodeRunner: () => false,
       getOrCreateCodexRunner: () => {
         throw new Error("Codex runner should not be used in this test");
       },
+      getOrCreateKimiCodeRunner: () => { throw new Error("Unexpected Kimi runner"); },
       getOrCreateClaudeRunner: () => {
         throw new Error("Claude runner should not be used in this test");
       },
@@ -590,10 +594,10 @@ type StrategySelectionOptions = {
   grokCompactSession?: () => Promise<import("../../interactive/grokRunner").GrokCompactionResult>;
 };
 
-test("Grok and ZCode participate in the same automatic compaction capability gate as Codex", () => {
+test("Grok, Kimi and ZCode participate in the same automatic compaction capability gate as Codex", () => {
   const { isAutoContextCompactionCli } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
-  for (const cli of ["codex", "claude", "opencode", "grok", "zcode"]) assert.equal(isAutoContextCompactionCli(cli), true);
-  for (const cli of ["", "gemini", "dsh", "kimi-code", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
+  for (const cli of ["codex", "claude", "opencode", "grok", "kimi-code", "zcode"]) assert.equal(isAutoContextCompactionCli(cli), true);
+  for (const cli of ["", "gemini", "dsh", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
 });
 
 for (const silent of [false, true]) {
@@ -639,6 +643,7 @@ for (const silent of [false, true]) {
 function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
   const cli = options.cli ?? "codex";
   let activeRunId: string | undefined;
+  const tabRuns = new Map<string, { runId: string; runRevision: object }>();
   let activeStop: (() => void) | null = null;
   const currentSessionId = Object.prototype.hasOwnProperty.call(options, "currentSessionId")
     ? options.currentSessionId ?? null
@@ -705,10 +710,17 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
     logCliStartup: () => {},
     loadSessionMessages: () => [],
     createMessageId: () => "run-strategy",
-    beginActiveRunState: ({ runId }) => {
+    beginActiveRunState: ({ runId, tabId }) => {
       activeRunId = runId;
+      if (tabId) tabRuns.set(tabId, { runId, runRevision: {} });
     },
     getActiveRunId: () => activeRunId,
+    getContextCompactionTabState: (tabId) => ({
+      cli,
+      sessionId: currentSessionId,
+      runId: tabRuns.get(tabId)?.runId,
+      runRevision: tabRuns.get(tabId)?.runRevision ?? tabRuns,
+    }),
     setActiveInteractiveStop: (stop) => {
       activeStop = stop;
     },
@@ -746,6 +758,8 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
           stopAndRebuild: () => {},
         } as never;
       },
+      getOrCreateKimiCodeRunner: () => { throw new Error("Unexpected Kimi runner"); },
+      hasKimiCodeRunner: () => true,
       getOrCreateClaudeRunner: (runnerOptions) => {
         calls.claudeRunnerOptions.push(runnerOptions);
         return {
@@ -815,6 +829,209 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
   };
 
   return { deps, calls };
+}
+
+for (const silent of [false, true]) {
+  test(`Kimi ${silent ? "automatic" : "manual"} compaction preserves launch, original mapping and usage destination`, async () => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const mappedSessionId = "session_native_kimi";
+    const { deps, calls } = createStrategySelectionDeps({ cli: "kimi-code", mappedId: mappedSessionId });
+    const messages: unknown[] = [];
+    let handlers!: import("../../interactive/kimiRunner").KimiStreamHandlers;
+    let finish!: (result: import("../../interactive/kimiRunner").KimiCompactionResult) => void;
+    deps.resolveKimiModelWireForRun = async () => "kimi-alias";
+    deps.readRuntimeConfigFingerprint = async () => "snapshot-fingerprint";
+    deps.prepareKimiInteractiveLaunch = async (input) => {
+      assert.equal(input.selectedModel, "kimi-alias");
+      return { agentArgs: ["--region", "cn"], env: { KIMI_CODE_HOME: "/isolated/kimi" }, modeId: "yolo", modelAlias: "kimi-alias", thinkingValue: "high" };
+    };
+    deps.sendPanelMessage = (message) => { messages.push(message); };
+    deps.interactiveRunnerManager.getOrCreateKimiCodeRunner = (options) => {
+      assert.equal(options.localSessionId, mappedSessionId);
+      assert.equal(options.configFingerprint, "snapshot-fingerprint");
+      assert.equal(options.env?.KIMI_CODE_HOME, "/isolated/kimi");
+      assert.deepEqual(options.agentArgs, ["--region", "cn"]);
+      assert.equal(options.modeId, "yolo");
+      assert.equal(options.thinkingValue, "high");
+      return {
+        compactSession: (received: typeof handlers) => {
+          handlers = received;
+          return new Promise((resolve) => { finish = resolve; });
+        },
+        cancelTurn: () => {},
+      } as never;
+    };
+    const compacting = runContextCompactionWithDeps(deps, { silent, tabId: "tab-kimi" });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls.mappings, []);
+    assert.deepEqual(calls.sendRunStatuses.map((status) => status.status), ["start"]);
+    finish({ compacted: true, sessionId: mappedSessionId });
+    assert.equal(await compacting, true);
+    assert.deepEqual(calls.systemMessages, [`Kimi Code 当前会话上下文压缩已完成：${mappedSessionId}`]);
+    deps.beginActiveRunState({ runId: "different-tab-run", cli: "codex", sessionId: "other-session", tabId: "other-tab", messageTarget: [] });
+    handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 999, modelContextWindow: 262144 });
+    assert.deepEqual(messages, [{ type: "contextTokenUsage", tabId: "tab-kimi", tokensInContextWindow: 999, modelContextWindow: 262144, contextWindowSource: "kimi-config-window" }]);
+    assert.deepEqual(calls.mappings, [{ cli: "kimi-code", localSessionId: "session-1", mappedSessionId, options: undefined }]);
+    assert.deepEqual(calls.runStreamPrompts, []);
+  });
+}
+
+for (const isolated of [false, true]) {
+  for (const boundary of ["other-tab", "cli", "session", "cleared", "closed", "run", "settled-run", "mapping", "runner", "missing-port"] as const) {
+    test(`Kimi ${isolated ? "isolated" : "primary"} compaction checks current tab ownership after ${boundary}`, async () => {
+      const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+      const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+      const { deps: base, calls } = createStrategySelectionDeps({ cli: "kimi-code", mappedId: "session_kimi" });
+      let currentTab: (NonNullable<ReturnType<NonNullable<ContextCompactionRunDeps["getContextCompactionTabState"]>>> & {
+        sessionIdByCli: { "kimi-code": string };
+      }) | undefined = {
+        cli: "kimi-code", sessionId: "session-1", runId: undefined, runRevision: {},
+        sessionIdByCli: { "kimi-code": "session-1" },
+      };
+      const oldSessionRefs = currentTab.sessionIdByCli;
+      let currentMapping = "session_kimi";
+      let runnerOwned = true;
+      let handlers!: import("../../interactive/kimiRunner").KimiStreamHandlers;
+      let finish!: (result: import("../../interactive/kimiRunner").KimiCompactionResult) => void;
+      const messages: unknown[] = [];
+      const runner = {
+        compactSession: (received: typeof handlers) => {
+          handlers = received;
+          return new Promise((resolve) => { finish = resolve; });
+        },
+        cancelTurn: () => {},
+      };
+      base.getContextCompactionTabState = (tabId) => {
+        assert.equal(tabId, "tab-kimi");
+        return currentTab ? { ...currentTab } : undefined;
+      };
+      base.resolveInteractiveMappedId = (_cli, sessionId) => {
+        assert.equal(sessionId, "session-1");
+        return currentMapping;
+      };
+      base.interactiveRunnerManager.getOrCreateKimiCodeRunner = () => runner as never;
+      base.interactiveRunnerManager.hasKimiCodeRunner = (sessionId, candidate) => {
+        assert.equal(sessionId, "session-1");
+        assert.equal(candidate, runner);
+        return runnerOwned;
+      };
+      base.prepareKimiInteractiveLaunch = async () => ({ agentArgs: [], env: {}, modeId: "yolo", modelAlias: null, thinkingValue: null });
+      base.sendPanelMessage = (message) => { messages.push(message); };
+      const deps = isolated ? createIsolatedContextCompactionDeps(base, {
+        saveMessages: () => {}, publishMessage: () => {},
+        publishPanelMessage: (message) => { messages.push(message); }, sendRunStatus: () => {},
+      }) : base;
+      const compacting = runContextCompactionWithDeps(deps, { tabId: "tab-kimi" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      finish({ compacted: true, sessionId: "session_kimi" });
+      assert.equal(await compacting, true);
+      handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 100, modelContextWindow: 262144 });
+      assert.deepEqual(messages, [{
+        type: "contextTokenUsage", tabId: "tab-kimi", tokensInContextWindow: 100,
+        modelContextWindow: 262144, contextWindowSource: "kimi-config-window",
+      }]);
+      if (boundary === "other-tab") base.beginActiveRunState({ runId: "other-run", cli: "codex", sessionId: "other-session", tabId: "other-tab", messageTarget: [] });
+      if (boundary === "cli") currentTab.cli = "codex";
+      if (boundary === "session") currentTab.sessionId = "replacement-session";
+      if (boundary === "cleared") currentTab.sessionId = null;
+      if (boundary === "run") currentTab.runId = "replacement-run";
+      if (boundary === "settled-run") {
+        currentTab.runRevision = {};
+        currentTab.runId = undefined;
+      }
+      if (boundary === "closed") currentTab = undefined;
+      if (boundary === "mapping") currentMapping = "session_replaced";
+      if (boundary === "runner") runnerOwned = false;
+      if (boundary === "missing-port") deps.getContextCompactionTabState = undefined;
+      assert.equal(oldSessionRefs["kimi-code"], "session-1");
+      assert.equal(base.resolveInteractiveMappedId("kimi-code", "session-1"), boundary === "mapping" ? "session_replaced" : "session_kimi");
+      handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 200, modelContextWindow: 262144 });
+      assert.equal(messages.length, boundary === "other-tab" ? 2 : 1);
+      if (boundary === "other-tab") assert.deepEqual(messages[1], {
+        type: "contextTokenUsage", tabId: "tab-kimi", tokensInContextWindow: 200,
+        modelContextWindow: 262144, contextWindowSource: "kimi-config-window",
+      });
+      assert.equal(calls.mappings.length, 1);
+    });
+  }
+}
+
+for (const isolated of [false, true]) {
+  test(`Kimi ${isolated ? "isolated" : "primary"} compaction does not write mappings after its tab is rebound mid-operation`, async () => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+    const { deps: base, calls } = createStrategySelectionDeps({ cli: "kimi-code", mappedId: "session_kimi" });
+    let finish!: (result: import("../../interactive/kimiRunner").KimiCompactionResult) => void;
+    let handlers!: import("../../interactive/kimiRunner").KimiStreamHandlers;
+    const tabState = { cli: "kimi-code" as CliName, sessionId: "session-1", runId: undefined, runRevision: {} };
+    const messages: unknown[] = [];
+    base.getContextCompactionTabState = () => ({ ...tabState });
+    base.prepareKimiInteractiveLaunch = async () => ({ agentArgs: [], env: {}, modeId: "yolo", modelAlias: null, thinkingValue: null });
+    base.interactiveRunnerManager.getOrCreateKimiCodeRunner = () => ({
+      compactSession: (received: typeof handlers) => {
+        handlers = received;
+        return new Promise((resolve) => { finish = resolve; });
+      },
+      cancelTurn: () => {},
+    }) as never;
+    base.sendPanelMessage = (message) => { messages.push(message); };
+    const deps = isolated ? createIsolatedContextCompactionDeps(base, {
+      saveMessages: () => {}, publishMessage: () => {}, sendRunStatus: () => {},
+      publishPanelMessage: (message) => { messages.push(message); },
+    }) : base;
+    const compacting = runContextCompactionWithDeps(deps);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    tabState.sessionId = "replacement-session";
+    finish({ compacted: true, sessionId: "session_kimi" });
+    assert.equal(await compacting, false);
+    tabState.sessionId = "session-1";
+    handlers.onTokenUsageUpdate?.({ tokensInContextWindow: 1, modelContextWindow: 262144 });
+    assert.equal(base.resolveInteractiveMappedId("kimi-code", "session-1"), "session_kimi");
+    assert.deepEqual(calls.mappings, []);
+    assert.deepEqual(messages, []);
+  });
+}
+
+for (const isolated of [false, true]) for (const ending of ["stop", "timeout", "exit", "wrong-session", "missing-session"] as const) {
+  test(`Kimi ${isolated ? "isolated" : "primary"} compaction never writes a successful mapping after ${ending}`, async () => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const { deps, calls } = createStrategySelectionDeps({ cli: "kimi-code", mappedId: ending === "missing-session" ? null : "session_kimi" });
+    let finish!: (result: import("../../interactive/kimiRunner").KimiCompactionResult) => void;
+    let handlers!: import("../../interactive/kimiRunner").KimiStreamHandlers;
+    let stopped = 0;
+    const messages: unknown[] = [];
+    deps.sendPanelMessage = (message) => { messages.push(message); };
+    deps.prepareKimiInteractiveLaunch = async () => ({ agentArgs: [], env: {}, modeId: "yolo", modelAlias: null, thinkingValue: null });
+    deps.interactiveRunnerManager.getOrCreateKimiCodeRunner = () => ({
+      compactSession: (received: typeof handlers) => {
+        handlers = received;
+        if (ending === "exit") return Promise.reject(new Error("process exited"));
+        if (ending === "wrong-session") return Promise.resolve({ compacted: true, sessionId: "session_other" });
+        return new Promise((resolve) => { finish = resolve; });
+      },
+      cancelTurn: () => { stopped += 1; finish({ compacted: true, sessionId: "session_kimi" }); },
+      dispose: () => {},
+    }) as never;
+    const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+    const runDeps = isolated ? createIsolatedContextCompactionDeps(deps, {
+      saveMessages: () => {}, publishMessage: () => {},
+      publishPanelMessage: (message) => { messages.push(message); },
+      sendRunStatus: (_tabId, status, message, options) => deps.sendRunStatus(status, message, options),
+    }) : deps;
+    let stop!: () => void;
+    const compacting = runContextCompactionWithDeps(runDeps, { timeoutMs: 30, onStopReady: (received) => { stop = received; } });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    if (ending === "stop") stop();
+    assert.equal(await compacting, false);
+    handlers?.onTokenUsageUpdate?.({ tokensInContextWindow: 1, modelContextWindow: 262144 });
+    assert.deepEqual(calls.mappings, []);
+    if (ending === "stop" || ending === "timeout") {
+      assert.deepEqual(calls.systemMessages, []);
+      assert.deepEqual(calls.sendRunStatuses.map((status) => status.status), ["start", "stopped"]);
+    }
+    assert.deepEqual(messages, []);
+    if (ending === "stop" || ending === "timeout") assert.equal(stopped, 1);
+  });
 }
 
 test("context compaction strategy registry selects Codex and preserves selection lifecycle", async () => {

@@ -297,6 +297,7 @@ const sessionMessageCache = new Map<string, ChatMessage[]>();
 const sessionMessageLoadErrors = new Map<string, string>();
 const parallelRunsByTabId = new Map<string, ParallelTabRun>();
 const interactiveRunsByTabId = new Map<string, InteractiveTabRun>();
+const conversationTabRunRevisions = new WeakMap<ConversationTabRecord, object>();
 const promptAutoRepairController = createPromptAutoRepairController();
 let isExtensionDeactivating = false;
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
@@ -3546,6 +3547,7 @@ function sendRunStatusForTab(
   } = {}
 ): void {
   if (status === "start") {
+    markConversationTabRunStarted(tabId);
     clearTaskListForRunStart(tabId);
   } else {
     latestOpenCodeTaskListByTabId.delete(tabId);
@@ -3558,6 +3560,11 @@ function sendRunStatusForTab(
     startedAt: status === "start" ? options.startedAt : undefined,
     tabId,
   });
+}
+
+function markConversationTabRunStarted(tabId: string | null): void {
+  const tab = tabId ? getConversationTabById(tabId) : null;
+  if (tab) conversationTabRunRevisions.set(tab, {});
 }
 
 function clearTaskListForRunStart(tabId: string | null | undefined): void {
@@ -5229,6 +5236,18 @@ async function runContextCompaction(
       startTaskRun(runId, cli, sessionId, t("common.compactContext"));
     },
     getActiveRunId: () => primaryPromptRunController.activeRunId,
+    getContextCompactionTabState: (tabId) => {
+      const tab = getConversationTabById(tabId);
+      if (!tab) return undefined;
+      return {
+        cli: tab.cli,
+        sessionId: tab.sessionId,
+        runId: interactiveRunsByTabId.get(tabId)?.runId
+          ?? parallelRunsByTabId.get(tabId)?.runId
+          ?? (primaryPromptRunController.activeTabIdForRun === tabId ? primaryPromptRunController.activeRunId : undefined),
+        runRevision: conversationTabRunRevisions.get(tab) ?? tab,
+      };
+    },
     setActiveInteractiveStop: (stop) => {
       primaryPromptRunController.activeInteractiveStop = stop;
     },
@@ -5251,6 +5270,8 @@ async function runContextCompaction(
     sendPanelMessage: (message) => sendPanelMessage(message),
     updateProcessTitle,
     appendTraceMessage,
+    resolveKimiModelWireForRun: (model) => modelSettingsHost.resolveKimiModelWireForRun(model),
+    readRuntimeConfigFingerprint: configService.readRuntimeConfigFingerprint,
     prepareOpenCodeRunProfile: async (selectedModel, _cwd, cli) => {
       if (cli !== "opencode") {
         return { model: selectedModel };
@@ -5280,13 +5301,16 @@ async function runContextCompaction(
     saveMessages: saveSessionMessages,
     publishMessage: (message, tabId) => sendPanelMessage({ type: "appendMessage", message, tabId: tabId ?? undefined }),
     publishPanelMessage: sendPanelMessage,
-    sendRunStatus: (tabId, status, message, runOptions) => sendPanelMessage({
-      type: "runStatus",
-      tabId: tabId ?? undefined,
-      status,
-      message,
-      activity: status === "start" ? runOptions?.activity : undefined,
-    }),
+    sendRunStatus: (tabId, status, message, runOptions) => {
+      if (status === "start") markConversationTabRunStarted(tabId);
+      sendPanelMessage({
+        type: "runStatus",
+        tabId: tabId ?? undefined,
+        status,
+        message,
+        activity: status === "start" ? runOptions?.activity : undefined,
+      });
+    },
   }) : deps, options);
 }
 
@@ -5722,6 +5746,7 @@ function sendRunStatus(
   options: { activity?: RunActivity } = {}
 ): void {
   if (status === "start") {
+    markConversationTabRunStarted(primaryPromptRunController.activeTabIdForRun);
     clearTaskListForRunStart(primaryPromptRunController.activeTabIdForRun);
   } else if (primaryPromptRunController.activeCliForRun === "opencode" && primaryPromptRunController.activeTabIdForRun) {
     latestOpenCodeTaskListByTabId.delete(primaryPromptRunController.activeTabIdForRun);

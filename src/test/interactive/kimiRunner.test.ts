@@ -41,6 +41,7 @@ class FakeKimi extends EventEmitter {
   public permissionOptionId = "approve_once";
   public promptResult: Record<string, unknown> = { stopReason: "end_turn" };
   public promptError: Record<string, unknown> | null = null;
+  public compactCommands: string[] | null = [];
   private pendingPrompt: Record<string, unknown> | null = null;
   private buffer = "";
 
@@ -229,6 +230,7 @@ class FakeKimi extends EventEmitter {
     }
     if (method === "session/new") {
       const state = this.sessionState();
+      this.advertiseCommands(this.newSessionId);
       this.send({ jsonrpc: "2.0", id, result: { ...state, sessionId: this.newSessionId } });
       return;
     }
@@ -237,6 +239,7 @@ class FakeKimi extends EventEmitter {
         this.send({ jsonrpc: "2.0", id, error: { code: -32602, message: "session is not resumable" } });
         return;
       }
+      this.advertiseCommands(String(this.sessionId));
       this.send({ jsonrpc: "2.0", id, result: this.sessionState() });
       return;
     }
@@ -296,6 +299,14 @@ class FakeKimi extends EventEmitter {
   }
 
   public pendingPromptRequested = false;
+
+  public advertiseCommands(sessionId: string): void {
+    if (!this.compactCommands) return;
+    this.send({
+      jsonrpc: "2.0", method: "session/update",
+      params: { sessionId, update: { sessionUpdate: "available_commands_update", availableCommands: this.compactCommands.map((name) => ({ name })) } },
+    });
+  }
 }
 
 function createRunner(fake: FakeKimi, options: Partial<ConstructorParameters<typeof KimiInteractiveRunner>[0]> = {}): {
@@ -634,7 +645,7 @@ test("Kimi forwards official auto-compaction notifications after the prompt sett
   runner.dispose();
 });
 
-test("Kimi compaction is reported as unsupported rather than faked", async () => {
+test("Kimi refuses native compaction when the command is not advertised", async () => {
   const fake = new FakeKimi();
   const { runner } = createRunner(fake);
   await runner.start();
@@ -645,6 +656,185 @@ test("Kimi compaction is reported as unsupported rather than faked", async () =>
     return true;
   });
   assert.equal(fake.lines.length, before);
+});
+
+const COMPACTION_STARTED = "Context compaction started — it runs in the background and the compacted context applies once it finishes.";
+
+function sendCompactionText(fake: FakeKimi, text: string, sessionId = SESSION_ID): void {
+  fake.send({
+    jsonrpc: "2.0", method: "session/update",
+    params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } },
+  });
+}
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+for (const completionFirst of [true, false]) {
+  test(`Kimi native compaction waits for both RPC and completion (${completionFirst ? "notification" : "RPC"} first)`, async () => {
+    const fake = new FakeKimi();
+    fake.compactCommands = ["compact"];
+    let promptRequest!: Record<string, unknown>;
+    fake.finishPrompt = (message) => { promptRequest = message; };
+    const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+    const usage: unknown[] = [];
+    const answers: string[] = [];
+    let settled = false;
+    const compacting = runner.compactSession({ onTokenUsageUpdate: (update) => usage.push(update), onAssistantDelta: (text) => answers.push(text) });
+    void compacting.then(() => { settled = true; });
+    await tick();
+    assert.deepEqual(promptRequest.params, { sessionId: SESSION_ID, prompt: [{ type: "text", text: "/compact" }] });
+    assert.equal(fake.methods().includes("session/compact"), false);
+    assert.equal(fake.methods().includes("session/new"), false);
+    await assert.rejects(runner.prompt("concurrent"), /正在压缩上下文/);
+    await assert.rejects(runner.compactSession(), /正在执行对话或上下文压缩/);
+    sendCompactionText(fake, COMPACTION_STARTED);
+    const finishRpc = (): void => fake.send({ jsonrpc: "2.0", id: promptRequest.id, result: { stopReason: "end_turn" } });
+    if (completionFirst) sendCompactionText(fake, "Compaction completed.");
+    else finishRpc();
+    await tick();
+    assert.equal(settled, false);
+    if (completionFirst) finishRpc();
+    else sendCompactionText(fake, "Compaction completed.");
+    assert.deepEqual(await compacting, { compacted: true, sessionId: SESSION_ID });
+    fake.send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: SESSION_ID, update: { sessionUpdate: "usage_update", used: 321, size: 262144 } } });
+    await tick();
+    assert.deepEqual(usage, [{ tokensInContextWindow: 321, modelContextWindow: 262144 }]);
+    assert.deepEqual(answers, []);
+    assert.equal(runner.isReusable(), true);
+    runner.dispose();
+  });
+}
+
+test("Kimi ordinary replies, foreign sessions and unpaired late completion cannot complete compaction", async () => {
+  const fake = new FakeKimi();
+  fake.compactCommands = ["compact"];
+  fake.finishPrompt = (message) => {
+    sendCompactionText(fake, "A normal answer");
+    sendCompactionText(fake, "Compaction completed.");
+    sendCompactionText(fake, COMPACTION_STARTED, "session_other");
+    sendCompactionText(fake, "Compaction completed.", "session_other");
+    sendCompactionText(fake, COMPACTION_STARTED);
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+  const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+  await assert.rejects(runner.compactSession({}, { timeoutMs: 30 }), /上下文压缩超时/);
+  sendCompactionText(fake, COMPACTION_STARTED);
+  sendCompactionText(fake, "Compaction completed.");
+  await tick();
+  assert.equal(runner.isReusable(), false);
+  await assert.rejects(runner.compactSession(), /上下文压缩超时|运行器已关闭/);
+});
+
+for (const terminal of ["Compaction cancelled.", "Compaction is blocked by the current turn; retry when the turn is idle.", "A context compaction is already running.", "Compaction failed: provider unavailable"]) {
+  test(`Kimi rejects native compaction terminal: ${terminal}`, async () => {
+    const fake = new FakeKimi();
+    fake.compactCommands = ["compact"];
+    fake.finishPrompt = (message) => {
+      sendCompactionText(fake, COMPACTION_STARTED);
+      sendCompactionText(fake, terminal);
+      sendCompactionText(fake, "Compaction completed.");
+      fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    };
+    const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+    await assert.rejects(runner.compactSession(), /cancelled|blocked|failed|already running/);
+    assert.equal(runner.isReusable(), false);
+  });
+}
+
+for (const ending of ["cancel", "dispose", "exit", "error", "bad-stop", "timeout"] as const) {
+  test(`Kimi pending compaction cleans up on ${ending}`, async () => {
+    const fake = new FakeKimi();
+    fake.compactCommands = ["compact"];
+    fake.finishPrompt = (message) => {
+      sendCompactionText(fake, COMPACTION_STARTED);
+      if (ending === "error") fake.send({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "provider failed" } });
+      else if (ending === "bad-stop") fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "cancelled" } });
+      else if (ending !== "exit") fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+    };
+    const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+    const compacting = runner.compactSession({}, { timeoutMs: 30 });
+    const rejected = assert.rejects(compacting, /已取消|disposed|exited|failed|未正常结束|压缩超时/);
+    await tick();
+    if (ending === "cancel") runner.cancelTurn();
+    if (ending === "dispose") runner.dispose();
+    if (ending === "exit") { fake.exitCode = 1; fake.emit("close"); }
+    await rejected;
+    sendCompactionText(fake, "Compaction completed.");
+    await tick();
+    assert.equal(runner.isReusable(), false);
+    assert.equal((runner as unknown as { pending: Map<string, unknown> }).pending.size, 0);
+    assert.equal((runner as unknown as { compaction: unknown }).compaction, null);
+  });
+}
+
+test("Kimi cold compaction requires exact resume and never creates an empty session", async () => {
+  for (const localSessionId of [null, "local_unmapped", SESSION_ID]) {
+    const fake = new FakeKimi();
+    fake.failResume = true;
+    const { runner } = createRunner(fake, { localSessionId });
+    await assert.rejects(runner.compactSession(), /existing ACP session|not resumable/);
+    assert.equal(fake.methods().includes("session/new"), false);
+    assert.equal(fake.methods().includes("session/prompt"), false);
+  }
+});
+
+test("Kimi waits for the same session's real command advertisement before sending compact", async () => {
+  const fake = new FakeKimi();
+  fake.compactCommands = null;
+  fake.finishPrompt = (message) => {
+    sendCompactionText(fake, COMPACTION_STARTED);
+    sendCompactionText(fake, "Compaction completed.");
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+  const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+  const compacting = runner.compactSession();
+  await tick();
+  assert.equal(fake.methods().includes("session/prompt"), false);
+  fake.compactCommands = ["compact"];
+  fake.advertiseCommands("session_other");
+  await tick();
+  assert.equal(fake.methods().includes("session/prompt"), false);
+  fake.advertiseCommands(SESSION_ID);
+  assert.equal((await compacting).compacted, true);
+  runner.dispose();
+});
+
+test("Kimi cancellation during initialization or command discovery leaves no pending waiters", async () => {
+  for (const cancelImmediately of [true, false]) {
+    const fake = new FakeKimi();
+    fake.compactCommands = null;
+    const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+    const compacting = runner.compactSession();
+    const rejected = assert.rejects(compacting, /上下文压缩已取消/);
+    if (!cancelImmediately) await tick();
+    runner.cancelTurn();
+    await rejected;
+    fake.compactCommands = ["compact"];
+    fake.advertiseCommands(SESSION_ID);
+    await tick();
+    assert.equal(fake.methods().includes("session/prompt"), false);
+    assert.equal((runner as unknown as { pending: Map<string, unknown> }).pending.size, 0);
+    assert.equal((runner as unknown as { compaction: unknown }).compaction, null);
+  }
+});
+
+test("Kimi native compaction reapplies the active model and thinking snapshot on a warm runner", async () => {
+  const fake = new FakeKimi();
+  fake.compactCommands = ["compact"];
+  fake.finishPrompt = (message) => {
+    assert.equal(fake.thinkingCurrent, "low");
+    assert.equal(fake.modeCurrent, "plan");
+    sendCompactionText(fake, COMPACTION_STARTED);
+    sendCompactionText(fake, "Compaction completed.");
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+  const { runner } = createRunner(fake, { localSessionId: SESSION_ID });
+  await runner.start();
+  await runner.compactSession({}, { model: MODEL, thinkingValue: "low", modeId: "plan" });
+  assert.equal(runner.getConfigSnapshot().thinking, "low");
+  runner.dispose();
 });
 
 test("Kimi replaces settled handlers on a new turn and drops notifications after cancellation", async () => {

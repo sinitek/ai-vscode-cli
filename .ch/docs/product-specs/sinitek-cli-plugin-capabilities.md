@@ -29,12 +29,20 @@
 ### 明确未覆盖
 
 - 不提供远程服务端托管
-- OpenCode 作为新增支持目标接入；官方 TUI commands 文档列出 `/compact`（alias `/summarize`），说明为 compact current session；官方配置文档还提供 `compaction.auto`（默认 `true`）、`compaction.prune` 和 `compaction.reserved`，并有 `OPENCODE_DISABLE_AUTOCOMPACT` 环境变量用于关闭自动上下文压缩。插件侧手动/自动压缩支持应优先复用当前会话运行链路，若 OpenCode 当前模式无法走交互 Runner，则只能通过官方 slash command / 后台 fallback 路径执行，不能宣称完全等同 Codex app-server 压缩语义
+- OpenCode 已开放既有压缩入口并沿用后台压缩策略，但不等同 Codex app-server 压缩语义；普通提示用量已接入，压缩后没有可信新测量时等待下一主回合，不承诺立即刷新。官方 `/compact`（alias `/summarize`）及 `compaction.auto/prune/reserved` 的历史核对见 `.ch/docs/references/cli-context-compaction-audit.md`，当前用量口径见 `.ch/docs/references/opencode-context-usage.md`。
 - Gemini 已移除，不再作为当前支持 CLI
 - DeepSeek Harness 原生 compaction 明确不支持。未配置模型不能执行。缺失 usage 不显示为 0。adapter-fallback 不是服务容量。真实 `session/request_permission` 与图形 Extension Development Host 点击验收未验证，不得写成已完成
 - 不负责替代官方 CLI 本身的安装、鉴权和全部高级能力
 
 ## 3. 用户可见能力
+
+### 当前上下文与统一压缩入口
+
+- Claude 显示最近一次主模型请求的 input、cache read、cache creation 和最终 output 之和；不累计 result 消耗，不重复加 thinking 或缓存生命周期分项。窗口仅取当前响应模型精确匹配的 `modelUsage.contextWindow`，来源 `claude-model-window`。
+- OpenCode 显示最新主步骤 `input + output + reasoning + cache.read + cache.write`，不累加历史步骤或再加 total；配置、有效模型、cwd 和环境按本次运行冻结。容量仅取精确 provider/model 的 `limit.context`，来源 `opencode-model-window`，不是 output limit。
+- 两者均通过宿主 `contextTokenUsage` 更新对应 Tab，缺窗口保留 `null`；子任务、子代理、旧会话、重试及结束后的迟到回调不得覆盖当前主会话。独立来源和测试见 `.ch/docs/references/claude-context-usage.md`、`.ch/docs/references/opencode-context-usage.md`；完整消息字段见 `.ch/docs/references/cli-runtime-reference.md`。
+- 沿用布局、主题及 `runCommonCommand/compactContext`，开放 OpenCode 与具备交互能力的 Kimi 入口，DSH 保持隐藏；压缩中禁重复触发、可中止，结束恢复。窗口来源写入中文 title 和 aria，不伪造未知容量或初始化占位。Kimi 收尾身份防护及中文提示已复验：核对真实标签、CLI/UI 会话、持久运行代际、原生映射与 manager runner 身份；同标签换绑或新运行接管拒绝旧用量，其他标签开始运行不阻断原标签合法迟到用量。隔离压缩保留显式 tabId。
+- 最近请求/步骤的 token 账单不是压缩后重新测量；没有可信新值就等待下一主回合。自动压缩策略及各 CLI 完成信号不由用量标签替代。仓库实施计划已按主审标准构建及509项相关测试收尾；真实环境验证边界和压缩后可信测量增强条件统一登记在 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
 
 ### Grok 上下文压缩
 
@@ -99,7 +107,7 @@ Codex 与 Kimi Code 共用的管理模型弹窗在添加、重命名时区分输
 - 主从模型：Kimi Code 复用插件通用主/子模型选择，候选只取当前激活 `config.toml` 里声明的模型。两个角色按配置档案分别持久化；子任务未单独选择时先回落到普通对话选中的模型，再回落到 `default_model`，与 Grok 一致。Loop 主任务与复核用主模型，Loop 子任务用子模型。跨 CLI 子路由不继承主 CLI 模型。Kimi 自身 `config.toml` 没有子模型字段，主从分工完全由插件调度实现。
 - 思考力度：只下发 ACP 广告过的 `thinking` 值。广告集合由模型表决定：无 `capabilities`（或空数组）时不广告 `thinking`；`capabilities = ["thinking"]` 且无 `support_efforts` 时广告 `off`/`on`/`high`；显式 `support_efforts` 时是该数组的子集（`always_thinking` 时不广告 `off`）；env-only 通道只有 `off`/`on`。插件不重写 `ultra` 或 `off`，广告里没有就报错并保留服务端确认值。默认配置与范例生成 `capabilities = ["thinking"]` 和完整五档 `support_efforts`，不生成 `[thinking]`、默认思考档或 `loop_control`；所有保存自动补缺失的思考声明且不覆盖已有值，高级字段不进入可视化表单。此前隔离 `KIMI_CODE_HOME` 的显式声明配置实测广告 `off`/`low`/`medium`/`high`/`xhigh`/`max` 并完成一轮 `session/prompt`（`stopReason: end_turn`）。
 - 权限：`session/request_permission` 由 runner 自动选择广告中的 `allow_once`；`plan` 模式不自动放行。其它反向 RPC（如 `fs/*`、`terminal/*`）统一回 `-32601`，命令由 Kimi 自己执行。
-- 上下文与压缩：`usage_update` 每轮结束后异步发送一次，`size` 取自模型目录的 `max_context_size`，是配置声明的真实窗口上限而不是估算值。runner 与 host 保留同一 ACP 会话的收尾通知，收到有效用量后按 Tab 展示；未收到时不显示「—」或估算值。`src/extensionHost/interactiveTurnKimi.ts` 标 `contextWindowSource: "kimi-config-window"`，悬停文案说明窗口取自配置的 `max_context_size`，与 DSH 的 `adapter-fallback` 区分且不共用文案。Kimi CLI 支持自动压缩与 `/compact`，ACP 会把自动压缩的开始、完成、取消、阻塞及 `/compact` 的开始确认作为普通助手文本发送，插件精确识别这些官方文本并显示「压缩中」，完成或失败后恢复；它们不进入最终答复判定。ACP 没有独立压缩方法，插件 `compactSession()` 抛 `compaction-unsupported`，不伪造本地压缩，面板不显示「压缩上下文」按钮。`[loop_control].reserved_context_size` 只作用于 CLI 自己的循环。
+- 上下文与压缩：`usage_update` 每轮结束后异步发送一次，`size` 取自模型目录的 `max_context_size`，是配置声明的真实窗口上限而不是估算值。runner 与 host 保留同一 ACP 会话的收尾通知，收到有效用量后按 Tab 展示；未收到时不显示「—」或估算值。`src/extensionHost/interactiveTurnKimi.ts` 标 `contextWindowSource: "kimi-config-window"`，悬停文案说明窗口取自配置的 `max_context_size`，与 DSH 的 `adapter-fallback` 区分且不共用文案。Kimi CLI 支持自动压缩与 `/compact`，ACP 会把自动压缩的开始、完成、取消、阻塞及 `/compact` 的开始确认作为普通助手文本发送，插件精确识别这些官方文本并显示「压缩中」，完成或失败后恢复；它们不进入最终答复判定。ACP 没有独立 `session/compact` RPC；Kimi 2.5.2 已广告 `compact` 原生命令，插件 `compactSession()` 先监听后经原会话 `session/prompt` 发送纯文本 `/compact`，等待同操作开始、真实完成及正常 RPC 结果。普通回答、异会话、失败、取消、停止、退出和超时不成功；冷恢复失败不新建空会话，压缩期间拒绝同会话并发 prompt 或重复压缩。加入既有全局执行后自动压缩设置，保留成功且超过 5 分钟、已有会话、3 分钟超时规则；压缩后仅按真实 usage_update 刷新正确 Tab。手动 Webview 入口与真实点击由独立交付边界验收。`[loop_control].reserved_context_size` 只作用于 CLI 自己的循环。
 - 回放：`KimiReplayStream` 只精简诊断回放，聊天仍实时展示正文与思考。`agent_thought_chunk`、`usage_update`、命令目录和会话信息不生成回放 JSON；普通正文兼容增量及累计文本，按消息或当前回合以 1 秒或 32 KiB 合并，仅忽略 `_meta` 中逐帧变化的 `eventId`、`chunkId`、`agentTimestampMs`，合并结果保留最后一片元数据，消息/会话等未知元数据变化仍构成边界，缺失 `messageId` 时不跨回合去重。工具无 `toolCallId` 的帧丢弃，保留开始、完整标题/参数和规范化终态；进行中逐 token 参数及命令输出的累计快照按新增片段合并，32 KiB 或语义边界触发冲刷，状态重复快照不新增记录。重复计划快照同样去重，其他未知事件保守保留。工具、计划、回合结束及取消都会排空待合并正文，Webview 回放与 JSONL 导出消费同一批记录。
 - 错误收口：`session/prompt` 返回的 provider 错误（包括 `type: "model_not_found"` 及“not supported by any configured account”）保留原始错误消息并直接显示错误气泡，不进入“没有最终结论”的 hidden retry，也不伪装成中断或成功结束。
 - Skills 市场目标共七个，显示顺序保持 Claude、OpenCode、Grok、Codex、DSH、KimiCode、ZCode。Skills 根是 `<KIMI_CODE_HOME>/skills`，项目级是 `.kimi-code/skills`；全局规则是 `~/.kimi-code/AGENTS.md`。

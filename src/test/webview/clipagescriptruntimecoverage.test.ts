@@ -10,6 +10,7 @@ import { VIEW_CONTENT_SCRIPT_ATTACHMENTS_AND_TIME } from "../../webview/viewCont
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_EVENT_BINDINGS } from "../../webview/viewContentScript/eventBindings";
 import { VIEW_CONTENT_SCRIPT_HISTORY_PANELS } from "../../webview/viewContentScript/historyPanels";
+import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI } from "../../webview/viewContentScript/taskListAndUi";
@@ -2530,7 +2531,7 @@ test(`shows ${cli} used context tokens to the right of the stream button while r
   });
   assert.equal(label.style.display, "inline-flex");
   assert.equal(label.textContent, "12k");
-  assert.equal(label.getAttribute("aria-label"), "已用上下文 12k");
+  assert.equal(label.getAttribute("aria-label"), "已用上下文 12k；当前上下文已用 12345 / 272000 tokens");
   assert.match(String(label.getAttribute("title") || label.title), /12345 \/ 272000/);
 
   window.dispatchMessage({
@@ -2576,9 +2577,18 @@ test("SVG common-command buttons support Enter and Space without an HTMLElement 
   assert.equal(clicks, 2);
 });
 
-for (const cli of ["grok", "zcode"]) {
+test("both common-command definitions keep the same capability and disabled-state contract", () => {
+  assert.match(WEBVIEW_STRINGS.commonCommandCompactDesc, /OpenCode.*Kimi/);
+  assert.doesNotMatch(WEBVIEW_STRINGS.commonCommandCompactDesc, /DSH/);
+  assert.equal(
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "syncCommonCommandOptions"),
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, "syncCommonCommandOptions"),
+  );
+});
+
+for (const cli of CLI_LIST.filter((name) => name !== "dsh")) {
 test(`${cli} exposes the same common-command compaction interaction and running state as Codex`, () => {
-  const { document, window, posted } = createRuntimeHarness(undefined, undefined, ["codex", "grok", "zcode"]);
+  const { document, window, posted } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
   window.dispatchMessage({ type: "state", payload: createPanelState({
     currentCli: cli,
     interactive: { supported: true, enabled: true },
@@ -2590,9 +2600,13 @@ test(`${cli} exposes the same common-command compaction interaction and running 
   const overlay = document.getElementById("commonCommandsOverlay");
   assert.equal(button.style.display, "inline-flex");
   assert.equal(button.getAttribute("aria-disabled"), "false");
+  assert.equal(button.tabIndex, 0);
   assert.equal(compact.disabled, false);
   button.click();
   assert.equal(overlay.classList.contains("visible"), true);
+  overlay.dispatchEvent({ type: "click", target: overlay });
+  assert.equal(overlay.classList.contains("visible"), false);
+  button.click();
   compact.click();
   assert.equal(overlay.classList.contains("visible"), false);
   assert.deepEqual(posted.filter((message) => message.type === "runCommonCommand"), [{ type: "runCommonCommand", command: "compactContext" }]);
@@ -2600,27 +2614,43 @@ test(`${cli} exposes the same common-command compaction interaction and running 
   assert.equal(document.getElementById("runStatusText").textContent, "压缩中");
   assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), true);
   assert.equal(button.getAttribute("aria-disabled"), "true");
+  assert.equal(button.tabIndex, -1);
   assert.equal(compact.disabled, true);
   button.click();
+  compact.click();
+  assert.equal(posted.filter((message) => message.type === "runCommonCommand").length, 1);
   assert.equal(overlay.classList.contains("visible"), false);
   assert.equal(document.getElementById("stopRun").disabled, false);
   document.getElementById("stopRun").click();
   assert.equal(posted.at(-1)?.type, "stopRun");
   for (const status of ["end", "error", "stopped"]) {
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-compact", status: "start", activity: "contextCompaction" });
     window.dispatchMessage({ type: "runStatus", tabId: "tab-compact", status });
     assert.equal(button.getAttribute("aria-disabled"), "false");
+    assert.equal(button.tabIndex, 0);
     assert.equal(compact.disabled, false);
     assert.equal(document.getElementById("runStatusText").classList.contains("compacting"), false);
   }
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-compact", status: "start" });
+  assert.equal(button.getAttribute("aria-disabled"), "true");
+  assert.equal(compact.disabled, true);
+  compact.click();
+  assert.equal(posted.filter((message) => message.type === "runCommonCommand").length, 1);
 });
+}
 
-test(`common commands remain hidden when ${cli} interactive support is unavailable`, () => {
-  const { document, window } = createRuntimeHarness(undefined, undefined, ["codex", "grok", "zcode"]);
+for (const cli of CLI_LIST) {
+test(`${cli} common-command visibility follows its capability rather than interactive mode alone`, () => {
+  const { document, window } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+  for (const supported of [false, true]) {
   window.dispatchMessage({ type: "state", payload: createPanelState({
-    currentCli: cli, interactive: { supported: false, enabled: false },
+    currentCli: cli, interactive: { supported, enabled: false },
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli }] },
   }) });
-  assert.equal(document.getElementById("commonCommandButton").style.display, "none");
-  assert.equal(document.getElementById("commandCompact").disabled, true);
+  const visible = cli === "opencode" || (supported && cli !== "dsh");
+  assert.equal(document.getElementById("commonCommandButton").style.display, visible ? "inline-flex" : "none");
+  assert.equal(document.getElementById("commandCompact").disabled, !visible);
+  }
 });
 }
 
@@ -5814,7 +5844,7 @@ test("Kimi ACP mode updates stay on their own tab and add no new UI", () => {
   assert.equal(api.getConversationRuntimeState("tab-2").kimiAcpModeId, "yolo");
 });
 
-test("Kimi keeps the compact entry hidden while other CLIs still show it", () => {
+test("Kimi exposes the existing compact entry without changing other CLIs", () => {
   const { document, window } = createRuntimeHarness(undefined, undefined, [
     "codex",
     "claude",
@@ -5823,8 +5853,8 @@ test("Kimi keeps the compact entry hidden while other CLIs still show it", () =>
   ]);
   const button = document.getElementById("commonCommandButton");
   window.dispatchMessage({ type: "state", payload: createKimiPanelState() });
-  assert.equal(button.style.display, "none", "Kimi 没有 ACP 压缩方法，不得显示入口");
-  assert.equal(button.disabled, true);
+  assert.equal(button.style.display, "inline-flex");
+  assert.equal(button.disabled, false);
 
   window.dispatchMessage({
     type: "state",
@@ -5885,4 +5915,131 @@ test("Kimi context window is labelled as the configured max_context_size", () =>
   });
   assert.match(String(label.getAttribute("title") || label.title), /适配器 fallback/);
   assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, "adapter-fallback");
+});
+
+for (const [cli, source, description] of [
+  ["claude", "claude-model-window", "Claude Code 当前模型用量元数据"],
+  ["opencode", "opencode-model-window", "OpenCode 当前模型解析配置，不是服务确认容量"],
+  ["kimi-code", "kimi-config-window", "KimiCode 配置的 max_context_size"],
+  ["zcode", "zcode-projection", "ZCode 会话 projection"],
+  ["dsh", "adapter-fallback", "适配器 fallback，不是服务确认容量"],
+]) {
+test(`${cli} context metadata is available in both title and accessible name`, () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: cli,
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli }] },
+  }) });
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 12345,
+    modelContextWindow: 200000, contextWindowSource: source,
+  });
+  const label = document.getElementById("runContextTokens");
+  assert.equal(label.textContent, "12k");
+  assert.equal(label.style.display, "inline-flex");
+  assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, source);
+  for (const attribute of ["title", "aria-label"]) {
+    const text = String(label.getAttribute(attribute));
+    assert.ok(text.includes(description));
+    assert.ok(text.includes("12345"));
+    assert.ok(text.includes("200000"));
+  }
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 4000,
+    modelContextWindow: 200000, contextWindowSource: "unknown-source",
+  });
+  assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, null);
+  assert.equal(label.getAttribute("title"), "当前上下文已用 4000 / 200000 tokens");
+  for (const modelContextWindow of [null, undefined, 0, -1, NaN, Infinity, "200000"]) {
+    window.dispatchMessage({
+      type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 4000,
+      modelContextWindow, contextWindowSource: source,
+    });
+    assert.equal(label.textContent, "4k");
+    assert.equal(label.getAttribute("title"), "当前上下文已用 4000 tokens");
+    assert.equal(api.getConversationRuntimeState("tab-1").modelContextWindow, null);
+    assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, null);
+  }
+});
+}
+
+for (const cli of ["claude", "opencode", "kimi-code", "zcode"]) {
+test(`${cli} never fabricates a context placeholder for absent or invalid usage`, () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    currentCli: cli,
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli }] },
+  }) });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+  const label = document.getElementById("runContextTokens");
+  assert.equal(label.style.display, "none");
+  assert.equal(label.textContent, "");
+  for (const tokensInContextWindow of [undefined, null, "4000", NaN, Infinity, -1, 0]) {
+    window.dispatchMessage({
+      type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 4000,
+      modelContextWindow: 200000, contextWindowSource: "claude-model-window",
+    });
+    window.dispatchMessage({
+      type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow,
+      modelContextWindow: 200000, contextWindowSource: "claude-model-window",
+    });
+    assert.equal(label.style.display, "none");
+    assert.equal(label.textContent, "");
+    assert.equal(label.getAttribute("title"), null);
+    assert.equal(label.getAttribute("aria-label"), null);
+    assert.equal(api.getConversationRuntimeState("tab-1").tokensInContextWindow, tokensInContextWindow === 0 ? 0 : null);
+  }
+});
+}
+
+test("context sources and compaction states stay isolated across tabs and session replacement", () => {
+  const { api, document, window } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+  const tabs = [
+    { id: "tab-1", cli: "claude", sessionId: "claude-session" },
+    { id: "tab-2", cli: "opencode", sessionId: "opencode-session" },
+  ];
+  const applyTab = (activeTabId: string) => window.dispatchMessage({
+    type: "state", payload: createPanelState({
+      currentCli: activeTabId === "tab-1" ? "claude" : "opencode",
+      conversationTabs: { activeTabId, tabs: tabs.map((tab) => ({ ...tab })) },
+    }),
+  });
+  applyTab("tab-1");
+  const label = document.getElementById("runContextTokens");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-1", tokensInContextWindow: 12345,
+    modelContextWindow: 200000, contextWindowSource: "claude-model-window",
+  });
+  const claudeTitle = label.getAttribute("title");
+  window.dispatchMessage({
+    type: "contextTokenUsage", tabId: "tab-2", tokensInContextWindow: 4000,
+    modelContextWindow: 128000, contextWindowSource: "opencode-model-window",
+  });
+  assert.equal(label.getAttribute("title"), claudeTitle);
+  applyTab("tab-2");
+  assert.equal(label.textContent, "4k");
+  assert.match(String(label.getAttribute("title")), /128000.*OpenCode/);
+  applyTab("tab-1");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-2", status: "start", activity: "contextCompaction" });
+  assert.equal(label.getAttribute("title"), claudeTitle);
+  applyTab("tab-2");
+  assert.equal(label.style.display, "none");
+  assert.equal(document.getElementById("commonCommandButton").getAttribute("aria-disabled"), "true");
+  applyTab("tab-1");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-2", status: "end" });
+  assert.equal(label.getAttribute("title"), claudeTitle);
+  tabs[1].sessionId = "replacement-session";
+  applyTab("tab-1");
+  assert.equal(label.getAttribute("title"), claudeTitle);
+  const background = api.getConversationRuntimeState("tab-2");
+  assert.equal(background.tokensInContextWindow, null);
+  assert.equal(background.modelContextWindow, null);
+  assert.equal(background.contextWindowSource, null);
+  applyTab("tab-2");
+  assert.equal(label.style.display, "none");
+  applyTab("tab-1");
+  api.resetConversationRuntimeState("tab-1");
+  assert.equal(api.getConversationRuntimeState("tab-1").contextWindowSource, null);
+  assert.equal(label.style.display, "none");
+  assert.equal(label.getAttribute("aria-label"), null);
 });

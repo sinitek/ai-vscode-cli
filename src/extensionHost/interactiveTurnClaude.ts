@@ -133,11 +133,56 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
         });
       };
 
+      const runClaudeTurn = async (): Promise<void> => {
+        const turnRunner = runner;
+        let acceptingEvents = true;
+        let boundUiSessionId = port.uiSessionId;
+        let boundTabSessionId = port.getConversationTabById(port.tabId)?.sessionId;
+        const isBound = (): boolean => {
+          const tab = port.getConversationTabById(port.tabId);
+          return acceptingEvents
+            && runner === turnRunner
+            && port.isCurrentRunActive()
+            && Boolean(tab && (tab.cli === undefined || tab.cli === "claude"))
+            && tab?.sessionId === boundTabSessionId
+            && port.uiSessionId === boundUiSessionId;
+        };
+        try {
+          await turnRunner.runStreamed(port.attemptPrompt, {
+            ...runStreamHandlers,
+            onSessionId: (sessionId) => {
+              if (!isBound()) {
+                return;
+              }
+              runStreamHandlers.onSessionId(sessionId);
+              boundUiSessionId = port.uiSessionId;
+              boundTabSessionId = port.getConversationTabById(port.tabId)?.sessionId;
+            },
+            onTokenUsageUpdate: (update) => {
+              if (!isBound() || !boundUiSessionId || port.getConversationTabById(port.tabId)?.cli !== "claude"
+                || turnRunner.getSessionId() !== update.sessionId
+                || (port.resolveInteractiveMappedId("claude", boundUiSessionId) ?? boundUiSessionId) !== update.sessionId) {
+                return;
+              }
+              port.sendPanelMessage({
+                type: "contextTokenUsage",
+                tabId: port.tabId,
+                tokensInContextWindow: update.tokensInContextWindow,
+                modelContextWindow: update.modelContextWindow,
+                ...(update.contextWindowSource ? { contextWindowSource: update.contextWindowSource } : {}),
+              });
+            },
+          });
+        } finally {
+          acceptingEvents = false;
+        }
+      };
+
       try {
         port.setStopCurrentTurn(() => runner.stopAndRebuild());
         port.syncInteractiveRunEntry(port.stopFn);
         try {
-          await runner.runStreamed(port.attemptPrompt, runStreamHandlers);
+          await runClaudeTurn();
         } catch (error) {
           const info = getErrorInfo(error);
           const uiSessionId = port.uiSessionId;
@@ -171,7 +216,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
             port.claudeResultFailed = false;
             port.claudeSawSuccessfulResult = false;
             port.claudeSawEndTurn = false;
-            await runner.runStreamed(port.attemptPrompt, runStreamHandlers);
+            await runClaudeTurn();
           } else {
             throw error;
           }

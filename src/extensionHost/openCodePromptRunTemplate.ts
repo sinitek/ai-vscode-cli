@@ -242,7 +242,7 @@ export type OpenCodePromptRunPorts = {
   onStdoutChunk: (chunk: string, stream: OpenCodePromptStreamState) => void;
   onStderrChunk: (chunk: string, stream: OpenCodePromptStreamState) => void;
   onAttemptProcessStarted: (process: RunProcess, runtimeSessionId: string | null) => void;
-  finishStreamAttempt: (context: OpenCodePromptStreamFinishContext) => boolean;
+  finishStreamAttempt: (context: OpenCodePromptStreamFinishContext) => boolean | Promise<boolean>;
   adoptSession: (adoption: OpenCodePromptSessionAdoption) => void;
   beginSuccessfulExit: (context: {
     attemptResult: OpenCodePromptAttemptResult;
@@ -461,7 +461,7 @@ export async function runOpenCodePromptTemplate(
       attemptNumber,
       hiddenRetryCount,
     });
-    if (!ports.finishStreamAttempt({
+    if (!await ports.finishStreamAttempt({
       attemptPrompt,
       attemptResult,
       stream,
@@ -697,14 +697,14 @@ async function runOpenCodePromptAttemptStream(options: {
       attemptPrompt,
       {
         onStdout: (chunk: string) => {
-          if (!ports.isRunActive()) {
+          if (settled || !ports.isRunActive()) {
             return;
           }
           stream.rawStdout = ports.appendBoundedUtf8Text(stream.rawStdout, chunk, ports.maxRawOutputBytes).text;
           ports.onStdoutChunk(chunk, stream);
         },
         onStderr: (chunk: string) => {
-          if (!ports.isRunActive()) {
+          if (settled || !ports.isRunActive()) {
             return;
           }
           stream.rawStderr = ports.appendBoundedUtf8Text(stream.rawStderr, chunk, ports.maxRawOutputBytes).text;

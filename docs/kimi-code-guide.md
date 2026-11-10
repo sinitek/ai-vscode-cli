@@ -192,13 +192,15 @@ support_efforts = ["low", "medium", "high", "xhigh", "max"]
 自动压缩分两层，必须分清：
 
 - **CLI 自己的循环**：`[loop_control].reserved_context_size` 控制 Kimi 内部会话循环预留的上下文空间，属于 CLI 行为，插件不参与。
-- **插件侧「压缩上下文」按钮**：Kimi Code ACP 没有压缩方法（`initialize` 未公布，也没有 `session/compact` 这类独立方法），插件 `compactSession()` 明确抛 `compaction-unsupported`，不伪造本地压缩、也不假装下发成功。因此对话面板对 Kimi 不显示该入口，工具设置里的「执行后自动压缩上下文」也不会对 Kimi 生效。
+- **插件侧原生压缩**：Kimi Code ACP 没有独立 `session/compact` RPC，但 Kimi 2.5.2 已广告原生 `compact` 命令。插件 `compactSession()` 在原会话通过 `session/prompt` 发送纯文本 `/compact`，不附加对话提示、不换新会话。只有未广告该命令时才报 `compaction-unsupported`。既有全局「执行后自动压缩上下文」设置自然覆盖 Kimi，不新增开关：只在成功且超过 5 分钟的已有会话触发，单次最多等待 3 分钟。
 
 `/compact` 本身在 Kimi 里是真实存在的斜杠命令。本机隔离实测（`session/prompt` 里发文本 `/compact`）它能跑起来，返回先是一句「Context compaction started — it runs in the background…」，随后再推一条 `Compaction completed.` 加消息数与前后 token 数的纯文本；没有机器可读的完成事件，压缩在后台异步生效。所以：
 
 - 它不是 TUI 专属命令，经 ACP 的 prompt 通道也能触发；
-- 但它没有可确认的完成协议，本轮按范围**不接线**、不显示入口，避免出现「点了按钮但无法判断是否成功」的假成功；
-- 需要压缩时，可以自己在输入框里发 `/compact`，或依赖 `[loop_control].reserved_context_size` 交给 CLI 自己控制。
+- 插件先准备监听，再发送命令；必须同会话、当前操作收到开始及 `Compaction completed.`，并确认 prompt 正常结束才成功。兼容完成通知早于或晚于 prompt RPC 返回；单独 `end_turn`、开始确认或普通回答都不算完成。
+- 压缩期间拒绝同会话并发 prompt 和重复压缩；恢复失败不创建空会话。失败、阻塞、取消、停止、超时或退出均不报成功，异常进程被淘汰，迟到通知不继续写会话状态。压缩通知不作为最终答案。
+- 压缩后只有收到真实 `usage_update` 才更新对应标签页的用量，来源仍为 `kimi-config-window`；未知值不伪造。普通回合 RPC 结束后的用量通知仍被保留；接收前核对真实标签、当前 CLI/UI 会话、持久运行代际、原生映射和 manager runner 身份。同标签换绑或新运行接管后拒绝旧用量，另一标签开始运行仍允许原标签合法迟到用量。隔离压缩保留显式 tabId，新增操作反馈使用中文。
+- 手动面板已开放既有压缩入口，沿用布局、主题和消息协议；后台修复及主审相关回归已通过。真实 Kimi2.5.2 仅在隔离 loopback 模型中验证冷热同会话压缩及真实 usage，未验证付费模型摘要质量、token 降幅、Windows 或真实 Extension Development Host 点击。证据与历史阶段见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。不要把普通输入框（可能附加 harness 提示）的 `/compact` 当作专用调用路径的替代验收。
 
 ## 8. 主模型与子模型
 
@@ -229,15 +231,15 @@ provider 声明的凭据不可用。检查 `api_key` 是否为空、`api_key_env
 当前激活的 `config.toml` 没有可解析的 `[models."<别名>"]` 表，或者文件不是合法 TOML。先用 `kimi doctor config` 确认，再回到配置中心保存。
 
 **面板没有「压缩上下文」**
-预期行为，Kimi Code ACP 不支持压缩，见第 7 节。
+先确认插件版本已接入该入口、CLI 为已验证的 2.5.2，且原会话广告包含 `compact`。缺少独立 RPC 不等于没有原生命令，见第 7 节；图形界面的点击级验收仍需单独进行。
 
 **提示找不到命令**
 `kimi` 不在 `PATH`。安装 CLI，或把 `sinitek-cli-tools.commands.kimi-code` 设成绝对路径（插件提示文案里也给了 `npm install -g @moonshot-ai/kimi-code`）。
 
 ## 11. 未支持 / 未验收清单
 
-- ACP 侧独立压缩方法：不存在（无 `session/compact`），也就是压缩这件事在 ACP 上没有方法级接口；插件 `compactSession()` 明确报 `compaction-unsupported`。
-- `/compact` 斜杠命令：可用，但只能作为普通 prompt 文本发送，结果为后台异步执行 + 纯文本完成提示，没有机器可读完成事件。本轮不接线、不显示入口，属能力边界与产品选择，不是待修缺口。
+- ACP 侧独立压缩 RPC：不存在（无 `session/compact`），插件不发送不存在的方法。
+- `/compact` 原生命令：已接入后台与全局执行后自动压缩。没有带操作 ID 的结构化完成事件，当前依据串行的同会话官方开始、完成文本及正常 RPC 结果确认，不从 token 降幅推断成功。
 - `session/load`、`session/fork`、`session/delete`：插件不发送。只使用 `session/new`、`session/resume`、`session/prompt`、`session/set_config_option`、`session/cancel`、`session/close`。
 - `ultra` 档位：Kimi 没有该档，插件不改写、不伪装。
 - 真实 VS Code 图形界面的点击级验收：未做。本轮只做了配置、CLI、协议、Webview 脚本与文档层面的验证。
@@ -245,4 +247,4 @@ provider 声明的凭据不可用。检查 `api_key` 是否为空、`api_key_env
 ### 已知缺口
 
 - 真实 VS Code 窗口里的点击级验收仍未做（见上一条）。Webview 侧只有脚本级回归测试，没有在真实编辑器里点过。
-- 自动压缩仍是官方不支持的能力，插件不会为 Kimi 显示「压缩上下文」入口，也不伪造本地压缩。
+- 真实模型摘要质量、token 降幅及 Windows 进程退出边界未实跑；原有隔离 CLI 审计只验证原生命令与生命周期，不代表这些边界通过。

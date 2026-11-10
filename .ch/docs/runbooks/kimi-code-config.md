@@ -116,7 +116,7 @@ Provider "subcoco" declares api_key_env = "KIMI_CODE_API_KEY"
 
 ### 4.6 点「压缩上下文」报不支持
 
-预期行为。Kimi Code ACP 没有独立压缩方法，`compactSession()` 抛 `compaction-unsupported`，面板不显示入口。Kimi CLI 本身支持自动压缩；需要手动压缩时可在输入框直接发 `/compact`，会返回「Context compaction started（后台异步）」。ACP 把自动压缩和 `/compact` 的开始确认、完成、取消、阻塞作为普通助手文本发送，插件据此显示「压缩中」，不作为最终答复或机器可读压缩方法；因此不把它包成可确认的按钮。上下文控制仍可用 `[loop_control].reserved_context_size` 交给 CLI 自己的循环。
+先确认插件版本及 CLI 命令广告。Kimi 2.5.2 没有独立 `session/compact` RPC，但 `available_commands_update` 已广告 `compact`；后台 `compactSession()` 先监听再经原会话 `session/prompt` 发送纯文本 `/compact`，等待同操作开始、真实 `Compaction completed.` 与正常 RPC 返回。只有没有广告时才报 `compaction-unsupported`。普通回答、开始确认、异会话、取消、停止、退出和超时不算成功，恢复失败不创建空会话。全局执行后自动压缩设置沿用成功且超过 5 分钟、已有会话、3 分钟超时规则；手动 Webview 入口由独立边界验收。不要用可能附加 harness 提示的普通输入框替代专用调用路径。`[loop_control].reserved_context_size` 仍只控制 CLI 自身循环。
 
 ### 4.7 上下文窗口显示不准 / 文案说适配器兜底
 

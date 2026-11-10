@@ -1,5 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import fs = require("node:fs");
+import path = require("node:path");
 
 import { installVscodeMock } from "../vscodeMock";
 
@@ -19,6 +21,23 @@ const { formatKimiRpcError } = require("../../interactive/kimiAppServerProtocol"
 type RuntimeDeps = Parameters<typeof createPromptInteractiveRuntimeHost>[0];
 
 const ACP_ID = "0f3c5d0c-6c58-4c6f-8f4e-3c5c9a1d2e77";
+
+test("Kimi compaction host reads live tab ownership and invalidates prior runs across every host start path", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
+  const ownershipPort = source.slice(source.indexOf("getContextCompactionTabState:"), source.indexOf("setActiveInteractiveStop:", source.indexOf("getContextCompactionTabState:")));
+  assert.match(ownershipPort, /getConversationTabById\(tabId\)/);
+  assert.match(ownershipPort, /cli: tab\.cli/);
+  assert.match(ownershipPort, /sessionId: tab\.sessionId,/);
+  assert.doesNotMatch(ownershipPort, /sessionIdByCli/);
+  assert.match(ownershipPort, /interactiveRunsByTabId\.get\(tabId\)\?\.runId/);
+  assert.match(ownershipPort, /parallelRunsByTabId\.get\(tabId\)\?\.runId/);
+  assert.match(ownershipPort, /primaryPromptRunController\.activeTabIdForRun === tabId/);
+  assert.match(ownershipPort, /runRevision: conversationTabRunRevisions\.get\(tab\) \?\? tab/);
+  assert.match(source, /if \(tab\) conversationTabRunRevisions\.set\(tab, \{\}\)/);
+  assert.match(source, /function sendRunStatusForTab\([\s\S]*?status === "start"\) \{\s*markConversationTabRunStarted\(tabId\)/);
+  assert.match(source, /function sendRunStatus\([\s\S]*?status === "start"\) \{\s*markConversationTabRunStarted\(primaryPromptRunController\.activeTabIdForRun\)/);
+  assert.match(source, /sendRunStatus: \(tabId, status, message, runOptions\) => \{\s*if \(status === "start"\) markConversationTabRunStarted\(tabId\)/);
+});
 
 type FakeRunnerOptions = {
   behavior?: (prompt: string, handlers: KimiStreamHandlers) => Promise<void>;

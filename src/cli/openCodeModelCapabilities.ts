@@ -16,6 +16,7 @@ export type OpenCodeVariantOption = {
 };
 
 export type OpenCodeThinkingCapability = {
+  modelContextWindow?: number;
   providerId: string | null;
   modelId: string | null;
   reasoning: boolean | "unknown";
@@ -38,9 +39,13 @@ export type OpenCodeCapabilityCommandExecutor = (request: {
   command: string;
   args: string[];
   timeoutMs: number;
+  cwd?: string;
+  envOverrides?: Record<string, string>;
 }) => Promise<OpenCodeCapabilityCommandResult>;
 
 export type ResolveOpenCodeThinkingCapabilityOptions = {
+  cwd?: string;
+  envOverrides?: Record<string, string>;
   command?: string;
   version?: string;
   configIdentity?: string;
@@ -52,6 +57,7 @@ export type ResolveOpenCodeThinkingCapabilityOptions = {
 };
 
 type ParsedOpenCodeModelMetadata = {
+  modelContextWindow?: number;
   reasoning: boolean | "unknown";
   options: OpenCodeVariantOption[];
 };
@@ -71,6 +77,19 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const ANSI_ESCAPE_PATTERN = /\x1B\[[0-?]*[ -/]*[@-~]/g;
 const MODEL_HEADING_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\/\S+$/;
 const capabilityCache = new Map<string, Promise<OpenCodeThinkingCapabilityBase>>();
+const versionCache = new Map<string, Promise<string>>();
+const cacheCreatedAt = new Map<string, number>();
+const CAPABILITY_CACHE_MAX_ENTRIES = 64;
+const CAPABILITY_CACHE_TTL_MS = 60_000;
+
+function trimCapabilityCache(): void {
+  while (cacheCreatedAt.size > CAPABILITY_CACHE_MAX_ENTRIES) {
+    const oldestKey = cacheCreatedAt.keys().next().value as string;
+    capabilityCache.delete(oldestKey);
+    versionCache.delete(oldestKey);
+    cacheCreatedAt.delete(oldestKey);
+  }
+}
 
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -194,6 +213,7 @@ function findNearestModelHeading(value: string, position: number): string | null
 function hasModelMetadataShape(value: Record<string, unknown>): boolean {
   return Object.prototype.hasOwnProperty.call(value, "variants")
     || Object.prototype.hasOwnProperty.call(value, "capabilities")
+    || Object.prototype.hasOwnProperty.call(value, "limit")
     || Object.prototype.hasOwnProperty.call(value, "reasoning");
 }
 
@@ -274,6 +294,12 @@ export function parseOpenCodeModelsVerboseOutput(
     return {
       reasoning: parseReasoning(block.value),
       options: parseVariantOptions(block.value.variants, "resolved-cli"),
+      ...(isPlainObject(block.value.limit)
+        && typeof block.value.limit.context === "number"
+        && Number.isSafeInteger(block.value.limit.context)
+        && block.value.limit.context > 0
+        ? { modelContextWindow: block.value.limit.context }
+        : {}),
     };
   }
   return null;
@@ -283,9 +309,15 @@ async function defaultCommandExecutor(request: {
   command: string;
   args: string[];
   timeoutMs: number;
+  cwd?: string;
+  envOverrides?: Record<string, string>;
 }): Promise<OpenCodeCapabilityCommandResult> {
   const { captureCliOutput } = require("./commandRunner") as typeof import("./commandRunner");
-  return captureCliOutput(request.command, request.args, { timeoutMs: request.timeoutMs });
+  return captureCliOutput(request.command, request.args, {
+    timeoutMs: request.timeoutMs,
+    cwd: request.cwd,
+    envOverrides: request.envOverrides,
+  });
 }
 
 function executeWithTimeout(
@@ -454,6 +486,7 @@ async function resolveCapabilityBase(
           modelId: target.modelId,
           reasoning: metadata.reasoning,
           options: metadata.options,
+          ...(metadata.modelContextWindow === undefined ? {} : { modelContextWindow: metadata.modelContextWindow }),
           status: "ready",
           source: "resolved-cli",
           ...(metadata.options.length === 0 ? { messageKey: "no-variants" as const } : {}),
@@ -493,17 +526,37 @@ export async function resolveOpenCodeThinkingCapability(
 
   const command = normalizeCommand(options.command);
   const timeoutMs = normalizeTimeout(options.timeoutMs);
-  const executor = options.executor ?? defaultCommandExecutor;
-  const versionIdentity = await readVersionIdentity(
-    command,
-    timeoutMs,
-    executor,
-    options.version
-  );
+  const baseExecutor = options.executor ?? defaultCommandExecutor;
+  const executor: OpenCodeCapabilityCommandExecutor = (request) => baseExecutor({
+    ...request,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.envOverrides === undefined ? {} : { envOverrides: options.envOverrides }),
+  });
+  const now = Date.now();
+  for (const [key, createdAt] of cacheCreatedAt) {
+    if (now - createdAt >= CAPABILITY_CACHE_TTL_MS) {
+      capabilityCache.delete(key);
+      versionCache.delete(key);
+      cacheCreatedAt.delete(key);
+    }
+  }
+  const versionKey = `version:${command}`;
+  const requestedVersion = getVersionIdentity(options.version);
+  let pendingVersion = versionCache.get(versionKey);
+  if (requestedVersion === null && !pendingVersion) {
+    pendingVersion = readVersionIdentity(command, timeoutMs, executor, undefined);
+    versionCache.set(versionKey, pendingVersion);
+    cacheCreatedAt.set(versionKey, now);
+    trimCapabilityCache();
+  }
+  const versionIdentity = requestedVersion ?? await pendingVersion!;
   const cacheKey = [
     command,
     versionIdentity,
     getConfigIdentity(options.configIdentity, options.configContent),
+    hashText(options.configContent ?? ""),
+    options.cwd ?? "",
+    hashText(JSON.stringify(Object.entries(options.envOverrides ?? {}).sort(([left], [right]) => left.localeCompare(right)))),
     target.providerId,
     target.modelId,
   ].map((part) => `${part.length}:${part}`).join("|");
@@ -518,7 +571,9 @@ export async function resolveOpenCodeThinkingCapability(
       executor
     );
     capabilityCache.set(cacheKey, pendingCapability);
+    cacheCreatedAt.set(cacheKey, now);
   }
+  trimCapabilityCache();
 
   const capability = await pendingCapability;
   return applyConfiguredAndSelectedVariants(
@@ -530,4 +585,13 @@ export async function resolveOpenCodeThinkingCapability(
 
 export function clearOpenCodeThinkingCapabilityCache(): void {
   capabilityCache.clear();
+  versionCache.clear();
+  cacheCreatedAt.clear();
+}
+
+export async function resolveOpenCodeContextWindow(
+  options: ResolveOpenCodeThinkingCapabilityOptions,
+): Promise<number | null> {
+  const capability = await resolveOpenCodeThinkingCapability(options);
+  return capability.modelContextWindow ?? null;
 }

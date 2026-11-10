@@ -99,7 +99,7 @@ export class KimiCompactionUnsupportedError extends KimiProtocolError {
 
   public constructor() {
     super(
-      "Kimi Code ACP exposes no compaction method. `/compact` is a slash command, not a proven native compaction trigger.",
+      "Kimi Code ACP 未声明支持原生 compact 命令，且没有可用的 session/compact RPC。",
       "compaction-unsupported",
     );
     this.name = "KimiCompactionUnsupportedError";
@@ -130,7 +130,7 @@ export type KimiTokenUsageUpdate = {
 };
 
 export type KimiCompactionUpdate = {
-  status: "started" | "completed" | "cancelled" | "blocked";
+  status: "started" | "completed" | "cancelled" | "blocked" | "failed";
   text: string;
 };
 
@@ -519,7 +519,11 @@ export function readKimiCompactionUpdate(text: string): KimiCompactionUpdate | n
   if (/^Compaction cancelled\.(?:\n|$)/.test(text)) {
     return { status: "cancelled", text };
   }
-  if (/^Compaction is blocked by the current turn; retry when the turn is idle\.(?:\n|$)/.test(text)) {
+  if (/^Compaction failed(?:\.|:)(?:\s|$)/.test(text)) {
+    return { status: "failed", text };
+  }
+  if (/^Compaction is blocked by the current turn; retry when the turn is idle\.(?:\n|$)/.test(text)
+    || /^A context compaction is already running\.(?:\n|$)/.test(text)) {
     return { status: "blocked", text };
   }
   return null;

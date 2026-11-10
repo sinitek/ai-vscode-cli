@@ -133,6 +133,29 @@
   - thinking / reasoning effort
 - 面板“工具设置”不再提供全局隐式子代理开关；历史 `multiAgentEnabled` / `codexMultiAgentEnabled` 均被忽略，不再迁移。能力是否开启由目标 CLI 分组自身配置决定，插件既不启用也不禁用：Codex app-server 启动参数不注入 `--disable multi_agent`，thread config 不覆盖 `features.multi_agent`；OpenCode overlay 保留已有 task 权限，环境中的 `OPENCODE_CONFIG_CONTENT` 原样传递。Loop 固定采用主从协作，与 CLI 自身的隐式子代理配置相互独立；子代理进度展示保持不变。Codex App Server 初始化连接会自动收到新建子线程通知，插件按 `threadId` 分流 `item/agentMessage/delta`，并结合 `collabAgentToolCall`、`subAgentActivity` 与子线程 `turn/completed` 更新每个子代理的独立 assistant 气泡。子线程 `thread/started` 不覆盖父 threadId，子线程 `turn/completed` 不结束父 turn，子代理文本也不进入父回复 final-answer 观察器。
 
+### 当前上下文消息与来源契约
+
+Claude 与 OpenCode 已在正常提示运行中接通宿主到 Webview 的统一消息，不是仅提供独立解析器：
+
+```ts
+type ContextTokenUsageMessage = {
+  type: 'contextTokenUsage';
+  tabId: string;
+  tokensInContextWindow: number;
+  modelContextWindow: number | null;
+  contextWindowSource?: string;
+};
+```
+
+- Claude：最近主请求的 `input_tokens + cache_read_input_tokens + cache_creation_input_tokens + 最终 output_tokens`；不取 `result` 的累计消耗，不重复加 thinking 或缓存生命周期分项。容量仅取当前响应模型精确匹配的 `modelUsage[model].contextWindow`，来源 `claude-model-window`；未知为 `null`，不附来源。详见 `.ch/docs/references/claude-context-usage.md`。
+- OpenCode：最新主 `step_finish` 的 `input + output + reasoning + cache.read + cache.write`；不跨步骤累计，不再加 total。容量来自精确 provider/model 的 `limit.context`，来源 `opencode-model-window`；缺窗口为 `null`，不采用 output limit。详见 `.ch/docs/references/opencode-context-usage.md`。
+- runner / 宿主按本次请求的会话、模型及 Tab 绑定过滤事件，隔离后台子任务、子代理、重试换绑和迟到回调。OpenCode 冻结配置、有效模型、cwd 和环境，复用有界 JSONL 与模型缓存；额外命令执行器只扩展可选 `envOverrides`，不改变既有 finalText/errorText、任务列表、工具流、watchdog 和重试协议。
+- Webview 沿用原布局、主题和 `runCommonCommand` / `compactContext` 消息；OpenCode 与具备交互能力的 Kimi 显示既有压缩入口，DSH 隐藏。来源进入中文 title 和 aria；Claude/OpenCode 等缺测量时不显示初始化占位，不为未知窗口补容量。Kimi 后台收尾身份防护及中文反馈已通过修复后复验，隔离压缩保留显式 tabId。
+- Kimi 收尾用量须仍对应真实标签、当前 CLI/UI 会话、持久运行代际、原生映射及 manager 中的 runner；同标签换绑或新运行接管拒绝旧用量，另一标签开始运行仍允许原标签合法迟到用量。修复定向169项、主审当前产物509项相关测试通过；标准构建通过但有既有 npm 配置警告。
+- 压缩摘要生成步骤的账单不等于压缩后占用；没有可信的新测量就等下一主回合，不能用旧步骤、pre_tokens 或假定零值宣称压缩后立即刷新。
+
+事实源：`src/interactive/claudeContextUsage.ts`、`src/interactive/claudeRunner.ts`、`src/extensionHost/interactiveTurnClaude.ts`；`src/cli/openCodeContextUsage.ts`、`src/cli/openCodeModelCapabilities.ts`、`src/cli/openCodeRunOutput.ts`、`src/extensionHost/promptOneShotRuntime.ts`、`src/extensionHost/openCodePromptRunTemplate.ts`、`src/cli/commandRunner.ts`；`src/webview/viewContentScript/taskListAndUi.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentStrings.ts`。回归路径与证据边界见独立参考及 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`，不把模拟桥验证当作真实 Extension Development Host 点击。
+
 ### Claude
 
 - 使用 `@anthropic-ai/claude-agent-sdk`
@@ -263,7 +286,7 @@
 - 关键字段：`default_model`、`default_permission_mode`（`manual` 官方默认 / `auto` / `yolo`）、`[providers.<名称>]`（`type` 为 `kimi`、`anthropic`、`openai`、`openai_responses`、`google-genai`、`vertexai`；另有 `base_url`、`api_key`、`api_key_env`）、`[models."<别名>"]`（`provider`、`model`、`max_context_size`、`max_input_size`、`max_output_size`、`capabilities`、`display_name`、`support_efforts`、`default_effort`）、`[thinking]`（`enabled`、`effort`、`keep`）、`[loop_control]`（`reserved_context_size`）、`[secondary_model]`、`[[permission.rules]]`、`[[hooks]]`。
 - 别名与真实模型 ID 是两件事：`[models."<别名>"]` 的表键是别名，`model` 才是发给供应商的真实模型 ID。命令行 `-m/--model <别名>` 传的是别名。配置页把两者分成两个输入，不自动增删前缀。
 - 免审批能力真实存在，但命令行 `--auto` / `--yolo` 与 `-p/--prompt` 互斥（官方分别为 `Cannot combine --prompt with --auto.`、`Cannot combine --prompt with --yolo.`、`Cannot combine --yolo with --auto.`）。插件的一次性任务走 `-p`，因此免审批必须写进配置文件 `default_permission_mode = "auto"`，不能靠启动参数。配置页默认新范例就是 `auto`；`manual` / `yolo` 同样可选。启动命令默认 `kimi`，不拼 `--auto`。
-- 压缩边界：`[loop_control].reserved_context_size` 只作用于 CLI 自己的会话循环；ACP 侧没有独立压缩方法（官方能力矩阵无 `session/compact`，`initialize` 未公布），所以插件 `compactSession()` 抛 `compaction-unsupported`，不伪造本地压缩、也不假装下发成功，面板不显示「压缩上下文」。`/compact` 斜杠命令本身可用：本机隔离实测把它作为 `session/prompt` 文本发送会返回「Context compaction started（后台异步）」，随后再推一条含消息数与前后 token 的「Compaction completed.」纯文本，没有机器可读完成事件，因此不接线成可确认的按钮。
+- 压缩边界：`[loop_control].reserved_context_size` 只作用于 CLI 自己的会话循环；ACP 侧没有独立压缩方法（官方能力矩阵无 `session/compact`，`initialize` 未公布），但 Kimi 2.5.2 的命令广告已有 compact，插件 `compactSession()` 先监听再经原会话 `session/prompt` 发送纯文本 `/compact`，等待同操作开始、真实完成和正常 RPC 结果；已加入全局执行后自动压缩（成功且超过 5 分钟、已有会话、3 分钟超时），恢复失败不新建，失败、取消、停止或退出不成功。`/compact` 斜杠命令本身可用：本机隔离实测把它作为 `session/prompt` 文本发送会返回「Context compaction started（后台异步）」，随后再推一条含消息数与前后 token 的「Compaction completed.」纯文本，没有带操作 ID 的结构化完成事件；后台按串行的同会话开始、完成文本和正常 RPC 结果确认。既有手动 Webview 入口与模拟桥回归已接通；真实 Extension Development Host 点击仍未验证。
 - 思考力度是官方原生能力：`[thinking].effort` 与 `[models."<别名>"].default_effort` / `support_efforts`。ACP 的 `thinking` config option 只在运行时广告合法值，且广告集合由模型表决定：无 `capabilities`（或 `capabilities = []`）时**不广告** `thinking`；`capabilities = ["thinking"]` 且没写 `support_efforts` 时广告 `off`/`on`/`high`；`capabilities = ["thinking","tool_use"]` 加 `support_efforts = ["low","medium","high","xhigh","max"]` 广告完整六值；`capabilities = ["thinking","always_thinking"]` 时广告五档但没有 `off`；只走 `KIMI_MODEL_*` 环境变量通道时只有 `off`/`on`。以上均在本机隔离 `KIMI_CODE_HOME` 下用 `kimi acp` 实测（`initialize` → `session/new` → `session/prompt`，`stopReason: end_turn`）。`createKimiCodeDefaultConfigText()` 与 `createKimiCodeVisualExampleText()` 生成 `capabilities = ["thinking"]` 和完整五档 `support_efforts`；所有保存统一经过 `commitKimiCodeText()`，给每个模型补缺失的 `thinking` 能力与缺失的五档列表，不覆盖已有能力或显式档位限制。高级字段不进入可视化表单。`validateKimiCodeDocument` 同时校验未知能力（`capabilities 含未知能力`）。插件不重写档位：`ultra` 不被改写成 `max`，`off` 也不被改写成 `medium`，广告里没有的值直接报错并保留服务端确认值；`KIMI_MODEL_THINKING_EFFORT` 不影响广告集合。Webview 侧 `src/webview/viewContentScript/windowMessageDispatch.ts` 已消费宿主的 `kimiThinkingOptions`（按 `tabId` 隔离、过滤非法值、只从广告集合选当前值）与 `kimiModeUpdate`（按 `tabId` 存 `kimiAcpModeId`，不新增界面），收到广告前用官方五档占位；若广告里只有 `off`/`on` 则禁用下拉而不是下发改写值。
 - 凭据必填：`[providers.<名称>]` 必须至少有 `api_key` 或 `api_key_env`，否则运行时报 `provider <名称> has no credential configured`。默认配置文本在有明文密钥时写 `api_key`，否则写 `api_key_env = "KIMI_CODE_API_KEY"`，不复制 Codex `auth.json`。CLI 不从 shell 自动读 `KIMI_API_KEY` / `OPENAI_API_KEY` 等惯用变量，只有 `api_key_env`、`[providers.<名称>.env]` 与 `KIMI_MODEL_*` 是显式通道。
 - `session/prompt` 的 provider 错误保留原始消息和 `type`；`model_not_found` 或模型不受当前账户组支持时直接作为错误气泡收口，不触发 hidden retry 或缺少最终结论续跑。

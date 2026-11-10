@@ -16,6 +16,8 @@ import {
 } from "./cli/geminiStreamJson";
 import { buildGeminiThinkingRuntimeProfile } from "./cli/geminiThinking";
 import { isClaudeNativeCompactUnsupportedError } from "./interactive/claudeCompaction";
+import { resolveKimiHostResumeId } from "./interactive/kimiAppServerProtocol";
+import { prepareKimiInteractiveLaunch } from "./extensionHost/kimiInteractiveLaunch";
 import { resolveGrokResumeSessionId } from "./interactive/grokAppServerProtocol";
 import { isZcodeSessionId } from "./interactive/zcodeAppServerProtocol";
 import { getGrokAgentArgs } from "./cli/config";
@@ -494,7 +496,7 @@ export type ContextCompactionRunStatus = "end" | "error" | "stopped";
 
 export type ContextCompactionRunnerManager = Pick<
   InteractiveRunnerManager,
-  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "getOrCreateZcodeRunner" | "setRunner"
+  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "getOrCreateKimiCodeRunner" | "hasKimiCodeRunner" | "getOrCreateZcodeRunner" | "setRunner"
 >;
 
 export type ContextCompactionRunDeps = {
@@ -536,6 +538,12 @@ export type ContextCompactionRunDeps = {
     messageTarget: ChatMessage[];
   }) => void;
   getActiveRunId: () => string | undefined;
+  getContextCompactionTabState?: (tabId: string) => {
+    cli: CliName;
+    sessionId: string | null;
+    runId: string | undefined;
+    runRevision: object;
+  } | undefined;
   setActiveInteractiveStop: (stop: (() => void) | null) => void;
   isActiveInteractiveStop: (stop: () => void) => boolean;
   appendStopMessageToStore: () => void;
@@ -568,11 +576,14 @@ export type ContextCompactionRunDeps = {
       tabId?: string;
       tokensInContextWindow: number;
       modelContextWindow: number;
-      contextWindowSource: "zcode-projection";
+      contextWindowSource: "zcode-projection" | "kimi-config-window";
     }
   ) => void;
   updateProcessTitle: (cli: CliName, sessionId: string) => void;
   appendTraceMessage: (content: string) => void;
+  prepareKimiInteractiveLaunch?: typeof prepareKimiInteractiveLaunch;
+  resolveKimiModelWireForRun?: (model: string | null) => Promise<string>;
+  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null) => Promise<string>;
   prepareGeminiRunProfile?: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
   prepareOpenCodeRunProfile?: (
     selectedModel: string | null,
@@ -588,7 +599,7 @@ export type ContextCompactionRunDeps = {
   buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
-const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok", "zcode"] as const;
+const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok", "kimi-code", "zcode"] as const;
 
 type ContextCompactionStrategyCli = (typeof CONTEXT_COMPACTION_STRATEGY_CLIS)[number];
 
@@ -919,11 +930,102 @@ const contextCompactionStrategyRegistry: ContextCompactionStrategyRegistry = {
     cli: "grok",
     execute: executeGrokContextCompaction,
   },
+  "kimi-code": {
+    cli: "kimi-code",
+    execute: executeKimiContextCompaction,
+  },
   zcode: {
     cli: "zcode",
     execute: executeZcodeContextCompaction,
   },
 };
+
+async function executeKimiContextCompaction(
+  deps: ContextCompactionRunDeps,
+  run: ContextCompactionPreparedRun,
+  hooks: ContextCompactionStrategyHooks,
+): Promise<boolean> {
+  const mappedSessionId = resolveKimiHostResumeId(run.sessionId, deps.resolveInteractiveMappedId(run.cli, run.sessionId));
+  if (!mappedSessionId) {
+    deps.appendSystemMessage(t("rules.compactNoSession"));
+    return false;
+  }
+  const runId = deps.getActiveRunId();
+  const originalTabState = run.tabId ? deps.getContextCompactionTabState?.(run.tabId) : undefined;
+  let cancelled = false;
+  let completed = false;
+  let runner: ReturnType<ContextCompactionRunnerManager["getOrCreateKimiCodeRunner"]> | null = null;
+  const canPublishUsage = (): boolean => {
+    if (cancelled || (!completed && deps.getActiveRunId() !== runId) || !run.tabId || !originalTabState || !runner) return false;
+    const currentTab = deps.getContextCompactionTabState?.(run.tabId);
+    return currentTab?.cli === "kimi-code"
+      && currentTab.sessionId === run.sessionId
+      && currentTab.runRevision === originalTabState.runRevision
+      && (!currentTab.runId || currentTab.runId === runId || currentTab.runId === originalTabState.runId)
+      && resolveKimiHostResumeId(run.sessionId, deps.resolveInteractiveMappedId(run.cli, run.sessionId)) === mappedSessionId
+      && deps.interactiveRunnerManager.hasKimiCodeRunner(run.sessionId, runner);
+  };
+  hooks.setStopCurrentTurn(() => {
+    cancelled = true;
+    runner?.cancelTurn();
+  });
+  const selectedModel = deps.resolveKimiModelWireForRun
+    ? await hooks.withCompactionTimeout(deps.resolveKimiModelWireForRun(run.selectedModel)) : run.selectedModel;
+  const launch = await hooks.withCompactionTimeout((deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
+    interactiveMode: run.interactiveMode,
+    selectedModel,
+    thinkingMode: run.thinkingMode,
+  }));
+  const configFingerprint = deps.readRuntimeConfigFingerprint
+    ? await hooks.withCompactionTimeout(deps.readRuntimeConfigFingerprint(run.cli, run.activeConfigId)) : undefined;
+  if (cancelled || deps.getActiveRunId() !== runId) return false;
+  runner = deps.interactiveRunnerManager.getOrCreateKimiCodeRunner({
+    sessionId: run.sessionId,
+    configFingerprint,
+    command: run.command,
+    agentArgs: launch.agentArgs,
+    cwd: run.cwd ?? process.cwd(),
+    thinkingMode: run.thinkingMode,
+    interactiveMode: run.interactiveMode,
+    model: launch.modelAlias,
+    thinkingValue: launch.thinkingValue,
+    modeId: launch.modeId,
+    localSessionId: mappedSessionId,
+    env: launch.env,
+  });
+  deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
+  try {
+    const result = await hooks.withCompactionTimeout(runner.compactSession({
+      onTokenUsageUpdate: (usage) => {
+        if (!canPublishUsage()) return;
+        deps.sendPanelMessage({
+          type: "contextTokenUsage",
+          tabId: run.tabId ?? undefined,
+          tokensInContextWindow: usage.tokensInContextWindow,
+          modelContextWindow: usage.modelContextWindow,
+          contextWindowSource: "kimi-config-window",
+        });
+      },
+    }, {
+      model: launch.modelAlias,
+      thinkingValue: launch.thinkingValue,
+      modeId: launch.modeId,
+    }));
+    if (cancelled || deps.getActiveRunId() !== runId) return false;
+    if (!result.compacted || result.sessionId !== mappedSessionId) {
+      runner.dispose();
+      throw new Error("Kimi Code 压缩未保留原 ACP 会话。");
+    }
+    if (originalTabState && !canPublishUsage()) return false;
+    deps.upsertInteractiveMapping(run.cli, run.sessionId, mappedSessionId);
+    deps.appendSystemMessage(`Kimi Code 当前会话上下文压缩已完成：${mappedSessionId}`);
+    completed = true;
+    return true;
+  } finally {
+    if (!completed) cancelled = true;
+    deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
+  }
+}
 
 async function executeZcodeContextCompaction(
   deps: ContextCompactionRunDeps,

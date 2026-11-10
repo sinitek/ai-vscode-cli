@@ -25,6 +25,8 @@ core harness 默认入口只包含：
 - ToB / 前端体验入口：`.ch/docs/FRONTEND.md`；用户可见能力、状态和验收登记到 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，复杂体验取舍进入 `.ch/docs/design-docs/`。
 - 安全可靠性入口：`.ch/docs/SECURITY.md`、`.ch/docs/TESTING.md`、`.ch/docs/exec-plans/README.md` 和 `.ch/docs/runbooks/README.md` 分别承接安全基线、验证规则、计划验证记录、运行发布排障沉淀。
 - 运行与排障：`.ch/docs/runbooks/README.md` 用于运行、发布、排障和避坑。
+- CLI 上下文契约：`.ch/docs/references/cli-runtime-reference.md` 汇总宿主消息与入口边界；Claude / OpenCode 的计数、窗口来源和验证限制分别见 `.ch/docs/references/claude-context-usage.md`、`.ch/docs/references/opencode-context-usage.md`。历史探针见 `.ch/docs/references/cli-context-compaction-audit.md`，仓库实施计划归档与验证边界见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
+- 本机 Node24 独立交付：`.ch/docs/references/node24-local-runtime-upgrade.md` 记录新登录 shell 默认 Node v24.22.2 / npm 11.19.1 与十个全局工具精确版本保留；已启动进程和 VS Code 内嵌 Node 不会即时切换。
 
 ## 目录结构
 

@@ -65,12 +65,17 @@ test("Kimi Code 用户指南写清 default_model 与免审批配置方式", () =
 test("Kimi Code 用户指南明确标注不支持的能力与已知缺口，不虚构参数", () => {
   const guide = readProjectFile(GUIDE);
 
-  // ACP 没有压缩方法
   assert.match(guide, /compaction-unsupported/);
-  assert.match(guide, /没有压缩方法/);
-  // /compact 斜杠命令可经 prompt 通道触发，但只有纯文本完成提示，不得写成可确认按钮
+  assert.match(guide, /没有独立 `session\/compact` RPC/);
   assert.match(guide, /Context compaction started/);
   assert.match(guide, /没有机器可读的完成事件/);
+  assert.match(guide, /Compaction completed\./);
+  assert.match(guide, /先准备监听，再发送命令/);
+  assert.match(guide, /超过 5 分钟/);
+  assert.match(guide, /最多等待 3 分钟/);
+  assert.match(guide, /普通回答都不算完成/);
+  assert.match(guide, /恢复失败不创建空会话/);
+  assert.doesNotMatch(guide, /本轮不接线|自动压缩仍是官方不支持|ACP 不支持压缩/);
   // 思考档位需要 capability 声明，默认配置和保存链路自动生成该声明
   assert.match(guide, /support_efforts/);
   assert.match(guide, /capabilities = \["thinking"/);
@@ -104,9 +109,11 @@ test("Kimi Code 官方对照参考列出 ACP 能力边界与安装版本事实",
   assert.match(reference, /@moonshot-ai\/kimi-code/);
   assert.match(reference, /2\.3\.2/);
   assert.match(reference, /22\.19\.0/);
-  // 官方 ACP 能力矩阵：没有压缩方法
   assert.match(reference, /session\/compact/);
-  assert.match(reference, /没有.*压缩方法|没有 `session\/compact`/);
+  assert.match(reference, /没有.*`session\/compact`.*(?:独立 RPC|RPC)/);
+  assert.match(reference, /2\.5\.2/);
+  assert.match(reference, /已加入全局执行后自动压缩策略/);
+  assert.doesNotMatch(reference, /插件目前仍不显示|`compactSession\(\)` 仍抛/);
   // 三种权限模式的配置值
   for (const mode of ["manual", "yolo", "auto"]) {
     assert.match(reference, new RegExp(`\`${mode}\``), `缺少权限模式 ${mode}`);
@@ -163,7 +170,9 @@ test("功能总表登记了 Kimi Code 条目及其证据与缺口", () => {
   assert.match(String(row), /kimi doctor config/);
   assert.match(String(row), /default_permission_mode/);
   assert.match(String(row), /support_efforts/);
-  assert.match(String(row), /compaction-unsupported/);
+  assert.match(String(row), /2\.5\.2.*原生命令/);
+  assert.match(String(row), /恢复失败不新建空会话/);
+  assert.match(String(row), /既有全局执行后自动压缩/);
   assert.match(String(row), /kimiCodeDocContract\.test\.js/);
   assert.match(String(row), /kimi-code-official-reference\.md/);
 });
@@ -182,7 +191,9 @@ test("Kimi Code 范围文档把窗口来源与能力声明写成已验证事实"
   const section = kimiSection.slice(0, kimiSection.indexOf("### Gemini"));
 
   assert.match(section, /session\/compact/);
-  assert.match(section, /compaction-unsupported/);
+  assert.match(section, /命令广告已有 compact/);
+  assert.match(section, /全局执行后自动压缩/);
+  assert.doesNotMatch(section, /不接线成可确认的按钮|面板不显示「压缩上下文」/);
   assert.match(section, /max_context_size/);
   // Kimi 的窗口来源是独立的 kimi-config-window，不再借用 DSH 的 adapter-fallback 文案
   assert.match(section, /kimi-config-window/);

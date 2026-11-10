@@ -478,6 +478,56 @@ function createClaudeEventRunner(): InstanceType<typeof ClaudeInteractiveRunner>
   });
 }
 
+test("wires per-request Claude usage with per-turn state and excludes child sessions", async (t) => {
+  const root = { session_id: "usage-main", parent_tool_use_id: null };
+  const start = (id: string, model: string) => ({
+    ...root, type: "stream_event", event: {
+      type: "message_start", message: {
+        id, model, usage: { input_tokens: 11, cache_read_input_tokens: 37, cache_creation_input_tokens: 23, output_tokens: 1 },
+      },
+    },
+  });
+  const delta = (output: number) => ({
+    ...root, type: "stream_event", event: { type: "message_delta", usage: { output_tokens: output } },
+  });
+  installScriptedClaudeQuery(t, {
+    first: [
+      { ...root, type: "system", subtype: "init", model: "configured-alias" },
+      start("request-first", "model-a"),
+      { ...start("request-child", "child-model"), session_id: "child-session", parent_tool_use_id: "agent-tool" },
+      delta(19),
+      { ...root, type: "result", subtype: "success", modelUsage: { "model-a": { contextWindow: 123456, inputTokens: 99999 } } },
+      delta(999999),
+    ],
+    second: [
+      delta(999999),
+      start("request-second", "model-b"),
+      delta(20),
+      { ...root, type: "result", subtype: "success", modelUsage: { "model-a": { contextWindow: 123456 } } },
+    ],
+    third: [{ ...root, type: "result", subtype: "success", modelUsage: { "model-b": { contextWindow: 654321, inputTokens: 99999 } } }],
+  });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const updates: import("../../interactive/claudeContextUsage").ClaudeContextUsageUpdate[] = [];
+  const sessions: string[] = [];
+  const handlers = {
+    ...createClaudeTurnRecorder().handlers,
+    onSessionId: (id: string) => sessions.push(id),
+    onTokenUsageUpdate: (usage: import("../../interactive/claudeContextUsage").ClaudeContextUsageUpdate) => updates.push(usage),
+  };
+  await expectSoon(runner.runStreamed("first", handlers), "usage first");
+  await expectSoon(runner.runStreamed("second", handlers), "usage second");
+  await expectSoon(runner.runStreamed("third", handlers), "usage third");
+  assert.deepEqual(sessions, ["usage-main"]);
+  assert.equal(runner.getSessionId(), "usage-main");
+  assert.deepEqual(updates, [
+    { sessionId: "usage-main", tokensInContextWindow: 90, modelContextWindow: null },
+    { sessionId: "usage-main", tokensInContextWindow: 90, modelContextWindow: 123456, contextWindowSource: "claude-model-window" },
+    { sessionId: "usage-main", tokensInContextWindow: 91, modelContextWindow: null },
+  ]);
+});
+
 function expectSoon<T>(promise: Promise<T>, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out`)), 2000);

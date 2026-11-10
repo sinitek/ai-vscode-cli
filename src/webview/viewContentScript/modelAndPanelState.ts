@@ -535,6 +535,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         pruneConversationRuntimeStates(tabIds);
         if (Array.isArray(state.conversationTabs.tabs)) {
           state.conversationTabs.tabs.forEach((tab) => {
+            const previousTab = Array.isArray(previousConversationTabs.tabs)
+              ? previousConversationTabs.tabs.find((previous) => previous.id === tab.id)
+              : null;
+            if (previousTab && (previousTab.cli !== tab.cli
+              || (previousTab.sessionId && previousTab.sessionId !== tab.sessionId))) {
+              const runtimeState = getConversationRuntimeState(tab.id, { create: false });
+              if (runtimeState) {
+                runtimeState.tokensInContextWindow = null;
+                runtimeState.modelContextWindow = null;
+                runtimeState.contextWindowSource = null;
+              }
+            }
             updateLoopMetaForTabFromSummary(tab);
           });
         }
@@ -1030,9 +1042,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           return;
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
-        // Kimi Code 的 ACP 通道没有暴露压缩方法（与 DSH 相同），因此不显示“压缩上下文”入口，
-        // 避免用户点了只得到一条“不支持”提示。
-        const visible = supported && (state.currentCli === "claude" || state.currentCli === "codex" || state.currentCli === "grok" || state.currentCli === "zcode");
+        const visible = state.currentCli === "opencode"
+          || (supported && ["claude", "codex", "grok", "zcode", "kimi-code"].includes(state.currentCli));
         const disabled = !visible || state.isRunning;
         elements.commonCommandButton.style.display = visible ? "inline-flex" : "none";
         elements.commonCommandButton.disabled = disabled;

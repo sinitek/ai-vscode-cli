@@ -372,13 +372,15 @@ test("Kimi recognizes only official compaction notifications", async () => {
   assert.equal(readKimiCompactionUpdate("Context compaction started — it runs in the background and the compacted context applies once it finishes.")?.status, "started");
   assert.equal(readKimiCompactionUpdate("Compaction completed.\n- Tokens after: 1,000")?.status, "completed");
   assert.equal(readKimiCompactionUpdate("Compaction cancelled.")?.status, "cancelled");
+  assert.equal(readKimiCompactionUpdate("Compaction failed: provider unavailable")?.status, "failed");
   assert.equal(readKimiCompactionUpdate("Compaction is blocked by the current turn; retry when the turn is idle.")?.status, "blocked");
+  assert.equal(readKimiCompactionUpdate("A context compaction is already running.")?.status, "blocked");
   assert.equal(readKimiCompactionUpdate("A normal answer mentioning compaction."), null);
 });
 
-test("kimi compaction is an explicit unsupported capability", async () => {
+test("kimi unsupported compaction error refers to missing command advertisement, not a fabricated RPC", async () => {
   const error = new KimiCompactionUnsupportedError();
   assert.equal(error.code, "compaction-unsupported");
   assert.equal(error.compacted, false);
-  assert.match(error.message, /no compaction method/);
+  assert.equal(error.message, "Kimi Code ACP 未声明支持原生 compact 命令，且没有可用的 session/compact RPC。");
 });

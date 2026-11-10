@@ -21,6 +21,8 @@ import {
   type OpenCodeSubagentMonitor,
 } from "../cli/openCodeSubagentMonitor";
 import { resolveOpenCodeOneShotWatchdogTimeoutMs } from "../cli/opencodewatchdog";
+import { createOpenCodeContextUsageTracker, type OpenCodeContextUsage } from "../cli/openCodeContextUsage";
+import { resolveOpenCodeContextWindow, type ResolveOpenCodeThinkingCapabilityOptions } from "../cli/openCodeModelCapabilities";
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import type { CliName, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -65,6 +67,7 @@ const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 * 1024;
 type OpenCodeRunOutput = ReturnType<typeof parseOpenCodeRunOutput>;
 
 type PromptOneShotRuntimeHostDeps = {
+  resolveOpenCodeContextWindow?: typeof resolveOpenCodeContextWindow;
   AI_TASK_RAW_OUTPUT_MAX_BYTES: number;
   adoptFreshOpenCodeLoopRecoverySession: (options: {
     sessionId: string;
@@ -253,6 +256,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
   let activeTabIdForRun: string | null = null;
   let activeOpenCodeJsonlBuffer = "";
   let activeOpenCodeDisplayedFinalText: string | null = null;
+  let activeOpenCodeRecordConsumer: ((record: unknown) => void) | undefined;
 
   const setActiveMessageTarget = (target: ChatMessage[] | null): void => {
     activeMessageTarget = target;
@@ -275,6 +279,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     activeTabIdForRun = null;
     activeOpenCodeJsonlBuffer = "";
     activeOpenCodeDisplayedFinalText = null;
+    activeOpenCodeRecordConsumer = undefined;
     clearPrimaryActiveRun();
   };
 
@@ -309,6 +314,27 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     let noteStartupOutputActivity = (_active: boolean): void => {};
     let markExternalStartupActivity = (): void => {};
     let subagentProgress: ReturnType<typeof createSubagentProgressController> | null = null;
+    let contextWindowOptions: ResolveOpenCodeThinkingCapabilityOptions | null = null;
+    let contextWindowPromise: Promise<number | null> | null = null;
+    let modelContextWindow: number | null = null;
+    let contextWindowResolved = false;
+    let usageAttempt = 0;
+    let latestContextUsage: OpenCodeContextUsage | null = null;
+    let publishedContextUsage: OpenCodeContextUsage | null = null;
+    const publishContextUsage = (): void => {
+      if (!contextWindowResolved || !latestContextUsage || publishedContextUsage === latestContextUsage
+        || getActiveRunId() !== runId || input.taskRole === "subtask" || input.loopSubtaskId) {
+        return;
+      }
+      publishedContextUsage = latestContextUsage;
+      sendPanelMessage({
+        type: "contextTokenUsage",
+        tabId: activeTabId,
+        tokensInContextWindow: latestContextUsage.tokensInContextWindow,
+        modelContextWindow,
+        ...(modelContextWindow === null ? {} : { contextWindowSource: "opencode-model-window" }),
+      });
+    };
 
     const appendHumanInteractionSubmission = (
       targetMessages: ChatMessage[],
@@ -581,6 +607,17 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           prepared.thinkingPrompt,
         );
         startupCommand = getCliCommand(runCli);
+        contextWindowOptions = {
+          command: startupCommand,
+          configIdentity: prepared.runtimePreparation.configId ?? undefined,
+          configContent: prepared.runtimePreparation.configContent,
+          model: prepared.runtimeModel,
+          cwd: prepared.cwd,
+          envOverrides: {
+            ...prepared.runtimePreparation.envOverrides,
+            OPENCODE_CONFIG_CONTENT: prepared.runtimePreparation.configContent,
+          },
+        };
         logCliStartup({
           cli: runCli,
           cwd: prepared.cwd,
@@ -720,6 +757,11 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       resolveCliSessionIdForResume,
       beginStreamAttempt: () => {
         openCodeActivityTracker = createOpenCodeStreamActivityTracker();
+        activeOpenCodeJsonlBuffer = "";
+        activeOpenCodeRecordConsumer = undefined;
+        latestContextUsage = null;
+        publishedContextUsage = null;
+        usageAttempt += 1;
       },
       prepareOpenCodeSubagentRuntime,
       shouldAnnounceSubagentMonitorUnavailable: (error, alreadyShown) => (
@@ -729,6 +771,39 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         resetActiveAssistantMessage();
       },
       logSubagentMonitorStart: ({ subagentRuntime, runtimeSessionId }) => {
+        const currentUsageAttempt = usageAttempt;
+        const tracker = createOpenCodeContextUsageTracker({
+          sessionId: runtimeSessionId,
+          previousSessionId: runtimeSessionId === null ? activeSessionId : null,
+          model: executionModel ?? "",
+        });
+        activeOpenCodeRecordConsumer = (record) => {
+          if (currentUsageAttempt !== usageAttempt || getActiveRunId() !== runId
+            || input.taskRole === "subtask" || input.loopSubtaskId) {
+            return;
+          }
+          const usage = tracker.accept(record);
+          if (!usage) {
+            return;
+          }
+          latestContextUsage = usage;
+          if (!contextWindowPromise && contextWindowOptions) {
+            const frozenOptions = contextWindowOptions;
+            contextWindowPromise = Promise.resolve()
+              .then(() => (deps.resolveOpenCodeContextWindow ?? resolveOpenCodeContextWindow)(frozenOptions))
+              .catch(() => null)
+              .then((window) => {
+                modelContextWindow = window;
+                contextWindowResolved = true;
+                return window;
+              });
+          }
+          void contextWindowPromise?.then(() => {
+            if (currentUsageAttempt === usageAttempt) {
+              publishContextUsage();
+            }
+          });
+        };
         void logInfo("runPrompt-one-shot-subagent-monitor-start", {
           cli: runCli,
           runId,
@@ -887,10 +962,25 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         setActiveProcess(runProcess);
         attemptSubagentMonitor?.setParentSessionId(runtimeSessionId);
       },
-      finishStreamAttempt: (context) => {
+      finishStreamAttempt: async (context) => {
         if (getActiveRunId() !== runId) {
           return false;
         }
+        const currentUsageAttempt = usageAttempt;
+        if (context.attemptResult.type !== "exit" || context.attemptResult.code !== 0) {
+          activeOpenCodeRecordConsumer = undefined;
+          usageAttempt += 1;
+          latestContextUsage = null;
+        }
+        flushOpenCodeJsonlBuffer();
+        if (context.attemptResult.type === "exit" && context.attemptResult.code === 0) {
+          await contextWindowPromise;
+          if (getActiveRunId() !== runId || currentUsageAttempt !== usageAttempt) {
+            return false;
+          }
+          publishContextUsage();
+        }
+        activeOpenCodeRecordConsumer = undefined;
         const finalActivity = openCodeActivityTracker.flush();
         if (finalActivity.hasAssistantAnswer) {
           context.stream.attemptHadNormalReply = true;
@@ -1182,7 +1272,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     const pendingLine = flush ? "" : (lines.pop() ?? "");
     const nextBuffer = appendBoundedUtf8Text("", pendingLine, OPENCODE_JSONL_PENDING_LINE_MAX_BYTES).text;
     lines.forEach((line) => {
-      parseOpenCodeVisibleStreamEvents(line).forEach(onEvent);
+      parseOpenCodeVisibleStreamEvents(line, activeOpenCodeRecordConsumer).forEach(onEvent);
     });
     return nextBuffer;
   }
