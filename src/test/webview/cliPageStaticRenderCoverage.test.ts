@@ -57,7 +57,7 @@ test("chat message limit reuses the AI task settings card between compact and Lo
   assert.match(html, /<label class="tool-settings-label" for="chatMessageLimit">每个标签页气泡上限<\/label>/);
   assert.match(html, /<input\s+type="number"\s+id="chatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="500"\s+aria-describedby="chatMessageLimitNote"/);
   assert.match(html, /id="chatMessageLimitNote" class="tool-settings-note"/);
-  assert.match(html, /默认 500.*110%.*20%.*最旧气泡.*跳过用户消息及最终答复.*不向后补删.*思考和指令同等清理.*永久删除.*本地会话历史.*提高上限不会恢复.*不影响外部 CLI.*可超过限额/);
+  assert.match(html, /默认 500.*110%.*20%.*最旧气泡.*跳过用户消息及非 JSON 最终答复.*不向后补删.*JSON 渲染气泡（含主任务分派子任务的最终气泡）.*思考和指令同等清理.*永久删除.*本地会话历史.*提高上限不会恢复.*不影响外部 CLI.*可超过限额/);
   assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
   assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
 });

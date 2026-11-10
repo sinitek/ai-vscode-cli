@@ -297,7 +297,7 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHideInstructionBubblesSaveError: "隐藏指令气泡设置保存失败，请重试。",
     toolSettingsChatMessageLimitSaveError: "气泡上限保存失败，请重试。",
     toolSettingsChatMessageLimitNote:
-      "全局设置，默认 500，范围 1–10000。超过上限的 110% 时，每批检查相当于上限 20% 的最旧气泡，跳过用户消息及最终答复，不向后补删；思考和指令同等清理。清理会永久删除插件内的消息及本地会话历史，提高上限不会恢复；不影响外部 CLI 的日志与上下文。保护项较多时可超过限额。",
+      "全局设置，默认 500，范围 1–10000。超过上限的 110% 时，每批检查相当于上限 20% 的最旧气泡，跳过用户消息及非 JSON 最终答复，不向后补删；JSON 渲染气泡（含主任务分派子任务的最终气泡）、思考和指令同等清理。清理会永久删除插件内的消息及本地会话历史，提高上限不会恢复；不影响外部 CLI 的日志与上下文。保护项较多时可超过限额。",
     toolSettingsHumanInteractionLabel: "人工交互",
     toolSettingsHumanInteractionTitle:
       "Codex、Claude 和 OpenCode 的全局设置。允许 Vibe 任务在继续执行前以结构化表单询问补充信息。",

@@ -1,5 +1,6 @@
 import { createChatSvgImageSource, normalizeChatImageSource } from "./chatImagePreview";
 import { normalizeChatLinkSource } from "./chatLink";
+import { buildJsonContainerRuntimeSource } from "../shared/jsonContainer";
 
 export const CHAT_MARKDOWN_SCRIPT = `
       ${createChatSvgImageSource.toString()}
@@ -25,46 +26,7 @@ export const CHAT_MARKDOWN_SCRIPT = `
         return true;
       }
 
-      function parseJsonContainerText(text) {
-        if (!text || (text[0] !== "{" && text[0] !== "[")) {
-          return null;
-        }
-        try {
-          const value = JSON.parse(text);
-          if (!value || typeof value !== "object") {
-            return null;
-          }
-          return value;
-        } catch (error) {
-          return null;
-        }
-      }
-
-      function unwrapSingleMarkdownFence(content) {
-        const trimmed = String(content || "").replace(new RegExp("^" + String.fromCharCode(65279)), "").trim();
-        const fence = String.fromCharCode(96);
-        const match = trimmed.match(new RegExp("^(" + fence + "{3,}|~{3,})[^\\\\n\\\\r]*\\\\r?\\\\n([\\\\s\\\\S]*?)\\\\r?\\\\n\\\\1[ \\\\t]*$"));
-        if (!match) {
-          return trimmed;
-        }
-        return match[2];
-      }
-
-      function parseCompleteJsonContainer(content) {
-        const trimmed = String(content || "").replace(new RegExp("^" + String.fromCharCode(65279)), "").trim();
-        if (!trimmed) {
-          return null;
-        }
-        const direct = parseJsonContainerText(trimmed);
-        if (direct) {
-          return direct;
-        }
-        const unwrapped = unwrapSingleMarkdownFence(trimmed);
-        if (unwrapped === trimmed) {
-          return null;
-        }
-        return parseJsonContainerText(String(unwrapped || "").trim());
-      }
+      ${buildJsonContainerRuntimeSource()}
 
       function serializeJsonTreeSource(value) {
         return JSON.stringify(value)

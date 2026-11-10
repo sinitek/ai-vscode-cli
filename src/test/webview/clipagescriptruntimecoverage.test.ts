@@ -583,6 +583,8 @@ function createRuntimeHarness(
         handleFileSelection,
         humanInteractionHistoryAnswer,
         appendAssistantDelta,
+        scheduleAssistantDeltaMarkdownRender,
+        flushAssistantDeltaMarkdownRenders,
         openHistorySessionMessages,
         openQueueOverlay,
         openRunStreamOverlay,
@@ -4416,6 +4418,56 @@ test("protects only requests and explicit final answers inside the oldest window
   assert.equal(api.renderedMessageCacheSize(), 2);
   assert.equal(api.state.messages.length, 5);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("JSON final bubbles join oldest-window pruning while text answers and newer JSON remain protected", () => {
+  for (const onlyShowFinalResults of [false, true]) {
+    const { api, window, posted } = createRuntimeHarness();
+    window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1 }) });
+    api.state.onlyShowFinalResults = onlyShowFinalResults;
+    const messages = [
+      { id: "user-json", role: "user", content: '{"需求":"保留"}' },
+      { id: "dispatch", role: "assistant", taskRole: "main", loopTaskId: "loop-1", codexFinalAnswer: true, content: '{"status":"dispatch","subtasks":[{"id":"sub-1"}]}' },
+      { id: "marker-json", role: "assistant", content: '<FINAL>\n{"status":"dispatch","subtasks":[]}' },
+      { id: "fenced-json", role: "assistant", loopAnswerConclusion: true, content: '```json\n{"status":"completed"}\n```' },
+      { id: "array-json", role: "assistant", loopFinalSummary: true, content: '~~~json\n[]\n~~~' },
+      { id: "text-final", role: "assistant", codexFinalAnswer: true, content: "任务已完成" },
+      { id: "mixed-final", role: "assistant", content: '<FINAL>\n完成说明\n```json\n{}\n```' },
+      { id: "invalid-final", role: "assistant", loopFinalSummary: true, content: '{"status":' },
+      { id: "new-json", role: "assistant", codexFinalAnswer: true, content: '{"status":"dispatch","subtasks":[]}' },
+    ];
+    window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages });
+    const request = posted.find((message) => message.type === "pruneChatMessages");
+    assert.ok(request);
+    assert.deepEqual(request.messages.map((message: any) => message.id), ["dispatch", "marker-json", "fenced-json", "array-json"]);
+    for (const id of ["dispatch", "marker-json", "fenced-json", "array-json"]) {
+      assert.equal(api.findRenderedMessageElement(id), null, id);
+    }
+    for (const id of ["user-json", "text-final", "mixed-final", "invalid-final", "new-json"]) {
+      assert.ok(api.findRenderedMessageElement(id), id);
+    }
+    window.dispatchMessage({ ...request, type: "chatMessagesPruned", messages: messages.filter((message) => !request.messages.some((deleted: any) => deleted.id === message.id)) });
+    assert.deepEqual(api.state.messages.map((message: any) => message.id), ["user-json", "text-final", "mixed-final", "invalid-final", "new-json"]);
+    assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+  }
+});
+
+test("JSON final bubbles stay temporarily protected until pending Markdown streaming finishes", () => {
+  const { api, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: "request", role: "user", content: "需求" },
+    { id: "streaming-json", role: "assistant", codexFinalAnswer: true, content: '{"status":"dispatch","subtasks":[]}' },
+    { id: "text-final", role: "assistant", codexFinalAnswer: true, content: "最终总结" },
+  ] });
+  api.scheduleAssistantDeltaMarkdownRender("streaming-json");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1 }) });
+  assert.ok(api.findRenderedMessageElement("streaming-json"));
+  assert.deepEqual(posted.filter((message) => message.type === "pruneChatMessages"), []);
+  api.flushAssistantDeltaMarkdownRenders();
+  assert.equal(api.findRenderedMessageElement("streaming-json"), null);
+  assert.ok(api.findRenderedMessageElement("text-final"));
+  assert.deepEqual(posted.find((message) => message.type === "pruneChatMessages").messages.map((message: any) => message.id), ["streaming-json"]);
 });
 
 test("renders message and trace helpers across final, collapsed, tool-result, and fallback paths", () => {

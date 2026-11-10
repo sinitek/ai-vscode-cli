@@ -268,6 +268,44 @@ test("bubble pruning really deletes cached, live and persisted messages and pres
   }
 });
 
+test("bubble pruning permanently deletes JSON final bubbles but preserves text answers and active JSON", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const sessionId = "json-final-session";
+    harness.state.tabs[0].sessionId = sessionId;
+    harness.state.tabs[0].sessionIdByCli.codex = sessionId;
+    const messages: ChatMessage[] = [
+      createMessage("user-json", "user", '{"需求":"保留"}'),
+      { ...createMessage("dispatch", "assistant", '{"status":"dispatch","subtasks":[{"id":"sub-1"}]}'), codexFinalAnswer: true, taskRole: "main", loopTaskId: "loop-1" },
+      createMessage("marker-json", "assistant", '  [final_answer]\n{"status":"dispatch","subtasks":[]}'),
+      { ...createMessage("fenced-json", "assistant", '```json\r\n{"status":"completed"}\r\n```'), loopAnswerConclusion: true },
+      { ...createMessage("array-json", "assistant", '~~~json\n[]\n~~~'), loopFinalSummary: true },
+      { ...createMessage("text-final", "assistant", "已完成"), codexFinalAnswer: true },
+      createMessage("mixed-final", "assistant", '[final_answer]\n说明\n```json\n{}\n```'),
+      { ...createMessage("invalid-final", "assistant", '{"status":'), loopFinalSummary: true },
+      { ...createMessage("active-json", "assistant", '{"status":"dispatch","subtasks":[]}'), codexFinalAnswer: true },
+    ];
+    harness.controller.saveSessionMessages("codex", sessionId, messages);
+    const cached = harness.controller.loadSessionMessages("codex", sessionId);
+    harness.state.liveMessages.set("tab-1", messages);
+    harness.state.primary = { cli: "codex", tabId: "tab-1", sessionId, messageTarget: messages, messageIndex: 8 };
+    harness.state.runtimeRuns.push({ tabId: "tab-1", cli: "codex", sessionId, messageTarget: messages });
+    const request = { type: "pruneChatMessages" as const, requestId: "json", tabId: "tab-1", cli: "codex" as const, sessionId, messages: messages.map(({ id, content }) => ({ id, content })) };
+    harness.controller.pruneChatMessages(request);
+    const expected = ["user-json", "text-final", "mixed-final", "invalid-final", "active-json"];
+    assert.deepEqual(messages.map((message) => message.id), expected);
+    assert.deepEqual(cached.map((message) => message.id), expected);
+    assert.deepEqual(harness.restart().loadSessionMessages("codex", sessionId).map((message) => message.id), expected);
+    assert.equal(harness.state.primary.messageIndex, 4);
+    harness.state.primary = { cli: "codex", tabId: "tab-1", sessionId, messageTarget: null, messageIndex: null };
+    harness.state.runtimeRuns.length = 0;
+    harness.controller.pruneChatMessages({ ...request, requestId: "after-completion" });
+    assert.deepEqual(harness.restart().loadSessionMessages("codex", sessionId).map((message) => message.id), expected.slice(0, -1));
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test("bubble pruning rejects stale session identities, changed snapshots and final-answer upgrades", () => {
   const harness = createLifecycleHarness();
   try {

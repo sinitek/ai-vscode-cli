@@ -622,7 +622,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (message.role !== "assistant") {
           return message.role === "user";
         }
-        return isFinalAssistantSummaryMessage(index) || isAssistantMarkdownRenderPending(message);
+        return isAssistantMarkdownRenderPending(message)
+          || (isFinalAssistantSummaryMessage(index)
+            && !parseCompleteJsonContainer(getAssistantMessageContentForDisplay(message)));
       }
 
       function getBaseChatBubbleEntries() {

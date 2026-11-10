@@ -45,6 +45,7 @@ import {
 import { ChatMessage } from "./webview/types";
 import { resolveSessionHealth, type SessionHealth } from "./sessionHealth";
 import { FINAL_ANSWER_TEXT_MARKER, isFinalAnswerMessage } from "./finalAnswerProtocol";
+import { parseCompleteJsonContainer } from "./shared/jsonContainer";
 import type { PanelMessage } from "./webview/types";
 
 type RuntimeSessionReference = {
@@ -502,7 +503,12 @@ export function createSessionLifecycleController(deps: {
       .map((message) => message.id));
     for (const messages of targets) {
       for (const message of messages) {
-        if (message.role === "user" || isFinalAnswerMessage(message, FINAL_ANSWER_TEXT_MARKER) || protectedIds.has(message.id)
+        const content = message.content.trimStart();
+        const displayContent = content.startsWith(FINAL_ANSWER_TEXT_MARKER)
+          ? content.slice(FINAL_ANSWER_TEXT_MARKER.length).trimStart() : content;
+        const protectedFinalAnswer = isFinalAnswerMessage(message, FINAL_ANSWER_TEXT_MARKER)
+          && !parseCompleteJsonContainer(displayContent);
+        if (message.role === "user" || protectedFinalAnswer || protectedIds.has(message.id)
           || candidates.get(message.id) !== message.content) {
           deletedIds.delete(message.id);
         }

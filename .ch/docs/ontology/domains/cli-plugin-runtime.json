@@ -2101,7 +2101,7 @@
     {
       "id": "plugin.rule.chat_message_limit_protects_history_and_answers",
       "name": "永久清理保护用户和最终答复并由宿主确认",
-      "description": "永久保护仅包括用户发起与主色边框最终答复，Webview 与宿主共用 isFinalAnswerMessage 的文本/结构化标记判定；普通助手过程正文、思考与指令同等清理，运行中活动输出临时保护。Webview 通过 pruneChatMessages 提交身份和候选快照；宿主复核后先原子落盘再原地清理缓存及运行中数组，以 chatMessagesPruned 返回剩余消息；失败保留数据。存档 retentionPruned 标记阻止 Claude 自动修复复活旧过程，流式索引按剩余集合或消息 ID 重定位。删除只作用插件数据，不修改外部 CLI 日志与上下文；不混同 historyRetentionDays 或既有 DOM 缓存。",
+      "description": "永久保护仅包括用户发起与非 JSON 渲染的最终答复，Webview 与宿主共用 isFinalAnswerMessage 的文本/结构化标记及 shared/jsonContainer 的完整 JSON 判定；去掉开头最终标记后可解析为 JSON 对象/数组的气泡（含单代码围栏、主任务分派子任务的最终协议气泡）进入最旧窗口即同等清理，不因最终标记或主色边框保护。混合正文、无效 JSON 及 JSON 标量的最终答复仍保护；普通助手过程正文、思考与指令同等清理，运行中活动输出临时保护。Webview 通过 pruneChatMessages 提交身份和候选快照；宿主复核后先原子落盘再原地清理缓存及运行中数组，以 chatMessagesPruned 返回剩余消息；失败保留数据。存档 retentionPruned 标记阻止 Claude 自动修复复活旧过程，流式索引按剩余集合或消息 ID 重定位。删除只作用插件数据，不修改外部 CLI 日志与上下文；不混同 historyRetentionDays 或既有 DOM 缓存。",
       "status": "active",
       "aliases": ["chatMessageLimit", "最终答复保护", "永久删除", "retentionPruned"],
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
@@ -2113,6 +2113,7 @@
         {"path": "src/sessionLifecycle.ts", "anchor": "pruneChatMessages"},
         {"path": "src/sessionStore.ts", "anchor": "writeMessageFile"},
         {"path": "src/finalAnswerProtocol.ts", "anchor": "isFinalAnswerMessage"},
+        {"path": "src/shared/jsonContainer.ts", "anchor": "parseCompleteJsonContainer"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}
       ]
