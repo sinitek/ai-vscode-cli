@@ -848,10 +848,11 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         flex: 1 1 auto;
         min-height: 0;
         gap: 6px;
-        padding: 12px 16px 16px;
+        padding: 12px 8px 16px;
         overflow-y: auto;
       }
       #humanInteractionHistoryOverlay .modal-body {
+        padding: 0;
         overflow: hidden;
       }
       .human-interaction-history-item {

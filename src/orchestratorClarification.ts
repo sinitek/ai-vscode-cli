@@ -114,28 +114,25 @@ export function normalizeClarificationSubmission(
       continue;
     }
     if (field.type === "multiselect" || (field.type === "checkbox" && field.options && field.options.length > 0)) {
-      const selected = (Array.isArray(rawValue) ? rawValue : [rawValue])
+      const answers = Array.isArray(rawValue) ? rawValue : [rawValue];
+      if (answers.some((item) => item != null && typeof item !== "string")) {
+        return { ok: false, issue: { code: "invalid-option", label: field.label } };
+      }
+      const selected = answers
         .map((item) => normalizeText(item))
         .filter(Boolean);
       if (field.required && selected.length === 0) {
         return { ok: false, issue: { code: "required", label: field.label } };
       }
-      const allowed = new Set((field.options ?? []).map((option) => option.value));
-      if (selected.some((item) => !allowed.has(item))) {
-        return { ok: false, issue: { code: "invalid-option", label: field.label } };
-      }
       normalized[field.id] = selected;
       continue;
+    }
+    if ((field.type === "radio" || field.type === "select") && rawValue != null && typeof rawValue !== "string") {
+      return { ok: false, issue: { code: "invalid-option", label: field.label } };
     }
     const text = normalizeText(rawValue);
     if (field.required && !text) {
       return { ok: false, issue: { code: "required", label: field.label } };
-    }
-    if (text && (field.type === "radio" || field.type === "select")) {
-      const allowed = new Set((field.options ?? []).map((option) => option.value));
-      if (!allowed.has(text)) {
-        return { ok: false, issue: { code: "invalid-option", label: field.label } };
-      }
     }
     normalized[field.id] = text;
   }

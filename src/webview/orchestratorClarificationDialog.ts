@@ -1,6 +1,7 @@
 import type { HumanInteractionFormField } from "../humanInteraction";
 import type { OrchestratorClarification } from "../orchestratorClarification";
 import { renderModalActions, renderPanelDialog } from "./modalComponents";
+import { humanInteractionOtherChoiceScript } from "./humanInteractionOtherChoice";
 
 export type OrchestratorClarificationDialogCopy = {
   requiredTemplate: string;
@@ -39,7 +40,7 @@ export function renderOrchestratorClarificationDialog(
 }
 
 export function orchestratorClarificationDialogScript(): string {
-  return `
+  return `${humanInteractionOtherChoiceScript()}
       function bindOrchestratorClarificationDialog(options) {
         const backdrop = document.getElementById("clarificationDialogBackdrop");
         const form = document.getElementById("clarificationDialogForm");
@@ -53,6 +54,13 @@ export function orchestratorClarificationDialogScript(): string {
         const rejectType = backdrop.getAttribute("data-reject-type");
         const interactionId = backdrop.getAttribute("data-interaction-id");
         const requiredTemplate = backdrop.getAttribute("data-required-template") || "{label}";
+        form.querySelectorAll(".clarification-field").forEach((container) => {
+          const controls = Array.from(container.querySelectorAll("[data-clarify-field]"));
+          const first = controls[0];
+          if (first) bindHumanInteractionOtherChoice(container, first.getAttribute("data-clarify-field"),
+            first.getAttribute("data-clarify-label"), first.getAttribute("data-clarify-kind"), controls,
+            "dialog-textarea clarification-input", "clarification-option");
+        });
         function setError(message) {
           if (error) {
             error.textContent = message || "";
@@ -102,7 +110,7 @@ export function orchestratorClarificationDialogScript(): string {
             }
             values[id] = group[0] ? group[0].value : "";
           });
-          return values;
+          return collectHumanInteractionOtherValues(form, values);
         }
         function missingLabel(values) {
           const required = Array.from(form.querySelectorAll("[data-clarify-required='true']"));
@@ -130,6 +138,11 @@ export function orchestratorClarificationDialogScript(): string {
         }
         if (submitButton) {
           submitButton.addEventListener("click", () => {
+            const otherError = humanInteractionOtherError(form);
+            if (otherError) {
+              setError(otherError);
+              return;
+            }
             const values = collect();
             const label = missingLabel(values);
             if (label) {

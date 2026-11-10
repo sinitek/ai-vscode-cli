@@ -114,21 +114,12 @@ export function normalizeHumanInteractionRequestFromGrok(input: {
         })),
       } : { placeholder: "请输入你的回答..." }),
     });
-    if (question.options.length) {
-      formFields.push({
-        id: `${id}_other`,
-        label: `第 ${index + 1} 题的其他回答（可选）`,
-        type: "textarea",
-        required: false,
-        placeholder: question.multiSelect ? "可填写其他选项，和已选项一起提交" : "填写后将以此回答代替已选项",
-      });
-    }
   });
   return {
     interactionId: input.fallbackInteractionId,
     tabId: input.tabId,
     title: "需要补充信息",
-    instruction: "请选择答案，或填写对应的其他回答后继续执行当前任务。",
+    instruction: "请选择答案，或选择“其它”并填写回答后继续执行当前任务。",
     formFields,
     submitLabel: "提交并继续",
     cancelLabel: "拒绝",
@@ -155,8 +146,7 @@ export function buildGrokHumanInteractionResolution(
     const id = `answer_${index + 1}`;
     const value = submission.values[id];
     const selected = (Array.isArray(value) ? value : [value])
-      .filter((answer): answer is string => typeof answer === "string" && Boolean(answer.trim()))
-      .filter((answer) => !question.options.length || question.options.some((option) => option.label === answer));
+      .filter((answer): answer is string => typeof answer === "string" && Boolean(answer.trim()));
     const other = submission.values[`${id}_other`];
     const custom = typeof other === "string" ? other.trim() : "";
     const answer = question.multiSelect

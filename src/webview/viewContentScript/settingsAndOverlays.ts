@@ -1,5 +1,8 @@
+import { humanInteractionOtherChoiceScript } from "../humanInteractionOtherChoice";
+
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
-export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setToolSettingsTab(scope) {
+export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
+      function setToolSettingsTab(scope) {
         const selected = ["aiTask", "workspace", "notifications", "repair"].includes(scope) ? scope : "general";
         [["general", elements.toolSettingsGeneralTab, elements.toolSettingsGeneralPanel],
           ["aiTask", elements.toolSettingsAiTaskTab, elements.toolSettingsAiTaskPanel],
@@ -867,6 +870,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
             wrapper.appendChild(description);
           }
           wrapper.appendChild(createHumanInteractionInput(field));
+          if (field.options.length) {
+            bindHumanInteractionOtherChoice(wrapper, field.id, field.label, field.type,
+              Array.from(wrapper.querySelectorAll("[data-human-field]")),
+              "human-interaction-input human-interaction-textarea", "human-interaction-option");
+          }
           elements.humanInteractionForm.appendChild(wrapper);
         });
         elements.humanInteractionOverlay.classList.toggle("visible", Boolean(dialog.open));
@@ -942,7 +950,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
           }
           values[field.id] = controls[0] ? controls[0].value : "";
         });
-        return values;
+        return collectHumanInteractionOtherValues(form, values);
       }
 
       function isHumanInteractionValueEmpty(value) {
@@ -962,9 +970,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `      function setTool
         }
         const values = collectHumanInteractionValues();
         const missingField = dialog.formFields.find((field) => field.required && isHumanInteractionValueEmpty(values[field.id]));
-        if (missingField) {
-          dialog.error = t("humanInteractionRequired", { label: missingField.label });
-          renderHumanInteractionDialog();
+        const otherError = humanInteractionOtherError(elements.humanInteractionForm);
+        if (otherError || missingField) {
+          dialog.error = otherError || t("humanInteractionRequired", { label: missingField.label });
+          elements.humanInteractionError.textContent = dialog.error;
+          elements.humanInteractionError.style.display = "block";
           return;
         }
         vscode.postMessage({

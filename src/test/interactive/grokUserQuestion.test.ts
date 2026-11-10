@@ -26,8 +26,8 @@ test("normalizes Grok single and multiple choices with independent custom answer
   assert.equal(form.interactionId, "interaction-1");
   assert.equal(form.tabId, "grok-tab");
   assert.deepEqual(form.formFields.map((field) => [field.id, field.type, field.required]), [
-    ["answer_1", "radio", false], ["answer_1_other", "textarea", false],
-    ["answer_2", "checkbox", false], ["answer_2_other", "textarea", false],
+    ["answer_1", "radio", false],
+    ["answer_2", "checkbox", false],
   ]);
   assert.equal(form.formFields[0].options?.[0].description, "推荐方案\n\n方案预览");
   assert.deepEqual(buildGrokHumanInteractionResolution(params, {
@@ -64,8 +64,8 @@ test("returns native cancellation for rejection or an entirely unanswered form",
     assert.deepEqual(buildGrokHumanInteractionResolution(params, { interactionId: "one", status, values: {} }), { result: { outcome: "cancelled" } });
   }
   assert.deepEqual(buildGrokHumanInteractionResolution(params, {
-    interactionId: "one", status: "completed", values: { answer_1: "非法选项", answer_2: ["Linux", "Linux", 42] },
-  }), { result: { outcome: "accepted", answers: { "选择平台？": ["Linux"] } } });
+    interactionId: "one", status: "completed", values: { answer_1: "自定义方案", answer_2: ["Linux", "Linux", "macOS", 42] },
+  }), { result: { outcome: "accepted", answers: { "选择方案？": ["自定义方案"], "选择平台？": ["Linux", "macOS"] } } });
 });
 
 test("timeouts continue autonomously and never turn into user rejection", () => {

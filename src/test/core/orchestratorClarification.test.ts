@@ -94,13 +94,19 @@ test("validates required answers and choice values before formatting the continu
   }
 
   const invalid = normalizeClarificationSubmission(request, {
-    scope: "unknown",
+    scope: { value: "invalid" },
     checks: ["api"],
   });
   assert.equal(invalid.ok, false);
   if (!invalid.ok) {
     assert.equal(invalid.issue.code, "invalid-option");
   }
+
+  assert.deepEqual(normalizeClarificationSubmission(request, {
+    scope: "用户自己的方案",
+    checks: ["api", "额外检查"],
+  }), { ok: true, values: { scope: "用户自己的方案", note: "", checks: ["api", "额外检查"] } });
+  assert.equal(normalizeClarificationSubmission(request, { scope: "api", checks: [42] }).ok, false);
 
   const accepted = normalizeClarificationSubmission(request, {
     scope: "api",
@@ -133,7 +139,7 @@ test("resolves only the matching in-process waiter and aborts the previous one",
 
   assert.equal(submitOrchestratorClarification(scopeId, first.interactionId, { scope: "api" }).ok, false);
   assert.equal(rejectOrchestratorClarification(scopeId, first.interactionId), false);
-  const invalid = submitOrchestratorClarification(scopeId, second.interactionId, { scope: "unknown" });
+  const invalid = submitOrchestratorClarification(scopeId, second.interactionId, { scope: { invalid: true } });
   assert.equal(invalid.ok, false);
   if (!invalid.ok) {
     assert.equal(invalid.reason, "invalid");

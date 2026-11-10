@@ -1606,13 +1606,18 @@
     {
       "id": "plugin.rule.orchestrator_clarification_form",
       "name": "主任务主动澄清表单",
-      "description": "经典 Loop 和 Loop+ 主任务对需求有歧义或方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊弹出 1 到 8 个字段的表单，合法选项由宿主校验。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时要求模型自行选择最佳方案继续。开始或恢复执行时自动打开群聊，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务不能弹出该表单；它不替代补充需求，也不进入我要提问。",
+      "description": "经典 Loop 和 Loop+ 主任务对需求有歧义或方案缺少必须由用户决定的关键信息时返回 clarify。宿主在群聊弹出 1 到 8 个字段的表单。与 Vibe 人工交互共用的选择题规则保证每道单选、多选、下拉和多选下拉都有其它选项及选中后显示的自由输入框，已有同义选项复用。选择其它但未填写时就地阻止提交并保留表单内容；取消选择不提交残留文本。回传实际自定义文本，多选保留预设选择；宿主允许非预设文本，但拒绝非文本选择值。文本、布尔确认和超时默认选项不变。Grok 复用相同入口，不重复生成独立其它字段并兼容旧答案。提交后写入补充要求并继续；拒绝进入 needs-review；停止则关闭表单。人工交互超时默认 15 分钟，超时要求模型自行选择最佳方案继续。开始或恢复执行时自动打开群聊，同一次执行内部不逐 tick 抢焦点。同一任务最多主动澄清 8 次。子任务不能弹出该表单；它不替代补充需求，也不进入我要提问。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/orchestratorClarification.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/webview/orchestratorClarificationDialog.ts"},
+        {"path": "src/webview/humanInteractionOtherChoice.ts"},
+        {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
+        {"path": "src/interactive/grokUserQuestion.ts"},
+        {"path": "src/test/webview/humanInteractionOtherChoice.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "人机交互其它回答"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3 执行模式"}
       ]
     },

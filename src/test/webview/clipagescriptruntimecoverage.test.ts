@@ -1860,6 +1860,8 @@ test("opens human interaction history from the bottom icon and renders automatic
   window.dispatchMessage({ type: "humanInteractionHistory", items: [longRecord] });
   assert.equal(list.children[0].children[1].textContent, Array.from(longQuestion).slice(0, 50).join(""));
   assert.equal(Array.from(list.children[0].children[1].textContent).length, 50);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-list\s*\{[^}]*padding:\s*12px 8px 16px;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /#humanInteractionHistoryOverlay \.modal-body\s*\{[^}]*padding:\s*0;[^}]*overflow:\s*hidden;/);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-item\s*\{[^}]*min-height:\s*64px;[^}]*padding:\s*12px;/);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question\s*\{[^}]*display:\s*-webkit-box;[^}]*line-height:\s*18px;[^}]*-webkit-line-clamp:\s*2;/);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-question,\s*\.human-interaction-history-meta\s*\{[^}]*color:\s*var\(--vscode-foreground\);/);
