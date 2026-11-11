@@ -335,6 +335,14 @@ ${DIALOG_SHELL_STYLES}
         gap: 8px;
         margin-bottom: 12px;
       }
+      .model-switch-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+      .model-switch-select {
+        width: 100%; min-width: 0; padding: 8px;
+        color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+        border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border)); border-radius: 4px;
+        font: inherit;
+      }
+      .model-switch-select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
       .model-choice-option {
         display: flex;
         gap: 8px;

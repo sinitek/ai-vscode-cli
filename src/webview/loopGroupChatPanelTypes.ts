@@ -1,4 +1,4 @@
-import type { ContinueModelChoice } from "../continueModelChoice";
+import type { LoopModelSwitchState } from "../loopModelSwitch";
 import type { LoopPlusAcceptancePlan, LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 export type LoopGroupChatPanelParticipant = {
@@ -104,7 +104,7 @@ export type LoopGroupChatPanelState = {
   messageLimit?: number;
   mainModelBusy?: boolean;
   loopPlus?: LoopPlusPanelProjection;
-  continueModels?: ContinueModelChoice;
+  modelSwitch?: LoopModelSwitchState;
   task: {
     id: string;
     cli: string;
@@ -134,7 +134,8 @@ export type LoopGroupChatPanelMessage =
   | import("./chatLinkHost").ChatLinkMessage
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
-  | { type: "loopGroupChatChat:continueTask"; prompt?: string; modelSource?: "original" | "current" }
+  | { type: "loopGroupChatChat:continueTask"; prompt?: string }
+  | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string> }
   | { type: "loopGroupChatChat:supplementTask"; prompt?: string }
   | { type: "loopGroupChatChat:askMainModel"; prompt?: string }
   | { type: "loopGroupChatChat:abortMainModelQuestion" }

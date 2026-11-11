@@ -1,8 +1,16 @@
 # VS Code CLI 运行时：配置模型与 Tab 任务摘要边界
 
 - 状态：配置模型仓储已实施，行为保持不变；Tab 任务摘要已实现并经主审，验证边界见下文
-- 更新日期：2026-11-07
+- 更新日期：2026-11-11
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
+
+## Loop 任务内模型切换
+
+群聊「切模型」是独立于继续执行的任务内路由变更。`src/loopModelSwitch.ts` 按各角色绑定 CLI 当前配置复用现有下拉选项，整体校验后保存 `modelRouting` 和配置身份，不修改全局模型偏好、CLI、任务模式或思考力度。群聊继续执行仅提交继续说明，沿用任务最新路由；主任务 Tab 直接继续仍接受已有下拉选择，并先更新任务路由，避免后续调用读回旧快照。
+
+模型路由在调用启动边界读取，而不是在循环启动时永久缓存。经典 Loop 每轮、子任务重试和 Loop+ 角色适配器读取最新持久化路由；最终 `runPromptNow` 在配置队列就绪后再次刷新本次角色模型，避免排队期间旧 prompt 覆盖新选择。已开始的调用不打断。
+
+`src/extensionHost/loopModelSwitchResume.ts` 恢复停止的未完成执行。经典 Loop 仅启动不在执行的开放子任务，复用原子会话和现有重试/收尾链路，等待原控制器退出后按活跃子任务门禁唤醒主任务；Loop+ 复用调度器的开放 attempt，不重启活跃同级。冷宿主通过显式恢复重建控制器，必须从子任务记录保留 `taskType` 和 `codingDelivery`，避免分离模式的前端任务恢复成后端路由；普通继续仍保留中断开放项等待语义。
 
 ## Tab 运行状态与配置协调
 

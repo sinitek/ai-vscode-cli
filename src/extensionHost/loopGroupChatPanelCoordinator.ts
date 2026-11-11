@@ -4,15 +4,10 @@ import type * as vscode from "vscode";
 import type { CliName, ThinkingMode } from "../cli/types";
 import {
   continueModelPairFromLoopRouting,
-  emptyContinueModelPair,
-  hasContinueModel,
-  loopModelRoutingFromPair,
-  normalizeContinueModelSource,
   promptModelsFromContinuePair,
   resolveCurrentLoopModelPair,
-  resolveLoopContinueModelPair,
-  type ContinueModelSource,
 } from "../continueModelChoice";
+import { applyLoopModelRoutingToPrompt, buildLoopModelSwitchState, resolveLoopModelSwitch, type LoopModelSwitchDeps } from "../loopModelSwitch";
 import {
   formatOrchestratorClarificationAnswer,
   loopClarificationScope,
@@ -78,7 +73,8 @@ type LoopPromptTarget = {
   cli: CliName;
 };
 
-type LoopGroupChatPanelDeps = {
+type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
+  prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
   getExtensionUri: () => vscode.Uri;
   getMessageLimit?: () => number;
   panelsByTaskId: Map<string, LoopGroupChatPanel>;
@@ -138,6 +134,7 @@ type LoopGroupChatPanelDeps = {
   showWarningMessage: (message: string) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
+  resumeLoopSubtasks?: (taskId: string, resumeMain: () => void) => boolean | void;
   readLoopPlusAcceptancePlans?: () => LoopPlusAcceptancePlan[];
   readLoopPlusAcceptancePlanSelection?: () => string;
   saveLoopPlusAcceptancePlan?: (input: {
@@ -182,13 +179,6 @@ export function buildLoopGroupChatPanelState(
     t: deps.t,
   });
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
-  const cli = target?.cli ?? task.cli;
-  const originalModels = task.originProfile?.configId
-    ? {
-      ...continueModelPairFromLoopRouting(task.modelRouting),
-      ...(task.loopSubtaskMode ? { loopSubtaskMode: task.loopSubtaskMode } : {}),
-    }
-    : emptyContinueModelPair();
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -201,21 +191,7 @@ export function buildLoopGroupChatPanelState(
     ...acceptancePlanState,
     messageLimit: deps.getMessageLimit?.(),
     mainModelBusy: Boolean(target && deps.isTabRunActive(target.tabId)),
-    continueModels: {
-      original: originalModels,
-      current: resolveCurrentLoopModelPair({
-        cli,
-        configId: deps.getActiveConfigIdForCli(cli),
-        getSelectedCliModel: deps.getSelectedCliModel,
-        getSelectedLoopCliModel: deps.getSelectedLoopCliModel,
-        getSelectedLoopSubtaskCli: deps.getSelectedLoopSubtaskCli,
-        getSelectedLoopFrontendCli: deps.getSelectedLoopFrontendCli,
-        getSelectedLoopFullstackCli: deps.getSelectedLoopFullstackCli,
-        getSelectedLoopSubtaskMode: deps.getSelectedLoopSubtaskMode,
-        getLoopRoleExplicitModel: deps.getLoopRoleExplicitModel,
-        getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
-      }),
-    },
+    modelSwitch: buildLoopModelSwitchState(task, deps),
   };
 }
 
@@ -337,11 +313,12 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showWarningMessage(deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
+    await deps.prepareModelSwitchOptions?.(task);
     panel.setAskThread(ensureAskThread(task));
-    panel.update(buildLoopGroupChatPanelState(task, deps));
+    panel.update(buildLoopGroupChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
   };
 
-  const runContinuation = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
+  const runContinuation = async (taskId: string, prompt?: unknown, resumeIdle = false): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
@@ -354,8 +331,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showWarningMessage(deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
-    const controlState = resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds());
-    if (!controlState.canContinue) {
+    const runningTaskIds = deps.collectRunningTaskIds();
+    const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
+    const canResumeIdle = resumeIdle && task.status !== "completed"
+      && (task.schedulingMode === "event_driven" || !runningTaskIds.has(task.id));
+    if (!controlState.canContinue && !canResumeIdle) {
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
         controlState.isRunning
@@ -366,16 +346,8 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
 
     await deps.revealPanelView();
-    const modelSource = normalizeContinueModelSource(modelSourceValue);
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
-    if (modelSource === "original") {
-      const originalModels = task.originProfile?.configId
-        ? continueModelPairFromLoopRouting(task.modelRouting)
-        : emptyContinueModelPair();
-      if (!task.originProfile?.configId || !hasContinueModel(originalModels) || !deps.restoreOriginalLoopRuntime) {
-        deps.showWarningMessage(deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
-        return;
-      }
+    if (task.originProfile?.configId && task.modelRouting && deps.restoreOriginalLoopRuntime) {
       const restored = await deps.restoreOriginalLoopRuntime(task);
       if (!restored.ok || !restored.target?.tabId) {
         deps.showWarningMessage(restored.message || deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
@@ -386,18 +358,17 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         return;
       }
       const profile = task.originProfile;
-      await deps.runLoopPrompt({
+      await deps.runLoopPrompt(applyLoopModelRoutingToPrompt({
         displayPrompt: resumePrompt,
         modelPrompt: resumePrompt,
         contextTags: [],
-        ...promptModelsFromContinuePair(originalModels),
         ...(task.loopSubtaskMode ? { loopSubtaskMode: task.loopSubtaskMode } : {}),
         ...(profile.mainThinkingMode ? { loopMainThinkingMode: profile.mainThinkingMode } : {}),
         ...(profile.subtaskThinkingMode ? { loopSubtaskThinkingMode: profile.subtaskThinkingMode } : {}),
         ...(profile.subtaskFrontendThinkingMode ? { loopSubtaskFrontendThinkingMode: profile.subtaskFrontendThinkingMode } : {}),
         ...(profile.subtaskFullstackThinkingMode ? { loopSubtaskFullstackThinkingMode: profile.subtaskFullstackThinkingMode } : {}),
         loopContinuePrompt: resumePrompt,
-      }, {
+      }, task.modelRouting), {
         targetTabId: restored.target.tabId,
         resumeTaskId: task.id,
         resumeRequested: true,
@@ -437,41 +408,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showWarningMessage(currentModels.unavailableReason);
       return;
     }
-    const selectedModels = resolveLoopContinueModelPair({
-      modelSource,
-      original: emptyContinueModelPair(),
-      current: currentModels,
-    });
-    if (modelSource === "current") {
-      const nextRouting = loopModelRoutingFromPair(currentModels);
-      if (nextRouting) {
-        const originProfile = deps.captureCurrentLoopOriginProfile?.({
-          cli: target.cli,
-          configId: activeConfigId,
-          mainModel: currentModels.main,
-          subtaskModel: currentModels.subtask,
-          subtaskCli: currentModels.subtaskCli,
-          subtaskConfigId: currentModels.subtaskConfigId,
-          frontendModel: currentModels.frontend,
-          frontendCli: currentModels.frontendCli,
-          frontendConfigId: currentModels.frontendConfigId,
-          fullstackModel: currentModels.fullstack,
-          fullstackCli: currentModels.fullstackCli,
-          fullstackConfigId: currentModels.fullstackConfigId,
-        }) ?? undefined;
-        deps.updateTaskRecord(task.id, {
-          modelRouting: nextRouting,
-          ...(currentModels.loopSubtaskMode ? { loopSubtaskMode: currentModels.loopSubtaskMode } : {}),
-          ...(originProfile ? { originProfile } : {}),
-          updatedAt: Date.now(),
-        });
-      }
-    }
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
       contextTags: [],
-      ...promptModelsFromContinuePair(selectedModels),
+      ...promptModelsFromContinuePair(currentModels),
       loopContinuePrompt: resumePrompt,
     }, {
       targetTabId: target.tabId,
@@ -482,7 +423,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     await refresh(normalizedTaskId);
   };
 
-  const continueTask = async (taskId: string, prompt?: unknown, modelSourceValue?: unknown): Promise<void> => {
+  const continueTask = async (taskId: string, prompt?: unknown, _legacySource?: unknown, resumeIdle = false): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id)
       ?? taskId;
@@ -491,7 +432,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
     continuingTaskIds.add(normalizedTaskId);
     try {
-      await runContinuation(normalizedTaskId, prompt, modelSourceValue);
+      await runContinuation(normalizedTaskId, prompt, resumeIdle);
     } catch (error) {
       deps.showWarningMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -505,6 +446,50 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
           canContinue: task ? resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue : false,
         });
       }
+    }
+  };
+
+  const switchingTaskIds = new Set<string>();
+  const switchModels = async (taskId: string, models: unknown): Promise<void> => {
+    if (switchingTaskIds.has(taskId)) {
+      return;
+    }
+    switchingTaskIds.add(taskId);
+    try {
+      let task = deps.readTaskRecord(taskId);
+      if (!task) {
+        throw new Error(deps.t("loopGroupChatChat.taskMissing", { taskId }));
+      }
+      await deps.prepareModelSwitchOptions?.(task);
+      task = deps.readTaskRecord(taskId);
+      if (!task) {
+        throw new Error(deps.t("loopGroupChatChat.taskMissing", { taskId }));
+      }
+      const result = resolveLoopModelSwitch(task, buildLoopModelSwitchState(task, deps), models);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      const updated = deps.updateTaskRecord(task.id, {
+        modelRouting: result.modelRouting,
+        originProfile: { ...task.originProfile, configId: result.configId },
+        updatedAt: Date.now(),
+      });
+      if (!updated) {
+        throw new Error("模型保存失败，请刷新后重试。");
+      }
+      await refresh(taskId);
+      const resumeMain = () => { void continueTask(taskId, undefined, undefined, true); };
+      const handled = deps.resumeLoopSubtasks?.(taskId, resumeMain);
+      postToPanel(taskId, { type: "loopGroupChatChat:switchModelsSettled", ok: true });
+      if (handled === false || (handled !== true && resolveLoopTaskRunControlState(updated, deps.collectRunningTaskIds()).canContinue)) {
+        resumeMain();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      postToPanel(taskId, { type: "loopGroupChatChat:switchModelsSettled", ok: false, error: message });
+      deps.showWarningMessage(message);
+    } finally {
+      switchingTaskIds.delete(taskId);
     }
   };
 
@@ -755,7 +740,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       return;
     }
     if (message.type === "loopGroupChatChat:continueTask") {
-      await continueTask(taskId, message.prompt, message.modelSource);
+      await continueTask(taskId, message.prompt);
+      return;
+    }
+    if (message.type === "loopGroupChatChat:switchModels") {
+      await switchModels(taskId, message.models);
       return;
     }
     if (message.type === "loopGroupChatChat:supplementTask") {
@@ -962,6 +951,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showInformationMessage(deps.t("loopGroupChatChat.noTask"));
       return;
     }
+    await deps.prepareModelSwitchOptions?.(task);
     const state = buildLoopGroupChatPanelState(task, deps);
     let panel = deps.panelsByTaskId.get(task.id);
     if (!panel) {
@@ -997,6 +987,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
   return {
     open,
     continueTask,
+    switchModels,
     refresh,
     refreshOpenPanelForTask,
     buildMessageAction,

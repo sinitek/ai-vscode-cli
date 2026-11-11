@@ -88,6 +88,94 @@ function createContinuationRecoveryHarness() {
     get runs() { return runs; }, get refreshes() { return refreshes; } };
 }
 
+for (const running of [true, false]) {
+  test(`switching task models ${running ? "does not interrupt running calls" : "automatically continues paused work"}`, async () => {
+    const env = createContinuationRecoveryHarness();
+    env.task.status = running ? "running" : "stopped";
+    let resumed = 0;
+    env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+    env.deps.collectRunningTaskIds = () => new Set(running ? [env.task.id] : []);
+    env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+    env.deps.resumeLoopSubtasks = () => { resumed += 1; };
+    await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+    await delay(0);
+    assert.equal(env.task.modelRouting?.main.model, "new-model");
+    assert.equal(env.task.modelRouting?.subtaskFullstack?.model, "new-model");
+    assert.equal(env.runs, running ? 0 : 1);
+    assert.equal(resumed, 1);
+    assert.deepEqual(env.warnings, []);
+    assert.ok(env.messages.some((message) => message.type === "loopGroupChatChat:switchModelsSettled"));
+  });
+}
+
+test("invalid model switch does not write or resume a task", async () => {
+  const env = createContinuationRecoveryHarness();
+  let writes = 0;
+  env.deps.updateTaskRecord = () => { writes += 1; return env.task; };
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "available", label: "可用模型" }];
+  await env.coordinator.switchModels(env.task.id, { main: "foreign", fullstack: "available" });
+  assert.equal(writes, 0);
+  assert.equal(env.runs, 0);
+  assert.equal(env.warnings.length, 1);
+});
+
+test("duplicate model submissions save and resume only once while options load", async () => {
+  const env = createContinuationRecoveryHarness();
+  let writes = 0;
+  let release = () => undefined as void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  env.deps.prepareModelSwitchOptions = () => gate;
+  env.deps.updateTaskRecord = (_taskId, patch) => { writes += 1; return Object.assign(env.task, patch); };
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  const models = { main: "new-model", fullstack: "new-model" };
+  const first = env.coordinator.switchModels(env.task.id, models);
+  const second = env.coordinator.switchModels(env.task.id, models);
+  release();
+  await Promise.all([first, second]);
+  await delay(0);
+  assert.equal(writes, 1);
+  assert.equal(env.runs, 1);
+});
+
+test("model switch resumes a cold task despite stale persisted running status", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  env.deps.resumeLoopSubtasks = () => false;
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+  await delay(0);
+  assert.equal(env.runs, 1);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("model switch can resume paused Loop+ control while a sibling child remains active", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "needs-review";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  env.deps.resumeLoopSubtasks = () => false;
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+  await delay(0);
+  assert.equal(env.runs, 1);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("model switch waits for resumed children before starting their parent", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  let resumeMain = () => undefined as void;
+  env.deps.resumeLoopSubtasks = (_taskId, resume) => { resumeMain = resume; return true; };
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+  assert.equal(env.runs, 0);
+  env.task.status = "running";
+  resumeMain();
+  await delay(0);
+  assert.equal(env.runs, 1);
+});
+
 test("failed original-runtime restoration settles continuation and allows a second attempt", async () => {
   const harness = createContinuationRecoveryHarness();
   const restore = harness.deps.restoreOriginalLoopRuntime;
@@ -200,7 +288,7 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
 });
 
 for (const originalMode of ["split", "fullstack"] as const) {
-  test(`Loop+ continue preview preserves ${originalMode} and reads all current role selections`, () => {
+  test(`Loop+ model switch preserves task ${originalMode} instead of current UI mode`, () => {
     const task = createStoppedTask();
     task.schedulingMode = "event_driven";
     task.loopSubtaskMode = originalMode;
@@ -251,20 +339,9 @@ for (const originalMode of ["split", "fullstack"] as const) {
       t: ((key: string) => key) as Parameters<typeof buildLoopGroupChatPanelState>[1]["t"],
     });
 
-    assert.equal(state.continueModels?.original.loopSubtaskMode, originalMode);
-    assert.equal(state.continueModels?.original.frontend, "original-frontend");
-    assert.equal(state.continueModels?.original.fullstack, "original-fullstack");
-    assert.deepEqual(state.continueModels?.current, {
-      main: "current-main",
-      subtask: "current-backend",
-      frontend: "current-frontend",
-      frontendCli: "claude",
-      frontendConfigId: "claude-config",
-      fullstack: "current-fullstack",
-      fullstackCli: "grok",
-      fullstackConfigId: "grok-config",
-      loopSubtaskMode: currentMode,
-    });
+    assert.deepEqual(state.modelSwitch?.fields.map((field) => field.role), originalMode === "split"
+      ? ["main", "subtask", "frontend"] : ["main", "fullstack"]);
+    assert.equal(state.modelSwitch?.fields[0].model, "original-main");
   });
 }
 
@@ -333,7 +410,7 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
   assert.deepEqual(continueTargetOptions, { createIfMissing: true });
 });
 
-test("Loop group chat continuation can keep the recorded main and subtask models", async () => {
+test("legacy tasks without a runtime profile continue without choosing a model source", async () => {
   const task = createStoppedTask();
   task.modelRouting = {
     main: { model: "original-main" },
@@ -386,16 +463,12 @@ test("Loop group chat continuation can keep the recorded main and subtask models
   const coordinator = createLoopGroupChatPanelCoordinator(deps);
   await coordinator.continueTask(task.id, "继续", "original");
 
-  assert.deepEqual(warnings, ["loopGroupChatChat.originalRuntimeUnavailable"]);
-  assert.equal(runCalls.length, 0);
+  assert.deepEqual(warnings, []);
+  assert.equal(runCalls.length, 1);
 
   await coordinator.continueTask(task.id, "继续", "current");
 
-  assert.equal(patches.length, 1);
-  assert.deepEqual(patches[0]?.modelRouting, {
-    main: { model: "current-main" },
-    subtask: { model: "current-subtask" },
-  });
+  assert.equal(patches.length, 0);
   assert.equal(runCalls[0]?.model, "current-main");
   assert.equal(runCalls[0]?.loopSubtaskModel, "current-subtask");
 });

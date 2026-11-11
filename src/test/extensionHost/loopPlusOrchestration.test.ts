@@ -1362,6 +1362,79 @@ test("rejects a damaged event_driven snapshot without downgrading or clearing it
   assert.equal(env.tasks.get(missing.id)?.schedulingMode, "event_driven");
 });
 
+test("model switch resumes interrupted attempts once without disturbing running attempts", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])] }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const attemptId = env.attempts[0].request.attemptId;
+  env.host.resumeInterruptedSubtasks(taskId);
+  assert.equal(env.attempts.length, 2);
+  env.attempts[0].resolve({ outcome: "stopped", detail: "stopped" });
+  await flush();
+  env.host.resumeInterruptedSubtasks(taskId);
+  env.host.resumeInterruptedSubtasks(taskId);
+  await flush();
+  assert.equal(env.attempts.length, 3);
+  assert.equal(env.attempts[2].request.attemptId, attemptId);
+  assert.equal(env.attempts[2].request.subtaskId, "alpha");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).running.length, 2);
+  assert.equal(env.reports.length, 0);
+  env.attempts[2].resolve({ outcome: "completed", detail: "切换后完成" });
+  await flush();
+  assert.equal(env.reports.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.attemptId, attemptId);
+});
+
+test("model switch reconstructs a cold controller and resumes its interrupted reservation", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const attemptId = env.attempts[0].request.attemptId;
+  env.attempts[0].resolve({ outcome: "stopped", detail: "stopped" });
+  await flush();
+  const cold = env.reloadHost();
+  assert.equal(cold.resumeInterruptedSubtasks(taskId), false);
+  cold.tryRun({ displayPrompt: "继续" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.attempts[1].request.attemptId, attemptId);
+  assert.equal(env.tasks.get(taskId)?.subTasks[0].status, "running");
+  assert.equal(cold.resumeInterruptedSubtasks(taskId), true);
+  await flush();
+  assert.equal(env.attempts.length, 2);
+});
+
+test("cold split frontend resume preserves its role and new frontend model", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([{ subtaskId: "front", attemptId: "front-1", title: "前端", writeFiles: ["src/ui.ts"], taskType: "frontend" }]);
+  const task = baseTask("split-cold", scheduler.snapshot());
+  task.loopSubtaskMode = "split";
+  task.modelRouting = {
+    main: { model: "new-main" }, subtask: { cli: "codex", configId: "backend-config", model: "new-backend" },
+    subtaskFrontend: { cli: "opencode", configId: "frontend-config", model: "new-frontend" },
+  };
+  task.subTasks = [{ id: "front", title: "前端", prompt: longPrompt("前端", ["src/ui.ts"]), taskType: "frontend", writeFiles: ["src/ui.ts"], status: "blocked" }];
+  env.tasks.set(task.id, task);
+  assert.equal(env.host.resumeInterruptedSubtasks(task.id), false);
+  env.host.tryRun({ displayPrompt: "继续", loopSubtaskFrontendModel: "cached-frontend" }, env.target, {
+    resumeTaskId: task.id, resumeRequested: true,
+  });
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0].request.attemptId, "front-1");
+  assert.equal(env.attempts[0].request.targetCli, "opencode");
+  assert.equal(env.attempts[0].request.execution?.role, "frontend");
+  assert.equal(env.attempts[0].request.execution?.model, "new-frontend");
+  assert.equal(env.tasks.get(task.id)?.subTasks[0].taskType, "frontend");
+});
+
 test("manual interruption keeps an open reservation until a successful continuation notification", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

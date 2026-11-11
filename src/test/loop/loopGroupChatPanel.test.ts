@@ -140,10 +140,9 @@ test("does not render removed automatic wake controls for review tasks", () => {
   assert.doesNotMatch(html, /Automatic sleep|Scheduled wake|window\.setInterval\(updateAutoWakeCountdown/u);
   assert.doesNotMatch(html, /<button[^>]*data-action="stopTask"/u);
   assert.match(html, /<button[^>]*data-action="continueTask"/u);
-  assert.match(html, /恢复原分组和配置/u);
-  assert.match(html, /使用新配置的主子模型/u);
-  assert.match(html, /value="original" disabled/u);
-  assert.match(html, /loopGroupChatChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/u);
+  assert.match(html, /data-action="switchModels"[^>]*>切模型<\/button>/u);
+  assert.doesNotMatch(html, /name="continueModelSource"/u);
+  assert.match(html, /loopGroupChatChat:continueTask", prompt \}/u);
 });
 
 test("hides the continue model choice when speaking in Loop and Loop+ group chat", () => {
@@ -177,9 +176,9 @@ test("hides the continue model choice when speaking in Loop and Loop+ group chat
     html.indexOf("function openContinueDialog"),
     html.indexOf("function closeContinueDialog"),
   );
-  assert.match(supplementDialog, /setContinueModelChoiceVisible\(false\)/);
+  assert.doesNotMatch(supplementDialog, /continueModelSource/);
   assert.doesNotMatch(supplementDialog, /setContinueModelChoiceVisible\(true\)/);
-  assert.match(continueDialog, /setContinueModelChoiceVisible\(true\)/);
+  assert.doesNotMatch(continueDialog, /continueModelSource/);
   assert.match(html, /loopGroupChatChat:supplementTask", prompt \}/);
   assert.doesNotMatch(html, /loopGroupChatChat:supplementTask", prompt, modelSource/);
   const askDialog = html.slice(
@@ -193,7 +192,7 @@ test("hides the continue model choice when speaking in Loop and Loop+ group chat
   assert.match(html, /ask-chat-message waiting/);
   assert.match(html, /ask-chat-waiting/);
   assert.doesNotMatch(html, /ask-chat-message thinking/);
-  assert.match(html, /loopGroupChatChat:continueTask", prompt, modelSource: readContinueModelSource\(\)/);
+  assert.match(html, /loopGroupChatChat:continueTask", prompt \}/);
 });
 
 test("restores the supplement dialog before a main-task refresh can mark it closed", () => {
@@ -238,122 +237,26 @@ test("restores the supplement dialog before a main-task refresh can mark it clos
   assert.doesNotMatch(animationFrame, /restoreDialogState\(\)/);
 });
 
-test("renders recorded and current Loop models on the continue dialog", () => {
-  const html = buildLoopGroupChatPanelHtml(
-    { cspSource: "self" } as any,
-    {
-      continueModels: {
-        original: { main: "original-main", subtask: "original-subtask" },
-        current: {
-          main: "current-main", subtask: "current-subtask", loopSubtaskMode: "fullstack",
-          frontend: "hidden-frontend", fullstack: "hidden-fullstack",
-        },
-      },
-      task: {
-        id: "task-models",
-        cli: "codex",
-        status: "stopped",
-        rootPrompt: "Continue the task.",
-        taskStoreFile: "/tmp/loop-tasks.json",
-        mainCommunicationFile: "/tmp/main-task.md",
-        currentRound: 2,
-        updatedAt: Date.now(),
-        canSupplement: true,
-        canContinue: true,
-        canStop: false,
-      },
-      rounds: [],
-      chatMarkdown: "",
-    },
-  );
-
-  assert.match(html, /恢复原分组和配置/u);
-  assert.match(html, /使用新配置的主子模型/u);
-  assert.match(html, /主模型 original-main，子模型 original-subtask/u);
-  assert.match(html, /主模型 current-main，子模型 current-subtask/u);
-  assert.doesNotMatch(html, /hidden-frontend|hidden-fullstack|子-后端|子-前端|子-全栈/u);
-  assert.match(html, /value="original" checked/u);
-  assert.doesNotMatch(html, /value="original" disabled/u);
-});
-
-for (const originalMode of ["split", "fullstack"] as const) {
-  test(`Loop+ continue dialog renders ${originalMode} separately from the current mode`, () => {
-    const currentMode = originalMode === "split" ? "fullstack" : "split";
+for (const roles of [["main", "subtask"], ["main", "fullstack"], ["main", "subtask", "frontend"]] as const) {
+  test(`renders independent model switching fields for ${roles.join("/")}`, () => {
     const state = createState({
-      loopPlus: {
-        ok: true,
-        schedulingMode: "event_driven",
-        activity: "stopped",
-        phase: "stopped",
-        wakePending: false,
-        currentReview: null,
-        reviewQueue: [],
-        currentReviewCount: 0,
-        reviewQueueCount: 0,
-        visibleReviewCount: 0,
-        running: [],
-        pending: [],
-        runningCount: 0,
-        pendingCount: 0,
-        seenAttempts: [],
-      },
-      continueModels: {
-        original: {
-          main: "original-main", subtask: "original-backend", subtaskCli: "codex",
-          frontend: "original-frontend", frontendCli: "claude",
-          fullstack: "original-fullstack", fullstackCli: "grok",
-          loopSubtaskMode: originalMode,
-        },
-        current: {
-          main: "current-main", subtask: "current-backend", subtaskCli: "codex",
-          frontend: "current-frontend", frontendCli: "claude",
-          fullstack: "current-fullstack", fullstackCli: "grok",
-          loopSubtaskMode: currentMode,
-        },
-      },
+      modelSwitch: { fields: roles.map((role) => ({
+        role, label: role === "main" ? "主模型" : "子模型", cli: "codex", configId: "current-config",
+        model: `${role}-old`, options: [{ value: `${role}-new`, label: `${role} 新模型` }],
+      })) },
     });
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
-    const choiceHtml = html.slice(html.indexOf('<div id="continueModelChoice"'), html.indexOf('id="continueDialogError"'));
-    for (const [source, mode] of [["original", originalMode], ["current", currentMode]]) {
-      if (mode === "split") {
-        assert.ok(choiceHtml.includes(`主模型 ${source}-main，子-后端 codex / ${source}-backend，子-前端 claude / ${source}-frontend`));
-        assert.ok(!choiceHtml.includes(`${source}-fullstack`));
-      } else {
-        assert.ok(choiceHtml.includes(`主模型 ${source}-main，子-全栈 grok / ${source}-fullstack`));
-        assert.ok(!choiceHtml.includes(`${source}-backend`));
-        assert.ok(!choiceHtml.includes(`${source}-frontend`));
-      }
+    assert.match(html, /data-action="switchModels"[^>]*>切模型<\/button>/u);
+    assert.doesNotMatch(html, /name="continueModelSource"|恢复原分组和配置|使用新配置的主子模型/u);
+    for (const role of roles) {
+      assert.ok(html.includes(`data-model-role="${role}"`));
+      assert.ok(html.includes(`value="${role}-new"`));
     }
+    const patch = buildLoopGroupChatPanelContentPatch(state, 2);
+    assert.ok(patch.modelSwitchHtml.includes('data-config-id="current-config"'));
+    assert.match(html, /下一次主、子模型执行使用新模型/u);
   });
 }
-
-test("Loop+ continue dialog infers legacy split routes and preserves legacy atomic models", () => {
-  const state = createState({
-    loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "legacy" },
-    continueModels: {
-      original: { main: "legacy-main", subtask: "legacy-backend", frontendCli: "claude" },
-      current: { main: "atomic-main", subtask: "atomic-subtask" },
-    },
-  });
-  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
-  assert.match(html, /主模型 legacy-main，子-后端 legacy-backend，子-前端 claude \/ 默认模型/u);
-  assert.match(html, /主模型 atomic-main，子-全栈 atomic-subtask/u);
-});
-
-test("Loop+ continue dialog shows missing role models without reusing inactive routes", () => {
-  const state = createState({
-    loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "missing" },
-    continueModels: {
-      original: { main: null, subtask: null },
-      current: { main: "current-main", subtask: "inactive-backend", loopSubtaskMode: "fullstack" },
-    },
-  });
-  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
-  assert.match(html, /主模型 current-main，子-全栈 未记录/u);
-  assert.doesNotMatch(html, /inactive-backend/u);
-  assert.match(html, /value="original" disabled/u);
-  assert.match(html, /value="current" checked/u);
-});
 
 function createSidebarHarness(narrow = true) {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
@@ -603,66 +506,6 @@ test("refreshes the current runtime configuration immediately when the continue 
   assert.equal(context.continueDialogMode, "continue");
 });
 
-for (const scenario of [
-  { name: "current selection and focus", source: "current", hidden: false, focused: true, originalAvailable: true, empty: false, expected: "current" },
-  { name: "original selection", source: "original", hidden: false, focused: false, originalAvailable: true, empty: false, expected: "original" },
-  { name: "unavailable original fallback", source: "original", hidden: false, focused: true, originalAvailable: false, empty: false, expected: "current" },
-  { name: "hidden supplement controls", source: "current", hidden: true, focused: false, originalAvailable: true, empty: false, expected: "current" },
-  { name: "empty patch", source: "current", hidden: false, focused: false, originalAvailable: true, empty: true, expected: "current" },
-]) {
-  test(`updates continue configuration while the dialog is open and preserves ${scenario.name}`, () => {
-    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
-    const readSource = html.slice(html.indexOf("function readContinueModelSource"), html.indexOf("function setContinueModelChoiceVisible"));
-    const replaceChoice = html.slice(html.indexOf("function replaceContinueModelChoice"), html.indexOf("function applyClarificationPatch"));
-    let focusedSource: string | undefined;
-    type ModelChoiceHarness = {
-      hidden: boolean;
-      querySelector: (selector: string) => { value: string; disabled: boolean; checked?: boolean; focus: () => void };
-      contains: () => boolean;
-      replaceWith: (next: ModelChoiceHarness) => void;
-    };
-    const createChoice = (selectedSource: string, originalAvailable: boolean): ModelChoiceHarness => ({
-      hidden: false,
-      querySelector: (selector: string) => {
-        const value = selector.includes(":checked") ? selectedSource : selector.includes('value="original"') ? "original" : "current";
-        return {
-          value,
-          disabled: value === "original" && !originalAvailable,
-          set checked(checked: boolean) {
-            if (checked) {
-              selectedSource = value;
-            }
-          },
-          focus: () => { focusedSource = value; },
-        };
-      },
-      contains: () => scenario.focused,
-      replaceWith: (next) => { current = next; },
-    });
-    let current = createChoice(scenario.source, true);
-    const original = current;
-    current.hidden = scenario.hidden;
-    const next = createChoice(scenario.originalAvailable ? "original" : "current", scenario.originalAvailable);
-    const document = {
-      activeElement: {},
-      getElementById: () => current,
-      querySelector: (selector: string) => current.querySelector(selector),
-      createElement: () => ({ innerHTML: "", firstElementChild: next }),
-    };
-
-    vm.runInNewContext(`${readSource}\n${replaceChoice}\nreplaceContinueModelChoice(incomingHtml);`, {
-      document,
-      continueDialogMode: "continue",
-      incomingHtml: scenario.empty ? "" : "<div>更新后的配置</div>",
-    });
-
-    assert.equal(current, scenario.empty ? original : next);
-    assert.equal(current.hidden, scenario.hidden);
-    assert.equal(current.querySelector(":checked").value, scenario.expected);
-    assert.equal(focusedSource, scenario.focused ? scenario.expected : undefined);
-  });
-}
-
 function createPanelHarness() {
   const vscode = require("vscode") as any;
   const harness: any = {
@@ -714,7 +557,7 @@ function createScrollElement(tagName: string, children: ScrollElementHarness[] =
 
 function createScrollPatchHarness(normalizeHtml: (value: string) => string = (value) => value) {
   const page = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
-  const source = page.slice(page.indexOf("function captureNestedScrollState"), page.indexOf("function replaceContinueModelChoice"));
+  const source = page.slice(page.indexOf("function captureNestedScrollState"), page.indexOf("function applyClarificationPatch"));
   const slot = createScrollElement("DIV", [createScrollElement("ARTICLE", [
     createScrollElement("PRE"),
     createScrollElement("DIV", [createScrollElement("TABLE")]),

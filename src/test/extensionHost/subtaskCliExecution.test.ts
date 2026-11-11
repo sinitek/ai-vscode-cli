@@ -292,15 +292,23 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
     resolvePromptRunTargetSessionId: () => null,
   } as never);
 
-  const status = await host.runLoopSubtasksBatchWithRetry({
+  const subtask = { ...(reuseSession ? { continueFromSubtaskId: "previous" } : {}), id: "sub-1", title: "Implement", prompt: "do the work", status: "pending" as const };
+  const runOptions: Parameters<typeof host.runLoopSubtasksBatchWithRetry>[0] = {
     input: { displayPrompt: "ship it", modelPrompt: "ship it", contextTags: [], model: "gpt-6.1-sol", loopSubtaskModel: "stale-subtask-model", loopSubtaskThinkingMode: "low" },
     target: parent,
     task,
     round: 1,
-    subtasks: [{ ...(reuseSession ? { continueFromSubtaskId: "previous" } : {}), id: "sub-1", title: "Implement", prompt: "do the work", status: "pending" }],
-  });
+    subtasks: [subtask],
+  };
+  const pending = host.runLoopSubtasksBatchWithRetry(runOptions);
+  assert.equal(host.isSubtaskRunning(task.id, subtask.id), true);
+  const duplicate = host.runLoopSubtaskWithRetry({ ...runOptions, subtask });
+  const [status, resumedStatus] = await Promise.all([pending, duplicate]);
 
   assert.equal(status[0]?.status, "end");
+  assert.equal(resumedStatus, "end");
+  assert.equal(host.isSubtaskRunning(task.id, subtask.id), false);
+  assert.equal(prompts.length, 1);
   assert.equal(parent.cli, mainCli);
   assert.equal(parent.sessionId, "main-session");
   assert.equal(created.length, 1);
@@ -308,7 +316,7 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   assert.equal(created[0]?.sessionId, reuseSession ? "claude-previous" : null);
   assert.equal(created[0]?.tabId, `sub-${subtaskCli}`);
   assert.notEqual(prompts[0]?.targetTabId, parent.tabId);
-  assert.equal(prompts[0]?.input.loopSubtaskCli, sameCli ? undefined : subtaskCli);
+  assert.equal(prompts[0]?.input.loopSubtaskCli, subtaskCli);
   assert.equal(prompts[0]?.input.loopSubtaskConfigId, "claude-config");
   assert.equal(prompts[0]?.input.loopSubtaskModel, "gpt-6.1-terra");
   assert.equal(prompts[0]?.input.model, "gpt-6.1-terra");
@@ -346,6 +354,7 @@ test("classic Loop refuses a missing cross-CLI config instead of running the mai
   const messages: string[] = [];
   const host = createLoopOrchestrationHost({
     appendSystemMessageForLoop: (_target: PromptRunTarget, message: string) => { messages.push(message); },
+    readLoopTaskRecord: () => task,
     markLoopSubtaskRunFinished: () => undefined,
     createLoopSubtaskRunTarget: (cli: CliName) => {
       created.push(cli);

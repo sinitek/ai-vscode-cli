@@ -146,6 +146,62 @@ function reportText(rootDir: string): string {
   return chunks.join("\n");
 }
 
+test("model switch applies persisted routing to the next main and child call, not the active invocation", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      assert.equal(input.model, "main-model");
+      await fixture.holdMain();
+      assert.equal(input.model, "main-model");
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("changed", "src/changed.ts")] }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.equal(input.model, "new-main");
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.modelPrompt)) });
+    });
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.mainCalls.length === 1, "first main invocation");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    const record = fixture.readTask(taskId)!;
+    fixture.saveTask({ ...record, modelRouting: { main: { model: "new-main" }, subtask: { model: "new-child" } } });
+    fixture.releaseHeldMain();
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("changed"), "changed model child invocation");
+    assert.equal(fixture.attemptCalls[0].model, "new-child");
+    fixture.finishParked("changed", { status: "end", content: "已完成" });
+    await running;
+    assert.equal(fixture.mainCalls[1].model, "new-main");
+    assert.equal(fixture.refusals.length, 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+for (const preserveLoopOrigin of [true, false]) {
+  test(`explicit continuation ${preserveLoopOrigin ? "preserves task routing from group chat" : "persists the main tab selection"}`, async () => {
+    const fixture = createLoopPlusRuntimeFixture({ configId: "current-config" });
+    try {
+      const task: import("../../loopTaskStore").LoopTaskRecord = {
+        id: "resume-models", cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
+        rootPrompt: "完成任务", schedulingMode: "event_driven", loopPlus: createLoopPlusScheduler({ maxConcurrency: 2 }).snapshot(),
+        status: "stopped", createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 20, currentRound: 0,
+        communicationDir: path.join(fixture.rootDir, "comm"), mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+        subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
+        modelRouting: { main: { model: "stored-main" }, subtask: { model: "stored-child" } },
+      };
+      fixture.saveTask(task);
+      fixture.queueMain((input, tabId) => {
+        assert.equal(input.model, preserveLoopOrigin ? "stored-main" : "main-model");
+        fixture.publish(input, tabId, { status: "end", content: decision({ status: "wait", subtasks: [] }) });
+      });
+      await fixture.adapter.runEventDriven(prompt(), { resumeTaskId: task.id, resumeRequested: true, preserveLoopOrigin }, fixture.target);
+      assert.equal(fixture.readTask(task.id)?.modelRouting?.main.model, preserveLoopOrigin ? "stored-main" : "main-model");
+      assert.equal(fixture.readTask(task.id)?.modelRouting?.subtask.model, preserveLoopOrigin ? "stored-child" : "sub-model");
+    } finally {
+      fixture.dispose();
+    }
+  });
+}
+
 test("adapter starts ten independent subtasks using only the configured dispatch limit", async () => {
   const fixture = createLoopPlusRuntimeFixture({ decisionSubtaskMax: () => 10 });
   try {

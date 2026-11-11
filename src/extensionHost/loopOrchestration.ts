@@ -5,6 +5,7 @@ import type { I18nKey } from "../i18n";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { resolveStoredSubtaskExecution } from "../subtaskCliRoute";
+import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import type { SubagentProgressController, SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { LoopTaskRole, TaskRunStatus } from "../promptRunState";
 import type { LoopMainDecision, LoopSubtaskRecord, LoopTaskRecord } from "../loopTaskStore";
@@ -134,6 +135,7 @@ type LoopOrchestrationRequiredHostDeps =
 export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps>;
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
+  const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
   const requiredDeps = deps as LoopOrchestrationRequiredHostDeps;
   const {
     appendLoopRound,
@@ -660,12 +662,24 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   }
 
   async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
+    const key = `${options.task.id}:${options.subtask.id}`;
+    const existing = subtaskRuns.get(key);
+    if (existing) return existing;
+    const run = executeLoopSubtaskWithRetry(options).finally(() => {
+      if (subtaskRuns.get(key) === run) subtaskRuns.delete(key);
+    });
+    subtaskRuns.set(key, run);
+    return run;
+  }
+
+  async function executeLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
     const { input, target, task, round, subtask } = options;
-    const execution = resolveStoredSubtaskExecution({
+    const latestTask = readLoopTaskRecord(task.id) ?? task;
+    let execution = resolveStoredSubtaskExecution({
       mainCli: target.cli,
-      route: task.modelRouting?.subtask,
-      routeFallback: task.modelRouting?.subtask.fallback,
-      prompt: input,
+      route: latestTask.modelRouting?.subtask,
+      routeFallback: latestTask.modelRouting?.subtask.fallback,
+      prompt: applyLoopModelRoutingToPrompt(input, latestTask.modelRouting),
       originThinkingMode: task.originProfile?.subtaskThinkingMode,
     });
     execution.configId ??= deps.getActiveConfigIdForCli?.(execution.cli) ?? null;
@@ -743,6 +757,19 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         if (isLoopTaskExecutionInterrupted(task.id)) {
           terminalProgressStatus = "interrupted";
           return "stopped";
+        }
+        const currentTask = readLoopTaskRecord(task.id) ?? task;
+        execution = resolveStoredSubtaskExecution({
+          mainCli: target.cli,
+          route: currentTask.modelRouting?.subtask,
+          routeFallback: currentTask.modelRouting?.subtask.fallback,
+          prompt: applyLoopModelRoutingToPrompt(input, currentTask.modelRouting),
+          originThinkingMode: currentTask.originProfile?.subtaskThinkingMode,
+        });
+        execution.configId ??= deps.getActiveConfigIdForCli?.(execution.cli) ?? null;
+        if (execution.unavailableReason) {
+          appendSystemMessageForLoop(target, execution.unavailableReason);
+          return "error";
         }
         if (!subtaskTarget) {
           const continuation = resolveLoopSubtaskSession(readLoopTaskRecord(task.id) ?? task, subtask, execution.cli, execution.configId);
@@ -908,14 +935,14 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const routedInput: PromptRunInput = role === "subtask"
       ? {
         ...input,
-        ...(options.crossCli ? {
+        ...(options.crossCli || latestTask.modelRouting?.subtask.cli ? {
           loopSubtaskCli: options.executionCli,
         } : {}),
         loopSubtaskModel: options.boundSubtaskModel,
         ...(options.boundThinkingMode ? { loopSubtaskThinkingMode: options.boundThinkingMode } : {}),
         ...(options.executionConfigId ? { loopSubtaskConfigId: options.executionConfigId } : {}),
       }
-      : input;
+      : applyLoopModelRoutingToPrompt(input, latestTask.modelRouting);
     const roleModel = resolvePromptRunModelForRole(routedInput, role);
     const thinkingCli = role === "subtask" ? (options.executionCli ?? target.cli) : target.cli;
     const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, thinkingCli, role, roleModel, {
@@ -1136,6 +1163,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     readTextFileIfNonEmpty,
     runClassicLoopMainDecision,
     runLoopSubtasksBatchWithRetry,
+    runLoopSubtaskWithRetry,
+    isSubtaskRunning: (taskId: string, subtaskId: string) => subtaskRuns.has(`${taskId}:${subtaskId}`),
     writeTextFileEnsuringDir,
   };
 }

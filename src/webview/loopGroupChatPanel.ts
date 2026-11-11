@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/acceptancePlan";
 import { getWebviewStrings } from "./viewContentStrings";
-import { renderContinueModelChoiceHtml } from "../continueModelChoice";
+import { LOOP_MODEL_SWITCH_SCRIPT, renderLoopModelSwitchFields } from "./loopModelSwitchDialog";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
 import { selectLoopGroupChatBubbles, type LoopGroupChatBubbleWindow } from "./loopGroupChatBubbleRetention";
@@ -203,7 +203,7 @@ export type LoopGroupChatPanelContentPatch = {
   timelineHtml: string;
   clarificationHtml: string;
   clarificationInteractionId: string;
-  continueModelChoiceHtml: string;
+  modelSwitchHtml: string;
 };
 
 export function buildLoopGroupChatPanelContentPatch(
@@ -229,7 +229,7 @@ export function buildLoopGroupChatPanelContentPatch(
       { submit: "loopGroupChatChat:submitClarification", reject: "loopGroupChatChat:rejectClarification" },
     ),
     clarificationInteractionId: state.clarification?.interactionId ?? "",
-    continueModelChoiceHtml: renderContinueModelChoice(state, strings),
+    modelSwitchHtml: renderLoopModelSwitchFields(state.modelSwitch),
   };
 }
 
@@ -276,8 +276,18 @@ ${renderPanelDialog({
         describedBy: "continueDialogDescription",
         titleHtml: `<h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>`,
         descriptionHtml: `<p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>`,
-        bodyHtml: `<div class="dialog-body">${renderContinueModelChoice(state, strings)}<label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label><textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea><div id="continueDialogError" class="dialog-error" aria-live="polite"></div></div>`,
+        bodyHtml: `<div class="dialog-body"><label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label><textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea><div id="continueDialogError" class="dialog-error" aria-live="polite"></div></div>`,
         actionsHtml: renderModalActions("dialog-actions", `<button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.continueCancel)}</button><button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>`),
+      })}
+${renderPanelDialog({
+        backdropId: "modelSwitchBackdrop",
+        backdropAttributes: [["aria-hidden", "true"]],
+        labelledBy: "modelSwitchTitle",
+        describedBy: "modelSwitchDescription",
+        titleHtml: '<h2 id="modelSwitchTitle" class="dialog-title">切模型</h2>',
+        descriptionHtml: '<p id="modelSwitchDescription" class="dialog-description">在各角色所在 CLI 的当前配置中选择模型。提交后，下一次主、子模型执行使用新模型；正在执行的调用不受影响，已暂停的任务直接继续。</p>',
+        bodyHtml: `<div class="dialog-body">${patch.modelSwitchHtml}<div id="modelSwitchError" class="dialog-error" aria-live="polite"></div></div>`,
+        actionsHtml: renderModalActions("dialog-actions", '<button id="modelSwitchCancel" class="button" type="button">取消</button><button id="modelSwitchConfirm" class="button primary" type="button">提交</button>'),
       })}
       ${renderPanelDialog({
         backdropId: "askChatBackdrop",
@@ -451,7 +461,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	            open: continueDialogOpen,
 	            mode: continueDialogMode,
 	            prompt: continueDialogInput ? continueDialogInput.value : existingDialog.prompt,
-	            modelSource: readContinueModelSource(),
 	          },
 	        });
 	      }
@@ -549,21 +558,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        vscode.postMessage({ type: "loopGroupChatChat:refresh" });
 	      }
 
-	      function readContinueModelSource() {
-	        const selected = document.querySelector('input[name="continueModelSource"]:checked');
-	        if (!selected || selected.disabled || selected.value !== "original") {
-	          return "current";
-	        }
-	        return "original";
-	      }
-
-	      function setContinueModelChoiceVisible(visible) {
-	        const choice = document.getElementById("continueModelChoice");
-	        if (choice) {
-	          choice.hidden = !visible;
-	        }
-	      }
-
 	      function setContinueDialogError(message) {
 	        if (!continueDialogError) {
 	          return;
@@ -582,7 +576,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
-	        setContinueModelChoiceVisible(true);
 	        saveDialogState();
 	        requestRefresh();
 	        window.setTimeout(() => {
@@ -619,7 +612,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (liveContinueButton) {
 	          liveContinueButton.disabled = true;
 	        }
-	        vscode.postMessage({ type: "loopGroupChatChat:continueTask", prompt, modelSource: readContinueModelSource() });
+	        vscode.postMessage({ type: "loopGroupChatChat:continueTask", prompt });
 	      }
 
 	      function applyContinueTaskSettled(message) {
@@ -664,7 +657,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          labelElement.textContent = "${escapeJsString(strings.supplementPromptLabel)}";
 	        }
 	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.supplementPromptDefault)}";
-	        setContinueModelChoiceVisible(false);
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
@@ -899,12 +891,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        } else {
 	          return;
 	        }
-	        if (dialog.modelSource === "original" || dialog.modelSource === "current") {
-	          const radio = document.querySelector('input[name="continueModelSource"][value="' + dialog.modelSource + '"]');
-	          if (radio && !radio.disabled) {
-	            radio.checked = true;
-	          }
-	        }
 	        saveDialogState();
 	      }
 
@@ -1078,32 +1064,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        renderedSlotHtml.set(slot, { source: html });
 	      }
 
-	      function replaceContinueModelChoice(html) {
-	        if (typeof html !== "string" || !html) {
-	          return;
-	        }
-	        const current = document.getElementById("continueModelChoice");
-	        if (!current) {
-	          return;
-	        }
-	        const selectedSource = readContinueModelSource();
-	        const hadFocus = current.contains(document.activeElement);
-	        const holder = document.createElement("div");
-	        holder.innerHTML = html;
-	        const next = holder.firstElementChild;
-	        if (next) {
-	          next.hidden = current.hidden;
-	          const selected = next.querySelector('input[name="continueModelSource"][value="' + selectedSource + '"]');
-	          if (selected && !selected.disabled) {
-	            selected.checked = true;
-	          }
-	          current.replaceWith(next);
-	          if (hadFocus) {
-	            next.querySelector('input[name="continueModelSource"]:checked')?.focus();
-	          }
-	        }
-	      }
-
 	      function applyClarificationPatch(html, interactionId) {
 	        const slot = document.getElementById("clarificationSlot");
 	        if (!slot || typeof html !== "string") {
@@ -1159,7 +1119,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          updateScrollToBottomButton();
 	        }
 	        applyClarificationPatch(message.clarificationHtml, message.clarificationInteractionId);
-	        replaceContinueModelChoice(message.continueModelChoiceHtml);
 	        return true;
 	      }
 
@@ -1431,6 +1390,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
           mountGroupChatMarkdown(document);
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
+${LOOP_MODEL_SWITCH_SCRIPT}
 ${state.loopPlus ? renderGroupAcceptancePlanScript(state) : ""}
 	      vscode.postMessage({ type: "loopGroupChatChat:domReady", generation: PANEL_GENERATION });
 	    </script>
@@ -1458,6 +1418,9 @@ function renderPanelActions(
       : "",
     state.loopPlus && state.task.status !== "completed"
       ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(strings.acceptancePlan)}</button>`
+      : "",
+    state.task.status !== "completed"
+      ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
       : "",
     state.task.canContinue && !state.task.canStop
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
@@ -2015,29 +1978,6 @@ function formatTemplate(template: string, params: Record<string, string | number
   return template.replace(/\{(\w+)\}/g, (match, key) => (
     Object.prototype.hasOwnProperty.call(params, key) ? String(params[key]) : match
   ));
-}
-
-function renderContinueModelChoice(
-  state: LoopGroupChatPanelState,
-  strings: LoopGroupChatPanelStrings,
-): string {
-  return renderContinueModelChoiceHtml({
-    choice: state.continueModels,
-    loopPlus: Boolean(state.loopPlus),
-    strings: {
-      label: strings.continueModelChoiceLabel,
-      originalTitle: strings.continueModelOriginal,
-      originalHint: strings.continueModelOriginalHint,
-      originalUnavailable: strings.continueModelOriginalUnavailable,
-      currentTitle: strings.continueModelCurrent,
-      currentHint: strings.continueModelCurrentHint,
-      summary: strings.continueModelSummary,
-      splitSummary: strings.continueModelSplitSummary,
-      fullstackSummary: strings.continueModelFullstackSummary,
-      unrecorded: strings.continueModelUnrecorded,
-    },
-    escapeHtml,
-  });
 }
 
 function escapeHtml(value: string): string {

@@ -1,5 +1,7 @@
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import type { ThinkingMode } from "../cli/types";
+import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
+import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { LoopTaskRecord } from "../loopTaskStore";
@@ -238,11 +240,12 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     execution?: { configId: string | null; model?: string; thinkingMode?: ThinkingMode },
   ): PromptRunInput {
     const task = deps.readTask(taskId);
+    const live = livePrompts.get(taskId) ?? null;
     const binding: LoopPlusPromptRoleBinding = resolveLoopPlusPromptRoleBinding({
       role,
       task,
       executionRole,
-      live: livePrompts.get(taskId) ?? null,
+      live: task?.modelRouting ? applyLoopModelRoutingToPrompt(live ?? {}, task.modelRouting) : live,
     });
     const promptInput: PromptRunInput = {
       ...(livePrompts.get(taskId)?.configSelections ? { configSelections: livePrompts.get(taskId)!.configSelections } : {}),
@@ -589,6 +592,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       return true;
     }
     if (existing && resumeRequested) {
+      if (!preserveLoopOrigin) {
+        const configId = deps.getActiveConfigIdForCli?.(target.cli);
+        const modelRouting = loopModelRoutingFromPromptInput(input, { mainCli: target.cli });
+        existing = deps.updateTask(existing.id, {
+          modelRouting: modelRouting ?? undefined,
+          ...(configId ? { originProfile: { ...existing.originProfile, configId } } : {}),
+          updatedAt: now(),
+        }) ?? existing;
+      }
       rememberLivePrompt(existing.id, input);
       const mergedRequirements = mergeLoopPlusResumeContinueInstruction(
         existing.supplementalRequirements,

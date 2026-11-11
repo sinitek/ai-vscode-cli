@@ -240,6 +240,8 @@ import { buildEditorContextState, buildLoopMainResumeText, buildLoopSubtaskBatch
 import { appendHiddenRetryErrorTraceMessage, buildHiddenRetryLimitMessage, buildHiddenRetryQueuedMessage, buildHiddenRetryStartedMessage, getAttemptFailureMessage, getErrorInfo, HIDDEN_RETRY_MAX_RETRIES, isAbortErrorInfo, isHiddenRetryEligibleAttempt, waitForHiddenRetryDelay } from "./promptRetry";
 import { isLoopResumePrompt, normalizeLoopResumePrompt } from "./loopTaskMessagePolicy";
 import { createLoopGroupChatPanelCoordinator } from "./extensionHost/loopGroupChatPanelCoordinator";
+import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, type LoopModelSwitchOption } from "./loopModelSwitch";
+import { createLoopModelSwitchResumeCoordinator } from "./extensionHost/loopModelSwitchResume";
 import { createPanelDiagnosticsInspector } from "./panelDiagnostics";
 import { buildCliCommandNotFoundMessage, buildCodexImageSupportWarningKey, buildLoopCompletedConclusionAndSummaryMarkdown, buildLoopRoundSummary, buildLoopSupplementalRequirementsLines, createConfigHeartbeatCoordinator, getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings, loadConfigStateWithDeps, loadConfigStateByCli, normalizeCliInstallStatus, normalizeLoopSupplementalRequirement, probeCodexImageSupportStatus, resolveLoopResumeRound, resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState, type CodexImageSupportStatus } from "./webviewCommandCoordinator";
 import { type PromptHistoryStore } from "./promptHistoryStore";
@@ -2785,92 +2787,75 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
       return { ok: false, message: t("loopGroupChatChat.continueUnavailable") };
     }
     await switchVisibleConversationTabForLoop(prepared.tabId);
-    const mainModel = task.modelRouting?.main.model ?? null;
-    const subtaskModel = task.modelRouting?.subtask.model ?? null;
-    const sameCliSubtask = !parseCliName(task.modelRouting?.subtask.cli) || parseCliName(task.modelRouting?.subtask.cli) === task.cli;
-    if (task.cli === "opencode") {
-      if (mainModel) {
-        const mainError = await updateOpenCodeRoleModelForConfig("main", mainModel, profile.configId);
-        if (mainError) {
-          return { ok: false, message: mainError };
-        }
-      }
-      if (sameCliSubtask && subtaskModel) {
-        const subtaskError = await updateOpenCodeRoleModelForConfig("subtask", subtaskModel, profile.configId);
-        if (subtaskError) {
-          return { ok: false, message: subtaskError };
-        }
-      }
-      if (profile.mainOpenCodeVariant && mainModel) {
-        persistOpenCodeVariant(profile.configId, mainModel, "main", profile.mainOpenCodeVariant);
-      }
-      if (sameCliSubtask && profile.subtaskOpenCodeVariant && subtaskModel) {
-        persistOpenCodeVariant(profile.configId, subtaskModel, "subtask", profile.subtaskOpenCodeVariant);
-      }
-      await refreshOpenCodeThinkingState(await loadConfigState("opencode"));
-    } else if (task.cli === "codex" || task.cli === "grok" || task.cli === "kimi-code") {
-      if (mainModel) {
-        selectCliLoopModel(task.cli, "main", mainModel, profile.configId);
-      }
-      if (sameCliSubtask && subtaskModel) {
-        selectCliLoopModel(task.cli, "subtask", subtaskModel, profile.configId);
-      }
-      if (profile.mainThinkingMode && mainModel) {
-        setSelectedLoopThinkingMode(task.cli, "main", mainModel, profile.mainThinkingMode, profile.configId);
-      }
-      if (sameCliSubtask && profile.subtaskThinkingMode && subtaskModel) {
-        setSelectedLoopThinkingMode(task.cli, "subtask", subtaskModel, profile.subtaskThinkingMode, profile.configId);
-      }
-    } else if (task.cli === "claude" && profile.mainThinkingMode) {
-      setCliModelThinkingMode(task.cli, mainModel, profile.mainThinkingMode);
-    }
-    const boundSubtaskCli = parseCliName(task.modelRouting?.subtask.cli);
-    if (boundSubtaskCli) {
-      selectLoopSubtaskCli(profile.configId, boundSubtaskCli);
-    }
-    if (boundSubtaskCli && boundSubtaskCli !== task.cli) {
-      const subtaskConfigId = task.modelRouting?.subtask.configId?.trim() || "";
-      if (!subtaskConfigId) {
+    const routes = task.schedulingMode === "event_driven"
+      ? task.loopSubtaskMode === "split" || (!task.loopSubtaskMode && task.modelRouting?.subtaskFrontend)
+        ? [task.modelRouting?.subtask, task.modelRouting?.subtaskFrontend]
+        : [task.modelRouting?.subtaskFullstack ?? task.modelRouting?.subtask]
+      : [task.modelRouting?.subtask];
+    for (const route of routes) {
+      if (!route?.cli || route.cli === task.cli) continue;
+      if (!route.configId) {
         return { ok: false, message: "目标 CLI 没有可用配置，不能派发子任务。" };
       }
-      const subtaskConfig = await configService.getConfigById(boundSubtaskCli, subtaskConfigId);
-      if (!subtaskConfig) {
-        return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
-      }
-      const subtaskApplied = await applyConfigById(boundSubtaskCli, subtaskConfigId, { reuseActiveProfile: true });
-      if (subtaskApplied !== "applied") {
-        return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: subtaskConfigId }) };
-      }
-      if (boundSubtaskCli === "opencode") {
-        if (subtaskModel) {
-          const subtaskError = await updateOpenCodeRoleModelForConfig("subtask", subtaskModel, subtaskConfigId);
-          if (subtaskError) {
-            return { ok: false, message: subtaskError };
-          }
-        }
-        if (profile.subtaskOpenCodeVariant && subtaskModel) {
-          persistOpenCodeVariant(subtaskConfigId, subtaskModel, "subtask", profile.subtaskOpenCodeVariant);
-        }
-      } else if (boundSubtaskCli === "claude") {
-        if (profile.subtaskThinkingMode) {
-          setSelectedLoopThinkingMode(boundSubtaskCli, "subtask", null, profile.subtaskThinkingMode, subtaskConfigId);
-          setCliModelThinkingMode(boundSubtaskCli, null, profile.subtaskThinkingMode);
-        }
-      } else if (subtaskModel) {
-        selectCliLoopModel(boundSubtaskCli, "subtask", subtaskModel, subtaskConfigId);
-        if (profile.subtaskThinkingMode) {
-          setSelectedLoopThinkingMode(boundSubtaskCli, "subtask", subtaskModel, profile.subtaskThinkingMode, subtaskConfigId);
-        }
+      const childConfig = await configService.getConfigById(route.cli, route.configId);
+      if (!childConfig || await applyConfigById(route.cli, route.configId, { reuseActiveProfile: true }) !== "applied") {
+        return { ok: false, message: t("loopGroupChatChat.originalConfigMissing", { configId: route.configId }) };
       }
     }
-    await postPanelState();
     return { ok: true, target: { tabId: prepared.tabId, cli: task.cli } };
   } catch (error) {
     return { ok: false, message: errorToMessage(error) };
   }
 }
 
+const loopModelSwitchOpenCodeOptions = new Map<string, LoopModelSwitchOption[]>();
+const loopModelSwitchResumeCoordinator = createLoopModelSwitchResumeCoordinator({
+  readTask: readLoopTaskRecord,
+  updateTask: updateLoopTaskRecord,
+  resumeEventDrivenSubtasks: (taskId) => getLoopPlusOrchestrationHost().resumeInterruptedSubtasks(taskId),
+  hasClassicController: (taskId) => loopOrchestrationOwnership.getCount(taskId) > 0,
+  waitForClassicIdle: (taskId) => loopOrchestrationOwnership.waitForIdle(taskId),
+  isSubtaskRunning: (taskId, subtaskId) => {
+    if (requireLoopOrchestrationHost().isSubtaskRunning(taskId, subtaskId)) return true;
+    return ensureConversationTabs().tabs.some((tab) => {
+      const context = resolveLoopSubtaskConversationContext(tab.cli, tab.id);
+      return context?.taskId === taskId && context.subtaskId === subtaskId && isTabRunActive(tab.id);
+    });
+  },
+  runClassicSubtask: async (task, subtask) => {
+    const target = resolveLoopMainPromptTarget(task, { createIfMissing: true });
+    if (!target) throw new Error("无法恢复主任务会话，请重新打开任务后重试。");
+    const profile = task.originProfile;
+    return requireLoopOrchestrationHost().runLoopSubtaskWithRetry({
+      input: applyLoopModelRoutingToPrompt({
+        displayPrompt: t("run.hiddenContinuePrompt"),
+        modelPrompt: task.rootPrompt,
+        contextTags: [],
+        loopMainThinkingMode: profile?.mainThinkingMode,
+        loopSubtaskThinkingMode: profile?.subtaskThinkingMode,
+      }, task.modelRouting),
+      target,
+      task,
+      round: task.currentRound,
+      subtask,
+      switchVisible: false,
+    });
+  },
+  onError: (error) => { void vscode.window.showWarningMessage(errorToMessage(error)); },
+});
 const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
+  prepareModelSwitchOptions: async (task) => {
+    if (task.cli !== "opencode" && !Object.values(task.modelRouting ?? {}).some((route) => route?.cli === "opencode")) return;
+    const configId = getActiveConfigIdForCli("opencode");
+    if (!configId) return;
+    try {
+      const config = await configService.getConfigById("opencode", configId);
+      const parsed = parseOpenCodeConfigModels(config?.content ?? "{}");
+      loopModelSwitchOpenCodeOptions.set(configId, parsed.candidates.map((candidate) => ({ value: candidate.value, label: candidate.label })));
+    } catch {
+      loopModelSwitchOpenCodeOptions.set(configId, []);
+    }
+  },
   getExtensionUri: () => extensionUri,
   getMessageLimit: () => normalizeChatMessageLimit(readToolSettings().loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
   panelsByTaskId: loopGroupChatChatPanelsByTaskId,
@@ -2904,6 +2889,17 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   getSelectedLoopFullstackCli,
   getSelectedLoopSubtaskMode,
   getLoopRoleExplicitModel,
+  getLoopModelSwitchOptions: (cli, role, configId) => {
+    if (cli === "opencode") {
+      return configId ? loopModelSwitchOpenCodeOptions.get(configId) ?? [] : [];
+    }
+    const state = buildModelState({ [cli]: configId });
+    const options = state.loopOptionsByCli?.[cli]?.[role] ?? [];
+    const labels = state.labelsByCli?.[cli] ?? {};
+    const result = options.map((model) => ({ value: model, label: labels[model] || model }));
+    return cli === "claude" || (cli === "codex" && !state.configuredDefaultByCli?.codex)
+      ? [{ value: "", label: "默认" }, ...result] : result;
+  },
   captureCurrentLoopOriginProfile: ({ cli, configId, mainModel, subtaskModel, subtaskCli, subtaskConfigId, subtaskThinkingMode, frontendModel, frontendCli, frontendConfigId, fullstackModel, fullstackCli, fullstackConfigId, subtaskFrontendThinkingMode, subtaskFullstackThinkingMode }) => captureLoopOriginProfile({
     cli,
     configId,
@@ -2922,6 +2918,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     subtaskFullstackThinkingMode,
   }) ?? null,
   restoreOriginalLoopRuntime,
+  resumeLoopSubtasks: (taskId, resumeMain) => loopModelSwitchResumeCoordinator.resume(taskId, resumeMain),
   runLoopPrompt,
   stopRunsForTask: stopLoopRunsForTask,
   markTaskStoppedByUser: markLoopTaskStoppedByUser,
@@ -4309,10 +4306,15 @@ async function runLoopPromptOrchestration(
       && isLoopTaskCompatibleWithTarget(existingTask, target, { allowMissingTaskSessionId: true })
       && (!isLoopTaskCompleted(existingTask) || shouldResumeCompletedWithoutCompletionMessages)
     ) {
+      const resumeConfigId = getActiveConfigIdForCli(target.cli);
       task = updateLoopTaskRecord(existingTask.id, {
         status: "running",
         activeSubtaskId: null,
         activeSubtaskIds: [],
+        ...(resumeRequested && !preserveLoopOrigin ? {
+          modelRouting: loopModelRoutingFromPromptInput(input, { mainCli: target.cli }) ?? undefined,
+          ...(resumeConfigId ? { originProfile: { ...existingTask.originProfile, configId: resumeConfigId } } : {}),
+        } : {}),
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: shouldResumeCompletedWithoutCompletionMessages }) ?? existingTask;
       round = resolveLoopResumeRound(task);
@@ -4906,6 +4908,10 @@ async function runPromptNow(
         try {
           if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
             throw new Error("配置应用失败，任务未启动，请重新选择配置后重试。");
+          }
+          if (attemptInput.loopTaskId) {
+            attemptInput = applyLoopInvocationModelRouting(attemptInput, readLoopTaskRecord(attemptInput.loopTaskId));
+            currentAttemptInput = attemptInput;
           }
           const configState = await loadConfigState(attemptTarget.cli);
           const expected = attemptInput.configSelections?.[attemptTarget.cli]

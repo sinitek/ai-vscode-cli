@@ -12,6 +12,8 @@ import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
 import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
+import type { LoopTaskModelRouting } from "../../loopTaskStore";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
@@ -47,6 +49,7 @@ function createHarness(options: {
   configExists?: boolean;
   preflightMessage?: string;
   loopSessionId?: string;
+  loopModelRouting?: LoopTaskModelRouting;
 }) {
   const tab = { id: "target-tab", cli: options.cli, sessionId: "previous-session" as string | null };
   const events: string[] = [];
@@ -71,8 +74,11 @@ function createHarness(options: {
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
     loopMainQuestionQueue: questionQueue,
+    applyLoopInvocationModelRouting,
     shouldUseClassicLoopProjectInstructions,
-    readLoopTaskRecord: () => options.loopSessionId ? { id: "parent-loop", status: "running", subTasks: [] } : null,
+    readLoopTaskRecord: () => options.loopSessionId
+      ? { id: "parent-loop", cli: options.cli, status: "running", subTasks: [], modelRouting: options.loopModelRouting }
+      : null,
     resolvePromptRunTargetSessionId: () => options.loopSessionId ?? null,
     bindLoopSubtaskSession: (subTasks: unknown[], _subtaskId: string,
       binding: { cli: CliName; sessionId: string; configId: string | null }) => {
@@ -185,6 +191,33 @@ test("cancelling main work queued behind a question prevents a late CLI start", 
   await Promise.all([main, question]);
   assert.equal(harness.dispatched.length, 0);
   assert.equal(started, false);
+});
+
+test("a model switch during config wait reaches the next main CLI invocation", async () => {
+  let releaseWait = () => undefined as void;
+  let enteredWait = () => undefined as void;
+  const waiting = new Promise<void>((resolve) => { enteredWait = resolve; });
+  const gate = new Promise<boolean>((resolve) => { releaseWait = () => resolve(true); });
+  const routing: LoopTaskModelRouting = {
+    main: { configId: "selected-config", model: "old-main" }, subtask: { model: "old-child" },
+  };
+  const harness = createHarness({
+    cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session",
+    loopModelRouting: routing, waitForConfigApply: () => { enteredWait(); return gate; },
+  });
+  const run = harness.runPrompt({
+    displayPrompt: "继续", modelPrompt: "继续", contextTags: [], taskRole: "main", loopTaskId: "parent-loop",
+    model: "old-main", loopMainModel: "old-main", loopSubtaskModel: "old-child",
+  });
+  await waiting;
+  routing.main.model = "new-main";
+  routing.subtask.model = "new-child";
+  releaseWait();
+  await run;
+  assert.equal(harness.dispatched.length, 1);
+  assert.equal(harness.dispatched[0].input.model, "new-main");
+  assert.equal(harness.dispatched[0].input.loopMainModel, "new-main");
+  assert.equal(harness.dispatched[0].input.loopSubtaskModel, "new-child");
 });
 
 test("a question cancelled while waiting for compaction never dispatches", async () => {

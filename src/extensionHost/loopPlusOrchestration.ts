@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
@@ -292,6 +293,7 @@ export function resolveLoopPlusEntry(
 
 export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps) {
   const runtimes = new Map<string, ParentRuntime>();
+  const interruptedSubtaskResumeRequests = new Set<string>();
   const decisionSafetyLimit = deps.decisionSafetyLimit ?? DECISION_SAFETY_LIMIT;
   const protocolRetryLimit = deps.protocolRetryLimit ?? PROTOCOL_RETRY_LIMIT;
   const decisionStrategies = createLoopPlusDecisionStrategyRegistry();
@@ -347,6 +349,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       if (options.resumeRequested === true) {
         continueExplicitly(runtime);
+        if (interruptedSubtaskResumeRequests.has(runtime.taskId)) {
+          resumeInterruptedSubtasks(runtime.taskId);
+        }
       } else if (!runtime.lifecycle.settled) {
         if (
           runtime.autoPaused
@@ -512,6 +517,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           continueFromSubtaskId: subtask.continueFromSubtaskId,
           conflictGroup: subtask.conflictGroup,
           writeFiles: subtask.writeFiles,
+          taskType: subtask.taskType,
+          codingDelivery: subtask.codingDelivery,
         },
         communicationFile: subtask.communicationFile,
         summary: subtask.summary,
@@ -643,6 +650,29 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && !hasReview(runtime)
       && snapshot.running.length === 0
       && snapshot.pending.length === 0;
+  }
+
+  function resumeInterruptedSubtasks(taskId: string): boolean {
+    const runtime = runtimes.get(taskId);
+    if (!runtime || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped) {
+      if (deps.readTask(taskId)?.schedulingMode === "event_driven") {
+        interruptedSubtaskResumeRequests.add(taskId);
+      }
+      return false;
+    }
+    interruptedSubtaskResumeRequests.delete(taskId);
+    if (runtime.released || runtime.scheduler.snapshot().completed) {
+      return false;
+    }
+    const interrupted = runtime.scheduler.snapshot().running.filter((record) => (
+      runtime.meta.get(record.subtaskId)?.executionStatus === "blocked"
+      && runtime.attempts.get(record.attemptId)?.settled !== false
+      && !runtime.launching.has(record.attemptId)
+    ));
+    interrupted.forEach((record) => runtime.attempts.delete(record.attemptId));
+    launchAll(runtime, interrupted);
+    requestPump(runtime);
+    return true;
   }
 
   function reconcileLostRunning(runtime: ParentRuntime): void {
@@ -1609,7 +1639,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       frontendRoute: task?.modelRouting?.subtaskFrontend,
       fullstackRoute: task?.modelRouting?.subtaskFullstack,
       originProfile: task?.originProfile,
-      prompt: runtime.prompt,
+      prompt: applyLoopModelRoutingToPrompt(runtime.prompt, task?.modelRouting),
     });
   }
 
@@ -2550,6 +2580,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     submitUserMessage,
     hasPendingMainWork,
     applyAcceptancePlan,
+    resumeInterruptedSubtasks,
   };
 }
 

@@ -1499,12 +1499,14 @@
     },
     {
       "id": "plugin.rule.loop_continue_model_choice",
-      "name": "Loop 与 Loop+ 继续时可选择主子模型",
-      "description": "Loop 与 Loop+ 群聊点击“我要说话”只提交补充消息，不展示也不要求选择主/子模型。这些页面只有点击继续时，才必须让用户选择保持任务已绑定的主/子模型，或改用当前 Loop 模式配置的主/子模型。Loop / Loop+ 继续弹窗打开时立即刷新当前主子模型，弹窗打开期间继续应用配置补丁并保留说明、选择、焦点和显隐；原配置不可用时回退新配置。Loop 选择原配置时还要恢复 originProfile 中的 CLI 分组、配置档案、子 CLI、对应配置和思考力度；没有 configId 的旧任务不能伪造成可恢复原配置，配置档案缺失时明确失败。选择新配置会重新读取当前子 CLI 分组所选配置，并写回完整 Loop modelRouting，用于后续续跑；未记录原模型时不能伪造成保持原模型。Claude 没有模型字符串时仍是有效子路由，继续摘要用默认模型区分，不能把无模型当成无路由，也不能补成主 CLI 的模型。主任务 Tab 直接继续 不弹出该选择。",
+      "name": "Loop 与 Loop+ 独立切模型及停止任务续跑",
+      "description": "Loop 与 Loop+ 群聊按钮栏通过独立切模型选择角色模型；继续执行只填写继续说明，补充需求和我要提问不选择模型来源。各角色保持任务绑定 CLI，从该 CLI 当前激活配置复用已有下拉选项；经典 Loop 为主子，Loop+ 全栈为主和全栈，分离为主、后端和前端。提交整体校验并写回任务 modelRouting 与配置身份，不改模式、思考力度及全局模型偏好。当前调用不打断，后续主子调用、重试和复核读取最新路由；停止的未完成主子执行自动续跑，活跃同级不重启。Loop+ 中断子项复用原 attempt 和会话，经典 Loop 等待原控制器安全收尾后再唤醒主任务。刷新保留同配置有效选择与焦点，取消不写入，非法选项不落盘。默认模型是有效路由，不能补成主模型。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
-        {"path": "src/continueModelChoice.ts"},
+        {"path": "src/loopModelSwitch.ts"},
+        {"path": "src/extensionHost/loopModelSwitchResume.ts"},
+        {"path": "src/webview/loopModelSwitchDialog.ts"},
         {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
@@ -1869,7 +1871,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
