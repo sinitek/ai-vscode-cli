@@ -344,6 +344,30 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.chat_tab_running_status_priority",
+      "name": "Tab 运行状态优先于中间错误",
+      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 的中间错误保留消息但不直接标记任务失败，明确 runStatus:error 仍保留终态失败，成功、新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "syncTabErrorFromMessage"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 状态与配置协调"}
+      ]
+    },
+    {
+      "id": "plugin.rule.shared_config_snapshot_coordination",
+      "name": "共享配置只读快照不竞争写锁",
+      "description": "面板读取已有共享配置只校验原子快照，不获取写锁或回写租约。首次初始化仍互斥并二次读取；配置应用、编辑与执行租约按目录在同进程顺序排队，跨进程保留文件锁。任务启动在锁内重新核对档案和 ready，未就绪或真实跨进程超时仍拒绝启动，不强拆存活进程的锁。",
+      "status": "active",
+      "applies_to": ["plugin.config_profile", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/config/sharedRuntimeConfig.ts", "anchor": "read"},
+        {"path": "src/config/sharedRuntimeConfig.ts", "anchor": "acquire"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Tab 运行状态与配置协调"}
+      ]
+    },
+    {
       "id": "plugin.rule.history_session_subtask_filter",
       "name": "历史会话默认过滤子任务",
       "description": "历史记录的历史会话页提供默认勾选的过滤子任务复选框，仅隐藏 taskRole=subtask 的会话；取消勾选恢复展示，可与关键词搜索叠加。保留主任务、普通及未标记旧会话，不修改原始历史数据或影响历史提示词。当前 Webview 内切换页签和重开弹窗保持选择，重新初始化默认勾选。",

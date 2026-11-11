@@ -2,6 +2,13 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## AI 对话 Tab 状态与配置协调
+
+- 状态：`active`（2026-11-10）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态；明确的 `runStatus:error` 仍标记失败，成功结束、新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理。
+- 共享配置已有状态通过只读快照获取，面板刷新不获取配置写锁、不回写执行租约。首次初始化、配置应用/编辑和执行租约仍使用跨进程互斥锁；同进程同目录的事务顺序排队，不彼此轮询到超时。
+- 读取到未就绪状态不视为配置可用；任务启动仍在互斥事务中核对所选档案及就绪状态。存活进程持有的写锁不按时间强拆，真实跨窗口写操作超时仍明确拒绝启动。
+- 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/config/sharedRuntimeConfig.ts`；回归：`src/test/webview/tabRunStatus.test.ts`、`src/test/webview/conversationtabsummarytooltip.test.ts`、`src/test/config/sharedRuntimeConfig.test.ts`。
+
 ## 人机交互其它回答
 
 - 状态：`active`（2026-11-10）。Vibe 人工交互及 Loop/Loop+ 主任务澄清的每道单选、多选、下拉和多选下拉题均提供“其它”，不依赖模型是否声明 `isOther`；已有“其它 / 其他 / Other”选项直接复用。

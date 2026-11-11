@@ -8,6 +8,7 @@ export type SharedConfigSelection = VisibleConfigSelection & { profileDigest: st
 type ExecutionLease = { id: string; pid: number };
 type SharedState = SharedConfigSelection & { version: 1; leases: ExecutionLease[] };
 type LockOwner = { pid: number; token: string };
+const localOperations = new Map<string, Promise<unknown>>();
 
 export class ConfigSelectionChangedError extends Error {
   constructor() {
@@ -65,7 +66,17 @@ export class SharedRuntimeConfig {
     }
   }
 
-  private async locked<Result>(operation: () => Promise<Result>): Promise<Result> {
+  private locked<Result>(operation: () => Promise<Result>): Promise<Result> {
+    const key = path.resolve(this.directory);
+    const previous = localOperations.get(key) ?? Promise.resolve();
+    const pending = previous.catch(() => undefined).then(() => this.lockedAcrossProcesses(operation));
+    localOperations.set(key, pending);
+    return pending.finally(() => {
+      if (localOperations.get(key) === pending) localOperations.delete(key);
+    });
+  }
+
+  private async lockedAcrossProcesses<Result>(operation: () => Promise<Result>): Promise<Result> {
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
     const owner: LockOwner = { pid: process.pid, token: randomUUID() };
     const candidate = path.join(this.directory, `owner-${owner.token}`);
@@ -92,7 +103,7 @@ export class SharedRuntimeConfig {
     }
   }
 
-  private async readState(): Promise<SharedState | null> {
+  private async readState(pruneLeases = true): Promise<SharedState | null> {
     let state: SharedState;
     try {
       state = JSON.parse(await fs.readFile(this.statePath, "utf8")) as SharedState;
@@ -107,11 +118,7 @@ export class SharedRuntimeConfig {
       || state.leases.some((lease) => !lease || typeof lease.id !== "string" || !Number.isSafeInteger(lease.pid) || lease.pid <= 0)) {
       throw new Error("共享配置状态已损坏，任务未启动，请检查配置协调目录。");
     }
-    const liveLeases = state.leases.filter((lease) => isAlive(lease.pid));
-    if (liveLeases.length !== state.leases.length) {
-      state.leases = liveLeases;
-      await this.writeState(state);
-    }
+    if (pruneLeases) state.leases = state.leases.filter((lease) => isAlive(lease.pid));
     return state;
   }
 
@@ -129,6 +136,8 @@ export class SharedRuntimeConfig {
   }
 
   async read(initialize?: () => Promise<{ configId: string | null; profileDigest: string | null }>): Promise<SharedConfigSelection | null> {
+    const snapshot = await this.readState(false);
+    if (snapshot || !initialize) return snapshot ? this.selection(snapshot) : null;
     return this.locked(async () => {
       let state = await this.readState();
       if (!state && initialize) {

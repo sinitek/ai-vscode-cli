@@ -375,6 +375,17 @@ test("running, errored and locked tabs remain readable while close stays disable
   }
 });
 
+test("running tabs take precedence over an intermediate or stale error marker", () => {
+  const harness = createHarness([
+    { id: "a", cli: "codex", running: true, errored: true },
+    { id: "b", cli: "claude", running: false, errored: true },
+  ]);
+  assert.match(harness.tab("a").className, /\brunning\b/);
+  assert.doesNotMatch(harness.tab("a").className, /\berrored\b/);
+  assert.match(harness.tab("b").className, /\berrored\b/);
+  assert.doesNotMatch(harness.tab("b").className, /\brunning\b/);
+});
+
 test("viewport invalidation dismisses visible and pending tooltips", () => {
   for (const type of ["resize", "scroll", "blur", "pagehide", "visibilitychange"]) {
     for (const delay of [500, 1000]) {

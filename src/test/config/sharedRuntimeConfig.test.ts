@@ -12,6 +12,80 @@ async function withDirectory(run: (directory: string) => Promise<void>): Promise
   try { await run(directory); } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }
 
+function createSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+test("panel snapshots do not wait for a configuration writer or initialize again", async () => {
+  await withDirectory(async (directory) => {
+    const writer = new SharedRuntimeConfig(directory);
+    const reader = new SharedRuntimeConfig(directory, 30);
+    await writer.change(async () => ({ configId: "selected", profileDigest: "before" }));
+    const entered = createSignal();
+    const resume = createSignal();
+    const changing = writer.change(async () => {
+      entered.resolve();
+      await resume.promise;
+      return { configId: "selected", profileDigest: "after" };
+    });
+    await entered.promise;
+    try {
+      const snapshots = await Promise.all(Array.from({ length: 12 }, () => reader.read(async () => assert.fail("must not initialize again"))));
+      assert.ok(snapshots.every((snapshot) => snapshot?.configId === "selected" && snapshot.ready === false));
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "selection.json"), "utf8")).leases, []);
+    } finally {
+      resume.resolve();
+      await changing;
+    }
+    const selected = (await reader.read())!;
+    assert.equal(selected.profileDigest, "after");
+    const lease = await reader.acquire(selected);
+    await lease.release();
+  });
+});
+
+test("local configuration transactions queue instead of timing out behind each other", async () => {
+  await withDirectory(async (directory) => {
+    const first = new SharedRuntimeConfig(directory, 30);
+    const second = new SharedRuntimeConfig(directory, 30);
+    const entered = createSignal();
+    const writing = first.change(async () => {
+      entered.resolve();
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      return { configId: "first", profileDigest: "first" };
+    });
+    await entered.promise;
+    const queued = second.change(async () => ({ configId: "second", profileDigest: "second" }));
+    await Promise.all([writing, queued]);
+    assert.equal((await second.read())?.configId, "second");
+    await assert.rejects(first.change(async () => { throw new Error("write failed"); }), /write failed/);
+    await second.change(async () => ({ configId: "recovered", profileDigest: "recovered" }));
+    assert.equal((await first.read())?.ready, true);
+  });
+});
+
+test("concurrent first reads initialize once and an absent read does not create coordination files", async () => {
+  await withDirectory(async (directory) => {
+    const location = path.join(directory, "missing");
+    const first = new SharedRuntimeConfig(location, 30);
+    const second = new SharedRuntimeConfig(location, 30);
+    assert.equal(await first.read(), null);
+    await assert.rejects(fs.access(location), { code: "ENOENT" });
+    let initialized = 0;
+    const initialize = async () => {
+      initialized += 1;
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+      return { configId: "initial", profileDigest: "initial" };
+    };
+    const snapshots = await Promise.all([first.read(initialize), second.read(initialize)]);
+    assert.equal(initialized, 1);
+    assert.deepEqual(snapshots[0], snapshots[1]);
+    assert.equal(snapshots[0]?.ready, true);
+  });
+});
+
 test("windows reject switched profiles but accept updated revisions of the same profile", async () => {
   await withDirectory(async (directory) => {
     const first = new SharedRuntimeConfig(directory);
@@ -226,11 +300,15 @@ test("independent processes serialize writes, reject unseen selections and recov
 test("a crashed configuration writer leaves execution invalid and its process lock can be recovered", { timeout: 15000 }, async () => {
   await withDirectory(async (directory) => {
     const writer = createWorker(directory);
-    const survivor = new SharedRuntimeConfig(directory, 3000);
+    const survivor = new SharedRuntimeConfig(directory, 300);
     try {
       assert.equal(await writer.request({ action: "hold" }), "holding");
+      const snapshot = (await survivor.read())!;
+      assert.equal(snapshot.ready, false);
+      await assert.rejects(survivor.acquire(snapshot), /等待其他窗口配置操作超时/);
       await writer.stop();
       assert.equal((await survivor.read())?.ready, false);
+      await assert.rejects(survivor.acquire(snapshot), /上次配置应用未成功/);
       await survivor.change(async () => ({ configId: "recovered", profileDigest: "recovered" }));
       assert.equal((await survivor.read())?.ready, true);
     } finally { await writer.stop(); }

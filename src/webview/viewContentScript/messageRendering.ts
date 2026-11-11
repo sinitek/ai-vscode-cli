@@ -537,7 +537,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function syncTabErrorFromMessage(tabId, message) {
-        if (isErrorMessage(message)) {
+        if (isErrorMessage(message) && !isConversationTabRunning(getConversationTabSummary(tabId))) {
           setTabErrored(tabId, true);
         }
       }
@@ -2066,10 +2066,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           if (isActive) {
             tabItem.classList.add("active");
           }
-          if (isTabErrored(tab.id)) {
-            tabItem.classList.add("errored");
-          } else if (isConversationTabRunning(tab)) {
+          if (isConversationTabRunning(tab)) {
             tabItem.classList.add("running");
+          } else if (isTabErrored(tab.id)) {
+            tabItem.classList.add("errored");
           }
           tabItem.setAttribute("role", "tab");
           tabItem.setAttribute("aria-selected", String(isActive));

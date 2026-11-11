@@ -4,6 +4,14 @@
 - 更新日期：2026-11-07
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
+## Tab 运行状态与配置协调
+
+- Tab 展示先判断 `isConversationTabRunning`，再判断错误标记。运行中的 trace/system 错误可能来自可恢复工具失败，不直接判定任务终止；终态仍由宿主 `runStatus` 驱动。保留错误气泡和原有成功、重试、输出恢复逻辑。
+- `SharedRuntimeConfig.read` 对已有 `selection.json` 读取经过结构校验的原子快照，不争抢写锁、不清理磁盘租约；缺失且需要初始化时进入互斥事务并再次读取，防止重复初始化。只读可见 `ready:false`，并不赋予启动权限。
+- 配置应用、编辑和 `acquire` / `release` 仍受同一文件互斥锁保护；同进程按规范化目录建立轻量 Promise 顺序队列，跨进程才轮询文件锁。队列失败不阻断后续事务，最后一个操作完成时清除队列。
+- 失效 PID 租约仅在互斥事务中筛除，并随后续写入持久化。执行前重新检查档案与 `ready`，不凭面板快照跳过租约，也不通过超时强拆存活进程的锁。
+- 回归覆盖并发只读、未就绪配置、初始化竞争、同进程长事务、真实子进程写锁超时及崩溃恢复；只读快照不能替代启动时的一致性校验。
+
 ## 对话 Markdown 链接边界
 
 `chatMarkdown.ts` 用共享的 `normalizeChatLinkSource` 校验链接并渲染带 `data-chat-link` 的锚点；普通消息区与群聊点击委托发送 `openChatLink`，阻止 Webview 默认导航。图片按钮及下载已处理的点击不再触发外围链接。`viewProvider.ts` 和 `loopGroupChatPanel.ts` 在业务消息路由前调用 `chatLinkHost.ts`；打开操作只由点击触发，宿主重复校验来源。
