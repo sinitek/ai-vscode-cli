@@ -379,6 +379,24 @@ test("persists only the normalized global chat message limit and returns panel s
   assert.deepEqual(calls.webviewMessages, []);
 });
 
+test("persists an independent global group chat limit and rejects invalid input", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  const originalSettings = { ...state.workspaceSettings };
+  for (const value of ["234.9", 0, 20000, "", "bad", null, true]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value }, deps);
+  }
+  assert.deepEqual(calls.toolSettings, [234, 1, 10000, 200, 200, 200, 200].map((loopGroupChatMessageLimit) => ({ loopGroupChatMessageLimit })));
+  assert.equal(calls.postPanelState, 7);
+  assert.deepEqual(state.workspaceSettings, originalSettings);
+  assert.deepEqual(calls.savedSettings, []);
+  const errors: unknown[][] = [];
+  deps.updateStoredToolSettings = () => false;
+  deps.showWebviewError = (...args) => { errors.push(args); };
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value: 300 }, deps);
+  assert.match(String(errors[0][1]), /群聊气泡上限保存失败/);
+  assert.equal(calls.postPanelState, 8);
+});
+
 test("chat message limit persistence failure uses the existing error path and returns actual state", async () => {
   const { deps, calls } = createSettingHarness();
   const errors: unknown[][] = [];

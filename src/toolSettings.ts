@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
-import { normalizeChatMessageLimit } from "./chatMessageLimit";
+import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -22,6 +22,7 @@ export type ToolSettingsState = {
   loopPlusMaxAcceptances?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
+  loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
@@ -70,6 +71,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
   if ("chatMessageLimit" in record) {
     normalized.chatMessageLimit = normalizeChatMessageLimit(record.chatMessageLimit);
+  }
+  if ("loopGroupChatMessageLimit" in record) {
+    normalized.loopGroupChatMessageLimit = normalizeChatMessageLimit(record.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
   }
   if (typeof record.hideInstructionBubbles === "boolean") {
     normalized.hideInstructionBubbles = record.hideInstructionBubbles;

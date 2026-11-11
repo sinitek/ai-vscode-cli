@@ -9,7 +9,7 @@ import {
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
 } from "../loopPlusDecision";
 import { WebviewStringKey } from "./viewContentStrings";
-import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX } from "../chatMessageLimit";
+import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
 
 type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
@@ -672,6 +672,22 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   />
                 </div>
                 <div id="chatMessageLimitNote" class="tool-settings-note">${i18n.toolSettingsChatMessageLimitNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="loopGroupChatMessageLimit">${i18n.toolSettingsLoopGroupChatMessageLimitLabel}</label>
+                  <input
+                    type="number"
+                    id="loopGroupChatMessageLimit"
+                    class="tool-settings-number"
+                    min="${CHAT_MESSAGE_LIMIT_MIN}"
+                    max="${CHAT_MESSAGE_LIMIT_MAX}"
+                    step="1"
+                    value="${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT}"
+                    aria-describedby="loopGroupChatMessageLimitNote"
+                  />
+                </div>
+                <div id="loopGroupChatMessageLimitNote" class="tool-settings-note">${i18n.toolSettingsLoopGroupChatMessageLimitNote}</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">

@@ -551,6 +551,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           });
         }
         state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
+        state.loopGroupChatMessageLimit = normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
         state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
@@ -707,6 +708,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.chatMessageLimit) {
           elements.chatMessageLimit.value = String(state.chatMessageLimit);
+        }
+        if (elements.loopGroupChatMessageLimit) {
+          elements.loopGroupChatMessageLimit.value = String(state.loopGroupChatMessageLimit);
         }
         if (elements.hideInstructionBubbles) {
           elements.hideInstructionBubbles.checked = state.hideInstructionBubbles;

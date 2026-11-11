@@ -473,6 +473,16 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         });
       }
       bindCliEnabledToggles();
+      if (elements.loopGroupChatMessageLimit) {
+        const commitLoopGroupChatMessageLimit = () => {
+          const nextValue = normalizeChatMessageLimit(elements.loopGroupChatMessageLimit.value, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
+          state.loopGroupChatMessageLimit = nextValue;
+          elements.loopGroupChatMessageLimit.value = String(nextValue);
+          vscode.postMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value: nextValue });
+        };
+        elements.loopGroupChatMessageLimit.addEventListener("change", commitLoopGroupChatMessageLimit);
+        elements.loopGroupChatMessageLimit.addEventListener("blur", commitLoopGroupChatMessageLimit);
+      }
       if (elements.loopMaxRounds) {
         const commitLoopMaxRounds = () => {
           const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);

@@ -390,6 +390,7 @@ export type PanelState = {
   humanInteractionTimeoutMinutes: number;
   historyRetentionDays: number;
   chatMessageLimit?: number;
+  loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;

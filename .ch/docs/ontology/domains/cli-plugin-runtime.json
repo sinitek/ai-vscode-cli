@@ -2145,6 +2145,22 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_group_chat_message_limit",
+      "name": "Loop 与 Loop+ 群聊只渲染最新气泡窗口",
+      "description": "工具设置→AI任务配置以独立全局键 loopGroupChatMessageLimit 保存群聊显示上限，默认 200，整数范围 1–10000，非法输入回退 200。初始任务、transcript 与当前思考气泡共用计数，达到上限时按 25% 向上取整批量移除最旧气泡，默认 200→150；至少保留最新一条。同一面板的增量刷新不回填裁剪前缀；保存后立即刷新打开的群聊，改变上限或重开面板重算窗口。只改变群聊显示，不删除存档、不改变任务调度或 CLI 上下文，与普通 Tab 的 chatMessageLimit 永久清理规则独立。",
+      "status": "active",
+      "aliases": ["loopGroupChatMessageLimit", "群聊气泡上限"],
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-group-chat-bubble-limit.md"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 群聊气泡显示限额"},
+        {"path": "src/webview/loopGroupChatBubbleRetention.ts", "anchor": "selectLoopGroupChatBubbles"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
+        {"path": "src/toolSettings.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.chat_message_limit_global_setting",
       "name": "每 Tab 气泡软基准使用全局工具设置",
       "description": "约定工具设置→AI任务配置以 chatMessageLimit 写入 ~/.sinitek_cli/settings.json，各 Tab 独立使用同一全局基准。默认 500，整数范围 1–10000；有限数字及非空数字字符串先 floor 再 clamp，空值、无效类型和非有限值回退 500。PanelState.chatMessageLimit 可选兼容旧快照，实际浏览器 state 默认 500。实现及针对性合并验收记录见归档执行计划；平台验证限制以该计划说明为准。",

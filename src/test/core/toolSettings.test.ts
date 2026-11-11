@@ -33,6 +33,14 @@ test("chat message limit keeps old settings compatible and preserves neighboring
   }
 });
 
+test("group chat message limit is independent and safely normalizes global settings", () => {
+  for (const [value, expected] of [["734.9", 734], ["", 200], [null, 200], [true, 200], [Infinity, 200], [0, 1], [20000, 10000]] as const) {
+    assert.deepEqual(normalizeToolSettings({ chatMessageLimit: 500, loopGroupChatMessageLimit: value, debug: true }), {
+      chatMessageLimit: 500, loopGroupChatMessageLimit: expected, debug: true,
+    });
+  }
+});
+
 test("instruction bubble visibility accepts only booleans and keeps old settings compatible", () => {
   for (const enabled of [true, false]) {
     assert.deepEqual(normalizeToolSettings({ debug: true, hideInstructionBubbles: enabled }), {
@@ -62,9 +70,12 @@ test("chat display settings persist globally without losing other settings", () 
       assert.equal(settings.getToolSettingsFilePath(), filePath);
       assert.deepEqual(settings.readToolSettings(), expected);
       assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), expected);
+      settings.writeToolSettings({ ...settings.readToolSettings(), loopGroupChatMessageLimit: "200.9" });
+      assert.deepEqual(settings.readToolSettings(), { ...expected, loopGroupChatMessageLimit: 200 });
+      assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { ...expected, loopGroupChatMessageLimit: 200 });
       for (const enabled of [true, false]) {
         settings.writeToolSettings({ ...settings.readToolSettings(), hideInstructionBubbles: enabled });
-        const persisted = { ...expected, hideInstructionBubbles: enabled };
+        const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: enabled };
         assert.deepEqual(settings.readToolSettings(), persisted);
         assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
       }

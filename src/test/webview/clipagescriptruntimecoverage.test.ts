@@ -654,6 +654,25 @@ test("chat message limit normalizes input, immediately rerenders changes and sen
   assert.ok(posted.every((message) => message.type === "updateSetting" && message.key === "chatMessageLimit"));
 });
 
+test("group chat limit uses its independent default and normalizes edits and saved state", () => {
+  const { api, document, posted, window } = createRuntimeHarness();
+  const input = document.getElementById("loopGroupChatMessageLimit");
+  assert.equal(api.state.loopGroupChatMessageLimit, 200);
+  for (const [value, expected, eventType] of [["320.9", 320, "change"], ["", 200, "blur"], ["bad", 200, "change"], ["0", 1, "change"], ["10001", 10000, "blur"]] as const) {
+    input.value = value;
+    input.dispatchEvent({ type: eventType });
+    assert.equal(api.state.loopGroupChatMessageLimit, expected);
+    assert.equal(input.value, String(expected));
+    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopGroupChatMessageLimit", value: expected });
+    assert.equal(api.state.chatMessageLimit, 500);
+  }
+  for (const [value, expected] of [[undefined, 200], ["bad", 200], ["420.8", 420]] as const) {
+    window.dispatchMessage({ type: "state", payload: { ...createPanelState(), loopGroupChatMessageLimit: value } });
+    assert.equal(api.state.loopGroupChatMessageLimit, expected);
+    assert.equal(input.value, String(expected));
+  }
+});
+
 test("chat message limit receives saved values, invalid values and old snapshots safely", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });

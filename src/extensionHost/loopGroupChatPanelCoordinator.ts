@@ -80,6 +80,7 @@ type LoopPromptTarget = {
 
 type LoopGroupChatPanelDeps = {
   getExtensionUri: () => vscode.Uri;
+  getMessageLimit?: () => number;
   panelsByTaskId: Map<string, LoopGroupChatPanel>;
   normalizeTaskId: (value: unknown) => string | null;
   normalizeSupplementalRequirement: (value: unknown) => string | null;
@@ -198,6 +199,7 @@ export function buildLoopGroupChatPanelState(
   return {
     ...state,
     ...acceptancePlanState,
+    messageLimit: deps.getMessageLimit?.(),
     mainModelBusy: Boolean(target && deps.isTabRunActive(target.tabId)),
     continueModels: {
       original: originalModels,

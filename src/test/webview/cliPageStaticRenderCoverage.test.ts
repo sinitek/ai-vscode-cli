@@ -62,6 +62,19 @@ test("chat message limit reuses the AI task settings card between compact and Lo
   assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
 });
 
+test("group chat limit reuses the AI task settings card with its own accessible default", () => {
+  const html = buildHtml();
+  const start = html.indexOf('id="loopGroupChatMessageLimit"');
+  assert.equal(countOccurrences(html, 'id="loopGroupChatMessageLimit"'), 1);
+  assert.ok(start > html.indexOf('id="chatMessageLimit"'));
+  assert.ok(start < html.indexOf('id="loopMaxRounds"'));
+  assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
+  assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
+  assert.match(html, /<label class="tool-settings-label" for="loopGroupChatMessageLimit">Loop \/ Loop\+ 群聊气泡上限<\/label>/u);
+  assert.match(html, /<input\s+type="number"\s+id="loopGroupChatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="200"\s+aria-describedby="loopGroupChatMessageLimitNote"/u);
+  assert.match(html, /达到上限时移除最旧的 25%.*默认 50 个.*不删除聊天记录或任务数据/u);
+});
+
 test("conversation tabs use compact horizontal padding and close-button spacing", () => {
   assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*gap:\s*3px;/);
   assert.match(HEADER_TABS_STYLES, /\.conversation-tab\s*\{[^}]*padding:\s*2\.5px 5px;/);

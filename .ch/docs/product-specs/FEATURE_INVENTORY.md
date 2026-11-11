@@ -74,6 +74,13 @@
 - 仅过滤显示，不阻止指令执行、不删除消息或存档；取消勾选恢复尚未被既有保留规则删除的气泡。气泡上限仍先基于完整基础集合执行既有清理规则，再应用隐藏指令与仅显示最终结果筛选；隐藏不绕过永久清理，也不承诺恢复已被清理的消息。设置保存失败时显示中文错误并以宿主真实状态恢复开关和气泡。
 - 实现：`src/toolSettings.ts`、`src/sessionMessageActions.ts`、`src/panelStateBuilder.ts`、`src/webview/viewContentScript/messageRendering.ts`；回归：`src/test/webview/hideInstructionBubbles.test.ts`、`src/test/core/toolSettings.test.ts`、`src/test/session/sessionMessageActionsCoreCoverage.test.ts`。
 
+## Loop / Loop+ 群聊气泡显示限额
+
+- 工具设置 → AI任务配置新增“Loop / Loop+ 群聊气泡上限”，全局键 `loopGroupChatMessageLimit`，默认 200，整数范围 1–10000；有限数字及非空数字字符串向下取整并钳制，非法输入回退 200。与普通聊天的 `chatMessageLimit` 独立。
+- 群聊初始任务、历史消息及当前思考气泡共用限额。达到上限时按 25%（向上取整，默认 50 个）批量移除最旧气泡；200 条裁剪为最新 150 条，后续增长到 200 条再次裁剪。极小上限至少保留最新一条，首次打开长记录也按批次计算窗口。
+- 仅渲染保留窗口，首次 HTML 和增量更新一致；同一面板的后续刷新不恢复已裁剪前缀。保存设置立即刷新已打开群聊；改变上限或重新打开面板会从完整存档重新计算窗口。聊天文件、任务状态、CLI 日志与模型上下文不删除、不改变。
+- 实现：`src/webview/loopGroupChatBubbleRetention.ts`、`src/webview/loopGroupChatPanel.ts`、`src/toolSettings.ts`；规则及验收见 `.ch/docs/design-docs/loop-group-chat-bubble-limit.md`。
+
 ## 每 Tab 聊天气泡显示限额
 
 - 状态：已实现并通过针对性合并验收（2026-11-09）；全仓覆盖率、真实扩展宿主/CLI 与 Windows/Linux 未验证，详见归档计划。入口：工具设置 → AI任务配置；全局工具 `~/.sinitek_cli/settings.json` 的 `chatMessageLimit` 对各 Tab 分别生效，默认 500，整数范围 1–10000。有限数字及非空数字字符串向下取整后钳制；空值、空白字符串、非数字、非有限数或其它类型回退 500。

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
 import { normalizeOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
-import { normalizeChatMessageLimit } from "./chatMessageLimit";
+import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { createHumanInteractionAttentionHost } from "./extensionHost/humanInteractionAttentionHost";
 import { withHumanInteractionAttention } from "./humanInteractionAttention";
 import { notifyLoopTaskCompletion, notifyTaskRunCompletion } from "./taskCompletionAttention";
@@ -1318,6 +1318,7 @@ function buildPanelStateFromConfigState(
     getGlobalHumanInteractionTimeoutMinutes,
     getGlobalHistoryRetentionDays: getHistoryRetentionDays,
     getGlobalChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().chatMessageLimit),
+    getGlobalLoopGroupChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     getGlobalHideInstructionBubbles: () => readToolSettings().hideInstructionBubbles === true,
     getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
@@ -1981,10 +1982,16 @@ function saveStoredToolSettings(next: ToolSettingsState): boolean {
 }
 
 function updateStoredToolSettings(patch: Partial<ToolSettingsState>): boolean {
-  return saveStoredToolSettings({
+  const saved = saveStoredToolSettings({
     ...readToolSettings(),
     ...patch,
   });
+  if (saved && "loopGroupChatMessageLimit" in patch) {
+    for (const taskId of loopGroupChatChatPanelsByTaskId.keys()) {
+      refreshOpenLoopGroupChatPanelForTask(taskId);
+    }
+  }
+  return saved;
 }
 
 function retargetDisabledLoopSubtaskSelections(fallbackCli: CliName | null): void {
@@ -2862,6 +2869,7 @@ async function restoreOriginalLoopRuntime(task: LoopTaskRecord): Promise<{
 
 const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   getExtensionUri: () => extensionUri,
+  getMessageLimit: () => normalizeChatMessageLimit(readToolSettings().loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
   panelsByTaskId: loopGroupChatChatPanelsByTaskId,
   normalizeTaskId: normalizeLoopTaskId,
   normalizeSupplementalRequirement: normalizeLoopSupplementalRequirement,

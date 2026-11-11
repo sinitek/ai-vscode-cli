@@ -2,7 +2,7 @@
 import { type CliName, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { getDebugLogging } from "./cli/config";
-import { normalizeChatMessageLimit } from "./chatMessageLimit";
+import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { WEBVIEW_STRINGS } from "./webview/viewContentStrings";
 import { logInfo, setDebugLogging } from "./logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
@@ -276,6 +276,16 @@ export async function handleUpdateSettingMessage(
     const saved = deps.updateStoredToolSettings({ chatMessageLimit: normalizeChatMessageLimit(message.value) });
     if (!saved) {
       deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsChatMessageLimitSaveError);
+    }
+    await deps.postPanelState();
+    return;
+  }
+  if (message.key === "loopGroupChatMessageLimit") {
+    const saved = deps.updateStoredToolSettings({
+      loopGroupChatMessageLimit: normalizeChatMessageLimit(message.value, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
+    });
+    if (!saved) {
+      deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsLoopGroupChatMessageLimitSaveError);
     }
     await deps.postPanelState();
     return;

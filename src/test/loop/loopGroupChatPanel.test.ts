@@ -920,6 +920,77 @@ function createState(overrides: any = {}) {
   };
 }
 
+function createLongChatState(count: number, overrides: any = {}) {
+  const state = createState(overrides);
+  return {
+    ...state,
+    task: { ...state.task, status: "completed" },
+    chatMarkdown: Array.from({ length: count }, (_, index) => `## 主任务发言：第 ${index + 1} 轮\n群聊消息编号${String(index + 1).padStart(4, "0")}\n`).join("\n"),
+  };
+}
+
+test("group chat initial HTML and content patches render only the newest bounded batch", () => {
+  const state = createLongChatState(199);
+  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+  assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 150);
+  assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0049|任务发起/u);
+  assert.match(patch.timelineHtml, /群聊消息编号0050/u);
+  assert.match(patch.timelineHtml, /群聊消息编号0199/u);
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.equal((html.match(/<article class="message /g) ?? []).length, 150);
+  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(198), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 199);
+  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(1000), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 151);
+  assert.equal(state.chatMarkdown.match(/## 主任务发言/g)?.length, 199);
+});
+
+test("group chat counts live thinking bubbles and does not restore the pruned prefix when they finish", () => {
+  const state = createLongChatState(198);
+  state.task.status = "running";
+  const window = { start: 0 };
+  const running = buildLoopGroupChatPanelContentPatch(state, 1, window);
+  assert.equal((running.timelineHtml.match(/<article class="message /g) ?? []).length, 150);
+  assert.match(running.timelineHtml, /data-thinking-kind="main"/u);
+  state.task.status = "completed";
+  const completed = buildLoopGroupChatPanelContentPatch(state, 2, window);
+  assert.equal((completed.timelineHtml.match(/<article class="message /g) ?? []).length, 149);
+  assert.doesNotMatch(completed.timelineHtml, /群聊消息编号0049/u);
+  state.messageLimit = 400;
+  assert.match(buildLoopGroupChatPanelContentPatch(state, 3, window).timelineHtml, /群聊消息编号0001/u);
+});
+
+test("group chat applies custom and minimum limits to Loop+ as well as classic Loop", () => {
+  const loopPlus = { ok: false, schedulingMode: "event_driven", error: "invalid" };
+  for (const projection of [undefined, loopPlus]) {
+    const state = createLongChatState(9, { messageLimit: 10, loopPlus: projection });
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+    assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 7);
+    state.messageLimit = 1;
+    const minimum = buildLoopGroupChatPanelContentPatch(state, 2);
+    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 1);
+    assert.match(minimum.timelineHtml, /群聊消息编号0009/u);
+  }
+});
+
+test("panel instances retain the cursor across patches and reset it for a different task or setting", () => {
+  const harness = createPanelHarness();
+  const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
+  panel.show(createLongChatState(199));
+  assert.equal((harness.panel.webview.html.match(/<article class="message /g) ?? []).length, 150);
+  harness.messageHandler({ type: "loopGroupChatChat:domReady", generation: 1 });
+  const next = createLongChatState(198);
+  panel.update(next);
+  assert.equal((harness.messages.at(-1).timelineHtml.match(/<article class="message /g) ?? []).length, 149);
+  panel.update({ ...next, messageLimit: 400 });
+  assert.equal((harness.messages.at(-1).timelineHtml.match(/<article class="message /g) ?? []).length, 199);
+  panel.update(createLongChatState(249));
+  assert.doesNotMatch(harness.messages.at(-1).timelineHtml, /群聊消息编号0099/u);
+  panel.update({ ...next, task: { ...next.task, id: "other-task" } });
+  assert.match(harness.messages.at(-1).timelineHtml, /群聊消息编号0001/u);
+  harness.disposeHandler();
+  panel.show(next);
+  assert.match(harness.panel.webview.html, /群聊消息编号0001/u);
+});
+
 test("renders five progress bands beside stop and keeps subtitles limited to the task ID", () => {
   for (const loopPlus of [undefined, { ok: false, schedulingMode: "event_driven", error: "invalid" }]) {
     for (const progressPercent of [0, 19, 20, 39, 40, 59, 60, 79, 80, 99, 100]) {

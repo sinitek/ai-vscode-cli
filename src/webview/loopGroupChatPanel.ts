@@ -5,6 +5,7 @@ import { getWebviewStrings } from "./viewContentStrings";
 import { renderContinueModelChoiceHtml } from "../continueModelChoice";
 import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
 import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
+import { selectLoopGroupChatBubbles, type LoopGroupChatBubbleWindow } from "./loopGroupChatBubbleRetention";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
 import { CHAT_COPY_SCRIPT } from "./chatCopy";
 import { ChatImageHost, isChatImageMessage } from "./chatImageHost";
@@ -58,6 +59,7 @@ export class LoopGroupChatPanel {
   private domReady = false;
   private htmlInstalled = false;
   private renderGeneration = 0;
+  private readonly bubbleWindow: LoopGroupChatBubbleWindow = { start: 0 };
   private readonly imageHost = new ChatImageHost(() => this.panel?.webview);
 
   public constructor(
@@ -98,6 +100,7 @@ export class LoopGroupChatPanel {
         this.domReady = false;
         this.htmlInstalled = false;
         this.renderGeneration = 0;
+        this.bubbleWindow.start = 0;
         this.handlers.onDispose?.();
       });
     } else {
@@ -107,6 +110,9 @@ export class LoopGroupChatPanel {
   }
 
   public update(state: LoopGroupChatPanelState): void {
+    if (this.state?.task.id !== state.task.id) {
+      this.bubbleWindow.start = 0;
+    }
     this.state = state;
     if (!this.panel) {
       return;
@@ -120,6 +126,7 @@ export class LoopGroupChatPanel {
         state,
         this.askThread,
         this.renderGeneration,
+        this.bubbleWindow,
       );
       return;
     }
@@ -145,7 +152,7 @@ export class LoopGroupChatPanel {
       return;
     }
     void this.panel.webview.postMessage(
-      buildLoopGroupChatPanelContentPatch(this.state, this.renderGeneration),
+      buildLoopGroupChatPanelContentPatch(this.state, this.renderGeneration, this.bubbleWindow),
     );
   }
 
@@ -202,6 +209,7 @@ export type LoopGroupChatPanelContentPatch = {
 export function buildLoopGroupChatPanelContentPatch(
   state: LoopGroupChatPanelState,
   generation: number,
+  bubbleWindow?: LoopGroupChatBubbleWindow,
 ): LoopGroupChatPanelContentPatch {
   const strings = getStrings();
   const transcript = parseLoopGroupChatTranscript(state.chatMarkdown);
@@ -214,7 +222,7 @@ export function buildLoopGroupChatPanelContentPatch(
     actionsHtml: renderPanelActions(state, strings),
     taskPanelHtml: renderTaskPanel(state, strings),
     rosterPanelHtml: renderRosterPanel(state, strings),
-    timelineHtml: renderTimeline(state, transcript.segments, strings),
+    timelineHtml: renderTimeline(state, transcript.segments, strings, bubbleWindow),
     clarificationHtml: renderOrchestratorClarificationDialog(
       state.clarification,
       { requiredTemplate: strings.clarificationRequired },
@@ -230,10 +238,11 @@ export function buildLoopGroupChatPanelHtml(
   state: LoopGroupChatPanelState,
   askThread: LoopAskThread = createEmptyLoopAskThread(),
   generation = 0,
+  bubbleWindow?: LoopGroupChatBubbleWindow,
 ): string {
   const nonce = getNonce();
   const strings = getStrings();
-  const patch = buildLoopGroupChatPanelContentPatch(state, generation);
+  const patch = buildLoopGroupChatPanelContentPatch(state, generation, bubbleWindow);
   const heading = patch.headingText;
 
   return `<!DOCTYPE html>
@@ -1709,6 +1718,7 @@ function renderTimeline(
   state: LoopGroupChatPanelState,
   segments: LoopGroupChatSegment[],
   strings: LoopGroupChatPanelStrings,
+  bubbleWindow?: LoopGroupChatBubbleWindow,
 ): string {
   const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
   if (state.error) {
@@ -1717,11 +1727,14 @@ function renderTimeline(
   if (state.rounds.length === 0) {
     return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
   }
-  const thinkingBubbles = renderThinkingBubbles(state, strings);
+  const bubbles: Array<() => string> = initialPromptBubble ? [() => initialPromptBubble] : [];
+  const thinkingBubbles = getThinkingSpeakers(state).map((speaker) => () => renderThinkingBubble(speaker, strings));
   if (!state.chatMarkdown.trim() || segments.length === 0) {
-    return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noTranscript)}</div>${thinkingBubbles}</div>`;
+    const retained = selectLoopGroupChatBubbles([...bubbles, ...thinkingBubbles], state.messageLimit, bubbleWindow);
+    return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${retained.map((render) => render()).join("")}</div>`;
   }
-  return `<div class="timeline">${initialPromptBubble}${segments.map((segment) => renderSegment(segment, strings)).join("")}${thinkingBubbles}</div>`;
+  const timelineBubbles = bubbles.concat(segments.map((segment) => () => renderSegment(segment, strings)), thinkingBubbles);
+  return `<div class="timeline">${selectLoopGroupChatBubbles(timelineBubbles, state.messageLimit, bubbleWindow).map((render) => render()).join("")}</div>`;
 }
 
 function renderInitialTaskPromptBubble(
@@ -1742,15 +1755,6 @@ function renderInitialTaskPromptBubble(
 type RuntimeThinkingSpeaker = LoopGroupChatPanelActiveSpeaker & {
   attemptId?: string;
 };
-
-function renderThinkingBubbles(
-  state: LoopGroupChatPanelState,
-  strings: LoopGroupChatPanelStrings,
-): string {
-  return getThinkingSpeakers(state)
-    .map((speaker) => renderThinkingBubble(speaker, strings))
-    .join("");
-}
 
 function renderThinkingBubble(
   speaker: RuntimeThinkingSpeaker,

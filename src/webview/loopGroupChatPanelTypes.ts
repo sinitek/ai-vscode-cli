@@ -101,6 +101,7 @@ export type LoopPlusPanelProjection = {
 };
 
 export type LoopGroupChatPanelState = {
+  messageLimit?: number;
   mainModelBusy?: boolean;
   loopPlus?: LoopPlusPanelProjection;
   continueModels?: ContinueModelChoice;

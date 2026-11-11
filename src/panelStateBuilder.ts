@@ -64,7 +64,7 @@ import {
   resolveLoopPlusMaxAcceptances,
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
-import { normalizeChatMessageLimit } from "./chatMessageLimit";
+import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -100,6 +100,7 @@ export type PanelStateBuilderDeps = {
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
   getGlobalChatMessageLimit?: () => number;
+  getGlobalLoopGroupChatMessageLimit?: () => number;
   getGlobalHideInstructionBubbles?: () => boolean;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
@@ -217,6 +218,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     ),
     historyRetentionDays: deps.getGlobalHistoryRetentionDays?.() ?? 30,
     chatMessageLimit: normalizeChatMessageLimit(deps.getGlobalChatMessageLimit?.()),
+    loopGroupChatMessageLimit: normalizeChatMessageLimit(deps.getGlobalLoopGroupChatMessageLimit?.(), LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     hideInstructionBubbles: deps.getGlobalHideInstructionBubbles?.() === true,
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(

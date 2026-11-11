@@ -191,8 +191,11 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
     t: ((key: string) => key) as CoordinatorDeps["t"],
   };
 
-  buildLoopGroupChatPanelState(task, deps);
-
+  assert.equal(buildLoopGroupChatPanelState(task, deps).messageLimit, undefined);
+  deps.getMessageLimit = () => 320;
+  assert.equal(buildLoopGroupChatPanelState(task, deps).messageLimit, 320);
+  deps.getMessageLimit = () => 100;
+  assert.equal(buildLoopGroupChatPanelState(task, deps).messageLimit, 100);
   assert.deepEqual(createOptions, { createIfMissing: false });
 });
 
