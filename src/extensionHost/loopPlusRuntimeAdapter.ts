@@ -80,6 +80,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
   createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
   closeSubtaskTab: (tabId: string) => Promise<void>;
+  closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
   cancelInvocation: (tabId: string) => void;
   resolveSessionId: (target: LoopPlusPromptTarget) => string | null;
   activeWorkspaceKey: () => string;
@@ -378,34 +379,43 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
     let closeTabAfterAbort = false;
-    let interrupted = false;
+    let settled = false;
+    let tabClosePromise: Promise<void> | null = null;
+    const closeTab = (reason: "completed" | "main-abort"): Promise<void> => {
+      tabClosePromise ??= closeLoopPlusSubtaskTab(deps, request, subtaskTarget.tabId, reason);
+      return tabClosePromise;
+    };
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
-      const result = await withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
-        taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
-      });
-      interrupted = result.outcome === "stopped";
-      if (result.outcome === "completed" || closeTabAfterAbort) {
-        await closeLoopPlusSubtaskTab(
-          deps,
-          request,
-          subtaskTarget.tabId,
-          result.outcome === "completed" ? "completed" : "main-abort",
-        );
+      try {
+        const result = await withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
+          taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
+        });
+        if (result.outcome === "completed") {
+          await closeTab("completed");
+        }
+        return result;
+      } finally {
+        settled = true;
+        if (closeTabAfterAbort) {
+          await closeTab("main-abort");
+        }
       }
-      return result;
     })();
     return {
       promise,
       abort: (options) => {
+        closeTabAfterAbort ||= options?.closeTab === true;
         if (aborted) {
+          if (settled && closeTabAfterAbort) {
+            void closeTab("main-abort");
+          }
           return;
         }
         persistSession();
         aborted = true;
-        closeTabAfterAbort = options?.closeTab === true;
         deps.cancelInvocation(subtaskTarget.tabId);
-        if (interrupted && closeTabAfterAbort) {
-          void closeLoopPlusSubtaskTab(deps, request, subtaskTarget.tabId, "main-abort");
+        if (settled && closeTabAfterAbort) {
+          void closeTab("main-abort");
         }
       },
     };
@@ -516,6 +526,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         recordPause: deps.recordPause,
         runMain,
         startAttempt,
+        closeSubtaskTabs: deps.closeSubtaskTabs,
         prepareCommunication: deps.prepareCommunication,
         recordAttempt: (input) => {
           if (!input.communicationFile) {

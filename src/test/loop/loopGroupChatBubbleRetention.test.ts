@@ -53,3 +53,43 @@ test("group chat selection does not mutate its transcript entries", () => {
   assert.notEqual(retained, entries);
   assert.deepEqual(retained, entries.slice(50));
 });
+
+test("group chat skips supplemental requirements while removing a full batch in chronological order", () => {
+  const entries = Object.freeze(createEntries(200));
+  const preserved = new Set([0, 20, 49, 80, 199]);
+  const retained = selectLoopGroupChatBubbles(entries, 200, undefined, (entry) => preserved.has(entry));
+
+  assert.deepEqual(retained, [0, 20, 49, ...entries.slice(53)]);
+  assert.equal(retained.length, 150);
+  assert.equal(entries.length, 200);
+});
+
+test("group chat keeps preserved requirements across refreshes and successive cleanup batches", () => {
+  const window: LoopGroupChatBubbleWindow = { start: 0 };
+  const shouldPreserve = (entry: number) => [0, 20, 49, 80].includes(entry);
+
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(200), 200, window, shouldPreserve), [0, 20, 49, ...createEntries(200).slice(53)]);
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(199), 200, window, shouldPreserve), [0, 20, 49, ...createEntries(199).slice(53)]);
+  assert.equal(selectLoopGroupChatBubbles(createEntries(249), 200, window, shouldPreserve).length, 199);
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(250), 200, window, shouldPreserve), [0, 20, 49, 80, ...createEntries(250).slice(104)]);
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(250), 400, window, shouldPreserve), createEntries(250));
+});
+
+test("group chat lets protected requirements exceed the limit without dropping the newest bubble", () => {
+  const window: LoopGroupChatBubbleWindow = { start: 0 };
+  const shouldPreserve = (entry: number) => entry < 6;
+
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(10), 5, window, shouldPreserve), [0, 1, 2, 3, 4, 5, 9]);
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(10), 5, window, shouldPreserve), [0, 1, 2, 3, 4, 5, 9]);
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(11), 1, window, shouldPreserve), [0, 1, 2, 3, 4, 5, 10]);
+  assert.deepEqual(selectLoopGroupChatBubbles([], 1, window, shouldPreserve), []);
+});
+
+test("group chat retains every requirement when all entries are protected", () => {
+  const window: LoopGroupChatBubbleWindow = { start: 0 };
+  const shouldPreserve = (entry: number) => entry < 200;
+
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(200), 1, window, shouldPreserve), createEntries(200));
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(201), 1, window, shouldPreserve), createEntries(201));
+  assert.deepEqual(selectLoopGroupChatBubbles(createEntries(202), 1, window, shouldPreserve), [...createEntries(200), 201]);
+});

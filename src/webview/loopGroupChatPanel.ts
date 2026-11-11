@@ -1746,14 +1746,18 @@ function renderTimeline(
   if (state.rounds.length === 0) {
     return `<div class="timeline">${initialPromptBubble}<div class="notice">${escapeHtml(strings.noRounds)}</div></div>`;
   }
-  const bubbles: Array<() => string> = initialPromptBubble ? [() => initialPromptBubble] : [];
-  const thinkingBubbles = getThinkingSpeakers(state).map((speaker) => () => renderThinkingBubble(speaker, strings));
+  const bubbles: Array<{ render: () => string; preserve?: boolean }> = initialPromptBubble ? [{ render: () => initialPromptBubble }] : [];
+  const thinkingBubbles = getThinkingSpeakers(state).map((speaker) => ({ render: () => renderThinkingBubble(speaker, strings) }));
   if (!state.chatMarkdown.trim() || segments.length === 0) {
     const retained = selectLoopGroupChatBubbles([...bubbles, ...thinkingBubbles], state.messageLimit, bubbleWindow);
-    return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${retained.map((render) => render()).join("")}</div>`;
+    return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${retained.map((bubble) => bubble.render()).join("")}</div>`;
   }
-  const timelineBubbles = bubbles.concat(segments.map((segment) => () => renderSegment(segment, strings)), thinkingBubbles);
-  return `<div class="timeline">${selectLoopGroupChatBubbles(timelineBubbles, state.messageLimit, bubbleWindow).map((render) => render()).join("")}</div>`;
+  const timelineBubbles = bubbles.concat(segments.map((segment) => ({
+    render: () => renderSegment(segment, strings),
+    preserve: segment.kind === "user-message",
+  })), thinkingBubbles);
+  const retained = selectLoopGroupChatBubbles(timelineBubbles, state.messageLimit, bubbleWindow, (bubble) => bubble.preserve === true);
+  return `<div class="timeline">${retained.map((bubble) => bubble.render()).join("")}</div>`;
 }
 
 function renderInitialTaskPromptBubble(

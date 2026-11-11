@@ -4,9 +4,34 @@ import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../web
 import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
-import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord } from "../loopTaskStore";
+import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
+
+export function attachConversationTabLoopMemberTitle(
+  summary: ConversationTabSummary,
+  task: Pick<LoopTaskRecord, "id" | "subTasks"> | null,
+  messages: readonly ChatMessage[],
+): ConversationTabSummary {
+  if (summary.loopTaskRole !== "main" && summary.loopTaskRole !== "subtask") {
+    return summary;
+  }
+  if (summary.loopTaskRole === "main") {
+    return { ...summary, taskSummary: getLoopMainSubChatMainTitle() };
+  }
+  const context = resolveLoopSubtaskConversationContextFromMessages(messages);
+  const matchingIndices = task && task.id === summary.loopTaskId ? task.subTasks.map((subtask, index) => (
+    context
+      ? context.taskId === task.id && context.subtaskId === subtask.id
+      : Boolean(summary.sessionId && subtask.executionSession?.cli === summary.cli && subtask.executionSession.sessionId === summary.sessionId)
+  ) ? index : -1).filter((index) => index >= 0) : [];
+  const index = matchingIndices.length === 1 ? matchingIndices[0] : -1;
+  return {
+    ...summary,
+    taskSummary: task && index >= 0 ? getLoopSubtaskDisplayTitle(index, task.subTasks[index]) : undefined,
+  };
+}
 
 export type ExtensionSessionTabsHostDeps = {
   getSessionTabsController: () => SessionTabsController;
@@ -144,13 +169,19 @@ function buildConversationTabsState(): {
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
+      const task = summary.loopTaskId ? readLoopTaskRecord(summary.loopTaskId) : null;
       const withSchedulingMode = summary.loopTaskId
         ? attachConversationTabLoopSchedulingMode(
           summary,
-          readLoopTaskRecord(summary.loopTaskId)?.schedulingMode,
+          task?.schedulingMode,
         )
         : summary;
-      return withSchedulingMode;
+      const messages = summary.loopTaskRole === "subtask"
+        ? getLiveMessagesForTab(summary.id) ?? (summary.sessionId
+          ? loadSessionMessages(summary.cli, summary.sessionId)
+          : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
+        : [];
+      return attachConversationTabLoopMemberTitle(withSchedulingMode, task, messages);
     }),
   };
 }

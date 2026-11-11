@@ -59,6 +59,7 @@
 
 ## AI 对话 Tab 任务摘要
 
+- 2026-11-11：Vibe 保留以下 AI 摘要行为；Loop/Loop+ 改为直接投影群聊成员标题，主任务显示“主任务”，子任务完整显示“子任务 N：标题”（如“子任务 517：恢复SpreadJS本体源码构建与前端接入路线”），编号与群聊一致，不套用 AI 摘要的 30 码点上限。按当前 Tab 的任务/子任务元信息定位，历史消息缺元信息时可由同 CLI 的持久化执行 session 绑定恢复；缺少对应成员时不展示旧 AI 摘要。已识别的 Loop 主/子任务不额外请求 AI 摘要，不改变现有悬停时长、浮层交互和 Tab 布局。
 - 状态：`active`（2026-11-07）；用户：多会话并行的 AI 对话使用者；运行时与浮层已实现并经主审。现有提示词截取标签保留，不冒充 AI 摘要。
 - 每次新的用户可见任务提交都在 Loop 改写前捕获需求，在共同 `runPrompt` 取得实际配置执行租约后异步归纳并更新 Tab 摘要，不等完成、不阻塞任务；已有摘要或历史会话继续执行也可更新。可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。同一任务的内部调度/重试、空白 Tab、hover、刷新和仅恢复旧历史不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出保留上次有效摘要（从未成功则缺失），同次提交不重试，不用原提示截断伪造。
 - 新任务替换同 Tab 的在途摘要请求，旧结果不得覆盖新任务；更新同步保存到 Tab、草稿及当前绑定 session，已显示浮层随状态推送更新正文。刷新改进的实施与验证见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md`。
@@ -83,8 +84,8 @@
 ## Loop / Loop+ 群聊气泡显示限额
 
 - 工具设置 → AI任务配置新增“Loop / Loop+ 群聊气泡上限”，全局键 `loopGroupChatMessageLimit`，默认 200，整数范围 1–10000；有限数字及非空数字字符串向下取整并钳制，非法输入回退 200。与普通聊天的 `chatMessageLimit` 独立。
-- 群聊初始任务、历史消息及当前思考气泡共用限额。达到上限时按 25%（向上取整，默认 50 个）批量移除最旧气泡；200 条裁剪为最新 150 条，后续增长到 200 条再次裁剪。极小上限至少保留最新一条，首次打开长记录也按批次计算窗口。
-- 仅渲染保留窗口，首次 HTML 和增量更新一致；同一面板的后续刷新不恢复已裁剪前缀。保存设置立即刷新已打开群聊；改变上限或重新打开面板会从完整存档重新计算窗口。聊天文件、任务状态、CLI 日志与模型上下文不删除、不改变。
+- 群聊初始任务、历史消息及当前思考气泡共用限额。达到上限时按 25%（向上取整，默认 50 个）批量移除最旧可清理气泡，跳过并保留全部“补充需求”，维持原时间顺序；补充需求仍计入阈值，初始任务发起不受保护。没有补充需求时仍是 200→150，后续增长到 200 再裁剪。极小上限至少保留最新一条；补充需求本身达到或超过上限时允许超限，不删除需求。首次打开长记录同样适用。
+- 仅渲染受保护补充需求及保留窗口，首次 HTML 和增量更新一致；同一面板的后续刷新不恢复已裁剪的普通气泡。保存设置立即刷新已打开群聊；改变上限或重新打开面板会从完整存档重新计算窗口。聊天文件、任务状态、CLI 日志与模型上下文不删除、不改变。
 - 实现：`src/webview/loopGroupChatBubbleRetention.ts`、`src/webview/loopGroupChatPanel.ts`、`src/toolSettings.ts`；规则及验收见 `.ch/docs/design-docs/loop-group-chat-bubble-limit.md`。
 
 ## 每 Tab 聊天气泡显示限额
@@ -115,6 +116,7 @@
 
 ## Loop / Loop+ 中断后继续执行
 
+- 子任务停止或失败时仍保留 Tab；重新执行并成功完成后，自动清理同一父任务、同一子任务的当前及更早闲置 Tab，不删除 CLI 会话和聊天记录，不关闭运行中或更新的替代 Tab。Loop+ 主模型 `close` / `reprompt` 可以升级此前停止请求；恢复后缺少旧 attempt 句柄时仍清理对应旧 Tab。实现：`src/extensionHost/loopSubtaskTabs.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 - 选择原配置续跑时，主 CLI 与跨 CLI 子任务都在各自的跨窗口共享互斥事务内检查档案身份；原档案仍为已就绪的当前选择则直接复用，不重新写入原生配置、认证文件或共享版本，不清除任何有效执行租约。切换到不同档案、修复未就绪档案、显式重新应用或编辑配置仍遵守原有租约互斥。
 - 续跑提前拒绝、原配置恢复失败和启动异常后，宿主发送明确收尾回执并刷新实际任务状态；“继续执行”可再次弹窗，不依赖相同 HTML 补丁重建按钮。同一请求确认只提交一次，同一任务准备续跑时拒绝重复启动。
 - 实现：`src/config/sharedRuntimeConfig.ts`、`src/config/configService.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/webview/loopGroupChatPanel.ts`；回归：`src/test/config/sharedRuntimeConfig.test.ts`、`src/test/config/configService.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`。

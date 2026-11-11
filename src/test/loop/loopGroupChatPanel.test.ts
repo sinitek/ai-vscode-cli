@@ -1042,6 +1042,43 @@ test("panel instances retain the cursor across patches and reset it for a differ
   assert.match(harness.panel.webview.html, /群聊消息编号0001/u);
 });
 
+test("Loop and Loop+ preserve supplemental requirements in initial HTML and incremental cleanup", () => {
+  const loopPlus = { ok: false, schedulingMode: "event_driven", error: "invalid" };
+  for (const projection of [undefined, loopPlus]) {
+    const state = createLongChatState(9, { messageLimit: 10, loopPlus: projection });
+    const appendRequirements = (chatMarkdown: string) => `## 补充需求\n请保留早期补充需求。\n\n${chatMarkdown}\n\n## 补充需求\n请保留最新补充需求。\n`;
+    state.chatMarkdown = appendRequirements(state.chatMarkdown);
+    const window = { start: 0 };
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1, window);
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+
+    for (const content of [html, patch.timelineHtml]) {
+      assert.match(content, /请保留早期补充需求。/u);
+      assert.match(content, /请保留最新补充需求。/u);
+      assert.doesNotMatch(content, /任务发起|群聊消息编号0002/u);
+      assert.ok(content.indexOf('data-markdown-source="请保留早期补充需求。"') < content.indexOf('data-markdown-source="群聊消息编号0003"'));
+      assert.equal((content.match(/<article class="message /g) ?? []).length, 9);
+    }
+
+    const refreshed = buildLoopGroupChatPanelContentPatch(state, 2, window);
+    assert.equal(refreshed.timelineHtml, patch.timelineHtml);
+    state.chatMarkdown = appendRequirements(createLongChatState(12).chatMarkdown);
+    const next = buildLoopGroupChatPanelContentPatch(state, 3, window);
+    assert.match(next.timelineHtml, /请保留早期补充需求。/u);
+    assert.match(next.timelineHtml, /请保留最新补充需求。/u);
+    assert.match(next.timelineHtml, /群聊消息编号0012/u);
+    assert.doesNotMatch(next.timelineHtml, /群聊消息编号0005/u);
+    assert.equal((next.timelineHtml.match(/<article class="message /g) ?? []).length, 9);
+
+    state.messageLimit = 1;
+    const minimum = buildLoopGroupChatPanelContentPatch(state, 4, window);
+    assert.match(minimum.timelineHtml, /请保留早期补充需求。/u);
+    assert.match(minimum.timelineHtml, /请保留最新补充需求。/u);
+    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 2);
+    assert.doesNotMatch(minimum.timelineHtml, /群聊消息编号/u);
+  }
+});
+
 test("renders five progress bands beside stop and keeps subtitles limited to the task ID", () => {
   for (const loopPlus of [undefined, { ok: false, schedulingMode: "event_driven", error: "invalid" }]) {
     for (const progressPercent of [0, 19, 20, 39, 40, 59, 60, 79, 80, 99, 100]) {

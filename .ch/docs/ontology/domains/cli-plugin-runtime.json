@@ -92,7 +92,7 @@
       "id": "plugin.conversation_task_summary",
       "name": "对话 Tab AI 任务摘要",
       "kind": "value_object",
-      "description": "任务/会话元信息：每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，以可选 ConversationTabSummary.taskSummary 提供最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文但无确定性繁简转换。已有摘要或历史会话继续执行也可更新；失败保留上次有效摘要。不同于首条提示词截取标签，也不是任务完成总结；缺失字段兼容旧记录。",
+      "description": "Tab 悬停提示：Vibe 使用任务/会话 AI 摘要，每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，最多 30 个 Unicode 码点，失败保留上次有效摘要；缺失字段兼容旧记录。Loop/Loop+ 则直接投影群聊成员标题，主任务为主任务，子任务为子任务 N：完整标题，不受 AI 摘要长度限制且不额外调用 AI。均通过可选 ConversationTabSummary.taskSummary 交给既有浮层，不是任务完成总结。",
       "status": "active",
       "aliases": ["Tab 任务摘要", "taskSummary", "会话意图摘要"],
       "implementation_paths": ["src/conversationTaskSummary.ts", "src/extensionHost/conversationTaskSummary.ts", "src/webview/types.ts"],
@@ -420,7 +420,7 @@
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
       "name": "任务摘要随新提交异步更新",
-      "description": "每次新的用户可见任务提交在 Loop 改写前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不污染原对话/Loop，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断。",
+      "description": "Vibe 每次新的用户可见任务提交在执行前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；已识别的 Loop 主/子任务不生成 AI 摘要，改用群聊成员标题。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
@@ -447,6 +447,20 @@
         {"path": "src/sessionStore.ts"},
         {"path": "src/sessionLifecycle.ts"},
         {"path": "src/extensionHost/sessionTabs.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_tab_member_title_tooltip",
+      "name": "Loop 标签提示复用群聊成员标题",
+      "description": "Loop/Loop+ Tab 悬停提示与群聊成员标题共用格式：主任务显示主任务，子任务显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 Vibe AI 摘要的 30 码点限制。优先按当前 Tab 消息的任务/子任务身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。仅改变宿主状态投影，不改变持久化摘要、浮层交互或布局。",
+      "status": "active",
+      "applies_to": ["plugin.conversation_task_summary", "plugin.chat_panel", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 任务摘要"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "事实来源与边界"},
+        {"path": "src/extensionHost/sessionTabs.ts", "anchor": "attachConversationTabLoopMemberTitle"},
+        {"path": "src/loopConversationPresentation.ts", "anchor": "getLoopSubtaskDisplayTitle"},
+        {"path": "src/test/session/loopTabMemberTooltip.test.ts"}
       ]
     },
     {
@@ -511,9 +525,10 @@
       "name": "Loop 连续任务与验收修补复用子会话",
       "applies_to": ["plugin.loop_task", "plugin.cli_session"],
       "status": "active",
-      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离，不改变经典汇报驱动或 Loop+ 验收门槛。",
+      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。成功后按父任务和子任务身份清理当前及更早闲置 Tab，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
       "source_refs": [
         {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"},
+        {"path": "src/extensionHost/loopSubtaskTabs.ts"},
         {"path": "src/loopSubtaskSession.ts"},
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
@@ -1757,7 +1772,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_control",
       "name": "Loop+ 主任务用 JSON 中断子任务",
-      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填非空新标题为同一子任务开启新 attempt 和新 tab；标题用简体中文反映纠正目标，同步到调度快照、任务记录和群聊，不默认沿用旧标题。缺失或无效标题拒绝整份决策且不停止旧执行；close 无需标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
+      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填非空新标题为同一子任务开启新 attempt 和新 tab；标题用简体中文反映纠正目标，同步到调度快照、任务记录和群聊，不默认沿用旧标题。缺失或无效标题拒绝整份决策且不停止旧执行；close 无需标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。主模型关页要求可升级此前普通停止，停止结算前后幂等生效；恢复后缺少旧句柄时按父任务和子任务身份清理旧闲置 tab，不关闭更新的替代 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2158,8 +2173,8 @@
     },
     {
       "id": "plugin.rule.loop_group_chat_message_limit",
-      "name": "Loop 与 Loop+ 群聊只渲染最新气泡窗口",
-      "description": "工具设置→AI任务配置以独立全局键 loopGroupChatMessageLimit 保存群聊显示上限，默认 200，整数范围 1–10000，非法输入回退 200。初始任务、transcript 与当前思考气泡共用计数，达到上限时按 25% 向上取整批量移除最旧气泡，默认 200→150；至少保留最新一条。同一面板的增量刷新不回填裁剪前缀；保存后立即刷新打开的群聊，改变上限或重开面板重算窗口。只改变群聊显示，不删除存档、不改变任务调度或 CLI 上下文，与普通 Tab 的 chatMessageLimit 永久清理规则独立。",
+      "name": "Loop 与 Loop+ 群聊保留补充需求及最新气泡窗口",
+      "description": "工具设置→AI任务配置以独立全局键 loopGroupChatMessageLimit 保存群聊显示上限，默认 200，整数范围 1–10000，非法输入回退 200。初始任务、transcript 与当前思考气泡共用计数，达到上限时按 25% 向上取整批量移除最旧可清理气泡，跳过并保留全部 user-message 补充需求，维持原时间顺序；补充需求仍计入阈值，初始任务发起不受保护。没有补充需求时默认 200→150；至少保留最新一条，补充需求本身达到或超过上限时允许超限。同一面板的增量刷新不回填裁剪的普通气泡；保存后立即刷新打开的群聊，改变上限或重开面板重算窗口。只改变群聊显示，不删除存档、不改变任务调度或 CLI 上下文，与普通 Tab 的 chatMessageLimit 永久清理规则独立。",
       "status": "active",
       "aliases": ["loopGroupChatMessageLimit", "群聊气泡上限"],
       "applies_to": ["plugin.chat_panel", "plugin.extension_host"],

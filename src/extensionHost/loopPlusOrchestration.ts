@@ -190,6 +190,7 @@ export type LoopPlusOrchestrationDeps = {
   onTaskCompleted?: (taskId: string) => void;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
   startAttempt: (request: LoopPlusAttemptRequest) => LoopPlusAttemptHandle;
+  closeSubtaskTabs?: (taskId: string, subtaskId: string) => Promise<void>;
   prepareCommunication?: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, round: number) => string | null;
   recordAttempt?: (input: {
     task: LoopTaskRecord;
@@ -2290,6 +2291,15 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.launching.delete(record.attemptId);
     const inFlight = runtime.attempts.get(record.attemptId);
     if (!inFlight) {
+      void deps.closeSubtaskTabs?.(runtime.taskId, record.subtaskId).catch((error: unknown) => {
+        deps.log?.("loop-plus-subtask-tab-auto-close-error", {
+          taskId: runtime.taskId,
+          subtaskId: record.subtaskId,
+          attemptId: record.attemptId,
+          reason: "main-abort",
+          error: errorText(error),
+        });
+      });
       return;
     }
     inFlight.settled = true;

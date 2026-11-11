@@ -653,6 +653,7 @@ test("conversation tab summaries carry the persisted Loop scheduling mode", () =
   };
   assert.equal(eventDriven.loopSchedulingMode, "event_driven");
   const hostSource = readSource("src", "extensionHost", "sessionTabs.ts");
-  assert.equal(hostSource.includes("readLoopTaskRecord(summary.loopTaskId)?.schedulingMode"), true);
+  assert.equal(hostSource.includes("readLoopTaskRecord(summary.loopTaskId)"), true);
+  assert.equal(hostSource.includes("task?.schedulingMode"), true);
   assert.equal(hostSource.includes("attachConversationTabLoopSchedulingMode("), true);
 });

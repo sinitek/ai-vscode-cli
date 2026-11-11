@@ -195,7 +195,8 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(wiring.includes("appendLoopFinalSummaryMessage(target, task);"), true);
   assert.equal(wiring.includes("cancelInvocation: (tabId) => {"), true);
   assert.equal(wiring.includes("cancelLoopPlusInvocation(tabId)"), true);
-  assert.equal(wiring.includes("closeSubtaskTab: (tabId) => closeConversationTabAndRefreshPanel(tabId)"), true);
+  assert.equal(wiring.includes("closeSubtaskTab: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId)"), true);
+  assert.equal(wiring.includes("closeSubtaskTabs: (taskId, subtaskId) => closeLoopSubtaskTabs(taskId, subtaskId)"), true);
   assert.equal(wiring.includes("stopRunForTab"), false);
   const eventDriven = functionBody(extensionSource, "runEventDrivenLoopPrompt");
   assert.equal(eventDriven.includes("getLoopPlusRuntimeAdapter().runEventDriven("), true);

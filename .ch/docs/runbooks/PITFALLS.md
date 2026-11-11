@@ -288,15 +288,18 @@
 
 ### 根因
 - 成功结束才会自动关 Tab。主任务中止把 attempt 标成 stopped，原先这条路径不关 Tab。
+- 停止请求的 `aborted` 短路会吞掉随后升级的 `closeTab: true`；宿主恢复后没有旧 attempt 句柄也不代表旧 Tab 已关闭。重新派发只关新 Tab 时，还会遗留此前停止的 Tab。
 
 ### 长期规避
 - 只有主任务 `close` 或 `reprompt` 中止已启动的 attempt 时，在进程结束后关闭该 attempt 的 Tab。`reprompt` 的新 attempt 另开 Tab。
 - 用户手动停止、父任务停止、失败，以及尚未创建 Tab 的排队子任务，都不关闭 Tab。
 - 不要把经典 Loop “仅 `end` 才关 Tab”套到这条 Loop+ 中止路径上，也不要反过来让用户停止时关 Tab。
+- 停止与关页请求分别记账，允许关页要求单向升级；停止结算前后均执行幂等清理。恢复后无句柄时按任务身份查找旧闲置 Tab。
+- 成功完成按父任务和子任务身份清理当前及更早闲置 Tab；先固定快照，再逐个检查运行锁。旧 attempt 结束时不得清理更新的替代 Tab，包括尚未拿到会话锁、还未登记运行状态的 Tab。
 
 ### 验证方式
 - `npm run build`
-- `node --test dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`
+- `node --test dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/session/sessionTabCliSwitch.test.js`
 
 ### 关联资料
 - `src/extensionHost/loopPlusRuntimeAdapter.ts`

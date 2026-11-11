@@ -62,10 +62,13 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 ### 事实来源与边界
 
+2026-11-11 起，以下 AI 摘要生成和 30 码点限制仅适用于 Vibe。Loop/Loop+ 在 `src/extensionHost/sessionTabs.ts` 的状态投影中直接复用 `getLoopMainSubChatMainTitle` / `getLoopSubtaskDisplayTitle`，主任务为“主任务”，子任务为“子任务 N：完整标题”；不修改保存的 Vibe 摘要字段，不限制成员标题长度。子任务优先使用当前 Tab 的实时/已保存/草稿消息解析身份，再核对任务 ID；无消息身份时可用匹配 CLI/session 的 `executionSession` 恢复，不能用其他任务或成员兜底。找不到成员时移除本次投影中的旧 AI 摘要。`rememberConversationTaskSummarySubmission` 跳过已识别的 Loop 主/子任务，避免额外 AI 摘要调用；浮层渲染、现有停留时间和键盘交互保持不变。回归入口为 `src/test/session/loopTabMemberTooltip.test.ts` 与既有摘要、浮层测试。
+
 `src/extension.ts` 捕获每次新的用户可见任务提交并接入摘要协调器，`src/conversationTaskSummary.ts` 承载归纳提示、结果归一化和有界队列，`src/extensionHost/conversationTaskSummary.ts` 捕获配置快照并执行隔离调用。`src/webview/types.ts` 的 `ConversationTabSummary` 投影给 `src/webview/viewContentScript/messageRendering.ts` 的 `renderConversationTabs`；Tab、会话保存与绑定由 `src/sessionTabs.ts`、`src/sessionStore.ts`、`src/sessionLifecycle.ts`、`src/workspaceSettingsStore.ts` 及既有宿主 `src/extensionHost/sessionTabs.ts` 承接。原 `preparePendingLabel` 提示词标签行为保留，不等于 AI 摘要。用户行为见能力分册 §3.4；初次交付过程和证据见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md`，后续任务刷新改进见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md`。
 
 ### 数据与任务级触发
 
+- 成员标题与子任务消息身份解析的轻量事实来源为 `src/loopConversationPresentation.ts`；`src/panelStateBuilder.ts` 保留原导出兼容现有群聊和运行时调用，Tab 宿主直接依赖轻量模块，避免引入 VS Code UI 依赖。执行 session 被多个子任务共用且消息身份缺失时，不猜测成员标题。
 - 对外只增加可选 `ConversationTabSummary.taskSummary?: string`。归一化折叠空白，校验汉字与纯文本，拒绝空白、超限、思考/工具标记和无效输出；以 `Array.from` 限制最多 30 个 Unicode 码点，不破坏非 BMP 字符。提示要求简体中文，但未做确定性繁简转换。旧记录缺字段兼容，无生成中/失败占位。
 - 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
 - 协调器按提交快照对象、工作区和草稿对象去重，同一任务的 Loop 内部调度及自动重试只尝试一次；`taskSummaryAttempted` 仍随 Tab/草稿/会话保存，但不再是后续新任务的永久门禁。失败、超时和溢出也消费本次尝试；空白 Tab、hover、刷新与仅恢复旧历史不补生成，新提交不受前次失败影响。

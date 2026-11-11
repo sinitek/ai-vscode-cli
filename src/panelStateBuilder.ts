@@ -53,6 +53,8 @@ import {
   normalizeLoopMainAiFailureCount,
 } from "./loopMainFailure";
 import { isLoopAskChatMessage } from "./historySessionTaskRole";
+import { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, normalizeLoopTaskId } from "./loopConversationPresentation";
+export { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, normalizeLoopTaskId, normalizeLoopSubtaskId, normalizeLoopRound, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "./loopConversationPresentation";
 import {
   describeLoopExecutionPlan,
   type LoopSubtaskExecutionPlan,
@@ -73,12 +75,6 @@ const SESSION_LABEL_LIMIT = 16;
 export type LoopConversationTabContext = {
   taskRole: LoopTaskRole | null;
   loopTaskId: string | null;
-};
-
-export type LoopSubtaskConversationContext = {
-  taskId: string;
-  subtaskId: string;
-  round: number;
 };
 
 export type PanelStateBuilderDeps = {
@@ -885,10 +881,6 @@ function loopPlusMemberStatus(
   return "not_in_snapshot";
 }
 
-export function getLoopMainSubChatMainTitle(): string {
-  return "主任务";
-}
-
 export function ensureLoopMainSubChatTranscriptWithDeps(
   task: LoopTaskRecord,
   deps: LoopGroupChatPanelStateBuilderDeps,
@@ -1023,12 +1015,6 @@ export function getLatestAssistantResponseForLongTermMemory(messages: readonly C
     }
   }
   return fallback;
-}
-
-export function getLoopSubtaskDisplayTitle(index: number, subtask: Pick<LoopSubtaskRecord, "title">): string {
-  const displayIndex = Number.isFinite(index) && index >= 0 ? index + 1 : 0;
-  const prefix = displayIndex > 0 ? `子任务 ${displayIndex}` : "子任务";
-  return subtask.title ? `${prefix}：${subtask.title}` : prefix;
 }
 
 export function buildLoopTaskStartedText(task: LoopTaskRecord): string {
@@ -1187,32 +1173,8 @@ export function shouldUseFallbackSessionLabel(
   return !trimmed || unnamedSessionLabels.has(trimmed);
 }
 
-export function normalizeLoopTaskId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized || null;
-}
-
 export function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
-}
-
-export function normalizeLoopSubtaskId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized || null;
-}
-
-export function normalizeLoopRound(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  const round = Math.floor(value);
-  return round > 0 ? round : null;
 }
 
 export function resolveLoopConversationTabContextFromMessages(
@@ -1259,29 +1221,4 @@ export function resolveLoopRunConversationTabContext(
     return { taskRole, loopTaskId };
   }
   return resolveLoopConversationTabContextFromMessages(run.messageTarget);
-}
-
-export function resolveLoopSubtaskConversationContextFromMessages(
-  messages: readonly ChatMessage[],
-): LoopSubtaskConversationContext | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (isLoopAskChatMessage(message)) {
-      continue;
-    }
-    const taskId = normalizeLoopTaskId(message?.loopTaskId);
-    const subtaskId = normalizeLoopSubtaskId(message?.loopSubtaskId);
-    const round = normalizeLoopRound(message?.loopRound);
-    if (message?.taskRole === "subtask" && taskId && subtaskId && round) {
-      return {
-        taskId,
-        subtaskId,
-        round,
-      };
-    }
-    if (message?.role === "user" && String(message.content || "").trim()) {
-      return null;
-    }
-  }
-  return null;
 }

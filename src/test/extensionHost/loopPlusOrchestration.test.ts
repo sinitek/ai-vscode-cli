@@ -469,6 +469,7 @@ function harness(options: {
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendMessage?: LoopPlusOrchestrationDeps["appendMessage"];
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
+  closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -485,6 +486,7 @@ function harness(options: {
   let mainCalls = 0;
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
+    closeSubtaskTabs: options.closeSubtaskTabs,
     maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
@@ -3222,7 +3224,8 @@ test("does not steer while an acceptance batch is open", async () => {
 });
 
 test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id", async () => {
-  const env = harness();
+  const closedSubtasks: string[] = [];
+  const env = harness({ closeSubtaskTabs: async (taskId, subtaskId) => { closedSubtasks.push(`${taskId}:${subtaskId}`); } });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({
@@ -3256,6 +3259,7 @@ test("restored Loop+ runtime reprompts the later subtask with a fresh attempt id
   assert.equal(restarted.at(-1)?.request.title, "恢复后修正 beta");
   assert.equal(env.tasks.get(taskId)?.subTasks.find((item) => item.id === "beta")?.title, "恢复后修正 beta");
   assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), false);
+  assert.deepEqual(closedSubtasks, [`${taskId}:beta`]);
 });
 
 function clarificationDecision(): string {

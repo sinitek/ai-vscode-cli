@@ -6,12 +6,15 @@ import { createCliRecord } from "../../cli/types";
 import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs";
 import { createSessionTabsController, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft } from "../../sessionTabs";
 import type { SessionStore } from "../../sessionStore";
+import { closeLoopSubtaskConversationTabs } from "../../extensionHost/loopSubtaskTabs";
+import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 
 function createHost(initial: {
   state: ConversationTabsState;
   currentCli: CliName;
   modes: Partial<Record<CliName, InteractiveMode>>;
   onRestore?: (tabId: string) => Promise<void>;
+  runningTabIds?: ReadonlySet<string>;
 }) {
   let currentCli = initial.currentCli;
   const modes = { ...initial.modes };
@@ -78,7 +81,7 @@ function createHost(initial: {
     saveSessionMessages: () => undefined,
     buildSessionLabelFromPrompt: () => null,
     shouldUseFallbackSessionLabel: () => false,
-    isTabRunActive: () => false,
+    isTabRunActive: (tabId) => Boolean(tabId && initial.runningTabIds?.has(tabId)),
     isLoopMainTabCloseLocked: () => false,
     postPanelState: async () => {
       postedClis.push(currentCli);
@@ -155,6 +158,89 @@ test("closing a background tab does not restore configuration for the unchanged 
   const env = createHost({ state, currentCli: "codex", modes: { codex: "coding", claude: "coding" } });
   await env.host.closeConversationTabAndRefreshPanel("background-tab");
   assert.deepEqual(env.restoredTabIds, []);
+});
+
+test("a restarted subtask completion closes its old tabs but preserves unrelated and running tabs", async () => {
+  const tabIds = ["main-tab", "stopped-sub", "restarted-sub", "running-sub", "other-sub", "other-parent-sub", "ordinary-tab"];
+  const state: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: tabIds.map((id, index) => ({ id, cli: index === 1 ? "claude" : "codex", sessionId: id, sessionIdByCli: index === 1 ? { claude: id } : { codex: id }, createdAt: index })),
+  };
+  const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds: new Set(["running-sub"]) });
+  const context = { taskId: "task-1", subtaskId: "A" };
+  const closeSubtaskTab = (tabId: string) => closeLoopSubtaskConversationTabs({ ...context, tabId }, {
+    getTabs: () => state.tabs,
+    resolveContext: (tab) => {
+      if (tab.id === "other-sub") return { ...context, subtaskId: "B" };
+      if (tab.id === "other-parent-sub") return { ...context, taskId: "task-2" };
+      return tab.id.endsWith("-sub") ? context : null;
+    },
+    isTabRunActive: (candidateId) => candidateId === "running-sub",
+    closeTab: env.host.closeConversationTabAndRefreshPanel,
+  });
+  for (const runStatus of ["stopped", "error", "end"] as const) {
+    await finalizeLoopSubtaskRun({
+      ...context, round: 1, runStatus, assistantContent: "子任务结果", tabId: "restarted-sub",
+    }, {
+      markSubtaskRunFinished: () => undefined,
+      closeSubtaskTab,
+      logSubtaskTabAutoClosed: () => undefined,
+    });
+    assert.deepEqual(state.tabs.map((tab) => tab.id), runStatus === "end"
+      ? ["main-tab", "running-sub", "other-sub", "other-parent-sub", "ordinary-tab"]
+      : tabIds);
+  }
+  assert.deepEqual(env.restoredTabIds, []);
+  assert.equal(state.activeTabId, "main-tab");
+});
+
+test("control cleanup without an attempt tab uses a snapshot and keeps a newly dispatched tab", async () => {
+  const context = { taskId: "task-1", subtaskId: "A" };
+  const state: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: ["main-tab", "stopped-sub"].map((id) => ({ id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1 })),
+  };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+  await closeLoopSubtaskConversationTabs(context, {
+    getTabs: () => state.tabs,
+    resolveContext: (tab) => tab.id === "main-tab" ? null : context,
+    isTabRunActive: () => false,
+    closeTab: async (tabId) => {
+      state.tabs.push({ id: "new-sub", cli: "codex", sessionId: "new", sessionIdByCli: { codex: "new" }, createdAt: 2 });
+      await env.host.closeConversationTabAndRefreshPanel(tabId);
+    },
+  });
+  assert.deepEqual(state.tabs.map((tab) => tab.id), ["main-tab", "new-sub"]);
+});
+
+test("subtask cleanup supports an explicit tab without metadata and propagates close errors", async () => {
+  const context = { taskId: "task-1", subtaskId: "A", tabId: "sub-tab" };
+  const deps = {
+    getTabs: () => [{ id: "sub-tab", cli: "codex" as const, sessionId: null, sessionIdByCli: {}, createdAt: 1 }],
+    resolveContext: () => null,
+    isTabRunActive: () => false,
+    closeTab: async () => { throw new Error("panel refresh failed"); },
+  };
+  await assert.rejects(closeLoopSubtaskConversationTabs(context, deps), /panel refresh failed/);
+  await closeLoopSubtaskConversationTabs({ ...context, tabId: "missing" }, deps);
+});
+
+test("an old attempt cannot close a newer replacement tab waiting to start", async () => {
+  const context = { taskId: "task-1", subtaskId: "A" };
+  const state: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: ["main-tab", "stopped-sub", "queued-sub"].map((id) => ({
+      id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1,
+    })),
+  };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+  await closeLoopSubtaskConversationTabs({ ...context, tabId: "stopped-sub" }, {
+    getTabs: () => state.tabs,
+    resolveContext: (tab) => tab.id === "main-tab" ? null : context,
+    isTabRunActive: () => false,
+    closeTab: env.host.closeConversationTabAndRefreshPanel,
+  });
+  assert.deepEqual(state.tabs.map((tab) => tab.id), ["main-tab", "queued-sub"]);
 });
 
 for (const cli of CLI_LIST) {
