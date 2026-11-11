@@ -35,7 +35,7 @@ class RunDevTests(unittest.TestCase):
     def test_default_installs_builds_and_launches_from_script_directory(self):
         self.assertEqual(run_dev.main([]), 0)
         self.assertEqual(self.process.call_args_list, [
-            call(["npm", "install"], cwd=self.root),
+            call(["npm", "install", "--no-fund"], cwd=self.root),
             call(["npm", "run", "build"], cwd=self.root),
             call(["code", "--new-window", f"--extensionDevelopmentPath={self.root}"], cwd=self.root),
         ])
@@ -57,7 +57,7 @@ class RunDevTests(unittest.TestCase):
         (self.root / "pnpm-lock.yaml").touch()
         self.pnpm.return_value = "pnpm"
         run_dev.install_workspace_node_modules("npm")
-        self.process.assert_called_once_with(["npm", "install"], cwd=self.root)
+        self.process.assert_called_once_with(["npm", "install", "--no-fund"], cwd=self.root)
 
     def test_missing_pnpm_removes_incompatible_tree_before_install(self):
         node_modules = self.root / "node_modules"
@@ -69,7 +69,7 @@ class RunDevTests(unittest.TestCase):
 
         self.process.side_effect = check_install
         run_dev.install_workspace_node_modules("npm")
-        self.process.assert_called_once_with(["npm", "install"], cwd=self.root)
+        self.process.assert_called_once_with(["npm", "install", "--no-fund"], cwd=self.root)
 
     def test_install_or_build_failure_stops_before_launch(self):
         for failing_step in (0, 1):

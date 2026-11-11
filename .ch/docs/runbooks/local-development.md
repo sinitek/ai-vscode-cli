@@ -84,7 +84,7 @@ python3 run_dev.py
 
 该脚本会：
 
-- 按本机 `node_modules` 布局安装依赖：已有 pnpm 布局且本机有 pnpm 时用 `pnpm install`，否则用 `npm install`
+- 按本机 `node_modules` 布局安装依赖：已有 pnpm 布局且本机有 pnpm 时用 `pnpm install`，否则用 `npm install --no-fund`（仅关闭赞助提示，保留警告和错误）
 - 若本机是 pnpm 布局但没有 pnpm，会删除该 `node_modules` 后改走 `npm install`，避免直接混用
 - 自动执行 `npm run build`
 - 以 `--new-window --extensionDevelopmentPath` 方式在独立窗口启动 VS Code
@@ -101,6 +101,11 @@ python run_dev.py --code "C:\Program Files\Microsoft VS Code\bin\code.cmd"
 `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 因机器环境而异，已加入 `.gitignore`，不要提交。不要在 pnpm 的 `node_modules` 上手动执行 `npm install`。
 
 如果脚本找不到 `code` 命令，会在安装依赖前退出，并提示配置 PATH 或通过 `--code` 指定命令路径。
+
+#### npm 安装与构建警告
+
+- `Unknown user config` 指向用户级配置。用 `npm config get userconfig` 定位文件，先在仓库外备份，再移除废弃的 `sass_binary_site`、`always-auth`，保留 registry、认证和其他配置。嵌套的 `npm run clean` 也会读取配置，因此同一问题可能重复显示为 `Unknown user config` 和 `Unknown env config`；如果清理后仍有 `Unknown env config`，检查启动环境中是否单独设置了对应的 `npm_config_*` 变量。
+- `not yet covered by allowScripts` 表示 npm 跳过了未获准的依赖安装脚本。项目的 `allowScripts` 只按确切版本放行已核对的 VSCE 签名工具和系统凭据存储依赖。依赖升级后用 `npm install-scripts ls` 查看未覆盖项，核对来源和脚本后再按包更新放行，不要全量批准。
 
 ### 7. 统计代码行数
 

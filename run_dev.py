@@ -54,8 +54,8 @@ def install_workspace_node_modules(npm: str, root: Path | None = None) -> None:
         run_process([pnpm, "install"], cwd=root)
         return
 
-    print("使用 npm install。", flush=True)
-    run_process([npm, "install"], cwd=root)
+    print("使用 npm install --no-fund。", flush=True)
+    run_process([npm, "install", "--no-fund"], cwd=root)
 
 
 def run_dev(*, code_command: str | None, skip_install: bool, skip_build: bool) -> None:
