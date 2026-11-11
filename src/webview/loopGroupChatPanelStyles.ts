@@ -474,6 +474,28 @@ ${DIALOG_SHELL_STYLES}
         gap: 8px;
         align-items: start;
       }
+      .member-acceptance-link {
+        width: 100%;
+        padding: 4px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .member-acceptance-link:hover {
+        background: var(--vscode-list-hoverBackground);
+      }
+      .member-acceptance-link:focus-visible,
+      .acceptance-anchor:focus {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
+      .acceptance-anchor {
+        scroll-margin-block: 24px;
+      }
       .avatar {
         width: 28px;
         height: 28px;

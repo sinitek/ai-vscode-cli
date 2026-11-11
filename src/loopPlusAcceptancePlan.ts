@@ -7,6 +7,8 @@
  * - “其它”未被勾选时，其文本不构成审查要求，规范化阶段直接丢弃。
  */
 
+import { buildLoopGroupChatAcceptanceMetadata } from "./loopGroupChatAcceptance";
+
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID = "system_default";
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME = "系统默认";
 export const LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME = "新建方案";
@@ -599,6 +601,9 @@ export function buildLoopPlusAcceptanceFeedbackSection(
   ];
   if (rows.length > 0) {
     sections.push(renderAcceptanceFeedbackTable(rows));
+  }
+  if (reviews.length > 0) {
+    sections.push(buildLoopGroupChatAcceptanceMetadata(reviews.map((review) => review.eventId)));
   }
   return {
     heading: "验收结果",

@@ -707,6 +707,9 @@ test("accept feedback requires reasons before commit and shows default and selec
     assert.match(feedback.body, /\| 安全审查 \| ✅ 输入已校验，日志无敏感信息 \|/);
     assert.match(feedback.body, /\| 审查内容 \| 审查结果 \|/);
     assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
+    const metadata = feedback.body.match(/<!-- loop-plus-acceptance:([^\n]*?) -->/u);
+    assert.ok(metadata);
+    assert.deepEqual(JSON.parse(decodeURIComponent(metadata[1])), [eventId]);
   }
 });
 

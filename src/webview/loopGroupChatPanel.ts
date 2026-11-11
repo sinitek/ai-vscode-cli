@@ -17,6 +17,7 @@ import { orchestratorClarificationDialogScript, renderOrchestratorClarificationD
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
+import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
 import {
   buildLoopGroupChatPanelTitle,
   getStrings,
@@ -213,6 +214,11 @@ export function buildLoopGroupChatPanelContentPatch(
 ): LoopGroupChatPanelContentPatch {
   const strings = getStrings();
   const transcript = parseLoopGroupChatTranscript(state.chatMarkdown);
+  const acceptanceAnchors = buildLoopGroupChatAcceptanceAnchors(
+    transcript.segments,
+    collectRosterParticipants(state.rounds).filter((participant) => participant.role === "subtask"),
+    !state.error && state.loopPlus?.ok ? state.loopPlus.seenAttempts : undefined,
+  );
   return {
     type: "loopGroupChatChat:contentPatch",
     mainModelBusy: state.mainModelBusy === true,
@@ -221,8 +227,8 @@ export function buildLoopGroupChatPanelContentPatch(
     subtitleText: state.task.id,
     actionsHtml: renderPanelActions(state, strings),
     taskPanelHtml: renderTaskPanel(state, strings),
-    rosterPanelHtml: renderRosterPanel(state, strings),
-    timelineHtml: renderTimeline(state, transcript.segments, strings, bubbleWindow),
+    rosterPanelHtml: renderRosterPanel(state, strings, acceptanceAnchors.byParticipantId),
+    timelineHtml: renderTimeline(state, transcript.segments, strings, bubbleWindow, acceptanceAnchors.bySegmentIndex),
     clarificationHtml: renderOrchestratorClarificationDialog(
       state.clarification,
       { requiredTemplate: strings.clarificationRequired },
@@ -1145,6 +1151,17 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        const action = target.getAttribute("data-action");
+	        if (action === "jumpToAcceptance") {
+	          const anchor = document.getElementById(target.getAttribute("data-acceptance-target"));
+	          if (!anchor || !mainElement || !mainElement.contains(anchor)) return;
+	          setSidebarOpen(false);
+	          anchor.focus({ preventScroll: true });
+	          anchor.scrollIntoView({
+	            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+	            block: "center",
+	          });
+	          return;
+	        }
 	        if (action === "continueTask") {
 	          saveScrollState();
 	          const titleElement = document.getElementById("continueDialogTitle");
@@ -1637,19 +1654,26 @@ function formatParticipantStatus(
 function renderRosterPanel(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
+  acceptanceAnchors: ReadonlyMap<string, string>,
 ): string {
   if (state.rounds.length === 0) {
     return "";
   }
   const rosterParticipants = collectRosterParticipants(state.rounds);
-  const participants = rosterParticipants.map((participant) => `<div class="member">
+  const participants = rosterParticipants.map((participant) => {
+    const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
+    const openTag = anchor
+      ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(participant.title)}：查看最近一次验收结果">`
+      : '<div class="member">';
+    return `${openTag}
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
       <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
-  </div>`).join("");
+  ${anchor ? "</button>" : "</div>"}`;
+  }).join("");
   return `<section class="panel">
     <h2>${escapeHtml(strings.participants)}</h2>
     <div class="roster">${participants}</div>
@@ -1701,6 +1725,7 @@ function renderTimeline(
   segments: LoopGroupChatSegment[],
   strings: LoopGroupChatPanelStrings,
   bubbleWindow?: LoopGroupChatBubbleWindow,
+  acceptanceAnchors: ReadonlyMap<number, string> = new Map(),
 ): string {
   const initialPromptBubble = renderInitialTaskPromptBubble(state.task.rootPrompt, strings);
   if (state.error) {
@@ -1715,9 +1740,9 @@ function renderTimeline(
     const retained = selectLoopGroupChatBubbles([...bubbles, ...thinkingBubbles], state.messageLimit, bubbleWindow);
     return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${retained.map((bubble) => bubble.render()).join("")}</div>`;
   }
-  const timelineBubbles = bubbles.concat(segments.map((segment) => ({
-    render: () => renderSegment(segment, strings),
-    preserve: segment.kind === "user-message",
+  const timelineBubbles = bubbles.concat(segments.map((segment, index) => ({
+    render: () => renderSegment(segment, strings, undefined, acceptanceAnchors.get(index)),
+    preserve: segment.kind === "user-message" || acceptanceAnchors.has(index),
   })), thinkingBubbles);
   const retained = selectLoopGroupChatBubbles(timelineBubbles, state.messageLimit, bubbleWindow, (bubble) => bubble.preserve === true);
   return `<div class="timeline">${retained.map((bubble) => bubble.render()).join("")}</div>`;
@@ -1883,6 +1908,7 @@ function renderSegment(
   segment: LoopGroupChatSegment,
   strings: LoopGroupChatPanelStrings,
   tagOverride?: string,
+  acceptanceAnchor?: string,
 ): string {
   const speaker = getSegmentSpeaker(segment, strings);
   const tag = tagOverride ?? getSegmentTag(segment, strings);
@@ -1894,14 +1920,16 @@ function renderSegment(
     ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker, segment.actorId ?? ""))}</span>`
     : "";
   const layoutClass = hasAvatar ? "with-avatar" : "no-avatar";
-  return `<article class="message ${escapeAttribute(segment.kind)} ${layoutClass}">
+  const anchorAttributes = acceptanceAnchor ? ` id="${escapeAttribute(acceptanceAnchor)}" tabindex="-1"` : "";
+  const body = segment.heading === "验收结果" ? stripLoopGroupChatAcceptanceMetadata(segment.body) : segment.body;
+  return `<article class="message ${escapeAttribute(segment.kind)} ${layoutClass}${acceptanceAnchor ? " acceptance-anchor" : ""}"${anchorAttributes}>
     ${avatar}
     <section class="bubble">
       <header class="bubble-header">
         <span class="speaker">${escapeHtml(speaker)}</span>
         <span class="tag">${escapeHtml(tag)}</span>
       </header>
-      ${renderMessageBody(segment.body, strings)}
+      ${renderMessageBody(body, strings)}
     </section>
   </article>`;
 }
