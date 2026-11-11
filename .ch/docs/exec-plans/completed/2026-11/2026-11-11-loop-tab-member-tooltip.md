@@ -1,5 +1,7 @@
 # Loop/Loop+ Tab 悬停复用群聊成员标题
 
+> 后续纠正：用户明确只有子任务复用群聊成员标题，主任务仍需 AI 摘要；本计划中的主任务角色名投影和主任务摘要禁用结论已被 `.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-main-tab-summary-fix.md` 替代。
+
 - 日期：2026-11-11
 - 状态：completed
 - 负责人：Codex

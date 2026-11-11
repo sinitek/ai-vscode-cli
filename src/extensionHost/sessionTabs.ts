@@ -5,7 +5,7 @@ import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, type LoopTaskRecord } from "../loopTaskStore";
-import { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
+import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
 
@@ -14,11 +14,8 @@ export function attachConversationTabLoopMemberTitle(
   task: Pick<LoopTaskRecord, "id" | "subTasks"> | null,
   messages: readonly ChatMessage[],
 ): ConversationTabSummary {
-  if (summary.loopTaskRole !== "main" && summary.loopTaskRole !== "subtask") {
+  if (summary.loopTaskRole !== "subtask") {
     return summary;
-  }
-  if (summary.loopTaskRole === "main") {
-    return { ...summary, taskSummary: getLoopMainSubChatMainTitle() };
   }
   const context = resolveLoopSubtaskConversationContextFromMessages(messages);
   const matchingIndices = task && task.id === summary.loopTaskId ? task.subTasks.map((subtask, index) => (

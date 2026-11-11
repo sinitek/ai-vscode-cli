@@ -4647,12 +4647,13 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
 }
 
 function rememberConversationTaskSummarySubmission(input: PromptRunInput, target: PromptRunTarget, newSubmission = false) {
-  if (input.taskRole === "main" || input.taskRole === "subtask") return undefined;
+  if (input.taskRole === "subtask") return undefined;
   const tab = getConversationTabById(target.tabId);
   if (!tab) return undefined;
   const draft = getPendingSessionDraft(target.tabId, target.cli);
   return pendingConversationTaskSummarySubmissions.remember(tab, activeWorkspaceKey, draft, () => {
-    const requirement = input.displayPrompt;
+    const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
+    const requirement = newSubmission ? input.displayPrompt : task?.rootPrompt ?? input.displayPrompt;
     if (!requirement?.trim()) return undefined;
     const configId = input.configSelections?.[target.cli]?.configId ?? getActiveConfigIdForCli(target.cli);
     const model = input.model ?? getSelectedCliModel(target.cli, configId);

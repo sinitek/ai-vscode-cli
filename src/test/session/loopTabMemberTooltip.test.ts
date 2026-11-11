@@ -48,9 +48,15 @@ test("Loop and Loop+ tooltips reuse the exact group member number and full title
   }
 });
 
-test("main task matches the group main member and Vibe preserves its existing AI summary", () => {
-  const main = { ...createSummary(), loopTaskRole: "main" as const };
-  assert.equal(attachConversationTabLoopMemberTitle(main, null, []).taskSummary, "主任务");
+test("Loop and Loop+ main tabs preserve AI summaries instead of replacing them with a role name", () => {
+  for (const loopSchedulingMode of ["classic", "event_driven"] as const) {
+    const main = { ...createSummary(), loopTaskRole: "main" as const, loopSchedulingMode, taskSummary: "恢复源码构建与前端接入" };
+    assert.equal(attachConversationTabLoopMemberTitle(main, createTask(), createMessages()), main);
+    assert.equal(attachConversationTabLoopMemberTitle(main, null, []).taskSummary, "恢复源码构建与前端接入");
+    const missingSummary = { ...main, taskSummary: undefined };
+    assert.equal(attachConversationTabLoopMemberTitle(missingSummary, null, []), missingSummary);
+    assert.equal(attachConversationTabLoopMemberTitle(missingSummary, null, []).taskSummary, undefined);
+  }
   const vibe = { id: "vibe", cli: "claude" as const, sessionId: null, createdAt: 1, taskSummary: "修复登录异常" };
   assert.equal(attachConversationTabLoopMemberTitle(vibe, createTask(), createMessages()), vibe);
 });
@@ -111,7 +117,7 @@ test("host projection reads each subtask from live, persisted or draft messages 
   const result = host.buildConversationTabsState();
   assert.equal(result.activeTabId, "vibe");
   assert.equal(result.tabs[0], summaries[0]);
-  assert.equal(result.tabs[4].taskSummary, "主任务");
+  assert.equal(result.tabs[4].taskSummary, summaries[4].taskSummary);
   for (const summary of result.tabs.slice(1, 4)) {
     assert.equal(summary.taskSummary, getLoopSubtaskDisplayTitle(516, task.subTasks[516]));
     assert.equal(summary.loopSchedulingMode, "event_driven");

@@ -92,7 +92,7 @@
       "id": "plugin.conversation_task_summary",
       "name": "对话 Tab AI 任务摘要",
       "kind": "value_object",
-      "description": "Tab 悬停提示：Vibe 使用任务/会话 AI 摘要，每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，最多 30 个 Unicode 码点，失败保留上次有效摘要；缺失字段兼容旧记录。Loop/Loop+ 则直接投影群聊成员标题，主任务为主任务，子任务为子任务 N：完整标题，不受 AI 摘要长度限制且不额外调用 AI。均通过可选 ConversationTabSummary.taskSummary 交给既有浮层，不是任务完成总结。",
+      "description": "Tab 悬停提示：Vibe 与 Loop/Loop+ 主任务使用任务/会话 AI 摘要，每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，最多 30 个 Unicode 码点，失败保留上次有效摘要；缺失字段兼容旧记录。只有 Loop/Loop+ 子任务直接投影群聊成员标题子任务 N：完整标题，不受 AI 摘要长度限制且不额外调用 AI。主任务不能用固定角色名覆盖 AI 摘要。均通过可选 ConversationTabSummary.taskSummary 交给既有浮层，不是任务完成总结。",
       "status": "active",
       "aliases": ["Tab 任务摘要", "taskSummary", "会话意图摘要"],
       "implementation_paths": ["src/conversationTaskSummary.ts", "src/extensionHost/conversationTaskSummary.ts", "src/webview/types.ts"],
@@ -420,7 +420,7 @@
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
       "name": "任务摘要随新提交异步更新",
-      "description": "Vibe 每次新的用户可见任务提交在执行前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；已识别的 Loop 主/子任务不生成 AI 摘要，改用群聊成员标题。",
+      "description": "Vibe 与 Loop/Loop+ 主任务每次新的用户可见任务提交在执行前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次，缺少主任务快照时使用 rootPrompt 而非调度协议；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；只有子任务不生成 AI 摘要，改用群聊成员标题。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
@@ -452,7 +452,7 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "Loop/Loop+ Tab 悬停提示与群聊成员标题共用格式：主任务显示主任务，子任务显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 Vibe AI 摘要的 30 码点限制。优先按当前 Tab 消息的任务/子任务身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。仅改变宿主状态投影，不改变持久化摘要、浮层交互或布局。",
+      "description": "只有 Loop/Loop+ 子任务 Tab 悬停提示与群聊成员标题共用格式，显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 AI 摘要的 30 码点限制。优先按当前 Tab 消息的任务/子任务身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。主任务保留并展示归纳后的 AI 摘要，不以固定主任务角色名覆盖。子任务仅改变宿主状态投影，不改变持久化摘要、浮层交互或布局。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [

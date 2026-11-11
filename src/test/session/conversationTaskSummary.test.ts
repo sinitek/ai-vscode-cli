@@ -85,7 +85,7 @@ test("the first visible submission survives Loop protocol dispatch and local-ses
   assert.equal(registry.remember({}, "workspace", {}, () => undefined), undefined);
 });
 
-test("extension captures each Vibe submission on historical sessions and skips Loop member summaries", () => {
+test("extension captures Vibe and Loop main summaries without summarizing internal protocols or subtasks", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
   const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true);
   const names = ["preloadUserMessageForPrompt", "rememberConversationTaskSummarySubmission"];
@@ -136,12 +136,23 @@ test("extension captures each Vibe submission on historical sessions and skips L
   assert.notEqual(secondSnapshot, firstSnapshot, "even identical submitted text is a new task");
   assert.equal(secondSnapshot?.requirement, input.displayPrompt);
   const internal = { ...input, taskRole: "main" as const, loopTaskId: "loop", displayPrompt: "内部调度协议" };
-  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), undefined);
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), secondSnapshot);
   runtime.preloadUserMessageForPrompt(internal, target, { captureTaskSummary: false });
-  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), undefined);
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), secondSnapshot);
   const subtask = runtime.preloadUserMessageForPrompt({ ...input, taskRole: "subtask", loopTaskId: "loop", loopSubtaskId: "subtask" }, target);
   assert.equal(runtime.rememberConversationTaskSummarySubmission(subtask, target), undefined);
   assert.equal(runtime.rememberConversationTaskSummarySubmission(second, target), secondSnapshot);
+  const mainInput = { ...input, taskRole: "main" as const, loopTaskId: "loop", displayPrompt: "恢复主任务摘要并保留子任务标题" };
+  const main = runtime.preloadUserMessageForPrompt(mainInput, target);
+  const mainSnapshot = runtime.rememberConversationTaskSummarySubmission(main, target);
+  assert.notEqual(mainSnapshot, secondSnapshot);
+  assert.equal(mainSnapshot?.requirement, mainInput.displayPrompt);
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), mainSnapshot);
+  submissions.remember(tab, "workspace", draft, () => undefined, true);
+  const recoveredSnapshot = runtime.rememberConversationTaskSummarySubmission(internal, target);
+  assert.equal(recoveredSnapshot?.requirement, "旧 Loop 根需求");
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), recoveredSnapshot);
+  assert.equal(runtime.rememberConversationTaskSummarySubmission(subtask, target), undefined);
 });
 
 test("first submit calls AI once, does not use a prompt prefix, and accepts before task completion", async () => {
