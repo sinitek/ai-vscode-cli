@@ -106,20 +106,28 @@ test("subtask continuation and execution session survive storage while malformed
   assert.equal(loopTaskStore.readLoopTaskStore(task.taskStoreFile).tasks[0].subTasks[0].executionSession, undefined);
 });
 
-test("classic and legacy reports are lightweight while Loop+ keeps its verification report template", () => {
+test("classic and Loop+ reports retain mode-specific review duties and reusable verification results", () => {
   for (const schedulingMode of [undefined, "classic", "event_driven"] as const) {
     const task = { ...createLegacyTask(), schedulingMode };
     loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
     const communicationFile = loopTaskStore.prepareLoopSubtaskCommunicationFile(task, task.subTasks[0], 1, 0);
     const content = fs.readFileSync(communicationFile, "utf8");
     if (schedulingMode === "event_driven") {
-      assert.match(content, /执行目标、实际修改\/操作、涉及文件、验证命令与结果、遗留问题、给主任务的建议/u);
+      assert.match(content, /执行目标、实际修改\/操作、涉及文件、验证覆盖范围、命令或操作与结果、未执行或未覆盖项/u);
+      assert.match(content, /验证后可能使结果失效的改动/u);
+      assert.match(content, /主任务直接复用仍覆盖当前改动的执行结果，不为重新证明结果而重跑/u);
+      assert.match(content, /已选附加审查仍由主任务判断，不能以自测通过替代验收审查/u);
       assert.doesNotMatch(content, /没有相关要求时不额外增加验收或测试/u);
+      assert.doesNotMatch(content, /便于主任务复用|补充验证只完成/u);
     } else {
       assert.match(content, /完成情况、实际修改\/操作、涉及文件、结果、遗留问题/u);
-      assert.match(content, /用户或项目规则要求的验收、测试由主任务独立派发/u);
+      assert.match(content, /可一并完成用户或项目规则要求的验证/u);
+      assert.match(content, /已执行的验证请汇报覆盖范围、命令或操作、结果及未完成项，便于主任务复用/u);
+      assert.match(content, /补充验证只完成缺失、失败或后续改动影响的部分，不重复已覆盖且仍有效的验证/u);
+      assert.match(content, /汇报不清时补充说明，不因缺少报告细节直接重测/u);
+      assert.match(content, /明确要求独立验收或交叉复核时仍按独立要求执行，不能用实现自测替代/u);
       assert.match(content, /没有相关要求时不额外增加验收或测试/u);
-      assert.doesNotMatch(content, /涉及文件、验证命令与结果/u);
+      assert.doesNotMatch(content, /涉及文件、验证命令与结果|验收、测试由主任务独立派发/u);
     }
     fs.appendFileSync(communicationFile, "\n已汇报的结果\n");
     loopTaskStore.prepareLoopSubtaskCommunicationFile(task, task.subTasks[0], 1, 0);

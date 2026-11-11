@@ -33,6 +33,32 @@ function reviewEvent(name: string, attemptId = `${name}-1`): string {
   return buildLoopPlusFinishEventId(name, attemptId);
 }
 
+test("refreshes restored concurrency from host policy without losing queued work or running attempts", () => {
+  const initial = createLoopPlusScheduler({ maxConcurrency: 6 });
+  const specs = Array.from({ length: 10 }, (_, index) => spec(`item-${index}`));
+  initial.dispatch(specs);
+  const raised = createLoopPlusScheduler({ snapshot: initial.snapshot(), maxConcurrency: 10 });
+  assert.equal(raised.snapshot().maxConcurrency, 10);
+  assert.equal(raised.promotePending().started.length, 4);
+  assert.equal(raised.snapshot().running.length, 10);
+  assert.equal(raised.snapshot().pending.length, 0);
+  assert.deepEqual(raised.snapshot().seenAttempts, initial.snapshot().seenAttempts);
+
+  const lowered = createLoopPlusScheduler({ snapshot: raised.snapshot(), maxConcurrency: 2 });
+  assert.equal(lowered.snapshot().maxConcurrency, 10);
+  assert.deepEqual(lowered.snapshot().running, raised.snapshot().running);
+  assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot: lowered.snapshot() }));
+
+  const empty = createLoopPlusScheduler({ maxConcurrency: 10 });
+  const lowerEmpty = createLoopPlusScheduler({ snapshot: empty.snapshot(), maxConcurrency: 2 });
+  assert.equal(lowerEmpty.dispatch(specs).started.length, 2);
+  assert.equal(lowerEmpty.snapshot().pending.length, 8);
+
+  const invalid = initial.snapshot();
+  invalid.maxConcurrency = 1;
+  assert.throws(() => createLoopPlusScheduler({ snapshot: invalid, maxConcurrency: 10 }), /Invalid Loop\+ scheduler snapshot/);
+});
+
 test("reviews the first finished sibling immediately while the other keeps running", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   const dispatched = scheduler.dispatch([spec("alpha"), spec("beta")]);

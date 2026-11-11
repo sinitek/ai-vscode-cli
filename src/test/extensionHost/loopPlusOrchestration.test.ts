@@ -485,7 +485,7 @@ function harness(options: {
   let mainCalls = 0;
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
-    maxConcurrency: options.maxConcurrency ?? 6,
+    maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
     ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
@@ -897,6 +897,35 @@ test("restored reviewed attempts suppress only closeout feedback, not a new atte
   }
 });
 
+test("refreshes concurrency from the configured dispatch limit when continuing live or restored parents", async () => {
+  for (const reload of [false, true]) {
+    let maximum = 6;
+    const env = harness({ decisionSubtaskMax: () => maximum });
+    const initial = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    assert.match(env.mains[0].request.modelPrompt, /Scheduler concurrency limit: 6/);
+    env.host.stopParent(initial.taskId ?? "");
+    await initial.done;
+    maximum = 10;
+    const host = reload ? env.reloadHost() : env.host;
+    const resumed = host.tryRun({ displayPrompt: "continue" }, env.target, {
+      resumeTaskId: initial.taskId,
+      resumeRequested: true,
+    });
+    await flush();
+    assert.match(env.mains.at(-1)?.request.modelPrompt ?? "", /Scheduler concurrency limit: 10/);
+    env.mains.at(-1)?.resolve(decisionJson({
+      status: "dispatch",
+      subtasks: Array.from({ length: 10 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
+    }));
+    await flush();
+    assert.equal(env.attempts.length, 10);
+    assert.equal(snapshotOf(env.tasks.get(initial.taskId ?? "")).maxConcurrency, 10);
+    host.stopParent(initial.taskId ?? "");
+    await resumed.done;
+  }
+});
+
 test("uses the configured Loop+ dispatch subtask maximum", async () => {
   const limited = harness({ decisionSubtaskMax: () => 1 });
   limited.host.tryRun({ displayPrompt: "ship the feature" }, limited.target, { schedulingMode: "event_driven" });
@@ -910,16 +939,17 @@ test("uses the configured Loop+ dispatch subtask maximum", async () => {
   assert.equal(limited.attempts.length, 0);
   assert.equal(limited.logs.some((item) => item.event === "loop-plus-protocol-miss"), true);
 
-  const raised = harness({ decisionSubtaskMax: () => 8, maxConcurrency: 8 });
+  const raised = harness({ decisionSubtaskMax: () => 10 });
   raised.host.tryRun({ displayPrompt: "ship the feature" }, raised.target, { schedulingMode: "event_driven" });
   await flush();
-  assert.match(raised.mains[0].request.modelPrompt, /1 to 8 new self-contained subtasks/);
+  assert.match(raised.mains[0].request.modelPrompt, /1 to 10 new self-contained subtasks/);
+  assert.match(raised.mains[0].request.modelPrompt, /Scheduler concurrency limit: 10/);
   raised.mains[0].resolve(decisionJson({
     status: "dispatch",
-    subtasks: Array.from({ length: 7 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
+    subtasks: Array.from({ length: 10 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
   }));
   await flush();
-  assert.equal(raised.attempts.length, 7);
+  assert.equal(raised.attempts.length, 10);
 });
 
 test("keeps the main task decomposing until the initial Loop+ decision is accepted", async () => {

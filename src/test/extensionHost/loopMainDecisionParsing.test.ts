@@ -9,9 +9,11 @@ import type { LoopTaskRecord } from "../../loopTaskStore";
 installVscodeMock();
 
 const { createPromptRunRuntimeHost } = require("../../extensionHost/promptRunRuntime") as typeof import("../../extensionHost/promptRunRuntime");
+const { createLoopOrchestrationHost } = require("../../extensionHost/loopOrchestration") as typeof import("../../extensionHost/loopOrchestration");
 
-function createRuntimeHost() {
+function createRuntimeHost(decisionSubtaskMax?: () => number) {
   const deps: Parameters<typeof createPromptRunRuntimeHost>[0] = {
+    decisionSubtaskMax,
     getActiveWorkspaceKey: () => "workspace",
     getConversationTabById: () => null,
     getConversationTabs: () => [],
@@ -39,6 +41,74 @@ function createRuntimeHost() {
   };
   return createPromptRunRuntimeHost(deps);
 }
+
+test("classic Loop main prompt reflects the configured dispatch limit in rules and examples", async () => {
+  let maximum = 10;
+  const prompts: string[] = [];
+  const host = createLoopOrchestrationHost({
+    decisionSubtaskMax: () => maximum,
+    getLoopCommunicationPaths: () => ({ dir: "comm", mainFile: "main.md", subtasksDir: "subtasks" }),
+    normalizeLoopContinuePromptForPrompt: () => null,
+    buildLoopSupplementalRequirementsLines: () => [],
+    isLoopTaskExecutionInterrupted: () => false,
+    readLoopTaskRecord: () => null,
+    updateLoopTaskRecord: () => null,
+    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+    resolvePromptRunModelForRole: () => undefined,
+    resolvePromptRunThinkingModeForRole: () => undefined,
+    runPrompt: async (input) => { prompts.push(input.modelPrompt); },
+    resolveLoopTaskSessionId: () => null,
+    getLoopRoundRunStatus: () => "stopped",
+    appendLoopRound: () => null,
+    buildLoopRoundSummary: () => "",
+  });
+  const task = { id: "task-limit", taskStoreFile: "tasks.json", rootPrompt: "完成目标" } as LoopTaskRecord;
+  const options = {
+    input: { displayPrompt: "完成目标", modelPrompt: "完成目标", contextTags: [] },
+    target: { tabId: "tab-limit", cli: "codex" as const, sessionId: null },
+    task,
+    round: 1,
+  };
+  await host.runClassicLoopMainDecision(options);
+  const prompt = prompts[0];
+  assert.match(prompt, /启动 1~10 个子任务/);
+  assert.match(prompt, /每批最多 10 个子任务/);
+  assert.match(prompt, /数组长度 1~10/);
+  maximum = 1;
+  await host.runClassicLoopMainDecision(options);
+  const limited = prompts[1];
+  assert.match(limited, /每批最多 1 个子任务/);
+  const examples = limited.split("\n")
+    .filter((line) => line.startsWith('{"status":"continue"'))
+    .map((line) => JSON.parse(line) as { subtasks: unknown[] });
+  assert.equal(examples.length, 2);
+  assert.ok(examples.every((example) => example.subtasks.length <= 1));
+});
+
+test("classic Loop uses the configured dispatch limit instead of a fixed six-task cap", () => {
+  let maximum = 10;
+  const host = createRuntimeHost(() => maximum);
+  const subtasks = Array.from({ length: 21 }, (_, index) => ({
+    id: `task-${index}`,
+    title: `独立任务 ${index}`,
+    prompt: "完成当前独立交付，遵循项目既有规则并汇报实际修改和执行结果。".repeat(5),
+  }));
+  const parseBatch = (count: number) => host.parseLoopMainDecision(JSON.stringify({
+    status: "continue",
+    subtasks: subtasks.slice(0, count),
+  }));
+  assert.equal(parseBatch(10)?.subtasks?.length, 10);
+  assert.equal(parseBatch(11), null);
+  maximum = 2;
+  assert.equal(parseBatch(2)?.subtasks?.length, 2);
+  assert.equal(parseBatch(3), null);
+  maximum = 99;
+  assert.equal(parseBatch(20)?.subtasks?.length, 20);
+  assert.equal(parseBatch(21), null);
+  const defaults = createRuntimeHost();
+  assert.equal(defaults.normalizeLoopSubtaskDecisions({ subtasks: subtasks.slice(0, 6) })?.length, 6);
+  assert.equal(defaults.normalizeLoopSubtaskDecisions({ subtasks: subtasks.slice(0, 7) }), null);
+});
 
 test("parses classic Loop progress without requiring acceptance and rejects invalid percentages", () => {
   const host = createRuntimeHost();

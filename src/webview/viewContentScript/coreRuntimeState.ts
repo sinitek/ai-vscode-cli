@@ -22,6 +22,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
           pendingRunPrompt: null,
           suppressQueueFlushOnce: false,
           currentRunPrompt: "",
+          lastRunStatus: "",
           lastRunStatusMessage: "",
           activeRunActivity: "",
           tokensInContextWindow: null,
@@ -297,6 +298,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         runtimeState.pendingRunPrompt = null;
         runtimeState.suppressQueueFlushOnce = false;
         runtimeState.currentRunPrompt = "";
+        runtimeState.lastRunStatus = "";
         runtimeState.lastRunStatusMessage = "";
         runtimeState.activeRunActivity = "";
         runtimeState.tokensInContextWindow = null;

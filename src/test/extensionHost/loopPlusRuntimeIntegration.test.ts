@@ -146,6 +146,33 @@ function reportText(rootDir: string): string {
   return chunks.join("\n");
 }
 
+test("adapter starts ten independent subtasks using only the configured dispatch limit", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ decisionSubtaskMax: () => 10 });
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      assert.match(input.modelPrompt ?? "", /Scheduler concurrency limit: 10/);
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: decision({
+          status: "dispatch",
+          subtasks: Array.from({ length: 10 }, (_, index) => subtask(`item-${index}`, `src/item-${index}.ts`)),
+        }),
+      });
+    });
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 10, "ten independent attempts started");
+    const taskId = fixture.mainCalls[0].loopTaskId ?? "";
+    const snapshot = fixture.readTask(taskId)?.loopPlus as import("../../loopPlusScheduler").LoopPlusSchedulerSnapshot;
+    assert.equal(snapshot.maxConcurrency, 10);
+    assert.equal(snapshot.running.length, 10);
+    assert.equal(snapshot.pending.length, 0);
+    fixture.adapter.host().stopParent(taskId);
+    await running;
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("Loop+ preserves visible configuration revisions from its first main call through subtask dispatch", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   const configSelections = { codex: { configId: "visible-profile", revision: "visible-revision" } };

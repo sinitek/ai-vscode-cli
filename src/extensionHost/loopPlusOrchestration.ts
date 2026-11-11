@@ -291,7 +291,6 @@ export function resolveLoopPlusEntry(
 
 export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps) {
   const runtimes = new Map<string, ParentRuntime>();
-  const maxConcurrency = deps.maxConcurrency ?? LOOP_PLUS_MAX_CONCURRENCY;
   const decisionSafetyLimit = deps.decisionSafetyLimit ?? DECISION_SAFETY_LIMIT;
   const protocolRetryLimit = deps.protocolRetryLimit ?? PROTOCOL_RETRY_LIMIT;
   const decisionStrategies = createLoopPlusDecisionStrategyRegistry();
@@ -301,6 +300,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }));
   const launchDelayMs = deps.launchDelayMs ?? (() => 0);
   const decisionSubtaskMax = () => resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
+  const maxConcurrency = () => deps.maxConcurrency ?? decisionSubtaskMax();
   const configuredAcceptanceLimit = () => resolveLoopPlusMaxAcceptances(deps.acceptanceLimit?.());
 
   function tryRun(input: LoopPlusRunInput, target: LoopPlusPromptTarget, options: LoopPlusRunOptions = {}): LoopPlusRunResult {
@@ -447,7 +447,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function createParent(input: LoopPlusRunInput, target: LoopPlusPromptTarget, sessionId: string | null): ParentRuntime {
-    const scheduler = createLoopPlusScheduler({ maxConcurrency });
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: maxConcurrency() });
     const task = deps.createTask({
       cli: target.cli,
       rootPrompt: input.displayPrompt,
@@ -469,9 +469,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (existing) {
       existing.target = target;
       existing.prompt = input;
+      existing.scheduler = createLoopPlusScheduler({
+        snapshot: existing.scheduler.snapshot(),
+        maxConcurrency: maxConcurrency(),
+      });
       return existing;
     }
-    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus });
+    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() });
     const runtime = buildRuntime(task, target, input, scheduler);
     runtime.initialPromptDone = scheduler.snapshot().seenAttempts.length > 0
       || scheduler.snapshot().running.length > 0
@@ -1891,7 +1895,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       pendingUserMessages: step.userMessageCount > 0
         ? runtime.scheduler.snapshot().userMessageQueue.slice(0, step.userMessageCount)
         : [],
-      maxConcurrency,
+      maxConcurrency: runtime.scheduler.snapshot().maxConcurrency,
       subtaskMax: decisionSubtaskMax(),
       acceptedCount: reviewedAcceptanceCount(runtime),
       progressPercent: normalizeLoopPlusProgressPercent(task?.loopPlusProgressPercent) ?? 0,

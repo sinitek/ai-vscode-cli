@@ -351,10 +351,10 @@ export function buildLoopPlusFinishEventId(subtaskId: string, attemptId: string)
 export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}): LoopPlusScheduler {
   const restored = options.snapshot === undefined ? null : readSnapshot(options.snapshot);
   let maxConcurrency: number;
-  if (restored) {
+  if (isPositiveInteger(options.maxConcurrency)) {
+    maxConcurrency = Math.max(options.maxConcurrency, restored?.running.length ?? 0);
+  } else if (restored) {
     maxConcurrency = restored.maxConcurrency;
-  } else if (isPositiveInteger(options.maxConcurrency)) {
-    maxConcurrency = options.maxConcurrency;
   } else {
     throw new Error("Invalid Loop+ maxConcurrency");
   }

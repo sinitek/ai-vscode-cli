@@ -295,7 +295,7 @@ ${renderPanelDialog({
           label: strings.askAnswerClose,
           className: "icon-button ask-chat-close",
         }),
-        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><span id="askChatBusy" class="ask-chat-busy" role="status"${askThread.queued || state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}" aria-describedby="askChatBusy"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
+        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${state.mainModelBusy && !askThread.running ? ' aria-describedby="askChatBusy"' : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
       ${state.loopPlus ? renderGroupAcceptancePlanDialogs() : ""}
@@ -767,17 +767,17 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 
 	      function updateAskAvailability() {
 	        const running = Boolean(askThread && askThread.running);
-	        const queued = Boolean(askThread && askThread.queued);
+	        const showBusyNotice = mainModelBusy && !running;
 	        if (askChatSend) {
 	          askChatSend.disabled = false;
-	          if (queued || mainModelBusy && !running) {
+	          if (showBusyNotice) {
 	            askChatSend.setAttribute("aria-describedby", "askChatBusy");
 	          } else {
 	            askChatSend.removeAttribute("aria-describedby");
 	          }
 	        }
 	        if (askChatBusy) {
-	          askChatBusy.hidden = !(queued || mainModelBusy && !running);
+	          askChatBusy.hidden = !showBusyNotice;
 	        }
 	        if (askChatAbort) {
 	          askChatAbort.hidden = !running;
@@ -1575,17 +1575,30 @@ function renderLoopPlusCount(field: string, label: string, value: number): strin
   </div>`;
 }
 
-function acceptanceStatusClass(status: string): string {
-  if (status === "reviewing") {
-    return "member-status-reviewing";
+function participantStatusClass(status: string): string {
+  switch (status) {
+    case "running":
+      return "member-status-running";
+    case "reviewing":
+      return "member-status-reviewing";
+    case "completed":
+    case "acceptance_passed":
+    case "reviewed":
+      return "member-status-passed";
+    case "pending":
+    case "blocked":
+    case "needs-review":
+      return "member-status-pending";
+    case "error":
+    case "failed":
+    case "acceptance_failed":
+      return "member-status-failed";
+    case "stopped":
+    case "skipped":
+      return "member-status-inactive";
+    default:
+      return "";
   }
-  if (status === "acceptance_passed" || status === "reviewed") {
-    return "member-status-passed";
-  }
-  if (status === "acceptance_failed") {
-    return "member-status-failed";
-  }
-  return "";
 }
 
 function renderParticipantStatus(
@@ -1594,7 +1607,7 @@ function renderParticipantStatus(
   strings: LoopGroupChatPanelStrings,
 ): string {
   const label = escapeHtml(formatParticipantStatus(state, status, strings));
-  const statusClass = acceptanceStatusClass(status);
+  const statusClass = participantStatusClass(status);
   if (!statusClass) {
     return label;
   }
@@ -1606,9 +1619,6 @@ function formatParticipantStatus(
   status: string,
   strings: LoopGroupChatPanelStrings,
 ): string {
-  if (!state.loopPlus) {
-    return status;
-  }
   switch (status) {
     case "running":
       return strings.loopPlusStatusRunning;
@@ -1632,7 +1642,16 @@ function formatParticipantStatus(
     case "waiting_continuation":
       return strings.loopPlusStatusAwaitingContinuation;
     case "completed":
-      return strings.loopPlusStatusCompleted;
+      return state.loopPlus ? strings.loopPlusStatusCompleted : strings.participantStatusCompleted;
+    case "error":
+    case "failed":
+      return strings.participantStatusFailed;
+    case "needs-review":
+      return strings.participantStatusNeedsReview;
+    case "blocked":
+      return strings.participantStatusBlocked;
+    case "skipped":
+      return strings.participantStatusSkipped;
     case "idle":
       return strings.loopPlusStatusIdle;
     case "decomposing":

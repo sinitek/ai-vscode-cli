@@ -48,16 +48,19 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           }
           if (data.type === "appendMessage") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
+            if (runtimeState && data.message && data.message.role === "user") {
+              runtimeState.lastRunStatus = "";
+            }
             syncTabErrorFromMessage(eventTabId, data.message);
             const loopMetaChanged = updateLoopMetaForTabFromMessage(eventTabId, data.message);
             if (loopMetaChanged) {
               renderConversationTabs();
             }
-            const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
             let statusSummaryUpdated = false;
             if (runtimeState && data.message && data.message.role === "system") {
               const content = String(data.message.content || "").trim();
-              if (isHiddenRetryQueuedMessage(content)) {
+              if (isHiddenRetryQueuedMessage(content) && runtimeState.lastRunStatus !== "end") {
                 setTabErrored(eventTabId, true);
               }
               if (isHiddenRetryStartedMessage(content)) {
@@ -157,6 +160,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const eventTabId = typeof data.tabId === "string" ? data.tabId : null;
             const targetTabId = eventTabId || getActiveConversationTabId();
             const runtimeState = getConversationRuntimeState(targetTabId);
+            if (runtimeState) {
+              runtimeState.lastRunStatus = data.status;
+            }
             const shouldHandleActiveTabEvent = shouldHandleTabScopedEvent(data);
             let queuePausedNotice = "";
             if (data.status === "start") {

@@ -1,12 +1,13 @@
 # 每 Tab 聊天气泡保留与永久清理
 
-- 日期：2026-11-09
+- 日期：2026-11-11
 - 状态：已实现并通过针对性合并验收（2026-11-09）；平台与覆盖率限制见验收表。
 - 产品入口：[功能总表](../product-specs/FEATURE_INVENTORY.md#每-tab-聊天气泡显示限额)
 - 实施记录：[已归档执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md)
 - 清理区间与保护判定修正：[修复执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md)。以下规则以本次用户澄清后的语义为准，原计划保留为历史验收记录。
 - 真正删除的后续要求：[永久清理执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md)。本节现行行为覆盖前两轮“只影响显示”的历史边界。
 - JSON 最终气泡清理补充（2026-11-10）：[执行与验证记录](../exec-plans/completed/2026-11/2026-11-10-json-final-bubble-retention.md)，最终标记或主色边框不再保护 JSON 树气泡，其余窗口与安全规则不变。
+- 触发与比例调整（2026-11-11）：达到设置上限即检查最早 25%（向上取整），替代超过上限 110% 后按 20% 清理；保护判定、区间内跳过且不补删、永久删除与宿主确认链路不变。
 
 ## 背景与边界
 
@@ -35,8 +36,8 @@
 ## 显示集合与批次滞回
 
 1. 从当前 Tab 的原始消息按现有基础显示规则排除空内容、隐藏 Loop+ 协议、系统运行状态及解析后的隐藏任务列表等，保留每项原始索引；此时不应用「仅显示最终结果」。基础集合的消息项总数为 C，不按折叠指令组的 DOM 节点数计数，也不以仅可清理项的数量替代 C。
-2. N 为归一化后的设置基准，H=`floor(1.1N)`，B=`max(1, ceil(0.2N))`。当 C≤H 时保留全部基础集合。
-3. 当 C>H 时，最旧清理区间大小 Q=`B * ceil((C-H)/B)`。仅检查基础集合最早 Q 项，移除其中可清理的过程消息，跳过保护项。保护项占用区间位置，不越过 Q 向后补删；实际移除数是该区间内的可清理项数，不是必须删除 Q 条，也不是只截断最后 N 条。
+2. N 为归一化后的设置基准，B=`max(1, ceil(0.25N))`。当 C<N 时保留全部基础集合，达到 N 即触发清理。
+3. 当 C≥N 时，最旧清理区间大小 Q=`B * ceil((C-N+1)/B)`。仅检查基础集合最早 Q 项，移除其中可清理的过程消息，跳过保护项。保护项占用区间位置，不越过 Q 向后补删；实际移除数是该区间内的可清理项数，不是必须删除 Q 条，也不是只截断最后 N 条。
 4. Webview 将候选消息的 ID 与内容快照发给宿主。宿主成功写入存档后，原地移除缓存和运行中数组中的相同消息，再回传权威剩余集合；索引按剩余集合重新计算。随后才应用「仅显示最终结果」过滤与增量渲染。
 5. 后续 C 以真正剩余消息计数，不含已经清理的消息。同一批确认后的重复渲染不向后补删；消息集合、保护状态、忙闲状态或设置变化才重新计算。等待宿主确认时只允许一个清理请求，避免重复提交。
 
@@ -44,19 +45,19 @@
 
 ### 默认边界示例
 
-以下均为 N=500、H=550、B=100，且最旧清理区间内没有保护项的情况；区间内有保护项时实际保留数增加相应数量。
+以下均为 N=500、B=125，且最旧清理区间内没有保护项的情况；区间内有保护项时实际保留数增加相应数量。
 
 | C | Q（区间大小） | 保留数 | 行为 |
 | --- | --- | --- | --- |
-| 500 | 0 | 500 | 基准以内不清理 |
-| 550 | 0 | 550 | 触发线等号不清理 |
-| 551 | 100 | 451 | 移除最早 100 个可清理项 |
-| 650 | 100 | 550 | 尚属同一批次 |
-| 651 | 200 | 451 | 下一批，累计检查最旧 200 项 |
+| 499 | 0 | 499 | 未达到上限，不清理 |
+| 500 | 125 | 375 | 达到上限，检查最早 125 项 |
+| 501 | 125 | 376 | 尚属同一批次 |
+| 624 | 125 | 499 | 尚属同一批次 |
+| 625 | 250 | 375 | 下一批，累计检查最旧 250 项 |
 
-例如 C=551 时只检查最早 100 项；其中若有 1 条用户发起与 1 条最终答复，只清理其余 98 项、保留 453 项。第 101 项及其后的指令和思考不受本批清理影响。
+例如 C=500 时只检查最早 125 项；其中若有 1 条用户发起与 1 条最终答复，只清理其余 123 项、保留 377 项。第 126 项及其后的指令和思考不受本批清理影响。
 
-N=1 时 H=1、B=1，避免批量为零。N=10000 时 H=11000、B=2000；10000 是可配置基准的上限，不是承诺最大可见数。
+N=1 时 B=1，避免批量为零；达到 1 条即检查，未受保护的消息可全部清理，数组末尾不额外保护。N=10000 时 B=2500；10000 是可配置基准的上限，不是承诺最大可见数。
 
 ## 最旧优先与保护优先
 
@@ -65,7 +66,7 @@ N=1 时 H=1、B=1，避免批量为零。N=10000 时 H=11000、B=2000；10000 �
 - 无最终标记的普通助手正文、兼容识别的思考、显式思考和指令均为过程消息，不因 `assistant` 角色或缺少 `kind` 而额外保护。清理不另设保守最终判定，不改变 CLI 完成或隐藏重试协议。
 - 正在流式输出、尚待 Markdown 收尾的助手正文临时保护，不截断；结束后按是否为最终答复重新计算。处于数组末尾本身不构成永久保护理由。
 - 清理区间由原始顺序决定，区间内对思考和指令同等处理，不按消息类型分别凑清理数量，不跨过区间边界向后补删。
-- 区间内保护优先，保护项自身超出 H 也保留。可见气泡可能超过 500、550 甚至设置最大基准；这是显式安全取舍，不是严格内存上限。
+- 区间内保护优先，保护项自身超出 N 也保留。可见气泡可能超过 500 甚至设置最大基准；这是显式安全取舍，不是严格内存上限。
 
 ## 真正删除与持久化确认
 
@@ -91,7 +92,7 @@ N=1 时 H=1、B=1，避免批量为零。N=10000 时 H=11000、B=2000；10000 �
 | 验收面 | 要求 | 当前证据边界 |
 | --- | --- | --- |
 | 设置 | 默认、读写重启、输入归一化、旧面板快照、浏览器初值均一致 | 配置专属 10/10、配置/宿主/静态测试 115/115；桌面/390×844 Chromium 与本地宿主 mock 通过；真实扩展宿主未验证 |
-| 批次 | 550/551/650/651、小基准、最大基准、多批跨越；重复渲染幂等 | 策略/运行时回归及最终 13 文件 299/299 通过 |
+| 批次 | 499/500/501/624/625、小基准、最大基准、多批跨越；重复渲染幂等 | 历史批次验收对应旧阈值；新阈值验证见下方补充 |
 | 保护 | 用户、非 JSON 渲染的跨 CLI 最终答复、临时流式项、全保护超限；JSON 最终气泡参与最旧窗口清理，跳过保护项且不补删 | 修正回归覆盖未标记思考、普通助手过程正文、各最终标记与区间外新指令；JSON 补充验证见后续计划 |
 | 永久清理 | 插件内存与 JSON 真正删除，重开不恢复；外部 CLI 数据不变；先清理再结果过滤 | 生命周期真实临时文件测试、全新控制器重开、完整 Webview 消息路由及连续两轮回归通过 |
 | 多入口 | Tab 隔离、设置变化、历史加载、全量/增量与后台更新 | 运行时测试及 Chromium 两视口证据通过；浏览器用本地宿主 mock，不是扩展宿主端到端 |
@@ -99,12 +100,21 @@ N=1 时 H=1、B=1，避免批量为零。N=10000 时 H=11000、B=2000；10000 �
 
 风险/限制：基础集合扫描仍随剩余历史增长，保护消息和基础集合外的隐藏消息不受此限额约束；过程历史删除不可逆。全仓 `npm run test:unit`、c8 百分比覆盖率、真实 VS Code 扩展宿主/CLI、Windows/Linux 和独立长列表性能基准尚未运行；不把合成宿主 Chromium 验证等同真实扩展宿主验证。前轮记录见[原归档执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md)。
 
+### 2026-11-11 触发与比例调整验证
+
+- `npm run build` 通过。
+- `node --test dist/test/webview/chatBubbleRetention.test.js dist/test/webview/chatBubbleRetentionWebview.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`：221/221 通过，覆盖达到上限、25% 向上取整、多批历史、保护项不补删、真实运行时确认、配置文案、流式更新与阅读锚点。首次执行发现局部 VM 夹具遗漏 JSON 解析运行时，补用生产环境已有的 `buildJsonContainerRuntimeSource()` 后重跑通过，未修改保护规则。
+- `node --test dist/test/core/chatMessageLimit.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionLifecycleCoreCoverage.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/loop/loopGroupChatBubbleRetention.test.js`：79/79 通过，覆盖配置、临时存档永久删除和会话隔离，并确认独立群聊策略不变。
+- 额外执行 `node --test dist/test/webview/looppluswebviewintegration.test.js`：1 项通过、2 项失败，均为既有局部 VM 夹具未注入 `retainChatBubbleEntries`。在内存中将策略模块替换为 `git show HEAD:src/webview/chatBubbleRetention.ts` 编译产物后仍复现相同缺失符号错误，归类为范围外夹具问题，本次不修复。
+- ontology 结构校验与脚本单测 9/9 通过；`git diff --check` 通过。本次未运行 Chromium、真实 VS Code/CLI、全仓测试或 Windows/Linux；配置只更改说明文字，DOM 与样式未变，以生成页面静态断言及运行时回归验证。
+
 ## 已核对事实来源
 
 - `src/chatMessageLimit.ts`、`src/toolSettings.ts`：本功能限额常量与归一化（默认 500、范围 1–10000、有限数字/非空数字字符串先向下取整再钳制，无效值回退 500），以及全局 `~/.sinitek_cli/settings.json` 读写。
 - `src/panelStateBuilder.ts`、`src/webview/types.ts`、`src/webview/viewContentScript/coreBootstrap.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`：宿主面板状态、浏览器默认值与同步边界。
 - `src/webview/viewContentStrings.ts`、`src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`：工具设置、AI任务配置入口及既有设置绑定。
 - `src/webview/viewContentScript/messageRendering.ts`：`getVisibleMessages`、`renderMessages`、基础过滤、非活动 DOM 缓存与增量渲染。
+- `src/webview/chatBubbleRetention.ts`：达到上限触发、25% 批量向上取整及保护项跳过的共享策略和浏览器运行时注入源。
 - `src/sessionLifecycle.ts`、`src/sessionStore.ts`、`src/shared/atomicWrite.ts`：宿主校验、真实删除、兼容存档标记与原子写入；`src/panelMessageHandlers/session.ts` 和 `windowMessageDispatch.ts` 连接确认协议。
 - `ARCHITECTURE.md` 的 Webview/UI 层、[既有功能总表](../product-specs/FEATURE_INVENTORY.md#ai-对话标签切换性能)：现有渲染/Tab 缓存边界。
 - [CLI 运行时参考](../references/cli-runtime-reference.md)：最终结论协议；保守显示保护不能取代运行终态判定。

@@ -86,6 +86,7 @@ export async function waitForLoopPlus(predicate: () => boolean, label: string): 
 export function createLoopPlusRuntimeFixture(options: {
   cli?: LoopPlusPromptTarget["cli"];
   maxConcurrency?: number;
+  decisionSubtaskMax?: () => number;
   configId?: string | null;
   resolveThinkingMode?: LoopPlusRuntimeAdapterDeps["resolveThinkingMode"];
   executionRootFactory?: () => { cwd: string; dispose: () => void };
@@ -248,6 +249,7 @@ export function createLoopPlusRuntimeFixture(options: {
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
+    decisionSubtaskMax: options.decisionSubtaskMax,
     launchDelayMs: () => 0,
     delay: async () => undefined,
     readTask,

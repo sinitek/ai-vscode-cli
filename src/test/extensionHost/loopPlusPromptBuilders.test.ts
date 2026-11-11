@@ -25,6 +25,79 @@ import type {
 const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "clarify", "completed"] as const;
 const PLURAL_CONFIRMATION_KEYS = ["reviewEventIds", "confirmedEventIds", "acceptedEventIds"] as const;
 
+test("all Loop+ modes and main prompt kinds reuse reported execution without repeating covered checks", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, loopSubtaskMode }));
+      assert.match(prompt, /Trust the attempt report's concrete execution facts, including test, build, and startup results/);
+      assert.match(prompt, /Do not rerun them yourself or dispatch another attempt solely to reproduce those results/);
+      assert.match(prompt, /Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check/);
+      assert.match(prompt, /Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check/);
+      assert.match(prompt, /Already completed independent checks that remain valid are reusable too/);
+      assert.match(prompt, /Clarify an unclear report using existing output or the source subtask before considering a rerun/);
+      assert.match(prompt, /Do not demand raw logs or independent reproduction merely to trust a clear execution report/);
+      assert.match(prompt, /At closeout or continuation, reuse unchanged accepted execution and review results/);
+      assert.match(prompt, /Keep final requirement coverage and all open-event completion gates/);
+      assert.doesNotMatch(prompt, /do not treat the subtask claim as proof/);
+    }
+  }
+});
+
+test("execution result reuse preserves event-level code review and every selected acceptance review", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({
+        kind,
+        loopSubtaskMode,
+        acceptancePlan: {
+          id: "review-all",
+          name: "完整审查",
+          checks: ["maintainability", "security", "performance", "ui_aesthetics", "other"],
+          otherText: "需要独立检查的集成路径仍须检查",
+          systemDefault: false,
+        },
+        currentEventId: "event-review",
+        view: view({ currentReview: review("event-review", "sub-reviewed"), visibleReviewCount: 1 }),
+      }));
+      assert.match(prompt, /Before accepting an event, inspect its relevant code, diff, or other deliverables/);
+      assert.match(prompt, /Passing tests or an overall done claim is not a substitute for acceptance review/);
+      assert.match(prompt, /A passing unit suite does not establish untested integration behavior/);
+      assert.match(prompt, /Apply every selected additional review/);
+      assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
+      assert.match(prompt, /Do not send completed while any event fails its checklist/);
+      for (const reviewLabel of ["Maintainability", "Security", "Performance", "UI aesthetics"]) {
+        assert.match(prompt, new RegExp(`${reviewLabel} review:`));
+      }
+      assert.match(prompt, /需要独立检查的集成路径仍须检查/);
+      const completed = parseExample(extractProtocolExamples(prompt), "completed");
+      assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), [
+        "dispatched work", "contracts", "tests", "artifacts", "unauthorized changes", "omissions and regressions",
+      ]);
+      assert.deepEqual(completed.acceptancePlanResults?.map((result) => result.key), [
+        "maintainability", "security", "performance", "ui_aesthetics", "other",
+      ]);
+      assert.ok(completed.requirementCoverage?.length);
+    }
+  }
+});
+
+test("Loop+ subtask reports identify reusable verification scope without claiming to replace main review", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const executionRole of ["backend", "frontend", "general"] as const) {
+      const prompt = buildLoopPlusSubtaskModelPrompt({
+        subtask: { title: "汇报验证范围", prompt: "完成本次任务并汇报执行情况", taskType: executionRole },
+        executionRole,
+        loopSubtaskMode,
+        communicationFile: "ATTEMPT_REPORT_TOKEN",
+      });
+      assert.match(prompt, /Report each performed check's scope, command or action, result, and any untested or skipped areas/);
+      assert.match(prompt, /Mention changes made after a check that may invalidate its result/);
+      assert.match(prompt, /Do not rerun a still-valid covered check solely to create fresh evidence/);
+      assert.match(prompt, /Your execution results are reusable facts, not a replacement for the main model's acceptance review/);
+    }
+  }
+});
+
 test("all main prompt kinds require a corrected Chinese title when reprompting", () => {
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
     const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
@@ -366,8 +439,8 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   assert.match(prompt, /snapshot captured when the CLI started/);
   assert.match(prompt, /host re-reads that record and is the final gate/);
   assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
-  assert.match(prompt, /You may run included tests and start a produced runnable application or artifact/);
-  assert.match(prompt, /Neither is required/);
+  assert.match(prompt, /You may run tests or start produced artifacts only to close an identified verification gap/);
+  assert.match(prompt, /Skipping an unnecessary rerun is not a failure/);
   assert.match(prompt, /loopPlus snapshot/);
 
   const examples = extractProtocolExamples(prompt);
@@ -706,7 +779,7 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
   assert.match(prompt, /suggested write scope/);
   assert.match(prompt, /omission, regression, or boundary error/);
   assert.match(prompt, /does not grade this checklist/);
-  assert.match(prompt, /You are not required to run either one/);
+  assert.match(prompt, /Reported execution results are sufficient evidence for checks that still cover the current changes/);
   assert.doesNotMatch(prompt, /Do not implement that work yourself/);
   assert.match(prompt, /accept\.reviews is required/);
   assert.match(prompt, /Do not mark a successful event failed because another event fails or launches a subtask/);

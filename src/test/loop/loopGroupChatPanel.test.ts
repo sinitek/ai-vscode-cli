@@ -920,6 +920,57 @@ function createState(overrides: any = {}) {
   };
 }
 
+for (const { status, label, statusClass } of [
+  { status: "running", label: "运行中", statusClass: "member-status-running" },
+  { status: "pending", label: "待启动", statusClass: "member-status-pending" },
+  { status: "completed", label: "已完成", statusClass: "member-status-passed" },
+  { status: "skipped", label: "已跳过", statusClass: "member-status-inactive" },
+  { status: "blocked", label: "已阻塞", statusClass: "member-status-pending" },
+  { status: "needs-review", label: "待复核", statusClass: "member-status-pending" },
+  { status: "error", label: "执行失败", statusClass: "member-status-failed" },
+  { status: "failed", label: "执行失败", statusClass: "member-status-failed" },
+  { status: "stopped", label: "已停止", statusClass: "member-status-inactive" },
+]) {
+  test(`localizes and colors classic Loop member status ${status} in initial HTML and patches`, () => {
+    const state = createState();
+    for (const participant of state.rounds[0].participants) {
+      participant.status = status;
+    }
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+
+    for (const content of [html, patch.rosterPanelHtml]) {
+      const statusPattern = new RegExp(`<span class="${statusClass}">${label}</span>`, "gu");
+      assert.equal((content.match(statusPattern) ?? []).length, 2);
+      assert.doesNotMatch(content, new RegExp(`<div class="member-meta">${status}</div>`, "u"));
+    }
+  });
+}
+
+test("uses theme colors for member statuses and preserves the Loop+ completion label", () => {
+  const state = createState({
+    loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "missing" },
+  });
+  state.rounds[0].participants[0].status = "completed";
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+
+  assert.match(html, /<span class="member-status-passed">已收口<\/span>/u);
+  assert.match(html, /\.member-status-running,[^}]*--vscode-charts-blue/u);
+  assert.match(html, /\.member-status-passed\s*\{[^}]*--vscode-charts-green/u);
+  assert.match(html, /\.member-status-pending,[^}]*--vscode-charts-orange/u);
+  assert.match(html, /\.member-status-inactive\s*\{[^}]*--vscode-descriptionForeground/u);
+});
+
+test("escapes unknown member statuses and omits an empty roster", () => {
+  const state = createState();
+  state.rounds[0].participants[0].status = "<custom-status>";
+  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+
+  assert.match(patch.rosterPanelHtml, /&lt;custom-status&gt;/u);
+  assert.doesNotMatch(patch.rosterPanelHtml, /<custom-status>/u);
+  assert.equal(buildLoopGroupChatPanelContentPatch(createState({ rounds: [] }), 1).rosterPanelHtml, "");
+});
+
 function createLongChatState(count: number, overrides: any = {}) {
   const state = createState(overrides);
   return {
@@ -1252,11 +1303,25 @@ test("shows the queue notice and keeps sending enabled while the main model is b
   const state = createState({ mainModelBusy: true });
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
   assert.match(html, /id="askChatBusy" class="ask-chat-busy" role="status">主模型正在处理，你的问题会放入队列。<\/span>/u);
+  assert.match(html, /id="askChatBusy"[^>]*>[^<]*<\/span><button id="askChatAbort"/u);
   assert.doesNotMatch(html, /id="askChatSend"[^>]*disabled/u);
   assert.doesNotMatch(html, /id="askChatInput"[^>]*disabled/u);
   assert.match(html, /\.ask-chat-busy\s*\{[^}]*color: var\(--vscode-errorForeground\)/u);
   assert.equal(buildLoopGroupChatPanelContentPatch(state, 1).mainModelBusy, true);
   assert.equal(buildLoopGroupChatPanelContentPatch(createState(), 2).mainModelBusy, false);
+});
+
+test("does not show the busy notice for a submitted question awaiting dispatch", () => {
+  for (const mainModelBusy of [false, true]) {
+    const html = buildLoopGroupChatPanelHtml(
+      { cspSource: "self" } as any,
+      createState({ mainModelBusy }),
+      { version: 1, messages: [], running: true, queued: true, dialogOpen: true, updatedAt: 0 },
+    );
+    assert.match(html, /id="askChatBusy"[^>]*hidden/u);
+    assert.doesNotMatch(html, /id="askChatSend"[^>]*aria-describedby/u);
+    assert.doesNotMatch(html, /id="askChatAbort"[^>]*hidden/u);
+  }
 });
 
 test("keeps Markdown bubble edges compact without preserving generated HTML newlines", () => {
@@ -1428,7 +1493,9 @@ test("live busy patches and an active question still allow consecutive queued su
   assert.equal(context.askChatAbort.hidden, false);
   assert.equal(sent.length, 2);
   vm.runInContext('askThread.queued = true; updateAskAvailability();', context);
-  assert.equal(context.askChatBusy.hidden, false);
+  assert.equal(context.askChatBusy.hidden, true);
+  vm.runInContext('mainModelBusy = false; updateAskAvailability();', context);
+  assert.equal(context.askChatBusy.hidden, true);
 });
 
 test("renders a persistent ask chat with a waiting indicator and can publish updates", () => {

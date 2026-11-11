@@ -8,10 +8,10 @@ export function selectRetainedChatBubbleEntries<Entry extends ChatBubbleRetentio
   entries: readonly Entry[],
   limit = 500,
 ): Entry[] {
-  const threshold = Math.floor(limit * 1.1);
-  const batchSize = Math.max(1, Math.ceil(limit * 0.2));
-  const oldestWindowSize = entries.length > threshold
-    ? batchSize * Math.ceil((entries.length - threshold) / batchSize)
+  const threshold = limit;
+  const batchSize = Math.max(1, Math.ceil(limit * 0.25));
+  const oldestWindowSize = entries.length >= threshold
+    ? batchSize * Math.ceil((entries.length - threshold + 1) / batchSize)
     : 0;
   return entries.filter((entry, position) => position >= oldestWindowSize || entry.protected);
 }

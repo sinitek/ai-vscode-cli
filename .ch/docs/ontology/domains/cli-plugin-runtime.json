@@ -158,7 +158,7 @@
       "id": "plugin.loop_task",
       "name": "Loop 任务",
       "kind": "aggregate",
-      "description": "插件内采用主从多智能体的任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。经典 Loop 主任务除每轮简单直办外负责拆分、派发、协调并信任子任务汇报判断完成，不亲自验收测试；用户或项目规则要求的验证另派独立子任务，均无要求时默认不做。经典子任务加载真实工作区规则并自主实施。经典同批子任务按 3 秒间隔错峰启动，互不冲突的任务仍可并行；局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动项标记 skipped；所有 activeSubtaskIds 对应子任务结束后才继续判断进度。Loop+ 已派发工作保持事件驱动验收；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。用户停止统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
+      "description": "插件内采用主从多智能体的任务编排记录，包含主任务、子任务、群聊沟通文件、状态恢复和本地持久化。经典 Loop 主任务除每轮简单直办外负责拆分、派发、协调并信任子任务汇报判断完成，不亲自验收测试；用户或项目规则要求的验证优先复用子任务已通过且仍覆盖当前改动的结果，仅补缺失、失败或失效部分，明确要求独立验收或交叉复核时仍另派，均无要求时默认不做。经典子任务加载真实工作区规则并自主实施。经典同批子任务按 3 秒间隔错峰启动，互不冲突的任务仍可并行；局部中断或失败不会终止仍为 running 的父任务，等待期间尚未启动项标记 skipped；所有 activeSubtaskIds 对应子任务结束后才继续判断进度。Loop+ 已派发工作保持事件驱动验收；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。用户停止统一停止父子任务；缺失或未知持久化 status 不得恢复为 running。",
       "status": "active",
       "aliases": ["Loop", "loop task", "多智能体", "群聊"],
       "implementation_paths": ["src/loopTaskStore.ts", "src/loopGroupChat.ts", "src/loopSubtaskExecutionRoot.ts", "src/loopSubtaskLifecycle.ts", "src/extensionHost/loopOrchestration.ts", "src/extensionHost/promptRunRuntime.ts", "src/extension.ts", "src/webview/viewContentScript/messageRendering.ts"],
@@ -346,12 +346,14 @@
     {
       "id": "plugin.rule.chat_tab_running_status_priority",
       "name": "Tab 运行状态优先于中间错误",
-      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 的中间错误保留消息但不直接标记任务失败，明确 runStatus:error 仍保留终态失败，成功、新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离。",
+      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "syncTabErrorFromMessage"},
         {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": "src/webview/viewContentScript/coreRuntimeState.ts", "anchor": "createConversationRuntimeState"},
+        {"path": "src/test/webview/tabRunStatus.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 状态与配置协调"}
       ]
     },
@@ -1711,7 +1713,7 @@
     {
       "id": "plugin.rule.loop_plus_capacity_aware_parallel_delivery",
       "name": "Loop+ 按容量与交付边界合理并行",
-      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3–6 路，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。",
+      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3 到配置容量上限路并行，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -1725,13 +1727,17 @@
     },
     {
       "id": "plugin.rule.loop_plus_dispatch_subtask_max",
-      "name": "Loop+ 单次派发子任务上限可配置",
-      "description": "工具设置 AI任务配置中的 loopPlusDecisionSubtaskMax 限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。未配置时仍按默认 6 校验，并把当前上限写进下一轮主任务协议提示。它不改变经典 Loop 批次上限，也不替代 Loop+ maxConcurrency；超出并发上限的已接受子任务留在 pending。",
+      "name": "Loop/Loop+ 单次派发子任务上限可配置",
+      "description": "工具设置 AI任务配置中的 Loop/Loop+ 单次派发上限兼容保留 loopPlusDecisionSubtaskMax 键，默认 6、范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。经典 Loop 每批提示与解析、Loop+ 一次 dispatch 或 accept 附带子任务数共用当前值；Loop+ 新建或继续任务的生产并发容量也读取该配置，不再固定为 6。继续时刷新旧快照及内存实例容量，先验证原快照，不丢失调度状态；降低配置不取消已有运行预留，有效容量至少覆盖这些运行项。主提示显示实际容量，冲突保护与显式宿主并发限制不变；上限不要求模型必须派满。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/loopPlusScheduler.ts"},
         {"path": "src/toolSettings.ts"}
       ]
     },
@@ -1847,14 +1853,17 @@
     },
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
-      "name": "Loop+ 主模型按固定清单验收",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前必须确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；建议写入范围之外的改动只在完成任务确实需要时出现，没有无关改动；没有遗漏、回归或边界错误。不适用必须明确说明。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。主模型可以自行运行相关测试或启动已有可运行产物，但都不强制，跳过本身不构成失败。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
+      "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。父任务继续或宿主重建仍等待，成功续跑通知仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/loopTaskStore.ts", "anchor": "prepareLoopSubtaskCommunicationFile"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/test/extensionHost/loopPlusPromptBuilders.test.ts"},
+        {"path": "src/test/loop/loopTaskStore.test.ts"},
         {"path": "src/test/extensionHost/loopPlusOrchestration.test.ts"},
         {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"},
         {"path": "src/webview/viewContentStrings.ts"}
@@ -2035,18 +2044,21 @@
     },
     {
       "id": "plugin.rule.classic_loop_report_driven",
-      "name": "经典 Loop 信任汇报并按用户或项目要求独立验证",
-      "description": "除每轮简单直办外，经典 Loop 主任务负责拆分、派发、协调并依据子任务汇报判断目标完成，不检查实现细节、不亲自验收、不运行测试、构建或启动验证。用户明确要求或项目既有规则要求的验收、测试和任务完成后检查，必须另派独立子模型任务并按汇报收口；用户未提不能忽略项目规则，两者均未要求时默认不增加验证。经典子任务首次派发与手动续跑均使用真实工作区加载项目规则，自主实施，不注入额外设计或强制实施流程。completed 只要求非空 finalSummary；acceptance、requirementCoverage 和 roundSummaries 可选兼容，不再是完成门槛。轻量总结不虚构验收通过。Loop+ 已派发工作的隔离、验收、调度和完成门槛不变；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。",
+      "name": "经典 Loop 信任汇报并复用有效验证结果",
+      "description": "除每轮简单直办外，经典 Loop 主任务负责拆分、派发、协调并依据子任务汇报判断目标完成，不检查实现细节、不亲自验收、不运行测试、构建或启动验证。用户或项目要求的测试、构建等验证可由实现子任务一并完成并汇报范围、命令或操作、结果与未完成项；已通过且仍覆盖当前改动的结果直接复用，仅补缺失、失败或后续改动影响的部分，未覆盖的实现后集成验证只补相应缺口。汇报不清时优先续接来源子任务补充说明，不因报告细节不足直接重测。明确要求独立验收或交叉复核时仍另派相应子任务，不能用实现自测替代；补充验证派发说明要求来源、已有结果、缺口和范围。用户未提不能忽略项目规则，两者均未要求时默认不增加验证。经典子任务首次派发与手动续跑均使用真实工作区加载项目规则，自主实施，不注入额外设计或强制实施流程。completed 只要求非空 finalSummary；acceptance、requirementCoverage 和 roundSummaries 可选兼容，不再是完成门槛。轻量总结不虚构验收通过。Loop+ 已派发工作的隔离、验收、调度和完成门槛不变；简单直办与精简完成遵循 plugin.rule.loop_trivial_direct_execution。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.extension_host"],
       "source_refs": [
         {"path": "src/extensionHost/loopOrchestration.ts"},
+        {"path": "src/loopTaskStore.ts", "anchor": "prepareLoopSubtaskCommunicationFile"},
         {"path": "src/extensionHost/promptRunRuntime.ts", "anchor": "normalizeLoopMainDecision"},
         {"path": "src/extensionHost/promptExecutionShared.ts"},
         {"path": "src/extension.ts", "anchor": "useClassicLoopProjectInstructions"},
         {"path": "src/loopFinalSummary.ts"},
         {"path": "src/test/extensionHost/loopMainDecisionParsing.test.ts"},
+        {"path": "src/test/extensionHost/subtaskCliExecution.test.ts"},
         {"path": "src/test/extensionHost/promptExecutionShared.test.ts"},
+        {"path": "src/test/loop/loopTaskStore.test.ts"},
         {"path": "src/test/loop/loopFinalSummary.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.3.1 Loop 子任务项目规则隔离"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "经典 Loop 采用汇报驱动"}
@@ -2197,12 +2209,14 @@
     {
       "id": "plugin.rule.chat_message_limit_batched_oldest_process_first",
       "name": "气泡按批次永久清理最旧过程项",
-      "description": "以基础可展示剩余消息总量 C 计数，N 为设置基准，H=floor(1.1N)，B=max(1,ceil(0.2N))；C≤H 不清理，超过时只检查最早 Q=B*ceil((C-H)/B) 项。区间内真正删除插件内存与本地会话存档中的过程消息、跳过保护项，保留原顺序且不向后补删。默认 551 项最早 100 项有 2 条保护消息时只删 98 条、剩 453。后续以实际剩余消息计数，同批确认后重复渲染不继续补删；提高上限和重开不能恢复。先清理后应用仅显示最终结果过滤，按 Tab/CLI/会话隔离。",
+      "description": "以基础可展示剩余消息总量 C 计数，N 为设置基准，B=max(1,ceil(0.25N))；C<N 不清理，C≥N 时只检查最早 Q=B*ceil((C-N+1)/B) 项，达到上限即按最早 25% 向上取整分批清理。区间内真正删除插件内存与本地会话存档中的过程消息、跳过保护项，保留原顺序且不向后补删。默认 500 项最早 125 项有 2 条保护消息时只删 123 条、剩 377。后续以实际剩余消息计数，同批确认后重复渲染不继续补删；提高上限和重开不能恢复。先清理后应用仅显示最终结果过滤，按 Tab/CLI/会话隔离。",
       "status": "active",
       "aliases": ["chatMessageLimit", "批次滞回", "最旧过程气泡"],
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/design-docs/chat-bubble-retention.md", "anchor": "显示集合与批次滞回"},
+        {"path": "src/webview/chatBubbleRetention.ts", "anchor": "selectRetainedChatBubbleEntries"},
+        {"path": "src/webview/viewContentStrings.ts"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "renderMessages"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}

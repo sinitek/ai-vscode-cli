@@ -5,6 +5,7 @@ import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewConten
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 import { buildFinalAnswerMessageRuntimeSource } from "../../finalAnswerProtocol";
+import { buildJsonContainerRuntimeSource } from "../../shared/jsonContainer";
 
 type Message = { id: string; role: string; content: string; kind?: string; [key: string]: unknown };
 
@@ -116,6 +117,7 @@ function createHarness(persistent = false) {
   vm.createContext(sandbox);
   vm.runInContext([
     buildFinalAnswerMessageRuntimeSource(),
+    buildJsonContainerRuntimeSource(),
     VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING,
     functionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isFinalAssistantSummaryMessage"),
     ...helpers.map((name) => functionSource(VIEW_CONTENT_SCRIPT_TRACE_RENDERING, name)),
@@ -167,17 +169,17 @@ function createHarness(persistent = false) {
 
 test("webview counts base display entries before result filtering and preserves raw message indices", () => {
   const harness = createHarness();
-  const messages = history(548);
+  const messages = history(497);
   messages.splice(0, 0, { id: "empty", role: "assistant", content: "" }, { id: "protocol", role: "user", content: "hidden protocol" }, { id: "status", role: "system", content: "Task completed" }, { id: "tasks", role: "assistant", content: "parsed task list" });
   messages.push({ id: "user", role: "user", content: "request" }, { id: "final", role: "assistant", content: "answer", codexFinalAnswer: true });
   harness.state.messages = messages;
   harness.render();
-  assert.equal(harness.ids().length, 550);
+  assert.equal(harness.ids().length, 499);
   assert.equal(harness.visible()[0].index, 4);
   messages.push({ id: "process-new", role: "system", content: "new process" });
   harness.render();
-  assert.equal(harness.ids().length, 451);
-  assert.equal(harness.visible()[0].index, 104);
+  assert.equal(harness.ids().length, 375);
+  assert.equal(harness.visible()[0].index, 129);
   const retained = harness.ids();
   harness.state.onlyShowFinalResults = true;
   harness.render();
@@ -185,79 +187,79 @@ test("webview counts base display entries before result filtering and preserves 
   harness.state.onlyShowFinalResults = false;
   harness.render();
   assert.deepEqual(harness.ids(), retained);
-  assert.equal(messages.length, 555);
+  assert.equal(messages.length, 504);
 });
 
 test("confirmed cleanup counts remaining messages across successive batches and cannot be undone by raising the limit", () => {
   const harness = createHarness(true);
-  harness.state.messages = history(551);
+  harness.state.messages = history(500);
   harness.render();
-  assert.equal(harness.state.messages.length, 551);
+  assert.equal(harness.state.messages.length, 500);
   assert.equal(harness.posted.length, 1);
   harness.render();
   assert.equal(harness.posted.length, 1);
   harness.confirmPruning();
-  assert.equal(harness.state.messages.length, 451);
-  assert.equal(harness.state.messages[0].id, "message-100");
-  harness.state.messages.push(...history(99, "second-batch"));
+  assert.equal(harness.state.messages.length, 375);
+  assert.equal(harness.state.messages[0].id, "message-125");
+  harness.state.messages.push(...history(124, "second-batch"));
   harness.render();
   assert.equal(harness.posted.length, 1);
   harness.state.messages.push(...history(1, "trigger"));
   harness.render();
   assert.equal(harness.posted.length, 2);
-  assert.equal(harness.posted[1].messages[0].id, "message-100");
+  assert.equal(harness.posted[1].messages[0].id, "message-125");
   harness.confirmPruning();
-  assert.equal(harness.state.messages.length, 451);
-  assert.equal(harness.state.messages[0].id, "message-200");
+  assert.equal(harness.state.messages.length, 375);
+  assert.equal(harness.state.messages[0].id, "message-250");
   harness.state.chatMessageLimit = 1000;
   harness.render();
-  assert.equal(harness.ids().length, 451);
+  assert.equal(harness.ids().length, 375);
   assert.equal(harness.posted.length, 2);
 });
 
 test("confirmed cleanup skips protected positions without repeated-render backfilling", () => {
   const harness = createHarness(true);
-  harness.state.messages = history(551);
-  for (let index = 0; index < 99; index++) harness.state.messages[index].role = "user";
+  harness.state.messages = history(500);
+  for (let index = 0; index < 124; index++) harness.state.messages[index].role = "user";
   harness.render();
   assert.equal(harness.posted[0].messages.length, 1);
   harness.confirmPruning();
-  assert.equal(harness.state.messages.length, 550);
+  assert.equal(harness.state.messages.length, 499);
   for (let index = 0; index < 4; index++) harness.render();
   assert.equal(harness.posted.length, 1);
-  assert.ok(harness.state.messages.some((message) => message.id === "message-100"));
+  assert.ok(harness.state.messages.some((message) => message.id === "message-125"));
   harness.state.messages.push(...history(1, "new"));
   harness.render();
   assert.equal(harness.posted.length, 2);
-  assert.equal(harness.posted[1].messages[0].id, "message-100");
+  assert.equal(harness.posted[1].messages[0].id, "message-125");
 });
 
 test("background cleanup replies update only the matching Tab and stale session replies are ignored", () => {
   const harness = createHarness(true);
-  harness.state.messages = history(551, "first");
+  harness.state.messages = history(500, "first");
   harness.render();
   const firstRequest = harness.posted[0];
-  const firstRemaining = harness.state.messages.slice(100);
+  const firstRemaining = harness.state.messages.slice(125);
   harness.state.conversationTabs.activeTabId = "second";
-  harness.state.messages = history(551, "second");
+  harness.state.messages = history(500, "second");
   harness.render();
   const secondMessages = harness.state.messages;
   harness.sandbox.applyChatBubblePruningResult({ ...firstRequest, type: "chatMessagesPruned", messages: firstRemaining });
   assert.equal(harness.state.messages, secondMessages);
-  assert.equal(harness.sandbox.getConversationRuntimeState("first").messages.length, 451);
+  assert.equal(harness.sandbox.getConversationRuntimeState("first").messages.length, 375);
   Object.assign(harness.state.conversationTabs.tabs[1], { sessionId: "new-session" });
   harness.confirmPruning();
   assert.equal(harness.state.messages, secondMessages);
-  assert.equal(harness.state.messages.length, 551);
+  assert.equal(harness.state.messages.length, 500);
 });
 
 test("failed persistence restores authoritative messages and does not retry on every render", () => {
   const harness = createHarness(true);
-  harness.state.messages = history(551);
+  harness.state.messages = history(500);
   harness.render();
   harness.confirmPruning(harness.state.messages, "保存失败");
-  assert.equal(harness.state.messages.length, 551);
-  assert.equal(harness.ids().length, 551);
+  assert.equal(harness.state.messages.length, 500);
+  assert.equal(harness.ids().length, 500);
   harness.render();
   assert.equal(harness.posted.filter((message) => message.type === "pruneChatMessages").length, 1);
   assert.equal(harness.posted.at(-1)?.message, "保存失败");
@@ -265,8 +267,8 @@ test("failed persistence restores authoritative messages and does not retry on e
 
 test("two Tab/CLI projections, cached DOM, configuration changes and history replacement remain isolated", () => {
   const harness = createHarness();
-  const first = history(551, "first");
-  const second = history(650, "second");
+  const first = history(500, "first");
+  const second = history(624, "second");
   harness.state.messages = first;
   harness.render();
   const original = harness.sandbox.findRenderedMessageElement("first-200");
@@ -274,37 +276,37 @@ test("two Tab/CLI projections, cached DOM, configuration changes and history rep
   harness.state.currentCli = "claude";
   harness.state.messages = second;
   harness.render();
-  assert.equal(harness.ids().length, 550);
-  assert.equal(harness.ids()[0], "second-100");
-  assert.equal(harness.sandbox.renderedMessagesById.size, 550);
+  assert.equal(harness.ids().length, 499);
+  assert.equal(harness.ids()[0], "second-125");
+  assert.equal(harness.sandbox.renderedMessagesById.size, 499);
   harness.state.conversationTabs.activeTabId = "first";
   harness.state.messages = first;
   harness.render();
-  assert.equal(harness.ids().length, 451);
+  assert.equal(harness.ids().length, 375);
   assert.equal(harness.sandbox.findRenderedMessageElement("first-200"), original);
   harness.state.chatMessageLimit = 100;
   harness.render();
-  assert.equal(harness.ids().length, 91);
-  assert.equal(harness.ids()[0], "first-460");
+  assert.equal(harness.ids().length, 75);
+  assert.equal(harness.ids()[0], "first-425");
   harness.state.chatMessageLimit = 1000;
   harness.render();
-  assert.equal(harness.ids().length, 551);
+  assert.equal(harness.ids().length, 500);
   harness.state.messages = first.map((message) => ({ ...message }));
   harness.render();
   assert.deepEqual(harness.ids(), first.map((message) => message.id));
-  assert.equal(second.length, 650);
+  assert.equal(second.length, 624);
 });
 
 test("stream deltas crossing the threshold keep latest output and reuse retained bubbles through final upgrade", () => {
   const harness = createHarness();
-  harness.state.messages = history(550);
+  harness.state.messages = history(499);
   harness.render();
   const retainedNode = harness.sandbox.findRenderedMessageElement("message-200");
   harness.sandbox.appendAssistantDelta("incoming", "thinking", "thinking");
-  assert.equal(harness.ids().length, 451);
-  assert.equal(harness.ids()[0], "message-100");
-  const latest = harness.state.messages[550];
-  assert.equal(harness.ids()[450], latest.id);
+  assert.equal(harness.ids().length, 375);
+  assert.equal(harness.ids()[0], "message-125");
+  const latest = harness.state.messages[499];
+  assert.equal(harness.ids()[374], latest.id);
   const created = harness.created;
   for (let index = 0; index < 20; index += 1) {
     harness.sandbox.appendAssistantDelta("incoming", " delta", "thinking");
@@ -319,26 +321,26 @@ test("stream deltas crossing the threshold keep latest output and reuse retained
   assert.deepEqual(harness.ids(), [latest.id]);
   harness.flushTimers();
   assert.deepEqual(harness.ids(), [latest.id]);
-  assert.equal(harness.state.messages.length, 551);
+  assert.equal(harness.state.messages.length, 500);
   assert.match(latest.content, /delta/);
 });
 
 test("detached streaming output reappears and completion re-applies retention without deleting runtime history", () => {
   const harness = createHarness();
-  const messages = history(551);
+  const messages = history(500);
   messages[0] = { id: "worker", role: "assistant", kind: "thinking", subagentId: "worker", content: "working" };
   harness.state.messages = messages;
   harness.render();
   assert.ok(!harness.ids().includes("worker"));
   harness.sandbox.appendAssistantDelta("worker", " delta", "thinking");
   assert.ok(harness.ids().includes("worker"));
-  assert.equal(harness.ids().length, 452);
+  assert.equal(harness.ids().length, 376);
   harness.flushTimers();
   assert.ok(!harness.ids().includes("worker"));
   assert.equal(messages[0].content, "working delta");
   harness.sandbox.appendAssistantDelta("worker", "", "thinking", { codexFinalAnswer: true });
   assert.ok(harness.ids().includes("worker"));
-  assert.equal(harness.ids().length, 452);
+  assert.equal(harness.ids().length, 376);
 });
 
 test("only user requests and rendered final answers survive inside the oldest window", () => {
@@ -352,7 +354,7 @@ test("only user requests and rendered final answers survive inside the oldest wi
     ...history(10),
   ];
   harness.render();
-  assert.deepEqual(harness.ids(), ["user", "explicit", "message-9"]);
+  assert.deepEqual(harness.ids(), ["user", "explicit"]);
   harness.state.onlyShowFinalResults = true;
   harness.render();
   assert.deepEqual(harness.ids(), ["user", "explicit"]);
@@ -360,7 +362,7 @@ test("only user requests and rendered final answers survive inside the oldest wi
 
 test("mixed thinking and instruction history shares one oldest window and preserves newer instructions", () => {
   const harness = createHarness();
-  const messages: Message[] = history(551).map((message, index) => ({
+  const messages: Message[] = history(500).map((message, index) => ({
     ...message, role: "assistant", kind: index % 2 === 0 ? "thinking" : "tool-use",
   }));
   messages[0] = { id: "request", role: "user", content: "检查并修复", kind: "normal" };
@@ -368,13 +370,13 @@ test("mixed thinking and instruction history shares one oldest window and preser
   messages[2] = { id: "unmarked-thinking", role: "assistant", content: "**Checking** current behavior", kind: "normal" };
   harness.state.messages = messages;
   harness.render();
-  assert.equal(harness.ids().length, 453);
-  assert.deepEqual(harness.ids().slice(0, 4), ["request", "answer", "message-100", "message-101"]);
+  assert.equal(harness.ids().length, 377);
+  assert.deepEqual(harness.ids().slice(0, 4), ["request", "answer", "message-125", "message-126"]);
   assert.ok(!harness.ids().includes("unmarked-thinking"));
   assert.ok(!harness.ids().includes("message-1"));
-  assert.equal(messages.length, 551);
+  assert.equal(messages.length, 500);
   harness.render();
-  assert.equal(harness.ids().length, 453);
+  assert.equal(harness.ids().length, 377);
 });
 
 test("retention final protection matches the rendered final border predicate instead of assistant text heuristics", () => {
@@ -402,7 +404,7 @@ test("retention final protection matches the rendered final border predicate ins
 
 test("removed bubbles release rendering records and observers while preserving a non-bottom reading anchor", () => {
   const harness = createHarness();
-  harness.state.messages = history(550).map((message) => ({ ...message, role: "assistant", kind: "thinking" }));
+  harness.state.messages = history(499).map((message) => ({ ...message, role: "assistant", kind: "thinking" }));
   harness.render();
   const removed = harness.sandbox.findRenderedMessageElement("message-0");
   const retained = harness.sandbox.findRenderedMessageElement("message-200");
@@ -411,10 +413,10 @@ test("removed bubbles release rendering records and observers while preserving a
   harness.sandbox.thinkingBubbleViewStates.set("stale-key", { content: "old" });
   harness.state.messages.push({ id: "new", role: "system", content: "process" });
   harness.render();
-  assert.equal(harness.sandbox.renderedMessagesById.size, 451);
+  assert.equal(harness.sandbox.renderedMessagesById.size, 375);
   assert.equal(harness.sandbox.findRenderedMessageElement("message-0"), null);
   assert.ok(harness.unobserved.includes(removed.bubble.viewport));
   assert.equal(harness.sandbox.thinkingBubbleViewStates.has("stale-key"), false);
   assert.equal(retained.getBoundingClientRect().top, priorTop);
-  assert.equal(harness.chatArea.scrollTop, 3000);
+  assert.equal(harness.chatArea.scrollTop, 2250);
 });

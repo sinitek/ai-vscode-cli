@@ -3143,25 +3143,25 @@ test("host-confirmed bubble deletion updates the real runtime and continues from
   const { api, window, posted } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   api.state.onlyShowFinalResults = false;
-  const messages = Array.from({ length: 551 }, (_, index) => ({ id: `process-${index}`, role: "trace", content: `exec command-${index}`, merge: false }));
+  const messages = Array.from({ length: 500 }, (_, index) => ({ id: `process-${index}`, role: "trace", content: `exec command-${index}`, merge: false }));
   window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages });
   const request = posted.find((message) => message.type === "pruneChatMessages")!;
   assert.ok(request);
-  assert.equal(request.messages.length, 100);
-  window.dispatchMessage({ ...request, type: "chatMessagesPruned", messages: messages.slice(100) });
-  assert.equal(api.state.messages.length, 451);
-  assert.equal(api.state.messages[0].id, "process-100");
+  assert.equal(request.messages.length, 125);
+  window.dispatchMessage({ ...request, type: "chatMessagesPruned", messages: messages.slice(125) });
+  assert.equal(api.state.messages.length, 375);
+  assert.equal(api.state.messages[0].id, "process-125");
   assert.equal(api.findRenderedMessageElement("process-0"), null);
-  for (let index = 0; index < 100; index++) {
+  for (let index = 0; index < 125; index++) {
     window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message: { id: `new-${index}`, role: "trace", content: `exec new-${index}`, merge: false } });
   }
   const requests = posted.filter((message) => message.type === "pruneChatMessages");
   assert.equal(requests.length, 2);
-  assert.equal(requests[1].messages[0].id, "process-100");
-  window.dispatchMessage({ ...requests[1], type: "chatMessagesPruned", messages: api.state.messages.slice(100) });
-  assert.equal(api.state.messages.length, 451);
+  assert.equal(requests[1].messages[0].id, "process-125");
+  window.dispatchMessage({ ...requests[1], type: "chatMessagesPruned", messages: api.state.messages.slice(125) });
+  assert.equal(api.state.messages.length, 375);
   window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1000 }) });
-  assert.equal(api.state.messages.length, 451);
+  assert.equal(api.state.messages.length, 375);
   assert.equal(api.findRenderedMessageElement("process-0"), null);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
@@ -4459,8 +4459,8 @@ test("protects only requests and explicit final answers inside the oldest window
   assert.equal(api.findRenderedMessageElement("ordinary-answer"), null);
   assert.ok(api.findRenderedMessageElement("explicit-final"));
   assert.equal(api.findRenderedMessageElement("ordinary-thinking"), null);
-  assert.ok(api.findRenderedMessageElement("process"));
-  assert.equal(api.renderedMessageCacheSize(), 3);
+  assert.equal(api.findRenderedMessageElement("process"), null);
+  assert.equal(api.renderedMessageCacheSize(), 2);
   api.state.onlyShowFinalResults = true;
   api.renderMessages({ incremental: true });
   assert.ok(api.findRenderedMessageElement("request"));
@@ -4474,7 +4474,7 @@ test("protects only requests and explicit final answers inside the oldest window
 test("JSON final bubbles join oldest-window pruning while text answers and newer JSON remain protected", () => {
   for (const onlyShowFinalResults of [false, true]) {
     const { api, window, posted } = createRuntimeHarness();
-    window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 1 }) });
+    window.dispatchMessage({ type: "state", payload: createPanelState({ chatMessageLimit: 2 }) });
     api.state.onlyShowFinalResults = onlyShowFinalResults;
     const messages = [
       { id: "user-json", role: "user", content: '{"需求":"保留"}' },

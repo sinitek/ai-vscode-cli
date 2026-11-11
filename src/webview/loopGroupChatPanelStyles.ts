@@ -489,6 +489,7 @@ ${DIALOG_SHELL_STYLES}
         font-size: 11px;
         overflow-wrap: anywhere;
       }
+      .member-status-running,
       .member-status-reviewing,
       [data-loop-plus-activity="reviewing"],
       [data-loop-plus-status="reviewing"] [data-loop-plus-field="activity"] .meta-value {
@@ -497,8 +498,12 @@ ${DIALOG_SHELL_STYLES}
       .member-status-passed {
         color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, var(--vscode-focusBorder)));
       }
+      .member-status-pending,
       .member-status-failed {
         color: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
+      }
+      .member-status-inactive {
+        color: var(--vscode-descriptionForeground);
       }
       .timeline {
         width: 100%;

@@ -301,7 +301,7 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHideInstructionBubblesSaveError: "隐藏指令气泡设置保存失败，请重试。",
     toolSettingsChatMessageLimitSaveError: "气泡上限保存失败，请重试。",
     toolSettingsChatMessageLimitNote:
-      "全局设置，默认 500，范围 1–10000。超过上限的 110% 时，每批检查相当于上限 20% 的最旧气泡，跳过用户消息及非 JSON 最终答复，不向后补删；JSON 渲染气泡（含主任务分派子任务的最终气泡）、思考和指令同等清理。清理会永久删除插件内的消息及本地会话历史，提高上限不会恢复；不影响外部 CLI 的日志与上下文。保护项较多时可超过限额。",
+      "全局设置，默认 500，范围 1–10000。达到上限时，每批检查相当于上限 25% 的最旧气泡（向上取整，默认 125 个），跳过用户消息及非 JSON 最终答复，不向后补删；JSON 渲染气泡（含主任务分派子任务的最终气泡）、思考和指令同等清理。清理会永久删除插件内的消息及本地会话历史，提高上限不会恢复；不影响外部 CLI 的日志与上下文。保护项较多时可超过限额。",
     toolSettingsHumanInteractionLabel: "人工交互",
     toolSettingsHumanInteractionTitle:
       "Codex、Claude 和 OpenCode 的全局设置。允许 Vibe 任务在继续执行前以结构化表单询问补充信息。",
@@ -314,9 +314,9 @@ export const WEBVIEW_STRINGS = {
     toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
     toolSettingsLoopMaxRoundsTitle:
       "全局设置。新建经典 Loop 任务时允许的最大调度轮次。",
-    toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop+ 单次派发上限",
+    toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop/Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
-      "全局设置。限制 Loop+ 一次 dispatch 或 accept 最多附带的子任务数，默认 6，范围 1–20。不改变同时运行的并发上限。",
+      "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 新建或继续任务时的并发上限。默认 6，范围 1–20。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
     toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
     toolSettingsLoopPlusMaxAcceptancesTitle:
       "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",

@@ -13,8 +13,8 @@ import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
 import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../loopDirectExecutionPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
+import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 
-export const LOOP_PARALLEL_SUBTASK_MAX = 6;
 export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 3 * 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
 export const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
@@ -99,6 +99,7 @@ type LoopOrchestrationRequiredHostDeps =
     | "getLoopSubtaskDisplayTitle"
   >
   & {
+    decisionSubtaskMax?: () => number;
     buildSubagentProgressLabels: () => SubagentProgressLabels;
     buildLoopSubtaskRetryText: (taskId: string, subtaskId: string, retryCount: number) => string;
     closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
@@ -1003,6 +1004,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number,
     continuePrompt?: string,
   ): string {
+    const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
     const taskId = task.id;
     const taskFile = task.taskStoreFile;
     const communication = getLoopCommunicationPaths(taskId);
@@ -1019,7 +1021,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "Loop 模式原理（必须遵守）：",
       "1. 主任务先判断是否适用简单任务直办；不适用时负责拆分和派发，不直接做具体实现。每轮最终只输出一个 JSON 决策。",
-      `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
+      `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
       "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你根据汇报继续决策。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
@@ -1033,12 +1035,16 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "4. 后续轮次根据汇报推进：需要委派的未完成工作派发下一批子任务；独立且符合直办条件的新工作可直接处理。不因缺少验收证据或未运行未要求的测试而增加任务。",
       "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
       "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
-      `7. 每批最多 ${LOOP_PARALLEL_SUBTASK_MAX} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
+      `7. 每批最多 ${subtaskMax} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
       "8. 主任务不验收子任务产物，不检查代码、文档或实现细节，不运行或重复运行测试、构建、启动和其它验证；完成判断以子任务汇报为依据。",
-      "9. 只有用户明确要求或项目既有规则要求验收、测试、构建等验证时，才安排独立的验收或测试子任务，由子模型执行并汇报；两者都未要求时默认不做，不增加固定验收清单。用户未提但项目规则要求的任务完成后测试同样必须独立派发，不能遗漏。",
+      "9. 用户明确要求或项目既有规则要求的验证必须完成，但要求测试、构建不等于要求独立验证。子任务已明确汇报通过且覆盖当前改动的验证，直接采信并复用，不再另派重复验证任务。两者都未要求时默认不做，不增加固定验收清单；用户未提但项目规则要求的验证不能遗漏。",
+      "   部分覆盖时只补缺失或失败项，后续改动使原结果失效时只补受影响项，不无理由重跑整套验证。",
+      "   汇报不清时优先续接来源子任务补充验证范围、命令或操作及结果说明，不因缺少报告细节直接要求重测。",
+      "   只有用户或项目规则明确要求独立验收或交叉复核，且尚无满足该独立要求的有效汇报时，才必须另派相应子任务；已有符合独立要求且仍有效的结果也直接复用。实现后集成验证若未被现有有效结果覆盖，仅补该缺口。",
+      "   历史沟通模板或旧派发提示中的默认独立验证要求，不算用户或项目明确要求。",
       "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
       "11. 每次决策预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个子任务批次才能 completed；completed 时为 0。",
-      "12. 根据汇报，原始目标以及用户或项目规则要求的独立验收、测试任务都已完成时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
+      "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
       "13. 除符合条件的简单任务直办外，主任务负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",
       "14. 简单任务直办完成后可直接返回 completed，estimatedRemainingRounds=0，如实说明操作结果，不虚构子任务或验收结论；其它实现工作返回 JSON 后由程序启动子任务。",
       "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
@@ -1046,7 +1052,16 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "JSON 协议：",
       '{"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"根据子任务汇报直接回答用户原始问题","finalSummary":"根据全部子任务汇报归纳完成内容与交付结果"}',
-      '{"status":"continue","progressPercent":0,"estimatedRemainingRounds":2,"parallelReason":"写入范围互不重叠且没有先后依赖，可以并发","subtasks":[{"id":"stable-id-a","title":"子任务A标题","writeFiles":["src/a.ts"],"prompt":"背景与目标：完成 A。遵循项目既有规则，自主选择实施方式并汇报完成情况。"},{"id":"stable-id-b","title":"子任务B标题","writeFiles":["docs/b.md"],"prompt":"背景与目标：完成 B。遵循项目既有规则，自主选择实施方式并汇报完成情况。"}]}',
+      JSON.stringify({
+        status: "continue",
+        progressPercent: 0,
+        estimatedRemainingRounds: 2,
+        parallelReason: "在配置上限内选择写入范围互不重叠且没有先后依赖的任务",
+        subtasks: [
+          { id: "stable-id-a", title: "子任务A标题", writeFiles: ["src/a.ts"], prompt: "背景与目标：完成 A。遵循项目既有规则，自主选择实施方式并汇报完成情况。" },
+          { id: "stable-id-b", title: "子任务B标题", writeFiles: ["docs/b.md"], prompt: "背景与目标：完成 B。遵循项目既有规则，自主选择实施方式并汇报完成情况。" },
+        ].slice(0, subtaskMax),
+      }),
       '{"status":"continue","progressPercent":75,"estimatedRemainingRounds":1,"subtasks":[{"id":"required-tests","title":"执行用户或项目规则要求的测试","prompt":"用户要求或项目规则要求任务完成后运行相关测试。请作为独立测试子任务按该要求执行，并汇报结果、失败或阻塞；不要扩大到未要求的检查。"}]}',
       JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE }),
       '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
@@ -1059,20 +1074,20 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
       "- finalSummary 根据子任务汇报归纳整体结果、完成内容和最终交付；遗留问题如实说明，不编造验收结论。",
       buildStructuredSvgSummaryPromptInstruction("finalSummary"),
-      `- status=continue 时提供 subtasks 数组，数组长度 1~${LOOP_PARALLEL_SUBTASK_MAX}，不要求 acceptance。`,
+      `- status=continue 时提供 subtasks 数组，数组长度 1~${subtaskMax}，不要求 acceptance。`,
       "- 当前没有可执行子任务、需要等待外部结果，或有证据表明当前要求无法完成时，返回 blocked，不得把任务标成 completed。",
       LOOP_BLOCKED_SUMMARY_INSTRUCTION,
       "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",
       "- subtasks 中每个对象都必须提供 title 和 prompt；prompt 必须自包含且足够详细，因为子任务每次都会在单独新会话中执行，看不到主任务对话上下文。",
       "- subtasks[*].prompt 说明背景、目标、范围以及用户或项目规则已有的要求即可，不额外强制执行步骤、设计方法或验收流程。writeFiles 是并发冲突提示，不是硬性写入白名单。不要把任务记录、调度状态、轮次或父任务协议写进 prompt；沟通文件和禁止修改的调度文件由宿主附加。",
-      "- 用户或项目规则要求的验收、测试必须单独派发子任务，说明要求来源和范围；不要让主模型亲自执行，也不要把未要求的验证作为完成门槛。",
+      "- 需要补充验证时，在 prompt 中说明要求来源、已有验证结果、剩余缺口和本次范围；不要把已覆盖且仍有效的验证重复派发，不要让主模型亲自执行，也不要把未要求的验证作为完成门槛。",
       "- subtasks[*].id 应稳定可读；如果复用已有子任务，请使用已有 id。",
       "- 判断新任务是否是此前子任务的连续工作或修补；是则设置 continueFromSubtaskId 为来源子任务 id，宿主将恢复其会话。独立任务不要设置。不要并发派发共享同一来源会话的任务；CLI 或配置不兼容、历史会话不可用时宿主会说明原因并使用新会话。",
       "- subtasks[*].writeFiles 可选，表示建议写入范围；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突。它不是执行时的硬性写入白名单。纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
       "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
       "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
       "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
-      "- 根据汇报确认目标与必需的独立验收、测试任务已完成后返回 completed，任务记录和最终总结由宿主落地。",
+      "- 根据汇报确认目标与必需的验证要求已满足后返回 completed；明确要求的独立验收或交叉复核仍须完成，不因复用普通测试结果而省略。任务记录和最终总结由宿主落地。",
       "",
       ...buildLoopSupplementalRequirementsLines(task),
       ...(normalizedContinuePrompt ? [
@@ -1103,7 +1118,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "建议写入范围只是提示，不是硬限制。完成当前任务确实需要时，可以修改建议范围之外的工作区文件，并在沟通文件说明原因。",
       "不要修改任务记录、调度状态、active ids、snapshot，或其他子任务的沟通文件。",
       "结束前把完成情况、实际修改或操作、结果和遗留问题写入上面的沟通文件，主任务将信任你的汇报判断整体进度。",
-      "实现方法和必要工作按项目规则自主决定，Loop 不额外强制实施流程。用户或项目规则要求的验收、测试由主任务另行安排独立子任务；若本次就是该验证任务，按要求执行并如实汇报，否则报告相关要求，供主任务安排。没有相关要求时不额外增加验收或测试。",
+      "实现方法和必要工作按项目规则自主决定，Loop 不额外强制实施流程。可在本次实现中一并完成用户或项目规则要求的测试、构建等验证；已执行的验证请汇报覆盖范围、命令或操作、结果及未完成项，便于主任务复用。只有明确要求独立验收或交叉复核的部分，才报告给主任务另行安排；尚未覆盖的实现后集成验证也须说明。若本次就是补充验证任务，复用已有有效结果，只完成指定缺口或受影响项；若本次被明确派为独立验收或交叉复核任务，仍按独立要求执行并如实汇报，不能用实现任务的自测替代。没有相关要求时不额外增加验收或测试。",
       "只有必须由父任务或用户确认才能安全继续时，停止实施并填写沟通文件的“待主任务确认”；能自行判断的问题不要上交。",
       "不要在回复中提问或复述待确认问题。有待确认事项时，最终回复只能是：`子任务已结束，待主任务确认事项已写入沟通文件。`",
       "",

@@ -4,7 +4,7 @@
 
 ## AI 对话 Tab 状态与配置协调
 
-- 状态：`active`（2026-11-10）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态；明确的 `runStatus:error` 仍标记失败，成功结束、新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理。
+- 状态：`active`（2026-11-11）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态。每 Tab 记录宿主最新运行状态，`runStatus:end` 后迟到的新增/替换错误消息、trace 片段和自动重试排队提示不再重新标红；新用户消息、新运行或会话重置释放上一轮成功保护。明确的 `runStatus:error` 仍标记失败，未运行过的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理，不改变错误气泡或磁盘会话格式。
 - 共享配置已有状态通过只读快照获取，面板刷新不获取配置写锁、不回写执行租约。首次初始化、配置应用/编辑和执行租约仍使用跨进程互斥锁；同进程同目录的事务顺序排队，不彼此轮询到超时。
 - 读取到未就绪状态不视为配置可用；任务启动仍在互斥事务中核对所选档案及就绪状态。存活进程持有的写锁不按时间强拆，真实跨窗口写操作超时仍明确拒绝启动。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/config/sharedRuntimeConfig.ts`；回归：`src/test/webview/tabRunStatus.test.ts`、`src/test/webview/conversationtabsummarytooltip.test.ts`、`src/test/config/sharedRuntimeConfig.test.ts`。
@@ -15,6 +15,12 @@
 - 选中后显示自由输入框；即使该题可选，选中其它但未填写也就地报错，保留已填写内容。切回预设选项后不提交残留文本。单选回传自定义文本，多选保留预设选择并加入自定义文本，不发送内部占位值。
 - 原本自由输入的文本字段与布尔确认框保持不变；超时继续复用原始选项和默认值，不自动选中临时添加的其它选项。Grok 不再重复显示独立的其它回答字段，旧版答案格式仍兼容。
 - 实现：`src/webview/humanInteractionOtherChoice.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/webview/orchestratorClarificationDialog.ts`、`src/orchestratorClarification.ts`、`src/interactive/grokUserQuestion.ts`；回归：`src/test/webview/humanInteractionOtherChoice.test.ts`、主任务澄清与 Grok 提问测试。
+
+## Loop 群聊成员状态
+
+- 状态：`active`（2026-11-11）。经典 Loop 群聊的主任务、子任务成员状态统一显示中文：运行中、待启动、已完成、已跳过、已阻塞、待复核、执行失败、已停止；首次渲染与实时刷新保持一致。
+- 复用 Loop+ 的 VS Code 主题语义色：运行中为蓝色，已完成为绿色，待启动、已阻塞、待复核及执行失败为橙色，已停止、已跳过使用主题次要文字色；不硬编码色值。Loop+ 的“已收口”“正在验收”“验收成功”“验收失败”等文案保留。
+- 仅调整状态展示，不改变任务状态、调度、验收或权限语义，无需更新 ontology。实现：`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
 
 ## Loop / Loop+ 总体进度
 
@@ -84,7 +90,7 @@
 ## 每 Tab 聊天气泡显示限额
 
 - 状态：已实现并通过针对性合并验收（2026-11-09）；全仓覆盖率、真实扩展宿主/CLI 与 Windows/Linux 未验证，详见归档计划。入口：工具设置 → AI任务配置；全局工具 `~/.sinitek_cli/settings.json` 的 `chatMessageLimit` 对各 Tab 分别生效，默认 500，整数范围 1–10000。有限数字及非空数字字符串向下取整后钳制；空值、空白字符串、非数字、非有限数或其它类型回退 500。
-- 500 是显示软基准而非任何时候的硬上限。设基准 N、触发线 H=`floor(1.1N)`、批量 B=`max(1, ceil(0.2N))`；基础可展示原始消息总量 C≤H 时不清理，超过时只检查最早 `B * ceil((C-H)/B)` 项，清理其中的过程消息，跳过保护项且保留剩余原顺序，不向后补删凑数量。默认 550 条不清理；最早区间没有保护项时 551 条保留 451 条，650 条保留 550 条，651 条进入下一批、保留 451 条。551 条的最早 100 项若有 2 条保护消息，只清理 98 条、保留 453 条。
+- 500 是显示软基准而非任何时候的硬上限。2026-11-11 调整为达到上限即清理：设基准 N、批量 B=`max(1, ceil(0.25N))`；基础可展示原始消息总量 C<N 时不清理，C≥N 时只检查最早 `B * ceil((C-N+1)/B)` 项，清理其中的过程消息，跳过保护项且保留剩余原顺序，不向后补删凑数量。默认 499 条不清理；最早区间没有保护项时 500 条检查最早 125 项、保留 375 条，624 条保留 499 条，625 条进入下一批、保留 375 条。500 条的最早 125 项若有 2 条保护消息，只清理 123 条、保留 377 条。配置说明同步为达到上限清理最早 25%（向上取整）；其余删除与保护逻辑不变。
 - 永久保护仅包括用户发起和非 JSON 渲染的最终答复，在 `isFinalAssistantSummaryMessage` 的协议文本及结构化标记判定上排除完整 JSON 对象/数组（包括单代码围栏）；主任务分派子任务等 JSON 最终气泡进入最旧清理窗口后同等永久删除，不因最终标记或主色边框而保留。普通文本或混合说明的最终答复仍保护；无标记的普通助手过程正文与思考、指令同等参与清理，不再保守保护。正在流式输出的助手正文临时保留，结束后重算。保护消息本身可能超过基准或触发线，不能承诺严格最多 500 条；不改变 CLI 完成判定协议。
 - 先从基础显示集合选择清理区间，再应用「仅显示最终结果」过滤；覆盖 Tab 隔离、后台回复、历史加载和设置变化。按用户后续确认，真正删除插件内存消息及插件本地会话存档，重开与提高上限不会恢复；后续以剩余消息数重新计数，不因重复渲染向后补删。外部 CLI 日志与上下文不修改；不混同 `historyRetentionDays` 或既有 DOM 缓存策略。
 - Webview 提交候选快照，宿主校验 Tab/CLI/会话、内容与保护状态后先原子落盘再原地清理内存；写盘失败保留原数据并显示错误。主运行索引与交互流式消息 ID 同步定位，Claude 历史修复不会复活主动清理的消息。
@@ -93,9 +99,16 @@
 - 永久清理的后续交付：`.ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md`；本条覆盖前两轮“只隐藏、不删历史”的边界，具体命令与验证限制见计划。
 - JSON 最终气泡清理补充（2026-11-10）：`.ch/docs/exec-plans/completed/2026-11/2026-11-10-json-final-bubble-retention.md`；包含主任务分派子任务、裸对象/数组和代码围栏、文本/结构化最终标记、流式临时保护与真实临时存档重开回归。
 
+## Loop/Loop+ 单次派发上限
+
+- 工具设置“AI任务配置”中的该项共用于经典 Loop 每批派发提示和解析，以及 Loop+ 一次 `dispatch` / `accept` 的子任务数量校验；沿用 `loopPlusDecisionSubtaskMax` 存储键，默认 6、范围 1–20，原有配置无需重设。
+- Loop+ 新建或继续任务时，也将该值作为生产并发容量；配置 10 时可启动 10 个独立子任务。继续旧任务刷新内存实例和持久快照中的容量，不改变运行、排队和验收状态；调低配置不取消已有运行预留，有效容量至少覆盖已有运行数。
+- 该项是上限，不要求每轮派满。真实写入冲突仍串行，显式宿主并发策略仍可限制实际运行数量。
+- 验证覆盖经典 Loop 的 10/11 个任务边界与 1–20 归一化、协议示例、Loop+ 十任务编排与适配器、旧任务继续和调度快照恢复。
+
 ## Loop+ 容量感知并行与轻量冲突协作
 
-- 生产并发上限保持 6；主模型可见真实上限、剩余槽位和单次派发上限。存在至少三个有收益的独立交付边界且容量允许时争取 3–6 路，不再默认按一个全栈角色或两个前后端角色限制任务数；边界不足、真实依赖或容量不足时允许少派，不为凑数拆分。
+- 生产并发容量使用“Loop/Loop+ 单次派发上限”（默认 6、范围 1–20），不再固定为 6；主模型可见真实上限、剩余槽位和单次派发上限。存在至少三个有收益的独立交付边界且容量允许时争取 3 到当前容量上限路并行，不按一个全栈角色或两个前后端角色限制任务数；边界不足、真实依赖或容量不足时允许少派，不为凑数拆分。
 - 按主要写入所有权和可独立验收的实现、测试、文档、配置等边界拆分，`dispatch` / `accept` 主动回填空槽，不重复派发已有 running / pending。默认协议示例展示四个独立交付，并尊重用户单次上限和宿主并发上限。
 - 共享只读上下文不构成写冲突，局部附带修改不必让所有工作串行；子任务写入前重读并保留并发改动，小冲突自行协调并汇报。已知同路径写入和相同冲突组仍串行，不允许隐瞒范围；同符号、共享契约或大量竞争修改仍由主模型重排。
 - 实现与验证：`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`；提示、编排、scheduler 和 parallel 回归测试。边界详见 `.ch/docs/design-docs/loop-plus-scheduling.md`；提示引导不保证真实模型每轮必定派发固定数量。
@@ -147,9 +160,9 @@ Loop / Loop+ 连续子任务会话复用：主模型用 `continueFromSubtaskId` 
 
 作为 starter，这里默认从空表开始；当首个真实能力进入规划或实现时，再新增条目。
 
-经典 Loop 除下述简单任务直办外采用汇报驱动：主模型拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。用户明确要求或项目既有规则要求的验收、测试、构建及任务完成后检查，必须另派独立子模型任务并根据汇报收口；均无要求时默认不做。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）已派发工作的隔离、事件驱动验收和完成门槛不变；简单任务直办遵循下述例外。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。
+经典 Loop 除下述简单任务直办外采用汇报驱动：主模型拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。实现子任务可一并完成用户或项目规则要求的验证并汇报范围、命令或操作及结果；已通过且仍覆盖当前改动的验证直接复用，仅补缺失、失败或后续改动影响的部分，未覆盖的实现后集成验证只补相应缺口。汇报不清时优先续接来源子任务补充说明，不因报告细节不足直接要求重测。明确要求独立验收或交叉复核时仍须另派，不能用实现自测替代；均无验证要求时默认不做，用户未提不免除项目规则要求。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）已派发工作的隔离、事件驱动验收和完成门槛不变；简单任务直办遵循下述例外。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。
 
-工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
+工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“自动修复”四个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop/Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
 AI 对话面板的“使用说明”弹窗仅保留默认选中的“模式说明”页签，以三条简短说明介绍 Vibe、Loop、Loop+ 的任务执行方式，并主推 Loop+；不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 
@@ -469,7 +482,7 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 | AI 对话 / Loop | Loop 最大轮次全局设置与续跑提升 | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extension.ts`、`src/loopTaskStore.ts` | `npm run build`；`node --test dist/test/loop/loopTaskStoreCoreCoverage.test.js` | `loopMaxRounds` 保存在全局工具设置，默认 20、范围 1-100。新建任务写入当前值；已有任务在恢复、继续或下一轮运行前若记录上限低于当前全局设置，会提升任务记录的 `maxRounds`，因此可把旧 20 轮任务扩展到新的上限；降低全局设置不会回写降低已有任务，避免运行中任务被意外截断 |
 | AI 对话 / Loop+ | Loop+ 单次派发子任务上限 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/loopPlusDecision.ts`、`src/toolSettings.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js` | 工具设置“AI任务配置”提供 `loopPlusDecisionSubtaskMax`，写入 `~/.sinitek_cli/settings.json`。默认 6，范围 1–20。该值限制 Loop+ 一次 `dispatch` 或 `accept` 可附带的子任务数，并写入下一轮主任务协议提示；未配置时仍是 6。它不改变经典 Loop 的 `LOOP_PARALLEL_SUBTASK_MAX`，也不改变 Loop+ 同时运行上限 `maxConcurrency`。超出并发上限的已接受子任务仍进入 pending。 |
 | AI 对话 / Loop+ | Loop+ 最多验收次数 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/toolSettings.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extension.ts`、`src/webview/viewContentHtml.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusContracts.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js` | 工具设置“AI任务配置”提供 `loopPlusMaxAcceptances`，写入 `~/.sinitek_cli/settings.json`。默认 100，范围 1–999。每个新确认的子任务 attempt 计 1 次；整批确认若会超过任务上限则不提交，父任务进入 `needs-review` 且验收队列保持不变。已达上限后不再派发新子任务。任务记录保存该上限，全局值更高时只升不降。它不使用经典 Loop 的 `loopMaxRounds`。 |
-| AI 对话 / Loop+ | Loop+ 主模型验收清单 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentStrings.ts` | `npm run build`；`node --test dist/test/extensionHost/loopPlusPromptBuilders.test.js` | 主模型在 accept 或 completed 前确认本批：安排的任务都已实现；如有接口、数据结构或文件边界则符合约定；如有测试则已通过；如有产物则能运行；建议写入范围之外的改动只在完成任务确实需要时出现，没有无关改动；没有遗漏、回归或边界错误。主模型可以自行跑测试或启动已有产物，但不强制。失败则不确认；能修就在同一次 accept 追加修复子任务，否则 blocked。宿主只核事件 ID。当前项和 FIFO 里已排队的完成事件同一次确认。回答落地前新入队且不超过验收上限的完成事件会让宿主丢弃未落地回答并重新提问，一次验收全部排队项。 |
+| AI 对话 / Loop+ | Loop+ 主模型验收清单 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopTaskStore.ts`、`src/webview/viewContentStrings.ts` | `npm run build`；`node --test dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopTaskStore.test.js` | 主模型在 accept 或 completed 前逐事件审查实现完整性、契约一致性、测试结果、产物可运行性、改动合理性与遗漏/回归/边界，并完成已选附加审查。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或“已完成”不替代代码、差异或交付物审查。只补未覆盖、失败、后续改动失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不机械索要原始日志或直接重测。收尾/续跑复用未变化的已验收结果，仍核对最终需求覆盖与开放事件。失败事件仍须在 accept 标为 failed 并关联修复，无法修复则 blocked；六项固定清单、附加结果、批次确认及完成门禁不变。当前项和 FIFO 已排队事件同批处理；落地前新入队且不超验收上限的事件仍触发重问，不重复运行已有有效验证。 |
 | AI 对话 / Loop+ | 子任务手动中断后等待续跑通知 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts` | Loop+ orchestration、runtime integration、群聊面板回归；Chromium 生产群聊与适配器消息桥交互 | 手动中断保留开放 attempt、并发与写入占用，不生成验收事件、不计验收次数；父任务继续或宿主重建仍等待。子任务成功续跑通知仅生成一次验收事件，其他完成项可独立验收。群聊显示“已中断，等待续跑”，隐藏该项执行动画。真实失败、父任务停止及主模型 close/reprompt 沿用各自处理 |
 | AI 对话 / Loop+ | Loop+ 主任务中断子任务 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/panelStateBuilder.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopPlusPanelState.test.js` | 主任务用和派发相同的 JSON 中断子任务，没有单独按钮。`steer` 以及 `dispatch` / `accept` 上的 `controls` 可对 running 或 pending 子任务 `close` 或 `reprompt`。`close` 中止进程并关闭该次 attempt 的子任务对话 tab，不进验收队列，不计验收次数。`reprompt` 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填的非空新标题为同一子任务开新 attempt 和新 tab；新标题用简体中文反映纠正目标，同步更新调度快照、任务记录和群聊成员及启动通知，不再默认沿用旧标题。缺失或无效标题时整份决策拒绝，不停止旧执行；`close` 不要求标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 `steer`。`wait` / `blocked` / `completed` 带 `controls` 整份拒绝。群聊对最新 attempt 为 closed 的子任务显示已停止。 |
 | AI 对话 / Loop | 子任务手动恢复完成收尾一致性 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/loopSubtaskLifecycle.ts`、`src/extension.ts` | `npm run build`；`node --test dist/test/loop/loopSubtaskLifecycle.test.js dist/test/session/sessionMessageActions.test.js` | 子任务手动中断后在子任务 Tab 继续，若成功结束则与自动重试成功复用同一状态落盘和自动关标签流程；再次错误或停止时不自动关标签，主任务仅在可恢复且未触发连续失败上限时唤醒 |
@@ -546,6 +559,8 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
 
 ## 2026-11-10 向主模型提问队列（替代 2026-11-05 忙碌禁发行为）
+
+2026-11-11 弹窗优化：忙碌提示位于终止按钮左侧，仅在主模型忙碌且当前未提交运行中的提问时显示；提交后的排队、派发过渡和回答过程不触发该提示，避免点击发送后文字闪现。提问队列与终止行为不变。
 
 Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交；已提交问题立即写入提问历史，支持连续提交，按 FIFO 在主会话空闲时自动回答。主任务和提问共享会话级互斥队列，已排队的验收、补充需求及调度收口先于后续提问；已开始回答的问题不被后来到达的验收抢占。经典 Loop 的主任务交接间隙及未处理补充需求也会阻止提问抢跑。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间显示队列提示，真正回答时才显示等待动画；仍可继续输入下一问。中止等待中的问题只清空提问队列，不停止正在执行的主任务；正在回答时中止该回答并清空后续问题。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿；宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
 

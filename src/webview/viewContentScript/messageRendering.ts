@@ -537,7 +537,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function syncTabErrorFromMessage(tabId, message) {
-        if (isErrorMessage(message) && !isConversationTabRunning(getConversationTabSummary(tabId))) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        if (
+          isErrorMessage(message)
+          && !(runtimeState && runtimeState.lastRunStatus === "end")
+          && !isConversationTabRunning(getConversationTabSummary(tabId))
+        ) {
           setTabErrored(tabId, true);
         }
       }

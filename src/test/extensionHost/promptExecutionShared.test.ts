@@ -23,6 +23,20 @@ test("Loop+, unknown tasks and non-subtasks retain their execution policy", () =
   assert.equal(shouldUseClassicLoopProjectInstructions({ loopTaskId: "task" }, { schedulingMode: "classic" }), false);
 });
 
+test("production Loop hosts share the dispatch setting without a separate fixed concurrency cap", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
+  const constructors = [
+    "const promptRunRuntimeHost = createPromptRunRuntimeHost(",
+    "loopOrchestrationHost = createLoopOrchestrationHost(",
+    "loopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter(",
+  ];
+  for (const constructor of constructors) {
+    const wiring = source.split(constructor)[1]?.split("});")[0] ?? "";
+    assert.match(wiring, /decisionSubtaskMax:\s*\(\)\s*=>\s*getGlobalLoopPlusDecisionSubtaskMax\(\)/u);
+    assert.doesNotMatch(wiring, /maxConcurrency:\s*(?:6\b|LOOP_PARALLEL_SUBTASK_MAX\b)/u);
+  }
+});
+
 test("the shared prompt entry applies classic project instructions before all runtime paths", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
   const entry = source.split("async function runPrompt(")[1]?.split("// One-shot prompt runtime")[0] ?? "";

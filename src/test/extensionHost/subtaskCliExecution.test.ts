@@ -111,7 +111,7 @@ for (const mutateInPlace of [false, true]) {
   });
 }
 
-test("classic Loop trusts reports, delegates only required verification and keeps optional SVG guidance", async () => {
+test("classic Loop reuses reported verification, delegates only gaps or explicit independent checks and keeps optional SVG guidance", async () => {
   const task = loopTask();
   const prompts: string[] = [];
   const host = createLoopOrchestrationHost({
@@ -160,10 +160,21 @@ test("classic Loop trusts reports, delegates only required verification and keep
     assert.match(prompt, /不为估算进度执行验收/u);
     assert.match(prompt, /主任务不验收子任务产物，不检查代码、文档或实现细节/u);
     assert.match(prompt, /不运行或重复运行测试、构建、启动和其它验证/u);
-    assert.match(prompt, /只有用户明确要求或项目既有规则要求[\s\S]*独立的验收或测试子任务/u);
+    assert.match(prompt, /子任务已明确汇报通过且覆盖当前改动的验证，直接采信并复用，不再另派重复验证任务/u);
     assert.match(prompt, /两者都未要求时默认不做/u);
-    assert.match(prompt, /用户未提但项目规则要求的任务完成后测试同样必须独立派发，不能遗漏/u);
-    assert.match(prompt, /原始目标以及用户或项目规则要求的独立验收、测试任务都已完成时，返回 completed/u);
+    assert.match(prompt, /部分覆盖时只补缺失或失败项，后续改动使原结果失效时只补受影响项，不无理由重跑整套验证/u);
+    assert.match(prompt, /汇报不清时优先续接来源子任务补充验证范围、命令或操作及结果说明，不因缺少报告细节直接要求重测/u);
+    assert.match(prompt, /只有用户或项目规则明确要求独立验收或交叉复核，且尚无满足该独立要求的有效汇报时，才必须另派相应子任务/u);
+    assert.match(prompt, /已有符合独立要求且仍有效的结果也直接复用/u);
+    assert.match(prompt, /实现后集成验证若未被现有有效结果覆盖，仅补该缺口/u);
+    assert.match(prompt, /历史沟通模板或旧派发提示中的默认独立验证要求，不算用户或项目明确要求/u);
+    assert.match(prompt, /要求测试、构建不等于要求独立验证/u);
+    assert.match(prompt, /用户未提但项目规则要求的验证不能遗漏/u);
+    assert.match(prompt, /原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed/u);
+    assert.match(prompt, /需要补充验证时，在 prompt 中说明要求来源、已有验证结果、剩余缺口和本次范围/u);
+    assert.match(prompt, /不要把已覆盖且仍有效的验证重复派发/u);
+    assert.match(prompt, /明确要求的独立验收或交叉复核仍须完成，不因复用普通测试结果而省略/u);
+    assert.doesNotMatch(prompt, /验收、测试必须单独派发子任务|任务完成后测试同样必须独立派发|必需的独立验收、测试任务/u);
     assert.match(prompt, /子任务遵循项目既有规则自主完成工作/u);
     assert.match(prompt, /不要求 acceptance、requirementCoverage 或 roundSummaries/u);
     assert.doesNotMatch(prompt, /主模型必须先把可执行界面设计写进 prompt|派发时禁止只给粗粒度目标/u);
@@ -307,8 +318,14 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   assert.equal(prompts[0]?.input.loopSubtaskId, "sub-1");
   assert.match(prompts[0]?.input.modelPrompt ?? "", /遵循用户要求和项目既有规则，自主选择完成任务的方法/u);
   assert.match(prompts[0]?.input.modelPrompt ?? "", /主任务将信任你的汇报判断整体进度/u);
-  assert.match(prompts[0]?.input.modelPrompt ?? "", /验收、测试由主任务另行安排独立子任务/u);
-  assert.match(prompts[0]?.input.modelPrompt ?? "", /否则报告相关要求，供主任务安排/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /可在本次实现中一并完成用户或项目规则要求的测试、构建等验证/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /已执行的验证请汇报覆盖范围、命令或操作、结果及未完成项，便于主任务复用/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /只有明确要求独立验收或交叉复核的部分，才报告给主任务另行安排/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /尚未覆盖的实现后集成验证也须说明/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /若本次就是补充验证任务，复用已有有效结果，只完成指定缺口或受影响项/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /若本次被明确派为独立验收或交叉复核任务，仍按独立要求执行并如实汇报，不能用实现任务的自测替代/u);
+  assert.match(prompts[0]?.input.modelPrompt ?? "", /没有相关要求时不额外增加验收或测试/u);
+  assert.doesNotMatch(prompts[0]?.input.modelPrompt ?? "", /验收、测试由主任务另行安排独立子任务|否则报告相关要求，供主任务安排/u);
   assert.doesNotMatch(prompts[0]?.input.modelPrompt ?? "", /如果当前子任务写了界面设计，按该设计实现/u);
   assert.ok(systemMessages.some((message) => message.tabId === parent.tabId && message.content === "started"));
   assert.equal(systemMessages.some((message) => message.tabId === created[0]?.tabId), false);

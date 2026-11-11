@@ -35,6 +35,7 @@ import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, fo
 import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
 import { readLoopContinuationSource } from "../loopSubtaskSession";
+import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 
 export type LoopPlusPromptRoleBinding = {
   model?: string;
@@ -275,6 +276,7 @@ export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => v
 
 
 export type PromptRunRuntimeHostDeps = {
+  decisionSubtaskMax?: () => number;
   getActiveWorkspaceKey: () => string;
   getConversationTabById: (tabId: string) => ConversationTabRecord | null;
   getConversationTabs: () => ConversationTabRecord[];
@@ -307,7 +309,6 @@ export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
 const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopGroupChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
 const LOOP_MAX_MAX_ROUNDS = 100;
-const LOOP_PARALLEL_SUBTASK_MAX = 6;
 const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
 const readTaskStore = deps.readTaskStore;
 const writeTaskStore = deps.writeTaskStore;
@@ -565,7 +566,7 @@ function normalizeLoopSubtaskDecisions(raw: Partial<LoopMainDecision>): LoopSubt
   const rawSubtasks = Array.isArray((raw as { subtasks?: unknown }).subtasks)
     ? (raw as { subtasks: unknown[] }).subtasks
     : (raw.subtask ? [raw.subtask] : []);
-  if (rawSubtasks.length === 0 || rawSubtasks.length > LOOP_PARALLEL_SUBTASK_MAX) {
+  if (rawSubtasks.length === 0 || rawSubtasks.length > resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.())) {
     return null;
   }
   const normalized = rawSubtasks
