@@ -110,6 +110,13 @@ function attachPersistentServer(child: FakeChild, methods: string[]): void {
           });
         });
       }
+      if (method === "thread/compact/start" || method === "thread/unsubscribe") {
+        send({ id: message.id, result: method === "thread/unsubscribe" ? { status: "unsubscribed" } : {} });
+        queueMicrotask(() => send({
+          method: method === "thread/unsubscribe" ? "thread/closed" : "thread/compacted",
+          params: { threadId: message.params?.threadId },
+        }));
+      }
     }
   });
 }
@@ -159,6 +166,56 @@ test("Codex runner reuses one app-server connection and loaded thread", async ()
   } finally {
     process.kill = originalKill;
     crossSpawn.spawn = originalSpawn;
+  }
+});
+
+test("configuration migration hands off only the target thread and compaction preserves identity", async () => {
+  const originalSpawn = crossSpawn.spawn;
+  const originalKill = process.kill;
+  const methods: string[] = [];
+  const spawned: FakeChild[] = [];
+  crossSpawn.spawn = () => {
+    const child = createFakeChild(62500 + spawned.length);
+    spawned.push(child);
+    attachPersistentServer(child, methods);
+    return child;
+  };
+  process.kill = (() => { throw new Error("no process group"); }) as typeof process.kill;
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const options = {
+    command: process.execPath, args: [], thinkingMode: "medium" as const,
+    interactiveMode: "coding" as const, threadId: null, configFingerprint: "before",
+  };
+  const first = new CodexInteractiveRunner(options);
+  const second = new CodexInteractiveRunner(options);
+  const handlers = {
+    onAssistantDelta: () => undefined, onTrace: () => undefined,
+    onTaskListUpdate: () => undefined, onThreadId: () => undefined,
+    requestUserInputEnabled: true,
+  };
+  try {
+    await first.runStreamed("first", handlers);
+    await second.runStreamed("other tab", handlers);
+    first.updateOptions({ ...options, threadId: first.getThreadId(), configFingerprint: "after" });
+    await first.runStreamed("changed config", handlers);
+    assert.equal(spawned.length, 2);
+    assert.equal(methods.filter((method) => method === "thread/unsubscribe").length, 1);
+    assert.equal(spawned[0].killCalls.length, 0);
+    first.updateOptions({ ...options, threadId: first.getThreadId(), configFingerprint: undefined });
+    await first.compactThread();
+    await first.runStreamed("continue", handlers);
+    assert.equal(spawned.length, 2);
+    assert.equal(methods.filter((method) => method === "thread/resume").length, 1);
+    await second.runStreamed("still usable", handlers);
+    first.updateOptions({ ...options, threadId: first.getThreadId(), configFingerprint: "new-config-for-compact" });
+    await first.compactThread();
+    assert.equal(spawned.length, 3);
+    assert.equal(first.getThreadId(), "thread-1");
+  } finally {
+    first.dispose();
+    second.dispose();
+    crossSpawn.spawn = originalSpawn;
+    process.kill = originalKill;
   }
 });
 

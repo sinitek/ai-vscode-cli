@@ -2,6 +2,14 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Codex 会话交接与写入冲突保护
+
+- 状态：`active`（2026-11-12）。普通对话、Loop / Loop+ 和原生压缩复用同一连接生命周期保护；同一扩展宿主内同 CODEX_HOME + threadId 不允许重复操作，不限制不同项目/会话并发。
+- 配置或启动能力改变导致原会话跨连接恢复前，共享旧进程仅卸载目标 thread，等待真实关闭确认；最后一个引用释放则等待实际进程退出。不会删除锁、换新会话或终止其它 Tab / 外部进程。
+- 卸载可能等待约 60 秒，总上限 75 秒且支持停止。失败/未知写入者使用稳定错误码并停止隐式重试。跨宿主的外部写入者不强行接管。
+- 原生压缩保留配置指纹与现有提问能力，避免无意义连接迁移；真实配置变化仍按新身份启动。连接切换诊断不记录完整 key 或凭据。
+- 实现：`src/interactive/codexAppServerPool.ts`、`src/interactive/codexRunner.ts`、`src/interactive/codexRunnerProcess.ts`、`src/interactive/codexThreadErrors.ts`、`src/contextCompactionRunner.ts`、`src/promptRetry.ts`；真实验证入口：`scripts/verify_codex_thread_handoff.js`。
+
 ## Harness 骨架执行计划类型
 
 - 本项目 harness 与内置 `media/workspace-scaffold` 的执行计划统一仅允许 `feature`、`bugfix`、`refactor`、`perf`；`test`、`chore`、`doc`（含 `docs`）任务不在 `.ch/docs/exec-plans/` 创建或归档计划，也不通过改名绕过限制。

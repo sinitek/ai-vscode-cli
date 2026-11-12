@@ -8,6 +8,7 @@ import {
 } from "./hiddenRetry";
 import { t } from "./i18n";
 import { GROK_RESPONSES_STREAM_INCOMPATIBLE } from "./interactive/grokAppServerProtocol";
+import { isNonRetryableCodexThreadError } from "./interactive/codexThreadErrors";
 import { appendMessageToStore, type LoopTaskRole } from "./promptRunState";
 import type { ChatMessage } from "./webview/types";
 
@@ -156,6 +157,9 @@ export function isNonRetryableBillingErrorInfo(info: ErrorInfo): boolean {
 }
 
 export function isHiddenRetryEligibleErrorInfo(info: ErrorInfo): boolean {
+  if (isNonRetryableCodexThreadError(info.code, info.message ?? "")) {
+    return false;
+  }
   if (info.code === GROK_RESPONSES_STREAM_INCOMPATIBLE) {
     return false;
   }
@@ -180,7 +184,8 @@ export function isHiddenRetryEligibleAttempt(
   attemptResult: CliAttemptResult,
   failureMessage: string,
 ): boolean {
-  if (isNonRetryableBillingErrorInfo({ message: failureMessage })) {
+  if (isNonRetryableBillingErrorInfo({ message: failureMessage })
+    || isNonRetryableCodexThreadError(undefined, failureMessage)) {
     return false;
   }
   return attemptResult.type === "exit"

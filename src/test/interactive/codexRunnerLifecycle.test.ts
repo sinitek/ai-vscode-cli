@@ -72,6 +72,10 @@ function createFakeChild(pid?: number): FakeChild {
   child.killCalls = [];
   child.kill = (signal?: NodeJS.Signals | number): boolean => {
     child.killCalls.push(signal);
+    child.signalCode = typeof signal === "string" ? signal : "SIGTERM";
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", null, child.signalCode);
     return true;
   };
   return child;

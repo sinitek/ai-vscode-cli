@@ -1158,6 +1158,27 @@ test("Codex strategy returns false when the mapped thread is missing", async () 
   assert.equal(calls.clearActiveRun, 1);
 });
 
+test("Codex compaction preserves the runtime configuration fingerprint", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "codex" });
+  deps.readRuntimeConfigFingerprint = async (cli, configId) => {
+    assert.equal(cli, "codex");
+    assert.equal(configId, "config-codex");
+    return "current-fingerprint";
+  };
+  assert.equal(await runContextCompactionWithDeps(deps, { cli: "codex", tabId: "tab-1", sessionId: "session-1" }), true);
+  assert.equal(calls.codexRunnerOptions[0]?.configFingerprint, "current-fingerprint");
+  assert.equal(calls.setRunnerCalls[0]?.extra?.configFingerprint, "current-fingerprint");
+});
+
+test("Codex fingerprint reads respect the compaction timeout before creating a runner", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createStrategySelectionDeps({ cli: "codex" });
+  deps.readRuntimeConfigFingerprint = () => new Promise<string>(() => undefined);
+  assert.equal(await runContextCompactionWithDeps(deps, { cli: "codex", tabId: "tab-1", sessionId: "session-1", timeoutMs: 10 }), false);
+  assert.equal(calls.codexRunnerOptions.length, 0);
+});
+
 test("context compaction does not select a strategy without a recoverable session", async () => {
   const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createStrategySelectionDeps({

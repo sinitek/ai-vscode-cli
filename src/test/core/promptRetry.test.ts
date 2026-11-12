@@ -52,6 +52,15 @@ test("retry eligibility preserves transient success and deterministic rejection 
   assert.equal(isHiddenRetryEligibleAttempt({ type: "error", error: new Error("abort") }, "abort"), false);
 });
 
+test("Codex writer conflicts and unsafe handoffs never enter hidden retry", () => {
+  for (const code of ["CODEX_THREAD_BUSY", "CODEX_THREAD_HANDOFF_FAILED", "CODEX_THREAD_WRITER_CONFLICT"]) {
+    assert.equal(isHiddenRetryEligibleErrorInfo({ code, message: "会话交接未完成" }), false);
+  }
+  const message = "thread abc already has an active writer";
+  assert.equal(isHiddenRetryEligibleErrorInfo({ message }), false);
+  assert.equal(isHiddenRetryEligibleAttempt({ type: "exit", code: 1 }, message), false);
+});
+
 test("trace preserves metadata, stores before sending, and deduplicates only adjacent errors", () => {
   const messages: ChatMessage[] = [];
   const sent: unknown[] = [];

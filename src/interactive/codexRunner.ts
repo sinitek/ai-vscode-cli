@@ -188,6 +188,7 @@ export class CodexInteractiveRunner {
   private readonly listener: CodexAppServerListener;
   private options: CodexRunnerMutableOptions;
   private connection: CodexAppServerConnection | null = null;
+  private connectionRequestUserInputEnabled = false;
   private activeConnectionId: number | null = null;
   private operationTail: Promise<unknown> = Promise.resolve();
   private activeOperation: CodexRunnerOperation | null = null;
@@ -235,6 +236,7 @@ export class CodexInteractiveRunner {
       ...options,
       args: [...options.args],
       threadId: options.threadId || this.options.threadId,
+      configFingerprint: options.configFingerprint ?? this.options.configFingerprint,
     };
   }
 
@@ -339,17 +341,19 @@ export class CodexInteractiveRunner {
     try {
       const opened = await this.openConnection(handlers, false, true);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
-      this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      await opened.connection.request(this.listenerId, "thread/compact/start", {
-        threadId: this.options.threadId,
-      });
-      await operation.done;
-      this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      return {
-        compacted: operation.threadCompacted,
-        threadId: String(this.options.threadId || existingThreadId),
-      };
+      return await opened.connection.withThread(this.listenerId, existingThreadId, async () => {
+        await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
+        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+        await opened.connection.request(this.listenerId, "thread/compact/start", {
+          threadId: this.options.threadId,
+        });
+        await operation.done;
+        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+        return {
+          compacted: operation.threadCompacted,
+          threadId: String(this.options.threadId || existingThreadId),
+        };
+      }, { checkActive: () => this.throwIfSuperseded(abortGeneration, disposeGeneration) });
     } catch (error) {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       throw error;
@@ -370,33 +374,35 @@ export class CodexInteractiveRunner {
     try {
       const opened = await this.openConnection(handlers, handlers.requestUserInputEnabled === true, false);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
-      this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      const turnStartPromise = opened.connection.request<Record<string, unknown>>(
-        this.listenerId,
-        "turn/start",
-        buildCodexTurnStartParams(
-          this.options.threadId,
-          prompt,
-          opened.imagePaths,
-          opened.threadOptions,
-        ),
-      );
-      const turnStartResult = await Promise.race([
-        turnStartPromise.then((result) => ({ settledBeforeStart: false, result })),
-        operation.done.then(() => ({ settledBeforeStart: true, result: null })),
-      ]);
-      if (turnStartResult.settledBeforeStart) {
-        void turnStartPromise.then(() => undefined, () => undefined);
-      } else {
-        const startedTurn = turnStartResult.result?.turn && typeof turnStartResult.result.turn === "object"
-          ? turnStartResult.result.turn as Record<string, unknown>
-          : {};
-        this.adoptStartedTurnId(operation, String(startedTurn.id || "").trim());
-        handlers.onEvent?.({ type: "turn.started" });
-        await operation.done;
-      }
-      this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      await opened.connection.withThread(this.listenerId, this.options.threadId, async () => {
+        await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
+        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+        const turnStartPromise = opened.connection.request<Record<string, unknown>>(
+          this.listenerId,
+          "turn/start",
+          buildCodexTurnStartParams(
+            this.options.threadId,
+            prompt,
+            opened.imagePaths,
+            opened.threadOptions,
+          ),
+        );
+        const turnStartResult = await Promise.race([
+          turnStartPromise.then((result) => ({ settledBeforeStart: false, result })),
+          operation.done.then(() => ({ settledBeforeStart: true, result: null })),
+        ]);
+        if (turnStartResult.settledBeforeStart) {
+          void turnStartPromise.then(() => undefined, () => undefined);
+        } else {
+          const startedTurn = turnStartResult.result?.turn && typeof turnStartResult.result.turn === "object"
+            ? turnStartResult.result.turn as Record<string, unknown>
+            : {};
+          this.adoptStartedTurnId(operation, String(startedTurn.id || "").trim());
+          handlers.onEvent?.({ type: "turn.started" });
+          await operation.done;
+        }
+        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      }, { checkActive: () => this.throwIfSuperseded(abortGeneration, disposeGeneration) });
     } catch (error) {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       throw error;
@@ -438,14 +444,8 @@ export class CodexInteractiveRunner {
     const configOverrides: string[] = [];
     const childEnvResult = buildCodexChildEnv(this.options.env ?? process.env);
     threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
-    const loadedThreadId = String(this.options.threadId || "").trim();
-    if (
-      reuseLoadedThread
-      && loadedThreadId
-      && this.connection?.isAlive()
-      && this.connection.hasLoadedThread(loadedThreadId)
-    ) {
-      return { connection: this.connection, threadOptions, imagePaths };
+    if (reuseLoadedThread && this.connection?.isAlive()) {
+      requestUserInputEnabled = this.connectionRequestUserInputEnabled;
     }
     if (resolvedWorkspaceDir) {
       resolvedWorkspaceDir = await resolveCodexProjectPath(resolvedWorkspaceDir);
@@ -489,6 +489,14 @@ export class CodexInteractiveRunner {
     });
     if (this.connection && (!this.connection.isAlive() || this.connection.key !== key)) {
       const previous = this.connection;
+      const before = JSON.parse(previous.key) as Record<string, unknown>;
+      const after = JSON.parse(key) as Record<string, unknown>;
+      void logInfo("codex-app-server-connection-switch", {
+        connectionId: previous.id,
+        threadId: this.options.threadId,
+        listeners: previous.retainerCount(),
+        changedFields: Object.keys(after).filter((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field])),
+      });
       this.connection = null;
       this.activeConnectionId = null;
       previous.release(this.listenerId);
@@ -506,6 +514,7 @@ export class CodexInteractiveRunner {
         }),
       }, this.listener);
       this.activeConnectionId = this.connection.id;
+      this.connectionRequestUserInputEnabled = requestUserInputEnabled;
     }
     const connection = this.connection;
     if (connection.takeFresh()) {
@@ -560,7 +569,7 @@ export class CodexInteractiveRunner {
     const threadId = String(this.options.threadId || "").trim();
     if (threadId && connection.hasLoadedThread(threadId)) {
       connection.claimThread(threadId, this.listenerId);
-      void logInfo("codex-app-server-thread-reused", { threadId });
+      void logInfo("codex-app-server-thread-reused", { connectionId: connection.id, threadId });
       return;
     }
     const threadParams = buildCodexThreadParams(threadOptions);

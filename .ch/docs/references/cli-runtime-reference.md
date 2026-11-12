@@ -2,6 +2,17 @@
 
 本文档替代原 `docs/cli-reference.md` 的详细说明，聚焦**当前仓库已经落地的 CLI 接入行为**。如果 CLI 官方版本发生变化，仍以各自 `--help` 和官方文档为准。
 
+## Codex 会话跨连接交接
+
+- app-server 按命令、启动参数、cwd、CODEX_HOME、provider 和配置指纹复用；不同项目通常具有不同进程身份，但不能据此推断同一宿主内不会发生原 thread 跨进程迁移。配置指纹隔离保留，不能通过删除指纹或全局串行规避写锁。
+- 同一扩展宿主按规范化 CODEX_HOME + threadId 对完整 turn / compact 操作互斥；重复执行明确返回 `CODEX_THREAD_BUSY`，不排队重试。新建 thread 的首次操作同样保护活动归属，不影响其它 thread / HOME 并行。
+- 恢复前检查旧进程的已加载及未完成 resume。共享旧进程仅对目标发送 `thread/unsubscribe`；`unsubscribed` / `notSubscribed` 回包不代表卸载，需等待 `thread/closed`，或收到 `notLoaded`。本机 Codex 0.167.0 实测关闭通知可能延迟约 60 秒，交接总等待上限 75 秒，用户停止可取消等待。
+- 最后一个 listener 释放后，逻辑连接关闭仍保留会话占用记录，直到子进程 `exit` / `close`；Windows `taskkill` 启动或返回成功不是进程已退出的证明。`taskkill` 启动失败/非零退出有错误监听和本进程句柄终止兜底。
+- 未完成交接返回 `CODEX_THREAD_HANDOFF_FAILED`；未知 `active writer` 返回 `CODEX_THREAD_WRITER_CONFLICT`。两者及 busy 均停止隐式重试，不删锁、不自动换会话、不终止共享或外部进程。跨 VS Code 扩展宿主不共享此内存协调器，外部占用只明确报错。
+- Codex 原生压缩透传配置指纹，并沿用当前连接的结构化提问启动能力，但重新核对其它连接身份字段；真实配置变化仍切换连接，不以热缓存绕过隔离。
+- 生命周期日志记录 connection ID / PID、thread、RPC 方法/请求 ID及 key 变化字段名，不输出 key 全文或配置凭据。回归入口：`node --test dist/test/interactive/codexThreadHandoff.test.js dist/test/interactive/codexRunnerProcess.test.js dist/test/interactive/codexRunnerReuse.test.js dist/test/core/promptRetry.test.js dist/test/core/contextCompactionRunner.test.js`。
+- 无付费模型的真实验证：构建后执行 `node scripts/verify_codex_thread_handoff.js --live`；使用临时 HOME/workspace 和本机 HTTP 错误响应创建真实持久会话，先复现跨进程写锁，再验证交接恢复同一 thread、其它会话保留，最后仅清理本次进程和临时目录。可用 `CODEX_COMMAND` 指定可执行文件。
+
 ## 对话标签消息视图
 
 - `syncActiveMessagesFromRuntime` 和活动标签 `setMessages` 使用增量渲染；`messageRenderState` 对比内容、元数据、最终结果过滤与流式上下文，只替换发生变化的气泡。点击标签后立即刷新选中态，不等待宿主构建配置状态。

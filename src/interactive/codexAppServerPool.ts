@@ -1,4 +1,5 @@
 import type { ChildProcess } from "child_process";
+import * as path from "path";
 import { spawn } from "cross-spawn";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
@@ -12,6 +13,13 @@ import {
   type JsonRpcResolution,
 } from "./codexAppServerProtocol";
 import { requestChildShutdown } from "./codexRunnerProcess";
+import {
+  CODEX_THREAD_BUSY,
+  CODEX_THREAD_HANDOFF_FAILED,
+  CODEX_THREAD_WRITER_CONFLICT,
+  createCodexThreadError,
+  isCodexActiveWriterMessage,
+} from "./codexThreadErrors";
 
 const CODEX_APP_SERVER_PROCESS_LABEL = "sinitek-ai-vscode-cli-codex-app-server";
 
@@ -46,13 +54,28 @@ export type CodexAppServerCloseInfo = {
 
 type PendingRequest = {
   ownerId: string;
+  method: string;
+  loadingThreadId?: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   claimThreadFromResult: boolean;
 };
 
 const connections = new Map<string, CodexAppServerConnection>();
+const processConnections = new Set<CodexAppServerConnection>();
+const threadLeases = new Set<string>();
+const CODEX_THREAD_HANDOFF_TIMEOUT_MS = 75_000;
 let nextConnectionId = 1;
+
+export type CodexThreadHandoffOptions = {
+  timeoutMs?: number;
+  checkActive?: () => void;
+};
+
+function normalizeCodexHome(home: string): string {
+  const resolved = path.resolve(home);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
 
 export function buildCodexAppServerConnectionKey(input: {
   configFingerprint?: string;
@@ -120,6 +143,9 @@ export class CodexAppServerConnection {
   private readonly loadedThreads = new Set<string>();
   private readonly pending = new Map<number, PendingRequest>();
   private readonly buffered = new Map<string, Record<string, unknown>[]>();
+  private readonly activeOwners = new Set<string>();
+  private readonly homeScope: string;
+  private processExited = false;
   private child: ChildProcess | null = null;
   private reader: CodexAppServerNdjsonReader | null = null;
   private nextRequestId = 1;
@@ -136,6 +162,8 @@ export class CodexAppServerConnection {
 
   public constructor(private readonly spec: CodexAppServerConnectionSpec) {
     this.key = spec.key;
+    this.homeScope = normalizeCodexHome(spec.codexHomeDir);
+    processConnections.add(this);
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolve = resolve;
       this.readyReject = reject;
@@ -176,14 +204,133 @@ export class CodexAppServerConnection {
     }
   }
 
+  public async withThread<T>(
+    ownerId: string,
+    threadId: string | null,
+    operation: () => Promise<T>,
+    options: CodexThreadHandoffOptions = {},
+  ): Promise<T> {
+    const leaseKey = threadId ? JSON.stringify([this.homeScope, threadId]) : null;
+    if (leaseKey && threadLeases.has(leaseKey)) {
+      throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 会话正在执行另一项操作，请等待完成后再继续。");
+    }
+    if (leaseKey) {
+      threadLeases.add(leaseKey);
+    }
+    this.activeOwners.add(ownerId);
+    const handoffDeadline = Date.now() + (options.timeoutMs ?? CODEX_THREAD_HANDOFF_TIMEOUT_MS);
+    try {
+      options.checkActive?.();
+      if (threadId) {
+        for (const previous of processConnections) {
+          if (previous.homeScope !== this.homeScope || !previous.holdsThread(threadId)) {
+            continue;
+          }
+          const previousOwner = previous.threadOwners.get(threadId);
+          if (previousOwner !== ownerId && previousOwner && previous.activeOwners.has(previousOwner)) {
+            throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 会话仍由另一项操作使用，不能强制交接。");
+          }
+          if (previous !== this) {
+            void logInfo("codex-thread-handoff-start", { fromConnectionId: previous.id, toConnectionId: this.id, threadId });
+            await previous.releaseThreadForHandoff(threadId, {
+              ...options, timeoutMs: Math.max(0, handoffDeadline - Date.now()),
+            });
+          }
+        }
+      }
+      options.checkActive?.();
+      return await operation();
+    } finally {
+      this.activeOwners.delete(ownerId);
+      if (leaseKey) {
+        threadLeases.delete(leaseKey);
+      }
+    }
+  }
+
+  private async releaseThreadForHandoff(threadId: string, options: CodexThreadHandoffOptions): Promise<void> {
+    const deadline = Date.now() + (options.timeoutMs ?? CODEX_THREAD_HANDOFF_TIMEOUT_MS);
+    const ownerId = `handoff-${this.id}-${threadId}`;
+    let requestError: Error | null = null;
+    void logInfo("codex-thread-handoff-wait", {
+      connectionId: this.id, pid: this.child?.pid ?? null, threadId,
+      listeners: this.listeners.size, awaitingExit: this.closed,
+    });
+    const waitStep = async (): Promise<void> => {
+      options.checkActive?.();
+      if ((requestError && !this.closed) || Date.now() >= deadline) {
+        throw createCodexThreadError(
+          CODEX_THREAD_HANDOFF_FAILED,
+          "Codex 旧连接尚未确认释放该会话，已停止恢复以避免写入冲突。请稍后重试；不会终止其它会话。",
+        );
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    };
+    try {
+      while (!this.closed && this.hasPendingThreadLoad(threadId)) {
+        await waitStep();
+      }
+      if (!this.closed && this.hasLoadedThread(threadId)) {
+        void this.request<{ status: string }>(ownerId, "thread/unsubscribe", { threadId }).then((result) => {
+          if (result?.status === "notLoaded") {
+            this.forgetThread(threadId);
+          } else if (result?.status !== "unsubscribed" && result?.status !== "notSubscribed") {
+            requestError = new Error("Codex 返回了未知的会话卸载状态。");
+          }
+        }, (error: Error) => { requestError = error; });
+      }
+      while (!this.processExited && this.holdsThread(threadId)) {
+        await waitStep();
+      }
+      void logInfo("codex-thread-handoff-released", { connectionId: this.id, pid: this.child?.pid ?? null, threadId });
+    } catch (error) {
+      void logError("codex-thread-handoff-failed", {
+        connectionId: this.id, pid: this.child?.pid ?? null, threadId,
+        reason: requestError ? "unsubscribe_failed" : Date.now() >= deadline ? "timeout" : "cancelled",
+      });
+      throw error;
+    } finally {
+      this.rejectOwner(ownerId, createCodexThreadError(CODEX_THREAD_HANDOFF_FAILED, "Codex 会话交接等待已结束。"));
+    }
+  }
+
+  private hasPendingThreadLoad(threadId: string): boolean {
+    return Array.from(this.pending.values()).some((pending) => pending.loadingThreadId === threadId);
+  }
+
+  private holdsThread(threadId: string): boolean {
+    return this.hasLoadedThread(threadId) || this.hasPendingThreadLoad(threadId);
+  }
+
+  private forgetThread(threadId: string): void {
+    this.loadedThreads.delete(threadId);
+    this.threadOwners.delete(threadId);
+    this.buffered.delete(threadId);
+  }
+
+  private markProcessExited(): void {
+    if (this.processExited) {
+      return;
+    }
+    this.processExited = true;
+    processConnections.delete(this);
+    this.loadedThreads.clear();
+    void logInfo("codex-app-server-process-exited", {
+      connectionId: this.id, pid: this.child?.pid ?? null, code: this.exitCode, signal: this.exitSignal,
+    });
+  }
+
   public claimThread(threadId: string, listenerId: string): void {
     const normalized = String(threadId || "").trim();
     const listener = this.listeners.get(listenerId);
-    if (!normalized || !listener) {
+    if (!normalized) {
+      return;
+    }
+    this.loadedThreads.add(normalized);
+    if (!listener) {
       return;
     }
     this.threadOwners.set(normalized, listenerId);
-    this.loadedThreads.add(normalized);
     const queued = this.buffered.get(normalized);
     if (!queued) {
       return;
@@ -221,8 +368,13 @@ export class CodexAppServerConnection {
       if (pending.ownerId !== ownerId) {
         continue;
       }
-      this.pending.delete(id);
       pending.reject(error);
+      if (pending.claimThreadFromResult) {
+        pending.reject = () => undefined;
+        pending.resolve = () => undefined;
+      } else {
+        this.pending.delete(id);
+      }
     }
   }
 
@@ -231,16 +383,25 @@ export class CodexAppServerConnection {
       return;
     }
     this.closed = true;
-    connections.delete(this.key);
+    if (connections.get(this.key) === this) {
+      connections.delete(this.key);
+    }
     const error = this.spawnError ?? new Error(t("codex.appServerExited", {
       detail: this.exitSignal ? `signal ${this.exitSignal}` : `code ${this.exitCode ?? 1}`,
       stderr: Buffer.concat(this.stderrChunks).toString("utf8") || "-",
     }));
+    for (const pending of this.pending.values()) {
+      if (pending.loadingThreadId && !this.processExited) {
+        this.loadedThreads.add(pending.loadingThreadId);
+      }
+    }
     this.rejectAll(error);
     this.readyReject?.(error);
     this.readyReject = null;
-    if (this.child) {
+    if (this.child && !this.processExited) {
       requestChildShutdown(this.child, mode);
+    } else if (!this.child) {
+      this.markProcessExited();
     }
     this.reader?.close();
     const info: CodexAppServerCloseInfo = {
@@ -255,6 +416,9 @@ export class CodexAppServerConnection {
     }
     this.listeners.clear();
     this.threadOwners.clear();
+    if (this.processExited) {
+      this.loadedThreads.clear();
+    }
     this.buffered.clear();
   }
 
@@ -272,13 +436,7 @@ export class CodexAppServerConnection {
       return;
     }
     this.started = true;
-    void logInfo("codex-app-server-spawn", {
-      command: this.spec.command,
-      args: this.spec.args,
-      cwd: this.spec.cwd ?? null,
-      codexHomeDir: this.spec.codexHomeDir,
-      key: this.key,
-    });
+    void logInfo("codex-app-server-spawn", { connectionId: this.id });
     let child: ChildProcess;
     try {
       child = spawn(this.spec.command, this.spec.args, {
@@ -296,11 +454,15 @@ export class CodexAppServerConnection {
       return;
     }
     this.child = child;
+    void logInfo("codex-app-server-started", { connectionId: this.id, pid: child.pid ?? null });
     child.stderr?.on("data", (chunk: Buffer) => {
       this.stderrChunks.push(Buffer.from(chunk));
     });
     child.once("error", (error) => {
       this.spawnError = error;
+      if (!child.pid) {
+        this.markProcessExited();
+      }
       void logError("codex-app-server-spawn-error", {
         command: this.spec.command,
         code: (error as NodeJS.ErrnoException).code ?? null,
@@ -309,9 +471,14 @@ export class CodexAppServerConnection {
       });
       this.failStart(error);
     });
-    child.once("close", (code, signal) => {
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       this.exitCode = code;
       this.exitSignal = signal;
+      this.markProcessExited();
+    };
+    child.once("exit", onExit);
+    child.once("close", (code, signal) => {
+      onExit(code, signal);
       if (!this.closed) {
         this.shutdown("terminate");
       }
@@ -394,6 +561,13 @@ export class CodexAppServerConnection {
     if (!method) {
       return;
     }
+    if (method === "thread/closed") {
+      const threadId = extractRoutingThread(message).threadId;
+      if (threadId) {
+        this.forgetThread(threadId);
+      }
+      return;
+    }
     this.routeNotification(message);
   }
 
@@ -408,7 +582,15 @@ export class CodexAppServerConnection {
       const errorRecord = message.error && typeof message.error === "object"
         ? message.error as Record<string, unknown>
         : {};
-      pending.reject(new Error(String(errorRecord.message || t("codex.appServerRequestFailed"))));
+      const detail = String(errorRecord.message || t("codex.appServerRequestFailed"));
+      const error = isCodexActiveWriterMessage(detail)
+        ? createCodexThreadError(CODEX_THREAD_WRITER_CONFLICT, `Codex 会话存在活动写入者，已停止自动重试。请等待原会话释放后再继续。原始错误：${detail}`)
+        : Object.assign(new Error(detail), { code: errorRecord.code });
+      void logError("codex-app-server-request-failed", {
+        connectionId: this.id, pid: this.child?.pid ?? null, method: pending.method,
+        requestId: id, code: error.code ?? null, rpcCode: errorRecord.code ?? null,
+      });
+      pending.reject(error);
       return;
     }
     if (pending.claimThreadFromResult) {
@@ -523,6 +705,8 @@ export class CodexAppServerConnection {
       this.nextRequestId += 1;
       this.pending.set(id, {
         ownerId,
+        method,
+        loadingThreadId: method === "thread/resume" ? String(params.threadId || "").trim() : undefined,
         claimThreadFromResult,
         resolve: (value) => resolve(value as T),
         reject,

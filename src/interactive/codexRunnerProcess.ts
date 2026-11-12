@@ -2,6 +2,7 @@ import type { ChildProcess } from "child_process";
 import { spawn } from "cross-spawn";
 import { getMacTaskShell } from "../cli/config";
 import { resolveCliCommand } from "../cli/commandRunner";
+import { logError } from "../logger";
 
 const CODEX_CHILD_SHUTDOWN_GRACE_MS = 300;
 
@@ -65,11 +66,34 @@ export function killProcessTree(
   }
 
   if (process.platform === "win32") {
-    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-    return true;
+    try {
+      const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+      let failed = false;
+      const onFailure = (): void => {
+        if (failed || child.exitCode !== null || child.signalCode !== null) {
+          return;
+        }
+        failed = true;
+        void logError("codex-taskkill-failed", { pid: child.pid ?? null });
+        try {
+          child.kill(signal);
+        } catch {
+          return;
+        }
+      };
+      killer.once("error", onFailure);
+      killer.once("close", (code) => {
+        if (code !== 0) {
+          onFailure();
+        }
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   try {

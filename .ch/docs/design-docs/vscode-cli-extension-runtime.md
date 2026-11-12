@@ -12,6 +12,16 @@
 
 `src/extensionHost/loopModelSwitchResume.ts` 恢复停止的未完成执行。经典 Loop 仅启动不在执行的开放子任务，复用原子会话和现有重试/收尾链路，等待原控制器退出后按活跃子任务门禁唤醒主任务；Loop+ 复用调度器的开放 attempt，不重启活跃同级。冷宿主通过显式恢复重建控制器，必须从子任务记录保留 `taskType` 和 `codingDelivery`，避免分离模式的前端任务恢复成后端路由；普通继续仍保留中断开放项等待语义。
 
+## Codex thread 写入者所有权
+
+连接池 key 是进程配置身份，不是会话写入锁。配置指纹、cwd 或启动参数变化可让同一扩展宿主同时保有多个 app-server。runner 的单实例操作队列不足以保护同一 HOME 下同一 thread 在不同 runner / 连接之间迁移。
+
+`CodexAppServerConnection.withThread` 为完整 turn / compact 提供宿主内 HOME + threadId 互斥，重复请求直接拒绝；加载缓存、未完成 resume 和已关闭但尚未退出的进程共同作为交接事实来源。放弃请求后仍跟踪迟到的 start / resume 结果，不能因为 listener 删除就遗失真实持锁者。首次新建会话用活动 owner 保护，获得 ID 后也不能被另一 runner 抢占。
+
+交接保留旧进程的其它 listener，只 unsubscribe 目标 thread；回包成功不提前清缓存，等待 closed / notLoaded 或实际进程退出，75 秒有界等待且检查用户取消。逻辑 shutdown 只释放路由/请求，不提前释放进程所有权。无法确认、旧 owner 活动及未知外部 writer 都明确失败，不隐藏重试，也不扩展为跨宿主强制锁恢复。Windows 进程树终止请求与退出确认分开处理。
+
+压缩和普通轮次共享配置身份，压缩沿用已建立的提问 capability，仍重新计算真实 key。没有新增跨窗口业务锁、持久化会话格式或用户设置；其它 CLI 和 Loop 调度边界不变。详细协议、错误码、诊断与真实验证见 `../references/cli-runtime-reference.md` 的“Codex 会话跨连接交接”。
+
 ## Tab 运行状态与配置协调
 
 - 非运行标签关闭使用宿主确认后的轻量 `conversationTabClosed` 增量消息，不等待 `postPanelState` 重载各 CLI 配置和模型能力。后台关闭仅移除标签与缓存，不重选当前会话、不重放正文；活动关闭立即切到回退标签缓存，之后仍由原有配置恢复和全量状态保证执行配置正确。运行锁、最后标签保护与磁盘会话保留不变。

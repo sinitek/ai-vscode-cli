@@ -4,6 +4,13 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## Codex unsubscribe 不等于写入锁立即释放
+
+- 状态：`有效`。现象：原 thread 从另一 app-server 恢复时报 `already has an active writer`，即使原连接没有正在执行的 turn。
+- 触发条件/根因：共享进程保留已加载 thread；进程 key 因配置身份/启动能力变化而切换。`thread/unsubscribe` 的 `unsubscribed` / `notSubscribed` 仅表示订阅状态，本机 0.167.0 实测 `thread/closed` 约 60 秒后才到达；Windows `taskkill` 已启动同样不表示目标已退出。
+- 长期规避：恢复前按目标 thread 交接，等待 closed / notLoaded 或原进程实际退出；不能删除锁、杀共享进程、丢掉配置指纹或反复 resume。未知外部 writer 由用户确认原任务释放，不强制接管。
+- 验证：`npm run build` 后执行 `node scripts/verify_codex_thread_handoff.js --live`，只使用隔离 HOME/workspace 和本机模拟服务；Windows 仍需原生环境验收，不用 macOS 实验替代。
+
 ## 记录原则
 
 - 只记录真实发生过、已确认会复发或仍需长期防回归的问题。

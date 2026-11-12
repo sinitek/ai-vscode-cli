@@ -347,6 +347,24 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.codex_thread_writer_handoff",
+      "name": "Codex 原会话跨连接恢复前确认写入者释放",
+      "description": "同一扩展宿主内按规范化 CODEX_HOME 与 threadId 对完整 turn/compact 互斥，重复操作明确拒绝且不重试，不限制其它 thread 并发。连接配置指纹隔离保留，压缩沿用当前提问能力并透传指纹，真实身份变化仍迁移。已加载、未完成 resume 与逻辑关闭但未退出的进程仍是会话占用事实来源；放弃 listener 后继续跟踪迟到加载结果。共享旧进程仅 unsubscribe 目标 thread，unsubscribed/notSubscribed 不算释放，必须等 thread/closed、notLoaded 或实际进程 exit/close；交接有 75 秒上限且用户停止可取消。Windows taskkill 请求成功不等于退出。busy、交接失败、未知 active writer 使用稳定错误并停止隐式重试；不删锁、不换新会话、不终止共享或外部进程，不声称覆盖跨宿主协调。日志仅记录连接/PID、thread、方法/请求ID和 key 变化字段名。",
+      "status": "active",
+      "applies_to": ["plugin.extension_host", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/interactive/codexAppServerPool.ts", "anchor": "withThread"},
+        {"path": "src/interactive/codexRunner.ts"},
+        {"path": "src/interactive/codexRunnerProcess.ts"},
+        {"path": "src/interactive/codexThreadErrors.ts"},
+        {"path": "src/contextCompactionRunner.ts"},
+        {"path": "src/promptRetry.ts"},
+        {"path": "src/test/interactive/codexThreadHandoff.test.ts"},
+        {"path": "scripts/verify_codex_thread_handoff.js"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Codex 会话跨连接交接"}
+      ]
+    },
+    {
       "id": "plugin.rule.chat_tab_running_status_priority",
       "name": "Tab 运行状态优先于中间错误",
       "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",

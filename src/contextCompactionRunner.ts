@@ -699,7 +699,10 @@ async function executeCodexContextCompaction(
     configId: run.activeConfigId,
     model: run.selectedModel,
   });
+  const configFingerprint = deps.readRuntimeConfigFingerprint
+    ? await hooks.withCompactionTimeout(deps.readRuntimeConfigFingerprint("codex", codexSelection.configId)) : undefined;
   const runner = deps.interactiveRunnerManager.getOrCreateCodexRunner({
+    ...(configFingerprint === undefined ? {} : { configFingerprint }),
     sessionId: run.sessionId,
     threadId: mappedThreadId,
     command: run.command,
@@ -727,6 +730,7 @@ async function executeCodexContextCompaction(
     });
     deps.interactiveRunnerManager.setRunner("codex", run.sessionId, runner, run.thinkingMode, run.interactiveMode, codexSelection.model, {
       configId: codexSelection.configId,
+      ...(configFingerprint === undefined ? {} : { configFingerprint }),
     });
   } finally {
     deps.interactiveRunnerManager.endActiveRun(run.cli, run.sessionId);
