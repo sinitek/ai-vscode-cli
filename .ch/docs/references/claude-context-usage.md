@@ -88,7 +88,7 @@ Tab 仍为 Claude、UI/原生会话映射一致；runStreamed 结束即关闭该
   这是有意保守的未知状态，不降级查表。
 - CLI 上报的窗口是 CLI 元数据，不保证自定义网关背后的真实服务器限制与之相同。
 - Webview 已识别 `claude-model-window`，在中文 title 与 aria 中提供来源说明，缺测量不制造初始化占位；实现见 `src/webview/viewContentScript/taskListAndUi.ts`、`src/webview/viewContentStrings.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
-- 公共消息契约见 `.ch/docs/references/cli-runtime-reference.md`；功能清单及 ontology 已登记本链路，总体验收状态见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
+- 公共消息契约见 `.ch/docs/references/cli-runtime-reference.md`；功能清单及 ontology 已登记本链路，收尾测试证据与真实环境验收边界按原来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md` 见[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，实现目标见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md`。
 
 ## 验证证据边界（2026-11-10）
 

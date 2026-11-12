@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "migration_date": "2026-11-11",
+  "scope": ".ch/docs/exec-plans/completed/2026-04,2026-05,2026-06（迁移前现有25份计划）",
+  "entries": [
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-05-editor-context-tag-toggle.md",
+      "old_sha256": "9509a787481e4636ca8450f139762f3764d5c4f97b517e6a0ce42e262f602748",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-05-feature-editor-context-tag-toggle.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-05-docs-editor-context-tag-toggle-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-05-feature-editor-context-tag-toggle.md",
+      "notes": "新配置开关是 feature；两份产品事实来源更新独立为 docs。只构建，没有测试开发。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-all-cli-hidden-retry.md",
+      "old_sha256": "94fb2beeb13455547a4be390bf5dcbe8fcc607b62b73c106b065ce15576a5ca8",
+      "old_status": "validated",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-all-cli-hidden-retry.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-bugfix-retry-helper-restoration.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-docs-all-cli-hidden-retry-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-all-cli-hidden-retry.md",
+      "notes": "全 CLI 隐式继续扩展为 feature；恢复缺失 trace/compaction/interactive helper 独立 bugfix；清单同步为 docs。原状态 validated，所有子文件沿用，不改成 completed。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-codex-interrupted-hidden-retry.md",
+      "old_sha256": "05c33a026096d4e609cc5e027a489a067b125816a9dc15e7e222627101fa51cd",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-codex-interrupted-hidden-retry.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-docs-codex-interrupted-hidden-retry-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-codex-interrupted-hidden-retry.md",
+      "notes": "用户明确要求增加自动隐藏继续能力，归 feature，而非将外部中断本身当已修复缺陷；功能清单为 docs。未新增测试。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-codex-multi-agent-toggle.md",
+      "old_sha256": "830b228fc1a49e1f827f62d97a851c0c9dc17ad040b2ff0a2f344b8bb5c970bf",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-codex-multi-agent-toggle.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-22-docs-codex-multi-agent-toggle-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-22-feature-codex-multi-agent-toggle.md",
+      "notes": "项目级 multi_agent 控制是 feature；规格、清单与参考说明为 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-23-codex-launch-compare.md",
+      "old_sha256": "2a4916e443b1c95ae25bebcee3899bebe7c283b686b4db22694fcaad3978c4da",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-23-docs-codex-launch-compare.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-23-docs-codex-launch-compare.md",
+      "notes": "纯代码对比、风险归因与建议文档，没有实施业务修复，单一 docs，仅补命名与类型元信息。原文锚点均留在唯一新文件。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-23-codex-launch-hardening.md",
+      "old_sha256": "1292ec4bb6dcd5e9bedbe2cef84bff4e3027d82f76ed67874c1874a63393ec8d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-23-bugfix-codex-launch-hardening.md",
+        ".ch/docs/exec-plans/completed/2026-04/2026-04-23-docs-codex-launch-hardening-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-04/2026-04-23-bugfix-codex-launch-hardening.md",
+      "notes": "对现有启动链路中断风险的修复是 bugfix，不是行为保持重构；运行、设计、能力和避坑说明为 docs。未验证长任务及 fallback 边界仍保留。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-01-loop-mode.md",
+      "old_sha256": "458f718ca2d3f45d0387c123f81ad93fe47fcea883b35d73a82e136e04050274",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-01-feature-loop-mode.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-01-docs-loop-mode-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-01-feature-loop-mode.md",
+      "notes": "新增 Loop 模式与协议编排为 feature；产品与 CLI 运行事实来源为 docs。人工面板验收仍是建议，不提升成通过。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-loop-max-rounds-setting.md",
+      "old_sha256": "92b5f8a15568f18f1383735fb400065022012d994b31e54fca106cd01b7c694e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-max-rounds-setting.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-docs-loop-max-rounds-setting-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-max-rounds-setting.md",
+      "notes": "新增可配置轮数为 feature；清单、能力、运行参考为 docs。无新增单测。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-loop-parallel-first.md",
+      "old_sha256": "5c728a5e5588eb1f0db7ae7beaf4c7fd90e80f9b0e3d886d9a56ef4064563e86",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-parallel-first.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-docs-loop-parallel-first-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-parallel-first.md",
+      "notes": "历史拆分记录：并发优先协议、writeFiles 与调度是 feature；实际新增 loopParallel.test.ts 为 test；事实来源为 docs。新纯函数承载新行为，不另造 refactor。 2026-11-11 按用户要求删除 test 类型计划；上述 test 分类及章节归属仅为历史记录，其历史验证证据现见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-apr-jun.json 的 entries[0]，不作为存活计划的测试开发范围。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-loop-parallel-subtasks.md",
+      "old_sha256": "7ca03c430565a7cd33582f1af8ded3ffda26893737e3f05f19d8f18677014cfb",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-parallel-subtasks.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-docs-loop-parallel-subtasks-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-parallel-subtasks.md",
+      "notes": "批次并发与全完成后唤醒为 feature；文档为 docs。后续抽纯协议模块补测仍是待办，不制造 test 产出。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-loop-remaining-rounds-estimate.md",
+      "old_sha256": "8598d63c2ee7d316b4adec3cf4226a51f6e42eeb39d50083c6067873b89546fa",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-remaining-rounds-estimate.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-05-docs-loop-remaining-rounds-estimate-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-remaining-rounds-estimate.md",
+      "notes": "预估字段与展示为 feature；提示词属于功能实现，事实来源更新为 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-auto-compact-after-run.md",
+      "old_sha256": "aef81a18f88849ea848704e8830bcc1916f1e5dd72ed216893d32a2eda34f968",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-auto-compact-after-run.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-bugfix-auto-compact-tab-lifecycle.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-docs-auto-compact-after-run-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-auto-compact-after-run.md",
+      "notes": "执行后时机与默认值语义是 feature；错误 tab/停止/cleanup 生命周期修复独立 bugfix；事实来源为 docs。决策记录中 tab 与 runId 内容归 bugfix。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-auto-compact-before-run.md",
+      "old_sha256": "7011d78fcfc1fb00d12cc7e80ae36d8658b92ccdb0d74309cae09a72d40aea3a",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-auto-compact-before-run.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-docs-auto-compact-before-run-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-auto-compact-before-run.md",
+      "notes": "执行前开关与串行压缩为 feature；规格与清单为 docs。保留当时默认开启及失败不阻断原任务，不能用后续行为覆盖历史。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-claude-native-context-compaction.md",
+      "old_sha256": "c76c86186d1c70181b55d32856cbb65512ca03afabd95ec17244ec3d3002e60b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-claude-native-context-compaction.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-21-docs-claude-native-context-compaction-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-claude-native-context-compaction.md",
+      "notes": "历史拆分记录：原生 compact 集成、事件判定和兼容回退是 feature；实际补事件/回退测试为 test；运行设计说明为 docs。保留 claude 2.1.118 真实 smoke 原结果，迁移不重跑。 2026-11-11 按用户要求删除 test 类型计划；上述 test 分类及章节归属仅为历史记录，其历史验证证据现见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-apr-jun.json 的 entries[1]，不作为存活计划的测试开发范围。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-23-auto-compact-min-duration.md",
+      "old_sha256": "bda2f2328c4bb58acb6be162d376f6590c4a61404ea8bb03fb9951aa4bc6be8d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-23-feature-auto-compact-min-duration.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-23-docs-auto-compact-min-duration-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-23-feature-auto-compact-min-duration.md",
+      "notes": "新增严格大于五分钟触发门槛为 feature；事实来源为 docs。保留当时默认关闭，与同月后续默认开启分离。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-23-tool-settings-persistence.md",
+      "old_sha256": "baadb03a018b4f4c7beb099843598ff76c0a293376c697edba846ac170a2502b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-23-bugfix-tool-settings-persistence.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-23-feature-auto-compact-default-enabled.md",
+        ".ch/docs/exec-plans/completed/2026-05/2026-05-23-docs-tool-settings-persistence-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-23-bugfix-tool-settings-persistence.md",
+      "notes": "重启回退与双存储读取不一致为 bugfix；缺省自动压缩开启是独立 feature；规格/运行/设计为 docs。保留旧配置兼容与显式关闭优先。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-11-reset-conversation-tab-session.md",
+      "old_sha256": "a4cdfd263cc5a73232e10840361c3a9c62421cfb3b26ef4acd47da9a1e3303d1",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-11-bugfix-reset-conversation-tab-session.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-11-docs-reset-conversation-tab-session-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-11-bugfix-reset-conversation-tab-session.md",
+      "notes": "旧 tab 复用破坏历史语义的修复为 bugfix；产品说明为 docs。未补单测及原因保留。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-14-history-message-export.md",
+      "old_sha256": "8fb6879e8a64ed8a54ddb6d33e42ee40e8abe86aedf4cc88fb5b4e8a3e57e451",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-14-feature-history-message-export.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-14-bugfix-history-action-button-wrapping.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-14-docs-history-message-export-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-14-feature-history-message-export.md",
+      "notes": "新增历史消息查看与导出为 feature；按钮一行挤压缺陷独立 bugfix；产品清单与规格为 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-17-loop-main-sub-group-chat.md",
+      "old_sha256": "21e371db52b09b8aeffd01b589dbc941ac67b62a8c6e38bbf20efed393daaab7",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-17-feature-loop-main-sub-group-chat.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-17-docs-loop-main-sub-group-chat-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-17-feature-loop-main-sub-group-chat.md",
+      "notes": "历史拆分记录：主从群聊 transcript/成员/入口为 feature；实际扩展 headings 解析测试为 test；设计与产品运行说明为 docs。未做 Extension Host 手工验收保留。 2026-11-11 按用户要求删除 test 类型计划；上述 test 分类及章节归属仅为历史记录，其历史验证证据现见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-apr-jun.json 的 entries[2]，不作为存活计划的测试开发范围。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-18-loop-chat-continue-history.md",
+      "old_sha256": "efd4eb45adb9b1e7241d90c0c075efee26a389f500e8d67a39b3ce15d5aa085d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-18-feature-loop-chat-continue-history.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-18-docs-loop-chat-continue-history-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-18-feature-loop-chat-continue-history.md",
+      "notes": "继续确认和群聊历史入口为 feature；产品/设计/踩坑说明为 docs。只运行已有测试，不拆虚构 test 开发。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-18-loop-chat-stop-task.md",
+      "old_sha256": "31f86e1524255ad6ca1baba51e6c41887f1804a53c21cb845f61d16d374c6391",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-18-feature-loop-chat-stop-task.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-18-docs-loop-chat-stop-task-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-18-feature-loop-chat-stop-task.md",
+      "notes": "新增任务级停止与互斥按钮为 feature；产品/设计/踩坑说明为 docs。已有测试仅为验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-21-loop-group-chat-multi-panel.md",
+      "old_sha256": "71dbb06c752acbdb2430a71d6d852d24dfe212bf2af542b9e795e4c128964b8b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-21-bugfix-loop-group-chat-multi-panel.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-21-docs-loop-group-chat-multi-panel-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-21-bugfix-loop-group-chat-multi-panel.md",
+      "notes": "单例覆盖不同任务页面为既有缺陷，归 bugfix；清单为 docs。保留先写下一步后写已完成的阶段结论和未手工验收事实。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-22-loop-question-conclusion.md",
+      "old_sha256": "b6b5887c5181941d42975cf81b8ad0606cf454051bae8ca559d1f4f44d339769",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-22-bugfix-loop-question-conclusion.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-22-docs-loop-question-conclusion-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-22-bugfix-loop-question-conclusion.md",
+      "notes": "历史拆分记录：丢失直接回答与恢复补写为 bugfix；回归覆盖开发为 test；清单运行说明为 docs。82/82、diff 检查与中文 description 检查保留，不扩大为 UI 验收。 2026-11-11 按用户要求删除 test 类型计划；上述 test 分类及章节归属仅为历史记录，其历史验证证据现见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-apr-jun.json 的 entries[3]，不作为存活计划的测试开发范围。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-25-loop-group-chat-ui-followups.md",
+      "old_sha256": "057fa51485af3c8a4baf71bda184786bf9a8f7c5c8f752cdf05b2eab2830ff5c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-25-feature-loop-group-chat-ui-followups.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-25-docs-loop-group-chat-ui-followups-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-25-feature-loop-group-chat-ui-followups.md",
+      "notes": "补充需求持久化与恢复链路及配套按钮/成员文案调整为同一 feature；产品设计说明为 docs。保留英文日期/状态/Owner 元信息。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-27-official-skills-version-refresh.md",
+      "old_sha256": "e120b81ced73285b79162538dcbd2200ecd586fe1f8691dd71fa3da91b667ae3",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-27-feature-official-skills-version-records.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-27-bugfix-official-skills-latest-detection.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-27-chore-official-skills-refresh-cleanup.md",
+        ".ch/docs/exec-plans/completed/2026-06/2026-06-27-docs-official-skills-version-refresh-documentation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-27-feature-official-skills-version-records.md",
+      "notes": "历史拆分记录：逐条版本字段为 feature；最新状态比较为 bugfix；catalog/ZIP 刷新和 Gemini 清理为 chore；测试开发为 test；事实来源为 docs。保留 2026-07-14/2026-08-03 后续历史，不改变 2026-06-27 日期目录。锚点：#当前结论 的刷新数量与超时复用见 chore，版本字段见 feature，判定规则见 bugfix；#测试与清单同步 的11/11等清理证据见 chore，测试开发见 test，文档条目见 docs；#决策记录 的Gemini清理见chore、contentHash比较见bugfix。初始Python探针失败和上游超时不得改写为无失败。 2026-11-11 按用户要求删除 test 类型计划；上述 test 分类及章节归属仅为历史记录，其历史验证证据现见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-apr-jun.json 的 entries[4]，不作为存活计划的测试开发范围。"
+    }
+  ]
+}

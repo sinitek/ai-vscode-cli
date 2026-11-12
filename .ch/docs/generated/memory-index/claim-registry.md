@@ -72,6 +72,7 @@
 | `claim-99e09c088baf` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-8f87a372ef80` | `decision` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-10-16` |
 | `claim-91d370254f8a` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
+| `claim-ad82688799ba` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-bc1a7d3cf073` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-d304525ec6d2` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
 | `claim-04d77e38d577` | `instruction` | `active` | `medium` | `mem-c1d7e714b7` | `.ch/docs/MEMORY.md` | `2026-09-01` |
@@ -111,6 +112,7 @@
 | `claim-76c9d62175b7` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-b9597eb2f15d` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-c5443e62b9df` | `risk` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-09-19` |
+| `claim-10bdb2817921` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
 | `claim-2435e8e9d987` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-13` |
 | `claim-422b79a6047d` | `instruction` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-13` |
 | `claim-6d9f2766d40e` | `fact` | `active` | `medium` | `mem-431f2548e1` | `.ch/docs/memory/README.md` | `2026-10-28` |
@@ -1086,6 +1088,20 @@
 - Quote hash: `sha256:d05161e1f92cb5a4d43848f41cee243c2cf19bba83f83f79eaf831b9ff4132d1`
 - Review after: `2026-09-01`
 
+### claim-ad82688799ba
+
+- Text: 默认 scaffold 同步不移动或覆盖既有计划。仅在用户明确授权的命名迁移或类型拆分中，才可按逐源映射保留来源证据并修复引用；不得改写 `blocked`、失败或未发布结论，也不得借模板更新覆盖记忆热区或 `.ch/docs/generated/`。
+- Type: `instruction`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/MEMORY.md`
+- Source anchor: `3.8 Harness scaffold 与记忆保护`
+- Source span: `heading:3.8 Harness scaffold 与记忆保护`
+- Source observation: `mem-c1d7e714b7`
+- Content hash: `sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e`
+- Quote hash: `sha256:246d7a156cd42d22baf6907fbebb4fd42f99af43a1c418d4110f152a9a7f96c6`
+- Review after: `2026-09-01`
+
 ### claim-bc1a7d3cf073
 
 - Text: 不用 scaffold 的 `memory/` 文件覆盖当前仓库已有热区正文、front matter、历史条目或来源链接。
@@ -1631,6 +1647,20 @@
 - Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
 - Quote hash: `sha256:3843663012a72f50cfe432c85527ee39601d18d83d193d0602eaaca798d94f6c`
 - Review after: `2026-09-19`
+
+### claim-10bdb2817921
+
+- Text: 计划与记忆的 scaffold 保留边界见 `.ch/docs/MEMORY.md` §3.8；明确授权的计划命名迁移/类型拆分是受逐源映射约束的例外，不授权覆盖热区或 generated 内容。
+- Type: `fact`
+- Status: `active`
+- Confidence: `medium`
+- Source: `.ch/docs/memory/README.md`
+- Source anchor: `使用原则`
+- Source span: `heading:使用原则`
+- Source observation: `mem-431f2548e1`
+- Content hash: `sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e`
+- Quote hash: `sha256:f09318c6355b2e668cbeebb37a213749efd2bc986079ad477fe3e2d1e30d34d2`
+- Review after: `2026-10-28`
 
 ### claim-2435e8e9d987
 

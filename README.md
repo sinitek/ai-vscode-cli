@@ -8,8 +8,13 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.8.x
+### 1.9.x
 - bugfix & 体验优化
+
+### 1.9.0
+- Loop/Loop+ 支持运行时模型切换
+- Loop/Loop+ 逻辑优化提高主子模型协同效率
+- Loop+ 已验收的任务可以点击方便查看验收结果
 
 ### 1.8.0
 - cli 配置支持解析 url 列出模型来快捷导入

@@ -1,0 +1,860 @@
+{
+  "version": 1,
+  "cleanup_date": "2026-11-11",
+  "partition": "jul-sep",
+  "entries": [
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-harness-setting-init.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-test-harness-setting-init.md",
+      "removed_sha256": "f782f98567c48ecc823925be12a5ecf1dda926c39472bd3f21bed0f7815b3edf",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-harness-setting-init.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-03；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原始命令：`node --test dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js dist/test/longTermMemory.test.js`，历史结果 `16/16` 通过。",
+        "- 失败处理：首次运行发现旧默认开启断言，按默认关闭的新口径修正后重跑通过。",
+        "- 本次文档迁移未重跑历史测试；不增加原文未记录的结果。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-harness-scaffold-memory.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-test-workspace-harness-scaffold-memory.md",
+      "removed_sha256": "dcf4d58060b7dd1a55a2e7b63d5816181d0cee56658bf6844330b393579ebcc4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-harness-scaffold-memory.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-03；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原记录的失败处理事项为“无”。",
+        "原始命令：`node --test dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js dist/test/longTermMemory.test.js`，历史结果 `16/16` 通过。",
+        "原计划另记录 `npm run build` 通过；构建证据归属功能计划。",
+        "- 本次迁移没有重跑历史测试或构建。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-long-term-memory.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-test-workspace-long-term-memory.md",
+      "removed_sha256": "e656a26077d99e4a9f451b03a5833d7dced1e9f45506f7a364f654ab50dad35b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-long-term-memory.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-03；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原记录命令：`node --test dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js dist/test/longTermMemory.test.js`，结果 14/14 通过。",
+        "原计划另记录 `npm run build` 通过；这作为功能构建证据保留，不扩张为测试开发结论。",
+        "- 失败处理：原文记录无失败。",
+        "- 未验证：原记录没有提供逐测试文件通过计数，本计划不推定更多覆盖。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-pitfall-memory.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-test-workspace-pitfall-memory.md",
+      "removed_sha256": "386678fa7798a09c7e775adf90143eb45bb2aaf4cd04178571316c49bdd51b30",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-pitfall-memory.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-03；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原记录无失败。",
+        "原始命令 `node --test dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js dist/test/longTermMemory.test.js`：15/15通过。",
+        "原文还记录 `npm run build` 通过；构建结果仅作为历史证据，本轮未重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-claude-config-visual-editor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-test-claude-config-visual-editor.md",
+      "removed_sha256": "d5d85940f28ba15a4437d715464bc81284daa8335d7371876b2496e28137eee2",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-claude-config-visual-editor.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-10；负责人=Codex；owner=Codex；claimed_at=2026-07-10；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 结果：配置中心相关 42 个 Node 测试通过；原记录说明首次因 `12px` 旧断言失败，修正断言后重跑通过。",
+        "- 构建命令及静态语法检查结果见关联功能计划；这里不将其改写为单独的测试开发结果。",
+        "- 未保留单独的新测试文件运行命令或本计划专属测试数量，原来源未按拆分粒度分别记录，故不补造。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-universal-final-answer-marker.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-test-universal-final-answer-marker.md",
+      "removed_sha256": "9420e85dc120f4c508d6b8b3afa366ea8ec403253d8e17d7d5baac14d092e96a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-universal-final-answer-marker.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-10；负责人=Codex；owner=Codex；claimed_at=2026-07-10；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `npm run build` 通过；最小相关回归 47/47、补充 Webview 回归 31/31、排除两个已知失败文件后的扩展回归 336/336 通过。",
+        "- 重命名前遗留 `dist/test/codexFinalAnswerPolicy.test.js` 导致 2 个过期断言失败；删除产物后通过。",
+        "- 最终全量 392 项中 369 通过、23 失败：未改动的 `configService.test.js` 1 项与 `loopBoundaryRecord.test.js` 22 项，记录为范围外历史失败。",
+        "- 未重跑历史命令；以上均为原来源记录的结果。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-cli-config-visualization.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-test-cli-config-visualization.md",
+      "removed_sha256": "404c05f1e3a0945c80ae272d9b46ef13ff537b5c207c828887a33c2c384e0672",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-cli-config-visualization.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-12；负责人=Codex / 主任务协作；owner=Loop 主任务 `msg_1783863365764_c2291c1e371688`。仅保留原记录，不代表清理时重跑或重新验收。",
+        "共享 UI 集成：三份视觉编辑器测试 `31/31` 通过。",
+        "raw value/`ultra` 批次：八个定向 `dist/test` 文件 `81/81` 通过。",
+        "最终排序修复：六个定向 `dist/test` 文件 `70/70` 通过，覆盖 `max`/`ultra` 顺序、Claude legacy `max` 和 OpenCode 动态原序。",
+        "后续 Codex 固定 `max` 修复：三份配置可视化定向测试 `36/36` 通过。",
+        "- 相关批次另记录 build、`node --check`、JSON 与授权范围 diff 检查通过；本轮迁移未重跑。",
+        "- 真实 VS Code Webview 点击、实际安装的三家 CLI 对 `ultra` 的兼容性，以及原生 `datalist` 主题/窄屏行为未验证；不得将自动化结果外推为这些验收事实。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-loop-single-model-semantics.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-test-loop-single-model-semantics.md",
+      "removed_sha256": "f7eb1e9cd76635f188c70803adb6baea78fe0738db8eff0c6896ec4e960ef932",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-single-model-semantics.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-12；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "保留历史定向测试 76/76、全量测试 384/384 通过；构建与全量测试命令记录于原计划。",
+        "原计划未记录失败。",
+        "- 本轮未重跑历史业务测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-loop-subtask-question-handoff.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-test-loop-subtask-question-handoff.md",
+      "removed_sha256": "0ad852475a48006c52bed3caab8a050e16b75bab0f7017301df15f43754a82ff",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-subtask-question-handoff.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-12；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "保留历史 build 通过、定向 21/21 和全量 484/484 通过；无失败记录。",
+        "- 本轮未重跑历史测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-provider-selects.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-test-opencode-provider-selects.md",
+      "removed_sha256": "61bca6690a401c8efd3bf869bac9cd122aeaa78c0857ac4d16a8a1c8e91b37e3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-provider-selects.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-12；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原计划记录 `npm run build` 通过、4 个测试文件共 33 用例通过。",
+        "保留首次新增测试正则方向错误、修正断言后重跑通过的记录；非实现缺陷。",
+        "- 本轮未重跑历史业务测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-task-list-localized-traces.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-test-opencode-task-list-localized-traces.md",
+      "removed_sha256": "8899eea14e91322719ffedae3ca783c3322de72662c5ecb668d8e56c8ffb3bd9",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-task-list-localized-traces.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-12；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "保留历史定向 OpenCode/标题测试 `41/41`、共享回归 `16/16`、全量 Node 测试 `458/458` 通过以及原 `npm run build` 通过记录；这是来源证据，不是本轮重跑结果。",
+        "原记录未报告测试失败。",
+        "- 本轮迁移未重跑历史业务测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-cli-subagent-stream-bubbles.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-test-cli-subagent-stream-bubbles.md",
+      "removed_sha256": "9ce06d1ca506c7f37b29b1c0323d502c001c9a96c29d43766285db6cd4543391",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-cli-subagent-stream-bubbles.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-13；负责人=Codex；owner=Codex；claimed_at=2026-07-13；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史 `npm run build` 通过；10 个相关测试文件112/112通过，`git diff --check` 通过。",
+        "保留失败记录：旧静默提示源码断言因需求变化失效，更新为监控器接线断言；结构检查发现父 session 事件造成额外 children poll、并发快照可能倒序覆盖，加入 known-child 限定与 per-child generation 后复测通过。",
+        "- 本轮仅按归档证据迁移计划，未重跑历史测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-global-auto-compact-setting.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-test-global-auto-compact-setting.md",
+      "removed_sha256": "e6357c008eb4dd6c7b16912f85e443753e7c40d40fdd73625cfdcfb115a4a2f8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-global-auto-compact-setting.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-13；负责人=Codex；owner=Codex；claimed_at=2026-07-13；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原计划记录 `npm run build` 通过。",
+        "历史定向验证共78/78通过；本轮不重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-strict-final-answer-protocol.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-test-strict-final-answer-protocol.md",
+      "removed_sha256": "f2f573576cac94b7ea705a3fe80644bb527c33d11a7f4ef517c17701b3d78002",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-strict-final-answer-protocol.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-13；负责人=Codex；owner=Codex；claimed_at=2026-07-13；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史 build 与定向测试共131/131通过；失败处理记录为无本次范围内失败。本轮不重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-task-list-collapse.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-test-task-list-collapse.md",
+      "removed_sha256": "acbfaded5128deac474de73b1b54c343a6661ee067baa57ca73248a3c1b18960",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-task-list-collapse.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-13；负责人=Codex；owner=/root；claimed_at=2026-07-13；claim_ttl=当前会话；handoff_to=无。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 历史证据：`node --test dist/test/openCodeTaskListOverlay.test.js`，来源记录 4/4 通过。",
+        "- 不在归档迁移中重跑业务测试。",
+        "- `node --test dist/test/openCodeTaskListOverlay.test.js`：4/4 通过。",
+        "- `npm run build`：未通过；历史记录指向范围外 `src/test/contextCompactionRunner.test.ts` 与 `src/test/opencodethinkingintegration.test.ts` 使用已重命名 API。该阻塞未在本计划中修复。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-unified-codex-opencode-multi-agent-toggle.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-test-unified-codex-opencode-multi-agent-toggle.md",
+      "removed_sha256": "7adc197d47950de1baccbdcfdb4ca0ffdd39709fe0724a99aa9975030233ceea",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-unified-codex-opencode-multi-agent-toggle.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-13；负责人=Codex；owner=Codex；claimed_at=2026-07-13；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原记录 `npm run build` 通过，所列八个定向测试文件共55/55通过；其后全局作用域调整相关定向集合68/68通过。",
+        "Webview runtime script 的 node:vm 解析及差异检查通过。均为原计划历史结果，本轮未重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-harness-testing-playwright.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-test-harness-testing-playwright.md",
+      "removed_sha256": "4690c915945b6b644e37d63d8cbda36d6525c572f73ce58f33323fcfc4e427be",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-docs-harness-testing-policy.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-14；负责人=协作；owner=Loop 主任务 `msg_1783998484827_4b2d85596667a`；claimed_at=2026-07-14T03:18:27Z；claim_ttl=本 Loop 任务完成前；每轮主任务复核时续期；handoff_to=已归档，无后续 active handoff。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史审计归并阶段只修改计划，按授权未运行 build/单测；当时要求实现任务回填 node --check、runner --help、npm run build 及两个编译后定向测试的结果，不能把该要求视为执行证据。",
+        "原定向验证入口（不是新增执行结果）：node --check .agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs；node .agents/skills/chromium-playwright-smoke/scripts/run_smoke.mjs --help；npm run build；node --test --test-concurrency=1 dist/test/chromiumPlaywrightSmoke.test.js dist/test/longTermMemory.test.js。",
+        "原分层边界：默认 L0/L1 无浏览器、无网络；L2 真实 Chromium 与显式联网安装需单独授权、loopback、唯一 install/browser/output root、串行执行。RUN_REAL_CHROMIUM_SMOKE=1 与 ALLOW_PLAYWRIGHT_INSTALL=1 是原文条件入口，不是本轮运行证据。",
+        "原失败分类要求区分实现缺陷、断言过期、fixture/stub、环境、既有及范围外失败；后续证据不得覆盖既有失败。审计阶段失败处理记录为当前无，不推出实现或平台已经验证。",
+        "历史限制：exact 1.61.1 在 macOS/Linux/Windows 的真实 Node/浏览器兼容性未验证，三平台 L2 仍为开放风险；不以候选文件清单代替真实 VSIX/ZIP 验证。",
+        "原归档结论：2026-08-03 active 清理将批次 2–4、产品及独立验收项统一标记完成，仅表示不再占用 active；未在该文档归档中重新运行真实 Chromium、联网安装或 VSIX 导出验证。不得由 completed 状态补造这些结果。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-loop-naming-migration.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-test-loop-naming-migration.md",
+      "removed_sha256": "a102a1c63f1bbcfda335289658d11ae9dd65ee4ff8462bb7195512dbbe9d72b8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-loop-naming-migration.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-14；负责人=Codex；owner=Codex；claimed_at=2026-07-14；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原记录 build 通过，全量 Node tests 566/566通过。",
+        "保留首次失败事实：`loopPromptQueue.test.ts` 旧正则假定仅两个参数，与 HEAD 已存在的第三个 ownership callback 不符；修正过期断言后定向及全量通过。本轮未重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-opencode-loop-empty-main-response.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-test-opencode-loop-empty-main-response.md",
+      "removed_sha256": "d38cec47b382b2a9acad711b24e5a3c4851f97799da135028c3f03bc25588ad8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-opencode-loop-empty-main-response.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-14；负责人=Codex；owner=Codex；claimed_at=2026-07-14；claim_ttl=1 day。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原计划记录 build 通过，7个相关测试文件103/103通过，差异检查通过，无测试失败。",
+        "- 验证均为历史记录；本轮不运行 OpenCode/真实会话或历史命令。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-cli-page-test-coverage.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-test-cli-page-test-coverage.md",
+      "removed_sha256": "432202190673426225f3b07d4451c2ab9076500a4c2a54e2be1dcb5810b3ed5b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-cli-page-test-coverage.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-15；owner=cli-page-coverage-integration。仅保留原记录，不代表清理时重跑或重新验收。",
+        "./node_modules/.bin/tsc --noEmit -p ./",
+        "npm run build",
+        "npm run test:page",
+        "npm run test:page-coverage",
+        "- `./node_modules/.bin/tsc --noEmit -p ./`：退出码 0。",
+        "- `npm run build`：退出码 0。",
+        "- `npm run test:page`：退出码 0，`151` tests / `151` pass。",
+        "- `npm run test:page-coverage`：退出码 0，`151` tests / `151` pass。",
+        "`npm run test:page-coverage` 的页面白名单指标：",
+        "- Statements：100%",
+        "- Branches：100%",
+        "- Functions：100%",
+        "- Lines：100%",
+        "覆盖率表中 `All files`、`webview`、`webview/viewContentScript`、`webview/viewContentStyles` 以及所有白名单源文件均为 statements / branches / functions / lines 100%，无 uncovered line。",
+        "151/151 及四项 100% 为原历史结果；本轮不重跑。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-core-test-coverage.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-test-core-test-coverage.md",
+      "removed_sha256": "e12075a5ac9ae1b2757c8b620133f4c7dfb07a19de7851228f695027f8e2a1c6",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-core-test-coverage.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-15；负责人=Codex；owner=核心测试覆盖率改造。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 构建：`npm run build`",
+        "- 项目级单测：`npm test`",
+        "- 核心链路单测：`npm run test:core`",
+        "- 严格覆盖率：`npm run test:core-coverage`",
+        "`c8` 的报告和临时 V8 数据写入 `node_modules/.cache/sinitek-cli-core-coverage`，不在仓库根目录产生覆盖率文件。",
+        "- `npm run build`：通过。",
+        "- `npm run test:core`：106 通过，0 失败。",
+        "- `npm run test:core-coverage`：测试本身为 106 通过，0 失败；覆盖率门禁失败（预期），当前白名单为语句 51.11%、行 51.11%、函数 61.78%、分支 64.74%。",
+        "- 已完整达标的核心模块：`loopMainFailure.ts`、`sessionMessageRouter.ts`（四项均为 100%）。",
+        "- 主要缺口：`sessionLifecycle.ts`（行 8.86%）、`sessionStore.ts`（行 22.88%）、`promptRuntime.ts`（行 36.75%）、`sessionMessageHandlers.ts`（行 40.32%）、`loopTaskStore.ts`（行 66.87%）、`sessionMessageActions.ts`（行 76.40%）、`commandRunner.ts`（行 83.24%）。",
+        "- `npm test`：524 通过，3 失败。两项 `commandResolution.test` 受本机真实 `~/.npm-global/bin/opencode` 干扰，未使用测试临时 HOME；一项 `configappcompactlayoutstyles.test` 找不到预期 CSS 选择器。它们不在本任务允许修改范围，也不影响核心测试集合的 106 项结果。",
+        "- 单元自测结果：见“最终结果”。",
+        "- 失败处理记录：未修改三项项目级历史失败；核心覆盖率运行与其隔离。",
+        "核心覆盖率工具、统一命令、模块白名单和严格 100% 门禁已建立并达标。`test:core-coverage` 覆盖白名单内九个核心模块，语句、行、函数、分支均为 100%。项目级 `npm test` 的三项历史失败仍按范围外风险保留，不影响核心门禁完成结论。",
+        "- `./node_modules/.bin/tsc --noEmit -p ./`：通过。",
+        "- `npm run test:core`：通过，188/188。",
+        "- `npm run test:core-coverage`：通过，188/188；白名单模块 statements / branches / functions / lines 均为 100%。",
+        "- `npm run build`：通过；由 `npm run test:core` 和 `npm run test:core-coverage` 的前置步骤执行。",
+        "历史完成口径仅为九个 --include 核心白名单的语句/行/函数/分支四项 100%；--all 将未执行白名单模块计为缺失。项目级全量单测的三项历史失败不因该门禁通过而被关闭。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-loop-subtask-guidance-toggle.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-test-loop-subtask-guidance-toggle.md",
+      "removed_sha256": "afbac47357a2c7942376186eb61aba053d395c5a959a43e15be3c2ee1043f19a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-guidance-toggle.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-15；负责人=Codex；owner=Codex；claimed_at=2026-07-15；claim_ttl=当前实现与验证期；handoff_to=-。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史最终命令：`npm run build`；`node --test dist/test/loopSubtaskExecutionRoot.test.js dist/test/opencodeCommandRunner.test.js dist/test/loopPromptBuilders.test.js dist/test/loopPromptQueue.test.js dist/test/loopMainFailure.test.js dist/test/loopSubtaskThinking.test.js`：66通过、0失败；`git diff --check`通过。原验证计划还列有按脚本实际存在情况选用的compile/npm test，并不意味着这些均已运行。",
+        "- 单元自测结果：`npm run build` 通过；定向 Node 测试 66/66 通过、0 fail。",
+        "- 失败处理记录：首轮构建曾发现已删除模块的残留 `normalizedCompactSkillCatalogSection` 引用，已移除后重跑构建通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-loop-subtask-thinking-cap.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-test-loop-subtask-thinking-cap.md",
+      "removed_sha256": "bbb6d10748c804cfe20877008dc817d6e5bd1a61df7453f8bcbf534d2ea73422",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-thinking-cap.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-15；负责人=Codex；owner=Codex；claimed_at=2026-07-15；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原验证方法为将相关TypeScript测试编译到仓库内临时目录再`node --test`；原文未给完整编译命令，不补造。严格TypeScript检查通过；39项和包含opencodethinkingintegration的46项是两套历史结果，不相加。",
+        "- 单元自测结果：严格 TypeScript 检查通过；`loopSubtaskThinking`、`toolSettings`、`sessionMessageActions`、`finalAnswerPolicy` 共 39 个测试通过。包含 `opencodethinkingintegration` 的生成测试套件中共 46 个 Node 测试通过。",
+        "- 失败处理记录：`npm run build` 已执行，但当前工作区删除了已跟踪的 `src/loopSkillGuidance.ts`，旧的 `loopMainFailure` 与 `loopPromptQueue` 测试仍导入该模块，导致 `TS2307`。同一批正在进行的 Loop Skill 删除/重构还留下 `src/loopPromptBuilders.ts` 未定义 `normalizedCompactSkillCatalogSection`，以及 `loopPromptBuilders.test.ts` 仍按旧签名调用的 `TS2554`。未恢复或修改这些用户工作区改动；均在本次改动范围外。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-24-subtask-tab-auto-close.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-24-test-subtask-tab-auto-close.md",
+      "removed_sha256": "f62a0847f103cddd4e3e32809e075736877577c29ab281a42eec5f75d98c71d5",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-24-feature-subtask-tab-auto-close.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-24；负责人=Codex / 协作；owner=Codex；claimed_at=2026-07-24；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史验证清单",
+        "- `npm run build`：通过。",
+        "- `node --test dist/test/loopSubtaskLifecycle.test.js dist/test/toolSettings.test.js dist/test/workspaceSettingsStore.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/opencodethinkingintegration.test.js`：56/56 通过。",
+        "- `node --test dist/test/cliPageStaticRenderCoverage.test.js dist/test/opencodeloopmodewebview.test.js dist/test/sessionMessageActions.test.js`：32/32 通过。",
+        "- `git diff --check`：通过。",
+        "- `codegraph sync`：通过。",
+        "原文未逐个列出新增/更新测试文件，不用验证用例清单推造更多覆盖。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-29-codex-loop-role-thinking.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-29-test-codex-loop-role-thinking.md",
+      "removed_sha256": "b41603a742901ea24dbd4e8ff39f76dfed0540a7ea4c6d78f082fbf17e00d801",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-29-feature-codex-loop-role-thinking.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-29；负责人=Codex；owner=Codex；claimed_at=2026-07-29；claim_ttl=本轮会话；handoff_to=无。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史命令：`npm run build`；`node --test dist/test/sessionMessageActions.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/loopSubtaskThinking.test.js dist/test/codexdualmodelwebview.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/opencoderolemodelruntime.test.js dist/test/opencodethinkingintegration.test.js dist/test/cliPageStaticRenderCoverage.test.js`：95/95通过；`git diff --check`通过。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/sessionMessageActions.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/loopSubtaskThinking.test.js dist/test/codexdualmodelwebview.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/opencoderolemodelruntime.test.js dist/test/opencodethinkingintegration.test.js dist/test/cliPageStaticRenderCoverage.test.js` 95/95 通过；`git diff --check` 通过。",
+        "- 失败处理记录：未出现失败；`clipagescriptruntimecoverage` 的 Webview 错误日志为测试用例主动触发的错误上报覆盖，测试通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-codex-env-removal-keep-visual-editor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-test-codex-env-removal-keep-visual-editor.md",
+      "removed_sha256": "514b4e72f72bb63e2e24b69ed25596facc288218c67726fcf69e66a0cfebf3a1",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-codex-env-removal-keep-visual-editor.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-31；负责人=Codex；owner=Codex；claimed_at=2026-07-31；claim_ttl=当前会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史最终命令：`npm run build`；`node --test dist/test/configService.test.js dist/test/codexConfigVisualEditor.test.js dist/test/cliPageConfigCoverage.test.js dist/test/claudeConfigVisualEditor.test.js dist/test/opencodeconfigvisualeditor.test.js dist/test/configappcompactcontrols.test.js dist/test/configappcompactlayoutstyles.test.js`：73项、0失败；`node --check media/config/assets/config-app-ui.js`与`git diff --check`通过。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/configService.test.js dist/test/codexConfigVisualEditor.test.js dist/test/cliPageConfigCoverage.test.js dist/test/claudeConfigVisualEditor.test.js dist/test/opencodeconfigvisualeditor.test.js dist/test/configappcompactcontrols.test.js dist/test/configappcompactlayoutstyles.test.js` 通过（73 项、0 失败）；`node --check media/config/assets/config-app-ui.js` 通过；`git diff --check` 通过。",
+        "- 失败处理记录：无。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-p0-performance-memory-hardening.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-test-p0-performance-memory-hardening.md",
+      "removed_sha256": "18d867dc6ae5c0517007d7d088e13b80bd9786d1a301b6f40990e061af09c0dc",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-perf-p0-performance-memory-hardening.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-31；负责人=Loop 协作；owner=msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory；claimed_at=2026-07-31；claim_ttl=本轮 P0 全部验收前；handoff_to=`.ch/docs/exec-plans/completed/2026-07/2026-07-31-perf-p0-performance-memory-hardening.md`。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史最终独占命令：`npm run build` exit 0；`node --test dist/test/claudeRunner.test.js dist/test/extensionDeactivateStopAll.test.js dist/test/boundedText.test.js dist/test/commandRunnerCoverage.test.js dist/test/opencodeCommandRunner.test.js dist/test/openCodeTabStream.test.js dist/test/clipagescriptruntimecoverage.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js` exit 0，tests/pass114、fail0；`git diff --check` exit 0。真实大输出、真实reload后进程归零、超大附件链路动态量化原文只列后续增强，不当已通过。",
+        "- 单元自测结果：最终独占 build 与指定 dist 单测通过。",
+        "- 失败处理记录：首次完整 dist 单测暴露 `clipagescriptruntimecoverage` 测试断言/函数提取器滞后，已在授权测试文件中最小修正并重跑通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-vscode-config-fullscreen-panel.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-test-vscode-config-fullscreen-panel.md",
+      "removed_sha256": "cff6e0903813fd359b97a057dbe845bc3ef82e83e731bd06179a4d593c12bd6d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-fullscreen-panel.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-31；负责人=Codex；owner=Codex 当前任务；claimed_at=2026-07-31；claim_ttl=当前任务完成前。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史验证计划：`npm run build`；`node --test dist/test/cliPageConfigCoverage.test.js dist/test/cliPageStaticRenderCoverage.test.js dist/test/configappcompactlayoutstyles.test.js dist/test/configappcompactcontrols.test.js`；扩展验证曾列`npm run test:unit`，未声称全量执行通过。最终配置相关集70/70、`node --check media/config/assets/config-app-ui.js`与`git diff --check`通过。",
+        "原始限制：无`code` CLI，未启动Extension Development Host人工截图；最终构建并非通过。",
+        "- 单元自测结果：在并发工作树改动出现前 `npm run build` 通过；最终 `node --check media/config/assets/config-app-ui.js` 通过；配置面板、静态壳、紧凑布局、Codex / Claude / OpenCode 配置编辑器相关测试 70/70 通过；`git diff --check` 通过。",
+        "- 失败处理记录：`npm run test:page` 共 161 项，158 项通过，3 项失败；失败均位于本次未修改的 `src/test/openCodeThinkingWebview.test.ts` 测试夹具，分别缺少 `updateCodexLoopThinkingSelectOptions` 和 `getOpenCodeCompatModelRole`。最后一次 `npm run build` 还受到并发会话修改的 `src/test/clipagescriptruntimecoverage.test.ts:1022`（`TS18046: 'idleRender' is of type 'unknown'`）阻断；这些均归类为范围外工作树问题，未为通过测试改动无关代码。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-vscode-config-zen-mode-popup.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-test-vscode-config-zen-mode-popup.md",
+      "removed_sha256": "ab4b50a52f884054a86efd1d3a0cf7acf5a5236874b6e435783ae211173c283c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-zen-mode-popup.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-07-31；负责人=Codex；owner=Codex 当前任务；claimed_at=2026-07-31；claim_ttl=当前任务完成前。仅保留原记录，不代表清理时重跑或重新验收。",
+        "历史计划含`npm run build`、单文件`node --test dist/test/cliPageConfigCoverage.test.js`及Extension Development Host扩展检查；最终执行记录为`npm run build`与`node --test dist/test/cliPageConfigCoverage.test.js dist/test/cliPageStaticRenderCoverage.test.js dist/test/configappcompactcontrols.test.js dist/test/configappcompactlayoutstyles.test.js`32/32，JS静态检查/diff通过。Extension Development Host人工视觉未执行。",
+        "- 单元自测结果：`npm run build` 通过；配置相关 `node --test dist/test/cliPageConfigCoverage.test.js dist/test/cliPageStaticRenderCoverage.test.js dist/test/configappcompactcontrols.test.js dist/test/configappcompactlayoutstyles.test.js` 通过，32/32；`node --check media/config/assets/config-app-ui.js` 通过；`git diff --check` 通过。",
+        "- 失败处理记录：本轮没有失败；未启动 Extension Development Host，因为当前环境没有可用的 `code` CLI，人工视觉验收未执行。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-01-reusable-logic-refactor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-01-test-reusable-logic-refactor.md",
+      "removed_sha256": "b66c4bff14a73faf5846dc87fa398968c73a929ada794ac080fa080d798090e1",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-01-refactor-reusable-logic-refactor.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-01；负责人=Codex；owner=main；claimed_at=2026-08-01T09:31:44+08:00；claim_ttl=本次任务完成前；handoff_to=已归档，无后续 active handoff。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：检查新增共享函数的导出、调用方导入和既有兼容包装；运行 `git diff --check`，确认仅有授权路径变化。",
+        "- 共享工具测试：构建后运行 `node --test dist/test/pathSegments.test.js dist/test/writeScope.test.js`。",
+        "- Loop 回归测试：构建后运行 `node --test dist/test/loopParallel.test.js dist/test/loopTaskStore.test.js dist/test/loop/loopGroupChat.test.js`。",
+        "- 扩展验证：运行 `npm run build`；必要时运行项目统一命令 `npm run test:unit`，由统一验证节点根据耗时和已有测试基线决定是否扩展。",
+        "- 失败处理：按 `.ch/docs/TESTING.md` 区分实现缺陷、断言过期、夹具问题、环境/依赖问题和范围外历史失败；实现或测试修复后重跑最小相关命令，无法运行则记录错误摘要、影响和最小恢复动作。",
+        "- 单元自测结果：`test-path-segments` 已报告构建及路径测试通过；`test-write-scope` 已报告构建及 Loop 写入范围回归通过。2026-08-03 active plan 收尾时按既有专项验证记录关闭剩余评审/归档待办；本次仅做文档归档，不重新扩大产品验证范围。",
+        "- 失败处理记录：当前无失败；后续失败必须按验证计划分类记录，不为通过测试修改无关代码。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-02-extension-entry-refactor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-02-test-extension-entry-refactor.md",
+      "removed_sha256": "69037c14c285c742cc09db2dbc60ba214aea53c6f18ae488721118ec93bf98ec",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-02-refactor-extension-entry-refactor.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-02；负责人=Codex；claimed_at=2026-08-03T15:36:41+08:00；claim_ttl=已完成并归档；handoff_to=无。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `wc -l src/extension.ts src/extensionHost/promptOneShotRuntime.ts src/extensionHost/promptInteractiveRuntime.ts src/extensionHost/promptExecutionShared.ts`",
+        "- `wc -l src/extension.ts src/extensionHost/openCodeSubagentRuntime.ts src/extensionHost/promptExecutionShared.ts`",
+        "- `git diff --check -- src/extension.ts src/extensionHost .ch/docs/exec-plans/completed/2026-08/2026-08-02-extension-entry-refactor.md`",
+        "- 单元自测命令：",
+        "- `npm run build`",
+        "- `npm run build && node --test dist/test/opencodeCommandRunner.test.js dist/test/extensionHostExtractionContracts.test.js dist/test/promptOneShotRuntime.test.js dist/test/promptInteractiveRuntime.test.js`",
+        "- `npm run build && node --test dist/test/extensionDeactivateStopAll.test.js dist/test/sessionPersistenceWiring.test.js dist/test/loopPromptQueue.test.js`",
+        "- `npm run test:unit`",
+        "- 本轮测试适配：`adapt-extension-contract-tests` 已把 OpenCode subagent server/monitor canonical source 从 `extension.ts` 迁到 `src/extensionHost/openCodeSubagentRuntime.ts`，并保留入口 host 注入断言；新增覆盖 configured attach、managed server、disabled monitor、幂等 dispose 和启动失败清理路径。",
+        "- 单元自测结果：`test-one-shot-runtime` 记录 `npm run build` 退出码 0，one-shot focused tests 65/65 通过；`test-interactive-runtime` 记录 `npm run build` 退出码 0，one-shot/interactive host、OpenCode、deactivate、session persistence 与 Loop queue focused tests 86/86 通过，`git diff --check` 退出码 0；本轮 `test-focused-extension-refactor` 记录 `npm run build` 退出码 0，focused OpenCode subagent tests 64/64 通过，CodeGraph affected + 补充入口测试 148/148 通过，`git diff --check` 退出码 0。",
+        "- 失败处理记录：build、focused、affected/入口和全量验证均退出码 0，没有 `implementation_defect`、`stale_test_contract`、`missing_write_scope` 或范围外测试失败需要遗留。收束节点另行把当前源码编译到系统临时 outDir 后运行全量测试，因临时目录无法解析仓库 `cross-spawn` 和 `media/` 相对路径而退出码 1（688 tests，614 pass，74 fail），分类为 `environment_failure`；改用已确认包含 OpenCode host 与并发 Loop 提交的当前仓库构建产物只读复跑后，852/852 通过。",
+        "- 完整单测结果：`test-unit-full` 记录 `npm run test:unit` 退出码 0，TAP 汇总 851/851 通过，0 失败、0 跳过、0 todo。",
+        "- 收束后验证：`npx tsc -p ./ --noEmit` 退出码 0；focused OpenCode tests 64/64 通过；当前仓库构建产物的 `node --test` 退出码 0，852/852 通过，覆盖并发提交新增的 Loop max-rounds 用例。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-08-human-interaction-vibe.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-08-test-human-interaction-vibe.md",
+      "removed_sha256": "d1d84d57f7da7f972f5c6dccb7ef58c8429ca3df66158585254e9389f3a33ce9",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-08-feature-human-interaction-vibe.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-08；负责人=Codex；owner=Codex；claimed_at=2026-08-08；claim_ttl=本轮任务；handoff_to=无。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`，必要时运行相关 `node --test dist/test/*.test.js`。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/humanInteraction.test.js dist/test/toolSettings.test.js dist/test/sessionMessageActions.test.js dist/test/sessionMessageActionsCoreCoverage.test.js dist/test/multiAgentSettingWebview.test.js dist/test/opencodethinkingintegration.test.js dist/test/promptInteractiveRuntime.test.js` 通过，78/78 pass；`git diff --check` 通过。",
+        "- 失败处理记录：本轮无失败。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-09-prompt-history-favorites.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-09-test-prompt-history-favorites.md",
+      "removed_sha256": "df617739b607c7346d4e150f13325d4f209aa9d61340dee0eb2b338b778b0687",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-09-feature-prompt-history-favorites.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-09；负责人=Codex；owner=Codex；claimed_at=2026-08-09；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build`",
+        "- 单元自测命令：`node --test dist/test/promptHistoryStore.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/clipagescriptruntimecoverage.test.js`",
+        "- 扩展验证：`npm run build`",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/promptHistoryStore.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js dist/test/clipagescriptruntimecoverage.test.js` 33/33 通过",
+        "- 失败处理记录：无"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-test-harness-ontology-scaffold-sync.md",
+      "removed_sha256": "776c15eb05ae809f48859a4210ff307558a223e8be62a6c8e198a8be22ab592f",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-chore-harness-ontology-scaffold-sync.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-13；负责人=Codex；owner=Codex；claimed_at=2026-08-13；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测结果：",
+        "- `npm run build`：通过。",
+        "- `node --test dist/test/workspaceScaffoldSkillPaths.test.js`：通过。",
+        "- `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`：通过。",
+        "- `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'`：通过，7 项。",
+        "- 在 `media/workspace-scaffold` 下执行同组 ontology validate / unittest：通过。",
+        "- `python3 -m py_compile` 覆盖本次改动的 skill Python 脚本：通过。",
+        "- `git diff --check`：通过。",
+        "- 归档后复核结果：",
+        "- 根仓库 ontology validate / unittest、scaffold ontology validate / unittest、`npm run build`、`node --test dist/test/workspaceScaffoldSkillPaths.test.js`、`git diff --check`：均通过。",
+        "- 失败处理记录：`workspaceScaffoldSkillPaths` 初次回归暴露目标系统新版 skills 的 generated artifact 重新写入本机绝对路径，已修复 `claim-release-auditor`、`reference-pack-drift-auditor`、`repo-indexer`、`work-frontier` 的 repo-relative 输出；同时更新测试以适配新版 `memory-recall` 输出到 `.ch/docs/generated/memory-index/.local/`。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-test-simplify-workspace-scaffold.md",
+      "removed_sha256": "70251dfb910d9b21aef2554fdff77451c221bf888fa681324aebc40f381b22fd",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-22；负责人=Codex；owner=Codex；claimed_at=2026-08-22；claim_ttl=本轮任务；handoff_to=无。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`python3 media/workspace-scaffold/.agents/skills/ontology/scripts/search_ontology.py --validate --root media/workspace-scaffold`",
+        "- 扩展验证：`python3 -m unittest discover -s media/workspace-scaffold/.agents/skills/ontology/tests -p 'test_*.py'`",
+        "- 单元自测结果：",
+        "- `python3 media/workspace-scaffold/.agents/skills/ontology/scripts/search_ontology.py --validate --root media/workspace-scaffold`：通过，domains=2 concepts=9 relations=6 rules=5 workflows=1 documents=3。",
+        "- `python3 -m unittest discover -s media/workspace-scaffold/.agents/skills/ontology/tests -p 'test_*.py'`：通过，9 项。",
+        "- `python3 .agents/skills/ontology/scripts/search_ontology.py --validate`：通过，domains=2 concepts=13 relations=10 rules=10 workflows=2 documents=3。",
+        "- `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'`：通过，9 项。",
+        "- `node --test dist/test/workspaceScaffoldSkillPaths.test.js`：通过，3 项。",
+        "- `node scripts/check_trailing_whitespace.js media/workspace-scaffold .ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md`：通过。",
+        "- `git diff --check`：通过。",
+        "- `npm run build`：最终重跑失败，原因是工作区已有并行 Loop auto-sleep 类型改动导致 `LoopTaskStatus` / `LoopMainDecision` / `LoopTaskRecord` 类型不一致；不是本次 scaffold 修改引入。",
+        "- 失败处理记录：`rm -rf` 被安全策略拒绝，改用 `apply_patch` 删除文件；删除文件后空目录仍在本机工作区，已用 `find media/workspace-scaffold -type d -empty -delete` 清理。`npm run validate:whitespace` 命中既有 minified / style 文件尾随空白，已改用 scoped whitespace 校验确认本次范围通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-codex-app-server-provider-resume.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-test-codex-app-server-provider-resume.md",
+      "removed_sha256": "eb5ab258fc7ab2a42f72d2c3c424a35e5ef76e12ab0f1f899a78ba1eb94c5317",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-feature-codex-app-server-provider-resume.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-25；负责人=Codex；owner=Codex；claimed_at=2026-08-25；claim_ttl=本轮。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/codexThreadSelection.test.js dist/test/codexRunnerRuntime.test.js dist/test/codexRunnerLifecycle.test.js`。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/codexThreadSelection.test.js dist/test/codexRunnerRuntime.test.js dist/test/codexRuntimeConfig.test.js dist/test/codexRunnerLifecycle.test.js` 20/20 通过。",
+        "- 失败处理记录：新增 runner mock 首次因字符串换行转义失败，已修正测试 fixture 后重跑通过；产品代码未发生失败。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-opencode-config-model-selector.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-test-opencode-config-model-selector.md",
+      "removed_sha256": "084f81d6d420d7fd863448a7dafe7cb7173ae872c0ff4bcf9d726baf3cbb4da2",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-25-feature-opencode-config-model-selector.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-25；负责人=Codex；owner=Codex；claimed_at=2026-08-25；claim_ttl=已完成。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/opencodeconfigvisualeditor.test.js dist/test/opencodedualmodelwebview.test.js dist/test/sessionMessageHandlersCoreCoverage.test.js`。",
+        "- 扩展验证：`node --check media/config/assets/config-app-ui.js`、`git diff --check`、Ontology 校验。",
+        "- 单元自测结果：`npm run build` 通过；9 个相关测试文件共 `104/104` 通过，包括配置编辑器、`small_model` 兼容、OpenCode 主/子模型状态、模型切换消息和宿主消息处理回归。",
+        "- 失败处理记录：无失败。",
+        "验证结论：`npm run build`、9 个相关测试文件（`104/104`）、`node --check media/config/assets/config-app-ui.js`、`git diff --check`、Impeccable detector（`[]`）和 Ontology 校验均通过。本机只读验证确认 OpenCode `1.18.9`、真实 `~/.opencode/config.json` 可解析、默认模型和 `small_model` 兼容字段均存在且无解析问题；未改写用户配置。",
+        "Chromium 浏览器验证：桌面视口中主模型单选和所在表单网格均为 `1011px`，窄屏视口中两者均为 `330px`；`small_model` 编辑控件数量为 `0`，未出现控制台、页面或网络错误。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-29-harness-framework-simplification.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-29-test-harness-framework-simplification.md",
+      "removed_sha256": "1fa9c5b20804c600509402047c81e8363addb20817e2fccf07da809f4d561a4a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-29-refactor-harness-framework-simplification.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-29；负责人=Codex；owner=Codex；claimed_at=2026-08-29；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原始验证记录：ontology validate、ontology/memory-consolidator 单测、相关 Python 编译、`npm run build`、`node --test dist/test/workspaceScaffoldSkillPaths.test.js`、`git diff --check` 均通过。",
+        "- 失败处理：上述 Node 测试首次失败，因断言错误要求移除 scaffold runbooks；核实 runbooks 应保留后修正并重跑通过。",
+        "- 本轮未执行这些历史命令。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-30-opencode-visual-selects.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-30-test-opencode-visual-selects.md",
+      "removed_sha256": "6d5dc2c70b063d84e299d6ed7c0a3321b362f7d909cd3f53965256d13009b9ab",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-30-feature-opencode-visual-selects.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-30；负责人=Codex；owner=Codex；claimed_at=2026-08-30；claim_ttl=已完成。仅保留原记录，不代表清理时重跑或重新验收。",
+        "原始结果：定向视觉编辑器37/37、配置页面28/28、`npm run test:page` 177/177；`npm run build`、`node --check media/config/assets/config-app-ui.js`、`git diff --check`、`npm run validate:whitespace` 通过。",
+        "- 失败处理：无失败。Chromium smoke 未执行，因为配置运行在 VS Code Webview 且无独立 HTTP 服务；静态契约和页面测试为来源记录的替代覆盖。",
+        "- 本次迁移未重跑历史测试或构建。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-31-loop-subtask-staggered-launch.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-31-test-loop-subtask-staggered-launch.md",
+      "removed_sha256": "e62cce6629ada3c6a5005cc9d7010edc1fcb6d8face44b02b967e2a9ca3d38cb",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-08/2026-08-31-feature-loop-subtask-staggered-launch.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-08-31；负责人=Codex；claimed_at=2026-08-31；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build`；运行 Loop 编排相关测试。",
+        "- 单元自测命令：`npm run build && node --test dist/test/loop/loopSubtaskLifecycle.test.js dist/test/loop/loopParallel.test.js`。",
+        "- 扩展验证：本次不启动 Extension Development Host；仅验证调度单元和构建。",
+        "- 单元自测结果：通过构建、23 项相关 Node 单测和 9 项 ontology 单测。",
+        "- 失败处理记录：无失败；`npm run validate:whitespace` 与 `git diff --check` 均通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-configurable-auto-cleanup.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-test-configurable-auto-cleanup.md",
+      "removed_sha256": "1e530aa5b2f087d1e734832144b003f3efea6e518eeaacba0e6979c4814e4c1a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-feature-configurable-auto-cleanup.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-13；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`node --test dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`。",
+        "- 扩展验证：`npm run build`；检查生成的 Webview 含自动清理页签和控件。",
+        "- 单元自测结果：`npm test` 通过（947/947）；ontology 校验与 9 项测试通过；impeccable detector 无发现。",
+        "- 失败处理记录：暂无。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-tool-settings-tabs.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-test-tool-settings-tabs.md",
+      "removed_sha256": "2935c39cf08dd1ab3fae044454d7059ddd2b553bfd498feb7d8aa67efd3d31b9",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-13-feature-tool-settings-tabs.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-13；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build`。",
+        "- 单元自测命令：`node --test dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/multiAgentSettingWebview.test.js`。",
+        "- UI 机械检查：`node /Users/fangjiawei/.codex/skills/impeccable/scripts/detect.mjs --json src/webview/viewContentHtml.ts src/webview/viewContentI18n.ts src/webview/viewContentScript/coreBootstrap.ts src/webview/viewContentScript/settingsAndOverlays.ts`。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/multiAgentSettingWebview.test.js` 12/12 通过；`npm test` 947 项中 946 项通过，本次新增的 Tab 交互断言通过。",
+        "- 失败处理记录：`dist/test/webview/clipagescriptruntimecoverage.test.js` 中既有 `shouldHideParsedTaskListMessage` 对 `Tasklist update:` checkbox 列表的断言失败，与本次 Tab 改动无关；该失败在改动前的基线逻辑中已存在，本次未扩大范围修复。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-test-scheduled-prompts.md",
+      "removed_sha256": "3baca89cfb6a439a602177b83c161352cfdff765a698c91d2cb25a1c0c4e924c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-prompts.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-15；负责人=Codex；owner=Codex；claimed_at=2026-09-15；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/scheduledTaskStore.test.js`。",
+        "- 扩展验证：`npm run test:unit`；运行 Impeccable detector 检查变更 Webview 文件。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/scheduledTaskStore.test.js` 9/9 通过；`node --test dist/test/webview/cliPageStaticRenderCoverage.test.js` 7/7 通过；Impeccable detector 未报告问题；`git diff --check` 通过。",
+        "- 失败处理记录：`clipagescriptruntimecoverage.test.js` 20 个场景中 19 个通过，失败场景为既有任务列表解析断言（`shouldHideParsedTaskListMessage` 对 `Tasklist update` 的旧预期），与本次定时任务交互改动无关，未修改既有解析契约。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-test-scheduled-task-runtime-mode.md",
+      "removed_sha256": "0cdec585d180f4d74158a4b1199004020877991cea0e58803e45f887ecc951a3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-task-runtime-mode.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-15；负责人=Codex；owner=Codex；claimed_at=2026-09-15；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/scheduledTaskStore.test.js`；必要时运行扩展运行时相关测试。",
+        "- 扩展验证：`git diff --check`，检查产品清单与 ontology 是否需要更新。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/scheduledTaskStore.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js` 23/23 通过；`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过；ontology unittest 9/9 通过；`git diff --check` 通过。",
+        "- 失败处理记录：`npm run test:unit` 共 958 项，957 通过、1 项失败；失败为既有 `src/test/webview/clipagescriptruntimecoverage.test.ts` 中 `Tasklist update` 旧断言，与本次定时任务模式路由改动无关，未修改该既有解析契约。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-windows-home-path-compatibility.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-test-windows-home-path-compatibility.md",
+      "removed_sha256": "7fcb967a7d4b4a4173f36b53db67188c53c4077e02d88c4746880bf5efbb362d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-bugfix-windows-home-path-compatibility.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-15；负责人=Codex；owner=Codex；claimed_at=2026-09-15；claim_ttl=本会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build` 后跑相关 `node --test dist/test/...`",
+        "- 扩展验证：本机无 Windows 宿主，不宣称真实 Windows E2E 已跑",
+        "- 单元自测结果：`npm run build` 通过；相关 63 个单测通过",
+        "- 失败处理记录：无",
+        "原文未做真实 Windows E2E。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-test-scheduled-task-selected-mode.md",
+      "removed_sha256": "69de6c5a148139a53192076273c5be5cccb3b1b8a6e5fed427c8e9bc1f2523bb",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-feature-scheduled-task-selected-mode.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-19；负责人=Codex；owner=Codex；claimed_at=2026-09-19；claim_ttl=本次会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/scheduledTaskStore.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js`。",
+        "- 扩展验证：`git diff --check`；ontology validate。",
+        "- 单元自测结果：`npm run build` 通过；上述相关测试 51/51 通过，其中 `scheduledTaskStore` + `extensionHostExtractionContracts` 24/24，`cliPageStaticRenderCoverage` 8/8；`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过；ontology unittest 9/9 通过；`git diff --check` 通过。",
+        "- 失败处理记录：Impeccable detector 脚本在本机不存在，未执行 UI 机械检查。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-20-windows-loop-cli-compat.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-20-test-windows-loop-cli-compat.md",
+      "removed_sha256": "74284bb4e35aad5d5b8f2cd9d7190d69f6183102371ab1a03a7463aa21feed55",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-20-bugfix-windows-loop-cli-compat.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-20；负责人=Codex；owner=Codex；claimed_at=2026-09-20；claim_ttl=本会话。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：`npm run build` 后跑相关 `node --test dist/test/...`",
+        "- 扩展验证：本机无 Windows 宿主，不宣称真实 Windows E2E",
+        "- 单元自测结果：`npm run build` 通过；相关 26 个单测通过",
+        "- 失败处理记录：无"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-22-loop-continue-model-choice.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-22-test-loop-continue-model-choice.md",
+      "removed_sha256": "fd6b277dd43f5738f2a4795b4a5fb7b45e4e9917e6c0b089ead547eb9e4a2ae6",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-22-feature-loop-continue-model-choice.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-22；负责人=Codex；owner=Codex；claimed_at=2026-09-22；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `npm run build`",
+        "- `node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanel.test.js`",
+        "- `npm run build` 通过。",
+        "- `node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js`：相关回归通过。",
+        "- `python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过。",
+        "- `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'` 9/9 通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-23-loop-original-runtime-restore.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-23-test-loop-original-runtime-restore.md",
+      "removed_sha256": "a6f19fc59c1c0fc9d36455f34c658a11f01030f3077dd6f6a2a52e88ad34ea59",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-23-feature-loop-original-runtime-restore.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-23；负责人=Codex；owner=Codex；claimed_at=2026-09-23；claim_ttl=1d。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build` 后运行 Loop 继续选择相关单测。",
+        "- 单元自测命令：`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanel.test.js`",
+        "- 扩展验证：不跑全量单测。",
+        "- 单元自测结果：`npm run build` 通过；`node --test dist/test/loop/continueModelChoice.test.js dist/test/loop/loopGroupChatCoordinator.test.js` 7/7 通过；Loop 群聊面板相关 2 项通过。另有 1 项群聊面板本地化断言与本机工具语言设置不一致，与本次改动无关。",
+        "- 失败处理记录：无。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-loop-plus-user-message-wake.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-test-loop-plus-user-message-wake.md",
+      "removed_sha256": "f7e0731f75cf7c1868ea0bd463f12874bca5ed3071bd843b654ea26b5ab366b2",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-feature-loop-plus-user-message-wake.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-25；负责人=Codex；owner=loop-plus-user-message-wake；claimed_at=2026-09-25；claim_ttl=本次实现与相关单测完成。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 单元自测命令：先 `npm run build`，再 `node --test` 运行上述编译产物。",
+        "- 扩展验证：不跑全量，除非相关测试暴露共享契约回归。",
+        "- 单元自测结果：`npm run build` 退出码 0。`node --test` 覆盖调度器、编排、提示词、群聊协调器、帮助、运行时集成、面板状态和契约，102 项通过、0 失败。ontology 校验通过，本体单测 9 项通过。",
+        "- 失败处理记录：无。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-test-maintainability-refactor.md",
+      "removed_sha256": "813f2e2b05c70b97a69e1026554c768f0bce06bd43f15eb69ab6fb3688024f3c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-25；负责人=Codex。仅保留原记录，不代表清理时重跑或重新验收。",
+        "阶段 4、5、6 既有测试命令；历史阶段 7 未执行，本轮也不执行：",
+        "npm run build && node --test dist/test/config/skillDiscovery.test.js",
+        "npm run build && node --test dist/test/shared/jsonObjectText.test.js dist/test/loop/loopPlusDecision.test.js",
+        "npm run build && node --test dist/test/extensionHost/openCodePromptRunTemplate.test.js dist/test/extensionHost/promptOneShotRuntime.test.js dist/test/extensionHost/promptParallelRuntime.test.js",
+        "- 单元自测结果：本次文档收尾未跑单元测试，也未执行 `npm run build`。阶段 4、5、6 的完成结论来自对照当前源码复核，不是来自本次重新构建。",
+        "- 失败处理记录：无失败需要分类。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-codex-app-server-reuse.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-test-codex-app-server-reuse.md",
+      "removed_sha256": "03ad1cd605687479fc25ea983291504d874713c00e420cd7c078ad9fdd32cd1b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-perf-codex-app-server-reuse.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-26；负责人=Codex；owner=codex-app-server-reuse；claimed_at=2026-09-26；claim_ttl=本次实现完成并归档。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build` 后跑 Codex runner、thread selection、Loop orchestration 相关单测。",
+        "- 单元自测命令和结果见下方「测试与清单同步」。未做真实 `codex` CLI 手工回合计时。",
+        "- 单元自测结果：`npm run build` 通过。`node --test dist/test/interactive/codexRunnerLifecycle.test.js dist/test/interactive/codexRunnerReuse.test.js dist/test/interactive/codexRunnerSubagent.test.js dist/test/interactive/codexAppServerNdjson.test.js dist/test/interactive/codexThreadSelection.test.js dist/test/loop/loopSubtaskLifecycle.test.js dist/test/loop/loopSubtaskProgress.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/core/contextCompactionRunner.test.js` 58 项里 57 通过；失败的 provider resume 断言已改为包含 `model_reasoning_summary=detailed`，复跑 lifecycle / reuse / subagent 16 项通过。",
+        "- 失败处理记录：provider 断言过期，不是本次连接复用引入的行为错误。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-loop-plus-batch-review.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-test-loop-plus-batch-review.md",
+      "removed_sha256": "e06859114814a6342e82e55fb91f395e5fd65a82d8887d7f47495ed5eae39c6b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-26-feature-loop-plus-batch-review.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-26；负责人=Codex；owner=loop-plus-batch-review；claimed_at=2026-09-26；claim_ttl=本轮实现和相关单测结束。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 先 `npm run build`，再 `node --test` 跑决策、调度器、编排、提示词和帮助测试。",
+        "- 单元自测结果：`npm run build` 退出码 0。`node --test` 覆盖决策、调度器、编排、提示词、帮助、运行时集成和面板投影，108 项通过、0 失败。ontology 校验通过，本体单测 9 项通过。",
+        "- 失败处理记录：两处编排测试仍按逐条验收断言，已改为同轮 `reviewEventIds` 后通过。",
+        "原分类结论明确整体未上线；108 项及 ontology 9 项通过不代表已发布。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-28-subtask-design-key-points.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-28-test-subtask-design-key-points.md",
+      "removed_sha256": "ddf9914e99fc4841a199f4b479335ed9a586f576bf1b0b635be664bcda42c9a3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-28-feature-subtask-design-key-points.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-28；负责人=Codex；owner=codex；claimed_at=2026-09-28；claim_ttl=已完成。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `npm run build`：通过。",
+        "- `node --test dist/test/loop/subtaskDesignBriefPolicy.test.js dist/test/loop/loopPromptBuilders.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js`：相关回归通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-loop-plus-max-acceptances.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-test-loop-plus-max-acceptances.md",
+      "removed_sha256": "025c2b344753b94cb30ff43a8690626efd823711b503d88886d86feb75889077",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-feature-loop-plus-max-acceptances.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-29；负责人=Codex；owner=loop-plus-max-acceptances；claimed_at=2026-09-29；claim_ttl=已完成。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build` 后运行相关 `node --test`。",
+        "- 单元自测命令：见实现收尾。",
+        "- 扩展验证：不启动真实 CLI。",
+        "- 单元自测命令：`npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusContracts.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js`；`node --test --test-name-pattern \"normalizes the Loop+ acceptance limit\" dist/test/webview/clipagescriptruntimecoverage.test.js`。",
+        "- 单元自测结果：实现后的 `npm run build` 已通过，本收尾未再改源码，`dist/` 新于相关源文件。收尾重跑 Loop+ 决策、契约、编排、提示词 69/69 通过；设置、消息保存和静态页面 42/42 通过；Webview 输入归一化 1/1 通过。",
+        "- 失败处理记录：`dist/test/webview/clipagescriptruntimecoverage.test.js` 全文件仍有既有失败 `boots the runtime...`，断言 `taskListPanel.style.display` 期望 `block`、实际 `none`。原因是该标签 `loopTaskRole: \"main\"`，而 `isLoopMainTaskListTab` 从 2026-09-26 起隐藏 Loop 主任务任务列表。与本次验收上限无关，未改任务列表。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-loop-plus-subtask-control.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-test-loop-plus-subtask-control.md",
+      "removed_sha256": "d7f0ddbd6de0d2d9b980d97d72b463976808031ec0cae680c1799f23cd2c3e0c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-29-feature-loop-plus-subtask-control.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-29；负责人=Codex；owner=loop-plus-subtask-control；claimed_at=2026-09-29；claim_ttl=本计划已完成，不再占用。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `npm run build` 通过。",
+        "- `python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过。",
+        "- `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'` 9 通过。",
+        "- `node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopPlusGroupChatPanel.test.js` 通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-human-interaction-timeout-auto-open.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-test-human-interaction-timeout-auto-open.md",
+      "removed_sha256": "0c679ec4d4dfb814be8ca00bfe3121206ef5f83170ffbe7f5d0b91f4602b514a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-feature-human-interaction-timeout-auto-open.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-30；负责人=Codex；owner=human-interaction-timeout-auto-open；claimed_at=2026-09-30；claim_ttl=本次实现完成并归档。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- 最小相关验证：`npm run build`",
+        "- 单元自测命令：相关 `node --test dist/test/...`",
+        "- 单元自测结果：`npm run build` 通过；相关 `node --test` 新增用例通过",
+        "- 失败处理记录：`clipagescriptruntimecoverage` 的任务列表显示和 `isAssistantMarkdownRenderPending`，以及静态文案 `Pros: fastest startup`，判为既有失败，未改",
+        "验证：`npm run build` 通过。`node --test` 覆盖 toolSettings、humanInteraction、orchestratorClarification、sessionMessageActionsCoreCoverage、loopPlusOrchestration、loopPlusEntryRouting、multiAgentSettingWebview，新增用例通过。",
+        "未修的既有失败：`clipagescriptruntimecoverage` 中任务列表计时后仍为 `display=none`，以及隔离执行 `renderAssistantMessageContent` 时 `isAssistantMarkdownRenderPending is not defined`；`cliPageStaticRenderCoverage` 期望英文文案 `Pros: fastest startup`，当前 i18n 已无该句。这些断言不在本次改动路径上。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-orchestrator-clarification-form.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-test-orchestrator-clarification-form.md",
+      "removed_sha256": "af86254b43b5d9cc8f6a06eda17a3af07b1043dccdfbd83f2312a44b563db3e2",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-09/2026-09-30-feature-orchestrator-clarification-form.md",
+      "retained_evidence": [
+        "历史验证证据归属：日期=2026-09-30；负责人=Codex；owner=orchestrator-clarification；claimed_at=2026-09-30；claim_ttl=已完成并归档。仅保留原记录，不代表清理时重跑或重新验收。",
+        "- `npm run build` 通过。",
+        "- `node --test` 相关回归通过：澄清解析、Loop 主决策、Loop+ 协议与调度和群聊 HTML。"
+      ]
+    }
+  ]
+}

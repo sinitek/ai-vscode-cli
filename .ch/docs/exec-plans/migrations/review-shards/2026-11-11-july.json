@@ -1,0 +1,373 @@
+{
+  "version": 1,
+  "migration_date": "2026-11-11",
+  "canonical_mapping": ".ch/docs/exec-plans/migrations/2026-11-11-jul-sep.json",
+  "scope": "completed/2026-07 的33个原计划来源及其最终目标；不覆盖八九月、中央映射、外部引用或其他区域。",
+  "entries": [
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-architecture-init-task.md",
+      "old_sha256": "79b63a715fe5fc759b336da183ccac65134d942603ce99336edce5f67d6749b9",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-architecture-init-task.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-docs-architecture-init-task.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-architecture-init-task.md",
+      "notes": "feature+docs：功能是确认后复用当前 CLI 对话初始化 ARCHITECTURE.md；另有实际文档同步（功能清单及 Harness/CLI事实文档），独立 docs 目标承接。build及16/16是原功能测试证据，不作为docs测试。 原old_path/old_sha256/old_status沿用，未改写来源身份。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-harness-setting-init.md",
+      "old_sha256": "59cf4d414b88b3b97a8a2662e6f8cf330ae6f38ad47378012fe61cde5da1d5cb",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-harness-setting-init.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-docs-harness-setting-init.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-harness-setting-init.md",
+      "notes": "删除前已验收的历史分类依据：复核原文目标/范围、测试清单、验收和当前结论：feature 为默认关闭、确认后安装 scaffold/CodeGraph 与取消回滚；独立更新 toolSettings/runtimeGate/longTermMemory 测试，保留首次旧默认开启断言修正及16/16结果，拆为 test；另同步功能清单、CLI/runtime、CodeGraph、长期记忆多份文档，拆为 docs。三计划互链，原SHA/status不变；外部旧引用待集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-harness-scaffold-memory.md",
+      "old_sha256": "5f46b67496f5be12582b727008a89c9f26db5c00d605d622d6047a352acc5d16",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-harness-scaffold-memory.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-docs-workspace-harness-scaffold-memory.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-harness-scaffold-memory.md",
+      "notes": "删除前已验收的历史分类依据：复核原文目标/范围、验收、测试同步和结论：feature 为 .ch/.agents scaffold、长期记忆路径迁移与运行时 gate；新增/更新 longTermMemory/runtimeGate 测试，保留16/16和无失败记录，拆为 test；另明确同步功能清单、设计、CLI和runtime事实文档，拆为 docs。三计划互链，原SHA/status不变；外部旧引用待集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-long-term-memory.md",
+      "old_sha256": "85f3c59f0799e9348160d2608a130e4ed4e2395f69e29f7c2c6e6cc61feeee7b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-long-term-memory.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-docs-workspace-long-term-memory.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-long-term-memory.md",
+      "notes": "删除前已验收的历史分类依据：复核原文范围、验收、测试/清单同步、任务列表和结论：feature 为 workspace 四层记忆、recall/inject、成功摘要写回及 .ch gate/UI；另有明确新增长期记忆模块测试并更新 gate 测试（原记录14/14），拆为 test；另有设计、CLI runtime、功能清单和兼容入口文档同步，拆为 docs。三计划互链，原构建与14/14历史证据分别归属，不据此新增本次验证。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-workspace-pitfall-memory.md",
+      "old_sha256": "e411a41a558e5fec3f445a6adedbedd96f30d7ea9ec4b7d7998053aaaaa1b042",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-pitfall-memory.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-03-docs-workspace-pitfall-memory.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-03-feature-workspace-pitfall-memory.md",
+      "notes": "删除前已验收的历史分类依据：feature为PITFALLS热区、结构化沉淀与recall/inject行为；源明确更新longTermMemory.test.ts覆盖scaffold、recall和写入，保留15/15且无失败，拆test；另同步FEATURE_INVENTORY、长期记忆设计、CLI/runtime、插件能力和开发指南，拆docs。三计划互链；外部旧引用待集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-claude-config-visual-editor.md",
+      "old_sha256": "4140dd1775f4fd60404fe3c4fafe2f9dffd4a7c7713ed6e55b1a11a93b5fc438",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-claude-config-visual-editor.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-docs-claude-config-visual-editor.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-claude-config-visual-editor.md",
+      "notes": "删除前已验收的历史分类依据：拆分 feature（Claude 配置 UI/序列化及兼容行为）、test（新增 claudeConfigVisualEditor.test.ts，修正 OpenCode 过期 12px 断言；聚合42项结果仍作原证据）与 docs（产品能力、runtime/CLI/开发入口及插件能力同步）。保留原失败修正与证据分配；外部旧引用待后续统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-config-page-black-white-theme.md",
+      "old_sha256": "540a5456d162c90de3393f7e669289063cbaa1a4f7e37f593a39529da1986022",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-config-page-black-white-theme.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-config-page-black-white-theme.md",
+      "notes": "feature：原文仅静态样式和可读性调整，明确无业务行为变化；仅node语法、静态断言、构建及差异检查，无测试开发或独立文档交付，故不拆分。 原old_path/old_sha256/old_status沿用，未改写来源身份。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-config-page-clay-redesign.md",
+      "old_sha256": "14a33ce47fc12eddc9c76b1b68594fdb9dc41ddec4ebb8d64a811140082586e0",
+      "old_status": null,
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-config-page-clay-redesign.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-config-page-clay-redesign.md",
+      "notes": "feature：原文明确仅调整静态视觉及必要挂载点，保留行为；浏览器视觉回归是验证证据，不是测试开发，无独立文档交付，故不拆分。 原old_path/old_sha256/old_status沿用，未改写来源身份。原文没有头部状态元数据，old_status=null 仅记录该缺失，不默认 completed，也不证明头部状态继承；现目标显式 completed 的依据是原文“当前状态”完成清单、“完成结果”及“验证结果”（语法检查、主题静态断言、真实浏览器视觉回归、布局检查、构建和差异检查通过），不是本轮重新验证或补造原头部状态。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-universal-final-answer-marker.md",
+      "old_sha256": "1a1bc9bc5e21375245e7b5f6dc0edab177fdc077ef8873519ecb569d777b2013",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-universal-final-answer-marker.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-10-docs-universal-final-answer-marker.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-10-feature-universal-final-answer-marker.md",
+      "notes": "删除前已验收的历史分类依据：拆分 feature（跨 CLI final-answer 协议、策略与展示行为）、test（新增 promptRuntime.test.ts、泛化 finalAnswerPolicy.test.ts 及多模块回归；保留392项中369通过/23个范围外历史失败及生成产物过期断言处理）与 docs（产品能力、CLI runtime reference、PITFALLS）。外部旧引用待后续统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-cli-config-visualization.md",
+      "old_sha256": "bd7db0540cc4b2777744ef45f4beae002058ebb038a85e221214d39468bd58a3",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-cli-config-visualization.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-docs-cli-config-visualization.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-cli-config-visualization.md",
+      "notes": "删除前已验收的历史分类依据：逐源核对原计划目标、范围、验收、实施及结果：Codex/Claude/OpenCode 原生格式可视化、字段核验、无损编辑和 Webview 为 feature；三组视觉编辑器及后续 panel/schema/runtime/sort 回归属于独立 test（31/31、81/81、70/70、后续36/36历史结果）；功能清单与能力规格同步属于 docs，runtime/design/runbook 在原计划中明确未改写。新三计划分别收纳各范围并互链；真实 VS Code 点击及真实 CLI ultra 兼容仍未验证。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-loop-single-model-semantics.md",
+      "old_sha256": "2207af265442f1f9bc65aedbff3b17bcd47f242b384b3d69cfb8d7aa34a3c942",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-single-model-semantics.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-docs-loop-single-model-semantics.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-single-model-semantics.md",
+      "notes": "删除前已验收的历史分类依据：feature记录模型语义、运行时和思考 wrapper 行为；test记录已完成的回归测试开发及定向76/76、全量384/384历史结果；docs记录能力说明、运行时参考、设计/兼容入口和踩坑同步。原始证据与日期/状态分配到三计划，彼此互链；外部旧引用及中央映射替换待统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-loop-subtask-question-handoff.md",
+      "old_sha256": "f81479ce1c7fbbe878aaadf2ceacb71332796c35c61adfeab971f5e1d0ddf132",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-subtask-question-handoff.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-docs-loop-subtask-question-handoff.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-loop-subtask-question-handoff.md",
+      "notes": "删除前已验收的历史分类依据：feature记录提示词/收口契约与既有调度决策；test独立记录提示词与沟通模板章节测试开发及build、21/21、484/484历史证据；docs记录能力规格、功能清单与PITFALLS同步。保留无失败结论并互链；外部旧引用及中央映射替换待统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-provider-selects.md",
+      "old_sha256": "d637b14eca0ba10f0860962c98847dc2633d762e79713685fe0b8fafa94e881c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-provider-selects.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-docs-opencode-provider-selects.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-provider-selects.md",
+      "notes": "删除前已验收的历史分类依据：feature记录provider/思考力度交互和兼容决策；test记录配置编辑器与聊天Webview回归更新、33用例build历史结果及首次正则方向错误后修正；docs记录FEATURE_INVENTORY与能力规格同步。原始状态和失败处理均保留，三计划互链；外部旧引用及中央映射替换待统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-opencode-task-list-localized-traces.md",
+      "old_sha256": "58f1bb5e5001d1fe942cff5fa25da7112eb61f763cb28293bf1f1aca73509299",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-task-list-localized-traces.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-12-docs-opencode-task-list-localized-traces.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-12-feature-opencode-task-list-localized-traces.md",
+      "notes": "删除前已验收的历史分类依据：按原文拆分：feature 承接 todowrite JSONL 归一化/转发与工具气泡标题本地化运行时；test 承接新增 openCodeTaskList 与 traceToolTitleLocalization 测试、更新 opencodeCommandRunner 测试及历史定向41/41、共享16/16、全量458/458证据；docs 承接功能清单、能力规格和 CLI runtime reference 同步。feature 为默认引用；三计划互链，原SHA/status不变。中央映射尚未收录新增 test/docs 目标，待统一集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-cli-subagent-stream-bubbles.md",
+      "old_sha256": "ae6c3954a2f09bc2ef102b7bbc2d36be54b66c02c3bd6b2efdf96d9b57d4607d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-cli-subagent-stream-bubbles.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-cli-subagent-stream-bubbles.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-cli-subagent-stream-bubbles.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：实现统一子代理气泡；新增reducer/monitor/Codex mock及runtime/final-conclusion测试（10文件112/112，保留旧断言失败和known-child/generation修复）；另同步功能清单、CLI/runtime设计/规格/PITFALLS。各目标分记实现、测试证据、文档范围。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-global-auto-compact-setting.md",
+      "old_sha256": "50fbb5cf161a8c35dcf683405a3809f08c9ce5e148bbc2d02a20e84943a301ce",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-global-auto-compact-setting.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-global-auto-compact-setting.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-global-auto-compact-setting.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：全局设置/旧workspace字段迁移为feature；明确更新多组设置、Webview及runtime测试（历史78/78）为test；更新能力清单、规格、runtime和迁移说明为docs。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-loop-opencode-progress-monitor-repair.md",
+      "old_sha256": "00c7c781fae734ffa72af7b96615ee4429a3511f0b4181d89d8ded0b36b20433",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-loop-opencode-progress-monitor-repair.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-bugfix-opencode-progress-monitor.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-progress-monitor-references.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-loop-opencode-progress-monitor-repair.md",
+      "notes": "拆为 feature（Loop 父任务进度气泡与快照同步）、bugfix（来源称既有已交付 OpenCode 气泡监控失效，修复为 serve/health/attach；不声称具体发布版本）、docs（CLI/runtime/能力规格/PITFALLS 同步）。build、100/100 多域测试及 diff 为来源合并证据；attach 冒烟/UnknownError 限制留在 bugfix，文档无独立 diff 证据。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-strict-final-answer-protocol.md",
+      "old_sha256": "92dc8371ba23f7c7c67d8826754b4a2bc977ba45790d23d0aa0f69dfcd5ca0d3",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-strict-final-answer-protocol.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-strict-final-answer-protocol.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-strict-final-answer-protocol.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：固定严格答复协议为feature；移除旧选择/回退断言并新增遗留设置/严格协议回归（历史131/131）为test；能力清单、runtime、PITFALLS及技能目录中文校验记录为docs。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-task-list-collapse.md",
+      "old_sha256": "1c47626316bdd31fe4d727280582f27a86f1451ea88009b0fe4e948132766286",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-task-list-collapse.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-task-list-collapse.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-task-list-collapse.md",
+      "notes": "删除前已验收的历史分类依据：按原文已更新 src/test/openCodeTaskListOverlay.test.ts（4/4），并同步 FEATURE_INVENTORY.md 与能力规格，故拆为 feature/test/docs；feature仅承接Webview折叠与进度实现，test承接2/4、折叠更新状态和箭头断言，docs承接规格/清单同步。所有目标保留原日期、completed状态及Codex、/root、claimed_at=2026-07-13、claim_ttl=当前会话、handoff_to=无；历史全量build被范围外multi-agent API重命名测试阻断，未改写为通过。外部旧引用待后续集成。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-unified-codex-opencode-multi-agent-toggle.md",
+      "old_sha256": "4be7d71234677974735727d0a6cc0a8982ee8491afbf4724d183f727c43d67a6",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-unified-codex-opencode-multi-agent-toggle.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-13-docs-unified-codex-opencode-multi-agent-toggle.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-13-feature-unified-codex-opencode-multi-agent-toggle.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：统一全局开关及provider配置为feature；设置迁移/Webview/Codex/OpenCode runtime测试（历史55/55及全局调整后68/68）为test；能力清单/规格/runtime reference/design为docs。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-loop-naming-migration.md",
+      "old_sha256": "623e8e0b330a1ff0f5b1fb6b46f82970c79e423eed0fd7b832bf84c81fbe912d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-loop-naming-migration.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-docs-loop-naming-migration.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-loop-naming-migration.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：Loop新路径、旧数据发现迁移及兼容读取为feature；测试改名和旧目录迁移覆盖（历史566/566，保留首次过期断言失败）为test；功能清单、架构/安全/runtime/runbook/兼容文档为docs。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-opencode-loop-empty-main-response.md",
+      "old_sha256": "af3a42fddff18aca27da477abbd7c072d40fbd3af11bf90006ca3523939c96df",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-opencode-loop-empty-main-response.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-docs-opencode-loop-empty-main-response.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-opencode-loop-empty-main-response.md",
+      "notes": "删除前已验收的历史分类依据：feature+test+docs：有界fresh-session恢复为feature；current-attempt/历史回复、任务兼容、重试上限和session改绑回归（历史103/103）为test；能力清单/runtime/CLI/PITFALLS为docs。现场token与导出限制保留在feature原结论。 原old_path/old_sha256/old_status沿用，未改写来源身份。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-harness-testing-playwright.md",
+      "old_sha256": "83c9f9455e8311b349407447da96a124e425827a417bd78b853acb09c8ccf8c4",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-docs-harness-testing-policy.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-14-chore-harness-vsix-hygiene.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-14-docs-harness-testing-policy.md",
+      "notes": "删除前已验收的历史分类依据：拆为 test（Playwright runner/Skill、契约与自动化及 scaffold 安装回归）、docs（TESTING 单一事实源、分层政策和计划模板证据槽）、chore（.vscodeignore/缓存清理与打包卫生）。历史批次勾选仅表示归档，不能证明真实 Chromium、联网安装或 VSIX/ZIP 验证；后者来源明确未在归档时重跑。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-loop-subtask-guidance-toggle.md",
+      "old_sha256": "13b8f34422a486f1526f81ecef361af204959c71c6a518303b1cf8d7e4a0ac03",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-guidance-toggle.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-docs-loop-subtask-guidance-toggle.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-guidance-toggle.md",
+      "notes": "删除前已验收的历史分类依据：逐段核对HEAD：用户取消开关并永久移除Workflow Skills、建立三CLI隔离根属于feature，资源/维护脚本删除是该能力移除的必要实现；新增loopSubtaskExecutionRoot及更新CLI/prompt/队列测试为test；架构、产品、安全、Skills来源与runbook实际写作为docs。保留完整claim和66/66、首轮残留normalizedCompactSkillCatalogSection构建失败及修正事实，不推断发布版bugfix。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-loop-subtask-thinking-cap.md",
+      "old_sha256": "9742d2387548df9ed0ab22532a8cedd4ab0c1d8a19e22de6cbb24ceb396c243e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-thinking-cap.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-docs-loop-subtask-thinking-cap.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-feature-loop-subtask-thinking-cap.md",
+      "notes": "删除前已验收的历史分类依据：HEAD明确新增全局loopSubtaskMaxThinkingMode与执行限幅为feature；新loopSubtaskThinking及工具设置/PanelState/Webview测试为test；清单、CLI参考、能力规格实际更新为docs。完整继承39与46通过、严格类型检查通过；npm run build被并发Skills删除的TS2307、normalizedCompactSkillCatalogSection和TS2554阻断，未恢复他人改动；不是新通过证明。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-cli-page-test-coverage.md",
+      "old_sha256": "c7da49760426b2d72a508df53e9e172a2a152062c40787e03f4251b42a84e981",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-cli-page-test-coverage.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-cli-page-test-coverage.md",
+      "notes": "删除前已验收的历史分类依据：完整复核目标、白名单、实施、c8结果：页面入口/三份补测和fake DOM/静态资产/生命周期测试为test；不是纯test，实施明确configProtocol运行时CONFIG_ACTIONS与loopGroupChatPanel三个不可达/冗余分支的实际源码等价清理，独立refactor并从test实施责任移除。原文未交付额外产品/运行时文档，不造docs。保留151/151四项100%、第三方/vendor排除和未运行真实Webview/浏览器/CLI边界。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-core-test-coverage.md",
+      "old_sha256": "d12490679eb0831d95a38a0b9c35d7f636ca39552ca1286843272bbe63523816",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-core-test-coverage.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-15-refactor-core-test-coverage.md",
+      "notes": "删除前已验收的历史分类依据：完整复核HEAD：c8@^10.1.3、package入口/白名单/四项100%门禁与核心边界测试开发属于test基础设施，不额外虚构chore；不是纯test，影响面与决策明确loopTaskStore、commandRunner、sessionLifecycle及SessionStore强类型bucket等价清理，拆refactor，不扩大为新行为。原文仅更新本执行计划，无额外文档交付，不造docs。保留初次106通过但覆盖率失败、524/3全量历史失败、最终188/188与九模块四项100%，不宣称全量绿。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-24-subtask-tab-auto-close.md",
+      "old_sha256": "05207c4a1ca86accc0a0922939684a11f90352eab108293bde53cd91593f4b37",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-24-feature-subtask-tab-auto-close.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-24-docs-subtask-tab-auto-close.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-24-feature-subtask-tab-auto-close.md",
+      "notes": "删除前已验收的历史分类依据：原文用户提出新策略“结束后自己关闭，不再根据配置”，故feature而非无发布依据的bugfix。任务列表明确实际更新测试，拆test（原文未列每个编辑文件，不把运行清单全算新增）；完成记录明确同步当前事实与兼容入口，拆docs。56/56、32/32与build/diff/CodeGraph均为历史证据；失败/停止/无目标tab不关闭。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-29-codex-loop-role-thinking.md",
+      "old_sha256": "9e1b1a2a463b8d082a0b135ce3e38091429a373de4f64f7e02fe69b7fb6207ee",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-29-feature-codex-loop-role-thinking.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-29-docs-codex-loop-role-thinking.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-29-feature-codex-loop-role-thinking.md",
+      "notes": "删除前已验收的历史分类依据：HEAD新增Codex Loop角色模型和角色力度选择/存储/传参，属于feature；实际更新消息、Webview、Loop、OpenCode兼容及手动续跑断言拆test；五份点名产品/运行时/兼容文档拆docs。保留95/95、build通过和主动Webview错误日志归因，以及工作区已有未提交改动的局部补丁约束。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-codex-env-removal-keep-visual-editor.md",
+      "old_sha256": "608ff1ece262654d2c2df6ec832f192bbc7e3ae638c72cc61be4fe80cb95a7cb",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-codex-env-removal-keep-visual-editor.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-docs-codex-env-removal-keep-visual-editor.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-codex-env-removal-keep-visual-editor.md",
+      "notes": "删除前已验收的历史分类依据：原文为产品主动收缩Codex配置能力、保留可视化编辑器，feature而非凭“恢复误删”补造已发布bugfix；configService与codexConfigVisualEditor实际测试更新拆test；清单、运行时、设计、兼容入口写作拆docs。完整保留73项0失败、静态检查、build通过及不删除用户.env限制。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-vscode-config-fullscreen-panel.md",
+      "old_sha256": "257e62f36361f9ac62c87aa2c7c6dc3492dbd194b4152f15b2b582db7db43aa0",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-fullscreen-panel.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-docs-vscode-config-fullscreen-panel.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-fullscreen-panel.md",
+      "notes": "删除前已验收的历史分类依据：HEAD新增前台聚焦全屏编辑器承载与VS Code主题适配，保持配置业务但外部行为新增，故feature非refactor。两测试文件实际更新拆test；清单、规格、运行时设计、cli-reference与中文兼容入口实际写作拆docs。70/70只指相关配置集；test:page158/161三失败及最终build TS18046、无code CLI人工截图未执行全部继承。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-vscode-config-zen-mode-popup.md",
+      "old_sha256": "f78da45587ffdd42de60f91dafe96fb365b1e9cd7ca4b084d3e9cbb0a92a0af8",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-zen-mode-popup.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-docs-vscode-config-zen-mode-popup.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-feature-vscode-config-zen-mode-popup.md",
+      "notes": "删除前已验收的历史分类依据：原文新增Zen Mode进入/恢复/失败回退属feature，不能因前一全屏计划不同而改写历史；更新cliPageConfigCoverage命令断言为test；运行时设计、能力规格、清单及兼容入口写作为docs。保留32/32、build通过、无code CLI人工视觉未执行；只承担插件成功进入后的恢复责任。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-p0-performance-memory-hardening.md",
+      "old_sha256": "9c563b0d890cf3efe83b812375d63c6938440b8811364786a7f5a98263e41b8c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-perf-p0-performance-memory-hardening.md",
+        ".ch/docs/exec-plans/completed/2026-07/2026-07-31-docs-p0-performance-memory-hardening.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-07/2026-07-31-perf-p0-performance-memory-hardening.md",
+      "notes": "删除前已验收的历史分类依据：逐段核对HEAD与当前目标（保留已有handoff和inventory行的类型化路径）：六项P0的取消/停用、输出/DOM/Markdown复杂度和附件内存边界共同构成perf实现，不按repair字样补造发布版bugfix；实际补生命周期、输出、runtime/附件测试及首轮断言/提取器修正拆test；原p0-exec-plan-inventory只写计划/报告以及审计、runtime design、CLI reference、产品规格、清单同步拆docs。保留所有子任务ID/status、owner/claim/handoff、热点串行顺序、114/114和真实大输出/reload/附件动态压测仍为后续。 2026-11-11 用户授权删除全部 test 类型执行计划：test 仅为先前语义拆分的历史分类，不再作为存活交付；历史命令、结果、失败、跳过与限制保存在 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json，不转移独立测试开发到其它类型，未重跑历史验证。"
+    }
+  ],
+  "deferred_removals": [],
+  "integration_notes": [
+    "本分片已按 old_path 合并到中央映射；2026-11-11 用户授权删除全部 test 类型计划后，本分片与中央对应条目同步移除 test 目标并选择现有非 test reference_path。",
+    "历史验证证据留存于 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json；不删除实际测试代码，不将测试开发重新纳入其它类型。外部 Markdown、ontology、generated 与跨分区引用仍由后续集成处理，本轮不宣称全仓引用或门禁通过。"
+  ]
+}

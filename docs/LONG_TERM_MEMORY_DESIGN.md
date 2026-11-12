@@ -445,6 +445,7 @@ Use this memory only when relevant. Current user request overrides stale memory.
 兼容规则：
 
 - 如果工作区已存在 `.ch`、`.agents`、`AGENTS.md`、`CLAUDE.md` 或 `ARCHITECTURE.md`，则按“缺失即补齐、已有不覆盖”的策略继续安装 scaffold。
+- 该初始化流程不是对已安装工作区的规则或历史计划自动升级；计划迁移仅在明确授权并按仓库计划规则保留逐源映射与引用时执行。
 - 根级 `AGENTS.md` 若已存在，则只追加一次带标记块的 harness 模板。
 - 根级 `CLAUDE.md` 若已存在，则保持原样；若缺失，则创建一个只指向 `AGENTS.md` 的轻量入口。
 - 根级 `.gitignore` 若缺失则创建；若已存在则只补充一次 `.codegraph/`，避免提交 CodeGraph 本地索引缓存。

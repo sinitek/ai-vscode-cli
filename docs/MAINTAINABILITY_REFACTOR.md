@@ -3,7 +3,7 @@
 - 日期：2026-09-25
 - 状态：阶段 1–7 已完成。阶段 4、5、6 已在当前工作区落地并复核。阶段 7 只回写 `ARCHITECTURE.md`、本文与执行计划，不改 `src`，不删除仍被端口调用的 host 逻辑，不更新功能清单。
 - 事实来源：行为差异表与 OpenCode 骨架一节中的行号仍是抽取前的历史锚点，不随工作区前移改写。当前实现核对见「阶段 4、5 落地核对」和「阶段 6、7 落地核对」。
-- 相关计划：`.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`
+- 相关计划：重构 `.ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md`；文档 `.ch/docs/exec-plans/completed/2026-09/2026-09-25-docs-maintainability-refactor.md`；测试开发与历史结果见[测试计划删除审计](../.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json)中 `source_old_path` 为 `.ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md` 的记录（不归入重构或文档计划）。
 
 `src/config/geminiSkills.ts` 是 OpenCode 技能模块，文件名保留历史 gemini 前缀。它导出 `listOpenCodeSkills` / `mergeOpenCodeSkillsConfig`，不要把它当成第三套产品协议。
 
@@ -173,12 +173,12 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 | 阶段 | 状态 | 允许修改的路径 | 禁止同时修改 |
 | --- | --- | --- | --- |
 | 1 设计文档 | 完成 | `docs/MAINTAINABILITY_REFACTOR.md` | `src/**` |
-| 2 执行计划 | 完成 | `.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md` | `src/**` |
+| 2 执行计划 | 完成 | `.ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md` | `src/**` |
 | 3 行为冻结 | 完成，只写在上述两份文档 | 同上 | 测试文件与 `src/**` |
 | 4 技能发现 | 已落地并复核 | `src/config/skillDiscovery.ts`、`src/config/codexSkills.ts`、`src/config/geminiSkills.ts`、`src/config/claudeSkills.ts`、`src/test/config/skillDiscovery.test.ts` | 阶段 5、6 的全部路径 |
 | 5 JSON 扫描 | 已落地并复核 | `src/shared/jsonObjectText.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/test/shared/jsonObjectText.test.ts` | `src/shared/jsonObject.ts`、阶段 4、6 的路径；不要为了扫描去改 `src/test/loop/loopPlusDecision.test.ts`，除非公开签名被迫变化 |
 | 6 OpenCode 模板 | 已落地并复核 | `src/extensionHost/openCodePromptRunTemplate.ts`、`src/extensionHost/promptOneShotRuntime.ts`、`src/extensionHost/promptParallelRuntime.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts` | `src/extension.ts`、`src/extensionHost/promptRunRuntime.ts`、阶段 4、5 的路径。工厂签名不变，因此默认也不改既有 `promptOneShotRuntime.test.ts` / `promptParallelRuntime.test.ts` |
-| 7 收尾 | 已完成 | `ARCHITECTURE.md`、`docs/MAINTAINABILITY_REFACTOR.md`、`.ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md`。不改 `src` | 不与源码阶段并行改文件；不删除仍被端口调用的 host 逻辑；不更新功能清单；不改任务记录、active ids 或 loopPlus 快照 |
+| 7 收尾 | 已完成 | `ARCHITECTURE.md`、`docs/MAINTAINABILITY_REFACTOR.md`、`.ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md`。不改 `src` | 不与源码阶段并行改文件；不删除仍被端口调用的 host 逻辑；不更新功能清单；不改任务记录、active ids 或 loopPlus 快照 |
 
 阶段 4、5、6 的路径集合不相交，可以在各自独占写范围内串行或由不同人接手，但不能两个阶段同时改同一个文件。阶段 7 不是新的并行写范围。
 
@@ -235,9 +235,9 @@ HEAD 中这两对函数逐字相同（行号同样是历史锚点；工作区里
 ```bash
 test -f ARCHITECTURE.md
 test -f docs/MAINTAINABILITY_REFACTOR.md
-test -f .ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md
+test -f .ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md
 wc -l src/extensionHost/promptOneShotRuntime.ts src/extensionHost/promptParallelRuntime.ts src/extensionHost/openCodePromptRunTemplate.ts src/extension.ts src/extensionHost/promptInteractiveRuntime.ts src/extensionHost/loopOrchestration.ts src/extensionHost/openCodeSubagentRuntime.ts src/extensionHost/promptExecutionShared.ts
-git diff --name-only -- ARCHITECTURE.md docs/MAINTAINABILITY_REFACTOR.md .ch/docs/exec-plans/active/2026-09-25-maintainability-refactor.md
+git diff --name-only -- ARCHITECTURE.md docs/MAINTAINABILITY_REFACTOR.md .ch/docs/exec-plans/completed/2026-09/2026-09-25-refactor-maintainability-refactor.md
 git diff --name-only -- src
 ```
 

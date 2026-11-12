@@ -123,7 +123,7 @@
         {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "src/extensionHost/cliModelSelectionStrategies.ts"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Grok Build"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-lobehub-skills-market.md"},
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
         {"path": "src/interactive/kimiRunner.ts"},
         {"path": "src/interactive/kimiAppServerProtocol.ts"},
@@ -178,9 +178,9 @@
       "implementation_paths": ["src/scheduledTaskStore.ts", "src/extension.ts", "src/sessionMessageHandlers.ts", "src/webview/viewContentScript/settingsAndOverlays.ts"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-prompts.md", "anchor": "目标"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-task-runtime-mode.md", "anchor": "当前结论"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-feature-scheduled-task-selected-mode.md", "anchor": "目标"}
       ]
     },
     {
@@ -315,8 +315,8 @@
       "source_refs": [
         {"path": "src/scheduledTaskStore.ts", "anchor": "ScheduledTaskScheduler"},
         {"path": "src/extension.ts", "anchor": "executeScheduledTask"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-task-runtime-mode.md", "anchor": "当前结论"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-19-feature-scheduled-task-selected-mode.md", "anchor": "决策记录"}
       ]
     },
     {
@@ -631,7 +631,7 @@
       "source_refs": [
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-config-visual-model-fields.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-config-visual-model-fields.md", "anchor": "当前结论"},
         {"path": "media/config/assets/config-app-ui.js"},
         {"path": "src/cli/dshConfigModels.ts"},
         {"path": "src/test/config/dshconfigpage.test.ts"},
@@ -737,7 +737,8 @@
         {"path": "src/test/core/contextCompactionRunner.test.ts"},
         {"path": "src/test/extensionHost/kimiInteractiveHostWire.test.ts"},
         {"path": "src/test/config/kimiCodeDocContract.test.ts"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md", "anchor": "四个交付边界与验收标准"},
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"}
       ]
     },
     {
@@ -1160,7 +1161,9 @@
         {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md", "anchor": "四个交付边界与验收标准"},
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-docs-cli-compaction-context-adaptation.md", "anchor": "文档收尾状态一致性修订（2026-11-10）"}
       ]
     },
     {
@@ -1224,7 +1227,7 @@
       "status": "historical",
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-chinese-only-ui.md", "anchor": "当前结论"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-chinese-only-ui.md", "anchor": "当前结论"},
         {"path": "AGENTS.md", "anchor": "项目硬约束"}
       ]
     },
@@ -1393,7 +1396,7 @@
         {"path": "src/config/configSourceValidation.ts"},
         {"path": "src/config/configService.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-config-source-editor.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-config-source-editor.md"},
         {"path": "src/shared/jsonObject.ts"},
         {"path": "src/cli/opencodeconfigmodels.ts"},
         {"path": "src/cli/opencoderuntimeconfig.ts"},
@@ -1602,7 +1605,7 @@
         {"path": "src/test/loop/loopPlusSubtaskMode.test.ts"},
         {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-role-model-routing.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-role-model-routing.md"}
       ]
     },
     {
@@ -1926,7 +1929,8 @@
       "status": "active",
       "applies_to": ["plugin.scheduled_task", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
-        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-prompts.md"},
+        {"path": ".ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-prompts.md", "anchor": "当前结论"},
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-jul-sep.json"},
         {"path": "src/scheduledTaskStore.ts", "anchor": "normalizeStatus"}
       ]
     },
@@ -2174,9 +2178,25 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_acceptance_anchor",
+      "name": "Loop+ 已验收成员定位最近一次验收气泡",
+      "description": "Loop+ 群聊已有反馈的成员无论验收成功或失败均可点击或键盘定位最近一次验收气泡；批量验收允许多个成员共享目标。新反馈隐藏保存完成事件身份并精确匹配最近一次已验收 attempt，同名成员不混淆；旧反馈仅在完整标题唯一匹配时兼容，缺失、歧义及加载错误不提供入口。定位会滚动并聚焦目标，窄屏收起成员抽屉，尊重减少动态效果偏好。最新可定位验收气泡与补充需求同属显示清理保护项，仍计入限额且必要时允许超限；不修改存档、验收结论、调度或经典 Loop 行为。",
+      "status": "active",
+      "aliases": ["验收锚点", "成员验收定位", "loop-plus-acceptance"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 成员验收气泡定位"},
+        {"path": ".ch/docs/design-docs/loop-group-chat-bubble-limit.md", "anchor": "Loop+ 验收锚点保护"},
+        {"path": "src/loopGroupChatAcceptance.ts", "anchor": "buildLoopGroupChatAcceptanceAnchors"},
+        {"path": "src/loopPlusAcceptancePlan.ts", "anchor": "buildLoopPlusAcceptanceFeedbackSection"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
+        {"path": "src/test/loop/loopGroupChatAcceptance.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_group_chat_message_limit",
       "name": "Loop 与 Loop+ 群聊保留补充需求及最新气泡窗口",
-      "description": "工具设置→AI任务配置以独立全局键 loopGroupChatMessageLimit 保存群聊显示上限，默认 200，整数范围 1–10000，非法输入回退 200。初始任务、transcript 与当前思考气泡共用计数，达到上限时按 25% 向上取整批量移除最旧可清理气泡，跳过并保留全部 user-message 补充需求，维持原时间顺序；补充需求仍计入阈值，初始任务发起不受保护。没有补充需求时默认 200→150；至少保留最新一条，补充需求本身达到或超过上限时允许超限。同一面板的增量刷新不回填裁剪的普通气泡；保存后立即刷新打开的群聊，改变上限或重开面板重算窗口。只改变群聊显示，不删除存档、不改变任务调度或 CLI 上下文，与普通 Tab 的 chatMessageLimit 永久清理规则独立。",
+      "description": "工具设置→AI任务配置以独立全局键 loopGroupChatMessageLimit 保存群聊显示上限，默认 200，整数范围 1–10000，非法输入回退 200。初始任务、transcript 与当前思考气泡共用计数，达到上限时按 25% 向上取整批量移除最旧可清理气泡，跳过并保留全部 user-message 补充需求及 Loop+ 成员最近一次可定位验收反馈，维持原时间顺序；保护项仍计入阈值，初始任务发起不受保护。没有保护项时默认 200→150；至少保留最新一条，保护项本身达到或超过上限时允许超限。同一面板的增量刷新不回填裁剪的普通气泡；保存后立即刷新打开的群聊，改变上限或重开面板重算窗口。只改变群聊显示，不删除存档、不改变任务调度或 CLI 上下文，与普通 Tab 的 chatMessageLimit 永久清理规则独立。",
       "status": "active",
       "aliases": ["loopGroupChatMessageLimit", "群聊气泡上限"],
       "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
@@ -2203,7 +2223,9 @@
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/webview/types.ts", "anchor": "PanelState"},
         {"path": "src/webview/viewContentScript/coreBootstrap.ts"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-retention.md", "anchor": "接口约定"},
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-docs-chat-bubble-retention.md", "anchor": "验证计划"}
       ]
     },
     {
@@ -2236,7 +2258,7 @@
         {"path": "src/webview/viewContentStrings.ts"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "renderMessages"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-bugfix-chat-bubble-retention-protection-fix.md", "anchor": "决策记录"}
       ]
     },
     {
@@ -2255,8 +2277,8 @@
         {"path": "src/sessionStore.ts", "anchor": "writeMessageFile"},
         {"path": "src/finalAnswerProtocol.ts", "anchor": "isFinalAnswerMessage"},
         {"path": "src/shared/jsonContainer.ts", "anchor": "parseCompleteJsonContainer"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-persistent-deletion.md", "anchor": "范围与非目标"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-bugfix-chat-bubble-retention-protection-fix.md", "anchor": "当前结论"}
       ]
     },
     {
@@ -2272,7 +2294,8 @@
         {"path": "src/webview/configView.ts"},
         {"path": "src/test/config/modelimport.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-config-model-import-host.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "决策记录"},
+        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "用户反馈修复：复用可执行配置的凭据"}
       ]
     }
   ]

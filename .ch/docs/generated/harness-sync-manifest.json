@@ -9,7 +9,7 @@
     "templateSource": "media/workspace-scaffold",
     "strategy": "manual-merge",
     "completedAt": "2026-10-02T03:26:14+00:00",
-    "plan": ".ch/docs/exec-plans/completed/2026-10/2026-10-02-harness-scaffold-merge.md"
+    "plan": ".ch/docs/exec-plans/completed/2026-10/2026-10-02-chore-harness-scaffold-merge.md"
   },
   "preservePolicy": {
     "strategy": "manual-merge",

@@ -42,9 +42,9 @@
       "id": "harness.execution_plan",
       "name": "执行计划",
       "kind": "ledger",
-      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；完成后按 `completed/YYYY-MM/` 月份归档。",
+      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；真实计划名为 `YYYY-MM-DD-<type>-<kebab-case-slug>.md`，仅允许 feature、bugfix、refactor、chore、docs、test、perf；多种实质类型须拆成独立计划并用关联计划记录共同背景/依赖；完成后按 `completed/YYYY-MM/` 月份归档。",
       "status": "active",
-      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划"],
+      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划", "feature", "bugfix", "refactor", "chore", "docs", "test", "perf"],
       "implementation_paths": [".ch/docs/exec-plans"],
       "source_refs": [
         {"path": ".ch/docs/exec-plans/README.md"},
@@ -102,7 +102,7 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": "src/extensionHost/modelSettings.ts"},
         {"path": "media/workspace-scaffold/AGENTS.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md", "anchor": "目标"}
       ]
     }
   ],
@@ -162,7 +162,7 @@
       "cardinality": "1:N",
       "source_refs": [
         {"path": "media/workspace-scaffold/AGENTS.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md", "anchor": "目标"}
       ]
     }
   ],
@@ -216,8 +216,21 @@
       "status": "active",
       "applies_to": ["harness.execution_plan", "harness.skill"],
       "source_refs": [
-        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名建议"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-exec-plan-monthly-archive-support.md"}
+        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-docs-exec-plan-monthly-archive-support.md", "anchor": "目标"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-chore-exec-plan-monthly-archive-support.md", "anchor": "决策记录"}
+      ]
+    },
+    {
+      "id": "harness.rule.exec_plan_type_classification",
+      "name": "执行计划按实质类型分类并拆分",
+      "description": "真实计划名严格使用 YYYY-MM-DD-<type>-<kebab-case-slug>.md，类型仅为 feature、bugfix、refactor、chore、docs、test、perf；一个任务包含多个实质类型时必须分别建计划，各自维护目标、范围、验收、验证与状态，并用关联计划记录共同背景和依赖。仅记录验证证据不单独构成 test 开发计划。",
+      "aliases": ["计划类型", "跨类型拆分", "feature", "bugfix", "refactor", "chore", "docs", "test", "perf"],
+      "status": "active",
+      "applies_to": ["harness.execution_plan", "harness.skill", "harness.workspace_scaffold"],
+      "source_refs": [
+        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"},
+        {"path": ".ch/docs/exec-plans/TEMPLATE.md", "anchor": "分类与拆分提示"}
       ]
     },
     {
@@ -239,18 +252,19 @@
       "description": "内置 workspace scaffold 只承载通用 harness 和空白/示例 ontology 结构，不植入来源仓库的业务专属概念。",
       "status": "active",
       "applies_to": ["harness.workspace_scaffold", "harness.ontology"],
-      "source_refs": [{"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md"}]
+      "source_refs": [{"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-docs-harness-ontology-scaffold-sync.md", "anchor": "决策记录"}]
     },
     {
       "id": "harness.rule.scaffold_merge_preserves_project_state",
       "name": "Scaffold 合并保留项目状态",
-      "description": "将 workspace scaffold 的通用规则同步到已有仓库时，采用保留式合并；不得覆盖或删除项目事实、memory 热区、generated 索引、active/completed 执行计划和项目专属 skills。",
+      "description": "默认将 workspace scaffold 的通用规则同步到已有仓库时采用保留式合并，不覆盖或删除项目事实、memory 热区、generated 索引、active/completed 执行计划和项目专属 skills。仅用户明确授权的计划命名迁移或类型拆分可按逐源映射保留证据并修复引用；不得改写 blocked、失败或未发布结论，也不得覆盖热区或 generated 内容。",
       "status": "active",
       "applies_to": ["harness.workspace_scaffold", "harness.memory", "harness.execution_plan", "harness.skill"],
       "source_refs": [
         {"path": "AGENTS.md", "anchor": "同步 media/workspace-scaffold 时采用保留式合并"},
         {"path": "ARCHITECTURE.md", "anchor": "Harness 与事实来源边界"},
-        {"path": ".ch/docs/MEMORY.md", "anchor": "Harness scaffold 与记忆保护"}
+        {"path": ".ch/docs/MEMORY.md", "anchor": "Harness scaffold 与记忆保护"},
+        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"}
       ]
     }
   ]

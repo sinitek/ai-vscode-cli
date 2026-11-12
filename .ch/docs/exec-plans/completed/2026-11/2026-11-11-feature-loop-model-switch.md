@@ -4,7 +4,7 @@
 - 类型：feature
 - 状态：completed
 - 负责人：Codex
-- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-11-test-loop-model-switch.md`，记录本功能回归验证。
+- 历史回归验证摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（entries[80]：removed_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-test-loop-model-switch.md；reference_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-feature-loop-model-switch.md；source_old_path=null）。该记录无迁移原来源标识，审计摘要不是存活test计划或完整运行日志。
 
 ## 目标与范围
 

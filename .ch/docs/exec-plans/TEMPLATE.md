@@ -1,6 +1,8 @@
 # 计划标题
 
 - 日期：YYYY-MM-DD
+- 类型：feature / bugfix / refactor / chore / docs / test / perf
+- 关联计划：无 / `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`（填写具体路径及依赖）
 - 状态：draft / in-progress / blocked / completed
 - 负责人：Codex / 人类 / 协作
 - owner：
@@ -67,3 +69,10 @@
 ## 当前结论
 
 总结当前进展、未决问题、下一步。
+
+## 分类与拆分提示
+
+- 文件名：`YYYY-MM-DD-<type>-<kebab-case-slug>.md`；日期后只能有一个 type。允许类型及定义以 `.ch/docs/exec-plans/README.md` 为准。
+- `feature` 表示新功能，`bugfix` 表示已发布版本 bug 修复；不得缩写为 `feat` / `fix`。
+- 多个实质类型必须拆成独立计划，各自维护目标、范围、验收、验证和真实状态；在“关联计划”中填写具体互链路径并记录共同背景/依赖，不复制混合正文。
+- 仅记录验证证据不等于测试开发；实际测试开发工作应单独归为 `test`。

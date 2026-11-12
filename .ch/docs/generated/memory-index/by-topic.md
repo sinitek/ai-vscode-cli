@@ -39,7 +39,7 @@
 - 摘要：这个文件是记忆金字塔的 **L2**：从滚动摘要、执行计划和 runbook 中抽取重要事件。
 - Source of truth：`.ch/docs/memory/EVENT_MEMORY.md`
 - 小节：`事件记忆`, `什么时候更新`, `不该写什么`, `维护规则`, `当前事件`
-- 直接引用：`.ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md`, `.ch/docs/runbooks/PITFALLS.md`, `.ch/docs/runbooks/kimi-code-config.md`, `src/interactive/grokAppServerProtocol.ts`, `src/test/interactive/grokAppServerProtocol.test.ts`
+- 直接引用：`.ch/docs/design-docs/loop-subtask-session-reuse.md`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论`, `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果`, `.ch/docs/runbooks/PITFALLS.md`, `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`, `.ch/docs/runbooks/kimi-code-config.md`
 
 ## 经验教训
 

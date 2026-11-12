@@ -3,10 +3,10 @@
 - 日期：2026-11-11
 - 状态：已实现并通过针对性合并验收（2026-11-09）；平台与覆盖率限制见验收表。
 - 产品入口：[功能总表](../product-specs/FEATURE_INVENTORY.md#每-tab-聊天气泡显示限额)
-- 实施记录：[已归档执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md)
-- 清理区间与保护判定修正：[修复执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md)。以下规则以本次用户澄清后的语义为准，原计划保留为历史验收记录。
-- 真正删除的后续要求：[永久清理执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md)。本节现行行为覆盖前两轮“只影响显示”的历史边界。
-- JSON 最终气泡清理补充（2026-11-10）：[执行与验证记录](../exec-plans/completed/2026-11/2026-11-10-json-final-bubble-retention.md)，最终标记或主色边框不再保护 JSON 树气泡，其余窗口与安全规则不变。
+- 实施记录：[功能执行计划](../exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-retention.md)；相关文档交付见 [规则文档计划](../exec-plans/completed/2026-11/2026-11-09-docs-chat-bubble-retention.md)。
+- 清理区间与保护判定修正：[缺陷修复计划](../exec-plans/completed/2026-11/2026-11-09-bugfix-chat-bubble-retention-protection-fix.md)；测试历史见[删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按来源键 `source_old_path` = `.ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention-protection-fix.md` 检索，仅保留单测 200/200、ontology 9/9、桌面/窄屏及混合历史等摘要，不代表原测试全文、完整命令或全部浏览器证据已保存。以下规则以本次用户澄清后的语义为准，历史失败与验收限制见正文。
+- 真正删除的后续要求：[永久删除功能计划](../exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-persistent-deletion.md)；测试历史见[删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按来源键 `source_old_path` = `.ch/docs/exec-plans/completed/2026-11/2026-11-09-chat-bubble-persistent-deletion.md` 检索，仅保留 build 命令、日志路径等有限摘要。本节现行行为覆盖前两轮“只影响显示”的历史边界；永久删除是后续独立要求，不是旧缺陷修复。
+- JSON 最终气泡清理补充（2026-11-10）：[缺陷修复计划](../exec-plans/completed/2026-11/2026-11-10-bugfix-json-final-bubble-retention.md)；测试历史见[删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按来源键 `source_old_path` = `.ch/docs/exec-plans/completed/2026-11/2026-11-10-json-final-bubble-retention.md` 检索，仅概述 build 及相关 Webview、解析器与会话生命周期单测。最终标记或主色边框不再保护 JSON 树气泡，其余窗口与安全规则不变。
 - 触发与比例调整（2026-11-11）：达到设置上限即检查最早 25%（向上取整），替代超过上限 110% 后按 20% 清理；保护判定、区间内跳过且不补删、永久删除与宿主确认链路不变。
 
 ## 背景与边界
@@ -98,7 +98,7 @@ N=1 时 B=1，避免批量为零；达到 1 条即检查，未受保护的消息
 | 多入口 | Tab 隔离、设置变化、历史加载、全量/增量与后台更新 | 运行时测试及 Chromium 两视口证据通过；浏览器用本地宿主 mock，不是扩展宿主端到端 |
 | 性能 | 既有 5000 条非活动 DOM 缓存阈值不变，未变化节点复用、阅读位置/展开状态不回退 | 缓存回归、20 次增量不重建邻居节点、阅读锚点/渲染状态用例通过；无独立长列表性能基准 |
 
-风险/限制：基础集合扫描仍随剩余历史增长，保护消息和基础集合外的隐藏消息不受此限额约束；过程历史删除不可逆。全仓 `npm run test:unit`、c8 百分比覆盖率、真实 VS Code 扩展宿主/CLI、Windows/Linux 和独立长列表性能基准尚未运行；不把合成宿主 Chromium 验证等同真实扩展宿主验证。前轮记录见[原归档执行计划](../exec-plans/completed/2026-11/2026-11-09-chat-bubble-retention.md)。
+风险/限制：基础集合扫描仍随剩余历史增长，保护消息和基础集合外的隐藏消息不受此限额约束；过程历史删除不可逆。全仓 `npm run test:unit`、c8 百分比覆盖率、真实 VS Code 扩展宿主/CLI、Windows/Linux 和独立长列表性能基准尚未运行；不把合成宿主 Chromium 验证等同真实扩展宿主验证。前轮记录见[功能计划](../exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-retention.md)。
 
 ### 2026-11-11 触发与比例调整验证
 

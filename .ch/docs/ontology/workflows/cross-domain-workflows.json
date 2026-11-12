@@ -58,8 +58,10 @@
       "outcome": "根仓库和 `media/workspace-scaffold` 具备一致的通用 harness 能力，同时保留项目专属事实、记忆、计划和 skills。",
       "source_refs": [
         {"path": "media/workspace-scaffold/AGENTS.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-simplify-workspace-scaffold.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-harness-ontology-scaffold-sync.md"}
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md", "anchor": "目标"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-docs-simplify-workspace-scaffold.md", "anchor": "范围"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-chore-harness-ontology-scaffold-sync.md", "anchor": "风险与缓解"},
+        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-docs-harness-ontology-scaffold-sync.md", "anchor": "决策记录"}
       ],
       "steps": [
         {

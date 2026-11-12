@@ -1,0 +1,775 @@
+{
+  "version": 1,
+  "migration_date": "2026-11-11",
+  "scope": ".ch/docs/exec-plans/completed/2026-10",
+  "entries": [
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-02-harness-scaffold-merge.md",
+      "old_sha256": "402d7a145d292a0dd4317bad6f48af6eeff6dfd1ba7216f130ed58e597d8af98",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-02-chore-harness-scaffold-merge.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-02-chore-harness-scaffold-merge.md",
+      "notes": "实施依据：合并 harness 治理与导航，保护历史记忆、计划和真实业务本体；据此归类为 chore。只有治理规则/导航/模板合并，没有运行时代码或新测试；执行已有测试是验证，不另造 test 交付。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-panel-message-router-refactor.md",
+      "old_sha256": "ea2554b600f2e0a12ebb4b3944cda1f2fb0a7a55a286368d561799471ea284d3",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-panel-message-router.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-03-docs-panel-message-router.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-panel-message-router.md",
+      "notes": "实施依据：统一面板消息路由与领域窄端口，保持消息协议和用户行为；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-03-docs-panel-message-router.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-primary-prompt-run-controller.md",
+      "old_sha256": "72c8c9e6cb36adbca0033bb1d173641c786dd6fc4113964e3ab64467ef11db94",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-primary-prompt-run-controller.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-03-docs-primary-prompt-run-controller.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-primary-prompt-run-controller.md",
+      "notes": "实施依据：抽取主 Prompt 运行状态控制器，保持 One-shot、停止和清理行为；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-05-explorer-drop-references.md",
+      "old_sha256": "6e9a20c1b5f766a82206e7d0d9db3e9acb46afcab9da044668509da0b60f78dc",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-05-bugfix-explorer-drop-references.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-05-docs-explorer-drop-references.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-05-bugfix-explorer-drop-references.md",
+      "notes": "实施依据：修复 Explorer 多格式文件拖拽不能插入工作区引用；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-chinese-only-ui.md",
+      "old_sha256": "c25aa792570d3a396d14286867417755cf772f4dddf1eca0348413265a034e12",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-chinese-only-ui.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-docs-chinese-only-ui.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-chinese-only-ui.md",
+      "notes": "实施依据：移除产品语言切换与英文运行时分支，界面固定简体中文；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-loop-main-final-summary.md",
+      "old_sha256": "19b697d3139a13d3145bb3e66740dac9420ab5f3677d266eb239451a7b23b57b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-loop-main-final-summary.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-docs-loop-main-final-summary.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-loop-main-final-summary.md",
+      "notes": "实施依据：为 Loop+ 主任务新增独立、可持久化的最终总结气泡；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-06-docs-loop-main-final-summary.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-secondary-sidebar-default.md",
+      "old_sha256": "b12b6931996ea3fceac58c8b0c7424fc0fa4f0d3c6b644ed03450a26a7486cb2",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-secondary-sidebar-default.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-chore-isolated-development-window.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-06-docs-secondary-sidebar-default.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-secondary-sidebar-default.md",
+      "notes": "实施依据：让新布局默认将聊天容器注册到原生辅助栏，保持已保存布局；据此归类为 feature、chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。辅助栏产品行为与 run_dev.sh --new-window 的开发启动维护独立拆分；保留起初“不提高版本”和后来 ^1.104.0 决策的历史差异。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-config-models.md",
+      "old_sha256": "387e6dcdd38c3222b84289b563a4ad9ebdd70dc74f233cd5992283c952762428",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-grok-config-models.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-docs-grok-config-models.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-grok-config-models.md",
+      "notes": "实施依据：新增 Grok 配置驱动模型候选及多模型可视化管理；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-reasoning-effort.md",
+      "old_sha256": "0df23dffde18cf61afe25750300cd8e59b3003a8aae32fbae642be73de9e86fa",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-bugfix-grok-reasoning-effort.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-docs-grok-reasoning-effort.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-bugfix-grok-reasoning-effort.md",
+      "notes": "实施依据：修复 ACP 思考力度标量参数与能力缺失静默跳过；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-replay-noise-filter.md",
+      "old_sha256": "fd4924263b534831ebd0b2bd01645fec22cb43c56383b430a999c989d957d74b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-perf-grok-replay-noise-filter.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-docs-grok-replay-noise-filter.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-perf-grok-replay-noise-filter.md",
+      "notes": "实施依据：过滤无关回放元数据并合并分片，减少记录、传输字节与刷新；据此归类为 perf、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。按回放记录/传输字节优化归 perf；保留 94.64%/97.81% 等真实对比及原始失败。决策模型低置信结果经原文复核，不按其 feature 建议机械分类。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md",
+      "old_sha256": "9b57f124402588b5002a99ee59fc8f16005872f2e180b795a97b1e667159d672",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-lobehub-skills-market.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-17-docs-lobehub-skills-market.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-lobehub-skills-market.md",
+      "notes": "实施依据：新增 LobeHub Skills 搜索、下载与多 CLI 安全安装；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md",
+      "old_sha256": "8ad82d5af7f87d381d6bf6557f2cec9f9e746163fe7294eb0b342dad6e87533b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-run-arg-strategies.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-cli-run-arg-strategies.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-run-arg-strategies.md",
+      "notes": "实施依据：以策略表抽取四平台启动 argv，保持参数顺序和导出；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-runtime-config-strategies.md",
+      "old_sha256": "16c8a2f2d5b273a117275beca038809da8cd78ef773f5e593eb474fa9bf9bf0a",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-runtime-config-strategies.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-cli-runtime-config-strategies.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-runtime-config-strategies.md",
+      "notes": "实施依据：以策略表集中四平台运行配置，保持 IO、schema 和兼容外观；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-context-compaction.md",
+      "old_sha256": "63ca2080242173f3ba6d968f345070ef0e86d91a4fd6824b9fa5ab1be5dc5df8",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-compaction.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-bugfix-svg-keyboard-activation.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-context-compaction.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-compaction.md",
+      "notes": "实施依据：接入 Grok 原生手动及自动上下文压缩，严格确认原生完成；据此归类为 feature、bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。新增原生压缩与浏览器发现的共享 SVG 键盘缺陷分别归 feature/bugfix；空会话探针不冒充缩减验收。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-context-usage.md",
+      "old_sha256": "a7b6a1ef6972a2992439b5d207689af17e4cbe8d139f3e2841ef6bf2652cc746",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-usage.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-context-usage.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-usage.md",
+      "notes": "实施依据：展示 Grok 原生当前上下文快照，不误用累计消耗；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-semantic-replay.md",
+      "old_sha256": "7f33fa4af974c55a830f0861960e804171cdfa176ffa853ab829a7d8d7fdfaad",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-semantic-replay.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-semantic-replay.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-semantic-replay.md",
+      "notes": "实施依据：新增 Grok 工具语义聚合与独立回放投影，保持真实执行；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-stream-error-and-model-editor.md",
+      "old_sha256": "6b7bbda616b7278d2b7a3db0fd60475674d0522c939b0041b51439ae9e209407",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-bugfix-grok-stream-errors.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-model-editor.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-stream-error-and-model-editor.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-bugfix-grok-stream-errors.md",
+      "notes": "实施依据：修复 Grok 流协议错误细节、确定性错误重试和保存应用后的模型同步；据此归类为 bugfix、feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。流式错误/协议修复归 bugfix；多模型编辑器归 feature；后续名称弹窗与可选 name 移除仍归 feature，后节优先级及真实调用限制全部保留。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 追加验收：模型下拉显示字段（2026-10-18） -> .ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-stream-error-and-model-editor.md, .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-model-editor.md; 追加验收：单名称新增弹窗与列表行内删除（2026-10-18） -> .ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-stream-error-and-model-editor.md, .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-model-editor.md; 追加验收：移除可选 name 字段（2026-10-18） -> .ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-grok-stream-error-and-model-editor.md, .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-model-editor.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-interactive-turn-strategies.md",
+      "old_sha256": "a33910c21ccc8aaef225eb945804b9e2ccf06c413541a7d7bf9d0bf48a20ce12",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-interactive-turn-strategies.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-interactive-turn-strategies.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-interactive-turn-strategies.md",
+      "notes": "实施依据：抽取交互回合策略，保持三平台轮次与宿主生命周期；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-list-delete-icons.md",
+      "old_sha256": "1ce3ff997135c9d5266b7e05c6abeb2172080985403a458835f14efa3270bc6f",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-opencode-list-delete-icons.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-opencode-list-delete-icons.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-opencode-list-delete-icons.md",
+      "notes": "实施依据：为 OpenCode Provider 和模型列表新增行内删除入口；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-output-parser-facade.md",
+      "old_sha256": "56b0e68a4998a7c38c6056742d90a2d6ee5c7bfdc7b3c27bfff962ebf7e3324f",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-opencode-output-parser-facade.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-opencode-output-parser-facade.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-opencode-output-parser-facade.md",
+      "notes": "实施依据：拆出 OpenCode 纯输出解析器，保持外观导出与恢复副作用；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-opencode-output-parser-facade.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-prompt-execution-model.md",
+      "old_sha256": "5d57bccce76d706799efd04d33d0e1fb8109ac9daad7432af9e216cf5aa74d72",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-prompt-execution-model.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-prompt-execution-model.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-prompt-execution-model.md",
+      "notes": "实施依据：为提示词历史新增执行模型快照与展示；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-session-health-reuse.md",
+      "old_sha256": "2db37f391dd6974806cec411d0450b7fa487e8e3a5e20cefd55358ce03ea6622",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-session-health-reuse.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-session-health-reuse.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-session-health-reuse.md",
+      "notes": "实施依据：增加会话健康持久化及异常会话续接拦截；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-task-auto-repair-retry.md",
+      "old_sha256": "9e5506b0198a4b5f3fe232509fabe5767a238ea9d177e941796fcf48b0f24186",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-task-auto-repair-retry.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-task-auto-repair-retry.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-task-auto-repair-retry.md",
+      "notes": "实施依据：新增可修复启动错误后的单次新会话重试；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-thinking-bubble-scroll.md",
+      "old_sha256": "36b2345a8edbdb3cc8b07cba92c38d65d79f13dae3f03602569b3d98036f93f5",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-thinking-bubble-scroll.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-18-docs-thinking-bubble-scroll.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-thinking-bubble-scroll.md",
+      "notes": "实施依据：为思考气泡新增五行滚动和展开收起；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-loop-cross-cli-submodels.md",
+      "old_sha256": "4d2ccb15ce9346628f1b2e70aaa5d86a307416be1aa37d11b3e7225bab776706",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-19-feature-loop-cross-cli-submodels.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-19-docs-loop-cross-cli-submodels.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-feature-loop-cross-cli-submodels.md",
+      "notes": "实施依据：让 Loop 与 Loop+ 子任务可选择并实际执行另一 CLI 的模型；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-19-docs-loop-cross-cli-submodels.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-loop-safe-execution-root-cleanup.md",
+      "old_sha256": "4817752dcfb4ff54c1b8a9713501929fec42a556060c9705bd907ac34549d944",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-19-bugfix-loop-safe-execution-root-cleanup.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-19-docs-loop-safe-execution-root-cleanup.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-bugfix-loop-safe-execution-root-cleanup.md",
+      "notes": "实施依据：修复 Loop 临时执行根递归清理可能删除真实源工作区的问题；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-20-remove-implicit-subagents-toggle.md",
+      "old_sha256": "a682a5695f282ea499a1ac29c8028e5865b6d7d253ae71151b672563415d9a88",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-20-feature-remove-implicit-subagents-toggle.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-20-docs-remove-implicit-subagents-toggle.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-20-feature-remove-implicit-subagents-toggle.md",
+      "notes": "实施依据：移除隐式子代理工具开关及覆盖，能力遵循目标 CLI 配置；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-21-grok-user-question-bridge.md",
+      "old_sha256": "cbeb969c0624ae43b50d900f437d0354e540c1df81f265138f0946dee21ee32c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-21-bugfix-grok-user-question-bridge.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-21-docs-grok-user-question-bridge.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-21-bugfix-grok-user-question-bridge.md",
+      "notes": "实施依据：修复 Grok 原生提问方法未处理及工具错误摘要丢失；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-cli-model-selection-strategies.md",
+      "old_sha256": "51c93f4c5261714e49741eb5b0ab55b350e2317c171731579d48649d22fb06dd",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-cli-model-selection-strategies.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-docs-cli-model-selection-strategies.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-cli-model-selection-strategies.md",
+      "notes": "实施依据：以模型选择策略表替代平台分支，保持选择 API 和持久化；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-conversation-tab-model-restore.md",
+      "old_sha256": "d717b545c0e198b5d8bec4d4e8dace541df8a13b1064af5ef5dbfe27c692b129",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-feature-conversation-tab-model-restore.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-docs-conversation-tab-model-restore.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-feature-conversation-tab-model-restore.md",
+      "notes": "实施依据：补齐对话标签切换后的配置、模型及思考力度恢复；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-interactive-runner-lifecycle.md",
+      "old_sha256": "542607fe1c3809ac35d8e76325a12751c33f9a041c7f8a3e16b50932ef20f9da",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-interactive-runner-lifecycle.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-22-docs-interactive-runner-lifecycle.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-interactive-runner-lifecycle.md",
+      "notes": "实施依据：以完整生命周期策略隔离 runner 差异，保留 Manager 外观；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-image-preview.md",
+      "old_sha256": "2905e23e1f1f86622517c270a49fe5e61f0eb1689aa8bdbb292751d850c3ad4c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-image-preview.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-draw-ai-image-installation.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-docs-chat-image-preview.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-image-preview.md",
+      "notes": "实施依据：新增最终回复图片展示与内容区预览，不调用生成服务；据此归类为 feature、chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。插件图片能力与用户本地技能安装分别归 feature/chore；不把技能安装说成插件运行时代码。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-draw-ai-image-installation.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-local-image-download.md",
+      "old_sha256": "fa7aaaf23a9fa495346fc99fffd59fb8221b71f559d5e1428cf51a37936e8322",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-local-image-download.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-bugfix-chat-content-image-preview.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-docs-chat-local-image-download.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-local-image-download.md",
+      "notes": "实施依据：新增本地图片资源读取与图片/SVG 系统下载；据此归类为 feature、bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。新增本地读取/下载与已有独立预览修复分开；系统保存桥接模拟与真实宿主未验收边界保留。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-svg-preview.md",
+      "old_sha256": "5df8f5a857a08a7371af0efd89dff678238cdb43be9a12700fae1bc27e7e54a5",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-svg-preview.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-docs-chat-svg-preview.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-svg-preview.md",
+      "notes": "实施依据：新增安全 SVG 围栏及 SVG data URL 展示；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-vsix-size-reduction.md",
+      "old_sha256": "e4ab9cd1a5e389aeb4ddb81423f75dcc7d8bb3e943a62dee44784d9f73d8c3f9",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-vsix-size-reduction.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-bugfix-vsix-required-resources.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-23-docs-vsix-size-reduction.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-vsix-size-reduction.md",
+      "notes": "实施依据：裁剪开发产物并支持平台定向 VSIX 导出和依赖审计；据此归类为 chore、bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。包内容裁剪与平台导出属于构建治理 chore；旧必需资源清单导致导出后失败是独立 bugfix；不冒称其他平台真实打包通过。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-dsh-integration.md",
+      "old_sha256": "592daeafadd8e1250f9ba37d20e5d8e2d1b841b5486ca2ddade9e065804f1b2d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-dsh-integration.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-chore-dsh-local-installation.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-dsh-integration.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-dsh-integration.md",
+      "notes": "实施依据：新增 DSH 分组、配置、ACP runner、Skills 与规则链接入；据此归类为 feature、chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。本机安装版本证据归 chore；插件 DSH 分组接入归 feature；官方 API/provider 契约归 docs，保留阻塞与未验证能力。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 背景 -> .ch/docs/exec-plans/completed/2026-10/2026-10-24-chore-dsh-local-installation.md, .ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-dsh-integration.md; 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-dsh-integration.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-loop-shared-markdown.md",
+      "old_sha256": "26c8c2f41bef8c17d10c72437181f751b540e93c6a8f849695a082a933397a05",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-loop-shared-markdown.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-refactor-shared-chat-rendering.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-loop-shared-markdown.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-loop-shared-markdown.md",
+      "notes": "实施依据：为 Loop/Loop+ 群聊和提问路径接入共享富文本与图片能力；据此归类为 feature、refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。共享模块的行为保持抽取归 refactor；Loop/Loop+ 新富文本接入归 feature；普通对话行为与安全边界保持。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 影响面与风险 -> .ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-loop-shared-markdown.md, .ch/docs/exec-plans/completed/2026-10/2026-10-24-refactor-shared-chat-rendering.md; 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-24-refactor-shared-chat-rendering.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-svg-task-summaries.md",
+      "old_sha256": "31b3a66cf784f8574f2f28109067007e0947980cfc2b5e8959c00e0b331d99a2",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-svg-task-summaries.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-svg-task-summaries.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-svg-task-summaries.md",
+      "notes": "实施依据：为各模式最终总结新增可选 SVG 建议，保持机器 JSON 协议；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-workbuddy-channel-feasibility.md",
+      "old_sha256": "7a2de14e57174df717edcbc03cd6f4123565b3503dd369380d10a66e7d35a9ec",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-workbuddy-channel-feasibility.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-docs-workbuddy-channel-feasibility.md",
+      "notes": "实施依据：记录 WorkBuddy 免配置接入调研、登录复用阻断和不实施结论；据此归类为 docs。纯可行性调研文档；两次业务失败、登录复用阻断、未创建设计及未实现渠道均保留；不拆虚构 feature/test。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-config-model-picker.md",
+      "old_sha256": "e8050f610faad0d07f99f5a4f5effe086db5323b4f8faf2953e680e8664f6504",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-model-picker.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-config-model-picker.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-model-picker.md",
+      "notes": "实施依据：新增 DSH 双栏模型编辑和 profile 候选到对话选择的衔接；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-config-visual-model-fields.md",
+      "old_sha256": "b298055375633fac20cd87c9cfdfa9afbf3655a4bb42678f15cbc2875d2d5ae2",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-visual-model-fields.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-config-visual-model-fields.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-visual-model-fields.md",
+      "notes": "实施依据：扩展 DSH 可视化模型字段并区分公共参数，保持完整 JSON 往返；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-config-visual-model-fields.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-loop-role-model-selection.md",
+      "old_sha256": "949a539ef5d63f5a792fd6ab23c79a5b854e58d1bed46c77cc046e69f5c49598",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-bugfix-dsh-loop-role-model-selection.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-loop-role-model-selection.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-bugfix-dsh-loop-role-model-selection.md",
+      "notes": "实施依据：修复已支持 DSH 角色模型在白名单、思考存储与派发链路的遗漏；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。原文已存在角色模型及力度支持，白名单/存储链路遗漏导致不能执行，归 bugfix 而非把原能力重复记作 feature。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-loop-role-model-selection.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-thinking-effort.md",
+      "old_sha256": "520ece7b79cfb41f196f83c826414045cd1e9cbfac8a116c4615790c160415b1",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-thinking-effort.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-thinking-effort.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-thinking-effort.md",
+      "notes": "实施依据：补齐 DSH 默认验证模型能力声明与四档思考选择下发；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。源状态来自 YAML status: completed，created_at 和原 plan_id 可追溯保留；无原作者字段，不补造作者。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-human-interaction-history.md",
+      "old_sha256": "a06f4550fa43d99b0633cab262a6c6ce65d93bb477af84d1d8403b50ee31a6eb",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-feature-human-interaction-history.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-docs-human-interaction-history.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-feature-human-interaction-history.md",
+      "notes": "实施依据：新增可追溯的人机交互历史存储、入口与详情；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-publish-python-migration.md",
+      "old_sha256": "161714781575d22c3cc286fd16b30db29a2948fe2f73bb19ab8767ca0befb710",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-publish-python-migration.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-docs-publish-python-migration.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-publish-python-migration.md",
+      "notes": "实施依据：将发布和导出入口迁移到跨平台 Python，保持实际打包链路；据此归类为 chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-run-dev-python-migration.md",
+      "old_sha256": "bcdb581447c7a9ec5bf0b674a0582043915927706e7b4f9ea2aee50a16f2834c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-run-dev-python-migration.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-26-docs-run-dev-python-migration.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-run-dev-python-migration.md",
+      "notes": "实施依据：将开发宿主启动迁移为 Python，保留跨平台路径与启动行为；据此归类为 chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md",
+      "old_sha256": "f430257d42ddf80799e944bff9317a7323066e5fc549dc5788a77d0fb7eb7385",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-docs-kimi-config-simplification.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md",
+      "notes": "实施依据：精简 Kimi 配置、范例与可视化标签，保留高级字段；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md",
+      "old_sha256": "7192d309d06db4687c8c1c8a10ba660f1cb8ceb00f1147aa21b8de0cd4d0ce8e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-docs-kimi-replay-model-polish.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md",
+      "notes": "实施依据：新增 Kimi 配置模型管理弹窗及档案/真实配置保存；据此归类为 feature、bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。模型管理弹窗是 feature；工具语义/去重与每轮模型下发修复是 bugfix，不将已有配置别名当新模型能力。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 背景 -> .ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md; 范围 -> .ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md, .ch/docs/exec-plans/completed/2026-10/2026-10-27-docs-kimi-replay-model-polish.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-move-vscode-python-scripts.md",
+      "old_sha256": "26d6b9daa5fd9f04f8aab2dc33c143a76e28be3b97d62d945f18d2b201754fb5",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-chore-move-vscode-python-scripts.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-docs-move-vscode-python-scripts.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-chore-move-vscode-python-scripts.md",
+      "notes": "实施依据：将四个 VS Code Python 脚本统一到 scripts，清除重复入口；据此归类为 chore、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-confirmed-cli-switch.md",
+      "old_sha256": "c366c31eccdaec2152a42c3ceeb6ce13091b13cf3cddb966373961ad3c4b57cf",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-confirmed-cli-switch.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-docs-confirmed-cli-switch.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-confirmed-cli-switch.md",
+      "notes": "实施依据：允许用户确认后切换 CLI，保持原每 CLI 会话映射；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-raw-svg-bubble-compatibility.md",
+      "old_sha256": "82f0c65eedb326cad9ab5a13e3e180461e57e893c134f5363833df161133ab6d",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-raw-svg-bubble-compatibility.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-docs-raw-svg-bubble-compatibility.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-raw-svg-bubble-compatibility.md",
+      "notes": "实施依据：修复整段原始 SVG 气泡不能复用安全图片预览；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-skills-market-local-zip.md",
+      "old_sha256": "94c40c1df1fc604efe517ecce3073fadccbdd1ec6751faa619fbcb18e7315c8e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-skills-market-local-zip.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-docs-skills-market-local-zip.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-skills-market-local-zip.md",
+      "notes": "实施依据：新增 Skills 市场本地 ZIP 选择与多 CLI 安全安装；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-zcode-trace-bubbles.md",
+      "old_sha256": "2d44b2f26799466ff7742c14f9850a9d63d892edffad1cfb0431e3248f8e4764",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-zcode-trace-bubbles.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-zcode-reasoning-defaults.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-28-docs-zcode-trace-bubbles.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-zcode-trace-bubbles.md",
+      "notes": "实施依据：修复 ZCode model.streaming 与 tool.updated 事件到既有 trace 的映射；据此归类为 bugfix、feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。ZCode 原生事件映射修复归 bugfix；reasoning/thoughtLevel 默认和范例完善独立归 feature。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 背景 -> .ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-zcode-reasoning-defaults.md; 当前结论 -> .ch/docs/exec-plans/completed/2026-10/2026-10-28-docs-zcode-trace-bubbles.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-all-cli-config-sync.md",
+      "old_sha256": "aea2bb49872c565428db3820c81e08e49351994b0249ddb8585cca592aea0ac6",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-all-cli-config-sync.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-all-cli-config-sync.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-all-cli-config-sync.md",
+      "notes": "实施依据：修复各 CLI 当前配置激活识别、保存后候选刷新和快照隔离；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-config-backup-registry.md",
+      "old_sha256": "a38262594a10aa05b7704a90ef29ca487b0b5e3341f5ae07eeb0cffd2cdf80ae",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-refactor-config-backup-registry.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-config-backup-registry.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-refactor-config-backup-registry.md",
+      "notes": "实施依据：以私有备份描述表和固定执行器统一流程，保持文件名、权限和异常契约；据此归类为 refactor、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。round-1 契约纠正与 round-3 前缀修复属于同次未发布重构，仍归 refactor；umask 测试缺陷归 test，不伪称已发布产品 bugfix。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 已删除历史章节“缺陷二：Kimi 权限测试环境假设（失败分类：tests / 环境假设错误）”的验证事实 -> .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按本源查项，非存活计划标题锚点）。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-human-interaction-history-workspace-scope.md",
+      "old_sha256": "5bc27fae5494b643090d62e10d219517d609d737b303498d5b8964e25091ffb7",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-human-interaction-history-workspace-scope.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-human-interaction-history-workspace-scope.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-human-interaction-history-workspace-scope.md",
+      "notes": "实施依据：修复人机交互历史跨项目混读，按 activeWorkspaceKey 隔离；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-loop-plus-acceptance-plan.md",
+      "old_sha256": "6d28a4537ad4c31ba8e497a296b7ce6b65e998d3ba61e01248b0f086e032534c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-feature-loop-plus-acceptance-plan.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-loop-plus-acceptance-plan.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-feature-loop-plus-acceptance-plan.md",
+      "notes": "实施依据：新增 Loop+ 启动前可保存复用的验收方案及任务快照；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-zcode-context-compaction.md",
+      "old_sha256": "602516b1ff92b2b2059e45a45da799d616a3f45a0fce80f27e733449162abfff",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-zcode-context-usage.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-feature-zcode-native-context-compaction.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-zcode-context-compaction.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-zcode-context-usage.md",
+      "notes": "实施依据：修复 ZCode 初始化伪零用量和旧运行状态展示；据此归类为 bugfix、feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。初始化伪零用量修复归 bugfix；原生压缩能力接入归 feature；accepted 不等于完成的决策与原生终态证据保留。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-zcode-semantic-replay.md",
+      "old_sha256": "be84515eb7b04aed26941ff7e00544205ed27df97d1eec28c95c8e00b8cd2fac",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-perf-zcode-semantic-replay.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-29-docs-zcode-semantic-replay.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-perf-zcode-semantic-replay.md",
+      "notes": "实施依据：聚合 ZCode 语义回放并有界合并文本，降低新任务记录数量；据此归类为 perf、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。原文明确降低新回放记录数量并有隔离 50→6 合成用例，归 perf；合成验证不是用户原天气回放。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-30-chat-config-navigation.md",
+      "old_sha256": "d975e475daa27091efc03bcc170d97c4629df114e2306d8afeb8c1d00614e33e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-30-feature-chat-config-navigation.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-30-docs-chat-config-navigation.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-30-feature-chat-config-navigation.md",
+      "notes": "实施依据：让对话配置入口按 CLI 与档案精确导航，不激活或修改配置；据此归类为 feature、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。原文只列现有测试执行及结果，没有明确独立新增测试工作，不依据 60/60、1/1 结果虚构 test 子计划。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-classic-loop-report-driven.md",
+      "old_sha256": "14a48af5fe0b2995f24c6074d0ce28be8d0bad766a3123d9410a1449e34967bb",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-classic-loop-report-driven.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-classic-loop-report-driven.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-classic-loop-report-driven.md",
+      "notes": "实施依据：将经典 Loop 改为按汇报推进，按用户及项目规则独立派发验证；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-cli-config-visual-unification.md",
+      "old_sha256": "0d9ba64f6b6991b03494d3f485029dba2ea3832c034f0457de78c6c7d4a55f32",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-cli-config-visual-unification.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-cli-config-visual-unification.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-cli-config-visual-unification.md",
+      "notes": "实施依据：统一七 CLI 可视化表单并新增 Codex Provider 列表，保留隐藏值；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-codex-config-visual-editor.md",
+      "old_sha256": "80e9e4d98e8a9b7b4bc22a587cee8c4eedaa64fc68187e0e1604e6eeaf092c8f",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-codex-config-visual-editor.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-codex-config-visual-editor.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-codex-config-visual-editor.md",
+      "notes": "实施依据：按官方层级、类型和枚举扩展 Codex 可视化参数；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 特殊锚点目标（同名 Markdown 标题）: 风险与缓解 -> .ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-codex-config-visual-editor.md。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-config-source-editor.md",
+      "old_sha256": "48883e654d269f424678972bede296eafdc4b35c9eef9b600eb4c15d5797b571",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-config-source-editor.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-config-source-editor.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-config-source-editor.md",
+      "notes": "实施依据：新增离线配置源码编辑器与统一保存前语法校验；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loop-subtask-session-reuse.md",
+      "old_sha256": "513c0b9dd3fc33ff02ca35cb1ef48dcc94596fbac0d837bdf037748010cd440a",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loop-subtask-session-reuse.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-loop-subtask-session-reuse.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loop-subtask-session-reuse.md",
+      "notes": "实施依据：按真实运行记录复用连续子任务会话，保持配置边界与并发隔离；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-acceptance-reasons.md",
+      "old_sha256": "b6f6d835bd76d9459cafe689463e76e10cf87abd809373cc43e0feb50895a268",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-acceptance-reasons.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-loopplus-acceptance-reasons.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-acceptance-reasons.md",
+      "notes": "实施依据：为 Loop+ 各验收结果新增简短证据型原因；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-role-model-routing.md",
+      "old_sha256": "f533ade3866ac6bbdce368f4809a1bf35db21946ed78a0f971c53c76771aa6b9",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-role-model-routing.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-loopplus-role-model-routing.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-role-model-routing.md",
+      "notes": "实施依据：新增 Loop+ 默认全栈及可选前后端路由，隔离角色配置；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。保留“提交主审核对”、attempt 报告依赖与后续归档说明；不将 completed 头部转换成已通过全部验收。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-native-config-modal.md",
+      "old_sha256": "1655e1a18a25a4ba41d2903b490c2889a9dbed7eefe0df2ee3dc5289cf62d89e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-native-config-modal.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-native-config-modal.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-native-config-modal.md",
+      "notes": "实施依据：新增原生宽配置浮层与窗口回退，移除全局布局干预；据此归类为 feature、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-visible-instruction-grouping.md",
+      "old_sha256": "51f5a676324c85034d9b535ac6f5def22ad97d8de32dd28cc01868c3f22682fd",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-bugfix-visible-instruction-grouping.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-31-docs-visible-instruction-grouping.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-bugfix-visible-instruction-grouping.md",
+      "notes": "实施依据：修复隐藏思考占位错误中断可见连续指令分组；据此归类为 bugfix、test、docs。原文测试开发与独立文档分别归 test/docs（若未记载独立测试开发则不造 test）；已有执行结果留作历史验证证据。 reference_path 为实现/调查共用背景与验证证据入口；外部引用由集成任务接续。 2026-11-11 后续删除（不重新分类）：本源 test 目标已删除；原语义拆分及状态结论不变，new_paths 仅保留现有非 test 交付。删除前 SHA、状态及历史验证事实见 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-oct.json（按 source_old_path/removed_path 查项）；测试代码与历史验证边界保留，独立测试开发不并回存活计划。"
+    }
+  ]
+}

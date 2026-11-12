@@ -41,9 +41,9 @@
       "id": "harness.execution_plan",
       "name": "执行计划",
       "kind": "ledger",
-      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；完成后按 `completed/YYYY-MM/` 月份归档。",
+      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；真实计划名为 `YYYY-MM-DD-<type>-<kebab-case-slug>.md`，类型仅为 feature、bugfix、refactor、chore、docs、test、perf，bugfix 专指已发布版本 bug；多种实质类型必须拆成各自有目标、范围、验收、验证和状态的计划，并用具体关联路径记录依赖；完成后按 `completed/YYYY-MM/` 月份归档。",
       "status": "active",
-      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划"],
+      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划", "feature", "bugfix", "refactor", "chore", "docs", "test", "perf"],
       "implementation_paths": [".ch/docs/exec-plans"],
       "source_refs": [
         {"path": ".ch/docs/exec-plans/README.md"},
@@ -200,7 +200,7 @@
       "aliases": ["completed/YYYY-MM", "2025-06", "月份归档", "completed/**/*.md"],
       "status": "active",
       "applies_to": ["harness.execution_plan", "harness.skill"],
-      "source_refs": [{"path": ".ch/docs/exec-plans/README.md", "anchor": "命名建议"}]
+      "source_refs": [{"path": ".ch/docs/exec-plans/README.md", "anchor": "文件与类型"}]
     },
     {
       "id": "harness.rule.ontology_bootstrap_required",

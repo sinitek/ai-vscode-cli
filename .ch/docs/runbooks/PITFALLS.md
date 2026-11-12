@@ -62,7 +62,7 @@
 - 触发条件与根因：Claude 的复用判定不含配置身份，SDK 会话存活时不重读 `settings.json` 的环境；Codex 仅按 `configId` 区分 runner，不检查同档案内容变化，连接池也不包含配置/认证内容指纹。当另一个 Tab 保留共享 app-server 时，切到同名 provider 的不同档案即使重建 runner，也可能取得旧连接。配置文件写入队列只保证落盘与提交顺序，不负责已有进程重载。
 - 长期规避：先核对用户所见档案与共享提交版本，再校验原生文件，一致不写，不一致才修复；失败停止执行。档案 ID、原生配置/认证文本的 SHA-256 指纹接入所有常驻 runner 与 Codex 共享池两层复用判定，同档案编辑也重建对应进程，不全局中断其它 Tab。跨窗口执行租约保留到请求结束，期间拒绝切换或修改当前档案，同版本任务可并行；心跳只跟随共享选择，不回写旧档案。Tab、历史与自动任务均不恢复旧档案。
 - 验证方式：隔离 Claude SDK 夹具覆盖 A→B 后第二回合仍读 A、显式重建后读 B；使用真实 Node 子进程模拟启动时读取配置的 Codex app-server，覆盖同档案修改及多 Tab 共享连接后切换档案。上述验证确认插件的复用与环境下发行为，不等同于真实供应商请求或所有 CLI 的热加载测试。
-- 证据与边界：前轮审计及进程身份修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-chat-cli-config-switch-audit.md` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-explicit-cli-config-ownership.md`；跨窗口协调见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-cross-window-visible-config.md`。本机 Node 子进程验证不等同于真实供应商请求或所有 CLI 热加载；仅协调使用新协议的扩展窗口，不控制旧版本或外部工具直接写入。
+- 证据与边界：前轮审计及进程身份修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-chat-cli-config-switch-audit.md#确认风险与证据` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-explicit-cli-config-ownership.md#实现与关键决策`；跨窗口协调见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-cross-window-visible-config.md#当前结论`。本 runbook 的文档交付来源分别见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-chat-cli-config-switch-audit.md#范围与非目标`、`.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-explicit-cli-config-ownership.md#范围与非目标` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-cross-window-visible-config.md#范围与非目标`，不替代上述行为证据。本机 Node 子进程验证不等同于真实供应商请求或所有 CLI 热加载；仅协调使用新协议的扩展窗口，不控制旧版本或外部工具直接写入。
 
 ## 保存后的二次应用会让过期界面抢回旧档案
 
@@ -757,7 +757,7 @@
 
 ### 关联资料
 - `.ch/docs/references/cli-runtime-reference.md`
-- `.ch/docs/exec-plans/completed/2026-09/2026-09-15-windows-home-path-compatibility.md`
+- `.ch/docs/exec-plans/completed/2026-09/2026-09-15-bugfix-windows-home-path-compatibility.md`
 
 ## Windows `spawn codex ENOENT` 可用工具设置自动修复
 
@@ -814,7 +814,7 @@
 - `node --test dist/test/loop/loopSubtaskExecutionRoot.test.js dist/test/shared/fsCleanup.test.js dist/test/cli/opencoderuntimeconfig.test.js dist/test/cli/commandResolution.test.js`
 
 ### 关联资料
-- `.ch/docs/exec-plans/completed/2026-09/2026-09-20-windows-loop-cli-compat.md`
+- `.ch/docs/exec-plans/completed/2026-09/2026-09-20-bugfix-windows-loop-cli-compat.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
 ## macOS 通知命令成功不等于实际展示
@@ -884,7 +884,7 @@ rm -r "$result_directory"
 
 - 真实 Extension Development Host 已验证 `ms-settings:notifications` 打开、首次引导持久化、原生状态查询及通知调用无报错；用户另行确认关闭免打扰后实际看到了横幅。
 - 浏览器验证覆盖 Windows 关闭/查询失败状态、窄面板、Mac 首次授权和 Linux 隐藏授权按钮；这些验证不能替代 Windows 原生展示确认。
-- 完整验收记录：[Windows 通知状态与首次设置引导](../exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md)。
+- 完整验收记录：[Windows 通知状态与首次设置引导](../exec-plans/completed/2026-11/2026-11-05-docs-windows-notification-settings.md)。
 
 ## DSH 关闭后恢复不能按 Tab ID 选择隔离目录
 
@@ -1426,7 +1426,7 @@ rm -r "$result_directory"
 - `src/interactive/codexRunner.ts`
 - `src/contextCompactionRunner.ts`
 - `src/test/interactive/codexThreadSelection.test.ts`
-- `.ch/docs/exec-plans/completed/2026-08/2026-08-25-codex-app-server-provider-resume.md`
+- `.ch/docs/exec-plans/completed/2026-08/2026-08-25-feature-codex-app-server-provider-resume.md`
 
 ## 不能只依赖 CLI 结构化 `final_answer`，也不能把 `turn.completed` 当成最终回复气泡
 
@@ -2325,7 +2325,7 @@ rm -r "$result_directory"
 - `src/loopTaskStore.ts`
 - `src/test/loop/loopLegacyMigration.test.ts`
 - `src/test/loop/loopTaskStore.test.ts`
-- `.ch/docs/exec-plans/completed/2026-07/2026-07-14-loop-naming-migration.md`
+- `.ch/docs/exec-plans/completed/2026-07/2026-07-14-feature-loop-naming-migration.md`
 
 ## 计费终态错误不能进入隐藏重试或充当恢复进度
 

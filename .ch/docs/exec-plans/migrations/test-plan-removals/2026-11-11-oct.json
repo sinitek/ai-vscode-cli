@@ -1,0 +1,775 @@
+{
+  "version": 1,
+  "cleanup_date": "2026-11-11",
+  "partition": "oct",
+  "entries": [
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-panel-message-router-refactor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-test-panel-message-router.md",
+      "removed_sha256": "1ea266369ec30da9965029a68c9d475af5ecf8b6ba552ff5783d87732a78d289",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-panel-message-router.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-03；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-panel-message-router.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-primary-prompt-run-controller.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-test-primary-prompt-run-controller.md",
+      "removed_sha256": "33344a0902c60bfa70dac05ba3f56b1273c2475da4a421691f85e9163c57d18e",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-primary-prompt-run-controller.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-03；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-03-refactor-primary-prompt-run-controller.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-05-explorer-drop-references.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-05-test-explorer-drop-references.md",
+      "removed_sha256": "ea08e40bb78a6e7d8e2428b5dadfb385e7de1e676262ea577b61b05ddd4bb3d4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-05-bugfix-explorer-drop-references.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-05；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-05-bugfix-explorer-drop-references.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-chinese-only-ui.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-test-chinese-only-ui.md",
+      "removed_sha256": "21f9dc0054852d347869ef47481d5fd42d9f4231b9ebbf602221cd8f3a0538e2",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-chinese-only-ui.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-06；状态 completed；类型 test；负责人 Codex / 协作；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-chinese-only-ui.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-loop-main-final-summary.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-test-loop-main-final-summary.md",
+      "removed_sha256": "f03bf68cb7d5f543d17afd799bce6c1bbe6de216bbd75cadfde6d41d1cf7de56",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-loop-main-final-summary.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-06；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-loop-main-final-summary.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-secondary-sidebar-default.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-test-secondary-sidebar-default.md",
+      "removed_sha256": "065b9de715d4700444a89380def65cbbe0cf50495fdf89d34ebaea1467352e99",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-secondary-sidebar-default.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-06；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-06-feature-secondary-sidebar-default.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-config-models.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-test-grok-config-models.md",
+      "removed_sha256": "922e5992bbf038ed11c8dc0e040e25ea9d17d530cfd176882d13a8f44a222759",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-grok-config-models.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-17；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-grok-config-models.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-reasoning-effort.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-test-grok-reasoning-effort.md",
+      "removed_sha256": "6ab98c7c691c243c7f435fd1585615f8fe634e42f6cf94350c1d6f068a316a7b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-bugfix-grok-reasoning-effort.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-17；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-17-bugfix-grok-reasoning-effort.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展验证：`node --test $(rg --files dist/test | rg '/grok[^/]*\\.test\\.js$')` 共 78 项，77 通过、1 失败。范围外旧断言位于 src/test/cli/grokCliEnum.test.ts，要求整页 Grok option 仅 1 个，实际有 2 个。`git diff --exit-code HEAD -- src/test/cli/grokCliEnum.test.ts src/webview src/cli src/config` 通过，证明测试及其 HTML/CLI/配置输入均未变更；不为该断言扩大修改范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-grok-replay-noise-filter.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-test-grok-replay-noise-filter.md",
+      "removed_sha256": "3d66e04c5ed05f495e18f109847ed5aebc522230f7d608820a12801a4a43d4a3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-perf-grok-replay-noise-filter.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-17；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-17-perf-grok-replay-noise-filter.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "首轮真实长回复暴露 `params._meta.eventId`、`chunkId` 每片变化，导致严格全字段匹配无法合并；进一步采样确认真实字段结构后，仅排除这两项及传输时间戳，补足真实格式回归，保留其他未知元数据边界。",
+        "原记录的验证计划（非本次执行/新增通过证据）：命令：`npm run build`；`node --test dist/test/interactive/grok*.test.js dist/test/extensionHost/grokCliHostWire.test.js`；按影响面补充回放与宿主测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-lobehub-skills-market.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-test-lobehub-skills-market.md",
+      "removed_sha256": "f79ab6d924519e92d86049bc708e23129f97fc5b9662c3d6b87669d651673459",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-lobehub-skills-market.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-17；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-17-feature-lobehub-skills-market.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-run-arg-strategies.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-cli-run-arg-strategies.md",
+      "removed_sha256": "567c0e43e5cd4b13b4aedc867cf9bc42114b795d31440e0fdfeec1861c55895e",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-run-arg-strategies.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 协作；owner Loop attempt round-1-cli-run-arg-strategies。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-run-arg-strategies.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：最小相关验证：`npm run build`，再运行新增策略测试和原 command runner 两份测试。",
+        "原验证计划明确扩展验证不适用，argv 行为由上述测试锁定；此处保留原验证边界，不声称补做扩展环境验证。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-cli-runtime-config-strategies.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-cli-runtime-config-strategies.md",
+      "removed_sha256": "6c97322e5a6a78747983b255ce6b79ffd5e75bfdef85a3ff67b65551e4942bd4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-runtime-config-strategies.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 协作；owner Loop attempt round-1-refactor-cli-runtime-config-strategies。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-cli-runtime-config-strategies.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：最小相关验证：`npm run build`，再运行新增策略测试和原配置四文件。",
+        "原记录的未覆盖项只说明既有 configService 与 OpenCode 测试覆盖其中一部分；不据此新增完整覆盖结论。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-context-compaction.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-grok-context-compaction.md",
+      "removed_sha256": "2cf275d03ec3cf81e8820307ef316343a6b17e4c05cea3e0412d8fec549662e0",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-compaction.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-compaction.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "浏览器夹具首次拼接脚本未转义 `</script>`，修正为复用生产 `neutralizeInlineScriptEndTags`；停止后操作等待异步 IPC 状态恢复再重开菜单，均为夹具修正。真实 SVG 键盘 `.click()` 异常则已修复产品代码并补回归。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-context-usage.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-grok-context-usage.md",
+      "removed_sha256": "4d3dc0d5ea9a89219ed5e3b7bb5ada8878f0eee7795859fd30cb988853045e74",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-usage.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-context-usage.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展相关测试：`node --test dist/test/interactive/grokAppServerProtocol.test.js dist/test/interactive/grokRunner.test.js dist/test/interactive/grokReplayStream.test.js dist/test/interactive/codexTokenUsage.test.js dist/test/interactive/codexRunnerLifecycle.test.js dist/test/extensionHost/grokCliHostWire.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/extensionHost/promptAutoRepair.test.js dist/test/core/contextCompactionRunner.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js`，217/217 通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-semantic-replay.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-grok-semantic-replay.md",
+      "removed_sha256": "6c9e2ac614c30e510b9c6d9e550ef23df63d6e021033b79d5ec264ece50e7c91",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-semantic-replay.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-grok-semantic-replay.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展回归：隔离产物运行 `node --test`，包含 Grok 全部测试、promptInteractiveRuntime、Codex 协议与 runner、trace/Webview、Loop 集成和 sessionMessage 测试，288 项通过，0 失败、0 跳过。命令与 TAP 输出分别保留在终端记录及 `/tmp/sinitek-grok-semantic-final.tap`。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-stream-error-and-model-editor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-grok-stream-error-and-model-editor.md",
+      "removed_sha256": "110de26c79695d7c35d947e7f9626ec4a414cf68703abd5d510c40923cd5fa95",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-bugfix-grok-stream-errors.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-bugfix-grok-stream-errors.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "首次新增测试的类型断言换行导致 TS1005。",
+        "新增测试最初的回调返回类型推断与消息 unknown 类型导致构建失败。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-interactive-turn-strategies.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-interactive-turn-strategies.md",
+      "removed_sha256": "cf06ad51e57f2fa0e72051210750809ad94d23f725605e78f090fdf154672830",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-interactive-turn-strategies.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 协作；owner Loop attempt round-1-interactive-turn-strategies。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-interactive-turn-strategies.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-list-delete-icons.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-opencode-list-delete-icons.md",
+      "removed_sha256": "abf67923d8a8f7ce0a398c2db54d434ae25c6103adfb07d3ad5855d52bf86020",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-opencode-list-delete-icons.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-opencode-list-delete-icons.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-opencode-output-parser-facade.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-opencode-output-parser-facade.md",
+      "removed_sha256": "1045b11e15a8e6f733ee7813a4eb0bdd05484f1bf1ee78d5ee37e33ff432af48",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-opencode-output-parser-facade.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 协作；owner Loop attempt round-2-opencode-output-parser-refactor。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-refactor-opencode-output-parser-facade.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "`npm run build`（`npm run clean && tsc -p ./`）两次均退出码 0。第二次是在修正新测试夹具之后，作为最终构建。",
+        "进程停止的 Windows `taskkill` 路径由既有 mock 测试覆盖，本次 macOS 环境没有实际执行 Windows 停止。",
+        "原记录的验证计划（非本次执行/新增通过证据）：最小相关验证：`npm run build`，然后 `node --test` 运行新增解析测试和三份 command runner 测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-prompt-execution-model.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-prompt-execution-model.md",
+      "removed_sha256": "b2e9080259c96a5ec7c3d56ac7195234267462971eb4efe4b04683672e86d05f",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-prompt-execution-model.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-prompt-execution-model.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-session-health-reuse.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-session-health-reuse.md",
+      "removed_sha256": "8e0a7b88634f9865143bbdf3b9ca3a9b457ef1f0587abcccaa919b441f9c6e7d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-session-health-reuse.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-session-health-reuse.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展回归：`node --test dist/test/session/*.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/extensionHost/promptParallelRuntime.test.js dist/test/extensionHost/promptOneShotRuntime.test.js dist/test/extensionHost/promptSessionHealth.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/webview/traceToolTitleLocalization.test.js`，187 项全部通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-task-auto-repair-retry.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-task-auto-repair-retry.md",
+      "removed_sha256": "6fa41da3e4d584cf90367b05ddfd3a58b39fd1dc30db83db9048dd9ad04bae04",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-task-auto-repair-retry.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-task-auto-repair-retry.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-thinking-bubble-scroll.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-test-thinking-bubble-scroll.md",
+      "removed_sha256": "152d487fd92c843f19a7e0a31d76fdaae5b98ef824c6d91fc0772b4ad90de096",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-thinking-bubble-scroll.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-18；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-18-feature-thinking-bubble-scroll.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：单元自测：`npm run build` 后运行新增思考气泡回归、最终答复及 Webview 运行时测试。",
+        "原记录列出新增四个思考气泡回归用例，已有 thinking delta 用例继续通过；测试夹具同步真实 DOM 的 parentElement、firstChild、节点搬移及 getComputedStyle。该记录未另列独立执行统计。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-loop-cross-cli-submodels.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-test-loop-cross-cli-submodels.md",
+      "removed_sha256": "8cd20e11cb1652126bf43ed0854ef566bba70148e1b344cf3916d80c03904ce4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-feature-loop-cross-cli-submodels.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-19；状态 completed；类型 test；负责人 Codex；owner loop-cross-cli-submodels。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-19-feature-loop-cross-cli-submodels.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-loop-safe-execution-root-cleanup.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-test-loop-safe-execution-root-cleanup.md",
+      "removed_sha256": "c80238f7011becf82bb2a98fb951fb469cb924e9c3a7c0821df664196dbeef71",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-19-bugfix-loop-safe-execution-root-cleanup.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-19；状态 completed；类型 test；负责人 Codex；owner loop-safe-cleanup。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-19-bugfix-loop-safe-execution-root-cleanup.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录称已有 18 项回归覆盖；该测试计划未另列独立执行命令和通过/失败统计，不将覆盖条目升级为新的执行结论。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-20-remove-implicit-subagents-toggle.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-20-test-remove-implicit-subagents-toggle.md",
+      "removed_sha256": "394c270c8d18b14966489b91ace5e5366674b4f8b13a4e89b36556751b5bea3d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-20-feature-remove-implicit-subagents-toggle.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-20；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-20-feature-remove-implicit-subagents-toggle.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-21-grok-user-question-bridge.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-21-test-grok-user-question-bridge.md",
+      "removed_sha256": "20d71341aace226f61a5905cb87d939bfbea38dbbf82a4e93631d00166edfa92",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-21-bugfix-grok-user-question-bridge.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-21；状态 completed；类型 test；负责人 Codex；owner 已释放。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-21-bugfix-grok-user-question-bridge.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-cli-model-selection-strategies.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-test-cli-model-selection-strategies.md",
+      "removed_sha256": "db8188f76913fdb50bf802594575a04ed0a8bc1a46c42fa370ed65b2a05284be",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-cli-model-selection-strategies.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-22；状态 completed；类型 test；负责人 协作；owner refactor-cli-model-selection-strategies-20261022。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-cli-model-selection-strategies.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-conversation-tab-model-restore.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-test-conversation-tab-model-restore.md",
+      "removed_sha256": "bc2de0f3fea0b45334f0da8cd406cd593a71171ffbb6f2eb83a33bd14dd6dddf",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-feature-conversation-tab-model-restore.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-22；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-22-feature-conversation-tab-model-restore.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展测试中的 5 项范围外失败均已用 `git archive HEAD` 导出的独立基线编译复现，未在本次修复",
+        "原记录的测试变化数量为恢复规则 19 项及新增 3 项 Webview 乐观标签切换回归；上述数量不是本次重跑结果。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-interactive-runner-lifecycle.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-test-interactive-runner-lifecycle.md",
+      "removed_sha256": "ca243c65b2d8fd79721a1e84b19f0273163e0f15a52e8d2ed92d5eb331b4b5ed",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-interactive-runner-lifecycle.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-22；状态 completed；类型 test；负责人 协作；owner Loop attempt round-1-refactor-interactive-runner-lifecycle。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-22-refactor-interactive-runner-lifecycle.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：最小相关验证：`npm run build`，然后运行新增测试与下列回归。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-image-preview.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-test-chat-image-preview.md",
+      "removed_sha256": "c2787587d8dc5efadd4af195385ceb61a34e4b88c8b1ef9995512eaf02e5a9c8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-image-preview.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-23；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-image-preview.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-local-image-download.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-test-chat-local-image-download.md",
+      "removed_sha256": "9d7cae4319cb02fe5ad7a74a06dcd243b8fcfbc5032c19ef8984c15c1cdc9114",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-local-image-download.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-23；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-local-image-download.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chat-svg-preview.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-test-chat-svg-preview.md",
+      "removed_sha256": "8cd259f876806634f38c9acbb8992132acb2c58253a776de695c3a599a182578",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-svg-preview.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-23；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-23-feature-chat-svg-preview.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "新增 renderer.code 绑定要求在三处 Marked mock 补齐 code 方法。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-vsix-size-reduction.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-test-vsix-size-reduction.md",
+      "removed_sha256": "8fed4ee7fee197aac4cd8ec60510f722bc54236c3813f3d671082f832fa26ac3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-vsix-size-reduction.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-23；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-23-chore-vsix-size-reduction.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：构建与回归：`npm run build`；新增测试、Claude runner、Markdown 预览、scaffold 测试。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-dsh-integration.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-test-dsh-integration.md",
+      "removed_sha256": "5de1b4f8c5a4c2b3a8a2dbd2ec2bbfa83796c1465baf9a0cd5b8905218fa4778",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-dsh-integration.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-24；状态 completed；类型 test；负责人 协作；owner round-13-dsh-documentation-closeout-sync。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-dsh-integration.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-loop-shared-markdown.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-test-loop-shared-markdown.md",
+      "removed_sha256": "50346d14c16825c1d149e379f856a232a1b53563599d744689f1b6f222fe95b3",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-loop-shared-markdown.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-24；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-loop-shared-markdown.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-svg-task-summaries.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-test-svg-task-summaries.md",
+      "removed_sha256": "442cc98c217773184e0261b1e0add5e0ce71372a276ce1b8c140a6a5d6a024bb",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-svg-task-summaries.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-24；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-24-feature-svg-task-summaries.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-config-model-picker.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-test-dsh-config-model-picker.md",
+      "removed_sha256": "15ef3df96b63318c4391944579f958422b9443d4e65f64a734c84e73e89c783f",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-model-picker.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-25；状态 completed；类型 test；负责人 Codex；owner - claimed_at：。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-model-picker.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-config-visual-model-fields.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-test-dsh-config-visual-model-fields.md",
+      "removed_sha256": "208f5744811f0a06ab2eb8a8a03498294bf44f72df57489cb1d5ca21eea16d58",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-visual-model-fields.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-25；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-config-visual-model-fields.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展 DSH 相关回归：`dist/test/config/dshConfig.test.js`、`dist/test/extensionHost/dshModelSelection.test.js`、`dist/test/extensionHost/dshInteractiveHostWire.test.js` 通过；组合命令中的 Grok Webview 两项因测试 harness 缺少既有 `getLoopRoleThinkingOptionsForCli` / `isActiveConversationTabExecutionLocked` 注入而失败，属于范围外既有测试夹具问题，未修改。",
+        "原验证计划的扩展页面测试以环境允许为条件；不能由历史 completed 状态推出所有页面测试已执行。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-loop-role-model-selection.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-test-dsh-loop-role-model-selection.md",
+      "removed_sha256": "3abceea7b214f6e5996a9bdb86950be9d415571f8f2021260ed89e25f2b1e44e",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-bugfix-dsh-loop-role-model-selection.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-25；状态 completed；类型 test；负责人 Codex；owner - claimed_at：。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-25-bugfix-dsh-loop-role-model-selection.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-dsh-thinking-effort.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-test-dsh-thinking-effort.md",
+      "removed_sha256": "8739aabea6741523599d9d0432fd72c5c1d032c437d3143ba8c57dfe28a78a48",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-thinking-effort.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-25；状态 completed；类型 test。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-25-feature-dsh-thinking-effort.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "`npm run build`：通过。首次构建发现新增 Extension Host 测试回调参数隐式 `any`，按配置服务函数签名补齐类型后通过。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-human-interaction-history.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-test-human-interaction-history.md",
+      "removed_sha256": "18b267289d253bbc76ae54c08f24b2361c20badb04f0ca41a2dcfa7de4125d78",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-feature-human-interaction-history.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-26；状态 completed；类型 test；负责人 Codex；owner human-interaction-history。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-26-feature-human-interaction-history.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-publish-python-migration.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-test-publish-python-migration.md",
+      "removed_sha256": "2f75863972c60e560e5522d6d4021006cde9e6249647a0edf162954a6f709f14",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-publish-python-migration.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-26；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-publish-python-migration.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：扩展验证：npm run build、相关 Node 测试、当前 Windows 真实导出与 ZIP 审计，不上传市场。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-run-dev-python-migration.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-test-run-dev-python-migration.md",
+      "removed_sha256": "a7bb9e6e1a1cf20f61df6039b8a7113c5270c2dac6aa46dfebc1fdc84f8c3005",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-run-dev-python-migration.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-26；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-26-chore-run-dev-python-migration.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-test-kimi-config-simplification.md",
+      "removed_sha256": "04f7b264fe19f9cc0c75a0bd472c3e2db73f699a172f783019c8a5636c8a1bd4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-27；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-test-kimi-replay-model-polish.md",
+      "removed_sha256": "c45910c97b308fdfafcf302e2a5f0b79fb91703524bb8ebecf9995985132c8d6",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-27；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-move-vscode-python-scripts.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-test-move-vscode-python-scripts.md",
+      "removed_sha256": "0afd0320094af758ce1b3bba0f3066f9dbb9bd7f99a987104bc0a1824bf95df5",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-27-chore-move-vscode-python-scripts.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-27；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-27-chore-move-vscode-python-scripts.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-confirmed-cli-switch.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-test-confirmed-cli-switch.md",
+      "removed_sha256": "a4754f3dca63d526cd128fdedcfcff53cf2da70e8d4cc53a46ecf24bfe91a46d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-confirmed-cli-switch.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-28；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-confirmed-cli-switch.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-raw-svg-bubble-compatibility.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-test-raw-svg-bubble-compatibility.md",
+      "removed_sha256": "0672b9ee2667d7f132e4d978e87f8fa31500702bf79e41d94ba7ba54e0256dc8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-raw-svg-bubble-compatibility.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-28；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-raw-svg-bubble-compatibility.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展运行时全量测试未作为本次验证：额外试跑中 2 项相邻广域页面/状态单测失败，分别因其他未提交更改影响静态 CLI 选项和现有状态断言，不属于 SVG 相关测试；本次相关测试全部通过，不扩大修复范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-skills-market-local-zip.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-test-skills-market-local-zip.md",
+      "removed_sha256": "c8cdfbae995dcc99663e57aa19ac91807b2fc0ef2a0f33927fdc202105447151",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-skills-market-local-zip.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-28；状态 completed；类型 test；负责人 Codex；owner - claimed_at：。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-28-feature-skills-market-local-zip.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-zcode-trace-bubbles.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-test-zcode-trace-bubbles.md",
+      "removed_sha256": "04cf1de9d51efb14456b21ecd30a7e6dd7a46558764a297c88e4017e04415231",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-zcode-trace-bubbles.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-28；状态 completed；类型 test；负责人 Codex；owner - claimed_at：。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-28-bugfix-zcode-trace-bubbles.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原记录的验证计划（非本次执行/新增通过证据）：单元自测命令：`npm run build`；`node --test` 执行新增/相关编译测试；`npm run test:page`。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-all-cli-config-sync.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-all-cli-config-sync.md",
+      "removed_sha256": "1d9526f741b4b75acc25208211cd21f65ee4c6dee50d0a8560b0c097219ea310",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-all-cli-config-sync.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-all-cli-config-sync.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "Webview 新增矩阵覆盖七个主 CLI × Loop／Loop+ × 七个目标 CLI，验证初始化、保存后模型变化、无误报和主 CLI 不切换；补充角色模式的加载中／已加载但无档案／读取失败／恢复生命周期，连同四项 ZCode 专项共 6 项通过，日志 `/tmp/sinitek-all-cli-save-modes.log`。生命周期夹具修正为与真实宿主一致的角色模型选择字段，不改生产逻辑迎合夹具。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-config-backup-registry.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-config-backup-registry.md",
+      "removed_sha256": "40553312eed823c7e3c05bb6c69e6463bc94963505663c6853adcdd002e357d8",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-refactor-config-backup-registry.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex；owner round-2 子任务（msg_1793254575059_b2ba006663089 / config-backup-contract-repair-and-refactor）。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-refactor-config-backup-registry.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "round-2 新增断言 `assert.notEqual(kimiStat.mode & 0o777, 0o600)` 把默认权限误当作固定权限：非 DSH 平台沿用 Node 默认创建权限，合法的继承 umask 077 可使 Kimi 备份本来就是 0o600。主审实测 `(umask 077; node --test --test-name-pattern='DSH and Kimi Code backups' …)` 得 0 pass / 1 fail（actual=expected=384 即 0o600，exit 1）。",
+        "修复：删除「非 DSH 权限不得等于 0o600」的假设。在同一临时备份目录用普通 `fs.writeFile`（不显式传 mode）创建对照文件 `reference_default_mode_file`（不匹配任何平台前缀），POSIX 上断言 Kimi 备份权限位与该默认创建文件一致；DSH 仍独立断言 0o600；Windows 继续跳过权限位断言但保留文件名、原文等行为验证。未修改 Kimi 生产权限、未给非 DSH 平台加 chmod、未改测试进程 umask、未吞权限异常。原两行测试注释的信息（同毫秒时间戳覆盖导致不断言列表长度为 2）保留在本节与测试名称中。",
+        "历史 round-1 审计已纠正时间戳唯一性误述：new Date().toISOString() 仅毫秒精度，同毫秒调用可同名覆盖；只保证同一调用内共享时间戳，不保证跨调用唯一；不应将不同调用必然产生不同路径或列表长度必为 2 当作通过条件。",
+        "历史缺陷一分类为 contracts / 设计契约未落实：前缀双重事实已通过平台无关 baseName 和统一 runBackup 拼接修正；六平台前缀仅在 BACKUP_PLATFORMS 定义，文件名与路径数组顺序未变。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-human-interaction-history-workspace-scope.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-human-interaction-history-workspace-scope.md",
+      "removed_sha256": "390b3c94e415571f15fb3a227339c89cc4fe8945e1df0b4d9128fc9d0c9655e4",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-human-interaction-history-workspace-scope.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-human-interaction-history-workspace-scope.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "扩展测试组：包含整个 Webview runtime coverage 的五文件测试组最终 128/129 通过，唯一失败为下述历史用例。",
+        "原记录列出的测试变化数量为新增四条核心测试和一条 Webview 测试；唯一历史失败的具体上下文仍见同源存活计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-loop-plus-acceptance-plan.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-loop-plus-acceptance-plan.md",
+      "removed_sha256": "d7b8ba57184e6fe6449cf76e2a49b3c22e52aed632a0e2fa0778565ffef6cb38",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-feature-loop-plus-acceptance-plan.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-feature-loop-plus-acceptance-plan.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-zcode-context-compaction.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-zcode-context-compaction.md",
+      "removed_sha256": "690f608bfe323303c22aff4bd7a63bda4f9f4832526301375c7114889f764692",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-zcode-context-usage.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-bugfix-zcode-context-usage.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-zcode-semantic-replay.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-test-zcode-semantic-replay.md",
+      "removed_sha256": "617faf606936b7ddb62c1007c0f33331c66fde23e9a111906b4a643ced72a95c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-29-perf-zcode-semantic-replay.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-29；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-29-perf-zcode-semantic-replay.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-classic-loop-report-driven.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-classic-loop-report-driven.md",
+      "removed_sha256": "3c4f6eb09b20ef95dd095139503d11c2217f9470372971c0994029725c66f166",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-classic-loop-report-driven.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-classic-loop-report-driven.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "开发阶段新增测试遇到 Object.hasOwn 与项目 TS lib 不兼容、续跑决策字面类型扩宽和规范化夹具字段不足，均属于测试夹具问题；已按现有 API 与实际规范化入口修正并重跑通过，未为测试放宽业务规则。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-cli-config-visual-unification.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-cli-config-visual-unification.md",
+      "removed_sha256": "5211a5a29dd7808d0a15ae9ff76f132f59b2ef4143fac5bf094659620997ffd7",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-cli-config-visual-unification.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex / 人类 / 协作；owner Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-cli-config-visual-unification.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-codex-config-visual-editor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-codex-config-visual-editor.md",
+      "removed_sha256": "59d5d4bd5d157b196a023b226f9f01e091e60ab2bcaf35cb7fd45ff249ce4c2a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-codex-config-visual-editor.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex；owner - claimed_at：2026-10-31。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-codex-config-visual-editor.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-config-source-editor.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-config-source-editor.md",
+      "removed_sha256": "02ec19193f48be8ba2ae89b59f519fe6e05d224f3be8817a12b7373811cfad4a",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-config-source-editor.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-config-source-editor.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "全仓库 whitespace 检查仍报告并行修改的 `src/extension.ts` 三处和 `src/test/session/sessionMessageHandlersCoreCoverage.test.ts` 一处空白问题；本任务修改范围无空白错误，未修复范围外文件。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loop-subtask-session-reuse.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-loop-subtask-session-reuse.md",
+      "removed_sha256": "b708b01fb996170ca0e004fbea2522bdfa67708b52f30cf31fd6dedcaf8764bb",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loop-subtask-session-reuse.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loop-subtask-session-reuse.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "新增同 CLI 测试曾沿用跨 CLI 的路由和思考档位断言，归类为新增测试准备问题；按既有同 CLI 参数规则修正断言，没有修改对应生产语义迎合测试。",
+        "原记录的验证计划（非本次执行/新增通过证据）：按 .ch/docs/TESTING.md 从新增单测扩大到经典及 Loop+ 相关回归，执行 npm run build。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-acceptance-reasons.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-loopplus-acceptance-reasons.md",
+      "removed_sha256": "2856b7dc043ab1aa91081028e6d50720f2dec7d19949280a680b23bd72623937",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-acceptance-reasons.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-acceptance-reasons.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-loopplus-role-model-routing.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-loopplus-role-model-routing.md",
+      "removed_sha256": "e5bee89c05139435adc9d9859a20e6c2a2a4be8f12b6dc6895a88bfc7742aee1",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-role-model-routing.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 协作；owner loop-plus-routing attempt。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-loopplus-role-model-routing.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-native-config-modal.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-native-config-modal.md",
+      "removed_sha256": "01a0bf6aed15001eba9e2cdce9e446543caef1475296d27d7976aa1bfe4ff64d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-native-config-modal.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-feature-native-config-modal.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。",
+        "原决策记录明确「不再继续扩展测试或功能」；删除计划不撤销该历史边界，也不声称本机环境已新增验收。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-visible-instruction-grouping.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-test-visible-instruction-grouping.md",
+      "removed_sha256": "b5a127c98544b8b997198b78f53194f10c0fb27f845baf8c98e97387df485a6b",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-10/2026-10-31-bugfix-visible-instruction-grouping.md",
+      "retained_evidence": [
+        "删除前元数据：日期 2026-10-31；状态 completed；类型 test；负责人 Codex。",
+        "历史验证及未决边界沿用同源存活记录 .ch/docs/exec-plans/completed/2026-10/2026-10-31-bugfix-visible-instruction-grouping.md#历史验证与未决事项；本次只删除计划，不重跑历史命令、不改变原结果，也不把原测试开发并回该计划。"
+      ]
+    }
+  ]
+}

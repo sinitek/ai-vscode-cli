@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "cleanup_date": "2026-11-11",
+  "partition": "apr-jun",
+  "entries": [
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-loop-parallel-first.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-test-loop-parallel-first-coverage.md",
+      "removed_sha256": "6ee20a5ce9c46776345d4a866a0843c712c5f696061df3b7a0907effe476c56c",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-05-feature-loop-parallel-first.md",
+      "retained_evidence": [
+        "历史结果：原记录已新增 src/test/loopParallel.test.ts；只删除本次列出的计划文档，不删除测试源码或夹具。",
+        "历史验证命令与结果：node --test dist/test/loopParallel.test.js 通过。",
+        "证据边界：此为原计划整组验证记录，不是本轮执行，不扩大为独立 UI 或真实运行验收；未单独记录的结果仍未验证。",
+        "删除说明：2026-11-11 按用户“全部拆分后，所有 test 类型都删掉”要求删除测试类型计划；本轮未执行历史命令，也不新增通过结论；仅保留历史事实审计，不重建目标、实施范围或验收清单，独立测试开发不转入任何存活计划交付范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-claude-native-context-compaction.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-test-claude-native-context-compaction-coverage.md",
+      "removed_sha256": "efef0c743da2ace36eeab5fee70b6c65be22f6a54d5934d993541774bdc7d1c1",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-05/2026-05-21-feature-claude-native-context-compaction.md",
+      "retained_evidence": [
+        "历史结果：原记录已补充 Claude compaction 事件/回退判定测试；只删除计划文档，不删除实际测试。",
+        "历史验证记录：npm run build 与最小相关测试通过。",
+        "历史已执行命令：npm run build；node --test dist/test/claudeRunner.test.js；node --test dist/test/codexAppServerEvents.test.js。",
+        "证据边界：原记录未逐条给出独立测试数量；真实 CLI smoke 属于历史集成验证，不是本轮执行或新的独立 UI 验收；未单独记录的结果仍未验证。",
+        "删除说明：2026-11-11 按用户“全部拆分后，所有 test 类型都删掉”要求删除测试类型计划；本轮未执行历史命令，也不新增通过结论；仅保留历史事实审计，不重建目标、实施范围或验收清单，独立测试开发不转入任何存活计划交付范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-17-loop-main-sub-group-chat.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-17-test-loop-main-sub-group-chat-coverage.md",
+      "removed_sha256": "de7a1bb0f0dd1d23e59a26ba4e3a422b7c57aa18b600df09c910a5ca82f1342d",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-17-feature-loop-main-sub-group-chat.md",
+      "retained_evidence": [
+        "历史结果：原记录已增加主从群聊 transcript 解析测试；只删除计划文档，不删除测试源码。",
+        "历史验证通过：npm run build；node --test dist/test/loop/loopGroupChat.test.js；git diff --check。",
+        "历史未验证：未做真实 VS Code Extension Host 手工验收；不将现有面板手工验收记为已执行。",
+        "证据边界：命令和结果摘自原计划整组记录，并非本轮执行；未单独记录的结果仍未验证。",
+        "删除说明：2026-11-11 按用户“全部拆分后，所有 test 类型都删掉”要求删除测试类型计划；本轮未执行历史命令，也不新增通过结论；仅保留历史事实审计，不重建目标、实施范围或验收清单，独立测试开发不转入任何存活计划交付范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-22-loop-question-conclusion.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-22-test-loop-question-conclusion-coverage.md",
+      "removed_sha256": "c3a78334a940934030f205622a545c3fb659188af302cd70f83a5eab53d12349",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-22-bugfix-loop-question-conclusion.md",
+      "retained_evidence": [
+        "历史结果：原记录已补充回归测试；只删除计划文档，不删除 src/test/ 中的实际测试。",
+        "历史验证命令与结果：node --test dist/test/*.test.js 通过，82/82。",
+        "证据边界：82/82 是原计划整组验证，不扩大为独立 UI 或真实运行验收；不是本轮重跑，未单独记录的结果仍未验证。",
+        "删除说明：2026-11-11 按用户“全部拆分后，所有 test 类型都删掉”要求删除测试类型计划；本轮未执行历史命令，也不新增通过结论；仅保留历史事实审计，不重建目标、实施范围或验收清单，独立测试开发不转入任何存活计划交付范围。"
+      ]
+    },
+    {
+      "source_old_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-27-official-skills-version-refresh.md",
+      "removed_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-27-test-official-skills-version-coverage.md",
+      "removed_sha256": "8ea58946e99fe2e4ab6eda5e42bf9b8763f9e813e44bb81cf2b0ebc273898add",
+      "removed_status": "completed",
+      "reference_path": ".ch/docs/exec-plans/completed/2026-06/2026-06-27-feature-official-skills-version-records.md",
+      "retained_evidence": [
+        "历史结果：原记录“阶段 6：测试”已勾选；没有逐条新增测试 diff，不补造断言或独立测试通过结果。",
+        "历史验证命令与结果：node --test dist/test/officialSkillService.test.js dist/test/officialSkillsVersioning.test.js 通过，11/11；原记录明确该数量来自清理阶段。",
+        "证据边界：原计划的扩展 UI 状态验证属于验证计划，不能视为已执行；未单独记录的结果仍未验证，整组记录不是独立 UI 或真实运行验收。",
+        "历史失败与限制的其它记录仍留在关联 chore 存活计划，未因删除测试计划而修改为通过。",
+        "删除说明：2026-11-11 按用户“全部拆分后，所有 test 类型都删掉”要求删除测试类型计划；本轮未执行历史命令，也不新增通过结论；仅保留历史事实审计，不重建目标、实施范围或验收清单，独立测试开发不转入任何存活计划交付范围。"
+      ]
+    }
+  ]
+}

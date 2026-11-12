@@ -2,7 +2,7 @@
 
 - 日期：2026-11-07
 - 状态：已实现并接线；完整构建、领域/集成回归与页面测试通过。
-- 执行记录：[配置请求命令路由执行计划](../exec-plans/completed/2026-11/2026-11-07-config-request-command-routing.md)。
+- 配置请求命令路由的类型化执行记录：[行为保持接线重构](../exec-plans/completed/2026-11/2026-11-07-refactor-config-request-command-routing.md)、[独立设计文档交付](../exec-plans/completed/2026-11/2026-11-07-docs-config-request-command-routing.md)；原测试开发计划已删除，追溯见[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，以 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-config-request-command-routing.md` 定位。该条审计仅保留状态及历史命令、红灯、结果和限制的概述，不含具体命令或测试计数，不能完整恢复原测试计划；本文既有回归记录仍作为历史记录保留，不代表均可从审计恢复。
 
 ## 背景与选择
 
@@ -142,7 +142,7 @@ profiles.ts 的 copy handler
 
 收尾修复后复验（round 3）：只删除服务中的该私有死函数及三个无用导入，保留仍使用的 isPlainObject 和 configCopy 内正在使用的辅助函数，不重新抽象工具或更改容错规则。在本轮宿主 cwd、新建隔离 HOME/缓存且清除继承 CLI 路径覆盖的环境，串行执行标准 build → configcopy、configCopyCompatibility、configService、opencodeConfigService、configprofilenormalization、configProfileRequestHandlers 六文件测试，修复后再次 333/333 通过，0 失败/跳过/取消；日志在 `/tmp/sinitek-copy-cleanup.XxnEhh/build.log`、`tests.tap`。TypeScript AST 核查服务中四个遗留标识符均已消失，isPlainObject 的 14 处标识符出现保留；SHA-256 核对确认策略模块及六个测试源码未改。相关空白与 ontology validate 通过。这是本次修复复验，不宣称主任务最终验收完成；没有改公开 API、策略、保存机制或 UI。
 
-执行记录见 [配置复制策略实现计划](../exec-plans/completed/2026-11/2026-11-08-config-profile-copy-strategies.md)。本次没有用户可见变化，FEATURE_INVENTORY 无需修改；ontology 概念/关系/权限/状态/输入输出/场景不变，既有 configService 与本设计的事实来源路径仍有效，无需语义更新。浏览器验证不适用，不改布局、主题或交互。
+配置复制策略重构与关联设计文档交付见 [重构计划](../exec-plans/completed/2026-11/2026-11-08-refactor-config-profile-copy-strategies.md) 和 [文档计划](../exec-plans/completed/2026-11/2026-11-08-docs-config-profile-copy-strategies.md)；原测试开发计划已删除，追溯见[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，以 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-08-config-profile-copy-strategies.md` 定位。该条审计保留 build、两组测试命令片段与 333/333 结果摘要，不等同于完整测试计划；本文既有隔离环境、测试计数、失败分类、死代码收尾、日志及未验证边界仍作为原正文历史记录保留，不代表均可从审计完整恢复。本次没有用户可见变化，FEATURE_INVENTORY 无需修改；ontology 概念/关系/权限/状态/输入输出/场景不变，既有 configService 与本设计的事实来源路径仍有效，无需语义更新。浏览器验证不适用，不改布局、主题或交互。
 
 ## 如何增加动作
 

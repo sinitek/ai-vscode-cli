@@ -14,3 +14,4 @@
 - 新增 core skill 前必须确认它是默认必要、低噪音且跨任务高复用，避免把按需工具提升为默认入口。
 - 同步 `media/workspace-scaffold` 时只吸收通用 skill 约定；不得因模板更新删除项目专属 skill、profile、测试夹具或脚本。
 - skill 规则发生变化时，应同步对应 `.ch/docs/` 事实来源或执行计划，并保留可复现的验证命令。
+- 执行计划命名、类型分类、跨类型拆分、状态和归档统一以 `.ch/docs/exec-plans/README.md` 为准；本索引与 skill 只保留导航和工作流入口。

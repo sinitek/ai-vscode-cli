@@ -1,47 +1,30 @@
 ---
 name: execution-plan
-description: Use for non-trivial, multi-step, risky, or cross-cutting changes that need an in-repo execution plan, explicit acceptance criteria, validation notes, and documentation sync.
+description: Use for non-trivial, multi-step, risky, or cross-cutting work that needs a resumable in-repo plan, explicit acceptance criteria, validation notes, and documentation sync.
 ---
 
 # Execution Plan
 
-目标：把长周期任务变成仓库内可继续、可验收、可交接的执行记录。
+目标：把长周期任务变成仓库内可继续、可验收、可交接的执行记录。分类、命名、拆分和归档以 `.ch/docs/exec-plans/README.md` 为单一事实来源，使用 `.ch/docs/exec-plans/TEMPLATE.md`。
 
 ## 什么时候用
 
-- 任务分为多个阶段
-- 涉及多个目录、多个系统边界或多个角色
-- 涉及迁移、重构、质量治理、平台改造、安全/可靠性基线
-- 本轮不能一次性完全收尾，需要给后续代理或人类留下清晰上下文
+- 任务分为多个阶段，涉及多个目录、系统边界或角色。
+- 涉及迁移、重构、质量治理、平台改造或安全/可靠性基线。
+- 本轮不能一次性完全收尾，需要给后续代理或人类留下清晰上下文。
 
 ## 工作流
 
-1. 使用 `.ch/docs/exec-plans/TEMPLATE.md` 创建或更新 `.ch/docs/exec-plans/active/<YYYY-MM-DD>-<slug>.md`。
-2. 记录目标、背景、范围、非目标、验收标准、影响面、风险、验证计划、单元自测命令、未决问题。
-3. 把任务列表与计划状态保持一致。
-4. 如果实现过程中出现关键决策或偏离，立刻写回计划或相关设计文档。
-5. 收尾前，检查相关文档是否需要同步更新，包括：
-   - `ARCHITECTURE.md`
-   - `.ch/docs/*.md`
-   - `.ch/docs/product-specs/*`
-   - `.ch/docs/memory/*`：只在仍有跨会话价值时更新。自动任务记录不得写入 `ROLLING_SUMMARY.md`。
-     - `ROLLING_SUMMARY.md` 只在收尾时按需手写短阶段摘要，插件不会自动追加。
-     - `EVENT_MEMORY.md` 只在出现失败原因、成功方案、迁移、回滚、事故或关键决策时自动保留对应事件句；没有这类事件时不要更新它。
-6. 对有一定复杂度的功能，按项目现有测试体系执行单元自测；若失败，先按实现缺陷、断言过期、夹具问题、环境问题、历史失败或范围外失败分类，再修复、隔离或记录。
-7. 工作真正完成且计划头部状态标记为 `completed` 后，按计划日期创建严格的 `.ch/docs/exec-plans/completed/YYYY-MM/` 月份目录（例如 `completed/2025-06/`），再把计划移入其中并留下验证结论；不要把完成计划平铺在 `completed/` 根目录。
-8. 归档后更新仓库内引用该计划的具体路径，验证目标文件存在，并在结果中返回完整归档路径。
-9. 需要枚举历史完成计划时，递归扫描 `.ch/docs/exec-plans/completed/**/*.md`，并使用完整相对路径作为计划标识。
+1. 创建或更新 `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`。日期后只能出现一个 type：`feature`、`bugfix`、`refactor`、`chore`、`docs`、`test`、`perf`；不要使用 `feat` 或 `fix`。具体含义以 README 为准，`bugfix` 专指已发布版本中的 bug 修复。
+2. 记录目标、背景、范围、非目标、验收标准、影响面、风险、验证计划、测试命令和未决问题。
+3. 一个任务包含多个实质工作类型时，按类型分别建计划；每份分别有目标、范围、验收、验证和真实状态。在“关联计划”写具体路径并说明共同背景与依赖。禁止只选主类型、混合多个 type、复制整篇混合正文或把实质工作藏在附带事项中。仅记录验证执行证据不构成 `test` 开发计划。
+4. 把任务列表与计划状态保持一致；拆分不伪造完成，也不改变既有阻塞状态。
+5. 如果实现过程中出现关键决策或偏离，立刻写回计划或相关设计文档。
+6. 收尾前，检查架构、主题文档、产品规格、记忆、测试结果及 ontology 是否需要同步。
+7. 只有计划真实完成且状态为 `completed` 后，才按计划日期归档到 `completed/YYYY-MM/`；不要把完成计划平铺在 `completed/` 根目录。
+8. 归档或迁移后更新应更新的具体引用并核对目标；枚举历史完成计划时递归扫描 `completed/**/*.md`，保留完整相对路径。
 
-## 产出要求
+## 产出与验证
 
-- 给出当前计划文件路径
-- 标记当前阶段
-- 明确已经验证了什么、还缺什么
-- 记录单元自测命令、结果和失败处理结论
-
-## 不要这样做
-
-- 不要为一两个小改动滥建计划
-- 不要省略验收标准
-- 不要在计划里隐藏未验证风险
-- 不要让自动任务记录写入 `ROLLING_SUMMARY.md`；自动写入只允许进入 `EVENT_MEMORY.md`
+- 记录当前计划路径、阶段、已验证与未验证范围、命令和结果、失败处理结论及下一步。
+- 不要为一两个小改动滥建计划，不要省略验收或隐藏未验证风险。

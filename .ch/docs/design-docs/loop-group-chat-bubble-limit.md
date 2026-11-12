@@ -2,7 +2,7 @@
 
 - 日期：2026-11-11
 - 状态：已实现；原限额及补充需求保护的构建、相关单测与 Chromium 宽窄屏验证均通过，分批结果见实施记录。
-- 实施记录：`.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-group-chat-message-limit.md`；补充需求保护记录见 `.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-group-chat-preserve-requirements.md`。
+- 功能实施记录：`.ch/docs/exec-plans/completed/2026-11/2026-11-11-feature-loop-group-chat-message-limit.md`；规格文档交付见 `.ch/docs/exec-plans/completed/2026-11/2026-11-11-docs-loop-group-chat-message-limit.md`。该功能原测试开发的历史证据见[十一月删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按 `source_old_path` `.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-group-chat-message-limit.md` 定位。补充需求保护的缺陷修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-11-bugfix-loop-group-chat-preserve-requirements.md`，其测试历史证据见同一审计、按 `source_old_path` `.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-group-chat-preserve-requirements.md` 定位；规格文档交付见 `.ch/docs/exec-plans/completed/2026-11/2026-11-11-docs-loop-group-chat-preserve-requirements.md`。
 
 ## 配置与事实来源
 
@@ -17,6 +17,14 @@
 - 保护游标之前的补充需求与游标之后的窗口共同渲染；同一批次跨过补充需求时继续向后寻找普通气泡，不能靠跳过需求缩减清理批量。始终至少保留最新一条；补充需求本身已达到或超过上限时，允许受保护需求及最新气泡超限，不删除需求来强行满足限额。
 - `LoopGroupChatPanel` 保存窗口起点，增量 patch 复用，思考气泡消失后不回填旧消息。设置值改变或任务改变时重算，关闭重开也重算。
 - 筛选发生在 `renderSegment` 和 Markdown 编码之前，只生成受保护补充需求及最新窗口的气泡 HTML；完整聊天记录仍由既有事实来源保存。
+
+## Loop+ 验收锚点保护
+
+Loop+ 左侧成员通过最近一次已验收完成事件定位「验收结果」气泡，成功与失败使用同一定位链路。`src/loopPlusAcceptancePlan.ts` 将完成事件 ID 数组以 URI 编码 JSON 写入 `loop-plus-acceptance` HTML 注释；`src/loopGroupChatAcceptance.ts` 将当前成员最近一次已验收 attempt 的完成事件与反馈精确关联，渲染前移除注释。批量反馈可成为多个成员的共同目标，同名标题不影响精确身份匹配。旧反馈无注释时仅按唯一完整标题兼容，存在歧义不生成入口。
+
+`buildLoopGroupChatPanelContentPatch` 一次计算成员入口与时间线锚点。可定位的最新验收气泡与 `user-message` 一样传入既有保护谓词，即使位于窗口游标之前也保留；它们仍计入总数、必要时允许超限。普通气泡继续执行原有批次清理规则，不回填旧消息。不增加持久化字段、调度消息或额外的历史读取接口。
+
+入口使用原生按钮，目标具有 `tabindex=-1` 和主题焦点框；点击后滚动并聚焦目标，窄屏收起抽屉。尊重减少动态效果偏好；无反馈或加载错误不生成悬空入口。回归入口为 `src/test/loop/loopGroupChatAcceptance.test.ts`。
 
 ## 边界与非目标
 

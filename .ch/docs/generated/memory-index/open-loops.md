@@ -4,7 +4,8 @@
 
 ## Active Plans
 
-- 当前无 active plan
+- `.ch/docs/exec-plans/active/2026-11-03-bugfix-loop-cli-model-routing.md`：Loop 全 CLI 模型与思考力度路由修复 (~581 tokens)
+- `.ch/docs/exec-plans/active/2026-11-03-chore-loop-routing-live-acceptance-release.md`：Loop routing live acceptance and 1.7.6 release gate (~644 tokens)
 
 ## Pending Items
 

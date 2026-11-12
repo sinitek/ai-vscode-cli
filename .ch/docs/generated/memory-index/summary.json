@@ -1,19 +1,48 @@
 {
-  "active_plans": [],
-  "claim_count": 127,
+  "active_plans": [
+    {
+      "modified_at": "2026-11-11T12:33:00+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-03-bugfix-loop-cli-model-routing.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 581,
+      "references": [
+        "../migrations/test-plan-removals/2026-11-11-nov-active.json",
+        ".ch/docs/exec-plans/active/2026-11-03-loop-routing-release-176.md",
+        "2026-11-03-chore-loop-routing-live-acceptance-release.md",
+        "scripts/publish_vscode_extension.py"
+      ],
+      "summary": "日期：2026-11-03 类型：bugfix 状态：blocked 负责人：Codex",
+      "title": "Loop 全 CLI 模型与思考力度路由修复"
+    },
+    {
+      "modified_at": "2026-11-11T12:33:00+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-03-chore-loop-routing-live-acceptance-release.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 644,
+      "references": [
+        "../migrations/test-plan-removals/2026-11-11-nov-active.json",
+        ".ch/docs/exec-plans/active/2026-11-03-loop-routing-release-176.md",
+        "2026-11-03-bugfix-loop-cli-model-routing.md",
+        "scripts/publish_vscode_extension.py"
+      ],
+      "summary": "日期：2026-11-03 类型：chore 状态：blocked 负责人：Codex",
+      "title": "Loop routing live acceptance and 1.7.6 release gate"
+    }
+  ],
+  "claim_count": 129,
   "claim_stats": {
     "by_confidence": {
       "high": 8,
-      "medium": 119
+      "medium": 121
     },
     "by_status": {
-      "active": 127
+      "active": 129
     },
     "by_type": {
       "decision": 12,
-      "fact": 27,
+      "fact": 28,
       "hypothesis": 1,
-      "instruction": 76,
+      "instruction": 77,
       "preference": 4,
       "risk": 7
     }
@@ -972,6 +1001,20 @@
       "text": "不删除、移动或重排现有 `exec-plans/active/`、`exec-plans/completed/` 计划；只同步计划规则、模板字段和归档约定。"
     },
     {
+      "claim_id": "claim-ad82688799ba",
+      "claim_type": "instruction",
+      "confidence": "medium",
+      "content_hash": "sha256:c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "quote_hash": "sha256:246d7a156cd42d22baf6907fbebb4fd42f99af43a1c418d4110f152a9a7f96c6",
+      "review_after": "2026-09-01",
+      "source_anchor": "3.8 Harness scaffold 与记忆保护",
+      "source_observation_id": "mem-c1d7e714b7",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_span": "heading:3.8 Harness scaffold 与记忆保护",
+      "status": "active",
+      "text": "默认 scaffold 同步不移动或覆盖既有计划。仅在用户明确授权的命名迁移或类型拆分中，才可按逐源映射保留来源证据并修复引用；不得改写 `blocked`、失败或未发布结论，也不得借模板更新覆盖记忆热区或 `.ch/docs/generated/`。"
+    },
+    {
       "claim_id": "claim-bc1a7d3cf073",
       "claim_type": "instruction",
       "confidence": "medium",
@@ -1518,6 +1561,20 @@
       "text": "`ACTIVE_RISKS.md`：不超过 15 条有效风险"
     },
     {
+      "claim_id": "claim-10bdb2817921",
+      "claim_type": "fact",
+      "confidence": "medium",
+      "content_hash": "sha256:431f2548e168fff0575bcb89614492ce054a6dae45f0abc5ea500b41f5381c1e",
+      "quote_hash": "sha256:f09318c6355b2e668cbeebb37a213749efd2bc986079ad477fe3e2d1e30d34d2",
+      "review_after": "2026-10-28",
+      "source_anchor": "使用原则",
+      "source_observation_id": "mem-431f2548e1",
+      "source_path": ".ch/docs/memory/README.md",
+      "source_span": "heading:使用原则",
+      "status": "active",
+      "text": "计划与记忆的 scaffold 保留边界见 `.ch/docs/MEMORY.md` §3.8；明确授权的计划命名迁移/类型拆分是受逐源映射约束的例外，不授权覆盖热区或 generated 内容。"
+    },
+    {
       "claim_id": "claim-2435e8e9d987",
       "claim_type": "instruction",
       "confidence": "medium",
@@ -1798,7 +1855,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-10-31T12:05:20+00:00",
+  "generated_at": "2026-11-11T13:41:36+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1817,7 +1874,7 @@
       ],
       "last_verified_at": "2026-07-18",
       "memory_type": "memory_rules",
-      "modified_at": "2026-10-02T03:18:59+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "path": ".ch/docs/MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -1869,17 +1926,22 @@
       ],
       "last_verified_at": "2026-10-24",
       "memory_type": "event_memory",
-      "modified_at": "2026-10-31T12:05:20+00:00",
+      "modified_at": "2026-11-11T13:41:36+00:00",
       "path": ".ch/docs/memory/EVENT_MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L2 event_memory",
       "read_tokens": 18,
       "references": [
-        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-config-simplification.md",
-        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-kimi-replay-model-polish.md",
+        ".ch/docs/design-docs/loop-subtask-session-reuse.md",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复",
+        ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果",
         ".ch/docs/runbooks/PITFALLS.md",
+        ".ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示",
         ".ch/docs/runbooks/kimi-code-config.md",
         "src/interactive/grokAppServerProtocol.ts",
+        "src/test/extensionHost/dshLoopSessionResumeLive.test.ts",
         "src/test/interactive/grokAppServerProtocol.test.ts"
       ],
       "source_of_truth": ".ch/docs/memory/EVENT_MEMORY.md",
@@ -1978,7 +2040,7 @@
       ],
       "last_verified_at": "2026-08-29",
       "memory_type": "memory_index_rules",
-      "modified_at": "2026-10-02T03:18:59+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "path": ".ch/docs/memory/README.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -2054,8 +2116,69 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 2,
+  "observation_count": 4,
   "observations": [
+    {
+      "concepts": [
+        "active-risk",
+        "open-loop",
+        "problem-solution"
+      ],
+      "content_hash": "404964a44a28c2e82f3218fb5f3805cfef0abe12dd14c175176f981cc6db34c4",
+      "facts": [
+        "日期：2026-11-03 类型：bugfix 状态：blocked 负责人：Codex",
+        "Modified at: 2026-11-11T12:33:00+00:00"
+      ],
+      "files": [
+        "../migrations/test-plan-removals/2026-11-11-nov-active.json",
+        ".ch/docs/exec-plans/active/2026-11-03-loop-routing-release-176.md",
+        "2026-11-03-chore-loop-routing-live-acceptance-release.md",
+        "scripts/publish_vscode_extension.py"
+      ],
+      "id": "mem-404964a44a",
+      "modified_at": "2026-11-11T12:33:00+00:00",
+      "narrative": "日期：2026-11-03 类型：bugfix 状态：blocked 负责人：Codex",
+      "private_stripped": false,
+      "read_tokens": 44,
+      "source_anchor": "Loop 全 CLI 模型与思考力度路由修复",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-03-bugfix-loop-cli-model-routing.md",
+      "source_title": "Loop 全 CLI 模型与思考力度路由修复",
+      "subtitle": "Active execution plan",
+      "title": "Loop 全 CLI 模型与思考力度路由修复",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "active-risk",
+        "open-loop"
+      ],
+      "content_hash": "85ae764cb473c69d8d5686fff8b51d8ad883e74cc826513af09daa951f86c547",
+      "facts": [
+        "日期：2026-11-03 类型：chore 状态：blocked 负责人：Codex",
+        "Modified at: 2026-11-11T12:33:00+00:00"
+      ],
+      "files": [
+        "../migrations/test-plan-removals/2026-11-11-nov-active.json",
+        ".ch/docs/exec-plans/active/2026-11-03-loop-routing-release-176.md",
+        "2026-11-03-bugfix-loop-cli-model-routing.md",
+        "scripts/publish_vscode_extension.py"
+      ],
+      "id": "mem-85ae764cb4",
+      "modified_at": "2026-11-11T12:33:00+00:00",
+      "narrative": "日期：2026-11-03 类型：chore 状态：blocked 负责人：Codex",
+      "private_stripped": false,
+      "read_tokens": 50,
+      "source_anchor": "Loop routing live acceptance and 1.7.6 release gate",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-03-chore-loop-routing-live-acceptance-release.md",
+      "source_title": "Loop routing live acceptance and 1.7.6 release gate",
+      "subtitle": "Active execution plan",
+      "title": "Loop routing live acceptance and 1.7.6 release gate",
+      "topic": "plan",
+      "type": "plan"
+    },
     {
       "concepts": [
         "general"
@@ -2071,7 +2194,7 @@
         ".ch/docs/ontology/"
       ],
       "id": "mem-c1d7e714b7",
-      "modified_at": "2026-10-02T03:18:59+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
       "private_stripped": false,
       "read_tokens": 39,
@@ -2099,7 +2222,7 @@
         ".ch/docs/generated/memory-index/.local/"
       ],
       "id": "mem-431f2548e1",
-      "modified_at": "2026-10-02T03:18:59+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
       "private_stripped": false,
       "read_tokens": 46,
@@ -2114,7 +2237,7 @@
     }
   ],
   "open_loops": {
-    "active_plan_count": 0,
+    "active_plan_count": 2,
     "active_risks": [],
     "pending_items": []
   },
@@ -2141,6 +2264,14 @@
       ],
       "read_tokens": 46
     },
+    "plan": {
+      "count": 2,
+      "ids": [
+        "mem-404964a44a",
+        "mem-85ae764cb4"
+      ],
+      "read_tokens": 94
+    },
     "rule": {
       "count": 1,
       "ids": [
@@ -2149,6 +2280,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 85,
+  "total_read_tokens": 179,
   "version": "0.2.0"
 }

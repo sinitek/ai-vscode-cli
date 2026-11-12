@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "migration_date": "2026-11-11",
+  "canonical_mapping": ".ch/docs/exec-plans/migrations/2026-11-11-nov-active.json",
+  "scope": "completed/2026-11/2026-11-04 (15 original sources)",
+  "entries": [
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chat-cli-config-switch-audit.md",
+      "old_sha256": "71b2341c09300a3da10a8e79604439e8f2db2c259f430e3f34bbb9a1ddfe3526",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-chat-cli-config-switch-audit.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-chat-cli-config-switch-audit.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-chat-cli-config-switch-audit.md",
+      "notes": "chore 承接配置切换链路审计、隔离诊断和修复建议；原文明确将 PITFALLS 事实同步作为实际文档写作，移交 docs companion。原文明确没有新增/修改单元测试，现有 162 项、隔离实验和 ontology 仅是验证证据。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-config-model-import-host.md",
+      "old_sha256": "7db80334fa9a35936d854d645a200672cdf5875d556cb366bc2541659bdc3638",
+      "old_status": "completed（Grok 与其它 CLI 凭据复用修复及回归完成）",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-config-model-import-host.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md",
+      "notes": "沿用已完成三分法：七类 CLI 模型发现/草稿导入归 feature；新增宿主、桥接、协议和凭据安全回归归 test；FEATURE_INVENTORY 与 cli-plugin-runtime ontology 更新归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-cross-window-visible-config.md",
+      "old_sha256": "a883a4de2518b5bfbf6ec11110fb593fae3b6796fa14af07dccbe37ccc398838",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-cross-window-visible-config.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-cross-window-visible-config.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-cross-window-visible-config.md",
+      "notes": "沿用已完成三分法：跨进程配置协议实现归 feature；实际新增并发/失败阻断/版本过期/消息/心跳回归归 test；功能清单、能力规格、CLI参考、PITFALLS 与 ontology 写作归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-explicit-cli-config-ownership.md",
+      "old_sha256": "16c21f84aaa927aa3f3da2d861b38b49261470dbc143f89141226ffe7749d977",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-explicit-cli-config-ownership.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-explicit-cli-config-ownership.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-explicit-cli-config-ownership.md",
+      "notes": "配置归属与执行前失败阻断修复归 bugfix；test 仅承接原文的 228 项最小回归、52 项执行宿主/定时任务/派发定向验证及 1685+212 项扩展/session 回归，保留旧 dispatch 断言与无关 bridge 断言证据；docs 承接 FEATURE_INVENTORY、插件 capabilities、CLI 运行时参考、PITFALLS 与配置协调 ontology。后续仅比较 configId 的方案不倒灌。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-git-sync-full-regression.md",
+      "old_sha256": "a4f57b9800c5d88d16c116b05f8b916f8913625b4895f496f21a3cb2c57259d5",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-git-sync-integration.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-git-sync-test-fixture-pitfall.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-git-sync-integration.md",
+      "notes": "沿用已完成 Git 同步三分法；本叶仅登记既有成果，未改动其正文或身份字段。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-human-interaction-desktop-attention.md",
+      "old_sha256": "5dcdce75ce5b494161095f83fbfd79b01f41f7c15378d8034d6380a52e22d7a5",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-human-interaction-desktop-attention.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-human-interaction-desktop-attention.md",
+      "notes": "提醒控制器、平台适配和宿主接线归 feature；test 承接原文 157 项相关回归及全量 2788/2781/4/3 证据，保留 macOS 先 submitted 后由用户确认看见、Windows/Linux 无真机边界；docs 承接功能清单、能力规格、架构、ontology、PITFALLS、平台差异与一条 EVENT_MEMORY。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-jsonc-runtime-dependency.md",
+      "old_sha256": "721ccf86dd56be004dd3df2391ec4327e6cb392b053435cf89333c14dcda6069",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-jsonc-runtime-dependency.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-jsonc-runtime-dependency.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-jsonc-runtime-dependency.md",
+      "notes": "生产依赖声明与打包护栏归 bugfix；原文明确增加包内容审计、导出包隔离加载和模型导入回归归 test，保留 src/test/shared/vsixPackaging.test.ts 的真实新增测试事实；打包运行手册、功能清单和已有 VSIX ontology 规则同步归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-loop-config-drift-warning.md",
+      "old_sha256": "12617e9d375bdb7f9a1495699089de87b03ba11b87a2c771c6f56c9507a25c38",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loop-config-drift-warning.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-loop-config-drift-warning.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loop-config-drift-warning.md",
+      "notes": "中间方案的忙碌租约警告实现归 bugfix；原文实际新增配置服务/统一入口/Loop 主子任务回归归 test；功能清单、CLI运行时参考和配置协调规则中的中间方案及最终收窄导航归 docs。保留原方案后来被档案身份方案取代的事实。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-loop-supplement-always-available.md",
+      "old_sha256": "a77fe45b6368bb4d9a4808e3039091ca2a072cb17263c674852f2211ec46de2b",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-loop-supplement-always-available.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-loop-supplement-always-available.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-loop-supplement-always-available.md",
+      "notes": "补充需求入口、提交保护和队列行为归 feature；原文实际新增连续提交/重复确认/草稿/经典与 Loop+ 收尾回归及 Chromium 场景归 test；功能清单、调度设计、ontology 与 PITFALLS 同步归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-loopplus-continue-model-summary.md",
+      "old_sha256": "2456099833b18ddaf4192133647cdaf97aa2fb3624470ba19b40cd04dc01fe76",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loopplus-continue-model-summary.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-loopplus-continue-model-summary.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loopplus-continue-model-summary.md",
+      "notes": "续接弹窗摘要取值与渲染修复归 bugfix；新增 split/fullstack、旧任务、缺失模型和隐藏角色保护回归及 Chromium 交互归 test；功能清单和 Loop+ 调度事实同步归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-loopplus-frontend-route-identity.md",
+      "old_sha256": "abb61c5a7fff458f165eae53e0eb9d423f0938d0362e2c83ff8052b43fa89f0c",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loopplus-frontend-route-identity.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-loopplus-frontend-route-identity.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-loopplus-frontend-route-identity.md",
+      "notes": "同 CLI 前端路由和运行时身份修复归 bugfix；历史快照、七 CLI、拒绝边界和运行时绑定回归归 test；调度设计、功能清单和 CLI 运行时 ontology 规则归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-marketplace-publish-audit.md",
+      "old_sha256": "b59dbfd11c98e953dbe43544e0b88f4edf976b25c0fa76c0338999c4b7bf1706",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-marketplace-publish-audit.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-marketplace-publish-audit.md",
+      "notes": "保持单一 chore：原文是发布触发来源审计和治理排查，没有实际新增测试开发或独立文档写作；既有构建/检查仅为审计证据。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-model-selection-config-boundary.md",
+      "old_sha256": "fbe460a103f45d15a6a1e2bedbc6f5184603f4451f98ee65417027c5ebb15c3e",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-model-selection-config-boundary.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-model-selection-config-boundary.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-model-selection-config-boundary.md",
+      "notes": "执行前仅按 configId 检查档案身份的行为归 feature；test 承接原文 97 项最小与 242 项扩展回归及共享/隔离全量 2782/2775/4/3、2753/2746/4/3 证据，不比较内容或 revision、不执行漂移检查，并保留隔离副本缺锁文件的环境失败处理；最终行为、取代漂移中间方案的运行时参考/功能清单/ontology 同步归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-notification-authorization.md",
+      "old_sha256": "906773748f4030177a2a1345a3552886f98e26d128ec9614434b66682e4709c9",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-notification-authorization.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-notification-authorization.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-notification-authorization.md",
+      "notes": "通知授权实现、宿主协议和说明页行为归 feature；原文实际新增助手/transport/宿主/Webview 回归及 Chromium 场景归 test；功能清单、能力规格、排障和 ontology 同步归 docs。"
+    },
+    {
+      "old_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-task-completion-desktop-attention.md",
+      "old_sha256": "4a99cbf7e010811aa2de9a681aa697c26fa1a49091a0d307a3d1c61526b5cae8",
+      "old_status": "completed",
+      "new_paths": [
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-task-completion-desktop-attention.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-task-completion-desktop-attention.md"
+      ],
+      "reference_path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-task-completion-desktop-attention.md",
+      "notes": "完成提醒实现与业务过滤归 feature；原文实际新增完成门槛、静默、去重、并发清理回归归 test；ARCHITECTURE、功能清单、ontology 与平台依据同步归 docs。"
+    }
+  ],
+  "deferred_removals": []
+}

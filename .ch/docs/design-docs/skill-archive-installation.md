@@ -44,4 +44,4 @@ configService / 旧调用方
 
 `src/test/config/lobehubSkillMarket.test.ts` 保留原行为断言；`src/test/config/skillArchiveInstaller.test.ts` 覆盖公开导出、两种本地布局、市场嵌套/同名顺序、失败继续与全失败、临时目录成功/失败清理、清理错误传播、校验顺序及 ZIP 边界。共用造包和临时 HOME 夹具在 `src/test/config/skillArchiveFixtures.ts`，只使用隔离文件系统与注入 fetch。
 
-执行与实际结果见 `.ch/docs/exec-plans/completed/2026-11/2026-11-08-skill-archive-installation-refactor.md`。无 UI 变更，配置页既有回归代替无意义的外观重审；没有运行浏览器、真实市场或 Extension Host，也不声称做过这些验证。
+重构实施记录见 `.ch/docs/exec-plans/completed/2026-11/2026-11-08-refactor-skill-archive-installation-refactor.md`；安装说明交付见 `.ch/docs/exec-plans/completed/2026-11/2026-11-08-docs-skill-archive-installation-refactor.md`。已删除测试计划的历史证据见[十一月删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按 `source_old_path` `.ch/docs/exec-plans/completed/2026-11/2026-11-08-skill-archive-installation-refactor.md` 定位。无 UI 变更，配置页既有回归代替无意义的外观重审；没有运行浏览器、真实市场或 Extension Host，也不声称做过这些验证。

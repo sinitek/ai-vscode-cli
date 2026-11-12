@@ -296,6 +296,7 @@ related_paths: []
 
 - 不用 scaffold 的 `memory/` 文件覆盖当前仓库已有热区正文、front matter、历史条目或来源链接。
 - 不删除、移动或重排现有 `exec-plans/active/`、`exec-plans/completed/` 计划；只同步计划规则、模板字段和归档约定。
+- 默认 scaffold 同步不移动或覆盖既有计划。仅在用户明确授权的命名迁移或类型拆分中，才可按逐源映射保留来源证据并修复引用；不得改写 `blocked`、失败或未发布结论，也不得借模板更新覆盖记忆热区或 `.ch/docs/generated/`。
 - 不重建或覆盖未提交的 `.ch/docs/generated/memory-index/.local/` 任务级召回文件；如需生成新召回包，应先确认当前工作面没有未提交修改。
 - scaffold 中的 `project.*` Ontology 记录是模板占位；已有真实项目业务域时，不应把占位域复制进当前仓库。
 

@@ -200,7 +200,7 @@ support_efforts = ["low", "medium", "high", "xhigh", "max"]
 - 插件先准备监听，再发送命令；必须同会话、当前操作收到开始及 `Compaction completed.`，并确认 prompt 正常结束才成功。兼容完成通知早于或晚于 prompt RPC 返回；单独 `end_turn`、开始确认或普通回答都不算完成。
 - 压缩期间拒绝同会话并发 prompt 和重复压缩；恢复失败不创建空会话。失败、阻塞、取消、停止、超时或退出均不报成功，异常进程被淘汰，迟到通知不继续写会话状态。压缩通知不作为最终答案。
 - 压缩后只有收到真实 `usage_update` 才更新对应标签页的用量，来源仍为 `kimi-config-window`；未知值不伪造。普通回合 RPC 结束后的用量通知仍被保留；接收前核对真实标签、当前 CLI/UI 会话、持久运行代际、原生映射和 manager runner 身份。同标签换绑或新运行接管后拒绝旧用量，另一标签开始运行仍允许原标签合法迟到用量。隔离压缩保留显式 tabId，新增操作反馈使用中文。
-- 手动面板已开放既有压缩入口，沿用布局、主题和消息协议；后台修复及主审相关回归已通过。真实 Kimi2.5.2 仅在隔离 loopback 模型中验证冷热同会话压缩及真实 usage，未验证付费模型摘要质量、token 降幅、Windows 或真实 Extension Development Host 点击。证据与历史阶段见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。不要把普通输入框（可能附加 harness 提示）的 `/compact` 当作专用调用路径的替代验收。
+- 手动面板已开放既有压缩入口，沿用布局、主题和消息协议；后台修复及主审相关回归已通过。真实 Kimi2.5.2 仅在隔离 loopback 模型中验证冷热同会话压缩及真实 usage，未验证付费模型摘要质量、token 降幅、Windows 或真实 Extension Development Host 点击。测试证据与历史阶段按原来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md` 见[测试计划删除审计](../.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，实现范围见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md`。不要把普通输入框（可能附加 harness 提示）的 `/compact` 当作专用调用路径的替代验收。
 
 ## 8. 主模型与子模型
 

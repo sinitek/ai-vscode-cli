@@ -14,7 +14,7 @@
 - 最新版仍没有独立 `session/compact` RPC，真实调用返回 `-32601`；但 ACP 命令广告包含 `compact`，通过 `session/prompt` 发送 `/compact` 会触发原生后台压缩。
 - 隔离 HOME、`KIMI_CODE_HOME` 与 cwd，使用本机 loopback 模拟模型，已验证普通回合、`/compact` 开始确认及异步 `Compaction completed.`。这证明命令与完成通知可用，不代表真实模型摘要质量或 token 降幅。
 - 上一轮审计时插件尚未接线（历史证据保留在 `cli-context-compaction-audit.md`）。2026-11-10 本轮后台新增 `compactSession()`：先确认同会话命令广告，再经 `session/prompt` 发送纯文本 `/compact`；只有同一操作的开始、真实完成通知及正常 RPC 返回均确认后才成功。已加入全局执行后自动压缩策略，不新增开关；既有 Webview 入口已接通，模拟桥专项通过，真实 Extension Development Host 点击仍未验证。不能把“缺少独立 RPC”表述为“CLI 没有原生手动压缩”。
-- 修复后复验：收尾用量核对真实标签、当前 CLI/UI 会话、持久运行代际、原生映射及 manager runner 身份。同标签换绑或新运行接管拒绝旧用量，另一标签开始运行仍允许原标签合法迟到用量；隔离压缩保留显式 tabId，新增反馈为中文。修复定向169项通过，主审标准构建及当前产物509项相关测试通过（构建有既有 npm 配置警告）。当前产物隔离运行真实 Kimi2.5.2，冷热压缩成功且同会话，三个请求均到本机 loopback 的 offline-test，usage 2205/32768，未调用用户付费模型。Windows、真实宿主点击、真实模型摘要质量和 token 降幅未验证，详见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
+- 修复后复验：收尾用量核对真实标签、当前 CLI/UI 会话、持久运行代际、原生映射及 manager runner 身份。同标签换绑或新运行接管拒绝旧用量，另一标签开始运行仍允许原标签合法迟到用量；隔离压缩保留显式 tabId，新增反馈为中文。修复定向169项通过，主审标准构建及当前产物509项相关测试通过（构建有既有 npm 配置警告）。当前产物隔离运行真实 Kimi2.5.2，冷热压缩成功且同会话，三个请求均到本机 loopback 的 offline-test，usage 2205/32768，未调用用户付费模型。Windows、真实宿主点击、真实模型摘要质量和 token 降幅未验证，测试与验收边界按原来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md` 见[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，实现目标见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md`。
 - 跨 CLI 对比、实际升级命令与验证边界见 [CLI 上下文压缩能力核查](cli-context-compaction-audit.md)。
 
 ## 1. 安装与版本

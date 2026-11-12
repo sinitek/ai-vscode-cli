@@ -65,7 +65,7 @@
 
 隔离模拟服务探针未使用用户配置、凭据或收费模型。`models --verbose` 已实测成功；两次 `run --pure --format json` 在 bootstrap `init` 后停顿，45 秒后被探针终止，没有收到模型 HTTP 请求，也没有真实 step JSONL。因此普通步骤格式与 token 口径的依据是上述固定 tag 官方实现及宿主回归测试，不声称完成真实本机模型回合端到端验证。
 
-OpenCode 专项59项通过，真实 `models --verbose` 探针成功；上述两次真实 run 停顿仍是验证限制，不能包装为端到端成功。公共契约见 `.ch/docs/references/cli-runtime-reference.md`，功能清单与 ontology 已登记普通提示链路，前轮481项及修复后 Node24 标准构建、当前产物509项相关测试的分阶段记录见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
+OpenCode 专项59项通过，真实 `models --verbose` 探针成功；上述两次真实 run 停顿仍是验证限制，不能包装为端到端成功。公共契约见 `.ch/docs/references/cli-runtime-reference.md`，功能清单与 ontology 已登记普通提示链路，前轮481项及修复后 Node24 标准构建、当前产物509项相关测试的分阶段记录按原来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md` 见[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)；对应实现范围见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md`。OpenCode 即时刷新未实现，两次真实 run 停顿仍是限制。
 
 普通提示运行已接线。当前能力边界是：手动/自动压缩没有可信的新测量时等待下一主回合；摘要生成步骤账单不等于压缩后占用。即时刷新未实现，不能伪造0或把旧历史步骤作为压缩后的新测量。现有验证未取得可归属压缩后主会话的可靠测量，因此本次仓库计划收尾不宣称该刷新已实现，也不为收尾新增猜测接线。
 

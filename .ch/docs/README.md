@@ -13,6 +13,7 @@ core harness 默认入口只包含：
 - `.ch/docs/product-specs/`：系统当前用户承诺、功能总表和验收事实源；入口为 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，按需保留少数当前能力分册。
 - `.ch/docs/MEMORY.md` 和 `.ch/docs/memory/`：记忆分层规则与默认优先召回的热区记忆面。
 - `.ch/docs/exec-plans/README.md`：执行计划目录、模板和收尾规则。
+- `.ch/docs/exec-plans/migrations/`：计划迁移审计映射（存在时）；不作为计划正文或状态事实来源。
 - 必要 skills：默认 core 只包含 `chromium-playwright-smoke`、`codegraph`、`execution-plan`、`memory-consolidator`、`memory-indexer`、`memory-recall`、`ontology`、`repo-indexer`；按对应 skill 自身说明执行。
 
 其它目录按任务需要启用，或作为事实来源保留；不要把它们提升为默认必读入口。
@@ -25,7 +26,7 @@ core harness 默认入口只包含：
 - ToB / 前端体验入口：`.ch/docs/FRONTEND.md`；用户可见能力、状态和验收登记到 `.ch/docs/product-specs/FEATURE_INVENTORY.md`，复杂体验取舍进入 `.ch/docs/design-docs/`。
 - 安全可靠性入口：`.ch/docs/SECURITY.md`、`.ch/docs/TESTING.md`、`.ch/docs/exec-plans/README.md` 和 `.ch/docs/runbooks/README.md` 分别承接安全基线、验证规则、计划验证记录、运行发布排障沉淀。
 - 运行与排障：`.ch/docs/runbooks/README.md` 用于运行、发布、排障和避坑。
-- CLI 上下文契约：`.ch/docs/references/cli-runtime-reference.md` 汇总宿主消息与入口边界；Claude / OpenCode 的计数、窗口来源和验证限制分别见 `.ch/docs/references/claude-context-usage.md`、`.ch/docs/references/opencode-context-usage.md`。历史探针见 `.ch/docs/references/cli-context-compaction-audit.md`，仓库实施计划归档与验证边界见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md`。
+- CLI 上下文契约：`.ch/docs/references/cli-runtime-reference.md` 汇总宿主消息与入口边界；Claude / OpenCode 的计数、窗口来源和验证限制分别见 `.ch/docs/references/claude-context-usage.md`、`.ch/docs/references/opencode-context-usage.md`。历史探针见 `.ch/docs/references/cli-context-compaction-audit.md`，仓库实施目标见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md`；测试历史按原计划来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md` 在[测试计划删除审计](exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)中查找，使用说明见 `.ch/docs/exec-plans/completed/2026-11/2026-11-10-docs-cli-compaction-context-adaptation.md`。
 - 本机 Node24 独立交付：`.ch/docs/references/node24-local-runtime-upgrade.md` 记录新登录 shell 默认 Node v24.22.2 / npm 11.19.1 与十个全局工具精确版本保留；已启动进程和 VS Code 内嵌 Node 不会即时切换。
 
 ## 目录结构

@@ -64,7 +64,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 仓储不解析路径、不开文件、不写配置、不读环境凭据；读取能力仍只由 ConfigService 承载。错误端口只接收既有事件与 `{ error }`，不新增配置内容或密钥日志。不新增网络、锁、定时器或额外缓存层，刷新及运行读取次数保持原样；Map 数量和键生命周期与原宿主相同，原缓存未设淘汰，本次不另增无界层。
 
-上述配置模型仓储变更无 UI、样式、交互或消息协议变更，无需更新 FEATURE_INVENTORY；该部分浏览器/VS Code 可视化验证不适用。自动行为证据位于仓储测试和宿主选择策略测试；完整命令、结果和未验证项见 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-configured-model-repository.md`。
+上述配置模型仓储变更无 UI、样式、交互或消息协议变更，无需更新 FEATURE_INVENTORY；该部分浏览器/VS Code 可视化验证不适用。自动行为证据位于仓储测试和宿主选择策略测试；完整命令、结果和未验证项见 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-docs-configured-model-repository.md`。
 
 ## Tab 任务摘要（已实现）
 
@@ -72,7 +72,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 2026-11-11 起，以下 AI 摘要生成和 30 码点限制适用于 Vibe 与 Loop/Loop+ 主任务；主任务状态投影保留已有 AI 摘要，不用固定“主任务”角色名覆盖。只有子任务在 `src/extensionHost/sessionTabs.ts` 的状态投影中复用 `getLoopSubtaskDisplayTitle`，显示“子任务 N：完整标题”，不限制成员标题长度。子任务优先使用当前 Tab 的实时/已保存/草稿消息解析身份，再核对任务 ID；无消息身份时可用匹配 CLI/session 的 `executionSession` 恢复，不能用其他任务或成员兜底。找不到子任务成员时移除本次投影中的旧 AI 摘要。`rememberConversationTaskSummarySubmission` 仅跳过子任务；主任务新提交捕获用户需求，内部轮次复用同次快照，缺少快照时使用 `rootPrompt` 而非调度协议归纳摘要。浮层渲染、现有停留时间和键盘交互保持不变。回归入口为 `src/test/session/loopTabMemberTooltip.test.ts` 与既有摘要、浮层测试。
 
-`src/extension.ts` 捕获每次新的用户可见任务提交并接入摘要协调器，`src/conversationTaskSummary.ts` 承载归纳提示、结果归一化和有界队列，`src/extensionHost/conversationTaskSummary.ts` 捕获配置快照并执行隔离调用。`src/webview/types.ts` 的 `ConversationTabSummary` 投影给 `src/webview/viewContentScript/messageRendering.ts` 的 `renderConversationTabs`；Tab、会话保存与绑定由 `src/sessionTabs.ts`、`src/sessionStore.ts`、`src/sessionLifecycle.ts`、`src/workspaceSettingsStore.ts` 及既有宿主 `src/extensionHost/sessionTabs.ts` 承接。原 `preparePendingLabel` 提示词标签行为保留，不等于 AI 摘要。用户行为见能力分册 §3.4；初次交付过程和证据见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md`，后续任务刷新改进见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md`。
+`src/extension.ts` 捕获每次新的用户可见任务提交并接入摘要协调器，`src/conversationTaskSummary.ts` 承载归纳提示、结果归一化和有界队列，`src/extensionHost/conversationTaskSummary.ts` 捕获配置快照并执行隔离调用。`src/webview/types.ts` 的 `ConversationTabSummary` 投影给 `src/webview/viewContentScript/messageRendering.ts` 的 `renderConversationTabs`；Tab、会话保存与绑定由 `src/sessionTabs.ts`、`src/sessionStore.ts`、`src/sessionLifecycle.ts`、`src/workspaceSettingsStore.ts` 及既有宿主 `src/extensionHost/sessionTabs.ts` 承接。原 `preparePendingLabel` 提示词标签行为保留，不等于 AI 摘要。用户行为见能力分册 §3.4；初次交付目标见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-feature-conversation-tab-summary.md`，关联文档见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-docs-conversation-tab-summary.md`；原测试开发与证据按来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md` 在[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)中定位。后续任务刷新缺陷修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-bugfix-conversation-tab-summary-refresh.md`，其原测试来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md` 的删除审计记录亦见[此审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)。
 
 ### 数据与任务级触发
 
