@@ -1,6 +1,6 @@
 ---
 name: execution-plan
-description: Use for non-trivial, multi-step, risky, or cross-cutting changes that need an in-repo execution plan, explicit acceptance criteria, validation notes, and documentation sync.
+description: Use for non-trivial, multi-step, risky, or cross-cutting feature, bugfix, refactor, or perf work that needs a resumable in-repo plan. Do not use for standalone test, chore, or doc/docs tasks.
 ---
 
 # Execution Plan
@@ -9,16 +9,23 @@ description: Use for non-trivial, multi-step, risky, or cross-cutting changes th
 
 ## 什么时候用
 
+仅适用于 `feature`、`bugfix`、`refactor`、`perf` 类型，且满足以下条件之一：
+
 - 任务分为多个阶段
 - 涉及多个目录、多个系统边界或多个角色
 - 涉及迁移、重构、质量治理、平台改造、安全/可靠性基线
 - 本轮不能一次性完全收尾，需要给后续代理或人类留下清晰上下文
 
+## 什么时候不用
+
+- 独立的 `test`、`chore`、`doc`（含 `docs`）任务，即使多阶段、跨模块或高风险，也不在 `.ch/docs/exec-plans/` 创建或归档计划；使用任务列表、测试记录或对应事实来源文档，不得改名为允许类型绕过排除规则。
+- 允许类型任务所需的测试、维护和文档工作直接记录在所属计划，不拆出上述类型的计划；测试、验证和文档同步要求仍需执行。
+
 ## 工作流
 
-1. 以 `.ch/docs/exec-plans/README.md` 为命名、类型、拆分、状态与归档的单一事实来源，使用 `.ch/docs/exec-plans/TEMPLATE.md` 创建或更新 `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`。日期后只能有一个 type：`feature`、`bugfix`、`refactor`、`chore`、`docs`、`test`、`perf`；不要使用 `feat` / `fix`。
+1. 先确认任务类型属于允许范围，再以 `.ch/docs/exec-plans/README.md` 为命名、类型、拆分、状态与归档的单一事实来源，使用 `.ch/docs/exec-plans/TEMPLATE.md` 创建或更新 `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`。日期后只能有一个 type：`feature`、`bugfix`、`refactor`、`perf`；不要使用 `feat` / `fix`。
 2. 记录目标、背景、范围、非目标、验收标准、影响面、风险、验证计划、单元自测命令、未决问题。
-3. 一个任务包含多个实质工作类型时，必须按类型分别建计划；每份都有独立目标、范围、验收、验证和真实状态。用“关联计划”放具体相对路径并说明依赖/共同背景；禁止只选主类型或复制混合正文。实际跨类型工作不得藏在附带事项中；仅记录验证执行证据不单独构成测试开发计划。
+3. 一个任务包含多个允许的实质工作类型时，必须仅按允许类型分别建计划；每份都有独立目标、范围、验收、验证和真实状态。用“关联计划”放具体相对路径并说明依赖/共同背景；禁止只选主类型或复制混合正文。实际跨类型工作不得藏在附带事项中；`test`、`chore`、`doc`（含 `docs`）不参与计划拆分。
 4. 把任务列表与计划状态保持一致；拆分不伪造完成，也不改变既有阻塞。
 5. 如果实现过程中出现关键决策或偏离，立刻写回计划或相关设计文档。
 6. 收尾前，检查相关文档是否需要同步更新，包括：

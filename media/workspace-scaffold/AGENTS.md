@@ -28,7 +28,7 @@
 - 非平凡任务必须使用任务列表，并保持阶段状态同步。
 - 任务列表必须使用固定格式：`Tasklist:` 标题，逐行 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码为解析协议必须保持英文，任务描述必须用中文表达，代码符号、命令、路径、包名和用户原文术语可保留原文。
 - 需求不清时，先用带选项的问题缩小范围。
-- 多阶段、跨模块、风险较高的工作，先使用 `execution-plan` skill，并按 `.ch/docs/exec-plans/README.md` 创建 `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`；命名分类、拆分与归档以该 README 为准。
+- 多阶段、跨模块、风险较高的 `feature`、`bugfix`、`refactor`、`perf` 工作，先使用 `execution-plan` skill，并按 `.ch/docs/exec-plans/README.md` 创建 `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`；`test`、`chore`、`doc`（含 `docs`）任务不在该目录创建或归档计划，使用任务列表、测试记录或对应事实来源文档；命名分类、拆分与归档以该 README 为准。
 - 非平凡任务收尾时，不要把本次回复写入 `ROLLING_SUMMARY.md`。只有出现可复用的失败原因、成功方案、迁移、回滚、事故或关键决策时，才写入 `EVENT_MEMORY.md`。稳定项目事实、用户偏好或程序性经验仍按 `.ch/docs/MEMORY.md` 上提到 L3 或 L4。
 - 根级 `AGENTS.md` 只保留稳定规则与导航；细节知识进入 `.ch/docs/` 或更近的子目录 `AGENTS.md`。
 - 优先选择朴素、稳定、可搜索、可复用、可验证的实现。

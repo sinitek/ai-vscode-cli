@@ -64,7 +64,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - 非平凡任务必须使用任务列表，并保持阶段状态同步。
 - 任务列表状态更新必须使用可解析格式：`Tasklist:` 标题，逐行使用 `- [pending] 中文任务描述`、`- [in_progress] 中文任务描述` 或 `- [completed] 中文任务描述`；状态码保持英文，描述用简体中文，代码标识符、命令、路径、包名和用户原文术语可保留原文。
 - 需求不清时使用结构化 user-input / elicitation 机制提问，最多 3 个短问题；每个问题只解决一个决策，并优先给出 2-3 个互斥选项。
-- 大范围、跨模块、跨阶段或高风险任务使用 `execution-plan` skill；计划命名、类型拆分、状态和归档以 `.ch/docs/exec-plans/README.md` 为单一事实来源，模板见同目录 `TEMPLATE.md`。
+- 大范围、跨模块、跨阶段或高风险的 `feature`、`bugfix`、`refactor`、`perf` 任务使用 `execution-plan` skill；`test`、`chore`、`doc`（含 `docs`）任务不在 `.ch/docs/exec-plans/` 创建或归档计划，使用任务列表、测试记录或对应事实来源文档；计划命名、类型拆分、状态和归档以 `.ch/docs/exec-plans/README.md` 为单一事实来源，模板见同目录 `TEMPLATE.md`。
 - 上下文分散或中断恢复时使用 `memory-recall` skill；不要手工通读全部历史文档。
 - 业务概念、权限、状态机、所有权、跨域流程或事实来源判断先使用 `ontology` skill；命中后必须打开 `source_refs` 核对当前事实来源。
 - 代码位置、调用链、影响面和架构探索优先使用 CodeGraph；CodeGraph 不替代直接读取待编辑文件、编译、测试或运行验证。

@@ -2,6 +2,12 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Harness 骨架执行计划类型
+
+- 本项目 harness 与内置 `media/workspace-scaffold` 的执行计划统一仅允许 `feature`、`bugfix`、`refactor`、`perf`；`test`、`chore`、`doc`（含 `docs`）任务不在 `.ch/docs/exec-plans/` 创建或归档计划，也不通过改名绕过限制。
+- 混合任务仅按允许类型拆分计划；所属测试、维护和文档工作直接记入相应计划，仍执行测试、验证与文档同步。独立的排除类型任务使用任务列表、测试记录或对应事实来源文档。
+- 事实来源：本项目 `AGENTS.md`、`.ch/docs/exec-plans/README.md`、`.ch/docs/exec-plans/TEMPLATE.md`、`.agents/skills/execution-plan/SKILL.md` 及 `media/workspace-scaffold/` 下对应规则与技能。同步采用保留式合并，不改名、迁移或删除已有项目计划，不覆盖项目事实、迁移审计、记忆热区或 generated 索引。
+
 ## AI 对话 Tab 状态与配置协调
 
 - 状态：`active`（2026-11-11）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态。每 Tab 记录宿主最新运行状态，`runStatus:end` 后迟到的新增/替换错误消息、trace 片段和自动重试排队提示不再重新标红；新用户消息、新运行或会话重置释放上一轮成功保护。明确的 `runStatus:error` 仍标记失败，未运行过的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理，不改变错误气泡或磁盘会话格式。

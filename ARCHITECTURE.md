@@ -183,7 +183,7 @@ cli / interactive / config 服务层
 - 运行事实、手册：放 `.ch/docs/runbooks/` 或 `.ch/docs/references/`
 - 设计和模块边界：放 `.ch/docs/design-docs/`
 - 用户可见能力与范围：放 `.ch/docs/product-specs/`
-- 多阶段任务：使用 `.ch/docs/exec-plans/README.md` 定义的 `YYYY-MM-DD-<type>-<kebab-case-slug>.md` 命名与跨类型拆分规则，放 `.ch/docs/exec-plans/`
+- 多阶段任务：仅 `feature`、`bugfix`、`refactor`、`perf` 按 `.ch/docs/exec-plans/README.md` 定义的命名与允许类型拆分规则放 `.ch/docs/exec-plans/`；`test`、`chore`、`doc`（含 `docs`）使用任务列表、测试记录或对应事实来源文档，不创建或归档计划
 
 ## 4. 明确禁止
 

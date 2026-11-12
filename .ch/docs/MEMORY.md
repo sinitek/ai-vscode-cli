@@ -46,7 +46,7 @@ related_paths:
 
 ### 2.1 当前任务事实
 
-下面这些内容，默认先进入 `exec-plans/active/`：
+对于 `.ch/docs/exec-plans/README.md` 允许建计划的任务，下面这些内容默认先进入 `exec-plans/active/`：
 
 - 当前目标
 - 范围与非目标
@@ -56,7 +56,7 @@ related_paths:
 
 不要一开始就把这些内容写进长期热区。
 
-如果本轮任务会跨会话继续，收尾前应确保 active exec plan 记录当前结论、验证结果和下一步。
+如果本轮任务会跨会话继续，允许类型任务收尾前应确保 active exec plan 记录当前结论、验证结果和下一步；`test`、`chore`、`doc`（含 `docs`）任务不因此创建或归档计划，使用任务列表、测试记录或对应事实来源文档承接。
 
 ### 2.2 跨会话仍要先读的信息
 

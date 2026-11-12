@@ -1,7 +1,7 @@
 # 计划标题
 
 - 日期：YYYY-MM-DD
-- 类型：feature / bugfix / refactor / chore / docs / test / perf
+- 类型：feature / bugfix / refactor / perf
 - 关联计划：无 / `.ch/docs/exec-plans/active/YYYY-MM-DD-<type>-<kebab-case-slug>.md`（填写具体路径及依赖）
 - 状态：draft / in-progress / blocked / completed
 - 负责人：Codex / 人类 / 协作
@@ -72,7 +72,7 @@
 
 ## 分类与拆分提示
 
-- 文件名：`YYYY-MM-DD-<type>-<kebab-case-slug>.md`；日期后只能有一个 type。允许类型及定义以 `.ch/docs/exec-plans/README.md` 为准。
+- 文件名：`YYYY-MM-DD-<type>-<kebab-case-slug>.md`；日期后只能有一个 type，仅允许 `feature`、`bugfix`、`refactor`、`perf`，具体定义以 `.ch/docs/exec-plans/README.md` 为准。
 - `feature` 表示新功能，`bugfix` 表示已发布版本 bug 修复；不得缩写为 `feat` / `fix`。
-- 多个实质类型必须拆成独立计划，各自维护目标、范围、验收、验证和真实状态；在“关联计划”中填写具体互链路径并记录共同背景/依赖，不复制混合正文。
-- 仅记录验证证据不等于测试开发；实际测试开发工作应单独归为 `test`。
+- 多个允许的实质类型必须拆成独立计划，各自维护目标、范围、验收、验证和真实状态；在“关联计划”中填写具体互链路径并记录共同背景/依赖，不复制混合正文。
+- `test`、`chore`、`doc`（含 `docs`）任务不使用本模板，也不在本目录创建或归档计划，不参与计划拆分；属于本计划交付范围的测试、维护和文档工作直接在本计划中记录，不另建计划，也不免除相应验证和文档同步要求。

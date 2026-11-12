@@ -42,9 +42,9 @@
       "id": "harness.execution_plan",
       "name": "执行计划",
       "kind": "ledger",
-      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；真实计划名为 `YYYY-MM-DD-<type>-<kebab-case-slug>.md`，仅允许 feature、bugfix、refactor、chore、docs、test、perf；多种实质类型须拆成独立计划并用关联计划记录共同背景/依赖；完成后按 `completed/YYYY-MM/` 月份归档。",
+      "description": "非平凡、多阶段或高风险任务的 working 层记录，承载目标、范围、验收、风险、验证和阶段进展；真实计划名为 `YYYY-MM-DD-<type>-<kebab-case-slug>.md`，仅允许 feature、bugfix、refactor、perf；test、chore、doc（含 docs）任务不创建或归档计划，也不得改名绕过排除规则；多种允许类型须拆成独立计划并用关联计划记录共同背景/依赖，所属测试、维护和文档工作直接记入相应计划；完成后按 `completed/YYYY-MM/` 月份归档，规则同步不改动既有计划与历史证据。",
       "status": "active",
-      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划", "feature", "bugfix", "refactor", "chore", "docs", "test", "perf"],
+      "aliases": ["exec plan", "active plan", "completed/YYYY-MM", "执行计划", "feature", "bugfix", "refactor", "perf"],
       "implementation_paths": [".ch/docs/exec-plans"],
       "source_refs": [
         {"path": ".ch/docs/exec-plans/README.md"},
@@ -120,7 +120,7 @@
     {
       "id": "harness.relation_plan_records_task",
       "name": "执行计划记录任务事实",
-      "description": "多阶段或高风险工作先进入 active execution plan，收尾后再归档或上提。",
+      "description": "符合执行计划允许类型的多阶段或高风险工作先进入 active execution plan，收尾后再归档或上提；test、chore、doc（含 docs）通过任务列表、测试记录或对应事实来源文档承接，不创建或归档计划。",
       "status": "active",
       "from": "harness.execution_plan",
       "type": "records",
@@ -220,13 +220,15 @@
     {
       "id": "harness.rule.exec_plan_type_classification",
       "name": "执行计划按实质类型分类并拆分",
-      "description": "真实计划名严格使用 YYYY-MM-DD-<type>-<kebab-case-slug>.md，类型仅为 feature、bugfix、refactor、chore、docs、test、perf；一个任务包含多个实质类型时必须分别建计划，各自维护目标、范围、验收、验证与状态，并用关联计划记录共同背景和依赖。仅记录验证证据不单独构成 test 开发计划。",
-      "aliases": ["计划类型", "跨类型拆分", "feature", "bugfix", "refactor", "chore", "docs", "test", "perf"],
+      "description": "本仓库与内置 workspace scaffold 的真实计划名严格使用 YYYY-MM-DD-<type>-<kebab-case-slug>.md，仅允许 feature、bugfix、refactor、perf；test、chore、doc（含 docs）任务不创建或归档计划，不得改名绕过限制。仅多个允许的实质类型分别建计划，各自维护目标、范围、验收、验证与状态，并用关联计划记录共同背景和依赖；所属测试、维护和文档工作直接记入相应计划，测试、验证和文档同步要求仍需执行。规则同步保留既有计划、迁移审计、记忆热区和 generated 索引。",
+      "aliases": ["计划类型", "跨类型拆分", "feature", "bugfix", "refactor", "perf"],
       "status": "active",
       "applies_to": ["harness.execution_plan", "harness.skill", "harness.workspace_scaffold"],
       "source_refs": [
         {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"},
-        {"path": ".ch/docs/exec-plans/TEMPLATE.md", "anchor": "分类与拆分提示"}
+        {"path": ".ch/docs/exec-plans/TEMPLATE.md", "anchor": "分类与拆分提示"},
+        {"path": "media/workspace-scaffold/.ch/docs/exec-plans/README.md", "anchor": "文件与类型"},
+        {"path": "media/workspace-scaffold/.agents/skills/execution-plan/SKILL.md", "anchor": "什么时候不用"}
       ]
     },
     {
