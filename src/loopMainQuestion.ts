@@ -119,12 +119,12 @@ export async function askLoopMainModelSession(options: {
       ...(options.isAborted ? { isAborted: options.isAborted } : {}),
     });
   } catch (error) {
+    if (options.isAborted?.()) {
+      return { status: "stopped" };
+    }
     const recovered = extractNewAssistantAnswer(before, options.readMessages(target));
     if (recovered) {
       return { status: "ready", answer: recovered };
-    }
-    if (options.isAborted?.()) {
-      return { status: "stopped" };
     }
     const detail = error instanceof Error && error.message.trim()
       ? error.message.trim()
@@ -136,12 +136,12 @@ export async function askLoopMainModelSession(options: {
     }
     publish();
   }
+  if (options.isAborted?.()) {
+    return { status: "stopped" };
+  }
   const answer = extractNewAssistantAnswer(before, options.readMessages(target));
   if (answer) {
     return { status: "ready", answer };
-  }
-  if (options.isAborted?.()) {
-    return { status: "stopped" };
   }
   return { status: "error", error: options.emptyMessage };
 }

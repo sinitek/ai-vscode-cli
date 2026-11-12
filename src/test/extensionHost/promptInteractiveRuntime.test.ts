@@ -303,6 +303,30 @@ function createTarget(overrides: Partial<PromptRunTarget> = {}): PromptRunTarget
   };
 }
 
+test("an aborted Loop question does not start after asynchronous runtime preparation", async () => {
+  const preparation = createDeferred();
+  const preparing = createDeferred();
+  let aborted = false;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    readRuntimeConfigFingerprint: async () => {
+      preparing.resolve();
+      await preparation.promise;
+      return "runtime-fingerprint";
+    },
+  } });
+  const pending = harness.host.runPromptInteractive(
+    createPromptInput({ loopAsk: true }), createTarget(), { isAborted: () => aborted },
+  );
+  await preparing.promise;
+  assert.equal(harness.activeRunsByTabId.size, 0);
+  aborted = true;
+  preparation.resolve();
+  await pending;
+  assert.deepEqual(harness.codexPrompts, []);
+  assert.deepEqual(harness.runStatusEvents, []);
+  assert.equal(harness.activeRunsByTabId.size, 0);
+});
+
 test("the interactive host passes the verified native identity through creation and registration", async () => {
   for (const cli of ["codex", "claude"] as const) {
     const harness = createInteractiveRuntimeHarness({ runtimeDeps: {

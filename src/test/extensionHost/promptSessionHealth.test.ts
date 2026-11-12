@@ -14,6 +14,7 @@ import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
+import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
@@ -59,10 +60,10 @@ function createHarness(options: {
   const boundConfigs: Array<{ cli: CliName; sessionId: string; configId: string | null }> = [];
   const questionQueue = createLoopMainQuestionQueue();
   let activeConfigId = options.activeConfigId === undefined ? "selected-config" : options.activeConfigId;
-  const dispatched: Array<{ input: PromptRunInput; target: PromptRunTarget }> = [];
-  const dispatch = async (input: PromptRunInput, target: PromptRunTarget): Promise<void> => {
+  const dispatched: Array<{ input: PromptRunInput; target: PromptRunTarget; executionOptions: PromptRunExecutionOptions }> = [];
+  const dispatch = async (input: PromptRunInput, target: PromptRunTarget, executionOptions: PromptRunExecutionOptions): Promise<void> => {
     events.push("dispatch");
-    dispatched.push({ input, target: { ...target } });
+    dispatched.push({ input, target: { ...target }, executionOptions });
     const failure = options.failures?.shift();
     if (failure) {
       throw failure;
@@ -191,6 +192,21 @@ test("cancelling main work queued behind a question prevents a late CLI start", 
   await Promise.all([main, question]);
   assert.equal(harness.dispatched.length, 0);
   assert.equal(started, false);
+});
+
+test("Loop question cancellation reaches every dispatched runtime", async () => {
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    const harness = createHarness({ cli: runtime === "interactive" ? "codex" : "opencode", health: "normal", runtime });
+    let aborted = false;
+    await harness.runPrompt({ displayPrompt: "提问", modelPrompt: "提问", contextTags: [], loopAsk: true }, {
+      isAborted: () => aborted,
+    });
+    assert.equal(harness.dispatched.length, 1);
+    const executionOptions = harness.dispatched[0].executionOptions;
+    assert.equal(executionOptions.isAborted?.(), false);
+    aborted = true;
+    assert.equal(executionOptions.isAborted?.(), true);
+  }
 });
 
 test("a model switch during config wait reaches the next main CLI invocation", async () => {

@@ -211,14 +211,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
   async function runPromptInteractive(
     input: PromptRunInput,
     target: PromptRunTarget,
-    executionOptions: { cwd?: string; isolateProjectInstructions?: boolean } = {},
+    executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
     const prompt = input.displayPrompt;
     const modelPrompt = input.modelPrompt || prompt;
     const contextTags = Array.isArray(input.contextTags)
       ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
       : [];
-    if (!prompt) {
+    if (!prompt || executionOptions.isAborted?.()) {
       return;
     }
 
@@ -336,6 +336,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const claudeEntrypoint = cli === "claude"
       ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
       : undefined;
+
+    if (executionOptions.isAborted?.()) {
+      return;
+    }
 
     logCliStartup({
       cli,

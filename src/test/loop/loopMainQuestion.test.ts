@@ -193,3 +193,30 @@ test("returns stopped when the ask run is aborted before an answer exists", asyn
   });
   assert.deepEqual(result, { status: "stopped" });
 });
+
+for (const throwsAfterStop of [false, true]) {
+  test(`does not report a partial answer as ready after stopping (${throwsAfterStop})`, async () => {
+    let aborted = false;
+    const messages: ChatMessage[] = [];
+    const result = await askLoopMainModelSession({
+      question: "停一下",
+      modelPrompt: "停一下",
+      target: { tabId: "main-tab", cli: "codex", sessionId: "session-4" },
+      isTabRunActive: () => false,
+      readMessages: () => messages,
+      isAborted: () => aborted,
+      runPrompt: async () => {
+        messages.push(message("partial", "assistant", "尚未完成的回答"));
+        aborted = true;
+        if (throwsAfterStop) {
+          throw new Error("stopped by user");
+        }
+      },
+      unavailableMessage: "unavailable",
+      busyMessage: "busy",
+      emptyMessage: "empty",
+      failedMessage: (detail) => detail,
+    });
+    assert.deepEqual(result, { status: "stopped" });
+  });
+}

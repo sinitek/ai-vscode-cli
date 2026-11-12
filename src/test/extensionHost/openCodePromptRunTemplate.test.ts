@@ -227,6 +227,40 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
   return { events, ...ports, ...overrides };
 }
 
+test("cancelling during OpenCode configuration preparation prevents run activation", async () => {
+  const events: string[] = [];
+  let aborted = false;
+  const ports = createRecordingPorts(events, {
+    prepareOpenCodeRuntime: async () => {
+      aborted = true;
+      return createRuntimePreparation();
+    },
+  });
+  await runOpenCodePromptTemplate(createInput(), createTarget(), { isAborted: () => aborted }, ports);
+  assert.equal(events.includes("finishRunActivation"), false);
+  assert.equal(events.includes("runCliStream"), false);
+});
+
+test("cancelling during OpenCode subagent preparation disposes resources without spawning", async () => {
+  const events: string[] = [];
+  let aborted = false;
+  const ports = createRecordingPorts(events, {
+    prepareOpenCodeSubagentRuntime: async () => {
+      aborted = true;
+      return {
+        connection: null,
+        endpointSource: "unavailable",
+        error: null,
+        dispose: () => { events.push("disposed"); },
+      };
+    },
+  });
+  await runOpenCodePromptTemplate(createInput(), createTarget(), { isAborted: () => aborted }, ports);
+  assert.equal(events.includes("disposed"), true);
+  assert.equal(events.includes("runCliStream"), false);
+  assert.equal(events.includes("finalizeSuccessfulExit"), false);
+});
+
 test("recovers an empty OpenCode stdout before judging the final answer", async () => {
   const events: string[] = [];
   const ports = createRecordingPorts(events, {

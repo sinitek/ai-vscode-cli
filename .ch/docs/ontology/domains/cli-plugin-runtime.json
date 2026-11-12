@@ -1642,12 +1642,15 @@
     {
       "id": "plugin.rule.loop_main_model_question",
       "name": "Loop 群聊向当前主模型会话提问",
-      "description": "Loop 与 Loop+ 群聊的“补充需求”写入任务补充要求，Loop+ 沿用用户消息调度；“我要提问”不写入补充需求或验收事件。主模型忙碌仍可连续提交问题，提示“主模型正在处理，你的问题会放入队列。”，问题写入提问历史并按 FIFO 等待主会话空闲。会话级队列串行执行主任务与提问，已排队的验收、补充需求和调度收口高于后续提问；已开始的回答不被后来到达的验收抢占。等待状态不显示回答动画，真正回答后显示；取消排队不停止主任务，停止正在回答时清空后续问题。失败不丢弃后续问题，多个 Tab 独立；宿主重启后未完成提问标记停止，不自动重放。",
+      "description": "Loop 与 Loop+ 群聊的“补充需求”写入任务补充要求，Loop+ 沿用用户消息调度；“我要提问”不写入补充需求或验收事件。主模型忙碌仍可连续提交问题，提示“主模型正在处理，你的问题会放入队列。”，问题写入提问历史并按 FIFO 等待主会话空闲。会话级队列串行执行主任务与提问，已排队的验收、补充需求和调度收口高于后续提问；已开始的回答不被后来到达的验收抢占。等待状态不显示回答动画，真正回答后显示；取消排队不停止主任务，停止正在回答时清空后续问题。停止信号覆盖配置、会话及运行时异步准备，取消后不再启动回答或 CLI 进程；准备资源须释放，Codex 等待就绪不能漏掉立即停止；停止优先于已保存的部分回答。失败不丢弃后续问题，多个 Tab 独立；宿主重启后未完成提问标记停止，不自动重放。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/loopMainQuestion.ts"},
         {"path": "src/loopMainQuestionQueue.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/extensionHost/openCodePromptRunTemplate.ts"},
+        {"path": "src/interactive/codexRunner.ts"},
         {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}

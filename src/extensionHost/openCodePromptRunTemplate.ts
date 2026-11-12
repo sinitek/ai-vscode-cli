@@ -305,6 +305,9 @@ export async function runOpenCodePromptTemplate(
   executionOptions: PromptRunExecutionOptions = {},
   ports: OpenCodePromptRunPorts,
 ): Promise<void> {
+  if (executionOptions.isAborted?.()) {
+    return;
+  }
   const guarded = ports.guardRun(input, target);
   if (guarded.status === "skip") {
     return;
@@ -318,6 +321,9 @@ export async function runOpenCodePromptTemplate(
     variant: input.thinkingModeOverride ?? (input.taskRole === "subtask" ? input.loopSubtaskThinkingMode : input.loopMainThinkingMode),
     requiresSubtaskModel: Boolean(input.loopTaskId),
   });
+  if (executionOptions.isAborted?.()) {
+    return;
+  }
   const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? ports.getEffectiveThinkingMode(runCli, runtimeModel);
   ports.applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
@@ -436,6 +442,10 @@ export async function runOpenCodePromptTemplate(
       runtime: runtimePreparation,
       isolateProjectInstructions: executionOptions.isolateProjectInstructions,
     });
+    if (executionOptions.isAborted?.()) {
+      subagentRuntime.dispose();
+      return;
+    }
     if (ports.shouldAnnounceSubagentMonitorUnavailable(subagentRuntime.error, monitorUnavailableNoticeShown)) {
       monitorUnavailableNoticeShown = true;
       ports.prepareSubagentMonitorUnavailableNotice();

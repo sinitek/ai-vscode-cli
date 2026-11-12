@@ -306,9 +306,9 @@ export class CodexInteractiveRunner {
   }
 
   public async runStreamed(prompt: string, handlers: CodexStreamHandlers): Promise<void> {
-    await this.ensureReady();
     const abortGeneration = this.abortGeneration;
     const disposeGeneration = this.disposeGeneration;
+    await this.ensureReady();
     await this.enqueue(async () => {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       await this.runStreamedOnce(prompt, handlers, abortGeneration, disposeGeneration);

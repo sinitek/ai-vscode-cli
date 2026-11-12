@@ -9,6 +9,7 @@ import type { PromptRunInput } from "../promptRunTypes";
 export type PromptRunExecutionOptions = {
   cwd?: string;
   isolateProjectInstructions?: boolean;
+  isAborted?: () => boolean;
 };
 
 export function shouldUseClassicLoopProjectInstructions(

@@ -4901,6 +4901,7 @@ async function runPromptNow(
   const shouldUseInteractive = isInteractiveSupported(target.cli);
   try {
     const executionOptions = {
+      isAborted: options.isAborted,
       cwd: useClassicLoopProjectInstructions ? resolveWorkspaceCwd() : input.executionCwd ?? subtaskExecutionRoot?.cwd,
       isolateProjectInstructions: useClassicLoopProjectInstructions
         ? false

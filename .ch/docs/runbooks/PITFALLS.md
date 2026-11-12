@@ -40,6 +40,13 @@
 - 提问弹窗置底不能只等待一帧：见本页“提问弹窗需在图片加载后校正滚动”。
 - 项目规则里共享 `AGENTS.md` 的 CLI 不能再单独显示复选框：见本页“项目规则复选框必须接到共享分组”。
 
+## 停止信号必须穿透异步启动准备
+
+- 状态：已规避；首次确认及修复：2026-11-12。
+- 现象与根因：Loop / Loop+ 向主模型提问时，配置或会话准备尚未完成，点击终止虽然清空提问状态，但尚无 runner 可停止；底层运行时未接收取消回调，准备结束后仍启动回答。Codex 在等待就绪之后才捕获取消代次，立即停止也可能被吞掉。OpenCode 等待子代理准备后若不重验取消信号，会在停止后启动孤立进程。
+- 长期规避：取消回调传到具体运行时，在异步准备返回、实际启动之前重验；已准备资源在取消路径释放。取消代次在第一个 `await` 前捕获；结果归类先判断停止，再尝试从持久化消息恢复回答，不能把部分回答当作正常完成。取消排队只清空提问队列，不终止原主任务。
+- 验证方式：`npm run build` 后执行 `node --test dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/promptSessionHealth.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/extensionHost/openCodePromptRunTemplate.test.js dist/test/interactive/codexRunnerLifecycle.test.js`。
+
 ## 相同 HTML 补丁不会清理按钮临时状态
 
 - 状态：已规避；首次确认及修复：2026-11-04。

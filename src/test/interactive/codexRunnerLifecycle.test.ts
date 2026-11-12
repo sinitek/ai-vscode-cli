@@ -758,6 +758,28 @@ test("Codex runner emits primary completed callback only for completed turns", a
   }
 });
 
+test("Codex runner immediate stop cannot be lost while awaiting readiness", async () => {
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const runner = new CodexInteractiveRunner({
+    command: process.execPath,
+    args: [],
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    threadId: null,
+  });
+  let executed = false;
+  const internal = runner as unknown as { runStreamedOnce: () => Promise<void> };
+  internal.runStreamedOnce = async () => { executed = true; };
+  try {
+    const pending = runner.runStreamed("立即停止", createHandlers());
+    runner.stopAndRebuild();
+    await assert.rejects(pending, { name: "AbortError" });
+    assert.equal(executed, false);
+  } finally {
+    runner.dispose();
+  }
+});
+
 test("Codex runner stop requests shutdown for every active app-server child", async () => {
   const originalSpawn = crossSpawn.spawn;
   const originalKill = process.kill;
