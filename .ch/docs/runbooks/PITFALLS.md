@@ -10,6 +10,7 @@
 - 触发条件/根因：共享进程保留已加载 thread；进程 key 因配置身份/启动能力变化而切换。`thread/unsubscribe` 的 `unsubscribed` / `notSubscribed` 仅表示订阅状态，本机 0.167.0 实测 `thread/closed` 约 60 秒后才到达；Windows `taskkill` 已启动同样不表示目标已退出。
 - 长期规避：恢复前按目标 thread 交接，等待 closed / notLoaded 或原进程实际退出；不能删除锁、杀共享进程、丢掉配置指纹或反复 resume。未知外部 writer 由用户确认原任务释放，不强制接管。
 - 验证：`npm run build` 后执行 `node scripts/verify_codex_thread_handoff.js --live`，只使用隔离 HOME/workspace 和本机模拟服务；Windows 仍需原生环境验收，不用 macOS 实验替代。
+- 验证假阳性：脚本直接加载 ignored 的 `dist`，拉取源码不代表重新构建；只有 `writer_conflict_reproduced` 仅证明旧问题可复现，不是修复通过。优先执行 `node scripts/verify_codex_thread_handoff_acceptance.js --live --runs 3`，自动构建并要求每轮 `handoff_verified` 的原 thread/其它会话保留、正常退出和最终报告全部通过；真实多窗口 Loop+ 仍单独验收。
 
 ## 记录原则
 

@@ -12,6 +12,7 @@
 - Codex 原生压缩透传配置指纹，并沿用当前连接的结构化提问启动能力，但重新核对其它连接身份字段；真实配置变化仍切换连接，不以热缓存绕过隔离。
 - 生命周期日志记录 connection ID / PID、thread、RPC 方法/请求 ID及 key 变化字段名，不输出 key 全文或配置凭据。回归入口：`node --test dist/test/interactive/codexThreadHandoff.test.js dist/test/interactive/codexRunnerProcess.test.js dist/test/interactive/codexRunnerReuse.test.js dist/test/core/promptRetry.test.js dist/test/core/contextCompactionRunner.test.js`。
 - 无付费模型的真实验证：构建后执行 `node scripts/verify_codex_thread_handoff.js --live`；使用临时 HOME/workspace 和本机 HTTP 错误响应创建真实持久会话，先复现跨进程写锁，再验证交接恢复同一 thread、其它会话保留，最后仅清理本次进程和临时目录。可用 `CODEX_COMMAND` 指定可执行文件。
+- 重复验收入口：`node scripts/verify_codex_thread_handoff_acceptance.js --live --runs 3` 自动重新构建、执行 Codex/生命周期/压缩/重试相关回归，再重复上述隔离真实验证。每轮必须先复现冲突、再完成原会话交接并保留其它会话，且子进程正常退出（包含清理）；仅输出 `writer_conflict_reproduced` 不算通过。最终以 `acceptance_completed.passed=true`、完成轮数与请求轮数一致及退出码 0 判定隔离验收成功。默认报告存系统临时目录，可用 `--report` 指定；记录平台、CLI 版本、commit、工作区是否有改动和每轮证据，不读取用户会话。该入口不等于真实 VS Code 多窗口 Loop+ 或模型端到端通过。
 
 ## 对话标签消息视图
 
