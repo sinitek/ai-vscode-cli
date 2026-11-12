@@ -8,6 +8,7 @@ import type { ZcodeInteractiveRunner } from "./zcodeRunner";
 import type { GrokInteractiveRunner } from "./grokRunner";
 import {
   runnerLifecycleStrategies,
+  disposeManagedRunner,
   stopManagedRunner,
 } from "./runnerLifecycleStrategies";
 import type {
@@ -39,13 +40,26 @@ const entryRunners: {
 
 export class InteractiveRunnerManager {
   private readonly entries = new Map<string, RunnerEntry>();
+  private readonly pendingDisposals = new Map<string, Promise<void>>();
 
   public disposeAll(): void {
-    for (const entry of this.entries.values()) {
-      this.clearIdleTimer(entry);
-      entry.runner.dispose();
+    for (const key of this.entries.keys()) {
+      this.disposeEntry(key);
     }
-    this.entries.clear();
+  }
+
+  /** Await all predecessors for this CLI/session, including deleted registrations.
+   * Rejection remains recorded: an unproven release must never permit a later start.
+   * Callers must recheck cancellation and runner ownership after awaiting.
+   */
+  public async waitForPendingDisposal(cli: CliName, sessionId: string | null): Promise<void> {
+    const key = this.buildKeyForCli(cli, sessionId);
+    if (!key) return;
+    let pending: Promise<void> | undefined;
+    while ((pending = this.pendingDisposals.get(key))) {
+      await pending;
+      if (this.pendingDisposals.get(key) === pending) return;
+    }
   }
 
   public disposeIfMatches(cli: CliName, sessionId: string | null): void {
@@ -304,8 +318,22 @@ export class InteractiveRunnerManager {
       return;
     }
     this.clearIdleTimer(entry);
-    entry.runner.dispose();
+    const release = disposeManagedRunner(entry);
     this.entries.delete(key);
+    if (!release) return;
+    const previous = this.pendingDisposals.get(key);
+    // allSettled keeps every predecessor in the barrier even if one fails early.
+    const pending = Promise.allSettled(previous ? [previous, release] : [release]).then((results) => {
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failed) throw failed.reason;
+    });
+    this.pendingDisposals.set(key, pending);
+    void pending.then(() => {
+      if (this.pendingDisposals.get(key) === pending) this.pendingDisposals.delete(key);
+    }, () => {
+      // Consume rejection for synchronous disposal callers; dependent starts
+      // still receive the original failure through waitForPendingDisposal.
+    });
   }
 
   private touch(entry: RunnerEntry): void {

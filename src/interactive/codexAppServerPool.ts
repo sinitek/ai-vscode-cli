@@ -18,6 +18,7 @@ import {
   CODEX_THREAD_HANDOFF_FAILED,
   CODEX_THREAD_WRITER_CONFLICT,
   createCodexThreadError,
+  createCodexHandoffError,
   isCodexActiveWriterMessage,
 } from "./codexThreadErrors";
 
@@ -36,6 +37,7 @@ export type CodexAppServerConnectionSpec = {
 export type CodexAppServerListener = {
   id: string;
   isActive: () => boolean;
+  getOperationToken?: () => unknown;
   handleNotification: (message: Record<string, unknown>) => void;
   handleServerRequest: (
     method: string,
@@ -61,10 +63,28 @@ type PendingRequest = {
   claimThreadFromResult: boolean;
 };
 
+type InboundRequest = {
+  id: string | number;
+  method: string;
+  threadId: string | null;
+  listener: CodexAppServerListener;
+  operationToken: unknown;
+  cancel: () => void;
+};
+
+// Only native interactive requests may wait for a user. RPC responses and
+// lifecycle notifications must retain the wire order in readLoop.
+const INTERACTIVE_SERVER_REQUESTS = new Set([
+  "item/commandExecution/requestApproval", "item/fileChange/requestApproval",
+  "item/permissions/requestApproval", "item/tool/requestUserInput",
+  "mcpServer/elicitation/request", "applyPatchApproval", "execCommandApproval",
+]);
+
 const connections = new Map<string, CodexAppServerConnection>();
 const processConnections = new Set<CodexAppServerConnection>();
 const threadLeases = new Set<string>();
 const CODEX_THREAD_HANDOFF_TIMEOUT_MS = 75_000;
+const CODEX_THREAD_RELEASE_POLL_MS = 250;
 let nextConnectionId = 1;
 
 export type CodexThreadHandoffOptions = {
@@ -141,6 +161,9 @@ export class CodexAppServerConnection {
   private readonly listeners = new Map<string, CodexAppServerListener>();
   private readonly threadOwners = new Map<string, string>();
   private readonly loadedThreads = new Set<string>();
+  private readonly threadLoadGenerations = new Map<string, number>();
+  private nextThreadLoadGeneration = 1;
+  private readonly inbound = new Map<string | number, InboundRequest>();
   private readonly pending = new Map<number, PendingRequest>();
   private readonly buffered = new Map<string, Record<string, unknown>[]>();
   private readonly activeOwners = new Set<string>();
@@ -193,6 +216,9 @@ export class CodexAppServerConnection {
   }
 
   public retain(listener: CodexAppServerListener): void {
+    if (this.listeners.get(listener.id) !== listener) {
+      this.cancelServerRequests(listener.id);
+    }
     this.listeners.set(listener.id, listener);
     this.ensureStarted();
   }
@@ -241,6 +267,7 @@ export class CodexAppServerConnection {
       options.checkActive?.();
       return await operation();
     } finally {
+      this.cancelServerRequests(ownerId);
       this.activeOwners.delete(ownerId);
       if (leaseKey) {
         threadLeases.delete(leaseKey);
@@ -252,6 +279,10 @@ export class CodexAppServerConnection {
     const deadline = Date.now() + (options.timeoutMs ?? CODEX_THREAD_HANDOFF_TIMEOUT_MS);
     const ownerId = `handoff-${this.id}-${threadId}`;
     let requestError: Error | null = null;
+    let invalidResponse = false;
+    let requestInFlight = false;
+    let nextQueryAt = 0;
+    let finished = false;
     void logInfo("codex-thread-handoff-wait", {
       connectionId: this.id, pid: this.child?.pid ?? null, threadId,
       listeners: this.listeners.size, awaitingExit: this.closed,
@@ -259,10 +290,21 @@ export class CodexAppServerConnection {
     const waitStep = async (): Promise<void> => {
       options.checkActive?.();
       if ((requestError && !this.closed) || Date.now() >= deadline) {
-        throw createCodexThreadError(
-          CODEX_THREAD_HANDOFF_FAILED,
-          "Codex 旧连接尚未确认释放该会话，已停止恢复以避免写入冲突。请稍后重试；不会终止其它会话。",
-        );
+        const rawCode = (requestError as (Error & { code?: unknown }) | null)?.code;
+        const rpcCode = typeof rawCode === "number" ? rawCode
+          : typeof rawCode === "string" && /^[A-Z0-9_-]{1,48}$/i.test(rawCode) ? rawCode : undefined;
+        const reason = !this.closed && requestError
+          ? invalidResponse ? "invalid_response" : rpcCode === -32601 ? "protocol_unsupported" : "unload_failed"
+          : "timeout";
+        throw createCodexHandoffError({
+          connectionId: this.id, threadId, rpcMethod: "thread/unsubscribe", rpcCode,
+          stage: this.closed ? "waiting_exit" : this.hasPendingThreadLoad(threadId) ? "waiting_load"
+            : requestInFlight || requestError ? "requesting_unload" : "waiting_close",
+          reason,
+          // Server messages may contain credentials, configuration or user text.
+          causeSummary: requestError ? reason === "protocol_unsupported" ? "JSON-RPC method not found"
+            : invalidResponse ? "Unexpected unsubscribe status" : "JSON-RPC request rejected" : undefined,
+        });
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 25));
     };
@@ -270,16 +312,32 @@ export class CodexAppServerConnection {
       while (!this.closed && this.hasPendingThreadLoad(threadId)) {
         await waitStep();
       }
-      if (!this.closed && this.hasLoadedThread(threadId)) {
-        void this.request<{ status: string }>(ownerId, "thread/unsubscribe", { threadId }).then((result) => {
-          if (result?.status === "notLoaded") {
-            this.forgetThread(threadId);
-          } else if (result?.status !== "unsubscribed" && result?.status !== "notSubscribed") {
-            requestError = new Error("Codex 返回了未知的会话卸载状态。");
-          }
-        }, (error: Error) => { requestError = error; });
-      }
       while (!this.processExited && this.holdsThread(threadId)) {
+        options.checkActive?.();
+        if (!this.closed && !requestError && !requestInFlight && Date.now() < deadline
+          && Date.now() >= nextQueryAt && !this.hasPendingThreadLoad(threadId)) {
+          // Unsubscribe acknowledgements only detach the subscriber. Query again after
+          // idle teardown: notLoaded is the native release evidence, even if closed
+          // was not observed. Never overlap queries or retry a failed/unanswered RPC.
+          const generation = this.threadLoadGenerations.get(threadId);
+          requestInFlight = true;
+          void this.request<{ status: string }>(ownerId, "thread/unsubscribe", { threadId }).then((result) => {
+            if (finished) {
+              return;
+            }
+            if (result?.status === "notLoaded") {
+              if (generation === this.threadLoadGenerations.get(threadId) && !this.hasPendingThreadLoad(threadId)) {
+                this.forgetThread(threadId);
+              }
+            } else if (result?.status !== "unsubscribed" && result?.status !== "notSubscribed") {
+              invalidResponse = true;
+              requestError = new Error("Codex 返回了未知的会话卸载状态。");
+            }
+          }, (error: Error) => { requestError = error; }).finally(() => {
+            requestInFlight = false;
+            nextQueryAt = Date.now() + CODEX_THREAD_RELEASE_POLL_MS;
+          });
+        }
         await waitStep();
       }
       void logInfo("codex-thread-handoff-released", { connectionId: this.id, pid: this.child?.pid ?? null, threadId });
@@ -287,9 +345,11 @@ export class CodexAppServerConnection {
       void logError("codex-thread-handoff-failed", {
         connectionId: this.id, pid: this.child?.pid ?? null, threadId,
         reason: requestError ? "unsubscribe_failed" : Date.now() >= deadline ? "timeout" : "cancelled",
+        diagnostic: (error as Error & { diagnostic?: unknown }).diagnostic,
       });
       throw error;
     } finally {
+      finished = true;
       this.rejectOwner(ownerId, createCodexThreadError(CODEX_THREAD_HANDOFF_FAILED, "Codex 会话交接等待已结束。"));
     }
   }
@@ -303,7 +363,9 @@ export class CodexAppServerConnection {
   }
 
   private forgetThread(threadId: string): void {
+    this.cancelInbound((request) => request.threadId === threadId);
     this.loadedThreads.delete(threadId);
+    this.threadLoadGenerations.delete(threadId);
     this.threadOwners.delete(threadId);
     this.buffered.delete(threadId);
   }
@@ -312,6 +374,7 @@ export class CodexAppServerConnection {
     if (this.processExited) {
       return;
     }
+    this.cancelInbound(() => true, false);
     this.processExited = true;
     processConnections.delete(this);
     this.loadedThreads.clear();
@@ -327,8 +390,13 @@ export class CodexAppServerConnection {
       return;
     }
     this.loadedThreads.add(normalized);
+    this.threadLoadGenerations.set(normalized, this.nextThreadLoadGeneration++);
     if (!listener) {
       return;
+    }
+    const previousOwner = this.threadOwners.get(normalized);
+    if (previousOwner && previousOwner !== listenerId) {
+      this.cancelInbound((request) => request.threadId === normalized);
     }
     this.threadOwners.set(normalized, listenerId);
     const queued = this.buffered.get(normalized);
@@ -364,6 +432,7 @@ export class CodexAppServerConnection {
   }
 
   public rejectOwner(ownerId: string, error: Error): void {
+    this.cancelServerRequests(ownerId);
     for (const [id, pending] of this.pending.entries()) {
       if (pending.ownerId !== ownerId) {
         continue;
@@ -382,6 +451,7 @@ export class CodexAppServerConnection {
     if (this.closed) {
       return;
     }
+    this.cancelInbound(() => true);
     this.closed = true;
     if (connections.get(this.key) === this) {
       connections.delete(this.key);
@@ -423,6 +493,7 @@ export class CodexAppServerConnection {
   }
 
   private detachListener(listenerId: string): void {
+    this.cancelServerRequests(listenerId);
     this.listeners.delete(listenerId);
     for (const [threadId, ownerId] of this.threadOwners.entries()) {
       if (ownerId === listenerId) {
@@ -555,10 +626,20 @@ export class CodexAppServerConnection {
       return;
     }
     if (hasId && method) {
-      await this.handleServerRequest(message, method);
+      this.handleServerRequest(message, method);
       return;
     }
     if (!method) {
+      return;
+    }
+    if (method === "serverRequest/resolved") {
+      const params = message.params as Record<string, unknown> | undefined;
+      const request = this.inbound.get(params?.requestId as string | number);
+      if (request && request.threadId === params?.threadId) {
+        this.inbound.delete(request.id);
+        request.cancel();
+      }
+      this.routeTarget(message)?.handleNotification(message);
       return;
     }
     if (method === "thread/closed") {
@@ -602,34 +683,91 @@ export class CodexAppServerConnection {
     pending.resolve(message.result);
   }
 
-  private async handleServerRequest(message: Record<string, unknown>, method: string): Promise<void> {
-    const routed = this.routeTarget(message);
-    const listener = routed ?? this.singleActiveListener();
-    let resolution: JsonRpcResolution | null | undefined;
-    try {
-      resolution = listener
-        ? await listener.handleServerRequest(method, message.params)
-        : null;
-    } catch (error) {
-      resolution = {
-        error: {
-          code: -32000,
-          message: error instanceof Error ? error.message : String(error),
-        },
-      };
+  public cancelServerRequests(ownerId: string): void {
+    this.cancelInbound((request) => request.listener.id === ownerId);
+  }
+
+  private cancelInbound(matches: (request: InboundRequest) => boolean, reply = true): void {
+    for (const request of this.inbound.values()) {
+      if (!matches(request)) continue;
+      this.inbound.delete(request.id);
+      request.cancel();
+      if (reply && !this.processExited) {
+        this.replyServerRequest(request.id, this.cancelResolution(request.method));
+      }
     }
-    const fallback = buildAppServerRequestResolution(
-      method,
-      t("codex.appServerUnsupportedRequest", { method: method || "unknown" }),
-    );
-    const resolved = resolution ?? fallback;
+  }
+
+  private cancelResolution(method: string): JsonRpcResolution {
+    return buildAppServerRequestResolution(method, "该 Codex 请求已取消或不受支持。");
+  }
+
+  private replyServerRequest(id: string | number, resolution: JsonRpcResolution): void {
+    if (this.closed || this.processExited) return;
     try {
-      this.send(resolved.error
-        ? { jsonrpc: "2.0", id: message.id, error: resolved.error }
-        : { jsonrpc: "2.0", id: message.id, result: resolved.result ?? {} });
-    } catch (error) {
-      this.shutdown("terminate");
+      this.send(resolution.error
+        ? { jsonrpc: "2.0", id, error: resolution.error }
+        : { jsonrpc: "2.0", id, result: resolution.result ?? {} });
+    } catch {
+      // A failed user request must not terminate the shared connection. Transport
+      // exit/close handlers own connection shutdown; never log user answers.
+      void logError("codex-server-request-reply-failed", { connectionId: this.id, requestId: id });
     }
+  }
+
+  private handleServerRequest(message: Record<string, unknown>, method: string): void {
+    const id = message.id;
+    if ((typeof id !== "string" && typeof id !== "number") || this.inbound.has(id)) return;
+    const routing = extractRoutingThread(message);
+    const listener = this.routeTarget(message)
+      ?? (!routing.threadId && !routing.parentThreadId ? this.singleActiveListener() : null);
+    if (!listener || !listener.isActive() || !INTERACTIVE_SERVER_REQUESTS.has(method) || this.processExited) {
+      this.replyServerRequest(id, this.cancelResolution(method));
+      return;
+    }
+    let cancel = (): void => undefined;
+    const cancelled = new Promise<null>((resolve) => { cancel = () => resolve(null); });
+    const request: InboundRequest = {
+      id, method, threadId: routing.threadId ?? routing.parentThreadId,
+      listener, operationToken: listener.getOperationToken?.(), cancel,
+    };
+    this.inbound.set(id, request);
+    // Start only this potentially long user interaction outside the read loop.
+    // Both success and rejection are consumed; a late answer is valid only for
+    // this exact request, listener object, thread owner and operation identity.
+    const handling = Promise.resolve().then(() => {
+      if (this.inbound.get(id) !== request) return null;
+      if (this.listeners.get(listener.id) !== listener || !listener.isActive()
+        || listener.getOperationToken?.() !== request.operationToken
+        || (request.threadId && this.threadOwners.get(request.threadId) !== listener.id)) return this.cancelResolution(method);
+      return listener.handleServerRequest(method, message.params);
+    });
+    // Cancellation releases the completion closure even if a UI handler never
+    // settles. The losing handler promise has rejection handlers via race.
+    void Promise.race([handling, cancelled]).then((resolution) => {
+      this.finishServerRequest(request, resolution);
+    }, () => {
+      void logError("codex-server-request-handler-failed", {
+        connectionId: this.id, requestId: id, threadId: request.threadId, method,
+      });
+      this.finishServerRequest(request, this.cancelResolution(method));
+    }).catch(() => {
+      // Guard even unexpected errors in completion/logging from becoming an
+      // unhandled rejection; remove only this request, never another session.
+      if (this.inbound.get(id) === request) this.inbound.delete(id);
+    });
+  }
+
+  private finishServerRequest(request: InboundRequest, resolution: JsonRpcResolution | null | undefined): void {
+    if (this.inbound.get(request.id) !== request) return;
+    this.inbound.delete(request.id);
+    const { listener, threadId } = request;
+    const valid = !this.closed && !this.processExited
+      && this.listeners.get(listener.id) === listener && listener.isActive()
+      && listener.getOperationToken?.() === request.operationToken
+      && (!threadId || this.threadOwners.get(threadId) === listener.id);
+    this.replyServerRequest(request.id, valid ? resolution ?? this.cancelResolution(request.method)
+      : this.cancelResolution(request.method));
   }
 
   private routeNotification(message: Record<string, unknown>): void {
@@ -676,7 +814,7 @@ export class CodexAppServerConnection {
     if (ownerId) {
       return this.listeners.get(ownerId) ?? null;
     }
-    if (routing.parentThreadId) {
+    if (!routing.threadId && routing.parentThreadId) {
       const parentOwner = this.threadOwners.get(routing.parentThreadId);
       if (parentOwner) {
         return this.listeners.get(parentOwner) ?? null;
@@ -703,6 +841,9 @@ export class CodexAppServerConnection {
       }
       const id = this.nextRequestId;
       this.nextRequestId += 1;
+      if (method === "thread/resume") {
+        this.threadLoadGenerations.set(String(params.threadId || "").trim(), this.nextThreadLoadGeneration++);
+      }
       this.pending.set(id, {
         ownerId,
         method,
@@ -754,7 +895,7 @@ function extractRoutingThread(message: Record<string, unknown>): { threadId: str
   const nested = params.thread && typeof params.thread === "object"
     ? params.thread as Record<string, unknown>
     : null;
-  const direct = String(params.threadId || params.thread_id || nested?.id || "").trim();
+  const direct = String(params.threadId || params.thread_id || params.conversationId || nested?.id || "").trim();
   const parent = String(
     params.parentThreadId
     || params.parent_thread_id

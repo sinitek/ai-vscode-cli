@@ -1,16 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
-import * as vm from "node:vm";
-import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
-import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
-
-function functionSource(source: string, name: string): string {
-  const start = source.indexOf(`      function ${name}(`);
-  const end = source.indexOf("\n      function ", start + 1);
-  assert.ok(start >= 0 && end > start, `Missing function ${name}`);
-  return source.slice(start, end);
-}
+import { createRunStatusHarness } from "./tabRunStatusHarness";
 
 function createErrorSync() {
   const source = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING;
@@ -45,76 +36,6 @@ test("intermediate trace and system errors do not fail active or background runn
     }
   }
 });
-
-function createRunStatusHarness() {
-  let listener: ((event: { data: Record<string, unknown> }) => void) | undefined;
-  let activeTabId = "active";
-  const erroredTabIds = new Set<string>();
-  const noop = () => {};
-  const sandbox = {
-    ...Object.fromEntries([
-      "resetRunRawStream", "updateCurrentRunPrompt", "resetTaskListForRunStart", "closeTaskListForRunCompletion",
-      "flushPendingPromptQueue", "syncConversationControlsForActiveTab", "appendMessage", "applyTraceSegment",
-      "updateAppHeight", "scheduleAppHeightUpdate", "renderConversationTabs", "updateRunPromptButton",
-      "syncRunPromptOverlay", "pruneRenderedConversationViews", "syncActiveMessagesFromRuntime", "resetTaskListState",
-    ].map((name) => [name, noop])),
-    window: {
-      addEventListener(type: string, handler: typeof listener) {
-        if (type === "message") { listener = handler; }
-      },
-    },
-    vscode: { postMessage: noop },
-    conversationRuntimeByTabId: Object.create(null),
-    TAB_RUNTIME_DEFAULT_KEY: "default",
-    erroredTabIds,
-    loopMetaByTabId: Object.create(null),
-    runningTabStartedAtById: Object.create(null),
-    runningFlowStoppedTabIds: new Set<string>(),
-    assistantRedirects: Object.create(null),
-    getActiveConversationTabId: () => activeTabId,
-    getConversationTabSummary: (tabId: string) => ({ id: tabId }),
-    isLoopMainTab: () => false,
-    updateLoopMetaForTabFromMessage: () => false,
-    normalizeRunActivity: () => "",
-    isRunStatusSummaryText: () => false,
-    shouldHandleTabScopedEvent: (data: { tabId?: string }) => !data.tabId || data.tabId === activeTabId,
-    updateRunningState: noop,
-    ensureRuntimeStateMessages: (runtime: { messages: unknown[] }) => runtime.messages,
-    ensureRuntimeTaskList: (runtime: { taskList: unknown }) => runtime.taskList,
-    setMessagesForTab: noop,
-    isRuntimeStateForActiveTab: (tabId: string) => tabId === activeTabId,
-    getTracePresentation: (content: string) => ({ type: content.startsWith("error:") ? "error" : "info" }),
-    reportWebviewFailure: (_label: string, error: unknown) => { throw error; },
-  };
-  const context = vm.createContext(sandbox);
-  for (const name of [
-    "createTaskListState", "createConversationRuntimeState", "resolveConversationRuntimeKey", "getConversationRuntimeState",
-    "pruneConversationRuntimeStates", "resetConversationRuntimeState",
-  ]) {
-    vm.runInContext(functionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, name), context);
-  }
-  for (const name of [
-    "isErrorMessage", "syncTabErrorFromMessage", "isTabRunning", "isConversationTabRunning", "setTabErrored",
-    "isHiddenRetryQueuedMessage", "isHiddenRetryStartedMessage", "getTabRunStartedAt",
-  ]) {
-    vm.runInContext(functionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, name), context);
-  }
-  vm.runInContext(VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH, context);
-  const send = (data: Record<string, unknown>) => {
-    assert.ok(listener);
-    listener({ data });
-  };
-  const run = (tabId: string, status: string) => send({ type: "runStatus", tabId, status });
-  const message = (tabId: string, type = "appendMessage", role = "trace", content = "error: 可恢复工具错误") => {
-    send({ type, tabId, message: { id: "message", role, content } });
-  };
-  return {
-    context, erroredTabIds, send, run, message,
-    activate: (tabId: string) => { activeTabId = tabId; },
-    reset: (tabId: string) => vm.runInContext(`resetConversationRuntimeState(${JSON.stringify(tabId)})`, context),
-    prune: (tabIds: string[]) => vm.runInContext(`pruneConversationRuntimeStates(${JSON.stringify(tabIds)})`, context),
-  };
-}
 
 for (const tabId of ["active", "background"]) {
   test(`successful ${tabId} tab ignores late error messages and retry notices`, () => {
@@ -197,3 +118,57 @@ test("an idle failure stays visible without letting unrelated or empty messages 
   assert.equal(errored.has("idle"), true);
   assert.equal(errored.has("active"), false);
 });
+
+for (const tabId of ["active", "background"]) {
+  test(`completed ${tabId} tab preserves real compaction activity and rejects no new execution errors`, () => {
+    const view = createRunStatusHarness();
+    view.run("main-review", "start");
+    view.run(tabId, "start");
+    view.run(tabId, "end");
+    view.send({ type: "contextTokenUsage", tabId, tokensInContextWindow: 1200,
+      modelContextWindow: 8000, contextWindowSource: "zcode-projection" });
+    const parent = JSON.stringify(view.tabState("main-review"));
+
+    view.run(tabId, "start", "contextCompaction");
+    assert.deepEqual(view.tabState(tabId), {
+      running: true, errored: false, activity: "contextCompaction", lastRunStatus: "start",
+    });
+    assert.equal(view.runtime(tabId).tokensInContextWindow, 1200, "compaction keeps the existing context counter");
+    if (tabId === "active") {
+      assert.equal(view.elements.runStatusText.textContent, "runStatusCompacting");
+      assert.equal(view.elements.runStatusText.classes.has("compacting"), true);
+    }
+    // Exercise delayed message paths independently of the silent host's log-only failure path.
+    for (const role of ["trace", "system"]) {
+      view.message(tabId, "appendMessage", role, "error: CODEX_THREAD_HANDOFF_FAILED");
+      view.message(tabId, "replaceMessage", role, "error: CODEX_THREAD_HANDOFF_FAILED");
+      assert.equal(view.tabState(tabId).errored, false);
+    }
+    view.send({ type: "traceSegment", tabId, content: "error: CODEX_THREAD_HANDOFF_FAILED" });
+    assert.equal(view.tabState(tabId).errored, false);
+    view.run(tabId, "end");
+    assert.deepEqual(view.tabState(tabId), { running: false, errored: false, activity: "", lastRunStatus: "end" });
+    for (const role of ["trace", "system"]) {
+      view.message(tabId, "appendMessage", role, "error: late CODEX_THREAD_HANDOFF_FAILED");
+      view.message(tabId, "replaceMessage", role, "error: late CODEX_THREAD_HANDOFF_FAILED");
+    }
+    view.send({ type: "traceSegment", tabId, content: "error: late CODEX_THREAD_HANDOFF_FAILED" });
+    assert.equal(view.tabState(tabId).errored, false);
+    assert.equal(JSON.stringify(view.tabState("main-review")), parent);
+    if (tabId === "active") {
+      assert.equal(view.elements.runStatusText.classes.has("compacting"), false);
+      assert.equal(view.renderedTraces.length, 2, "error traces reach the active rendering port");
+      assert.equal(view.renderedMessages.length, 4, "trace/system errors are delivered, not globally filtered");
+    }
+
+    view.message(tabId, "appendMessage", "user", "start a real new execution");
+    view.run(tabId, "start");
+    assert.equal(view.runtime(tabId).tokensInContextWindow, null, "a normal run clears the old context counter");
+    assert.equal(view.runtime(tabId).activeRunActivity, "");
+    view.run(tabId, "error");
+    assert.deepEqual(view.tabState(tabId), { running: false, errored: true, activity: "", lastRunStatus: "error" });
+    view.message(tabId, "appendMessage", "system", "error: actual execution failure");
+    assert.equal(view.tabState(tabId).errored, true);
+    assert.equal(JSON.stringify(view.tabState("main-review")), parent);
+  });
+}

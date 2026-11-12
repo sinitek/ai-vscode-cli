@@ -3,6 +3,8 @@ import assert = require("node:assert/strict");
 
 import type { ContextCompactionRunDeps } from "../../contextCompactionRunner";
 import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
+import { withCodexIdentityFixture } from "../config/codexRuntimeConfigFixture";
+import { managedZcodeFixture } from "../interactive/zcodeProcessFixture";
 
 type SilentCodexCompactionOptions = {
   compactThread?: () => Promise<{ compacted: boolean; threadId: string }>;
@@ -108,6 +110,8 @@ function createSilentCodexCompactionDeps(options: SilentCodexCompactionOptions =
       getOrCreateGrokRunner: () => {
         throw new Error("Grok runner should not be used in this test");
       },
+      waitForPendingDisposal: async () => {},
+      hasZcodeRunner: () => true,
       getOrCreateZcodeRunner: () => {
         throw new Error("ZCode runner should not be used in this test");
       },
@@ -277,6 +281,8 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
       getOrCreateGrokRunner: () => {
         throw new Error("Grok runner should not be used in this test");
       },
+      waitForPendingDisposal: async () => {},
+      hasZcodeRunner: () => true,
       getOrCreateZcodeRunner: () => {
         throw new Error("ZCode runner should not be used in this test");
       },
@@ -319,6 +325,47 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
 
   return { deps, calls };
 }
+
+test("Codex compact passes cwd to the real semantic identity and preserves reuse isolation", async () => {
+  await withCodexIdentityFixture(async (f) => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
+    const manager = new InteractiveRunnerManager();
+    const runners: import("../../interactive/codexRunner").CodexInteractiveRunner[] = [];
+    const fingerprints: Array<string | undefined> = [];
+    const getRunner = manager.getOrCreateCodexRunner.bind(manager);
+    manager.getOrCreateCodexRunner = (input) => {
+      const runner = getRunner(input);
+      runners.push(runner);
+      fingerprints.push(input.configFingerprint);
+      runner.compactThread = async () => {
+        await f.trust(f.a);
+        return { compacted: true, threadId: "synthetic-thread" };
+      };
+      return runner;
+    };
+    const { deps } = createSilentCodexCompactionDeps();
+    deps.interactiveRunnerManager = manager;
+    deps.resolveWorkspaceCwd = () => f.a;
+    deps.readRuntimeConfigFingerprint = async (cli, configId, cwd) => {
+      assert.equal(cwd, f.a);
+      return f.fingerprint(cli, configId, cwd);
+    };
+    try {
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.equal(fingerprints[0], await f.fingerprint("codex", "config-codex", f.a));
+      await f.trust(f.b);
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.equal(runners[1], runners[0]);
+      await f.writeConfig('sandbox_mode="read-only"\n');
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.notEqual(runners[2], runners[0]);
+      assert.notEqual(fingerprints[2], fingerprints[0]);
+    } finally {
+      manager.disposeAll();
+    }
+  });
+});
 
 test("silent context compaction emits status events for the active compaction indicator", async () => {
   const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
@@ -796,6 +843,8 @@ function createStrategySelectionDeps(options: StrategySelectionOptions = {}) {
           dispose: () => { calls.grokDisposed += 1; },
         } as never;
       },
+      waitForPendingDisposal: async () => {},
+      hasZcodeRunner: () => true,
       getOrCreateZcodeRunner: () => {
         throw new Error("ZCode runner should not be used in this test");
       },
@@ -1080,7 +1129,7 @@ test("context compaction strategy registry selects Codex and preserves selection
     thinkingMode: "medium",
     interactiveMode: "coding",
     model: "gpt-5",
-    extra: { configId: "config-codex" },
+    extra: { configId: "config-codex", command: "codex", args: [], cwd: "/workspace" },
   }]);
   assert.deepEqual(calls.systemMessages, ["Codex 当前线程上下文压缩已完成：thread-after-compact"]);
   assert.deepEqual(calls.sendRunStatuses, [
@@ -1358,3 +1407,54 @@ test("DSH compaction uses the unsupported status and does not start a compact pr
   assert.equal(await runContextCompactionWithDeps(deps, { cli: "dsh", silent: true }), false);
   assert.deepEqual(messages, []);
 });
+
+for (const ending of ["release", "stop", "timeout", "replaced", "rejection"] as const) {
+  test(`ZCode compaction uses the actual manager disposal barrier through ${ending}`, async () => {
+    const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+    const f = managedZcodeFixture();
+    let compacting: Promise<boolean> | undefined;
+    try {
+      const { deps, calls } = createSilentCodexCompactionDeps();
+      deps.getCurrentCli = () => "zcode";
+      deps.getCliCommand = () => "zcode";
+      deps.resolveWorkspaceCwd = () => process.cwd();
+      deps.resolveInteractiveMappedId = () => "sess_test";
+      deps.interactiveRunnerManager = f.manager;
+      const old = f.manager.getOrCreateZcodeRunner(f.options("before", "session-1"));
+      if (ending === "rejection") old.dispose = () => Promise.reject(new Error("release failed"));
+      else await old.start();
+      let stop = () => {};
+      compacting = runContextCompactionWithDeps(deps, {
+        silent: true, ...(ending === "timeout" ? { timeoutMs: 20 } : {}),
+        onStopReady: (fn) => { stop = fn; },
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(f.children.length, ending === "rejection" ? 0 : 1);
+      if (ending === "rejection") {
+        assert.equal(await compacting, false);
+        return;
+      }
+      if (ending === "stop") stop();
+      if (ending === "stop" || ending === "timeout") {
+        assert.equal(await compacting, false, "stop/timeout settles while predecessor is still held");
+        assert.deepEqual(calls.sendRunStatuses.map((s) => s.status), ["start", "stopped"]);
+      }
+      if (ending === "replaced") f.manager.getOrCreateZcodeRunner(f.options("replacement", "session-1"));
+      f.children[0].emit("exit", 0);
+      f.children[0].emit("close", 0);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(f.children.length, 1, "compaction cannot resume before EOF");
+      f.children[0].stdout.end();
+      assert.equal(await compacting, ending === "release");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(f.children.length, ending === "release" ? 2 : 1);
+      if (ending === "release") {
+        assert.equal(f.children[1].requests[0].method, "session/resume");
+        assert.equal(f.children[1].requests.filter((r) => r.method === "session/compact").length, 1);
+      }
+    } finally {
+      await f.cleanup();
+      await compacting;
+    }
+  });
+}

@@ -52,7 +52,7 @@ export type ZcodeChild = {
   killed?: boolean;
   exitCode: number | null;
   kill: (signal?: NodeJS.Signals) => boolean;
-  once: (event: "exit" | "error", listener: (...args: unknown[]) => void) => unknown;
+  once: (event: "exit" | "close" | "error", listener: (...args: unknown[]) => void) => unknown;
 };
 
 export type ZcodeSpawn = (
@@ -105,6 +105,9 @@ export class ZcodeInteractiveRunner {
   private sessionId: string | null = null;
   private initialized = false;
   private closed = false;
+  private childExited = false;
+  private childClosed = false;
+  private disposePromise: Promise<void> | null = null;
   private failed: Error | null = null;
   private settings: ZcodeSettingsView = {
     model: null,
@@ -126,7 +129,7 @@ export class ZcodeInteractiveRunner {
     reject: (error: Error) => void;
   } | null = null;
   private stderrText = "";
-  private readonly readLoop: Promise<void> | null = null;
+  private readLoop: Promise<void> | null = null;
 
   public constructor(private readonly options: ZcodeRunnerOptions) {
     void this.readLoop;
@@ -172,10 +175,12 @@ export class ZcodeInteractiveRunner {
       this.fail(error instanceof Error ? error : new Error(String(error)));
     });
     child.once("exit", (code) => {
+      this.childExited = true;
       if (!this.closed) {
         this.fail(new ZcodeProtocolError(`ZCode exited (${String(code ?? "signal")}).`, "exit"));
       }
     });
+    child.once("close", () => { this.childClosed = true; });
     if (child.stderr) {
       child.stderr.on("data", (chunk: Buffer | string) => {
         this.stderrText = redactZcodeDiagnostic(`${this.stderrText}${chunk.toString()}`).slice(-ZCODE_STDERR_REPORT_LIMIT);
@@ -185,7 +190,7 @@ export class ZcodeInteractiveRunner {
       throw new ZcodeProtocolError("ZCode stdout is unavailable.", "spawn");
     }
     this.reader = createCodexAppServerNdjsonReader(child.stdout);
-    void this.consume(this.reader);
+    this.readLoop = this.consume(this.reader);
     const resumeId = isZcodeSessionId(this.options.localSessionId) ? this.options.localSessionId : null;
     const workspace = buildZcodeWorkspace(this.options.cwd);
     const model = this.options.model?.trim() ? parseZcodeModelRef(this.options.model.trim()) : null;
@@ -342,45 +347,56 @@ export class ZcodeInteractiveRunner {
     }));
   }
 
-  public async dispose(): Promise<void> {
-    if (this.closed) {
-      return;
+  public dispose(): Promise<void> {
+    if (this.disposePromise) {
+      return this.disposePromise;
     }
     this.closed = true;
-    const sessionId = this.sessionId;
-    if (sessionId && this.child?.stdin) {
-      try {
-        await this.request("session/close", { sessionId });
-      } catch {
-        // The process is still torn down below.
-      }
-    }
+    this.disposePromise = this.disposeChild();
+    return this.disposePromise;
+  }
+
+  private async disposeChild(): Promise<void> {
     this.rejectAll(new ZcodeProtocolError("ZCode runner disposed.", "disposed"));
     const child = this.child;
-    this.child = null;
-    this.reader?.close();
     if (!child) {
       return;
     }
+    const exited = this.childExited || child.exitCode !== null
+      ? Promise.resolve() : new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const closed = this.childClosed
+      ? Promise.resolve() : new Promise<void>((resolve) => child.once("close", () => resolve()));
+    if (this.sessionId && !this.childExited && child.exitCode === null) {
+      // Closing blocks new work, but must not block the native close request itself.
+      // EOF follows the queued write; an absent RPC response cannot prevent teardown.
+      void this.request("session/close", { sessionId: this.sessionId }, true).catch(() => undefined);
+    }
+    const kill = this.options.killTreeImpl ?? ((target, signal) => {
+      if (!killProcessTree(target as unknown as ChildProcess, signal)) {
+        target.kill(signal);
+      }
+    });
+    let forceTimer: NodeJS.Timeout | undefined;
+    const terminateTimer = setTimeout(() => {
+      if (this.childExited || child.exitCode !== null) return;
+      kill(child, "SIGTERM");
+      if (this.childExited || child.exitCode !== null) return;
+      forceTimer = setTimeout(() => {
+        if (!this.childExited && child.exitCode === null) kill(child, "SIGKILL");
+      }, ZCODE_SHUTDOWN_GRACE_MS);
+    }, ZCODE_SHUTDOWN_GRACE_MS);
     try {
       child.stdin?.end();
     } catch {
       // ignore
     }
-    const kill = this.options.killTreeImpl ?? ((target, signal) => {
-      killProcessTree(target as unknown as ChildProcess, signal);
-    });
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        kill(child, "SIGKILL");
-        resolve();
-      }, ZCODE_SHUTDOWN_GRACE_MS);
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      kill(child, "SIGTERM");
-    });
+    // A signal or close response is not process exit. Drain stdout through normal
+    // EOF and wait for close as well, including when exit preceded disposal.
+    await Promise.all([exited, closed, this.readLoop]);
+    clearTimeout(terminateTimer);
+    clearTimeout(forceTimer);
+    this.rejectAll(new ZcodeProtocolError("ZCode runner disposed.", "disposed"));
+    this.child = null;
   }
 
   private async applyModel(model: ZcodeModelRef, thinkingMode = this.options.thinkingMode): Promise<void> {
@@ -429,8 +445,8 @@ export class ZcodeInteractiveRunner {
     }
   }
 
-  private request(method: string, params: unknown): Promise<unknown> {
-    if (!this.child?.stdin || this.closed || this.failed) {
+  private request(method: string, params: unknown, duringClose = false): Promise<unknown> {
+    if (!this.child?.stdin || (this.closed && !duringClose) || this.failed) {
       return Promise.reject(this.failed ?? new ZcodeProtocolError("ZCode process is not running.", "process"));
     }
     const id = this.nextId;

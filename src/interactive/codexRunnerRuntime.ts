@@ -41,6 +41,7 @@ export type CodexThreadOptions = {
 
 export type CodexAppServerArgsOptions = {
   requestUserInputEnabled?: boolean;
+  immediateThreadUnload?: boolean;
 };
 
 export type CodexAppServerInitializeOptions = {
@@ -459,6 +460,7 @@ export function buildCodexAppServerArgs(
     "app-server",
     ...(options.requestUserInputEnabled === true ? ["--enable", "default_mode_request_user_input"] : []),
     ...configOverrides.flatMap((override) => ["-c", override]),
+    ...(options.immediateThreadUnload === true ? ["-c", "thread_unload_delay_secs=0"] : []),
     "--listen",
     "stdio://",
   ];

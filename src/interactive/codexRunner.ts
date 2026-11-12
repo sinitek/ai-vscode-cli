@@ -54,6 +54,7 @@ import {
   type CodexRuntimeTraceMeta,
 } from "./codexRunnerRuntime";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
+import { resolveCodexThreadUnloadCapability } from "./codexAppServerCapabilities";
 import {
   acquireCodexAppServer,
   buildCodexAppServerConnectionKey,
@@ -219,7 +220,8 @@ export class CodexInteractiveRunner {
     ]);
     this.listener = {
       id: this.listenerId,
-      isActive: () => this.activeOperation !== null,
+      isActive: () => this.activeOperation !== null && !this.activeOperation.settled,
+      getOperationToken: () => this.activeOperation,
       handleNotification: (message) => this.handleNotification(message),
       handleServerRequest: (method, params) => this.handleServerRequest(method, params),
       onClosed: (info) => this.handleConnectionClosed(info),
@@ -339,7 +341,7 @@ export class CodexInteractiveRunner {
     };
     const operation = this.beginOperation("compact", handlers, abortGeneration, disposeGeneration);
     try {
-      const opened = await this.openConnection(handlers, false, true);
+      const opened = await this.openConnection(handlers, false, true, operation);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       return await opened.connection.withThread(this.listenerId, existingThreadId, async () => {
         await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
@@ -359,6 +361,7 @@ export class CodexInteractiveRunner {
       throw error;
     } finally {
       if (this.activeOperation === operation) {
+        this.connection?.cancelServerRequests(this.listenerId);
         this.activeOperation = null;
       }
     }
@@ -372,7 +375,7 @@ export class CodexInteractiveRunner {
   ): Promise<void> {
     const operation = this.beginOperation("turn", handlers, abortGeneration, disposeGeneration);
     try {
-      const opened = await this.openConnection(handlers, handlers.requestUserInputEnabled === true, false);
+      const opened = await this.openConnection(handlers, handlers.requestUserInputEnabled === true, false, operation);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       await opened.connection.withThread(this.listenerId, this.options.threadId, async () => {
         await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
@@ -408,6 +411,7 @@ export class CodexInteractiveRunner {
       throw error;
     } finally {
       if (this.activeOperation === operation) {
+        this.connection?.cancelServerRequests(this.listenerId);
         this.activeOperation = null;
       }
     }
@@ -417,6 +421,7 @@ export class CodexInteractiveRunner {
     handlers: CodexStreamHandlers | undefined,
     requestUserInputEnabled: boolean,
     reuseLoadedThread: boolean,
+    operation: CodexRunnerOperation,
   ): Promise<{
     connection: CodexAppServerConnection;
     threadOptions: ReturnType<typeof buildCodexThreadOptions>;
@@ -472,13 +477,33 @@ export class CodexInteractiveRunner {
         });
       }
     }
+    const checkActive = (): void => {
+      this.throwIfSuperseded(operation.abortGeneration, operation.disposeGeneration);
+      if (this.activeOperation !== operation || operation.settled) { throw createAbortError(); }
+    };
+    checkActive();
+    const cwd = resolvedWorkspaceDir ?? this.options.cwd;
     const spawnCommand = resolveSpawnCommand(
       this.options.command,
       buildCodexAppServerArgs(configOverrides, {
         requestUserInputEnabled,
       }),
     );
-    const cwd = resolvedWorkspaceDir ?? this.options.cwd;
+    // This runner only acquires plugin-owned app-servers. Probe the resolved target,
+    // not a bare command that could resolve differently in the child's environment.
+    // A login shell's eventual executable identity is unknown: keep compatible args.
+    if (!spawnCommand.usesShell) {
+      const capability = await resolveCodexThreadUnloadCapability({
+        command: spawnCommand.command, cwd, env: childEnvResult.env,
+      });
+      // stop/dispose may settle the operation while the bounded probe is in flight.
+      checkActive();
+      if (capability.supported === true && capability.reason === "supported") {
+        spawnCommand.args = buildCodexAppServerArgs(configOverrides, {
+          requestUserInputEnabled, immediateThreadUnload: true,
+        });
+      }
+    }
     const key = buildCodexAppServerConnectionKey({
       command: spawnCommand.command,
       args: spawnCommand.args,
@@ -621,6 +646,7 @@ export class CodexInteractiveRunner {
       reject,
       done,
     };
+    this.connection?.cancelServerRequests(this.listenerId);
     this.activeOperation = operation;
     return operation;
   }
@@ -683,6 +709,7 @@ export class CodexInteractiveRunner {
     if (!operation || operation.settled) {
       return;
     }
+    this.connection?.cancelServerRequests(this.listenerId);
     operation.settled = true;
     if (operation.finalAnswerCompletionTimer) {
       clearTimeout(operation.finalAnswerCompletionTimer);
@@ -818,6 +845,12 @@ export class CodexInteractiveRunner {
     params: unknown,
   ): Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined {
     const operation = this.activeOperation;
+    const requestParams = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const eventThreadId = String(requestParams.threadId || requestParams.thread_id || requestParams.conversationId || "").trim();
+    if (!isCodexSubagentThreadEvent(eventThreadId, this.options.threadId)
+      && this.isSupersededTurn(extractCodexEventTurnId(requestParams))) {
+      return buildAppServerRequestResolution(method, "该 Codex 请求所属操作已停止。");
+    }
     if (operation && !operation.settled) {
       this.observeFinalAnswerBoundary(operation, method, params && typeof params === "object"
         ? params as Record<string, unknown>

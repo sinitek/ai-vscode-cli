@@ -1114,7 +1114,7 @@ function contractDiagnostics(overrides: Record<string, string>): ContractDiagnos
 }
 
 function blockSpan(source: string, name: string): { start: number; end: number } {
-  const lines = source.split("\n");
+  const lines = source.split(/\r?\n/u);
   const startIndex = lines.findIndex((line) => line.startsWith(`function ${name}(`) || line.includes(` ${name}(`));
   assert.ok(startIndex >= 0, `missing ${name}`);
   let endIndex = lines.length;
@@ -1559,18 +1559,21 @@ test("registration keeps each platform runner and its required fields", () => {
 
 test("shared reuse flow rejects a CLI that does not match its factory or registration", () => {
   const managerPath = path.join(process.cwd(), "src/interactive/manager.ts");
-  const positiveSource = patchedManager(reusePositiveProbe);
-  const positive = contractDiagnostics({ [managerPath]: positiveSource });
-  assert.deepEqual(positive, [], renderDiagnostics(positive));
-  const negativeSource = patchedManager(reuseNegativeProbe);
-  const negative = contractDiagnostics({ [managerPath]: negativeSource });
-  assertRejected(negativeSource, negative, "__probeFactoryMismatch", { codes: [2322, 2740], messageIncludes: "CodexInteractiveRunner" });
-  assertRejected(negativeSource, negative, "__probeRegistrationMismatch", { codes: [2322], messageIncludes: "codex" });
-  assertRejected(negativeSource, negative, "__probeMissingConfig", { codes: [2322, 2741], messageIncludes: "configId" });
-  assertRejected(negativeSource, negative, "__probeWithLifecycleCross", { codes: [2322, 2345], messageIncludes: "runner" });
-  assertRejected(negativeSource, negative, "__probeRegisterMismatch", { codes: [2322, 2345, 2740], messageIncludes: "ClaudeInteractiveRunner" });
-  const anchorLine = negativeSource.split("\n").findIndex((line) => line === managerAnchor) + 1;
-  assert.ok(negative.every((diagnostic) => diagnostic.line < anchorLine), renderDiagnostics(negative));
+  for (const lineEnding of ["\n", "\r\n"]) {
+    const positiveSource = patchedManager(reusePositiveProbe).replace(/\r?\n/gu, lineEnding);
+    const positive = contractDiagnostics({ [managerPath]: positiveSource });
+    assert.deepEqual(positive, [], renderDiagnostics(positive));
+    const negativeSource = patchedManager(reuseNegativeProbe).replace(/\r?\n/gu, lineEnding);
+    const negative = contractDiagnostics({ [managerPath]: negativeSource });
+    assertRejected(negativeSource, negative, "__probeFactoryMismatch", { codes: [2322, 2740], messageIncludes: "CodexInteractiveRunner" });
+    assertRejected(negativeSource, negative, "__probeRegistrationMismatch", { codes: [2322], messageIncludes: "codex" });
+    assertRejected(negativeSource, negative, "__probeMissingConfig", { codes: [2322, 2741], messageIncludes: "configId" });
+    assertRejected(negativeSource, negative, "__probeWithLifecycleCross", { codes: [2322, 2345], messageIncludes: "runner" });
+    assertRejected(negativeSource, negative, "__probeRegisterMismatch", { codes: [2322, 2345, 2740], messageIncludes: "ClaudeInteractiveRunner" });
+    const anchorLine = negativeSource.split(/\r?\n/u).findIndex((line) => line === managerAnchor) + 1;
+    assert.ok(anchorLine > 0, "manager anchor must exist for either line ending");
+    assert.ok(negative.every((diagnostic) => diagnostic.line < anchorLine), renderDiagnostics(negative));
+  }
 });
 
 type DshRunner = InstanceType<typeof DshInteractiveRunner>;

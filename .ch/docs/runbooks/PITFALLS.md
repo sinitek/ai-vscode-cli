@@ -9,8 +9,11 @@
 - 状态：`有效`。现象：原 thread 从另一 app-server 恢复时报 `already has an active writer`，即使原连接没有正在执行的 turn。
 - 触发条件/根因：共享进程保留已加载 thread；进程 key 因配置身份/启动能力变化而切换。`thread/unsubscribe` 的 `unsubscribed` / `notSubscribed` 仅表示订阅状态，本机 0.167.0 实测 `thread/closed` 约 60 秒后才到达；Windows `taskkill` 已启动同样不表示目标已退出。
 - 长期规避：恢复前按目标 thread 交接，等待 closed / notLoaded 或原进程实际退出；不能删除锁、杀共享进程、丢掉配置指纹或反复 resume。未知外部 writer 由用户确认原任务释放，不强制接管。
+- 共享读取阻塞：readLoop 等待交互处理器时，另一 Tab 的问题会挡住后续 RPC/closed，并非只能归为丢通知。仅将原生交互请求异步分离，按原连接/thread/listener/操作身份回复一次；热停止与关闭用原生取消响应收口，迟到答案不可发送，不能取消其它 Tab 的问题来疏通读取。回归见 codexThreadHandoff 与 codexRunnerReuse；排障依据 CODEX_THREAD_HANDOFF_FAILED 的 stage/reason，只有明确 -32601 才称协议不支持。
 - 验证：`npm run build` 后执行 `node scripts/verify_codex_thread_handoff.js --live`，只使用隔离 HOME/workspace 和本机模拟服务；Windows 仍需原生环境验收，不用 macOS 实验替代。
 - 验证假阳性：脚本直接加载 ignored 的 `dist`，拉取源码不代表重新构建；只有 `writer_conflict_reproduced` 仅证明旧问题可复现，不是修复通过。优先执行 `node scripts/verify_codex_thread_handoff_acceptance.js --live --runs 3`，自动构建并要求每轮 `handoff_verified` 的原 thread/其它会话保留、正常退出和最终报告全部通过；真实多窗口 Loop+ 仍单独验收。
+- Windows 夹具：fake PID 的终止调用必须拦截。taskkill 应分流为终止请求，不能由通用 spawn mock 创建成另一个 app-server；成功请求后仍需独立模拟目标 exit / close，否则正确的释放确认会超时。复用 `src/test/interactive/codexProcessFixture.ts`，超时拒绝和所有权保留断言不能删。
+- Windows 隔离清理：默认命令和原生 0.162.1 均复现已 exit、无 stdio EOF。空 HOME 会触发插件 Git 同步；Windows Git 启动器退出可使深层 fetch 后代逃出 `taskkill /T` 的现存树并持有管道。隔离协议脚本须在临时配置禁用 `features.plugins`，不读取用户插件、不访问插件仓库；不能改用原生 exe 就声称根因解决。清理超时须涵盖 HTTP close，并保留进程/管道诊断；只有真实 exit、正常 stdio close、目录删除全部完成才输出 `cleanup_verified`。产品启用插件时的后台后代终止行为另属审查范围，本次未修改。证据见 [Windows 验证记录](../references/codex-thread-handoff-windows-validation.md)。
 
 ## 记录原则
 

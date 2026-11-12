@@ -1,5 +1,6 @@
 import type { CliName } from "./cli/types";
 import { logError } from "./logger";
+import { getErrorInfo } from "./promptRetry";
 import { shouldOverlapLoopMainContextCompaction, type LoopMainAutoCompactRequest } from "./loopMainAutoCompact";
 import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
 
@@ -7,11 +8,20 @@ type DeferredCompaction = {
   start: (completed: boolean) => void;
 };
 
+type CompactionOrigin = {
+  activity: "contextCompaction";
+  taskId: string;
+  subtaskId: string;
+  cli: CliName;
+  tabId: string;
+  sessionId: string;
+};
+
 export class LoopSubtaskAutoCompactions {
   private readonly pending = new Map<string, DeferredCompaction>();
   private readonly flights = new Map<string, Promise<void>>();
 
-  constructor(private readonly onError: (error: unknown) => void) {}
+  constructor(private readonly onError: (error: unknown, origin: CompactionOrigin) => void) {}
 
   defer(input: PromptRunInput, target: PromptRunTarget, run: () => Promise<void>): boolean {
     if (input.taskRole !== "subtask" || !input.loopTaskId?.trim() || !input.loopSubtaskId?.trim() || !target.sessionId) {
@@ -19,6 +29,11 @@ export class LoopSubtaskAutoCompactions {
     }
     const taskKey = JSON.stringify([input.loopTaskId, input.loopSubtaskId]);
     const sessionKey = JSON.stringify([target.cli, target.sessionId]);
+    // Capture the completed invocation before callers reuse input/target objects.
+    const origin: CompactionOrigin = {
+      activity: "contextCompaction", taskId: input.loopTaskId, subtaskId: input.loopSubtaskId,
+      cli: target.cli, tabId: target.tabId, sessionId: target.sessionId,
+    };
     const previous = this.flights.get(sessionKey);
     let start!: (completed: boolean) => void;
     const notified = new Promise<boolean>((resolve) => { start = resolve; });
@@ -27,7 +42,7 @@ export class LoopSubtaskAutoCompactions {
       if (completed) {
         await run();
       }
-    }).catch(this.onError).finally(() => {
+    }).catch((error) => this.onError(error, origin)).finally(() => {
       if (this.flights.get(sessionKey) === flight) {
         this.flights.delete(sessionKey);
       }
@@ -61,9 +76,12 @@ export class LoopSubtaskAutoCompactions {
   }
 }
 
-export const loopSubtaskAutoCompactions = new LoopSubtaskAutoCompactions((error) => {
+export const loopSubtaskAutoCompactions = new LoopSubtaskAutoCompactions((error, origin) => {
+  const info = getErrorInfo(error);
   void logError("loop-subtask-auto-compact-failed", {
-    error: error instanceof Error ? error.message : String(error),
+    ...origin,
+    error: info.message,
+    errorCode: info.code,
   }).catch(() => undefined);
 });
 

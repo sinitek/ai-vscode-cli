@@ -88,7 +88,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getGlobalHumanInteractionEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
-  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null) => Promise<string>;
+  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null, workingDirectory?: string) => Promise<string>;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome">>;
@@ -227,7 +227,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const cli = target.cli;
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = getActiveConfigIdForCli(cli);
-    const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId);
+    const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId, cwd);
     const requestedModel = input.model || getSelectedCliModel(cli, activeConfigId);
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)

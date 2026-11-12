@@ -18,6 +18,7 @@ import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSched
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { loopSubtaskAutoCompactions, scheduleAutoCompactAfterPrompt } from "../../loopSubtaskAutoCompact";
+import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 import {
   loopClarificationScope,
   submitOrchestratorClarification,
@@ -661,6 +662,166 @@ test("Loop+ records completion and starts main review without waiting for subtas
     await run.done;
   }
 });
+
+test("Loop+ late Codex compaction handoff failure preserves the completed report and active review", { timeout: 5000 }, async (t) => {
+  await verifyCompletedCompaction(t);
+});
+
+for (const visibility of ["active", "background"] as const) {
+  test(`Loop+ completed subtask routes compaction failure through the ${visibility} Webview tab`, { timeout: 5000 }, async (t) => {
+    const view = createRunStatusHarness();
+    view.activate(visibility === "active" ? "child-tab" : "tab-main");
+    await verifyCompletedCompaction(t, view);
+  });
+}
+
+async function verifyCompletedCompaction(t: import("node:test").TestContext, view?: ReturnType<typeof createRunStatusHarness>): Promise<void> {
+  require("../vscodeMock").installVscodeMock();
+  const fs = require("node:fs") as typeof import("node:fs");
+  const path = require("node:path") as typeof import("node:path");
+  const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "loop-compaction-attribution-"));
+  const reportFile = path.join(root, "attempt.json");
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { createIsolatedContextCompactionDeps } = require("../../extensionHost/isolatedContextCompaction") as typeof import("../../extensionHost/isolatedContextCompaction");
+  const { withLoopSubtaskSession } = require("../../loopSubtaskSession") as typeof import("../../loopSubtaskSession");
+  const { createCodexHandoffError } = require("../../interactive/codexThreadErrors") as typeof import("../../interactive/codexThreadErrors");
+  const logger = require("../../logger") as typeof import("../../logger");
+  const errors: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logError", async (event: string, data: unknown) => { errors.push({ event, data }); });
+  const env = harness({
+    recordAttempt: (report) => {
+      fs.writeFileSync(reportFile, JSON.stringify(report));
+      if (view) {
+        assert.equal(report.outcome, "completed");
+        view.run("child-tab", "end");
+      }
+    },
+    adaptMain: (request) => { view?.run(request.target.tabId, "start"); return undefined; },
+  });
+  const run = env.host.tryRun({ displayPrompt: "review completed work" }, env.target, { schedulingMode: "event_driven" });
+  const gate = deferred<{ compacted: boolean; threadId: string }>();
+  const started = deferred<void>();
+  const statuses: Array<{ tabId: string | null; status: string }> = [];
+  const published: unknown[] = [];
+  const sessionId = "late-handoff-child-session";
+  t.after(async () => {
+    gate.resolve({ compacted: true, threadId: "thread-child" });
+    loopSubtaskAutoCompactions.notify(run.taskId!, "alpha", false);
+    await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    env.host.stopParent(run.taskId!);
+    await run.done;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const unexpected = (): never => { throw new Error("unexpected primary mutation or CLI runner"); };
+  const base: import("../../contextCompactionRunner").ContextCompactionRunDeps = {
+    getCurrentCli: () => "codex", getActiveConversationTabId: () => "main-tab",
+    isInteractiveSupported: () => true, appendSystemMessageForCli: unexpected,
+    getCurrentSessionId: () => sessionId, hasActiveProcessOrInteractiveStop: () => true,
+    resolveInteractiveSessionForResume: async (_cli, session) => session,
+    resolveWorkspaceCwd: () => root, getActiveConfigIdForCli: () => "child-config",
+    getSelectedCliModel: () => "child-model", getEffectiveThinkingMode: () => "high",
+    getWorkspaceInteractiveMode: () => "coding", applyThinkingWorkspaceFiles: () => {},
+    getEffectiveCliArgs: () => [], getCliCommand: () => "controlled-codex",
+    resolveClaudeInteractiveEntrypoint: () => undefined, logCliStartup: () => {},
+    loadSessionMessages: () => [], createMessageId: () => "background-compact-run",
+    beginActiveRunState: unexpected, getActiveRunId: () => "main-review-run",
+    setActiveInteractiveStop: unexpected, isActiveInteractiveStop: () => false,
+    appendStopMessageToStore: unexpected, killActiveProcess: unexpected, sendRunStatus: unexpected,
+    appendCompletionMessage: unexpected, persistActiveMessages: unexpected, clearActiveRun: unexpected,
+    interactiveRunnerManager: {
+      beginActiveRun: () => {}, endActiveRun: () => {},
+      getOrCreateCodexRunner: () => ({ compactThread: () => { started.resolve(); return gate.promise; } }) as never,
+      getOrCreateClaudeRunner: unexpected, getOrCreateGrokRunner: unexpected,
+      getOrCreateKimiCodeRunner: unexpected, hasKimiCodeRunner: () => false,
+      hasZcodeRunner: () => false, waitForPendingDisposal: async () => {},
+      getOrCreateZcodeRunner: unexpected, setRunner: unexpected,
+    },
+    resolveInteractiveMappedId: () => "thread-child", appendSystemMessage: unexpected,
+    upsertInteractiveMapping: unexpected, sendRawStreamDelta: unexpected, sendPanelMessage: unexpected,
+    updateProcessTitle: unexpected, appendTraceMessage: unexpected, setActiveProcess: unexpected,
+    appendAssistantChunk: unexpected, adoptSessionId: unexpected,
+  };
+  const isolated = createIsolatedContextCompactionDeps(base, {
+    saveMessages: () => {}, publishMessage: (message, tabId) => {
+      published.push(message);
+      view?.send({ type: "appendMessage", message, tabId: tabId ?? undefined });
+    },
+    publishPanelMessage: (message) => { published.push(message); view?.send(message); },
+    sendRunStatus: (tabId, status, message, runOptions) => {
+      statuses.push({ tabId, status });
+      // Same envelope as the isolated ports in extension.ts; keep the real activity.
+      view?.send({ type: "runStatus", tabId: tabId ?? undefined, status, message,
+        activity: status === "start" ? runOptions?.activity : undefined });
+    },
+  });
+  await flush();
+  view?.run(env.target.tabId, "end");
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const attempt = env.attempts[0].request;
+  let compacted: boolean | undefined;
+  await scheduleAutoCompactAfterPrompt({ displayPrompt: "done", modelPrompt: "done", contextTags: [],
+    taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId,
+  }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
+    assert.equal(env.reports[0]?.outcome, "completed");
+    compacted = await runContextCompactionWithDeps(isolated, { silent: true, cli: "codex", tabId: "child-tab", sessionId });
+  });
+  view?.run("child-tab", "start");
+  env.attempts[0].resolve({ outcome: "completed", detail: "finished, pending acceptance" });
+  await started.promise;
+  await flush();
+  assert.equal(env.mains[1]?.request.kind, "review");
+  assert.ok(env.mains[1].request.reviewEventIds?.length);
+  const mainViewBeforeFailure = view ? JSON.stringify(view.tabState(env.target.tabId)) : null;
+  if (view) {
+    assert.deepEqual(view.tabState(env.target.tabId), { running: true, errored: false, activity: "", lastRunStatus: "start" });
+    assert.deepEqual(view.tabState("child-tab"), {
+      running: true, errored: false, activity: "contextCompaction", lastRunStatus: "start",
+    });
+    if (view.context.getActiveConversationTabId() === "child-tab") {
+      assert.equal(view.elements.runStatusText.textContent, "runStatusCompacting");
+      assert.equal(view.elements.runStatusText.classes.has("compacting"), true);
+    } else {
+      assert.equal(view.context.state.isRunning, true, "the main review remains the active run");
+      assert.equal(view.elements.runStatusText.classes.has("compacting"), false);
+    }
+  }
+  const report = fs.readFileSync(reportFile, "utf8");
+  const task = JSON.stringify(env.tasks.get(run.taskId!));
+  const reports = JSON.stringify(env.reports);
+  let continued = false;
+  const continuation = withLoopSubtaskSession("codex", sessionId, async () => { continued = true; });
+  await withLoopSubtaskSession("codex", "other-session", async () => {});
+  assert.equal(continued, false);
+  const failure = createCodexHandoffError({ connectionId: 7, threadId: "thread-child", stage: "waiting_close",
+    reason: "timeout", rpcMethod: "thread/unsubscribe" });
+  gate.reject(failure);
+  await continuation;
+  assert.equal(compacted, false);
+  assert.equal(continued, true);
+  assert.equal(base.getActiveRunId(), "main-review-run");
+  assert.equal(fs.readFileSync(reportFile, "utf8"), report);
+  assert.equal(JSON.stringify(env.tasks.get(run.taskId!)), task);
+  assert.equal(JSON.stringify(env.reports), reports);
+  assert.equal(env.mains.length, 2);
+  assert.deepEqual(statuses, [{ tabId: "child-tab", status: "start" }, { tabId: "child-tab", status: "end" }]);
+  assert.deepEqual(published, []);
+  assert.deepEqual(errors, [{ event: "context-compact-command-failed", data: {
+    cli: "codex", tabId: "child-tab", sessionId, runId: "background-compact-run", activity: "contextCompaction",
+    error: failure.message, errorCode: failure.code, silent: true,
+  } }]);
+  if (view) {
+    assert.deepEqual(view.tabState("child-tab"), { running: false, errored: false, activity: "", lastRunStatus: "end" });
+    assert.equal(view.elements.runStatusText.classes.has("compacting"), false);
+    assert.equal(JSON.stringify(view.tabState(env.target.tabId)), mainViewBeforeFailure);
+    // Only a genuinely new prompt produces this execution error; do not turn the compact failure into one.
+    view.message("child-tab", "appendMessage", "user", "a new execution");
+    view.run("child-tab", "start");
+    view.run("child-tab", "error");
+    assert.equal(view.tabState("child-tab").errored, true);
+    assert.equal(JSON.stringify(view.tabState(env.target.tabId)), mainViewBeforeFailure);
+  }
+}
 
 test("accept feedback requires reasons before commit and shows default and selected review evidence", async () => {
   for (const passed of [true, false]) {

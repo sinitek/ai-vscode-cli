@@ -5,14 +5,35 @@
 ## Codex 会话跨连接交接
 
 - app-server 按命令、启动参数、cwd、CODEX_HOME、provider 和配置指纹复用；不同项目通常具有不同进程身份，但不能据此推断同一宿主内不会发生原 thread 跨进程迁移。配置指纹隔离保留，不能通过删除指纹或全局串行规避写锁。
+- 插件自启 app-server 前，`resolveCodexThreadUnloadCapability({ command, cwd, env })` 探测已解析目标的 `--version`，仅准确核对的 0.162.1 / 0.167.0 契约启用进程级 `-c thread_unload_delay_secs=0`；0.100.0 明确不支持，其它版本、失败、超时及无法确认最终可执行身份的 macOS 登录 shell 保持兼容参数。不写用户卸载配置，不依据 npm 包版本或启动未报错推断支持。最终参数进入连接身份；探测 await 后复核操作和 runner 状态，停止/释放后不迟到启动。
+- 能力探测仅使用临时 HOME/workspace 和环境白名单，3 秒返回上限、4096 字节输出限额、最多 4 个在途/未关闭自有子进程；缓存为 64 项、60 秒且区分可执行身份和解析上下文。超时/错误/超量只请求终止该探测自有进程，继续等其 `close` 后才删除目录、释放进程名额；未 close 的目录保留，不能宣称清理完成。零延迟策略和探测终止请求均不是 writer 已释放证据。
 - 同一扩展宿主按规范化 CODEX_HOME + threadId 对完整 turn / compact 操作互斥；重复执行明确返回 `CODEX_THREAD_BUSY`，不排队重试。新建 thread 的首次操作同样保护活动归属，不影响其它 thread / HOME 并行。
-- 恢复前检查旧进程的已加载及未完成 resume。共享旧进程仅对目标发送 `thread/unsubscribe`；`unsubscribed` / `notSubscribed` 回包不代表卸载，需等待 `thread/closed`，或收到 `notLoaded`。本机 Codex 0.167.0 实测关闭通知可能延迟约 60 秒，交接总等待上限 75 秒，用户停止可取消等待。
+- 恢复前检查旧进程的已加载及未完成 resume。共享旧进程仅对目标发送 `thread/unsubscribe`；`unsubscribed` / `notSubscribed` 回包不代表卸载。收到这两种回执后，以 250 ms 间隔、最多一个在途请求继续确认，只有 `thread/closed`、原生 `notLoaded` 或实际进程退出才放行。确认失败或无响应不重试，未知状态安全拒绝；期间新加载使旧查询结果失效，取消后迟到回包不修改占用。Windows Codex 0.162.1 实测闲置卸载约 60 秒，总上限仍为 75 秒。
+- 已确认公共读取缺陷：读取循环等待用户提问/审批处理器，导致另一会话的 RPC 回包和 thread/closed 无法被读取。仅原生交互请求异步分离，响应与生命周期通知继续按接收顺序处理；未知请求立即按协议拒绝，不让单个用户处理器失败关闭共享进程。受控回归验证 B 未回答时 A 可交接，B 问题仍保留并能回答；尚未执行 macOS/Linux 原生复验。
+- 每个交互请求绑定原连接、原始字符串/数字 ID、thread、listener 对象与操作身份，最多回复一次。热停止、完成、detach/dispose、thread 关闭、归属/操作变化取消所属请求，使用原生 decline/denied、空 answers/permissions 或 elicitation cancel；serverRequest/resolved 按 thread+原始 ID 收口，实际进程退出后不再回写。取消释放等待闭包，迟到答案/拒绝均被消费，不能写入新操作或影响其它会话；旧版审批按 conversationId 路由。
+- notLoaded 状态确认仅是补充证据，不以 loaded/list 单页或完整列表缺失推断 writer 释放。上游 [0.162.1 thread_processor.rs](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/src/request_processors/thread_processor.rs) 区分三种状态；同版本 thread_state.rs 在已不订阅时先返回，重复 notSubscribed 不会重置闲置卸载计时。通知未观测到时可安全收敛不代表用户平台故障已全部定位。
 - 最后一个 listener 释放后，逻辑连接关闭仍保留会话占用记录，直到子进程 `exit` / `close`；Windows `taskkill` 启动或返回成功不是进程已退出的证明。`taskkill` 启动失败/非零退出有错误监听和本进程句柄终止兜底。
-- 未完成交接返回 `CODEX_THREAD_HANDOFF_FAILED`；未知 `active writer` 返回 `CODEX_THREAD_WRITER_CONFLICT`。两者及 busy 均停止隐式重试，不删锁、不自动换会话、不终止共享或外部进程。跨 VS Code 扩展宿主不共享此内存协调器，外部占用只明确报错。
+- 未完成交接返回 `CODEX_THREAD_HANDOFF_FAILED` 和 diagnostic（connectionId、threadId、stage/reason、RPC 方法/代码及安全原因分类），中文区分等待加载、卸载请求失败/未返回、等待关闭、等待实际退出；只有 JSON-RPC -32601 才归为协议明确不支持，普通超时不这样归因。取消保留既有 AbortError。未知 active writer 返回 `CODEX_THREAD_WRITER_CONFLICT`。两者及 busy 均停止隐式重试，不删锁、不自动换会话、不终止共享或外部进程。跨 VS Code 扩展宿主不共享此内存协调器，外部占用只明确报错；诊断不包含服务器原始敏感文本或用户回答。
 - Codex 原生压缩透传配置指纹，并沿用当前连接的结构化提问启动能力，但重新核对其它连接身份字段；真实配置变化仍切换连接，不以热缓存绕过隔离。
 - 生命周期日志记录 connection ID / PID、thread、RPC 方法/请求 ID及 key 变化字段名，不输出 key 全文或配置凭据。回归入口：`node --test dist/test/interactive/codexThreadHandoff.test.js dist/test/interactive/codexRunnerProcess.test.js dist/test/interactive/codexRunnerReuse.test.js dist/test/core/promptRetry.test.js dist/test/core/contextCompactionRunner.test.js`。
-- 无付费模型的真实验证：构建后执行 `node scripts/verify_codex_thread_handoff.js --live`；使用临时 HOME/workspace 和本机 HTTP 错误响应创建真实持久会话，先复现跨进程写锁，再验证交接恢复同一 thread、其它会话保留，最后仅清理本次进程和临时目录。可用 `CODEX_COMMAND` 指定可执行文件。
+- 无付费模型的真实验证：构建后执行 `node scripts/verify_codex_thread_handoff.js --live`；使用临时 HOME/workspace 和本机 HTTP 错误响应创建真实持久会话，先复现跨进程写锁，再验证交接恢复同一 thread、其它会话保留，最后仅清理本次进程和临时目录。可用 `CODEX_COMMAND` 指定可执行文件；`SINITEK_CODEX_HANDOFF_MODULE_ROOT` 可指向独立临时编译目录（绝对路径），供并行开发时避免读取共享 dist。
 - 重复验收入口：`node scripts/verify_codex_thread_handoff_acceptance.js --live --runs 3` 自动重新构建、执行 Codex/生命周期/压缩/重试相关回归，再重复上述隔离真实验证。每轮必须先复现冲突、再完成原会话交接并保留其它会话，且子进程正常退出（包含清理）；仅输出 `writer_conflict_reproduced` 不算通过。最终以 `acceptance_completed.passed=true`、完成轮数与请求轮数一致及退出码 0 判定隔离验收成功。默认报告存系统临时目录，可用 `--report` 指定；记录平台、CLI 版本、commit、工作区是否有改动和每轮证据，不读取用户会话。该入口不等于真实 VS Code 多窗口 Loop+ 或模型端到端通过。
+- Windows ARM64 / Codex 0.162.1 的证据见 [Windows 验证记录](codex-thread-handoff-windows-validation.md)：默认命令和原生 exe 均曾已 exit、未 close。空临时 HOME 的插件同步会启动 Git 后代，启动器退出后 `taskkill /T` 可遗漏仍持有 stdio 的孤儿；隔离脚本在自己的 config.toml 禁用 `features.plugins`，仅验证本地模型及 thread 协议。清理等待 HTTP 服务、进程及全部 stdio close，目录删除后才输出 `cleanup_verified`；缺任一项保持失败。此修复不改变产品配置或进程终止策略，正式三轮须在两项交付汇合后重新统一验收。
+
+## CLI 生命周期边界
+
+manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生取消，dispose 删除本宿主登记，登记删除不是 writer 释放证据。普通对话、Loop/Loop+ 均通过对应 runner，原生压缩沿用该 runner 的入口。本次源码审查边界如下；原生平台/CLI 实机验证不由 Codex 单轮代替。
+
+| CLI | 停止、恢复和迁移边界 |
+| --- | --- |
+| Codex | turn/interrupt 保留热连接；迁移与压缩经 withThread 对完整操作保护；仅确定释放后 resume。 |
+| Claude | SDK interrupt + turnGate 等待终态；替换/释放通过 input.finish 与 AbortController；原生压缩复用 runStreamed。未新增 SDK 进程退出断言。 |
+| Grok | ACP session/cancel；恢复由 advertised session/load 能力决定；dispose 结束 ACP client 并请求进程关闭，不将请求视作 writer 释放。 |
+| DSH / Kimi Code | 各自 ACP cancel、恢复能力/配置校验及 EOF/树终止；Kimi 压缩有原生确认，DSH 不开放压缩。未套用 Codex thread 事件。 |
+| ZCode | session/stop；dispose 在禁止新工作后仍发送一次原生 session/close，随后 EOF、信号升级；完成需实际 exit、close 和 stdout 消费结束。关闭回执、SIGKILL 请求均不算退出；重复 dispose 等待同一完成。原实现在 closed 检查处挡住了自己的 session/close，且强杀定时器会提前报告完成，现已修复。 |
+| OpenCode | 不进入交互 manager；沿用一次性 run 的进程收口及原生会话参数/压缩入口，不声称具备 Codex 的内存 writer 协调。 |
+
+除 Codex pool 外，manager 没有跨 runner/native session 的统一 writer 证明；本次没有发现足以将其它 CLI 机械迁移到 Codex 机制的协议依据。ZCode dispose 的完成可被等待，但 manager 的同步登记替换不构成跨宿主或所有 CLI 的进程退出屏障。
 
 ## 对话标签消息视图
 
@@ -56,8 +77,9 @@
 
 ### 交互 Runner 生命周期
 
-- `InteractiveRunnerManager` 管理 Codex、Claude、Grok、DSH。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不是这四项时，查询返回 false 或 null，释放和活动标记无操作。
-- 只有 Grok 的 `getOrCreate` 会 trim sessionId。空白 session 在写入缓存前抛出 `empty grok session`，`reason` 为 `empty`。其它方法不 trim，也不规范化 command、cwd 或路径分隔符。
+- `InteractiveRunnerManager` 管理 Codex、Claude、Grok、DSH、Kimi Code、ZCode。键是 `${cli}:${sessionId}`。OpenCode 不进入这张表。缺少 sessionId，或 CLI 不在上述六项时，查询返回 false 或 null，释放和活动标记无操作。
+- Grok、DSH、Kimi Code、ZCode 的 `getOrCreate` 会 trim sessionId。空白 session 在写入缓存前抛出对应 CLI 的 empty session 错误，`reason` 为 `empty`。其它方法不 trim，也不规范化 command、cwd 或路径分隔符。
+- 各平台 `getOrCreate` 先严格比较配置指纹，再判断平台自己的复用条件；指纹改变即重建。
 - Codex 复用只比较 command、cwd 和规范化后的 configId。model、thinking、interactive、args、threadId 变化时保留 runner，并调用既有 `updateOptions`。模型与 config 仍走 `codexThreadSelection.ts`。
 - Claude 不复用已 dispose 的 runner。thinking、interactive、model，以及只有 true 才算开启的 isolate，必须严格一致。command、cwd、entrypoint 仅在旧值为空时接受新值。复用时优先保留 runner 已有的非空 session id。
 - Grok 只有 `isReusable()` 且 command、cwd、thinking、interactive、model 一致时复用。`agentArgs` 和 `localSessionId` 不触发重建。停止时 Grok 调用 `cancelTurn`，Codex 和 Claude 调用 `stopAndRebuild`。
@@ -67,6 +89,9 @@
 - 同一 key 上 `setRunner` 遇到同一对象只刷新元数据；换对象时先释放旧 entry。Codex 缺省 command、cwd、args 会覆盖或清空；Claude 和 Grok 省略这些可选字段时保留旧值。保存的参数数组是副本。`setRunner` 本身不调用 `updateOptions`。
 - 空闲 24 小时后释放。回调里的判定阈值是该超时减 2 秒，并且只释放当前 Map 中的同一个 entry。活动运行期间取消空闲计时，结束后重新计时。释放顺序是清 timer、调用 runner.dispose、再删映射。创建失败不留下半成品 entry，构造、`updateOptions` 和 dispose 的错误原样抛出。
 - 平台差异在 `src/interactive/runnerLifecycleStrategies.ts`，缓存和计时只在 `src/interactive/manager.ts`。这不改变用户可见的续接、停止或会话存档。
+- 同步 `getOrCreate*` 契约保留。manager 将 ZCode 的真实异步 dispose 结果保存在独立的 CLI + UI 会话释放记录中；配置指纹只判断重建，不参与释放隔离键。替换、`disposeIfMatches`、`disposeForCli`、`disposeAll` 删除登记后，释放记录仍有效；连续替换等待所有前驱，成功清理必须匹配记录身份。拒绝被消费并持续传递给依赖的启动，不因删登记、超时或发信号放行。
+- ZCode 普通执行与手动／自动上下文压缩在 `start` / `session/resume` 前调用 `waitForPendingDisposal`，等待后复核停止、运行身份和当前 runner 归属，已停止或被替换者不迟到启动；压缩等待纳入原有超时机制。其它 CLI／UI 会话可继续执行。只有 ZCode 的 dispose 承诺 exit、close 和正常读完 stdout；其它 CLI 的 void dispose 不包装为退出证明，Codex 保持自身 home/thread 级 withThread 与释放证据，不等待共享 app-server 整体退出。
+- manager 交接回归：`src/test/interactive/managedZcodeDisposal.test.ts` 使用公共 runner 与受控协议进程验证配置变化替换、删除后重新获取、连续替换、其它会话并行、取消无迟到启动和释放拒绝；`src/test/core/contextCompactionRunner.test.ts` 同样覆盖实际 manager 的压缩等待、停止、超时与归属检查。由事件次序控制 exit／close／EOF，不把关闭回执或固定等待时间视为释放。
 
 ### 会话健康状态与续接前置条件
 
@@ -358,6 +383,7 @@ type ContextTokenUsageMessage = {
 - 配置页在 KimiCode 之后追加 ZCode。首次打开、切换档案及范例导入默认 JSON。可视化复用现有公共参数置顶、左侧模型列表、右侧模型参数的布局和主题控件；公共参数为协议、Base URL、API Key、默认模型及默认思考力度，右侧编辑模型 ID。上下文与能力档位由 ZCode 目录提供，供应商显示名等高级字段可在 JSON 编辑，未展示字段往返保存不丢失。`src/extension.ts` 必须向交互宿主传入模型解析器；仅终端可运行不能证明宿主接线完整。
 - 用户说明：`docs/zcode-guide.md`。
 - 会话续接：健康 runner 的 `start()` 幂等返回当前原生会话、设置和最新上下文用量，不重新启动进程，也不重复创建或订阅。只有订阅、模式和模型设置全部完成才标记可复用，初始化中或初始化失败的会话不能复用。进程重建通过 `session/resume` 恢复相同 `sess_`，已退出、失败或释放的 runner 拒绝再次启动。`session/send` 前注册回合监听，并同时等待发送确认与回合终态，避免快速正文或完成／失败事件丢失；发送失败清理监听，后续任务不被错误的 busy 状态阻塞。
+- 无模型生命周期入口：`node scripts/verify_zcode_runner_lifecycle.js --live --report <新报告路径>`，复用当前 `dist` 的公共 runner 与命令解析；依据已安装 CLI 的隔离契约设置 HOME、settings、数据根、会话数据库、provider 和凭据路径，验证原生 close、exit/close/EOF、并行会话 read 和原 ID resume。2026-11-12 Windows ARM64 一次检查确认 `zcode-app-cli 3.16.3-41 / zcode-runtime 0.17.0`，但 app-server 在 create 回包前异常退出 `3221226505 (0xC0000409)`；自有进程和临时目录正常收尾，无强制回收，dispose/同会话恢复场景尚未通过。该结果不推断崩溃根因，也不覆盖生成任务、原生 VS Code 或 macOS/Linux。
 - 创建会话使用配置中的思考档位，取得快照后才允许已公布的用户偏好覆写。每个回合（含复用与恢复）重新应用模型与思考力度，合法 UI 选择优先于配置默认值，例如配置 max、UI high 时 model.options.reasoningLevel 与 thoughtLevel 均为 high；原生设置回包更新缓存，模型切换更新能力集合，原生不确认所选档位时按错误展示。面板消费按 Tab 隔离的 zcodeThinkingOptions，保留已选合法档位，切换 Tab、模型、档案或 CLI 时清除旧广告，不自动把 max 降为 high。继承的 `medium` 若不在模型档位中，不发送该值；ZCode 的 `max` 不经通用逻辑降为 `high`。非推理模型可省略思考字段。`turn.failed.payload.error.message` 会被提取并脱敏展示。范例模型名称需与服务实际提供的模型 ID 对齐，本机已验证默认档案使用 `glm-5.3-flash_sub-coco`。
 
 ### interactive mode

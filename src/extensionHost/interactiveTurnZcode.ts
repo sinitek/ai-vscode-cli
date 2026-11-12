@@ -49,7 +49,12 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           env: launch.env,
         });
       let flushingZcodeStop = false;
+      let stopped = false;
+      let cancelWait!: (ready: false) => void;
+      const stoppedWhileWaiting = new Promise<false>((resolve) => { cancelWait = resolve; });
       port.setStopCurrentTurn(() => {
+        stopped = true;
+        cancelWait(false);
         flushingZcodeStop = true;
         try {
           runner.cancelTurn();
@@ -58,6 +63,14 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
         }
       });
       port.syncInteractiveRunEntry(port.stopFn);
+      const ready = await Promise.race([
+        port.interactiveRunnerManager.waitForPendingDisposal("zcode", uiSessionIdAtStart).then(() => true),
+        stoppedWhileWaiting,
+      ]);
+      if (!ready || stopped || !port.isCurrentRunActive()
+        || (uiSessionIdAtStart && !port.interactiveRunnerManager.hasZcodeRunner(uiSessionIdAtStart, runner))) {
+        return "return";
+      }
       const started = await runner.start();
       if (model) {
         await runner.setModel(model, launch.thinkingValue);

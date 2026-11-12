@@ -39,9 +39,9 @@ function fileExists(targetPath: string): boolean {
   }
 }
 
-function resolveExistingCommandPath(command: string): string | null {
+function resolveExistingCommandPath(command: string, env: NodeJS.ProcessEnv): string | null {
   if (process.platform === "win32" && !path.extname(command)) {
-    const exts = getWindowsPathExts();
+    const exts = getWindowsPathExts(env);
     for (const ext of exts) {
       const candidate = `${command}${ext}`;
       if (fileExists(candidate)) {
@@ -53,8 +53,8 @@ function resolveExistingCommandPath(command: string): string | null {
   return fileExists(command) ? command : null;
 }
 
-function getWindowsPathExts(): string[] {
-  const pathext = process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
+function getWindowsPathExts(env: NodeJS.ProcessEnv): string[] {
+  const pathext = env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
   return pathext
     .split(";")
     .map((entry) => entry.trim())
@@ -62,14 +62,14 @@ function getWindowsPathExts(): string[] {
     .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
 }
 
-function resolveCommandInDirs(command: string, dirs: string[]): string | null {
+function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.ProcessEnv): string | null {
   const filteredDirs = dirs
     .map((entry) => entry.trim())
     .filter(Boolean);
 
   if (process.platform === "win32") {
     const hasExt = Boolean(path.extname(command));
-    const exts = hasExt ? [""] : getWindowsPathExts();
+    const exts = hasExt ? [""] : getWindowsPathExts(env);
     for (const dir of filteredDirs) {
       for (const ext of exts) {
         const candidate = path.join(dir, hasExt ? command : `${command}${ext}`);
@@ -90,21 +90,21 @@ function resolveCommandInDirs(command: string, dirs: string[]): string | null {
   return null;
 }
 
-function resolveCommandOnPath(command: string, extraDirs: string[] = []): string | null {
-  const envPath = process.env.PATH ?? process.env.Path ?? "";
+function resolveCommandOnPath(command: string, env: NodeJS.ProcessEnv, cwd?: string): string | null {
+  const envPath = env.PATH ?? env.Path ?? "";
   const pathDirs = envPath
     .split(path.delimiter)
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return resolveCommandInDirs(command, [...extraDirs, ...pathDirs]);
+  return resolveCommandInDirs(command, pathDirs.map((dir) => cwd ? path.resolve(cwd, dir) : dir), env);
 }
 
-function getWindowsUserBinDirs(): string[] {
+function getWindowsUserBinDirs(env: NodeJS.ProcessEnv, homeDir: string): string[] {
   const dirs = new Set<string>();
-  const appData = expandHomePath(process.env.APPDATA);
-  const userProfile = expandHomePath(process.env.USERPROFILE);
+  const appData = expandHomePath(env.APPDATA, { env, homeDir });
+  const userProfile = expandHomePath(env.USERPROFILE, { env, homeDir });
   const localAppData = expandHomePath(
-    process.env.LOCALAPPDATA || (userProfile ? path.join(userProfile, "AppData", "Local") : ""),
+    env.LOCALAPPDATA || (userProfile ? path.join(userProfile, "AppData", "Local") : ""), { env, homeDir },
   );
   if (appData) {
     dirs.add(path.join(appData, "npm"));
@@ -122,27 +122,26 @@ function getWindowsUserBinDirs(): string[] {
     dirs.add(path.join(userProfile, "scoop", "shims"));
     dirs.add(path.join(userProfile, ".volta", "bin"));
   }
-  if (process.env.PNPM_HOME) {
-    dirs.add(expandHomePath(process.env.PNPM_HOME));
+  if (env.PNPM_HOME) {
+    dirs.add(expandHomePath(env.PNPM_HOME, { env, homeDir }));
   }
-  if (process.env.SCOOP) {
-    dirs.add(path.join(expandHomePath(process.env.SCOOP), "shims"));
+  if (env.SCOOP) {
+    dirs.add(path.join(expandHomePath(env.SCOOP, { env, homeDir }), "shims"));
   }
   return Array.from(dirs).filter(Boolean);
 }
 
-function getUnixUserBinDirs(): string[] {
+function getUnixUserBinDirs(env: NodeJS.ProcessEnv, homeDir: string): string[] {
   const dirs = new Set<string>();
-  const homeDir = os.homedir();
 
-  if (process.env.npm_config_prefix) {
-    dirs.add(path.join(expandHomePath(process.env.npm_config_prefix), "bin"));
+  if (env.npm_config_prefix) {
+    dirs.add(path.join(expandHomePath(env.npm_config_prefix, { env, homeDir }), "bin"));
   }
-  if (process.env.NPM_CONFIG_PREFIX) {
-    dirs.add(path.join(expandHomePath(process.env.NPM_CONFIG_PREFIX), "bin"));
+  if (env.NPM_CONFIG_PREFIX) {
+    dirs.add(path.join(expandHomePath(env.NPM_CONFIG_PREFIX, { env, homeDir }), "bin"));
   }
-  if (process.env.PNPM_HOME) {
-    dirs.add(expandHomePath(process.env.PNPM_HOME));
+  if (env.PNPM_HOME) {
+    dirs.add(expandHomePath(env.PNPM_HOME, { env, homeDir }));
   }
   if (homeDir) {
     dirs.add(path.join(homeDir, ".npm-global", "bin"));
@@ -166,27 +165,33 @@ export function normalizeCommandInput(command: string): string {
   return trimmed;
 }
 
-export function resolveCliCommand(command: string): ResolvedCliCommand | null {
-  const normalized = expandHomePath(normalizeCommandInput(command));
+export function resolveCliCommand(
+  command: string,
+  context: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): ResolvedCliCommand | null {
+  const env = context.env ?? process.env;
+  const contextualHome = process.platform === "win32" ? (env.USERPROFILE || env.HOME) : (env.HOME || env.USERPROFILE);
+  const homeDir = context.env ? (contextualHome || os.homedir()) : os.homedir();
+  const normalized = expandHomePath(normalizeCommandInput(command), { env, homeDir });
   const looksLikePath = isPathLikeCommand(normalized);
   if (path.isAbsolute(normalized) || looksLikePath) {
-    const resolved = resolveExistingCommandPath(normalized);
+    const resolved = resolveExistingCommandPath(context.cwd ? path.resolve(context.cwd, normalized) : normalized, env);
     return resolved ? { command: resolved, resolvedFrom: "config" } : null;
   }
 
   if (process.platform === "win32") {
-    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsUserBinDirs());
+    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsUserBinDirs(env, homeDir), env);
     if (resolvedFromNpmBin) {
       return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
     }
   } else {
-    const resolvedFromUserBin = resolveCommandInDirs(normalized, getUnixUserBinDirs());
+    const resolvedFromUserBin = resolveCommandInDirs(normalized, getUnixUserBinDirs(env, homeDir), env);
     if (resolvedFromUserBin) {
       return { command: resolvedFromUserBin, resolvedFrom: "unix-user-bin" };
     }
   }
 
-  const resolvedFromPath = resolveCommandOnPath(normalized);
+  const resolvedFromPath = resolveCommandOnPath(normalized, env, context.cwd);
   if (resolvedFromPath) {
     return { command: resolvedFromPath, resolvedFrom: "path" };
   }

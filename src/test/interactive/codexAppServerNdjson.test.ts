@@ -3,12 +3,20 @@ import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
+import { blockRealProcessSignals, fakeCodexSpawn } from "./codexProcessFixture";
 import {
   createCodexAppServerNdjsonReader,
   serializeCodexAppServerMessage,
 } from "../../interactive/codexAppServerNdjson";
 
 installVscodeMock();
+test.beforeEach(blockRealProcessSignals);
+test.beforeEach((t) => {
+  assert.ok("mock" in t);
+  // These fake executables implement RPC only; capability probes have their own suite.
+  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+    async () => ({ supported: false, reason: "unknown" }));
+});
 
 const crossSpawn = require("cross-spawn") as {
   spawn: (...args: unknown[]) => unknown;
@@ -78,13 +86,24 @@ test("Codex runner accepts app-server messages that contain unicode line separat
     stderr: PassThrough;
     stdin: PassThrough;
     pid: number;
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
     kill: () => boolean;
   };
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
   child.pid = 4242;
-  child.kill = () => true;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kill = () => {
+    child.signalCode = "SIGTERM";
+    child.emit("exit", null, "SIGTERM");
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", null, "SIGTERM");
+    return true;
+  };
 
   let input = "";
   const send = (message: Record<string, unknown>): void => {
@@ -123,6 +142,9 @@ test("Codex runner accepts app-server messages that contain unicode line separat
           params: { threadId: "thread-1", turn: { id: "turn-1", status: "completed", items: [] } },
         });
         setImmediate(() => {
+          if (child.signalCode !== null) return;
+          child.exitCode = 0;
+          child.emit("exit", 0, null);
           child.stdout.end();
           child.stderr.end();
           child.emit("close", 0, null);
@@ -131,7 +153,7 @@ test("Codex runner accepts app-server messages that contain unicode line separat
     }
   });
 
-  crossSpawn.spawn = () => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   const deltas: string[] = [];
   try {
     delete require.cache[require.resolve("../../interactive/codexRunner")];

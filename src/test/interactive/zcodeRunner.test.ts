@@ -1,7 +1,6 @@
 import assert = require("node:assert/strict");
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import test = require("node:test");
+import { FakeZcode } from "./zcodeProcessFixture";
 import { installVscodeMock } from "../vscodeMock";
 import type { ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
 
@@ -10,89 +9,59 @@ installVscodeMock();
 const { ZcodeInteractiveRunner } = require("../../interactive/zcodeRunner") as typeof import("../../interactive/zcodeRunner");
 const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
 
-type Request = { id: number; method: string; params: Record<string, unknown> };
-
-class FakeZcode extends EventEmitter {
-  public readonly stdin = new PassThrough();
-  public readonly stdout = new PassThrough();
-  public readonly stderr = new PassThrough();
-  public readonly exitCode: number | null = null;
-  public readonly requests: Request[] = [];
-  public beforeSendReply?: (request: Request) => void;
-  public beforeCompactReply?: (request: Request) => void;
-  public sendAccepted = true;
-  public compactState = "accepted";
-  public contextUsed = 1234;
-  public failedMethod?: string;
-  public responseForRequest?: (request: Request) => unknown;
-
-  public constructor(private readonly available = ["low", "high", "max"]) {
-    super();
-    let buffer = "";
-    this.stdin.setEncoding("utf8");
-    this.stdin.on("data", (chunk: string) => {
-      buffer += chunk;
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines.filter((value) => value.trim())) {
-        const request = JSON.parse(line) as Request;
-        this.requests.push(request);
-        if (request.method === this.failedMethod) {
-          this.stdout.write(`${JSON.stringify({ id: request.id, error: { code: -32603, message: "startup failure" } })}\n`);
-          continue;
-        }
-        if (request.method === "session/send") {
-          this.beforeSendReply?.(request);
-        }
-        if (request.method === "session/compact") {
-          this.beforeCompactReply?.(request);
-        }
-        const result = request.method === "session/create" || request.method === "session/resume" ? {
-          protocol: { name: "ZCode Protocol", version: 1 },
-          session: { sessionId: "sess_test" },
-          settings: {
-            mode: { current: "yolo" },
-            model: { current: request.params.model, available: [] },
-            thoughtLevel: {
-              current: request.params.thoughtLevel ?? null,
-              enabled: this.available.length > 0,
-              available: this.available.map((value) => ({ value })),
-            },
-          },
-        } : request.method === "session/send" ? { accepted: this.sendAccepted }
-          : request.method === "session/compact" ? { compact: { state: this.compactState } }
-          : request.method === "session/read" ? {
-            protocol: { name: "ZCode Protocol", version: 1 },
-            projection: { contextUsed: this.contextUsed, contextWindow: 200000 },
-          }
-            : {};
-        this.stdout.write(`${JSON.stringify({ id: request.id, result: this.responseForRequest?.(request) ?? result })}\n`);
-      }
-    });
-  }
-
-  public kill(): boolean {
-    this.stdout.end();
-    this.stderr.end();
-    this.emit("exit", 0);
-    return true;
-  }
-
-  public completeTurn(content: string): void {
-    this.emitEvent("turn.completed", { response: content });
-  }
-
-  public emitCompactionState(reason: string, sessionId = "sess_test", scope = "session"): void {
-    this.stdout.write(`${JSON.stringify({ method: "state.updated", params: { reason, sessionId, scope } })}\n`);
-  }
-
-  public emitEvent(type: string, payload: Record<string, unknown>): void {
-    this.stdout.write(`${JSON.stringify({
-      method: "session/event",
-      params: { sessionId: "sess_test", type, payload },
-    })}\n`);
-  }
+for (const closeResponse of ["acknowledged", "failed", "unanswered"]) {
+test(`ZCode dispose sends native close once and drains after ${closeResponse} response`, async () => {
+  const child = new FakeZcode();
+  if (closeResponse === "failed") child.failedMethod = "session/close";
+  if (closeResponse === "unanswered") child.withholdMethod = "session/close";
+  const signals: NodeJS.Signals[] = [];
+  const runner = new ZcodeInteractiveRunner({
+    cwd: process.cwd(), spawnImpl: () => child,
+    killTreeImpl: (_child, signal) => { signals.push(signal); },
+  });
+  await runner.start();
+  let settled = false;
+  const disposing = runner.dispose();
+  assert.equal(child.requests.filter((request) => request.method === "session/close").length, 1);
+  assert.equal(runner.dispose(), disposing, "concurrent disposal shares completion");
+  void disposing.then(() => { settled = true; });
+  assert.equal(runner.isReusable(), false);
+  await assert.rejects(runner.start(), /disposed/);
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+  assert.equal(settled, false, "sending kill is not exit");
+  child.emit("exit", 0);
+  // A complete final protocol line may arrive after exit, before stdout EOF.
+  child.stdout.write(`${JSON.stringify({ method: "state.updated", params: { reason: "tail" } })}\n`);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(settled, false, "exit is not stdio close");
+  child.stdout.end();
+  child.stderr.end();
+  child.emit("close", 0);
+  await disposing;
+  assert.equal(settled, true);
+  assert.equal(child.stdout.readableEnded, true);
+});
 }
+
+test("ZCode disposal after exit still waits for stdio close without sending signals", async () => {
+  const child = new FakeZcode();
+  const runner = new ZcodeInteractiveRunner({
+    cwd: process.cwd(), spawnImpl: () => child,
+    killTreeImpl: () => assert.fail("already exited process must not be signalled"),
+  });
+  await runner.start();
+  child.emit("exit", 0);
+  let settled = false;
+  const disposing = runner.dispose().then(() => { settled = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  assert.equal(child.requests.some((request) => request.method === "session/close"), false);
+  child.stdout.end();
+  child.stderr.end();
+  child.emit("close", 0);
+  await disposing;
+});
 
 for (const state of ["accepted", "already_running"]) {
   test(`ZCode ${state} compaction waits for the matching native completion and reads fresh usage`, async () => {
@@ -457,7 +426,7 @@ for (const failure of ["rejected send", "process exit", "turn failure"]) {
         await new Promise<void>((resolve) => setImmediate(resolve));
         assert.equal(replay.length, 0);
         if (failure === "process exit") {
-          child.emit("exit", 1);
+          child.exit(1);
         } else {
           child.emitEvent("turn.failed", { message: "turn failed" });
         }

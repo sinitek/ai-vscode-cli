@@ -32,6 +32,7 @@ import { logError, logInfo, sanitizeEnv } from "./logger";
 import { CliName, InteractiveMode, ThinkingMode } from "./cli/types";
 import { ChatMessage } from "./webview/types";
 import { appendBoundedUtf8Text } from "./boundedText";
+import { getErrorInfo } from "./promptRetry";
 
 type GeminiStreamJsonState = {
   remainder: string;
@@ -496,7 +497,7 @@ export type ContextCompactionRunStatus = "end" | "error" | "stopped";
 
 export type ContextCompactionRunnerManager = Pick<
   InteractiveRunnerManager,
-  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "getOrCreateKimiCodeRunner" | "hasKimiCodeRunner" | "getOrCreateZcodeRunner" | "setRunner"
+  "beginActiveRun" | "endActiveRun" | "getOrCreateCodexRunner" | "getOrCreateClaudeRunner" | "getOrCreateGrokRunner" | "getOrCreateKimiCodeRunner" | "hasKimiCodeRunner" | "getOrCreateZcodeRunner" | "hasZcodeRunner" | "waitForPendingDisposal" | "setRunner"
 >;
 
 export type ContextCompactionRunDeps = {
@@ -583,7 +584,7 @@ export type ContextCompactionRunDeps = {
   appendTraceMessage: (content: string) => void;
   prepareKimiInteractiveLaunch?: typeof prepareKimiInteractiveLaunch;
   resolveKimiModelWireForRun?: (model: string | null) => Promise<string>;
-  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null) => Promise<string>;
+  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null, workingDirectory?: string) => Promise<string>;
   prepareGeminiRunProfile?: GeminiNativeContextCompactionDeps["prepareGeminiRunProfile"];
   prepareOpenCodeRunProfile?: (
     selectedModel: string | null,
@@ -700,7 +701,7 @@ async function executeCodexContextCompaction(
     model: run.selectedModel,
   });
   const configFingerprint = deps.readRuntimeConfigFingerprint
-    ? await hooks.withCompactionTimeout(deps.readRuntimeConfigFingerprint("codex", codexSelection.configId)) : undefined;
+    ? await hooks.withCompactionTimeout(deps.readRuntimeConfigFingerprint("codex", codexSelection.configId, run.cwd)) : undefined;
   const runner = deps.interactiveRunnerManager.getOrCreateCodexRunner({
     ...(configFingerprint === undefined ? {} : { configFingerprint }),
     sessionId: run.sessionId,
@@ -730,6 +731,9 @@ async function executeCodexContextCompaction(
     });
     deps.interactiveRunnerManager.setRunner("codex", run.sessionId, runner, run.thinkingMode, run.interactiveMode, codexSelection.model, {
       configId: codexSelection.configId,
+      command: run.command,
+      args: run.args,
+      cwd: run.cwd,
       ...(configFingerprint === undefined ? {} : { configFingerprint }),
     });
   } finally {
@@ -1041,6 +1045,7 @@ async function executeZcodeContextCompaction(
     deps.appendSystemMessage(t("rules.compactNoSession"));
     return false;
   }
+  const runId = deps.getActiveRunId();
   const runner = deps.interactiveRunnerManager.getOrCreateZcodeRunner({
     sessionId: run.sessionId,
     command: run.command,
@@ -1051,10 +1056,25 @@ async function executeZcodeContextCompaction(
     model: run.selectedModel,
     localSessionId: mappedSessionId,
   });
-  hooks.setStopCurrentTurn(() => runner.cancelTurn());
+  let cancelled = false;
+  let cancelWait!: (ready: false) => void;
+  const stoppedWhileWaiting = new Promise<false>((resolve) => { cancelWait = resolve; });
+  hooks.setStopCurrentTurn(() => {
+    cancelled = true;
+    cancelWait(false);
+    runner.cancelTurn();
+  });
   deps.interactiveRunnerManager.beginActiveRun(run.cli, run.sessionId);
   try {
+    const ready = await hooks.withCompactionTimeout(Promise.race([
+      deps.interactiveRunnerManager.waitForPendingDisposal("zcode", run.sessionId).then(() => true),
+      stoppedWhileWaiting,
+    ]));
+    if (!ready || cancelled || deps.getActiveRunId() !== runId
+      || !deps.interactiveRunnerManager.hasZcodeRunner(run.sessionId, runner)) return false;
     await hooks.withCompactionTimeout(runner.start());
+    if (cancelled || deps.getActiveRunId() !== runId
+      || !deps.interactiveRunnerManager.hasZcodeRunner(run.sessionId, runner)) return false;
     const result = await hooks.withCompactionTimeout(runner.compact());
     if (result.state !== "accepted" && result.state !== "already_running") {
       throw new Error("ZCode did not accept native compaction.");
@@ -1255,8 +1275,12 @@ export async function runContextCompactionWithDeps(
     }
     void logError("context-compact-command-failed", {
       cli,
+      tabId,
       sessionId,
+      runId,
+      activity: "contextCompaction",
       error: error instanceof Error ? error.message : String(error),
+      errorCode: getErrorInfo(error).code,
       silent,
     });
     cleanupAfterRun(silent ? "end" : "error");

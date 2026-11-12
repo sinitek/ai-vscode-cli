@@ -16,6 +16,7 @@ import {
 import { t } from "../i18n";
 import { createCliRuntimeConfigStrategies } from "./cliRuntimeConfigStrategies";
 import { retryRuntimeConfigApply } from "./runtimeConfigVerification";
+import { readCodexRuntimeConfigIdentity } from "./codexRuntimeConfigIdentity";
 import {
   OpenCodeConfigModelIssueCode,
   OpenCodeModelRole,
@@ -242,14 +243,14 @@ export async function readOpenCodeConfig(): Promise<{ config: string; env: strin
   return { config, env: "" };
 }
 
-export async function readRuntimeConfigFingerprint(cli: CliName, configId: string | null): Promise<string> {
+export async function readRuntimeConfigFingerprint(cli: CliName, configId: string | null, workingDirectory?: string): Promise<string> {
   let content: unknown;
   switch (cli) {
     case "claude":
       content = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
       break;
     case "codex":
-      content = await readCodexConfig();
+      content = await readCodexRuntimeConfigIdentity(workingDirectory);
       break;
     case "opencode":
       content = await readOpenCodeConfig();

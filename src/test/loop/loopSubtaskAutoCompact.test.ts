@@ -143,3 +143,37 @@ test("subtask compaction retains the execution config, model and thinking snapsh
   await loopSubtaskAutoCompactions.wait("codex", "child-session");
   assert.deepEqual(options, [{ isolatedRun: true, execution: { configSelection: selection, model: "child-model", thinkingMode: "high" } }]);
 });
+
+test("late compaction rejection logs its original subtask and session without failing a waiting continuation", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  const logs: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logError", async (event: string, data: unknown) => { logs.push({ event, data }); });
+  const gate = createDeferred();
+  const started = createDeferred();
+  const runInput = input({ loopTaskId: "late-attribution" });
+  const runTarget = target({ sessionId: "late-attribution-session" });
+  const failure = Object.assign(new Error("controlled handoff failure"), { code: "CODEX_THREAD_HANDOFF_FAILED" });
+  await scheduleAutoCompactAfterPrompt(runInput, runTarget, async () => {
+    started.resolve();
+    await gate.promise;
+    throw failure;
+  });
+  loopSubtaskAutoCompactions.notify("late-attribution", "child", true);
+  await started.promise;
+  runInput.loopSubtaskId = "new-child";
+  runTarget.tabId = "new-tab";
+  runTarget.sessionId = "new-session";
+  let continued = false;
+  const continuation = withLoopSubtaskSession("codex", "late-attribution-session", async () => { continued = true; });
+  await withLoopSubtaskSession("codex", "independent-session", async () => {});
+  assert.equal(continued, false);
+  gate.resolve();
+  await continuation;
+  assert.equal(continued, true);
+  assert.equal(loopSubtaskAutoCompactions.has("codex", "late-attribution-session"), false);
+  assert.deepEqual(logs, [{ event: "loop-subtask-auto-compact-failed", data: {
+    activity: "contextCompaction", taskId: "late-attribution", subtaskId: "child", cli: "codex",
+    tabId: "child-tab", sessionId: "late-attribution-session",
+    error: failure.message, errorCode: failure.code,
+  } }]);
+});

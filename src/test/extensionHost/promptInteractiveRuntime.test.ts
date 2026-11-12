@@ -12,6 +12,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShared";
 import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
+import { withCodexIdentityFixture } from "../config/codexRuntimeConfigFixture";
 
 installVscodeMock();
 
@@ -330,9 +331,10 @@ test("an aborted Loop question does not start after asynchronous runtime prepara
 test("the interactive host passes the verified native identity through creation and registration", async () => {
   for (const cli of ["codex", "claude"] as const) {
     const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
-      readRuntimeConfigFingerprint: async (requestedCli, configId) => {
+      readRuntimeConfigFingerprint: async (requestedCli, configId, cwd) => {
         assert.equal(requestedCli, cli);
         assert.equal(configId, "config-main");
+        assert.equal(cwd, process.cwd());
         return "native-config-and-auth-fingerprint";
       },
     } });
@@ -340,6 +342,48 @@ test("the interactive host passes the verified native identity through creation 
     assert.ok(harness.runnerFingerprints.length >= 2);
     assert.ok(harness.runnerFingerprints.every((fingerprint) => fingerprint === "native-config-and-auth-fingerprint"));
   }
+});
+
+test("host uses execution cwd for ordinary and Loop turns, reuses semantic identity and replaces on real changes", async () => {
+  await withCodexIdentityFixture(async (f) => {
+    const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
+    const manager = new InteractiveRunnerManager();
+    const runners: CodexInteractiveRunner[] = [];
+    const getRunner = manager.getOrCreateCodexRunner.bind(manager);
+    manager.getOrCreateCodexRunner = (input) => {
+      const runner = getRunner(input);
+      runners.push(runner);
+      runner.runStreamed = async (_prompt, handlers) => {
+        await f.trust(f.a);
+        handlers.onThreadId("synthetic-thread");
+        handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
+      };
+      return runner;
+    };
+    const requestedCwds: Array<string | undefined> = [];
+    const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+      getInteractiveRunnerManager: () => manager,
+      resolveInteractiveMappedId: () => "synthetic-thread",
+      resolveWorkspaceCwd: () => f.b,
+      readRuntimeConfigFingerprint: async (cli, configId, cwd) => {
+        requestedCwds.push(cwd);
+        return f.fingerprint(cli, configId, cwd);
+      },
+    } });
+    try {
+      await harness.host.runPromptInteractive(createPromptInput(), createTarget(), { cwd: f.a });
+      await f.trust(f.b);
+      await harness.host.runPromptInteractive(createPromptInput({ loopTaskId: "synthetic-loop" }), createTarget(), { cwd: f.a });
+      assert.equal(runners[1], runners[0]);
+      await f.writeConfig('approval_policy="never"\n');
+      await harness.host.runPromptInteractive(createPromptInput(), createTarget(), { cwd: f.a });
+      assert.notEqual(runners[2], runners[0]);
+      assert.deepEqual(requestedCwds, [f.a, f.a, f.a]);
+      assert.equal(harness.runStatusEvents.filter((event) => event.status === "end").length, 3);
+    } finally {
+      manager.disposeAll();
+    }
+  });
 });
 
 test("interactive subtask completion returns before compaction and waits for the parent notification", { timeout: 2000 }, async () => {
@@ -365,6 +409,27 @@ test("interactive subtask completion returns before compaction and waits for the
   assert.deepEqual(compactions, [{ sessionId: "session-1", targetSessionId: "session-1", options: { isolatedRun: true } }]);
   compactGate.resolve();
   await loopSubtaskAutoCompactions.wait("codex", "session-1");
+});
+
+test("a real Codex subtask handoff failure still fails the invocation and never schedules compaction", async () => {
+  const { createCodexHandoffError } = require("../../interactive/codexThreadErrors") as typeof import("../../interactive/codexThreadErrors");
+  const failure = createCodexHandoffError({ connectionId: 8, threadId: "thread-child", stage: "waiting_close",
+    reason: "timeout", rpcMethod: "thread/unsubscribe" });
+  let compactions = 0;
+  const harness = createInteractiveRuntimeHarness({
+    autoCompactAfterRun: true,
+    codexRunBehavior: async () => { throw failure; },
+    runtimeDeps: { maybeAutoCompactContextAfterPromptSuccess: async () => { compactions += 1; } },
+  });
+  await assert.rejects(harness.host.runPromptInteractive(createPromptInput({ taskRole: "subtask",
+    loopTaskId: "real-execution-failure", loopSubtaskId: "child",
+  }), createTarget()), (error) => error === failure);
+  assert.equal(harness.taskRecords.at(-1)?.status, "error");
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+  assert.equal(harness.activeRunsByTabId.size, 0);
+  loopSubtaskAutoCompactions.notify("real-execution-failure", "child", true);
+  await loopSubtaskAutoCompactions.wait("codex", "session-1");
+  assert.equal(compactions, 0);
 });
 
 test("an unreadable configuration identity cannot start an interactive runner", async () => {
@@ -430,6 +495,8 @@ test("ZCode default config is resolved before launch and its runner completes th
         return { agentArgs: ["app-server", "--stdio", "--mode", "yolo"], env: {}, modeId: "yolo", modelRef: wire, thinkingValue: "high" };
       },
       getInteractiveRunnerManager: () => ({
+        waitForPendingDisposal: async () => {},
+        hasZcodeRunner: () => true,
         getOrCreateZcodeRunner: (input: { model: string | null }) => {
           assert.equal(input.model, wire);
           return runner;

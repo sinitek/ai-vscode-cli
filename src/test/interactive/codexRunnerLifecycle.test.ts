@@ -6,9 +6,17 @@ import * as os from "os";
 import * as path from "path";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
+import { blockRealProcessSignals, fakeCodexSpawn } from "./codexProcessFixture";
 import type { CodexAssistantDeltaMeta } from "../../interactive/codexRunnerRuntime";
 
 installVscodeMock();
+test.beforeEach(blockRealProcessSignals);
+test.beforeEach((t) => {
+  // Lifecycle fake servers model app-server RPC, not a real executable's --version.
+  assert.ok("mock" in t);
+  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+    async () => ({ supported: false, reason: "unknown" }));
+});
 
 const crossSpawn = require("cross-spawn") as {
   spawn: (...args: unknown[]) => unknown;
@@ -73,6 +81,7 @@ function createFakeChild(pid?: number): FakeChild {
   child.kill = (signal?: NodeJS.Signals | number): boolean => {
     child.killCalls.push(signal);
     child.signalCode = typeof signal === "string" ? signal : "SIGTERM";
+    child.emit("exit", null, child.signalCode);
     child.stdout.end();
     child.stderr.end();
     child.emit("close", null, child.signalCode);
@@ -408,20 +417,135 @@ function loadCodexRunner(): typeof import("../../interactive/codexRunner") {
 }
 
 async function waitForSpawnCount(spawned: FakeChild[], count: number): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (spawned.length >= count) {
-      return;
-    }
-    await new Promise((resolve) => setImmediate(resolve));
-  }
+  await waitForCondition(() => spawned.length >= count);
   assert.equal(spawned.length, count);
 }
+
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!condition()) {
+    assert.ok(Date.now() < deadline, "app-server fixture startup timed out");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+for (const reason of ["supported", "unsupported", "unknown"] as const) {
+  test(`Codex unload policy startup uses ${reason} capability and keys the final arguments`, async (t) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-unload-startup-"));
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const capabilities = require("../../interactive/codexAppServerCapabilities") as typeof import("../../interactive/codexAppServerCapabilities");
+    const pool = require("../../interactive/codexAppServerPool") as typeof import("../../interactive/codexAppServerPool");
+    const processModule = require("../../interactive/codexRunnerProcess");
+    const probes: Parameters<typeof capabilities.resolveCodexThreadUnloadCapability>[0][] = [];
+    const specs: Parameters<typeof pool.acquireCodexAppServer>[0][] = [];
+    const acquire = pool.acquireCodexAppServer;
+    t.mock.method(capabilities, "resolveCodexThreadUnloadCapability", async (input: typeof probes[number]) => {
+      probes.push(input);
+      return { supported: reason === "supported", reason };
+    });
+    t.mock.method(pool, "acquireCodexAppServer", (spec: typeof specs[number], listener: Parameters<typeof acquire>[1]) => {
+      specs.push(spec); return acquire(spec, listener);
+    });
+    t.mock.method(processModule, "resolveSpawnCommand", (_command: string, args: string[]) => ({
+      command: process.execPath, args, usesShell: false, resolvedFrom: "test-resolved-target",
+    }));
+    const launches: Array<{ command: unknown; args: unknown }> = [];
+    t.mock.method(crossSpawn, "spawn", fakeCodexSpawn((command, args) => {
+      launches.push({ command, args });
+      const child = createFakeChild(61910);
+      attachSuccessfulAppServer(child);
+      return child;
+    }));
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({
+      command: "entry-resolved-by-runner", args: [], cwd: temp,
+      env: { HOME: temp, USERPROFILE: temp, CODEX_HOME: temp, CODEX_HOME_DIR: temp },
+      thinkingMode: "medium", interactiveMode: "coding", threadId: null,
+      configFingerprint: "test-config-identity",
+    });
+    t.after(() => runner.dispose());
+    await runner.runStreamed("prompt", { ...createHandlers(), requestUserInputEnabled: true });
+    assert.equal(probes.length, 1);
+    assert.equal(probes[0].command, process.execPath, "probe the actual resolved target");
+    assert.equal(probes[0].cwd, specs[0].cwd);
+    assert.deepEqual(probes[0].env, specs[0].env);
+    const spec = specs[0];
+    assert.equal(spec.args.includes("thread_unload_delay_secs=0"), reason === "supported");
+    assert.deepEqual(spec.args.slice(-2), ["--listen", "stdio://"]);
+    assert.ok(spec.args.includes("default_mode_request_user_input"));
+    assert.ok(spec.args.some((arg) => arg.startsWith("projects.") && arg.endsWith('.trust_level="trusted"')));
+    assert.deepEqual(launches, [{ command: spec.command, args: spec.args }]);
+    const key = JSON.parse(spec.key) as { args: string[]; configFingerprint: string };
+    assert.deepEqual(key.args, spec.args);
+    assert.equal(key.configFingerprint, "test-config-identity");
+    assert.equal(fs.readFileSync(path.join(temp, "config.toml"), "utf8").includes("thread_unload_delay_secs"), false);
+  });
+}
+
+for (const kind of ["turn", "compact"] as const) {
+  for (const cancel of ["stop", "dispose"] as const) {
+    test(`Codex unload policy startup cannot start a late ${kind} after ${cancel}`, async (t) => {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-unload-cancel-"));
+      t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+      let entered = false;
+      let completeProbe!: (value: { supported: boolean; reason: "supported" }) => void;
+      const probe = new Promise<{ supported: boolean; reason: "supported" }>((resolve) => { completeProbe = resolve; });
+      t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability", () => {
+        entered = true; return probe;
+      });
+      let launches = 0;
+      t.mock.method(crossSpawn, "spawn", () => { launches += 1; assert.fail("late startup must not spawn any child"); });
+      let acquisitions = 0;
+      t.mock.method(require("../../interactive/codexAppServerPool"), "acquireCodexAppServer", () => {
+        acquisitions += 1; assert.fail("late startup must not acquire a pooled connection");
+      });
+      const { CodexInteractiveRunner } = loadCodexRunner();
+      const runner = new CodexInteractiveRunner({
+        command: process.execPath, args: [],
+        env: { HOME: temp, USERPROFILE: temp, CODEX_HOME: temp, CODEX_HOME_DIR: temp },
+        thinkingMode: "medium", interactiveMode: "coding", threadId: kind === "compact" ? "existing-thread" : null,
+      });
+      t.after(() => runner.dispose());
+      const running = kind === "turn" ? runner.runStreamed("prompt", createHandlers()) : runner.compactThread();
+      const rejected = assert.rejects(running, { name: cancel === "stop" ? "AbortError" : "RunnerDisposedError" });
+      await waitForCondition(() => entered);
+      if (cancel === "stop") { runner.stopAndRebuild(); } else { runner.dispose(); }
+      completeProbe({ supported: true, reason: "supported" });
+      await rejected;
+      assert.equal(launches, 0);
+      assert.equal(acquisitions, 0);
+    });
+  }
+}
+
+test("Codex unload policy startup preserves compatibility for an unobserved shell target", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-unload-shell-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability", () => {
+    assert.fail("a login shell is not the identity of its eventual Codex executable");
+  });
+  t.mock.method(require("../../interactive/codexRunnerProcess"), "resolveSpawnCommand", (_command: string, args: string[]) => ({
+    command: process.execPath, args, usesShell: true, resolvedFrom: "mac-shell-fallback",
+  }));
+  t.mock.method(crossSpawn, "spawn", fakeCodexSpawn((_command, args) => {
+    assert.ok(Array.isArray(args) && !args.includes("thread_unload_delay_secs=0"));
+    const child = createFakeChild(61911); attachSuccessfulAppServer(child); return child;
+  }));
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const runner = new CodexInteractiveRunner({
+    command: "shell-only-codex", args: [],
+    env: { HOME: temp, USERPROFILE: temp, CODEX_HOME: temp, CODEX_HOME_DIR: temp },
+    thinkingMode: "medium", interactiveMode: "coding", threadId: null,
+  });
+  t.after(() => runner.dispose());
+  await runner.runStreamed("prompt", createHandlers());
+});
 
 test("Codex runner reports EAGAIN spawn errors without hanging", async () => {
   const originalSpawn = crossSpawn.spawn;
   const child = createFakeChild();
   const events: unknown[] = [];
-  crossSpawn.spawn = (): unknown => {
+  crossSpawn.spawn = fakeCodexSpawn(() => {
     queueMicrotask(() => {
       const error = new Error("spawn /mock/codex EAGAIN") as NodeJS.ErrnoException;
       error.code = "EAGAIN";
@@ -430,7 +554,7 @@ test("Codex runner reports EAGAIN spawn errors without hanging", async () => {
       child.emit("error", error);
     });
     return child;
-  };
+  });
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -470,10 +594,10 @@ test("Codex runner enables default-mode request_user_input only when requested",
       initializeParams.push(message.params);
     }
   });
-  crossSpawn.spawn = (_command: unknown, args: unknown): unknown => {
+  crossSpawn.spawn = fakeCodexSpawn((_command, args) => {
     spawnArgs.push(Array.isArray(args) ? args.map(String) : []);
     return child;
-  };
+  });
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -577,7 +701,7 @@ test("Codex runner sends request_user_input answers in the per-question schema",
       setImmediate(close);
     }
   });
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -649,7 +773,7 @@ for (const [finalBoundary, nativeFinalPhase] of finalMessageBoundaries.flatMap((
         child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: request.id, result })}\n`);
       }
     });
-    crossSpawn.spawn = (): unknown => child;
+    crossSpawn.spawn = fakeCodexSpawn(() => child);
     const { CodexInteractiveRunner } = loadCodexRunner();
     const runner = new CodexInteractiveRunner({ command: process.execPath, args: [], thinkingMode: "medium", interactiveMode: "coding", threadId: null });
     const assistant: Array<{ chunk: string; itemId?: string }> = [];
@@ -662,9 +786,7 @@ for (const [finalBoundary, nativeFinalPhase] of finalMessageBoundaries.flatMap((
     try {
       let settled = false;
       const run = runner.runStreamed("task", handlers).then(() => { settled = true; });
-      for (let attempts = 0; attempts < 100 && turns.length < 1; attempts += 1) {
-        await new Promise((resolve) => setImmediate(resolve));
-      }
+      await waitForCondition(() => turns.length >= 1);
       assert.equal(turns.length, 1);
       const primary = { threadId: "parent-thread", turnId: turns[0] };
       const prefix = nativeFinalPhase ? "**完整" : "[final_answer]\n";
@@ -706,9 +828,7 @@ for (const [finalBoundary, nativeFinalPhase] of finalMessageBoundaries.flatMap((
       assert.equal(requests.filter((request) => request.method === "turn/interrupt").length, 1);
       assert.deepEqual(requests.find((request) => request.method === "turn/interrupt")?.params, primary);
       const nextRun = runner.runStreamed("next task", handlers);
-      for (let attempts = 0; attempts < 100 && turns.length < 2; attempts += 1) {
-        await new Promise((resolve) => setImmediate(resolve));
-      }
+      await waitForCondition(() => turns.length >= 2);
       assert.equal(turns.length, 2);
       send("item/reasoning/textDelta", { ...primary, itemId: "late-thinking", delta: "上一轮迟到的思考" });
       send("item/agentMessage/delta", { ...primary, itemId: "late", delta: "上一轮迟到的答复" });
@@ -733,7 +853,7 @@ test("Codex runner emits primary completed callback only for completed turns", a
     for (const status of ["failed", "interrupted"] as const) {
       const child = createFakeChild(61100);
       attachTurnStatusAppServer(child, status);
-      crossSpawn.spawn = (): unknown => child;
+      crossSpawn.spawn = fakeCodexSpawn(() => child);
       const completedTurns: unknown[] = [];
       const runner = new CodexInteractiveRunner({
         command: process.execPath,
@@ -790,11 +910,14 @@ test("Codex runner stop requests shutdown for every active app-server child", as
   const spawned: FakeChild[] = [];
   const killCalls: Array<{ pid: number; signal?: NodeJS.Signals | number }> = [];
 
-  crossSpawn.spawn = (): unknown => {
+  crossSpawn.spawn = fakeCodexSpawn(() => {
     const child = createFakeChild(61000 + spawned.length);
     spawned.push(child);
     return child;
-  };
+  }, {
+    onTaskkill: (pid) => { killCalls.push({ pid, signal: "SIGTERM" }); },
+    exitOnTaskkill: false,
+  });
   process.kill = ((pid: number, signal?: NodeJS.Signals | number): true => {
     killCalls.push({ pid, signal });
     return true;
@@ -818,11 +941,15 @@ test("Codex runner stop requests shutdown for every active app-server child", as
 
     assert.deepEqual(
       killCalls.filter((call) => call.signal === "SIGTERM").map((call) => call.pid),
-      [-61000],
+      [process.platform === "win32" ? 61000 : -61000],
     );
+    assert.equal(spawned.length, 1, "taskkill must not create an app-server");
+    assert.equal(spawned[0].exitCode, null, "a shutdown request is not process exit");
+    assert.equal(spawned[0].signalCode, null);
 
     for (const child of spawned) {
       child.signalCode = "SIGTERM";
+      child.emit("exit", null, "SIGTERM");
       child.stdout.end();
       child.stderr.end();
       child.emit("close", null, "SIGTERM");
@@ -832,6 +959,9 @@ test("Codex runner stop requests shutdown for every active app-server child", as
     assert.equal(results.every((result) => result instanceof Error), true);
     runner.dispose();
   } finally {
+    for (const child of spawned) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    }
     process.kill = originalKill;
     crossSpawn.spawn = originalSpawn;
   }
@@ -904,7 +1034,7 @@ test("Codex runner promotes phase-null completed agent messages as final answers
     phase: null,
   });
   const assistant: Array<{ chunk: string; final?: boolean }> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -942,7 +1072,7 @@ test("Codex runner does not promote commentary agent messages on completed turns
     phase: "commentary",
   });
   const assistant: Array<{ chunk: string; final?: boolean }> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -995,7 +1125,7 @@ test("Codex notification routing preserves reasoning aliases, plan updates, and 
   const taskLists: Array<Array<{ text: string; done: boolean }>> = [];
   const traces: string[] = [];
   const events: unknown[] = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
     const runner = new CodexInteractiveRunner({
@@ -1052,7 +1182,7 @@ test("Codex notification routing ignores unknown methods and accepts missing par
   ]);
   const output: string[] = [];
   let completed = 0;
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
     const runner = new CodexInteractiveRunner({
@@ -1094,7 +1224,7 @@ test("Codex notification routing keeps child failures isolated and fails the pri
   const traces: string[] = [];
   const subagents: Array<{ threadId: string; status: string; error?: string }> = [];
   let completed = 0;
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
     const runner = new CodexInteractiveRunner({
@@ -1128,7 +1258,7 @@ test("Codex runner forwards primary thread/tokenUsage/updated as tokens_in_conte
   const child = createFakeChild(61210);
   attachTokenUsageAppServer(child);
   const usageUpdates: Array<{ tokensInContextWindow: number; modelContextWindow: number | null; threadId: string }> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -1160,7 +1290,7 @@ test("Codex runner reads tokens_in_context_window from primary turn/completed", 
   const child = createFakeChild(61211);
   attachTurnCompletedTokenUsageAppServer(child);
   const usageUpdates: Array<{ tokensInContextWindow: number; modelContextWindow: number | null; threadId: string }> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -1280,7 +1410,7 @@ test("Codex runner streams reasoning summary deltas and strips leaked final_answ
   const child = createFakeChild(61220);
   attachReasoningDeltaAppServer(child);
   const assistant: Array<{ chunk: string; kind?: string; final?: boolean }> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -1361,7 +1491,7 @@ test("Codex runner finishes when the primary turn completes before turn/start re
       }
     }
   });
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();
@@ -1445,7 +1575,7 @@ test("Codex runner finishes a streamed turn whose id differs from the turn/start
       }
     }
   });
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
 
   try {
     const { CodexInteractiveRunner } = loadCodexRunner();

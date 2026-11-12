@@ -8,6 +8,7 @@ import { GrokInteractiveRunner } from "./grokRunner";
 import type {
   CodexRunnerEntry,
   RunnerEntry,
+  RunnerRelease,
   RunnerLifecycleStrategy,
   StrategyForCli,
   StrategyRegistry,
@@ -653,4 +654,14 @@ export const runnerLifecycleStrategies: StrategyRegistry = {
 
 export function stopManagedRunner(entry: RunnerEntry): void {
   runnerLifecycleStrategies[entry.cli].stop(entry.runner as never);
+}
+
+export function disposeManagedRunner(entry: RunnerEntry): RunnerRelease {
+  if (entry.cli === "zcode") {
+    return entry.runner.dispose();
+  }
+  // Codex owns its home/thread release barrier inside withThread. Other CLIs
+  // expose synchronous disposal, which is not proof of native process exit.
+  entry.runner.dispose();
+  return undefined;
 }

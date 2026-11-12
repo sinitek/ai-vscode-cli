@@ -9,6 +9,9 @@ import type { GrokInteractiveRunner } from "./grokRunner";
 
 export type InteractiveRunnerCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode";
 
+/** Only a CLI's actual asynchronous release evidence, never a wrapped void dispose. */
+export type RunnerRelease = Promise<void> | undefined;
+
 export type RunnerLifecycleFields = {
   configFingerprint?: string;
   idleTimer: NodeJS.Timeout | null;

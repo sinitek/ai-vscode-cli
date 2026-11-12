@@ -52,6 +52,8 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
     zcodeLaunch: { agentArgs: [], env: {}, modeId: "yolo", modelRef: null, thinkingValue: null },
     interactiveRunnerManager: {
       getOrCreateZcodeRunner: () => runner,
+      waitForPendingDisposal: async () => {},
+      hasZcodeRunner: () => true,
       setRunner: () => {},
     },
     resolveInteractiveMappedId: () => "sess_test",

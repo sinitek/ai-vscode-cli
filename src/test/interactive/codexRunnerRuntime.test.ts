@@ -45,6 +45,23 @@ test("visible Codex errors use an error trace kind", () => {
   }]);
 });
 
+test("immediate thread unload is explicit and takes precedence over conflicting overrides", () => {
+  const overrides = ["model=\"gpt-5\"", "thread_unload_delay_secs=90", "features.multi_agent=true"];
+  const compatible = buildCodexAppServerArgs(overrides, { requestUserInputEnabled: true });
+  assert.deepEqual(buildCodexAppServerArgs(overrides, {
+    requestUserInputEnabled: true, immediateThreadUnload: false,
+  }), compatible);
+  const enabled = buildCodexAppServerArgs(overrides, {
+    requestUserInputEnabled: true, immediateThreadUnload: true,
+  });
+  assert.deepEqual(enabled, [
+    "app-server", "--enable", "default_mode_request_user_input",
+    "-c", "model=\"gpt-5\"", "-c", "thread_unload_delay_secs=90", "-c", "features.multi_agent=true",
+    "-c", "thread_unload_delay_secs=0", "--listen", "stdio://",
+  ]);
+  assert.deepEqual(overrides, ["model=\"gpt-5\"", "thread_unload_delay_secs=90", "features.multi_agent=true"]);
+});
+
 test("only non-error Codex traces count as retry recovery progress", () => {
   assert.equal(isCodexRetryProgressTraceKind("error"), false);
   assert.equal(isCodexRetryProgressTraceKind("thinking"), false);

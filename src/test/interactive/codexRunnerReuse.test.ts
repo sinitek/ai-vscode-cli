@@ -3,8 +3,16 @@ import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
+import { blockRealProcessSignals, fakeCodexSpawn } from "./codexProcessFixture";
 
 installVscodeMock();
+test.beforeEach(blockRealProcessSignals);
+test.beforeEach((t) => {
+  assert.ok("mock" in t);
+  // These fake executables implement RPC only; capability probes have their own suite.
+  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+    async () => ({ supported: false, reason: "unknown" }));
+});
 
 const crossSpawn = require("cross-spawn") as {
   spawn: (...args: unknown[]) => unknown;
@@ -34,6 +42,7 @@ function createFakeChild(pid: number): FakeChild {
     child.killCalls.push(signal);
     child.exitCode = null;
     child.signalCode = typeof signal === "string" ? signal : "SIGTERM";
+    child.emit("exit", null, child.signalCode);
     child.stdout.end();
     child.stderr.end();
     child.emit("close", null, child.signalCode);
@@ -126,12 +135,12 @@ test("Codex runner reuses one app-server connection and loaded thread", async ()
   const originalKill = process.kill;
   const methods: string[] = [];
   const spawned: FakeChild[] = [];
-  crossSpawn.spawn = (): unknown => {
+  crossSpawn.spawn = fakeCodexSpawn(() => {
     const child = createFakeChild(62000 + spawned.length);
     spawned.push(child);
     attachPersistentServer(child, methods);
     return child;
-  };
+  });
   process.kill = (() => {
     throw new Error("no process group");
   }) as typeof process.kill;
@@ -174,12 +183,12 @@ test("configuration migration hands off only the target thread and compaction pr
   const originalKill = process.kill;
   const methods: string[] = [];
   const spawned: FakeChild[] = [];
-  crossSpawn.spawn = () => {
+  crossSpawn.spawn = fakeCodexSpawn(() => {
     const child = createFakeChild(62500 + spawned.length);
     spawned.push(child);
     attachPersistentServer(child, methods);
     return child;
-  };
+  });
   process.kill = (() => { throw new Error("no process group"); }) as typeof process.kill;
   const { CodexInteractiveRunner } = loadCodexRunner();
   const options = {
@@ -224,12 +233,12 @@ test("Codex runners share initialize and start one thread each", async () => {
   const originalKill = process.kill;
   const methods: string[] = [];
   const spawned: FakeChild[] = [];
-  crossSpawn.spawn = (): unknown => {
+  crossSpawn.spawn = fakeCodexSpawn(() => {
     const child = createFakeChild(62100 + spawned.length);
     spawned.push(child);
     attachPersistentServer(child, methods);
     return child;
-  };
+  });
   process.kill = (() => {
     throw new Error("no process group");
   }) as typeof process.kill;
@@ -321,7 +330,7 @@ test("Codex runner interrupts a loaded turn without killing the app-server", asy
       }
     }
   });
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   process.kill = ((pid: number, signal?: NodeJS.Signals | number): true => {
     killSignals.push(signal);
     if (pid === -child.pid! || pid === child.pid) {
@@ -457,9 +466,11 @@ test("paused turn completion does not finish the next prompt before it answers",
     }
   });
   const killSignals: Array<NodeJS.Signals | number | undefined> = [];
-  crossSpawn.spawn = (): unknown => child;
+  crossSpawn.spawn = fakeCodexSpawn(() => child);
   process.kill = ((pid: number, signal?: NodeJS.Signals | number): true => {
     killSignals.push(signal);
+    assert.equal(pid, -child.pid!);
+    child.kill(signal);
     return true;
   }) as typeof process.kill;
 
@@ -513,3 +524,93 @@ test("paused turn completion does not finish the next prompt before it answers",
     crossSpawn.spawn = originalSpawn;
   }
 });
+
+
+for (const action of ["hot-stop", "dispose", "complete"] as const) {
+  test(`runner ${action} cancels only its pending question; late answers cannot reach a restarted turn`, async () => {
+    const originalSpawn = crossSpawn.spawn;
+    const originalKill = process.kill;
+    const child = createFakeChild(1_000_008_000);
+    const messages: Record<string, unknown>[] = [];
+    const answers: Array<(answer: import("../../interactive/codexAppServerProtocol").JsonRpcResolution) => void> = [];
+    let input = ""; let turns = 0;
+    const send = (message: Record<string, unknown>) => child.stdout.write(`${JSON.stringify(message)}\n`);
+    child.stdin.on("data", (chunk) => {
+      input += String(chunk);
+      const lines = input.split("\n"); input = lines.pop() ?? "";
+      for (const line of lines) {
+        const message = JSON.parse(line) as { id?: unknown; method?: string; params?: Record<string, unknown> };
+        messages.push(message);
+        if (!message.method) continue;
+        if (message.method === "initialize" || message.method === "turn/interrupt") send({ id: message.id, result: {} });
+        else if (message.method === "thread/resume") send({ id: message.id, result: { thread: { id: message.params?.threadId } } });
+        else if (message.method === "turn/start") {
+          const threadId = message.params?.threadId;
+          const turnId = `turn-${++turns}`;
+          send({ id: message.id, result: { turn: { id: turnId, status: "inProgress" } } });
+          if (threadId === "b") send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+          else send({ id: `question-${turns}`, method: "item/tool/requestUserInput", params: { threadId, turnId, questions: [] } });
+        }
+      }
+    });
+    crossSpawn.spawn = fakeCodexSpawn(() => child);
+    process.kill = (() => { throw new Error("no real signals"); }) as typeof process.kill;
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const options = { command: process.execPath, args: [], thinkingMode: "medium" as const, interactiveMode: "coding" as const };
+    const runner = new CodexInteractiveRunner({ ...options, threadId: "a" });
+    const peer = new CodexInteractiveRunner({ ...options, threadId: "b" });
+    const handlers = {
+      onAssistantDelta: () => undefined, onTrace: () => undefined, onTaskListUpdate: () => undefined, onThreadId: () => undefined,
+      requestUserInputEnabled: true,
+      onRequest: () => new Promise<import("../../interactive/codexAppServerProtocol").JsonRpcResolution>((resolve) => answers.push(resolve)),
+    };
+    const wait = async (condition: () => boolean) => {
+      const deadline = Date.now() + 2000;
+      while (!condition()) {
+        assert.ok(Date.now() < deadline, "runner lifecycle condition timed out");
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      }
+    };
+    try {
+      await peer.runStreamed("retain shared process", handlers);
+      const first = runner.runStreamed("first", handlers);
+      void first.catch(() => undefined);
+      await wait(() => answers.length === 1);
+      if (action === "hot-stop") runner.stopAndRebuild();
+      else if (action === "dispose") runner.dispose();
+      else send({ method: "turn/completed", params: { threadId: "a", turn: { id: "turn-2", status: "completed" } } });
+      if (action === "complete") await first;
+      else await assert.rejects(first);
+      const response = () => messages.filter((message) => !message.method && message.id === "question-2");
+      assert.equal(response().length, 1);
+      assert.deepEqual(response()[0].result, { answers: {} });
+      if (action !== "dispose") {
+        const second = runner.runStreamed("restart", handlers);
+        void second.catch(() => undefined);
+        await wait(() => answers.length === 2);
+        if (action === "hot-stop") {
+          send({ id: "old-turn-late-question", method: "item/tool/requestUserInput", params: { threadId: "a", turnId: "turn-2", questions: [] } });
+          await wait(() => messages.some((message) => !message.method && message.id === "old-turn-late-question"));
+          assert.equal(answers.length, 2, "an old turn request must not ask the new operation");
+          assert.deepEqual(messages.find((message) => !message.method && message.id === "old-turn-late-question")?.result, { answers: {} });
+        }
+        answers[0]({ result: { answers: { stale: "late old answer" } } });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(response().length, 1);
+        answers[1]({ result: { answers: { current: { answers: ["new"] } } } });
+        await wait(() => messages.some((message) => !message.method && message.id === "question-3"));
+        send({ method: "turn/completed", params: { threadId: "a", turn: { id: "turn-3", status: "completed" } } });
+        await second;
+      } else {
+        answers[0]({ result: { answers: { stale: "late disposed answer" } } });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(response().length, 1);
+      }
+      await peer.runStreamed("other session still usable", handlers);
+      assert.equal(child.killCalls.length, 0);
+    } finally {
+      runner.dispose(); peer.dispose();
+      crossSpawn.spawn = originalSpawn; process.kill = originalKill;
+    }
+  });
+}

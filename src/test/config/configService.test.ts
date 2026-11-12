@@ -914,7 +914,7 @@ test("OpenCode config UI exposes separate model and MCP config paths", async () 
   const sampleText = sampleMatch[1];
   const sample = JSON.parse(sampleText);
 
-  assert.equal(sampleText, JSON.stringify(sample, null, 2));
+  assert.equal(sampleText.replace(/\r\n/g, "\n"), JSON.stringify(sample, null, 2));
   assert.doesNotMatch(sampleText, /\.env/i);
   assert.equal(sample.$schema, "https://opencode.ai/config.json");
   assert.equal(sample.model, "myAPI/main-chat-model");
