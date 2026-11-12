@@ -42,6 +42,7 @@ export type ExtensionSessionTabsHostDeps = {
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
+  postConversationTabClosed: (tabId: string, activeTabId: string | null) => void;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
   extractSessionId: (cli: CliName, buffer: string) => string | null; isLocalSessionId: (sessionId: string) => boolean; migrateLocalSessionToTargetSession: (cli: CliName, from: string, to: string, options?: { notifyPanel?: boolean }) => void; adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
@@ -298,7 +299,10 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
   return sessionTabsController.closeConversationTab(tabId);
 }
 
-async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void> {
+async function closeConversationTabAndRefreshPanel(
+  tabId: string,
+  options: { notifyTabClosed?: boolean } = {},
+): Promise<void> {
   if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
     return;
@@ -312,9 +316,18 @@ async function closeConversationTabAndRefreshPanel(tabId: string): Promise<void>
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
   const next = closeConversationTab(tabId);
   const nextActiveTabId = getActiveConversationTabId();
+  if (getConversationTabById(tabId)) {
+    return;
+  }
+  if (options.notifyTabClosed !== false) {
+    deps.postConversationTabClosed(tabId, nextActiveTabId);
+  }
   closingBindings.forEach((binding) => {
     disposeInteractiveRunnerIfUnused(binding);
   });
+  if (nextActiveTabId === previousActiveTabId) {
+    return;
+  }
   if (next && currentCli !== next.cli) {
     currentCli = next.cli;
     deps.setCurrentCli(currentCli);
@@ -390,8 +403,17 @@ async function resetConversationTabSession(): Promise<void> {
   const previousTabId = activeTab.id;
   const targetCli = activeTab.cli;
   addConversationTab(targetCli, null);
+  const nextTabId = getActiveConversationTabId();
   setWorkspaceInteractiveModeForCli(targetCli, "coding");
-  await closeConversationTabAndRefreshPanel(previousTabId);
+  await closeConversationTabAndRefreshPanel(previousTabId, { notifyTabClosed: false });
+  if (getActiveConversationTabId() !== nextTabId) {
+    return;
+  }
+  await postPanelState();
+  if (getActiveConversationTabId() !== nextTabId) {
+    return;
+  }
+  sendSessionMessagesToPanel(targetCli, null);
   void logInfo("session-reset-to-new-tab", {
     cli: targetCli,
     previousTabId,

@@ -11,6 +11,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           if (data.type === "state") {
             applyState(data.payload);
           }
+          if (data.type === "conversationTabClosed") {
+            applyConversationTabClosed(data);
+          }
           if (data.type === "humanInteractionHistory") {
             applyHumanInteractionHistory(data.items);
           }

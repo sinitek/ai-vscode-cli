@@ -2007,6 +2007,31 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         };
       }
 
+      function applyConversationTabClosed(data) {
+        const tabs = state.conversationTabs && state.conversationTabs.tabs;
+        if (!Array.isArray(tabs)) {
+          return;
+        }
+        const remaining = tabs.filter((tab) => tab.id !== data.tabId);
+        if (remaining.length === 0 || remaining.length === tabs.length) {
+          return;
+        }
+        const previousActiveTabId = getActiveConversationTabId();
+        const activeTab = remaining.find((tab) => tab.id === previousActiveTabId)
+          || remaining.find((tab) => tab.id === data.activeTabId)
+          || remaining[0];
+        state.conversationTabs = { ...state.conversationTabs, tabs: remaining, activeTabId: activeTab.id };
+        pruneConversationRuntimeStates(remaining.map((tab) => tab.id));
+        if (activeTab.id !== previousActiveTabId) {
+          applyAutoInteractiveModeForTab(activeTab);
+          syncActiveMessagesFromRuntime();
+          syncRunningStateForActiveTab();
+          updateContextTokenUsage();
+          armPromptContextForConversationStart();
+        }
+        renderConversationTabs();
+      }
+
       function renderConversationTabs() {
         syncConversationTabRunningFlowWatch();
         syncAutoInteractiveModeForActiveTab();

@@ -1452,6 +1452,22 @@
       ]
     },
     {
+      "id": "plugin.rule.conversation_tab_close_fast_path",
+      "name": "非运行标签关闭确认与配置恢复分离",
+      "description": "宿主通过运行锁和最后标签保护并移除标签后，立即发送 conversationTabClosed 轻量确认并释放对应缓存，不删除真实会话。后台关闭不重载 CLI 配置、不重选活动会话、不重放正文；活动关闭先显示回退标签缓存，再完成既有配置恢复和权威消息同步。重复或迟到确认不覆盖新的本地选择。重置会话禁用提前确认，以完整状态一次性发布新标签，保留待提交配置并避免临时切到邻居。",
+      "status": "active",
+      "applies_to": ["plugin.cli_session", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/extensionHost/sessionTabs.ts"},
+        {"path": "src/sessionTabs.ts"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": "src/test/session/sessionTabCliSwitch.test.ts"},
+        {"path": "src/test/webview/conversationTabClose.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "非运行对话标签关闭性能"}
+      ]
+    },
+    {
       "id": "plugin.rule.conversation_tab_execution_configuration",
       "name": "对话标签恢复实际执行配置模型与思考力度",
       "description": "切换对话标签、关闭活动标签后回退或打开已有会话时不应用历史档案；仅当历史路由与当前激活配置一致时恢复模型、思考和跨 CLI 子路由，档案不同则保留当前选择。Loop 主标签读取任务路由，子标签优先读取实际执行快照；executionProfile 保存档案 ID、原始模型 ID、思考档位与 OpenCode variant，executionModel 仅展示。缺失档案、模型或可靠记录不重建模型；异步恢复检查标签、请求序号与工作区，防止旧快照覆盖当前上下文。显式重置会话保留待提交的用户配置选择，不借普通标签恢复回写旧档案。",

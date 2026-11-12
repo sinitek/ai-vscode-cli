@@ -82,6 +82,13 @@
 - 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+## 非运行对话标签关闭性能
+
+- 宿主确认允许关闭并移除标签后立即发送轻量 `conversationTabClosed` 消息，Webview 释放对应运行态和视图缓存；关闭不是删除磁盘会话。
+- 关闭后台标签不重载全部 CLI 配置、不重选活动会话、不重放当前对话，保持正文 DOM、滚动位置和指令组展开状态；关闭当前非运行标签先显示相邻标签的缓存消息，再完成既有配置恢复和权威消息同步。
+- 运行中标签、运行中 Loop 主标签和最后一个标签仍不可关闭；重复确认无副作用，迟到确认不覆盖新的本地标签选择。重置会话使用完整状态一次性发布新标签，避免先切到邻居或丢失待提交配置。
+- 实现：`src/extensionHost/sessionTabs.ts`、`src/sessionTabs.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
+
 ## 隐藏指令气泡
 
 - 工具设置 → AI任务配置新增“隐藏指令气泡”复选框，默认关闭；全局工具设置 `hideInstructionBubbles` 持久化到 `~/.sinitek_cli/settings.json`，缺失或非布尔值视为关闭，不新增工作区覆盖项。

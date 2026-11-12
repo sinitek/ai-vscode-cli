@@ -14,6 +14,9 @@
 
 ## Tab 运行状态与配置协调
 
+- 非运行标签关闭使用宿主确认后的轻量 `conversationTabClosed` 增量消息，不等待 `postPanelState` 重载各 CLI 配置和模型能力。后台关闭仅移除标签与缓存，不重选当前会话、不重放正文；活动关闭立即切到回退标签缓存，之后仍由原有配置恢复和全量状态保证执行配置正确。运行锁、最后标签保护与磁盘会话保留不变。
+- 重置会话先创建新标签再关闭旧标签，不能套用普通关闭的轻量确认：客户端尚无新标签，提前确认会暂时选中邻居并破坏待提交配置的保留判断。重置显式禁用提前确认，并在新标签仍活动时发布完整状态和空会话消息。回归见 `src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
+
 - Tab 展示先判断 `isConversationTabRunning`，再判断错误标记。运行中的 trace/system 错误可能来自可恢复工具失败，不直接判定任务终止；终态仍由宿主 `runStatus` 驱动。保留错误气泡和原有成功、重试、输出恢复逻辑。
 - Webview 每 Tab 的 `lastRunStatus` 仅保存在内存，宿主 `runStatus` 事件更新后，消息推断不得覆盖明确的成功终态 `end`，自动重试排队提示同样遵守此保护。新用户消息、新运行和会话重置释放上一轮成功保护；明确的 `error` 始终可标记失败，未收到成功终态的空闲错误仍可展示。关闭/工作区切换复用运行态回收，不新增持久化字段；回归见 `src/test/webview/tabRunStatus.test.ts`。
 - `SharedRuntimeConfig.read` 对已有 `selection.json` 读取经过结构校验的原子快照，不争抢写锁、不清理磁盘租约；缺失且需要初始化时进入互斥事务并再次读取，防止重复初始化。只读可见 `ready:false`，并不赋予启动权限。

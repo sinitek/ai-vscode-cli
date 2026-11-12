@@ -15,6 +15,8 @@ function createHost(initial: {
   modes: Partial<Record<CliName, InteractiveMode>>;
   onRestore?: (tabId: string) => Promise<void>;
   runningTabIds?: ReadonlySet<string>;
+  lockedTabIds?: ReadonlySet<string>;
+  onPostPanelState?: () => Promise<void>;
 }) {
   let currentCli = initial.currentCli;
   const modes = { ...initial.modes };
@@ -24,6 +26,9 @@ function createHost(initial: {
   const postedTabIds: Array<string | null> = [];
   const postedClis: CliName[] = [];
   const sentTabIds: Array<string | null> = [];
+  const closedTabs: Array<{ tabId: string; activeTabId: string | null }> = [];
+  const selectedSessions: Array<string | null> = [];
+  const disposedTabIds: string[] = [];
   const contextFor = (tab: ConversationTabRecord | null) => {
     const role = tab?.id.includes("main") ? "main" as const : tab?.id.includes("sub") ? "subtask" as const : undefined;
     return { taskRole: role, loopTaskId: role ? "task-1" : null };
@@ -40,7 +45,7 @@ function createHost(initial: {
     getSessionStore: () => undefined,
     getWorkspaceSettings: () => settings,
     saveWorkspaceSettings: () => undefined,
-    setCurrentSession: () => undefined,
+    setCurrentSession: (_cli, sessionId) => { selectedSessions.push(sessionId); },
     setWorkspaceInteractiveModeForCli: (cli, mode) => { modes[cli] = mode; return true; },
     resolveAutoInteractiveModeForConversationTab: (tab) => contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
     collectRunningLoopTaskIds: () => new Set(),
@@ -82,11 +87,13 @@ function createHost(initial: {
     buildSessionLabelFromPrompt: () => null,
     shouldUseFallbackSessionLabel: () => false,
     isTabRunActive: (tabId) => Boolean(tabId && initial.runningTabIds?.has(tabId)),
-    isLoopMainTabCloseLocked: () => false,
+    isLoopMainTabCloseLocked: (tabId) => Boolean(tabId && initial.lockedTabIds?.has(tabId)),
     postPanelState: async () => {
       postedClis.push(currentCli);
       postedTabIds.push(controller.getActiveConversationTabId());
+      await initial.onPostPanelState?.();
     },
+    postConversationTabClosed: (tabId, activeTabId) => { closedTabs.push({ tabId, activeTabId }); },
     restoreConversationTabConfiguration: async (tabId) => {
       restoredTabIds.push(tabId);
       await initial.onRestore?.(tabId);
@@ -94,8 +101,8 @@ function createHost(initial: {
     updateStatusBar: () => undefined,
     maybePromptInstallOnCliGroupSwitch: async () => undefined,
     sendSessionMessagesToPanel: (_cli, _sessionId, tabId) => { sentTabIds.push(tabId ?? null); },
-    getInteractiveSessionBindingsForTab: () => [],
-    disposeInteractiveRunnerIfUnused: () => undefined,
+    getInteractiveSessionBindingsForTab: (tab) => [tab.id],
+    disposeInteractiveRunnerIfUnused: (binding) => { disposedTabIds.push(String(binding)); },
     setWorkspaceInteractiveModeForCli: (cli, mode) => { modes[cli] = mode; return true; },
     resolveAutoInteractiveModeForConversationTab: (tab) => contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
     extractSessionId: () => null,
@@ -106,7 +113,7 @@ function createHost(initial: {
     logInfo: () => undefined,
     activeData: { WORKSPACE_KEY_FALLBACK: "fallback", LEGACY_SESSION_FILE: "legacy", SESSION_DIR: "sessions", SESSION_BUFFER_LIMIT: 1 },
   });
-  return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, currentCli: () => currentCli };
+  return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, currentCli: () => currentCli };
 }
 
 test("returning from a cross-CLI Loop+ subtask restores the main CLI and Loop+ mode", async () => {
@@ -155,9 +162,83 @@ test("closing a background tab does not restore configuration for the unchanged 
       { id: "background-tab", cli: "claude", sessionId: "background", sessionIdByCli: { claude: "background" }, createdAt: 2 },
     ],
   };
-  const env = createHost({ state, currentCli: "codex", modes: { codex: "coding", claude: "coding" } });
+  const env = createHost({
+    state, currentCli: "codex", modes: { codex: "coding", claude: "coding" },
+    onPostPanelState: async () => { throw new Error("Background close must not reload CLI configuration"); },
+  });
   await env.host.closeConversationTabAndRefreshPanel("background-tab");
   assert.deepEqual(env.restoredTabIds, []);
+  assert.deepEqual(env.closedTabs, [{ tabId: "background-tab", activeTabId: "main-tab" }]);
+  assert.deepEqual(env.postedClis, []);
+  assert.deepEqual(env.sentTabIds, []);
+  assert.deepEqual(env.selectedSessions, []);
+  assert.deepEqual(env.disposedTabIds, ["background-tab"]);
+  assert.equal(state.activeTabId, "main-tab");
+});
+
+test("closing an active tab acknowledges removal before slow fallback configuration restoration", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "closing-tab",
+    tabs: [
+      { id: "fallback-tab", cli: "codex", sessionId: "fallback", sessionIdByCli: { codex: "fallback" }, createdAt: 1 },
+      { id: "closing-tab", cli: "codex", sessionId: "closing", sessionIdByCli: { codex: "closing" }, createdAt: 2 },
+    ],
+  };
+  let finishRestore!: () => void;
+  const restoring = new Promise<void>((resolve) => { finishRestore = resolve; });
+  const env = createHost({ state, currentCli: "codex", modes: {}, onRestore: () => restoring });
+  const closing = env.host.closeConversationTabAndRefreshPanel("closing-tab");
+  try {
+    assert.deepEqual(env.closedTabs, [{ tabId: "closing-tab", activeTabId: "fallback-tab" }]);
+    assert.deepEqual(env.restoredTabIds, ["fallback-tab"]);
+    assert.deepEqual(env.postedClis, []);
+    assert.deepEqual(env.sentTabIds, []);
+  } finally {
+    finishRestore();
+    await closing;
+  }
+  assert.deepEqual(env.selectedSessions, ["fallback"]);
+  assert.deepEqual(env.postedTabIds, ["fallback-tab"]);
+  assert.equal(env.sentTabIds.length, 1);
+});
+
+test("closing protected tabs never acknowledges removal or disposes their runners", async () => {
+  for (const protection of ["running", "loop-main", "last"] as const) {
+    const state: ConversationTabsState = {
+      activeTabId: "protected-tab",
+      tabs: [{ id: "protected-tab", cli: "codex", sessionId: "protected", sessionIdByCli: { codex: "protected" }, createdAt: 1 }],
+    };
+    if (protection !== "last") {
+      state.tabs.push({ id: "other-tab", cli: "codex", sessionId: "other", sessionIdByCli: { codex: "other" }, createdAt: 2 });
+    }
+    const env = createHost({
+      state, currentCli: "codex", modes: {},
+      runningTabIds: new Set(protection === "running" ? ["protected-tab"] : []),
+      lockedTabIds: new Set(protection === "loop-main" ? ["protected-tab"] : []),
+    });
+    await env.host.closeConversationTabAndRefreshPanel("protected-tab");
+    assert.equal(state.tabs.some((tab) => tab.id === "protected-tab"), true, protection);
+    assert.deepEqual(env.closedTabs, [], protection);
+    assert.deepEqual(env.disposedTabIds, [], protection);
+  }
+});
+
+test("repeated and consecutive background closes do not refresh the active conversation", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "active-tab",
+    tabs: ["active-tab", "first-tab", "second-tab"].map((id) => ({ id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1 })),
+  };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+  await Promise.all([
+    env.host.closeConversationTabAndRefreshPanel("first-tab"),
+    env.host.closeConversationTabAndRefreshPanel("first-tab"),
+    env.host.closeConversationTabAndRefreshPanel("second-tab"),
+  ]);
+  assert.deepEqual(env.closedTabs.map((tab) => tab.tabId), ["first-tab", "second-tab"]);
+  assert.deepEqual(env.postedClis, []);
+  assert.deepEqual(env.sentTabIds, []);
+  assert.deepEqual(env.selectedSessions, []);
+  assert.deepEqual(state.tabs.map((tab) => tab.id), ["active-tab"]);
 });
 
 test("a restarted subtask completion closes its old tabs but preserves unrelated and running tabs", async () => {
@@ -269,6 +350,7 @@ for (const cli of CLI_LIST) {
     assert.deepEqual(env.restoredTabIds, []);
     assert.deepEqual(env.postedClis, [cli]);
     assert.deepEqual(env.postedTabIds, [activeTab.id]);
+    assert.deepEqual(env.closedTabs, []);
   });
 }
 

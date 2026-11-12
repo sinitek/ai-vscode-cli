@@ -613,6 +613,7 @@ export function createSessionTabsController(deps: {
         const active = getActiveTab();
         return active ? { cli: active.cli, sessionId: active.sessionId } : null;
       }
+      const previousActiveTabId = state.activeTabId;
       clearDraft(tabId);
       state.tabs.splice(index, 1);
       if (!state.activeTabId || state.activeTabId === tabId) {
@@ -624,7 +625,9 @@ export function createSessionTabsController(deps: {
       if (!activeTab) {
         return null;
       }
-      deps.setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
+      if (state.activeTabId !== previousActiveTabId) {
+        deps.setCurrentSession(activeTab.cli, activeTab.sessionId, { syncConversationTab: false });
+      }
       return {
         cli: activeTab.cli,
         sessionId: activeTab.sessionId,
