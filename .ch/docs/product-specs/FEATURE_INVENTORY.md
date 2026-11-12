@@ -59,6 +59,12 @@
 - Loop+ 状态卡片仅在「状态」行展示当前状态，不在卡片底部重复说明；移除「当前项」和「验收结果」计数，保留其他汇总计数。
 - 实现：`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopPlusPanelState.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
 
+## Loop / Loop+ 切模型弹窗
+
+- 状态：`active`（2026-11-12）。每个角色独占一行，左侧选择模型，右侧选择对应思考力度；覆盖经典 Loop 主/子模型、Loop+ 主/全栈以及主/后端/前端模式。
+- 思考力度与 AI 对话面板一致，统一显示 CLI 原始档位值（如 `low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`off`），不混用中文档位。模型联动、无支持时禁用、刷新保留有效选择及提交规则不变。
+- 实现：`src/loopModelSwitch.ts`、`src/webview/loopModelSwitchDialog.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopModelSwitch.test.ts`。
+
 ## Loop / Loop+ 群聊窄屏布局
 
 - 状态：`active`（2026-11-07）。宽度不超过 780px 时不再上下排列任务信息和聊天：保留顶部标题操作栏，聊天占满下方内容区，左侧任务信息与成员默认收起。

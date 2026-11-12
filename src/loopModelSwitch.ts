@@ -120,8 +120,7 @@ export function getLoopModelSwitchThinkingOptions(cli: CliName): LoopModelSwitch
   const modes = cli === "dsh" ? []
     : cli === "kimi-code" ? ["low", "medium", "high", "xhigh", "max"]
       : [...(cli === "grok" ? ["off"] : []), "low", "medium", "high", "xhigh", "max", "ultra"];
-  const labels: Record<string, string> = { off: "关闭", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最大", ultra: "极致" };
-  return modes.map((value) => ({ value, label: labels[value] }));
+  return modes.map((value) => ({ value, label: value }));
 }
 
 export function buildLoopModelSwitchState(task: LoopTaskRecord, deps: LoopModelSwitchDeps): LoopModelSwitchState {

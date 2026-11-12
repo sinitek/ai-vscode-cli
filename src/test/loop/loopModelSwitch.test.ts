@@ -1,8 +1,10 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile, buildLoopModelSwitchState, resolveLoopModelSwitch, type LoopModelSwitchDeps } from "../../loopModelSwitch";
+import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile, buildLoopModelSwitchState, getLoopModelSwitchThinkingOptions, resolveLoopModelSwitch, type LoopModelSwitchDeps } from "../../loopModelSwitch";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { renderLoopModelSwitchFields } from "../../webview/loopModelSwitchDialog";
+import { LOOP_GROUP_CHAT_PANEL_STYLES } from "../../webview/loopGroupChatPanelStyles";
+import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
 function task(): LoopTaskRecord {
   return {
@@ -202,13 +204,50 @@ test("thinking selection is validated against the selected model and rejected at
   assert.equal(JSON.stringify(record), before);
 });
 
+test("thinking labels match the AI chat panel's raw effort values", () => {
+  assert.deepEqual(getLoopModelSwitchThinkingOptions("codex").map((option) => option.label), [
+    WEBVIEW_STRINGS.thinkingOptionLow, WEBVIEW_STRINGS.thinkingOptionMedium,
+    WEBVIEW_STRINGS.thinkingOptionHigh, WEBVIEW_STRINGS.thinkingOptionXHigh,
+    WEBVIEW_STRINGS.thinkingOptionMax, WEBVIEW_STRINGS.thinkingOptionUltra,
+  ]);
+  for (const cli of ["codex", "claude", "opencode", "grok", "kimi-code", "zcode"] as const) {
+    for (const option of getLoopModelSwitchThinkingOptions(cli)) {
+      assert.equal(option.label, option.value);
+    }
+  }
+  assert.equal(getLoopModelSwitchThinkingOptions("grok")[0].label, WEBVIEW_STRINGS.thinkingOptionOff);
+  assert.deepEqual(getLoopModelSwitchThinkingOptions("dsh"), []);
+});
+
+for (const mode of ["classic", "fullstack", "split"] as const) {
+  test(`model and thinking controls share one two-column row per role in ${mode}`, () => {
+    const record = task();
+    if (mode !== "classic") {
+      record.schedulingMode = "event_driven";
+      record.loopSubtaskMode = mode;
+    }
+    const state = buildLoopModelSwitchState(record, deps);
+    const html = renderLoopModelSwitchFields(state);
+    const rows = [...html.matchAll(/<div class="model-switch-field">([\s\S]*?)<\/select>\s*<\/div>\s*<\/div>/gu)];
+    assert.equal(rows.length, state.fields.length);
+    state.fields.forEach((field, index) => {
+      const row = rows[index][0];
+      assert.equal((row.match(/class="model-switch-control"/gu) ?? []).length, 2);
+      assert.ok(row.includes(`data-model-role="${field.role}"`));
+      assert.ok(row.includes(`data-thinking-role="${field.role}"`));
+      assert.ok(row.indexOf(`for="modelSwitch-${field.role}"`) < row.indexOf(`for="modelSwitchThinking-${field.role}"`));
+    });
+    assert.match(LOOP_GROUP_CHAT_PANEL_STYLES, /\.model-switch-field\s*\{[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\)/u);
+  });
+}
+
 test("unavailable thinking is disabled and stored role preferences seed the dialog", () => {
   const record = task();
   record.modelRouting!.main.model = "codex-main";
   const state = buildLoopModelSwitchState(record, { ...deps, getSelectedLoopThinkingMode: () => "medium" });
   const html = renderLoopModelSwitchFields(state);
   assert.match(html, /data-thinking-role="main"/u);
-  assert.match(html, /value="medium" selected>中/u);
+  assert.match(html, /value="medium" selected>medium/u);
   assert.match(html, /主模型思考力度/u);
   const unsupported = buildLoopModelSwitchState(record, { ...deps, getLoopModelSwitchThinkingOptions: () => [] });
   assert.match(renderLoopModelSwitchFields(unsupported), /disabled><option value="">当前模型不支持思考力度/u);

@@ -10,7 +10,16 @@ export function renderLoopModelSwitchFields(state?: LoopModelSwitchState): strin
     const thinkingOptions = field.thinkingOptionsByModel?.[field.model] ?? [];
     const thinkingMode = thinkingOptions.some((option) => option.value === field.thinkingMode)
       ? field.thinkingMode : thinkingOptions.some((option) => option.value === "high") ? "high" : thinkingOptions[0]?.value;
-    return `<div class="model-switch-field"><label class="dialog-label" for="modelSwitch-${field.role}">${escapeHtml(field.label)} · ${escapeHtml(field.cli)}</label><select id="modelSwitch-${field.role}" class="model-switch-select" data-model-role="${field.role}" data-config-id="${escapeHtml(field.configId ?? "")}" aria-required="true">${available ? "" : '<option value="" disabled selected>请选择模型</option>'}${field.options.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === field.model ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select><label class="dialog-label" for="modelSwitchThinking-${field.role}">${escapeHtml(field.label)}思考力度</label><select id="modelSwitchThinking-${field.role}" class="model-switch-select" data-thinking-role="${field.role}" data-thinking-options="${escapeHtml(JSON.stringify(field.thinkingOptionsByModel ?? {}))}"${thinkingOptions.length ? ' aria-required="true"' : ' disabled'}>${thinkingOptions.length ? thinkingOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === thinkingMode ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("") : '<option value="">当前模型不支持思考力度</option>'}</select></div>`;
+    return `<div class="model-switch-field">
+      <div class="model-switch-control">
+        <label class="dialog-label" for="modelSwitch-${field.role}">${escapeHtml(field.label)} · ${escapeHtml(field.cli)}</label>
+        <select id="modelSwitch-${field.role}" class="model-switch-select" data-model-role="${field.role}" data-config-id="${escapeHtml(field.configId ?? "")}" aria-required="true">${available ? "" : '<option value="" disabled selected>请选择模型</option>'}${field.options.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === field.model ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>
+      </div>
+      <div class="model-switch-control">
+        <label class="dialog-label" for="modelSwitchThinking-${field.role}">${escapeHtml(field.label)}思考力度</label>
+        <select id="modelSwitchThinking-${field.role}" class="model-switch-select" data-thinking-role="${field.role}" data-thinking-options="${escapeHtml(JSON.stringify(field.thinkingOptionsByModel ?? {}))}"${thinkingOptions.length ? ' aria-required="true"' : ' disabled'}>${thinkingOptions.length ? thinkingOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === thinkingMode ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("") : '<option value="">当前模型不支持思考力度</option>'}</select>
+      </div>
+    </div>`;
   }).join("")}</div>`;
 }
 

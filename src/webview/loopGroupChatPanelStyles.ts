@@ -335,7 +335,11 @@ ${DIALOG_SHELL_STYLES}
         gap: 8px;
         margin-bottom: 12px;
       }
-      .model-switch-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+      .model-switch-field {
+        display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+        align-items: end; gap: 12px; margin-bottom: 14px;
+      }
+      .model-switch-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
       .model-switch-select {
         width: 100%; min-width: 0; padding: 8px;
         color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
