@@ -51,6 +51,8 @@ type LoopPromptRunInput = {
   loopSubtaskModel?: string;
   loopMainThinkingMode?: ThinkingMode;
   loopSubtaskThinkingMode?: ThinkingMode;
+  loopSubtaskFrontendThinkingMode?: ThinkingMode;
+  loopSubtaskFullstackThinkingMode?: ThinkingMode;
   loopContinuePrompt: string;
 };
 
@@ -368,7 +370,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         ...(profile.subtaskFrontendThinkingMode ? { loopSubtaskFrontendThinkingMode: profile.subtaskFrontendThinkingMode } : {}),
         ...(profile.subtaskFullstackThinkingMode ? { loopSubtaskFullstackThinkingMode: profile.subtaskFullstackThinkingMode } : {}),
         loopContinuePrompt: resumePrompt,
-      }, task.modelRouting), {
+      }, task.modelRouting, task.originProfile), {
         targetTabId: restored.target.tabId,
         resumeTaskId: task.id,
         resumeRequested: true,
@@ -450,7 +452,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
   };
 
   const switchingTaskIds = new Set<string>();
-  const switchModels = async (taskId: string, models: unknown): Promise<void> => {
+  const switchModels = async (taskId: string, models: unknown, thinkingModes?: unknown): Promise<void> => {
     if (switchingTaskIds.has(taskId)) {
       return;
     }
@@ -465,13 +467,13 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       if (!task) {
         throw new Error(deps.t("loopGroupChatChat.taskMissing", { taskId }));
       }
-      const result = resolveLoopModelSwitch(task, buildLoopModelSwitchState(task, deps), models);
+      const result = resolveLoopModelSwitch(task, buildLoopModelSwitchState(task, deps), models, thinkingModes);
       if (!result.ok) {
         throw new Error(result.error);
       }
       const updated = deps.updateTaskRecord(task.id, {
         modelRouting: result.modelRouting,
-        originProfile: { ...task.originProfile, configId: result.configId },
+        originProfile: result.originProfile,
         updatedAt: Date.now(),
       });
       if (!updated) {
@@ -744,7 +746,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       return;
     }
     if (message.type === "loopGroupChatChat:switchModels") {
-      await switchModels(taskId, message.models);
+      await switchModels(taskId, message.models, message.thinkingModes);
       return;
     }
     if (message.type === "loopGroupChatChat:supplementTask") {

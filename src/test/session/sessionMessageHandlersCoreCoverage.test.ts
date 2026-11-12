@@ -766,6 +766,42 @@ test("forwards settings and prompts to action handlers and leaves unknown messag
   assert.equal(isPanelMessageType({ type: "stopRun" }, "sendPrompt"), false);
 });
 
+test("dispatches setting messages using the current CLI, workspace object, and active configuration on every call", async (context) => {
+  const { deps, calls, state, restore } = createHarness();
+  context.after(restore);
+  let activeConfig = "first.profile";
+  const thinking: unknown[][] = [];
+  deps.getActiveConfigIdForCli = () => activeConfig;
+  deps.getSelectedCliModel = (cli) => `${cli}:${activeConfig}`;
+  deps.setCliModelThinkingMode = (...args) => { thinking.push(args); };
+  const firstWorkspace: WorkspaceSettings = { workspaceMemoryEnabled: true };
+  state.workspaceSettings = firstWorkspace;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "thinkingMode", value: "high" }, deps);
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "selectedModel.codex", value: " first model " }, deps);
+  state.currentCli = "claude";
+  activeConfig = "second.profile";
+  const secondWorkspace: WorkspaceSettings = { workspaceMemoryEnabled: false };
+  state.workspaceSettings = secondWorkspace;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "thinkingMode", value: "low" }, deps);
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "selectedModel.codex", value: " updated codex model " }, deps);
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "selectedModel.claude", value: " second model " }, deps);
+  assert.deepEqual(thinking, [
+    ["codex", "codex:first.profile", "high"],
+    ["claude", "claude:second.profile", "low"],
+  ]);
+  assert.deepEqual(calls.selectedModels, [
+    { cli: "codex", model: " first model ", configId: "first.profile" },
+    { cli: "codex", model: " updated codex model ", configId: "second.profile" },
+    { cli: "claude", model: " second model ", configId: "second.profile" },
+  ]);
+  assert.deepEqual(firstWorkspace, { workspaceMemoryEnabled: true, thinkingMode: "high" });
+  assert.deepEqual(secondWorkspace, { workspaceMemoryEnabled: false, thinkingMode: "low" });
+  assert.equal(state.workspaceSettings, secondWorkspace);
+  assert.deepEqual(calls.savedSettings, [firstWorkspace, secondWorkspace]);
+  assert.equal(calls.ensured, 5);
+  assert.equal(calls.panelStates, 5);
+});
+
 test("covers model, session, workspace, and command routing through isolated adapters", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

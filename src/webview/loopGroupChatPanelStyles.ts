@@ -472,11 +472,11 @@ ${DIALOG_SHELL_STYLES}
         display: grid;
         grid-template-columns: 28px minmax(0, 1fr);
         gap: 8px;
-        align-items: start;
-      }
-      .member-acceptance-link {
+        align-items: center;
         width: 100%;
         padding: 4px;
+      }
+      .member-acceptance-link {
         border: 0;
         border-radius: 6px;
         background: transparent;

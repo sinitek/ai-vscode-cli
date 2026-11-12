@@ -135,7 +135,7 @@ export type LoopGroupChatPanelMessage =
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }
-  | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string> }
+  | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string>; thinkingModes?: Record<string, string> }
   | { type: "loopGroupChatChat:supplementTask"; prompt?: string }
   | { type: "loopGroupChatChat:askMainModel"; prompt?: string }
   | { type: "loopGroupChatChat:abortMainModelQuestion" }

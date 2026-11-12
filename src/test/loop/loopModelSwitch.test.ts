@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, buildLoopModelSwitchState, resolveLoopModelSwitch, type LoopModelSwitchDeps } from "../../loopModelSwitch";
+import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile, buildLoopModelSwitchState, resolveLoopModelSwitch, type LoopModelSwitchDeps } from "../../loopModelSwitch";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { renderLoopModelSwitchFields } from "../../webview/loopModelSwitchDialog";
 
@@ -150,4 +150,105 @@ test("latest persisted routes replace stale prompt models, including explicit CL
   assert.equal(updated.loopSubtaskFrontendModel, undefined);
   assert.equal(updated.loopMainThinkingMode, "high");
   assert.equal(prompt.model, "old-main");
+});
+
+for (const mode of ["classic", "fullstack", "split"] as const) {
+  test(`${mode} saves thinking per active role and applies it at the invocation boundary`, () => {
+    const record = task();
+    record.originProfile = { configId: "old-config", mainThinkingMode: "low", subtaskThinkingMode: "low", subtaskFrontendThinkingMode: "low", subtaskFullstackThinkingMode: "low" };
+    if (mode !== "classic") {
+      record.schedulingMode = "event_driven";
+      record.loopSubtaskMode = mode;
+    }
+    const state = buildLoopModelSwitchState(record, deps);
+    assert.equal(state.fields[0].thinkingMode, "low");
+    const models = Object.fromEntries(state.fields.map((field) => [field.role, `${field.cli}-${field.role === "main" ? "main" : "subtask"}`]));
+    const thinking = Object.fromEntries(state.fields.map((field) => [field.role, field.role === "main" ? "xhigh" : "max"]));
+    const result = resolveLoopModelSwitch(record, state, models, thinking);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(record.originProfile.mainThinkingMode, "low");
+    record.modelRouting = result.modelRouting;
+    record.originProfile = result.originProfile;
+    assert.equal(record.originProfile.mainThinkingMode, "xhigh");
+    assert.equal(record.originProfile.subtaskFullstackThinkingMode, mode === "fullstack" ? "max" : "low");
+    assert.equal(record.originProfile.subtaskFrontendThinkingMode, mode === "split" ? "max" : "low");
+    const input = { displayPrompt: "继续", modelPrompt: "继续", contextTags: [], thinkingModeOverride: "low" as const, loopMainThinkingMode: "low" as const, loopSubtaskThinkingMode: "low" as const };
+    const main = applyLoopInvocationModelRouting({ ...input, taskRole: "main" }, record);
+    assert.equal(main.thinkingModeOverride, "xhigh");
+    const roles = mode === "split" ? ["backend", "frontend", "general"] as const : [mode === "fullstack" ? "fullstack" : "backend"] as const;
+    for (const role of roles) {
+      record.subTasks = [{ id: "child", title: "子任务", status: "running", taskType: role === "fullstack" ? "backend" : role, writeFiles: role === "general" ? [] : ["src/code.ts"] }];
+      const child = applyLoopInvocationModelRouting({ ...input, taskRole: "subtask", loopSubtaskId: "child" }, record);
+      assert.equal(child.thinkingModeOverride, role === "general" ? "xhigh" : "max");
+      assert.equal(child.loopSubtaskThinkingMode, role === "general" ? "xhigh" : "max");
+    }
+  });
+}
+
+test("thinking selection is validated against the selected model and rejected atomically", () => {
+  const record = task();
+  const before = JSON.stringify(record);
+  const state = buildLoopModelSwitchState(record, { ...deps,
+    getLoopModelSwitchThinkingOptions: (_cli, model) => model ? [{ value: "low", label: "低" }] : [],
+  });
+  const models = { main: "codex-main", subtask: "claude-subtask" };
+  for (const thinking of [null, [], "high", {}, { main: "max", subtask: "low" }, { main: "low", subtask: 1 }]) {
+    assert.equal(resolveLoopModelSwitch(record, state, models, thinking).ok, false);
+  }
+  assert.equal(resolveLoopModelSwitch(record, state, models, { main: "low", subtask: "low" }).ok, true);
+  assert.equal(resolveLoopModelSwitch(record, state, { main: "", subtask: "" }, {}).ok, true);
+  assert.equal(resolveLoopModelSwitch(record, state, { main: "", subtask: "" }, { main: "low" }).ok, false);
+  assert.equal(JSON.stringify(record), before);
+});
+
+test("unavailable thinking is disabled and stored role preferences seed the dialog", () => {
+  const record = task();
+  record.modelRouting!.main.model = "codex-main";
+  const state = buildLoopModelSwitchState(record, { ...deps, getSelectedLoopThinkingMode: () => "medium" });
+  const html = renderLoopModelSwitchFields(state);
+  assert.match(html, /data-thinking-role="main"/u);
+  assert.match(html, /value="medium" selected>中/u);
+  assert.match(html, /主模型思考力度/u);
+  const unsupported = buildLoopModelSwitchState(record, { ...deps, getLoopModelSwitchThinkingOptions: () => [] });
+  assert.match(renderLoopModelSwitchFields(unsupported), /disabled><option value="">当前模型不支持思考力度/u);
+});
+
+test("ordinary prompts and independent group questions retain their thinking overrides", () => {
+  const input = { displayPrompt: "问题", modelPrompt: "问题", contextTags: [], thinkingModeOverride: "low" as const };
+  const record = task();
+  record.originProfile = { configId: "config", mainThinkingMode: "max" };
+  assert.equal(applyLoopInvocationModelRouting(input, record), input);
+  const ask = { ...input, taskRole: "main" as const, loopAsk: true };
+  assert.equal(applyLoopInvocationModelRouting(ask, record), ask);
+});
+
+test("switching only thinking keeps models while legacy requests preserve existing thinking", () => {
+  const record = task();
+  record.originProfile = { configId: "codex-current", mainThinkingMode: "medium", subtaskThinkingMode: "low" };
+  record.modelRouting!.main.model = "codex-main";
+  record.modelRouting!.subtask.model = "claude-subtask";
+  const state = buildLoopModelSwitchState(record, deps);
+  const models = { main: "codex-main", subtask: "claude-subtask" };
+  const legacy = resolveLoopModelSwitch(record, state, models);
+  assert.equal(legacy.ok, true);
+  if (!legacy.ok) return;
+  assert.deepEqual(legacy.originProfile, record.originProfile);
+  const updated = resolveLoopModelSwitch(record, state, models, { main: "max", subtask: "xhigh" });
+  assert.equal(updated.ok, true);
+  if (!updated.ok) return;
+  assert.equal(updated.modelRouting.main.model, "codex-main");
+  assert.equal(updated.modelRouting.subtask.model, "claude-subtask");
+  assert.equal(updated.originProfile.mainThinkingMode, "max");
+  assert.equal(updated.originProfile.subtaskThinkingMode, "xhigh");
+});
+
+test("explicit main-tab continuation refreshes saved thinking without losing inactive role settings", () => {
+  const profile = { configId: "config", mainThinkingMode: "low" as const, subtaskFullstackThinkingMode: "medium" as const };
+  const updated = applyLoopPromptThinkingToOriginProfile(profile, { loopMainThinkingMode: "max", loopSubtaskThinkingMode: "xhigh" });
+  assert.equal(updated.mainThinkingMode, "max");
+  assert.equal(updated.subtaskThinkingMode, "xhigh");
+  assert.equal(updated.subtaskFullstackThinkingMode, "medium");
+  assert.equal(profile.mainThinkingMode, "low");
+  assert.deepEqual(applyLoopPromptThinkingToOriginProfile(profile, {}), profile);
 });

@@ -240,7 +240,7 @@ import { buildEditorContextState, buildLoopMainResumeText, buildLoopSubtaskBatch
 import { appendHiddenRetryErrorTraceMessage, buildHiddenRetryLimitMessage, buildHiddenRetryQueuedMessage, buildHiddenRetryStartedMessage, getAttemptFailureMessage, getErrorInfo, HIDDEN_RETRY_MAX_RETRIES, isAbortErrorInfo, isHiddenRetryEligibleAttempt, waitForHiddenRetryDelay } from "./promptRetry";
 import { isLoopResumePrompt, normalizeLoopResumePrompt } from "./loopTaskMessagePolicy";
 import { createLoopGroupChatPanelCoordinator } from "./extensionHost/loopGroupChatPanelCoordinator";
-import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, type LoopModelSwitchOption } from "./loopModelSwitch";
+import { applyLoopInvocationModelRouting, applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile, getLoopModelSwitchThinkingOptions, type LoopModelSwitchOption } from "./loopModelSwitch";
 import { createLoopModelSwitchResumeCoordinator } from "./extensionHost/loopModelSwitchResume";
 import { createPanelDiagnosticsInspector } from "./panelDiagnostics";
 import { buildCliCommandNotFoundMessage, buildCodexImageSupportWarningKey, buildLoopCompletedConclusionAndSummaryMarkdown, buildLoopRoundSummary, buildLoopSupplementalRequirementsLines, createConfigHeartbeatCoordinator, getWorkspacePreferredConfigIdForCli as getWorkspacePreferredConfigIdForCliFromSettings, loadConfigStateWithDeps, loadConfigStateByCli, normalizeCliInstallStatus, normalizeLoopSupplementalRequirement, probeCodexImageSupportStatus, resolveLoopResumeRound, resolveModelConfigIdForCli as resolveModelConfigIdForCliFromConfigState, type CodexImageSupportStatus } from "./webviewCommandCoordinator";
@@ -2833,7 +2833,7 @@ const loopModelSwitchResumeCoordinator = createLoopModelSwitchResumeCoordinator(
         contextTags: [],
         loopMainThinkingMode: profile?.mainThinkingMode,
         loopSubtaskThinkingMode: profile?.subtaskThinkingMode,
-      }, task.modelRouting),
+      }, task.modelRouting, task.originProfile),
       target,
       task,
       round: task.currentRound,
@@ -2899,6 +2899,14 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     const result = options.map((model) => ({ value: model, label: labels[model] || model }));
     return cli === "claude" || (cli === "codex" && !state.configuredDefaultByCli?.codex)
       ? [{ value: "", label: "默认" }, ...result] : result;
+  },
+  getSelectedLoopThinkingMode,
+  getLoopModelSwitchThinkingOptions: (cli, model, configId) => {
+    if (cli === "dsh") {
+      return (buildModelState({ [cli]: configId }).dshReasoningOptionsByModel?.[model] ?? [])
+        .map((value) => ({ value, label: value }));
+    }
+    return getLoopModelSwitchThinkingOptions(cli);
   },
   captureCurrentLoopOriginProfile: ({ cli, configId, mainModel, subtaskModel, subtaskCli, subtaskConfigId, subtaskThinkingMode, frontendModel, frontendCli, frontendConfigId, fullstackModel, fullstackCli, fullstackConfigId, subtaskFrontendThinkingMode, subtaskFullstackThinkingMode }) => captureLoopOriginProfile({
     cli,
@@ -4313,7 +4321,7 @@ async function runLoopPromptOrchestration(
         activeSubtaskIds: [],
         ...(resumeRequested && !preserveLoopOrigin ? {
           modelRouting: loopModelRoutingFromPromptInput(input, { mainCli: target.cli }) ?? undefined,
-          ...(resumeConfigId ? { originProfile: { ...existingTask.originProfile, configId: resumeConfigId } } : {}),
+          ...(resumeConfigId ? { originProfile: applyLoopPromptThinkingToOriginProfile({ ...existingTask.originProfile, configId: resumeConfigId }, input) } : {}),
         } : {}),
         updatedAt: Date.now(),
       }, { allowCompletedToRunning: shouldResumeCompletedWithoutCompletionMessages }) ?? existingTask;

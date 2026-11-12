@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-10",
+  "as_of": "2026-11-12",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -23,8 +23,11 @@
       "description": "VS Code 扩展入口和 host 组合根，注册命令、装配运行时服务，并把 Webview、CLI、会话和本地状态连接起来。",
       "status": "active",
       "aliases": ["extension host", "extension.ts", "组合根"],
-      "implementation_paths": ["src/extension.ts", "src/extensionHost"],
-      "source_refs": [{"path": "ARCHITECTURE.md", "anchor": "扩展编排层"}]
+      "implementation_paths": ["src/extension.ts", "src/extensionHost", "src/sessionMessageActions.ts", "src/settingMessageRouter.ts", "src/settingMessageHandlers"],
+      "source_refs": [
+        {"path": "ARCHITECTURE.md", "anchor": "扩展编排层"},
+        {"path": ".ch/docs/design-docs/settings-message-commands.md"}
+      ]
     },
     {
       "id": "plugin.chat_panel",
@@ -148,7 +151,7 @@
       "description": "工具设置中的全局历史保留期限，控制插件在 ~/.sinitek_cli 下管理的日志、会话、提示词历史、任务和 Loop 记录清理边界；默认 30 天，范围 1–3650 天。",
       "status": "active",
       "aliases": ["自动清理", "historyRetentionDays", "保留天数"],
-      "implementation_paths": ["src/toolSettings.ts", "src/historyRetention.ts", "src/webview/viewContentHtml.ts", "src/sessionMessageActions.ts"],
+      "implementation_paths": ["src/toolSettings.ts", "src/historyRetention.ts", "src/webview/viewContentHtml.ts", "src/sessionMessageActions.ts", "src/settingMessageHandlers/preferences.ts"],
       "source_refs": [
         {"path": "src/historyRetention.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "日志保留与临时文件清理"}
@@ -654,6 +657,7 @@
         {"path": "src/modelSelectionStoreNormalization.ts"},
         {"path": "src/modelSelectionStoreTypes.ts"},
         {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/settingMessageHandlers/model.ts"},
         {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
         {"path": "src/webview/viewContentScript/modelManager.ts"},
         {"path": "src/interactive/dshRunner.ts"},
@@ -1345,6 +1349,7 @@
         {"path": "src/desktopNotificationAuthorization.ts"},
         {"path": "src/extensionHost/humanInteractionAttentionHost.ts"},
         {"path": "src/sessionMessageActions.ts"},
+        {"path": "src/settingMessageHandlers/preferences.ts"},
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/webview/viewProvider.ts"},
         {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"}
@@ -1503,12 +1508,13 @@
     {
       "id": "plugin.rule.loop_continue_model_choice",
       "name": "Loop 与 Loop+ 独立切模型及停止任务续跑",
-      "description": "Loop 与 Loop+ 群聊按钮栏通过独立切模型选择角色模型；继续执行只填写继续说明，补充需求和我要提问不选择模型来源。各角色保持任务绑定 CLI，从该 CLI 当前激活配置复用已有下拉选项；经典 Loop 为主子，Loop+ 全栈为主和全栈，分离为主、后端和前端。提交整体校验并写回任务 modelRouting 与配置身份，不改模式、思考力度及全局模型偏好。当前调用不打断，后续主子调用、重试和复核读取最新路由；停止的未完成主子执行自动续跑，活跃同级不重启。Loop+ 中断子项复用原 attempt 和会话，经典 Loop 等待原控制器安全收尾后再唤醒主任务。刷新保留同配置有效选择与焦点，取消不写入，非法选项不落盘。默认模型是有效路由，不能补成主模型。",
+      "description": "Loop 与 Loop+ 群聊按钮栏通过独立切模型选择各角色模型和思考力度；继续执行只填写继续说明，补充需求和我要提问不选择模型来源。各角色保持任务绑定 CLI，从该 CLI 当前激活配置复用已有下拉选项；经典 Loop 为主子，Loop+ 全栈为主和全栈，分离为主、后端和前端。力度随模型能力更新，无支持时禁用。提交整体校验并写回任务 modelRouting、配置身份与 originProfile 各角色 ThinkingMode，不改模式及全局模型偏好；旧消息未携带力度时保留原值。当前调用不打断，后续主子调用、重试和复核读取最新路由及力度，启动边界刷新 thinkingModeOverride，避免旧提示覆盖；独立提问不受影响。停止的未完成主子执行自动续跑，活跃同级不重启。Loop+ 中断子项复用原 attempt 和会话，经典 Loop 等待原控制器安全收尾后再唤醒主任务。刷新保留同配置有效模型、力度与焦点，取消不写入，非法选项不落盘。默认模型是有效路由，不能补成主模型。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/loopModelSwitch.ts"},
         {"path": "src/extensionHost/loopModelSwitchResume.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
         {"path": "src/webview/loopModelSwitchDialog.ts"},
         {"path": "src/subtaskCliRoute.ts"},
         {"path": "src/webview/loopGroupChatPanel.ts"},
@@ -2239,6 +2245,7 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "隐藏指令气泡"},
         {"path": "src/toolSettings.ts"},
         {"path": "src/sessionMessageActions.ts", "anchor": "handleUpdateSettingMessage"},
+        {"path": "src/settingMessageHandlers/preferences.ts"},
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "isInstructionBubble"},
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getVisibleMessages"},

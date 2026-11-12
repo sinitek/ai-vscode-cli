@@ -291,7 +291,7 @@ ${renderPanelDialog({
         labelledBy: "modelSwitchTitle",
         describedBy: "modelSwitchDescription",
         titleHtml: '<h2 id="modelSwitchTitle" class="dialog-title">切模型</h2>',
-        descriptionHtml: '<p id="modelSwitchDescription" class="dialog-description">在各角色所在 CLI 的当前配置中选择模型。提交后，下一次主、子模型执行使用新模型；正在执行的调用不受影响，已暂停的任务直接继续。</p>',
+        descriptionHtml: '<p id="modelSwitchDescription" class="dialog-description">在各角色所在 CLI 的当前配置中选择模型和思考力度。提交后，下一次主、子模型执行使用新设置；正在执行的调用不受影响，已暂停的任务直接继续。</p>',
         bodyHtml: `<div class="dialog-body">${patch.modelSwitchHtml}<div id="modelSwitchError" class="dialog-error" aria-live="polite"></div></div>`,
         actionsHtml: renderModalActions("dialog-actions", '<button id="modelSwitchCancel" class="button" type="button">取消</button><button id="modelSwitchConfirm" class="button primary" type="button">提交</button>'),
       })}

@@ -17,7 +17,7 @@ import type {
   PromptRunInputForPanel,
 } from "../../sessionMessageHandlers";
 import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
-import type { ToolSettingsState } from "../../toolSettings";
+import type { CliEnabledByName, ToolSettingsState } from "../../toolSettings";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type SettingCalls = {
@@ -299,7 +299,7 @@ test("cleans migrated settings and preserves each global setting contract", asyn
     loopMaxRounds: 99,
   };
   await handleUpdateSettingMessage({ type: "updateSetting", key: "codexMultiAgentEnabled", value: 0 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextBeforeRun", value: true }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextBeforeRun", value: "false" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopMaxRounds", value: 4.8 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopSubtaskMaxThinkingMode", value: "high" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopSubtaskMaxThinkingMode", value: "invalid" }, deps);
@@ -709,4 +709,286 @@ test("retains the final CLI fallback for malformed runtime dependencies", async 
   deps.getCurrentCli = () => undefined as unknown as CliName;
   await handleSendPromptMessage({ type: "sendPrompt", prompt: "fallback dependency" }, deps);
   assert.deepEqual(calls.promptHistory, [{ prompt: "fallback dependency", cli: undefined }]);
+});
+
+test("treats prototype names, near misses, and retired setting keys as side-effect-free unknown commands", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  const originalCalls = JSON.parse(JSON.stringify(calls)) as SettingCalls;
+  const originalSettings = state.workspaceSettings;
+  for (const key of [
+    "constructor", "toString", "__proto__", "hasOwnProperty", "unknownSetting",
+    "thinkingMode.extra", "selectedModel", "loopRoleThinking.extra",
+    "multiAgentEnabled", "codexMultiAgentEnabled", "loopSubtaskMaxThinkingMode",
+    "loopExecutionMode.codex",
+  ]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value: true }, deps);
+    assert.deepEqual(calls, originalCalls, key);
+    assert.equal(state.workspaceSettings, originalSettings, key);
+    assert.deepEqual(state.workspaceSettings, {}, key);
+  }
+});
+
+test("refreshes role object payloads even when invalid but ignores all non-object payloads", async () => {
+  for (const key of ["loopRoleExplicitModel", "loopRoleThinking"]) {
+    const { deps, calls } = createSettingHarness();
+    const mutations: unknown[][] = [];
+    deps.setLoopRoleExplicitModel = (...args) => { mutations.push(args); return true; };
+    deps.setLoopRoleThinking = (...args) => { mutations.push(args); return true; };
+    for (const value of [null, undefined, false, true, 0, 1, "model"]) {
+      await handleUpdateSettingMessage({ type: "updateSetting", key, value }, deps);
+      assert.equal(calls.postPanelState, 0, `${key}: ${String(value)}`);
+    }
+    const invalidPayloads = [
+      {}, [], { configId: " ", role: "frontend", model: "model", thinkingMode: "high" },
+      { configId: "profile", role: "main", model: "model", thinkingMode: "high" },
+      { configId: "profile", role: "frontend", model: 42, thinkingMode: "invalid" },
+    ];
+    for (const [index, value] of invalidPayloads.entries()) {
+      await handleUpdateSettingMessage({ type: "updateSetting", key, value }, deps);
+      assert.equal(calls.postPanelState, index + 1, key);
+    }
+    assert.deepEqual(mutations, [], key);
+    assert.equal(calls.loadedModelStores, 0, key);
+  }
+});
+
+test("preserves role-specific model normalization and reports unsuccessful role saves before refreshing", async () => {
+  const { deps, calls } = createSettingHarness();
+  const mutations: unknown[][] = [];
+  const errors: unknown[][] = [];
+  deps.setLoopRoleExplicitModel = (...args) => { mutations.push(args); return false; };
+  deps.setLoopRoleThinking = (...args) => { mutations.push(args); return false; };
+  deps.showWebviewError = (...args) => { errors.push(args); };
+  await handleUpdateSettingMessage({
+    type: "updateSetting", key: "loopRoleExplicitModel",
+    value: { configId: " profile.with.dots ", role: "fullstack", model: " raw model " },
+  }, deps);
+  for (const model of [" trimmed model ", " ", 42]) {
+    await handleUpdateSettingMessage({
+      type: "updateSetting", key: "loopRoleThinking",
+      value: { configId: " profile.with.dots ", role: "frontend", model, thinkingMode: "ultra" },
+    }, deps);
+  }
+  assert.deepEqual(mutations, [
+    ["profile.with.dots", "fullstack", " raw model "],
+    ["profile.with.dots", "frontend", "trimmed model", "ultra"],
+    ["profile.with.dots", "frontend", null, "ultra"],
+    ["profile.with.dots", "frontend", null, "ultra"],
+  ]);
+  assert.deepEqual(errors, [
+    ["模型配置", "子模型保存失败，已恢复原来的选择。"],
+    ...Array.from({ length: 3 }, () => ["模型配置", "思考力度保存失败，已恢复原来的选择。"]),
+  ]);
+  assert.equal(calls.loadedModelStores, 4);
+  assert.equal(calls.postPanelState, 4);
+});
+
+test("keeps complete dotted configuration suffixes while trimming only configuration IDs", async () => {
+  const { deps, calls } = createSettingHarness();
+  const mutations: unknown[][] = [];
+  deps.selectLoopSubtaskMode = (...args) => { mutations.push(["mode", ...args]); return true; };
+  deps.seedLoopFullstackRole = (...args) => { mutations.push(["seed", ...args]); return true; };
+  deps.selectLoopFullstackCli = (...args) => { mutations.push(["fullstack", ...args]); return true; };
+  deps.selectLoopFrontendCli = (...args) => { mutations.push(["frontend", ...args]); };
+  deps.setLoopRoleExplicitModel = (...args) => { mutations.push(["model", ...args]); return true; };
+  const commands = [
+    { prefix: "loopSubtaskMode.", value: "fullstack" },
+    { prefix: "seedLoopFullstackRole.", value: null },
+    { prefix: "selectedLoopFullstackCli.", value: " CLAUDE " },
+    { prefix: "selectedLoopFrontendCli.", value: " CODEX " },
+    { prefix: "selectedLoopFrontendModel.", value: " raw model " },
+  ];
+  for (const { prefix, value } of commands) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key: `${prefix} profile.with.dots `, value }, deps);
+    await handleUpdateSettingMessage({ type: "updateSetting", key: `${prefix}   `, value }, deps);
+  }
+  assert.deepEqual(mutations, [
+    ["mode", "profile.with.dots", "fullstack"],
+    ["seed", "profile.with.dots"],
+    ["fullstack", "profile.with.dots", "claude"],
+    ["frontend", "profile.with.dots", "codex"],
+    ["model", "profile.with.dots", "frontend", " raw model "],
+  ]);
+  assert.equal(calls.loadedModelStores, commands.length);
+  assert.equal(calls.postPanelState, commands.length * 2);
+});
+
+test("keeps role split semantics and CLI validation distinct from configuration suffix parsing", async () => {
+  const { deps, calls } = createSettingHarness();
+  const thinking: unknown[][] = [];
+  deps.getSelectedLoopCliModel = () => "role-model";
+  deps.setSelectedLoopThinkingMode = (...args) => { thinking.push(args); };
+  for (const [key, value] of [
+    ["selectedLoopModel.codex.main.ignored.suffix", " raw model "],
+    ["selectedLoopThinkingMode.claude.subtask.ignored.suffix", "ultra"],
+    ["selectedLoopThinkingMode.opencode.main", "high"],
+    ["selectedLoopModel.codex.frontend", "ignored"],
+    ["selectedLoopModel. codex.main", "ignored"],
+    ["selectedModel.codex.extra", "ignored"],
+    ["interactiveMode. claude", "plan"],
+    ["selectedLoopThinkingMode.codex.main", "invalid"],
+  ]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value }, deps);
+  }
+  assert.deepEqual(calls.selectedLoopModels, [
+    { cli: "codex", role: "main", model: " raw model ", configId: "config-codex" },
+  ]);
+  assert.deepEqual(thinking, [
+    ["claude", "subtask", "role-model", "xhigh", "config-claude"],
+    ["codex", "main", "role-model", null, "config-codex"],
+  ]);
+  assert.deepEqual(calls.selectedModels, []);
+  assert.deepEqual(calls.interactiveModes, []);
+  assert.equal(calls.loadedModelStores, 3);
+  assert.equal(calls.postPanelState, 8);
+});
+
+test("keeps optional callback fallbacks and their existing model-store reload boundaries", async () => {
+  const { deps, calls } = createSettingHarness();
+  deps.selectCliLoopModel = undefined;
+  const commands = [
+    { key: "loopSubtaskMode.profile", value: "split", reloads: 0 },
+    { key: "seedLoopFullstackRole.profile", value: true, reloads: 0 },
+    { key: "selectedLoopFullstackCli.profile", value: "codex", reloads: 0 },
+    { key: "selectedLoopFrontendModel.profile", value: "model", reloads: 0 },
+    { key: "loopRoleExplicitModel", value: { configId: "profile", role: "fullstack", model: "model" }, reloads: 0 },
+    { key: "loopRoleThinking", value: { configId: "profile", role: "frontend", thinkingMode: "high" }, reloads: 0 },
+    { key: "selectedLoopFrontendCli.profile", value: "codex", reloads: 1 },
+    { key: "selectedLoopModel.codex.main", value: "model", reloads: 2 },
+    { key: "selectedLoopThinkingMode.codex.main", value: "high", reloads: 3 },
+    { key: "taskCompletionNotifications", value: true, reloads: 3 },
+  ];
+  for (const [index, { key, value, reloads }] of commands.entries()) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value }, deps);
+    assert.equal(calls.postPanelState, index + 1, key);
+    assert.equal(calls.loadedModelStores, reloads, key);
+  }
+  assert.deepEqual(calls.selectedLoopModels, []);
+  assert.deepEqual(calls.savedSettings, []);
+  assert.deepEqual(calls.toolSettings, []);
+});
+
+test("catches rejected notification saves with the existing Chinese errors and refreshes once", async () => {
+  for (const key of [
+    "humanInteractionNotifications", "taskCompletionNotifications",
+    "humanInteractionWindowAttention", "taskCompletionWindowAttention",
+  ]) {
+    const { deps, calls } = createSettingHarness();
+    const errors: unknown[][] = [];
+    const updates: unknown[][] = [];
+    deps.showWebviewError = (...args) => { errors.push(args); };
+    for (const failure of [new Error("只读配置"), "denied"]) {
+      deps.updateNotificationSetting = async (...args) => { updates.push(args); throw failure; };
+      const refreshes = calls.postPanelState;
+      await handleUpdateSettingMessage({ type: "updateSetting", key, value: false }, deps);
+      assert.equal(calls.postPanelState, refreshes + 1, key);
+    }
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value: "false" }, deps);
+    assert.deepEqual(updates, [[key, false], [key, false]]);
+    assert.deepEqual(errors, [
+      ["通知设置", "保存通知设置失败：只读配置"],
+      ["通知设置", "保存通知设置失败，请重试。"],
+    ]);
+    assert.equal(calls.postPanelState, 3);
+    assert.deepEqual(calls.savedSettings, []);
+    assert.deepEqual(calls.toolSettings, []);
+  }
+});
+
+test("propagates non-notification dependency failures without an extra panel refresh", async () => {
+  const cases: Array<{
+    key: string;
+    value: unknown;
+    fail: (deps: PanelMessageHandlerDeps, error: Error) => void;
+  }> = [
+    { key: "thinkingMode", value: "high", fail: (deps, error) => {
+      deps.saveWorkspaceSettings = () => { throw error; };
+    } },
+    { key: "selectedModel.codex", value: "model", fail: (deps, error) => {
+      deps.selectCliModel = () => { throw error; };
+    } },
+    { key: "selectedModel.codex", value: "model", fail: (deps, error) => {
+      deps.loadModelStore = () => { throw error; };
+    } },
+    { key: "humanInteractionEnabled", value: true, fail: (deps, error) => {
+      deps.updateStoredToolSettings = () => { throw error; };
+    } },
+    { key: "loopRoleExplicitModel", value: { configId: "profile", role: "frontend", model: "model" }, fail: (deps, error) => {
+      deps.setLoopRoleExplicitModel = () => { throw error; };
+    } },
+    { key: "cliEnabled.codex", value: false, fail: (deps, error) => {
+      deps.setCurrentCli = async () => { throw error; };
+    } },
+  ];
+  for (const { key, value, fail } of cases) {
+    const { deps, calls } = createSettingHarness();
+    const failure = new Error(`dependency failure: ${key}`);
+    const sideEffects: unknown[][] = [];
+    deps.showWebviewError = (...args) => { sideEffects.push(args); };
+    deps.retargetDisabledLoopSubtaskSelections = (...args) => { sideEffects.push(args); };
+    deps.publishCliEnabled = (...args) => { sideEffects.push(args); };
+    fail(deps, failure);
+    await assert.rejects(handleUpdateSettingMessage({ type: "updateSetting", key, value }, deps), (error) => error === failure);
+    assert.equal(calls.postPanelState, 0, key);
+    assert.deepEqual(sideEffects, [], key);
+  }
+});
+
+test("does not switch, retarget, or publish CLI availability when persistence fails", async () => {
+  const { deps, calls } = createSettingHarness();
+  const previous = { codex: true, claude: "false", opencode: false, unknown: true };
+  const sideEffects: unknown[][] = [];
+  deps.readStoredToolSettings = () => ({ cliEnabledByName: previous as unknown as CliEnabledByName });
+  deps.updateStoredToolSettings = (patch) => { calls.toolSettings.push(patch); return false; };
+  deps.setCurrentCli = async (...args) => { sideEffects.push(args); };
+  deps.retargetDisabledLoopSubtaskSelections = (...args) => { sideEffects.push(args); };
+  deps.publishCliEnabled = (...args) => { sideEffects.push(args); };
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: false }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: "false" }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex.extra", value: false }, deps);
+  assert.deepEqual(calls.toolSettings, [{ cliEnabledByName: { codex: false, opencode: false } }]);
+  assert.deepEqual(previous, { codex: true, claude: "false", opencode: false, unknown: true });
+  assert.deepEqual(sideEffects, []);
+  assert.equal(calls.postPanelState, 3);
+});
+
+test("awaits the CLI switch before retargeting, publishing, and refreshing a saved availability map", async () => {
+  const { deps } = createSettingHarness();
+  const events: unknown[][] = [];
+  let currentCli: CliName = "codex";
+  let finishSwitch!: () => void;
+  const switchGate = new Promise<void>((resolve) => { finishSwitch = resolve; });
+  const previous = { codex: true, claude: "false", opencode: false, unknown: true };
+  deps.getCurrentCli = () => currentCli;
+  deps.readStoredToolSettings = () => ({ cliEnabledByName: previous as unknown as CliEnabledByName });
+  deps.updateStoredToolSettings = (patch) => { events.push(["save", patch]); return true; };
+  deps.setCurrentCli = async (cli) => {
+    events.push(["switch-start", cli]);
+    await switchGate;
+    currentCli = cli;
+    events.push(["switch-complete", cli]);
+  };
+  deps.retargetDisabledLoopSubtaskSelections = (cli) => { events.push(["retarget", cli, currentCli]); };
+  deps.publishCliEnabled = (map) => { events.push(["publish", map, currentCli]); };
+  deps.postPanelState = async () => { events.push(["refresh", currentCli]); };
+  const pending = handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: false }, deps);
+  try {
+    assert.deepEqual(events, [
+      ["save", { cliEnabledByName: { codex: false, opencode: false } }],
+      ["switch-start", "claude"],
+    ]);
+    assert.equal(currentCli, "codex");
+  } finally {
+    finishSwitch();
+    await pending;
+  }
+  assert.deepEqual(events, [
+    ["save", { cliEnabledByName: { codex: false, opencode: false } }],
+    ["switch-start", "claude"],
+    ["switch-complete", "claude"],
+    ["retarget", "claude", "claude"],
+    ["publish", { codex: false, opencode: false }, "claude"],
+    ["refresh", "claude"],
+  ]);
+  assert.deepEqual(previous, { codex: true, claude: "false", opencode: false, unknown: true });
 });

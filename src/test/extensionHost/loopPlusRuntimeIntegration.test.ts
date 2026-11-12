@@ -146,27 +146,35 @@ function reportText(rootDir: string): string {
   return chunks.join("\n");
 }
 
-test("model switch applies persisted routing to the next main and child call, not the active invocation", async () => {
-  const fixture = createLoopPlusRuntimeFixture();
+test("model switch applies persisted routing and thinking to the next calls, not the active invocation", async () => {
+  const fixture = createLoopPlusRuntimeFixture({
+    resolveThinkingMode: (input, _cli, role) => role === "main" ? input.loopMainThinkingMode : input.loopSubtaskThinkingMode,
+  });
   try {
     fixture.queueMain(async (input, tabId) => {
       assert.equal(input.model, "main-model");
+      assert.equal(input.thinkingModeOverride, "low");
       await fixture.holdMain();
       assert.equal(input.model, "main-model");
+      assert.equal(input.thinkingModeOverride, "low");
       fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("changed", "src/changed.ts")] }) });
     });
     fixture.queueMain((input, tabId) => {
       assert.equal(input.model, "new-main");
+      assert.equal(input.thinkingModeOverride, "xhigh");
       fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.modelPrompt)) });
     });
     const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
     await waitForLoopPlus(() => fixture.mainCalls.length === 1, "first main invocation");
     const taskId = fixture.mainCalls[0].loopTaskId!;
     const record = fixture.readTask(taskId)!;
-    fixture.saveTask({ ...record, modelRouting: { main: { model: "new-main" }, subtask: { model: "new-child" } } });
+    fixture.saveTask({ ...record, modelRouting: { main: { model: "new-main" }, subtask: { model: "new-child" } },
+      originProfile: { configId: "config", mainThinkingMode: "xhigh", subtaskThinkingMode: "max" },
+    });
     fixture.releaseHeldMain();
     await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("changed"), "changed model child invocation");
     assert.equal(fixture.attemptCalls[0].model, "new-child");
+    assert.equal(fixture.attemptCalls[0].thinkingModeOverride, "max");
     fixture.finishParked("changed", { status: "end", content: "已完成" });
     await running;
     assert.equal(fixture.mainCalls[1].model, "new-main");
@@ -187,15 +195,19 @@ for (const preserveLoopOrigin of [true, false]) {
         communicationDir: path.join(fixture.rootDir, "comm"), mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
         subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
         modelRouting: { main: { model: "stored-main" }, subtask: { model: "stored-child" } },
+        originProfile: { configId: "current-config", mainThinkingMode: "xhigh", subtaskThinkingMode: "max" },
       };
       fixture.saveTask(task);
       fixture.queueMain((input, tabId) => {
         assert.equal(input.model, preserveLoopOrigin ? "stored-main" : "main-model");
+        assert.equal(input.loopMainThinkingMode, preserveLoopOrigin ? "xhigh" : "low");
         fixture.publish(input, tabId, { status: "end", content: decision({ status: "wait", subtasks: [] }) });
       });
       await fixture.adapter.runEventDriven(prompt(), { resumeTaskId: task.id, resumeRequested: true, preserveLoopOrigin }, fixture.target);
       assert.equal(fixture.readTask(task.id)?.modelRouting?.main.model, preserveLoopOrigin ? "stored-main" : "main-model");
       assert.equal(fixture.readTask(task.id)?.modelRouting?.subtask.model, preserveLoopOrigin ? "stored-child" : "sub-model");
+      assert.equal(fixture.readTask(task.id)?.originProfile?.mainThinkingMode, preserveLoopOrigin ? "xhigh" : "low");
+      assert.equal(fixture.readTask(task.id)?.originProfile?.subtaskThinkingMode, preserveLoopOrigin ? "max" : "low");
     } finally {
       fixture.dispose();
     }

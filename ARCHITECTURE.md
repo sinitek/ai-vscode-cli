@@ -83,6 +83,7 @@ cli / interactive / config 服务层
 - `src/sessionMessageRouter.ts` 只负责类型安全的消息到处理器分派和领域 Registry 合并，不承载业务分支
 - `src/panelMessageHandlers/` 按 diagnostics、session、prompt、workspace 领域拆分消息处理器；每个处理器通过 `Pick<PanelMessageHandlerDeps, ...>` 声明最小依赖，避免接收完整组合根依赖
 - `src/sessionMessageHandlers.ts` 保留兼容的统一入口，仅负责初始化会话存储、记录调试日志并调用 Router；新增消息应进入对应领域 Registry，而不是继续堆积条件分支
+- 设置消息保留 `src/sessionMessageActions.ts#handleUpdateSettingMessage` 兼容 Facade，转交 `src/settingMessageRouter.ts`：每次先读取当前 CLI 与工作区快照，按静态命令有序匹配，命中且正常返回后统一刷新一次。`src/settingMessageHandlers/model.ts` 承接模型与 Loop 角色，`preferences.ts` 承接交互偏好、全局/工作区设置、通知及 CLI 启停；领域只接收显式投影的 `Pick<PanelMessageHandlerDeps, ...>`，宿主类型仅作 type-only import，不形成运行时反向依赖。未知/退役键不刷新，异常不经 finally 刷新；细节与新增命令方式见 `.ch/docs/design-docs/settings-message-commands.md`。
 - `src/panelDiagnostics.ts` 保留模型管理诊断实现（`createPanelDiagnosticsInspector`）及其依赖注入端口，并作为旧入口兼容 Facade，显式命名转导出原有错误/重试、Loop 消息策略与群聊协调 API。转导出与新模块共享同一函数对象，不包装、不复制实现、不通过 `export *` 扩大公开面。
 - 内部运行时直接依赖职责模块：`src/promptRetry.ts` 负责错误信息、隐藏重试资格/等待/提示和错误 trace，复用 `src/hiddenRetry.ts` 的延迟、格式化与去重纯辅助；`src/loopTaskMessagePolicy.ts` 负责继续提示词、任务恢复/session 兼容、验证信号和完成消息识别。两者不依赖 Facade、组合根或群聊面板协调器。
 - 本次运行时抽取后，`src/extension.ts` 为 5659 行；3000 行以下是期望指标而非硬性边界，后续继续拆分必须按职责内聚推进

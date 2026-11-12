@@ -97,16 +97,41 @@ for (const running of [true, false]) {
     env.deps.collectRunningTaskIds = () => new Set(running ? [env.task.id] : []);
     env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
     env.deps.resumeLoopSubtasks = () => { resumed += 1; };
-    await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+    const prompts: Array<Parameters<typeof env.deps.runLoopPrompt>[0]> = [];
+    const runLoopPrompt = env.deps.runLoopPrompt;
+    env.deps.runLoopPrompt = async (...args) => { prompts.push(args[0]); await runLoopPrompt(...args); };
+    await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" }, { main: "xhigh", fullstack: "max" });
     await delay(0);
     assert.equal(env.task.modelRouting?.main.model, "new-model");
     assert.equal(env.task.modelRouting?.subtaskFullstack?.model, "new-model");
+    assert.equal(env.task.originProfile?.mainThinkingMode, "xhigh");
+    assert.equal(env.task.originProfile?.subtaskFullstackThinkingMode, "max");
     assert.equal(env.runs, running ? 0 : 1);
+    if (!running) {
+      assert.equal(prompts[0].loopMainThinkingMode, "xhigh");
+      assert.equal(prompts[0].loopSubtaskFullstackThinkingMode, "max");
+    }
     assert.equal(resumed, 1);
     assert.deepEqual(env.warnings, []);
     assert.ok(env.messages.some((message) => message.type === "loopGroupChatChat:switchModelsSettled"));
   });
 }
+
+test("invalid thinking switch does not persist or resume any role", async () => {
+  const env = createContinuationRecoveryHarness();
+  let writes = 0;
+  let resumed = 0;
+  env.deps.updateTaskRecord = () => { writes += 1; return env.task; };
+  env.deps.resumeLoopSubtasks = () => { resumed += 1; };
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  const before = JSON.stringify(env.task);
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" }, { main: "foreign", fullstack: "max" });
+  assert.equal(writes, 0);
+  assert.equal(resumed, 0);
+  assert.equal(env.runs, 0);
+  assert.equal(JSON.stringify(env.task), before);
+  assert.match(env.warnings[0], /思考力度已不可用/u);
+});
 
 test("invalid model switch does not write or resume a task", async () => {
   const env = createContinuationRecoveryHarness();

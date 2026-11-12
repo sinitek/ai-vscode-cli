@@ -1,6 +1,6 @@
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import type { ThinkingMode } from "../cli/types";
-import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
+import { applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile } from "../loopModelSwitch";
 import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
@@ -245,7 +245,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       role,
       task,
       executionRole,
-      live: task?.modelRouting ? applyLoopModelRoutingToPrompt(live ?? {}, task.modelRouting) : live,
+      live: task?.modelRouting ? applyLoopModelRoutingToPrompt(live ?? {}, task.modelRouting, task.originProfile) : live,
     });
     const promptInput: PromptRunInput = {
       ...(livePrompts.get(taskId)?.configSelections ? { configSelections: livePrompts.get(taskId)!.configSelections } : {}),
@@ -597,7 +597,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         const modelRouting = loopModelRoutingFromPromptInput(input, { mainCli: target.cli });
         existing = deps.updateTask(existing.id, {
           modelRouting: modelRouting ?? undefined,
-          ...(configId ? { originProfile: { ...existing.originProfile, configId } } : {}),
+          ...(configId ? { originProfile: applyLoopPromptThinkingToOriginProfile({ ...existing.originProfile, configId }, input) } : {}),
           updatedAt: now(),
         }) ?? existing;
       }

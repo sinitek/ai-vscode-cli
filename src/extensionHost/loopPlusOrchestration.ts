@@ -1639,7 +1639,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       frontendRoute: task?.modelRouting?.subtaskFrontend,
       fullstackRoute: task?.modelRouting?.subtaskFullstack,
       originProfile: task?.originProfile,
-      prompt: applyLoopModelRoutingToPrompt(runtime.prompt, task?.modelRouting),
+      prompt: applyLoopModelRoutingToPrompt(runtime.prompt, task?.modelRouting, task?.originProfile),
     });
   }
 

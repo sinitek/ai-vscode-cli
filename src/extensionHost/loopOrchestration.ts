@@ -679,8 +679,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       mainCli: target.cli,
       route: latestTask.modelRouting?.subtask,
       routeFallback: latestTask.modelRouting?.subtask.fallback,
-      prompt: applyLoopModelRoutingToPrompt(input, latestTask.modelRouting),
-      originThinkingMode: task.originProfile?.subtaskThinkingMode,
+      prompt: applyLoopModelRoutingToPrompt(input, latestTask.modelRouting, latestTask.originProfile),
+      originThinkingMode: latestTask.originProfile?.subtaskThinkingMode,
     });
     execution.configId ??= deps.getActiveConfigIdForCli?.(execution.cli) ?? null;
     if (execution.unavailableReason) {
@@ -763,7 +763,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           mainCli: target.cli,
           route: currentTask.modelRouting?.subtask,
           routeFallback: currentTask.modelRouting?.subtask.fallback,
-          prompt: applyLoopModelRoutingToPrompt(input, currentTask.modelRouting),
+          prompt: applyLoopModelRoutingToPrompt(input, currentTask.modelRouting, currentTask.originProfile),
           originThinkingMode: currentTask.originProfile?.subtaskThinkingMode,
         });
         execution.configId ??= deps.getActiveConfigIdForCli?.(execution.cli) ?? null;
@@ -942,7 +942,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         ...(options.boundThinkingMode ? { loopSubtaskThinkingMode: options.boundThinkingMode } : {}),
         ...(options.executionConfigId ? { loopSubtaskConfigId: options.executionConfigId } : {}),
       }
-      : applyLoopModelRoutingToPrompt(input, latestTask.modelRouting);
+      : applyLoopModelRoutingToPrompt(input, latestTask.modelRouting, latestTask.originProfile);
     const roleModel = resolvePromptRunModelForRole(routedInput, role);
     const thinkingCli = role === "subtask" ? (options.executionCli ?? target.cli) : target.cli;
     const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, thinkingCli, role, roleModel, {

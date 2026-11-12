@@ -250,11 +250,13 @@ for (const roles of [["main", "subtask"], ["main", "fullstack"], ["main", "subta
     assert.doesNotMatch(html, /name="continueModelSource"|恢复原分组和配置|使用新配置的主子模型/u);
     for (const role of roles) {
       assert.ok(html.includes(`data-model-role="${role}"`));
+      assert.ok(html.includes(`data-thinking-role="${role}"`));
       assert.ok(html.includes(`value="${role}-new"`));
     }
     const patch = buildLoopGroupChatPanelContentPatch(state, 2);
     assert.ok(patch.modelSwitchHtml.includes('data-config-id="current-config"'));
-    assert.match(html, /下一次主、子模型执行使用新模型/u);
+    assert.match(html, /选择模型和思考力度/u);
+    assert.match(html, /下一次主、子模型执行使用新设置/u);
   });
 }
 
@@ -789,6 +791,21 @@ for (const { status, label, statusClass } of [
     }
   });
 }
+
+test("aligns clickable and static roster members with shared spacing and centered avatars", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const memberStyles = html.match(/\.member \{([^}]+)\}/u)?.[1] ?? "";
+  const clickableStyles = html.match(/\.member-acceptance-link \{([^}]+)\}/u)?.[1] ?? "";
+
+  assert.match(memberStyles, /display: grid;/u);
+  assert.match(memberStyles, /grid-template-columns: 28px minmax\(0, 1fr\);/u);
+  assert.match(memberStyles, /align-items: center;/u);
+  assert.match(memberStyles, /width: 100%;/u);
+  assert.match(memberStyles, /padding: 4px;/u);
+  assert.doesNotMatch(clickableStyles, /(?:padding|margin|gap|align-items|grid-template-columns):/u);
+  assert.match(clickableStyles, /border: 0;/u);
+  assert.match(clickableStyles, /text-align: left;/u);
+});
 
 test("uses theme colors for member statuses and preserves the Loop+ completion label", () => {
   const state = createState({
