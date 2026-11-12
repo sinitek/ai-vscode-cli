@@ -101,8 +101,7 @@
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": "src/extensionHost/modelSettings.ts"},
-        {"path": "media/workspace-scaffold/AGENTS.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md", "anchor": "目标"}
+        {"path": "media/workspace-scaffold/AGENTS.md"}
       ]
     }
   ],
@@ -161,8 +160,7 @@
       "to": "harness.agent_rules",
       "cardinality": "1:N",
       "source_refs": [
-        {"path": "media/workspace-scaffold/AGENTS.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-22-chore-simplify-workspace-scaffold.md", "anchor": "目标"}
+        {"path": "media/workspace-scaffold/AGENTS.md"}
       ]
     }
   ],
@@ -216,9 +214,7 @@
       "status": "active",
       "applies_to": ["harness.execution_plan", "harness.skill"],
       "source_refs": [
-        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-docs-exec-plan-monthly-archive-support.md", "anchor": "目标"},
-        {"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-chore-exec-plan-monthly-archive-support.md", "anchor": "决策记录"}
+        {"path": ".ch/docs/exec-plans/README.md", "anchor": "命名与分类"}
       ]
     },
     {
@@ -252,7 +248,7 @@
       "description": "内置 workspace scaffold 只承载通用 harness 和空白/示例 ontology 结构，不植入来源仓库的业务专属概念。",
       "status": "active",
       "applies_to": ["harness.workspace_scaffold", "harness.ontology"],
-      "source_refs": [{"path": ".ch/docs/exec-plans/completed/2026-08/2026-08-13-docs-harness-ontology-scaffold-sync.md", "anchor": "决策记录"}]
+      "source_refs": [{"path": "media/workspace-scaffold/.ch/docs/ontology/README.md"}]
     },
     {
       "id": "harness.rule.scaffold_merge_preserves_project_state",

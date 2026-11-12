@@ -634,7 +634,6 @@
       "source_refs": [
         {"path": ".ch/docs/references/dsh-custom-provider-contract.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/exec-plans/completed/2026-10/2026-10-25-docs-dsh-config-visual-model-fields.md", "anchor": "当前结论"},
         {"path": "media/config/assets/config-app-ui.js"},
         {"path": "src/cli/dshConfigModels.ts"},
         {"path": "src/test/config/dshconfigpage.test.ts"},
@@ -1166,8 +1165,7 @@
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/references/cli-runtime-reference.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-feature-cli-compaction-context-adaptation.md", "anchor": "四个交付边界与验收标准"},
-        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-10-docs-cli-compaction-context-adaptation.md", "anchor": "文档收尾状态一致性修订（2026-11-10）"}
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"}
       ]
     },
     {
@@ -2230,8 +2228,7 @@
         {"path": "src/webview/types.ts", "anchor": "PanelState"},
         {"path": "src/webview/viewContentScript/coreBootstrap.ts"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-feature-chat-bubble-retention.md", "anchor": "接口约定"},
-        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"},
-        {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-09-docs-chat-bubble-retention.md", "anchor": "验证计划"}
+        {"path": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json"}
       ]
     },
     {
