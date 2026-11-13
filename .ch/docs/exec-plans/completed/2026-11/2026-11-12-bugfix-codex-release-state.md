@@ -2,9 +2,24 @@
 
 - 日期：2026-11-12
 - 类型：bugfix
-- 关联计划：无；并行验收脚本修复交付后由主任务统一集成
-- 状态：in-progress
+- 关联计划：[配置指纹](2026-11-12-bugfix-codex-runtime-fingerprint.md)、[卸载策略](2026-11-12-bugfix-codex-unload-policy.md)，本轮统一复验收尾。
+- 状态：completed
 - 负责人：Codex
+
+## 2026-11-13 重新验收
+
+Tasklist:
+- [completed] 对照 2026-11-13 提交检查连接池、宿主所有权与命令启动影响
+- [completed] 执行当前源码构建、受影响回归、默认三轮真实交接和公共 runner 验证
+- [completed] 记录平台边界并与关联计划同步归档
+
+本次按用户要求复核昨日修复，基线提交 `a589f3c9`，当前提交 `a4f4a269`。使用 `npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-1305.json"`；本机 Windows 原生、临时 HOME/工作区和本地模拟模型，不将结果扩大为其它原生平台、真实 VS Code 多窗口或未知外部 writer 的验收。
+
+首轮 build 与 768/768 回归通过，三轮交接均完成（60133 / 60188 / 60151 ms）；第三轮仅删除临时目录报 EPERM，该轮报告保留 failed、公共 runner 未执行。所有已跟踪进程 exit/close、stdio close 均确认；稍后校验同一自有临时目录绝对路径后直接删除成功。分类为验收清理对短暂文件占用不耐受，修复仅在 Windows 且关闭证据齐备后对 EPERM/EBUSY/ENOTEMPTY 最多重试删除 5 次；按用户要求，macOS/Linux 保持一次删除行为。原 10 秒清理期限与 75 秒交接期限不变；持久错误、超时和未关闭资源仍失败。
+
+重新执行 `npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-final.json"` 退出 0：build、773/773 回归、默认三轮（60222 / 60146 / 60153 ms）与公共 runner（35 ms）全部通过，原 thread、另一会话和严格清理均确认。随后限定 Windows 分支，重新 `npm run build` 及清理/验收最小回归 68/68 通过；新增的 6 项 macOS/Linux mock 回归确认三类占用错误均只删除一次，Windows 分支仍受次数和期限约束。最终公共 runner live 再验通过（38 ms），报告 `codex-reacceptance-20261113-win32-only.runner.json`；Windows 分支行为未变，复用上述三轮有效证据，不改写旧报告。
+
+本次评审未发现今日变更使昨日修复回归；源码修复与本机 Windows 隔离集成验收完成，按用户要求归档。完整命令和失败分类见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md#2026-11-13-今日变更复验)。原生 macOS/Linux、已安装扩展与真实 VS Code 多窗口、其它 CLI、真实模型和未知外部 writer 未验收，继续由 [技术债跟踪](../../tech-debt-tracker.md) 保留；报告 `fullyVerified=false`，归档不表示全平台验收通过。本轮只改验收脚本、测试与文档，无产品语义变化，FEATURE_INVENTORY 和 ontology 无需更新；清理踩坑已写入 PITFALLS。
 
 ## 背景与目标
 
@@ -50,7 +65,7 @@ macOS 也报告旧连接未确认释放。此前 Windows 交付仅修复隔离�
 - 交接诊断区分 waiting_load/requesting_unload/waiting_close/waiting_exit 与明确协议不支持、请求失败、无效状态、超时；取消语义不变。不记录原始敏感错误和回答。
 - manager/各 CLI 审查及入口边界记录在 runtime reference：普通对话、Loop/Loop+ 经公共 runner，配置迁移/停止恢复与 compact 保留保护；ZCode 的 session/close 被 closed 挡住及强杀定时器提前完成已修复，不将其它 CLI 的原生取消误作 Codex 释放证明。
 - round 7 时有效配置指纹模块与调用入口、立即卸载能力模块及 codexRunnerRuntime、acceptance/core 测试由并行任务持有；round 9 续接修复探测收尾并接入公共 runner，其它交付的最终汇合及跨平台验收仍由主任务执行。
-- 最终集成门槛由主任务在两项交付汇合后执行，计划在该门槛前保持 active。
+- 最终集成门槛由主任务在两项交付汇合后执行，计划当时在该门槛前保持 active；当前收尾见 2026-11-13 重新验收。
 
 ## 本轮验证（round 7）
 
@@ -72,5 +87,5 @@ macOS 也报告旧连接未确认释放。此前 Windows 交付仅修复隔离�
 
 - 默认 `node scripts/verify_codex_thread_handoff_acceptance.js --live --report "$env:TEMP\codex-handoff-round11-final-default-20261112.json"` 退出 0：共享构建成功、331/331、3/3，兼容交接 60145 / 60175 / 60103 ms，严格清理均确认。
 - 新独立脚本经过真实公共 runner，在 0.162.1 确认能力与最终零延迟 args、原 thread 迁移、真实 thread/closed、另一 thread 旧进程继续运行，最终 37 ms、清理成功。新增断言与超时回归最终 8/8，隔离编译通过；修复仅涉及新增验证代码，不使先前综合门禁失效。
-- 失败观察器复验与一次临时目录删除被自动审批拒绝均保留真实记录，详见 [Windows 验证记录](../../references/codex-thread-handoff-windows-validation.md)。不将失败轮次追认为清理成功。
-- 计划仍 active：原生 macOS/Linux、真实 VS Code 多窗口、其它 CLI、未知外部 writer 与主任务接受审查尚未完成；本轮仅 Windows 隔离集成门槛通过。
+- 失败观察器复验与一次临时目录删除被自动审批拒绝均保留真实记录，详见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md)。不将失败轮次追认为清理成功。
+- round 11 当时保持 active：原生 macOS/Linux、真实 VS Code 多窗口、其它 CLI、未知外部 writer 与主任务接受审查尚未完成；当轮仅 Windows 隔离集成门槛通过。当前复验与归档边界见顶部。

@@ -2,7 +2,7 @@
 
 - 日期：2026-11-13
 - 类型：bugfix
-- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-13-bugfix-loop-subtask-run-ownership.md`（同属会话所有权问题，保留既有门禁）；`.ch/docs/exec-plans/active/2026-11-12-bugfix-codex-release-state.md`（底层释放协议验证边界独立保留）
+- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-13-bugfix-loop-subtask-run-ownership.md`（同属会话所有权问题，保留既有门禁）；`.ch/docs/exec-plans/completed/2026-11/2026-11-12-bugfix-codex-release-state.md`（底层释放协议验证边界独立保留）
 - 状态：completed
 - 负责人：Codex
 

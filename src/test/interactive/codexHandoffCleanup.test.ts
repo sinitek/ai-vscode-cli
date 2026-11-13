@@ -2,7 +2,7 @@ import assert = require("node:assert/strict");
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import * as path from "node:path";
-import { test } from "node:test";
+import { test, TestContext } from "node:test";
 
 type State = { exited: boolean; closed: boolean; streams: Record<string, { ended: boolean; closed: boolean }> };
 type Tracked = { state: State; done: Promise<unknown> };
@@ -14,6 +14,13 @@ const { cleanup, trackChild } = require(path.resolve(__dirname, "../../../script
 };
 
 const closedServer: Server = { closeAllConnections: () => {}, close: (callback) => callback() };
+function mockPlatform(t: TestContext, platform: NodeJS.Platform) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  assert.ok(descriptor);
+  Object.defineProperty(process, "platform", { ...descriptor, value: platform });
+  t.after(() => { Object.defineProperty(process, "platform", descriptor); });
+}
+
 function childFixture() {
   // No termination API is called by this fixture; its PID is used only in diagnostics.
   const child = Object.assign(new EventEmitter(), { pid: 987654321,
@@ -83,6 +90,70 @@ test("handoff cleanup reports directory removal errors after normal process clos
   assert.equal(events.length, 1);
   assert.equal(events[0].phase, "cleanup_failed");
 });
+
+for (const code of ["EPERM", "EBUSY", "ENOTEMPTY"]) {
+  test(`Windows handoff cleanup retries transient ${code} removal only after close`, async (t) => {
+    mockPlatform(t, "win32");
+    const { child, tracked } = childFixture();
+    const events: Record<string, unknown>[] = [];
+    let attempts = 0;
+    const result = cleanup({ shutdown: () => {}, server: closedServer, tracked: [tracked], root: "fixture-only",
+      removeRoot: () => {
+        assert.equal(tracked.state.exited, true);
+        assert.ok(Object.values(tracked.state.streams).every((stream) => stream.closed));
+        assert.equal(events.length, 0, "no success before the directory is removed");
+        if (++attempts === 1) throw Object.assign(new Error("temporarily busy"), { code });
+      }, emit: (event) => events.push(event), timeoutMs: 1000 });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 0);
+    for (const stream of [child.stdin, child.stdout, child.stderr]) stream.end();
+    child.emit("exit", 0, null); child.emit("close", 0, null);
+    await result;
+    assert.equal(attempts, 2);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].phase, "cleanup_verified");
+  });
+}
+
+test("Windows handoff cleanup fails bounded persistent removal errors without claiming success", async (t) => {
+  mockPlatform(t, "win32");
+  const events: Record<string, unknown>[] = [];
+  let attempts = 0;
+  await assert.rejects(cleanup({ shutdown: () => {}, server: closedServer, tracked: [], root: "fixture-only",
+    removeRoot: () => { attempts += 1; throw Object.assign(new Error("still busy"), { code: "EPERM" }); },
+    emit: (event) => events.push(event), timeoutMs: 5000 }), /still busy/);
+  assert.equal(attempts, 6);
+  assert.deepEqual(events.map((event) => event.phase), ["cleanup_failed"]);
+});
+
+test("Windows handoff cleanup stops removal retries at its original deadline", async (t) => {
+  mockPlatform(t, "win32");
+  const events: Record<string, unknown>[] = [];
+  let attempts = 0;
+  await assert.rejects(cleanup({ shutdown: () => {}, server: closedServer, tracked: [], root: "fixture-only",
+    removeRoot: () => { attempts += 1; throw Object.assign(new Error("busy past deadline"), { code: "EBUSY" }); },
+    emit: (event) => events.push(event), timeoutMs: 20 }), /资源清理超时/);
+  const attemptsAtTimeout = attempts;
+  await new Promise<void>((resolve) => setTimeout(resolve, 120));
+  assert.equal(attempts, attemptsAtTimeout, "timed-out cleanup must not delete later");
+  assert.deepEqual(events.map((event) => event.phase), ["cleanup_failed"]);
+});
+
+for (const platform of ["darwin", "linux"] as const) {
+  for (const code of ["EPERM", "EBUSY", "ENOTEMPTY"]) {
+    test(`${platform} handoff cleanup preserves one removal attempt for ${code}`, async (t) => {
+      mockPlatform(t, platform);
+      const events: Record<string, unknown>[] = [];
+      const error = Object.assign(new Error("directory remains busy"), { code });
+      let attempts = 0;
+      await assert.rejects(cleanup({ shutdown: () => {}, server: closedServer, tracked: [], root: "fixture-only",
+        removeRoot: () => { attempts += 1; throw error; }, emit: (event) => events.push(event), timeoutMs: 1000 }),
+      (caught: unknown) => caught === error);
+      assert.equal(attempts, 1);
+      assert.deepEqual(events.map((event) => event.phase), ["cleanup_failed"]);
+    });
+  }
+}
 
 test("handoff cleanup includes shutdown escalation children created while draining", async () => {
   const first = childFixture();

@@ -24,6 +24,7 @@
 - 验证假阳性：脚本直接加载 ignored 的 `dist`，拉取源码不代表重新构建；只有 `writer_conflict_reproduced` 仅证明旧问题可复现，不是修复通过。优先执行 `node scripts/verify_codex_thread_handoff_acceptance.js --live --runs 3`，自动构建并要求每轮 `handoff_verified` 的原 thread/其它会话保留、正常退出和最终报告全部通过；真实多窗口 Loop+ 仍单独验收。
 - Windows 夹具：fake PID 的终止调用必须拦截。taskkill 应分流为终止请求，不能由通用 spawn mock 创建成另一个 app-server；成功请求后仍需独立模拟目标 exit / close，否则正确的释放确认会超时。复用 `src/test/interactive/codexProcessFixture.ts`，超时拒绝和所有权保留断言不能删。
 - Windows 隔离清理：默认命令和原生 0.162.1 均复现已 exit、无 stdio EOF。空 HOME 会触发插件 Git 同步；Windows Git 启动器退出可使深层 fetch 后代逃出 `taskkill /T` 的现存树并持有管道。隔离协议脚本须在临时配置禁用 `features.plugins`，不读取用户插件、不访问插件仓库；不能改用原生 exe 就声称根因解决。清理超时须涵盖 HTTP close，并保留进程/管道诊断；只有真实 exit、正常 stdio close、目录删除全部完成才输出 `cleanup_verified`。产品启用插件时的后台后代终止行为另属审查范围，本次未修改。证据见 [Windows 验证记录](../references/codex-thread-handoff-windows-validation.md)。
+- Windows 临时目录短暂占用：2026-11-13 复验第三轮在进程/stdio 全部关闭后删除临时根报 `EPERM`，稍后同目录直接删除成功。公共验收清理仅在 Windows 对删除阶段的 `EPERM` / `EBUSY` / `ENOTEMPTY` 最多重试 5 次，沿用原清理期限；macOS/Linux 保持一次删除，错误直接抛出。不能以重试代替退出证据，持续错误、超时仍须失败。用 `codexHandoffCleanup.test.ts` 验证平台分支、恢复、耗尽及到期不再删除，再跑统一三轮真实验收；失败报告保留。
 
 ## 记录原则
 

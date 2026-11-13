@@ -2,14 +2,42 @@
 
 - 日期：2026-11-12。
 - 范围：Windows 原机的回归夹具修复及隔离真实 CLI 协议验收。
-- 当前阶段（round 11）：最终共享构建、331/331 汇合回归、默认三轮兼容交接全部通过；新增公共 runner live 在真实 0.162.1 上确认即时策略，交接 37 ms，新增证据/超时回归 8/8。另有一次观察器失败及被策略拒绝的遗留目录清理，详见下段；原生跨平台和真实 VS Code 多窗口仍未验收。
+- 当前阶段（2026-11-13）：今日变更影响审查完成，build、773/773、默认三轮与公共 runner 复验通过；最终限定仅 Windows 删除重试后，build、68/68 及公共 runner live 再验通过，三份修复计划按此范围归档。原生跨平台和真实 VS Code 多窗口仍未验收；历史失败及清理记录保留。
 - 以下“夹具/清理”历史轮次没有修改产品生命周期、依赖或 CLI 版本；后续公共产品修复另见下段，不能把旧夹具证据当跨平台产品验收。
+
+## 2026-11-13 今日变更复验
+
+本次按用户要求检查昨天三份修复受今天代码变化的影响。对比 `a589f3c9..a4f4a269`，结合 CodeGraph 调用链与当前源码核对：未知/不支持即时卸载能力采用专属 owner；已确认能力仍共享连接并注入零延迟参数；原 thread、释放证据、其它会话隔离和 75 秒期限保留。配置身份算法未被今日提交修改，宿主新增的活动运行保护不改变 cwd 及压缩 metadata 传递。
+
+### 补充回归与失败分类
+
+- `node --test --test-reporter=tap dist/test/config/codexRuntimeConfigIdentity.test.js dist/test/config/configService.test.js dist/test/cli/processArgv.test.js`：49/49，fail/cancelled/skipped/todo 均为 0。覆盖 trust 写入与无关项目不改变指纹、配置/认证/来源变化隔离、路径与 symlink、无效配置拒绝及 shell 参数辅助逻辑。`processArgv` 的真实 zsh 用例仅在 macOS 执行，本机 Windows 没有执行该原生分支。
+- 今日修改的 commandRunner 登录 shell 回归单独执行：`node --test --test-reporter=tap --test-name-pattern "uses only mocked macOS-shell resolution for stream and capture commands" dist/test/cli/commandRunnerCoverage.test.js`，1/1、无跳过；通过 mock 验证 argv0 与 npm prefix 处理，不代替原生 macOS。
+- 初次四文件补充检查 60/66，6 项均来自 `commandRunnerCoverage`。从 Git 只读取 `a589f3c9` 的 `commandRunner.ts` 与其测试，使用当前 TypeScript 转译到系统临时 preload，通过 Node 模块加载钩子复测，仍为 11/17；六个失败用例名称与当前结果完全一致。其余解析依赖在今日未修改；这些已有 Windows 命令路径/平台夹具失败单独登记技术债，不作为本次回归，也不把失败结果追认为通过。没有改写共享 dist 或产品代码。
+- `python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过。ontology Python 测试初次为 5/9，原因是 Windows 默认 GBK 解码遇到 UTF-8 子进程输出；在当前测试进程设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8` 后 9/9 通过。`python3 -m unittest discover -s scripts/tests -p 'test_verify_loop_plus.py'` 11/11 通过。
+- 日志保留于 `$env:TEMP/codex-reacceptance-20261113-identity.tap`、`codex-reacceptance-20261113-shell.tap`、`codex-reacceptance-20261113-supplement.tap`、`codex-reacceptance-20261113-command-runner-baseline.tap`。
+
+### 综合验收首次失败与清理修复
+
+- 命令：`npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-1305.json"`。build 成功，768/768 回归、无跳过；真实 `codex.CMD` 为 0.162.1，三轮均恢复原 thread 并保留另一会话，耗时 60133 / 60188 / 60151 ms。前两轮清理通过；第三轮删除本次临时根返回 `EPERM`，综合报告 `passed=false`、公共 runner 未执行，退出 1。保留 JSON、同名 `.log` 和 `.console.log`，不将该轮追认为通过。
+- 失败清理事件中的所有已跟踪自有进程已 exit/close，全部 stdio 已 close；检查当前 Codex 进程后未发现该失败临时根的命令行。对 `sinitek-codex-handoff-sLCgdM` 校验绝对路径在系统临时目录且名称精确匹配后，稍后直接删除成功，确认 exists=false。这支持短暂文件占用分类，不推断为产品 writer 交接失败。
+- 修改 `scripts/verify_codex_thread_handoff.js` 公用清理：关闭证据齐备后，仅 Windows 对删除临时根的 `EPERM` / `EBUSY` / `ENOTEMPTY` 最多重试 5 次（首次加 5 次重试），间隔 100–500 ms，仍受原 10 秒清理期限约束。按用户要求，macOS/Linux 保持一次删除行为，错误直接抛出；不重复 RPC/交接、不延长 75 秒期限、不删用户目录。其它错误、重试耗尽、未关闭进程/管道及超时仍失败；到期后停止后续删除尝试。
+- `codexHandoffCleanup.test.ts` 新增 Windows 三类暂时错误恢复、持续错误失败、原期限到期后不再删除的 5 项回归，以及 macOS/Linux 三类错误只删除一次的 6 项 mock 回归（共新增 11 项）。平台 mock 在每项测试后恢复；原有 exit 后尾输出、HTTP/stdio 未关闭、非暂时错误与清理期间新增子进程断言保留。公共 runner 共用该清理函数。
+
+### 最终复验与归档边界
+
+- `npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-final.json"` 退出 0：build、773/773、fail/cancelled/skipped/todo 均为 0。默认 `codex.CMD` 0.162.1 的三轮交接为 60222 / 60146 / 60153 ms；原 thread 与另一会话均保留，每轮进程/stdio/HTTP 关闭及临时目录删除均确认。公共 runner 35 ms，确认 supported、零延迟 args、真实 `thread/closed` 在原 thread/resume 前，另一会话继续运行且清理完整。报告、同名 `.log`、`.console.log` 和 `.runner.json` 保留。
+- 上述综合验收完成后，按用户反馈将重试限定为 `process.platform === "win32"`。最终 `npm run build` 退出 0；`node --test --test-reporter=tap dist/test/interactive/codexHandoffCleanup.test.js dist/test/core/codexThreadHandoffAcceptance.test.js dist/test/core/codexRunnerUnloadAcceptance.test.js dist/test/core/loopPlusFixAcceptance.test.js` 为 68/68、无跳过，日志 `$env:TEMP\codex-reacceptance-20261113-win32-only.tap`。Windows 次数/期限和 macOS/Linux 一次删除均有回归覆盖；mock 不代替原生平台验证。
+- 最终 `node scripts/verify_codex_runner_unload.js --live --report "$env:TEMP\codex-reacceptance-20261113-win32-only.runner.json"` 退出 0，交接 38 ms、真实 thread/closed、原 thread 与另一会话均保留，所有资源清理确认。最终平台限制没有改变 Windows 分支，复用已完成的三轮有效证据，不为刷新报告重复广泛测试，也不改写旧报告对应的代码阶段。
+- 今日变更未发现破坏昨日修复，源码审查与本机 Windows 隔离集成验收完成；三份 bugfix 计划按用户要求移至 `completed/2026-11/`，同步引用。原生 macOS/Linux、其它版本 live、已安装扩展/真实 VS Code 多窗口、其它 CLI、真实模型与未知外部 writer 仍未验收，见 [技术债跟踪](../exec-plans/tech-debt-tracker.md)。报告 `passed=true`、`fullyVerified=false`，归档不表示全平台或全仓单测通过。
+
+本轮仅修复验收脚本并补记录，没有改变用户可见行为或业务语义，`FEATURE_INVENTORY.md`、运行架构和 ontology 无需更新。后续计划迁移仅更新引用路径；保留昨天失败、未覆盖范围与历史证据，不写入自动热区记忆。
 
 ## 后续公共产品修复
 
 - 受控协议已证实共享 readLoop 等待用户处理器，阻塞其它会话 RPC/closed；现仅异步分离原生交互请求，绑定原 thread/listener/操作身份，热停止与关闭按原生协议取消，迟到回答无效。notLoaded 确认仅补充原有释放证据，不延长 75 秒、不重试失败 resume。
 - CODEX_THREAD_HANDOFF_FAILED 增加中文阶段提示及安全 diagnostic；未知超时不归为协议不支持。能力策略已于 round 9 接入公共 runner；有效配置指纹已汇合。早期隔离编译的历史证据与本轮共享构建分开记录。
-- Windows 既有 pool 单轮只证明其原覆盖；本轮补齐经过公共 runner 的真实能力/参数/释放链路。当前产品事实见 [CLI 运行参考](cli-runtime-reference.md)，执行状态见 [公共修复计划](../exec-plans/active/2026-11-12-bugfix-codex-release-state.md)。
+- Windows 既有 pool 单轮只证明其原覆盖；本轮补齐经过公共 runner 的真实能力/参数/释放链路。当前产品事实见 [CLI 运行参考](cli-runtime-reference.md)，执行记录见 [公共修复计划](../exec-plans/completed/2026-11/2026-11-12-bugfix-codex-release-state.md)。
 
 ## 汇合门禁与公共 runner 实测（round 11）
 
@@ -21,7 +49,7 @@
 - 最终命令：设置 `SINITEK_CODEX_HANDOFF_MODULE_ROOT=C:\work\sinitek-ai-vscode-cli\dist`，执行 `node scripts/verify_codex_runner_unload.js --live --report "$env:TEMP\codex-runner-unload-round11-final-fixed-20261112.json"`，退出 0，得到上述 37 ms 与完整清理证据。报告/日志均使用独立路径；导出的证据校验逻辑保留 supported/unknown/unsupported 正反向断言。unknown/unsupported 的真实 CLI 本轮未安装或验证。
 - 失败复验的 verifier PID 9512 经唯一报告参数核对后定向停止，针对该 PID/临时路径的进程查询未见关联 node/cmd/codex；该次 stdio 关闭缺失不可追认。其临时目录 `C:\Users\fangjiawei\AppData\Local\Temp\sinitek-codex-runner-3kJqJM` 清理先报 EPERM，后续显式 Remove-Item 被自动审批以 `blocked by policy` 拒绝，仍保留，需宿主处理。最终成功 live 的资源独立且均已清理。
 - 默认门禁后仅改新增验证脚本/新增测试及文档；没有改公共运行时代码、原 pool/acceptance 脚本或其 331 项源测试，已有门禁仍覆盖当前产品改动，不为刷新证据重复执行。后续新增测试已隔离全量 TypeScript 编译通过；历史 noEmit、ontology 9/9、归属 10/10、指纹 13/13 等事实按原覆盖复用。
-- 仍未覆盖：原生 macOS/Linux、真实 VS Code 多窗口/Loop+ 调度、其它 CLI、真实模型、未知外部 writer。此脚本显式切换配置身份，不将其作为有效配置内容指纹算法的新 live 证明；该算法沿用已有 13 项受控证据。计划保持 active，主任务还需评审，不能据 Windows 受控/live 宣称全局验收完成。
+- round 11 仍未覆盖：原生 macOS/Linux、真实 VS Code 多窗口/Loop+ 调度、其它 CLI、真实模型、未知外部 writer。此脚本显式切换配置身份，不将其作为有效配置内容指纹算法的新 live 证明；该算法沿用已有 13 项受控证据。当时计划保持 active、待主任务评审；当前复验和归档范围见顶部，不能据 Windows 受控/live 宣称全局验收完成。
 
 ## 环境与边界
 

@@ -3,8 +3,21 @@
 - 日期：2026-11-12
 - 类型：bugfix
 - 关联计划：[释放状态修复](2026-11-12-bugfix-codex-release-state.md)，由生命周期所有者消费本次导出后统一验收。
-- 状态：in-progress
+- 状态：completed
 - 负责人：Codex fullstack 独立执行尝试
+
+## 2026-11-13 重新验收
+
+Tasklist:
+- [completed] 核对已确认版本共享与未知能力专属连接策略及启动参数
+- [completed] 复验能力探测、释放边界与实际公共 runner
+- [completed] 汇总验证证据与平台边界并归档
+
+与 [释放状态修复](2026-11-12-bugfix-codex-release-state.md) 共用本轮综合验收。今日新增专属 owner 隔离及登录 shell argv0 修正，保留原 thread、实际释放证据和 75 秒期限；本次不更改版本契约或用户配置。
+
+`npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-final.json"` 退出 0：build、773/773、默认三轮（60222 / 60146 / 60153 ms）与公共 runner（35 ms）通过。最终按用户要求将删除重试限定 Windows，macOS/Linux 保持一次删除；再构建与清理/验收回归 68/68、公共 runner live（38 ms）通过。真实 0.162.1 确认 supported、零延迟参数、原 thread/closed 释放证据及另一会话保留；没有改能力白名单或延长交接期限。原有三轮 Windows 分支未变，沿用有效证据。
+
+本轮审查与本机集成验收完成，按用户要求归档；原生 macOS/Linux、其它版本 live 及真实宿主边界保留，报告仍为 `fullyVerified=false`。命令、首次清理失败、修复及历史测试失败分类见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md#2026-11-13-今日变更复验)，后续原生验证见 [技术债跟踪](../../tech-debt-tracker.md)。本轮仅改验收脚本、测试与文档，FEATURE_INVENTORY 与 ontology 无需更新。
 
 ## 目标与范围
 
@@ -32,7 +45,7 @@
 
 ## 风险与当前状态
 
-独立能力/参数已于 round 9 接入插件自启公共 runner，round 11 完成 Windows 隔离集成门槛；计划保持 active，等待主任务接受审查和跨平台/真实宿主验收。固定版本表对未核对的新版本保守降级；opaque wrapper 隐藏的依赖变化最多缓存 60 秒，已知 npm native payload 变化立即使 key 失效。不覆盖外部连接；75 秒期限、thread 互斥和释放证据未改变。Ontology 已随 round 9 公共修复同步，历史 9/9 结果继续按原覆盖复用。
+独立能力/参数已于 round 9 接入插件自启公共 runner，round 11 完成 Windows 隔离集成门槛；2026-11-13 审查、复验并按上述边界归档。固定版本表对未核对的新版本保守降级；opaque wrapper 隐藏的依赖变化最多缓存 60 秒，已知 npm native payload 变化立即使 key 失效。不覆盖外部连接；75 秒期限、thread 互斥和释放证据未改变。Ontology 已随 round 9 公共修复同步，历史 9/9 结果继续按原覆盖复用；跨平台/真实宿主缺口保留。
 
 ## 本轮验证事实
 
@@ -48,5 +61,5 @@
 
 - round 9 修复 probe 超时收尾：结果有界返回，但临时 HOME/并发名额保留至自有子进程 close；能力 await 后复核活动操作，只有准确 supported 才注入，最终 args 参与连接身份。定向 16/16、隔离编译/noEmit 与 ontology 9/9 继续复用，不重复刷新。
 - round 11 真实 CLI 为 `C:\Users\fangjiawei\AppData\Roaming\npm\codex.CMD` 0.162.1 / supported。新脚本直接调用公共 runner，以两个原 thread 共享旧进程，再显式切换目标配置身份；最终 args 有零延迟覆盖，真实 thread/closed 在原 thread/resume 前，另一 thread 继续旧进程回合，交接 37 ms，最终本次资源清理完整。
-- 最终新增证据/超时回归 8/8 与隔离编译通过；默认综合命令内置共享构建、331/331、3/3 通过（60145 / 60175 / 60103 ms）。原 pool 脚本继续覆盖默认延迟，不把它的三轮当即时策略证明。命令、独立报告、观察器失败与被策略拒绝的遗留目录清理详见 [Windows 验证记录](../../references/codex-thread-handoff-windows-validation.md)。
-- 本机未验证 0.167.0/macOS/Linux 原生、未知/不支持版本的 live 或真实 VS Code 多窗口；用户 macOS 对照仍仅为提供的证据，不追认为本机执行。主任务审查和这些缺口仍保留。
+- 最终新增证据/超时回归 8/8 与隔离编译通过；默认综合命令内置共享构建、331/331、3/3 通过（60145 / 60175 / 60103 ms）。原 pool 脚本继续覆盖默认延迟，不把它的三轮当即时策略证明。命令、独立报告、观察器失败与被策略拒绝的遗留目录清理详见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md)。
+- 本机未验证 0.167.0/macOS/Linux 原生、未知/不支持版本的 live 或真实 VS Code 多窗口；用户 macOS 对照仍仅为提供的证据，不追认为本机执行。round 11 待主任务审查，当前审查结论见顶部，这些原生验证缺口仍保留。

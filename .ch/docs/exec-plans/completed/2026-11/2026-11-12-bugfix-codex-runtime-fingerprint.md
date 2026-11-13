@@ -2,9 +2,22 @@
 
 - 日期：2026-11-12
 - 类型：bugfix
-- 关联计划：`2026-11-12-bugfix-codex-release-state.md`（汇合后统一构建与三轮 live）
-- 状态：in-progress
+- 关联计划：[释放状态修复](2026-11-12-bugfix-codex-release-state.md)（汇合后统一构建与三轮 live）
+- 状态：completed
 - 负责人：Codex，独立 Loop+ attempt
+
+## 2026-11-13 重新验收
+
+Tasklist:
+- [completed] 核对今日宿主启动、压缩与连接池变化对有效配置身份的影响
+- [completed] 复验配置指纹和公共交接集成
+- [completed] 汇总验证证据与平台边界并归档
+
+与 [释放状态修复](2026-11-12-bugfix-codex-release-state.md) 共用本轮综合验收，另核对配置身份算法及当前项目 trust 覆盖的针对性回归。原生 macOS/Linux 和真实 VS Code 多窗口仍是独立验证边界。
+
+配置身份/configService/processArgv 补充回归 49/49，今日登录 shell mock 回归 1/1；配置身份算法未被今日提交修改。`npm run verify:loop-plus -- --report "$env:TEMP\codex-reacceptance-20261113-final.json"` 退出 0，build、773/773、默认三轮与公共 runner（35 ms）通过。本轮验收脚本的目录删除重试按用户要求仅 Windows 启用；最终 build、清理/验收回归 68/68、公共 runner live（38 ms）通过。指纹、压缩 metadata 和公共交接审查完成，按用户要求归档；不将显式切换 fingerprint 的 live 视为内容指纹算法的实机证明。
+
+完整命令、首次 EPERM 失败及修复、平台分支 mock 和历史 commandRunner 失败分类见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md#2026-11-13-今日变更复验)。原生平台和真实宿主缺口见 [技术债跟踪](../../tech-debt-tracker.md)，保留 `fullyVerified=false`。本轮未改产品行为或业务事实，FEATURE_INVENTORY 与 ontology 无需更新。
 
 ## 目标与范围
 
@@ -24,9 +37,9 @@
 
 当前 runner 已 realpath 并传入 projects.<该精确路径>.trust_level=trusted，随后持久写入同一叶子。身份中只覆盖该叶子，保留当前其它设置和祖先权限；改变被启动覆盖的磁盘 trust 本身不等于有效权限变化。非法 TOML/JSON 或项目结构拒绝，错误不包含配置原文/认证。
 
-边界：仅处理既有全局配置指纹输入，不新增配置层加载框架；命令/参数/cwd 由现有 manager/pool 隔离。原生平台与最终三轮 live 待汇合。
+边界：仅处理既有全局配置指纹输入，不新增配置层加载框架；命令/参数/cwd 由现有 manager/pool 隔离。原生平台仍未验收；最终三轮已在 round 11 汇合并于 2026-11-13 复验。
 
-## Tasklist:
+Tasklist:
 
 - [completed] 核对当前规则、ontology 事实、计划、调用链和 git diff
 - [completed] 实现语义身份与 cwd 边界
@@ -50,8 +63,8 @@
 
 中心文档应同步：仅当前精确 realpath 的 trust_level 按启动覆盖 trusted；祖先和其它相关配置保留；无 cwd 不排除项目；动态 HOME 与认证继续隔离；无效/断链配置拒绝；压缩与宿主共用算法和 cwd。仍需主任务评审有效语义与最终集成，不以自测代替验收。
 
-## 待汇合
+## 历史汇合记录
 
 runtime reference、FEATURE_INVENTORY、ontology 已随公共修复汇合。round 11 默认 `node scripts/verify_codex_thread_handoff_acceptance.js --live --report "$env:TEMP\codex-handoff-round11-final-default-20261112.json"` 退出 0：自带共享构建成功、331/331、默认 3/3（60145 / 60175 / 60103 ms），清理均确认。
 
-另增真实公共 runner 验证，显式修改 configFingerprint 后原 thread 在真实 thread/closed 后迁移、另一 thread 继续运行；0.162.1 即时策略为 37 ms。该脚本不调用内容指纹算法，不能扩大此前 13 项指纹证据的覆盖。新增验证代码后续修复与 8/8 回归不改变指纹/运行时代码；完整细节及一次被策略拒绝的失败临时目录清理见 [Windows 验证记录](../../references/codex-thread-handoff-windows-validation.md)。原生 macOS/Linux、真实 VS Code 多窗口和主任务接受审查仍缺，计划保持 active。
+另增真实公共 runner 验证，显式修改 configFingerprint 后原 thread 在真实 thread/closed 后迁移、另一 thread 继续运行；0.162.1 即时策略为 37 ms。该脚本不调用内容指纹算法，不能扩大此前 13 项指纹证据的覆盖。新增验证代码后续修复与 8/8 回归不改变指纹/运行时代码；完整细节及一次被策略拒绝的失败临时目录清理见 [Windows 验证记录](../../../references/codex-thread-handoff-windows-validation.md)。round 11 当时因原生 macOS/Linux、真实 VS Code 多窗口和主任务接受审查仍缺而保持 active；当前复验与归档边界见顶部。

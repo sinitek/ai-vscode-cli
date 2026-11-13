@@ -6,6 +6,26 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const crossSpawn = require("cross-spawn");
+const CLEANUP_REMOVE_MAX_RETRIES = 5;
+const CLEANUP_REMOVE_RETRY_DELAY_MS = 100;
+
+async function removeRootWithRetry(removeRoot, deadline) {
+  for (let attempt = 0; ; attempt += 1) {
+    if (Date.now() >= deadline) throw new Error("资源清理超时");
+    try {
+      await removeRoot();
+      return;
+    } catch (error) {
+      // Windows may briefly retain filesystem handles after process/stdio close.
+      // Retry only removal; never repeat a handoff or treat a kill as exit proof.
+      if (process.platform !== "win32" || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error.code)
+          || attempt >= CLEANUP_REMOVE_MAX_RETRIES) throw error;
+      const delay = Math.min(CLEANUP_REMOVE_RETRY_DELAY_MS * (attempt + 1), deadline - Date.now());
+      if (delay <= 0) throw new Error("资源清理超时");
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 async function within(promise, milliseconds, phase = "隔离验证") {
   let timer;
@@ -35,6 +55,7 @@ function trackChild(child, command) {
 }
 
 async function cleanup({ shutdown, server, tracked, removeRoot, emit, root, timeoutMs = 10000 }) {
+  const deadline = Date.now() + timeoutMs;
   try {
     await within((async () => {
       shutdown();
@@ -51,7 +72,7 @@ async function cleanup({ shutdown, server, tracked, removeRoot, emit, root, time
         await Promise.all(pending.map((entry) => entry.done));
       }
       assert.ok(tracked.every(({ state }) => !state.pid || (state.exited && state.closed)), "子进程退出尚未确认");
-      await removeRoot();
+      await removeRootWithRetry(removeRoot, deadline);
     })(), timeoutMs, "资源清理");
   } catch (error) {
     emit({ phase: "cleanup_failed", root, children: tracked.map((entry) => entry.state), error: error.message });

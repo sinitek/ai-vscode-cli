@@ -1,6 +1,6 @@
 # Codex 1.7.6 Regression Evidence
 
-This page preserves the LP83/LP84 regression and delivery evidence that is not a current Codex contract. Current behavior is documented in [CLI runtime reference](cli-runtime-reference.md); active acceptance state remains in the [unload policy plan](../exec-plans/active/2026-11-12-bugfix-codex-unload-policy.md), [runtime fingerprint plan](../exec-plans/active/2026-11-12-bugfix-codex-runtime-fingerprint.md), and [release state plan](../exec-plans/active/2026-11-12-bugfix-codex-release-state.md).
+This page preserves the LP83/LP84 regression and delivery evidence that is not a current Codex contract. Current behavior is documented in [CLI runtime reference](cli-runtime-reference.md); scoped acceptance records are archived in the [unload policy plan](../exec-plans/completed/2026-11/2026-11-12-bugfix-codex-unload-policy.md), [runtime fingerprint plan](../exec-plans/completed/2026-11/2026-11-12-bugfix-codex-runtime-fingerprint.md), and [release state plan](../exec-plans/completed/2026-11/2026-11-12-bugfix-codex-release-state.md).
 
 ## Historical findings
 

@@ -2,7 +2,7 @@
 
 - 日期：2026-11-13
 - 类型：bugfix
-- 关联计划：`../../active/2026-11-12-bugfix-codex-release-state.md`、`../../active/2026-11-12-bugfix-codex-runtime-fingerprint.md`、`../../active/2026-11-12-bugfix-codex-unload-policy.md`；保留既有写锁交接安全约束，不覆盖其验收记录或改变其状态。
+- 关联计划：`2026-11-12-bugfix-codex-release-state.md`、`2026-11-12-bugfix-codex-runtime-fingerprint.md`、`2026-11-12-bugfix-codex-unload-policy.md`；保留既有写锁交接安全约束，不覆盖其验收记录或改变其状态。
 - 状态：completed（源码修复与本机验证；未发布、未安装）
 - 负责人：Codex
 
