@@ -57,6 +57,7 @@ export type LoopPlusRuntimeFixture = {
   setCancelInvocation: (cancel: ((tabId: string) => void) | null) => void;
   publish: (input: PromptRunInput, tabId: string, options?: PublishOptions) => void;
   getMessages: (tabId: string) => ChatMessage[];
+  completionSubscriptionCount: () => number;
   seedHistory: (input: PromptRunInput, tabId: string, options: { content: string; status: TaskRunStatus; prompt?: string; assistantId?: string }) => void;
   parkedSubtaskIds: () => string[];
   parkedAttempts: () => Array<{ subtaskId: string; tabId: string; input: PromptRunInput }>;
@@ -90,6 +91,8 @@ export function createLoopPlusRuntimeFixture(options: {
   configId?: string | null;
   resolveThinkingMode?: LoopPlusRuntimeAdapterDeps["resolveThinkingMode"];
   executionRootFactory?: () => { cwd: string; dispose: () => void };
+  readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
+  observeRunCompletions?: boolean;
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
@@ -99,6 +102,7 @@ export function createLoopPlusRuntimeFixture(options: {
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: options.cli ?? "codex", sessionId: "session" };
   const messages = new Map<string, ChatMessage[]>();
   const runs: TaskRunRecord[] = [];
+  const completionListeners = new Set<(run: TaskRunRecord) => void>();
   const refreshes: LoopPlusRuntimeFixture["refreshes"] = [];
   const hostMessages: string[] = [];
   const completionMessages: LoopPlusRuntimeFixture["completionMessages"] = [];
@@ -211,7 +215,7 @@ export function createLoopPlusRuntimeFixture(options: {
     }
     if (options.status) {
       const runTarget = createdSubtaskTargets.find((item) => item.tabId === tabId) ?? target;
-      runs.push({
+      const run: TaskRunRecord = {
         id: nextId("run"),
         cli: runTarget.cli,
         sessionId: runTarget.sessionId,
@@ -224,7 +228,9 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
-      });
+      };
+      runs.push(run);
+      completionListeners.forEach((listener) => listener(run));
     }
   }
 
@@ -364,7 +370,11 @@ export function createLoopPlusRuntimeFixture(options: {
       await action(input, tabId);
     },
     getMessages: (promptTarget) => bucket(promptTarget.tabId),
-    readRuns: () => runs,
+    readRuns: options.readRuns ?? (() => runs),
+    subscribeRunCompletion: options.observeRunCompletions === false ? undefined : (listener) => {
+      completionListeners.add(listener);
+      return () => { completionListeners.delete(listener); };
+    },
     resolveThinkingMode: options.resolveThinkingMode ?? (() => "low"),
     createExecutionRoot: () => {
       if (rootFailure) {
@@ -442,6 +452,7 @@ export function createLoopPlusRuntimeFixture(options: {
     rootsDisposed,
     executionCwds,
     getMessages: bucket,
+    completionSubscriptionCount: () => completionListeners.size,
     queueMain: (action) => {
       mainQueue.push(action);
     },

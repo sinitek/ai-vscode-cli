@@ -65,6 +65,118 @@ function currentEventId(promptText: string): string {
   return match[1];
 }
 
+test("本次完成记录从共享历史丢失后仍进入验收并自动关闭子任务 Tab", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId!;
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "执行报告已写入本轮报告，其中列出了修改文件、检查命令和未覆盖边界。" });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.readTask(taskId)?.subTasks[0].status, "completed");
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+for (const status of ["end", "error", "stopped", null] as const) {
+  test(`共享历史缺失时只按本次真实完成状态 ${status} 决定是否关页`, async () => {
+    const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });
+    try {
+      fixture.setAttemptAction((input, tabId) => {
+        fixture.publish(input, tabId, { status, content: "任务已完成，执行报告已写入本轮报告。" });
+      });
+      const result = await fixture.adapter.startAttempt({
+        taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
+        prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
+      }).promise;
+      assert.equal(result.outcome, status === "end" ? "completed" : status === "stopped" ? "stopped" : "failed");
+      assert.equal(fixture.closedSubtaskTabs.length, status === "end" ? 1 : 0);
+      assert.equal(fixture.completionSubscriptionCount(), 0);
+    } finally {
+      fixture.dispose();
+    }
+  });
+}
+
+test("并行调用的完成事件不能替代本次缺失的结果，结束后释放各自订阅", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });
+  try {
+    const start = (id: string) => fixture.adapter.startAttempt({
+      taskId: "task-main", subtaskId: id, attemptId: `attempt-${id}`, title: id,
+      prompt: longPrompt(id, `src/${id}.ts`), modelPrompt: "model", writeFiles: [`src/${id}.ts`], round: 1, targetCli: "codex",
+    });
+    const first = start("A");
+    const second = start("B");
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "两个调用均已启动");
+    assert.equal(fixture.completionSubscriptionCount(), 2);
+    fixture.finishParked("B", { status: "end", content: "B 已完成" });
+    assert.equal((await second.promise).outcome, "completed");
+    assert.equal(fixture.completionSubscriptionCount(), 1);
+    fixture.releaseParked("A");
+    assert.equal((await first.promise).outcome, "failed");
+    assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[1].tabId]);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("完成后共享历史读取异常不影响结果，CLI 收口异常仍为失败且释放订阅", async () => {
+  for (const throwsAfterCompletion of [false, true]) {
+    let completed = false;
+    const fixture = createLoopPlusRuntimeFixture({ readRuns: () => {
+      if (completed) throw new Error("共享历史读取失败");
+      return [];
+    } });
+    try {
+      fixture.setAttemptAction((input, tabId) => {
+        fixture.publish(input, tabId, { status: "end", content: "本次真实完成结果" });
+        completed = true;
+        if (throwsAfterCompletion) throw new Error("CLI 收口失败");
+      });
+      const result = await fixture.adapter.startAttempt({
+        taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
+        prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
+      }).promise;
+      assert.equal(result.outcome, throwsAfterCompletion ? "failed" : "completed");
+      assert.equal(result.detail, throwsAfterCompletion ? "CLI 收口失败" : "本次真实完成结果");
+      assert.equal(fixture.closedSubtaskTabs.length, throwsAfterCompletion ? 0 : 1);
+      assert.equal(fixture.completionSubscriptionCount(), 0);
+    } finally {
+      fixture.dispose();
+    }
+  }
+});
+
+test("未提供完成事件端口的适配器继续读取历史记录", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ observeRunCompletions: false });
+  try {
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "兼容历史读取" });
+    });
+    const result = await fixture.adapter.startAttempt({
+      taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
+      prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
+    }).promise;
+    assert.deepEqual(result, { outcome: "completed", detail: "兼容历史读取" });
+    assert.equal(fixture.closedSubtaskTabs.length, 1);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 for (const configId of [null, "active-profile"]) {
 for (const continuationKind of ["repair", "follow-up"] as const) {
   test(`Loop+ ${continuationKind} with ${configId ?? "no profile"} restores the original session after its tab was closed`, async () => {

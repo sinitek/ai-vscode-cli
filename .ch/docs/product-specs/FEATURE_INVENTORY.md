@@ -221,6 +221,8 @@ Loop / Loop+ 主、子模型属于同一个 CLI 时仍独立执行各自绑定�
 
 Loop / Loop+ 连续子任务会话复用：主模型用 `continueFromSubtaskId` 选择来源；Loop+ 验收失败的关联修补项自动继承原子任务，控制重派复用原线程。关闭 Tab 后仍可按持久化 CLI/config/session 绑定恢复，同一来源或会话串行执行；独立任务新会话，缺失或不兼容绑定记录原因后新建。经典汇报驱动和 Loop+ 验收规则不变。实现见 `src/loopSubtaskSession.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归见 `src/test/loop/loopSubtaskSession.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`；规则见 `.ch/docs/design-docs/loop-subtask-session-reuse.md`。
 
+Loop+ 主、子调用直接捕获本次宿主的真实完成记录；即使共享历史 `tasks.json` 随后缺失该记录，成功子任务仍进入验收并自动关闭 Tab，主模型仍读取本次决策。失败、停止、取消、目录清理失败继续保留诊断；缺少真实成功记录时不根据答复文案判断成功。调用结束释放订阅，并行子任务不串用结果。此修复不追溯修改已有任务快照，也不保证跨窗口共享历史文件的完整性。实现见 `src/extension.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归见 `src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
+
 作为 starter，这里默认从空表开始；当首个真实能力进入规划或实现时，再新增条目。
 
 经典 Loop 除下述简单任务直办外采用汇报驱动：主模型拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。实现子任务可一并完成用户或项目规则要求的验证并汇报范围、命令或操作及结果；已通过且仍覆盖当前改动的验证直接复用，仅补缺失、失败或后续改动影响的部分，未覆盖的实现后集成验证只补相应缺口。汇报不清时优先续接来源子任务补充说明，不因报告细节不足直接要求重测。明确要求独立验收或交叉复核时仍须另派，不能用实现自测替代；均无验证要求时默认不做，用户未提不免除项目规则要求。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）已派发工作的隔离、事件驱动验收和完成门槛不变；简单任务直办遵循下述例外。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。

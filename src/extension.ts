@@ -333,6 +333,7 @@ const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
 const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const LEGACY_HUMAN_INTERACTION_HISTORY_FILE = path.join(DATA_DIR, "human-interaction-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
+const taskRunCompletionEmitter = new vscode.EventEmitter<TaskRunRecord>();
 const LOOP_DEFAULT_MAX_ROUNDS = 20;
 const LOOP_MIN_MAX_ROUNDS = 1;
 const LOOP_MAX_MAX_ROUNDS = 100;
@@ -3954,6 +3955,10 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       runPrompt: (input, options) => runPrompt(input, options),
       getMessages: (target) => getLoopMessagesForTarget(target),
       readRuns: () => readTaskStore().runs,
+      subscribeRunCompletion: (listener) => {
+        const subscription = taskRunCompletionEmitter.event(listener);
+        return () => subscription.dispose();
+      },
       resolveThinkingMode: (input, cli, role, model) => resolvePromptRunThinkingModeForRole(
         input,
         cli,
@@ -5869,6 +5874,7 @@ function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, optio
 }
 
 function appendTaskRun(record: TaskRunRecord, options: { notifyCompletion?: boolean } = {}): void {
+  taskRunCompletionEmitter.fire(record);
   const store = readTaskStore();
   store.runs.push(record);
   writeTaskStore(store);

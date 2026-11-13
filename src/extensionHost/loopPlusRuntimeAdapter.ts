@@ -73,6 +73,8 @@ export type LoopPlusRuntimeAdapterDeps = {
   }) => Promise<void>;
   getMessages: (target: LoopPlusPromptTarget) => ChatMessage[];
   readRuns: () => TaskRunRecord[];
+  /** 本次宿主终态的直接发布；共享历史可能被其它窗口覆盖，不能作为唯一实时事实源。 */
+  subscribeRunCompletion?: (listener: (run: TaskRunRecord) => void) => () => void;
   resolveThinkingMode: (
     input: PromptRunInput,
     cli: PromptRunTarget["cli"],
@@ -117,6 +119,7 @@ export type LoopPlusRuntimeAdapter = {
 type AttemptExecution = {
   thrown: boolean;
   error: unknown;
+  completedRun: TaskRunRecord | null;
   boundary: LoopPlusInvocationBoundary;
   promptInput: PromptRunInput;
   target: LoopPlusPromptTarget;
@@ -311,6 +314,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     promptInput: PromptRunInput,
     role: "main" | "subtask",
     subtaskId?: string,
+    completedRun?: TaskRunRecord | null,
   ): { run: TaskRunRecord | null; content: string | null } {
     const query: LoopPlusInvocationQuery = {
       taskId: promptInput.loopTaskId ?? "",
@@ -319,7 +323,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       subtaskId,
       displayPrompt: promptInput.displayPrompt,
     };
-    const run = selectLoopPlusInvocationRun(deps.readRuns(), boundary, query);
+    const run = completedRun ?? selectLoopPlusInvocationRun(deps.readRuns(), boundary, query);
     if (!run) {
       return { run: null, content: null };
     }
@@ -327,6 +331,36 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       run,
       content: selectLoopPlusInvocationAssistant(deps.getMessages(target), boundary, query, run),
     };
+  }
+
+  async function runInvocation(
+    promptInput: PromptRunInput,
+    target: LoopPlusPromptTarget,
+    role: "main" | "subtask",
+    options: { isAborted: () => boolean; onStarted?: () => void },
+  ): Promise<AttemptExecution> {
+    const boundary = captureBoundary(target);
+    const query: LoopPlusInvocationQuery = {
+      taskId: promptInput.loopTaskId ?? "",
+      round: promptInput.loopRound ?? 1,
+      role,
+      subtaskId: promptInput.loopSubtaskId,
+      displayPrompt: promptInput.displayPrompt,
+    };
+    let completedRun: TaskRunRecord | null = null;
+    const unsubscribe = deps.subscribeRunCompletion?.((run) => {
+      if (isInvocationRun(run, boundary, query)) {
+        completedRun = run;
+      }
+    });
+    try {
+      await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
+      return { thrown: false, error: null, completedRun, boundary, promptInput, target };
+    } catch (error) {
+      return { thrown: true, error, completedRun, boundary, promptInput, target };
+    } finally {
+      unsubscribe?.();
+    }
   }
 
   function runMain(request: LoopPlusMainRequest): LoopPlusMainHandle {
@@ -340,21 +374,17 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         request.modelPrompt,
         request.target.cli,
       );
-      const boundary = captureBoundary(request.target);
-      try {
-        await deps.runPrompt(promptInput, {
-          targetTabId: request.target.tabId,
-          isAborted: () => aborted,
-          onStarted: () => { invocationStarted = true; },
-        });
-      } catch (error) {
-        const invocation = readInvocation(request.target, boundary, promptInput, "main");
+      const execution = await runInvocation(promptInput, request.target, "main", {
+        isAborted: () => aborted,
+        onStarted: () => { invocationStarted = true; },
+      });
+      const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun);
+      if (execution.thrown) {
         if (aborted || invocation.run?.status === "stopped") {
           return null;
         }
-        throw error;
+        throw execution.error;
       }
-      const invocation = readInvocation(request.target, boundary, promptInput, "main");
       if (aborted || invocation.run?.status === "stopped" || invocation.run?.status !== "end") {
         return null;
       }
@@ -460,13 +490,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           const root = executionRoot as { cwd?: string; dispose: () => void } | null;
           promptInput.executionCwd = root?.cwd;
           promptInput.isolateProjectInstructions = Boolean(root);
-          const boundary = captureBoundary(subtaskTarget);
-          try {
-            await deps.runPrompt(promptInput, { targetTabId: subtaskTarget.tabId });
-            return { thrown: false, error: null, boundary, promptInput, target: subtaskTarget };
-          } catch (error) {
-            return { thrown: true, error, boundary, promptInput, target: subtaskTarget };
-          }
+          return runInvocation(promptInput, subtaskTarget, "subtask", {
+            isAborted: () => aborted,
+          });
         },
       );
       if (!rootResult.ok) {
@@ -478,6 +504,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         rootResult.value.promptInput,
         "subtask",
         request.subtaskId,
+        rootResult.value.completedRun,
       );
       if (!aborted) {
         persistSession();
