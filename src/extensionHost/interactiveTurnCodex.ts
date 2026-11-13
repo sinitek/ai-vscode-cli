@@ -128,6 +128,9 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             port.observedCodexPrimaryTurnCompleted = true;
           },
           onTaskListUpdate: (items) => {
+            if (!port.isCurrentRunActive()) {
+              return;
+            }
             port.sendPanelMessage({ type: "taskListUpdate", items, tabId: port.tabId });
           },
           onTokenUsageUpdate: (update) => {
@@ -144,6 +147,9 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
           onRequest: port.handleStructuredHumanInteractionRequest,
           requestUserInputEnabled: port.canHandleStructuredHumanInteractionRequest(),
           onThreadId: (threadId) => {
+            if (!port.isCurrentRunActive()) {
+              return;
+            }
             port.updateProcessTitle(port.cli, threadId);
             port.updateSessionForNewRun(threadId, {
               freezePrevious: threadDecision.freezePrevious,

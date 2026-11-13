@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-12",
+  "as_of": "2026-11-13",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -347,6 +347,20 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.interactive_turn_tab_ownership",
+      "name": "交互调用不得抢占其它标签的活跃会话",
+      "description": "异步启动准备完成后、运行登记及 runner 获取前，按 Tab 和同 CLI + session 检查活跃调用；重复提交明确拒绝，不追加新用户轮次、不释放原 runner。不同会话可并行，显式停止后可重新提交。旧 runId 收尾和迟到 Codex thread/taskList 回调不得覆盖替代调用。该宿主门禁不替代 HOME + thread 的真实写入者释放确认。Loop+ 正常完成自动关闭子任务 Tab，失败或中断保留诊断，不伪装成功。",
+      "status": "active",
+      "applies_to": ["plugin.extension_host", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts", "anchor": "runPromptInteractive"},
+        {"path": "src/extensionHost/interactiveTurnCodex.ts"},
+        {"path": "src/test/extensionHost/promptInteractiveRuntime.test.ts"},
+        {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts", "anchor": "startAttempt"},
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Tab 运行状态与配置协调"}
+      ]
+    },
+    {
       "id": "plugin.rule.codex_interactive_request_ownership",
       "name": "Codex 共享交互请求不阻塞读取并绑定原操作",
       "description": "只有原生提问与审批请求异步等待用户，RPC 响应与生命周期通知保持接收顺序处理。请求绑定原连接、字符串或数字 ID、thread、listener 对象与操作身份，显式 thread 不回退到无关活动会话，旧版审批按 conversationId 路由。停止含热停止、完成、detach/dispose、thread 关闭、归属或操作替换按原生取消响应收口所属请求；serverRequest/resolved 按 thread+ID 清除，实际退出后不发送回答。最多回复一次，取消释放等待闭包，迟到回答/拒绝无效；单个处理器失败不关闭共享进程，不取消其它会话的问题。完成、取消、关闭均清理请求状态，不保存历史答案。",
@@ -396,7 +410,7 @@
     {
       "id": "plugin.rule.codex_immediate_thread_unload_policy",
       "name": "Codex 自启服务按已确认能力启用即时卸载",
-      "description": "仅插件自启 app-server 对已解析目标进行隔离 --version 探测，准确版本契约 0.162.1/0.167.0 支持时加入进程级 thread_unload_delay_secs=0，0.100.0 不支持，其它版本、失败、超时及身份未知的登录 shell 保持兼容参数。最终参数参与连接身份，能力 await 后复核操作活动及 runner 未释放，停止/释放后不迟到启动。探测不接触用户配置、认证或会话，最多 3 秒返回、4096 字节输出、4 个未关闭自有进程，64 项/60 秒缓存区分实际身份和解析上下文；只终止本探测创建的进程，超时后保留临时 HOME 和进程名额直到 close，不能以终止请求或管道销毁代替清理证据。策略、unsubscribe 回执及逻辑关闭均不证明 writer 已释放，原 thread 互斥、其它会话并行和 75 秒交接期限不变。",
+      "description": "仅插件自启 app-server 对已解析目标进行隔离 --version 探测，空白命令直接返回 unknown，不默认探测其它 Codex。准确版本契约 0.162.1/0.167.0 支持时加入进程级 thread_unload_delay_secs=0，0.100.0 不支持，其它版本、失败、超时及身份未知的登录 shell 保持兼容参数。最终参数参与连接身份，能力 await 后复核操作活动及 runner 未释放，停止/释放后不迟到启动。探测不接触用户配置、认证或会话，最多 3 秒返回、4096 字节输出、4 个未关闭自有进程，64 项/60 秒缓存区分实际身份和解析上下文；只终止本探测创建的进程，超时后保留临时 HOME 和进程名额直到 close，不能以终止请求或管道销毁代替清理证据。策略、unsubscribe 回执及逻辑关闭均不证明 writer 已释放，原 thread 互斥、其它会话并行和 75 秒交接期限不变。",
       "status": "active",
       "applies_to": ["plugin.extension_host", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
@@ -409,9 +423,26 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_codex_fix_acceptance_scope",
+      "name": "Loop+ 修复检测区分本机源码通过与完整验收",
+      "description": "macOS/Windows 使用 npm run verify:loop-plus、同名原生启动器或根目录 verify_mac.py/verify_win.py；Python 入口共用参数转发与退出码处理，不重复检测逻辑。顺序构建、必要回归、默认三轮 pool 原会话交接和一次公共 runner 协议验收。固定同一实际 Codex 路径与版本，临时 HOME 和本机模拟模型不触碰用户任务；不跳过失败、缺证据或未确认清理，不以强杀当成功。报告和日志拒绝覆盖。passed 仅代表所记录源码/平台/CLI 的隔离检测，fullyVerified 始终为 false；其它原生平台、已安装扩展与真实 VS Code 多窗口/成功自动关闭 Tab、真实模型任务须分别验证。",
+      "status": "active",
+      "applies_to": ["plugin.extension_host", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": "scripts/verify_loop_plus_fix.js"},
+        {"path": "verify_mac.py"},
+        {"path": "verify_win.py"},
+        {"path": "scripts/verify_loop_plus.py"},
+        {"path": "scripts/tests/test_verify_loop_plus.py"},
+        {"path": "src/test/core/loopPlusFixAcceptance.test.ts"},
+        {"path": ".ch/docs/TESTING.md"},
+        {"path": ".ch/docs/runbooks/local-development.md", "anchor": "Loop+/Codex 一键修复检测（macOS / Windows）"}
+      ]
+    },
+    {
       "id": "plugin.rule.chat_tab_running_status_priority",
       "name": "Tab 运行状态优先于中间错误",
-      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
+      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。完成摘要只从最近用户消息之后恢复，新用户轮次和宿主恢复的活跃信号清除旧完成摘要；完整面板状态后立即协调活跃 Loop 子任务。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [

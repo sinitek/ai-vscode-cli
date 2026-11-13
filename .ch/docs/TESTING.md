@@ -8,11 +8,13 @@
 - 全量单元入口：`npm run test:unit`，会先构建，再通过 `scripts/run_unit_tests.js` 枚举 `dist/test/**/*.test.js` 的编译后 JavaScript 清单并交给 Node 原生 `node --test` 执行；该入口不得退回裸 `node --test` 自动扫描仓库。
 - 单测发现范围核对：`node scripts/run_unit_tests.js --list` 只应输出 `dist/test/**/*.test.js`，不应包含 `src/test/**/*.ts`。
 - 最小相关单测：先 `npm run build`，再运行 `node --test dist/test/<相关测试>.js ...`。
+- Loop+/Codex 跨平台修复检测：macOS / Windows 均执行 `npm run verify:loop-plus`，或双击 `scripts/verify_loop_plus_fix.command` / `scripts/verify_loop_plus_fix.cmd`。自动构建、执行所有权/完成状态/Tab/交接回归、默认三轮真实 pool 交接和一次公共 runner 交接；仅使用临时 HOME 与本机模拟模型，不使用用户会话或产生真实模型费用。参数、报告与验收边界见[本地开发手册](runbooks/local-development.md#loopcodex-一键修复检测macos--windows)。单测跳过、缺证据、异常退出或资源清理未确认均失败；退出 0 仅表示当前平台源码与隔离运行时通过，不表示已安装扩展或其它平台完全修复。
 - 构建会先清理 `dist/`；不要将构建（包括自带构建的测试命令）与读取 `dist/` 的测试并行执行，以免出现模块暂时缺失的 `ENOENT` 或 `MODULE_NOT_FOUND`。多个含构建的入口应串行执行。
 - 常用分组：`npm run test:core` 覆盖核心运行时，`npm run test:page` 覆盖 Webview / 配置页相关测试。
 - 严格覆盖率入口：`npm run test:core-coverage`、`npm run test:page-coverage` 对 statements、branches、functions、lines 均要求 100%；即使用例全部通过，覆盖率不足仍会返回失败。已确认的历史覆盖缺口见[技术债跟踪](exec-plans/tech-debt-tracker.md)，不得降低门槛或把覆盖率失败混写为行为回归。
 - 静态空白校验：`npm run validate:whitespace`，也可在必要时用脚本参数限制到本次改动范围。
 - Python 开发、导出与发布脚本：`python3 -m unittest discover -s scripts/tests -p 'test_*.py'`（Windows 可用 `python`），覆盖依赖布局、失败中止、macOS 路径选择、Windows `.cmd` 参数传递、发布鉴权与 VSIX ZIP 审计。
+- 根目录检测入口：macOS 用 `python3 verify_mac.py`，Windows 用 `python verify_win.py`；均转发到同一 Loop+/Codex 验收脚本。入口最小回归：`python3 -m unittest discover -s scripts/tests -p 'test_verify_loop_plus.py'`，覆盖含空格路径、参数/退出码透传、缺工具、人工中断，以及从其它目录调用两个入口的帮助与非法参数检查；帮助检查不运行真实检测。
 - 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态的问题，单元测试之外还要补充最小本机真实验证，并记录命令、关键输出和结论。
 - Loop+ 双模型真实门禁：`npm run build && node scripts/verify_loop_model_routing.js --live`。该命令使用真实 Codex runner 调用 `gpt-6.1-sol` / high 与 `gpt-6.1-terra` / low，会产生模型费用，使用系统临时工作区和隔离任务存储；只有完整派发、子任务执行、验收收口、session 参数及产物都通过才成功。429 等上游错误必须保持失败，不能用参数正确替代完整真实验收；此脚本不发布扩展。
 

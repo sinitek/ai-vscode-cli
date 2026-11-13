@@ -3,6 +3,38 @@ import { test } from "node:test";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { createRunStatusHarness } from "./tabRunStatusHarness";
 
+test("restored unfinished turns never inherit an earlier turn's completion summary", () => {
+  const harness = createRunStatusHarness();
+  const previousTurn = [
+    { role: "user", content: "上一项任务" },
+    { role: "system", content: "任务已完成，执行 00:10" },
+  ];
+  harness.hydrate("active", previousTurn);
+  assert.equal(harness.runtime("active").lastRunStatusMessage, previousTurn[1].content);
+  harness.hydrate("active", [...previousTurn,
+    { role: "user", content: "继续下一项任务" },
+    { role: "assistant", content: "仍在执行" },
+  ]);
+  assert.equal(harness.runtime("active").lastRunStatusMessage, "");
+});
+
+test("a new user message clears an earlier completion summary immediately", () => {
+  const harness = createRunStatusHarness();
+  harness.run("active", "end");
+  harness.message("active", "appendMessage", "system", "任务已完成，执行 00:10");
+  harness.message("active", "appendMessage", "user", "继续");
+  assert.equal(harness.runtime("active").lastRunStatusMessage, "");
+});
+
+test("host reconciliation restores a live subtask without retaining a historical completion", () => {
+  const harness = createRunStatusHarness();
+  harness.hydrate("background", [{ role: "system", content: "任务已完成，执行 00:10" }]);
+  harness.send({ type: "runningConversationTabsReconciled", startTabIds: ["background"], stopTabIds: [] });
+  assert.equal(harness.tabState("background").running, true);
+  assert.equal(harness.runtime("background").lastRunStatus, "start");
+  assert.equal(harness.runtime("background").lastRunStatusMessage, "");
+});
+
 function createErrorSync() {
   const source = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING;
   const start = source.indexOf("      function syncTabErrorFromMessage(");

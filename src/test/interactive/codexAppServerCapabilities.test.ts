@@ -183,7 +183,7 @@ test("unquoted paths containing spaces and Node script wrappers use the existing
 
 test("unsafe wrapper/configuration arguments and empty commands do not enter a probe", async (t) => {
   const f = fixture(t);
-  for (const command of ["", `"${f.command}" --profile private`, "npx --yes @openai/codex", `"${process.execPath}" --require private.js wrapper.js`]) {
+  for (const command of ["", " \t\n ", `"${f.command}" --profile private`, "npx --yes @openai/codex", `"${process.execPath}" --require private.js wrapper.js`]) {
     assert.deepEqual(await f.resolveCodexThreadUnloadCapability({ command, env: f.env }), { supported: false, reason: "unknown" });
   }
   assert.equal(f.calls.length, 0);

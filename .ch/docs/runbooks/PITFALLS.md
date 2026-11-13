@@ -4,6 +4,14 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## Loop+ 假完成必须核对轮次与会话所有权
+
+- 症状：子任务仍在推理或调用工具，界面却展示完成，且 Tab 不关闭。先对照任务记录、runStatus 和原生最终答复/完成事件；不可凭历史系统摘要判定成功，也不可用失败时关 Tab 掩盖问题。
+- 易复发链路：多个 Tab 续接相同 CLI session，手动继续绕过调度器 session lease；新临时 cwd 导致 manager 替换 runner，活跃旧调用收到 RUNNER_DISPOSED。宿主必须在异步准备后、取得 runner 前拒绝重复会话调用；旧回调和收尾按 runId 校验。
+- UI 恢复只看最近用户消息之后的完成摘要，发布面板状态后立即恢复宿主确认的活跃 Loop 调用。相关回归：`promptInteractiveRuntime.test.ts`、`tabRunStatus.test.ts`、`loopPlusRuntimeIntegration.test.ts`。
+- 统一检测使用 `npm run verify:loop-plus`（macOS / Windows 同命令）；不要用旧 pool 专项脚本的通过代替所有权、状态、Tab 和公共 runner 验证。报告只证明当前源码与本机隔离运行时，`fullyVerified=false`，已安装扩展和其它平台必须另验；详见本地开发手册。
+- 平台验证先固定实际二进制绝对路径并记录版本；终端 `codex --version` 不等于插件默认解析的版本。本机曾同时解析出 0.145.0 与 0.167.0，不能由此直接推断历史事故使用了哪一个。隔离验证脚本的临时根须 realpath，macOS `/var` 与 `/private/var` 别名会使安全路径归属检查误报；不能放宽归属校验或假造持久化成功。
+
 ## Codex unsubscribe 不等于写入锁立即释放
 
 - 状态：`有效`。现象：原 thread 从另一 app-server 恢复时报 `already has an active writer`，即使原连接没有正在执行的 turn。

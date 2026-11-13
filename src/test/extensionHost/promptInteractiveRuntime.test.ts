@@ -304,6 +304,128 @@ function createTarget(overrides: Partial<PromptRunTarget> = {}): PromptRunTarget
   };
 }
 
+test("a second tab cannot replace a live same-session runner when its execution cwd changes", async () => {
+  const started = createDeferred();
+  const finish = createDeferred();
+  let attempt = 0;
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      attempt += 1;
+      started.resolve();
+      if (attempt === 1) {
+        await finish.promise;
+      }
+      handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
+    },
+  });
+  const first = harness.host.runPromptInteractive(createPromptInput(), createTarget(), { cwd: "/tmp/first-subtask" });
+  await started.promise;
+  try {
+    await assert.rejects(harness.host.runPromptInteractive(
+      createPromptInput({ displayPrompt: "继续", modelPrompt: "继续" }),
+      createTarget({ tabId: "tab-2" }), { cwd: "/tmp/next-subtask" },
+    ), /会话仍在.*运行/);
+    assert.equal(harness.codexRunnerCreateCalls, 1);
+    assert.equal(harness.activeRunsByTabId.has("tab-1"), true);
+    assert.equal(harness.activeRunsByTabId.has("tab-2"), false);
+    assert.equal(harness.taskRecords.length, 0);
+    assert.equal(harness.messagesBySession.get("session-1")?.filter((message) => message.role === "user").length, 1);
+  } finally {
+    finish.resolve();
+    await first;
+  }
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2" }));
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end", "end"]);
+});
+
+test("asynchronous preparation cannot admit two runs for the same session", async () => {
+  const preparation = createDeferred();
+  const started = createDeferred();
+  const finish = createDeferred();
+  let attempt = 0;
+  const harness = createInteractiveRuntimeHarness({
+    runtimeDeps: { readRuntimeConfigFingerprint: async () => { await preparation.promise; return "identity"; } },
+    codexRunBehavior: async (_prompt, handlers) => {
+      attempt += 1;
+      started.resolve();
+      if (attempt === 1) {
+        await finish.promise;
+      }
+      handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
+    },
+  });
+  const first = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  const second = assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2" })), /会话仍在.*运行/);
+  preparation.resolve();
+  await started.promise;
+  try {
+    await second;
+    assert.equal(harness.codexRunnerCreateCalls, 1);
+  } finally {
+    finish.resolve();
+    await first;
+  }
+});
+
+test("another session remains runnable while a subtask owns its session", async () => {
+  const started = createDeferred();
+  const finish = createDeferred();
+  let attempt = 0;
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      attempt += 1;
+      if (attempt === 1) {
+        started.resolve();
+        await finish.promise;
+      }
+      handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
+    },
+  });
+  const first = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  await started.promise;
+  try {
+    await harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2", sessionId: "session-2" }));
+    assert.equal(harness.activeRunsByTabId.has("tab-1"), true);
+    assert.equal(harness.taskRecords.length, 1);
+  } finally {
+    finish.resolve();
+    await first;
+  }
+  assert.equal(harness.taskRecords.length, 2);
+});
+
+test("a stopped Codex turn cannot register a late thread or task list over its replacement", async () => {
+  const started = createDeferred();
+  const finishOld = createDeferred();
+  let attempt = 0;
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      attempt += 1;
+      if (attempt === 1) {
+        started.resolve();
+        await finishOld.promise;
+        handlers.onThreadId("stale-thread");
+        handlers.onTaskListUpdate?.([{ text: "过期任务", done: true }]);
+      } else {
+        handlers.onAssistantDelta("[final_answer] 新任务完成", { codexFinalAnswer: true });
+      }
+    },
+  });
+  const oldRun = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  await started.promise;
+  harness.activeRunsByTabId.get("tab-1")!.stop();
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  const mappingCount = harness.mappingUpserts.length;
+  const eventCount = harness.runStatusEvents.length;
+  finishOld.resolve();
+  await oldRun;
+  assert.equal(harness.mappingUpserts.length, mappingCount);
+  assert.equal(harness.processTitles.some((item) => item.sessionId === "stale-thread"), false);
+  assert.equal(harness.panelMessages.some((item) => item.type === "taskListUpdate"), false);
+  assert.equal(harness.runStatusEvents.length, eventCount);
+});
+
 test("an aborted Loop question does not start after asynchronous runtime preparation", async () => {
   const preparation = createDeferred();
   const preparing = createDeferred();

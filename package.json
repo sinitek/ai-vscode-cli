@@ -1147,6 +1147,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p ./",
+    "verify:loop-plus": "node scripts/verify_loop_plus_fix.js --live",
     "compile": "npm run build",
     "test": "npm run test:unit",
     "test:unit": "npm run build && node scripts/run_unit_tests.js",

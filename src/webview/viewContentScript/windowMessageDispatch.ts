@@ -54,6 +54,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const runtimeState = getConversationRuntimeState(eventTabId, { create: false });
             if (runtimeState && data.message && data.message.role === "user") {
               runtimeState.lastRunStatus = "";
+              runtimeState.lastRunStatusMessage = "";
             }
             syncTabErrorFromMessage(eventTabId, data.message);
             const loopMetaChanged = updateLoopMetaForTabFromMessage(eventTabId, data.message);

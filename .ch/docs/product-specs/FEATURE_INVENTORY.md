@@ -2,6 +2,13 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop+ 活跃会话与完成状态隔离
+
+- 状态：`active`（2026-11-13，源码实现；未安装到当前运行中的扩展）。同一 CLI 会话已有活跃交互时，另一 Tab 的继续请求明确拒绝，不因临时 cwd 或配置指纹变化释放原 runner；不同会话仍可并行，显式停止后允许继续。
+- 完成摘要不跨越最近用户消息恢复，新用户轮次和恢复的活跃状态清除旧完成摘要；完整面板状态后立即校准活跃 Loop 子任务。迟到的 Codex thread/任务列表回调不得污染替代调用。
+- 正常完成仍自动关闭子任务 Tab；失败、中断保留诊断，不作为成功关闭。保留 1.9.2 的真实写入者释放确认，不回滚安全交接。
+- 实现：`src/extension.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/extensionHost/interactiveTurnCodex.ts`、`src/webview/viewContentScript/`；回归：`src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/webview/tabRunStatus.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。原生 macOS 的隔离公共 runner 交接已验证，真实 VS Code 中的端到端复验仍需安装后进行。
+
 ## Codex 会话交接与写入冲突保护
 
 - 状态：`active`（2026-11-12）。普通对话、Loop / Loop+ 和原生压缩复用同一连接生命周期保护；同一扩展宿主内同 CODEX_HOME + threadId 不允许重复操作，不限制不同项目/会话并发。

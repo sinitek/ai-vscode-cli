@@ -41,6 +41,7 @@ starter 默认不预置事件。接入真实项目后，从第一条真正影响
 
 | 日期 | 类型 | 事件 | 结果/原因 | 可复用结论 | 来源 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-13 | 失败原因 / 成功方案 | Loop+ 未完成轮次误用历史完成状态，跨 Tab 继续又替换同会话活跃 runner | 历史摘要未以最近用户轮次为界，宿主只按目标 Tab 判断运行；新增会话门禁、状态恢复校准和迟到回调保护，保留写锁交接 | 完成展示、真实运行与 Tab 关闭分别验证；平台差异需固定实际 CLI 版本和 canonical 临时路径，不回滚释放安全保护 | `.ch/docs/runbooks/PITFALLS.md#loop-假完成必须核对轮次与会话所有权`；`.ch/docs/design-docs/vscode-cli-extension-runtime.md#Tab-运行状态与配置协调` |
 | 2026-11-04 | 失败原因 / 成功方案 | macOS 人工交互通知命令成功但用户看不到提示 | 裸脚本缺少有效应用身份、系统拒绝授权、JXA 将空触发器桥接为 `NSNull` 分别阻断展示；改为固定身份的后台应用、现代通知 API、主线程桥接及 `$()` nil 后，用户确认看到“携宁 CLI 提醒” | 通知验收必须分开核对授权、系统投递和用户可见性；授权等待不能占用窗口提醒清理队列 | `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`；文档交付来源：`.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果` |
 | 2026-11-02 | 失败原因 / 成功方案 | Loop+ DSH 验收修复复用同一会话仍失败 | HOME 已正确找回，但每轮随机 cwd 被 DSH 的 canonical workspace 检查拒绝；稳定空执行根后，真实 DSH 跨进程续接并完成文件修复 | 恢复身份不止 session ID；还需稳定 HOME 与 cwd，且不能牺牲项目规则隔离。旧随机 cwd 会话明确失败，不假恢复 | `.ch/docs/design-docs/loop-subtask-session-reuse.md`；`src/test/extensionHost/dshLoopSessionResumeLive.test.ts` |
 | 2026-10-24 | 失败原因 / 成功方案 | Grok 分类器用 `trim()` 丢弃纯空白 `agent_message_chunk` 和 `agent_thought_chunk` | 分块边界把 `Hello` + 空格 + `world` 收成 `Helloworld`，换行和缩进同样丢失。撤销该判断后，非空文本原样保留 | 空字符串才可忽略。宿主期望不能反过来定义丢空白。展示层负责隐藏纯空白气泡 | `.ch/docs/runbooks/PITFALLS.md` 的“Grok 分类器不能按 trim 丢弃纯空白分块”；`src/interactive/grokAppServerProtocol.ts`；`src/test/interactive/grokAppServerProtocol.test.ts` |

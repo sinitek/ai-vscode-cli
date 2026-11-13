@@ -82,6 +82,7 @@ function launcherIdentity(command: string): string[] {
 }
 
 function resolveLaunch(input: Input): Launch | undefined {
+  if (!input.command.trim()) { return undefined; }
   const env = input.env ?? process.env;
   // An existing whole path may contain spaces without quoting, as in the runner.
   const whole = resolveCliCommand(input.command, { cwd: input.cwd, env });

@@ -1,45 +1,12 @@
 import * as assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
+import { createRunnerEvidenceFixture as fixture } from "./codexRunnerEvidenceFixture";
 
 const { verifyRunnerEvidence, waitFor } = require(path.resolve(__dirname, "../../../scripts/verify_codex_runner_unload.js")) as {
   verifyRunnerEvidence: (evidence: ReturnType<typeof fixture>) => { immediateThreadUnload: boolean; releaseEvidence: string };
   waitFor: (predicate: () => boolean, timeoutMs: number, phase: string) => Promise<void>;
 };
-
-function fixture(supported = true) {
-  const command = "C:/isolated CLI/codex.cmd";
-  let sequence = 4;
-  const events: { process: number; method: string; direction: string; threadId: string; seq: number; status?: string; persisted?: boolean; failed?: boolean }[] = [];
-  const event = (process: number, method: string, direction: string, threadId: string, extra = {}) => {
-    events.push({ process, method, direction, threadId, seq: ++sequence, ...extra });
-  };
-  event(0, "thread/start", "response", "target", { persisted: true });
-  event(0, "turn/start", "request", "target");
-  event(0, "turn/completed", "notification", "target", { status: "failed" });
-  event(0, "thread/start", "response", "peer");
-  event(0, "turn/start", "request", "peer");
-  event(0, "turn/completed", "notification", "peer", { status: "failed" });
-  const migrationSeq = ++sequence;
-  event(0, "thread/unsubscribe", "request", "target");
-  event(0, "thread/unsubscribe", "response", "target", { status: "unsubscribed" });
-  event(0, "thread/closed", "notification", "target");
-  event(1, "thread/resume", "request", "target");
-  event(1, "thread/resume", "response", "target");
-  event(1, "turn/start", "request", "target");
-  event(1, "turn/completed", "notification", "target", { status: "failed" });
-  const peerCheckSeq = ++sequence;
-  event(0, "turn/start", "request", "peer");
-  event(0, "turn/completed", "notification", "peer", { status: "failed" });
-  return {
-    capabilities: [{ command, supported, reason: supported ? "supported" : "unknown", version: "0.162.1", seq: 1 }],
-    probes: [{ command, version: "0.162.1", closed: true }],
-    processes: [123, 456].map((pid, index) => ({ command, pid, seq: index + 2,
-      args: ["app-server", "--listen", "stdio://", ...(supported ? ["-c", "thread_unload_delay_secs=0"] : [])] })),
-    events, migrationSeq, peerCheckSeq, targetThread: "target", peerThread: "peer", elapsedMs: 43,
-    localRequests: 4, cleanup: { processesExited: true, stdioClosed: true, temporaryDirectoryRemoved: true },
-  };
-}
 
 test("runner evidence accepts real release, original thread, retained peer, and complete cleanup", () => {
   assert.equal(verifyRunnerEvidence(fixture()).immediateThreadUnload, true);

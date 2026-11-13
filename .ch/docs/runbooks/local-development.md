@@ -68,6 +68,55 @@ PowerShell 先设置 `$env:SINITEK_DSH_LOOP_LIVE='1'`，再运行相同 `node --
 
 测试只读取本机激活的 `active-profile.json` 和 `active-patch.yaml`，凭据仅注入新 DSH 子进程环境；会话、文件和 HOME 全部使用独立临时目录并在测试后清理，不改用户配置或已有会话。第一项真实协议测试确认换 cwd 拒绝、原 cwd 恢复；第二项用生产 Loop+ 调度适配器和 DSH 执行策略，以脚本主模型触发失败验收，再销毁原进程，让真实 DSH 续接并凭上一轮仅在上下文中提供的校验码修复文件。输出只记录断言结果，不输出配置、凭据或模型正文。图形 Extension Development Host 点击和真实主模型决策不在此用例范围内。
 
+#### Loop+/Codex 一键修复检测（macOS / Windows）
+
+前置条件：安装项目要求的 Node.js/npm、git、Codex，并已在仓库安装依赖。macOS 终端、Windows PowerShell 和 CMD 使用同一命令：
+
+```text
+npm run verify:loop-plus
+```
+
+根目录另提供 Python 3.9+ 入口，复用同一检测流程，不额外安装依赖或改变验收范围：
+
+```text
+macOS：python3 verify_mac.py
+Windows：python verify_win.py
+```
+
+参数直接透传，例如 `python3 verify_mac.py --codex "/opt/local CLI/bin/codex" --runs 3 --report "/tmp/loop-fix.json"`；Windows 使用 `python verify_win.py --codex "C:\Program Files\Codex\codex.cmd" --report "C:\Temp\loop-fix.json"`。`--help` 查看同一份参数说明，不开始检测。入口按自身位置定位仓库，不依赖当前目录；保留检测退出码，中断返回 130，找不到 Node 或脚本时返回 1。它们不是独立安装包，仍需完整仓库、Node/npm、git、Codex 与已安装的项目依赖。
+
+也可双击 `scripts/verify_loop_plus_fix.command`（macOS）或 `scripts/verify_loop_plus_fix.cmd`（Windows）。启动器不依赖当前工作目录，转发参数并保留检测退出码；Windows 无参数双击时暂停供查看结果。macOS 如未保留可执行权限，使用 `bash scripts/verify_loop_plus_fix.command`。需要显式原生入口时运行 `node scripts/verify_loop_plus_fix.js --live`；`--help` 不构建、不启动 Codex。
+
+默认三轮约需 3–5 分钟，包含原 pool 默认约 60 秒卸载等待，不以开启零延迟或减少轮次规避旧故障。自动顺序执行：
+
+1. 构建当前源码，定位实际 Codex 可执行文件并记录版本、平台、架构、源码版本、commit 和 dirty。
+2. 执行必要回归集：同 session 并发所有权、迟到回调、完成摘要轮次边界、面板状态恢复、正常关闭与失败保留 Tab、原会话交接及检测脚本自身。
+3. 重复真实写锁冲突 → 原 thread 交接 → 同进程另一 thread 保留 → 完整清理。
+4. 通过公共 runner 和实际版本能力探测，检查真实释放先于恢复、另一 thread 继续运行、探测/运行子进程退出、stdio 关闭和临时目录删除。能力未知不强行启用 `thread_unload_delay_secs=0`。
+
+检测不调用真实模型、不读写真实任务/会话、不自动安装或重载扩展、不发布。默认用插件相同的命令解析规则解析 `codex`，**不读取激活档案中的自定义命令**；有自定义配置时应显式传入插件实际使用的路径。`--codex` 优先于 `CODEX_COMMAND`，两者均未指定时才解析默认命令。版本检查及全部原生阶段固定使用同一路径。带空格路径必须加引号，例如：
+
+```text
+npm run verify:loop-plus -- --codex "C:\Program Files\Codex\codex.cmd" --report "C:\Temp\loop-fix.json"
+npm run verify:loop-plus -- --codex "/opt/local CLI/bin/codex" --report "/tmp/loop-fix.json"
+```
+
+以上是路径格式示例，使用前替换为真实路径；`--codex` 只接受可执行文件路径，不接受带配置参数的整段命令。可用 `--runs 1` 做快速诊断（允许 1–20）；报告记录实际轮数，单轮通过不能替代默认三轮验收。
+
+默认报告位于系统临时目录，终端输出具体位置。`--report <文件.json>` 同时生成同名 `.log` 阶段日志与 `.runner.json` 公共 runner 详细协议报告；已有任一文件时拒绝启动，避免覆盖证据。失败发生在公共 runner 前时没有该阶段报告，不伪造通过。报告保留失败阶段、退出码、监督/清理证据、单测统计和每轮结果。
+
+- **退出 1 / `passed=false`**：任一步失败、单测跳过/取消/TODO、缺失或不一致的协议证据、非正常退出、输出未完成或清理未确认。不能只凭某条 `handoff_verified` 或退出码 0 判定成功。查看报告和日志，不要静默换另一版本的 Codex 让结果变绿。
+- **退出 0 / `passed=true`**：只代表该报告所列平台、源码和 Codex 版本的必要回归与隔离运行时通过。`fullyVerified=false` 与 `notCovered` 始终保留：本入口没有验证已安装扩展、真实 VS Code 多窗口/成功自动关闭 Tab、真实模型完整任务、其它平台、其它 CLI 或全仓单测。
+- 要判断跨平台是否完全修复，需在 macOS 与 Windows 对同一源码分别运行并保留报告，再对实际安装的新扩展补做真实 Loop+ 端到端验收：运行中不得假完成；同 session 重复继续不能打断原调用；正常完成自动关闭子 Tab；失败保持失败且保留证据。未执行的项目不得写成已通过。
+
+旧 `verify_codex_thread_handoff.js` / `verify_codex_thread_handoff_acceptance.js` 仅保留 pool 专项诊断；`verify_codex_runner_unload.js` 为公共 runner 专项诊断。判断此次完整源码修复优先使用统一入口，不能只跑旧脚本。
+
+本入口属于开发测试工具，不新增插件用户可见能力；本次脚本优化无需再次变更功能清单，前一轮运行时修复的功能条目仍为事实来源。
+
+2026-11-13 本机验证：macOS arm64 / Node 24.22.2，显式固定 Codex 0.167.0，默认三轮完整入口退出 0；构建通过，必要回归 717/717（无跳过），pool 交接耗时 60080 / 60048 / 60037ms，公共 runner 以真实 `thread/closed` 在 26ms 后交接。四组进程退出、stdio 关闭、临时目录删除均确认，另核对自有 PID 已不存在；重复指定已有报告时退出 1 且文件未改。ontology 校验与 9 项 Python 测试通过，启动器本机帮助调用及语法检查通过。检测暴露的空白命令能力探测已修复并补回归：空白不再默认探测另一个 Codex。
+
+本机默认命令解析另有 Codex 0.145.0，与显式通过的 0.167.0 不同；上述通过记录不覆盖 0.145.0，更不能反推历史任务的实际版本。Windows 启动参数及失败收尾有自动化断言，但 Windows 原生运行和真实安装扩展的 Loop+ 端到端验收未执行。全仓单测不在本入口范围，不能把必要回归通过写成全仓通过。
+
 ### 6. 一键启动开发主机（Windows / macOS / Linux）
 
 需要 Python 3.9+、Node.js/npm 和 VS Code。Windows 运行：

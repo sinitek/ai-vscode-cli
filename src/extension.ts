@@ -1376,6 +1376,7 @@ async function postPanelState(): Promise<void> {
   updateConfigHeartbeatSnapshot(state.currentCli, state.configState);
   viewProvider?.postState(state);
   replayOpenCodeTaskLists();
+  reconcileRunningConversationTabs();
 }
 
 function postEditorContextState(): void {
@@ -5072,7 +5073,12 @@ async function runPromptNow(
       return;
     }
     void logError("runPrompt-failed", { cli: target.cli, error: info.message, errorCode: info.code });
-    sendRunStatusForTab(target.tabId, "error", { message: info.message });
+    if (!isTabRunActive(target.tabId)) {
+      if (info.code === "SESSION_RUN_ACTIVE") {
+        appendSystemMessageForPromptTarget(target, info.message);
+      }
+      sendRunStatusForTab(target.tabId, "error", { message: info.message });
+    }
     if (promptInput.throwOnError) {
       throw error;
     }

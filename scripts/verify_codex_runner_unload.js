@@ -98,7 +98,7 @@ async function main(args = process.argv.slice(2)) {
   const capabilityModule = require(path.join(moduleRoot, "interactive/codexAppServerCapabilities"));
   const originalCapability = capabilityModule.resolveCodexThreadUnloadCapability;
   const originalSpawn = crossSpawn.spawn;
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-codex-runner-"));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-codex-runner-")));
   const home = path.join(root, "home");
   const workspace = path.join(root, "workspace");
   fs.mkdirSync(home); fs.mkdirSync(workspace);
@@ -254,7 +254,7 @@ async function main(args = process.argv.slice(2)) {
       capabilityModule.resolveCodexThreadUnloadCapability = originalCapability;
     }
   }
-  const report = { passed: false, evidence, notCovered: ["原生 macOS/Linux", "真实 VS Code 多窗口", "其它 CLI", "真实模型执行", "有效配置内容指纹算法（本脚本显式切换身份）"] };
+  const report = { passed: false, evidence, notCovered: ["其它原生平台（本次平台见 evidence.environment.platform）", "真实 VS Code 多窗口", "其它 CLI", "真实模型执行", "有效配置内容指纹算法（本脚本显式切换身份）"] };
   try {
     if (failure) throw failure;
     report.verified = verifyRunnerEvidence(evidence);

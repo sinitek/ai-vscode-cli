@@ -8,6 +8,7 @@ const crossSpawn = require("cross-spawn");
 
 const repoRoot = path.resolve(__dirname, "..");
 const liveScript = path.join(__dirname, "verify_codex_thread_handoff.js");
+const runnerScript = path.join(__dirname, "verify_codex_runner_unload.js");
 // These clocks start only after terminal failure, never during initialization or handoff.
 const FAILURE_EXIT_GRACE_MS = 5000;
 const FAILURE_OUTPUT_DRAIN_MS = 5000;
@@ -89,12 +90,13 @@ function regressionTests() {
   return tests.sort();
 }
 
-function runCommand(command, args, echo = true, runtime = { spawn: crossSpawn.spawn, setTimeout, clearTimeout }) {
+function runCommand(command, args, echo = true, runtime = { spawn: crossSpawn.spawn, setTimeout, clearTimeout }, options = {}) {
   // Only supervise the verifier we create directly. Never signal diagnostic PIDs or a process tree.
-  const supervise = command === process.execPath && args[0] === liveScript && args.includes("--live");
+  const supervise = command === process.execPath && [liveScript, runnerScript].includes(args[0]) && args.includes("--live");
   return new Promise((resolve) => {
     const child = runtime.spawn(command, args, {
       cwd: repoRoot, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+      ...(options.env ? { env: options.env } : {}),
     });
     let stdout = "";
     let stderr = "";
@@ -250,10 +252,11 @@ if (require.main === module) {
     if (options.help) {
       console.log("用法：node scripts/verify_codex_thread_handoff_acceptance.js --live [--runs 3] [--report 文件路径]");
       console.log("自动构建、执行相关回归、重复隔离真实交接并生成报告；只访问本机模拟模型，不修改用户会话。完整通过仍需结合真实 VS Code 多窗口 Loop+ 验收。");
+      console.log("包含 Loop+ 所有权、完成状态、Tab 和公共 runner 的统一入口：npm run verify:loop-plus。");
       return;
     }
     return runAcceptance(options).then((report) => { process.exitCode = report.passed ? 0 : 1; });
   }).catch((error) => { console.error(error); process.exitCode = 1; });
 }
 
-module.exports = { parseOptions, verifyLiveResult, runAcceptance, runCommand };
+module.exports = { parseOptions, verifyLiveResult, regressionTests, runAcceptance, runCommand };

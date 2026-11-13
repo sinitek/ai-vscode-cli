@@ -341,6 +341,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return;
     }
 
+    const sessionOwner = Array.from(interactiveRunsByTabId.values()).find((run) => !run.stopped
+      && (run.tabId === tabId || (uiSessionId && run.cli === cli && run.sessionId === uiSessionId)));
+    if (sessionOwner) {
+      throw Object.assign(new Error(`会话仍在标签 ${sessionOwner.tabId} 中运行，请切换到该标签查看，或先停止原任务再重试。`), {
+        code: "SESSION_RUN_ACTIVE",
+      });
+    }
+
     logCliStartup({
       cli,
       cwd,
@@ -989,6 +997,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
+      if (!isCurrentRunActive()) {
+        return;
+      }
       subagentProgress.finishRunning(status === "end" ? "completed" : "failed");
       void logInfo("runPrompt-interactive-end", {
         cli,

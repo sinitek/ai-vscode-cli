@@ -22,7 +22,7 @@ const { parseOptions, verifyLiveResult, runAcceptance, runCommand } = require(sc
   parseOptions: (args: string[]) => Options;
   verifyLiveResult: (result: CommandResult) => Record<string, unknown>;
   runAcceptance: (options: Options, execute: (command: string, args: string[], echo?: boolean) => Promise<CommandResult>) => Promise<Report>;
-  runCommand: (command: string, args: string[], echo: boolean, runtime: ReturnType<typeof commandFixture>["runtime"]) => Promise<CommandResult>;
+  runCommand: (command: string, args: string[], echo: boolean, runtime: ReturnType<typeof commandFixture>["runtime"], options?: { env: NodeJS.ProcessEnv }) => Promise<CommandResult>;
 };
 
 class ManualClock {
@@ -67,7 +67,7 @@ class FakeVerifier extends EventEmitter {
   unref(): void { this.unrefs += 1; }
 }
 
-function commandFixture(context: TestContext) {
+function commandFixture(context: TestContext, env?: NodeJS.ProcessEnv) {
   // No fake PID or accidental extra spawn may ever reach the OS, on any platform.
   context.mock.method(process, "kill", () => { throw new Error("real signal forbidden"); });
   context.mock.method(require("cross-spawn"), "spawn", () => { throw new Error("real spawn forbidden"); });
@@ -80,7 +80,7 @@ function commandFixture(context: TestContext) {
       spawns += 1;
       assert.equal(command, process.execPath);
       assert.ok(args.length > 0);
-      assert.deepEqual(options, { cwd: path.dirname(path.dirname(scriptPath)), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+      assert.deepEqual(options, { cwd: path.dirname(path.dirname(scriptPath)), windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...(env ? { env } : {}) });
       return child;
     },
     setTimeout: clock.setTimeout,
@@ -100,6 +100,25 @@ function commandFixture(context: TestContext) {
   }
   return { child, unrelated, clock, runtime, released };
 }
+
+test("public runner verifier receives the pinned environment and the same failure-only supervision", async (context) => {
+  const env = { CODEX_COMMAND: "C:/Program Files/Codex/codex.cmd", PATH: "isolated-path" };
+  const state = commandFixture(context, env);
+  const result = runCommand(process.execPath, [path.join(path.dirname(scriptPath), "verify_codex_runner_unload.js"), "--live"], false, state.runtime, { env });
+  state.clock.tick(120000);
+  assert.equal(state.clock.jobs.size, 0);
+  assert.deepEqual(state.child.kills, []);
+  state.child.stderr.write('{"phase":"cleanup_failed"}\r\n');
+  state.clock.tick(5000);
+  assert.deepEqual(state.child.kills, ["SIGKILL"]);
+  state.child.emit("exit", 1, null);
+  state.child.emit("close", 1, null);
+  const finished = await result;
+  assert.equal(finished.supervision?.closed, true);
+  assert.equal(finished.supervision?.terminationAttempted, true);
+  assert.match(finished.error || "", /cleanup_failed/);
+  state.released(true);
+});
 
 function stubRegressionDiscovery(context: TestContext): void {
   // Orchestration is mocked; it must not depend on a concurrent build's shared dist directory.

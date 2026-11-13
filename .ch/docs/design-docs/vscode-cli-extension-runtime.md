@@ -1,7 +1,7 @@
 # VS Code CLI 运行时：配置模型与 Tab 任务摘要边界
 
 - 状态：配置模型仓储已实施，行为保持不变；Tab 任务摘要已实现并经主审，验证边界见下文
-- 更新日期：2026-11-12
+- 更新日期：2026-11-13
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
 ## Loop 任务内模型切换
@@ -24,6 +24,9 @@
 
 ## Tab 运行状态与配置协调
 
+- 交互调用在异步配置/会话准备结束后、登记运行和取得 runner 前检查所有权：同 Tab 或同 CLI + session 的活跃调用不能被另一个调用替换。不同会话保持并行；显式停止后可重新提交。跨 Tab 重复提交明确报错，不追加新用户轮次、不 dispose 原 runner。此门禁不替代 Codex 底层 HOME + thread 写锁交接。
+- 运行收尾及 Codex 的迟到 thread/taskList 回调只操作所属 runId；旧调用不得重绑新会话或覆盖新状态。宿主发布完整面板状态后立即重放现有运行协调消息，恢复仍活跃的 Loop 子任务；不靠历史摘要推断完成。
+- 历史完成摘要只能从最近用户消息之后恢复；新用户消息立即清空旧摘要，真实活跃信号恢复时清除历史完成状态。正常完成仍由 Loop+ adapter 自动关闭子任务 Tab；失败或中断保留诊断，不通过强行关闭伪装成功。回归见 `src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/webview/tabRunStatus.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
 - 非运行标签关闭使用宿主确认后的轻量 `conversationTabClosed` 增量消息，不等待 `postPanelState` 重载各 CLI 配置和模型能力。后台关闭仅移除标签与缓存，不重选当前会话、不重放正文；活动关闭立即切到回退标签缓存，之后仍由原有配置恢复和全量状态保证执行配置正确。运行锁、最后标签保护与磁盘会话保留不变。
 - 重置会话先创建新标签再关闭旧标签，不能套用普通关闭的轻量确认：客户端尚无新标签，提前确认会暂时选中邻居并破坏待提交配置的保留判断。重置显式禁用提前确认，并在新标签仍活动时发布完整状态和空会话消息。回归见 `src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
 

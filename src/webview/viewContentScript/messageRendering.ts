@@ -1628,6 +1628,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           }
           if (typeof runningTabStartedAtById[tabId] !== "number") {
             runningTabStartedAtById[tabId] = Date.now();
+            const runtimeState = getConversationRuntimeState(tabId);
+            if (runtimeState) {
+              runtimeState.lastRunStatus = "start";
+              runtimeState.lastRunStatusMessage = "";
+            }
             changed = true;
           }
         });

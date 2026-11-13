@@ -258,6 +258,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         }
         for (let i = messages.length - 1; i >= 0; i -= 1) {
           const item = messages[i];
+          if (item && item.role === "user") {
+            break;
+          }
           if (!item || item.role !== "system") {
             continue;
           }

@@ -1,5 +1,6 @@
 import * as assert from "node:assert/strict";
 import * as vm from "node:vm";
+import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../webview/viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH } from "../../webview/viewContentScript/windowMessageDispatch";
@@ -47,6 +48,7 @@ export function createRunStatusHarness() {
       "syncResetSessionAvailability", "syncLongTermMemoryWorkspaceControl", "syncCodeGraphWorkspaceControl",
       "syncInteractiveOptions", "stopRunWaitTimer", "closeRunPromptOverlay", "closeRunStreamOverlay",
       "updateRunWaitTime", "updateRunStreamButton",
+      "syncConversationTabRunningFlowWatch",
     ].map((name) => [name, noop])),
     state: { isRunning: false, conversationTabs: { activeTabId: "active" } }, elements, runWaitStartAt: 0,
     startRunWaitTimer: (startedAt: number) => { sandbox.runWaitStartAt = startedAt; },
@@ -59,6 +61,8 @@ export function createRunStatusHarness() {
     },
     vscode: { postMessage: noop },
     conversationRuntimeByTabId: Object.create(null),
+    hydrationMessages: [] as Array<{ role: string; content: string }>,
+    isHiddenLoopPlusProtocolPrompt,
     TAB_RUNTIME_DEFAULT_KEY: "default",
     erroredTabIds,
     loopMetaByTabId: Object.create(null),
@@ -77,11 +81,13 @@ export function createRunStatusHarness() {
       "createTaskListState", "createConversationRuntimeState", "resolveConversationRuntimeKey", "getConversationRuntimeState",
       "pruneConversationRuntimeStates", "resetConversationRuntimeState", "normalizeRunActivity", "isRunStatusSummaryText",
       "getActiveConversationRuntimeState", "ensureRuntimeStateMessages", "ensureRuntimeTaskList", "isRuntimeStateForActiveTab",
+      "deriveLatestRunPromptFromMessages", "deriveLatestRunStatusMessageFromMessages", "hydrateRunArtifactsFromMessages",
     ]],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, [
       "isErrorMessage", "syncTabErrorFromMessage", "isTabRunning", "isConversationTabRunning", "setTabErrored", "isTabErrored",
       "isHiddenRetryQueuedMessage", "isHiddenRetryStartedMessage", "getTabRunStartedAt", "shouldHandleTabScopedEvent",
       "normalizeLoopTaskRole", "normalizeLoopTaskId", "getLoopMetaForTabSummary", "isLoopMainTab",
+      "startConversationTabRunningFlow", "syncRunningStateForActiveTab",
     ]],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, ["updateRunningState", "updateRunWait"]],
     [VIEW_CONTENT_SCRIPT_TRACE_RENDERING, [
@@ -112,6 +118,11 @@ export function createRunStatusHarness() {
     context, erroredTabIds, send, run, message, tabState, elements, renderedMessages, renderedTraces,
     runtime: (tabId: string) => sandbox.conversationRuntimeByTabId[tabId] as {
       activeRunActivity: string; lastRunStatus: string; tokensInContextWindow: number | null; modelContextWindow: number | null;
+      lastRunStatusMessage: string;
+    },
+    hydrate: (tabId: string, messages: Array<{ role: string; content: string }>) => {
+      sandbox.hydrationMessages = messages;
+      vm.runInContext(`getConversationRuntimeState(${JSON.stringify(tabId)}); hydrateRunArtifactsFromMessages(${JSON.stringify(tabId)}, hydrationMessages)`, context);
     },
     activate: (tabId: string) => {
       activeTabId = tabId;
