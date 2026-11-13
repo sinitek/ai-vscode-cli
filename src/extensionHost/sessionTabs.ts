@@ -2,6 +2,7 @@ import type { CliName } from "../cli/types";
 import { CLI_LIST, type InteractiveMode } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
 import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
+import { isHiddenLoopPlusProtocolPrompt } from "../loopPlusProtocolPrompt";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, type LoopTaskRecord } from "../loopTaskStore";
@@ -77,15 +78,31 @@ async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
-  const loopSessionIdsByCli = buildLoopSessionIdsByCli(
-    loopGroupChatChatPanelCoordinator.listGroupChatTasks()
-  );
+  const loopTasks: LoopTaskRecord[] = loopGroupChatChatPanelCoordinator.listGroupChatTasks();
+  const loopSessionIdsByCli = buildLoopSessionIdsByCli(loopTasks);
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
     records.forEach((record) => {
       let firstPrompt = record.firstPrompt;
-      if (!firstPrompt) {
+      const loopMainTask = loopTasks.find((task) => task.cli === item && task.sessionId === record.id);
+      const loopSubtaskOwner = loopTasks.find((task) => task.subTasks.some((subtask) => (
+        subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
+      )));
+      const loopSubtask = loopSubtaskOwner?.subTasks.find((subtask) => (
+        subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
+      ));
+      const hasHiddenProtocolPrompt = isHiddenLoopPlusProtocolPrompt(firstPrompt);
+      if (hasHiddenProtocolPrompt || (!firstPrompt && loopMainTask)) {
+        firstPrompt = loopSubtask?.prompt ?? loopMainTask?.rootPrompt ?? firstPrompt;
+      }
+      if (hasHiddenProtocolPrompt && isHiddenLoopPlusProtocolPrompt(firstPrompt)) {
+        firstPrompt = undefined;
+      }
+      const displayLabel = hasHiddenProtocolPrompt && !firstPrompt
+        ? t("session.unnamed")
+        : record.label;
+      if (!firstPrompt && !hasHiddenProtocolPrompt) {
         const resolved = resolveSessionFirstPrompt(item, record.id);
         if (resolved) {
           record.firstPrompt = resolved;
@@ -104,11 +121,12 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       const isLoopSession = loopSessionIdsByCli[item].has(record.id);
       const taskRole = resolveHistorySessionTaskRole({
         isLoopMainSession: isLoopSession,
+        isLoopSubtaskSession: Boolean(loopSubtask),
         messages: loadSessionMessages(item, record.id),
       });
       allSessions.push({
         id: record.id,
-        label: record.label,
+        label: displayLabel,
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,

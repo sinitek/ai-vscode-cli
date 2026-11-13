@@ -505,11 +505,13 @@
     {
       "id": "plugin.rule.history_session_subtask_filter",
       "name": "历史会话默认过滤子任务",
-      "description": "历史记录的历史会话页提供默认勾选的过滤子任务复选框，仅隐藏 taskRole=subtask 的会话；取消勾选恢复展示，可与关键词搜索叠加。保留主任务、普通及未标记旧会话，不修改原始历史数据或影响历史提示词。当前 Webview 内切换页签和重开弹窗保持选择，重新初始化默认勾选。",
+      "description": "历史记录的历史会话页提供默认勾选的过滤子任务复选框，仅隐藏 taskRole=subtask 的会话；取消勾选恢复展示，可与关键词搜索叠加。Loop+ 内部 reviewer 协议不作为会话标题，旧记录优先从任务 rootPrompt 或绑定子任务提示词恢复。子任务会话按 executionSession 绑定识别，即使对应调用 taskRole=main 也标记为 subtask；普通最新用户提示仍取消 Loop 角色标记。保留主任务、普通及未标记旧会话，不修改原始消息数据。当前 Webview 内切换页签和重开弹窗保持过滤状态，重新初始化默认勾选。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
         {"path": "src/webview/viewContentScript/historyPanels.ts", "anchor": "renderSessionList"},
+        {"path": "src/extensionHost/sessionTabs.ts", "anchor": "buildSessionState"},
+        {"path": "src/historySessionTaskRole.ts", "anchor": "resolveHistorySessionTaskRole"},
         {"path": "src/webview/viewContentScript/coreBootstrap.ts", "anchor": "historySessionFilterSubtasks"},
         {"path": "src/webview/viewContentScript/settingsAndOverlays.ts"},
         {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
