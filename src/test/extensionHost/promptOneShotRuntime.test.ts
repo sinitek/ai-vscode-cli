@@ -606,6 +606,7 @@ test("one-shot runtime host keeps empty and unsupported prompts inside its bound
 test("one-shot runtime finalizes and propagates ENOENT for task-level automatic repair", async () => {
   const harness = createOneShotRuntimeHarness();
   const spawnError = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" });
+  const titleKey = `cli.notFound.${process.platform === "win32" ? "win" : "unix"}.title`;
 
   await withRunCliStreamStub(createAsyncRunCliStreamStub((handlers) => {
     handlers.onError(spawnError);
@@ -617,13 +618,15 @@ test("one-shot runtime finalizes and propagates ENOENT for task-level automatic 
   });
 
   assert.deepEqual(harness.statusEvents.map((event) => event.status), ["start", "error"]);
-  assert.match(harness.statusEvents[1]?.message ?? "", /cli\.notFound\.unix\.title[\s\S]*opencode/);
+  assert.ok(harness.statusEvents[1]?.message?.includes(titleKey));
+  assert.match(harness.statusEvents[1]?.message ?? "", /opencode/);
   assert.deepEqual(harness.completionStatuses, ["error"]);
   assert.deepEqual(harness.memoryPersistStatuses, []);
   assert.equal(harness.activeRunId, undefined);
   assert.equal(harness.shownCommandErrors.length, 1);
-  assert.match(harness.shownCommandErrors[0] ?? "", /cli\.notFound\.unix\.title[\s\S]*opencode/);
-  assert.ok(harness.systemMessages.some((message) => message.includes("cli.notFound.unix.title")));
+  assert.ok(harness.shownCommandErrors[0]?.includes(titleKey));
+  assert.match(harness.shownCommandErrors[0] ?? "", /opencode/);
+  assert.ok(harness.systemMessages.some((message) => message.includes(titleKey)));
 });
 
 test("one-shot automatic repair retry does not retry transient failures again", async () => {

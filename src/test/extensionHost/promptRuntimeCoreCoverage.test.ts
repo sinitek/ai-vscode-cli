@@ -129,7 +129,9 @@ test("resolves blank, absolute, and cwd-relative prompt references", () => {
   const cwd = path.join(path.sep, "isolated", "project");
 
   assert.equal(promptRuntime.resolvePromptReferencedPath("   ", cwd), null);
-  assert.equal(promptRuntime.resolvePromptReferencedPath(" /attachments/image.png ", cwd), "/attachments/image.png");
+  const absolutePath = path.join(path.sep, "attachments", "image.png");
+  assert.equal(promptRuntime.resolvePromptReferencedPath(` ${absolutePath} `, cwd), path.normalize(absolutePath));
+  assert.equal(promptRuntime.resolvePromptReferencedPath(" /attachments/image.png ", cwd), path.normalize(absolutePath));
   assert.equal(
     promptRuntime.resolvePromptReferencedPath(" screenshots/image.png ", cwd),
     path.resolve(cwd, "screenshots/image.png")
